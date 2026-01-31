@@ -1,0 +1,9 @@
+{
+  "import": [
+    "dowdiness/js_engine/ast",
+    "dowdiness/js_engine/token"
+  ],
+  "test-import": [
+    "dowdiness/js_engine/parser"
+  ]
+}

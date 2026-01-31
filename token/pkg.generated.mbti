@@ -1,0 +1,84 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "dowdiness/js_engine/token"
+
+// Values
+
+// Errors
+
+// Types and methods
+pub(all) struct Loc {
+  line : Int
+  col : Int
+  offset : Int
+}
+pub fn Loc::default() -> Self
+pub impl Eq for Loc
+pub impl Show for Loc
+
+pub(all) struct Token {
+  kind : TokenKind
+  loc : Loc
+  raw : String
+}
+pub fn Token::eof(Loc) -> Self
+pub fn Token::new(TokenKind, Loc, String) -> Self
+pub impl Eq for Token
+pub impl Show for Token
+
+pub(all) enum TokenKind {
+  Number(Double)
+  String_(String)
+  True
+  False
+  Null
+  Undefined
+  Ident(String)
+  Let
+  Const
+  Var
+  Function
+  Return
+  If
+  Else
+  While
+  For
+  Break
+  Continue
+  Typeof
+  Plus
+  Minus
+  Star
+  Slash
+  Percent
+  Assign
+  EqEq
+  EqEqEq
+  BangEq
+  BangEqEq
+  Lt
+  Gt
+  LtEq
+  GtEq
+  And
+  Or
+  Bang
+  LParen
+  RParen
+  LBrace
+  RBrace
+  LBracket
+  RBracket
+  Comma
+  Semicolon
+  Dot
+  Colon
+  Question
+  EOF
+}
+pub impl Eq for TokenKind
+pub impl Show for TokenKind
+
+// Type aliases
+
+// Traits
+

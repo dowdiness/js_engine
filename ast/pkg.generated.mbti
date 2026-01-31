@@ -1,0 +1,92 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "dowdiness/js_engine/ast"
+
+import {
+  "dowdiness/js_engine/token",
+}
+
+// Values
+
+// Errors
+
+// Types and methods
+pub(all) enum BinOp {
+  Add
+  Sub
+  Mul
+  Div
+  Mod
+  EqEq
+  EqEqEq
+  NotEq
+  NotEqEq
+  Lt
+  Gt
+  LtEq
+  GtEq
+  And
+  Or
+}
+pub impl Eq for BinOp
+pub impl Show for BinOp
+
+pub(all) enum Expr {
+  NumberLit(Double, @token.Loc)
+  StringLit(String, @token.Loc)
+  BoolLit(Bool, @token.Loc)
+  NullLit(@token.Loc)
+  UndefinedLit(@token.Loc)
+  Ident(String, @token.Loc)
+  Binary(BinOp, Expr, Expr, @token.Loc)
+  Unary(UnaryOp, Expr, @token.Loc)
+  Assign(String, Expr, @token.Loc)
+  Call(Expr, Array[Expr], @token.Loc)
+  Member(Expr, String, @token.Loc)
+  Ternary(Expr, Expr, Expr, @token.Loc)
+  FuncExpr(String?, Array[String], Array[Stmt], @token.Loc)
+  Grouping(Expr, @token.Loc)
+}
+pub impl Eq for Expr
+pub impl Show for Expr
+
+pub(all) struct Program {
+  stmts : Array[Stmt]
+}
+pub impl Eq for Program
+pub impl Show for Program
+
+pub(all) enum Stmt {
+  ExprStmt(Expr, @token.Loc)
+  VarDecl(VarKind, String, Expr?, @token.Loc)
+  Block(Array[Stmt], @token.Loc)
+  IfStmt(Expr, Stmt, Stmt?, @token.Loc)
+  WhileStmt(Expr, Stmt, @token.Loc)
+  ForStmt(Stmt?, Expr?, Expr?, Stmt, @token.Loc)
+  FuncDecl(String, Array[String], Array[Stmt], @token.Loc)
+  ReturnStmt(Expr?, @token.Loc)
+  BreakStmt(@token.Loc)
+  ContinueStmt(@token.Loc)
+}
+pub impl Eq for Stmt
+pub impl Show for Stmt
+
+pub(all) enum UnaryOp {
+  Neg
+  Not
+  Typeof
+}
+pub impl Eq for UnaryOp
+pub impl Show for UnaryOp
+
+pub(all) enum VarKind {
+  LetKind
+  ConstKind
+  VarKind
+}
+pub impl Eq for VarKind
+pub impl Show for VarKind
+
+// Type aliases
+
+// Traits
+
