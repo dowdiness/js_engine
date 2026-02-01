@@ -80,8 +80,8 @@ pub(all) struct ObjectData {
 pub(all) enum Signal {
   Normal(Value)
   ReturnSignal(Value)
-  BreakSignal
-  ContinueSignal
+  BreakSignal(String?)
+  ContinueSignal(String?)
 }
 
 pub(all) enum Value {

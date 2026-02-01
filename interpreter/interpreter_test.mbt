@@ -1047,3 +1047,137 @@ test "negative Infinity" {
   let out = run_output("console.log(-Infinity)")
   inspect(out[0], content="-Infinity")
 }
+
+// ===== Phase 1 Known Issue Fixes =====
+
+// Issue 1: to_int32 spec compliance
+
+///|
+test "to_int32 wrapping large positive" {
+  let (_, result) = run_js("2147483648 | 0")
+  inspect(result, content="-2147483648")
+}
+
+///|
+test "to_int32 wrapping large negative" {
+  let (_, result) = run_js("-2147483649 | 0")
+  inspect(result, content="2147483647")
+}
+
+///|
+test "to_int32 wrapping 4294967296" {
+  let (_, result) = run_js("4294967296 | 0")
+  inspect(result, content="0")
+}
+
+// Issue 5: parseFloat improvements
+
+///|
+test "parseFloat leading dot" {
+  let (_, result) = run_js("parseFloat(\".5\")")
+  inspect(result, content="0.5")
+}
+
+///|
+test "parseFloat exponent" {
+  let (_, result) = run_js("parseFloat(\"1e2\")")
+  inspect(result, content="100")
+}
+
+///|
+test "parseFloat Infinity" {
+  let (_, result) = run_js("parseFloat(\"Infinity\")")
+  inspect(result, content="Infinity")
+}
+
+///|
+test "parseFloat negative Infinity" {
+  let (_, result) = run_js("parseFloat(\"-Infinity\")")
+  inspect(result, content="-Infinity")
+}
+
+// Issue 2: Error prototype chain (instanceof)
+
+///|
+test "new Error instanceof Error" {
+  let (_, result) = run_js("new Error() instanceof Error")
+  inspect(result, content="true")
+}
+
+///|
+test "new TypeError instanceof TypeError" {
+  let (_, result) = run_js("new TypeError(\"bad\") instanceof TypeError")
+  inspect(result, content="true")
+}
+
+// Issue 3: for-in prototype chain
+
+///|
+test "for-in prototype chain" {
+  let src =
+    #|function Base() { this.a = 1; }
+    #|Base.prototype.b = 2;
+    #|var obj = new Base();
+    #|var keys = "";
+    #|for (var k in obj) { keys = keys + k; }
+    #|console.log(keys);
+  let output = run_output(src)
+  inspect(output, content="[\"ab\"]")
+}
+
+// Issue 6: double evaluation in update/compound-assign
+
+///|
+test "update member single evaluation" {
+  let src =
+    #|var counter = 0;
+    #|function getSide() { counter++; return { x: 10 }; }
+    #|var obj = getSide();
+    #|obj.x++;
+    #|console.log(counter);
+    #|console.log(obj.x);
+  let output = run_output(src)
+  inspect(output, content="[\"1\", \"11\"]")
+}
+
+///|
+test "compound assign member single evaluation" {
+  let src =
+    #|var obj = { x: 10 };
+    #|obj.x += 5;
+    #|console.log(obj.x);
+  let output = run_output(src)
+  inspect(output, content="[\"15\"]")
+}
+
+// Issue 4: labeled break/continue
+
+///|
+test "labeled break" {
+  let src =
+    #|var result = "";
+    #|outer: for (var i = 0; i < 3; i++) {
+    #|  for (var j = 0; j < 3; j++) {
+    #|    if (j === 1) break outer;
+    #|    result = result + i + "" + j + ",";
+    #|  }
+    #|}
+    #|console.log(result);
+  let output = run_output(src)
+  inspect(output, content="[\"00,\"]")
+}
+
+///|
+test "labeled continue" {
+  let src =
+    #|var result = "";
+    #|outer: for (var i = 0; i < 3; i++) {
+    #|  for (var j = 0; j < 3; j++) {
+    #|    if (j === 1) continue outer;
+    #|    result = result + i + "" + j + ",";
+    #|  }
+    #|}
+    #|console.log(result);
+  let output = run_output(src)
+  inspect(output, content="[\"00,10,20,\"]")
+}

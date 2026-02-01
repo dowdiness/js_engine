@@ -103,27 +103,74 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
       if trimmed.length() == 0 {
         return Number(0.0 / 0.0)
       }
-      // Try parsing progressively longer prefixes
       let chars = trimmed.to_array()
-      let mut last_valid = 0.0 / 0.0
-      let buf = StringBuilder::new()
-      for i = 0; i < chars.length(); i = i + 1 {
-        buf.write_char(chars[i])
-        let current = buf.to_string()
-        try {
-          let n = @strconv.parse_double(current)
-          last_valid = n
-        } catch {
-          _ => {
-            // If first char fails, check for sign
-            if i == 0 && (chars[i] == '+' || chars[i] == '-') {
-              continue
-            }
-            break
-          }
+      let len = chars.length()
+      let mut pos = 0
+      // Optional sign
+      if pos < len && (chars[pos] == '+' || chars[pos] == '-') {
+        pos = pos + 1
+      }
+      // Check for Infinity
+      let sign_end = pos
+      if pos + 8 <= len &&
+        chars[pos] == 'I' &&
+        chars[pos + 1] == 'n' &&
+        chars[pos + 2] == 'f' &&
+        chars[pos + 3] == 'i' &&
+        chars[pos + 4] == 'n' &&
+        chars[pos + 5] == 'i' &&
+        chars[pos + 6] == 't' &&
+        chars[pos + 7] == 'y' {
+        let sign : Double = if sign_end > 0 && chars[0] == '-' {
+          -1.0
+        } else {
+          1.0
+        }
+        return Number(sign * (1.0 / 0.0))
+      }
+      // Single-pass scan: [+-]? digits? [. digits?] ([eE] [+-]? digits)?
+      let mut has_digits = false
+      // Integer part digits
+      while pos < len && chars[pos] >= '0' && chars[pos] <= '9' {
+        has_digits = true
+        pos = pos + 1
+      }
+      // Fractional part
+      if pos < len && chars[pos] == '.' {
+        pos = pos + 1
+        while pos < len && chars[pos] >= '0' && chars[pos] <= '9' {
+          has_digits = true
+          pos = pos + 1
         }
       }
-      Number(last_valid)
+      if not(has_digits) {
+        return Number(0.0 / 0.0)
+      }
+      // Exponent part
+      if pos < len && (chars[pos] == 'e' || chars[pos] == 'E') {
+        let saved = pos
+        pos = pos + 1
+        if pos < len && (chars[pos] == '+' || chars[pos] == '-') {
+          pos = pos + 1
+        }
+        let exp_start = pos
+        while pos < len && chars[pos] >= '0' && chars[pos] <= '9' {
+          pos = pos + 1
+        }
+        // If no exponent digits, revert to before 'e'/'E'
+        if pos == exp_start {
+          pos = saved
+        }
+      }
+      // Build the prefix string and parse once
+      let buf = StringBuilder::new()
+      for i = 0; i < pos; i = i + 1 {
+        buf.write_char(chars[i])
+      }
+      let result = @strconv.parse_double(buf.to_string()) catch {
+        _ => 0.0 / 0.0
+      }
+      Number(result)
     }),
   )
 
@@ -166,17 +213,16 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
 
 ///|
 fn register_error_ctor(env : Environment, name : String) -> Unit {
+  let proto_obj : Value = Object({
+    properties: {},
+    prototype: Null,
+    callable: None,
+    class_name: name,
+  })
   env.def_builtin(
     name,
     Object({
-      properties: {
-        "prototype": Object({
-          properties: {},
-          prototype: Null,
-          callable: None,
-          class_name: name,
-        }),
-      },
+      properties: { "prototype": proto_obj },
       prototype: Null,
       callable: Some(
         NativeCallable(name, fn(args) {
@@ -191,7 +237,7 @@ fn register_error_ctor(env : Environment, name : String) -> Unit {
           }
           Object({
             properties: { "message": String_(message), "name": String_(name) },
-            prototype: Null,
+            prototype: proto_obj,
             callable: None,
             class_name: name,
           })

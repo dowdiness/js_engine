@@ -212,15 +212,35 @@ fn Parser::parse_return_stmt(self : Parser) -> @ast.Stmt raise Error {
 ///|
 fn Parser::parse_break_stmt(self : Parser) -> @ast.Stmt raise Error {
   let tok = self.expect(Break)
+  let label : String? = match self.peek_kind() {
+    Ident(name) =>
+      if not(self.at(Semicolon)) {
+        self.pos += 1
+        Some(name)
+      } else {
+        None
+      }
+    _ => None
+  }
   self.eat_semicolon()
-  BreakStmt(tok.loc)
+  BreakStmt(label, tok.loc)
 }
 
 ///|
 fn Parser::parse_continue_stmt(self : Parser) -> @ast.Stmt raise Error {
   let tok = self.expect(Continue)
+  let label : String? = match self.peek_kind() {
+    Ident(name) =>
+      if not(self.at(Semicolon)) {
+        self.pos += 1
+        Some(name)
+      } else {
+        None
+      }
+    _ => None
+  }
   self.eat_semicolon()
-  ContinueStmt(tok.loc)
+  ContinueStmt(label, tok.loc)
 }
 
 ///|

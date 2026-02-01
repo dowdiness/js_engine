@@ -2,8 +2,8 @@
 pub(all) enum Signal {
   Normal(Value)
   ReturnSignal(Value)
-  BreakSignal
-  ContinueSignal
+  BreakSignal(String?)
+  ContinueSignal(String?)
 }
 
 ///|
@@ -31,8 +31,9 @@ pub fn Interpreter::run(
       Normal(v) => last = v
       ReturnSignal(_) =>
         raise Failure::Failure("return statement outside of function")
-      BreakSignal => raise Failure::Failure("break statement outside of loop")
-      ContinueSignal =>
+      BreakSignal(_) =>
+        raise Failure::Failure("break statement outside of loop")
+      ContinueSignal(_) =>
         raise Failure::Failure("continue statement outside of loop")
     }
   }
@@ -44,6 +45,7 @@ fn Interpreter::exec_stmt(
   self : Interpreter,
   stmt : @ast.Stmt,
   env : Environment,
+  label? : String? = None,
 ) -> Signal raise Error {
   match stmt {
     ExprStmt(expr, _) => Normal(self.eval_expr(expr, env))
@@ -80,8 +82,20 @@ fn Interpreter::exec_stmt(
         match self.exec_stmt(body, env) {
           Normal(_) => ()
           ReturnSignal(v) => return ReturnSignal(v)
-          BreakSignal => break
-          ContinueSignal => continue
+          BreakSignal(None) => break
+          BreakSignal(Some(l)) =>
+            if label == Some(l) {
+              break
+            } else {
+              return BreakSignal(Some(l))
+            }
+          ContinueSignal(None) => continue
+          ContinueSignal(Some(l)) =>
+            if label == Some(l) {
+              continue
+            } else {
+              return ContinueSignal(Some(l))
+            }
         }
       }
       Normal(Undefined)
@@ -100,11 +114,34 @@ fn Interpreter::exec_stmt(
           Some(c) => if not(is_truthy(self.eval_expr(c, for_env))) { break }
           None => ()
         }
+        let mut do_continue = false
         match self.exec_stmt(body, for_env) {
           Normal(_) => ()
           ReturnSignal(v) => return ReturnSignal(v)
-          BreakSignal => break
-          ContinueSignal => ()
+          BreakSignal(None) => break
+          BreakSignal(Some(l)) =>
+            if label == Some(l) {
+              break
+            } else {
+              return BreakSignal(Some(l))
+            }
+          ContinueSignal(None) => do_continue = true
+          ContinueSignal(Some(l)) =>
+            if label == Some(l) {
+              do_continue = true
+            } else {
+              return ContinueSignal(Some(l))
+            }
+        }
+        if do_continue {
+          match update {
+            Some(u) => {
+              let _ = self.eval_expr(u, for_env)
+
+            }
+            None => ()
+          }
+          continue
         }
         match update {
           Some(u) => {
@@ -133,8 +170,8 @@ fn Interpreter::exec_stmt(
       }
       ReturnSignal(value)
     }
-    BreakStmt(_) => BreakSignal
-    ContinueStmt(_) => ContinueSignal
+    BreakStmt(label, _) => BreakSignal(label)
+    ContinueStmt(label, _) => ContinueSignal(label)
     ThrowStmt(expr, _) => {
       let value = self.eval_expr(expr, env)
       raise JsException(value)
@@ -168,7 +205,7 @@ fn Interpreter::exec_stmt(
         for stmt in cases[i].body {
           match self.exec_stmt(stmt, env) {
             Normal(_) => ()
-            BreakSignal => return Normal(Undefined)
+            BreakSignal(None) => return Normal(Undefined)
             other => return other
           }
         }
@@ -180,8 +217,20 @@ fn Interpreter::exec_stmt(
         match self.exec_stmt(body, env) {
           Normal(_) => ()
           ReturnSignal(v) => return ReturnSignal(v)
-          BreakSignal => break
-          ContinueSignal => ()
+          BreakSignal(None) => break
+          BreakSignal(Some(l)) =>
+            if label == Some(l) {
+              break
+            } else {
+              return BreakSignal(Some(l))
+            }
+          ContinueSignal(None) => ()
+          ContinueSignal(Some(l)) =>
+            if label == Some(l) {
+              // continue — fall through to condition check
+            } else {
+              return ContinueSignal(Some(l))
+            }
         }
         if not(is_truthy(self.eval_expr(cond, env))) {
           break
@@ -191,15 +240,7 @@ fn Interpreter::exec_stmt(
     }
     ForInStmt(var_kind, name, obj_expr, body, _) => {
       let obj = self.eval_expr(obj_expr, env)
-      let keys : Array[String] = []
-      match obj {
-        Object(data) => data.properties.each(fn(k, _v) { keys.push(k) })
-        Array(data) =>
-          for i = 0; i < data.elements.length(); i = i + 1 {
-            keys.push(i.to_string())
-          }
-        _ => ()
-      }
+      let keys = collect_for_in_keys(obj)
       for key in keys {
         let body_env = Environment::new(parent=Some(env))
         match var_kind {
@@ -216,14 +257,67 @@ fn Interpreter::exec_stmt(
         match self.exec_stmt(body, body_env) {
           Normal(_) => ()
           ReturnSignal(v) => return ReturnSignal(v)
-          BreakSignal => break
-          ContinueSignal => continue
+          BreakSignal(None) => break
+          BreakSignal(Some(l)) =>
+            if label == Some(l) {
+              break
+            } else {
+              return BreakSignal(Some(l))
+            }
+          ContinueSignal(None) => continue
+          ContinueSignal(Some(l)) =>
+            if label == Some(l) {
+              continue
+            } else {
+              return ContinueSignal(Some(l))
+            }
         }
       }
       Normal(Undefined)
     }
-    LabeledStmt(_, body, _) => self.exec_stmt(body, env)
+    LabeledStmt(lbl, body, _) =>
+      match self.exec_stmt(body, env, label=Some(lbl)) {
+        BreakSignal(Some(l)) =>
+          if l == lbl {
+            Normal(Undefined)
+          } else {
+            BreakSignal(Some(l))
+          }
+        other => other
+      }
   }
+}
+
+///|
+fn collect_for_in_keys(obj : Value) -> Array[String] {
+  let keys : Array[String] = []
+  let seen : Map[String, Bool] = {}
+  let mut current = obj
+  while true {
+    match current {
+      Object(data) => {
+        data.properties.each(fn(k, _v) {
+          if not(seen.contains(k)) {
+            seen[k] = true
+            keys.push(k)
+          }
+        })
+        current = data.prototype
+      }
+      Array(data) => {
+        for i = 0; i < data.elements.length(); i = i + 1 {
+          let k = i.to_string()
+          if not(seen.contains(k)) {
+            seen[k] = true
+            keys.push(k)
+          }
+        }
+        break
+      }
+      _ => break
+    }
+  }
+  keys
 }
 
 ///|
@@ -567,6 +661,8 @@ fn strict_equal(a : Value, b : Value) -> Bool {
     (Bool(a), Bool(b)) => a == b
     (Null, Null) => true
     (Undefined, Undefined) => true
+    (Object(a), Object(b)) => physical_equal(a, b)
+    (Array(a), Array(b)) => physical_equal(a, b)
     _ => false
   }
 }
@@ -709,9 +805,9 @@ fn Interpreter::call_value(
           match self.exec_stmts(data.body, func_env) {
             Normal(v) => v
             ReturnSignal(v) => v
-            BreakSignal =>
+            BreakSignal(_) =>
               raise Failure::Failure("break statement outside of loop")
-            ContinueSignal =>
+            ContinueSignal(_) =>
               raise Failure::Failure("continue statement outside of loop")
           }
         }
@@ -889,9 +985,9 @@ fn Interpreter::eval_new(
                 Object(_) => v
                 _ => new_obj
               }
-            BreakSignal =>
+            BreakSignal(_) =>
               raise Failure::Failure("break statement outside of loop")
-            ContinueSignal =>
+            ContinueSignal(_) =>
               raise Failure::Failure("continue statement outside of loop")
           }
         }
@@ -917,16 +1013,29 @@ fn Interpreter::eval_update(
   env : Environment,
   loc : @token.Loc,
 ) -> Value raise Error {
-  let current = self.eval_expr(operand, env)
-  let num = to_number(current)
-  let new_val : Value = match op {
-    Increment => Number(num + 1.0)
-    Decrement => Number(num - 1.0)
-  }
   match operand {
-    Ident(name, _) => env.assign(name, new_val)
-    Member(obj_expr, prop, _) => {
+    Ident(name, _) => {
+      let current = env.get(name)
+      let num = to_number(current)
+      let new_val : Value = match op {
+        Increment => Number(num + 1.0)
+        Decrement => Number(num - 1.0)
+      }
+      env.assign(name, new_val)
+      if prefix {
+        new_val
+      } else {
+        Number(num)
+      }
+    }
+    Member(obj_expr, prop, mloc) => {
       let obj = self.eval_expr(obj_expr, env)
+      let current = self.get_property(obj, prop, mloc)
+      let num = to_number(current)
+      let new_val : Value = match op {
+        Increment => Number(num + 1.0)
+        Decrement => Number(num - 1.0)
+      }
       match obj {
         Object(data) => data.properties[prop] = new_val
         _ =>
@@ -934,10 +1043,21 @@ fn Interpreter::eval_update(
             "Invalid update target at line \{loc.line}, col \{loc.col}",
           )
       }
+      if prefix {
+        new_val
+      } else {
+        Number(num)
+      }
     }
-    ComputedMember(obj_expr, key_expr, _) => {
+    ComputedMember(obj_expr, key_expr, mloc) => {
       let obj = self.eval_expr(obj_expr, env)
       let key = self.eval_expr(key_expr, env)
+      let current = self.get_computed_property(obj, key, mloc)
+      let num = to_number(current)
+      let new_val : Value = match op {
+        Increment => Number(num + 1.0)
+        Decrement => Number(num - 1.0)
+      }
       match obj {
         Object(data) => data.properties[key.to_string()] = new_val
         Array(data) =>
@@ -955,16 +1075,16 @@ fn Interpreter::eval_update(
             "Invalid update target at line \{loc.line}, col \{loc.col}",
           )
       }
+      if prefix {
+        new_val
+      } else {
+        Number(num)
+      }
     }
     _ =>
       raise Failure::Failure(
         "Invalid update target at line \{loc.line}, col \{loc.col}",
       )
-  }
-  if prefix {
-    new_val
-  } else {
-    Number(num)
   }
 }
 
@@ -977,8 +1097,6 @@ fn Interpreter::eval_compound_assign(
   env : Environment,
   loc : @token.Loc,
 ) -> Value raise Error {
-  let current = self.eval_expr(target, env)
-  let rhs = self.eval_expr(value_expr, env)
   let bin_op : @ast.BinOp = match op {
     AddAssign => Add
     SubAssign => Sub
@@ -992,14 +1110,19 @@ fn Interpreter::eval_compound_assign(
     RShiftAssign => RShift
     URShiftAssign => URShift
   }
-  let result = eval_binary_op(bin_op, current, rhs, loc)
   match target {
     Ident(name, _) => {
+      let current = env.get(name)
+      let rhs = self.eval_expr(value_expr, env)
+      let result = eval_binary_op(bin_op, current, rhs, loc)
       env.assign(name, result)
       result
     }
-    Member(obj_expr, prop, _) => {
+    Member(obj_expr, prop, mloc) => {
       let obj = self.eval_expr(obj_expr, env)
+      let current = self.get_property(obj, prop, mloc)
+      let rhs = self.eval_expr(value_expr, env)
+      let result = eval_binary_op(bin_op, current, rhs, loc)
       match obj {
         Object(data) => {
           data.properties[prop] = result
@@ -1011,9 +1134,12 @@ fn Interpreter::eval_compound_assign(
           )
       }
     }
-    ComputedMember(obj_expr, key_expr, _) => {
+    ComputedMember(obj_expr, key_expr, mloc) => {
       let obj = self.eval_expr(obj_expr, env)
       let key = self.eval_expr(key_expr, env)
+      let current = self.get_computed_property(obj, key, mloc)
+      let rhs = self.eval_expr(value_expr, env)
+      let result = eval_binary_op(bin_op, current, rhs, loc)
       match obj {
         Object(data) => {
           data.properties[key.to_string()] = result

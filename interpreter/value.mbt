@@ -44,7 +44,14 @@ pub suberror JsException {
 ///|
 pub fn make_func(data : FuncData) -> Value {
   Object({
-    properties: {},
+    properties: {
+      "prototype": Object({
+        properties: {},
+        prototype: Null,
+        callable: None,
+        class_name: "Object",
+      }),
+    },
     prototype: Null,
     callable: Some(UserFunc(data)),
     class_name: "Function",
@@ -129,7 +136,21 @@ pub fn to_int32(n : Double) -> Int {
   if n.is_nan() || n.is_inf() || n == 0.0 {
     return 0
   }
-  n.to_int()
+  // ECMAScript ToInt32: truncate toward zero, modulo 2^32, map to signed range
+  let two32 : Double = 4294967296.0
+  // Truncate toward zero
+  let abs_n = n.abs()
+  let sign : Double = if n < 0.0 { -1.0 } else { 1.0 }
+  let truncated = abs_n.floor() * sign
+  // Modulo 2^32 (always positive)
+  let remainder = truncated % two32
+  let pos_mod = if remainder < 0.0 { remainder + two32 } else { remainder }
+  // Map to signed 32-bit range
+  if pos_mod >= 2147483648.0 {
+    (pos_mod - two32).to_int()
+  } else {
+    pos_mod.to_int()
+  }
 }
 
 ///|
