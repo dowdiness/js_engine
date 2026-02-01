@@ -36,6 +36,27 @@ pub fn Environment::def(
 }
 
 ///|
+pub fn Environment::def_builtin(
+  self : Environment,
+  name : String,
+  value : Value,
+) -> Unit {
+  self.bindings[name] = { value, kind: VarBinding }
+}
+
+///|
+pub fn Environment::has(self : Environment, name : String) -> Bool {
+  match self.bindings.get(name) {
+    Some(_) => true
+    None =>
+      match self.parent {
+        Some(parent) => parent.has(name)
+        None => false
+      }
+  }
+}
+
+///|
 pub fn Environment::get(self : Environment, name : String) -> Value raise Error {
   match self.bindings.get(name) {
     Some(binding) => binding.value

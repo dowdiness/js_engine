@@ -45,6 +45,20 @@ pub(all) enum TokenKind {
   Break
   Continue
   Typeof
+  Throw
+  Try
+  Catch
+  Finally
+  New
+  This
+  Switch
+  Case
+  Default
+  Void
+  Delete
+  Do
+  In
+  Instanceof
   Plus
   Minus
   Star
@@ -62,6 +76,26 @@ pub(all) enum TokenKind {
   And
   Or
   Bang
+  PlusPlus
+  MinusMinus
+  PlusAssign
+  MinusAssign
+  StarAssign
+  SlashAssign
+  PercentAssign
+  BitAnd
+  BitOr
+  BitXor
+  Tilde
+  LShift
+  RShift
+  URShift
+  BitAndAssign
+  BitOrAssign
+  BitXorAssign
+  LShiftAssign
+  RShiftAssign
+  URShiftAssign
   LParen
   RParen
   LBrace

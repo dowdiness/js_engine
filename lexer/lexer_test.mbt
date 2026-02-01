@@ -99,3 +99,120 @@ test "lex typeof" {
   let kinds = tok_kinds("typeof x")
   inspect(kinds, content="[Typeof, Ident(\"x\"), EOF]")
 }
+
+///|
+test "lex new keywords" {
+  let kinds = tok_kinds("throw try catch finally")
+  inspect(kinds, content="[Throw, Try, Catch, Finally, EOF]")
+}
+
+///|
+test "lex new this switch" {
+  let kinds = tok_kinds("new this switch case default")
+  inspect(kinds, content="[New, This, Switch, Case, Default, EOF]")
+}
+
+///|
+test "lex void delete do in instanceof" {
+  let kinds = tok_kinds("void delete do in instanceof")
+  inspect(kinds, content="[Void, Delete, Do, In, Instanceof, EOF]")
+}
+
+///|
+test "lex increment decrement" {
+  let kinds = tok_kinds("x++ y--")
+  inspect(
+    kinds,
+    content="[Ident(\"x\"), PlusPlus, Ident(\"y\"), MinusMinus, EOF]",
+  )
+}
+
+///|
+test "lex compound assignment" {
+  let kinds = tok_kinds("+= -= *= /= %=")
+  inspect(
+    kinds,
+    content="[PlusAssign, MinusAssign, StarAssign, SlashAssign, PercentAssign, EOF]",
+  )
+}
+
+///|
+test "lex bitwise operators" {
+  let kinds = tok_kinds("& | ^ ~")
+  inspect(kinds, content="[BitAnd, BitOr, BitXor, Tilde, EOF]")
+}
+
+///|
+test "lex shift operators" {
+  let kinds = tok_kinds("<< >> >>>")
+  inspect(kinds, content="[LShift, RShift, URShift, EOF]")
+}
+
+///|
+test "lex compound bitwise assignment" {
+  let kinds = tok_kinds("&= |= ^= <<= >>= >>>=")
+  inspect(
+    kinds,
+    content="[BitAndAssign, BitOrAssign, BitXorAssign, LShiftAssign, RShiftAssign, URShiftAssign, EOF]",
+  )
+}
+
+///|
+test "lex mixed new operators" {
+  let kinds = tok_kinds("a++ + b")
+  inspect(kinds, content="[Ident(\"a\"), PlusPlus, Plus, Ident(\"b\"), EOF]")
+}
+
+///|
+test "lex try catch statement tokens" {
+  let kinds = tok_kinds("try { x } catch (e) { throw e }")
+  inspect(
+    kinds,
+    content="[Try, LBrace, Ident(\"x\"), RBrace, Catch, LParen, Ident(\"e\"), RParen, LBrace, Throw, Ident(\"e\"), RBrace, EOF]",
+  )
+}
+
+///|
+test "lex switch statement tokens" {
+  let kinds = tok_kinds("switch (x) { case 1: default: }")
+  inspect(
+    kinds,
+    content="[Switch, LParen, Ident(\"x\"), RParen, LBrace, Case, Number(1), Colon, Default, Colon, RBrace, EOF]",
+  )
+}
+
+///|
+test "lex do while tokens" {
+  let kinds = tok_kinds("do { x } while (y)")
+  inspect(
+    kinds,
+    content="[Do, LBrace, Ident(\"x\"), RBrace, While, LParen, Ident(\"y\"), RParen, EOF]",
+  )
+}
+
+///|
+test "lex for in tokens" {
+  let kinds = tok_kinds("for (k in obj) {}")
+  inspect(
+    kinds,
+    content="[For, LParen, Ident(\"k\"), In, Ident(\"obj\"), RParen, LBrace, RBrace, EOF]",
+  )
+}
+
+///|
+test "lex new expression tokens" {
+  let kinds = tok_kinds("new Error()")
+  inspect(kinds, content="[New, Ident(\"Error\"), LParen, RParen, EOF]")
+}
+
+///|
+test "lex instanceof" {
+  let kinds = tok_kinds("x instanceof Array")
+  inspect(kinds, content="[Ident(\"x\"), Instanceof, Ident(\"Array\"), EOF]")
+}
+
+///|
+test "lex slash assign vs comment" {
+  let kinds = tok_kinds("x /= 2")
+  inspect(kinds, content="[Ident(\"x\"), SlashAssign, Number(2), EOF]")
+}

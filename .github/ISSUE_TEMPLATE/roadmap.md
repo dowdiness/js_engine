@@ -10,74 +10,120 @@ The Test262 harness files (`sta.js` + `assert.js`) **cannot execute** on the eng
 
 ---
 
-## Phase 1: Core Language Gaps → ~25% pass rate
+## Phase 1: Core Language Gaps → ~25% pass rate ✅ IMPLEMENTED
 
 **Goal**: Get the test262 harness executing, then pass basic language tests.
 
-### 1A. Lexer/Token Extensions
-- [ ] Add keywords: `throw`, `try`, `catch`, `finally`, `new`, `this`, `switch`, `case`, `default`, `void`, `delete`, `do`, `in`, `instanceof`
-- [ ] Add operators: `++`, `--`, `+=`, `-=`, `*=`, `/=`, `%=`
-- [ ] Add bitwise operators: `&`, `|`, `^`, `~`, `<<`, `>>`, `>>>`
-- [ ] Add compound bitwise assignment: `&=`, `|=`, `^=`, `<<=`, `>>=`, `>>>=`
+**Status**: All tasks (1A–1G) implemented. 195 tests passing (`moon test --target js`).
 
-### 1B. AST Node Extensions
-- [ ] Statements: `ThrowStmt`, `TryCatchStmt`, `SwitchStmt`, `DoWhileStmt`, `ForInStmt`, `LabeledStmt`
-- [ ] Expressions: `ObjectLit`, `ArrayLit`, `ComputedMember` (`obj[key]`), `MemberAssign` (`obj.prop = val`), `ComputedAssign` (`obj[key] = val`), `NewExpr`, `ThisExpr`, `UpdateExpr` (`++`/`--`), `CompoundAssign` (`+=` etc.), `Comma`
-- [ ] Binary ops: `BitAnd`, `BitOr`, `BitXor`, `LShift`, `RShift`, `URShift`, `In`, `Instanceof`
+### 1A. Lexer/Token Extensions ✅
+- [x] Add keywords: `throw`, `try`, `catch`, `finally`, `new`, `this`, `switch`, `case`, `default`, `void`, `delete`, `do`, `in`, `instanceof`
+- [x] Add operators: `++`, `--`, `+=`, `-=`, `*=`, `/=`, `%=`
+- [x] Add bitwise operators: `&`, `|`, `^`, `~`, `<<`, `>>`, `>>>`
+- [x] Add compound bitwise assignment: `&=`, `|=`, `^=`, `<<=`, `>>=`, `>>>=`
 
-### 1C. Value System Overhaul
-- [ ] Add `Object(ObjectData)` variant with `properties`, `prototype`, `callable`, `class_name`
-- [ ] Add `Array(ArrayData)` variant with `elements` array
-- [ ] **Unify functions as objects** — the harness does `assert.sameValue = function() {}` (property assignment on a function value)
-- [ ] Add string comparison support (currently only numbers can use `<`/`>`)
+### 1B. AST Node Extensions ✅
+- [x] Statements: `ThrowStmt`, `TryCatchStmt`, `SwitchStmt`, `DoWhileStmt`, `ForInStmt`, `LabeledStmt`
+- [x] Expressions: `ObjectLit`, `ArrayLit`, `ComputedMember` (`obj[key]`), `MemberAssign` (`obj.prop = val`), `ComputedAssign` (`obj[key] = val`), `NewExpr`, `ThisExpr`, `UpdateExpr` (`++`/`--`), `CompoundAssign` (`+=` etc.), `Comma`
+- [x] Binary ops: `BitAnd`, `BitOr`, `BitXor`, `LShift`, `RShift`, `URShift`, `In`, `Instanceof`
 
-### 1D. Exception System
-- [ ] Add `JsException(Value)` error type using MoonBit's `raise` mechanism
-- [ ] Implement `throw` statement evaluation
-- [ ] Implement `try/catch/finally` — intercept `JsException`, bind catch variable
+### 1C. Value System Overhaul ✅
+- [x] Add `Object(ObjectData)` variant with `properties`, `prototype`, `callable`, `class_name`
+- [x] Add `Array(ArrayData)` variant with `elements` array
+- [x] **Unify functions as objects** — the harness does `assert.sameValue = function() {}` (property assignment on a function value)
+- [x] Add string comparison support (currently only numbers can use `<`/`>`)
 
-### 1E. Parser Extensions
-- [ ] Object literals: `{ key: value, ... }` (disambiguate from block statements)
-- [ ] Array literals: `[expr, expr, ...]`
-- [ ] `this` keyword, `new` expression
-- [ ] Computed member access: `obj[key]`
-- [ ] Prefix/postfix `++`/`--`
-- [ ] Compound assignment: `+=`, `-=`, etc.
-- [ ] Member/computed property assignment: `obj.prop = val`, `obj[key] = val`
-- [ ] `switch/case/default`, `do-while`, `for-in`
-- [ ] `throw` statement, `try/catch/finally`
-- [ ] Bitwise and shift operator precedence levels
-- [ ] `in`, `instanceof` at relational precedence
-- [ ] `void`, `delete` as unary prefix operators
-- [ ] Comma operator (lowest precedence)
-- [ ] Labeled statements
+### 1D. Exception System ✅
+- [x] Add `JsException(Value)` error type using MoonBit's `suberror` mechanism
+- [x] Implement `throw` statement evaluation
+- [x] Implement `try/catch/finally` — intercept `JsException`, bind catch variable
 
-### 1F. Interpreter Extensions
-- [ ] `throw` — evaluate expression and raise `JsException(value)`
-- [ ] `try/catch/finally` — wrap execution, intercept `JsException`
-- [ ] `new` — create object, set prototype, bind `this`, call constructor
-- [ ] `this` — lookup `"this"` in environment
-- [ ] Object/array literal evaluation
-- [ ] Property access/assignment for any object (not just `console`)
-- [ ] `switch/case` with strict equality matching and fall-through
-- [ ] `do-while` loop
-- [ ] `for-in` — iterate over enumerable property names
-- [ ] `++`/`--` — get value, ToNumber, add/subtract 1, assign back
-- [ ] Compound assignment — `x += y` semantics
-- [ ] Bitwise operators — convert to 32-bit integer, operate, convert back
-- [ ] String comparison — lexicographic ordering for `<`, `>`, `<=`, `>=`
-- [ ] `void` — evaluate operand, return `undefined`
-- [ ] `delete` — remove property from object
-- [ ] `in` — check property existence
-- [ ] `instanceof` — walk prototype chain
-- [ ] Comma — evaluate both sides, return right value
-- [ ] Fix `typeof` for undeclared variables (return `"undefined"` instead of throwing)
+### 1E. Parser Extensions ✅
+- [x] Object literals: `{ key: value, ... }` (disambiguate from block statements)
+- [x] Array literals: `[expr, expr, ...]`
+- [x] `this` keyword, `new` expression
+- [x] Computed member access: `obj[key]`
+- [x] Prefix/postfix `++`/`--`
+- [x] Compound assignment: `+=`, `-=`, etc.
+- [x] Member/computed property assignment: `obj.prop = val`, `obj[key] = val`
+- [x] `switch/case/default`, `do-while`, `for-in`
+- [x] `throw` statement, `try/catch/finally`
+- [x] Bitwise and shift operator precedence levels
+- [x] `in`, `instanceof` at relational precedence
+- [x] `void`, `delete` as unary prefix operators
+- [x] Comma operator (lowest precedence)
+- [x] Labeled statements
+- [x] Full JS precedence chain: comma → assignment → ternary → or → and → bitwise-or → bitwise-xor → bitwise-and → equality → relational → shift → additive → multiplicative → unary → postfix → call → primary
 
-### 1G. Built-in Globals
-- [ ] `NaN`, `Infinity`, `undefined` as global constants
-- [ ] `isNaN()`, `isFinite()`, `parseInt()`, `parseFloat()`
-- [ ] Error constructors: `Error`, `TypeError`, `ReferenceError`, `SyntaxError`, `RangeError`, `URIError`, `EvalError`
-- [ ] `String()`, `Number()`, `Boolean()` conversion functions
+### 1F. Interpreter Extensions ✅
+- [x] `throw` — evaluate expression and raise `JsException(value)`
+- [x] `try/catch/finally` — wrap execution, intercept `JsException`
+- [x] `new` — create object, set prototype, bind `this`, call constructor
+- [x] `this` — lookup `"this"` in environment
+- [x] Object/array literal evaluation
+- [x] Property access/assignment for any object (not just `console`)
+- [x] `switch/case` with strict equality matching and fall-through
+- [x] `do-while` loop
+- [x] `for-in` — iterate over enumerable property names
+- [x] `++`/`--` — get value, ToNumber, add/subtract 1, assign back
+- [x] Compound assignment — `x += y` semantics
+- [x] Bitwise operators — convert to 32-bit integer, operate, convert back
+- [x] String comparison — lexicographic ordering for `<`, `>`, `<=`, `>=`
+- [x] `void` — evaluate operand, return `undefined`
+- [x] `delete` — remove property from object
+- [x] `in` — check property existence
+- [x] `instanceof` — walk prototype chain
+- [x] Comma — evaluate both sides, return right value
+- [x] Fix `typeof` for undeclared variables (return `"undefined"` instead of throwing)
+- [x] Type coercion fallbacks for arithmetic/comparison operators via `to_number()`
+- [x] `this` binding for method calls (detect `Member`/`ComputedMember` callees in `eval_call`)
+
+### 1G. Built-in Globals ✅
+- [x] `NaN`, `Infinity`, `undefined` as global constants
+- [x] `isNaN()`, `isFinite()`, `parseInt()`, `parseFloat()`
+- [x] Error constructors: `Error`, `TypeError`, `ReferenceError`, `SyntaxError`, `RangeError`, `URIError`, `EvalError`
+- [x] `String()`, `Number()`, `Boolean()` conversion functions
+
+### Phase 1 Known Issues
+
+Issues found during code review that should be addressed before or during Phase 2:
+
+1. **`to_int32` does not match ECMAScript spec** (value.mbt) — Currently uses `n.to_int()` directly, which is implementation-defined for large doubles. The spec requires modular conversion: truncate toward zero, modulo 2^32, map to signed range. `to_int32(4294967296.0)` should return `0` but may not. **Impact**: Incorrect results for bitwise operations on large numbers.
+
+2. **Error constructors don't set prototype on instances** (builtins.mbt) — `new Error("msg")` creates objects with `prototype: Null`. In real JS, the prototype should be `Error.prototype`, enabling `instanceof Error`. Currently `(new Error("msg")) instanceof Error` returns `false`. **Impact**: Test262 harness tests that check error types with `instanceof` will fail.
+
+3. **`for-in` only enumerates own properties** (interpreter.mbt) — Does not walk the prototype chain. Per spec, `for-in` should also enumerate inherited enumerable properties. **Impact**: Limited until prototype chains are fully used in Phase 2/3.
+
+4. **`LabeledStmt` label is discarded** (interpreter.mbt) — `break label;` / `continue label;` are not implemented. The label is parsed but ignored at runtime; `break` only breaks the innermost loop. **Impact**: Tests using labeled break/continue across nested loops will fail.
+
+5. **`parseFloat` uses O(n^2) progressive prefix parsing** (builtins.mbt) — Builds progressively longer strings and tries `@strconv.parse_double` on each. Works correctly but is slow for long strings. **Impact**: Performance only, correctness is fine.
+
+6. **`eval_update` and `eval_compound_assign` re-evaluate object expressions** (interpreter.mbt) — For `obj.prop++` or `obj.prop += 1`, the object expression is evaluated twice. Side-effecting getters would execute twice. **Impact**: Subtle spec non-compliance for edge cases with getters.
+
+### Phase 1 Implementation Notes
+
+**Files changed**: 14 files, +2,895 / -82 lines
+
+| File | Changes |
+|------|---------|
+| `token/token.mbt` | 14 keywords, 23 operators added |
+| `lexer/lexer.mbt` | Longest-match-first operator scanning (4-char → 3-char → 2-char → 1-char) |
+| `ast/ast.mbt` | 6 new statements, 10 new expressions, `UpdateOp`, `CompoundOp`, `Property`, `SwitchCase` |
+| `parser/expr.mbt` | Full JS precedence chain with 4 new levels (bitwise-or/xor/and, shift) |
+| `parser/stmt.mbt` | for-in/for-loop disambiguation via `peek_kind_at`, labeled statement detection |
+| `parser/parser.mbt` | Added `peek_kind_at` lookahead helper |
+| `interpreter/value.mbt` | `Object(ObjectData)`, `Array(ArrayData)`, `Callable`, `JsException`, `to_number`, `to_int32` |
+| `interpreter/environment.mbt` | `def_builtin` (non-raising), `has` (scope chain lookup) |
+| `interpreter/interpreter.mbt` | Rewritten: 1053 lines covering all Phase 1 features |
+| `interpreter/builtins.mbt` | Global constants, parsing functions, type conversions, 7 error constructors |
+
+**MoonBit-specific workarounds discovered**:
+- `test`, `method`, `constructor` are reserved keywords — cannot be used as identifiers
+- `T?` not allowed in toplevel struct declarations — must use `Option[T]`
+- `type!` syntax deprecated — use `suberror` instead
+- `.lsl()`, `.asr()` methods deprecated — use `<<`, `>>` infix operators
+- Hex literal method calls fail to parse (e.g., `0x7FFFFFFF.asr()`) — assign to variable first
+- Multiline strings (`#|`) in function call arguments trigger deprecation warning — use `let` binding
 
 ### Phase 1 Expected Impact
 

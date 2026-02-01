@@ -109,3 +109,218 @@ test "parse typeof" {
     _ => fail("Expected typeof")
   }
 }
+
+///|
+test "parse switch statement" {
+  let prog = @parser.parse(
+    "switch (x) { case 1: break; case 2: break; default: break; }",
+  )
+  match prog.stmts[0] {
+    SwitchStmt(_, cases, _) => inspect(cases.length(), content="3")
+    _ => fail("Expected SwitchStmt")
+  }
+}
+
+///|
+test "parse do-while" {
+  let prog = @parser.parse("do { x = x + 1; } while (x < 10);")
+  match prog.stmts[0] {
+    DoWhileStmt(_, _, _) => ()
+    _ => fail("Expected DoWhileStmt")
+  }
+}
+
+///|
+test "parse for-in with var" {
+  let prog = @parser.parse("for (let k in obj) { }")
+  match prog.stmts[0] {
+    ForInStmt(Some(LetKind), name, _, _, _) => inspect(name, content="k")
+    _ => fail("Expected ForInStmt with let")
+  }
+}
+
+///|
+test "parse for-in bare" {
+  let prog = @parser.parse("for (k in obj) { }")
+  match prog.stmts[0] {
+    ForInStmt(None, name, _, _, _) => inspect(name, content="k")
+    _ => fail("Expected ForInStmt bare")
+  }
+}
+
+///|
+test "parse labeled statement" {
+  let prog = @parser.parse("outer: for (let i = 0; i < 3; i = i + 1) { }")
+  match prog.stmts[0] {
+    LabeledStmt(label, _, _) => inspect(label, content="outer")
+    _ => fail("Expected LabeledStmt")
+  }
+}
+
+///|
+test "parse object literal" {
+  let prog = @parser.parse("let o = { a: 1, b: 2 };")
+  match prog.stmts[0] {
+    VarDecl(_, _, Some(ObjectLit(props, _)), _) =>
+      inspect(props.length(), content="2")
+    _ => fail("Expected ObjectLit")
+  }
+}
+
+///|
+test "parse array literal" {
+  let prog = @parser.parse("let a = [1, 2, 3];")
+  match prog.stmts[0] {
+    VarDecl(_, _, Some(ArrayLit(elems, _)), _) =>
+      inspect(elems.length(), content="3")
+    _ => fail("Expected ArrayLit")
+  }
+}
+
+///|
+test "parse computed member" {
+  let prog = @parser.parse("a[0]")
+  match prog.stmts[0] {
+    ExprStmt(ComputedMember(Ident(name, _), _, _), _) =>
+      inspect(name, content="a")
+    _ => fail("Expected ComputedMember")
+  }
+}
+
+///|
+test "parse new expression" {
+  let prog = @parser.parse("new Foo(1, 2)")
+  match prog.stmts[0] {
+    ExprStmt(NewExpr(Ident(name, _), args, _), _) => {
+      inspect(name, content="Foo")
+      inspect(args.length(), content="2")
+    }
+    _ => fail("Expected NewExpr")
+  }
+}
+
+///|
+test "parse this expression" {
+  let prog = @parser.parse("this.x")
+  match prog.stmts[0] {
+    ExprStmt(Member(ThisExpr(_), prop, _), _) => inspect(prop, content="x")
+    _ => fail("Expected this.x")
+  }
+}
+
+///|
+test "parse prefix increment" {
+  let prog = @parser.parse("++x")
+  match prog.stmts[0] {
+    ExprStmt(UpdateExpr(Increment, _, true, _), _) => ()
+    _ => fail("Expected prefix increment")
+  }
+}
+
+///|
+test "parse postfix decrement" {
+  let prog = @parser.parse("x--")
+  match prog.stmts[0] {
+    ExprStmt(UpdateExpr(Decrement, _, false, _), _) => ()
+    _ => fail("Expected postfix decrement")
+  }
+}
+
+///|
+test "parse compound assignment" {
+  let prog = @parser.parse("x += 5")
+  match prog.stmts[0] {
+    ExprStmt(CompoundAssign(AddAssign, _, _, _), _) => ()
+    _ => fail("Expected CompoundAssign")
+  }
+}
+
+///|
+test "parse bitwise operators" {
+  let prog = @parser.parse("a & b | c ^ d")
+  match prog.stmts[0] {
+    ExprStmt(Binary(BitOr, _, _, _), _) => ()
+    _ => fail("Expected BitOr at top level")
+  }
+}
+
+///|
+test "parse shift operators" {
+  let prog = @parser.parse("a << 2")
+  match prog.stmts[0] {
+    ExprStmt(Binary(LShift, _, _, _), _) => ()
+    _ => fail("Expected LShift")
+  }
+}
+
+///|
+test "parse comma expression" {
+  let prog = @parser.parse("a = 1, b = 2")
+  match prog.stmts[0] {
+    ExprStmt(Comma(_, _, _), _) => ()
+    _ => fail("Expected Comma")
+  }
+}
+
+///|
+test "parse void expression" {
+  let prog = @parser.parse("void 0")
+  match prog.stmts[0] {
+    ExprStmt(Unary(Void, _, _), _) => ()
+    _ => fail("Expected void")
+  }
+}
+
+///|
+test "parse delete expression" {
+  let prog = @parser.parse("delete obj.prop")
+  match prog.stmts[0] {
+    ExprStmt(Unary(Delete, _, _), _) => ()
+    _ => fail("Expected delete")
+  }
+}
+
+///|
+test "parse bitwise not" {
+  let prog = @parser.parse("~x")
+  match prog.stmts[0] {
+    ExprStmt(Unary(BitNot, _, _), _) => ()
+    _ => fail("Expected BitNot")
+  }
+}
+
+///|
+test "parse member assign" {
+  let prog = @parser.parse("obj.x = 5")
+  match prog.stmts[0] {
+    ExprStmt(MemberAssign(_, prop, _, _), _) => inspect(prop, content="x")
+    _ => fail("Expected MemberAssign")
+  }
+}
+
+///|
+test "parse computed assign" {
+  let prog = @parser.parse("arr[0] = 5")
+  match prog.stmts[0] {
+    ExprStmt(ComputedAssign(_, _, _, _), _) => ()
+    _ => fail("Expected ComputedAssign")
+  }
+}
+
+///|
+test "parse instanceof" {
+  let prog = @parser.parse("x instanceof Foo")
+  match prog.stmts[0] {
+    ExprStmt(Binary(Instanceof, _, _, _), _) => ()
+    _ => fail("Expected instanceof")
+  }
+}
+
+///|
+test "parse in operator" {
+  let prog = @parser.parse("\"x\" in obj")
+  match prog.stmts[0] {
+    ExprStmt(Binary(In, _, _, _), _) => ()
+    _ => fail("Expected in operator")
+  }
+}

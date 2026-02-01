@@ -26,9 +26,33 @@ pub(all) enum BinOp {
   GtEq
   And
   Or
+  BitAnd
+  BitOr
+  BitXor
+  LShift
+  RShift
+  URShift
+  In
+  Instanceof
 }
 pub impl Eq for BinOp
 pub impl Show for BinOp
+
+pub(all) enum CompoundOp {
+  AddAssign
+  SubAssign
+  MulAssign
+  DivAssign
+  ModAssign
+  BitAndAssign
+  BitOrAssign
+  BitXorAssign
+  LShiftAssign
+  RShiftAssign
+  URShiftAssign
+}
+pub impl Eq for CompoundOp
+pub impl Show for CompoundOp
 
 pub(all) enum Expr {
   NumberLit(Double, @token.Loc)
@@ -45,6 +69,16 @@ pub(all) enum Expr {
   Ternary(Expr, Expr, Expr, @token.Loc)
   FuncExpr(String?, Array[String], Array[Stmt], @token.Loc)
   Grouping(Expr, @token.Loc)
+  ObjectLit(Array[Property], @token.Loc)
+  ArrayLit(Array[Expr], @token.Loc)
+  ComputedMember(Expr, Expr, @token.Loc)
+  MemberAssign(Expr, String, Expr, @token.Loc)
+  ComputedAssign(Expr, Expr, Expr, @token.Loc)
+  NewExpr(Expr, Array[Expr], @token.Loc)
+  ThisExpr(@token.Loc)
+  UpdateExpr(UpdateOp, Expr, Bool, @token.Loc)
+  CompoundAssign(CompoundOp, Expr, Expr, @token.Loc)
+  Comma(Expr, Expr, @token.Loc)
 }
 pub impl Eq for Expr
 pub impl Show for Expr
@@ -54,6 +88,13 @@ pub(all) struct Program {
 }
 pub impl Eq for Program
 pub impl Show for Program
+
+pub(all) struct Property {
+  key : String
+  value : Expr
+}
+pub impl Eq for Property
+pub impl Show for Property
 
 pub(all) enum Stmt {
   ExprStmt(Expr, @token.Loc)
@@ -66,17 +107,40 @@ pub(all) enum Stmt {
   ReturnStmt(Expr?, @token.Loc)
   BreakStmt(@token.Loc)
   ContinueStmt(@token.Loc)
+  ThrowStmt(Expr, @token.Loc)
+  TryCatchStmt(Array[Stmt], String?, Array[Stmt]?, Array[Stmt]?, @token.Loc)
+  SwitchStmt(Expr, Array[SwitchCase], @token.Loc)
+  DoWhileStmt(Stmt, Expr, @token.Loc)
+  ForInStmt(VarKind?, String, Expr, Stmt, @token.Loc)
+  LabeledStmt(String, Stmt, @token.Loc)
 }
 pub impl Eq for Stmt
 pub impl Show for Stmt
+
+pub(all) struct SwitchCase {
+  condition : Expr?
+  body : Array[Stmt]
+}
+pub impl Eq for SwitchCase
+pub impl Show for SwitchCase
 
 pub(all) enum UnaryOp {
   Neg
   Not
   Typeof
+  Void
+  Delete
+  BitNot
 }
 pub impl Eq for UnaryOp
 pub impl Show for UnaryOp
+
+pub(all) enum UpdateOp {
+  Increment
+  Decrement
+}
+pub impl Eq for UpdateOp
+pub impl Show for UpdateOp
 
 pub(all) enum VarKind {
   LetKind

@@ -32,6 +32,20 @@ fn resolve_keyword(s : String) -> @token.TokenKind {
     "null" => Null
     "undefined" => Undefined
     "typeof" => Typeof
+    "throw" => Throw
+    "try" => Try
+    "catch" => Catch
+    "finally" => Finally
+    "new" => New
+    "this" => This
+    "switch" => Switch
+    "case" => Case
+    "default" => Default
+    "void" => Void
+    "delete" => Delete
+    "do" => Do
+    "in" => In
+    "instanceof" => Instanceof
     _ => Ident(s)
   }
 }
@@ -180,7 +194,19 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       tokens.push({ kind: String_(buf.to_string()), loc, raw })
       continue
     }
-    // Multi-character operators
+    // Multi-character operators (longest match first)
+    // 4-char
+    if c == '>' &&
+      offset + 3 < len &&
+      char_at(offset + 1) == '>' &&
+      char_at(offset + 2) == '>' &&
+      char_at(offset + 3) == '=' {
+      tokens.push({ kind: URShiftAssign, loc, raw: ">>>=" })
+      offset += 4
+      col += 4
+      continue
+    }
+    // 3-char
     if c == '=' &&
       offset + 2 < len &&
       char_at(offset + 1) == '=' &&
@@ -199,6 +225,34 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       col += 3
       continue
     }
+    if c == '>' &&
+      offset + 2 < len &&
+      char_at(offset + 1) == '>' &&
+      char_at(offset + 2) == '>' {
+      tokens.push({ kind: URShift, loc, raw: ">>>" })
+      offset += 3
+      col += 3
+      continue
+    }
+    if c == '>' &&
+      offset + 2 < len &&
+      char_at(offset + 1) == '>' &&
+      char_at(offset + 2) == '=' {
+      tokens.push({ kind: RShiftAssign, loc, raw: ">>=" })
+      offset += 3
+      col += 3
+      continue
+    }
+    if c == '<' &&
+      offset + 2 < len &&
+      char_at(offset + 1) == '<' &&
+      char_at(offset + 2) == '=' {
+      tokens.push({ kind: LShiftAssign, loc, raw: "<<=" })
+      offset += 3
+      col += 3
+      continue
+    }
+    // 2-char
     if c == '=' && offset + 1 < len && char_at(offset + 1) == '=' {
       tokens.push({ kind: EqEq, loc, raw: "==" })
       offset += 2
@@ -211,8 +265,8 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       col += 2
       continue
     }
-    if c == '<' && offset + 1 < len && char_at(offset + 1) == '=' {
-      tokens.push({ kind: LtEq, loc, raw: "<=" })
+    if c == '>' && offset + 1 < len && char_at(offset + 1) == '>' {
+      tokens.push({ kind: RShift, loc, raw: ">>" })
       offset += 2
       col += 2
       continue
@@ -223,14 +277,86 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       col += 2
       continue
     }
+    if c == '<' && offset + 1 < len && char_at(offset + 1) == '<' {
+      tokens.push({ kind: LShift, loc, raw: "<<" })
+      offset += 2
+      col += 2
+      continue
+    }
+    if c == '<' && offset + 1 < len && char_at(offset + 1) == '=' {
+      tokens.push({ kind: LtEq, loc, raw: "<=" })
+      offset += 2
+      col += 2
+      continue
+    }
+    if c == '+' && offset + 1 < len && char_at(offset + 1) == '+' {
+      tokens.push({ kind: PlusPlus, loc, raw: "++" })
+      offset += 2
+      col += 2
+      continue
+    }
+    if c == '+' && offset + 1 < len && char_at(offset + 1) == '=' {
+      tokens.push({ kind: PlusAssign, loc, raw: "+=" })
+      offset += 2
+      col += 2
+      continue
+    }
+    if c == '-' && offset + 1 < len && char_at(offset + 1) == '-' {
+      tokens.push({ kind: MinusMinus, loc, raw: "--" })
+      offset += 2
+      col += 2
+      continue
+    }
+    if c == '-' && offset + 1 < len && char_at(offset + 1) == '=' {
+      tokens.push({ kind: MinusAssign, loc, raw: "-=" })
+      offset += 2
+      col += 2
+      continue
+    }
+    if c == '*' && offset + 1 < len && char_at(offset + 1) == '=' {
+      tokens.push({ kind: StarAssign, loc, raw: "*=" })
+      offset += 2
+      col += 2
+      continue
+    }
+    if c == '/' && offset + 1 < len && char_at(offset + 1) == '=' {
+      tokens.push({ kind: SlashAssign, loc, raw: "/=" })
+      offset += 2
+      col += 2
+      continue
+    }
+    if c == '%' && offset + 1 < len && char_at(offset + 1) == '=' {
+      tokens.push({ kind: PercentAssign, loc, raw: "%=" })
+      offset += 2
+      col += 2
+      continue
+    }
     if c == '&' && offset + 1 < len && char_at(offset + 1) == '&' {
       tokens.push({ kind: And, loc, raw: "&&" })
       offset += 2
       col += 2
       continue
     }
+    if c == '&' && offset + 1 < len && char_at(offset + 1) == '=' {
+      tokens.push({ kind: BitAndAssign, loc, raw: "&=" })
+      offset += 2
+      col += 2
+      continue
+    }
     if c == '|' && offset + 1 < len && char_at(offset + 1) == '|' {
       tokens.push({ kind: Or, loc, raw: "||" })
+      offset += 2
+      col += 2
+      continue
+    }
+    if c == '|' && offset + 1 < len && char_at(offset + 1) == '=' {
+      tokens.push({ kind: BitOrAssign, loc, raw: "|=" })
+      offset += 2
+      col += 2
+      continue
+    }
+    if c == '^' && offset + 1 < len && char_at(offset + 1) == '=' {
+      tokens.push({ kind: BitXorAssign, loc, raw: "^=" })
       offset += 2
       col += 2
       continue
@@ -246,6 +372,10 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       '!' => (Bang, "!")
       '<' => (Lt, "<")
       '>' => (Gt, ">")
+      '&' => (BitAnd, "&")
+      '|' => (BitOr, "|")
+      '^' => (BitXor, "^")
+      '~' => (Tilde, "~")
       '(' => (LParen, "(")
       ')' => (RParen, ")")
       '{' => (LBrace, "{")

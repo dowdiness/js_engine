@@ -73,6 +73,16 @@ fn Parser::expect_ident(self : Parser) -> String raise Error {
 }
 
 ///|
+fn Parser::peek_kind_at(self : Parser, offset : Int) -> @token.TokenKind {
+  let idx = self.pos + offset
+  if idx < self.tokens.length() {
+    self.tokens[idx].kind
+  } else {
+    EOF
+  }
+}
+
+///|
 fn Parser::eat_semicolon(self : Parser) -> Unit {
   // Lenient: consume semicolon if present, no error otherwise
   let _ = self.eat(Semicolon)

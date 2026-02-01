@@ -8,13 +8,28 @@ import {
 // Values
 pub fn is_truthy(Value) -> Bool
 
+pub fn make_func(FuncData) -> Value
+
+pub fn make_native_func(String, (Array[Value]) -> Value) -> Value
+
 pub fn setup_builtins(Environment, Array[String]) -> Unit
+
+pub fn to_int32(Double) -> Int
+
+pub fn to_number(Value) -> Double
 
 pub fn type_of(Value) -> String
 
 // Errors
+pub suberror JsException {
+  JsException(Value)
+}
 
 // Types and methods
+pub(all) struct ArrayData {
+  elements : Array[Value]
+}
+
 type Binding
 
 pub(all) enum BindingKind {
@@ -25,13 +40,20 @@ pub(all) enum BindingKind {
 pub impl Eq for BindingKind
 pub impl Show for BindingKind
 
+pub(all) enum Callable {
+  UserFunc(FuncData)
+  NativeCallable(String, (Array[Value]) -> Value)
+}
+
 pub(all) struct Environment {
   bindings : Map[String, Binding]
   parent : Environment?
 }
 pub fn Environment::assign(Self, String, Value) -> Unit raise
 pub fn Environment::def(Self, String, Value, BindingKind) -> Unit raise
+pub fn Environment::def_builtin(Self, String, Value) -> Unit
 pub fn Environment::get(Self, String) -> Value raise
+pub fn Environment::has(Self, String) -> Bool
 pub fn Environment::new(parent? : Self?) -> Self
 
 pub(all) struct FuncData {
@@ -48,6 +70,13 @@ pub(all) struct Interpreter {
 pub fn Interpreter::new() -> Self
 pub fn Interpreter::run(Self, Array[@ast.Stmt]) -> Value raise
 
+pub(all) struct ObjectData {
+  properties : Map[String, Value]
+  prototype : Value
+  callable : Callable?
+  class_name : String
+}
+
 pub(all) enum Signal {
   Normal(Value)
   ReturnSignal(Value)
@@ -61,8 +90,8 @@ pub(all) enum Value {
   Bool(Bool)
   Null
   Undefined
-  Function(FuncData)
-  NativeFunc(String, (Array[Value]) -> Value)
+  Object(ObjectData)
+  Array(ArrayData)
 }
 pub impl Show for Value
 

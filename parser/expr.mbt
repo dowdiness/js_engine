@@ -1,23 +1,58 @@
 ///|
 fn Parser::parse_expr(self : Parser) -> @ast.Expr raise Error {
-  self.parse_assignment()
+  self.parse_comma()
+}
+
+///|
+fn Parser::parse_comma(self : Parser) -> @ast.Expr raise Error {
+  let mut left = self.parse_assignment()
+  while self.at(Comma) {
+    let loc = self.advance().loc
+    let right = self.parse_assignment()
+    left = Comma(left, right, loc)
+  }
+  left
 }
 
 ///|
 fn Parser::parse_assignment(self : Parser) -> @ast.Expr raise Error {
   let expr = self.parse_ternary()
+  // Plain assignment
   if self.at(Assign) {
     let loc = self.advance().loc
     let value = self.parse_assignment()
     match expr {
-      Ident(name, _) => Assign(name, value, loc)
+      Ident(name, _) => return Assign(name, value, loc)
+      Member(obj, prop, _) => return MemberAssign(obj, prop, value, loc)
+      ComputedMember(obj, key, _) => return ComputedAssign(obj, key, value, loc)
       _ =>
         raise Failure::Failure(
           "Invalid assignment target at line \{loc.line}, col \{loc.col}",
         )
     }
-  } else {
-    expr
+  }
+  // Compound assignment
+  let compound_op : @ast.CompoundOp? = match self.peek_kind() {
+    PlusAssign => Some(AddAssign)
+    MinusAssign => Some(SubAssign)
+    StarAssign => Some(MulAssign)
+    SlashAssign => Some(DivAssign)
+    PercentAssign => Some(ModAssign)
+    BitAndAssign => Some(@ast.BitAndAssign)
+    BitOrAssign => Some(@ast.BitOrAssign)
+    BitXorAssign => Some(@ast.BitXorAssign)
+    LShiftAssign => Some(@ast.LShiftAssign)
+    RShiftAssign => Some(@ast.RShiftAssign)
+    URShiftAssign => Some(@ast.URShiftAssign)
+    _ => None
+  }
+  match compound_op {
+    Some(op) => {
+      let loc = self.advance().loc
+      let value = self.parse_assignment()
+      CompoundAssign(op, expr, value, loc)
+    }
+    None => expr
   }
 }
 
@@ -48,18 +83,51 @@ fn Parser::parse_or(self : Parser) -> @ast.Expr raise Error {
 
 ///|
 fn Parser::parse_and(self : Parser) -> @ast.Expr raise Error {
-  let mut left = self.parse_equality()
+  let mut left = self.parse_bitwise_or()
   while self.at(And) {
     let loc = self.advance().loc
-    let right = self.parse_equality()
+    let right = self.parse_bitwise_or()
     left = Binary(@ast.And, left, right, loc)
   }
   left
 }
 
 ///|
+fn Parser::parse_bitwise_or(self : Parser) -> @ast.Expr raise Error {
+  let mut left = self.parse_bitwise_xor()
+  while self.at(BitOr) {
+    let loc = self.advance().loc
+    let right = self.parse_bitwise_xor()
+    left = Binary(@ast.BitOr, left, right, loc)
+  }
+  left
+}
+
+///|
+fn Parser::parse_bitwise_xor(self : Parser) -> @ast.Expr raise Error {
+  let mut left = self.parse_bitwise_and()
+  while self.at(BitXor) {
+    let loc = self.advance().loc
+    let right = self.parse_bitwise_and()
+    left = Binary(@ast.BitXor, left, right, loc)
+  }
+  left
+}
+
+///|
+fn Parser::parse_bitwise_and(self : Parser) -> @ast.Expr raise Error {
+  let mut left = self.parse_equality()
+  while self.at(BitAnd) {
+    let loc = self.advance().loc
+    let right = self.parse_equality()
+    left = Binary(@ast.BitAnd, left, right, loc)
+  }
+  left
+}
+
+///|
 fn Parser::parse_equality(self : Parser) -> @ast.Expr raise Error {
-  let mut left = self.parse_comparison()
+  let mut left = self.parse_relational()
   while true {
     let op : @ast.BinOp? = match self.peek_kind() {
       EqEq => Some(@ast.EqEq)
@@ -71,7 +139,7 @@ fn Parser::parse_equality(self : Parser) -> @ast.Expr raise Error {
     match op {
       Some(op) => {
         let loc = self.advance().loc
-        let right = self.parse_comparison()
+        let right = self.parse_relational()
         left = Binary(op, left, right, loc)
       }
       None => break
@@ -81,14 +149,38 @@ fn Parser::parse_equality(self : Parser) -> @ast.Expr raise Error {
 }
 
 ///|
-fn Parser::parse_comparison(self : Parser) -> @ast.Expr raise Error {
-  let mut left = self.parse_additive()
+fn Parser::parse_relational(self : Parser) -> @ast.Expr raise Error {
+  let mut left = self.parse_shift()
   while true {
     let op : @ast.BinOp? = match self.peek_kind() {
       Lt => Some(@ast.Lt)
       Gt => Some(@ast.Gt)
       LtEq => Some(@ast.LtEq)
       GtEq => Some(@ast.GtEq)
+      In => Some(@ast.In)
+      Instanceof => Some(@ast.Instanceof)
+      _ => None
+    }
+    match op {
+      Some(op) => {
+        let loc = self.advance().loc
+        let right = self.parse_shift()
+        left = Binary(op, left, right, loc)
+      }
+      None => break
+    }
+  }
+  left
+}
+
+///|
+fn Parser::parse_shift(self : Parser) -> @ast.Expr raise Error {
+  let mut left = self.parse_additive()
+  while true {
+    let op : @ast.BinOp? = match self.peek_kind() {
+      LShift => Some(@ast.LShift)
+      RShift => Some(@ast.RShift)
+      URShift => Some(@ast.URShift)
       _ => None
     }
     match op {
@@ -164,7 +256,48 @@ fn Parser::parse_unary(self : Parser) -> @ast.Expr raise Error {
       let expr = self.parse_unary()
       Unary(@ast.Typeof, expr, loc)
     }
-    _ => self.parse_call()
+    Void => {
+      let loc = self.advance().loc
+      let expr = self.parse_unary()
+      Unary(@ast.Void, expr, loc)
+    }
+    Delete => {
+      let loc = self.advance().loc
+      let expr = self.parse_unary()
+      Unary(@ast.Delete, expr, loc)
+    }
+    Tilde => {
+      let loc = self.advance().loc
+      let expr = self.parse_unary()
+      Unary(@ast.BitNot, expr, loc)
+    }
+    PlusPlus => {
+      let loc = self.advance().loc
+      let expr = self.parse_unary()
+      UpdateExpr(@ast.Increment, expr, true, loc)
+    }
+    MinusMinus => {
+      let loc = self.advance().loc
+      let expr = self.parse_unary()
+      UpdateExpr(@ast.Decrement, expr, true, loc)
+    }
+    _ => self.parse_postfix()
+  }
+}
+
+///|
+fn Parser::parse_postfix(self : Parser) -> @ast.Expr raise Error {
+  let expr = self.parse_call()
+  match self.peek_kind() {
+    PlusPlus => {
+      let loc = self.advance().loc
+      UpdateExpr(@ast.Increment, expr, false, loc)
+    }
+    MinusMinus => {
+      let loc = self.advance().loc
+      UpdateExpr(@ast.Decrement, expr, false, loc)
+    }
+    _ => expr
   }
 }
 
@@ -176,9 +309,9 @@ fn Parser::parse_call(self : Parser) -> @ast.Expr raise Error {
       let loc = self.advance().loc
       let args : Array[@ast.Expr] = []
       if not(self.at(RParen)) {
-        args.push(self.parse_expr())
+        args.push(self.parse_assignment())
         while self.eat(Comma) {
-          args.push(self.parse_expr())
+          args.push(self.parse_assignment())
         }
       }
       let _ = self.expect(RParen)
@@ -188,6 +321,11 @@ fn Parser::parse_call(self : Parser) -> @ast.Expr raise Error {
       let name = self.expect_ident()
       let loc = self.peek().loc
       expr = Member(expr, name, loc)
+    } else if self.at(LBracket) {
+      let loc = self.advance().loc
+      let key = self.parse_expr()
+      let _ = self.expect(RBracket)
+      expr = ComputedMember(expr, key, loc)
     } else {
       break
     }
@@ -227,18 +365,109 @@ fn Parser::parse_primary(self : Parser) -> @ast.Expr raise Error {
       self.pos += 1
       Ident(name, tok.loc)
     }
+    This => {
+      self.pos += 1
+      ThisExpr(tok.loc)
+    }
+    New => self.parse_new_expr()
     LParen => {
       self.pos += 1
       let expr = self.parse_expr()
       let _ = self.expect(RParen)
       Grouping(expr, tok.loc)
     }
+    LBracket => self.parse_array_literal()
+    LBrace => self.parse_object_literal()
     Function => self.parse_func_expr()
     _ =>
       raise Failure::Failure(
         "Unexpected token \{tok.kind} at line \{tok.loc.line}, col \{tok.loc.col}",
       )
   }
+}
+
+///|
+fn Parser::parse_new_expr(self : Parser) -> @ast.Expr raise Error {
+  let loc = self.advance().loc // consume 'new'
+  // Parse constructor — allow member access (new Foo.Bar())
+  let mut callee = self.parse_primary()
+  while self.at(Dot) {
+    let _ = self.advance()
+    let name = self.expect_ident()
+    let mloc = self.peek().loc
+    callee = Member(callee, name, mloc)
+  }
+  // Optional argument list
+  let args : Array[@ast.Expr] = []
+  if self.at(LParen) {
+    let _ = self.advance()
+    if not(self.at(RParen)) {
+      args.push(self.parse_assignment())
+      while self.eat(Comma) {
+        args.push(self.parse_assignment())
+      }
+    }
+    let _ = self.expect(RParen)
+
+  }
+  NewExpr(callee, args, loc)
+}
+
+///|
+fn Parser::parse_array_literal(self : Parser) -> @ast.Expr raise Error {
+  let loc = self.advance().loc // consume '['
+  let elements : Array[@ast.Expr] = []
+  while not(self.at(RBracket)) && not(self.at(EOF)) {
+    elements.push(self.parse_assignment())
+    if not(self.at(RBracket)) {
+      let _ = self.expect(Comma)
+
+    }
+  }
+  let _ = self.expect(RBracket)
+  ArrayLit(elements, loc)
+}
+
+///|
+fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
+  let loc = self.advance().loc // consume '{'
+  let props : Array[@ast.Property] = []
+  while not(self.at(RBrace)) && not(self.at(EOF)) {
+    let key : String = match self.peek_kind() {
+      Ident(name) => {
+        self.pos += 1
+        name
+      }
+      String_(s) => {
+        self.pos += 1
+        s
+      }
+      Number(n) => {
+        self.pos += 1
+        let i = n.to_int()
+        if i.to_double() == n {
+          i.to_string()
+        } else {
+          n.to_string()
+        }
+      }
+      _ => {
+        let t = self.peek()
+        raise Failure::Failure(
+          "Expected property name, got \{t.kind} at line \{t.loc.line}, col \{t.loc.col}",
+        )
+      }
+    }
+    let _ = self.expect(Colon)
+    let value = self.parse_assignment()
+    props.push({ key, value })
+    if not(self.at(RBrace)) {
+      let _ = self.expect(Comma)
+
+    }
+  }
+  let _ = self.expect(RBrace)
+  ObjectLit(props, loc)
 }
 
 ///|

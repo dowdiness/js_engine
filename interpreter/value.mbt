@@ -7,14 +7,58 @@ pub(all) struct FuncData {
 }
 
 ///|
+pub(all) enum Callable {
+  UserFunc(FuncData)
+  NativeCallable(String, (Array[Value]) -> Value)
+}
+
+///|
+pub(all) struct ObjectData {
+  properties : Map[String, Value]
+  prototype : Value
+  callable : Callable?
+  class_name : String
+}
+
+///|
+pub(all) struct ArrayData {
+  elements : Array[Value]
+}
+
+///|
 pub(all) enum Value {
   Number(Double)
   String_(String)
   Bool(Bool)
   Null
   Undefined
-  Function(FuncData)
-  NativeFunc(String, (Array[Value]) -> Value)
+  Object(ObjectData)
+  Array(ArrayData)
+}
+
+///|
+pub suberror JsException {
+  JsException(Value)
+}
+
+///|
+pub fn make_func(data : FuncData) -> Value {
+  Object({
+    properties: {},
+    prototype: Null,
+    callable: Some(UserFunc(data)),
+    class_name: "Function",
+  })
+}
+
+///|
+pub fn make_native_func(name : String, func : (Array[Value]) -> Value) -> Value {
+  Object({
+    properties: {},
+    prototype: Null,
+    callable: Some(NativeCallable(name, func)),
+    class_name: "Function",
+  })
 }
 
 ///|
@@ -33,13 +77,19 @@ pub impl Show for Value with output(self, logger) {
     Bool(b) => logger.write_string(b.to_string())
     Null => logger.write_string("null")
     Undefined => logger.write_string("undefined")
-    Function(data) =>
-      match data.name {
-        Some(n) => logger.write_string("function \{n}() { [code] }")
-        None => logger.write_string("function() { [code] }")
+    Object(data) =>
+      match data.callable {
+        Some(UserFunc(func)) =>
+          match func.name {
+            Some(n) => logger.write_string("function \{n}() { [code] }")
+            None => logger.write_string("function() { [code] }")
+          }
+        Some(NativeCallable(name, _)) =>
+          logger.write_string("function \{name}() { [native code] }")
+        None => logger.write_string("[object \{data.class_name}]")
       }
-    NativeFunc(name, _) =>
-      logger.write_string("function \{name}() { [native code] }")
+    Array(data) =>
+      logger.write_string(data.elements.map(fn(v) { v.to_string() }).join(","))
   }
 }
 
@@ -51,9 +101,35 @@ pub fn is_truthy(val : Value) -> Bool {
     Bool(b) => b
     Null => false
     Undefined => false
-    Function(_) => true
-    NativeFunc(_, _) => true
+    Object(_) => true
+    Array(_) => true
   }
+}
+
+///|
+pub fn to_number(val : Value) -> Double {
+  match val {
+    Number(n) => n
+    String_(s) => {
+      if s.length() == 0 {
+        return 0.0
+      }
+      @strconv.parse_double(s) catch {
+        _ => 0.0 / 0.0
+      }
+    }
+    Bool(b) => if b { 1.0 } else { 0.0 }
+    Null => 0.0
+    Undefined | Object(_) | Array(_) => 0.0 / 0.0
+  }
+}
+
+///|
+pub fn to_int32(n : Double) -> Int {
+  if n.is_nan() || n.is_inf() || n == 0.0 {
+    return 0
+  }
+  n.to_int()
 }
 
 ///|
@@ -64,7 +140,11 @@ pub fn type_of(val : Value) -> String {
     Bool(_) => "boolean"
     Null => "object" // JS quirk
     Undefined => "undefined"
-    Function(_) => "function"
-    NativeFunc(_, _) => "function"
+    Object(data) =>
+      match data.callable {
+        Some(_) => "function"
+        None => "object"
+      }
+    Array(_) => "object"
   }
 }
