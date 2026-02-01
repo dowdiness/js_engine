@@ -1,0 +1,36 @@
+name: "Create Roadmap Issue"
+
+on:
+  push:
+    paths:
+      - '.github/ISSUE_TEMPLATE/roadmap.md'
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  create-issue:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Create issue from roadmap file
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Check if the issue already exists
+          existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --search "Roadmap: Increase Test262 ECMAScript Conformance" --json number --jq '.[0].number' 2>/dev/null || true)
+          if [ -n "$existing" ]; then
+            echo "Issue #$existing already exists, updating..."
+            gh issue edit "$existing" \
+              --repo "$GITHUB_REPOSITORY" \
+              --body-file .github/ISSUE_TEMPLATE/roadmap.md
+          else
+            echo "Creating new issue..."
+            gh issue create \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Roadmap: Increase Test262 ECMAScript Conformance (8% → 60%+)" \
+              --body-file .github/ISSUE_TEMPLATE/roadmap.md
+          fi
