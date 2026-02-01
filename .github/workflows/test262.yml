@@ -1,0 +1,74 @@
+name: "Test262 Conformance"
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test262:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up MoonBit
+        run: |
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          echo "$HOME/.moon/bin" >> $GITHUB_PATH
+
+      - name: Update MoonBit dependencies
+        run: |
+          moon version --all
+          moon update
+
+      - name: Build JS engine
+        run: moon build
+
+      - name: Download Test262
+        run: |
+          if [ ! -d "test262/test" ]; then
+            curl -fsSL -L "https://api.github.com/repos/tc39/test262/tarball/main" -o /tmp/test262.tar.gz
+            mkdir -p test262
+            tar -xzf /tmp/test262.tar.gz -C test262 --strip-components=1
+          fi
+
+      - name: Install Python dependencies
+        run: pip install pyyaml
+
+      - name: Run Test262 conformance tests
+        run: |
+          python3 test262-runner.py \
+            --engine "moon run cmd/main --" \
+            --test262 ./test262 \
+            --timeout 10 \
+            --threads 4 \
+            --output test262-results.json \
+            --summary
+        continue-on-error: true
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: test262-results
+          path: test262-results.json
+          retention-days: 90
+
+      - name: Display conformance summary
+        if: always()
+        run: |
+          if [ -f test262-results.json ]; then
+            python3 -c "
+          import json
+          with open('test262-results.json') as f:
+              data = json.load(f)
+          s = data['summary']
+          print(f\"Test262 Pass Rate: {s['pass_rate']}%\")
+          print(f\"Passed: {s['passed']}, Failed: {s['failed']}, Skipped: {s['skipped']}\")
+          "
+          fi

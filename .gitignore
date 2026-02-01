@@ -4,3 +4,6 @@ target/
 target
 .mooncakes/
 .moonagent/
+test262/
+test262-results.json
+test262-analysis.json
