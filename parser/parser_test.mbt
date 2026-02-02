@@ -158,6 +158,44 @@ test "parse labeled statement" {
 }
 
 ///|
+test "parse break label only on same line" {
+  let prog = @parser.parse("while (true) { break\nfoo(); }")
+  match prog.stmts[0] {
+    WhileStmt(_, Block(body, _), _) => {
+      inspect(body.length(), content="2")
+      match body[0] {
+        BreakStmt(None, _) => ()
+        _ => fail("Expected unlabeled break")
+      }
+      match body[1] {
+        ExprStmt(Call(Ident(name, _), _, _), _) => inspect(name, content="foo")
+        _ => fail("Expected foo() call")
+      }
+    }
+    _ => fail("Expected WhileStmt with block")
+  }
+}
+
+///|
+test "parse continue label only on same line" {
+  let prog = @parser.parse("while (true) { continue\nfoo(); }")
+  match prog.stmts[0] {
+    WhileStmt(_, Block(body, _), _) => {
+      inspect(body.length(), content="2")
+      match body[0] {
+        ContinueStmt(None, _) => ()
+        _ => fail("Expected unlabeled continue")
+      }
+      match body[1] {
+        ExprStmt(Call(Ident(name, _), _, _), _) => inspect(name, content="foo")
+        _ => fail("Expected foo() call")
+      }
+    }
+    _ => fail("Expected WhileStmt with block")
+  }
+}
+
+///|
 test "parse object literal" {
   let prog = @parser.parse("let o = { a: 1, b: 2 };")
   match prog.stmts[0] {
