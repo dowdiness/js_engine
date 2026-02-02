@@ -334,11 +334,17 @@ fn Interpreter::exec_stmt(
       for item in items {
         let body_env = Environment::new(parent=Some(env))
         match var_kind {
+          Some(VarKind) =>
+            if env.bindings.contains(name) {
+              env.assign(name, item)
+            } else {
+              env.def(name, item, VarBinding)
+            }
           Some(kind) => {
             let bk : BindingKind = match kind {
               LetKind => LetBinding
               ConstKind => ConstBinding
-              VarKind => VarBinding
+              _ => fail("unreachable")
             }
             body_env.def(name, item, bk)
           }
@@ -527,8 +533,7 @@ fn Interpreter::hoist_declarations(
           env.def(name, make_func_ext(func_data), VarBinding)
         }
       }
-      DestructureDecl(VarKind, pattern, _, _) =>
-        hoist_pattern(pattern, env)
+      DestructureDecl(VarKind, pattern, _, _) => hoist_pattern(pattern, env)
       _ => ()
     }
   }
@@ -573,7 +578,12 @@ fn Interpreter::bind_pattern(
           for i = elements.length(); i < arr_elements.length(); i = i + 1 {
             rest_elements.push(arr_elements[i])
           }
-          self.bind_pattern(rest_pat, Array({ elements: rest_elements }), env, bk)
+          self.bind_pattern(
+            rest_pat,
+            Array({ elements: rest_elements }),
+            env,
+            bk,
+          )
         }
         None => ()
       }
@@ -995,7 +1005,9 @@ fn Interpreter::eval_expr(
     }
     RegexLit(pattern, flags, _) => make_regexp_object(pattern, flags)
     SpreadExpr(_, _) =>
-      raise Failure::Failure("Spread expression used outside of call or array literal")
+      raise Failure::Failure(
+        "Spread expression used outside of call or array literal",
+      )
     DestructureAssign(pattern, value_expr, _) => {
       let value = self.eval_expr(value_expr, env)
       self.assign_pattern(pattern, value, env)
@@ -1229,9 +1241,7 @@ fn Interpreter::eval_unary(
                   if not(desc.configurable) {
                     if self.strict {
                       raise JsException(
-                        String_(
-                          "TypeError: Cannot delete property '\{prop}'",
-                        ),
+                        String_("TypeError: Cannot delete property '\{prop}'"),
                       )
                     }
                     return Bool(false)
@@ -1256,9 +1266,7 @@ fn Interpreter::eval_unary(
                   if not(desc.configurable) {
                     if self.strict {
                       raise JsException(
-                        String_(
-                          "TypeError: Cannot delete property '\{k}'",
-                        ),
+                        String_("TypeError: Cannot delete property '\{k}'"),
                       )
                     }
                     return Bool(false)
@@ -1290,6 +1298,7 @@ fn Interpreter::eval_unary(
 }
 
 ///|
+
 ///|
 fn Interpreter::eval_args_with_spread(
   self : Interpreter,
@@ -1323,6 +1332,7 @@ fn Interpreter::eval_args_with_spread(
   args
 }
 
+///|
 fn Interpreter::eval_call(
   self : Interpreter,
   callee_expr : @ast.Expr,
@@ -1369,52 +1379,52 @@ fn Interpreter::call_value(
     Object(obj_data) =>
       match obj_data.callable {
         Some(UserFunc(data)) => {
-          let func_env = Environment::new(parent=Some(data.closure))
-          let func_strict = self.strict || has_use_strict(data.body)
           let saved_strict = self.strict
-          if func_strict {
-            self.strict = true
-          }
-          func_env.def("this", this_val, LetBinding)
-          for i = 0; i < data.params.length(); i = i + 1 {
-            let val : Value = if i < args.length() {
-              args[i]
-            } else {
-              Undefined
-            }
-            func_env.def(data.params[i], val, LetBinding)
-          }
-          // Create arguments object
-          let args_props : Map[String, Value] = {}
-          for i = 0; i < args.length(); i = i + 1 {
-            args_props[i.to_string()] = args[i]
-          }
-          args_props["length"] = Number(args.length().to_double())
-          if not(func_strict) {
-            args_props["callee"] = callee
-          }
-          func_env.def(
-            "arguments",
-            Object({
-              properties: args_props,
-              prototype: Null,
-              callable: None,
-              class_name: "Arguments",
-              descriptors: {},
-              extensible: true,
-            }),
-            VarBinding,
-          )
-          // Hoist var declarations and function declarations within function body
-          self.hoist_declarations(data.body, func_env)
-          match data.name {
-            Some(name) =>
-              if not(func_env.bindings.contains(name)) {
-                func_env.def(name, callee, LetBinding)
-              }
-            None => ()
-          }
           let result = try {
+            let func_env = Environment::new(parent=Some(data.closure))
+            let func_strict = self.strict || has_use_strict(data.body)
+            if func_strict {
+              self.strict = true
+            }
+            func_env.def("this", this_val, LetBinding)
+            for i = 0; i < data.params.length(); i = i + 1 {
+              let val : Value = if i < args.length() {
+                args[i]
+              } else {
+                Undefined
+              }
+              func_env.def(data.params[i], val, LetBinding)
+            }
+            // Create arguments object
+            let args_props : Map[String, Value] = {}
+            for i = 0; i < args.length(); i = i + 1 {
+              args_props[i.to_string()] = args[i]
+            }
+            args_props["length"] = Number(args.length().to_double())
+            if not(func_strict) {
+              args_props["callee"] = callee
+            }
+            func_env.def(
+              "arguments",
+              Object({
+                properties: args_props,
+                prototype: Null,
+                callable: None,
+                class_name: "Arguments",
+                descriptors: {},
+                extensible: true,
+              }),
+              VarBinding,
+            )
+            // Hoist var declarations and function declarations within function body
+            self.hoist_declarations(data.body, func_env)
+            match data.name {
+              Some(name) =>
+                if not(func_env.bindings.contains(name)) {
+                  func_env.def(name, callee, LetBinding)
+                }
+              None => ()
+            }
             match self.exec_stmts(data.body, func_env) {
               Normal(v) => v
               ReturnSignal(v) => v
@@ -1454,72 +1464,72 @@ fn Interpreter::call_value(
           }
         }
         Some(UserFuncExt(data)) => {
-          let func_env = Environment::new(parent=Some(data.closure))
-          let func_strict = self.strict || has_use_strict(data.body)
           let saved_strict = self.strict
-          if func_strict {
-            self.strict = true
-          }
-          func_env.def("this", this_val, LetBinding)
-          // Bind params with defaults
-          for i = 0; i < data.params.length(); i = i + 1 {
-            let param = data.params[i]
-            let val : Value = if i < args.length() && not(args[i] is Undefined) {
-              args[i]
-            } else {
-              match param.default_val {
-                Some(default_expr) => self.eval_expr(default_expr, func_env)
-                None =>
-                  if i < args.length() {
-                    args[i]
-                  } else {
-                    Undefined
-                  }
-              }
-            }
-            func_env.def(param.name, val, LetBinding)
-          }
-          // Rest param
-          match data.rest_param {
-            Some(rest_name) => {
-              let rest_elements : Array[Value] = []
-              for i = data.params.length(); i < args.length(); i = i + 1 {
-                rest_elements.push(args[i])
-              }
-              func_env.def(rest_name, Array({ elements: rest_elements }), LetBinding)
-            }
-            None => ()
-          }
-          // Create arguments object
-          let args_props : Map[String, Value] = {}
-          for i = 0; i < args.length(); i = i + 1 {
-            args_props[i.to_string()] = args[i]
-          }
-          args_props["length"] = Number(args.length().to_double())
-          if not(func_strict) {
-            args_props["callee"] = callee
-          }
-          func_env.def(
-            "arguments",
-            Object({
-              properties: args_props,
-              prototype: Null,
-              callable: None,
-              class_name: "Arguments",
-              descriptors: {},
-              extensible: true,
-            }),
-            VarBinding,
-          )
-          self.hoist_declarations(data.body, func_env)
-          match data.name {
-            Some(name) =>
-              if not(func_env.bindings.contains(name)) {
-                func_env.def(name, callee, LetBinding)
-              }
-            None => ()
-          }
           let result = try {
+            let func_env = Environment::new(parent=Some(data.closure))
+            let func_strict = self.strict || has_use_strict(data.body)
+            if func_strict {
+              self.strict = true
+            }
+            func_env.def("this", this_val, LetBinding)
+            // Bind params with defaults
+            for i = 0; i < data.params.length(); i = i + 1 {
+              let param = data.params[i]
+              let val : Value = if i < args.length() &&
+                not(args[i] is Undefined) {
+                args[i]
+              } else {
+                match param.default_val {
+                  Some(default_expr) => self.eval_expr(default_expr, func_env)
+                  None => if i < args.length() { args[i] } else { Undefined }
+                }
+              }
+              func_env.def(param.name, val, LetBinding)
+            }
+            // Rest param
+            match data.rest_param {
+              Some(rest_name) => {
+                let rest_elements : Array[Value] = []
+                for i = data.params.length(); i < args.length(); i = i + 1 {
+                  rest_elements.push(args[i])
+                }
+                func_env.def(
+                  rest_name,
+                  Array({ elements: rest_elements }),
+                  LetBinding,
+                )
+              }
+              None => ()
+            }
+            // Create arguments object
+            let args_props : Map[String, Value] = {}
+            for i = 0; i < args.length(); i = i + 1 {
+              args_props[i.to_string()] = args[i]
+            }
+            args_props["length"] = Number(args.length().to_double())
+            if not(func_strict) {
+              args_props["callee"] = callee
+            }
+            func_env.def(
+              "arguments",
+              Object({
+                properties: args_props,
+                prototype: Null,
+                callable: None,
+                class_name: "Arguments",
+                descriptors: {},
+                extensible: true,
+              }),
+              VarBinding,
+            )
+            self.hoist_declarations(data.body, func_env)
+            match data.name {
+              Some(name) =>
+                if not(func_env.bindings.contains(name)) {
+                  func_env.def(name, callee, LetBinding)
+                }
+              None => ()
+            }
             match self.exec_stmts(data.body, func_env) {
               Normal(v) => v
               ReturnSignal(v) => v
@@ -1547,12 +1557,7 @@ fn Interpreter::call_value(
             } else {
               match param.default_val {
                 Some(default_expr) => self.eval_expr(default_expr, func_env)
-                None =>
-                  if i < args.length() {
-                    args[i]
-                  } else {
-                    Undefined
-                  }
+                None => if i < args.length() { args[i] } else { Undefined }
               }
             }
             func_env.def(param.name, val, LetBinding)
@@ -1564,7 +1569,11 @@ fn Interpreter::call_value(
               for i = data.params.length(); i < args.length(); i = i + 1 {
                 rest_elements.push(args[i])
               }
-              func_env.def(rest_name, Array({ elements: rest_elements }), LetBinding)
+              func_env.def(
+                rest_name,
+                Array({ elements: rest_elements }),
+                LetBinding,
+              )
             }
             None => ()
           }
@@ -1937,65 +1946,77 @@ fn Interpreter::eval_new(
     Object(obj_data) =>
       match obj_data.callable {
         Some(UserFunc(data)) => {
-          let func_strict = self.strict || has_use_strict(data.body)
           let saved_strict = self.strict
-          if func_strict {
-            self.strict = true
-          }
-          let proto = match obj_data.properties.get("prototype") {
-            Some(v) => v
-            None => Null
-          }
-          let new_obj = Object({
-            properties: {},
-            prototype: proto,
-            callable: None,
-            class_name: "Object",
-            descriptors: {},
-            extensible: true,
-          })
-          let func_env = Environment::new(parent=Some(data.closure))
-          func_env.def("this", new_obj, LetBinding)
-          for i = 0; i < data.params.length(); i = i + 1 {
-            let val : Value = if i < args.length() {
-              args[i]
-            } else {
-              Undefined
+          let result = try {
+            let func_strict = self.strict || has_use_strict(data.body)
+            if func_strict {
+              self.strict = true
             }
-            func_env.def(data.params[i], val, LetBinding)
-          }
-          // Create arguments object
-          let new_args_props : Map[String, Value] = {}
-          for i = 0; i < args.length(); i = i + 1 {
-            new_args_props[i.to_string()] = args[i]
-          }
-          new_args_props["length"] = Number(args.length().to_double())
-          if not(func_strict) {
-            new_args_props["callee"] = ctor
-          }
-          func_env.def(
-            "arguments",
-            Object({
-              properties: new_args_props,
-              prototype: Null,
+            let proto = match obj_data.properties.get("prototype") {
+              Some(v) => v
+              None => Null
+            }
+            let new_obj = Object({
+              properties: {},
+              prototype: proto,
               callable: None,
-              class_name: "Arguments",
+              class_name: "Object",
               descriptors: {},
               extensible: true,
-            }),
-            VarBinding,
-          )
-          // Hoist var declarations and function declarations
-          self.hoist_declarations(data.body, func_env)
-          match data.name {
-            Some(name) =>
-              if not(func_env.bindings.contains(name)) {
-                func_env.def(name, ctor, LetBinding)
+            })
+            let func_env = Environment::new(parent=Some(data.closure))
+            func_env.def("this", new_obj, LetBinding)
+            for i = 0; i < data.params.length(); i = i + 1 {
+              let val : Value = if i < args.length() {
+                args[i]
+              } else {
+                Undefined
               }
-            None => ()
-          }
-          let result = try {
-            self.exec_stmts(data.body, func_env)
+              func_env.def(data.params[i], val, LetBinding)
+            }
+            // Create arguments object
+            let new_args_props : Map[String, Value] = {}
+            for i = 0; i < args.length(); i = i + 1 {
+              new_args_props[i.to_string()] = args[i]
+            }
+            new_args_props["length"] = Number(args.length().to_double())
+            if not(func_strict) {
+              new_args_props["callee"] = ctor
+            }
+            func_env.def(
+              "arguments",
+              Object({
+                properties: new_args_props,
+                prototype: Null,
+                callable: None,
+                class_name: "Arguments",
+                descriptors: {},
+                extensible: true,
+              }),
+              VarBinding,
+            )
+            // Hoist var declarations and function declarations
+            self.hoist_declarations(data.body, func_env)
+            match data.name {
+              Some(name) =>
+                if not(func_env.bindings.contains(name)) {
+                  func_env.def(name, ctor, LetBinding)
+                }
+              None => ()
+            }
+            let exec_result = self.exec_stmts(data.body, func_env)
+            match exec_result {
+              Normal(_) => new_obj
+              ReturnSignal(v) =>
+                match v {
+                  Object(_) => v
+                  _ => new_obj
+                }
+              BreakSignal(_) =>
+                raise Failure::Failure("break statement outside of loop")
+              ContinueSignal(_) =>
+                raise Failure::Failure("continue statement outside of loop")
+            }
           } catch {
             e => {
               self.strict = saved_strict
@@ -2003,96 +2024,97 @@ fn Interpreter::eval_new(
             }
           }
           self.strict = saved_strict
-          match result {
-            Normal(_) => new_obj
-            ReturnSignal(v) =>
-              match v {
-                Object(_) => v
-                _ => new_obj
-              }
-            BreakSignal(_) =>
-              raise Failure::Failure("break statement outside of loop")
-            ContinueSignal(_) =>
-              raise Failure::Failure("continue statement outside of loop")
-          }
+          result
         }
         Some(UserFuncExt(data)) => {
-          let func_strict = self.strict || has_use_strict(data.body)
           let saved_strict = self.strict
-          if func_strict {
-            self.strict = true
-          }
-          let proto = match obj_data.properties.get("prototype") {
-            Some(v) => v
-            None => Null
-          }
-          let new_obj = Object({
-            properties: {},
-            prototype: proto,
-            callable: None,
-            class_name: "Object",
-            descriptors: {},
-            extensible: true,
-          })
-          let func_env = Environment::new(parent=Some(data.closure))
-          func_env.def("this", new_obj, LetBinding)
-          for i = 0; i < data.params.length(); i = i + 1 {
-            let param = data.params[i]
-            let val : Value = if i < args.length() && not(args[i] is Undefined) {
-              args[i]
-            } else {
-              match param.default_val {
-                Some(default_expr) => self.eval_expr(default_expr, func_env)
-                None =>
-                  if i < args.length() {
-                    args[i]
-                  } else {
-                    Undefined
-                  }
-              }
+          let result = try {
+            let func_strict = self.strict || has_use_strict(data.body)
+            if func_strict {
+              self.strict = true
             }
-            func_env.def(param.name, val, LetBinding)
-          }
-          match data.rest_param {
-            Some(rest_name) => {
-              let rest_elements : Array[Value] = []
-              for i = data.params.length(); i < args.length(); i = i + 1 {
-                rest_elements.push(args[i])
-              }
-              func_env.def(rest_name, Array({ elements: rest_elements }), LetBinding)
+            let proto = match obj_data.properties.get("prototype") {
+              Some(v) => v
+              None => Null
             }
-            None => ()
-          }
-          let new_args_props : Map[String, Value] = {}
-          for i = 0; i < args.length(); i = i + 1 {
-            new_args_props[i.to_string()] = args[i]
-          }
-          new_args_props["length"] = Number(args.length().to_double())
-          if not(func_strict) {
-            new_args_props["callee"] = ctor
-          }
-          func_env.def(
-            "arguments",
-            Object({
-              properties: new_args_props,
-              prototype: Null,
+            let new_obj = Object({
+              properties: {},
+              prototype: proto,
               callable: None,
-              class_name: "Arguments",
+              class_name: "Object",
               descriptors: {},
               extensible: true,
-            }),
-            VarBinding,
-          )
-          self.hoist_declarations(data.body, func_env)
-          match data.name {
-            Some(name) =>
-              if not(func_env.bindings.contains(name)) {
-                func_env.def(name, ctor, LetBinding)
+            })
+            let func_env = Environment::new(parent=Some(data.closure))
+            func_env.def("this", new_obj, LetBinding)
+            for i = 0; i < data.params.length(); i = i + 1 {
+              let param = data.params[i]
+              let val : Value = if i < args.length() &&
+                not(args[i] is Undefined) {
+                args[i]
+              } else {
+                match param.default_val {
+                  Some(default_expr) => self.eval_expr(default_expr, func_env)
+                  None => if i < args.length() { args[i] } else { Undefined }
+                }
               }
-            None => ()
-          }
-          let result = try {
-            self.exec_stmts(data.body, func_env)
+              func_env.def(param.name, val, LetBinding)
+            }
+            match data.rest_param {
+              Some(rest_name) => {
+                let rest_elements : Array[Value] = []
+                for i = data.params.length(); i < args.length(); i = i + 1 {
+                  rest_elements.push(args[i])
+                }
+                func_env.def(
+                  rest_name,
+                  Array({ elements: rest_elements }),
+                  LetBinding,
+                )
+              }
+              None => ()
+            }
+            let new_args_props : Map[String, Value] = {}
+            for i = 0; i < args.length(); i = i + 1 {
+              new_args_props[i.to_string()] = args[i]
+            }
+            new_args_props["length"] = Number(args.length().to_double())
+            if not(func_strict) {
+              new_args_props["callee"] = ctor
+            }
+            func_env.def(
+              "arguments",
+              Object({
+                properties: new_args_props,
+                prototype: Null,
+                callable: None,
+                class_name: "Arguments",
+                descriptors: {},
+                extensible: true,
+              }),
+              VarBinding,
+            )
+            self.hoist_declarations(data.body, func_env)
+            match data.name {
+              Some(name) =>
+                if not(func_env.bindings.contains(name)) {
+                  func_env.def(name, ctor, LetBinding)
+                }
+              None => ()
+            }
+            let exec_result = self.exec_stmts(data.body, func_env)
+            match exec_result {
+              Normal(_) => new_obj
+              ReturnSignal(v) =>
+                match v {
+                  Object(_) => v
+                  _ => new_obj
+                }
+              BreakSignal(_) =>
+                raise Failure::Failure("break statement outside of loop")
+              ContinueSignal(_) =>
+                raise Failure::Failure("continue statement outside of loop")
+            }
           } catch {
             e => {
               self.strict = saved_strict
@@ -2100,18 +2122,7 @@ fn Interpreter::eval_new(
             }
           }
           self.strict = saved_strict
-          match result {
-            Normal(_) => new_obj
-            ReturnSignal(v) =>
-              match v {
-                Object(_) => v
-                _ => new_obj
-              }
-            BreakSignal(_) =>
-              raise Failure::Failure("break statement outside of loop")
-            ContinueSignal(_) =>
-              raise Failure::Failure("continue statement outside of loop")
-          }
+          result
         }
         Some(NativeCallable(_, func)) => func(args)
         Some(InterpreterCallable(_, func)) => func(self, Undefined, args)
