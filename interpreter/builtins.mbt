@@ -533,23 +533,23 @@ fn setup_number_builtins(env : Environment) -> Unit {
         }
         if digits < 0 || digits > 100 {
           raise JsException(
-            String_("RangeError: toFixed() digits argument must be between 0 and 100"),
+            String_(
+              "RangeError: toFixed() digits argument must be between 0 and 100",
+            ),
           )
         }
         if n.is_nan() {
           return String_("NaN")
         }
         if n.is_inf() {
-          return String_(
-            if n > 0.0 { "Infinity" } else { "-Infinity" },
-          )
+          return String_(if n > 0.0 { "Infinity" } else { "-Infinity" })
         }
         // Simple implementation using multiplier approach
         if digits == 0 {
           let rounded = if n >= 0.0 {
             (n + 0.5).floor()
           } else {
-            -((-n + 0.5).floor())
+            -(-n + 0.5).floor()
           }
           return String_(rounded.to_int().to_string())
         }
@@ -558,16 +558,16 @@ fn setup_number_builtins(env : Environment) -> Unit {
         let rounded = if shifted >= 0.0 {
           (shifted + 0.5).floor()
         } else {
-          -((-shifted + 0.5).floor())
+          -(-shifted + 0.5).floor()
         }
-        let int_part = (rounded / multiplier).floor()
-        let frac_part = rounded - int_part * multiplier
-        let frac_abs = frac_part.abs()
+        let rounded_abs = rounded.abs()
+        let int_part_abs = (rounded_abs / multiplier).floor()
+        let frac_abs = rounded_abs - int_part_abs * multiplier
         let buf = StringBuilder::new()
-        if n < 0.0 && int_part == 0.0 && frac_abs > 0.0 {
+        if rounded < 0.0 || (n < 0.0 && rounded == 0.0) {
           buf.write_string("-")
         }
-        buf.write_string(int_part.to_int().to_string())
+        buf.write_string(int_part_abs.to_int().to_string())
         buf.write_string(".")
         let frac_str = frac_abs.to_int().to_string()
         // Pad with leading zeros
@@ -602,9 +602,7 @@ fn setup_number_builtins(env : Environment) -> Unit {
           return String_("NaN")
         }
         if n.is_inf() {
-          return String_(
-            if n > 0.0 { "Infinity" } else { "-Infinity" },
-          )
+          return String_(if n > 0.0 { "Infinity" } else { "-Infinity" })
         }
         if radix == 10 {
           return String_(n.to_string())
@@ -868,9 +866,7 @@ fn json_parse(input : String) -> Value raise Error {
                 let d = char_to_digit(hex_c, 16)
                 if d < 0 {
                   raise JsException(
-                    String_(
-                      "SyntaxError: Invalid unicode escape in JSON",
-                    ),
+                    String_("SyntaxError: Invalid unicode escape in JSON"),
                   )
                 }
                 code = code * 16 + d
@@ -887,6 +883,11 @@ fn json_parse(input : String) -> Value raise Error {
             )
         }
       } else {
+        if ch.to_int() < 32 {
+          raise JsException(
+            String_("SyntaxError: Unexpected control character in JSON"),
+          )
+        }
         buf.write_char(ch)
       }
       pos[0] += 1
@@ -922,10 +923,7 @@ fn json_parse(input : String) -> Value raise Error {
       buf.write_char(chars[i])
     }
     let n = @strconv.parse_double(buf.to_string()) catch {
-      _ =>
-        raise JsException(
-          String_("SyntaxError: Invalid number in JSON"),
-        )
+      _ => raise JsException(String_("SyntaxError: Invalid number in JSON"))
     }
     Number(n)
   }
@@ -949,7 +947,9 @@ fn json_parse(input : String) -> Value raise Error {
       skip_ws()
       if pos[0] >= len || chars[pos[0]] != '"' {
         raise JsException(
-          String_("SyntaxError: Expected property name in JSON at position \{pos[0]}"),
+          String_(
+            "SyntaxError: Expected property name in JSON at position \{pos[0]}",
+          ),
         )
       }
       let key = match parse_string() {
@@ -995,7 +995,7 @@ fn json_parse(input : String) -> Value raise Error {
     skip_ws()
     if pos[0] < len && chars[pos[0]] == ']' {
       pos[0] += 1
-      return Array({ elements })
+      return Array({ elements, })
     }
     while true {
       let val = parse_value()
@@ -1014,14 +1014,16 @@ fn json_parse(input : String) -> Value raise Error {
       )
     }
     pos[0] += 1
-    Array({ elements })
+    Array({ elements, })
   }
 
   let result = parse_value()
   skip_ws()
   if pos[0] < len {
     raise JsException(
-      String_("SyntaxError: Unexpected non-whitespace character after JSON at position \{pos[0]}"),
+      String_(
+        "SyntaxError: Unexpected non-whitespace character after JSON at position \{pos[0]}",
+      ),
     )
   }
   result
@@ -1052,9 +1054,7 @@ fn json_stringify_value(
           Array(sd) =>
             if physical_equal(sd, data) {
               raise JsException(
-                String_(
-                  "TypeError: Converting circular structure to JSON",
-                ),
+                String_("TypeError: Converting circular structure to JSON"),
               )
             }
           _ => ()
@@ -1131,9 +1131,7 @@ fn json_stringify_value(
               Object(sd) =>
                 if physical_equal(sd, data) {
                   raise JsException(
-                    String_(
-                      "TypeError: Converting circular structure to JSON",
-                    ),
+                    String_("TypeError: Converting circular structure to JSON"),
                   )
                 }
               _ => ()
@@ -1145,9 +1143,7 @@ fn json_stringify_value(
           buf.write_char('{')
           let mut first = true
           data.properties.each(fn(k, v) {
-            let stringified = json_stringify_value(v, seen, indent, new_depth) catch {
-              _ => Undefined
-            }
+            let stringified = json_stringify_value(v, seen, indent, new_depth)
             match stringified {
               Undefined => () // Skip undefined values
               String_(s) => {
@@ -1194,6 +1190,7 @@ fn json_stringify_value(
 }
 
 ///|
+
 ///|
 pub fn get_number_method(num_val : Value, prop : String) -> Value {
   match prop {
@@ -1211,22 +1208,22 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
             }
             if digits < 0 || digits > 100 {
               raise JsException(
-                String_("RangeError: toFixed() digits argument must be between 0 and 100"),
+                String_(
+                  "RangeError: toFixed() digits argument must be between 0 and 100",
+                ),
               )
             }
             if n.is_nan() {
               return String_("NaN")
             }
             if n.is_inf() {
-              return String_(
-                if n > 0.0 { "Infinity" } else { "-Infinity" },
-              )
+              return String_(if n > 0.0 { "Infinity" } else { "-Infinity" })
             }
             if digits == 0 {
               let rounded = if n >= 0.0 {
                 (n + 0.5).floor()
               } else {
-                -((-n + 0.5).floor())
+                -(-n + 0.5).floor()
               }
               return String_(rounded.to_int().to_string())
             }
@@ -1235,16 +1232,16 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
             let rounded = if shifted >= 0.0 {
               (shifted + 0.5).floor()
             } else {
-              -((-shifted + 0.5).floor())
+              -(-shifted + 0.5).floor()
             }
-            let int_part = (rounded / multiplier).floor()
-            let frac_part = rounded - int_part * multiplier
-            let frac_abs = frac_part.abs()
+            let rounded_abs = rounded.abs()
+            let int_part_abs = (rounded_abs / multiplier).floor()
+            let frac_abs = rounded_abs - int_part_abs * multiplier
             let buf = StringBuilder::new()
-            if n < 0.0 && int_part == 0.0 {
+            if rounded < 0.0 || (n < 0.0 && rounded == 0.0) {
               buf.write_string("-")
             }
-            buf.write_string(int_part.to_int().to_string())
+            buf.write_string(int_part_abs.to_int().to_string())
             buf.write_string(".")
             let frac_str = frac_abs.to_int().to_string()
             for _i = 0; _i < digits - frac_str.length(); _i = _i + 1 {
@@ -1279,9 +1276,7 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
               return String_("NaN")
             }
             if n.is_inf() {
-              return String_(
-                if n > 0.0 { "Infinity" } else { "-Infinity" },
-              )
+              return String_(if n > 0.0 { "Infinity" } else { "-Infinity" })
             }
             if radix == 10 {
               return String_(num_val.to_string())
@@ -1331,6 +1326,7 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
   }
 }
 
+///|
 fn json_escape_string(s : String) -> String {
   let buf = StringBuilder::new()
   buf.write_char('"')
