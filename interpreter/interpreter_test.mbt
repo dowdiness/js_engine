@@ -2994,10 +2994,7 @@ test "Object.getOwnPropertyDescriptor" {
     #|console.log(desc.enumerable);
     #|console.log(desc.configurable);
   let output = run_output(src)
-  inspect(
-    output,
-    content="[\"5\", \"false\", \"true\", \"false\"]",
-  )
+  inspect(output, content="[\"5\", \"false\", \"true\", \"false\"]")
 }
 
 ///|
@@ -3669,4 +3666,120 @@ test "bugfix: regex after for condition rparen" {
     #|console.log(count);
   let output = run_output(src)
   inspect(output, content="[\"2\"]")
+}
+
+///|
+test "bugfix: strict mode restored after throwing strict function" {
+  let src =
+    #|function strictBoom() {
+    #|  "use strict";
+    #|  throw new Error("boom");
+    #|}
+    #|function sloppy() { return typeof arguments.callee; }
+    #|try {
+    #|  strictBoom();
+    #|} catch (e) {}
+    #|console.log(sloppy());
+  let output = run_output(src)
+  inspect(output, content="[\"function\"]")
+}
+
+///|
+test "bugfix: constructor honors function strict mode" {
+  let src =
+    #|function C() {
+    #|  "use strict";
+    #|  console.log(typeof arguments.callee);
+    #|}
+    #|new C();
+  let output = run_output(src)
+  inspect(output, content="[\"undefined\"]")
+}
+
+///|
+test "bugfix: var destructure declaration is hoisted" {
+  let src =
+    #|console.log(a);
+    #|var [a] = [1];
+    #|console.log(a);
+  let output = run_output(src)
+  inspect(output, content="[\"undefined\", \"1\"]")
+}
+
+///|
+test "bugfix: for-of var binds in outer scope" {
+  let src =
+    #|for (var x of [1, 2]) {}
+    #|console.log(x);
+  let output = run_output(src)
+  inspect(output, content="[\"2\"]")
+}
+
+///|
+test "bugfix: for-of var closures share one binding" {
+  let src =
+    #|var fns = [];
+    #|for (var x of [1, 2, 3]) {
+    #|  fns.push(function() { return x; });
+    #|}
+    #|console.log(fns[0]());
+    #|console.log(fns[2]());
+  let output = run_output(src)
+  inspect(output, content="[\"3\", \"3\"]")
+}
+
+///|
+test "bugfix: regex literal after control-flow rparen" {
+  let src =
+    #|var out = 0;
+    #|if (true) /ab/.test("zabz") ? out = 1 : out = 2;
+    #|console.log(out);
+  let output = run_output(src)
+  inspect(output, content="[\"1\"]")
+}
+
+///|
+test "bugfix: negative toFixed keeps sign and digits" {
+  let src =
+    #|console.log((-1.23).toFixed(2));
+    #|console.log((-0.004).toFixed(2));
+  let output = run_output(src)
+  inspect(output, content="[\"-1.23\", \"-0.00\"]")
+}
+
+///|
+test "bugfix: JSON.stringify propagates nested circular errors" {
+  let src =
+    #|var a = {};
+    #|var b = {};
+    #|a.child = b;
+    #|b.parent = a;
+    #|try {
+    #|  JSON.stringify({ root: a });
+    #|  console.log("no error");
+    #|} catch (e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"TypeError: Converting circular structure to JSON\"]",
+  )
+}
+
+///|
+test "bugfix: JSON.parse rejects raw control chars in strings" {
+  let src =
+    #|try {
+    #|  JSON.parse(`{"x":"a
+    #|b"}`);
+    #|  console.log("no error");
+    #|} catch (e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"SyntaxError: Unexpected control character in JSON\"]",
+  )
 }
