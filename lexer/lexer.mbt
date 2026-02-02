@@ -46,6 +46,7 @@ fn resolve_keyword(s : String) -> @token.TokenKind {
     "do" => Do
     "in" => In
     "instanceof" => Instanceof
+    "of" => Of
     _ => Ident(s)
   }
 }
@@ -59,6 +60,11 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
   let chars = source.to_array()
   let len = chars.length()
   let template_depth_stack : Array[Int] = []
+  // Track whether each open paren was preceded by a control-flow keyword
+  // (if/while/for/switch/with). When the matching ) is emitted, it should
+  // trigger regex context (a / after it starts a regex, not division).
+  let paren_is_control_flow : Array[Bool] = []
+  let mut last_rparen_is_control_flow = false
   fn make_loc() -> @token.Loc {
     { line, col, offset }
   }
@@ -128,7 +134,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       col = 1
       continue
     }
-    // Comments
+    // Comments and regex literals
     if c == '/' && offset + 1 < len {
       let next = char_at(offset + 1)
       if next == '/' {
@@ -160,6 +166,73 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           offset += 1
         }
         continue
+      }
+      // Check if / is a regex literal (context-dependent)
+      if next != '=' {
+        // Determine if this is a regex based on the last token
+        let is_regex = if tokens.length() == 0 {
+          true
+        } else {
+          let last_kind = tokens[tokens.length() - 1].kind
+          match last_kind {
+            // After these tokens, / starts a regex
+            Assign | EqEq | EqEqEq | BangEq | BangEqEq | LParen | LBracket | LBrace | Comma | Semicolon | Colon | Question | And | Or | Bang | Plus | Minus | Star | Slash | Percent | Lt | Gt | LtEq | GtEq | Return | Typeof | Throw | New | Delete | Void | In | Instanceof | PlusAssign | MinusAssign | StarAssign | SlashAssign | PercentAssign | BitAnd | BitOr | BitXor | Tilde | LShift | RShift | URShift | BitAndAssign | BitOrAssign | BitXorAssign | LShiftAssign | RShiftAssign | URShiftAssign | Case | Arrow => true
+            // RParen after control-flow keyword (if/while/for/switch) starts regex
+            RParen => last_rparen_is_control_flow
+            _ => false
+          }
+        }
+        if is_regex {
+          let rloc = make_loc()
+          offset += 1  // skip opening /
+          col += 1
+          let pattern_buf = StringBuilder::new()
+          let mut in_class = false  // inside [...]
+          while offset < len {
+            let rc = char_at(offset)
+            if rc == '/' && not(in_class) {
+              break
+            }
+            if rc == '[' {
+              in_class = true
+            }
+            if rc == ']' {
+              in_class = false
+            }
+            if rc == '\\' && offset + 1 < len {
+              pattern_buf.write_char(rc)
+              offset += 1
+              col += 1
+              pattern_buf.write_char(char_at(offset))
+              offset += 1
+              col += 1
+              continue
+            }
+            pattern_buf.write_char(rc)
+            offset += 1
+            col += 1
+          }
+          if offset >= len {
+            raise Failure::Failure(
+              "Unterminated regex literal at line \{rloc.line}, col \{rloc.col}",
+            )
+          }
+          offset += 1  // skip closing /
+          col += 1
+          // Read flags
+          let flags_buf = StringBuilder::new()
+          while offset < len && is_alpha(char_at(offset)) {
+            flags_buf.write_char(char_at(offset))
+            offset += 1
+            col += 1
+          }
+          tokens.push({
+            kind: Regex(pattern_buf.to_string(), flags_buf.to_string()),
+            loc: rloc,
+            raw: "",
+          })
+          continue
+        }
       }
     }
     let loc = make_loc()
@@ -453,6 +526,16 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       let top = template_depth_stack.length() - 1
       template_depth_stack[top] = template_depth_stack[top] + 1
     }
+    // ... (spread/rest)
+    if c == '.' &&
+      offset + 2 < len &&
+      char_at(offset + 1) == '.' &&
+      char_at(offset + 2) == '.' {
+      tokens.push({ kind: DotDotDot, loc, raw: "..." })
+      offset += 3
+      col += 3
+      continue
+    }
     // Single-character tokens
     let (kind, raw) : (@token.TokenKind, String) = match c {
       '+' => (Plus, "+")
@@ -485,6 +568,33 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         )
     }
     tokens.push({ kind, loc, raw })
+    // Track control-flow parens for regex disambiguation
+    match kind {
+      LParen => {
+        // Check if the token before ( is a control-flow keyword
+        let is_cf = if tokens.length() >= 2 {
+          let prev = tokens[tokens.length() - 2].kind
+          match prev {
+            If | While | For | Switch => true
+            _ => false
+          }
+        } else {
+          false
+        }
+        paren_is_control_flow.push(is_cf)
+      }
+      RParen => {
+        last_rparen_is_control_flow = if paren_is_control_flow.length() > 0 {
+          match paren_is_control_flow.pop() {
+            Some(v) => v
+            None => false
+          }
+        } else {
+          false
+        }
+      }
+      _ => ()
+    }
     offset += 1
     col += 1
   }

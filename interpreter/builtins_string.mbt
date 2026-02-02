@@ -336,11 +336,31 @@ pub fn get_string_method(s : String, prop : String) -> Value {
     "replace" => {
       let str = s
       make_native_func("replace", fn(args) {
-        let search = if args.length() > 0 {
-          args[0].to_string()
-        } else {
+        if args.length() == 0 {
           return String_(str)
         }
+        // Check if first arg is RegExp
+        match args[0] {
+          Object(data) =>
+            if data.class_name == "RegExp" {
+              let pattern = match data.properties.get("source") {
+                Some(String_(s)) => s
+                _ => ""
+              }
+              let flags = match data.properties.get("flags") {
+                Some(String_(s)) => s
+                _ => ""
+              }
+              let replacement = if args.length() > 1 {
+                args[1].to_string()
+              } else {
+                "undefined"
+              }
+              return string_replace_regex(str, pattern, flags, replacement)
+            }
+          _ => ()
+        }
+        let search = args[0].to_string()
         let replacement = if args.length() > 1 {
           args[1].to_string()
         } else {
@@ -375,6 +395,57 @@ pub fn get_string_method(s : String, prop : String) -> Value {
           }
         }
         String_(str)
+      })
+    }
+    "match" => {
+      let str = s
+      make_native_func("match", fn(args) {
+        if args.length() == 0 {
+          return Null
+        }
+        match args[0] {
+          Object(data) =>
+            if data.class_name == "RegExp" {
+              let pattern = match data.properties.get("source") {
+                Some(String_(s)) => s
+                _ => ""
+              }
+              let flags = match data.properties.get("flags") {
+                Some(String_(s)) => s
+                _ => ""
+              }
+              return string_match_regex(str, pattern, flags)
+            }
+          _ => ()
+        }
+        // If not a RegExp, treat as string pattern
+        let pattern = args[0].to_string()
+        string_match_regex(str, pattern, "")
+      })
+    }
+    "search" => {
+      let str = s
+      make_native_func("search", fn(args) {
+        if args.length() == 0 {
+          return Number(0.0)
+        }
+        match args[0] {
+          Object(data) =>
+            if data.class_name == "RegExp" {
+              let pattern = match data.properties.get("source") {
+                Some(String_(s)) => s
+                _ => ""
+              }
+              let flags = match data.properties.get("flags") {
+                Some(String_(s)) => s
+                _ => ""
+              }
+              return string_search_regex(str, pattern, flags)
+            }
+          _ => ()
+        }
+        let pattern = args[0].to_string()
+        string_search_regex(str, pattern, "")
       })
     }
     "startsWith" => {

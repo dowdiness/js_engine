@@ -328,6 +328,426 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
 }
 
 ///|
+pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
+  match prop {
+    "forEach" => {
+      let arr = data
+      Object({
+        properties: {},
+        prototype: Null,
+        callable: Some(
+          InterpreterCallable("forEach", fn(interp, this_val, args) {
+            let _ = this_val
+            let callback = if args.length() > 0 { args[0] } else { Undefined }
+            let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+            let loc = @token.Loc::default()
+            for i = 0; i < arr.elements.length(); i = i + 1 {
+              let _ = interp.call_value(
+                callback,
+                this_arg,
+                [arr.elements[i], Number(i.to_double()), Array(arr)],
+                loc,
+              )
+            }
+            Undefined
+          }),
+        ),
+        class_name: "Function",
+        descriptors: {},
+        extensible: true,
+      })
+    }
+    "map" => {
+      let arr = data
+      Object({
+        properties: {},
+        prototype: Null,
+        callable: Some(
+          InterpreterCallable("map", fn(interp, this_val, args) {
+            let _ = this_val
+            let callback = if args.length() > 0 { args[0] } else { Undefined }
+            let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+            let loc = @token.Loc::default()
+            let result : Array[Value] = []
+            for i = 0; i < arr.elements.length(); i = i + 1 {
+              let val = interp.call_value(
+                callback,
+                this_arg,
+                [arr.elements[i], Number(i.to_double()), Array(arr)],
+                loc,
+              )
+              result.push(val)
+            }
+            Array({ elements: result })
+          }),
+        ),
+        class_name: "Function",
+        descriptors: {},
+        extensible: true,
+      })
+    }
+    "filter" => {
+      let arr = data
+      Object({
+        properties: {},
+        prototype: Null,
+        callable: Some(
+          InterpreterCallable("filter", fn(interp, this_val, args) {
+            let _ = this_val
+            let callback = if args.length() > 0 { args[0] } else { Undefined }
+            let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+            let loc = @token.Loc::default()
+            let result : Array[Value] = []
+            for i = 0; i < arr.elements.length(); i = i + 1 {
+              let val = interp.call_value(
+                callback,
+                this_arg,
+                [arr.elements[i], Number(i.to_double()), Array(arr)],
+                loc,
+              )
+              if is_truthy(val) {
+                result.push(arr.elements[i])
+              }
+            }
+            Array({ elements: result })
+          }),
+        ),
+        class_name: "Function",
+        descriptors: {},
+        extensible: true,
+      })
+    }
+    "reduce" => {
+      let arr = data
+      Object({
+        properties: {},
+        prototype: Null,
+        callable: Some(
+          InterpreterCallable("reduce", fn(interp, this_val, args) {
+            let _ = this_val
+            let callback = if args.length() > 0 { args[0] } else { Undefined }
+            let loc = @token.Loc::default()
+            let mut acc : Value = Undefined
+            let mut start = 0
+            if args.length() > 1 {
+              acc = args[1]
+            } else {
+              if arr.elements.length() == 0 {
+                raise JsException(
+                  String_("TypeError: Reduce of empty array with no initial value"),
+                )
+              }
+              acc = arr.elements[0]
+              start = 1
+            }
+            for i = start; i < arr.elements.length(); i = i + 1 {
+              acc = interp.call_value(
+                callback,
+                Undefined,
+                [acc, arr.elements[i], Number(i.to_double()), Array(arr)],
+                loc,
+              )
+            }
+            acc
+          }),
+        ),
+        class_name: "Function",
+        descriptors: {},
+        extensible: true,
+      })
+    }
+    "reduceRight" => {
+      let arr = data
+      Object({
+        properties: {},
+        prototype: Null,
+        callable: Some(
+          InterpreterCallable("reduceRight", fn(interp, this_val, args) {
+            let _ = this_val
+            let callback = if args.length() > 0 { args[0] } else { Undefined }
+            let loc = @token.Loc::default()
+            let mut acc : Value = Undefined
+            let mut start = arr.elements.length() - 1
+            if args.length() > 1 {
+              acc = args[1]
+            } else {
+              if arr.elements.length() == 0 {
+                raise JsException(
+                  String_("TypeError: Reduce of empty array with no initial value"),
+                )
+              }
+              acc = arr.elements[start]
+              start = start - 1
+            }
+            for i = start; i >= 0; i = i - 1 {
+              acc = interp.call_value(
+                callback,
+                Undefined,
+                [acc, arr.elements[i], Number(i.to_double()), Array(arr)],
+                loc,
+              )
+            }
+            acc
+          }),
+        ),
+        class_name: "Function",
+        descriptors: {},
+        extensible: true,
+      })
+    }
+    "find" => {
+      let arr = data
+      Object({
+        properties: {},
+        prototype: Null,
+        callable: Some(
+          InterpreterCallable("find", fn(interp, this_val, args) {
+            let _ = this_val
+            let callback = if args.length() > 0 { args[0] } else { Undefined }
+            let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+            let loc = @token.Loc::default()
+            for i = 0; i < arr.elements.length(); i = i + 1 {
+              let val = interp.call_value(
+                callback,
+                this_arg,
+                [arr.elements[i], Number(i.to_double()), Array(arr)],
+                loc,
+              )
+              if is_truthy(val) {
+                return arr.elements[i]
+              }
+            }
+            Undefined
+          }),
+        ),
+        class_name: "Function",
+        descriptors: {},
+        extensible: true,
+      })
+    }
+    "findIndex" => {
+      let arr = data
+      Object({
+        properties: {},
+        prototype: Null,
+        callable: Some(
+          InterpreterCallable("findIndex", fn(interp, this_val, args) {
+            let _ = this_val
+            let callback = if args.length() > 0 { args[0] } else { Undefined }
+            let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+            let loc = @token.Loc::default()
+            for i = 0; i < arr.elements.length(); i = i + 1 {
+              let val = interp.call_value(
+                callback,
+                this_arg,
+                [arr.elements[i], Number(i.to_double()), Array(arr)],
+                loc,
+              )
+              if is_truthy(val) {
+                return Number(i.to_double())
+              }
+            }
+            Number(-1.0)
+          }),
+        ),
+        class_name: "Function",
+        descriptors: {},
+        extensible: true,
+      })
+    }
+    "every" => {
+      let arr = data
+      Object({
+        properties: {},
+        prototype: Null,
+        callable: Some(
+          InterpreterCallable("every", fn(interp, this_val, args) {
+            let _ = this_val
+            let callback = if args.length() > 0 { args[0] } else { Undefined }
+            let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+            let loc = @token.Loc::default()
+            for i = 0; i < arr.elements.length(); i = i + 1 {
+              let val = interp.call_value(
+                callback,
+                this_arg,
+                [arr.elements[i], Number(i.to_double()), Array(arr)],
+                loc,
+              )
+              if not(is_truthy(val)) {
+                return Bool(false)
+              }
+            }
+            Bool(true)
+          }),
+        ),
+        class_name: "Function",
+        descriptors: {},
+        extensible: true,
+      })
+    }
+    "some" => {
+      let arr = data
+      Object({
+        properties: {},
+        prototype: Null,
+        callable: Some(
+          InterpreterCallable("some", fn(interp, this_val, args) {
+            let _ = this_val
+            let callback = if args.length() > 0 { args[0] } else { Undefined }
+            let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+            let loc = @token.Loc::default()
+            for i = 0; i < arr.elements.length(); i = i + 1 {
+              let val = interp.call_value(
+                callback,
+                this_arg,
+                [arr.elements[i], Number(i.to_double()), Array(arr)],
+                loc,
+              )
+              if is_truthy(val) {
+                return Bool(true)
+              }
+            }
+            Bool(false)
+          }),
+        ),
+        class_name: "Function",
+        descriptors: {},
+        extensible: true,
+      })
+    }
+    "flat" => {
+      let arr = data
+      make_native_func("flat", fn(args) {
+        let depth = if args.length() > 0 {
+          to_number(args[0]).to_int()
+        } else {
+          1
+        }
+        let result : Array[Value] = []
+        flatten_array(arr.elements, depth, result)
+        Array({ elements: result })
+      })
+    }
+    "flatMap" => {
+      let arr = data
+      Object({
+        properties: {},
+        prototype: Null,
+        callable: Some(
+          InterpreterCallable("flatMap", fn(interp, this_val, args) {
+            let _ = this_val
+            let callback = if args.length() > 0 { args[0] } else { Undefined }
+            let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+            let loc = @token.Loc::default()
+            let result : Array[Value] = []
+            for i = 0; i < arr.elements.length(); i = i + 1 {
+              let val = interp.call_value(
+                callback,
+                this_arg,
+                [arr.elements[i], Number(i.to_double()), Array(arr)],
+                loc,
+              )
+              match val {
+                Array(inner) =>
+                  for el in inner.elements {
+                    result.push(el)
+                  }
+                _ => result.push(val)
+              }
+            }
+            Array({ elements: result })
+          }),
+        ),
+        class_name: "Function",
+        descriptors: {},
+        extensible: true,
+      })
+    }
+    "sort" => {
+      // Sort with optional compareFn needs InterpreterCallable
+      let arr = data
+      Object({
+        properties: {},
+        prototype: Null,
+        callable: Some(
+          InterpreterCallable("sort", fn(interp, this_val, args) {
+            let _ = this_val
+            if args.length() > 0 {
+              match args[0] {
+                Undefined =>
+                  // Default sort
+                  arr.elements.sort_by(fn(a, b) {
+                    let sa = a.to_string()
+                    let sb = b.to_string()
+                    if sa < sb {
+                      -1
+                    } else if sa > sb {
+                      1
+                    } else {
+                      0
+                    }
+                  })
+                _ => {
+                  let comparefn = args[0]
+                  let loc = @token.Loc::default()
+                  arr.elements.sort_by(fn(a, b) {
+                    let result = interp.call_value(
+                        comparefn,
+                        Undefined,
+                        [a, b],
+                        loc,
+                      )
+                      catch {
+                        _ => Number(0.0)
+                      }
+                    to_number(result).to_int()
+                  })
+                }
+              }
+            } else {
+              arr.elements.sort_by(fn(a, b) {
+                let sa = a.to_string()
+                let sb = b.to_string()
+                if sa < sb {
+                  -1
+                } else if sa > sb {
+                  1
+                } else {
+                  0
+                }
+              })
+            }
+            Array(arr)
+          }),
+        ),
+        class_name: "Function",
+        descriptors: {},
+        extensible: true,
+      })
+    }
+    _ => get_array_method(data, prop)
+  }
+}
+
+///|
+fn flatten_array(
+  elements : Array[Value],
+  depth : Int,
+  result : Array[Value],
+) -> Unit {
+  for el in elements {
+    match el {
+      Array(inner) =>
+        if depth > 0 {
+          flatten_array(inner.elements, depth - 1, result)
+        } else {
+          result.push(el)
+        }
+      _ => result.push(el)
+    }
+  }
+}
+
 fn strict_equal_val(a : Value, b : Value) -> Bool {
   match (a, b) {
     (Number(a), Number(b)) => a == b

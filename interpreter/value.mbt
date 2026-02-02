@@ -7,14 +7,33 @@ pub(all) struct FuncData {
 }
 
 ///|
+pub(all) struct FuncDataExt {
+  name : String?
+  params : Array[@ast.Param]
+  rest_param : String?
+  body : Array[@ast.Stmt]
+  closure : Environment
+}
+
+///|
 pub(all) enum Callable {
   UserFunc(FuncData)
   ArrowFunc(FuncData)
-  NativeCallable(String, (Array[Value]) -> Value)
+  UserFuncExt(FuncDataExt)
+  ArrowFuncExt(FuncDataExt)
+  NativeCallable(String, (Array[Value]) -> Value raise Error)
   BoundFunc(Value, Value, Array[Value]) // (target, this_val, bound_args)
   FuncCallMethod(Value) // .call proxy: captures target function
   FuncApplyMethod(Value) // .apply proxy: captures target function
-  MethodCallable(String, (Value, Array[Value]) -> Value) // this-aware native method
+  MethodCallable(String, (Value, Array[Value]) -> Value raise Error) // this-aware native method
+  InterpreterCallable(String, (Interpreter, Value, Array[Value]) -> Value raise Error) // needs interpreter for callback invocation
+}
+
+///|
+pub(all) struct PropDescriptor {
+  mut writable : Bool
+  mut enumerable : Bool
+  mut configurable : Bool
 }
 
 ///|
@@ -23,6 +42,8 @@ pub(all) struct ObjectData {
   prototype : Value
   callable : Callable?
   class_name : String
+  descriptors : Map[String, PropDescriptor]
+  mut extensible : Bool
 }
 
 ///|
@@ -55,21 +76,51 @@ pub fn make_func(data : FuncData) -> Value {
         prototype: Null,
         callable: None,
         class_name: "Object",
+        descriptors: {},
+        extensible: true,
       }),
     },
     prototype: Null,
     callable: Some(UserFunc(data)),
     class_name: "Function",
+    descriptors: {},
+    extensible: true,
   })
 }
 
 ///|
-pub fn make_native_func(name : String, func : (Array[Value]) -> Value) -> Value {
+pub fn make_func_ext(data : FuncDataExt) -> Value {
+  Object({
+    properties: {
+      "prototype": Object({
+        properties: {},
+        prototype: Null,
+        callable: None,
+        class_name: "Object",
+        descriptors: {},
+        extensible: true,
+      }),
+    },
+    prototype: Null,
+    callable: Some(UserFuncExt(data)),
+    class_name: "Function",
+    descriptors: {},
+    extensible: true,
+  })
+}
+
+///|
+pub fn make_native_func(
+  name : String,
+  func : (Array[Value]) -> Value raise Error,
+) -> Value {
   Object({
     properties: {},
     prototype: Null,
     callable: Some(NativeCallable(name, func)),
     class_name: "Function",
+    descriptors: {},
+    extensible: true,
   })
 }
 
@@ -96,7 +147,13 @@ pub impl Show for Value with output(self, logger) {
             Some(n) => logger.write_string("function \{n}() { [code] }")
             None => logger.write_string("function() { [code] }")
           }
-        Some(ArrowFunc(_)) => logger.write_string("() => { [code] }")
+        Some(ArrowFunc(_)) | Some(ArrowFuncExt(_)) =>
+          logger.write_string("() => { [code] }")
+        Some(UserFuncExt(func)) =>
+          match func.name {
+            Some(n) => logger.write_string("function \{n}() { [code] }")
+            None => logger.write_string("function() { [code] }")
+          }
         Some(BoundFunc(_, _, _)) =>
           logger.write_string("function bound() { [native code] }")
         Some(NativeCallable(name, _)) =>
@@ -106,6 +163,8 @@ pub impl Show for Value with output(self, logger) {
         Some(FuncApplyMethod(_)) =>
           logger.write_string("function apply() { [native code] }")
         Some(MethodCallable(name, _)) =>
+          logger.write_string("function \{name}() { [native code] }")
+        Some(InterpreterCallable(name, _)) =>
           logger.write_string("function \{name}() { [native code] }")
         None => logger.write_string("[object \{data.class_name}]")
       }

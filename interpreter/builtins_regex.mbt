@@ -1,0 +1,966 @@
+///| Basic regex engine for JS RegExp support
+/// Supports: literals, ., *, +, ?, ^, $, \d, \w, \s, \D, \W, \S, \b, \B,
+/// character classes [...], [^...], grouping (...), alternation |, {n}, {n,}, {n,m}
+
+// ---- Regex AST ----
+
+///|
+enum RegexNode {
+  Literal(Char)
+  Dot // matches any char except newline
+  CharClass(Array[(Char, Char)], Bool) // ranges, negated
+  Anchor(AnchorKind)
+  Quantified(RegexNode, Int, Int?, Bool) // node, min, max(None=infinity), greedy
+  Group(Array[RegexNode], Int) // children, group_index
+  Alternation(Array[RegexNode], Array[RegexNode]) // left, right
+  Sequence(Array[RegexNode])
+  WordBoundary(Bool) // true = \b, false = \B
+}
+
+///|
+enum AnchorKind {
+  Start // ^
+  End // $
+}
+
+// ---- Regex Parser ----
+
+///|
+struct RegexParser {
+  pattern : Array[Char]
+  mut pos : Int
+  mut group_count : Int
+}
+
+///|
+fn RegexParser::new(pattern : String) -> RegexParser {
+  { pattern: pattern.to_array(), pos: 0, group_count: 0 }
+}
+
+///|
+fn RegexParser::parse(self : RegexParser) -> RegexNode raise Error {
+  let result = self.parse_alternation()
+  result
+}
+
+///|
+fn RegexParser::parse_alternation(self : RegexParser) -> RegexNode raise Error {
+  let left = self.parse_sequence()
+  if self.pos < self.pattern.length() && self.pattern[self.pos] == '|' {
+    self.pos += 1
+    let right = self.parse_alternation()
+    let left_nodes = match left {
+      Sequence(nodes) => nodes
+      _ => [left]
+    }
+    let right_nodes = match right {
+      Sequence(nodes) => nodes
+      _ => [right]
+    }
+    return Alternation(left_nodes, right_nodes)
+  }
+  left
+}
+
+///|
+fn RegexParser::parse_sequence(self : RegexParser) -> RegexNode raise Error {
+  let nodes : Array[RegexNode] = []
+  while self.pos < self.pattern.length() {
+    let ch = self.pattern[self.pos]
+    if ch == ')' || ch == '|' {
+      break
+    }
+    let node = self.parse_atom()
+    let quantified = self.parse_quantifier(node)
+    nodes.push(quantified)
+  }
+  if nodes.length() == 1 {
+    return nodes[0]
+  }
+  Sequence(nodes)
+}
+
+///|
+fn RegexParser::parse_atom(self : RegexParser) -> RegexNode raise Error {
+  let ch = self.pattern[self.pos]
+  match ch {
+    '.' => {
+      self.pos += 1
+      Dot
+    }
+    '^' => {
+      self.pos += 1
+      Anchor(Start)
+    }
+    '$' => {
+      self.pos += 1
+      Anchor(End)
+    }
+    '[' => self.parse_char_class()
+    '(' => self.parse_group()
+    '\\' => self.parse_escape()
+    _ => {
+      self.pos += 1
+      Literal(ch)
+    }
+  }
+}
+
+///|
+fn RegexParser::parse_escape(self : RegexParser) -> RegexNode raise Error {
+  self.pos += 1 // skip backslash
+  if self.pos >= self.pattern.length() {
+    raise Failure::Failure("Invalid regex: trailing backslash")
+  }
+  let ch = self.pattern[self.pos]
+  self.pos += 1
+  match ch {
+    'd' => CharClass([('0', '9')], false)
+    'D' => CharClass([('0', '9')], true)
+    'w' => CharClass([('a', 'z'), ('A', 'Z'), ('0', '9'), ('_', '_')], false)
+    'W' => CharClass([('a', 'z'), ('A', 'Z'), ('0', '9'), ('_', '_')], true)
+    's' =>
+      CharClass(
+        [(' ', ' '), ('\t', '\t'), ('\n', '\n'), ('\r', '\r')],
+        false,
+      )
+    'S' =>
+      CharClass(
+        [(' ', ' '), ('\t', '\t'), ('\n', '\n'), ('\r', '\r')],
+        true,
+      )
+    'b' => WordBoundary(true)
+    'B' => WordBoundary(false)
+    'n' => Literal('\n')
+    'r' => Literal('\r')
+    't' => Literal('\t')
+    _ => Literal(ch) // literal escape (e.g., \., \*, etc.)
+  }
+}
+
+///|
+fn RegexParser::parse_char_class(self : RegexParser) -> RegexNode raise Error {
+  self.pos += 1 // skip '['
+  let negated = if self.pos < self.pattern.length() &&
+    self.pattern[self.pos] == '^' {
+    self.pos += 1
+    true
+  } else {
+    false
+  }
+  let ranges : Array[(Char, Char)] = []
+  while self.pos < self.pattern.length() && self.pattern[self.pos] != ']' {
+    let ch = self.pattern[self.pos]
+    let start = if ch == '\\' {
+      self.pos += 1
+      if self.pos >= self.pattern.length() {
+        raise Failure::Failure("Invalid regex: unterminated character class")
+      }
+      let escaped = self.pattern[self.pos]
+      self.pos += 1
+      // Handle character class shortcuts inside []
+      match escaped {
+        'd' => {
+          ranges.push(('0', '9'))
+          continue
+        }
+        'w' => {
+          ranges.push(('a', 'z'))
+          ranges.push(('A', 'Z'))
+          ranges.push(('0', '9'))
+          ranges.push(('_', '_'))
+          continue
+        }
+        's' => {
+          ranges.push((' ', ' '))
+          ranges.push(('\t', '\t'))
+          ranges.push(('\n', '\n'))
+          ranges.push(('\r', '\r'))
+          continue
+        }
+        'n' => '\n'
+        'r' => '\r'
+        't' => '\t'
+        _ => escaped
+      }
+    } else {
+      self.pos += 1
+      ch
+    }
+    // Check for range (e.g., a-z)
+    if self.pos + 1 < self.pattern.length() &&
+      self.pattern[self.pos] == '-' &&
+      self.pattern[self.pos + 1] != ']' {
+      self.pos += 1 // skip '-'
+      let end_ch = if self.pattern[self.pos] == '\\' {
+        self.pos += 1
+        if self.pos >= self.pattern.length() {
+          raise Failure::Failure("Invalid regex: unterminated character class")
+        }
+        let esc = self.pattern[self.pos]
+        self.pos += 1
+        esc
+      } else {
+        let c = self.pattern[self.pos]
+        self.pos += 1
+        c
+      }
+      ranges.push((start, end_ch))
+    } else {
+      ranges.push((start, start))
+    }
+  }
+  if self.pos < self.pattern.length() {
+    self.pos += 1 // skip ']'
+  }
+  CharClass(ranges, negated)
+}
+
+///|
+fn RegexParser::parse_group(self : RegexParser) -> RegexNode raise Error {
+  self.pos += 1 // skip '('
+  // Check for non-capturing group (?:...)
+  let is_non_capturing = if self.pos + 1 < self.pattern.length() &&
+    self.pattern[self.pos] == '?' &&
+    self.pattern[self.pos + 1] == ':' {
+    self.pos += 2
+    true
+  } else {
+    false
+  }
+  let group_idx = if is_non_capturing {
+    0
+  } else {
+    self.group_count += 1
+    self.group_count
+  }
+  let inner = self.parse_alternation()
+  if self.pos < self.pattern.length() && self.pattern[self.pos] == ')' {
+    self.pos += 1
+  }
+  let children = match inner {
+    Sequence(nodes) => nodes
+    _ => [inner]
+  }
+  Group(children, group_idx)
+}
+
+///|
+fn RegexParser::parse_quantifier(
+  self : RegexParser,
+  node : RegexNode,
+) -> RegexNode {
+  if self.pos >= self.pattern.length() {
+    return node
+  }
+  // Don't apply quantifiers to anchors or word boundaries
+  match node {
+    Anchor(_) | WordBoundary(_) => return node
+    _ => ()
+  }
+  let ch = self.pattern[self.pos]
+  match ch {
+    '*' => {
+      self.pos += 1
+      let greedy = self.check_greedy()
+      Quantified(node, 0, None, greedy)
+    }
+    '+' => {
+      self.pos += 1
+      let greedy = self.check_greedy()
+      Quantified(node, 1, None, greedy)
+    }
+    '?' => {
+      self.pos += 1
+      let greedy = self.check_greedy()
+      Quantified(node, 0, Some(1), greedy)
+    }
+    '{' => {
+      let saved = self.pos
+      self.pos += 1
+      let min = self.parse_int()
+      match min {
+        Some(n) => {
+          if self.pos < self.pattern.length() && self.pattern[self.pos] == '}' {
+            self.pos += 1
+            let greedy = self.check_greedy()
+            Quantified(node, n, Some(n), greedy)
+          } else if self.pos < self.pattern.length() &&
+            self.pattern[self.pos] == ',' {
+            self.pos += 1
+            if self.pos < self.pattern.length() &&
+              self.pattern[self.pos] == '}' {
+              self.pos += 1
+              let greedy = self.check_greedy()
+              Quantified(node, n, None, greedy)
+            } else {
+              let max = self.parse_int()
+              match max {
+                Some(m) =>
+                  if self.pos < self.pattern.length() &&
+                    self.pattern[self.pos] == '}' {
+                    self.pos += 1
+                    let greedy = self.check_greedy()
+                    Quantified(node, n, Some(m), greedy)
+                  } else {
+                    self.pos = saved
+                    node
+                  }
+                None => {
+                  self.pos = saved
+                  node
+                }
+              }
+            }
+          } else {
+            self.pos = saved
+            node
+          }
+        }
+        None => {
+          self.pos = saved
+          node
+        }
+      }
+    }
+    _ => node
+  }
+}
+
+///|
+fn RegexParser::check_greedy(self : RegexParser) -> Bool {
+  if self.pos < self.pattern.length() && self.pattern[self.pos] == '?' {
+    self.pos += 1
+    false
+  } else {
+    true
+  }
+}
+
+///|
+fn RegexParser::parse_int(self : RegexParser) -> Int? {
+  let start = self.pos
+  while self.pos < self.pattern.length() &&
+    self.pattern[self.pos] >= '0' &&
+    self.pattern[self.pos] <= '9' {
+    self.pos += 1
+  }
+  if self.pos == start {
+    return None
+  }
+  let mut result = 0
+  for i = start; i < self.pos; i = i + 1 {
+    result = result * 10 + (self.pattern[i].to_int() - '0'.to_int())
+  }
+  Some(result)
+}
+
+// ---- Regex Matcher ----
+
+///|
+struct RegexMatch {
+  start : Int
+  end_ : Int
+  captures : Array[String?]
+}
+
+///|
+fn is_word_char(c : Char) -> Bool {
+  (c >= 'a' && c <= 'z') ||
+  (c >= 'A' && c <= 'Z') ||
+  (c >= '0' && c <= '9') ||
+  c == '_'
+}
+
+///|
+fn char_eq_icase(a : Char, b : Char, icase : Bool) -> Bool {
+  if a == b {
+    return true
+  }
+  if not(icase) {
+    return false
+  }
+  // Compare lowercased
+  let al = if a >= 'A' && a <= 'Z' {
+    Char::from_int(a.to_int() + 32)
+  } else {
+    a
+  }
+  let bl = if b >= 'A' && b <= 'Z' {
+    Char::from_int(b.to_int() + 32)
+  } else {
+    b
+  }
+  al == bl
+}
+
+///|
+fn match_char_class_icase(
+  ch : Char,
+  ranges : Array[(Char, Char)],
+  negated : Bool,
+  icase : Bool,
+) -> Bool {
+  let c = if icase {
+    // Lowercase for range comparison
+    if ch >= 'A' && ch <= 'Z' {
+      Char::from_int(ch.to_int() + 32)
+    } else {
+      ch
+    }
+  } else {
+    ch
+  }
+  let mut matched = false
+  for range in ranges {
+    let (lo, hi) = range
+    let lo2 = if icase && lo >= 'A' && lo <= 'Z' {
+      Char::from_int(lo.to_int() + 32)
+    } else {
+      lo
+    }
+    let hi2 = if icase && hi >= 'A' && hi <= 'Z' {
+      Char::from_int(hi.to_int() + 32)
+    } else {
+      hi
+    }
+    if c.to_int() >= lo2.to_int() && c.to_int() <= hi2.to_int() {
+      matched = true
+      break
+    }
+    // Also check original (non-lowered) char against original range for non-alpha ranges
+    if icase && ch.to_int() >= lo.to_int() && ch.to_int() <= hi.to_int() {
+      matched = true
+      break
+    }
+  }
+  if negated {
+    not(matched)
+  } else {
+    matched
+  }
+}
+
+///|
+fn regex_exec_single(
+  node : RegexNode,
+  input : Array[Char],
+  pos : Int,
+  captures : Array[String?],
+  icase : Bool,
+) -> Int? {
+  // Match a single non-sequence node
+  match node {
+    Literal(ch) =>
+      if pos < input.length() && char_eq_icase(input[pos], ch, icase) {
+        Some(pos + 1)
+      } else {
+        None
+      }
+    Dot =>
+      if pos < input.length() && input[pos] != '\n' {
+        Some(pos + 1)
+      } else {
+        None
+      }
+    CharClass(ranges, negated) =>
+      if pos < input.length() &&
+        match_char_class_icase(input[pos], ranges, negated, icase) {
+        Some(pos + 1)
+      } else {
+        None
+      }
+    Anchor(kind) =>
+      match kind {
+        Start => if pos == 0 { Some(pos) } else { None }
+        End => if pos == input.length() { Some(pos) } else { None }
+      }
+    WordBoundary(is_boundary) => {
+      let left_word = pos > 0 && is_word_char(input[pos - 1])
+      let right_word = pos < input.length() && is_word_char(input[pos])
+      let at_boundary = left_word != right_word
+      if is_boundary == at_boundary {
+        Some(pos)
+      } else {
+        None
+      }
+    }
+    Group(children, group_idx) => {
+      let result = match_sequence(children, 0, input, pos, captures, icase)
+      match result {
+        Some(end_pos) => {
+          if group_idx > 0 && group_idx <= captures.length() {
+            let buf = StringBuilder::new()
+            for i = pos; i < end_pos; i = i + 1 {
+              buf.write_char(input[i])
+            }
+            captures[group_idx - 1] = Some(buf.to_string())
+          }
+          Some(end_pos)
+        }
+        None => None
+      }
+    }
+    Alternation(left, right) => {
+      let left_result = match_sequence(left, 0, input, pos, captures, icase)
+      match left_result {
+        Some(_) => left_result
+        None => match_sequence(right, 0, input, pos, captures, icase)
+      }
+    }
+    Sequence(nodes) => match_sequence(nodes, 0, input, pos, captures, icase)
+    Quantified(inner, min, max, greedy) => {
+      // Standalone quantified without continuation — just match max
+      let positions = collect_quantified_positions(
+        inner, input, pos, captures, max, icase,
+      )
+      if positions.length() - 1 < min {
+        return None
+      }
+      if greedy {
+        Some(positions[positions.length() - 1])
+      } else {
+        Some(positions[min])
+      }
+    }
+  }
+}
+
+///|
+fn regex_exec(
+  node : RegexNode,
+  input : Array[Char],
+  pos : Int,
+  captures : Array[String?],
+  icase : Bool,
+) -> Int? {
+  match node {
+    Sequence(nodes) => match_sequence(nodes, 0, input, pos, captures, icase)
+    _ => regex_exec_single(node, input, pos, captures, icase)
+  }
+}
+
+///|
+fn collect_quantified_positions(
+  node : RegexNode,
+  input : Array[Char],
+  pos : Int,
+  captures : Array[String?],
+  max : Int?,
+  icase : Bool,
+) -> Array[Int] {
+  let positions : Array[Int] = [pos]
+  let mut current = pos
+  let mut count = 0
+  while true {
+    match max {
+      Some(m) => if count >= m { break }
+      None => ()
+    }
+    match regex_exec_single(node, input, current, captures, icase) {
+      Some(next) => {
+        if next == current {
+          break
+        }
+        count += 1
+        current = next
+        positions.push(current)
+      }
+      None => break
+    }
+  }
+  positions
+}
+
+///|
+fn match_sequence(
+  nodes : Array[RegexNode],
+  idx : Int,
+  input : Array[Char],
+  pos : Int,
+  captures : Array[String?],
+  icase : Bool,
+) -> Int? {
+  if idx >= nodes.length() {
+    return Some(pos)
+  }
+  let node = nodes[idx]
+  match node {
+    Quantified(inner, min, max, greedy) => {
+      // Collect all possible match positions for the quantified node
+      let positions = collect_quantified_positions(
+        inner, input, pos, captures, max, icase,
+      )
+      if positions.length() - 1 < min {
+        return None
+      }
+      if greedy {
+        // Try from most matches down to minimum
+        for i = positions.length() - 1; i >= min; i = i - 1 {
+          let result = match_sequence(
+            nodes, idx + 1, input, positions[i], captures, icase,
+          )
+          match result {
+            Some(_) => return result
+            None => continue
+          }
+        }
+        None
+      } else {
+        // Non-greedy: try from minimum up
+        for i = min; i < positions.length(); i = i + 1 {
+          let result = match_sequence(
+            nodes, idx + 1, input, positions[i], captures, icase,
+          )
+          match result {
+            Some(_) => return result
+            None => continue
+          }
+        }
+        None
+      }
+    }
+    _ => {
+      match regex_exec_single(node, input, pos, captures, icase) {
+        Some(next) =>
+          match_sequence(nodes, idx + 1, input, next, captures, icase)
+        None => None
+      }
+    }
+  }
+}
+
+///|
+fn count_groups(node : RegexNode) -> Int {
+  match node {
+    Literal(_) | Dot | CharClass(_, _) | Anchor(_) | WordBoundary(_) => 0
+    Quantified(inner, _, _, _) => count_groups(inner)
+    Group(children, group_idx) => {
+      let max_child = children.fold(init=0, fn(acc, child) {
+        let cg = count_groups(child)
+        if cg > acc { cg } else { acc }
+      })
+      if group_idx > max_child {
+        group_idx
+      } else {
+        max_child
+      }
+    }
+    Alternation(left, right) => {
+      let lg = left.fold(init=0, fn(acc, n) {
+        let g = count_groups(n)
+        if g > acc { g } else { acc }
+      })
+      let rg = right.fold(init=0, fn(acc, n) {
+        let g = count_groups(n)
+        if g > acc { g } else { acc }
+      })
+      if lg > rg { lg } else { rg }
+    }
+    Sequence(nodes) =>
+      nodes.fold(init=0, fn(acc, n) {
+        let g = count_groups(n)
+        if g > acc { g } else { acc }
+      })
+  }
+}
+
+// ---- Public API ----
+
+///|
+pub fn regex_match_at(
+  pattern : String,
+  flags : String,
+  input : String,
+  start_pos : Int,
+) -> RegexMatch? raise Error {
+  let node = RegexParser::new(pattern).parse()
+  let input_chars = input.to_array()
+  let num_groups = count_groups(node)
+  let icase = flags.contains("i")
+  let captures : Array[String?] = Array::make(num_groups, None)
+  match regex_exec(node, input_chars, start_pos, captures, icase) {
+    Some(end_pos) => Some({ start: start_pos, end_: end_pos, captures })
+    None => None
+  }
+}
+
+///|
+pub fn regex_search(
+  pattern : String,
+  flags : String,
+  input : String,
+) -> RegexMatch? raise Error {
+  let node = RegexParser::new(pattern).parse()
+  let input_chars = input.to_array()
+  let num_groups = count_groups(node)
+  let icase = flags.contains("i")
+  for i = 0; i <= input_chars.length(); i = i + 1 {
+    let captures : Array[String?] = Array::make(num_groups, None)
+    match regex_exec(node, input_chars, i, captures, icase) {
+      Some(end_pos) => return Some({ start: i, end_: end_pos, captures })
+      None => continue
+    }
+  }
+  None
+}
+
+///|
+pub fn regex_search_all(
+  pattern : String,
+  flags : String,
+  input : String,
+) -> Array[RegexMatch] raise Error {
+  let node = RegexParser::new(pattern).parse()
+  let input_chars = input.to_array()
+  let num_groups = count_groups(node)
+  let icase = flags.contains("i")
+  let results : Array[RegexMatch] = []
+  let mut i = 0
+  while i <= input_chars.length() {
+    let captures : Array[String?] = Array::make(num_groups, None)
+    match regex_exec(node, input_chars, i, captures, icase) {
+      Some(end_pos) => {
+        results.push({ start: i, end_: end_pos, captures })
+        if end_pos == i {
+          i += 1
+        } else {
+          i = end_pos
+        }
+      }
+      None => i += 1
+    }
+  }
+  results
+}
+
+// ---- RegExp Object Creation ----
+
+///|
+pub fn make_regexp_object(pattern : String, flags : String) -> Value {
+  let has_global = flags.contains("g")
+  let has_ignore_case = flags.contains("i")
+  let has_multiline = flags.contains("m")
+  let props : Map[String, Value] = {}
+  props["source"] = String_(pattern)
+  props["flags"] = String_(flags)
+  props["global"] = Bool(has_global)
+  props["ignoreCase"] = Bool(has_ignore_case)
+  props["multiline"] = Bool(has_multiline)
+  props["lastIndex"] = Number(0.0)
+  // test method
+  props["test"] = make_native_func("test", fn(args) {
+    let str = if args.length() > 0 { args[0].to_string() } else { "" }
+    let result = try { regex_search(pattern, flags, str) } catch { _ => None }
+    match result {
+      Some(_) => Bool(true)
+      None => Bool(false)
+    }
+  })
+  // exec method
+  props["exec"] = make_native_func("exec", fn(args) {
+    let str = if args.length() > 0 { args[0].to_string() } else { "" }
+    let result = try {
+      regex_search(pattern, flags, str)
+    } catch {
+      _ => None
+    }
+    match result {
+      Some(m) => {
+        let elements : Array[Value] = []
+        // First element: full match
+        let input_chars = str.to_array()
+        let buf = StringBuilder::new()
+        for i = m.start; i < m.end_; i = i + 1 {
+          buf.write_char(input_chars[i])
+        }
+        elements.push(String_(buf.to_string()))
+        // Capture groups
+        for cap in m.captures {
+          match cap {
+            Some(s) => elements.push(String_(s))
+            None => elements.push(Undefined)
+          }
+        }
+        Array({ elements, })
+      }
+      None => Null
+    }
+  })
+  Object({
+    properties: props,
+    prototype: Null,
+    callable: None,
+    class_name: "RegExp",
+    descriptors: {},
+    extensible: true,
+  })
+}
+
+///|
+fn substring(chars : Array[Char], start : Int, end_ : Int) -> String {
+  let buf = StringBuilder::new()
+  for i = start; i < end_; i = i + 1 {
+    buf.write_char(chars[i])
+  }
+  buf.to_string()
+}
+
+// ---- String Regex Methods ----
+
+///|
+pub fn string_match_regex(s : String, pattern : String, flags : String) -> Value {
+  if flags.contains("g") {
+    // Global match: return array of all matches
+    let matches = try {
+      regex_search_all(pattern, flags, s)
+    } catch {
+      _ => []
+    }
+    let input_chars = s.to_array()
+    let elements : Array[Value] = []
+    for m in matches {
+      elements.push(String_(substring(input_chars, m.start, m.end_)))
+    }
+    if elements.length() == 0 {
+      return Null
+    }
+    Array({ elements, })
+  } else {
+    // Non-global: return first match with captures
+    let result = try {
+      regex_search(pattern, flags, s)
+    } catch {
+      _ => None
+    }
+    match result {
+      Some(m) => {
+        let input_chars = s.to_array()
+        let elements : Array[Value] = []
+        elements.push(String_(substring(input_chars, m.start, m.end_)))
+        for cap in m.captures {
+          match cap {
+            Some(c) => elements.push(String_(c))
+            None => elements.push(Undefined)
+          }
+        }
+        Array({ elements, })
+      }
+      None => Null
+    }
+  }
+}
+
+///|
+pub fn string_search_regex(s : String, pattern : String, flags : String) -> Value {
+  let result = try {
+    regex_search(pattern, flags, s)
+  } catch {
+    _ => None
+  }
+  match result {
+    Some(m) => Number(m.start.to_double())
+    None => Number(-1.0)
+  }
+}
+
+///|
+pub fn string_replace_regex(
+  s : String,
+  pattern : String,
+  flags : String,
+  replacement : String,
+) -> Value {
+  let input_chars = s.to_array()
+  if flags.contains("g") {
+    // Replace all matches
+    let matches = try {
+      regex_search_all(pattern, flags, s)
+    } catch {
+      _ => []
+    }
+    if matches.length() == 0 {
+      return String_(s)
+    }
+    let buf = StringBuilder::new()
+    let mut last_end = 0
+    for m in matches {
+      // Add text before this match
+      for i = last_end; i < m.start; i = i + 1 {
+        buf.write_char(input_chars[i])
+      }
+      // Process replacement string (handle $1, $2, etc.)
+      let repl = process_replacement(replacement, input_chars, m)
+      buf.write_string(repl)
+      last_end = m.end_
+    }
+    // Add remaining text
+    for i = last_end; i < input_chars.length(); i = i + 1 {
+      buf.write_char(input_chars[i])
+    }
+    String_(buf.to_string())
+  } else {
+    // Replace first match only
+    let result = try {
+      regex_search(pattern, flags, s)
+    } catch {
+      _ => None
+    }
+    match result {
+      Some(m) => {
+        let buf = StringBuilder::new()
+        for i = 0; i < m.start; i = i + 1 {
+          buf.write_char(input_chars[i])
+        }
+        let repl = process_replacement(replacement, input_chars, m)
+        buf.write_string(repl)
+        for i = m.end_; i < input_chars.length(); i = i + 1 {
+          buf.write_char(input_chars[i])
+        }
+        String_(buf.to_string())
+      }
+      None => String_(s)
+    }
+  }
+}
+
+///|
+fn process_replacement(
+  replacement : String,
+  input_chars : Array[Char],
+  m : RegexMatch,
+) -> String {
+  let repl_chars = replacement.to_array()
+  let buf = StringBuilder::new()
+  let mut i = 0
+  while i < repl_chars.length() {
+    if repl_chars[i] == '$' && i + 1 < repl_chars.length() {
+      let next = repl_chars[i + 1]
+      if next == '&' {
+        // $& = full match
+        for j = m.start; j < m.end_; j = j + 1 {
+          buf.write_char(input_chars[j])
+        }
+        i += 2
+        continue
+      } else if next >= '1' && next <= '9' {
+        let group_idx = next.to_int() - '0'.to_int()
+        if group_idx - 1 < m.captures.length() {
+          match m.captures[group_idx - 1] {
+            Some(s) => buf.write_string(s)
+            None => ()
+          }
+        }
+        i += 2
+        continue
+      } else if next == '$' {
+        buf.write_char('$')
+        i += 2
+        continue
+      }
+    }
+    buf.write_char(repl_chars[i])
+    i += 1
+  }
+  buf.to_string()
+}

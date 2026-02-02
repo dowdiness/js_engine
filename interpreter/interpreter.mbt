@@ -10,6 +10,7 @@ pub(all) enum Signal {
 pub(all) struct Interpreter {
   output : Array[String]
   global : Environment
+  mut strict : Bool
 }
 
 ///|
@@ -17,7 +18,19 @@ pub fn Interpreter::new() -> Interpreter {
   let global = Environment::new()
   let output : Array[String] = []
   setup_builtins(global, output)
-  { output, global }
+  { output, global, strict: false }
+}
+
+///|
+fn has_use_strict(stmts : Array[@ast.Stmt]) -> Bool {
+  if stmts.length() > 0 {
+    match stmts[0] {
+      ExprStmt(StringLit("use strict", _), _) => true
+      _ => false
+    }
+  } else {
+    false
+  }
 }
 
 ///|
@@ -25,6 +38,12 @@ pub fn Interpreter::run(
   self : Interpreter,
   stmts : Array[@ast.Stmt],
 ) -> Value raise Error {
+  // Check for "use strict" directive
+  if has_use_strict(stmts) {
+    self.strict = true
+  }
+  // Hoist var declarations and function declarations at global level
+  self.hoist_declarations(stmts, self.global)
   let mut last : Value = Undefined
   for stmt in stmts {
     match self.exec_stmt(stmt, self.global) {
@@ -59,7 +78,14 @@ fn Interpreter::exec_stmt(
         Some(expr) => self.eval_expr(expr, env)
         None => Undefined
       }
-      env.def(name, value, bk)
+      // For var declarations that were hoisted, use assign instead of def
+      if bk == VarBinding && env.bindings.contains(name) {
+        if init is Some(_) {
+          env.assign(name, value)
+        }
+      } else {
+        env.def(name, value, bk)
+      }
       Normal(Undefined)
     }
     Block(stmts, _) => {
@@ -160,7 +186,12 @@ fn Interpreter::exec_stmt(
         body,
         closure: env,
       }
-      env.def(name, make_func(func_data), LetBinding)
+      // If already hoisted, just assign; otherwise define
+      if env.bindings.contains(name) {
+        env.assign(name, make_func(func_data))
+      } else {
+        env.def(name, make_func(func_data), VarBinding)
+      }
       Normal(Undefined)
     }
     ReturnStmt(expr, _) => {
@@ -275,6 +306,90 @@ fn Interpreter::exec_stmt(
       }
       Normal(Undefined)
     }
+    ForOfStmt(var_kind, name, iterable_expr, body, _) => {
+      let iterable = self.eval_expr(iterable_expr, env)
+      let items : Array[Value] = match iterable {
+        Array(data) => {
+          let result : Array[Value] = []
+          for el in data.elements {
+            result.push(el)
+          }
+          result
+        }
+        String_(s) => {
+          let result : Array[Value] = []
+          let chars = s.to_array()
+          for c in chars {
+            let buf = StringBuilder::new()
+            buf.write_char(c)
+            result.push(String_(buf.to_string()))
+          }
+          result
+        }
+        _ =>
+          raise Failure::Failure(
+            "for-of requires an iterable (array or string)",
+          )
+      }
+      for item in items {
+        let body_env = Environment::new(parent=Some(env))
+        match var_kind {
+          Some(kind) => {
+            let bk : BindingKind = match kind {
+              LetKind => LetBinding
+              ConstKind => ConstBinding
+              VarKind => VarBinding
+            }
+            body_env.def(name, item, bk)
+          }
+          None => env.assign(name, item)
+        }
+        match self.exec_stmt(body, body_env) {
+          Normal(_) => ()
+          ReturnSignal(v) => return ReturnSignal(v)
+          BreakSignal(None) => break
+          BreakSignal(Some(l)) =>
+            if label == Some(l) {
+              break
+            } else {
+              return BreakSignal(Some(l))
+            }
+          ContinueSignal(None) => continue
+          ContinueSignal(Some(l)) =>
+            if label == Some(l) {
+              continue
+            } else {
+              return ContinueSignal(Some(l))
+            }
+        }
+      }
+      Normal(Undefined)
+    }
+    DestructureDecl(kind, pattern, init_expr, _) => {
+      let bk : BindingKind = match kind {
+        LetKind => LetBinding
+        ConstKind => ConstBinding
+        VarKind => VarBinding
+      }
+      let value = self.eval_expr(init_expr, env)
+      self.bind_pattern(pattern, value, env, bk)
+      Normal(Undefined)
+    }
+    FuncDeclExt(name, params, rest_param, body, _) => {
+      let func_data : FuncDataExt = {
+        name: Some(name),
+        params,
+        rest_param,
+        body,
+        closure: env,
+      }
+      if env.bindings.contains(name) {
+        env.assign(name, make_func_ext(func_data))
+      } else {
+        env.def(name, make_func_ext(func_data), VarBinding)
+      }
+      Normal(Undefined)
+    }
     LabeledStmt(lbl, body, _) =>
       match self.exec_stmt(body, env, label=Some(lbl)) {
         BreakSignal(Some(l)) =>
@@ -299,7 +414,13 @@ fn collect_for_in_keys(obj : Value) -> Array[String] {
         data.properties.each(fn(k, _v) {
           if not(seen.contains(k)) {
             seen[k] = true
-            keys.push(k)
+            let enumerable = match data.descriptors.get(k) {
+              Some(d) => d.enumerable
+              None => true
+            }
+            if enumerable {
+              keys.push(k)
+            }
           }
         })
         current = data.prototype
@@ -334,6 +455,272 @@ fn Interpreter::exec_stmts(
     }
   }
   Normal(last)
+}
+
+///|
+fn hoist_pattern(pattern : @ast.Pattern, env : Environment) -> Unit raise Error {
+  match pattern {
+    IdentPat(name) =>
+      if not(env.bindings.contains(name)) {
+        env.def(name, Undefined, VarBinding)
+      }
+    ArrayPat(elements, rest) => {
+      for elem in elements {
+        match elem {
+          Some(p) => hoist_pattern(p, env)
+          None => ()
+        }
+      }
+      match rest {
+        Some(p) => hoist_pattern(p, env)
+        None => ()
+      }
+    }
+    ObjectPat(props, rest) => {
+      for prop in props {
+        hoist_pattern(prop.value, env)
+      }
+      match rest {
+        Some(p) => hoist_pattern(p, env)
+        None => ()
+      }
+    }
+  }
+}
+
+///|
+fn Interpreter::hoist_declarations(
+  self : Interpreter,
+  stmts : Array[@ast.Stmt],
+  env : Environment,
+) -> Unit raise Error {
+  for stmt in stmts {
+    match stmt {
+      VarDecl(VarKind, name, _, _) =>
+        if not(env.bindings.contains(name)) {
+          env.def(name, Undefined, VarBinding)
+        }
+      FuncDecl(name, params, body, _) => {
+        let func_data : FuncData = {
+          name: Some(name),
+          params,
+          body,
+          closure: env,
+        }
+        if env.bindings.contains(name) {
+          env.assign(name, make_func(func_data))
+        } else {
+          env.def(name, make_func(func_data), VarBinding)
+        }
+      }
+      FuncDeclExt(name, params, rest_param, body, _) => {
+        let func_data : FuncDataExt = {
+          name: Some(name),
+          params,
+          rest_param,
+          body,
+          closure: env,
+        }
+        if env.bindings.contains(name) {
+          env.assign(name, make_func_ext(func_data))
+        } else {
+          env.def(name, make_func_ext(func_data), VarBinding)
+        }
+      }
+      DestructureDecl(VarKind, pattern, _, _) =>
+        hoist_pattern(pattern, env)
+      _ => ()
+    }
+  }
+}
+
+///|
+fn Interpreter::bind_pattern(
+  self : Interpreter,
+  pattern : @ast.Pattern,
+  value : Value,
+  env : Environment,
+  bk : BindingKind,
+) -> Unit raise Error {
+  match pattern {
+    IdentPat(name) =>
+      if bk == VarBinding && env.bindings.contains(name) {
+        env.assign(name, value)
+      } else {
+        env.def(name, value, bk)
+      }
+    ArrayPat(elements, rest) => {
+      let arr_elements : Array[Value] = match value {
+        Array(data) => data.elements
+        _ => []
+      }
+      for i = 0; i < elements.length(); i = i + 1 {
+        match elements[i] {
+          Some(pat) => {
+            let val : Value = if i < arr_elements.length() {
+              arr_elements[i]
+            } else {
+              Undefined
+            }
+            self.bind_pattern(pat, val, env, bk)
+          }
+          None => () // hole — skip
+        }
+      }
+      match rest {
+        Some(rest_pat) => {
+          let rest_elements : Array[Value] = []
+          for i = elements.length(); i < arr_elements.length(); i = i + 1 {
+            rest_elements.push(arr_elements[i])
+          }
+          self.bind_pattern(rest_pat, Array({ elements: rest_elements }), env, bk)
+        }
+        None => ()
+      }
+    }
+    ObjectPat(props, rest) => {
+      let used_keys : Map[String, Bool] = {}
+      for prop in props {
+        used_keys[prop.key] = true
+        let val : Value = match value {
+          Object(data) =>
+            match data.properties.get(prop.key) {
+              Some(v) => v
+              None => Undefined
+            }
+          _ => Undefined
+        }
+        let final_val : Value = if val is Undefined {
+          match prop.default_val {
+            Some(default_expr) => self.eval_expr(default_expr, env)
+            None => Undefined
+          }
+        } else {
+          val
+        }
+        self.bind_pattern(prop.value, final_val, env, bk)
+      }
+      match rest {
+        Some(rest_pat) => {
+          let rest_props : Map[String, Value] = {}
+          match value {
+            Object(data) =>
+              data.properties.each(fn(k, v) {
+                if not(used_keys.contains(k)) {
+                  rest_props[k] = v
+                }
+              })
+            _ => ()
+          }
+          self.bind_pattern(
+            rest_pat,
+            Object({
+              properties: rest_props,
+              prototype: Null,
+              callable: None,
+              class_name: "Object",
+              descriptors: {},
+              extensible: true,
+            }),
+            env,
+            bk,
+          )
+        }
+        None => ()
+      }
+    }
+  }
+}
+
+///|
+fn Interpreter::assign_pattern(
+  self : Interpreter,
+  pattern : @ast.Pattern,
+  value : Value,
+  env : Environment,
+) -> Unit raise Error {
+  match pattern {
+    IdentPat(name) => env.assign(name, value)
+    ArrayPat(elements, rest) => {
+      let arr_elements : Array[Value] = match value {
+        Array(data) => data.elements
+        _ => []
+      }
+      for i = 0; i < elements.length(); i = i + 1 {
+        match elements[i] {
+          Some(pat) => {
+            let val : Value = if i < arr_elements.length() {
+              arr_elements[i]
+            } else {
+              Undefined
+            }
+            self.assign_pattern(pat, val, env)
+          }
+          None => ()
+        }
+      }
+      match rest {
+        Some(rest_pat) => {
+          let rest_elements : Array[Value] = []
+          for i = elements.length(); i < arr_elements.length(); i = i + 1 {
+            rest_elements.push(arr_elements[i])
+          }
+          self.assign_pattern(rest_pat, Array({ elements: rest_elements }), env)
+        }
+        None => ()
+      }
+    }
+    ObjectPat(props, rest) => {
+      let used_keys : Map[String, Bool] = {}
+      for prop in props {
+        used_keys[prop.key] = true
+        let val : Value = match value {
+          Object(data) =>
+            match data.properties.get(prop.key) {
+              Some(v) => v
+              None => Undefined
+            }
+          _ => Undefined
+        }
+        let final_val : Value = if val is Undefined {
+          match prop.default_val {
+            Some(default_expr) => self.eval_expr(default_expr, env)
+            None => Undefined
+          }
+        } else {
+          val
+        }
+        self.assign_pattern(prop.value, final_val, env)
+      }
+      match rest {
+        Some(rest_pat) => {
+          let rest_props : Map[String, Value] = {}
+          match value {
+            Object(data) =>
+              data.properties.each(fn(k, v) {
+                if not(used_keys.contains(k)) {
+                  rest_props[k] = v
+                }
+              })
+            _ => ()
+          }
+          self.assign_pattern(
+            rest_pat,
+            Object({
+              properties: rest_props,
+              prototype: Null,
+              callable: None,
+              class_name: "Object",
+              descriptors: {},
+              extensible: true,
+            }),
+            env,
+          )
+        }
+        None => ()
+      }
+    }
+  }
 }
 
 ///|
@@ -416,10 +803,35 @@ fn Interpreter::eval_expr(
         prototype: Null,
         callable: None,
         class_name: "Object",
+        descriptors: {},
+        extensible: true,
       })
     }
     ArrayLit(elements, _) => {
-      let vals : Array[Value] = elements.map(fn(e) { self.eval_expr(e, env) })
+      let vals : Array[Value] = []
+      for e in elements {
+        match e {
+          SpreadExpr(inner, _) => {
+            let val = self.eval_expr(inner, env)
+            match val {
+              Array(data) =>
+                for el in data.elements {
+                  vals.push(el)
+                }
+              String_(s) => {
+                let chars = s.to_array()
+                for c in chars {
+                  let buf = StringBuilder::new()
+                  buf.write_char(c)
+                  vals.push(String_(buf.to_string()))
+                }
+              }
+              _ => vals.push(val)
+            }
+          }
+          _ => vals.push(self.eval_expr(e, env))
+        }
+      }
       Array({ elements: vals })
     }
     ComputedMember(obj_expr, key_expr, loc) => {
@@ -432,6 +844,32 @@ fn Interpreter::eval_expr(
       let value = self.eval_expr(value_expr, env)
       match obj {
         Object(data) => {
+          // Check writable descriptor
+          match data.descriptors.get(prop) {
+            Some(desc) =>
+              if not(desc.writable) {
+                if self.strict {
+                  raise JsException(
+                    String_(
+                      "TypeError: Cannot assign to read only property '\{prop}'",
+                    ),
+                  )
+                }
+                return value
+              }
+            None => ()
+          }
+          // Check extensible for new properties
+          if not(data.properties.contains(prop)) && not(data.extensible) {
+            if self.strict {
+              raise JsException(
+                String_(
+                  "TypeError: Cannot add property \{prop}, object is not extensible",
+                ),
+              )
+            }
+            return value
+          }
           data.properties[prop] = value
           value
         }
@@ -447,7 +885,32 @@ fn Interpreter::eval_expr(
       let value = self.eval_expr(value_expr, env)
       match obj {
         Object(data) => {
-          data.properties[key.to_string()] = value
+          let prop = key.to_string()
+          match data.descriptors.get(prop) {
+            Some(desc) =>
+              if not(desc.writable) {
+                if self.strict {
+                  raise JsException(
+                    String_(
+                      "TypeError: Cannot assign to read only property '\{prop}'",
+                    ),
+                  )
+                }
+                return value
+              }
+            None => ()
+          }
+          if not(data.properties.contains(prop)) && not(data.extensible) {
+            if self.strict {
+              raise JsException(
+                String_(
+                  "TypeError: Cannot add property \{prop}, object is not extensible",
+                ),
+              )
+            }
+            return value
+          }
+          data.properties[prop] = value
           value
         }
         Array(data) =>
@@ -499,7 +962,44 @@ fn Interpreter::eval_expr(
         prototype: Null,
         callable: Some(ArrowFunc(func_data)),
         class_name: "Function",
+        descriptors: {},
+        extensible: true,
       })
+    }
+    ArrowFuncExt(params, rest_param, body, _) => {
+      let func_data : FuncDataExt = {
+        name: None,
+        params,
+        rest_param,
+        body,
+        closure: env,
+      }
+      Object({
+        properties: {},
+        prototype: Null,
+        callable: Some(ArrowFuncExt(func_data)),
+        class_name: "Function",
+        descriptors: {},
+        extensible: true,
+      })
+    }
+    FuncExprExt(name, params, rest_param, body, _) => {
+      let func_data : FuncDataExt = {
+        name,
+        params,
+        rest_param,
+        body,
+        closure: env,
+      }
+      make_func_ext(func_data)
+    }
+    RegexLit(pattern, flags, _) => make_regexp_object(pattern, flags)
+    SpreadExpr(_, _) =>
+      raise Failure::Failure("Spread expression used outside of call or array literal")
+    DestructureAssign(pattern, value_expr, _) => {
+      let value = self.eval_expr(value_expr, env)
+      self.assign_pattern(pattern, value, env)
+      value
     }
   }
 }
@@ -724,7 +1224,22 @@ fn Interpreter::eval_unary(
           let obj = self.eval_expr(obj_expr, env)
           match obj {
             Object(data) => {
+              match data.descriptors.get(prop) {
+                Some(desc) =>
+                  if not(desc.configurable) {
+                    if self.strict {
+                      raise JsException(
+                        String_(
+                          "TypeError: Cannot delete property '\{prop}'",
+                        ),
+                      )
+                    }
+                    return Bool(false)
+                  }
+                None => ()
+              }
               let _ = data.properties.remove(prop)
+              let _ = data.descriptors.remove(prop)
               Bool(true)
             }
             _ => Bool(true)
@@ -735,7 +1250,23 @@ fn Interpreter::eval_unary(
           let key = self.eval_expr(key_expr, env)
           match obj {
             Object(data) => {
-              let _ = data.properties.remove(key.to_string())
+              let k = key.to_string()
+              match data.descriptors.get(k) {
+                Some(desc) =>
+                  if not(desc.configurable) {
+                    if self.strict {
+                      raise JsException(
+                        String_(
+                          "TypeError: Cannot delete property '\{k}'",
+                        ),
+                      )
+                    }
+                    return Bool(false)
+                  }
+                None => ()
+              }
+              let _ = data.properties.remove(k)
+              let _ = data.descriptors.remove(k)
               Bool(true)
             }
             _ => Bool(true)
@@ -759,6 +1290,39 @@ fn Interpreter::eval_unary(
 }
 
 ///|
+///|
+fn Interpreter::eval_args_with_spread(
+  self : Interpreter,
+  arg_exprs : Array[@ast.Expr],
+  env : Environment,
+) -> Array[Value] raise Error {
+  let args : Array[Value] = []
+  for a in arg_exprs {
+    match a {
+      SpreadExpr(inner, _) => {
+        let val = self.eval_expr(inner, env)
+        match val {
+          Array(data) =>
+            for el in data.elements {
+              args.push(el)
+            }
+          String_(s) => {
+            let chars = s.to_array()
+            for c in chars {
+              let buf = StringBuilder::new()
+              buf.write_char(c)
+              args.push(String_(buf.to_string()))
+            }
+          }
+          _ => args.push(val)
+        }
+      }
+      _ => args.push(self.eval_expr(a, env))
+    }
+  }
+  args
+}
+
 fn Interpreter::eval_call(
   self : Interpreter,
   callee_expr : @ast.Expr,
@@ -766,7 +1330,7 @@ fn Interpreter::eval_call(
   env : Environment,
   loc : @token.Loc,
 ) -> Value raise Error {
-  let args : Array[Value] = arg_exprs.map(fn(a) { self.eval_expr(a, env) })
+  let args : Array[Value] = self.eval_args_with_spread(arg_exprs, env)
   match callee_expr {
     Member(obj_expr, prop, mloc) =>
       match obj_expr {
@@ -806,6 +1370,11 @@ fn Interpreter::call_value(
       match obj_data.callable {
         Some(UserFunc(data)) => {
           let func_env = Environment::new(parent=Some(data.closure))
+          let func_strict = self.strict || has_use_strict(data.body)
+          let saved_strict = self.strict
+          if func_strict {
+            self.strict = true
+          }
           func_env.def("this", this_val, LetBinding)
           for i = 0; i < data.params.length(); i = i + 1 {
             let val : Value = if i < args.length() {
@@ -815,6 +1384,29 @@ fn Interpreter::call_value(
             }
             func_env.def(data.params[i], val, LetBinding)
           }
+          // Create arguments object
+          let args_props : Map[String, Value] = {}
+          for i = 0; i < args.length(); i = i + 1 {
+            args_props[i.to_string()] = args[i]
+          }
+          args_props["length"] = Number(args.length().to_double())
+          if not(func_strict) {
+            args_props["callee"] = callee
+          }
+          func_env.def(
+            "arguments",
+            Object({
+              properties: args_props,
+              prototype: Null,
+              callable: None,
+              class_name: "Arguments",
+              descriptors: {},
+              extensible: true,
+            }),
+            VarBinding,
+          )
+          // Hoist var declarations and function declarations within function body
+          self.hoist_declarations(data.body, func_env)
           match data.name {
             Some(name) =>
               if not(func_env.bindings.contains(name)) {
@@ -822,14 +1414,23 @@ fn Interpreter::call_value(
               }
             None => ()
           }
-          match self.exec_stmts(data.body, func_env) {
-            Normal(v) => v
-            ReturnSignal(v) => v
-            BreakSignal(_) =>
-              raise Failure::Failure("break statement outside of loop")
-            ContinueSignal(_) =>
-              raise Failure::Failure("continue statement outside of loop")
+          let result = try {
+            match self.exec_stmts(data.body, func_env) {
+              Normal(v) => v
+              ReturnSignal(v) => v
+              BreakSignal(_) =>
+                raise Failure::Failure("break statement outside of loop")
+              ContinueSignal(_) =>
+                raise Failure::Failure("continue statement outside of loop")
+            }
+          } catch {
+            e => {
+              self.strict = saved_strict
+              raise e
+            }
           }
+          self.strict = saved_strict
+          result
         }
         Some(ArrowFunc(data)) => {
           let func_env = Environment::new(parent=Some(data.closure))
@@ -842,6 +1443,132 @@ fn Interpreter::call_value(
             }
             func_env.def(data.params[i], val, LetBinding)
           }
+          self.hoist_declarations(data.body, func_env)
+          match self.exec_stmts(data.body, func_env) {
+            Normal(v) => v
+            ReturnSignal(v) => v
+            BreakSignal(_) =>
+              raise Failure::Failure("break statement outside of loop")
+            ContinueSignal(_) =>
+              raise Failure::Failure("continue statement outside of loop")
+          }
+        }
+        Some(UserFuncExt(data)) => {
+          let func_env = Environment::new(parent=Some(data.closure))
+          let func_strict = self.strict || has_use_strict(data.body)
+          let saved_strict = self.strict
+          if func_strict {
+            self.strict = true
+          }
+          func_env.def("this", this_val, LetBinding)
+          // Bind params with defaults
+          for i = 0; i < data.params.length(); i = i + 1 {
+            let param = data.params[i]
+            let val : Value = if i < args.length() && not(args[i] is Undefined) {
+              args[i]
+            } else {
+              match param.default_val {
+                Some(default_expr) => self.eval_expr(default_expr, func_env)
+                None =>
+                  if i < args.length() {
+                    args[i]
+                  } else {
+                    Undefined
+                  }
+              }
+            }
+            func_env.def(param.name, val, LetBinding)
+          }
+          // Rest param
+          match data.rest_param {
+            Some(rest_name) => {
+              let rest_elements : Array[Value] = []
+              for i = data.params.length(); i < args.length(); i = i + 1 {
+                rest_elements.push(args[i])
+              }
+              func_env.def(rest_name, Array({ elements: rest_elements }), LetBinding)
+            }
+            None => ()
+          }
+          // Create arguments object
+          let args_props : Map[String, Value] = {}
+          for i = 0; i < args.length(); i = i + 1 {
+            args_props[i.to_string()] = args[i]
+          }
+          args_props["length"] = Number(args.length().to_double())
+          if not(func_strict) {
+            args_props["callee"] = callee
+          }
+          func_env.def(
+            "arguments",
+            Object({
+              properties: args_props,
+              prototype: Null,
+              callable: None,
+              class_name: "Arguments",
+              descriptors: {},
+              extensible: true,
+            }),
+            VarBinding,
+          )
+          self.hoist_declarations(data.body, func_env)
+          match data.name {
+            Some(name) =>
+              if not(func_env.bindings.contains(name)) {
+                func_env.def(name, callee, LetBinding)
+              }
+            None => ()
+          }
+          let result = try {
+            match self.exec_stmts(data.body, func_env) {
+              Normal(v) => v
+              ReturnSignal(v) => v
+              BreakSignal(_) =>
+                raise Failure::Failure("break statement outside of loop")
+              ContinueSignal(_) =>
+                raise Failure::Failure("continue statement outside of loop")
+            }
+          } catch {
+            e => {
+              self.strict = saved_strict
+              raise e
+            }
+          }
+          self.strict = saved_strict
+          result
+        }
+        Some(ArrowFuncExt(data)) => {
+          let func_env = Environment::new(parent=Some(data.closure))
+          // Arrow functions do NOT rebind this
+          for i = 0; i < data.params.length(); i = i + 1 {
+            let param = data.params[i]
+            let val : Value = if i < args.length() && not(args[i] is Undefined) {
+              args[i]
+            } else {
+              match param.default_val {
+                Some(default_expr) => self.eval_expr(default_expr, func_env)
+                None =>
+                  if i < args.length() {
+                    args[i]
+                  } else {
+                    Undefined
+                  }
+              }
+            }
+            func_env.def(param.name, val, LetBinding)
+          }
+          // Rest param
+          match data.rest_param {
+            Some(rest_name) => {
+              let rest_elements : Array[Value] = []
+              for i = data.params.length(); i < args.length(); i = i + 1 {
+                rest_elements.push(args[i])
+              }
+              func_env.def(rest_name, Array({ elements: rest_elements }), LetBinding)
+            }
+            None => ()
+          }
+          self.hoist_declarations(data.body, func_env)
           match self.exec_stmts(data.body, func_env) {
             Normal(v) => v
             ReturnSignal(v) => v
@@ -889,6 +1616,7 @@ fn Interpreter::call_value(
         }
         Some(MethodCallable(_, func)) => func(this_val, args)
         Some(NativeCallable(_, func)) => func(args)
+        Some(InterpreterCallable(_, func)) => func(self, this_val, args)
         None =>
           raise Failure::Failure(
             "Not a function at line \{loc.line}, col \{loc.col}",
@@ -962,6 +1690,8 @@ fn Interpreter::get_property(
                   prototype: Null,
                   callable: Some(FuncCallMethod(obj)),
                   class_name: "Function",
+                  descriptors: {},
+                  extensible: true,
                 })
               } else if prop == "apply" {
                 return Object({
@@ -969,6 +1699,8 @@ fn Interpreter::get_property(
                   prototype: Null,
                   callable: Some(FuncApplyMethod(obj)),
                   class_name: "Function",
+                  descriptors: {},
+                  extensible: true,
                 })
               } else if prop == "bind" {
                 let target = obj
@@ -987,6 +1719,8 @@ fn Interpreter::get_property(
                     prototype: Null,
                     callable: Some(BoundFunc(target, bind_this, bound_args)),
                     class_name: "Function",
+                    descriptors: {},
+                    extensible: true,
                   })
                 })
               }
@@ -1011,6 +1745,8 @@ fn Interpreter::get_property(
                 }),
               ),
               class_name: "Function",
+              descriptors: {},
+              extensible: true,
             })
           }
           if prop == "toString" {
@@ -1025,7 +1761,7 @@ fn Interpreter::get_property(
       if prop == "length" {
         Number(data.elements.length().to_double())
       } else {
-        get_array_method(data, prop)
+        get_array_method_with_interp(data, prop)
       }
     String_(s) =>
       if prop == "length" {
@@ -1033,6 +1769,7 @@ fn Interpreter::get_property(
       } else {
         get_string_method(s, prop)
       }
+    Number(_) => get_number_method(obj, prop)
     Null | Undefined =>
       raise Failure::Failure(
         "Cannot read property '\{prop}' of \{type_of(obj)} at line \{loc.line}, col \{loc.col}",
@@ -1075,6 +1812,8 @@ fn Interpreter::get_computed_property(
                   prototype: Null,
                   callable: Some(FuncCallMethod(obj)),
                   class_name: "Function",
+                  descriptors: {},
+                  extensible: true,
                 })
               } else if prop == "apply" {
                 return Object({
@@ -1082,6 +1821,8 @@ fn Interpreter::get_computed_property(
                   prototype: Null,
                   callable: Some(FuncApplyMethod(obj)),
                   class_name: "Function",
+                  descriptors: {},
+                  extensible: true,
                 })
               } else if prop == "bind" {
                 let target = obj
@@ -1100,6 +1841,8 @@ fn Interpreter::get_computed_property(
                     prototype: Null,
                     callable: Some(BoundFunc(target, bind_this, bound_args)),
                     class_name: "Function",
+                    descriptors: {},
+                    extensible: true,
                   })
                 })
               }
@@ -1124,6 +1867,8 @@ fn Interpreter::get_computed_property(
                 }),
               ),
               class_name: "Function",
+              descriptors: {},
+              extensible: true,
             })
           }
           if prop == "toString" {
@@ -1146,7 +1891,7 @@ fn Interpreter::get_computed_property(
           }
         }
         String_("length") => Number(data.elements.length().to_double())
-        String_(s) => get_array_method(data, s)
+        String_(s) => get_array_method_with_interp(data, s)
         _ => Undefined
       }
     String_(s) =>
@@ -1163,6 +1908,11 @@ fn Interpreter::get_computed_property(
         }
         String_("length") => Number(s.length().to_double())
         String_(method_name) => get_string_method(s, method_name)
+        _ => Undefined
+      }
+    Number(_) =>
+      match key {
+        String_(method_name) => get_number_method(obj, method_name)
         _ => Undefined
       }
     Null | Undefined =>
@@ -1182,11 +1932,16 @@ fn Interpreter::eval_new(
   loc : @token.Loc,
 ) -> Value raise Error {
   let ctor = self.eval_expr(callee_expr, env)
-  let args : Array[Value] = arg_exprs.map(fn(a) { self.eval_expr(a, env) })
+  let args : Array[Value] = self.eval_args_with_spread(arg_exprs, env)
   match ctor {
     Object(obj_data) =>
       match obj_data.callable {
         Some(UserFunc(data)) => {
+          let func_strict = self.strict || has_use_strict(data.body)
+          let saved_strict = self.strict
+          if func_strict {
+            self.strict = true
+          }
           let proto = match obj_data.properties.get("prototype") {
             Some(v) => v
             None => Null
@@ -1196,6 +1951,8 @@ fn Interpreter::eval_new(
             prototype: proto,
             callable: None,
             class_name: "Object",
+            descriptors: {},
+            extensible: true,
           })
           let func_env = Environment::new(parent=Some(data.closure))
           func_env.def("this", new_obj, LetBinding)
@@ -1207,6 +1964,29 @@ fn Interpreter::eval_new(
             }
             func_env.def(data.params[i], val, LetBinding)
           }
+          // Create arguments object
+          let new_args_props : Map[String, Value] = {}
+          for i = 0; i < args.length(); i = i + 1 {
+            new_args_props[i.to_string()] = args[i]
+          }
+          new_args_props["length"] = Number(args.length().to_double())
+          if not(func_strict) {
+            new_args_props["callee"] = ctor
+          }
+          func_env.def(
+            "arguments",
+            Object({
+              properties: new_args_props,
+              prototype: Null,
+              callable: None,
+              class_name: "Arguments",
+              descriptors: {},
+              extensible: true,
+            }),
+            VarBinding,
+          )
+          // Hoist var declarations and function declarations
+          self.hoist_declarations(data.body, func_env)
           match data.name {
             Some(name) =>
               if not(func_env.bindings.contains(name)) {
@@ -1214,7 +1994,112 @@ fn Interpreter::eval_new(
               }
             None => ()
           }
-          let result = self.exec_stmts(data.body, func_env)
+          let result = try {
+            self.exec_stmts(data.body, func_env)
+          } catch {
+            e => {
+              self.strict = saved_strict
+              raise e
+            }
+          }
+          self.strict = saved_strict
+          match result {
+            Normal(_) => new_obj
+            ReturnSignal(v) =>
+              match v {
+                Object(_) => v
+                _ => new_obj
+              }
+            BreakSignal(_) =>
+              raise Failure::Failure("break statement outside of loop")
+            ContinueSignal(_) =>
+              raise Failure::Failure("continue statement outside of loop")
+          }
+        }
+        Some(UserFuncExt(data)) => {
+          let func_strict = self.strict || has_use_strict(data.body)
+          let saved_strict = self.strict
+          if func_strict {
+            self.strict = true
+          }
+          let proto = match obj_data.properties.get("prototype") {
+            Some(v) => v
+            None => Null
+          }
+          let new_obj = Object({
+            properties: {},
+            prototype: proto,
+            callable: None,
+            class_name: "Object",
+            descriptors: {},
+            extensible: true,
+          })
+          let func_env = Environment::new(parent=Some(data.closure))
+          func_env.def("this", new_obj, LetBinding)
+          for i = 0; i < data.params.length(); i = i + 1 {
+            let param = data.params[i]
+            let val : Value = if i < args.length() && not(args[i] is Undefined) {
+              args[i]
+            } else {
+              match param.default_val {
+                Some(default_expr) => self.eval_expr(default_expr, func_env)
+                None =>
+                  if i < args.length() {
+                    args[i]
+                  } else {
+                    Undefined
+                  }
+              }
+            }
+            func_env.def(param.name, val, LetBinding)
+          }
+          match data.rest_param {
+            Some(rest_name) => {
+              let rest_elements : Array[Value] = []
+              for i = data.params.length(); i < args.length(); i = i + 1 {
+                rest_elements.push(args[i])
+              }
+              func_env.def(rest_name, Array({ elements: rest_elements }), LetBinding)
+            }
+            None => ()
+          }
+          let new_args_props : Map[String, Value] = {}
+          for i = 0; i < args.length(); i = i + 1 {
+            new_args_props[i.to_string()] = args[i]
+          }
+          new_args_props["length"] = Number(args.length().to_double())
+          if not(func_strict) {
+            new_args_props["callee"] = ctor
+          }
+          func_env.def(
+            "arguments",
+            Object({
+              properties: new_args_props,
+              prototype: Null,
+              callable: None,
+              class_name: "Arguments",
+              descriptors: {},
+              extensible: true,
+            }),
+            VarBinding,
+          )
+          self.hoist_declarations(data.body, func_env)
+          match data.name {
+            Some(name) =>
+              if not(func_env.bindings.contains(name)) {
+                func_env.def(name, ctor, LetBinding)
+              }
+            None => ()
+          }
+          let result = try {
+            self.exec_stmts(data.body, func_env)
+          } catch {
+            e => {
+              self.strict = saved_strict
+              raise e
+            }
+          }
+          self.strict = saved_strict
           match result {
             Normal(_) => new_obj
             ReturnSignal(v) =>
@@ -1229,7 +2114,8 @@ fn Interpreter::eval_new(
           }
         }
         Some(NativeCallable(_, func)) => func(args)
-        Some(ArrowFunc(_)) =>
+        Some(InterpreterCallable(_, func)) => func(self, Undefined, args)
+        Some(ArrowFunc(_)) | Some(ArrowFuncExt(_)) =>
           raise JsException(
             String_("TypeError: arrow functions cannot be used as constructors"),
           )

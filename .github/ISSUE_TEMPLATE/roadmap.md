@@ -1,8 +1,8 @@
 ## Current State
 
-**Test262 Pass Rate: 8.18%** (1,598 passed / 17,941 failed / 30,085 skipped) — pending re-run after Phase 2
+**Test262 Pass Rate: 8.18%** (1,598 passed / 17,941 failed / 30,085 skipped) — pending re-run after Phase 3
 
-The MoonBit JS engine supports basic language features (variables, arithmetic, functions, closures, control flow, try/catch, new, this, switch, for-in, bitwise ops, objects, arrays), plus template literals, arrow functions, prototype chain lookup, Function.call/apply/bind, and built-in methods for Array, String, Object, and Math. Phases 1-2 complete. 288 unit tests passing (`moon test --target wasm`).
+The MoonBit JS engine supports basic language features (variables, arithmetic, functions, closures, control flow, try/catch, new, this, switch, for-in, bitwise ops, objects, arrays), plus template literals, arrow functions, prototype chain lookup, Function.call/apply/bind, and built-in methods for Array, String, Object, and Math. Phase 3 added: arguments object, hoisting, strict mode, default/rest parameters, destructuring, spread, for-of, property descriptors, Object.freeze/seal, RegExp, JSON, Number built-ins, Error hierarchy polish, String.fromCharCode, and array HOFs. Phases 1-3 complete. 444 unit tests passing (`moon test --target wasm`).
 
 ### Root Cause of Current Failures
 
@@ -272,25 +272,92 @@ All 6 issues addressed in commit `3439764`:
 
 ---
 
-## Phase 3: Advanced Language Features + Full Built-ins → ~56% pass rate
+## Phase 3: Advanced Language Features + Full Built-ins → ~56% pass rate ✅ IMPLEMENTED
 
-Items completed in Phase 2: ~~template literals~~, ~~arrow functions~~, ~~prototype chain property lookup~~, ~~`.call()`/`.apply()`~~, ~~`.bind()`~~
+**Goal**: Arguments, hoisting, strict mode, destructuring, spread/rest, for-of, property descriptors, RegExp, JSON, Number built-ins, array HOFs.
 
-- [ ] **`arguments` object** — array-like, `arguments.length`, `arguments[i]`, `arguments.callee` (sloppy mode)
-- [ ] **Strict mode** — `"use strict"` directive, `this` is `undefined` for unbound calls, assignment to undeclared throws, TDZ enforcement
-- [ ] **Hoisting** — `var` and function declaration hoisting, two-pass execution
-- [ ] **Default parameters** — `function f(a = 1) {}`
-- [ ] **Destructuring** — array `[a, b] = arr`, object `{x, y} = obj`, in parameters
-- [ ] **Spread/rest** — `...args` in function params, calls, array/object literals
-- [ ] **`for-of`** loops — iterator protocol for arrays and strings
-- [ ] **Property descriptors** — `writable`/`enumerable`/`configurable` flags, `Object.defineProperty()`, `Object.getOwnPropertyDescriptor()`
-- [ ] **`Object.freeze()`**, `seal()`, `preventExtensions()`
-- [ ] **RegExp** — literal parsing in lexer, `.test()`, `.exec()`, String regex methods
-- [ ] **JSON** — `JSON.parse()`, `JSON.stringify()`
-- [ ] **Error hierarchy** — complete `.name`, `.message`, `.stack`, proper prototype chain
-- [ ] **Number built-in** — `Number.isNaN()`, `isFinite()`, `isInteger()`, `toFixed()`, `toString(radix)`, constants
+**Status**: All tasks (3A–3G) implemented. 444 unit tests passing (`moon test --target wasm`).
 
-### Phase 3 Expected Impact: ~3,000 additional tests → cumulative ~56%
+### 3A. Foundation — No Architecture Changes ✅
+- [x] **`arguments` object** — array-like with `.length`, indexed access, `.callee` (sloppy mode only)
+- [x] **Hoisting** — `hoist_declarations` pre-pass for `var` and function declarations + var destructuring
+- [x] **`String.fromCharCode()`** — static method on String constructor
+- [x] **Number built-ins** — `Number.isNaN()`, `.isFinite()`, `.isInteger()`, `.parseInt()`, `.parseFloat()`, `.MAX_SAFE_INTEGER`, `.MIN_SAFE_INTEGER`, `.EPSILON`. Instance: `.toFixed()`, `.toString(radix)`, `.valueOf()`
+- [x] **Error hierarchy polish** — `.name`, `.message`, `.stack` on all Error instances, `Error.prototype.toString()`
+- [x] **JSON** — `JSON.parse()` (recursive descent parser) and `JSON.stringify()` (recursive serializer with cycle detection)
+
+### 3B. Callback Architecture + Array HOFs ✅
+- [x] **`InterpreterCallable` variant** added to `Callable` enum — receives interpreter instance + `this` value
+- [x] **Array HOFs**: `forEach`, `map`, `filter`, `reduce`, `reduceRight`, `find`, `findIndex`, `every`, `some`, `flat`, `flatMap`
+
+### 3C. AST Extensions + New Syntax ✅
+- [x] **Tokens**: `Of` keyword, `DotDotDot` (`...`) operator
+- [x] **AST nodes**: `ForOfStmt`, `Param` struct, `Pattern` enum, `SpreadExpr`, `RestElement`
+- [x] **Default parameters** — `function f(a = 1) {}`
+- [x] **Rest parameters** — `function f(...args) {}`
+- [x] **`for-of` loops** — iterate array elements or string characters
+- [x] **Spread in calls/arrays** — `f(...arr)`, `[...a, ...b]`
+
+### 3D. Destructuring ✅
+- [x] **Array destructuring** — `let [a, b, ...rest] = arr`, holes, nested
+- [x] **Object destructuring** — `let {x, y: alias, ...rest} = obj`, defaults
+- [x] **Parameter destructuring** — destructuring in function params
+- [x] **Assignment destructuring** — `[a, b] = [1, 2]` without declaration
+
+### 3E. Property Descriptors + Object.freeze/seal ✅
+- [x] **Property descriptors** via `ObjectData.descriptors` map with `writable`/`enumerable`/`configurable` flags
+- [x] **`Object.defineProperty()`** — full implementation with descriptor validation
+- [x] **`Object.getOwnPropertyDescriptor()`** — returns descriptor as plain object
+- [x] **`Object.defineProperties()`** — batch property definition
+- [x] **`Object.freeze()`** / **`Object.seal()`** / **`Object.preventExtensions()`**
+- [x] **`Object.isFrozen()`** / **`Object.isSealed()`** / **`Object.isExtensible()`**
+
+### 3F. Strict Mode ✅
+- [x] **Parse `"use strict"` directive** — detected as first statement in function/global scope
+- [x] **Track strict mode** — `strict: Bool` field on `Interpreter`, saved/restored per function call
+- [x] **Enforce strict semantics**: `this` is `undefined` for unbound calls, assignment to undeclared throws `ReferenceError`, `arguments.callee` omitted in strict mode
+- [x] **Exception-safe restore** — strict flag restored via try/catch on function call errors
+- [x] **Constructor strict mode** — `eval_new` respects `"use strict"` in constructor bodies
+
+### 3G. RegExp (basic) ✅
+
+**New file**: `interpreter/builtins_regex.mbt`
+- [x] **Custom regex engine** — parser (pattern → `RegexNode` AST), backtracking matcher with `match_sequence`
+- [x] **Supported syntax**: `.`, `*`, `+`, `?`, `{n}`, `{n,m}`, `[...]`, `[^...]`, `^`, `$`, `|`, `()` groups, `\d`, `\w`, `\s`, `\b`, `\D`, `\W`, `\S`
+- [x] **Flags**: `g` (global), `i` (case-insensitive), `m` (multiline)
+- [x] **Context-aware lexer** — tracks last token to disambiguate `/` vs regex; paren stack for control-flow `)` detection
+- [x] **RegExp object**: `.test()`, `.exec()`, `.source`, `.flags`, `.lastIndex`, `.global`, `.ignoreCase`
+- [x] **String regex methods**: `.match()`, `.search()`, `.replace()` with RegExp support
+- [x] **`RegExp` constructor** — `new RegExp(pattern, flags)`
+
+### Phase 3 Bug Fixes Applied
+- [P1] Strict mode leaks after thrown errors — try/catch restore in `call_value`
+- [P2] Var destructuring declarations not hoisted — `hoist_pattern` helper + `bind_pattern` assign-if-exists
+- [P2] Constructor calls ignore strict mode — strict detection/restore in `eval_new`
+- [P2] Regex after RParen in control-flow contexts — paren stack tracking in lexer
+- Object.defineProperty defaults corrected (false, not true, when no existing descriptor)
+- Case-insensitive regex with `\D`/`\W`/`\S` — per-character icase instead of pattern lowercasing
+- Arrow function hoisting — `hoist_declarations` call added to ArrowFunc/ArrowFuncExt
+
+### Phase 3 Implementation Notes
+
+**Files changed**: 10 files, 1 new file created
+
+| File | Changes |
+|------|---------|
+| `token/token.mbt` | +`Of`, `DotDotDot`, `Regex(String, String)` tokens |
+| `lexer/lexer.mbt` | `...` scanning, regex literal scanning with context tracking, paren stack for control-flow `)` |
+| `ast/ast.mbt` | `Param`, `ParamExt`, `Pattern`, `PropPat` structs; `ForOfStmt`, `SpreadExpr`, `DestructureDecl`, `DestructureAssign`, `RegexLit` nodes |
+| `parser/expr.mbt` | Default/rest params, spread, destructuring patterns, `expr_to_pattern` helper, regex literals |
+| `parser/stmt.mbt` | for-of parsing, destructuring in var decls |
+| `interpreter/value.mbt` | `InterpreterCallable` callable variant |
+| `interpreter/environment.mbt` | Strict mode: assignment to undeclared throws `ReferenceError` |
+| `interpreter/interpreter.mbt` | arguments object, hoisting (`hoist_declarations` + `hoist_pattern`), for-of eval, destructuring eval (`bind_pattern`), spread eval, default params eval, strict mode enforcement (save/restore with exception safety), regex eval, constructor strict mode |
+| `interpreter/builtins.mbt` | JSON builtins (`JSON.parse`, `JSON.stringify`), Number constructor/prototype, `String.fromCharCode`, `RegExp` constructor |
+| `interpreter/builtins_array.mbt` | 11 callback-based array methods using `InterpreterCallable` |
+| `interpreter/builtins_string.mbt` | `.match()`, `.search()`, regex-aware `.replace()` |
+| `interpreter/builtins_object.mbt` | `defineProperties`, `freeze`/`seal`/`preventExtensions`, `isFrozen`/`isSealed`/`isExtensible`; fixed `defineProperty` defaults |
+| `interpreter/builtins_regex.mbt` | **New file** — regex parser, backtracking matcher, RegExp objects, string regex helpers |
 
 ---
 
@@ -311,17 +378,16 @@ Items completed in Phase 2: ~~template literals~~, ~~arrow functions~~, ~~protot
 
 1. **Functions must be objects** — `assert.sameValue = function() {}` assigns a property on a function. Merge `Function` into `Object` with a `callable` field.
 2. **Exception propagation** — Use MoonBit's native `raise` with `JsException(Value)` rather than threading `ThrowSignal` through every `Signal` match.
-3. **Property descriptors** — Introduce in Phase 2A with `writable`/`enumerable`/`configurable` flags. Phase 1 uses simple `Map[String, Value]`.
+3. **Property descriptors** — `ObjectData.descriptors` map with `writable`/`enumerable`/`configurable` flags alongside `properties`. Descriptor-aware access enforced in Phase 3E.
 4. **Array storage** — Dedicated `Array(ArrayData)` variant with `elements: Array[Value]` for performance.
 5. **Builtin organization** — Split into `builtins_object.mbt`, `builtins_array.mbt`, `builtins_string.mbt`, etc.
 
 ## Dependency Graph
 
 ```
-Phase 1 (DONE) ──► Phase 2 (DONE) ──► Phase 3 (strict mode, destructuring, spread, RegExp, JSON)
+Phase 1 (DONE) ──► Phase 2 (DONE) ──► Phase 3 (DONE)
                                                │
-                                               ▼
-                                         [~56% pass rate]
+                                         [~56% pass rate — pending re-run]
                                                │
                                                ▼
                                          Phase 4 (classes, symbols, generators, promises)
@@ -332,11 +398,11 @@ Phase 1 (DONE) ──► Phase 2 (DONE) ──► Phase 3 (strict mode, destruct
 
 ## Summary
 
-| Phase | Pass Rate | Key Unlock |
-|-------|-----------|------------|
-| Phase 1 ✅ | 8.18% (actual) | Core language, harness dependencies (except template literals) |
-| Phase 2 ✅ | ~25-40% (pending re-run) | Template literals unblock assert.js, arrow functions, prototype chain, built-ins |
-| Phase 3 | ~56% | Strict mode, destructuring, spread/rest, RegExp, JSON, property descriptors |
-| Phase 4 | ~60%+ | Classes, symbols, generators, promises |
+| Phase | Pass Rate | Unit Tests | Key Unlock |
+|-------|-----------|------------|------------|
+| Phase 1 ✅ | 8.18% (actual) | 195 | Core language, harness dependencies (except template literals) |
+| Phase 2 ✅ | ~25-40% (pending re-run) | 288 | Template literals unblock assert.js, arrow functions, prototype chain, built-ins |
+| Phase 3 ✅ | ~56% (pending re-run) | 444 | Strict mode, destructuring, spread/rest, RegExp, JSON, property descriptors, array HOFs, Number built-ins |
+| Phase 4 | ~60%+ | — | Classes, symbols, generators, promises |
 
-**Phase 2 is the critical path** — template literals are the single blocker preventing all 17,941 tests from executing.
+**Next step**: Run `make test262` / `python3 test262-runner.py` to measure actual pass rate after Phases 2+3.

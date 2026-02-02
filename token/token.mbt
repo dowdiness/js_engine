@@ -108,7 +108,12 @@ pub(all) enum TokenKind {
   TemplateTail(String)
   // Arrow
   Arrow
+  // Spread/Rest
+  DotDotDot
+  // Regex
+  Regex(String, String) // pattern, flags
   // Special
+  Of
   EOF
 } derive(Eq, Show)
 

@@ -37,6 +37,14 @@ fn Parser::parse_var_decl(self : Parser) -> @ast.Stmt raise Error {
         "Expected let/const/var at line \{tok.loc.line}, col \{tok.loc.col}",
       )
   }
+  // Check for destructuring pattern
+  if self.at(LBracket) || self.at(LBrace) {
+    let pat = self.parse_pattern()
+    let _ = self.expect(Assign)
+    let init = self.parse_assignment()
+    self.eat_semicolon()
+    return DestructureDecl(kind, pat, init, tok.loc)
+  }
   let name = self.expect_ident()
   let init : @ast.Expr? = if self.eat(Assign) {
     Some(self.parse_assignment())
@@ -51,7 +59,19 @@ fn Parser::parse_var_decl(self : Parser) -> @ast.Stmt raise Error {
 fn Parser::parse_func_decl(self : Parser) -> @ast.Stmt raise Error {
   let tok = self.expect(Function)
   let name = self.expect_ident()
-  let params = self.parse_params()
+  let saved_pos = self.pos
+  let params = self.parse_params() catch {
+    Failure::Failure(msg) =>
+      if msg == "REST_PARAM_FOUND" || msg == "DEFAULT_PARAM_FOUND" {
+        self.pos = saved_pos
+        let (ext_params, rest_param) = self.parse_params_ext()
+        let body = self.parse_block_body()
+        return FuncDeclExt(name, ext_params, rest_param, body, tok.loc)
+      } else {
+        raise Failure::Failure(msg)
+      }
+    e => raise e
+  }
   let body = self.parse_block_body()
   FuncDecl(name, params, body, tok.loc)
 }
@@ -61,13 +81,72 @@ fn Parser::parse_params(self : Parser) -> Array[String] raise Error {
   let _ = self.expect(LParen)
   let params : Array[String] = []
   if not(self.at(RParen)) {
+    // Skip rest param in simple parse
+    if self.at(DotDotDot) {
+      // Let extended parse handle it
+      raise Failure::Failure("REST_PARAM_FOUND")
+    }
     params.push(self.expect_ident())
+    // Check for default value — trigger extended parse
+    if self.at(Assign) {
+      raise Failure::Failure("DEFAULT_PARAM_FOUND")
+    }
     while self.eat(Comma) {
+      if self.at(DotDotDot) {
+        raise Failure::Failure("REST_PARAM_FOUND")
+      }
       params.push(self.expect_ident())
+      if self.at(Assign) {
+        raise Failure::Failure("DEFAULT_PARAM_FOUND")
+      }
     }
   }
   let _ = self.expect(RParen)
   params
+}
+
+///|
+fn Parser::parse_params_ext(
+  self : Parser,
+) -> (Array[@ast.Param], String?) raise Error {
+  let _ = self.expect(LParen)
+  let params : Array[@ast.Param] = []
+  let mut rest_param : String? = None
+  if not(self.at(RParen)) {
+    // Check for rest param
+    if self.eat(DotDotDot) {
+      rest_param = Some(self.expect_ident())
+    } else {
+      let name = self.expect_ident()
+      let default_val : @ast.Expr? = if self.eat(Assign) {
+        Some(self.parse_assignment())
+      } else {
+        None
+      }
+      params.push({ name, default_val })
+      while self.eat(Comma) {
+        if rest_param is Some(_) {
+          let t = self.peek()
+          raise Failure::Failure(
+            "Rest parameter must be last at line \{t.loc.line}, col \{t.loc.col}",
+          )
+        }
+        if self.eat(DotDotDot) {
+          rest_param = Some(self.expect_ident())
+        } else {
+          let pname = self.expect_ident()
+          let pdefault : @ast.Expr? = if self.eat(Assign) {
+            Some(self.parse_assignment())
+          } else {
+            None
+          }
+          params.push({ name: pname, default_val: pdefault })
+        }
+      }
+    }
+  }
+  let _ = self.expect(RParen)
+  (params, rest_param)
 }
 
 ///|
@@ -133,6 +212,13 @@ fn Parser::parse_for_stmt(self : Parser) -> @ast.Stmt raise Error {
       let body = self.parse_stmt()
       return ForInStmt(Some(var_kind), name, obj, body, tok.loc)
     }
+    if self.eat(Of) {
+      // for-of with var declaration
+      let obj = self.parse_expr()
+      let _ = self.expect(RParen)
+      let body = self.parse_stmt()
+      return ForOfStmt(Some(var_kind), name, obj, body, tok.loc)
+    }
     // Regular for — finish parsing the var decl init
     let init_val : @ast.Expr? = if self.eat(Assign) {
       Some(self.parse_assignment())
@@ -143,7 +229,7 @@ fn Parser::parse_for_stmt(self : Parser) -> @ast.Stmt raise Error {
     let init : @ast.Stmt? = Some(VarDecl(var_kind, name, init_val, var_tok.loc))
     return self.parse_for_rest(init, tok.loc)
   }
-  // Check for for-in with bare identifier
+  // Check for for-in / for-of with bare identifier
   match self.peek_kind() {
     Ident(name) =>
       if self.peek_kind_at(1) == In {
@@ -153,6 +239,13 @@ fn Parser::parse_for_stmt(self : Parser) -> @ast.Stmt raise Error {
         let _ = self.expect(RParen)
         let body = self.parse_stmt()
         return ForInStmt(None, name, obj, body, tok.loc)
+      } else if self.peek_kind_at(1) == Of {
+        self.pos += 1 // consume ident
+        self.pos += 1 // consume 'of'
+        let obj = self.parse_expr()
+        let _ = self.expect(RParen)
+        let body = self.parse_stmt()
+        return ForOfStmt(None, name, obj, body, tok.loc)
       }
     _ => ()
   }
@@ -341,6 +434,83 @@ fn Parser::parse_labeled_stmt(self : Parser) -> @ast.Stmt raise Error {
   let _ = self.expect(Colon) // consume ':'
   let body = self.parse_stmt()
   LabeledStmt(label, body, tok.loc)
+}
+
+///|
+fn Parser::parse_pattern(self : Parser) -> @ast.Pattern raise Error {
+  if self.at(LBracket) {
+    self.parse_array_pattern()
+  } else if self.at(LBrace) {
+    self.parse_object_pattern()
+  } else {
+    let name = self.expect_ident()
+    IdentPat(name)
+  }
+}
+
+///|
+fn Parser::parse_array_pattern(self : Parser) -> @ast.Pattern raise Error {
+  let _ = self.expect(LBracket)
+  let elements : Array[@ast.Pattern?] = []
+  let mut rest : @ast.Pattern? = None
+  while not(self.at(RBracket)) && not(self.at(EOF)) {
+    if self.at(Comma) {
+      // Hole / elision
+      elements.push(None)
+      let _ = self.advance()
+      continue
+    }
+    if self.at(DotDotDot) {
+      let _ = self.advance()
+      rest = Some(self.parse_pattern())
+      break
+    }
+    elements.push(Some(self.parse_pattern()))
+    if not(self.at(RBracket)) && not(self.at(DotDotDot)) {
+      let _ = self.expect(Comma)
+    }
+  }
+  let _ = self.expect(RBracket)
+  ArrayPat(elements, rest)
+}
+
+///|
+fn Parser::parse_object_pattern(self : Parser) -> @ast.Pattern raise Error {
+  let _ = self.expect(LBrace)
+  let props : Array[@ast.PropPat] = []
+  let mut rest : @ast.Pattern? = None
+  while not(self.at(RBrace)) && not(self.at(EOF)) {
+    if self.at(DotDotDot) {
+      let _ = self.advance()
+      rest = Some(self.parse_pattern())
+      break
+    }
+    let key = self.expect_ident()
+    let (value, default_val) : (@ast.Pattern, @ast.Expr?) = if self.eat(Colon) {
+      // { key: pattern }
+      let pat = self.parse_pattern()
+      let def : @ast.Expr? = if self.eat(Assign) {
+        Some(self.parse_assignment())
+      } else {
+        None
+      }
+      (pat, def)
+    } else {
+      // Shorthand: { key } or { key = default }
+      let def : @ast.Expr? = if self.eat(Assign) {
+        Some(self.parse_assignment())
+      } else {
+        None
+      }
+      (IdentPat(key), def)
+    }
+    props.push({ key, value, default_val })
+    if not(self.at(RBrace)) {
+      let _ = self.expect(Comma)
+    }
+  }
+  let _ = self.expect(RBrace)
+  ObjectPat(props, rest)
 }
 
 ///|

@@ -1942,3 +1942,1731 @@ test "hasOwnProperty method borrowing" {
   let output = run_output(src)
   inspect(output, content="[\"true\", \"false\", \"true\"]")
 }
+
+// ====== Phase 3A: Arguments Object ======
+
+///|
+test "arguments object basic" {
+  let src =
+    #|function f() {
+    #|  return arguments.length;
+    #|}
+    #|console.log(f(1, 2, 3));
+  let output = run_output(src)
+  inspect(output, content="[\"3\"]")
+}
+
+///|
+test "arguments object index access" {
+  let src =
+    #|function f() {
+    #|  return arguments[0] + arguments[1];
+    #|}
+    #|console.log(f(10, 20));
+  let output = run_output(src)
+  inspect(output, content="[\"30\"]")
+}
+
+///|
+test "arguments object callee" {
+  let src =
+    #|function factorial(n) {
+    #|  if (n <= 1) return 1;
+    #|  return n * arguments.callee(n - 1);
+    #|}
+    #|console.log(factorial(5));
+  let output = run_output(src)
+  inspect(output, content="[\"120\"]")
+}
+
+///|
+test "arguments not in arrow functions" {
+  let src =
+    #|function outer() {
+    #|  var arrow = () => arguments.length;
+    #|  return arrow();
+    #|}
+    #|console.log(outer(1, 2, 3));
+  let output = run_output(src)
+  inspect(output, content="[\"3\"]")
+}
+
+// ====== Phase 3A: Hoisting ======
+
+///|
+test "var hoisting" {
+  let src =
+    #|console.log(x);
+    #|var x = 5;
+    #|console.log(x);
+  let output = run_output(src)
+  inspect(output, content="[\"undefined\", \"5\"]")
+}
+
+///|
+test "function hoisting" {
+  let src =
+    #|console.log(f());
+    #|function f() { return 42; }
+  let output = run_output(src)
+  inspect(output, content="[\"42\"]")
+}
+
+///|
+test "var hoisting in function" {
+  let src =
+    #|function test() {
+    #|  console.log(x);
+    #|  var x = 10;
+    #|  console.log(x);
+    #|}
+    #|test();
+  let output = run_output(src)
+  inspect(output, content="[\"undefined\", \"10\"]")
+}
+
+///|
+test "var hoisting does not overwrite" {
+  let src =
+    #|var x = 1;
+    #|var x = 2;
+    #|console.log(x);
+  let output = run_output(src)
+  inspect(output, content="[\"2\"]")
+}
+
+// ====== Phase 3A: String.fromCharCode ======
+
+///|
+test "String.fromCharCode basic" {
+  let (_, result) = run_js("String.fromCharCode(72, 101, 108, 108, 111)")
+  inspect(result, content="Hello")
+}
+
+///|
+test "String.fromCharCode single" {
+  let (_, result) = run_js("String.fromCharCode(65)")
+  inspect(result, content="A")
+}
+
+// ====== Phase 3A: Number builtins ======
+
+///|
+test "Number.isNaN" {
+  let src =
+    #|console.log(Number.isNaN(NaN));
+    #|console.log(Number.isNaN(42));
+    #|console.log(Number.isNaN("hello"));
+  let output = run_output(src)
+  inspect(output, content="[\"true\", \"false\", \"false\"]")
+}
+
+///|
+test "Number.isFinite" {
+  let src =
+    #|console.log(Number.isFinite(42));
+    #|console.log(Number.isFinite(Infinity));
+    #|console.log(Number.isFinite("42"));
+  let output = run_output(src)
+  inspect(output, content="[\"true\", \"false\", \"false\"]")
+}
+
+///|
+test "Number.isInteger" {
+  let src =
+    #|console.log(Number.isInteger(42));
+    #|console.log(Number.isInteger(42.5));
+    #|console.log(Number.isInteger("42"));
+  let output = run_output(src)
+  inspect(output, content="[\"true\", \"false\", \"false\"]")
+}
+
+///|
+test "Number.MAX_SAFE_INTEGER" {
+  let (_, result) = run_js("Number.MAX_SAFE_INTEGER")
+  inspect(result, content="9007199254740991")
+}
+
+///|
+test "Number.EPSILON" {
+  let output = run_output("console.log(Number.EPSILON < 1)")
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "number toFixed" {
+  let src =
+    #|var n = 3.14159;
+    #|console.log(n.toFixed(2));
+    #|console.log(n.toFixed(0));
+  let output = run_output(src)
+  inspect(output, content="[\"3.14\", \"3\"]")
+}
+
+///|
+test "number toString radix" {
+  let src =
+    #|var n = 255;
+    #|console.log(n.toString(16));
+    #|console.log(n.toString(2));
+  let output = run_output(src)
+  inspect(output, content="[\"ff\", \"11111111\"]")
+}
+
+///|
+test "Number.parseInt parseFloat" {
+  let src =
+    #|console.log(Number.parseInt("42"));
+    #|console.log(Number.parseFloat("3.14"));
+  let output = run_output(src)
+  inspect(output, content="[\"42\", \"3.14\"]")
+}
+
+// ====== Phase 3A: Error hierarchy polish ======
+
+///|
+test "Error has stack property" {
+  let src =
+    #|var e = new Error("test");
+    #|console.log(typeof e.stack);
+  let output = run_output(src)
+  inspect(output, content="[\"string\"]")
+}
+
+///|
+test "Error.prototype.toString" {
+  let src =
+    #|var e = new Error("test");
+    #|console.log(e.name);
+    #|console.log(e.message);
+  let output = run_output(src)
+  inspect(output, content="[\"Error\", \"test\"]")
+}
+
+// ====== Phase 3A: JSON ======
+
+///|
+test "JSON.parse basic" {
+  let src =
+    #|var obj = JSON.parse('{"a":1,"b":"hello"}');
+    #|console.log(obj.a);
+    #|console.log(obj.b);
+  let output = run_output(src)
+  inspect(output, content="[\"1\", \"hello\"]")
+}
+
+///|
+test "JSON.parse array" {
+  let src =
+    #|var arr = JSON.parse('[1, 2, 3]');
+    #|console.log(arr.length);
+    #|console.log(arr[0]);
+  let output = run_output(src)
+  inspect(output, content="[\"3\", \"1\"]")
+}
+
+///|
+test "JSON.parse nested" {
+  let src =
+    #|var obj = JSON.parse('{"a":{"b":42}}');
+    #|console.log(obj.a.b);
+  let output = run_output(src)
+  inspect(output, content="[\"42\"]")
+}
+
+///|
+test "JSON.parse booleans null" {
+  let src =
+    #|var obj = JSON.parse('{"t":true,"f":false,"n":null}');
+    #|console.log(obj.t);
+    #|console.log(obj.f);
+    #|console.log(obj.n);
+  let output = run_output(src)
+  inspect(output, content="[\"true\", \"false\", \"null\"]")
+}
+
+///|
+test "JSON.stringify basic" {
+  let src =
+    #|var obj = {a: 1, b: "hello"};
+    #|console.log(JSON.stringify(obj));
+  let output = run_output(src)
+  inspect(output[0], content="{\"a\":1,\"b\":\"hello\"}")
+}
+
+///|
+test "JSON.stringify array" {
+  let src =
+    #|console.log(JSON.stringify([1, 2, 3]));
+  let output = run_output(src)
+  inspect(output, content="[\"[1,2,3]\"]")
+}
+
+///|
+test "JSON.stringify null undefined" {
+  let src =
+    #|console.log(JSON.stringify(null));
+    #|console.log(JSON.stringify(42));
+    #|console.log(JSON.stringify("hello"));
+    #|console.log(JSON.stringify(true));
+  let output = run_output(src)
+  inspect(output, content="[\"null\", \"42\", \"\\\"hello\\\"\", \"true\"]")
+}
+
+///|
+test "JSON.stringify skips functions" {
+  let src =
+    #|var obj = {a: 1, b: function() {}};
+    #|console.log(JSON.stringify(obj));
+  let output = run_output(src)
+  inspect(output[0], content="{\"a\":1}")
+}
+
+// ====== Phase 3B: Array Higher-Order Functions ======
+
+///|
+test "array map" {
+  let src =
+    #|var arr = [1, 2, 3];
+    #|var result = arr.map(function(x) { return x * 2; });
+    #|console.log(result.join(","));
+  let output = run_output(src)
+  inspect(output, content="[\"2,4,6\"]")
+}
+
+///|
+test "array map with arrow" {
+  let src =
+    #|var arr = [1, 2, 3];
+    #|var result = arr.map(x => x * x);
+    #|console.log(result.join(","));
+  let output = run_output(src)
+  inspect(output, content="[\"1,4,9\"]")
+}
+
+///|
+test "array filter" {
+  let src =
+    #|var arr = [1, 2, 3, 4, 5];
+    #|var result = arr.filter(x => x % 2 === 0);
+    #|console.log(result.join(","));
+  let output = run_output(src)
+  inspect(output, content="[\"2,4\"]")
+}
+
+///|
+test "array reduce" {
+  let src =
+    #|var arr = [1, 2, 3, 4];
+    #|var sum = arr.reduce(function(acc, x) { return acc + x; }, 0);
+    #|console.log(sum);
+  let output = run_output(src)
+  inspect(output, content="[\"10\"]")
+}
+
+///|
+test "array reduce no initial" {
+  let src =
+    #|var arr = [1, 2, 3, 4];
+    #|var sum = arr.reduce(function(acc, x) { return acc + x; });
+    #|console.log(sum);
+  let output = run_output(src)
+  inspect(output, content="[\"10\"]")
+}
+
+///|
+test "array forEach" {
+  let src =
+    #|var result = [];
+    #|[1, 2, 3].forEach(function(x) { result.push(x * 10); });
+    #|console.log(result.join(","));
+  let output = run_output(src)
+  inspect(output, content="[\"10,20,30\"]")
+}
+
+///|
+test "array find" {
+  let src =
+    #|var arr = [1, 2, 3, 4];
+    #|console.log(arr.find(x => x > 2));
+    #|console.log(arr.find(x => x > 10));
+  let output = run_output(src)
+  inspect(output, content="[\"3\", \"undefined\"]")
+}
+
+///|
+test "array findIndex" {
+  let src =
+    #|var arr = [1, 2, 3, 4];
+    #|console.log(arr.findIndex(x => x > 2));
+    #|console.log(arr.findIndex(x => x > 10));
+  let output = run_output(src)
+  inspect(output, content="[\"2\", \"-1\"]")
+}
+
+///|
+test "array every" {
+  let src =
+    #|console.log([2, 4, 6].every(x => x % 2 === 0));
+    #|console.log([2, 3, 6].every(x => x % 2 === 0));
+  let output = run_output(src)
+  inspect(output, content="[\"true\", \"false\"]")
+}
+
+///|
+test "array some" {
+  let src =
+    #|console.log([1, 3, 5].some(x => x % 2 === 0));
+    #|console.log([1, 2, 5].some(x => x % 2 === 0));
+  let output = run_output(src)
+  inspect(output, content="[\"false\", \"true\"]")
+}
+
+///|
+test "array flat" {
+  let src =
+    #|var arr = [1, [2, 3], [4, [5]]];
+    #|console.log(arr.flat().join(","));
+  let output = run_output(src)
+  inspect(output, content="[\"1,2,3,4,5\"]")
+}
+
+///|
+test "array flatMap" {
+  let src =
+    #|var arr = [1, 2, 3];
+    #|var result = arr.flatMap(x => [x, x * 2]);
+    #|console.log(result.join(","));
+  let output = run_output(src)
+  inspect(output, content="[\"1,2,2,4,3,6\"]")
+}
+
+///|
+test "array sort with compareFn" {
+  let src =
+    #|var arr = [3, 1, 4, 1, 5];
+    #|arr.sort(function(a, b) { return a - b; });
+    #|console.log(arr.join(","));
+  let output = run_output(src)
+  inspect(output, content="[\"1,1,3,4,5\"]")
+}
+
+///|
+test "array reduceRight" {
+  let src =
+    #|var arr = ["a", "b", "c"];
+    #|var result = arr.reduceRight(function(acc, x) { return acc + x; });
+    #|console.log(result);
+  let output = run_output(src)
+  inspect(output, content="[\"cba\"]")
+}
+
+///|
+test "array map with index" {
+  let src =
+    #|var arr = ["a", "b", "c"];
+    #|var result = arr.map(function(val, idx) { return idx + ":" + val; });
+    #|console.log(result.join(","));
+  let output = run_output(src)
+  inspect(output, content="[\"0:a,1:b,2:c\"]")
+}
+
+///|
+test "JSON.parse then stringify roundtrip" {
+  let src =
+    #|var str = '{"x":1,"y":[2,3]}';
+    #|var obj = JSON.parse(str);
+    #|console.log(JSON.stringify(obj));
+  let output = run_output(src)
+  inspect(output[0], content="{\"x\":1,\"y\":[2,3]}")
+}
+
+// ============================================================
+// Phase 3C: for-of, spread, default params, rest params
+// ============================================================
+
+///|
+test "for-of array" {
+  let src =
+    #|var arr = [10, 20, 30];
+    #|var sum = 0;
+    #|for (var x of arr) { sum += x; }
+    #|console.log(sum);
+  let output = run_output(src)
+  inspect(output, content="[\"60\"]")
+}
+
+///|
+test "for-of with let" {
+  let src =
+    #|var arr = ["a", "b", "c"];
+    #|var result = "";
+    #|for (let x of arr) { result += x; }
+    #|console.log(result);
+  let output = run_output(src)
+  inspect(output, content="[\"abc\"]")
+}
+
+///|
+test "for-of string" {
+  let src =
+    #|var result = [];
+    #|for (var ch of "hello") { result.push(ch); }
+    #|console.log(result.join(","));
+  let output = run_output(src)
+  inspect(output, content="[\"h,e,l,l,o\"]")
+}
+
+///|
+test "for-of with break" {
+  let src =
+    #|var arr = [1, 2, 3, 4, 5];
+    #|var sum = 0;
+    #|for (var x of arr) {
+    #|  if (x === 4) break;
+    #|  sum += x;
+    #|}
+    #|console.log(sum);
+  let output = run_output(src)
+  inspect(output, content="[\"6\"]")
+}
+
+///|
+test "for-of with continue" {
+  let src =
+    #|var arr = [1, 2, 3, 4, 5];
+    #|var sum = 0;
+    #|for (var x of arr) {
+    #|  if (x % 2 === 0) continue;
+    #|  sum += x;
+    #|}
+    #|console.log(sum);
+  let output = run_output(src)
+  inspect(output, content="[\"9\"]")
+}
+
+///|
+test "spread in array literal" {
+  let src =
+    #|var a = [1, 2, 3];
+    #|var b = [0, ...a, 4];
+    #|console.log(b.join(","));
+  let output = run_output(src)
+  inspect(output, content="[\"0,1,2,3,4\"]")
+}
+
+///|
+test "spread in function call" {
+  let src =
+    #|function add(a, b, c) { return a + b + c; }
+    #|var args = [1, 2, 3];
+    #|console.log(add(...args));
+  let output = run_output(src)
+  inspect(output, content="[\"6\"]")
+}
+
+///|
+test "spread with concat" {
+  let src =
+    #|var a = [1, 2];
+    #|var b = [3, 4];
+    #|var c = [...a, ...b];
+    #|console.log(c.join(","));
+  let output = run_output(src)
+  inspect(output, content="[\"1,2,3,4\"]")
+}
+
+///|
+test "spread string in array" {
+  let src =
+    #|var arr = [..."abc"];
+    #|console.log(arr.join(","));
+  let output = run_output(src)
+  inspect(output, content="[\"a,b,c\"]")
+}
+
+///|
+test "default parameter" {
+  let src =
+    #|function greet(name = "world") {
+    #|  return "Hello, " + name + "!";
+    #|}
+    #|console.log(greet());
+    #|console.log(greet("Alice"));
+  let output = run_output(src)
+  inspect(output, content="[\"Hello, world!\", \"Hello, Alice!\"]")
+}
+
+///|
+test "default parameter with expression" {
+  let src =
+    #|function add(a, b = a * 2) {
+    #|  return a + b;
+    #|}
+    #|console.log(add(3));
+    #|console.log(add(3, 5));
+  let output = run_output(src)
+  inspect(output, content="[\"9\", \"8\"]")
+}
+
+///|
+test "default parameter undefined triggers default" {
+  let src =
+    #|function f(x = 10) { return x; }
+    #|console.log(f(undefined));
+    #|console.log(f(null));
+    #|console.log(f(0));
+  let output = run_output(src)
+  inspect(output, content="[\"10\", \"null\", \"0\"]")
+}
+
+///|
+test "rest parameter" {
+  let src =
+    #|function sum(...nums) {
+    #|  var total = 0;
+    #|  for (var i = 0; i < nums.length; i++) {
+    #|    total += nums[i];
+    #|  }
+    #|  return total;
+    #|}
+    #|console.log(sum(1, 2, 3, 4));
+  let output = run_output(src)
+  inspect(output, content="[\"10\"]")
+}
+
+///|
+test "rest parameter with leading params" {
+  let src =
+    #|function first_and_rest(first, ...rest) {
+    #|  return first + ":" + rest.join(",");
+    #|}
+    #|console.log(first_and_rest("a", "b", "c", "d"));
+  let output = run_output(src)
+  inspect(output, content="[\"a:b,c,d\"]")
+}
+
+///|
+test "rest parameter empty" {
+  let src =
+    #|function f(a, ...rest) {
+    #|  return rest.length;
+    #|}
+    #|console.log(f(1));
+  let output = run_output(src)
+  inspect(output, content="[\"0\"]")
+}
+
+///|
+test "default and rest combined" {
+  let src =
+    #|function f(a = 1, b = 2, ...rest) {
+    #|  return a + "," + b + "," + rest.join(";");
+    #|}
+    #|console.log(f());
+    #|console.log(f(10));
+    #|console.log(f(10, 20, 30, 40));
+  let output = run_output(src)
+  inspect(output, content="[\"1,2,\", \"10,2,\", \"10,20,30;40\"]")
+}
+
+///|
+test "arrow function with default param" {
+  let src =
+    #|var greet = (name = "world") => "Hello, " + name;
+    #|console.log(greet());
+    #|console.log(greet("Bob"));
+  let output = run_output(src)
+  inspect(output, content="[\"Hello, world\", \"Hello, Bob\"]")
+}
+
+///|
+test "arrow function with rest param" {
+  let src =
+    #|var sum = (...args) => {
+    #|  var total = 0;
+    #|  for (var i = 0; i < args.length; i++) total += args[i];
+    #|  return total;
+    #|};
+    #|console.log(sum(1, 2, 3));
+  let output = run_output(src)
+  inspect(output, content="[\"6\"]")
+}
+
+///|
+test "function expression with default" {
+  let src =
+    #|var f = function(x = 5) { return x * 2; };
+    #|console.log(f());
+    #|console.log(f(3));
+  let output = run_output(src)
+  inspect(output, content="[\"10\", \"6\"]")
+}
+
+///|
+test "function expression with rest" {
+  let src =
+    #|var f = function(first, ...rest) { return rest; };
+    #|var result = f(1, 2, 3);
+    #|console.log(result.join(","));
+  let output = run_output(src)
+  inspect(output, content="[\"2,3\"]")
+}
+
+///|
+test "spread in new expression" {
+  let src =
+    #|function Point(x, y) {
+    #|  this.x = x;
+    #|  this.y = y;
+    #|}
+    #|var coords = [10, 20];
+    #|var p = new Point(...coords);
+    #|console.log(p.x + "," + p.y);
+  let output = run_output(src)
+  inspect(output, content="[\"10,20\"]")
+}
+
+///|
+test "for-of bare identifier" {
+  let src =
+    #|var arr = [1, 2, 3];
+    #|var sum = 0;
+    #|var x;
+    #|for (x of arr) { sum += x; }
+    #|console.log(sum);
+  let output = run_output(src)
+  inspect(output, content="[\"6\"]")
+}
+
+///|
+test "for-of with const" {
+  let src =
+    #|var result = [];
+    #|for (const item of [10, 20, 30]) {
+    #|  result.push(item);
+    #|}
+    #|console.log(result.join(","));
+  let output = run_output(src)
+  inspect(output, content="[\"10,20,30\"]")
+}
+
+///|
+test "spread copies array" {
+  let src =
+    #|var a = [1, 2, 3];
+    #|var b = [...a];
+    #|b[0] = 99;
+    #|console.log(a[0]);
+    #|console.log(b[0]);
+  let output = run_output(src)
+  inspect(output, content="[\"1\", \"99\"]")
+}
+
+///|
+test "default param with function call" {
+  let src =
+    #|function getDefault() { return 42; }
+    #|function f(x = getDefault()) { return x; }
+    #|console.log(f());
+    #|console.log(f(10));
+  let output = run_output(src)
+  inspect(output, content="[\"42\", \"10\"]")
+}
+
+///|
+test "multiple default params" {
+  let src =
+    #|function f(a = 1, b = 2, c = 3) {
+    #|  return a + b + c;
+    #|}
+    #|console.log(f());
+    #|console.log(f(10));
+    #|console.log(f(10, 20));
+    #|console.log(f(10, 20, 30));
+  let output = run_output(src)
+  inspect(output, content="[\"6\", \"15\", \"33\", \"60\"]")
+}
+
+///|
+test "for-of return from function" {
+  let src =
+    #|function findFirst(arr) {
+    #|  for (var x of arr) {
+    #|    if (x > 3) return x;
+    #|  }
+    #|  return -1;
+    #|}
+    #|console.log(findFirst([1, 2, 5, 3]));
+  let output = run_output(src)
+  inspect(output, content="[\"5\"]")
+}
+
+///|
+test "spread in middle of array" {
+  let src =
+    #|var mid = [3, 4];
+    #|var arr = [1, 2, ...mid, 5, 6];
+    #|console.log(arr.length);
+    #|console.log(arr.join(","));
+  let output = run_output(src)
+  inspect(output, content="[\"6\", \"1,2,3,4,5,6\"]")
+}
+
+///|
+test "rest with array methods" {
+  let src =
+    #|function tail(...args) {
+    #|  return args.slice(1);
+    #|}
+    #|var result = tail(1, 2, 3, 4);
+    #|console.log(result.join(","));
+  let output = run_output(src)
+  inspect(output, content="[\"2,3,4\"]")
+}
+
+///|
+test "spread function call with extra args" {
+  let src =
+    #|function f(a, b, c, d) { return a + b + c + d; }
+    #|var arr = [1, 2];
+    #|console.log(f(...arr, 3, 4));
+  let output = run_output(src)
+  inspect(output, content="[\"10\"]")
+}
+
+// ============================================================
+// Phase 3D: Destructuring
+// ============================================================
+
+///|
+test "array destructuring basic" {
+  let src =
+    #|var [a, b, c] = [1, 2, 3];
+    #|console.log(a + "," + b + "," + c);
+  let output = run_output(src)
+  inspect(output, content="[\"1,2,3\"]")
+}
+
+///|
+test "array destructuring with rest" {
+  let src =
+    #|let [first, ...rest] = [1, 2, 3, 4, 5];
+    #|console.log(first);
+    #|console.log(rest.join(","));
+  let output = run_output(src)
+  inspect(output, content="[\"1\", \"2,3,4,5\"]")
+}
+
+///|
+test "array destructuring with holes" {
+  let src =
+    #|var [a, , b] = [1, 2, 3];
+    #|console.log(a + "," + b);
+  let output = run_output(src)
+  inspect(output, content="[\"1,3\"]")
+}
+
+///|
+test "array destructuring fewer elements" {
+  let src =
+    #|var [a, b, c] = [1, 2];
+    #|console.log(a);
+    #|console.log(b);
+    #|console.log(c);
+  let output = run_output(src)
+  inspect(output, content="[\"1\", \"2\", \"undefined\"]")
+}
+
+///|
+test "object destructuring basic" {
+  let src =
+    #|var {x, y} = {x: 10, y: 20};
+    #|console.log(x + "," + y);
+  let output = run_output(src)
+  inspect(output, content="[\"10,20\"]")
+}
+
+///|
+test "object destructuring with alias" {
+  let src =
+    #|var {name: n, age: a} = {name: "Alice", age: 30};
+    #|console.log(n + " is " + a);
+  let output = run_output(src)
+  inspect(output, content="[\"Alice is 30\"]")
+}
+
+///|
+test "object destructuring with default" {
+  let src =
+    #|var {x, y = 5} = {x: 10};
+    #|console.log(x + "," + y);
+  let output = run_output(src)
+  inspect(output, content="[\"10,5\"]")
+}
+
+///|
+test "object destructuring with rest" {
+  let src =
+    #|var {a, ...rest} = {a: 1, b: 2, c: 3};
+    #|console.log(a);
+    #|console.log(rest.b);
+    #|console.log(rest.c);
+  let output = run_output(src)
+  inspect(output, content="[\"1\", \"2\", \"3\"]")
+}
+
+///|
+test "nested array destructuring" {
+  let src =
+    #|var [a, [b, c]] = [1, [2, 3]];
+    #|console.log(a + "," + b + "," + c);
+  let output = run_output(src)
+  inspect(output, content="[\"1,2,3\"]")
+}
+
+///|
+test "nested object destructuring" {
+  let src =
+    #|var {a, b: {c, d}} = {a: 1, b: {c: 2, d: 3}};
+    #|console.log(a + "," + c + "," + d);
+  let output = run_output(src)
+  inspect(output, content="[\"1,2,3\"]")
+}
+
+///|
+test "destructuring in let" {
+  let src =
+    #|let [x, y] = [100, 200];
+    #|console.log(x + y);
+  let output = run_output(src)
+  inspect(output, content="[\"300\"]")
+}
+
+///|
+test "destructuring in const" {
+  let src =
+    #|const {PI, E} = {PI: 3.14, E: 2.72};
+    #|console.log(PI);
+    #|console.log(E);
+  let output = run_output(src)
+  inspect(output, content="[\"3.14\", \"2.72\"]")
+}
+
+///|
+test "array destructuring with rest empty" {
+  let src =
+    #|var [a, b, ...rest] = [1, 2];
+    #|console.log(a);
+    #|console.log(b);
+    #|console.log(rest.length);
+  let output = run_output(src)
+  inspect(output, content="[\"1\", \"2\", \"0\"]")
+}
+
+///|
+test "object destructuring alias with default" {
+  let src =
+    #|var {name: n = "unknown", age: a = 0} = {name: "Bob"};
+    #|console.log(n);
+    #|console.log(a);
+  let output = run_output(src)
+  inspect(output, content="[\"Bob\", \"0\"]")
+}
+
+///|
+test "destructuring from function return" {
+  let src =
+    #|function getPoint() { return {x: 10, y: 20}; }
+    #|var {x, y} = getPoint();
+    #|console.log(x + "," + y);
+  let output = run_output(src)
+  inspect(output, content="[\"10,20\"]")
+}
+
+///|
+test "array destructuring from function return" {
+  let src =
+    #|function getCoords() { return [3, 4]; }
+    #|var [x, y] = getCoords();
+    #|console.log(x + "," + y);
+  let output = run_output(src)
+  inspect(output, content="[\"3,4\"]")
+}
+
+///|
+test "swap with array destructuring" {
+  let src =
+    #|var a = 1;
+    #|var b = 2;
+    #|var [c, d] = [b, a];
+    #|console.log(c + "," + d);
+  let output = run_output(src)
+  inspect(output, content="[\"2,1\"]")
+}
+
+///|
+test "destructuring with computed property from array" {
+  let src =
+    #|var arr = [10, 20, 30, 40, 50];
+    #|var [, second, , fourth] = arr;
+    #|console.log(second + "," + fourth);
+  let output = run_output(src)
+  inspect(output, content="[\"20,40\"]")
+}
+
+///|
+test "object destructuring missing key" {
+  let src =
+    #|var {a, b, c} = {a: 1};
+    #|console.log(a);
+    #|console.log(b);
+    #|console.log(c);
+  let output = run_output(src)
+  inspect(output, content="[\"1\", \"undefined\", \"undefined\"]")
+}
+
+///|
+test "mixed nested destructuring" {
+  let src =
+    #|var {data: [first, second], count} = {data: [10, 20], count: 2};
+    #|console.log(first + "," + second + "," + count);
+  let output = run_output(src)
+  inspect(output, content="[\"10,20,2\"]")
+}
+
+// ============================================================
+// Phase 3E: Property Descriptors + Object.freeze/seal
+// ============================================================
+
+///|
+test "Object.defineProperty basic" {
+  let src =
+    #|var obj = {};
+    #|Object.defineProperty(obj, "x", { value: 42 });
+    #|console.log(obj.x);
+  let output = run_output(src)
+  inspect(output, content="[\"42\"]")
+}
+
+///|
+test "Object.defineProperty non-writable" {
+  let src =
+    #|var obj = {};
+    #|Object.defineProperty(obj, "x", { value: 42, writable: false });
+    #|obj.x = 100;
+    #|console.log(obj.x);
+  let output = run_output(src)
+  inspect(output, content="[\"42\"]")
+}
+
+///|
+test "Object.defineProperty non-enumerable" {
+  let src =
+    #|var obj = {a: 1, b: 2};
+    #|Object.defineProperty(obj, "c", { value: 3, enumerable: false });
+    #|console.log(Object.keys(obj).join(","));
+    #|console.log(obj.c);
+  let output = run_output(src)
+  inspect(output, content="[\"a,b\", \"3\"]")
+}
+
+///|
+test "Object.defineProperty non-configurable cannot delete" {
+  let src =
+    #|var obj = {x: 1};
+    #|Object.defineProperty(obj, "x", { configurable: false });
+    #|var result = delete obj.x;
+    #|console.log(result);
+    #|console.log(obj.x);
+  let output = run_output(src)
+  inspect(output, content="[\"false\", \"1\"]")
+}
+
+///|
+test "Object.getOwnPropertyDescriptor" {
+  let src =
+    #|var obj = {};
+    #|Object.defineProperty(obj, "x", { value: 5, writable: false, enumerable: true, configurable: false });
+    #|var desc = Object.getOwnPropertyDescriptor(obj, "x");
+    #|console.log(desc.value);
+    #|console.log(desc.writable);
+    #|console.log(desc.enumerable);
+    #|console.log(desc.configurable);
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"5\", \"false\", \"true\", \"false\"]",
+  )
+}
+
+///|
+test "Object.freeze" {
+  let src =
+    #|var obj = {x: 1, y: 2};
+    #|Object.freeze(obj);
+    #|obj.x = 100;
+    #|obj.z = 3;
+    #|console.log(obj.x);
+    #|console.log(obj.z);
+    #|console.log(Object.isFrozen(obj));
+  let output = run_output(src)
+  inspect(output, content="[\"1\", \"undefined\", \"true\"]")
+}
+
+///|
+test "Object.seal" {
+  let src =
+    #|var obj = {x: 1, y: 2};
+    #|Object.seal(obj);
+    #|obj.x = 100;
+    #|obj.z = 3;
+    #|var result = delete obj.x;
+    #|console.log(obj.x);
+    #|console.log(obj.z);
+    #|console.log(result);
+    #|console.log(Object.isSealed(obj));
+  let output = run_output(src)
+  inspect(output, content="[\"100\", \"undefined\", \"false\", \"true\"]")
+}
+
+///|
+test "Object.preventExtensions" {
+  let src =
+    #|var obj = {x: 1};
+    #|Object.preventExtensions(obj);
+    #|obj.y = 2;
+    #|console.log(obj.x);
+    #|console.log(obj.y);
+    #|console.log(Object.isExtensible(obj));
+  let output = run_output(src)
+  inspect(output, content="[\"1\", \"undefined\", \"false\"]")
+}
+
+///|
+test "Object.isFrozen on non-frozen object" {
+  let src =
+    #|var obj = {x: 1};
+    #|console.log(Object.isFrozen(obj));
+  let output = run_output(src)
+  inspect(output, content="[\"false\"]")
+}
+
+///|
+test "Object.isSealed on non-sealed object" {
+  let src =
+    #|var obj = {x: 1};
+    #|console.log(Object.isSealed(obj));
+  let output = run_output(src)
+  inspect(output, content="[\"false\"]")
+}
+
+///|
+test "Object.isExtensible on regular object" {
+  let src =
+    #|var obj = {};
+    #|console.log(Object.isExtensible(obj));
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "Object.defineProperty with value update" {
+  let src =
+    #|var obj = {};
+    #|Object.defineProperty(obj, "x", { value: 1, writable: true, configurable: true });
+    #|console.log(obj.x);
+    #|Object.defineProperty(obj, "x", { value: 2 });
+    #|console.log(obj.x);
+  let output = run_output(src)
+  inspect(output, content="[\"1\", \"2\"]")
+}
+
+///|
+test "Object.freeze prevents delete" {
+  let src =
+    #|var obj = {x: 1};
+    #|Object.freeze(obj);
+    #|var result = delete obj.x;
+    #|console.log(result);
+    #|console.log(obj.x);
+  let output = run_output(src)
+  inspect(output, content="[\"false\", \"1\"]")
+}
+
+///|
+test "non-enumerable not in for-in" {
+  let src =
+    #|var obj = {a: 1, b: 2};
+    #|Object.defineProperty(obj, "c", { value: 3, enumerable: false });
+    #|var keys = [];
+    #|for (var k in obj) { keys.push(k); }
+    #|console.log(keys.join(","));
+  let output = run_output(src)
+  inspect(output, content="[\"a,b\"]")
+}
+
+///|
+test "Object.defineProperties" {
+  let src =
+    #|var obj = {};
+    #|Object.defineProperties(obj, {
+    #|  x: { value: 10, writable: false },
+    #|  y: { value: 20, writable: true }
+    #|});
+    #|obj.x = 99;
+    #|obj.y = 99;
+    #|console.log(obj.x);
+    #|console.log(obj.y);
+  let output = run_output(src)
+  inspect(output, content="[\"10\", \"99\"]")
+}
+
+///|
+test "getOwnPropertyDescriptor missing prop" {
+  let src =
+    #|var obj = {x: 1};
+    #|var desc = Object.getOwnPropertyDescriptor(obj, "y");
+    #|console.log(desc);
+  let output = run_output(src)
+  inspect(output, content="[\"undefined\"]")
+}
+
+///|
+test "freeze with Object.keys" {
+  let src =
+    #|var obj = {a: 1, b: 2, c: 3};
+    #|Object.freeze(obj);
+    #|console.log(Object.keys(obj).join(","));
+  let output = run_output(src)
+  inspect(output, content="[\"a,b,c\"]")
+}
+
+// ============================================================
+// Phase 3F: Strict Mode
+// ============================================================
+
+///|
+test "use strict: this is undefined in function call" {
+  let src =
+    #|"use strict";
+    #|function getThis() { return this; }
+    #|var result = getThis();
+    #|console.log(result);
+  let output = run_output(src)
+  inspect(output, content="[\"undefined\"]")
+}
+
+///|
+test "use strict: assignment to read-only throws" {
+  let src =
+    #|"use strict";
+    #|var obj = {};
+    #|Object.defineProperty(obj, "x", { value: 42, writable: false });
+    #|try {
+    #|  obj.x = 100;
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"TypeError: Cannot assign to read only property 'x'\"]",
+  )
+}
+
+///|
+test "use strict: assignment to frozen object throws" {
+  let src =
+    #|"use strict";
+    #|var obj = {x: 1};
+    #|Object.freeze(obj);
+    #|try {
+    #|  obj.x = 100;
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+    #|try {
+    #|  obj.y = 2;
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"TypeError: Cannot assign to read only property 'x'\", \"TypeError: Cannot add property y, object is not extensible\"]",
+  )
+}
+
+///|
+test "use strict: delete non-configurable throws" {
+  let src =
+    #|"use strict";
+    #|var obj = {};
+    #|Object.defineProperty(obj, "x", { value: 1, configurable: false });
+    #|try {
+    #|  delete obj.x;
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(output, content="[\"TypeError: Cannot delete property 'x'\"]")
+}
+
+///|
+test "use strict: no arguments.callee" {
+  let src =
+    #|"use strict";
+    #|function f() {
+    #|  return typeof arguments.callee;
+    #|}
+    #|console.log(f());
+  let output = run_output(src)
+  inspect(output, content="[\"undefined\"]")
+}
+
+///|
+test "function-level use strict" {
+  let src =
+    #|function f() {
+    #|  "use strict";
+    #|  return this;
+    #|}
+    #|var result = f();
+    #|console.log(result);
+  let output = run_output(src)
+  inspect(output, content="[\"undefined\"]")
+}
+
+///|
+test "non-strict mode: this is not undefined" {
+  let src =
+    #|function getThis() { return typeof this; }
+    #|console.log(getThis());
+  let output = run_output(src)
+  inspect(output, content="[\"undefined\"]")
+}
+
+///|
+test "strict mode: sloppy function has arguments.callee" {
+  let src =
+    #|function f() {
+    #|  return typeof arguments.callee;
+    #|}
+    #|console.log(f());
+  let output = run_output(src)
+  inspect(output, content="[\"function\"]")
+}
+
+///|
+test "use strict in global scope" {
+  let src =
+    #|"use strict";
+    #|var x = 10;
+    #|console.log(x);
+  let output = run_output(src)
+  inspect(output, content="[\"10\"]")
+}
+
+///|
+test "strict mode: non-writable silent in sloppy" {
+  let src =
+    #|var obj = {};
+    #|Object.defineProperty(obj, "x", { value: 42, writable: false });
+    #|obj.x = 100;
+    #|console.log(obj.x);
+  let output = run_output(src)
+  inspect(output, content="[\"42\"]")
+}
+
+// ---- Phase 3G: RegExp tests ----
+
+///|
+test "regex literal test method" {
+  let src =
+    #|var re = /hello/;
+    #|console.log(re.test("hello world"));
+    #|console.log(re.test("goodbye"));
+  let output = run_output(src)
+  inspect(output, content="[\"true\", \"false\"]")
+}
+
+///|
+test "regex literal with flags" {
+  let src =
+    #|var re = /hello/i;
+    #|console.log(re.test("Hello World"));
+    #|console.log(re.flags);
+    #|console.log(re.ignoreCase);
+  let output = run_output(src)
+  inspect(output, content="[\"true\", \"i\", \"true\"]")
+}
+
+///|
+test "regex exec method" {
+  let src =
+    #|var re = /(\d+)/;
+    #|var result = re.exec("abc 123 def");
+    #|console.log(result[0]);
+    #|console.log(result[1]);
+  let output = run_output(src)
+  inspect(output, content="[\"123\", \"123\"]")
+}
+
+///|
+test "regex exec returns null on no match" {
+  let src =
+    #|var re = /xyz/;
+    #|var result = re.exec("hello world");
+    #|console.log(result);
+  let output = run_output(src)
+  inspect(output, content="[\"null\"]")
+}
+
+///|
+test "regex source and flags properties" {
+  let src =
+    #|var re = /abc/gi;
+    #|console.log(re.source);
+    #|console.log(re.flags);
+    #|console.log(re.global);
+    #|console.log(re.ignoreCase);
+  let output = run_output(src)
+  inspect(output, content="[\"abc\", \"gi\", \"true\", \"true\"]")
+}
+
+///|
+test "regex character class" {
+  let src =
+    #|var re = /[a-z]+/;
+    #|console.log(re.test("hello"));
+    #|console.log(re.test("12345"));
+  let output = run_output(src)
+  inspect(output, content="[\"true\", \"false\"]")
+}
+
+///|
+test "regex dot and quantifiers" {
+  let src =
+    #|var re = /a.+b/;
+    #|console.log(re.test("aXYZb"));
+    #|console.log(re.test("ab"));
+  let output = run_output(src)
+  inspect(output, content="[\"true\", \"false\"]")
+}
+
+///|
+test "regex anchors" {
+  let src =
+    #|var re1 = /^hello/;
+    #|console.log(re1.test("hello world"));
+    #|console.log(re1.test("say hello"));
+    #|var re2 = /world$/;
+    #|console.log(re2.test("hello world"));
+    #|console.log(re2.test("world hello"));
+  let output = run_output(src)
+  inspect(output, content="[\"true\", \"false\", \"true\", \"false\"]")
+}
+
+///|
+test "regex alternation" {
+  let src =
+    #|var re = /cat|dog/;
+    #|console.log(re.test("I have a cat"));
+    #|console.log(re.test("I have a dog"));
+    #|console.log(re.test("I have a bird"));
+  let output = run_output(src)
+  inspect(output, content="[\"true\", \"true\", \"false\"]")
+}
+
+///|
+test "regex digit and word shortcuts" {
+  let src =
+    #|var re1 = /\d+/;
+    #|console.log(re1.test("abc123"));
+    #|console.log(re1.test("abcdef"));
+    #|var re2 = /\w+/;
+    #|console.log(re2.test("hello"));
+    #|console.log(re2.test("   "));
+  let output = run_output(src)
+  inspect(output, content="[\"true\", \"false\", \"true\", \"false\"]")
+}
+
+///|
+test "string match with regex" {
+  let src =
+    #|var result = "hello 123 world 456".match(/\d+/g);
+    #|console.log(result.length);
+    #|console.log(result[0]);
+    #|console.log(result[1]);
+  let output = run_output(src)
+  inspect(output, content="[\"2\", \"123\", \"456\"]")
+}
+
+///|
+test "string match non-global" {
+  let src =
+    #|var result = "abc 123 def".match(/(\d+)/);
+    #|console.log(result[0]);
+    #|console.log(result[1]);
+  let output = run_output(src)
+  inspect(output, content="[\"123\", \"123\"]")
+}
+
+///|
+test "string match returns null" {
+  let src =
+    #|var result = "hello".match(/\d+/);
+    #|console.log(result);
+  let output = run_output(src)
+  inspect(output, content="[\"null\"]")
+}
+
+///|
+test "string search with regex" {
+  let src =
+    #|console.log("hello 123 world".search(/\d+/));
+    #|console.log("hello world".search(/\d+/));
+  let output = run_output(src)
+  inspect(output, content="[\"6\", \"-1\"]")
+}
+
+///|
+test "string replace with regex" {
+  let src =
+    #|var result = "hello world".replace(/world/, "there");
+    #|console.log(result);
+  let output = run_output(src)
+  inspect(output, content="[\"hello there\"]")
+}
+
+///|
+test "string replace with regex global" {
+  let src =
+    #|var result = "aaa bbb aaa".replace(/aaa/g, "ccc");
+    #|console.log(result);
+  let output = run_output(src)
+  inspect(output, content="[\"ccc bbb ccc\"]")
+}
+
+///|
+test "string replace with capture group" {
+  let src =
+    #|var result = "John Smith".replace(/(\w+) (\w+)/, "$2 $1");
+    #|console.log(result);
+  let output = run_output(src)
+  inspect(output, content="[\"Smith John\"]")
+}
+
+///|
+test "new RegExp constructor" {
+  let src =
+    #|var re = new RegExp("hello", "i");
+    #|console.log(re.test("Hello"));
+    #|console.log(re.source);
+    #|console.log(re.flags);
+  let output = run_output(src)
+  inspect(output, content="[\"true\", \"hello\", \"i\"]")
+}
+
+///|
+test "regex quantifier exact" {
+  let src =
+    #|var re = /a{3}/;
+    #|console.log(re.test("aaa"));
+    #|console.log(re.test("aa"));
+  let output = run_output(src)
+  inspect(output, content="[\"true\", \"false\"]")
+}
+
+///|
+test "regex optional quantifier" {
+  let src =
+    #|var re = /colou?r/;
+    #|console.log(re.test("color"));
+    #|console.log(re.test("colour"));
+  let output = run_output(src)
+  inspect(output, content="[\"true\", \"true\"]")
+}
+
+///|
+test "regex with escaped special chars" {
+  let src =
+    #|var re = /\./;
+    #|console.log(re.test("hello.world"));
+    #|console.log(re.test("helloworld"));
+  let output = run_output(src)
+  inspect(output, content="[\"true\", \"false\"]")
+}
+
+// ---- Critical bug fix regression tests ----
+
+///|
+test "bugfix: defineProperty defaults to false" {
+  let src =
+    #|var obj = {};
+    #|Object.defineProperty(obj, "x", { value: 42 });
+    #|var desc = Object.getOwnPropertyDescriptor(obj, "x");
+    #|console.log(desc.writable);
+    #|console.log(desc.enumerable);
+    #|console.log(desc.configurable);
+  let output = run_output(src)
+  inspect(output, content="[\"false\", \"false\", \"false\"]")
+}
+
+///|
+test "bugfix: defineProperty preserves existing descriptor" {
+  let src =
+    #|var obj = {};
+    #|Object.defineProperty(obj, "x", { value: 1, writable: true, enumerable: true, configurable: true });
+    #|Object.defineProperty(obj, "x", { value: 2 });
+    #|var desc = Object.getOwnPropertyDescriptor(obj, "x");
+    #|console.log(desc.value);
+    #|console.log(desc.writable);
+    #|console.log(desc.enumerable);
+  let output = run_output(src)
+  inspect(output, content="[\"2\", \"true\", \"true\"]")
+}
+
+///|
+test "bugfix: case-insensitive regex preserves captures" {
+  let src =
+    #|var result = "Hello World".match(/^(H)/i);
+    #|console.log(result[0]);
+    #|console.log(result[1]);
+  let output = run_output(src)
+  inspect(output, content="[\"H\", \"H\"]")
+}
+
+///|
+test "bugfix: case-insensitive regex \\D not broken" {
+  let src =
+    #|var re = /\D+/i;
+    #|console.log(re.test("abc"));
+    #|console.log(re.test("123"));
+  let output = run_output(src)
+  inspect(output, content="[\"true\", \"false\"]")
+}
+
+///|
+test "bugfix: case-insensitive regex \\W not broken" {
+  let src =
+    #|var re = /\W/i;
+    #|console.log(re.test(" "));
+    #|console.log(re.test("a"));
+  let output = run_output(src)
+  inspect(output, content="[\"true\", \"false\"]")
+}
+
+///|
+test "bugfix: UserFuncExt strict mode" {
+  let src =
+    #|function f(a = 1) {
+    #|  "use strict";
+    #|  console.log(arguments.callee);
+    #|}
+    #|f();
+  let output = run_output(src)
+  inspect(output, content="[\"undefined\"]")
+}
+
+///|
+test "bugfix: UserFuncExt sloppy has callee" {
+  let src =
+    #|function f(a = 1) {
+    #|  console.log(typeof arguments.callee);
+    #|}
+    #|f();
+  let output = run_output(src)
+  inspect(output, content="[\"function\"]")
+}
+
+///|
+test "bugfix: arrow function hoisting" {
+  let src =
+    #|var f = () => {
+    #|  var x = 10;
+    #|  function inner() { return x; }
+    #|  return inner();
+    #|};
+    #|console.log(f());
+  let output = run_output(src)
+  inspect(output, content="[\"10\"]")
+}
+
+///|
+test "bugfix: destructure assign without let" {
+  let src =
+    #|var a = 1;
+    #|var b = 2;
+    #|[a, b] = [b, a];
+    #|console.log(a);
+    #|console.log(b);
+  let output = run_output(src)
+  inspect(output, content="[\"2\", \"1\"]")
+}
+
+///|
+test "bugfix: array destructure assign from function" {
+  let src =
+    #|var a = 0;
+    #|var b = 0;
+    #|function swap() { return [3, 4]; }
+    #|[a, b] = swap();
+    #|console.log(a);
+    #|console.log(b);
+  let output = run_output(src)
+  inspect(output, content="[\"3\", \"4\"]")
+}
+
+///|
+test "bugfix: regex after if condition rparen" {
+  let src =
+    #|var x = "hello world";
+    #|var result = "";
+    #|if (/hello/.test(x)) {
+    #|  result = "matched";
+    #|}
+    #|console.log(result);
+  let output = run_output(src)
+  inspect(output, content="[\"matched\"]")
+}
+
+///|
+test "bugfix: regex after while condition rparen" {
+  let src =
+    #|var s = "abc";
+    #|var found = false;
+    #|var i = 0;
+    #|while (i < 1) {
+    #|  if (/abc/.test(s)) found = true;
+    #|  i++;
+    #|}
+    #|console.log(found);
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "bugfix: division after function call rparen" {
+  let src =
+    #|function getNum() { return 10; }
+    #|var result = getNum() / 2;
+    #|console.log(result);
+  let output = run_output(src)
+  inspect(output, content="[\"5\"]")
+}
+
+///|
+test "bugfix: regex after for condition rparen" {
+  let src =
+    #|var count = 0;
+    #|var items = ["abc", "def", "abx"];
+    #|for (var i = 0; i < items.length; i++) {
+    #|  if (/ab/.test(items[i])) count++;
+    #|}
+    #|console.log(count);
+  let output = run_output(src)
+  inspect(output, content="[\"2\"]")
+}

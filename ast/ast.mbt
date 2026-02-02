@@ -90,6 +90,7 @@ pub(all) enum Expr {
   Member(Expr, String, @token.Loc)
   Ternary(Expr, Expr, Expr, @token.Loc)
   FuncExpr(String?, Array[String], Array[Stmt], @token.Loc)
+  FuncExprExt(String?, Array[Param], String?, Array[Stmt], @token.Loc) // name, params, rest_param, body
   Grouping(Expr, @token.Loc)
   ObjectLit(Array[Property], @token.Loc)
   ArrayLit(Array[Expr], @token.Loc)
@@ -103,6 +104,30 @@ pub(all) enum Expr {
   Comma(Expr, Expr, @token.Loc)
   TemplateLit(Array[String], Array[Expr], @token.Loc)
   ArrowFunc(Array[String], Array[Stmt], @token.Loc)
+  ArrowFuncExt(Array[Param], String?, Array[Stmt], @token.Loc) // params, rest_param, body
+  SpreadExpr(Expr, @token.Loc)
+  RegexLit(String, String, @token.Loc) // pattern, flags
+  DestructureAssign(Pattern, Expr, @token.Loc)
+} derive(Show, Eq)
+
+///|
+pub(all) struct Param {
+  name : String
+  default_val : Expr?
+} derive(Show, Eq)
+
+///|
+pub(all) enum Pattern {
+  IdentPat(String)
+  ArrayPat(Array[Pattern?], Pattern?) // elements (None = hole), rest pattern
+  ObjectPat(Array[PropPat], Pattern?) // properties, rest pattern
+} derive(Show, Eq)
+
+///|
+pub(all) struct PropPat {
+  key : String
+  value : Pattern
+  default_val : Expr?
 } derive(Show, Eq)
 
 ///|
@@ -114,6 +139,7 @@ pub(all) enum Stmt {
   WhileStmt(Expr, Stmt, @token.Loc)
   ForStmt(Stmt?, Expr?, Expr?, Stmt, @token.Loc)
   FuncDecl(String, Array[String], Array[Stmt], @token.Loc)
+  FuncDeclExt(String, Array[Param], String?, Array[Stmt], @token.Loc) // name, params, rest_param, body
   ReturnStmt(Expr?, @token.Loc)
   BreakStmt(String?, @token.Loc)
   ContinueStmt(String?, @token.Loc)
@@ -122,6 +148,8 @@ pub(all) enum Stmt {
   SwitchStmt(Expr, Array[SwitchCase], @token.Loc)
   DoWhileStmt(Stmt, Expr, @token.Loc)
   ForInStmt(VarKind?, String, Expr, Stmt, @token.Loc)
+  ForOfStmt(VarKind?, String, Expr, Stmt, @token.Loc)
+  DestructureDecl(VarKind, Pattern, Expr, @token.Loc)
   LabeledStmt(String, Stmt, @token.Loc)
 } derive(Show, Eq)
 

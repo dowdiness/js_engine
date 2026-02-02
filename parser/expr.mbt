@@ -30,6 +30,40 @@ fn Parser::parse_assignment(self : Parser) -> @ast.Expr raise Error {
       }
     _ => ()
   }
+  // Try to parse arrow function with extended params: (a = 1, ...rest) => ...
+  // We detect LParen and tentatively try parse_params_ext
+  if self.at(LParen) {
+    let saved_pos = self.pos
+    // Try extended params parse
+    let try_ext : (Array[@ast.Param], String?)? = try {
+      Some(self.parse_params_ext())
+    } catch {
+      _ => None
+    }
+    match try_ext {
+      Some((ext_params, rest_param)) =>
+        if self.at(Arrow) {
+          // Check if this has defaults or rest
+          let has_ext = rest_param is Some(_) ||
+            ext_params.iter().any(fn(p) { p.default_val is Some(_) })
+          if has_ext {
+            let loc = self.advance().loc // consume =>
+            let body = self.parse_arrow_body()
+            return ArrowFuncExt(ext_params, rest_param, body, loc)
+          } else {
+            // Simple arrow func, extract names
+            let loc = self.advance().loc // consume =>
+            let param_names = ext_params.map(fn(p) { p.name })
+            let body = self.parse_arrow_body()
+            return ArrowFunc(param_names, body, loc)
+          }
+        } else {
+          // Not an arrow function, backtrack
+          self.pos = saved_pos
+        }
+      None => self.pos = saved_pos
+    }
+  }
   let expr = self.parse_ternary()
   // Check for multi-param arrow: (a, b) => ... parsed as Grouping/Comma/Ident then Arrow
   match self.peek_kind() {
@@ -49,6 +83,10 @@ fn Parser::parse_assignment(self : Parser) -> @ast.Expr raise Error {
       Ident(name, _) => return Assign(name, value, loc)
       Member(obj, prop, _) => return MemberAssign(obj, prop, value, loc)
       ComputedMember(obj, key, _) => return ComputedAssign(obj, key, value, loc)
+      ArrayLit(_, _) | ObjectLit(_, _) => {
+        let pattern = expr_to_pattern(expr)
+        return DestructureAssign(pattern, value, loc)
+      }
       _ =>
         raise Failure::Failure(
           "Invalid assignment target at line \{loc.line}, col \{loc.col}",
@@ -333,9 +371,19 @@ fn Parser::parse_call(self : Parser) -> @ast.Expr raise Error {
       let loc = self.advance().loc
       let args : Array[@ast.Expr] = []
       if not(self.at(RParen)) {
-        args.push(self.parse_assignment())
-        while self.eat(Comma) {
+        if self.at(DotDotDot) {
+          let sloc = self.advance().loc
+          args.push(SpreadExpr(self.parse_assignment(), sloc))
+        } else {
           args.push(self.parse_assignment())
+        }
+        while self.eat(Comma) {
+          if self.at(DotDotDot) {
+            let sloc = self.advance().loc
+            args.push(SpreadExpr(self.parse_assignment(), sloc))
+          } else {
+            args.push(self.parse_assignment())
+          }
         }
       }
       let _ = self.expect(RParen)
@@ -448,6 +496,10 @@ fn Parser::parse_primary(self : Parser) -> @ast.Expr raise Error {
       }
       TemplateLit(strings, exprs, tok.loc)
     }
+    Regex(pattern, flags) => {
+      self.pos += 1
+      RegexLit(pattern, flags, tok.loc)
+    }
     _ =>
       raise Failure::Failure(
         "Unexpected token \{tok.kind} at line \{tok.loc.line}, col \{tok.loc.col}",
@@ -471,9 +523,19 @@ fn Parser::parse_new_expr(self : Parser) -> @ast.Expr raise Error {
   if self.at(LParen) {
     let _ = self.advance()
     if not(self.at(RParen)) {
-      args.push(self.parse_assignment())
-      while self.eat(Comma) {
+      if self.at(DotDotDot) {
+        let sloc = self.advance().loc
+        args.push(SpreadExpr(self.parse_assignment(), sloc))
+      } else {
         args.push(self.parse_assignment())
+      }
+      while self.eat(Comma) {
+        if self.at(DotDotDot) {
+          let sloc = self.advance().loc
+          args.push(SpreadExpr(self.parse_assignment(), sloc))
+        } else {
+          args.push(self.parse_assignment())
+        }
       }
     }
     let _ = self.expect(RParen)
@@ -487,7 +549,12 @@ fn Parser::parse_array_literal(self : Parser) -> @ast.Expr raise Error {
   let loc = self.advance().loc // consume '['
   let elements : Array[@ast.Expr] = []
   while not(self.at(RBracket)) && not(self.at(EOF)) {
-    elements.push(self.parse_assignment())
+    if self.at(DotDotDot) {
+      let sloc = self.advance().loc
+      elements.push(SpreadExpr(self.parse_assignment(), sloc))
+    } else {
+      elements.push(self.parse_assignment())
+    }
     if not(self.at(RBracket)) {
       let _ = self.expect(Comma)
 
@@ -550,7 +617,19 @@ fn Parser::parse_func_expr(self : Parser) -> @ast.Expr raise Error {
     }
     _ => None
   }
-  let params = self.parse_params()
+  let saved_pos = self.pos
+  let params = self.parse_params() catch {
+    Failure::Failure(msg) =>
+      if msg == "REST_PARAM_FOUND" || msg == "DEFAULT_PARAM_FOUND" {
+        self.pos = saved_pos
+        let (ext_params, rest_param) = self.parse_params_ext()
+        let body = self.parse_block_body()
+        return FuncExprExt(name, ext_params, rest_param, body, tok.loc)
+      } else {
+        raise Failure::Failure(msg)
+      }
+    e => raise e
+  }
   let body = self.parse_block_body()
   FuncExpr(name, params, body, tok.loc)
 }
@@ -580,5 +659,42 @@ fn extract_arrow_params(expr : @ast.Expr) -> Array[String] raise Error {
       params
     }
     _ => raise Failure::Failure("Invalid arrow function parameter list")
+  }
+}
+
+///|
+fn expr_to_pattern(expr : @ast.Expr) -> @ast.Pattern raise Error {
+  match expr {
+    Ident(name, _) => IdentPat(name)
+    ArrayLit(elements, _) => {
+      let pats : Array[@ast.Pattern?] = []
+      let mut rest : @ast.Pattern? = None
+      for elem in elements {
+        match elem {
+          SpreadExpr(inner, _) => {
+            rest = Some(expr_to_pattern(inner))
+          }
+          _ => pats.push(Some(expr_to_pattern(elem)))
+        }
+      }
+      ArrayPat(pats, rest)
+    }
+    ObjectLit(props, _) => {
+      let prop_pats : Array[@ast.PropPat] = []
+      let rest : @ast.Pattern? = None
+      for prop in props {
+        // key: value => { key, value: Pattern, default_val }
+        let pat = expr_to_pattern(prop.value)
+        prop_pats.push({ key: prop.key, value: pat, default_val: None })
+      }
+      ObjectPat(prop_pats, rest)
+    }
+    Assign(name, default_expr, _) =>
+      // Handle default values in destructuring: { x = 5 } or [a = 1]
+      // This shouldn't appear in normal array/object expressions, but
+      // the pattern `{x = 5} = obj` would need special parsing.
+      // For now, treat as ident pattern (name is the binding)
+      IdentPat(name)
+    _ => raise Failure::Failure("Invalid destructuring pattern")
   }
 }
