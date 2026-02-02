@@ -101,6 +101,8 @@ pub(all) enum Expr {
   UpdateExpr(UpdateOp, Expr, Bool, @token.Loc)
   CompoundAssign(CompoundOp, Expr, Expr, @token.Loc)
   Comma(Expr, Expr, @token.Loc)
+  TemplateLit(Array[String], Array[Expr], @token.Loc)
+  ArrowFunc(Array[String], Array[Stmt], @token.Loc)
 } derive(Show, Eq)
 
 ///|

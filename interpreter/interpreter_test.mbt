@@ -1181,3 +1181,706 @@ test "labeled continue" {
   let output = run_output(src)
   inspect(output, content="[\"00,10,20,\"]")
 }
+
+// ====== Phase 2: Template Literals ======
+
+///|
+test "template literal no interpolation" {
+  let (_, result) = run_js("`hello world`")
+  inspect(result, content="hello world")
+}
+
+///|
+test "template literal with interpolation" {
+  let (_, result) = run_js("let x = 42; `the answer is ${x}`")
+  inspect(result, content="the answer is 42")
+}
+
+///|
+test "template literal multiple interpolations" {
+  let (_, result) = run_js("let a = 1; let b = 2; `${a} + ${b} = ${a + b}`")
+  inspect(result, content="1 + 2 = 3")
+}
+
+///|
+test "template literal with expressions" {
+  let (_, result) = run_js("`result: ${2 * 3 + 1}`")
+  inspect(result, content="result: 7")
+}
+
+///|
+test "template literal nested braces" {
+  let src =
+    #|var obj = {a: 1};
+    #|`value: ${obj.a}`
+  let (_, result) = run_js(src)
+  inspect(result, content="value: 1")
+}
+
+///|
+test "template literal escape sequences" {
+  let (_, result) = run_js("`line1\\nline2`")
+  inspect(result, content="line1\nline2")
+}
+
+///|
+test "template literal empty" {
+  let (_, result) = run_js("``")
+  inspect(result, content="")
+}
+
+///|
+test "template literal used in console.log" {
+  let src =
+    #|var name = "World";
+    #|console.log(`Hello, ${name}!`);
+  let output = run_output(src)
+  inspect(output, content="[\"Hello, World!\"]")
+}
+
+// ====== Phase 2: Arrow Functions ======
+
+///|
+test "arrow function expression body" {
+  let src =
+    #|var add = (a, b) => a + b;
+    #|add(3, 4);
+  let (_, result) = run_js(src)
+  inspect(result, content="7")
+}
+
+///|
+test "arrow function block body" {
+  let src =
+    #|var square = (x) => { return x * x; };
+    #|square(5);
+  let (_, result) = run_js(src)
+  inspect(result, content="25")
+}
+
+///|
+test "arrow function single param no parens" {
+  let src =
+    #|var double = x => x * 2;
+    #|double(7);
+  let (_, result) = run_js(src)
+  inspect(result, content="14")
+}
+
+///|
+test "arrow function zero params" {
+  let src =
+    #|var greet = () => "hello";
+    #|greet();
+  let (_, result) = run_js(src)
+  inspect(result, content="hello")
+}
+
+///|
+test "arrow function as callback" {
+  let src =
+    #|var arr = [3, 1, 2];
+    #|var mapped = [];
+    #|for (var i = 0; i < arr.length; i++) {
+    #|  mapped.push(arr[i] * 2);
+    #|}
+    #|console.log(mapped.join(","));
+  let output = run_output(src)
+  inspect(output, content="[\"6,2,4\"]")
+}
+
+///|
+test "arrow function closure" {
+  let src =
+    #|var make_adder = (n) => (x) => n + x;
+    #|var add5 = make_adder(5);
+    #|add5(3);
+  let (_, result) = run_js(src)
+  inspect(result, content="8")
+}
+
+// ====== Phase 2: Prototype Chain ======
+
+///|
+test "prototype chain property lookup" {
+  let src =
+    #|var parent = {x: 10};
+    #|var child = Object.create(parent);
+    #|child.y = 20;
+    #|console.log(child.x);
+    #|console.log(child.y);
+  let output = run_output(src)
+  inspect(output, content="[\"10\", \"20\"]")
+}
+
+///|
+test "prototype chain own property shadows" {
+  let src =
+    #|var parent = {x: 10};
+    #|var child = Object.create(parent);
+    #|child.x = 99;
+    #|console.log(child.x);
+  let output = run_output(src)
+  inspect(output, content="[\"99\"]")
+}
+
+///|
+test "hasOwnProperty" {
+  let src =
+    #|var obj = {a: 1};
+    #|console.log(obj.hasOwnProperty("a"));
+    #|console.log(obj.hasOwnProperty("b"));
+  let output = run_output(src)
+  inspect(output, content="[\"true\", \"false\"]")
+}
+
+// ====== Phase 2: Function.call / apply / bind ======
+
+///|
+test "function call method" {
+  let src =
+    #|function greet() { return "Hello, " + this.name; }
+    #|var obj = { name: "Alice" };
+    #|greet.call(obj);
+  let (_, result) = run_js(src)
+  inspect(result, content="Hello, Alice")
+}
+
+///|
+test "function apply method" {
+  let src =
+    #|function sum(a, b) { return a + b; }
+    #|sum.apply(null, [10, 20]);
+  let (_, result) = run_js(src)
+  inspect(result, content="30")
+}
+
+///|
+test "function bind method" {
+  let src =
+    #|function greet() { return "Hi " + this.name; }
+    #|var obj = { name: "Bob" };
+    #|var bound = greet.bind(obj);
+    #|bound();
+  let (_, result) = run_js(src)
+  inspect(result, content="Hi Bob")
+}
+
+// ====== Phase 2: Array Methods ======
+
+///|
+test "array push pop" {
+  let src =
+    #|var arr = [1, 2, 3];
+    #|arr.push(4);
+    #|console.log(arr.length);
+    #|var last = arr.pop();
+    #|console.log(last);
+    #|console.log(arr.length);
+  let output = run_output(src)
+  inspect(output, content="[\"4\", \"4\", \"3\"]")
+}
+
+///|
+test "array shift unshift" {
+  let src =
+    #|var arr = [1, 2, 3];
+    #|var first = arr.shift();
+    #|console.log(first);
+    #|arr.unshift(0);
+    #|console.log(arr.join(","));
+  let output = run_output(src)
+  inspect(output, content="[\"1\", \"0,2,3\"]")
+}
+
+///|
+test "array join" {
+  let src =
+    #|var arr = [1, 2, 3];
+    #|console.log(arr.join("-"));
+    #|console.log(arr.join(""));
+  let output = run_output(src)
+  inspect(output, content="[\"1-2-3\", \"123\"]")
+}
+
+///|
+test "array indexOf includes" {
+  let src =
+    #|var arr = [10, 20, 30];
+    #|console.log(arr.indexOf(20));
+    #|console.log(arr.indexOf(99));
+    #|console.log(arr.includes(30));
+    #|console.log(arr.includes(99));
+  let output = run_output(src)
+  inspect(output, content="[\"1\", \"-1\", \"true\", \"false\"]")
+}
+
+///|
+test "array slice" {
+  let src =
+    #|var arr = [1, 2, 3, 4, 5];
+    #|console.log(arr.slice(1, 3).join(","));
+    #|console.log(arr.slice(-2).join(","));
+  let output = run_output(src)
+  inspect(output, content="[\"2,3\", \"4,5\"]")
+}
+
+///|
+test "array concat" {
+  let (_, result) = run_js("[1, 2].concat([3, 4]).join(\",\")")
+  inspect(result, content="1,2,3,4")
+}
+
+///|
+test "array reverse" {
+  let (_, result) = run_js("[1, 2, 3].reverse().join(\",\")")
+  inspect(result, content="3,2,1")
+}
+
+///|
+test "array splice" {
+  let src =
+    #|var arr = [1, 2, 3, 4, 5];
+    #|var removed = arr.splice(1, 2);
+    #|console.log(removed.join(","));
+    #|console.log(arr.join(","));
+  let output = run_output(src)
+  inspect(output, content="[\"2,3\", \"1,4,5\"]")
+}
+
+///|
+test "array sort" {
+  let (_, result) = run_js(
+    "[\"banana\", \"apple\", \"cherry\"].sort().join(\",\")",
+  )
+  inspect(result, content="apple,banana,cherry")
+}
+
+///|
+test "array isArray" {
+  let src =
+    #|console.log(Array.isArray([1, 2]));
+    #|console.log(Array.isArray("hello"));
+    #|console.log(Array.isArray(42));
+  let output = run_output(src)
+  inspect(output, content="[\"true\", \"false\", \"false\"]")
+}
+
+///|
+test "array fill" {
+  let (_, result) = run_js("[1, 2, 3, 4].fill(0, 1, 3).join(\",\")")
+  inspect(result, content="1,0,0,4")
+}
+
+// ====== Phase 2: String Methods ======
+
+///|
+test "string charAt charCodeAt" {
+  let src =
+    #|var s = "hello";
+    #|console.log(s.charAt(1));
+    #|console.log(s.charCodeAt(0));
+  let output = run_output(src)
+  inspect(output, content="[\"e\", \"104\"]")
+}
+
+///|
+test "string indexOf lastIndexOf" {
+  let src =
+    #|var s = "hello world hello";
+    #|console.log(s.indexOf("hello"));
+    #|console.log(s.lastIndexOf("hello"));
+    #|console.log(s.indexOf("xyz"));
+  let output = run_output(src)
+  inspect(output, content="[\"0\", \"12\", \"-1\"]")
+}
+
+///|
+test "string includes" {
+  let src =
+    #|console.log("foobar".includes("bar"));
+    #|console.log("foobar".includes("baz"));
+  let output = run_output(src)
+  inspect(output, content="[\"true\", \"false\"]")
+}
+
+///|
+test "string slice" {
+  let src =
+    #|console.log("hello world".slice(6));
+    #|console.log("hello world".slice(0, 5));
+    #|console.log("hello world".slice(-5));
+  let output = run_output(src)
+  inspect(output, content="[\"world\", \"hello\", \"world\"]")
+}
+
+///|
+test "string toUpperCase toLowerCase" {
+  let src =
+    #|console.log("Hello".toUpperCase());
+    #|console.log("Hello".toLowerCase());
+  let output = run_output(src)
+  inspect(output, content="[\"HELLO\", \"hello\"]")
+}
+
+///|
+test "string trim" {
+  let (_, result) = run_js("\"  hello  \".trim()")
+  inspect(result, content="hello")
+}
+
+///|
+test "string split" {
+  let src =
+    #|var parts = "a,b,c".split(",");
+    #|console.log(parts.length);
+    #|console.log(parts.join("|"));
+  let output = run_output(src)
+  inspect(output, content="[\"3\", \"a|b|c\"]")
+}
+
+///|
+test "string replace" {
+  let (_, result) = run_js("\"hello world\".replace(\"world\", \"there\")")
+  inspect(result, content="hello there")
+}
+
+///|
+test "string startsWith endsWith" {
+  let src =
+    #|console.log("hello".startsWith("hel"));
+    #|console.log("hello".endsWith("llo"));
+    #|console.log("hello".startsWith("llo"));
+  let output = run_output(src)
+  inspect(output, content="[\"true\", \"true\", \"false\"]")
+}
+
+///|
+test "string repeat" {
+  let (_, result) = run_js("\"ab\".repeat(3)")
+  inspect(result, content="ababab")
+}
+
+///|
+test "string padStart padEnd" {
+  let src =
+    #|console.log("5".padStart(3, "0"));
+    #|console.log("hi".padEnd(5, "!"));
+  let output = run_output(src)
+  inspect(output, content="[\"005\", \"hi!!!\"]")
+}
+
+///|
+test "string substring" {
+  let (_, result) = run_js("\"hello\".substring(1, 4)")
+  inspect(result, content="ell")
+}
+
+// ====== Phase 2: Object Methods ======
+
+///|
+test "object keys values entries" {
+  let src =
+    #|var obj = {a: 1, b: 2};
+    #|console.log(Object.keys(obj).join(","));
+    #|console.log(Object.values(obj).join(","));
+  let output = run_output(src)
+  inspect(output, content="[\"a,b\", \"1,2\"]")
+}
+
+///|
+test "object assign" {
+  let src =
+    #|var target = {a: 1};
+    #|Object.assign(target, {b: 2, c: 3});
+    #|console.log(Object.keys(target).join(","));
+  let output = run_output(src)
+  inspect(output, content="[\"a,b,c\"]")
+}
+
+///|
+test "object create" {
+  let src =
+    #|var proto = {greet: function() { return "hello"; }};
+    #|var obj = Object.create(proto);
+    #|console.log(obj.greet());
+  let output = run_output(src)
+  inspect(output, content="[\"hello\"]")
+}
+
+///|
+test "object getPrototypeOf" {
+  let src =
+    #|var proto = {x: 1};
+    #|var obj = Object.create(proto);
+    #|var p = Object.getPrototypeOf(obj);
+    #|console.log(p.x);
+  let output = run_output(src)
+  inspect(output, content="[\"1\"]")
+}
+
+///|
+test "object getOwnPropertyNames" {
+  let src =
+    #|var obj = {a: 1, b: 2};
+    #|console.log(Object.getOwnPropertyNames(obj).join(","));
+  let output = run_output(src)
+  inspect(output, content="[\"a,b\"]")
+}
+
+// ====== Phase 2: Math Object ======
+
+///|
+test "math constants" {
+  let src =
+    #|console.log(Math.PI > 3.14);
+    #|console.log(Math.E > 2.71);
+  let output = run_output(src)
+  inspect(output, content="[\"true\", \"true\"]")
+}
+
+///|
+test "math abs floor ceil round" {
+  let src =
+    #|console.log(Math.abs(-5));
+    #|console.log(Math.floor(3.7));
+    #|console.log(Math.ceil(3.2));
+    #|console.log(Math.round(3.5));
+  let output = run_output(src)
+  inspect(output, content="[\"5\", \"3\", \"4\", \"4\"]")
+}
+
+///|
+test "math sqrt pow" {
+  let src =
+    #|console.log(Math.sqrt(16));
+    #|console.log(Math.pow(2, 10));
+  let output = run_output(src)
+  inspect(output, content="[\"4\", \"1024\"]")
+}
+
+///|
+test "math min max" {
+  let src =
+    #|console.log(Math.min(3, 1, 2));
+    #|console.log(Math.max(3, 1, 2));
+  let output = run_output(src)
+  inspect(output, content="[\"1\", \"3\"]")
+}
+
+///|
+test "math trunc sign" {
+  let src =
+    #|console.log(Math.trunc(3.7));
+    #|console.log(Math.trunc(-3.7));
+    #|console.log(Math.sign(-5));
+    #|console.log(Math.sign(0));
+    #|console.log(Math.sign(3));
+  let output = run_output(src)
+  inspect(output, content="[\"3\", \"-3\", \"-1\", \"0\", \"1\"]")
+}
+
+///|
+test "math log" {
+  let src =
+    #|console.log(Math.log(1));
+    #|console.log(Math.log2(8));
+    #|console.log(Math.log10(1000));
+  let output = run_output(src)
+  inspect(output, content="[\"0\", \"3\", \"3\"]")
+}
+
+// ====== Regression: .call/.apply/.bind dispatch only for callables ======
+
+///|
+test "object with own call method" {
+  let src =
+    #|var obj = { call: function() { return 1; } };
+    #|console.log(obj.call());
+  let output = run_output(src)
+  inspect(output, content="[\"1\"]")
+}
+
+///|
+test "object with own apply method" {
+  let src =
+    #|var obj = { apply: function(a) { return a + 1; } };
+    #|console.log(obj.apply(10));
+  let output = run_output(src)
+  inspect(output, content="[\"11\"]")
+}
+
+///|
+test "object with own bind method" {
+  let src =
+    #|var obj = { bind: function() { return "custom"; } };
+    #|console.log(obj.bind());
+  let output = run_output(src)
+  inspect(output, content="[\"custom\"]")
+}
+
+// ====== Regression: bound function propagates errors ======
+
+///|
+test "bound function propagates throw" {
+  let src =
+    #|function explode() { throw "boom"; }
+    #|var b = explode.bind(null);
+    #|try {
+    #|  b();
+    #|} catch (e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(output, content="[\"boom\"]")
+}
+
+///|
+test "bound function propagates runtime error" {
+  let mut err_msg = ""
+  try {
+    let _ = run_js(
+      "function bad() { return null.x; } var b = bad.bind(null); b();",
+    )
+
+  } catch {
+    Failure::Failure(msg) => err_msg = msg
+    _ => err_msg = "other error"
+  }
+  inspect(err_msg.contains("Cannot read property"), content="true")
+}
+
+// ====== Regression: hasOwnProperty on inherited objects ======
+
+///|
+test "hasOwnProperty via Object.create" {
+  let src =
+    #|var proto = { inherited: 1 };
+    #|var child = Object.create(proto);
+    #|child.own = 2;
+    #|console.log(child.hasOwnProperty("own"));
+    #|console.log(child.hasOwnProperty("inherited"));
+  let output = run_output(src)
+  inspect(output, content="[\"true\", \"false\"]")
+}
+
+///|
+test "startsWith negative position" {
+  let src =
+    #|console.log("abc".startsWith("a", -1));
+    #|console.log("abc".startsWith("abc", -100));
+  let output = run_output(src)
+  inspect(output, content="[\"true\", \"true\"]")
+}
+
+///|
+test "callable with own call property" {
+  let src =
+    #|function f() { return "original"; }
+    #|f.call = function(t) { return "overridden"; };
+    #|console.log(f.call(null));
+  let output = run_output(src)
+  inspect(output, content="[\"overridden\"]")
+}
+
+///|
+test "array includes NaN" {
+  let src =
+    #|var arr = [1, NaN, 3];
+    #|console.log(arr.includes(NaN));
+    #|console.log(arr.includes(2));
+  let output = run_output(src)
+  inspect(output, content="[\"true\", \"false\"]")
+}
+
+///|
+test "endsWith large end position" {
+  let src =
+    #|console.log("abc".endsWith("c", 100));
+    #|console.log("abc".endsWith("c", 3));
+    #|console.log("abc".endsWith("a", 1));
+    #|console.log("abc".endsWith("c", 0));
+  let output = run_output(src)
+  inspect(output, content="[\"true\", \"true\", \"true\", \"false\"]")
+}
+
+///|
+test "computed hasOwnProperty" {
+  let src =
+    #|var obj = { a: 1 };
+    #|console.log(obj["hasOwnProperty"]("a"));
+    #|console.log(obj["hasOwnProperty"]("b"));
+  let output = run_output(src)
+  inspect(output, content="[\"true\", \"false\"]")
+}
+
+///|
+test "computed call apply bind" {
+  let src =
+    #|function greet(x) { return this.name + x; }
+    #|var obj = { name: "hi" };
+    #|console.log(greet["call"](obj, "!"));
+    #|console.log(greet["apply"](obj, ["?"]));
+    #|var bound = greet["bind"](obj);
+    #|console.log(bound("."));
+  let output = run_output(src)
+  inspect(output, content="[\"hi!\", \"hi?\", \"hi.\"]")
+}
+
+///|
+test "math random non-deterministic" {
+  let src =
+    #|var a = Math.random();
+    #|var b = Math.random();
+    #|console.log(a >= 0 && a < 1);
+    #|console.log(b >= 0 && b < 1);
+    #|console.log(a !== b);
+  let output = run_output(src)
+  inspect(output, content="[\"true\", \"true\", \"true\"]")
+}
+
+///|
+test "f.call is a function" {
+  let src =
+    #|function f() {}
+    #|console.log(typeof f.call);
+    #|console.log(typeof f.apply);
+    #|console.log(typeof f.bind);
+  let output = run_output(src)
+  inspect(output, content="[\"function\", \"function\", \"function\"]")
+}
+
+///|
+test "stored call method" {
+  let src =
+    #|function add(x) { return this.val + x; }
+    #|var c = add.call;
+    #|var obj = { val: 10 };
+    #|console.log(c(obj, 5));
+  let output = run_output(src)
+  inspect(output, content="[\"15\"]")
+}
+
+///|
+test "stored bind method" {
+  let src =
+    #|function greet() { return this.msg; }
+    #|var b = greet.bind;
+    #|var bound = b({ msg: "hello" });
+    #|console.log(bound());
+  let output = run_output(src)
+  inspect(output, content="[\"hello\"]")
+}
+
+///|
+test "hasOwnProperty method borrowing" {
+  let src =
+    #|var a = { x: 1 };
+    #|var b = { y: 2 };
+    #|var hop = a.hasOwnProperty;
+    #|console.log(hop.call(b, "y"));
+    #|console.log(hop.call(b, "x"));
+    #|console.log(hop.call(a, "x"));
+  let output = run_output(src)
+  inspect(output, content="[\"true\", \"false\", \"true\"]")
+}

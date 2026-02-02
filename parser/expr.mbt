@@ -16,7 +16,31 @@ fn Parser::parse_comma(self : Parser) -> @ast.Expr raise Error {
 
 ///|
 fn Parser::parse_assignment(self : Parser) -> @ast.Expr raise Error {
+  // Check for single-param arrow: ident => ...
+  match self.peek_kind() {
+    Ident(name) =>
+      match self.peek_kind_at(1) {
+        Arrow => {
+          let loc = self.advance().loc // consume ident
+          let _ = self.advance() // consume =>
+          let body = self.parse_arrow_body()
+          return ArrowFunc([name], body, loc)
+        }
+        _ => ()
+      }
+    _ => ()
+  }
   let expr = self.parse_ternary()
+  // Check for multi-param arrow: (a, b) => ... parsed as Grouping/Comma/Ident then Arrow
+  match self.peek_kind() {
+    Arrow => {
+      let loc = self.advance().loc // consume =>
+      let params = extract_arrow_params(expr)
+      let body = self.parse_arrow_body()
+      return ArrowFunc(params, body, loc)
+    }
+    _ => ()
+  }
   // Plain assignment
   if self.at(Assign) {
     let loc = self.advance().loc
@@ -372,6 +396,21 @@ fn Parser::parse_primary(self : Parser) -> @ast.Expr raise Error {
     New => self.parse_new_expr()
     LParen => {
       self.pos += 1
+      // Check for empty parens arrow: () =>
+      if self.at(RParen) {
+        let _ = self.advance() // consume )
+        match self.peek_kind() {
+          Arrow => {
+            let _ = self.advance() // consume =>
+            let body = self.parse_arrow_body()
+            return ArrowFunc([], body, tok.loc)
+          }
+          _ =>
+            raise Failure::Failure(
+              "Unexpected ) at line \{tok.loc.line}, col \{tok.loc.col}",
+            )
+        }
+      }
       let expr = self.parse_expr()
       let _ = self.expect(RParen)
       Grouping(expr, tok.loc)
@@ -379,6 +418,36 @@ fn Parser::parse_primary(self : Parser) -> @ast.Expr raise Error {
     LBracket => self.parse_array_literal()
     LBrace => self.parse_object_literal()
     Function => self.parse_func_expr()
+    NoSubTemplate(s) => {
+      self.pos += 1
+      StringLit(s, tok.loc)
+    }
+    TemplateHead(first_str) => {
+      self.pos += 1
+      let strings : Array[String] = [first_str]
+      let exprs : Array[@ast.Expr] = []
+      while true {
+        exprs.push(self.parse_expr())
+        match self.peek_kind() {
+          TemplateMiddle(s) => {
+            self.pos += 1
+            strings.push(s)
+          }
+          TemplateTail(s) => {
+            self.pos += 1
+            strings.push(s)
+            break
+          }
+          _ => {
+            let t = self.peek()
+            raise Failure::Failure(
+              "Expected template continuation, got \{t.kind} at line \{t.loc.line}, col \{t.loc.col}",
+            )
+          }
+        }
+      }
+      TemplateLit(strings, exprs, tok.loc)
+    }
     _ =>
       raise Failure::Failure(
         "Unexpected token \{tok.kind} at line \{tok.loc.line}, col \{tok.loc.col}",
@@ -484,4 +553,32 @@ fn Parser::parse_func_expr(self : Parser) -> @ast.Expr raise Error {
   let params = self.parse_params()
   let body = self.parse_block_body()
   FuncExpr(name, params, body, tok.loc)
+}
+
+///|
+fn Parser::parse_arrow_body(self : Parser) -> Array[@ast.Stmt] raise Error {
+  if self.at(LBrace) {
+    self.parse_block_body()
+  } else {
+    let expr = self.parse_assignment()
+    let loc = @token.Loc::default()
+    [ReturnStmt(Some(expr), loc)]
+  }
+}
+
+///|
+fn extract_arrow_params(expr : @ast.Expr) -> Array[String] raise Error {
+  match expr {
+    Ident(name, _) => [name]
+    Grouping(inner, _) => extract_arrow_params(inner)
+    Comma(left, right, _) => {
+      let params = extract_arrow_params(left)
+      let right_params = extract_arrow_params(right)
+      for p in right_params {
+        params.push(p)
+      }
+      params
+    }
+    _ => raise Failure::Failure("Invalid arrow function parameter list")
+  }
 }

@@ -1,12 +1,14 @@
 ## Current State
 
-**Test262 Pass Rate: 8.18%** (1,598 passed / 17,941 failed / 30,085 skipped)
+**Test262 Pass Rate: 8.18%** (1,598 passed / 17,941 failed / 30,085 skipped) — pending re-run after Phase 2
 
-The MoonBit JS engine currently supports basic language features (variables, arithmetic, functions, closures, control flow) but lacks the core constructs needed for real ECMAScript conformance.
+The MoonBit JS engine supports basic language features (variables, arithmetic, functions, closures, control flow, try/catch, new, this, switch, for-in, bitwise ops, objects, arrays), plus template literals, arrow functions, prototype chain lookup, Function.call/apply/bind, and built-in methods for Array, String, Object, and Math. Phases 1-2 complete. 282 unit tests passing (`moon test --target wasm`).
 
-### Root Cause
+### Root Cause of Current Failures
 
-The Test262 harness files (`sta.js` + `assert.js`) **cannot execute** on the engine. They require `this`, property assignment on functions, `throw`, `new`, `try/catch`, `switch/case`, and `String()` — none of which are implemented. Until the harness loads, zero normal tests can pass. The 1,598 "passing" tests are almost entirely negative tests (tests expected to throw errors).
+ALL 17,941 test failures are caused by **template literals** (backtick characters) in the `assert.js` harness file. The harness is concatenated into every test, so every non-skipped test fails at parse time before any JS code runs. The `"template"` feature is in SKIP_FEATURES (skipping tests that *declare* template usage), but assert.js itself uses template literals for error messages, breaking ALL remaining tests.
+
+**Original harness blockers** (`this`, `throw`, `new`, `try/catch`, `switch/case`, `String()`) — **all resolved in Phase 1**.
 
 ---
 
@@ -84,21 +86,16 @@ The Test262 harness files (`sta.js` + `assert.js`) **cannot execute** on the eng
 - [x] Error constructors: `Error`, `TypeError`, `ReferenceError`, `SyntaxError`, `RangeError`, `URIError`, `EvalError`
 - [x] `String()`, `Number()`, `Boolean()` conversion functions
 
-### Phase 1 Known Issues
+### Phase 1 Known Issues ✅ ALL FIXED
 
-Issues found during code review that should be addressed before or during Phase 2:
+All 6 issues addressed in commit `3439764`:
 
-1. **`to_int32` does not match ECMAScript spec** (value.mbt) — Currently uses `n.to_int()` directly, which is implementation-defined for large doubles. The spec requires modular conversion: truncate toward zero, modulo 2^32, map to signed range. `to_int32(4294967296.0)` should return `0` but may not. **Impact**: Incorrect results for bitwise operations on large numbers.
-
-2. **Error constructors don't set prototype on instances** (builtins.mbt) — `new Error("msg")` creates objects with `prototype: Null`. In real JS, the prototype should be `Error.prototype`, enabling `instanceof Error`. Currently `(new Error("msg")) instanceof Error` returns `false`. **Impact**: Test262 harness tests that check error types with `instanceof` will fail.
-
-3. **`for-in` only enumerates own properties** (interpreter.mbt) — Does not walk the prototype chain. Per spec, `for-in` should also enumerate inherited enumerable properties. **Impact**: Limited until prototype chains are fully used in Phase 2/3.
-
-4. **`LabeledStmt` label is discarded** (interpreter.mbt) — `break label;` / `continue label;` are not implemented. The label is parsed but ignored at runtime; `break` only breaks the innermost loop. **Impact**: Tests using labeled break/continue across nested loops will fail.
-
-5. **`parseFloat` uses O(n^2) progressive prefix parsing** (builtins.mbt) — Builds progressively longer strings and tries `@strconv.parse_double` on each. Works correctly but is slow for long strings. **Impact**: Performance only, correctness is fine.
-
-6. **`eval_update` and `eval_compound_assign` re-evaluate object expressions** (interpreter.mbt) — For `obj.prop++` or `obj.prop += 1`, the object expression is evaluated twice. Side-effecting getters would execute twice. **Impact**: Subtle spec non-compliance for edge cases with getters.
+1. ~~**`to_int32` does not match ECMAScript spec**~~ ✅ Rewritten with proper ECMAScript ToInt32: truncate toward zero, modulo 2^32, signed range mapping
+2. ~~**Error constructors don't set prototype on instances**~~ ✅ Shared `proto_obj` between constructor's `"prototype"` property and NativeCallable closure
+3. ~~**`for-in` only enumerates own properties**~~ ✅ Added `collect_for_in_keys` helper walking prototype chain with deduplication
+4. ~~**`LabeledStmt` label is discarded**~~ ✅ Added `label~` parameter to `exec_stmt`, `BreakSignal(String?)` / `ContinueSignal(String?)` with label matching in all loop constructs
+5. ~~**`parseFloat` uses O(n^2) progressive prefix parsing**~~ ✅ Single-pass O(n) scanner
+6. ~~**`eval_update` and `eval_compound_assign` re-evaluate object expressions**~~ ✅ Rewritten to evaluate obj/key once, read via get_property, write back
 
 ### Phase 1 Implementation Notes
 
@@ -138,82 +135,158 @@ Issues found during code review that should be addressed before or during Phase 
 
 ---
 
-## Phase 2: Built-in Objects → ~48% pass rate
+## Phase 2: Unblock Test262 Harness → ~25-40% pass rate ✅ IMPLEMENTED
 
-**Goal**: Implement the standard library to unlock `built-ins/*` tests.
+**Goal**: Template literals + arrow functions + prototype chain + core built-ins → unblock all 17,941 failing tests.
 
-### 2A. Object Built-in (3,150 applicable tests)
-- [ ] `Object.keys()`, `values()`, `entries()`
-- [ ] `Object.create()`, `Object.assign()`
-- [ ] `Object.defineProperty()`, `getOwnPropertyDescriptor()` (requires property descriptor model: `writable`/`enumerable`/`configurable`)
-- [ ] `Object.getOwnPropertyNames()`, `Object.getPrototypeOf()`
-- [ ] `Object.freeze()`, `seal()`, `preventExtensions()`
-- [ ] `Object.prototype.hasOwnProperty()`, `toString()`, `valueOf()`
+**Status**: All tasks (2A–2I) implemented. 282 unit tests passing (`moon test --target wasm`).
 
-### 2B. Array Built-in (2,555 applicable tests)
-- [ ] `Array.isArray()`
-- [ ] Mutators: `push`, `pop`, `shift`, `unshift`, `splice`, `sort`, `reverse`, `fill`
-- [ ] Accessors: `slice`, `concat`, `join`, `indexOf`, `lastIndexOf`, `includes`
-- [ ] Iterators: `map`, `filter`, `reduce`, `forEach`, `find`, `findIndex`, `every`, `some`, `flat`, `flatMap`
-- [ ] `.length` auto-maintenance
+### 2A. Template Literals ✅
 
-### 2C. String Built-in (1,013 applicable tests)
-- [ ] `.length` property, auto-boxing for method calls on primitives
-- [ ] `charAt`, `charCodeAt`, `substring`, `slice`, `split`
-- [ ] `indexOf`, `lastIndexOf`, `includes`
-- [ ] `trim`, `trimStart`, `trimEnd`
-- [ ] `toLowerCase`, `toUpperCase`
-- [ ] `replace`, `startsWith`, `endsWith`, `repeat`, `padStart`, `padEnd`
-- [ ] `String.fromCharCode()`
+**Lexer** (`lexer/lexer.mbt`):
+- [x] Add `template_depth_stack: Array[Int]` local variable in `tokenize()`
+- [x] Add `scan_template_string()` helper: scan until `${` or closing backtick, handle escape sequences
+- [x] Backtick recognition: emit `NoSubTemplate` or `TemplateHead` + push brace depth
+- [x] `{` tracking: increment top of stack when inside template expression
+- [x] `}` tracking: when brace depth reaches 0, resume template scanning → emit `TemplateMiddle` or `TemplateTail`
 
-### 2D. Number and Math Built-ins
-- [ ] `Number.NaN`, `Number.POSITIVE_INFINITY`, `Number.NEGATIVE_INFINITY`
-- [ ] `Number.MAX_VALUE`, `MIN_VALUE`, `EPSILON`, `MAX_SAFE_INTEGER`, `MIN_SAFE_INTEGER`
-- [ ] `Number.isNaN()`, `isFinite()`, `isInteger()`, `isSafeInteger()`
-- [ ] `Number.prototype.toFixed()`, `toString(radix)`, `valueOf()`
-- [ ] `Math.PI`, `E`, `abs`, `floor`, `ceil`, `round`, `trunc`, `sqrt`, `pow`, `min`, `max`, `random`, `sign`, `log`, `log2`, `log10`, trig functions
+**Tokens** (`token/token.mbt`):
+- [x] `NoSubTemplate(String)` — `` `hello world` ``
+- [x] `TemplateHead(String)` — `` `hello ${ ``
+- [x] `TemplateMiddle(String)` — `` } world ${ ``
+- [x] `TemplateTail(String)` — `` } end` ``
 
-### 2E. Error Types and JSON
-- [ ] Complete error type hierarchy with `.name`, `.message`, `.stack`, proper prototype chain
-- [ ] `JSON.parse(text)` — requires a JSON tokenizer
-- [ ] `JSON.stringify(value, replacer?, space?)` — recursive serialization
+**AST** (`ast/ast.mbt`):
+- [x] `TemplateLit(Array[String], Array[Expr], @token.Loc)` — strings interleaved with expressions
 
-### 2F. RegExp (Basic, 775 applicable tests)
-- [ ] RegExp literal parsing in lexer (`/pattern/flags`)
-- [ ] `RegExp` constructor
-- [ ] `.test(string)`, `.exec(string)`
-- [ ] `String.prototype.match()`, `replace()`, `search()`, `split()` with regex support
+**Parser** (`parser/expr.mbt`):
+- [x] `NoSubTemplate(s)` → `StringLit(s, loc)`
+- [x] `TemplateHead(s)` → parse expr loop until `TemplateTail` → `TemplateLit`
 
-### Phase 2 Expected Impact
+**Interpreter** (`interpreter/interpreter.mbt`):
+- [x] Evaluate each expr, `to_string()`, concatenate with string parts
 
-| Category | Est. new passes |
-|----------|----------------|
-| built-ins/Object | ~1,600 |
-| built-ins/Array | ~800 |
-| built-ins/String | ~500 |
-| built-ins/Math + Number | ~300 |
-| built-ins/JSON + Error | ~150 |
-| built-ins/RegExp | ~100 |
-| Cross-category (propertyHelper unlocks) | ~500 |
-| **Phase 2 increment** | **~4,400 (cumulative ~9,400, 48%)** |
+### 2B. Arrow Functions ✅
+
+**Lexer** (`lexer/lexer.mbt`):
+- [x] `Arrow` token (`=>`) — added before existing `==` check
+
+**AST** (`ast/ast.mbt`):
+- [x] `ArrowFunc(Array[String], Array[Stmt], @token.Loc)` — params + body (concise body wrapped in ReturnStmt)
+
+**Parser** (`parser/expr.mbt`):
+- [x] Single-param: `ident =>` detected by peek-ahead
+- [x] Zero-param: `() =>` in `parse_primary()` LParen arm
+- [x] Multi-param: parse expression, check for Arrow, extract params from Grouping/Comma
+- [x] Body: `{` → block body; otherwise → assignment expression (implicit return)
+
+**Interpreter** (`interpreter/interpreter.mbt`, `value.mbt`):
+- [x] `ArrowFunc(FuncData)` variant in `Callable` enum — lexical `this` (no rebinding on call)
+- [x] `eval_new` rejection: arrow functions cannot be constructors → TypeError
+
+### 2C. Prototype Chain Property Lookup ✅
+
+**File**: `interpreter/interpreter.mbt`
+- [x] `get_property()`: when own property not found, walk `data.prototype` chain until found or Null
+- [x] `get_computed_property()`: same prototype chain walking for Object arm
+- [x] Unlocks: inherited method calls, `hasOwnProperty`, error `.name`/`.message` access
+
+### 2D. Function.call / Function.apply / Function.bind ✅
+
+**File**: `interpreter/interpreter.mbt`
+- [x] Fast-path in `eval_call()` Member and ComputedMember arms for direct invocation
+- [x] `FuncCallMethod(Value)` / `FuncApplyMethod(Value)` callable variants for property reads (`var c = f.call`)
+- [x] `MethodCallable(String, (Value, Array[Value]) -> Value)` for this-aware built-in methods (e.g., `hasOwnProperty`)
+- [x] `BoundFunc(Value, Value, Array[Value])` callable variant for `.bind()` with proper error propagation
+- [x] Own property check: callable objects that override `.call`/`.apply`/`.bind` use their own properties
+
+### 2E. Array Built-in Methods ✅
+
+**New file**: `interpreter/builtins_array.mbt`
+- [x] `push`, `pop`, `shift`, `unshift`, `splice`
+- [x] `slice`, `concat`, `join`, `indexOf`, `lastIndexOf`, `includes` (SameValueZero for NaN)
+- [x] `reverse`, `sort`, `fill`, `toString`
+- [ ] `map`, `filter`, `reduce`, `forEach`, `find`, `findIndex`, `every`, `some` (deferred to Phase 3)
+- [x] `Array.isArray()` static method — registered in `builtins_object.mbt`
+
+### 2F. String Built-in Methods ✅
+
+**New file**: `interpreter/builtins_string.mbt`
+- [x] `charAt`, `charCodeAt`, `indexOf`, `lastIndexOf`, `includes`
+- [x] `slice`, `substring`, `toLowerCase`, `toUpperCase`
+- [x] `trim`, `trimStart`, `trimEnd`
+- [x] `split`, `replace`, `startsWith`, `endsWith`, `repeat`, `padStart`, `padEnd`
+- [x] `toString`, `valueOf`
+- [ ] `String.fromCharCode()` static method (deferred to Phase 3)
+
+### 2G. Object Built-in Methods ✅
+
+**New file**: `interpreter/builtins_object.mbt`
+- [x] Static: `Object.keys()`, `Object.values()`, `Object.entries()`, `Object.create()`, `Object.assign()`, `Object.getPrototypeOf()`, `Object.getOwnPropertyNames()`, `Object.defineProperty()`
+- [x] `hasOwnProperty()` via `MethodCallable` with dynamic `this` receiver (supports method borrowing via `.call`)
+- [x] `toString()` fallback for objects
+
+### 2H. Math Object ✅
+
+**File**: `interpreter/builtins.mbt`
+- [x] Constants: `PI`, `E`, `LN2`, `LN10`, `LOG2E`, `LOG10E`, `SQRT2`, `SQRT1_2`
+- [x] Methods: `abs`, `floor`, `ceil`, `round`, `trunc`, `sqrt`, `pow`, `min`, `max`, `random` (xorshift32 PRNG), `sign`, `log`, `log2`, `log10`
+
+### 2I. Test262 Runner Update
+
+**File**: `test262-runner.py`
+- [ ] Remove `"template"` and `"arrow-function"` from `SKIP_FEATURES` (pending CI run)
+
+### Phase 2 Implementation Notes
+
+**Files changed**: 11 files, 3 new files created
+
+| File | Changes |
+|------|---------|
+| `token/token.mbt` | 5 new token kinds (4 template + Arrow) |
+| `lexer/lexer.mbt` | Template state machine with brace-depth stack, `=>` operator |
+| `ast/ast.mbt` | `TemplateLit`, `ArrowFunc` expression variants |
+| `parser/expr.mbt` | Template literal + arrow function parsing, `extract_arrow_params`, `parse_arrow_body` |
+| `interpreter/interpreter.mbt` | Template/arrow eval, prototype chain in get_property/get_computed_property, call/apply/bind dispatch (Member + ComputedMember), FuncCallMethod/FuncApplyMethod/MethodCallable in call_value |
+| `interpreter/value.mbt` | `ArrowFunc`, `BoundFunc`, `FuncCallMethod`, `FuncApplyMethod`, `MethodCallable` callable variants |
+| `interpreter/builtins.mbt` | Math object with xorshift32 PRNG, setup_object_builtins/setup_math_builtins calls |
+| `interpreter/builtins_array.mbt` | Array prototype methods (new file), `strict_equal_val`, `same_value_zero` |
+| `interpreter/builtins_string.mbt` | String prototype methods (new file), `string_trim`, `string_trim_end` |
+| `interpreter/builtins_object.mbt` | Object/Array constructors + static methods (new file) |
+| `interpreter/moon.pkg.json` | Added `moonbitlang/core/math` import |
+
+**Review fixes applied**:
+- Clamp `startsWith`/`endsWith` position arguments to valid ranges
+- Own property check before call/apply/bind fast-path on callable objects
+- SameValueZero semantics for `Array.includes` (NaN === NaN)
+- Object fallback methods (hasOwnProperty/toString) in both get_property and get_computed_property
+- call/apply/bind dispatch in ComputedMember path (bracket notation)
+- `Math.random` replaced constant stub with xorshift32 PRNG
+- `FuncCallMethod`/`FuncApplyMethod` make `.call`/`.apply`/`.bind` retrievable as property values
+- `MethodCallable` gives `hasOwnProperty` dynamic `this` receiver for method borrowing
+- `BoundFunc` callable variant for proper error propagation through bound functions
 
 ---
 
-## Phase 3: Advanced Language Features → ~56% pass rate
+## Phase 3: Advanced Language Features + Full Built-ins → ~56% pass rate
 
-- [ ] **Prototype chain** — property lookup walks chain, `Object.create()`, constructor `.prototype`
-- [ ] **`this` binding** — method calls (`obj.method()`), `.call()`, `.apply()`, `.bind()`
+Items completed in Phase 2: ~~template literals~~, ~~arrow functions~~, ~~prototype chain property lookup~~, ~~`.call()`/`.apply()`~~, ~~`.bind()`~~
+
 - [ ] **`arguments` object** — array-like, `arguments.length`, `arguments[i]`, `arguments.callee` (sloppy mode)
 - [ ] **Strict mode** — `"use strict"` directive, `this` is `undefined` for unbound calls, assignment to undeclared throws, TDZ enforcement
 - [ ] **Hoisting** — `var` and function declaration hoisting, two-pass execution
-- [ ] **Arrow functions** — lexer (`=>`), parser, interpreter (lexical `this`)
-- [ ] **Template literals** — lexer (backticks), `${expr}` interpolation
 - [ ] **Default parameters** — `function f(a = 1) {}`
 - [ ] **Destructuring** — array `[a, b] = arr`, object `{x, y} = obj`, in parameters
 - [ ] **Spread/rest** — `...args` in function params, calls, array/object literals
 - [ ] **`for-of`** loops — iterator protocol for arrays and strings
+- [ ] **Property descriptors** — `writable`/`enumerable`/`configurable` flags, `Object.defineProperty()`, `Object.getOwnPropertyDescriptor()`
+- [ ] **`Object.freeze()`**, `seal()`, `preventExtensions()`
+- [ ] **RegExp** — literal parsing in lexer, `.test()`, `.exec()`, String regex methods
+- [ ] **JSON** — `JSON.parse()`, `JSON.stringify()`
+- [ ] **Error hierarchy** — complete `.name`, `.message`, `.stack`, proper prototype chain
+- [ ] **Number built-in** — `Number.isNaN()`, `isFinite()`, `isInteger()`, `toFixed()`, `toString(radix)`, constants
 
-### Phase 3 Expected Impact: ~1,600 additional tests → cumulative ~11,000 (56%)
+### Phase 3 Expected Impact: ~3,000 additional tests → cumulative ~56%
 
 ---
 
@@ -241,34 +314,25 @@ Issues found during code review that should be addressed before or during Phase 
 ## Dependency Graph
 
 ```
-Phase 1A Lexer ──► 1B AST ──► 1C Value types
-                                     │
-1E Parser ◄──────────────────────────┘
-     │
-     ▼
-1D Exceptions ──► 1F Interpreter ──► 1G Builtins
-     │                                    │
-     ▼                                    ▼
- [25% pass rate]                    Phase 2 Built-ins
-                                          │
-                                          ▼
-                                    [48% pass rate]
-                                          │
-                                          ▼
-                                    Phase 3 + 4
-                                          │
-                                          ▼
-                                    [56-65% pass rate]
+Phase 1 (DONE) ──► Phase 2 (DONE) ──► Phase 3 (strict mode, destructuring, spread, RegExp, JSON)
+                                               │
+                                               ▼
+                                         [~56% pass rate]
+                                               │
+                                               ▼
+                                         Phase 4 (classes, symbols, generators, promises)
+                                               │
+                                               ▼
+                                         [60%+ pass rate]
 ```
 
 ## Summary
 
 | Phase | Pass Rate | Key Unlock |
 |-------|-----------|------------|
-| Current | 8.18% | Negative tests only |
-| Phase 1 | ~25% | Harness boots, basic language |
-| Phase 2 | ~48% | Standard library |
-| Phase 3 | ~56% | Prototype chain, strict mode, ES6 syntax |
-| Phase 4 | ~60%+ | Classes, symbols, generators |
+| Phase 1 ✅ | 8.18% (actual) | Core language, harness dependencies (except template literals) |
+| Phase 2 ✅ | ~25-40% (pending re-run) | Template literals unblock assert.js, arrow functions, prototype chain, built-ins |
+| Phase 3 | ~56% | Strict mode, destructuring, spread/rest, RegExp, JSON, property descriptors |
+| Phase 4 | ~60%+ | Classes, symbols, generators, promises |
 
-**Phase 1 is the critical path** — it has the highest ROI because it unblocks the harness, which is a prerequisite for every normal test to pass.
+**Phase 2 is the critical path** — template literals are the single blocker preventing all 17,941 tests from executing.

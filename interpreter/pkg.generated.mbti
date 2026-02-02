@@ -6,6 +6,10 @@ import {
 }
 
 // Values
+pub fn get_array_method(ArrayData, String) -> Value
+
+pub fn get_string_method(String, String) -> Value
+
 pub fn is_truthy(Value) -> Bool
 
 pub fn make_func(FuncData) -> Value
@@ -13,6 +17,8 @@ pub fn make_func(FuncData) -> Value
 pub fn make_native_func(String, (Array[Value]) -> Value) -> Value
 
 pub fn setup_builtins(Environment, Array[String]) -> Unit
+
+pub fn setup_object_builtins(Environment) -> Unit
 
 pub fn to_int32(Double) -> Int
 
@@ -42,7 +48,9 @@ pub impl Show for BindingKind
 
 pub(all) enum Callable {
   UserFunc(FuncData)
+  ArrowFunc(FuncData)
   NativeCallable(String, (Array[Value]) -> Value)
+  BoundFunc(Value, Value, Array[Value])
 }
 
 pub(all) struct Environment {

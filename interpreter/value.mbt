@@ -9,7 +9,12 @@ pub(all) struct FuncData {
 ///|
 pub(all) enum Callable {
   UserFunc(FuncData)
+  ArrowFunc(FuncData)
   NativeCallable(String, (Array[Value]) -> Value)
+  BoundFunc(Value, Value, Array[Value]) // (target, this_val, bound_args)
+  FuncCallMethod(Value) // .call proxy: captures target function
+  FuncApplyMethod(Value) // .apply proxy: captures target function
+  MethodCallable(String, (Value, Array[Value]) -> Value) // this-aware native method
 }
 
 ///|
@@ -91,7 +96,16 @@ pub impl Show for Value with output(self, logger) {
             Some(n) => logger.write_string("function \{n}() { [code] }")
             None => logger.write_string("function() { [code] }")
           }
+        Some(ArrowFunc(_)) => logger.write_string("() => { [code] }")
+        Some(BoundFunc(_, _, _)) =>
+          logger.write_string("function bound() { [native code] }")
         Some(NativeCallable(name, _)) =>
+          logger.write_string("function \{name}() { [native code] }")
+        Some(FuncCallMethod(_)) =>
+          logger.write_string("function call() { [native code] }")
+        Some(FuncApplyMethod(_)) =>
+          logger.write_string("function apply() { [native code] }")
+        Some(MethodCallable(name, _)) =>
           logger.write_string("function \{name}() { [native code] }")
         None => logger.write_string("[object \{data.class_name}]")
       }

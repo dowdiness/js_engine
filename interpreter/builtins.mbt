@@ -209,6 +209,133 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
   register_error_ctor(env, "RangeError")
   register_error_ctor(env, "URIError")
   register_error_ctor(env, "EvalError")
+
+  // Object, Array constructors and built-in methods
+  setup_object_builtins(env)
+
+  // Math object
+  setup_math_builtins(env)
+}
+
+///|
+fn setup_math_builtins(env : Environment) -> Unit {
+  let math_props : Map[String, Value] = {}
+  math_props["PI"] = Number(3.141592653589793)
+  math_props["E"] = Number(2.718281828459045)
+  math_props["LN2"] = Number(0.6931471805599453)
+  math_props["LN10"] = Number(2.302585092994046)
+  math_props["LOG2E"] = Number(1.4426950408889634)
+  math_props["LOG10E"] = Number(0.4342944819032518)
+  math_props["SQRT2"] = Number(1.4142135623730951)
+  math_props["SQRT1_2"] = Number(0.7071067811865476)
+  math_props["abs"] = make_native_func("abs", fn(args) {
+    let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+    Number(n.abs())
+  })
+  math_props["floor"] = make_native_func("floor", fn(args) {
+    let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+    Number(n.floor())
+  })
+  math_props["ceil"] = make_native_func("ceil", fn(args) {
+    let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+    Number(n.ceil())
+  })
+  math_props["round"] = make_native_func("round", fn(args) {
+    let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+    Number((n + 0.5).floor())
+  })
+  math_props["trunc"] = make_native_func("trunc", fn(args) {
+    let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+    if n >= 0.0 {
+      Number(n.floor())
+    } else {
+      Number(-(-n).floor())
+    }
+  })
+  math_props["sqrt"] = make_native_func("sqrt", fn(args) {
+    let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+    Number(n.sqrt())
+  })
+  math_props["pow"] = make_native_func("pow", fn(args) {
+    let base = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+    let exp = if args.length() > 1 { to_number(args[1]) } else { 0.0 / 0.0 }
+    Number(@math.pow(base, exp))
+  })
+  math_props["min"] = make_native_func("min", fn(args) {
+    if args.length() == 0 {
+      return Number(1.0 / 0.0)
+    }
+    let mut result = to_number(args[0])
+    for i = 1; i < args.length(); i = i + 1 {
+      let n = to_number(args[i])
+      if n.is_nan() {
+        return Number(0.0 / 0.0)
+      }
+      if n < result {
+        result = n
+      }
+    }
+    Number(result)
+  })
+  math_props["max"] = make_native_func("max", fn(args) {
+    if args.length() == 0 {
+      return Number(-1.0 / 0.0)
+    }
+    let mut result = to_number(args[0])
+    for i = 1; i < args.length(); i = i + 1 {
+      let n = to_number(args[i])
+      if n.is_nan() {
+        return Number(0.0 / 0.0)
+      }
+      if n > result {
+        result = n
+      }
+    }
+    Number(result)
+  })
+  let rng_state : Array[Int] = [123456789]
+  math_props["random"] = make_native_func("random", fn(_args) {
+    let mut s = rng_state[0]
+    s = s ^ (s << 13)
+    s = s ^ (s.reinterpret_as_uint() >> 17).reinterpret_as_int()
+    s = s ^ (s << 5)
+    rng_state[0] = s
+    let normalized = s.land(0x7FFFFFFF).to_double() / 2147483648.0
+    Number(normalized)
+  })
+  math_props["sign"] = make_native_func("sign", fn(args) {
+    let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+    if n.is_nan() {
+      Number(0.0 / 0.0)
+    } else if n > 0.0 {
+      Number(1.0)
+    } else if n < 0.0 {
+      Number(-1.0)
+    } else {
+      Number(n) // preserves +0/-0
+    }
+  })
+  math_props["log"] = make_native_func("log", fn(args) {
+    let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+    Number(@math.ln(n))
+  })
+  math_props["log2"] = make_native_func("log2", fn(args) {
+    let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+    Number(@math.log2(n))
+  })
+  math_props["log10"] = make_native_func("log10", fn(args) {
+    let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+    Number(@math.log10(n))
+  })
+  env.def_builtin(
+    "Math",
+    Object({
+      properties: math_props,
+      prototype: Null,
+      callable: None,
+      class_name: "Math",
+    }),
+  )
 }
 
 ///|

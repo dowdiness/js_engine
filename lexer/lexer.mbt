@@ -58,12 +58,60 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
   let mut offset = 0
   let chars = source.to_array()
   let len = chars.length()
+  let template_depth_stack : Array[Int] = []
   fn make_loc() -> @token.Loc {
     { line, col, offset }
   }
 
   fn char_at(i : Int) -> Char {
     chars[i]
+  }
+
+  fn scan_template_string() -> (String, Bool) raise Error {
+    let buf = StringBuilder::new()
+    while offset < len {
+      let tc = char_at(offset)
+      if tc == '`' {
+        offset += 1
+        col += 1
+        return (buf.to_string(), false)
+      }
+      if tc == '$' && offset + 1 < len && char_at(offset + 1) == '{' {
+        offset += 2
+        col += 2
+        return (buf.to_string(), true)
+      }
+      if tc == '\\' && offset + 1 < len {
+        offset += 1
+        col += 1
+        let esc = char_at(offset)
+        match esc {
+          'n' => buf.write_char('\n')
+          't' => buf.write_char('\t')
+          '\\' => buf.write_char('\\')
+          '`' => buf.write_char('`')
+          '$' => buf.write_char('$')
+          _ => {
+            buf.write_char('\\')
+            buf.write_char(esc)
+          }
+        }
+        offset += 1
+        col += 1
+      } else {
+        if tc == '\n' {
+          line += 1
+          col = 1
+        } else {
+          col += 1
+        }
+        buf.write_char(tc)
+        offset += 1
+      }
+    }
+    raise Failure::Failure(
+      "Unterminated template literal at line \{line}, col \{col}",
+    )
   }
 
   while offset < len {
@@ -194,6 +242,20 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       tokens.push({ kind: String_(buf.to_string()), loc, raw })
       continue
     }
+    // Template literals (backtick)
+    if c == '`' {
+      let tloc = make_loc()
+      offset += 1
+      col += 1
+      let (text, has_expr) = scan_template_string()
+      if has_expr {
+        template_depth_stack.push(1)
+        tokens.push({ kind: TemplateHead(text), loc: tloc, raw: "" })
+      } else {
+        tokens.push({ kind: NoSubTemplate(text), loc: tloc, raw: "" })
+      }
+      continue
+    }
     // Multi-character operators (longest match first)
     // 4-char
     if c == '>' &&
@@ -253,6 +315,12 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       continue
     }
     // 2-char
+    if c == '=' && offset + 1 < len && char_at(offset + 1) == '>' {
+      tokens.push({ kind: Arrow, loc, raw: "=>" })
+      offset += 2
+      col += 2
+      continue
+    }
     if c == '=' && offset + 1 < len && char_at(offset + 1) == '=' {
       tokens.push({ kind: EqEq, loc, raw: "==" })
       offset += 2
@@ -360,6 +428,30 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       offset += 2
       col += 2
       continue
+    }
+    // Handle } specially for template literal brace-depth tracking
+    if c == '}' && template_depth_stack.length() > 0 {
+      let top = template_depth_stack.length() - 1
+      template_depth_stack[top] = template_depth_stack[top] - 1
+      if template_depth_stack[top] == 0 {
+        let _ = template_depth_stack.pop()
+        let tloc = make_loc()
+        offset += 1
+        col += 1
+        let (text, has_expr) = scan_template_string()
+        if has_expr {
+          template_depth_stack.push(1)
+          tokens.push({ kind: TemplateMiddle(text), loc: tloc, raw: "" })
+        } else {
+          tokens.push({ kind: TemplateTail(text), loc: tloc, raw: "" })
+        }
+        continue
+      }
+    }
+    // Handle { specially for template literal brace-depth tracking
+    if c == '{' && template_depth_stack.length() > 0 {
+      let top = template_depth_stack.length() - 1
+      template_depth_stack[top] = template_depth_stack[top] + 1
     }
     // Single-character tokens
     let (kind, raw) : (@token.TokenKind, String) = match c {

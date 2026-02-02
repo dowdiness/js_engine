@@ -107,6 +107,11 @@ pub(all) enum TokenKind {
   Dot
   Colon
   Question
+  NoSubTemplate(String)
+  TemplateHead(String)
+  TemplateMiddle(String)
+  TemplateTail(String)
+  Arrow
   EOF
 }
 pub impl Eq for TokenKind

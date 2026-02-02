@@ -481,6 +481,26 @@ fn Interpreter::eval_expr(
       let _ = self.eval_expr(left, env)
       self.eval_expr(right, env)
     }
+    TemplateLit(strings, exprs, _) => {
+      let buf = StringBuilder::new()
+      for i = 0; i < strings.length(); i = i + 1 {
+        buf.write_string(strings[i])
+        if i < exprs.length() {
+          let val = self.eval_expr(exprs[i], env)
+          buf.write_string(val.to_string())
+        }
+      }
+      String_(buf.to_string())
+    }
+    ArrowFunc(params, body, _) => {
+      let func_data : FuncData = { name: None, params, body, closure: env }
+      Object({
+        properties: {},
+        prototype: Null,
+        callable: Some(ArrowFunc(func_data)),
+        class_name: "Function",
+      })
+    }
   }
 }
 
@@ -756,6 +776,52 @@ fn Interpreter::eval_call(
         }
         _ => {
           let obj = self.eval_expr(obj_expr, env)
+          // Function.call / Function.apply / Function.bind — only when obj is callable
+          // and the object does NOT have its own override for the property
+          let is_builtin_method = match obj {
+            Object(od) =>
+              od.callable is Some(_) && not(od.properties.contains(prop))
+            _ => false
+          }
+          if is_builtin_method && prop == "call" {
+            let this_arg = if args.length() > 0 { args[0] } else { Undefined }
+            let call_args : Array[Value] = []
+            for i = 1; i < args.length(); i = i + 1 {
+              call_args.push(args[i])
+            }
+            return self.call_value(obj, this_arg, call_args, loc)
+          }
+          if is_builtin_method && prop == "apply" {
+            let this_arg = if args.length() > 0 { args[0] } else { Undefined }
+            let call_args : Array[Value] = if args.length() > 1 {
+              match args[1] {
+                Array(data) => {
+                  let a : Array[Value] = []
+                  for el in data.elements {
+                    a.push(el)
+                  }
+                  a
+                }
+                _ => []
+              }
+            } else {
+              []
+            }
+            return self.call_value(obj, this_arg, call_args, loc)
+          }
+          if is_builtin_method && prop == "bind" {
+            let this_arg = if args.length() > 0 { args[0] } else { Undefined }
+            let bound_args : Array[Value] = []
+            for i = 1; i < args.length(); i = i + 1 {
+              bound_args.push(args[i])
+            }
+            return Object({
+              properties: {},
+              prototype: Null,
+              callable: Some(BoundFunc(obj, this_arg, bound_args)),
+              class_name: "Function",
+            })
+          }
           let func_val = self.get_property(obj, prop, mloc)
           self.call_value(func_val, obj, args, loc)
         }
@@ -763,6 +829,52 @@ fn Interpreter::eval_call(
     ComputedMember(obj_expr, key_expr, mloc) => {
       let obj = self.eval_expr(obj_expr, env)
       let key = self.eval_expr(key_expr, env)
+      let prop = key.to_string()
+      // Function.call / Function.apply / Function.bind for computed access
+      let is_builtin_method = match obj {
+        Object(od) =>
+          od.callable is Some(_) && not(od.properties.contains(prop))
+        _ => false
+      }
+      if is_builtin_method && prop == "call" {
+        let this_arg = if args.length() > 0 { args[0] } else { Undefined }
+        let call_args : Array[Value] = []
+        for i = 1; i < args.length(); i = i + 1 {
+          call_args.push(args[i])
+        }
+        return self.call_value(obj, this_arg, call_args, loc)
+      }
+      if is_builtin_method && prop == "apply" {
+        let this_arg = if args.length() > 0 { args[0] } else { Undefined }
+        let call_args : Array[Value] = if args.length() > 1 {
+          match args[1] {
+            Array(data) => {
+              let a : Array[Value] = []
+              for el in data.elements {
+                a.push(el)
+              }
+              a
+            }
+            _ => []
+          }
+        } else {
+          []
+        }
+        return self.call_value(obj, this_arg, call_args, loc)
+      }
+      if is_builtin_method && prop == "bind" {
+        let this_arg = if args.length() > 0 { args[0] } else { Undefined }
+        let bound_args : Array[Value] = []
+        for i = 1; i < args.length(); i = i + 1 {
+          bound_args.push(args[i])
+        }
+        return Object({
+          properties: {},
+          prototype: Null,
+          callable: Some(BoundFunc(obj, this_arg, bound_args)),
+          class_name: "Function",
+        })
+      }
       let func_val = self.get_computed_property(obj, key, mloc)
       self.call_value(func_val, obj, args, loc)
     }
@@ -811,6 +923,63 @@ fn Interpreter::call_value(
               raise Failure::Failure("continue statement outside of loop")
           }
         }
+        Some(ArrowFunc(data)) => {
+          let func_env = Environment::new(parent=Some(data.closure))
+          // Arrow functions do NOT rebind this — use closure's this
+          for i = 0; i < data.params.length(); i = i + 1 {
+            let val : Value = if i < args.length() {
+              args[i]
+            } else {
+              Undefined
+            }
+            func_env.def(data.params[i], val, LetBinding)
+          }
+          match self.exec_stmts(data.body, func_env) {
+            Normal(v) => v
+            ReturnSignal(v) => v
+            BreakSignal(_) =>
+              raise Failure::Failure("break statement outside of loop")
+            ContinueSignal(_) =>
+              raise Failure::Failure("continue statement outside of loop")
+          }
+        }
+        Some(BoundFunc(target, bound_this, bound_args)) => {
+          let all_args : Array[Value] = []
+          for a in bound_args {
+            all_args.push(a)
+          }
+          for a in args {
+            all_args.push(a)
+          }
+          self.call_value(target, bound_this, all_args, loc)
+        }
+        Some(FuncCallMethod(target)) => {
+          let call_this = if args.length() > 0 { args[0] } else { Undefined }
+          let call_args : Array[Value] = []
+          for i = 1; i < args.length(); i = i + 1 {
+            call_args.push(args[i])
+          }
+          self.call_value(target, call_this, call_args, loc)
+        }
+        Some(FuncApplyMethod(target)) => {
+          let call_this = if args.length() > 0 { args[0] } else { Undefined }
+          let call_args : Array[Value] = if args.length() > 1 {
+            match args[1] {
+              Array(data) => {
+                let a : Array[Value] = []
+                for el in data.elements {
+                  a.push(el)
+                }
+                a
+              }
+              _ => []
+            }
+          } else {
+            []
+          }
+          self.call_value(target, call_this, call_args, loc)
+        }
+        Some(MethodCallable(_, func)) => func(this_val, args)
         Some(NativeCallable(_, func)) => func(args)
         None =>
           raise Failure::Failure(
@@ -863,19 +1032,98 @@ fn Interpreter::get_property(
     Object(data) =>
       match data.properties.get(prop) {
         Some(v) => v
-        None => Undefined
+        None => {
+          // Walk prototype chain
+          let mut current = data.prototype
+          while true {
+            match current {
+              Object(proto_data) =>
+                match proto_data.properties.get(prop) {
+                  Some(v) => return v
+                  None => current = proto_data.prototype
+                }
+              _ => break
+            }
+          }
+          // Built-in Function methods (for callable objects)
+          match data.callable {
+            Some(_) =>
+              if prop == "call" {
+                return Object({
+                  properties: {},
+                  prototype: Null,
+                  callable: Some(FuncCallMethod(obj)),
+                  class_name: "Function",
+                })
+              } else if prop == "apply" {
+                return Object({
+                  properties: {},
+                  prototype: Null,
+                  callable: Some(FuncApplyMethod(obj)),
+                  class_name: "Function",
+                })
+              } else if prop == "bind" {
+                let target = obj
+                return make_native_func("bind", fn(args) {
+                  let bind_this = if args.length() > 0 {
+                    args[0]
+                  } else {
+                    Undefined
+                  }
+                  let bound_args : Array[Value] = []
+                  for i = 1; i < args.length(); i = i + 1 {
+                    bound_args.push(args[i])
+                  }
+                  Object({
+                    properties: {},
+                    prototype: Null,
+                    callable: Some(BoundFunc(target, bind_this, bound_args)),
+                    class_name: "Function",
+                  })
+                })
+              }
+            None => ()
+          }
+          // Built-in Object methods
+          if prop == "hasOwnProperty" {
+            return Object({
+              properties: {},
+              prototype: Null,
+              callable: Some(
+                MethodCallable("hasOwnProperty", fn(this_val, args) {
+                  let key = if args.length() > 0 {
+                    args[0].to_string()
+                  } else {
+                    ""
+                  }
+                  match this_val {
+                    Object(d) => Bool(d.properties.contains(key))
+                    _ => Bool(false)
+                  }
+                }),
+              ),
+              class_name: "Function",
+            })
+          }
+          if prop == "toString" {
+            return make_native_func("toString", fn(_args) {
+              String_("[object Object]")
+            })
+          }
+          Undefined
+        }
       }
     Array(data) =>
       if prop == "length" {
         Number(data.elements.length().to_double())
       } else {
-        Undefined
+        get_array_method(data, prop)
       }
     String_(s) =>
       if prop == "length" {
         Number(s.length().to_double())
       } else {
-        Undefined
+        get_string_method(s, prop)
       }
     Null | Undefined =>
       raise Failure::Failure(
@@ -897,7 +1145,86 @@ fn Interpreter::get_computed_property(
       let prop = key.to_string()
       match data.properties.get(prop) {
         Some(v) => v
-        None => Undefined
+        None => {
+          // Walk prototype chain
+          let mut current = data.prototype
+          while true {
+            match current {
+              Object(proto_data) =>
+                match proto_data.properties.get(prop) {
+                  Some(v) => return v
+                  None => current = proto_data.prototype
+                }
+              _ => break
+            }
+          }
+          // Built-in Function methods (for callable objects)
+          match data.callable {
+            Some(_) =>
+              if prop == "call" {
+                return Object({
+                  properties: {},
+                  prototype: Null,
+                  callable: Some(FuncCallMethod(obj)),
+                  class_name: "Function",
+                })
+              } else if prop == "apply" {
+                return Object({
+                  properties: {},
+                  prototype: Null,
+                  callable: Some(FuncApplyMethod(obj)),
+                  class_name: "Function",
+                })
+              } else if prop == "bind" {
+                let target = obj
+                return make_native_func("bind", fn(args) {
+                  let bind_this = if args.length() > 0 {
+                    args[0]
+                  } else {
+                    Undefined
+                  }
+                  let bound_args : Array[Value] = []
+                  for i = 1; i < args.length(); i = i + 1 {
+                    bound_args.push(args[i])
+                  }
+                  Object({
+                    properties: {},
+                    prototype: Null,
+                    callable: Some(BoundFunc(target, bind_this, bound_args)),
+                    class_name: "Function",
+                  })
+                })
+              }
+            None => ()
+          }
+          // Built-in Object methods
+          if prop == "hasOwnProperty" {
+            return Object({
+              properties: {},
+              prototype: Null,
+              callable: Some(
+                MethodCallable("hasOwnProperty", fn(this_val, args) {
+                  let k = if args.length() > 0 {
+                    args[0].to_string()
+                  } else {
+                    ""
+                  }
+                  match this_val {
+                    Object(d) => Bool(d.properties.contains(k))
+                    _ => Bool(false)
+                  }
+                }),
+              ),
+              class_name: "Function",
+            })
+          }
+          if prop == "toString" {
+            return make_native_func("toString", fn(_args) {
+              String_("[object Object]")
+            })
+          }
+          Undefined
+        }
       }
     }
     Array(data) =>
@@ -911,6 +1238,7 @@ fn Interpreter::get_computed_property(
           }
         }
         String_("length") => Number(data.elements.length().to_double())
+        String_(s) => get_array_method(data, s)
         _ => Undefined
       }
     String_(s) =>
@@ -926,6 +1254,7 @@ fn Interpreter::get_computed_property(
           }
         }
         String_("length") => Number(s.length().to_double())
+        String_(method_name) => get_string_method(s, method_name)
         _ => Undefined
       }
     Null | Undefined =>
@@ -992,6 +1321,10 @@ fn Interpreter::eval_new(
           }
         }
         Some(NativeCallable(_, func)) => func(args)
+        Some(ArrowFunc(_)) =>
+          raise JsException(
+            String_("TypeError: arrow functions cannot be used as constructors"),
+          )
         _ =>
           raise Failure::Failure(
             "Not a constructor at line \{loc.line}, col \{loc.col}",

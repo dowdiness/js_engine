@@ -101,6 +101,13 @@ pub(all) enum TokenKind {
   Dot
   Colon
   Question
+  // Template literals
+  NoSubTemplate(String)
+  TemplateHead(String)
+  TemplateMiddle(String)
+  TemplateTail(String)
+  // Arrow
+  Arrow
   // Special
   EOF
 } derive(Eq, Show)

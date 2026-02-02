@@ -2,7 +2,8 @@
   "import": [
     "dowdiness/js_engine/ast",
     "dowdiness/js_engine/token",
-    "moonbitlang/core/strconv"
+    "moonbitlang/core/strconv",
+    "moonbitlang/core/math"
   ],
   "test-import": [
     "dowdiness/js_engine/parser"
