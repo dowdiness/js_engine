@@ -51,6 +51,9 @@ pub(all) enum Callable {
   ArrowFunc(FuncData)
   NativeCallable(String, (Array[Value]) -> Value)
   BoundFunc(Value, Value, Array[Value])
+  FuncCallMethod(Value)
+  FuncApplyMethod(Value)
+  MethodCallable(String, (Value, Array[Value]) -> Value)
 }
 
 pub(all) struct Environment {

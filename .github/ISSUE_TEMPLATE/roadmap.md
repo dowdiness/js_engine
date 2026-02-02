@@ -2,7 +2,7 @@
 
 **Test262 Pass Rate: 8.18%** (1,598 passed / 17,941 failed / 30,085 skipped) — pending re-run after Phase 2
 
-The MoonBit JS engine supports basic language features (variables, arithmetic, functions, closures, control flow, try/catch, new, this, switch, for-in, bitwise ops, objects, arrays), plus template literals, arrow functions, prototype chain lookup, Function.call/apply/bind, and built-in methods for Array, String, Object, and Math. Phases 1-2 complete. 282 unit tests passing (`moon test --target wasm`).
+The MoonBit JS engine supports basic language features (variables, arithmetic, functions, closures, control flow, try/catch, new, this, switch, for-in, bitwise ops, objects, arrays), plus template literals, arrow functions, prototype chain lookup, Function.call/apply/bind, and built-in methods for Array, String, Object, and Math. Phases 1-2 complete. 288 unit tests passing (`moon test --target wasm`).
 
 ### Root Cause of Current Failures
 
@@ -265,6 +265,10 @@ All 6 issues addressed in commit `3439764`:
 - `FuncCallMethod`/`FuncApplyMethod` make `.call`/`.apply`/`.bind` retrievable as property values
 - `MethodCallable` gives `hasOwnProperty` dynamic `this` receiver for method borrowing
 - `BoundFunc` callable variant for proper error propagation through bound functions
+- `Math.round` preserves NaN, Infinity, ±0 per ECMAScript spec
+- `indexOf`/`lastIndexOf` clamp empty needle position correctly (empty string at position > length returns length)
+- `hasOwnProperty()` with missing argument defaults to key `"undefined"` (JS ToPropertyKey semantics)
+- `Object.prototype.valueOf` returns `this` via `MethodCallable`
 
 ---
 

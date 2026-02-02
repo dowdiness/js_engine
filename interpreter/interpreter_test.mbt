@@ -1496,6 +1496,16 @@ test "string indexOf lastIndexOf" {
 }
 
 ///|
+test "string indexOf lastIndexOf empty needle clamping" {
+  let src =
+    #|console.log("abc".indexOf("", 10));
+    #|console.log("abc".lastIndexOf("", -1));
+    #|console.log("abc".lastIndexOf("", 99));
+  let output = run_output(src)
+  inspect(output, content="[\"3\", \"0\", \"3\"]")
+}
+
+///|
 test "string includes" {
   let src =
     #|console.log("foobar".includes("bar"));
@@ -1651,6 +1661,16 @@ test "math abs floor ceil round" {
 }
 
 ///|
+test "math round preserves negative zero" {
+  let src =
+    #|console.log(1 / Math.round(-0.1));
+    #|console.log(1 / Math.round(-0.5));
+    #|console.log(1 / Math.round(0.1));
+  let output = run_output(src)
+  inspect(output, content="[\"-Infinity\", \"-Infinity\", \"Infinity\"]")
+}
+
+///|
 test "math sqrt pow" {
   let src =
     #|console.log(Math.sqrt(16));
@@ -1771,6 +1791,44 @@ test "startsWith negative position" {
     #|console.log("abc".startsWith("abc", -100));
   let output = run_output(src)
   inspect(output, content="[\"true\", \"true\"]")
+}
+
+///|
+test "startsWith empty string with large position" {
+  let src =
+    #|console.log("abc".startsWith("", 100));
+    #|console.log("abc".startsWith("", -1));
+  let output = run_output(src)
+  inspect(output, content="[\"true\", \"true\"]")
+}
+
+///|
+test "startsWith position edge cases" {
+  let src =
+    #|console.log("abc".startsWith("a", -999));
+    #|console.log("abc".startsWith("a", 999));
+  let output = run_output(src)
+  inspect(output, content="[\"true\", \"false\"]")
+}
+
+///|
+test "indexOf lastIndexOf more edge cases" {
+  let src =
+    #|console.log("abc".indexOf("", -5));
+    #|console.log("abc".lastIndexOf("", 2));
+  let output = run_output(src)
+  inspect(output, content="[\"0\", \"2\"]")
+}
+
+///|
+test "hasOwnProperty missing argument" {
+  let src =
+    #|var obj = { "undefined": 1 };
+    #|console.log(obj.hasOwnProperty());
+    #|var obj2 = { a: 1 };
+    #|console.log(obj2.hasOwnProperty());
+  let output = run_output(src)
+  inspect(output, content="[\"true\", \"false\"]")
 }
 
 ///|

@@ -7,7 +7,32 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
       "toString": make_native_func("toString", fn(_args) {
         String_("[object Object]")
       }),
-      "valueOf": make_native_func("valueOf", fn(_args) { Undefined }),
+      "valueOf": Object({
+        properties: {},
+        prototype: Null,
+        callable: Some(
+          MethodCallable("valueOf", fn(this_val, _args) { this_val }),
+        ),
+        class_name: "Function",
+      }),
+      "hasOwnProperty": Object({
+        properties: {},
+        prototype: Null,
+        callable: Some(
+          MethodCallable("hasOwnProperty", fn(this_val, args) {
+            let key = if args.length() > 0 {
+              args[0].to_string()
+            } else {
+              "undefined"
+            }
+            match this_val {
+              Object(data) => Bool(data.properties.contains(key))
+              _ => Bool(false)
+            }
+          }),
+        ),
+        class_name: "Function",
+      }),
     },
     prototype: Null,
     callable: None,

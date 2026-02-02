@@ -776,52 +776,6 @@ fn Interpreter::eval_call(
         }
         _ => {
           let obj = self.eval_expr(obj_expr, env)
-          // Function.call / Function.apply / Function.bind — only when obj is callable
-          // and the object does NOT have its own override for the property
-          let is_builtin_method = match obj {
-            Object(od) =>
-              od.callable is Some(_) && not(od.properties.contains(prop))
-            _ => false
-          }
-          if is_builtin_method && prop == "call" {
-            let this_arg = if args.length() > 0 { args[0] } else { Undefined }
-            let call_args : Array[Value] = []
-            for i = 1; i < args.length(); i = i + 1 {
-              call_args.push(args[i])
-            }
-            return self.call_value(obj, this_arg, call_args, loc)
-          }
-          if is_builtin_method && prop == "apply" {
-            let this_arg = if args.length() > 0 { args[0] } else { Undefined }
-            let call_args : Array[Value] = if args.length() > 1 {
-              match args[1] {
-                Array(data) => {
-                  let a : Array[Value] = []
-                  for el in data.elements {
-                    a.push(el)
-                  }
-                  a
-                }
-                _ => []
-              }
-            } else {
-              []
-            }
-            return self.call_value(obj, this_arg, call_args, loc)
-          }
-          if is_builtin_method && prop == "bind" {
-            let this_arg = if args.length() > 0 { args[0] } else { Undefined }
-            let bound_args : Array[Value] = []
-            for i = 1; i < args.length(); i = i + 1 {
-              bound_args.push(args[i])
-            }
-            return Object({
-              properties: {},
-              prototype: Null,
-              callable: Some(BoundFunc(obj, this_arg, bound_args)),
-              class_name: "Function",
-            })
-          }
           let func_val = self.get_property(obj, prop, mloc)
           self.call_value(func_val, obj, args, loc)
         }
@@ -829,52 +783,6 @@ fn Interpreter::eval_call(
     ComputedMember(obj_expr, key_expr, mloc) => {
       let obj = self.eval_expr(obj_expr, env)
       let key = self.eval_expr(key_expr, env)
-      let prop = key.to_string()
-      // Function.call / Function.apply / Function.bind for computed access
-      let is_builtin_method = match obj {
-        Object(od) =>
-          od.callable is Some(_) && not(od.properties.contains(prop))
-        _ => false
-      }
-      if is_builtin_method && prop == "call" {
-        let this_arg = if args.length() > 0 { args[0] } else { Undefined }
-        let call_args : Array[Value] = []
-        for i = 1; i < args.length(); i = i + 1 {
-          call_args.push(args[i])
-        }
-        return self.call_value(obj, this_arg, call_args, loc)
-      }
-      if is_builtin_method && prop == "apply" {
-        let this_arg = if args.length() > 0 { args[0] } else { Undefined }
-        let call_args : Array[Value] = if args.length() > 1 {
-          match args[1] {
-            Array(data) => {
-              let a : Array[Value] = []
-              for el in data.elements {
-                a.push(el)
-              }
-              a
-            }
-            _ => []
-          }
-        } else {
-          []
-        }
-        return self.call_value(obj, this_arg, call_args, loc)
-      }
-      if is_builtin_method && prop == "bind" {
-        let this_arg = if args.length() > 0 { args[0] } else { Undefined }
-        let bound_args : Array[Value] = []
-        for i = 1; i < args.length(); i = i + 1 {
-          bound_args.push(args[i])
-        }
-        return Object({
-          properties: {},
-          prototype: Null,
-          callable: Some(BoundFunc(obj, this_arg, bound_args)),
-          class_name: "Function",
-        })
-      }
       let func_val = self.get_computed_property(obj, key, mloc)
       self.call_value(func_val, obj, args, loc)
     }
@@ -1094,7 +1002,7 @@ fn Interpreter::get_property(
                   let key = if args.length() > 0 {
                     args[0].to_string()
                   } else {
-                    ""
+                    "undefined"
                   }
                   match this_val {
                     Object(d) => Bool(d.properties.contains(key))
@@ -1207,7 +1115,7 @@ fn Interpreter::get_computed_property(
                   let k = if args.length() > 0 {
                     args[0].to_string()
                   } else {
-                    ""
+                    "undefined"
                   }
                   match this_val {
                     Object(d) => Bool(d.properties.contains(k))

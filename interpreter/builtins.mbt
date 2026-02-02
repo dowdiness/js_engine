@@ -242,7 +242,16 @@ fn setup_math_builtins(env : Environment) -> Unit {
   })
   math_props["round"] = make_native_func("round", fn(args) {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
-    Number((n + 0.5).floor())
+    if n.is_nan() || n.is_inf() || n == 0.0 {
+      Number(n)
+    } else {
+      let rounded = (n + 0.5).floor()
+      if rounded == 0.0 && n < 0.0 {
+        Number(-0.0)
+      } else {
+        Number(rounded)
+      }
+    }
   })
   math_props["trunc"] = make_native_func("trunc", fn(args) {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }

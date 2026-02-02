@@ -47,7 +47,8 @@ pub fn get_string_method(s : String, prop : String) -> Value {
         let slen = str.length()
         let search_len = search.length()
         if search_len == 0 {
-          return Number(start.to_double())
+          let empty_result = if start > slen { slen } else { start }
+          return Number(empty_result.to_double())
         }
         let s_chars = str.to_array()
         let search_chars = search.to_array()
@@ -81,14 +82,21 @@ pub fn get_string_method(s : String, prop : String) -> Value {
         } else {
           slen
         }
-        let start = if from_idx > slen - search_len {
-          slen - search_len
+        let from = if from_idx < 0 {
+          0
+        } else if from_idx > slen {
+          slen
         } else {
           from_idx
         }
         if search_len == 0 {
-          return Number(start.to_double())
+          return Number(from.to_double())
         }
+        let max_start = slen - search_len
+        if max_start < 0 {
+          return Number(-1.0)
+        }
+        let start = if from > max_start { max_start } else { from }
         let s_chars = str.to_array()
         let search_chars = search.to_array()
         for i = start; i >= 0; i = i - 1 {
@@ -382,7 +390,14 @@ pub fn get_string_method(s : String, prop : String) -> Value {
         } else {
           0
         }
-        let pos = if raw_pos < 0 { 0 } else { raw_pos }
+        let slen = str.length()
+        let pos = if raw_pos < 0 {
+          0
+        } else if raw_pos > slen {
+          slen
+        } else {
+          raw_pos
+        }
         let search_chars = search.to_array()
         let s_chars = str.to_array()
         if pos + search_chars.length() > s_chars.length() {
