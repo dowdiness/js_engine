@@ -2210,29 +2210,17 @@ fn setup_function_builtins(env : Environment) -> Unit {
   func_ctor_props["prototype"] = func_proto
   func_ctor_props["length"] = Number(1.0)
 
-  // Add constructor back-reference to prototype
-  match func_proto {
-    Object(data) => data.properties["constructor"] = Object({
-      properties: func_ctor_props,
-      prototype: Null,
-      callable: Some(
-        NativeCallable("Function", fn(args) {
-          // Function constructor: creates a new function from string arguments
-          // Last arg is body, previous args are parameter names
-          // For now, return a no-op function as dynamic code execution is complex
-          if args.length() == 0 {
-            return Object({
-              properties: {},
-              prototype: func_proto,
-              callable: Some(NativeCallable("anonymous", fn(_) { Undefined })),
-              class_name: "Function",
-              descriptors: {},
-              extensible: true,
-            })
-          }
-          // Create a simple function that returns undefined
-          // Full implementation would require parsing the body string
-          Object({
+  // Create a single Function constructor object
+  let func_ctor : Value = Object({
+    properties: func_ctor_props,
+    prototype: Null,
+    callable: Some(
+      NativeCallable("Function", fn(args) {
+        // Function constructor: creates a new function from string arguments
+        // Last arg is body, previous args are parameter names
+        // For now, return a no-op function as dynamic code execution is complex
+        if args.length() == 0 {
+          return Object({
             properties: {},
             prototype: func_proto,
             callable: Some(NativeCallable("anonymous", fn(_) { Undefined })),
@@ -2240,49 +2228,32 @@ fn setup_function_builtins(env : Environment) -> Unit {
             descriptors: {},
             extensible: true,
           })
-        }),
-      ),
-      class_name: "Function",
-      descriptors: {},
-      extensible: true,
-    })
+        }
+        // Create a simple function that returns undefined
+        // Full implementation would require parsing the body string
+        Object({
+          properties: {},
+          prototype: func_proto,
+          callable: Some(NativeCallable("anonymous", fn(_) { Undefined })),
+          class_name: "Function",
+          descriptors: {},
+          extensible: true,
+        })
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    extensible: true,
+  })
+
+  // Add constructor back-reference to prototype (same object as global Function)
+  match func_proto {
+    Object(data) => data.properties["constructor"] = func_ctor
     _ => ()
   }
 
-  // Register Function constructor
-  env.def_builtin(
-    "Function",
-    Object({
-      properties: func_ctor_props,
-      prototype: Null,
-      callable: Some(
-        NativeCallable("Function", fn(args) {
-          // Function constructor: creates a new function from string arguments
-          if args.length() == 0 {
-            return Object({
-              properties: {},
-              prototype: func_proto,
-              callable: Some(NativeCallable("anonymous", fn(_) { Undefined })),
-              class_name: "Function",
-              descriptors: {},
-              extensible: true,
-            })
-          }
-          Object({
-            properties: {},
-            prototype: func_proto,
-            callable: Some(NativeCallable("anonymous", fn(_) { Undefined })),
-            class_name: "Function",
-            descriptors: {},
-            extensible: true,
-          })
-        }),
-      ),
-      class_name: "Function",
-      descriptors: {},
-      extensible: true,
-    }),
-  )
+  // Register the same Function constructor object globally
+  env.def_builtin("Function", func_ctor)
 }
 
 ///|
@@ -2369,54 +2340,86 @@ fn uri_encode(s : String, encode_component : Bool) -> String {
 }
 
 ///|
-fn uri_decode(s : String) -> String {
+fn uri_decode(s : String) -> String raise Error {
   let buf = StringBuilder::new()
   let chars = s.to_array()
   let len = chars.length()
   let mut i = 0
   while i < len {
-    if chars[i] == '%' && i + 2 < len {
+    if chars[i] == '%' {
+      // Check for valid percent-encoded sequence
+      if i + 2 >= len {
+        raise JsException(String_("URIError: URI malformed"))
+      }
       let h1 = hex_char_value(chars[i + 1])
       let h2 = hex_char_value(chars[i + 2])
-      if h1 >= 0 && h2 >= 0 {
-        let byte1 = (h1 << 4) | h2
-        // Check for multi-byte UTF-8 sequences
-        if byte1 >= 0xF0 && i + 11 < len {
-          // 4-byte sequence
-          let b2 = decode_percent_byte(chars, i + 3)
-          let b3 = decode_percent_byte(chars, i + 6)
-          let b4 = decode_percent_byte(chars, i + 9)
-          if b2 >= 0 && b3 >= 0 && b4 >= 0 {
-            let cp = ((byte1 & 0x07) << 18) | ((b2 & 0x3F) << 12) | ((b3 & 0x3F) << 6) | (b4 & 0x3F)
-            buf.write_char(cp.unsafe_to_char())
-            i = i + 12
-            continue
-          }
-        } else if byte1 >= 0xE0 && i + 8 < len {
-          // 3-byte sequence
-          let b2 = decode_percent_byte(chars, i + 3)
-          let b3 = decode_percent_byte(chars, i + 6)
-          if b2 >= 0 && b3 >= 0 {
-            let cp = ((byte1 & 0x0F) << 12) | ((b2 & 0x3F) << 6) | (b3 & 0x3F)
-            buf.write_char(cp.unsafe_to_char())
-            i = i + 9
-            continue
-          }
-        } else if byte1 >= 0xC0 && i + 5 < len {
-          // 2-byte sequence
-          let b2 = decode_percent_byte(chars, i + 3)
-          if b2 >= 0 {
-            let cp = ((byte1 & 0x1F) << 6) | (b2 & 0x3F)
-            buf.write_char(cp.unsafe_to_char())
-            i = i + 6
-            continue
-          }
-        }
-        // Single byte
-        buf.write_char(byte1.unsafe_to_char())
-        i = i + 3
-        continue
+      if h1 < 0 || h2 < 0 {
+        raise JsException(String_("URIError: URI malformed"))
       }
+      let byte1 = (h1 << 4) | h2
+      // Check for multi-byte UTF-8 sequences
+      if byte1 >= 0xF0 {
+        // 4-byte sequence
+        if i + 11 >= len {
+          raise JsException(String_("URIError: URI malformed"))
+        }
+        let b2 = decode_percent_byte(chars, i + 3)
+        let b3 = decode_percent_byte(chars, i + 6)
+        let b4 = decode_percent_byte(chars, i + 9)
+        if b2 < 0 || b3 < 0 || b4 < 0 {
+          raise JsException(String_("URIError: URI malformed"))
+        }
+        // Validate continuation bytes (must be 10xxxxxx)
+        if (b2 & 0xC0) != 0x80 || (b3 & 0xC0) != 0x80 || (b4 & 0xC0) != 0x80 {
+          raise JsException(String_("URIError: URI malformed"))
+        }
+        let cp = ((byte1 & 0x07) << 18) | ((b2 & 0x3F) << 12) | ((b3 & 0x3F) << 6) | (b4 & 0x3F)
+        buf.write_char(cp.unsafe_to_char())
+        i = i + 12
+        continue
+      } else if byte1 >= 0xE0 {
+        // 3-byte sequence
+        if i + 8 >= len {
+          raise JsException(String_("URIError: URI malformed"))
+        }
+        let b2 = decode_percent_byte(chars, i + 3)
+        let b3 = decode_percent_byte(chars, i + 6)
+        if b2 < 0 || b3 < 0 {
+          raise JsException(String_("URIError: URI malformed"))
+        }
+        // Validate continuation bytes
+        if (b2 & 0xC0) != 0x80 || (b3 & 0xC0) != 0x80 {
+          raise JsException(String_("URIError: URI malformed"))
+        }
+        let cp = ((byte1 & 0x0F) << 12) | ((b2 & 0x3F) << 6) | (b3 & 0x3F)
+        buf.write_char(cp.unsafe_to_char())
+        i = i + 9
+        continue
+      } else if byte1 >= 0xC0 {
+        // 2-byte sequence
+        if i + 5 >= len {
+          raise JsException(String_("URIError: URI malformed"))
+        }
+        let b2 = decode_percent_byte(chars, i + 3)
+        if b2 < 0 {
+          raise JsException(String_("URIError: URI malformed"))
+        }
+        // Validate continuation byte
+        if (b2 & 0xC0) != 0x80 {
+          raise JsException(String_("URIError: URI malformed"))
+        }
+        let cp = ((byte1 & 0x1F) << 6) | (b2 & 0x3F)
+        buf.write_char(cp.unsafe_to_char())
+        i = i + 6
+        continue
+      } else if byte1 >= 0x80 {
+        // Invalid: continuation byte without lead byte
+        raise JsException(String_("URIError: URI malformed"))
+      }
+      // Single byte (ASCII)
+      buf.write_char(byte1.unsafe_to_char())
+      i = i + 3
+      continue
     }
     buf.write_char(chars[i])
     i = i + 1
