@@ -139,6 +139,66 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => Array({ elements: [] })
           }
         }),
+        "getOwnPropertySymbols": make_native_func("getOwnPropertySymbols", fn(
+          _args,
+        ) {
+          // Symbols are not implemented, so always return empty array
+          Array({ elements: [] })
+        }),
+        "getOwnPropertyDescriptors": make_native_func("getOwnPropertyDescriptors", fn(
+          args,
+        ) {
+          let obj = if args.length() > 0 { args[0] } else { Undefined }
+          match obj {
+            Object(data) => {
+              let descriptors_props : Map[String, Value] = {}
+              data.properties.each(fn(key, val) {
+                let desc = data.descriptors.get(key)
+                let writable = match desc {
+                  Some(d) => d.writable
+                  None => true
+                }
+                let enumerable = match desc {
+                  Some(d) => d.enumerable
+                  None => true
+                }
+                let configurable = match desc {
+                  Some(d) => d.configurable
+                  None => true
+                }
+                descriptors_props[key] = Object({
+                  properties: {
+                    "value": val,
+                    "writable": Bool(writable),
+                    "enumerable": Bool(enumerable),
+                    "configurable": Bool(configurable),
+                  },
+                  prototype: Null,
+                  callable: None,
+                  class_name: "Object",
+                  descriptors: {},
+                  extensible: true,
+                })
+              })
+              Object({
+                properties: descriptors_props,
+                prototype: Null,
+                callable: None,
+                class_name: "Object",
+                descriptors: {},
+                extensible: true,
+              })
+            }
+            _ => Object({
+              properties: {},
+              prototype: Null,
+              callable: None,
+              class_name: "Object",
+              descriptors: {},
+              extensible: true,
+            })
+          }
+        }),
         "defineProperty": make_native_func("defineProperty", fn(args) {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           let prop_name = if args.length() > 1 {
@@ -890,6 +950,28 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
         }
         _ => raise JsException(String_("TypeError: at called on non-array"))
+      }
+    })),
+    class_name: "Function",
+    descriptors: {},
+    extensible: true,
+  })
+
+  array_proto_props["toLocaleString"] = Object({
+    properties: {},
+    prototype: Null,
+    callable: Some(MethodCallable("toLocaleString", fn(this_val, _args) {
+      match this_val {
+        Array(arr) => {
+          let parts : Array[String] = arr.elements.map(fn(v) {
+            match v {
+              Null | Undefined => ""
+              _ => v.to_string()
+            }
+          })
+          String_(parts.join(","))
+        }
+        _ => raise JsException(String_("TypeError: toLocaleString called on non-array"))
       }
     })),
     class_name: "Function",
