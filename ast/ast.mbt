@@ -150,6 +150,7 @@ pub(all) enum Stmt {
   ExprStmt(Expr, @token.Loc)
   VarDecl(VarKind, String, Expr?, @token.Loc)
   Block(Array[Stmt], @token.Loc)
+  StmtList(Array[Stmt], @token.Loc) // Multiple statements without new scope (for comma-separated decls)
   IfStmt(Expr, Stmt, Stmt?, @token.Loc)
   WhileStmt(Expr, Stmt, @token.Loc)
   ForStmt(Stmt?, Expr?, Expr?, Stmt, @token.Loc)

@@ -45,14 +45,41 @@ fn Parser::parse_var_decl(self : Parser) -> @ast.Stmt raise Error {
     self.eat_semicolon()
     return DestructureDecl(kind, pat, init, tok.loc)
   }
+  // Parse first declarator
   let name = self.expect_ident()
   let init : @ast.Expr? = if self.eat(Assign) {
     Some(self.parse_assignment())
   } else {
     None
   }
+  // Check for comma-separated declarations (e.g., var a, b, c;)
+  if not(self.at(Comma)) {
+    self.eat_semicolon()
+    return VarDecl(kind, name, init, tok.loc)
+  }
+  // Multiple declarations - collect them all
+  let decls : Array[@ast.Stmt] = []
+  decls.push(VarDecl(kind, name, init, tok.loc))
+  while self.eat(Comma) {
+    // Check for destructuring in subsequent declarators
+    if self.at(LBracket) || self.at(LBrace) {
+      let pat = self.parse_pattern()
+      let _ = self.expect(Assign)
+      let decl_init = self.parse_assignment()
+      decls.push(DestructureDecl(kind, pat, decl_init, tok.loc))
+    } else {
+      let decl_name = self.expect_ident()
+      let decl_init : @ast.Expr? = if self.eat(Assign) {
+        Some(self.parse_assignment())
+      } else {
+        None
+      }
+      decls.push(VarDecl(kind, decl_name, decl_init, tok.loc))
+    }
+  }
   self.eat_semicolon()
-  VarDecl(kind, name, init, tok.loc)
+  // Return as StmtList (no new scope, preserves hoisting semantics)
+  StmtList(decls, tok.loc)
 }
 
 ///|

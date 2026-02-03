@@ -113,6 +113,11 @@ fn Interpreter::exec_stmt(
       hoist_block_tdz(stmts, block_env)
       self.exec_stmts(stmts, block_env)
     }
+    StmtList(stmts, _) => {
+      // Execute statements in same scope (no new environment)
+      // Used for comma-separated declarations like: var a, b, c;
+      self.exec_stmts(stmts, env)
+    }
     IfStmt(cond, then_branch, else_branch, _) => {
       let cond_val = self.eval_expr(cond, env)
       if is_truthy(cond_val) {
@@ -555,6 +560,19 @@ fn Interpreter::hoist_declarations(
         }
       }
       DestructureDecl(VarKind, pattern, _, _) => hoist_pattern(pattern, env)
+      StmtList(inner_stmts, _) => {
+        // Recursively hoist declarations from StmtList (comma-separated decls)
+        for inner in inner_stmts {
+          match inner {
+            VarDecl(VarKind, name, _, _) =>
+              if not(env.bindings.contains(name)) {
+                env.def(name, Undefined, VarBinding)
+              }
+            DestructureDecl(VarKind, pattern, _, _) => hoist_pattern(pattern, env)
+            _ => ()
+          }
+        }
+      }
       _ => ()
     }
   }

@@ -3865,3 +3865,42 @@ test "test262 harness pattern - full assert.sameValue flow" {
   let output = run_output(src)
   inspect(output, content="[\"TEST PASSED\"]")
 }
+
+///|
+test "comma-separated var declarations" {
+  let src =
+    #|var a, b, c;
+    #|a = 1;
+    #|b = 2;
+    #|c = 3;
+    #|console.log(a + b + c);
+  let output = run_output(src)
+  inspect(output, content="[\"6\"]")
+}
+
+///|
+test "comma-separated var declarations with initializers" {
+  let src =
+    #|var x = 10, y = 20, z = 30;
+    #|console.log(x + y + z);
+  let output = run_output(src)
+  inspect(output, content="[\"60\"]")
+}
+
+///|
+test "comma-separated let declarations" {
+  let src =
+    #|let a = 1, b = 2;
+    #|console.log(a * b);
+  let output = run_output(src)
+  inspect(output, content="[\"2\"]")
+}
+
+///|
+test "comma-separated const declarations" {
+  let src =
+    #|const PI = 3.14, E = 2.71;
+    #|console.log(PI + E);
+  let output = run_output(src)
+  inspect(output, content="[\"5.85\"]")
+}
