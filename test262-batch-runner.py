@@ -42,86 +42,101 @@ def discover_tests(test262_dir, filter_pattern=""):
     return sorted(test_files)
 
 
-def run_tests_batch(engine_cmd, test_files):
-    """Run tests using batch mode - single invocation for all tests."""
-    print(f"Creating batch file with {len(test_files)} tests...")
+def run_tests_batch(engine_cmd, test_files, batch_size=1000):
+    """Run tests using batch mode - processes in chunks to avoid memory limits."""
+    print(f"Processing {len(test_files)} tests in batches of {batch_size}...")
 
-    # Create temporary batch file
-    batch_file = None
-    try:
-        # Write all test sources to batch file
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as f:
-            batch_file = f.name
-            for i, test_file in enumerate(test_files):
-                try:
-                    with open(test_file, "r", encoding="utf-8") as tf:
-                        source = tf.read()
-                        f.write(source)
-                        if i < len(test_files) - 1:
+    all_results = []
+    total_batches = (len(test_files) + batch_size - 1) // batch_size
+    overall_start = time.monotonic()
+
+    for batch_num in range(total_batches):
+        start_idx = batch_num * batch_size
+        end_idx = min(start_idx + batch_size, len(test_files))
+        batch_files = test_files[start_idx:end_idx]
+
+        print(f"Batch {batch_num + 1}/{total_batches}: Processing tests {start_idx + 1}-{end_idx}...")
+
+        # Create temporary batch file
+        batch_file = None
+        try:
+            # Write batch sources to file
+            with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as f:
+                batch_file = f.name
+                for i, test_file in enumerate(batch_files):
+                    try:
+                        with open(test_file, "r", encoding="utf-8") as tf:
+                            source = tf.read()
+                            f.write(source)
+                            if i < len(batch_files) - 1:
+                                f.write("\n<<<TESTSEP>>>\n")
+                    except Exception as e:
+                        print(f"Warning: Failed to read {test_file}: {e}", file=sys.stderr)
+                        f.write(f"// ERROR: Failed to read file\n")
+                        if i < len(batch_files) - 1:
                             f.write("\n<<<TESTSEP>>>\n")
-                except Exception as e:
-                    print(f"Warning: Failed to read {test_file}: {e}", file=sys.stderr)
-                    f.write(f"// ERROR: Failed to read file\n")
-                    if i < len(test_files) - 1:
-                        f.write("\n<<<TESTSEP>>>\n")
 
-        print(f"Running batch processor: {' '.join(engine_cmd + [batch_file])}")
-        start_time = time.monotonic()
+            start_time = time.monotonic()
 
-        # Run batch processor
-        result = subprocess.run(
-            engine_cmd + [batch_file],
-            capture_output=True,
-            text=True,
-            timeout=600  # 10 minute timeout
-        )
+            # Run batch processor
+            result = subprocess.run(
+                engine_cmd + [batch_file],
+                capture_output=True,
+                text=True,
+                timeout=300  # 5 minute timeout per batch
+            )
 
-        elapsed = time.monotonic() - start_time
+            elapsed = time.monotonic() - start_time
 
-        if result.returncode != 0 and result.stderr:
-            print(f"Batch runner error: {result.stderr}", file=sys.stderr)
+            if result.returncode != 0 and result.stderr:
+                print(f"  Batch error (continuing): {result.stderr[:200]}", file=sys.stderr)
 
-        # Parse results
-        lines = result.stdout.strip().split("\n")
-        results = []
+            # Parse results
+            lines = result.stdout.strip().split("\n")
+            batch_results = []
 
-        # First line should be READY:count
-        if lines and lines[0].startswith("READY:"):
-            test_count = int(lines[0].split(":")[1])
-            print(f"Batch runner ready. Processing {test_count} tests...")
-            lines = lines[1:]  # Skip READY line
+            # First line should be READY:count
+            result_lines = lines
+            if lines and lines[0].startswith("READY:"):
+                result_lines = lines[1:]  # Skip READY line
 
-        # Each remaining line is a result
-        for i, line in enumerate(lines):
-            if i >= len(test_files):
-                break
+            # Each remaining line is a result
+            for i, line in enumerate(result_lines):
+                if i >= len(batch_files):
+                    break
 
-            status = line.strip().lower()
-            if status not in ["pass", "fail", "error"]:
-                status = "error"
+                status = line.strip().lower()
+                if status not in ["pass", "fail", "error"]:
+                    status = "error"
 
-            results.append({
-                "path": test_files[i],
-                "status": status,
-                "reason": ""
-            })
+                batch_results.append({
+                    "path": batch_files[i],
+                    "status": status,
+                    "reason": ""
+                })
 
-        # Fill in missing results as errors
-        while len(results) < len(test_files):
-            results.append({
-                "path": test_files[len(results)],
-                "status": "error",
-                "reason": "No result from batch runner"
-            })
+            # Fill in missing results as errors
+            while len(batch_results) < len(batch_files):
+                batch_results.append({
+                    "path": batch_files[len(batch_results)],
+                    "status": "error",
+                    "reason": "No result from batch runner"
+                })
 
-        print(f"Batch processing completed in {elapsed:.1f}s ({len(test_files)/elapsed:.0f} tests/sec)")
+            all_results.extend(batch_results)
 
-        return results
+            rate = len(batch_files) / elapsed if elapsed > 0 else 0
+            print(f"  Completed in {elapsed:.1f}s ({rate:.0f} tests/sec)")
 
-    finally:
-        # Clean up batch file
-        if batch_file and os.path.exists(batch_file):
-            os.unlink(batch_file)
+        finally:
+            # Clean up batch file
+            if batch_file and os.path.exists(batch_file):
+                os.unlink(batch_file)
+
+    overall_elapsed = time.monotonic() - overall_start
+    print(f"\nAll batches completed in {overall_elapsed:.1f}s ({len(test_files)/overall_elapsed:.0f} tests/sec)")
+
+    return all_results
 
 
 def main():
@@ -136,6 +151,8 @@ def main():
                         help="Write JSON results to this file")
     parser.add_argument("--summary", action="store_true",
                         help="Print summary only")
+    parser.add_argument("--batch-size", type=int, default=1000,
+                        help="Number of tests per batch (default: 1000)")
 
     args = parser.parse_args()
 
@@ -153,7 +170,7 @@ def main():
 
     # Run tests in batch mode
     start_time = time.monotonic()
-    results = run_tests_batch(engine_cmd, test_files)
+    results = run_tests_batch(engine_cmd, test_files, args.batch_size)
     elapsed = time.monotonic() - start_time
 
     # Calculate summary
