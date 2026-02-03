@@ -136,10 +136,38 @@ fn Parser::parse_ternary(self : Parser) -> @ast.Expr raise Error {
 ///|
 fn Parser::parse_or(self : Parser) -> @ast.Expr raise Error {
   let mut left = self.parse_and()
+  let mut seen_nullish = false
+  let mut seen_or = false
   while self.at(Or) || self.at(QuestionQuestion) {
     let is_nullish = self.at(QuestionQuestion)
+    // Check for illegal mixing of ?? with ||
+    if is_nullish && seen_or {
+      raise Failure::Failure(
+        "Cannot mix nullish coalescing (??) with logical OR (||) without parentheses",
+      )
+    }
+    if not(is_nullish) && seen_nullish {
+      raise Failure::Failure(
+        "Cannot mix logical OR (||) with nullish coalescing (??) without parentheses",
+      )
+    }
+    if is_nullish {
+      seen_nullish = true
+    } else {
+      seen_or = true
+    }
     let loc = self.advance().loc
     let right = self.parse_and()
+    // Also check if right contains && when using ??
+    if is_nullish {
+      match right {
+        Binary(@ast.And, _, _, _) =>
+          raise Failure::Failure(
+            "Cannot mix nullish coalescing (??) with logical AND (&&) without parentheses",
+          )
+        _ => ()
+      }
+    }
     if is_nullish {
       left = Binary(@ast.NullishCoalesce, left, right, loc)
     } else {
@@ -310,6 +338,18 @@ fn Parser::parse_multiplicative(self : Parser) -> @ast.Expr raise Error {
 fn Parser::parse_exponentiation(self : Parser) -> @ast.Expr raise Error {
   let base = self.parse_unary()
   if self.at(StarStar) {
+    // Check for unary operator on LHS - this is a syntax error in JS
+    match base {
+      Unary(op, _, _) =>
+        match op {
+          @ast.Neg | @ast.Pos | @ast.Not | @ast.BitNot =>
+            raise Failure::Failure(
+              "Unary operator used immediately before exponentiation expression. Parentheses must be used to disambiguate.",
+            )
+          _ => ()
+        }
+      _ => ()
+    }
     let loc = self.advance().loc
     // Right-associative: parse right side with exponentiation precedence
     let exp = self.parse_exponentiation()
@@ -679,6 +719,22 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
       // Method shorthand or getter/setter
       let mloc = self.peek().loc
       let params = self.parse_params()
+      // Validate getter/setter arity
+      match prop_kind {
+        @ast.Get =>
+          if params.length() != 0 {
+            raise Failure::Failure(
+              "Getter must have exactly zero parameters",
+            )
+          }
+        @ast.Set =>
+          if params.length() != 1 {
+            raise Failure::Failure(
+              "Setter must have exactly one parameter",
+            )
+          }
+        @ast.Init => ()
+      }
       let body = self.parse_block_body()
       let func_data : @ast.Expr = FuncExpr(
         if computed { None } else { Some(key_name) },
