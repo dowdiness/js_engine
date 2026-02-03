@@ -455,7 +455,94 @@ All 6 issues addressed in commit `3439764`:
 
 ---
 
-## Phase 4: Modern ES6+ Features → ~60%+ pass rate
+## Phase 3.6: Built-in Spec Compliance → ~25-30% pass rate 🔥 HIGHEST PRIORITY
+
+**Goal**: Fix built-in method implementations to match ECMAScript spec. This is the #1 blocker for pass rate improvement.
+
+**Why this matters**: Built-ins account for ~70% of test262 tests. Current 0% pass rate in built-ins/* is the primary reason overall pass rate is stuck at ~8%.
+
+### 3.6A. Array Spec Compliance (~2,000 tests)
+
+**Priority methods** (high test coverage):
+- [ ] `Array.prototype.map` — return value coercion, sparse array handling
+- [ ] `Array.prototype.filter` — predicate return coercion, length caching
+- [ ] `Array.prototype.reduce/reduceRight` — initial value handling, empty array TypeError
+- [ ] `Array.prototype.forEach` — skip holes in sparse arrays
+- [ ] `Array.prototype.find/findIndex` — return undefined vs -1
+- [ ] `Array.prototype.every/some` — early termination, return coercion
+- [ ] `Array.prototype.indexOf/lastIndexOf` — SameValueZero vs strict equality, NaN handling
+- [ ] `Array.prototype.includes` — SameValueZero for NaN
+- [ ] `Array.prototype.slice/splice` — negative index handling, length bounds
+- [ ] `Array.prototype.sort` — comparefn undefined behavior, stability
+- [ ] `Array.from()` — iterable protocol, mapFn, thisArg
+- [ ] `Array.of()` — simple constructor
+- [ ] `Array.isArray()` — cross-realm detection
+
+### 3.6B. String Spec Compliance (~1,500 tests)
+
+**Priority methods**:
+- [ ] `String.prototype.split` — regex separator, limit parameter
+- [ ] `String.prototype.replace` — replacement patterns ($1, $&, etc.)
+- [ ] `String.prototype.match` — global flag behavior, capture groups
+- [ ] `String.prototype.slice/substring` — negative index normalization
+- [ ] `String.prototype.indexOf/lastIndexOf` — position clamping
+- [ ] `String.prototype.trim/trimStart/trimEnd` — Unicode whitespace
+- [ ] `String.prototype.padStart/padEnd` — fillString handling
+- [ ] `String.prototype.repeat` — range validation
+- [ ] `String.prototype.charAt/charCodeAt` — bounds checking
+- [ ] `String.prototype.localeCompare` — basic comparison (no Intl)
+- [ ] `String.fromCharCode` — multiple arguments
+- [ ] `String.prototype.normalize` — NFC/NFD (stub or basic)
+
+### 3.6C. Object Spec Compliance (~1,000 tests)
+
+**Priority methods**:
+- [ ] `Object.keys/values/entries` — enumerable own properties only, order
+- [ ] `Object.assign` — property order, getter invocation
+- [ ] `Object.create` — propertyDescriptor second argument
+- [ ] `Object.defineProperty` — descriptor validation, accessor vs data
+- [ ] `Object.getOwnPropertyDescriptor` — return format
+- [ ] `Object.getOwnPropertyNames` — include non-enumerable
+- [ ] `Object.freeze/seal/preventExtensions` — deep vs shallow
+- [ ] `Object.isFrozen/isSealed/isExtensible` — proper checks
+- [ ] `Object.getPrototypeOf/setPrototypeOf` — null handling
+- [ ] `Object.is` — SameValue algorithm (NaN, -0)
+- [ ] `Object.fromEntries` — iterable of key-value pairs
+- [ ] `Object.hasOwn` — modern hasOwnProperty
+
+### 3.6D. Number Spec Compliance (~500 tests)
+
+**Priority methods**:
+- [ ] `Number.isNaN/isFinite/isInteger/isSafeInteger` — type checks
+- [ ] `Number.parseInt/parseFloat` — edge cases
+- [ ] `Number.prototype.toFixed` — range validation, rounding
+- [ ] `Number.prototype.toPrecision` — significant digits
+- [ ] `Number.prototype.toExponential` — scientific notation
+- [ ] `Number.prototype.toString` — radix parameter validation
+
+### 3.6E. Function Spec Compliance (~300 tests)
+
+**Priority methods**:
+- [ ] `Function.prototype.call/apply` — thisArg coercion
+- [ ] `Function.prototype.bind` — partial application, length
+- [ ] `Function.prototype.toString` — source representation
+- [ ] `Function.prototype.length` — parameter count
+- [ ] `Function.prototype.name` — inferred names
+
+### Phase 3.6 Expected Impact
+
+| Category | Current | Target | Tests Unlocked |
+|----------|---------|--------|----------------|
+| built-ins/Array | 0% | ~60% | ~1,200 |
+| built-ins/String | 0% | ~60% | ~900 |
+| built-ins/Object | 0% | ~60% | ~600 |
+| built-ins/Number | 0% | ~70% | ~350 |
+| built-ins/Function | 0% | ~50% | ~150 |
+| **Phase 3.6 total** | **0%** | **~60%** | **~3,200 tests → 25-30% overall** |
+
+---
+
+## Phase 4: Modern ES6+ Features → ~35-40% pass rate
 
 - [ ] **Classes** — `class`, `extends`, `constructor`, `super`, static methods, getters/setters
 - [ ] **Symbols** — `Symbol()`, `Symbol.iterator`, `Symbol.toPrimitive`, `typeof symbol`
@@ -464,9 +551,9 @@ All 6 issues addressed in commit `3439764`:
 - [ ] **Map/Set** — `new Map()`, `new Set()`, `.get/.set/.has/.delete/.size/.forEach`
 - [ ] **WeakMap/WeakSet** — basic reference-based collections
 
-### Phase 4 Expected Impact: ~1,600 additional tests → cumulative ~3,500-4,500 (15-20%)
+### Phase 4 Expected Impact: ~1,600 additional tests → cumulative ~8,000-9,000 (35-40%)
 
-**Note**: Original estimate of 60%+ was overly optimistic. Realistic estimate accounts for built-in method spec compliance remaining at 0%. Major pass rate improvements require built-in compliance work (see High Priority TODO).
+**Note**: Phase 4 estimates assume Phase 3.6 (built-in spec compliance) is completed first. Without built-in compliance, Phase 4 features alone won't significantly improve pass rates.
 
 ---
 
@@ -483,13 +570,22 @@ All 6 issues addressed in commit `3439764`:
 ```
 Phase 1 (DONE) ──► Phase 2 (DONE) ──► Phase 3 (DONE) ──► Phase 3.5 (DONE)
                                                                 │
-                                                          [8.77% pass rate — language syntax strong, built-ins blocking]
+                                                          [8.77% pass rate]
+                                                                │
+                                                                ▼
+                                                    ┌───────────────────────┐
+                                                    │  Phase 3.6 🔥         │
+                                                    │  Built-in Compliance  │
+                                                    │  (HIGHEST PRIORITY)   │
+                                                    └───────────────────────┘
+                                                                │
+                                                          [25-30% pass rate]
                                                                 │
                                                                 ▼
                                                           Phase 4 (classes, symbols, generators, promises)
                                                                 │
                                                                 ▼
-                                                          [15-20%+ pass rate with built-in compliance]
+                                                          [35-40% pass rate]
 ```
 
 ## Summary
@@ -500,34 +596,48 @@ Phase 1 (DONE) ──► Phase 2 (DONE) ──► Phase 3 (DONE) ──► Phase
 | Phase 2 ✅ | ~8.5% | 288 | Template literals unblock assert.js, arrow functions, prototype chain, built-ins |
 | Phase 3 ✅ | ~8.7% | 444 | Strict mode, destructuring, spread/rest, RegExp, JSON, property descriptors, array HOFs, Number built-ins |
 | Phase 3.5 ✅ | **8.77%** (1,848/21,074) | 444 | Optional chaining, nullish coalescing, exponentiation, computed properties, getters/setters, TDZ |
-| Phase 4 | ~15-20% | — | Classes, symbols, generators, promises |
+| **Phase 3.6** 🔥 | **~25-30%** | — | **Built-in spec compliance (Array, String, Object, Number, Function)** |
+| Phase 4 | ~35-40% | — | Classes, symbols, generators, promises |
 
-**Why pass rate stayed ~8% despite new features**: The test262 suite is heavily weighted toward built-in object tests. Language syntax tests (where this engine excels) represent only ~30% of the suite. The remaining ~70% test built-in methods (Array, String, Object, etc.) where this engine has 0% pass rate due to spec compliance gaps. Adding language features improves coverage of the smaller slice; improving built-in methods will unlock the larger slice.
+**Why pass rate stayed ~8% despite new features**: The test262 suite is heavily weighted toward built-in object tests. Language syntax tests (where this engine excels) represent only ~30% of the suite. The remaining ~70% test built-in methods (Array, String, Object, etc.) where this engine has 0% pass rate due to spec compliance gaps. **Phase 3.6 targets these built-ins directly.**
 
 ---
 
 ## High Priority TODO List
 
-### 🔴 Critical (Blocking significant test counts)
+### 🔥 Phase 3.6: Built-in Spec Compliance (DO THIS FIRST)
+
+**This is the highest-impact work.** See Phase 3.6 section above for detailed method-by-method breakdown.
+
+| Task | Impact | Est. Pass Rate Gain | Status |
+|------|--------|---------------------|--------|
+| **Array spec compliance** | ~2,000 tests | +8-10% | ❌ TODO |
+| **String spec compliance** | ~1,500 tests | +5-7% | ❌ TODO |
+| **Object spec compliance** | ~1,000 tests | +3-5% | ❌ TODO |
+| **Number spec compliance** | ~500 tests | +2-3% | ❌ TODO |
+| **Function spec compliance** | ~300 tests | +1-2% | ❌ TODO |
+
+**Quick wins within Phase 3.6**:
+- [ ] `Array.from()` / `Array.of()` — simple to implement, ~150 tests
+- [ ] `Object.is()` — SameValue algorithm, ~50 tests
+- [ ] `Object.fromEntries()` — iterable of pairs, ~50 tests
+- [ ] `Number.isNaN/isFinite/isInteger` — type checks, ~100 tests
+
+### 🔴 Critical (After Phase 3.6)
 
 | Task | Impact | Status |
 |------|--------|--------|
-| **Built-in Array methods spec compliance** | ~2,000 tests | ❌ TODO |
-| **Built-in String methods spec compliance** | ~1,500 tests | ❌ TODO |
-| **Built-in Object methods spec compliance** | ~1,000 tests | ❌ TODO |
 | **Classes (`class`, `extends`, `super`)** | ~3,000 tests | ❌ TODO |
 | **Symbols (`Symbol`, `Symbol.iterator`)** | ~2,000 tests | ❌ TODO |
 
-### 🟡 High (Important for pass rate improvement)
+### 🟡 High (Phase 4 features)
 
 | Task | Impact | Status |
 |------|--------|--------|
-| **`instanceof` with Symbol.hasInstance** | ~200 tests | ❌ TODO |
-| **`Array.from()` / `Array.of()`** | ~150 tests | ❌ TODO |
-| **`Object.fromEntries()` / `Object.is()`** | ~100 tests | ❌ TODO |
 | **Generators (`function*`, `yield`)** | ~1,500 tests | ❌ TODO |
 | **Iterators (iterator protocol)** | ~800 tests | ❌ TODO |
 | **`Map` / `Set` collections** | ~600 tests | ❌ TODO |
+| **`instanceof` with Symbol.hasInstance** | ~200 tests | ❌ TODO |
 | **Numeric separator literals (`1_000`)** | ~50 tests | ❌ TODO |
 | **Logical assignment (`&&=`, `||=`, `??=`)** | ~100 tests | ❌ TODO |
 
@@ -575,4 +685,4 @@ All issues from [PR #4 review](https://github.com/dowdiness/js_engine/pull/4) ad
 
 ---
 
-**Next step**: Focus on **Critical** tasks above — built-in method spec compliance and classes will have the highest impact on pass rate.
+**Next step**: Start **Phase 3.6** — built-in spec compliance is the #1 priority. Begin with Array methods (highest impact) or quick wins like `Array.from()`, `Object.is()`, `Object.fromEntries()`. Each built-in category fixed adds ~5-10% to pass rate.
