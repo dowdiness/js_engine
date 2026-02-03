@@ -1268,13 +1268,16 @@ fn Interpreter::eval_expr(
       match super_ctor {
         Object(data) => {
           match data.callable {
-            Some(ClassConstructor(_, _, _super_ctor, ctor_fn, ctor_env, _)) => {
+            Some(ClassConstructor(_, _, _super_ctor, ctor_fn, ctor_env, super_proto)) => {
               // Create new environment for the constructor call
               let call_env = Environment::new(parent=Some(ctor_env))
               call_env.def_builtin("this", this_val)
               // Set up super constructor chain if there's a grandparent
               match _super_ctor {
-                Some(grand_super) => call_env.def_builtin("[[SuperConstructor]]", grand_super)
+                Some(grand_super) => {
+                  call_env.def_builtin("[[SuperConstructor]]", grand_super)
+                  call_env.def_builtin("[[SuperPrototype]]", super_proto)
+                }
                 None => ()
               }
               // Bind parameters and execute constructor body
@@ -1285,7 +1288,20 @@ fn Interpreter::eval_expr(
                     call_env.def(ctor_params[i], val, LetBinding)
                   }
                   self.hoist_declarations(ctor_body, call_env)
-                  let _ = self.exec_stmts(ctor_body, call_env)
+                  let exec_result = self.exec_stmts(ctor_body, call_env)
+                  // If super constructor returns an object, use it as the new 'this'
+                  match exec_result {
+                    ReturnSignal(v) =>
+                      match v {
+                        Object(_) => {
+                          // Update 'this' in the current environment
+                          env.assign("this", v)
+                          return v
+                        }
+                        _ => ()
+                      }
+                    _ => ()
+                  }
                 }
                 None => ()
               }
@@ -2826,7 +2842,16 @@ fn Interpreter::eval_new(
                                 super_env.def(params[i], val, LetBinding)
                               }
                               self.hoist_declarations(body, super_env)
-                              let _ = self.exec_stmts(body, super_env)
+                              let exec_result = self.exec_stmts(body, super_env)
+                              // If super constructor returns an object, use it
+                              match exec_result {
+                                ReturnSignal(v) =>
+                                  match v {
+                                    Object(_) => return v
+                                    _ => ()
+                                  }
+                                _ => ()
+                              }
                             }
                             None => ()
                           }
@@ -2933,14 +2958,22 @@ fn Interpreter::create_class(
       _ => self.eval_expr(m.value, env)
     }
     // Handle getter/setter vs regular method
+    // Class methods are non-enumerable per spec
+    let method_descriptor : PropDescriptor = {
+      writable: true,
+      enumerable: false,
+      configurable: true,
+    }
     match m.kind {
       @ast.Get => {
         // Getter - for now just store as property
         // TODO: proper getter implementation
         if m.is_static {
           static_props[method_key] = method_val
+          static_descriptors[method_key] = method_descriptor
         } else {
           proto_props[method_key] = method_val
+          proto_descriptors[method_key] = method_descriptor
         }
       }
       @ast.Set => {
@@ -2948,16 +2981,20 @@ fn Interpreter::create_class(
         // TODO: proper setter implementation
         if m.is_static {
           static_props[method_key] = method_val
+          static_descriptors[method_key] = method_descriptor
         } else {
           proto_props[method_key] = method_val
+          proto_descriptors[method_key] = method_descriptor
         }
       }
       @ast.Init => {
         // Regular method
         if m.is_static {
           static_props[method_key] = method_val
+          static_descriptors[method_key] = method_descriptor
         } else {
           proto_props[method_key] = method_val
+          proto_descriptors[method_key] = method_descriptor
         }
       }
     }
@@ -2984,9 +3021,16 @@ fn Interpreter::create_class(
     descriptors: static_descriptors,
     extensible: true,
   })
-  // Set prototype.constructor to point to the class
+  // Set prototype.constructor to point to the class (non-enumerable per spec)
   match proto {
-    Object(proto_data) => proto_data.properties["constructor"] = class_obj
+    Object(proto_data) => {
+      proto_data.properties["constructor"] = class_obj
+      proto_data.descriptors["constructor"] = {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+      }
+    }
     _ => ()
   }
   // Add prototype property to the class

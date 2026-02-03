@@ -183,12 +183,12 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
     }),
   )
 
-  // decodeURIComponent(string)
+  // decodeURIComponent(string) - decodes everything
   env.def_builtin(
     "decodeURIComponent",
     make_native_func("decodeURIComponent", fn(args) {
       let str = if args.length() > 0 { args[0].to_string() } else { "undefined" }
-      String_(uri_decode(str))
+      String_(uri_decode(str, false))
     }),
   )
 
@@ -201,12 +201,12 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
     }),
   )
 
-  // decodeURI(string)
+  // decodeURI(string) - preserves reserved characters (; , / ? : @ & = + $ #)
   env.def_builtin(
     "decodeURI",
     make_native_func("decodeURI", fn(args) {
       let str = if args.length() > 0 { args[0].to_string() } else { "undefined" }
-      String_(uri_decode(str))
+      String_(uri_decode(str, true))
     }),
   )
 
@@ -2341,8 +2341,15 @@ fn uri_encode(s : String, encode_component : Bool) -> String {
   buf.to_string()
 }
 
+///| Check if a character is a URI reserved character
+fn is_uri_reserved(c : Char) -> Bool {
+  // Reserved characters that decodeURI must preserve: ; , / ? : @ & = + $ #
+  c == ';' || c == ',' || c == '/' || c == '?' || c == ':' || c == '@' ||
+  c == '&' || c == '=' || c == '+' || c == '$' || c == '#'
+}
+
 ///|
-fn uri_decode(s : String) -> String raise Error {
+fn uri_decode(s : String, preserve_reserved : Bool) -> String raise Error {
   let buf = StringBuilder::new()
   let chars = s.to_array()
   let len = chars.length()
@@ -2419,7 +2426,15 @@ fn uri_decode(s : String) -> String raise Error {
         raise JsException(String_("URIError: URI malformed"))
       }
       // Single byte (ASCII)
-      buf.write_char(byte1.unsafe_to_char())
+      let decoded_char = byte1.unsafe_to_char()
+      // For decodeURI, preserve reserved characters in encoded form
+      if preserve_reserved && is_uri_reserved(decoded_char) {
+        buf.write_char(chars[i])
+        buf.write_char(chars[i + 1])
+        buf.write_char(chars[i + 2])
+      } else {
+        buf.write_char(decoded_char)
+      }
       i = i + 3
       continue
     }
