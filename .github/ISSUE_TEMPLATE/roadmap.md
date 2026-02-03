@@ -487,6 +487,17 @@ All 6 issues addressed in commit `3439764`:
 - [x] **Object.setPrototypeOf** — Documented as stub
 - [x] **String.normalize** — Documented as stub (returns input unchanged)
 - [x] **Sort comparator sign handling** — Uses sign-based comparison to avoid truncating fractional values
+- [x] **Array.prototype.toLocaleString** — Converts array elements to localized strings and joins
+- [x] **Object.getOwnPropertySymbols** — Returns empty array (Symbols not implemented)
+- [x] **Object.getOwnPropertyDescriptors** — Returns all property descriptors at once
+- [x] **Boolean.prototype.toString** — Returns "true" or "false" string representation
+- [x] **Boolean.prototype.valueOf** — Returns the boolean primitive value
+- [x] **encodeURI / decodeURI** — URI encoding/decoding preserving URL special characters
+- [x] **encodeURIComponent / decodeURIComponent** — Full URI component encoding with UTF-8 support
+- [x] **Function constructor** — Global Function constructor with prototype
+- [x] **Function.prototype.toString** — Returns proper function representation (`function name() { [native code] }`)
+- [x] **Function.prototype.call/apply/bind** — Properties with correct length values
+- [x] **Function.prototype.constructor** — Back-reference to Function constructor
 
 **Why pass rate jumped**: The comma-separated variable declaration fix unblocked ~17% of test262 tests that were previously failing at parse time.
 
@@ -552,11 +563,13 @@ All 6 issues addressed in commit `3439764`:
 ### 3.6E. Function Spec Compliance (~300 tests)
 
 **Priority methods**:
-- [ ] `Function.prototype.call/apply` — thisArg coercion
-- [ ] `Function.prototype.bind` — partial application, length
-- [ ] `Function.prototype.toString` — source representation
+- [x] `Function.prototype.call/apply` — thisArg coercion ✅
+- [x] `Function.prototype.bind` — partial application, length ✅
+- [x] `Function.prototype.toString` — source representation ✅
 - [x] `Function.prototype.length` — parameter count ✅
 - [x] `Function.prototype.name` — inferred names ✅
+- [x] `Function constructor` — creates functions with prototype ✅
+- [x] `Function.prototype.constructor` — back-reference ✅
 
 ### Phase 3.6 Expected Impact
 
@@ -640,17 +653,20 @@ Phase 1 (DONE) ──► Phase 2 (DONE) ──► Phase 3 (DONE) ──► Phase
 
 | Task | Impact | Est. Pass Rate Gain | Status |
 |------|--------|---------------------|--------|
-| **Array spec compliance** | ~2,000 tests | +8-10% | ❌ TODO |
-| **String spec compliance** | ~1,500 tests | +5-7% | ❌ TODO |
-| **Object spec compliance** | ~1,000 tests | +3-5% | ❌ TODO |
-| **Number spec compliance** | ~500 tests | +2-3% | ❌ TODO |
-| **Function spec compliance** | ~300 tests | +1-2% | ❌ TODO |
+| **Array spec compliance** | ~2,000 tests | +8-10% | 🔄 IN PROGRESS |
+| **String spec compliance** | ~1,500 tests | +5-7% | 🔄 IN PROGRESS |
+| **Object spec compliance** | ~1,000 tests | +3-5% | 🔄 IN PROGRESS |
+| **Number spec compliance** | ~500 tests | +2-3% | ✅ MOSTLY DONE |
+| **Function spec compliance** | ~300 tests | +1-2% | ✅ DONE |
 
 **Quick wins within Phase 3.6**:
-- [ ] `Array.from()` / `Array.of()` — simple to implement, ~150 tests
-- [ ] `Object.is()` — SameValue algorithm, ~50 tests
-- [ ] `Object.fromEntries()` — iterable of pairs, ~50 tests
-- [ ] `Number.isNaN/isFinite/isInteger` — type checks, ~100 tests
+- [x] `Array.from()` / `Array.of()` — already implemented ✅
+- [x] `Object.is()` — SameValue algorithm (same_value function) ✅
+- [x] `Object.fromEntries()` — iterable of pairs ✅
+- [x] `Number.isNaN/isFinite/isInteger` — type checks ✅
+- [x] `encodeURI/decodeURI/encodeURIComponent/decodeURIComponent` — URI encoding ✅
+- [x] `Boolean.prototype.toString/valueOf` — Boolean methods ✅
+- [x] `Function constructor and prototype` — Function built-ins ✅
 
 ### 🔴 Critical (After Phase 3.6)
 

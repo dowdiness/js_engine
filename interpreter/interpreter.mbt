@@ -2130,9 +2130,6 @@ fn Interpreter::get_property(
                     return proto
                   }
                 }
-              } else if prop == "constructor" {
-                // Return Function constructor
-                return self.env.get("Function") catch { _ => Undefined }
               }
             None => ()
           }
@@ -2346,9 +2343,6 @@ fn Interpreter::get_computed_property(
                     return proto
                   }
                 }
-              } else if prop == "constructor" {
-                // Return Function constructor
-                return self.env.get("Function") catch { _ => Undefined }
               }
             None => ()
           }
