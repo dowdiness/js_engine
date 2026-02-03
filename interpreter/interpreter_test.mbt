@@ -3783,3 +3783,45 @@ test "bugfix: JSON.parse rejects raw control chars in strings" {
     content="[\"SyntaxError: Unexpected control character in JSON\"]",
   )
 }
+
+///|
+test "test262 harness pattern - constructor with prototype method" {
+  let src =
+    #|function Test262Error(message) {
+    #|  this.message = message || "";
+    #|}
+    #|Test262Error.prototype.toString = function() {
+    #|  return "Test262Error: " + this.message;
+    #|};
+    #|var e = new Test262Error("test message");
+    #|console.log(e.message);
+    #|console.log(e.toString());
+  let output = run_output(src)
+  inspect(output, content="[\"test message\", \"Test262Error: test message\"]")
+}
+
+///|
+test "test262 harness pattern - assert._isSameValue" {
+  let src =
+    #|function assert() {}
+    #|assert._isSameValue = function(a, b) {
+    #|  if (a === b) {
+    #|    return a !== 0 || 1 / a === 1 / b;
+    #|  }
+    #|  return a !== a && b !== b;
+    #|};
+    #|console.log(assert._isSameValue("function", "function"));
+    #|console.log(assert._isSameValue(0, -0));
+    #|console.log(assert._isSameValue(NaN, NaN));
+  let output = run_output(src)
+  inspect(output, content="[\"true\", \"false\", \"true\"]")
+}
+
+///|
+test "test262 harness pattern - typeof Array.isArray" {
+  let src =
+    #|var f = Array.isArray;
+    #|console.log(typeof f);
+  let output = run_output(src)
+  inspect(output, content="[\"function\"]")
+}
