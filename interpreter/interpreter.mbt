@@ -1301,8 +1301,8 @@ fn eval_binary_op(
     (EqEq, l, r) => Bool(loose_equal(l, r))
     (NotEq, l, r) => Bool(not(loose_equal(l, r)))
     // Exponentiation
-    (Exp, Number(a), Number(b)) => Number(a.pow(b))
-    (Exp, l, r) => Number(to_number(l).pow(to_number(r)))
+    (Exp, Number(a), Number(b)) => Number(@math.pow(a, b))
+    (Exp, l, r) => Number(@math.pow(to_number(l), to_number(r)))
     // Arithmetic fallbacks (type coercion)
     (Add, l, r) => Number(to_number(l) + to_number(r))
     (Sub, l, r) => Number(to_number(l) - to_number(r))
