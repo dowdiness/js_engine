@@ -3825,3 +3825,43 @@ test "test262 harness pattern - typeof Array.isArray" {
   let output = run_output(src)
   inspect(output, content="[\"function\"]")
 }
+
+///|
+test "test262 harness pattern - full assert.sameValue flow" {
+  // This simulates the complete test262 harness and a simple test
+  let src =
+    #|// sta.js harness
+    #|function Test262Error(message) {
+    #|  this.message = message || "";
+    #|}
+    #|Test262Error.prototype.toString = function() {
+    #|  return "Test262Error: " + this.message;
+    #|};
+    #|
+    #|// assert.js harness (simplified)
+    #|function assert(mustBeTrue, message) {
+    #|  if (mustBeTrue === true) {
+    #|    return;
+    #|  }
+    #|  throw new Test262Error(message);
+    #|}
+    #|assert._isSameValue = function(a, b) {
+    #|  if (a === b) {
+    #|    return a !== 0 || 1 / a === 1 / b;
+    #|  }
+    #|  return a !== a && b !== b;
+    #|};
+    #|assert.sameValue = function(actual, expected, message) {
+    #|  if (assert._isSameValue(actual, expected)) {
+    #|    return;
+    #|  }
+    #|  throw new Test262Error(message);
+    #|};
+    #|
+    #|// The actual test (15.4.3.2-0-1.js)
+    #|var f = Array.isArray;
+    #|assert.sameValue(typeof f, "function", "Array.isArray must be a function");
+    #|console.log("TEST PASSED");
+  let output = run_output(src)
+  inspect(output, content="[\"TEST PASSED\"]")
+}
