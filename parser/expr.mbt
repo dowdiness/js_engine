@@ -701,27 +701,28 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
       _ => @ast.Init
     }
     // Parse the key - can be identifier, string, number, or computed [expr]
-    let (key_expr, key_name, computed) : (@ast.Expr, String, Bool) = match self.peek_kind() {
+    // Track if key was an identifier (needed for shorthand validation)
+    let (key_expr, key_name, computed, is_ident_key) : (@ast.Expr, String, Bool, Bool) = match self.peek_kind() {
       Ident(name) => {
         let kloc = self.advance().loc
-        (StringLit(name, kloc), name, false)
+        (StringLit(name, kloc), name, false, true)
       }
       String_(s) => {
         let kloc = self.advance().loc
-        (StringLit(s, kloc), s, false)
+        (StringLit(s, kloc), s, false, false)
       }
       Number(n) => {
         let kloc = self.advance().loc
         let i = n.to_int()
         let name = if i.to_double() == n { i.to_string() } else { n.to_string() }
-        (StringLit(name, kloc), name, false)
+        (StringLit(name, kloc), name, false, false)
       }
       LBracket => {
         // Computed property name: [expr]
         let _ = self.advance() // consume '['
         let expr = self.parse_assignment()
         let _ = self.expect(RBracket)
-        (expr, "", true)
+        (expr, "", true, false)
       }
       _ => {
         let t = self.peek()
@@ -766,6 +767,13 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
       props.push({ key: key_expr, value, kind: @ast.Init, computed })
     } else if self.at(Comma) || self.at(RBrace) {
       // Shorthand property: { x } => { x: x }
+      // Only identifier keys can use shorthand syntax
+      if not(is_ident_key) {
+        let t = self.peek()
+        raise Failure::Failure(
+          "Shorthand properties require identifier keys at line \{t.loc.line}, col \{t.loc.col}",
+        )
+      }
       let value : @ast.Expr = Ident(key_name, loc)
       props.push({ key: key_expr, value, kind: @ast.Init, computed: false })
     } else {
