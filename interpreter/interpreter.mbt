@@ -2008,6 +2008,13 @@ fn Interpreter::call_value(
         Some(MethodCallable(_, func)) => func(this_val, args)
         Some(NativeCallable(_, func)) => func(args)
         Some(InterpreterCallable(_, func)) => func(self, this_val, args)
+        Some(ClassConstructor(name, _, _, _, _, _)) =>
+          raise JsException(
+            String_(
+              "TypeError: Class constructor " + name +
+              " cannot be invoked without 'new'",
+            ),
+          )
         None =>
           raise JsException(String_("TypeError: is not a function"))
       }
@@ -2160,6 +2167,11 @@ fn Interpreter::get_property(
                   FuncApplyMethod(_) => 2
                   MethodCallable(_, _) => 0
                   InterpreterCallable(_, _) => 0
+                  ClassConstructor(_, _, _, ctor, _, _) =>
+                    match ctor {
+                      Some((params, _)) => params.length()
+                      None => 0
+                    }
                 }
                 return Number(param_count.to_double())
               } else if prop == "name" {
@@ -2175,6 +2187,7 @@ fn Interpreter::get_property(
                   FuncApplyMethod(_) => "apply"
                   MethodCallable(n, _) => n
                   InterpreterCallable(n, _) => n
+                  ClassConstructor(n, _, _, _, _, _) => n
                 }
                 return String_(func_name)
               } else if prop == "toString" {
@@ -2196,6 +2209,8 @@ fn Interpreter::get_property(
                   FuncApplyMethod(_) => "function apply() { [native code] }"
                   MethodCallable(n, _) => "function " + n + "() { [native code] }"
                   InterpreterCallable(n, _) => "function " + n + "() { [native code] }"
+                  ClassConstructor(n, _, _, _, _, _) =>
+                    "class " + n + " { [native code] }"
                 }
                 return make_native_func("toString", fn(_args) { String_(func_str) })
               } else if prop == "prototype" {
@@ -2373,6 +2388,11 @@ fn Interpreter::get_computed_property(
                   FuncApplyMethod(_) => 2
                   MethodCallable(_, _) => 0
                   InterpreterCallable(_, _) => 0
+                  ClassConstructor(_, _, _, ctor, _, _) =>
+                    match ctor {
+                      Some((params, _)) => params.length()
+                      None => 0
+                    }
                 }
                 return Number(param_count.to_double())
               } else if prop == "name" {
@@ -2388,6 +2408,7 @@ fn Interpreter::get_computed_property(
                   FuncApplyMethod(_) => "apply"
                   MethodCallable(n, _) => n
                   InterpreterCallable(n, _) => n
+                  ClassConstructor(n, _, _, _, _, _) => n
                 }
                 return String_(func_name)
               } else if prop == "toString" {
@@ -2409,6 +2430,8 @@ fn Interpreter::get_computed_property(
                   FuncApplyMethod(_) => "function apply() { [native code] }"
                   MethodCallable(n, _) => "function " + n + "() { [native code] }"
                   InterpreterCallable(n, _) => "function " + n + "() { [native code] }"
+                  ClassConstructor(n, _, _, _, _, _) =>
+                    "class " + n + " { [native code] }"
                 }
                 return make_native_func("toString", fn(_args) { String_(func_str) })
               } else if prop == "prototype" {

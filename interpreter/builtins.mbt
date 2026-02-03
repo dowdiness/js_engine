@@ -2130,6 +2130,8 @@ fn setup_function_builtins(env : Environment) -> Unit {
                 String_("function call() { [native code] }")
               Some(FuncApplyMethod(_)) =>
                 String_("function apply() { [native code] }")
+              Some(ClassConstructor(name, _, _, _, _, _)) =>
+                String_("class " + name + " { [native code] }")
               None =>
                 raise JsException(
                   String_(
