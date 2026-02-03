@@ -494,4 +494,75 @@ Phase 1 (DONE) ──► Phase 2 (DONE) ──► Phase 3 (DONE) ──► Phase
 
 **Analysis**: The 8.77% pass rate reflects that most test262 failures are in **built-ins** (Array, String, Object, etc.) where native method implementations don't match ECMAScript spec exactly. Language syntax coverage is strong (keywords 100%, punctuators 91%, identifiers 56%, block-scope 54%), but built-in method behavior needs refinement.
 
-**Next step**: Focus on fixing built-in method implementations to match ES spec behavior (especially Array, String, Object methods that are already partially implemented).
+---
+
+## High Priority TODO List
+
+### 🔴 Critical (Blocking significant test counts)
+
+| Task | Impact | Status |
+|------|--------|--------|
+| **Built-in Array methods spec compliance** | ~2,000 tests | ❌ TODO |
+| **Built-in String methods spec compliance** | ~1,500 tests | ❌ TODO |
+| **Built-in Object methods spec compliance** | ~1,000 tests | ❌ TODO |
+| **Classes (`class`, `extends`, `super`)** | ~3,000 tests | ❌ TODO |
+| **Symbols (`Symbol`, `Symbol.iterator`)** | ~2,000 tests | ❌ TODO |
+
+### 🟡 High (Important for pass rate improvement)
+
+| Task | Impact | Status |
+|------|--------|--------|
+| **`instanceof` with Symbol.hasInstance** | ~200 tests | ❌ TODO |
+| **`Array.from()` / `Array.of()`** | ~150 tests | ❌ TODO |
+| **`Object.fromEntries()` / `Object.is()`** | ~100 tests | ❌ TODO |
+| **Generators (`function*`, `yield`)** | ~1,500 tests | ❌ TODO |
+| **Iterators (iterator protocol)** | ~800 tests | ❌ TODO |
+| **`Map` / `Set` collections** | ~600 tests | ❌ TODO |
+| **Numeric separator literals (`1_000`)** | ~50 tests | ❌ TODO |
+| **Logical assignment (`&&=`, `||=`, `??=`)** | ~100 tests | ❌ TODO |
+
+### 🟢 Medium (Nice to have)
+
+| Task | Impact | Status |
+|------|--------|--------|
+| **Promises / async-await** | ~1,000 tests | ❌ TODO |
+| **`WeakMap` / `WeakSet`** | ~200 tests | ❌ TODO |
+| **`Proxy` / `Reflect`** | ~500 tests | ❌ TODO |
+| **`BigInt`** | ~300 tests | ❌ TODO |
+| **TypedArrays / ArrayBuffer** | ~400 tests | ❌ TODO |
+
+### ✅ Recently Completed (Phase 3.5+)
+
+| Task | Commit |
+|------|--------|
+| Optional chaining (`?.`) | `5c22029` |
+| Nullish coalescing (`??`) | `5c22029` |
+| Exponentiation (`**`) | Phase 3.5 |
+| Computed property names | Phase 3.5 |
+| Getters/setters with arity validation | Phase 3.5 |
+| TDZ for let/const | Phase 3.5 |
+| Global `this`/`globalThis` | Phase 3.5 |
+| Shorthand property validation (identifier keys only) | `d5edb04` |
+| Exponentiation rejects typeof/void/delete unary ops | `29931fc` |
+| Nullish coalescing rejects `a && b ?? c` pattern | `29931fc` |
+
+---
+
+## CodeRabbit Review Status
+
+All issues from [PR #4 review](https://github.com/dowdiness/js_engine/pull/4) addressed:
+
+| Issue | Status | Notes |
+|-------|--------|-------|
+| QuestionQuestion/QuestionDot regex context | ✅ Fixed | Already in regex-start list |
+| var/var redeclaration | ✅ Fixed | Implemented in environment.mbt |
+| OptionalCall this-binding | ✅ Fixed | Preserves receiver for method calls |
+| Exponentiation unary operators | ✅ Fixed | `29931fc` - Added typeof/void/delete |
+| Nullish coalescing && mixing | ✅ Fixed | `29931fc` - Rejects `a && b ?? c` |
+| Getter/setter arity validation | ✅ Fixed | Getters=0, Setters=1 params |
+| Global this extensible field | ✅ Fixed | Set to true |
+| Skip lists sync | ✅ Fixed | Both files have generator/generators |
+
+---
+
+**Next step**: Focus on **Critical** tasks above — built-in method spec compliance and classes will have the highest impact on pass rate.
