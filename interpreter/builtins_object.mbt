@@ -1737,7 +1737,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           if args.length() == 1 {
             match args[0] {
               Number(n) => {
-                // Array(n) creates array with n empty slots
+                // Array(n) produces a dense array populated with undefined values.
+                // LIMITATION: This interpreter does not support sparse arrays.
+                // In standard JS, Array(n) creates sparse holes (empty slots), which
+                // behave differently: hasOwnProperty returns false for holes,
+                // 'in' operator returns false, and forEach/map/filter skip holes.
+                // Our implementation fills with undefined instead, making all indices
+                // present. This is an intentional simplification.
                 let len = n.to_int()
                 if len < 0 || n != len.to_double() {
                   raise JsException(
