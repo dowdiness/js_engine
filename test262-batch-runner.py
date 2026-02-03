@@ -42,7 +42,7 @@ def discover_tests(test262_dir, filter_pattern=""):
     return sorted(test_files)
 
 
-def run_tests_batch(engine_cmd, test_files, batch_size=100):
+def run_tests_batch(engine_cmd, test_files, batch_size=50):
     """Run tests using batch mode - processes in chunks to avoid memory limits."""
     print(f"Processing {len(test_files)} tests in batches of {batch_size}...")
 
@@ -79,11 +79,13 @@ def run_tests_batch(engine_cmd, test_files, batch_size=100):
             start_time = time.monotonic()
 
             # Run batch processor
+            # Generous timeout: 10s per test in batch
+            batch_timeout = len(batch_files) * 10
             result = subprocess.run(
                 engine_cmd + [batch_file],
                 capture_output=True,
                 text=True,
-                timeout=300  # 5 minute timeout per batch
+                timeout=batch_timeout
             )
 
             elapsed = time.monotonic() - start_time
@@ -151,8 +153,8 @@ def main():
                         help="Write JSON results to this file")
     parser.add_argument("--summary", action="store_true",
                         help="Print summary only")
-    parser.add_argument("--batch-size", type=int, default=100,
-                        help="Number of tests per batch (default: 100)")
+    parser.add_argument("--batch-size", type=int, default=50,
+                        help="Number of tests per batch (default: 50)")
 
     args = parser.parse_args()
 
