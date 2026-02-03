@@ -1280,7 +1280,10 @@ fn Interpreter::eval_expr(
               // Bind parameters and execute constructor body
               match ctor_fn {
                 Some((ctor_params, ctor_body)) => {
-                  self.bind_params(ctor_params, args, call_env)
+                  for i = 0; i < ctor_params.length(); i = i + 1 {
+                    let val : Value = if i < args.length() { args[i] } else { Undefined }
+                    call_env.def(ctor_params[i], val, LetBinding)
+                  }
                   self.hoist_declarations(ctor_body, call_env)
                   let _ = self.exec_stmts(ctor_body, call_env)
                 }
@@ -2833,20 +2836,20 @@ fn Interpreter::create_class(
   // Track constructor method
   let mut ctor_fn : (Array[String], Array[@ast.Stmt])? = None
   // Process all methods
-  for method in methods {
+  for m in methods {
     // Get the method key
-    let method_key : String = match method.key {
+    let method_key : String = match m.key {
       StringLit(s, _) => s
       _ => {
         // Computed key - evaluate it
-        let key_val = self.eval_expr(method.key, env)
+        let key_val = self.eval_expr(m.key, env)
         key_val.to_string()
       }
     }
     // Check if this is the constructor
-    if method_key == "constructor" && not(method.is_static) {
+    if method_key == "constructor" && not(m.is_static) {
       // Extract constructor params and body
-      match method.value {
+      match m.value {
         FuncExpr(_, params, body, _) => ctor_fn = Some((params, body))
         FuncExprExt(_, params, _, body, _) => {
           // Convert Param array to String array (ignoring defaults for now)
@@ -2858,7 +2861,7 @@ fn Interpreter::create_class(
       continue
     }
     // Create the method function value
-    let method_val : Value = match method.value {
+    let method_val : Value = match m.value {
       FuncExpr(fn_name, params, body, _) => {
         let func_data : FuncData = {
           name: fn_name,
@@ -2878,14 +2881,14 @@ fn Interpreter::create_class(
         }
         make_func_ext(func_data)
       }
-      _ => self.eval_expr(method.value, env)
+      _ => self.eval_expr(m.value, env)
     }
     // Handle getter/setter vs regular method
-    match method.kind {
+    match m.kind {
       @ast.Get => {
         // Getter - for now just store as property
         // TODO: proper getter implementation
-        if method.is_static {
+        if m.is_static {
           static_props[method_key] = method_val
         } else {
           proto_props[method_key] = method_val
@@ -2894,7 +2897,7 @@ fn Interpreter::create_class(
       @ast.Set => {
         // Setter - for now just store as property
         // TODO: proper setter implementation
-        if method.is_static {
+        if m.is_static {
           static_props[method_key] = method_val
         } else {
           proto_props[method_key] = method_val
@@ -2902,7 +2905,7 @@ fn Interpreter::create_class(
       }
       @ast.Init => {
         // Regular method
-        if method.is_static {
+        if m.is_static {
           static_props[method_key] = method_val
         } else {
           proto_props[method_key] = method_val
