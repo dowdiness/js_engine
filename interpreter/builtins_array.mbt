@@ -250,6 +250,115 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
         String_(parts.join(","))
       })
     }
+    "at" => {
+      let arr = data
+      make_native_func("at", fn(args) {
+        // Array.prototype.at() - access element at index (supports negative)
+        let idx = if args.length() > 0 {
+          to_number(args[0]).to_int()
+        } else {
+          0
+        }
+        let len = arr.elements.length()
+        let actual_idx = if idx < 0 { len + idx } else { idx }
+        if actual_idx >= 0 && actual_idx < len {
+          arr.elements[actual_idx]
+        } else {
+          Undefined
+        }
+      })
+    }
+    "copyWithin" => {
+      let arr = data
+      make_native_func("copyWithin", fn(args) {
+        // Array.prototype.copyWithin(target, start, end?)
+        let len = arr.elements.length()
+        let mut target = if args.length() > 0 {
+          to_number(args[0]).to_int()
+        } else {
+          0
+        }
+        let mut start = if args.length() > 1 {
+          to_number(args[1]).to_int()
+        } else {
+          0
+        }
+        let mut end = if args.length() > 2 {
+          match args[2] {
+            Undefined => len
+            _ => to_number(args[2]).to_int()
+          }
+        } else {
+          len
+        }
+        // Normalize negative indices
+        if target < 0 {
+          target = len + target
+          if target < 0 {
+            target = 0
+          }
+        }
+        if start < 0 {
+          start = len + start
+          if start < 0 {
+            start = 0
+          }
+        }
+        if end < 0 {
+          end = len + end
+          if end < 0 {
+            end = 0
+          }
+        }
+        if end > len {
+          end = len
+        }
+        // Copy elements
+        let count = @math.minimum(end - start, len - target)
+        if count > 0 {
+          // Copy to temporary first to handle overlapping
+          let temp : Array[Value] = []
+          for i = start; i < start + count; i = i + 1 {
+            temp.push(arr.elements[i])
+          }
+          for i = 0; i < count; i = i + 1 {
+            if target + i < len {
+              arr.elements[target + i] = temp[i]
+            }
+          }
+        }
+        Array(arr)
+      })
+    }
+    "entries" => {
+      let arr = data
+      make_native_func("entries", fn(_args) {
+        // Returns array of [index, value] pairs (basic non-iterator version)
+        let result : Array[Value] = []
+        for i = 0; i < arr.elements.length(); i = i + 1 {
+          result.push(Array({ elements: [Number(i.to_double()), arr.elements[i]] }))
+        }
+        Array({ elements: result })
+      })
+    }
+    "keys" => {
+      let arr = data
+      make_native_func("keys", fn(_args) {
+        // Returns array of keys (basic non-iterator version)
+        let result : Array[Value] = []
+        for i = 0; i < arr.elements.length(); i = i + 1 {
+          result.push(Number(i.to_double()))
+        }
+        Array({ elements: result })
+      })
+    }
+    "values" => {
+      let arr = data
+      make_native_func("values", fn(_args) {
+        // Returns array of values (basic non-iterator version)
+        Array({ elements: arr.elements })
+      })
+    }
     "splice" => {
       let arr = data
       make_native_func("splice", fn(args) {
@@ -620,6 +729,217 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
         extensible: true,
       })
     }
+    "findLast" => {
+      let arr = data
+      Object({
+        properties: {},
+        prototype: Null,
+        callable: Some(
+          InterpreterCallable("findLast", fn(interp, this_val, args) {
+            let _ = this_val
+            let callback = if args.length() > 0 { args[0] } else { Undefined }
+            let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+            let loc = @token.Loc::default()
+            for i = arr.elements.length() - 1; i >= 0; i = i - 1 {
+              let val = interp.call_value(
+                callback,
+                this_arg,
+                [arr.elements[i], Number(i.to_double()), Array(arr)],
+                loc,
+              )
+              if is_truthy(val) {
+                return arr.elements[i]
+              }
+            }
+            Undefined
+          }),
+        ),
+        class_name: "Function",
+        descriptors: {},
+        extensible: true,
+      })
+    }
+    "findLastIndex" => {
+      let arr = data
+      Object({
+        properties: {},
+        prototype: Null,
+        callable: Some(
+          InterpreterCallable("findLastIndex", fn(interp, this_val, args) {
+            let _ = this_val
+            let callback = if args.length() > 0 { args[0] } else { Undefined }
+            let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+            let loc = @token.Loc::default()
+            for i = arr.elements.length() - 1; i >= 0; i = i - 1 {
+              let val = interp.call_value(
+                callback,
+                this_arg,
+                [arr.elements[i], Number(i.to_double()), Array(arr)],
+                loc,
+              )
+              if is_truthy(val) {
+                return Number(i.to_double())
+              }
+            }
+            Number(-1.0)
+          }),
+        ),
+        class_name: "Function",
+        descriptors: {},
+        extensible: true,
+      })
+    }
+    "toReversed" => {
+      let arr = data
+      make_native_func("toReversed", fn(_args) {
+        // Non-mutating reverse
+        let result : Array[Value] = []
+        for i = arr.elements.length() - 1; i >= 0; i = i - 1 {
+          result.push(arr.elements[i])
+        }
+        Array({ elements: result })
+      })
+    }
+    "toSorted" => {
+      let arr = data
+      Object({
+        properties: {},
+        prototype: Null,
+        callable: Some(
+          InterpreterCallable("toSorted", fn(interp, this_val, args) {
+            let _ = this_val
+            // Create a copy of the array
+            let result : Array[Value] = []
+            for el in arr.elements {
+              result.push(el)
+            }
+            // Sort the copy
+            if args.length() > 0 {
+              match args[0] {
+                Undefined =>
+                  // Default sort
+                  result.sort_by(fn(a, b) {
+                    let sa = a.to_string()
+                    let sb = b.to_string()
+                    if sa < sb {
+                      -1
+                    } else if sa > sb {
+                      1
+                    } else {
+                      0
+                    }
+                  })
+                _ => {
+                  let comparefn = args[0]
+                  let loc = @token.Loc::default()
+                  result.sort_by(fn(a, b) {
+                    let compare_result = interp.call_value(
+                        comparefn,
+                        Undefined,
+                        [a, b],
+                        loc,
+                      )
+                      catch {
+                        _ => Number(0.0)
+                      }
+                    to_number(compare_result).to_int()
+                  })
+                }
+              }
+            } else {
+              result.sort_by(fn(a, b) {
+                let sa = a.to_string()
+                let sb = b.to_string()
+                if sa < sb {
+                  -1
+                } else if sa > sb {
+                  1
+                } else {
+                  0
+                }
+              })
+            }
+            Array({ elements: result })
+          }),
+        ),
+        class_name: "Function",
+        descriptors: {},
+        extensible: true,
+      })
+    }
+    "toSpliced" => {
+      let arr = data
+      make_native_func("toSpliced", fn(args) {
+        // Non-mutating splice
+        let len = arr.elements.length()
+        let mut start = if args.length() > 0 {
+          to_number(args[0]).to_int()
+        } else {
+          0
+        }
+        if start < 0 {
+          start = len + start
+          if start < 0 {
+            start = 0
+          }
+        }
+        if start > len {
+          start = len
+        }
+        let del_count = if args.length() > 1 {
+          let d = to_number(args[1]).to_int()
+          if d < 0 {
+            0
+          } else if d > len - start {
+            len - start
+          } else {
+            d
+          }
+        } else {
+          len - start
+        }
+        let result : Array[Value] = []
+        // Copy before start
+        for i = 0; i < start; i = i + 1 {
+          result.push(arr.elements[i])
+        }
+        // Add new items
+        for i = 2; i < args.length(); i = i + 1 {
+          result.push(args[i])
+        }
+        // Copy after deleted portion
+        for i = start + del_count; i < len; i = i + 1 {
+          result.push(arr.elements[i])
+        }
+        Array({ elements: result })
+      })
+    }
+    "with" => {
+      let arr = data
+      make_native_func("with", fn(args) {
+        // Non-mutating element replacement
+        let idx = if args.length() > 0 {
+          to_number(args[0]).to_int()
+        } else {
+          0
+        }
+        let value = if args.length() > 1 { args[1] } else { Undefined }
+        let len = arr.elements.length()
+        let actual_idx = if idx < 0 { len + idx } else { idx }
+        if actual_idx < 0 || actual_idx >= len {
+          raise JsException(String_("RangeError: Invalid index"))
+        }
+        let result : Array[Value] = []
+        for i = 0; i < len; i = i + 1 {
+          if i == actual_idx {
+            result.push(value)
+          } else {
+            result.push(arr.elements[i])
+          }
+        }
+        Array({ elements: result })
+      })
+    }
     "flat" => {
       let arr = data
       make_native_func("flat", fn(args) {
@@ -774,6 +1094,24 @@ fn same_value_zero(a : Value, b : Value) -> Bool {
         true
       } else {
         a == b
+      }
+    _ => strict_equal_val(a, b)
+  }
+}
+
+///|
+pub fn same_value(a : Value, b : Value) -> Bool {
+  // SameValue algorithm per ECMAScript spec
+  // Differs from === in: NaN === NaN, and +0 !== -0
+  match (a, b) {
+    (Number(x), Number(y)) =>
+      if x.is_nan() && y.is_nan() {
+        true
+      } else if x == 0.0 && y == 0.0 {
+        // Check for +0 vs -0
+        (1.0 / x) == (1.0 / y)
+      } else {
+        x == y
       }
     _ => strict_equal_val(a, b)
   }

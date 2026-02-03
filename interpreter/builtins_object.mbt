@@ -360,6 +360,79 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => Bool(false)
           }
         }),
+        "is": make_native_func("is", fn(args) {
+          // Object.is() - SameValue algorithm
+          let x = if args.length() > 0 { args[0] } else { Undefined }
+          let y = if args.length() > 1 { args[1] } else { Undefined }
+          Bool(same_value(x, y))
+        }),
+        "fromEntries": make_native_func("fromEntries", fn(args) {
+          // Object.fromEntries() - create object from iterable of key-value pairs
+          let iterable = if args.length() > 0 { args[0] } else { Undefined }
+          let properties : Map[String, Value] = {}
+          match iterable {
+            Array(data) =>
+              for entry in data.elements {
+                match entry {
+                  Array(pair) =>
+                    if pair.elements.length() >= 2 {
+                      let key = pair.elements[0].to_string()
+                      let value = pair.elements[1]
+                      properties[key] = value
+                    }
+                  _ => ()
+                }
+              }
+            _ => ()
+          }
+          Object({
+            properties,
+            prototype: Null,
+            callable: None,
+            class_name: "Object",
+            descriptors: {},
+            extensible: true,
+          })
+        }),
+        "hasOwn": make_native_func("hasOwn", fn(args) {
+          // Object.hasOwn() - modern hasOwnProperty replacement
+          let obj = if args.length() > 0 { args[0] } else { Undefined }
+          let key = if args.length() > 1 {
+            args[1].to_string()
+          } else {
+            "undefined"
+          }
+          match obj {
+            Object(data) => Bool(data.properties.contains(key))
+            Array(data) =>
+              // Arrays support numeric index check
+              match @strconv.parse_int(key) {
+                Ok(idx) => Bool(idx >= 0 && idx < data.elements.length())
+                Err(_) => Bool(key == "length")
+              }
+            _ => Bool(false)
+          }
+        }),
+        "setPrototypeOf": make_native_func("setPrototypeOf", fn(args) {
+          let obj = if args.length() > 0 { args[0] } else { Undefined }
+          let proto = if args.length() > 1 { args[1] } else { Null }
+          match obj {
+            Object(data) => {
+              // Validate proto is Object or null
+              match proto {
+                Object(_) | Null => data.prototype = proto
+                _ =>
+                  raise JsException(
+                    String_(
+                      "TypeError: Object prototype may only be an Object or null",
+                    ),
+                  )
+              }
+              obj
+            }
+            _ => obj
+          }
+        }),
         "defineProperties": make_native_func("defineProperties", fn(args) {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           let descs = if args.length() > 1 { args[1] } else { Undefined }
@@ -427,7 +500,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     }),
   )
 
-  // Array constructor with Array.isArray
+  // Array constructor with Array.isArray, Array.from, Array.of
   env.def_builtin(
     "Array",
     Object({
@@ -439,10 +512,72 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => Bool(false)
           }
         }),
+        "of": make_native_func("of", fn(args) {
+          // Array.of() - creates array from arguments
+          Array({ elements: args })
+        }),
+        "from": make_native_func("from", fn(args) {
+          // Array.from() - creates array from array-like or iterable
+          // Note: mapFn callback not supported in this basic implementation
+          let source = if args.length() > 0 { args[0] } else { Undefined }
+          let elements : Array[Value] = []
+          match source {
+            Array(data) =>
+              // Copy array elements
+              for el in data.elements {
+                elements.push(el)
+              }
+            String_(s) =>
+              // String -> array of characters
+              for c in s.to_array() {
+                elements.push(String_(c.to_string()))
+              }
+            Object(data) => {
+              // Array-like object: has length property and indexed elements
+              let len = match data.properties.get("length") {
+                Some(Number(n)) => n.to_int()
+                Some(v) => to_number(v).to_int()
+                None => 0
+              }
+              for i = 0; i < len; i = i + 1 {
+                let key = i.to_string()
+                match data.properties.get(key) {
+                  Some(v) => elements.push(v)
+                  None => elements.push(Undefined)
+                }
+              }
+            }
+            _ => ()
+          }
+          Array({ elements, })
+        }),
       },
       prototype: Null,
       callable: Some(
-        NativeCallable("Array", fn(args) { Array({ elements: args }) }),
+        NativeCallable("Array", fn(args) {
+          // Array constructor behavior
+          if args.length() == 1 {
+            match args[0] {
+              Number(n) => {
+                // Array(n) creates array with n empty slots
+                let len = n.to_int()
+                if len < 0 || n != len.to_double() {
+                  raise JsException(
+                    String_("RangeError: Invalid array length"),
+                  )
+                }
+                let elements : Array[Value] = []
+                for _i = 0; _i < len; _i = _i + 1 {
+                  elements.push(Undefined)
+                }
+                Array({ elements, })
+              }
+              _ => Array({ elements: args })
+            }
+          } else {
+            Array({ elements: args })
+          }
+        }),
       ),
       class_name: "Function",
       descriptors: {},
