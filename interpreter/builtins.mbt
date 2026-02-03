@@ -213,10 +213,12 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
   // String constructor with static methods
   let string_proto : Value = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: None,
     class_name: "String",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
   env.def_builtin(
@@ -233,6 +235,7 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
           String_(buf.to_string())
         }),
       },
+      symbol_properties: {},
       prototype: Null,
       callable: Some(
         NativeCallable("String", fn(args) {
@@ -242,6 +245,7 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
       ),
       class_name: "Function",
       descriptors: {},
+      symbol_descriptors: {},
       extensible: true,
     }),
   )
@@ -253,6 +257,7 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
   let boolean_proto_props : Map[String, Value] = {}
   boolean_proto_props["toString"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(
       MethodCallable("toString", fn(this_val, _args) {
@@ -264,10 +269,12 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
     ),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
   boolean_proto_props["valueOf"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(
       MethodCallable("valueOf", fn(this_val, _args) {
@@ -279,20 +286,24 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
     ),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
   let boolean_proto : Value = Object({
     properties: boolean_proto_props,
+    symbol_properties: {},
     prototype: Null,
     callable: None,
     class_name: "Boolean",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
   env.def_builtin(
     "Boolean",
     Object({
       properties: { "prototype": boolean_proto },
+      symbol_properties: {},
       prototype: Null,
       callable: Some(
         NativeCallable("Boolean", fn(args) {
@@ -302,6 +313,7 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
       ),
       class_name: "Function",
       descriptors: {},
+      symbol_descriptors: {},
       extensible: true,
     }),
   )
@@ -332,6 +344,7 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
     "RegExp",
     Object({
       properties: {},
+      symbol_properties: {},
       prototype: Null,
       callable: Some(
         NativeCallable("RegExp", fn(args) {
@@ -365,6 +378,166 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
       ),
       class_name: "Function",
       descriptors: {},
+      symbol_descriptors: {},
+      extensible: true,
+    }),
+  )
+
+  // Symbol constructor and well-known symbols
+  setup_symbol_builtins(env)
+}
+
+///|
+fn setup_symbol_builtins(env : Environment) -> Unit {
+  // Create well-known symbols
+  let iterator_sym = new_symbol(Some("Symbol.iterator"))
+  let to_primitive_sym = new_symbol(Some("Symbol.toPrimitive"))
+  let to_string_tag_sym = new_symbol(Some("Symbol.toStringTag"))
+  let has_instance_sym = new_symbol(Some("Symbol.hasInstance"))
+  let is_concat_spreadable_sym = new_symbol(Some("Symbol.isConcatSpreadable"))
+  let species_sym = new_symbol(Some("Symbol.species"))
+  let match_sym = new_symbol(Some("Symbol.match"))
+  let replace_sym = new_symbol(Some("Symbol.replace"))
+  let search_sym = new_symbol(Some("Symbol.search"))
+  let split_sym = new_symbol(Some("Symbol.split"))
+  let unscopables_sym = new_symbol(Some("Symbol.unscopables"))
+  let async_iterator_sym = new_symbol(Some("Symbol.asyncIterator"))
+
+  // Symbol prototype
+  let symbol_proto_props : Map[String, Value] = {}
+  symbol_proto_props["toString"] = Object({
+    properties: {},
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      MethodCallable("toString", fn(this_val, _args) {
+        match this_val {
+          Symbol(sym) =>
+            match sym.description {
+              Some(desc) => String_("Symbol(\{desc})")
+              None => String_("Symbol()")
+            }
+          _ =>
+            raise JsException(
+              String_("TypeError: Symbol.prototype.toString requires a Symbol"),
+            )
+        }
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+  symbol_proto_props["valueOf"] = Object({
+    properties: {},
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      MethodCallable("valueOf", fn(this_val, _args) {
+        match this_val {
+          Symbol(_) => this_val
+          _ =>
+            raise JsException(
+              String_("TypeError: Symbol.prototype.valueOf requires a Symbol"),
+            )
+        }
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+  symbol_proto_props["description"] = Undefined // Getter, simplified
+
+  let symbol_proto : Value = Object({
+    properties: symbol_proto_props,
+    symbol_properties: {},
+    prototype: Null,
+    callable: None,
+    class_name: "Symbol",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+
+  // Symbol constructor properties
+  let symbol_props : Map[String, Value] = {}
+  symbol_props["prototype"] = symbol_proto
+
+  // Well-known symbols as static properties
+  symbol_props["iterator"] = Symbol(iterator_sym)
+  symbol_props["toPrimitive"] = Symbol(to_primitive_sym)
+  symbol_props["toStringTag"] = Symbol(to_string_tag_sym)
+  symbol_props["hasInstance"] = Symbol(has_instance_sym)
+  symbol_props["isConcatSpreadable"] = Symbol(is_concat_spreadable_sym)
+  symbol_props["species"] = Symbol(species_sym)
+  symbol_props["match"] = Symbol(match_sym)
+  symbol_props["replace"] = Symbol(replace_sym)
+  symbol_props["search"] = Symbol(search_sym)
+  symbol_props["split"] = Symbol(split_sym)
+  symbol_props["unscopables"] = Symbol(unscopables_sym)
+  symbol_props["asyncIterator"] = Symbol(async_iterator_sym)
+
+  // Symbol.for(key) - returns symbol from global registry
+  symbol_props["for"] = make_native_func("for", fn(args) {
+    let key = if args.length() > 0 { args[0].to_string() } else { "undefined" }
+    match global_symbol_registry.get(key) {
+      Some(sym) => Symbol(sym)
+      None => {
+        let sym = new_symbol(Some(key))
+        global_symbol_registry[key] = sym
+        Symbol(sym)
+      }
+    }
+  })
+
+  // Symbol.keyFor(sym) - returns key for symbol in global registry
+  symbol_props["keyFor"] = make_native_func("keyFor", fn(args) {
+    let sym = if args.length() > 0 { args[0] } else { Undefined }
+    match sym {
+      Symbol(sym_data) => {
+        // Search registry for this symbol
+        let mut found : String? = None
+        global_symbol_registry.each(fn(key, registered) {
+          if registered.id == sym_data.id {
+            found = Some(key)
+          }
+        })
+        match found {
+          Some(key) => String_(key)
+          None => Undefined
+        }
+      }
+      _ =>
+        raise JsException(String_("TypeError: Symbol.keyFor requires a symbol"))
+    }
+  })
+
+  // Symbol constructor - cannot be called with new, only as function
+  env.def_builtin(
+    "Symbol",
+    Object({
+      properties: symbol_props,
+      symbol_properties: {},
+      prototype: Null,
+      callable: Some(
+        NativeCallable("Symbol", fn(args) {
+          let description : String? = if args.length() > 0 {
+            match args[0] {
+              Undefined => None
+              _ => Some(args[0].to_string())
+            }
+          } else {
+            None
+          }
+          Symbol(new_symbol(description))
+        }),
+      ),
+      class_name: "Function",
+      descriptors: {},
+      symbol_descriptors: {},
       extensible: true,
     }),
   )
@@ -634,10 +807,12 @@ fn setup_math_builtins(env : Environment) -> Unit {
     "Math",
     Object({
       properties: math_props,
+      symbol_properties: {},
       prototype: Null,
       callable: None,
       class_name: "Math",
       descriptors: {},
+      symbol_descriptors: {},
       extensible: true,
     }),
   )
@@ -657,16 +832,19 @@ fn register_error_ctor(
   })
   let proto_obj : Value = Object({
     properties: proto_props,
+    symbol_properties: {},
     prototype: parent_proto,
     callable: None,
     class_name: name,
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
   env.def_builtin(
     name,
     Object({
       properties: { "prototype": proto_obj },
+      symbol_properties: {},
       prototype: Null,
       callable: Some(
         NativeCallable(name, fn(args) {
@@ -685,16 +863,19 @@ fn register_error_ctor(
           err_props["stack"] = String_(name + ": " + message)
           Object({
             properties: err_props,
+            symbol_properties: {},
             prototype: proto_obj,
             callable: None,
             class_name: name,
             descriptors: {},
+            symbol_descriptors: {},
             extensible: true,
           })
         }),
       ),
       class_name: "Function",
       descriptors: {},
+      symbol_descriptors: {},
       extensible: true,
     }),
   )
@@ -750,6 +931,7 @@ fn setup_number_builtins(env : Environment) -> Unit {
   let number_proto_props : Map[String, Value] = {}
   number_proto_props["toFixed"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(
       MethodCallable("toFixed", fn(this_val, args) {
@@ -808,10 +990,12 @@ fn setup_number_builtins(env : Environment) -> Unit {
     ),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
   number_proto_props["toString"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(
       MethodCallable("toString", fn(this_val, args) {
@@ -862,10 +1046,12 @@ fn setup_number_builtins(env : Environment) -> Unit {
     ),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
   number_proto_props["valueOf"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(
       MethodCallable("valueOf", fn(this_val, _args) {
@@ -874,10 +1060,12 @@ fn setup_number_builtins(env : Environment) -> Unit {
     ),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
   number_proto_props["toPrecision"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(
       MethodCallable("toPrecision", fn(this_val, args) {
@@ -995,10 +1183,12 @@ fn setup_number_builtins(env : Environment) -> Unit {
     ),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
   number_proto_props["toExponential"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(
       MethodCallable("toExponential", fn(this_val, args) {
@@ -1091,14 +1281,17 @@ fn setup_number_builtins(env : Environment) -> Unit {
     ),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
   let number_proto : Value = Object({
     properties: number_proto_props,
+    symbol_properties: {},
     prototype: Null,
     callable: None,
     class_name: "Number",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
   let number_props : Map[String, Value] = {}
@@ -1160,6 +1353,7 @@ fn setup_number_builtins(env : Environment) -> Unit {
     "Number",
     Object({
       properties: number_props,
+      symbol_properties: {},
       prototype: Null,
       callable: Some(
         NativeCallable("Number", fn(args) {
@@ -1169,6 +1363,7 @@ fn setup_number_builtins(env : Environment) -> Unit {
       ),
       class_name: "Function",
       descriptors: {},
+      symbol_descriptors: {},
       extensible: true,
     }),
   )
@@ -1210,10 +1405,12 @@ fn setup_json_builtins(env : Environment) -> Unit {
     "JSON",
     Object({
       properties: json_props,
+      symbol_properties: {},
       prototype: Null,
       callable: None,
       class_name: "JSON",
       descriptors: {},
+      symbol_descriptors: {},
       extensible: true,
     }),
   )
@@ -1398,10 +1595,12 @@ fn json_parse(input : String) -> Value raise Error {
       pos[0] += 1
       return Object({
         properties,
+        symbol_properties: {},
         prototype: Null,
         callable: None,
         class_name: "Object",
         descriptors: {},
+        symbol_descriptors: {},
         extensible: true,
       })
     }
@@ -1443,10 +1642,12 @@ fn json_parse(input : String) -> Value raise Error {
     pos[0] += 1
     Object({
       properties,
+      symbol_properties: {},
       prototype: Null,
       callable: None,
       class_name: "Object",
       descriptors: {},
+      symbol_descriptors: {},
       extensible: true,
     })
   }
@@ -1659,6 +1860,7 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
     "toFixed" =>
       Object({
         properties: {},
+        symbol_properties: {},
         prototype: Null,
         callable: Some(
           MethodCallable("toFixed", fn(this_val, args) {
@@ -1715,11 +1917,13 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
         ),
         class_name: "Function",
         descriptors: {},
+        symbol_descriptors: {},
         extensible: true,
       })
     "toString" =>
       Object({
         properties: {},
+        symbol_properties: {},
         prototype: Null,
         callable: Some(
           MethodCallable("toString", fn(this_val, args) {
@@ -1769,11 +1973,13 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
         ),
         class_name: "Function",
         descriptors: {},
+        symbol_descriptors: {},
         extensible: true,
       })
     "valueOf" =>
       Object({
         properties: {},
+        symbol_properties: {},
         prototype: Null,
         callable: Some(
           MethodCallable("valueOf", fn(this_val, _args) {
@@ -1782,11 +1988,13 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
         ),
         class_name: "Function",
         descriptors: {},
+        symbol_descriptors: {},
         extensible: true,
       })
     "toPrecision" =>
       Object({
         properties: {},
+        symbol_properties: {},
         prototype: Null,
         callable: Some(
           MethodCallable("toPrecision", fn(this_val, args) {
@@ -1896,11 +2104,13 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
         ),
         class_name: "Function",
         descriptors: {},
+        symbol_descriptors: {},
         extensible: true,
       })
     "toExponential" =>
       Object({
         properties: {},
+        symbol_properties: {},
         prototype: Null,
         callable: Some(
           MethodCallable("toExponential", fn(this_val, args) {
@@ -1989,6 +2199,7 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
         ),
         class_name: "Function",
         descriptors: {},
+        symbol_descriptors: {},
         extensible: true,
       })
     _ => Undefined
@@ -2102,6 +2313,7 @@ fn setup_function_builtins(env : Environment) -> Unit {
   // Function.prototype.toString - returns function source or [native code]
   func_proto_props["toString"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(
       MethodCallable("toString", fn(this_val, _args) {
@@ -2150,12 +2362,14 @@ fn setup_function_builtins(env : Environment) -> Unit {
     ),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 
   // Function.prototype.call - placeholder (actual implementation in interpreter)
   func_proto_props["call"] = Object({
     properties: { "length": Number(1.0) },
+    symbol_properties: {},
     prototype: Null,
     callable: Some(
       NativeCallable("call", fn(_args) {
@@ -2165,12 +2379,14 @@ fn setup_function_builtins(env : Environment) -> Unit {
     ),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 
   // Function.prototype.apply - placeholder (actual implementation in interpreter)
   func_proto_props["apply"] = Object({
     properties: { "length": Number(2.0) },
+    symbol_properties: {},
     prototype: Null,
     callable: Some(
       NativeCallable("apply", fn(_args) {
@@ -2180,12 +2396,14 @@ fn setup_function_builtins(env : Environment) -> Unit {
     ),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 
   // Function.prototype.bind - placeholder (actual implementation in interpreter)
   func_proto_props["bind"] = Object({
     properties: { "length": Number(1.0) },
+    symbol_properties: {},
     prototype: Null,
     callable: Some(
       NativeCallable("bind", fn(_args) {
@@ -2195,15 +2413,18 @@ fn setup_function_builtins(env : Environment) -> Unit {
     ),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 
   let func_proto : Value = Object({
     properties: func_proto_props,
+    symbol_properties: {},
     prototype: Null,
     callable: None,
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 
@@ -2215,6 +2436,7 @@ fn setup_function_builtins(env : Environment) -> Unit {
   // Create a single Function constructor object
   let func_ctor : Value = Object({
     properties: func_ctor_props,
+    symbol_properties: {},
     prototype: Null,
     callable: Some(
       NativeCallable("Function", fn(args) {
@@ -2224,10 +2446,12 @@ fn setup_function_builtins(env : Environment) -> Unit {
         if args.length() == 0 {
           return Object({
             properties: {},
+            symbol_properties: {},
             prototype: func_proto,
             callable: Some(NativeCallable("anonymous", fn(_) { Undefined })),
             class_name: "Function",
             descriptors: {},
+            symbol_descriptors: {},
             extensible: true,
           })
         }
@@ -2235,16 +2459,19 @@ fn setup_function_builtins(env : Environment) -> Unit {
         // Full implementation would require parsing the body string
         Object({
           properties: {},
+          symbol_properties: {},
           prototype: func_proto,
           callable: Some(NativeCallable("anonymous", fn(_) { Undefined })),
           class_name: "Function",
           descriptors: {},
+          symbol_descriptors: {},
           extensible: true,
         })
       }),
     ),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 

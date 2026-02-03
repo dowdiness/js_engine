@@ -448,6 +448,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
       let arr = data
       Object({
         properties: {},
+        symbol_properties: {},
         prototype: Null,
         callable: Some(
           InterpreterCallable("forEach", fn(interp, this_val, args) {
@@ -469,6 +470,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
         ),
         class_name: "Function",
         descriptors: {},
+        symbol_descriptors: {},
         extensible: true,
       })
     }
@@ -476,6 +478,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
       let arr = data
       Object({
         properties: {},
+        symbol_properties: {},
         prototype: Null,
         callable: Some(
           InterpreterCallable("map", fn(interp, this_val, args) {
@@ -498,6 +501,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
         ),
         class_name: "Function",
         descriptors: {},
+        symbol_descriptors: {},
         extensible: true,
       })
     }
@@ -505,6 +509,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
       let arr = data
       Object({
         properties: {},
+        symbol_properties: {},
         prototype: Null,
         callable: Some(
           InterpreterCallable("filter", fn(interp, this_val, args) {
@@ -529,6 +534,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
         ),
         class_name: "Function",
         descriptors: {},
+        symbol_descriptors: {},
         extensible: true,
       })
     }
@@ -536,6 +542,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
       let arr = data
       Object({
         properties: {},
+        symbol_properties: {},
         prototype: Null,
         callable: Some(
           InterpreterCallable("reduce", fn(interp, this_val, args) {
@@ -570,6 +577,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
         ),
         class_name: "Function",
         descriptors: {},
+        symbol_descriptors: {},
         extensible: true,
       })
     }
@@ -577,6 +585,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
       let arr = data
       Object({
         properties: {},
+        symbol_properties: {},
         prototype: Null,
         callable: Some(
           InterpreterCallable("reduceRight", fn(interp, this_val, args) {
@@ -611,6 +620,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
         ),
         class_name: "Function",
         descriptors: {},
+        symbol_descriptors: {},
         extensible: true,
       })
     }
@@ -618,6 +628,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
       let arr = data
       Object({
         properties: {},
+        symbol_properties: {},
         prototype: Null,
         callable: Some(
           InterpreterCallable("find", fn(interp, this_val, args) {
@@ -641,6 +652,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
         ),
         class_name: "Function",
         descriptors: {},
+        symbol_descriptors: {},
         extensible: true,
       })
     }
@@ -648,6 +660,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
       let arr = data
       Object({
         properties: {},
+        symbol_properties: {},
         prototype: Null,
         callable: Some(
           InterpreterCallable("findIndex", fn(interp, this_val, args) {
@@ -671,6 +684,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
         ),
         class_name: "Function",
         descriptors: {},
+        symbol_descriptors: {},
         extensible: true,
       })
     }
@@ -678,6 +692,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
       let arr = data
       Object({
         properties: {},
+        symbol_properties: {},
         prototype: Null,
         callable: Some(
           InterpreterCallable("every", fn(interp, this_val, args) {
@@ -701,6 +716,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
         ),
         class_name: "Function",
         descriptors: {},
+        symbol_descriptors: {},
         extensible: true,
       })
     }
@@ -708,6 +724,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
       let arr = data
       Object({
         properties: {},
+        symbol_properties: {},
         prototype: Null,
         callable: Some(
           InterpreterCallable("some", fn(interp, this_val, args) {
@@ -731,6 +748,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
         ),
         class_name: "Function",
         descriptors: {},
+        symbol_descriptors: {},
         extensible: true,
       })
     }
@@ -738,6 +756,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
       let arr = data
       Object({
         properties: {},
+        symbol_properties: {},
         prototype: Null,
         callable: Some(
           InterpreterCallable("findLast", fn(interp, this_val, args) {
@@ -761,6 +780,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
         ),
         class_name: "Function",
         descriptors: {},
+        symbol_descriptors: {},
         extensible: true,
       })
     }
@@ -768,6 +788,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
       let arr = data
       Object({
         properties: {},
+        symbol_properties: {},
         prototype: Null,
         callable: Some(
           InterpreterCallable("findLastIndex", fn(interp, this_val, args) {
@@ -791,6 +812,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
         ),
         class_name: "Function",
         descriptors: {},
+        symbol_descriptors: {},
         extensible: true,
       })
     }
@@ -809,6 +831,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
       let arr = data
       Object({
         properties: {},
+        symbol_properties: {},
         prototype: Null,
         callable: Some(
           InterpreterCallable("toSorted", fn(interp, this_val, args) {
@@ -881,6 +904,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
         ),
         class_name: "Function",
         descriptors: {},
+        symbol_descriptors: {},
         extensible: true,
       })
     }
@@ -974,6 +998,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
       let arr = data
       Object({
         properties: {},
+        symbol_properties: {},
         prototype: Null,
         callable: Some(
           InterpreterCallable("flatMap", fn(interp, this_val, args) {
@@ -1002,6 +1027,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
         ),
         class_name: "Function",
         descriptors: {},
+        symbol_descriptors: {},
         extensible: true,
       })
     }
@@ -1010,6 +1036,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
       let arr = data
       Object({
         properties: {},
+        symbol_properties: {},
         prototype: Null,
         callable: Some(
           InterpreterCallable("sort", fn(interp, this_val, args) {
@@ -1076,6 +1103,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
         ),
         class_name: "Function",
         descriptors: {},
+        symbol_descriptors: {},
         extensible: true,
       })
     }
@@ -1112,6 +1140,7 @@ pub fn strict_equal_val(a : Value, b : Value) -> Bool {
     (Undefined, Undefined) => true
     (Object(a), Object(b)) => physical_equal(a, b)
     (Array(a), Array(b)) => physical_equal(a, b)
+    (Symbol(a), Symbol(b)) => a.id == b.id // Symbols compare by identity
     _ => false
   }
 }

@@ -9,16 +9,19 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
       }),
       "valueOf": Object({
         properties: {},
+        symbol_properties: {},
         prototype: Null,
         callable: Some(
           MethodCallable("valueOf", fn(this_val, _args) { this_val }),
         ),
         class_name: "Function",
         descriptors: {},
+        symbol_descriptors: {},
         extensible: true,
       }),
       "hasOwnProperty": Object({
         properties: {},
+        symbol_properties: {},
         prototype: Null,
         callable: Some(
           MethodCallable("hasOwnProperty", fn(this_val, args) {
@@ -35,13 +38,16 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         ),
         class_name: "Function",
         descriptors: {},
+        symbol_descriptors: {},
         extensible: true,
       }),
     },
+    symbol_properties: {},
     prototype: Null,
     callable: None,
     class_name: "Object",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
   env.def_builtin(
@@ -96,10 +102,12 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           let proto = if args.length() > 0 { args[0] } else { Null }
           Object({
             properties: {},
+            symbol_properties: {},
             prototype: proto,
             callable: None,
             class_name: "Object",
             descriptors: {},
+            symbol_descriptors: {},
             extensible: true,
           })
         }),
@@ -140,10 +148,22 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
         }),
         "getOwnPropertySymbols": make_native_func("getOwnPropertySymbols", fn(
-          _args,
+          args,
         ) {
-          // Symbols are not implemented, so always return empty array
-          Array({ elements: [] })
+          let obj = if args.length() > 0 { args[0] } else { Undefined }
+          match obj {
+            Object(data) => {
+              let symbols : Array[Value] = []
+              data.symbol_properties.each(fn(sym_id, _val) {
+                match get_symbol_by_id(sym_id) {
+                  Some(sym_data) => symbols.push(Symbol(sym_data))
+                  None => () // Symbol no longer exists (shouldn't happen)
+                }
+              })
+              Array({ elements: symbols })
+            }
+            _ => Array({ elements: [] })
+          }
         }),
         "getOwnPropertyDescriptors": make_native_func("getOwnPropertyDescriptors", fn(
           args,
@@ -173,28 +193,34 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                     "enumerable": Bool(enumerable),
                     "configurable": Bool(configurable),
                   },
+                  symbol_properties: {},
                   prototype: Null,
                   callable: None,
                   class_name: "Object",
                   descriptors: {},
+                  symbol_descriptors: {},
                   extensible: true,
                 })
               })
               Object({
                 properties: descriptors_props,
+                symbol_properties: {},
                 prototype: Null,
                 callable: None,
                 class_name: "Object",
                 descriptors: {},
+                symbol_descriptors: {},
                 extensible: true,
               })
             }
             _ => Object({
               properties: {},
+              symbol_properties: {},
               prototype: Null,
               callable: None,
               class_name: "Object",
               descriptors: {},
+              symbol_descriptors: {},
               extensible: true,
             })
           }
@@ -302,10 +328,12 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                         "enumerable": Bool(enumerable),
                         "configurable": Bool(configurable),
                       },
+                      symbol_properties: {},
                       prototype: Null,
                       callable: None,
                       class_name: "Object",
                       descriptors: {},
+                      symbol_descriptors: {},
                       extensible: true,
                     })
                   }
@@ -461,10 +489,12 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Object({
             properties,
+            symbol_properties: {},
             prototype: Null,
             callable: None,
             class_name: "Object",
             descriptors: {},
+            symbol_descriptors: {},
             extensible: true,
           })
         }),
@@ -550,6 +580,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           obj
         }),
       },
+      symbol_properties: {},
       prototype: Null,
       callable: Some(
         NativeCallable("Object", fn(args) {
@@ -559,10 +590,12 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             Undefined | Null =>
               Object({
                 properties: {},
+                symbol_properties: {},
                 prototype: Null,
                 callable: None,
                 class_name: "Object",
                 descriptors: {},
+                symbol_descriptors: {},
                 extensible: true,
               })
             _ => val
@@ -571,6 +604,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
       ),
       class_name: "Function",
       descriptors: {},
+      symbol_descriptors: {},
       extensible: true,
     }),
   )
@@ -581,6 +615,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
   // Non-callback methods (using MethodCallable for this-aware dispatch)
   array_proto_props["push"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(MethodCallable("push", fn(this_val, args) {
       match this_val {
@@ -595,11 +630,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     })),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 
   array_proto_props["pop"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(MethodCallable("pop", fn(this_val, _args) {
       match this_val {
@@ -615,11 +652,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     })),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 
   array_proto_props["shift"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(MethodCallable("shift", fn(this_val, _args) {
       match this_val {
@@ -645,11 +684,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     })),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 
   array_proto_props["unshift"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(MethodCallable("unshift", fn(this_val, args) {
       match this_val {
@@ -674,11 +715,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     })),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 
   array_proto_props["join"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(MethodCallable("join", fn(this_val, args) {
       match this_val {
@@ -704,11 +747,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     })),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 
   array_proto_props["indexOf"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(MethodCallable("indexOf", fn(this_val, args) {
       match this_val {
@@ -737,11 +782,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     })),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 
   array_proto_props["lastIndexOf"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(MethodCallable("lastIndexOf", fn(this_val, args) {
       match this_val {
@@ -771,11 +818,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     })),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 
   array_proto_props["includes"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(MethodCallable("includes", fn(this_val, args) {
       match this_val {
@@ -793,11 +842,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     })),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 
   array_proto_props["slice"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(MethodCallable("slice", fn(this_val, args) {
       match this_val {
@@ -836,11 +887,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     })),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 
   array_proto_props["concat"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(MethodCallable("concat", fn(this_val, args) {
       match this_val {
@@ -865,11 +918,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     })),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 
   array_proto_props["reverse"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(MethodCallable("reverse", fn(this_val, _args) {
       match this_val {
@@ -882,11 +937,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     })),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 
   array_proto_props["fill"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(MethodCallable("fill", fn(this_val, args) {
       match this_val {
@@ -909,11 +966,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     })),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 
   array_proto_props["toString"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(MethodCallable("toString", fn(this_val, _args) {
       match this_val {
@@ -931,11 +990,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     })),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 
   array_proto_props["at"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(MethodCallable("at", fn(this_val, args) {
       match this_val {
@@ -954,11 +1015,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     })),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 
   array_proto_props["toLocaleString"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(MethodCallable("toLocaleString", fn(this_val, _args) {
       match this_val {
@@ -976,12 +1039,14 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     })),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 
   // Callback-requiring methods (using InterpreterCallable)
   array_proto_props["forEach"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(InterpreterCallable("forEach", fn(interp, this_val, args) {
       match this_val {
@@ -1004,11 +1069,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     })),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 
   array_proto_props["map"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(InterpreterCallable("map", fn(interp, this_val, args) {
       match this_val {
@@ -1033,11 +1100,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     })),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 
   array_proto_props["filter"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(InterpreterCallable("filter", fn(interp, this_val, args) {
       match this_val {
@@ -1064,11 +1133,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     })),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 
   array_proto_props["reduce"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(InterpreterCallable("reduce", fn(interp, this_val, args) {
       match this_val {
@@ -1101,11 +1172,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     })),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 
   array_proto_props["reduceRight"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(InterpreterCallable("reduceRight", fn(interp, this_val, args) {
       match this_val {
@@ -1138,11 +1211,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     })),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 
   array_proto_props["find"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(InterpreterCallable("find", fn(interp, this_val, args) {
       match this_val {
@@ -1168,11 +1243,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     })),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 
   array_proto_props["findIndex"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(InterpreterCallable("findIndex", fn(interp, this_val, args) {
       match this_val {
@@ -1198,11 +1275,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     })),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 
   array_proto_props["findLast"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(InterpreterCallable("findLast", fn(interp, this_val, args) {
       match this_val {
@@ -1228,11 +1307,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     })),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 
   array_proto_props["findLastIndex"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(InterpreterCallable("findLastIndex", fn(interp, this_val, args) {
       match this_val {
@@ -1258,11 +1339,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     })),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 
   array_proto_props["every"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(InterpreterCallable("every", fn(interp, this_val, args) {
       match this_val {
@@ -1288,11 +1371,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     })),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 
   array_proto_props["some"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(InterpreterCallable("some", fn(interp, this_val, args) {
       match this_val {
@@ -1318,11 +1403,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     })),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 
   array_proto_props["sort"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(InterpreterCallable("sort", fn(interp, this_val, args) {
       match this_val {
@@ -1368,11 +1455,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     })),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 
   array_proto_props["flat"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(MethodCallable("flat", fn(this_val, args) {
       match this_val {
@@ -1387,11 +1476,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     })),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 
   array_proto_props["flatMap"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(InterpreterCallable("flatMap", fn(interp, this_val, args) {
       match this_val {
@@ -1422,11 +1513,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     })),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 
   array_proto_props["splice"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(MethodCallable("splice", fn(this_val, args) {
       match this_val {
@@ -1472,11 +1565,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     })),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 
   array_proto_props["copyWithin"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(MethodCallable("copyWithin", fn(this_val, args) {
       match this_val {
@@ -1513,11 +1608,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     })),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 
   array_proto_props["entries"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(MethodCallable("entries", fn(this_val, _args) {
       match this_val {
@@ -1533,11 +1630,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     })),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 
   array_proto_props["keys"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(MethodCallable("keys", fn(this_val, _args) {
       match this_val {
@@ -1553,11 +1652,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     })),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 
   array_proto_props["values"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(MethodCallable("values", fn(this_val, _args) {
       match this_val {
@@ -1574,11 +1675,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     })),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 
   array_proto_props["toReversed"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(MethodCallable("toReversed", fn(this_val, _args) {
       match this_val {
@@ -1594,11 +1697,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     })),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 
   array_proto_props["toSorted"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(InterpreterCallable("toSorted", fn(interp, this_val, args) {
       match this_val {
@@ -1648,11 +1753,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     })),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 
   array_proto_props["toSpliced"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(MethodCallable("toSpliced", fn(this_val, args) {
       match this_val {
@@ -1684,11 +1791,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     })),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 
   array_proto_props["with"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(MethodCallable("with", fn(this_val, args) {
       match this_val {
@@ -1715,6 +1824,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     })),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 
@@ -1724,6 +1834,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     callable: None,
     class_name: "Array",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 
@@ -1805,6 +1916,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     })),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 

@@ -806,10 +806,12 @@ pub fn make_regexp_object(pattern : String, flags : String) -> Value {
   })
   Object({
     properties: props,
+    symbol_properties: {},
     prototype: Null,
     callable: None,
     class_name: "RegExp",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 }

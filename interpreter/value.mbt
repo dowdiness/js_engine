@@ -52,10 +52,12 @@ pub(all) struct PropDescriptor {
 ///|
 pub(all) struct ObjectData {
   properties : Map[String, Value]
+  symbol_properties : Map[Int, Value] // Symbol-keyed properties (key is symbol ID)
   prototype : Value
   callable : Callable?
   class_name : String
   descriptors : Map[String, PropDescriptor]
+  symbol_descriptors : Map[Int, PropDescriptor] // Descriptors for symbol properties
   mut extensible : Bool
 }
 
@@ -63,6 +65,41 @@ pub(all) struct ObjectData {
 pub(all) struct ArrayData {
   elements : Array[Value]
 }
+
+///|
+/// Symbol data structure - each symbol has a unique ID and optional description
+pub(all) struct SymbolData {
+  id : Int // Unique identifier for this symbol
+  description : String? // Optional description (the argument to Symbol())
+}
+
+///|
+/// Global counter for generating unique symbol IDs
+let symbol_id_counter : Ref[Int] = { val: 0 }
+
+///|
+/// Global map of all symbols by ID (for looking up symbols from property keys)
+let all_symbols : Map[Int, SymbolData] = {}
+
+///|
+/// Create a new symbol with a unique ID
+pub fn new_symbol(description : String?) -> SymbolData {
+  let id = symbol_id_counter.val
+  symbol_id_counter.val = id + 1
+  let sym : SymbolData = { id, description }
+  all_symbols[id] = sym
+  sym
+}
+
+///|
+/// Get a symbol by its ID
+pub fn get_symbol_by_id(id : Int) -> SymbolData? {
+  all_symbols.get(id)
+}
+
+///|
+/// Global symbol registry for Symbol.for() and Symbol.keyFor()
+let global_symbol_registry : Map[String, SymbolData] = {}
 
 ///|
 pub(all) enum Value {
@@ -73,6 +110,7 @@ pub(all) enum Value {
   Undefined
   Object(ObjectData)
   Array(ArrayData)
+  Symbol(SymbolData)
 }
 
 ///|
@@ -86,17 +124,21 @@ pub fn make_func(data : FuncData) -> Value {
     properties: {
       "prototype": Object({
         properties: {},
+        symbol_properties: {},
         prototype: Null,
         callable: None,
         class_name: "Object",
         descriptors: {},
+        symbol_descriptors: {},
         extensible: true,
       }),
     },
+    symbol_properties: {},
     prototype: Null,
     callable: Some(UserFunc(data)),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 }
@@ -107,17 +149,21 @@ pub fn make_func_ext(data : FuncDataExt) -> Value {
     properties: {
       "prototype": Object({
         properties: {},
+        symbol_properties: {},
         prototype: Null,
         callable: None,
         class_name: "Object",
         descriptors: {},
+        symbol_descriptors: {},
         extensible: true,
       }),
     },
+    symbol_properties: {},
     prototype: Null,
     callable: Some(UserFuncExt(data)),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 }
@@ -129,10 +175,49 @@ pub fn make_native_func(
 ) -> Value {
   Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(NativeCallable(name, func)),
     class_name: "Function",
     descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+}
+
+///|
+/// Helper to create a basic object with default empty symbol maps
+pub fn make_object(
+  properties : Map[String, Value],
+  prototype : Value,
+  callable : Callable?,
+  class_name : String,
+  descriptors : Map[String, PropDescriptor],
+  extensible : Bool,
+) -> Value {
+  Object({
+    properties,
+    symbol_properties: {},
+    prototype,
+    callable,
+    class_name,
+    descriptors,
+    symbol_descriptors: {},
+    extensible,
+  })
+}
+
+///|
+/// Helper to create a plain object
+pub fn make_plain_object() -> Value {
+  Object({
+    properties: {},
+    symbol_properties: {},
+    prototype: Null,
+    callable: None,
+    class_name: "Object",
+    descriptors: {},
+    symbol_descriptors: {},
     extensible: true,
   })
 }
@@ -185,6 +270,11 @@ pub impl Show for Value with output(self, logger) {
       }
     Array(data) =>
       logger.write_string(data.elements.map(fn(v) { v.to_string() }).join(","))
+    Symbol(sym) =>
+      match sym.description {
+        Some(desc) => logger.write_string("Symbol(\{desc})")
+        None => logger.write_string("Symbol()")
+      }
   }
 }
 
@@ -198,11 +288,12 @@ pub fn is_truthy(val : Value) -> Bool {
     Undefined => false
     Object(_) => true
     Array(_) => true
+    Symbol(_) => true // Symbols are always truthy
   }
 }
 
 ///|
-pub fn to_number(val : Value) -> Double {
+pub fn to_number(val : Value) -> Double raise Error {
   match val {
     Number(n) => n
     String_(s) => {
@@ -216,6 +307,10 @@ pub fn to_number(val : Value) -> Double {
     Bool(b) => if b { 1.0 } else { 0.0 }
     Null => 0.0
     Undefined | Object(_) | Array(_) => 0.0 / 0.0
+    Symbol(_) =>
+      raise JsException(
+        String_("TypeError: Cannot convert a Symbol value to a number"),
+      )
   }
 }
 
@@ -255,5 +350,6 @@ pub fn type_of(val : Value) -> String {
         None => "object"
       }
     Array(_) => "object"
+    Symbol(_) => "symbol"
   }
 }
