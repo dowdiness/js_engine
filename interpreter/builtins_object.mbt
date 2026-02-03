@@ -379,11 +379,25 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                       let key = pair.elements[0].to_string()
                       let value = pair.elements[1]
                       properties[key] = value
+                    } else {
+                      raise JsException(String_("TypeError: Iterator value is not an entry object"))
                     }
-                  _ => ()
+                  Object(obj) => {
+                    // Object with numeric indices 0 and 1
+                    let key = match obj.properties.get("0") {
+                      Some(v) => v.to_string()
+                      None => raise JsException(String_("TypeError: Iterator value is not an entry object"))
+                    }
+                    let value = match obj.properties.get("1") {
+                      Some(v) => v
+                      None => raise JsException(String_("TypeError: Iterator value is not an entry object"))
+                    }
+                    properties[key] = value
+                  }
+                  _ => raise JsException(String_("TypeError: Iterator value is not an entry object"))
                 }
               }
-            _ => ()
+            _ => raise JsException(String_("TypeError: Object.fromEntries requires an iterable argument"))
           }
           Object({
             properties,
@@ -416,8 +430,11 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
         }),
         "setPrototypeOf": make_native_func("setPrototypeOf", fn(args) {
-          // Note: ObjectData.prototype is immutable in current implementation
-          // This is a stub that validates arguments but doesn't modify prototype
+          // KNOWN LIMITATION: Object.setPrototypeOf does not actually modify the prototype chain.
+          // ObjectData.prototype is set at object creation and is currently immutable.
+          // This stub validates arguments and returns the object per spec behavior,
+          // but prototype-based inheritance changes will not take effect.
+          // Implementing full mutable prototypes requires architectural changes.
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           let proto = if args.length() > 1 { args[1] } else { Null }
           match proto {
