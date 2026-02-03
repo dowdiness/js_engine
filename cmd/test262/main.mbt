@@ -30,11 +30,12 @@ fn main {
   // Split by test separator and filter empty strings
   let separator = "<<<TESTSEP>>>"
   let tests_raw = content.split(separator)
-  let mut tests : Array[String] = []
+  let tests : Array[String] = []
 
   for test_str in tests_raw {
-    if test_str.length() > 0 {
-      tests.push(test_str)
+    let test_string = test_str.to_string()
+    if test_string.length() > 0 {
+      tests.push(test_string)
     }
   }
 
