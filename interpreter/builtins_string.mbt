@@ -744,7 +744,9 @@ pub fn get_string_method(s : String, prop : String) -> Value {
     "normalize" => {
       let str = s
       make_native_func("normalize", fn(_args) {
-        // Stub: return string as-is (no actual normalization)
+        // STUB: Unicode normalization (NFC, NFD, NFKC, NFKD) is not implemented.
+        // Returns the input string unchanged. Full implementation requires
+        // Unicode normalization tables and algorithms.
         String_(str)
       })
     }
@@ -753,7 +755,8 @@ pub fn get_string_method(s : String, prop : String) -> Value {
       make_native_func("isWellFormed", fn(_args) {
         // Check if string is well-formed UTF-16 (no lone surrogates)
         let c = str.to_array()
-        for i = 0; i < c.length(); i = i + 1 {
+        let mut i = 0
+        while i < c.length() {
           let code = c[i].to_int()
           if code >= 0xD800 && code <= 0xDBFF {
             // High surrogate - must be followed by low surrogate
@@ -764,10 +767,14 @@ pub fn get_string_method(s : String, prop : String) -> Value {
             if next < 0xDC00 || next > 0xDFFF {
               return Bool(false)
             }
+            // Valid surrogate pair - skip the low surrogate
+            i = i + 2
+            continue
           } else if code >= 0xDC00 && code <= 0xDFFF {
             // Lone low surrogate
             return Bool(false)
           }
+          i = i + 1
         }
         Bool(true)
       })

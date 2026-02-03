@@ -847,7 +847,9 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
                       catch {
                         _ => Number(0.0)
                       }
-                    to_number(compare_result).to_int()
+                    // Use sign-based comparison to avoid truncating fractional values
+                    let cmp = to_number(compare_result)
+                    if cmp.is_nan() { 0 } else if cmp < 0.0 { -1 } else if cmp > 0.0 { 1 } else { 0 }
                   })
                 }
               }
@@ -1029,7 +1031,9 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
                     ) catch {
                       _ => Number(0.0)
                     }
-                    to_number(result).to_int()
+                    // Use sign-based comparison to avoid truncating fractional values
+                    let cmp = to_number(result)
+                    if cmp.is_nan() { 0 } else if cmp < 0.0 { -1 } else if cmp > 0.0 { 1 } else { 0 }
                   })
                 }
               }

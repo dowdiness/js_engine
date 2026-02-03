@@ -1258,7 +1258,9 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 let loc = @token.Loc::default()
                 arr.elements.sort_by(fn(a, b) {
                   let result = interp.call_value(comparefn, Undefined, [a, b], loc) catch { _ => Number(0.0) }
-                  to_number(result).to_int()
+                  // Use sign-based comparison to avoid truncating fractional values
+                  let cmp = to_number(result)
+                  if cmp.is_nan() { 0 } else if cmp < 0.0 { -1 } else if cmp > 0.0 { 1 } else { 0 }
                 })
               }
             }
@@ -1528,7 +1530,9 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 let loc = @token.Loc::default()
                 result.sort_by(fn(a, b) {
                   let cmp_result = interp.call_value(comparefn, Undefined, [a, b], loc) catch { _ => Number(0.0) }
-                  to_number(cmp_result).to_int()
+                  // Use sign-based comparison to avoid truncating fractional values
+                  let cmp = to_number(cmp_result)
+                  if cmp.is_nan() { 0 } else if cmp < 0.0 { -1 } else if cmp > 0.0 { 1 } else { 0 }
                 })
               }
             }
