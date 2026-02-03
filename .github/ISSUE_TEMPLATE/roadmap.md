@@ -1,8 +1,8 @@
 ## Current State
 
-**Test262 Pass Rate: 26.34%** (5,543 passed / 15,500 failed / 28,556 skipped) — measured after Phase 3.6 improvements
+**Test262 Pass Rate: 26.83%** (5,646 passed / 15,397 failed / 28,556 skipped) — measured after Phase 3.6 improvements
 
-The MoonBit JS engine supports basic language features (variables, arithmetic, functions, closures, control flow, try/catch, new, this, switch, for-in, bitwise ops, objects, arrays), plus template literals, arrow functions, prototype chain lookup, Function.call/apply/bind, and built-in methods for Array, String, Object, and Math. Phase 3 added: arguments object, hoisting, strict mode, default/rest parameters, destructuring, spread, for-of, property descriptors, Object.freeze/seal, RegExp, JSON, Number built-ins, Error hierarchy polish, String.fromCharCode, and array HOFs. Phase 3.5 added: optional chaining (`?.`), nullish coalescing (`??`), exponentiation (`**`), computed property names, getters/setters, TDZ for let/const, global `this`/`globalThis`, and ES spec compliance fixes. Phase 3.6 added: comma-separated variable declarations, sort comparator exception handling, and built-in spec improvements. Phases 1-3.5 complete, Phase 3.6 in progress.
+The MoonBit JS engine supports basic language features (variables, arithmetic, functions, closures, control flow, try/catch, new, this, switch, for-in, bitwise ops, objects, arrays), plus template literals, arrow functions, prototype chain lookup, Function.call/apply/bind, and built-in methods for Array, String, Object, and Math. Phase 3 added: arguments object, hoisting, strict mode, default/rest parameters, destructuring, spread, for-of, property descriptors, Object.freeze/seal, RegExp, JSON, Number built-ins, Error hierarchy polish, String.fromCharCode, and array HOFs. Phase 3.5 added: optional chaining (`?.`), nullish coalescing (`??`), exponentiation (`**`), computed property names, getters/setters, TDZ for let/const, global `this`/`globalThis`, and ES spec compliance fixes. Phase 3.6 added: comma-separated variable declarations, sort comparator exception handling, built-in spec improvements, logical assignment operators (`&&=`, `||=`, `??=`), numeric separator literals, and number formatting fixes. Phases 1-3.5 complete, Phase 3.6 in progress.
 
 ### Test262 Category Highlights (Phase 3.6)
 
@@ -13,22 +13,29 @@ The MoonBit JS engine supports basic language features (variables, arithmetic, f
 | language/punctuators | 100% (11/11) | Complete |
 | language/block-scope | 97.9% (92/94) | TDZ working, near-complete |
 | language/asi | 81.4% (83/102) | Automatic semicolon insertion |
+| language/literals | 63.0% (170/270) | Numeric separators, hex/binary/octal |
 | language/identifiers | 59.4% (123/207) | Solid |
-| language/expressions | 46.4% (1785/3845) | Significant improvement |
+| built-ins/parseInt | 59.3% (32/54) | Good coverage |
+| built-ins/parseFloat | 57.9% (22/38) | Good coverage |
+| language/expressions | 46.7% (1795/3845) | Significant improvement |
+| built-ins/isFinite | 42.9% (3/7) | Basic support |
+| built-ins/isNaN | 42.9% (3/7) | Basic support |
+| built-ins/Math | 38.4% (109/284) | Good coverage |
+| built-ins/global | 34.5% (10/29) | GlobalThis working |
+| built-ins/Number | 33.9% (95/280) | toPrecision, toExponential added |
 | language/statements | 30.6% (872/2853) | Control flow works |
-| built-ins/Math | 37.0% (105/284) | Good coverage |
-| built-ins/Number | 28.6% (80/280) | Spec compliance improving |
+| built-ins/NativeErrors | 30.0% (24/80) | Error hierarchy |
 | built-ins/Boolean | 23.9% (11/46) | Basic support |
-| built-ins/String | 22.6% (218/966) | Core methods working |
+| built-ins/String | 23.8% (230/966) | split limit added |
 | built-ins/Array | 21.1% (531/2522) | Core methods working |
-| built-ins/Object | 21.3% (670/3151) | Core methods working |
-| built-ins/RegExp | 13.8% (83/602) | Basic regex support |
+| built-ins/Object | 21.6% (682/3151) | Core methods working |
+| built-ins/RegExp | 14.0% (84/602) | Basic regex support |
 
 ### Root Cause of Current Failures
 
 **Template literals and arrow functions are now fully supported** (Phase 2). The assert.js harness parses and executes correctly.
 
-The current 26.34% pass rate reflects significant progress on built-in spec compliance:
+The current 26.83% pass rate reflects significant progress on built-in spec compliance:
 - **built-ins/* category: ~20-37% pass rate** — Array, String, Object, Number methods now pass many tests
 - Language syntax coverage is strong (keywords 100%, punctuators 100%, block-scope 98%, expressions 46%)
 - Remaining failures are due to: missing Symbol support, generator/async features, and edge cases in built-in methods
@@ -503,7 +510,7 @@ All 6 issues addressed in commit `3439764`:
 ### 3.6B. String Spec Compliance (~1,500 tests)
 
 **Priority methods**:
-- [ ] `String.prototype.split` — regex separator, limit parameter
+- [x] `String.prototype.split` — limit parameter ✅ (regex separator still TODO)
 - [ ] `String.prototype.replace` — replacement patterns ($1, $&, etc.)
 - [ ] `String.prototype.match` — global flag behavior, capture groups
 - [ ] `String.prototype.slice/substring` — negative index normalization
@@ -535,11 +542,11 @@ All 6 issues addressed in commit `3439764`:
 ### 3.6D. Number Spec Compliance (~500 tests)
 
 **Priority methods**:
-- [ ] `Number.isNaN/isFinite/isInteger/isSafeInteger` — type checks
+- [x] `Number.isNaN/isFinite/isInteger/isSafeInteger` — type checks ✅
 - [ ] `Number.parseInt/parseFloat` — edge cases
 - [ ] `Number.prototype.toFixed` — range validation, rounding
-- [ ] `Number.prototype.toPrecision` — significant digits
-- [ ] `Number.prototype.toExponential` — scientific notation
+- [x] `Number.prototype.toPrecision` — significant digits ✅
+- [x] `Number.prototype.toExponential` — scientific notation ✅
 - [ ] `Number.prototype.toString` — radix parameter validation
 
 ### 3.6E. Function Spec Compliance (~300 tests)
@@ -548,8 +555,8 @@ All 6 issues addressed in commit `3439764`:
 - [ ] `Function.prototype.call/apply` — thisArg coercion
 - [ ] `Function.prototype.bind` — partial application, length
 - [ ] `Function.prototype.toString` — source representation
-- [ ] `Function.prototype.length` — parameter count
-- [ ] `Function.prototype.name` — inferred names
+- [x] `Function.prototype.length` — parameter count ✅
+- [x] `Function.prototype.name` — inferred names ✅
 
 ### Phase 3.6 Expected Impact
 
@@ -660,8 +667,8 @@ Phase 1 (DONE) ──► Phase 2 (DONE) ──► Phase 3 (DONE) ──► Phase
 | **Iterators (iterator protocol)** | ~800 tests | ❌ TODO |
 | **`Map` / `Set` collections** | ~600 tests | ❌ TODO |
 | **`instanceof` with Symbol.hasInstance** | ~200 tests | ❌ TODO |
-| **Numeric separator literals (`1_000`)** | ~50 tests | ❌ TODO |
-| **Logical assignment (`&&=`, `||=`, `??=`)** | ~100 tests | ❌ TODO |
+| **Numeric separator literals (`1_000`)** | ~50 tests | ✅ DONE |
+| **Logical assignment (`&&=`, `||=`, `??=`)** | ~100 tests | ✅ DONE |
 
 ### 🟢 Medium (Nice to have)
 
@@ -687,6 +694,15 @@ Phase 1 (DONE) ──► Phase 2 (DONE) ──► Phase 3 (DONE) ──► Phase
 | Array.values() iterator | Phase 3.6 |
 | String.codePointAt | Phase 3.6 |
 | Object.fromEntries with TypeError validation | Phase 3.6 |
+| Number.prototype.toPrecision | Phase 3.6 |
+| Number.prototype.toExponential | Phase 3.6 |
+| String.prototype.split limit parameter | Phase 3.6 |
+| Function.prototype.length property | Phase 3.6 |
+| Function.prototype.name property | Phase 3.6 |
+| Logical assignment operators (`&&=`, `||=`, `??=`) | Phase 3.6 |
+| Numeric separator literals (`1_000`, `0xFF_FF`) | Phase 3.6 |
+| Hex/binary/octal number literals | Phase 3.6 |
+| Exponent notation (`1e10`) | Phase 3.6 |
 
 ### ✅ Previously Completed (Phase 3.5)
 

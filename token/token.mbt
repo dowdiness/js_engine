@@ -93,6 +93,10 @@ pub(all) enum TokenKind {
   LShiftAssign
   RShiftAssign
   URShiftAssign
+  // Logical assignment
+  AndAssign // &&=
+  OrAssign // ||=
+  NullishAssign // ??=
   // Delimiters
   LParen
   RParen

@@ -105,6 +105,9 @@ fn Parser::parse_assignment(self : Parser) -> @ast.Expr raise Error {
     LShiftAssign => Some(@ast.LShiftAssign)
     RShiftAssign => Some(@ast.RShiftAssign)
     URShiftAssign => Some(@ast.URShiftAssign)
+    AndAssign => Some(@ast.LogicalAndAssign)
+    OrAssign => Some(@ast.LogicalOrAssign)
+    NullishAssign => Some(@ast.NullishAssign)
     _ => None
   }
   match compound_op {
