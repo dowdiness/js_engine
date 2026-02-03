@@ -27,14 +27,6 @@ test262: build test262-download
 		--test262 ./test262 \
 		--output test262-results.json
 
-# Experimental batch runner (processes tests in batches to reduce subprocess overhead)
-test262-batch: build test262-download
-	python3 test262-batch-runner.py \
-		--engine "moon run cmd/test262" \
-		--test262 ./test262 \
-		--batch-size 50 \
-		--output test262-results.json
-
 # Run a quick subset of Test262 (language/expressions and language/statements only)
 test262-quick: build test262-download
 	python3 test262-runner.py \
