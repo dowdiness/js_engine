@@ -9,16 +9,16 @@ Options:
     --engine CMD        Command to run the JS engine (default: "moon run cmd/main --")
     --test262 DIR       Path to test262 directory (default: ./test262)
     --filter PATTERN    Only run tests matching this pattern (e.g. "language/expressions")
-    --timeout SECS      Timeout per test in seconds (default: 2)
-    --threads N         Number of parallel workers (default: auto-detect CPU count)
+    --timeout SECS      Timeout per test in seconds (default: 5)
+    --threads N         Number of parallel workers (default: auto-detect, min 4)
     --output FILE       Write JSON results to this file
     --summary           Print summary only (no individual failures)
     --verbose           Print each test result as it runs
 
 Performance Optimizations:
     - Harness file caching to avoid repeated disk I/O
-    - Auto-detected CPU-based parallelism (typically 4-16 threads)
-    - Reduced default timeout (2s instead of 10s) for faster failure detection
+    - Auto-detected CPU-based parallelism (minimum 4 threads, scales with CPU count)
+    - Moderate timeout (5s) balancing speed and test completion
     - Optimized progress reporting with ETA
 """
 
@@ -573,8 +573,8 @@ def main():
                         help="Path to test262 directory")
     parser.add_argument("--filter", default="",
                         help="Only run tests matching this pattern (e.g. 'language/expressions')")
-    parser.add_argument("--timeout", type=int, default=2,
-                        help="Timeout per test in seconds (default: 2)")
+    parser.add_argument("--timeout", type=int, default=5,
+                        help="Timeout per test in seconds (default: 5)")
     parser.add_argument("--threads", type=int, default=None,
                         help="Number of parallel workers (default: auto-detect CPU count)")
     parser.add_argument("--output", default="",
@@ -588,7 +588,9 @@ def main():
 
     # Auto-detect thread count if not specified
     if args.threads is None:
-        args.threads = os.cpu_count() or 4
+        # Use CPU count, but ensure we use at least 4 threads for good parallelism
+        cpu_count = os.cpu_count() or 4
+        args.threads = max(4, cpu_count)
 
     # Ensure at least 1 thread
     args.threads = max(1, args.threads)

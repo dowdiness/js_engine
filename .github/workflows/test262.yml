@@ -43,9 +43,14 @@ jobs:
 
       - name: Run Test262 conformance tests
         run: |
+          echo "CPU info:"
+          nproc
+          lscpu | grep -E '^Thread|^Core|^Socket|^CPU\(' || true
           python3 test262-runner.py \
             --engine "moon run cmd/main --" \
             --test262 ./test262 \
+            --threads 8 \
+            --timeout 5 \
             --output test262-results.json \
             --summary
         continue-on-error: true

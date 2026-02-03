@@ -20,7 +20,7 @@ test262-download:
 		echo "Test262 already present."; \
 	fi
 
-# Run the full Test262 conformance suite (optimized with auto-detected threads and shorter timeout)
+# Run the full Test262 conformance suite (optimized with harness caching and parallel execution)
 test262: build test262-download
 	python3 test262-runner.py \
 		--engine "moon run cmd/main --" \
