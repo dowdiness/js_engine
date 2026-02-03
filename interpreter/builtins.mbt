@@ -306,6 +306,9 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
     }),
   )
 
+  // Function constructor with prototype
+  setup_function_builtins(env)
+
   // Error constructors
   let error_proto = register_error_ctor(env, "Error", Null)
   register_error_ctor(env, "TypeError", error_proto) |> ignore
@@ -2089,6 +2092,197 @@ fn json_escape_string(s : String) -> String {
   }
   buf.write_char('"')
   buf.to_string()
+}
+
+///|
+fn setup_function_builtins(env : Environment) -> Unit {
+  // Create Function.prototype
+  let func_proto_props : Map[String, Value] = {}
+
+  // Function.prototype.toString - returns function source or [native code]
+  func_proto_props["toString"] = Object({
+    properties: {},
+    prototype: Null,
+    callable: Some(
+      MethodCallable("toString", fn(this_val, _args) {
+        match this_val {
+          Object(data) =>
+            match data.callable {
+              Some(UserFunc(func_data)) => {
+                let name = func_data.name.unwrap_or("")
+                String_("function " + name + "() { [native code] }")
+              }
+              Some(UserFuncExt(func_data)) => {
+                let name = func_data.name.unwrap_or("")
+                String_("function " + name + "() { [native code] }")
+              }
+              Some(ArrowFunc(_)) => String_("() => { [native code] }")
+              Some(ArrowFuncExt(_)) => String_("() => { [native code] }")
+              Some(NativeCallable(name, _)) =>
+                String_("function " + name + "() { [native code] }")
+              Some(BoundFunc(_, _, _)) =>
+                String_("function () { [native code] }")
+              Some(MethodCallable(name, _)) =>
+                String_("function " + name + "() { [native code] }")
+              Some(InterpreterCallable(name, _)) =>
+                String_("function " + name + "() { [native code] }")
+              Some(FuncCallMethod(_)) =>
+                String_("function call() { [native code] }")
+              Some(FuncApplyMethod(_)) =>
+                String_("function apply() { [native code] }")
+              None =>
+                raise JsException(
+                  String_(
+                    "TypeError: Function.prototype.toString requires a function",
+                  ),
+                )
+            }
+          _ =>
+            raise JsException(
+              String_(
+                "TypeError: Function.prototype.toString requires a function",
+              ),
+            )
+        }
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    extensible: true,
+  })
+
+  // Function.prototype.call - placeholder (actual implementation in interpreter)
+  func_proto_props["call"] = Object({
+    properties: { "length": Number(1.0) },
+    prototype: Null,
+    callable: Some(
+      NativeCallable("call", fn(_args) {
+        // This is a placeholder - actual call is handled by FuncCallMethod in interpreter
+        Undefined
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    extensible: true,
+  })
+
+  // Function.prototype.apply - placeholder (actual implementation in interpreter)
+  func_proto_props["apply"] = Object({
+    properties: { "length": Number(2.0) },
+    prototype: Null,
+    callable: Some(
+      NativeCallable("apply", fn(_args) {
+        // This is a placeholder - actual apply is handled by FuncApplyMethod in interpreter
+        Undefined
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    extensible: true,
+  })
+
+  // Function.prototype.bind - placeholder (actual implementation in interpreter)
+  func_proto_props["bind"] = Object({
+    properties: { "length": Number(1.0) },
+    prototype: Null,
+    callable: Some(
+      NativeCallable("bind", fn(_args) {
+        // This is a placeholder - actual bind is handled in interpreter
+        Undefined
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    extensible: true,
+  })
+
+  let func_proto : Value = Object({
+    properties: func_proto_props,
+    prototype: Null,
+    callable: None,
+    class_name: "Function",
+    descriptors: {},
+    extensible: true,
+  })
+
+  // Function constructor properties
+  let func_ctor_props : Map[String, Value] = {}
+  func_ctor_props["prototype"] = func_proto
+  func_ctor_props["length"] = Number(1.0)
+
+  // Add constructor back-reference to prototype
+  match func_proto {
+    Object(data) => data.properties["constructor"] = Object({
+      properties: func_ctor_props,
+      prototype: Null,
+      callable: Some(
+        NativeCallable("Function", fn(args) {
+          // Function constructor: creates a new function from string arguments
+          // Last arg is body, previous args are parameter names
+          // For now, return a no-op function as dynamic code execution is complex
+          if args.length() == 0 {
+            return Object({
+              properties: {},
+              prototype: func_proto,
+              callable: Some(NativeCallable("anonymous", fn(_) { Undefined })),
+              class_name: "Function",
+              descriptors: {},
+              extensible: true,
+            })
+          }
+          // Create a simple function that returns undefined
+          // Full implementation would require parsing the body string
+          Object({
+            properties: {},
+            prototype: func_proto,
+            callable: Some(NativeCallable("anonymous", fn(_) { Undefined })),
+            class_name: "Function",
+            descriptors: {},
+            extensible: true,
+          })
+        }),
+      ),
+      class_name: "Function",
+      descriptors: {},
+      extensible: true,
+    })
+    _ => ()
+  }
+
+  // Register Function constructor
+  env.def_builtin(
+    "Function",
+    Object({
+      properties: func_ctor_props,
+      prototype: Null,
+      callable: Some(
+        NativeCallable("Function", fn(args) {
+          // Function constructor: creates a new function from string arguments
+          if args.length() == 0 {
+            return Object({
+              properties: {},
+              prototype: func_proto,
+              callable: Some(NativeCallable("anonymous", fn(_) { Undefined })),
+              class_name: "Function",
+              descriptors: {},
+              extensible: true,
+            })
+          }
+          Object({
+            properties: {},
+            prototype: func_proto,
+            callable: Some(NativeCallable("anonymous", fn(_) { Undefined })),
+            class_name: "Function",
+            descriptors: {},
+            extensible: true,
+          })
+        }),
+      ),
+      class_name: "Function",
+      descriptors: {},
+      extensible: true,
+    }),
+  )
 }
 
 ///|

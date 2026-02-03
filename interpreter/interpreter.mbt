@@ -2092,6 +2092,47 @@ fn Interpreter::get_property(
                   InterpreterCallable(n, _) => n
                 }
                 return String_(func_name)
+              } else if prop == "toString" {
+                // Return function string representation
+                let func_str : String = match callable {
+                  UserFunc(func_data) => {
+                    let name = func_data.name.unwrap_or("")
+                    "function " + name + "() { [native code] }"
+                  }
+                  UserFuncExt(func_data) => {
+                    let name = func_data.name.unwrap_or("")
+                    "function " + name + "() { [native code] }"
+                  }
+                  ArrowFunc(_) => "() => { [native code] }"
+                  ArrowFuncExt(_) => "() => { [native code] }"
+                  BoundFunc(_, _, _) => "function () { [native code] }"
+                  NativeCallable(n, _) => "function " + n + "() { [native code] }"
+                  FuncCallMethod(_) => "function call() { [native code] }"
+                  FuncApplyMethod(_) => "function apply() { [native code] }"
+                  MethodCallable(n, _) => "function " + n + "() { [native code] }"
+                  InterpreterCallable(n, _) => "function " + n + "() { [native code] }"
+                }
+                return make_native_func("toString", fn(_args) { String_(func_str) })
+              } else if prop == "prototype" {
+                // Functions should have a prototype property
+                match data.properties.get("prototype") {
+                  Some(p) => return p
+                  None => {
+                    // Create a default prototype
+                    let proto : Value = Object({
+                      properties: {},
+                      prototype: Null,
+                      callable: None,
+                      class_name: "Object",
+                      descriptors: {},
+                      extensible: true,
+                    })
+                    return proto
+                  }
+                }
+              } else if prop == "constructor" {
+                // Return Function constructor
+                return self.env.get("Function") catch { _ => Undefined }
               }
             None => ()
           }
@@ -2267,6 +2308,47 @@ fn Interpreter::get_computed_property(
                   InterpreterCallable(n, _) => n
                 }
                 return String_(func_name)
+              } else if prop == "toString" {
+                // Return function string representation
+                let func_str : String = match callable {
+                  UserFunc(func_data) => {
+                    let name = func_data.name.unwrap_or("")
+                    "function " + name + "() { [native code] }"
+                  }
+                  UserFuncExt(func_data) => {
+                    let name = func_data.name.unwrap_or("")
+                    "function " + name + "() { [native code] }"
+                  }
+                  ArrowFunc(_) => "() => { [native code] }"
+                  ArrowFuncExt(_) => "() => { [native code] }"
+                  BoundFunc(_, _, _) => "function () { [native code] }"
+                  NativeCallable(n, _) => "function " + n + "() { [native code] }"
+                  FuncCallMethod(_) => "function call() { [native code] }"
+                  FuncApplyMethod(_) => "function apply() { [native code] }"
+                  MethodCallable(n, _) => "function " + n + "() { [native code] }"
+                  InterpreterCallable(n, _) => "function " + n + "() { [native code] }"
+                }
+                return make_native_func("toString", fn(_args) { String_(func_str) })
+              } else if prop == "prototype" {
+                // Functions should have a prototype property
+                match data.properties.get("prototype") {
+                  Some(p) => return p
+                  None => {
+                    // Create a default prototype
+                    let proto : Value = Object({
+                      properties: {},
+                      prototype: Null,
+                      callable: None,
+                      class_name: "Object",
+                      descriptors: {},
+                      extensible: true,
+                    })
+                    return proto
+                  }
+                }
+              } else if prop == "constructor" {
+                // Return Function constructor
+                return self.env.get("Function") catch { _ => Undefined }
               }
             None => ()
           }
