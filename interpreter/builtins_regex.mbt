@@ -120,15 +120,9 @@ fn RegexParser::parse_escape(self : RegexParser) -> RegexNode raise Error {
     'w' => CharClass([('a', 'z'), ('A', 'Z'), ('0', '9'), ('_', '_')], false)
     'W' => CharClass([('a', 'z'), ('A', 'Z'), ('0', '9'), ('_', '_')], true)
     's' =>
-      CharClass(
-        [(' ', ' '), ('\t', '\t'), ('\n', '\n'), ('\r', '\r')],
-        false,
-      )
+      CharClass([(' ', ' '), ('\t', '\t'), ('\n', '\n'), ('\r', '\r')], false)
     'S' =>
-      CharClass(
-        [(' ', ' '), ('\t', '\t'), ('\n', '\n'), ('\r', '\r')],
-        true,
-      )
+      CharClass([(' ', ' '), ('\t', '\t'), ('\n', '\n'), ('\r', '\r')], true)
     'b' => WordBoundary(true)
     'B' => WordBoundary(false)
     'n' => Literal('\n')
@@ -280,7 +274,7 @@ fn RegexParser::parse_quantifier(
       self.pos += 1
       let min = self.parse_int()
       match min {
-        Some(n) => {
+        Some(n) =>
           if self.pos < self.pattern.length() && self.pattern[self.pos] == '}' {
             self.pos += 1
             let greedy = self.check_greedy()
@@ -288,8 +282,7 @@ fn RegexParser::parse_quantifier(
           } else if self.pos < self.pattern.length() &&
             self.pattern[self.pos] == ',' {
             self.pos += 1
-            if self.pos < self.pattern.length() &&
-              self.pattern[self.pos] == '}' {
+            if self.pos < self.pattern.length() && self.pattern[self.pos] == '}' {
               self.pos += 1
               let greedy = self.check_greedy()
               Quantified(node, n, None, greedy)
@@ -316,7 +309,6 @@ fn RegexParser::parse_quantifier(
             self.pos = saved
             node
           }
-        }
         None => {
           self.pos = saved
           node
@@ -341,8 +333,8 @@ fn RegexParser::check_greedy(self : RegexParser) -> Bool {
 fn RegexParser::parse_int(self : RegexParser) -> Int? {
   let start = self.pos
   while self.pos < self.pattern.length() &&
-    self.pattern[self.pos] >= '0' &&
-    self.pattern[self.pos] <= '9' {
+        self.pattern[self.pos] >= '0' &&
+        self.pattern[self.pos] <= '9' {
     self.pos += 1
   }
   if self.pos == start {
@@ -598,7 +590,12 @@ fn match_sequence(
         // Try from most matches down to minimum
         for i = positions.length() - 1; i >= min; i = i - 1 {
           let result = match_sequence(
-            nodes, idx + 1, input, positions[i], captures, icase,
+            nodes,
+            idx + 1,
+            input,
+            positions[i],
+            captures,
+            icase,
           )
           match result {
             Some(_) => return result
@@ -610,7 +607,12 @@ fn match_sequence(
         // Non-greedy: try from minimum up
         for i = min; i < positions.length(); i = i + 1 {
           let result = match_sequence(
-            nodes, idx + 1, input, positions[i], captures, icase,
+            nodes,
+            idx + 1,
+            input,
+            positions[i],
+            captures,
+            icase,
           )
           match result {
             Some(_) => return result
@@ -620,13 +622,12 @@ fn match_sequence(
         None
       }
     }
-    _ => {
+    _ =>
       match regex_exec_single(node, input, pos, captures, icase) {
         Some(next) =>
           match_sequence(nodes, idx + 1, input, next, captures, icase)
         None => None
       }
-    }
   }
 }
 
@@ -638,7 +639,11 @@ fn count_groups(node : RegexNode) -> Int {
     Group(children, group_idx) => {
       let max_child = children.fold(init=0, fn(acc, child) {
         let cg = count_groups(child)
-        if cg > acc { cg } else { acc }
+        if cg > acc {
+          cg
+        } else {
+          acc
+        }
       })
       if group_idx > max_child {
         group_idx
@@ -649,18 +654,34 @@ fn count_groups(node : RegexNode) -> Int {
     Alternation(left, right) => {
       let lg = left.fold(init=0, fn(acc, n) {
         let g = count_groups(n)
-        if g > acc { g } else { acc }
+        if g > acc {
+          g
+        } else {
+          acc
+        }
       })
       let rg = right.fold(init=0, fn(acc, n) {
         let g = count_groups(n)
-        if g > acc { g } else { acc }
+        if g > acc {
+          g
+        } else {
+          acc
+        }
       })
-      if lg > rg { lg } else { rg }
+      if lg > rg {
+        lg
+      } else {
+        rg
+      }
     }
     Sequence(nodes) =>
       nodes.fold(init=0, fn(acc, n) {
         let g = count_groups(n)
-        if g > acc { g } else { acc }
+        if g > acc {
+          g
+        } else {
+          acc
+        }
       })
   }
 }
@@ -751,7 +772,7 @@ pub fn make_regexp_object(pattern : String, flags : String) -> Value {
   // test method
   props["test"] = make_native_func("test", fn(args) {
     let str = if args.length() > 0 { args[0].to_string() } else { "" }
-    let result = try { regex_search(pattern, flags, str) } catch { _ => None }
+    let result = regex_search(pattern, flags, str) catch { _ => None }
     match result {
       Some(_) => Bool(true)
       None => Bool(false)
@@ -760,11 +781,7 @@ pub fn make_regexp_object(pattern : String, flags : String) -> Value {
   // exec method
   props["exec"] = make_native_func("exec", fn(args) {
     let str = if args.length() > 0 { args[0].to_string() } else { "" }
-    let result = try {
-      regex_search(pattern, flags, str)
-    } catch {
-      _ => None
-    }
+    let result = regex_search(pattern, flags, str) catch { _ => None }
     match result {
       Some(m) => {
         let elements : Array[Value] = []
@@ -809,14 +826,14 @@ fn substring(chars : Array[Char], start : Int, end_ : Int) -> String {
 // ---- String Regex Methods ----
 
 ///|
-pub fn string_match_regex(s : String, pattern : String, flags : String) -> Value {
+pub fn string_match_regex(
+  s : String,
+  pattern : String,
+  flags : String,
+) -> Value {
   if flags.contains("g") {
     // Global match: return array of all matches
-    let matches = try {
-      regex_search_all(pattern, flags, s)
-    } catch {
-      _ => []
-    }
+    let matches = regex_search_all(pattern, flags, s) catch { _ => [] }
     let input_chars = s.to_array()
     let elements : Array[Value] = []
     for m in matches {
@@ -828,11 +845,7 @@ pub fn string_match_regex(s : String, pattern : String, flags : String) -> Value
     Array({ elements, })
   } else {
     // Non-global: return first match with captures
-    let result = try {
-      regex_search(pattern, flags, s)
-    } catch {
-      _ => None
-    }
+    let result = regex_search(pattern, flags, s) catch { _ => None }
     match result {
       Some(m) => {
         let input_chars = s.to_array()
@@ -852,12 +865,12 @@ pub fn string_match_regex(s : String, pattern : String, flags : String) -> Value
 }
 
 ///|
-pub fn string_search_regex(s : String, pattern : String, flags : String) -> Value {
-  let result = try {
-    regex_search(pattern, flags, s)
-  } catch {
-    _ => None
-  }
+pub fn string_search_regex(
+  s : String,
+  pattern : String,
+  flags : String,
+) -> Value {
+  let result = regex_search(pattern, flags, s) catch { _ => None }
   match result {
     Some(m) => Number(m.start.to_double())
     None => Number(-1.0)
@@ -874,11 +887,7 @@ pub fn string_replace_regex(
   let input_chars = s.to_array()
   if flags.contains("g") {
     // Replace all matches
-    let matches = try {
-      regex_search_all(pattern, flags, s)
-    } catch {
-      _ => []
-    }
+    let matches = regex_search_all(pattern, flags, s) catch { _ => [] }
     if matches.length() == 0 {
       return String_(s)
     }
@@ -901,11 +910,7 @@ pub fn string_replace_regex(
     String_(buf.to_string())
   } else {
     // Replace first match only
-    let result = try {
-      regex_search(pattern, flags, s)
-    } catch {
-      _ => None
-    }
+    let result = regex_search(pattern, flags, s) catch { _ => None }
     match result {
       Some(m) => {
         let buf = StringBuilder::new()

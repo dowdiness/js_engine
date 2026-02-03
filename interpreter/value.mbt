@@ -26,7 +26,10 @@ pub(all) enum Callable {
   FuncCallMethod(Value) // .call proxy: captures target function
   FuncApplyMethod(Value) // .apply proxy: captures target function
   MethodCallable(String, (Value, Array[Value]) -> Value raise Error) // this-aware native method
-  InterpreterCallable(String, (Interpreter, Value, Array[Value]) -> Value raise Error) // needs interpreter for callback invocation
+  InterpreterCallable(
+    String,
+    (Interpreter, Value, Array[Value]) -> Value raise Error
+  ) // needs interpreter for callback invocation
 }
 
 ///|

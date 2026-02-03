@@ -184,10 +184,10 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         }
         if is_regex {
           let rloc = make_loc()
-          offset += 1  // skip opening /
+          offset += 1 // skip opening /
           col += 1
           let pattern_buf = StringBuilder::new()
-          let mut in_class = false  // inside [...]
+          let mut in_class = false // inside [...]
           while offset < len {
             let rc = char_at(offset)
             if rc == '/' && not(in_class) {
@@ -217,7 +217,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
               "Unterminated regex literal at line \{rloc.line}, col \{rloc.col}",
             )
           }
-          offset += 1  // skip closing /
+          offset += 1 // skip closing /
           col += 1
           // Read flags
           let flags_buf = StringBuilder::new()
@@ -612,7 +612,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         }
         paren_is_control_flow.push(is_cf)
       }
-      RParen => {
+      RParen =>
         last_rparen_is_control_flow = if paren_is_control_flow.length() > 0 {
           match paren_is_control_flow.pop() {
             Some(v) => v
@@ -621,7 +621,6 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         } else {
           false
         }
-      }
       _ => ()
     }
     offset += 1

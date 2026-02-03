@@ -35,9 +35,7 @@ fn Parser::parse_assignment(self : Parser) -> @ast.Expr raise Error {
   if self.at(LParen) {
     let saved_pos = self.pos
     // Try extended params parse
-    let try_ext : (Array[@ast.Param], String?)? = try {
-      Some(self.parse_params_ext())
-    } catch {
+    let try_ext : (Array[@ast.Param], String?)? = Some(self.parse_params_ext()) catch {
       _ => None
     }
     match try_ext {
@@ -866,9 +864,7 @@ fn expr_to_pattern(expr : @ast.Expr) -> @ast.Pattern raise Error {
       let mut rest : @ast.Pattern? = None
       for elem in elements {
         match elem {
-          SpreadExpr(inner, _) => {
-            rest = Some(expr_to_pattern(inner))
-          }
+          SpreadExpr(inner, _) => rest = Some(expr_to_pattern(inner))
           _ => pats.push(Some(expr_to_pattern(elem)))
         }
       }

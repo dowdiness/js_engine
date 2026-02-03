@@ -112,6 +112,9 @@ pub(all) enum TokenKind {
   TemplateMiddle(String)
   TemplateTail(String)
   Arrow
+  DotDotDot
+  Regex(String, String)
+  Of
   EOF
 }
 pub impl Eq for TokenKind

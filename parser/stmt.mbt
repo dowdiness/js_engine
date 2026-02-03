@@ -468,6 +468,7 @@ fn Parser::parse_array_pattern(self : Parser) -> @ast.Pattern raise Error {
     elements.push(Some(self.parse_pattern()))
     if not(self.at(RBracket)) && not(self.at(DotDotDot)) {
       let _ = self.expect(Comma)
+
     }
   }
   let _ = self.expect(RBracket)
@@ -507,6 +508,7 @@ fn Parser::parse_object_pattern(self : Parser) -> @ast.Pattern raise Error {
     props.push({ key, value, default_val })
     if not(self.at(RBrace)) {
       let _ = self.expect(Comma)
+
     }
   }
   let _ = self.expect(RBrace)

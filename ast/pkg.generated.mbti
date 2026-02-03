@@ -68,6 +68,7 @@ pub(all) enum Expr {
   Member(Expr, String, @token.Loc)
   Ternary(Expr, Expr, Expr, @token.Loc)
   FuncExpr(String?, Array[String], Array[Stmt], @token.Loc)
+  FuncExprExt(String?, Array[Param], String?, Array[Stmt], @token.Loc)
   Grouping(Expr, @token.Loc)
   ObjectLit(Array[Property], @token.Loc)
   ArrayLit(Array[Expr], @token.Loc)
@@ -81,15 +82,42 @@ pub(all) enum Expr {
   Comma(Expr, Expr, @token.Loc)
   TemplateLit(Array[String], Array[Expr], @token.Loc)
   ArrowFunc(Array[String], Array[Stmt], @token.Loc)
+  ArrowFuncExt(Array[Param], String?, Array[Stmt], @token.Loc)
+  SpreadExpr(Expr, @token.Loc)
+  RegexLit(String, String, @token.Loc)
+  DestructureAssign(Pattern, Expr, @token.Loc)
 }
 pub impl Eq for Expr
 pub impl Show for Expr
+
+pub(all) struct Param {
+  name : String
+  default_val : Expr?
+}
+pub impl Eq for Param
+pub impl Show for Param
+
+pub(all) enum Pattern {
+  IdentPat(String)
+  ArrayPat(Array[Pattern?], Pattern?)
+  ObjectPat(Array[PropPat], Pattern?)
+}
+pub impl Eq for Pattern
+pub impl Show for Pattern
 
 pub(all) struct Program {
   stmts : Array[Stmt]
 }
 pub impl Eq for Program
 pub impl Show for Program
+
+pub(all) struct PropPat {
+  key : String
+  value : Pattern
+  default_val : Expr?
+}
+pub impl Eq for PropPat
+pub impl Show for PropPat
 
 pub(all) struct Property {
   key : String
@@ -106,6 +134,7 @@ pub(all) enum Stmt {
   WhileStmt(Expr, Stmt, @token.Loc)
   ForStmt(Stmt?, Expr?, Expr?, Stmt, @token.Loc)
   FuncDecl(String, Array[String], Array[Stmt], @token.Loc)
+  FuncDeclExt(String, Array[Param], String?, Array[Stmt], @token.Loc)
   ReturnStmt(Expr?, @token.Loc)
   BreakStmt(String?, @token.Loc)
   ContinueStmt(String?, @token.Loc)
@@ -114,6 +143,8 @@ pub(all) enum Stmt {
   SwitchStmt(Expr, Array[SwitchCase], @token.Loc)
   DoWhileStmt(Stmt, Expr, @token.Loc)
   ForInStmt(VarKind?, String, Expr, Stmt, @token.Loc)
+  ForOfStmt(VarKind?, String, Expr, Stmt, @token.Loc)
+  DestructureDecl(VarKind, Pattern, Expr, @token.Loc)
   LabeledStmt(String, Stmt, @token.Loc)
 }
 pub impl Eq for Stmt

@@ -322,10 +322,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               let mut frozen = true
               data.properties.each(fn(k, _v) {
                 match data.descriptors.get(k) {
-                  Some(d) =>
-                    if d.writable || d.configurable {
-                      frozen = false
-                    }
+                  Some(d) => if d.writable || d.configurable { frozen = false }
                   None => frozen = false // No descriptor = writable+configurable
                 }
               })
@@ -386,7 +383,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                       Some(Bool(b)) => b
                       _ => false
                     }
-                    let configurable = match desc.properties.get("configurable") {
+                    let configurable = match
+                      desc.properties.get("configurable") {
                       Some(Bool(b)) => b
                       _ => false
                     }

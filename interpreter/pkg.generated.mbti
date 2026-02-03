@@ -8,17 +8,37 @@ import {
 // Values
 pub fn get_array_method(ArrayData, String) -> Value
 
+pub fn get_array_method_with_interp(ArrayData, String) -> Value
+
+pub fn get_number_method(Value, String) -> Value
+
 pub fn get_string_method(String, String) -> Value
 
 pub fn is_truthy(Value) -> Bool
 
 pub fn make_func(FuncData) -> Value
 
-pub fn make_native_func(String, (Array[Value]) -> Value) -> Value
+pub fn make_func_ext(FuncDataExt) -> Value
+
+pub fn make_native_func(String, (Array[Value]) -> Value raise) -> Value
+
+pub fn make_regexp_object(String, String) -> Value
+
+pub fn regex_match_at(String, String, String, Int) -> RegexMatch? raise
+
+pub fn regex_search(String, String, String) -> RegexMatch? raise
+
+pub fn regex_search_all(String, String, String) -> Array[RegexMatch] raise
 
 pub fn setup_builtins(Environment, Array[String]) -> Unit
 
 pub fn setup_object_builtins(Environment) -> Unit
+
+pub fn string_match_regex(String, String, String) -> Value
+
+pub fn string_replace_regex(String, String, String, String) -> Value
+
+pub fn string_search_regex(String, String, String) -> Value
 
 pub fn to_int32(Double) -> Int
 
@@ -32,6 +52,8 @@ pub suberror JsException {
 }
 
 // Types and methods
+type AnchorKind
+
 pub(all) struct ArrayData {
   elements : Array[Value]
 }
@@ -49,11 +71,14 @@ pub impl Show for BindingKind
 pub(all) enum Callable {
   UserFunc(FuncData)
   ArrowFunc(FuncData)
-  NativeCallable(String, (Array[Value]) -> Value)
+  UserFuncExt(FuncDataExt)
+  ArrowFuncExt(FuncDataExt)
+  NativeCallable(String, (Array[Value]) -> Value raise)
   BoundFunc(Value, Value, Array[Value])
   FuncCallMethod(Value)
   FuncApplyMethod(Value)
-  MethodCallable(String, (Value, Array[Value]) -> Value)
+  MethodCallable(String, (Value, Array[Value]) -> Value raise)
+  InterpreterCallable(String, (Interpreter, Value, Array[Value]) -> Value raise)
 }
 
 pub(all) struct Environment {
@@ -74,9 +99,18 @@ pub(all) struct FuncData {
   closure : Environment
 }
 
+pub(all) struct FuncDataExt {
+  name : String?
+  params : Array[@ast.Param]
+  rest_param : String?
+  body : Array[@ast.Stmt]
+  closure : Environment
+}
+
 pub(all) struct Interpreter {
   output : Array[String]
   global : Environment
+  mut strict : Bool
 }
 pub fn Interpreter::new() -> Self
 pub fn Interpreter::run(Self, Array[@ast.Stmt]) -> Value raise
@@ -86,7 +120,21 @@ pub(all) struct ObjectData {
   prototype : Value
   callable : Callable?
   class_name : String
+  descriptors : Map[String, PropDescriptor]
+  mut extensible : Bool
 }
+
+pub(all) struct PropDescriptor {
+  mut writable : Bool
+  mut enumerable : Bool
+  mut configurable : Bool
+}
+
+type RegexMatch
+
+type RegexNode
+
+type RegexParser
 
 pub(all) enum Signal {
   Normal(Value)

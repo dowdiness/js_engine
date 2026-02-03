@@ -348,6 +348,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
                 [arr.elements[i], Number(i.to_double()), Array(arr)],
                 loc,
               )
+
             }
             Undefined
           }),
@@ -434,7 +435,9 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
             } else {
               if arr.elements.length() == 0 {
                 raise JsException(
-                  String_("TypeError: Reduce of empty array with no initial value"),
+                  String_(
+                    "TypeError: Reduce of empty array with no initial value",
+                  ),
                 )
               }
               acc = arr.elements[0]
@@ -473,7 +476,9 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
             } else {
               if arr.elements.length() == 0 {
                 raise JsException(
-                  String_("TypeError: Reduce of empty array with no initial value"),
+                  String_(
+                    "TypeError: Reduce of empty array with no initial value",
+                  ),
                 )
               }
               acc = arr.elements[start]
@@ -692,14 +697,13 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
                   let loc = @token.Loc::default()
                   arr.elements.sort_by(fn(a, b) {
                     let result = interp.call_value(
-                        comparefn,
-                        Undefined,
-                        [a, b],
-                        loc,
-                      )
-                      catch {
-                        _ => Number(0.0)
-                      }
+                      comparefn,
+                      Undefined,
+                      [a, b],
+                      loc,
+                    ) catch {
+                      _ => Number(0.0)
+                    }
                     to_number(result).to_int()
                   })
                 }
@@ -748,6 +752,7 @@ fn flatten_array(
   }
 }
 
+///|
 fn strict_equal_val(a : Value, b : Value) -> Bool {
   match (a, b) {
     (Number(a), Number(b)) => a == b
