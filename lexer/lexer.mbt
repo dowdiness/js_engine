@@ -91,6 +91,12 @@ fn resolve_keyword(s : String) -> @token.TokenKind {
     "in" => In
     "instanceof" => Instanceof
     "of" => Of
+    "class" => Class
+    "extends" => Extends
+    "super" => Super
+    "static" => Static
+    "get" => Get
+    "set" => Set
     _ => Ident(s)
   }
 }

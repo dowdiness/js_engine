@@ -48,6 +48,13 @@ pub(all) enum TokenKind {
   Do
   In
   Instanceof
+  // Class-related
+  Class
+  Extends
+  Super
+  Static
+  Get
+  Set
   // Operators
   Plus
   Minus

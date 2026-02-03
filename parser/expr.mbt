@@ -586,6 +586,8 @@ fn Parser::parse_primary(self : Parser) -> @ast.Expr raise Error {
     LBracket => self.parse_array_literal()
     LBrace => self.parse_object_literal()
     Function => self.parse_func_expr()
+    Class => self.parse_class_expr()
+    Super => self.parse_super_expr()
     NoSubTemplate(s) => {
       self.pos += 1
       StringLit(s, tok.loc)
@@ -896,5 +898,205 @@ fn expr_to_pattern(expr : @ast.Expr) -> @ast.Pattern raise Error {
       // For now, treat as ident pattern (name is the binding)
       IdentPat(name)
     _ => raise Failure::Failure("Invalid destructuring pattern")
+  }
+}
+
+///|
+fn Parser::parse_class_expr(self : Parser) -> @ast.Expr raise Error {
+  let tok = self.expect(Class)
+  // Optional name
+  let name : String? = match self.peek_kind() {
+    Ident(n) => {
+      self.pos += 1
+      Some(n)
+    }
+    _ => None
+  }
+  // Optional extends clause
+  let superclass : @ast.Expr? = if self.eat(Extends) {
+    Some(self.parse_class_heritage())
+  } else {
+    None
+  }
+  let methods = self.parse_class_body()
+  ClassExpr(name, superclass, methods, tok.loc)
+}
+
+///| Parse class heritage (superclass expression)
+fn Parser::parse_class_heritage(self : Parser) -> @ast.Expr raise Error {
+  // Parse the superclass expression - can be an identifier or member expression
+  let mut expr = self.parse_primary()
+  while self.at(Dot) {
+    let _ = self.advance()
+    let prop = self.expect_ident()
+    let loc = self.peek().loc
+    expr = Member(expr, prop, loc)
+  }
+  expr
+}
+
+///| Parse class body (methods and properties)
+fn Parser::parse_class_body(self : Parser) -> Array[@ast.ClassMethod] raise Error {
+  let _ = self.expect(LBrace)
+  let methods : Array[@ast.ClassMethod] = []
+  while not(self.at(RBrace)) && not(self.at(EOF)) {
+    // Skip semicolons (allowed in class bodies)
+    if self.at(Semicolon) {
+      let _ = self.advance()
+      continue
+    }
+    methods.push(self.parse_class_method())
+  }
+  let _ = self.expect(RBrace)
+  methods
+}
+
+///| Parse a class method
+fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
+  // Check for static modifier
+  let is_static = self.eat(Static)
+  // Check for getter/setter
+  let mut method_kind : @ast.PropKind = @ast.Init
+  match self.peek_kind() {
+    Get =>
+      match self.peek_kind_at(1) {
+        Ident(_) | String_(_) | Number(_) | LBracket | LParen => {
+          if not(self.at_kind_at(1, LParen)) {
+            self.pos += 1
+            method_kind = @ast.Get
+          }
+        }
+        _ => ()
+      }
+    Set =>
+      match self.peek_kind_at(1) {
+        Ident(_) | String_(_) | Number(_) | LBracket | LParen => {
+          if not(self.at_kind_at(1, LParen)) {
+            self.pos += 1
+            method_kind = @ast.Set
+          }
+        }
+        _ => ()
+      }
+    _ => ()
+  }
+  // Parse method name
+  let (key_expr, computed) : (@ast.Expr, Bool) = match self.peek_kind() {
+    Ident(name) => {
+      let kloc = self.advance().loc
+      (StringLit(name, kloc), false)
+    }
+    String_(s) => {
+      let kloc = self.advance().loc
+      (StringLit(s, kloc), false)
+    }
+    Number(n) => {
+      let kloc = self.advance().loc
+      let i = n.to_int()
+      let name = if i.to_double() == n { i.to_string() } else { n.to_string() }
+      (StringLit(name, kloc), false)
+    }
+    LBracket => {
+      let _ = self.advance()
+      let expr = self.parse_assignment()
+      let _ = self.expect(RBracket)
+      (expr, true)
+    }
+    _ => {
+      let t = self.peek()
+      raise Failure::Failure(
+        "Expected method name at line \{t.loc.line}, col \{t.loc.col}",
+      )
+    }
+  }
+  // Parse method parameters and body
+  let mloc = self.peek().loc
+  let saved_pos = self.pos
+  let params = self.parse_params() catch {
+    Failure::Failure(msg) =>
+      if msg == "REST_PARAM_FOUND" || msg == "DEFAULT_PARAM_FOUND" {
+        self.pos = saved_pos
+        let (ext_params, rest_param) = self.parse_params_ext()
+        match method_kind {
+          @ast.Get =>
+            if ext_params.length() != 0 {
+              raise Failure::Failure("Getter must have exactly zero parameters")
+            }
+          @ast.Set =>
+            if ext_params.length() != 1 {
+              raise Failure::Failure("Setter must have exactly one parameter")
+            }
+          @ast.Init => ()
+        }
+        let body = self.parse_block_body()
+        let func_val : @ast.Expr = FuncExprExt(None, ext_params, rest_param, body, mloc)
+        return { key: key_expr, value: func_val, kind: method_kind, computed, is_static }
+      } else {
+        raise Failure::Failure(msg)
+      }
+    e => raise e
+  }
+  match method_kind {
+    @ast.Get =>
+      if params.length() != 0 {
+        raise Failure::Failure("Getter must have exactly zero parameters")
+      }
+    @ast.Set =>
+      if params.length() != 1 {
+        raise Failure::Failure("Setter must have exactly one parameter")
+      }
+    @ast.Init => ()
+  }
+  let body = self.parse_block_body()
+  let func_val : @ast.Expr = FuncExpr(None, params, body, mloc)
+  { key: key_expr, value: func_val, kind: method_kind, computed, is_static }
+}
+
+///|
+fn Parser::at_kind_at(self : Parser, offset : Int, kind : @token.TokenKind) -> Bool {
+  self.peek_kind_at(offset) == kind
+}
+
+///| Parse super expression (super call or super member access)
+fn Parser::parse_super_expr(self : Parser) -> @ast.Expr raise Error {
+  let tok = self.expect(Super)
+  // Check what follows super
+  if self.at(LParen) {
+    // super(args) - super call
+    let _ = self.advance()
+    let args : Array[@ast.Expr] = []
+    if not(self.at(RParen)) {
+      if self.at(DotDotDot) {
+        let sloc = self.advance().loc
+        args.push(SpreadExpr(self.parse_assignment(), sloc))
+      } else {
+        args.push(self.parse_assignment())
+      }
+      while self.eat(Comma) {
+        if self.at(DotDotDot) {
+          let sloc = self.advance().loc
+          args.push(SpreadExpr(self.parse_assignment(), sloc))
+        } else {
+          args.push(self.parse_assignment())
+        }
+      }
+    }
+    let _ = self.expect(RParen)
+    SuperCall(args, tok.loc)
+  } else if self.at(Dot) {
+    // super.prop - super member access
+    let _ = self.advance()
+    let name = self.expect_ident()
+    SuperMember(name, tok.loc)
+  } else if self.at(LBracket) {
+    // super[expr] - super computed member access
+    let _ = self.advance()
+    let key = self.parse_expr()
+    let _ = self.expect(RBracket)
+    SuperComputedMember(key, tok.loc)
+  } else {
+    raise Failure::Failure(
+      "'super' keyword is only valid inside class constructor and method bodies at line \{tok.loc.line}, col \{tok.loc.col}",
+    )
   }
 }

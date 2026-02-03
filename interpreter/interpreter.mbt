@@ -432,6 +432,16 @@ fn Interpreter::exec_stmt(
           }
         other => other
       }
+    ClassDecl(name, superclass, methods, _) => {
+      let class_val = self.create_class(name, superclass, methods, env)
+      // Class was hoisted with TDZ, initialize it now
+      if env.bindings.contains(name) {
+        env.initialize(name, class_val)
+      } else {
+        env.def(name, class_val, LetBinding)
+      }
+      Normal(Undefined)
+    }
   }
 }
 
@@ -595,6 +605,11 @@ fn hoist_block_tdz(stmts : Array[@ast.Stmt], env : Environment) -> Unit raise Er
         hoist_pattern_tdz(pattern, env, LetBinding)
       DestructureDecl(ConstKind, pattern, _, _) =>
         hoist_pattern_tdz(pattern, env, ConstBinding)
+      // Class declarations have TDZ (similar to let)
+      ClassDecl(name, _, _, _) =>
+        if not(env.bindings.contains(name)) {
+          env.def_tdz(name, LetBinding)
+        }
       _ => ()
     }
   }
@@ -1239,6 +1254,73 @@ fn Interpreter::eval_expr(
             }
           }
         }
+      }
+    }
+    ClassExpr(name, superclass, methods, _) =>
+      self.create_class(name.unwrap_or(""), superclass, methods, env)
+    SuperCall(arg_exprs, loc) => {
+      // super(args) - call the parent constructor
+      // Get the [[HomeObject]] from the current environment
+      let super_ctor = env.get("[[SuperConstructor]]")
+      let this_val = env.get("this")
+      let args = self.eval_args_with_spread(arg_exprs, env)
+      // Call the super constructor
+      match super_ctor {
+        Object(data) => {
+          match data.callable {
+            Some(ClassConstructor(_, _, _super_ctor, ctor_fn, ctor_env, _)) => {
+              // Create new environment for the constructor call
+              let call_env = Environment::new(parent=Some(ctor_env))
+              call_env.def_builtin("this", this_val)
+              // Set up super constructor chain if there's a grandparent
+              match _super_ctor {
+                Some(grand_super) => call_env.def_builtin("[[SuperConstructor]]", grand_super)
+                None => ()
+              }
+              // Bind parameters and execute constructor body
+              match ctor_fn {
+                Some((ctor_params, ctor_body)) => {
+                  self.bind_params(ctor_params, args, call_env)
+                  self.hoist_declarations(ctor_body, call_env)
+                  let _ = self.exec_stmts(ctor_body, call_env)
+                }
+                None => ()
+              }
+              this_val
+            }
+            _ =>
+              raise Failure::Failure(
+                "super() called but [[SuperConstructor]] is not a class at line \{loc.line}",
+              )
+          }
+        }
+        _ =>
+          raise Failure::Failure(
+            "super() called but no [[SuperConstructor]] in scope at line \{loc.line}",
+          )
+      }
+    }
+    SuperMember(prop, loc) => {
+      // super.prop - access parent prototype property
+      let super_proto = env.get("[[SuperPrototype]]")
+      match super_proto {
+        Null | Undefined =>
+          raise Failure::Failure(
+            "super.prop used but no [[SuperPrototype]] in scope at line \{loc.line}",
+          )
+        _ => self.get_property(super_proto, prop, loc)
+      }
+    }
+    SuperComputedMember(key_expr, loc) => {
+      // super[expr] - access parent prototype property with computed key
+      let super_proto = env.get("[[SuperPrototype]]")
+      let key = self.eval_expr(key_expr, env)
+      match super_proto {
+        Null | Undefined =>
+          raise Failure::Failure(
+            "super[expr] used but no [[SuperPrototype]] in scope at line \{loc.line}",
+          )
+        _ => self.get_computed_property(super_proto, key, loc)
       }
     }
   }
@@ -2619,10 +2701,248 @@ fn Interpreter::eval_new(
           raise JsException(
             String_("TypeError: arrow functions cannot be used as constructors"),
           )
+        Some(ClassConstructor(class_name, proto, super_ctor, ctor_fn, closure, super_proto)) => {
+          // Create the new instance with the class prototype
+          let new_obj = Object({
+            properties: {},
+            prototype: proto,
+            callable: None,
+            class_name,
+            descriptors: {},
+            extensible: true,
+          })
+          // Set up the constructor environment
+          let ctor_env = Environment::new(parent=Some(closure))
+          ctor_env.def_builtin("this", new_obj)
+          // Set up [[SuperConstructor]] and [[SuperPrototype]] for super() calls
+          match super_ctor {
+            Some(sc) => {
+              ctor_env.def_builtin("[[SuperConstructor]]", sc)
+              ctor_env.def_builtin("[[SuperPrototype]]", super_proto)
+            }
+            None => ()
+          }
+          // Execute the constructor if one was defined
+          match ctor_fn {
+            Some((params, body)) => {
+              // Bind parameters
+              for i = 0; i < params.length(); i = i + 1 {
+                let val : Value = if i < args.length() {
+                  args[i]
+                } else {
+                  Undefined
+                }
+                ctor_env.def(params[i], val, LetBinding)
+              }
+              // Hoist declarations and execute body
+              self.hoist_declarations(body, ctor_env)
+              let exec_result = self.exec_stmts(body, ctor_env)
+              match exec_result {
+                Normal(_) => new_obj
+                ReturnSignal(v) =>
+                  match v {
+                    Object(_) => v
+                    _ => new_obj
+                  }
+                BreakSignal(_) =>
+                  raise Failure::Failure("break statement outside of loop")
+                ContinueSignal(_) =>
+                  raise Failure::Failure("continue statement outside of loop")
+              }
+            }
+            None => {
+              // No explicit constructor - if there's a super class, call super()
+              match super_ctor {
+                Some(sc) => {
+                  match sc {
+                    Object(super_data) => {
+                      match super_data.callable {
+                        Some(ClassConstructor(_, _, grand_super, ctor, senv, sproto)) => {
+                          let super_env = Environment::new(parent=Some(senv))
+                          super_env.def_builtin("this", new_obj)
+                          match grand_super {
+                            Some(gs) => {
+                              super_env.def_builtin("[[SuperConstructor]]", gs)
+                              super_env.def_builtin("[[SuperPrototype]]", sproto)
+                            }
+                            None => ()
+                          }
+                          match ctor {
+                            Some((params, body)) => {
+                              for i = 0; i < params.length(); i = i + 1 {
+                                let val : Value = if i < args.length() { args[i] } else { Undefined }
+                                super_env.def(params[i], val, LetBinding)
+                              }
+                              self.hoist_declarations(body, super_env)
+                              let _ = self.exec_stmts(body, super_env)
+                            }
+                            None => ()
+                          }
+                        }
+                        _ => ()
+                      }
+                    }
+                    _ => ()
+                  }
+                }
+                None => ()
+              }
+              new_obj
+            }
+          }
+        }
         _ => raise JsException(String_("TypeError: is not a constructor"))
       }
     _ => raise JsException(String_("TypeError: is not a constructor"))
   }
+}
+
+///|
+fn Interpreter::create_class(
+  self : Interpreter,
+  name : String,
+  superclass_expr : @ast.Expr?,
+  methods : Array[@ast.ClassMethod],
+  env : Environment,
+) -> Value raise Error {
+  // Evaluate superclass if present
+  let (super_ctor, super_proto) : (Value?, Value) = match superclass_expr {
+    Some(expr) => {
+      let super_val = self.eval_expr(expr, env)
+      match super_val {
+        Object(super_data) => {
+          match super_data.properties.get("prototype") {
+            Some(sp) => (Some(super_val), sp)
+            None => (Some(super_val), Null)
+          }
+        }
+        _ =>
+          raise JsException(
+            String_("TypeError: Class extends value is not a constructor"),
+          )
+      }
+    }
+    None => (None, Null)
+  }
+  // Create the prototype object
+  let proto_props : Map[String, Value] = {}
+  let proto_descriptors : Map[String, PropDescriptor] = {}
+  // Create static properties map
+  let static_props : Map[String, Value] = {}
+  let static_descriptors : Map[String, PropDescriptor] = {}
+  // Track constructor method
+  let mut ctor_fn : (Array[String], Array[@ast.Stmt])? = None
+  // Process all methods
+  for method in methods {
+    // Get the method key
+    let method_key : String = match method.key {
+      StringLit(s, _) => s
+      _ => {
+        // Computed key - evaluate it
+        let key_val = self.eval_expr(method.key, env)
+        key_val.to_string()
+      }
+    }
+    // Check if this is the constructor
+    if method_key == "constructor" && not(method.is_static) {
+      // Extract constructor params and body
+      match method.value {
+        FuncExpr(_, params, body, _) => ctor_fn = Some((params, body))
+        FuncExprExt(_, params, _, body, _) => {
+          // Convert Param array to String array (ignoring defaults for now)
+          let param_names = params.map(fn(p) { p.name })
+          ctor_fn = Some((param_names, body))
+        }
+        _ => ()
+      }
+      continue
+    }
+    // Create the method function value
+    let method_val : Value = match method.value {
+      FuncExpr(fn_name, params, body, _) => {
+        let func_data : FuncData = {
+          name: fn_name,
+          params,
+          body,
+          closure: env,
+        }
+        make_func(func_data)
+      }
+      FuncExprExt(fn_name, params, rest, body, _) => {
+        let func_data : FuncDataExt = {
+          name: fn_name,
+          params,
+          rest_param: rest,
+          body,
+          closure: env,
+        }
+        make_func_ext(func_data)
+      }
+      _ => self.eval_expr(method.value, env)
+    }
+    // Handle getter/setter vs regular method
+    match method.kind {
+      @ast.Get => {
+        // Getter - for now just store as property
+        // TODO: proper getter implementation
+        if method.is_static {
+          static_props[method_key] = method_val
+        } else {
+          proto_props[method_key] = method_val
+        }
+      }
+      @ast.Set => {
+        // Setter - for now just store as property
+        // TODO: proper setter implementation
+        if method.is_static {
+          static_props[method_key] = method_val
+        } else {
+          proto_props[method_key] = method_val
+        }
+      }
+      @ast.Init => {
+        // Regular method
+        if method.is_static {
+          static_props[method_key] = method_val
+        } else {
+          proto_props[method_key] = method_val
+        }
+      }
+    }
+  }
+  // Create prototype object
+  let proto = Object({
+    properties: proto_props,
+    prototype: super_proto,
+    callable: None,
+    class_name: name,
+    descriptors: proto_descriptors,
+    extensible: true,
+  })
+  // Add constructor back-reference to prototype
+  // (will be set after class object is created)
+  // Create the class constructor function
+  let class_obj = Object({
+    properties: static_props,
+    prototype: Null,
+    callable: Some(
+      ClassConstructor(name, proto, super_ctor, ctor_fn, env, super_proto),
+    ),
+    class_name: "Function",
+    descriptors: static_descriptors,
+    extensible: true,
+  })
+  // Set prototype.constructor to point to the class
+  match proto {
+    Object(proto_data) => proto_data.properties["constructor"] = class_obj
+    _ => ()
+  }
+  // Add prototype property to the class
+  match class_obj {
+    Object(class_data) => class_data.properties["prototype"] = proto
+    _ => ()
+  }
+  class_obj
 }
 
 ///|

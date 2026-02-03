@@ -30,6 +30,16 @@ pub(all) enum Callable {
     String,
     (Interpreter, Value, Array[Value]) -> Value raise Error
   ) // needs interpreter for callback invocation
+  // Class constructor: (name, prototype, super_ctor, constructor_fn, closure, static_methods)
+  // constructor_fn is (params, body) tuple, or None if no explicit constructor
+  ClassConstructor(
+    String, // class name
+    Value, // prototype object
+    Value?, // super constructor (if extends)
+    (Array[String], Array[@ast.Stmt])?, // constructor params and body
+    Environment, // closure environment
+    Value, // prototype object reference for super
+  )
 }
 
 ///|
@@ -169,6 +179,8 @@ pub impl Show for Value with output(self, logger) {
           logger.write_string("function \{name}() { [native code] }")
         Some(InterpreterCallable(name, _)) =>
           logger.write_string("function \{name}() { [native code] }")
+        Some(ClassConstructor(name, _, _, _, _, _)) =>
+          logger.write_string("class \{name} { [code] }")
         None => logger.write_string("[object \{data.class_name}]")
       }
     Array(data) =>

@@ -3,6 +3,7 @@ fn Parser::parse_stmt(self : Parser) -> @ast.Stmt raise Error {
   match self.peek_kind() {
     Let | Const | Var => self.parse_var_decl()
     Function => self.parse_func_decl()
+    Class => self.parse_class_decl()
     If => self.parse_if_stmt()
     While => self.parse_while_stmt()
     For => self.parse_for_stmt()
@@ -548,4 +549,18 @@ fn Parser::parse_expr_stmt(self : Parser) -> @ast.Stmt raise Error {
   let expr = self.parse_expr()
   self.eat_semicolon()
   ExprStmt(expr, loc)
+}
+
+///|
+fn Parser::parse_class_decl(self : Parser) -> @ast.Stmt raise Error {
+  let tok = self.expect(Class)
+  let name = self.expect_ident()
+  // Optional extends clause
+  let superclass : @ast.Expr? = if self.eat(Extends) {
+    Some(self.parse_class_heritage())
+  } else {
+    None
+  }
+  let methods = self.parse_class_body()
+  ClassDecl(name, superclass, methods, tok.loc)
 }
