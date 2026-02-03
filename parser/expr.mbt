@@ -355,7 +355,6 @@ fn Parser::parse_exponentiation(self : Parser) -> @ast.Expr raise Error {
             raise Failure::Failure(
               "Unary operator used immediately before exponentiation expression. Parentheses must be used to disambiguate.",
             )
-          _ => ()
         }
       _ => ()
     }
@@ -891,7 +890,7 @@ fn expr_to_pattern(expr : @ast.Expr) -> @ast.Pattern raise Error {
       }
       ObjectPat(prop_pats, rest)
     }
-    Assign(name, default_expr, _) =>
+    Assign(name, _default_expr, _) =>
       // Handle default values in destructuring: { x = 5 } or [a = 1]
       // This shouldn't appear in normal array/object expressions, but
       // the pattern `{x = 5} = obj` would need special parsing.

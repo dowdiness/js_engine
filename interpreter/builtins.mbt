@@ -773,7 +773,7 @@ fn json_parse(input : String) -> Value raise Error {
     }
   }
 
-  fn parse_value() -> Value raise Error {
+  letrec parse_value = fn () -> Value raise Error {
     skip_ws()
     if pos[0] >= len {
       raise JsException(String_("SyntaxError: Unexpected end of JSON input"))
@@ -831,7 +831,7 @@ fn json_parse(input : String) -> Value raise Error {
     }
   }
 
-  fn parse_string() -> Value raise Error {
+  and parse_string = fn () -> Value raise Error {
     pos[0] += 1 // skip opening "
     let buf = StringBuilder::new()
     while pos[0] < len {
@@ -852,8 +852,8 @@ fn json_parse(input : String) -> Value raise Error {
           '"' => buf.write_char('"')
           '\\' => buf.write_char('\\')
           '/' => buf.write_char('/')
-          'b' => buf.write_char('\x08')
-          'f' => buf.write_char('\x0C')
+          'b' => buf.write_char('\u0008')
+          'f' => buf.write_char('\u000C')
           'n' => buf.write_char('\n')
           'r' => buf.write_char('\r')
           't' => buf.write_char('\t')
@@ -895,7 +895,7 @@ fn json_parse(input : String) -> Value raise Error {
     raise JsException(String_("SyntaxError: Unterminated string in JSON"))
   }
 
-  fn parse_number() -> Value raise Error {
+  and parse_number = fn () -> Value raise Error {
     let start = pos[0]
     if pos[0] < len && chars[pos[0]] == '-' {
       pos[0] += 1
@@ -928,7 +928,7 @@ fn json_parse(input : String) -> Value raise Error {
     Number(n)
   }
 
-  fn parse_object() -> Value raise Error {
+  and parse_object = fn () -> Value raise Error {
     pos[0] += 1 // skip {
     let properties : Map[String, Value] = {}
     skip_ws()
@@ -989,7 +989,7 @@ fn json_parse(input : String) -> Value raise Error {
     })
   }
 
-  fn parse_array() -> Value raise Error {
+  and parse_array = fn () -> Value raise Error {
     pos[0] += 1 // skip [
     let elements : Array[Value] = []
     skip_ws()
