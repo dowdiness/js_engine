@@ -3,8 +3,8 @@
 /// Input: batch-input.txt with test sources separated by <<<TESTSEP>>>
 /// Output: Results printed to stdout (one per line: PASS/FAIL/ERROR)
 
-fn read_batch_file(path : String) -> String!  {
-  @fs.read_file_to_string!(path)
+fn read_batch_file(path : String) -> String raise  {
+  @fs.read_file_to_string(path)
 }
 
 fn main {
@@ -19,7 +19,7 @@ fn main {
 
   // Read entire batch file
   let content = try {
-    read_batch_file!(batch_file)
+    read_batch_file(batch_file)
   } catch {
     e => {
       println("ERROR: Failed to read batch file: \{e}")
