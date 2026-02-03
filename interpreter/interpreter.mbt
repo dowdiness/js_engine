@@ -327,8 +327,8 @@ fn Interpreter::exec_stmt(
           result
         }
         _ =>
-          raise Failure::Failure(
-            "for-of requires an iterable (array or string)",
+          raise JsException(
+            String_("TypeError: is not iterable"),
           )
       }
       for item in items {
@@ -805,15 +805,29 @@ fn Interpreter::eval_expr(
     }
     ObjectLit(props, _) => {
       let properties : Map[String, Value] = {}
+      let descriptors : Map[String, PropDescriptor] = {}
       for prop in props {
-        properties[prop.key] = self.eval_expr(prop.value, env)
+        match prop.kind {
+          Init => properties[prop.key] = self.eval_expr(prop.value, env)
+          Get => {
+            // Getter: store the function as __get__<key> for now
+            // Real implementation would use accessor descriptors
+            let getter = self.eval_expr(prop.value, env)
+            properties["__get__" + prop.key] = getter
+          }
+          Set => {
+            // Setter: store the function as __set__<key> for now
+            let setter = self.eval_expr(prop.value, env)
+            properties["__set__" + prop.key] = setter
+          }
+        }
       }
       Object({
         properties,
         prototype: Null,
         callable: None,
         class_name: "Object",
-        descriptors: {},
+        descriptors,
         extensible: true,
       })
     }
@@ -884,8 +898,8 @@ fn Interpreter::eval_expr(
           value
         }
         _ =>
-          raise Failure::Failure(
-            "Cannot set property '\{prop}' of \{type_of(obj)} at line \{loc.line}, col \{loc.col}",
+          raise JsException(
+            String_("TypeError: Cannot set property '\{prop}' of \{type_of(obj)}"),
           )
       }
     }
@@ -938,8 +952,8 @@ fn Interpreter::eval_expr(
             _ => value
           }
         _ =>
-          raise Failure::Failure(
-            "Cannot set property of \{type_of(obj)} at line \{loc.line}, col \{loc.col}",
+          raise JsException(
+            String_("TypeError: Cannot set property of \{type_of(obj)}"),
           )
       }
     }
@@ -1082,6 +1096,9 @@ fn eval_binary_op(
     (NotEqEq, l, r) => Bool(not(strict_equal(l, r)))
     (EqEq, l, r) => Bool(loose_equal(l, r))
     (NotEq, l, r) => Bool(not(loose_equal(l, r)))
+    // Exponentiation
+    (Exp, Number(a), Number(b)) => Number(a.pow(b))
+    (Exp, l, r) => Number(to_number(l).pow(to_number(r)))
     // Arithmetic fallbacks (type coercion)
     (Add, l, r) => Number(to_number(l) + to_number(r))
     (Sub, l, r) => Number(to_number(l) - to_number(r))
@@ -1127,17 +1144,39 @@ fn eval_binary_op(
         Number(shifted.land(mask).to_double())
       }
     }
-    // in operator
+    // in operator - walks prototype chain
     (In, l, r) =>
       match r {
-        Object(data) => Bool(data.properties.contains(l.to_string()))
+        Object(data) => {
+          let key = l.to_string()
+          // Check own property first
+          if data.properties.contains(key) {
+            return Bool(true)
+          }
+          // Walk prototype chain
+          let mut current = data.prototype
+          while true {
+            match current {
+              Object(proto_data) =>
+                if proto_data.properties.contains(key) {
+                  return Bool(true)
+                } else {
+                  current = proto_data.prototype
+                }
+              _ => break
+            }
+          }
+          Bool(false)
+        }
         Array(data) => {
           let idx = to_number(l).to_int()
           Bool(idx >= 0 && idx < data.elements.length())
         }
         _ =>
-          raise Failure::Failure(
-            "Cannot use 'in' operator with \{type_of(r)} at line \{loc.line}, col \{loc.col}",
+          raise JsException(
+            String_(
+              "TypeError: Cannot use 'in' operator to search for '\{l.to_string()}' in \{type_of(r)}",
+            ),
           )
       }
     // instanceof
@@ -1173,8 +1212,10 @@ fn eval_binary_op(
           }
         }
         _ =>
-          raise Failure::Failure(
-            "Right-hand side of instanceof is not callable at line \{loc.line}, col \{loc.col}",
+          raise JsException(
+            String_(
+              "TypeError: Right-hand side of 'instanceof' is not an object",
+            ),
           )
       }
     // And/Or already handled by short-circuit
@@ -1201,9 +1242,43 @@ fn strict_equal(a : Value, b : Value) -> Bool {
 
 ///|
 fn loose_equal(a : Value, b : Value) -> Bool {
+  // Abstract Equality Comparison Algorithm (ES spec 7.2.14)
   match (a, b) {
+    // Same type: use strict equality
+    (Number(x), Number(y)) => x == y
+    (String_(x), String_(y)) => x == y
+    (Bool(x), Bool(y)) => x == y
+    (Null, Null) => true
+    (Undefined, Undefined) => true
+    (Object(x), Object(y)) => physical_equal(x, y)
+    (Array(x), Array(y)) => physical_equal(x, y)
+    // null == undefined
     (Null, Undefined) | (Undefined, Null) => true
-    _ => strict_equal(a, b)
+    // Number == String: convert string to number
+    (Number(n), String_(s)) => n == to_number(String_(s))
+    (String_(s), Number(n)) => to_number(String_(s)) == n
+    // Boolean == anything: convert boolean to number first
+    (Bool(bval), _) => loose_equal(Number(if bval { 1.0 } else { 0.0 }), b)
+    (_, Bool(bval)) => loose_equal(a, Number(if bval { 1.0 } else { 0.0 }))
+    // Object/Array == Number/String: try ToPrimitive (simplified: use to_string)
+    (Object(_), Number(_)) | (Object(_), String_(_)) => {
+      let prim = String_(a.to_string())
+      loose_equal(prim, b)
+    }
+    (Number(_), Object(_)) | (String_(_), Object(_)) => {
+      let prim = String_(b.to_string())
+      loose_equal(a, prim)
+    }
+    (Array(_), Number(_)) | (Array(_), String_(_)) => {
+      let prim = String_(a.to_string())
+      loose_equal(prim, b)
+    }
+    (Number(_), Array(_)) | (String_(_), Array(_)) => {
+      let prim = String_(b.to_string())
+      loose_equal(a, prim)
+    }
+    // Everything else is false
+    _ => false
   }
 }
 
@@ -1627,14 +1702,9 @@ fn Interpreter::call_value(
         Some(NativeCallable(_, func)) => func(args)
         Some(InterpreterCallable(_, func)) => func(self, this_val, args)
         None =>
-          raise Failure::Failure(
-            "Not a function at line \{loc.line}, col \{loc.col}",
-          )
+          raise JsException(String_("TypeError: is not a function"))
       }
-    _ =>
-      raise Failure::Failure(
-        "Not a function at line \{loc.line}, col \{loc.col}",
-      )
+    _ => raise JsException(String_("TypeError: is not a function"))
   }
 }
 
@@ -1780,8 +1850,8 @@ fn Interpreter::get_property(
       }
     Number(_) => get_number_method(obj, prop)
     Null | Undefined =>
-      raise Failure::Failure(
-        "Cannot read property '\{prop}' of \{type_of(obj)} at line \{loc.line}, col \{loc.col}",
+      raise JsException(
+        String_("TypeError: Cannot read property '\{prop}' of \{type_of(obj)}"),
       )
     _ => Undefined
   }
@@ -1925,8 +1995,8 @@ fn Interpreter::get_computed_property(
         _ => Undefined
       }
     Null | Undefined =>
-      raise Failure::Failure(
-        "Cannot read property of \{type_of(obj)} at line \{loc.line}, col \{loc.col}",
+      raise JsException(
+        String_("TypeError: Cannot read property of \{type_of(obj)}"),
       )
     _ => Undefined
   }
@@ -2130,15 +2200,9 @@ fn Interpreter::eval_new(
           raise JsException(
             String_("TypeError: arrow functions cannot be used as constructors"),
           )
-        _ =>
-          raise Failure::Failure(
-            "Not a constructor at line \{loc.line}, col \{loc.col}",
-          )
+        _ => raise JsException(String_("TypeError: is not a constructor"))
       }
-    _ =>
-      raise Failure::Failure(
-        "Not a constructor at line \{loc.line}, col \{loc.col}",
-      )
+    _ => raise JsException(String_("TypeError: is not a constructor"))
   }
 }
 
@@ -2239,6 +2303,7 @@ fn Interpreter::eval_compound_assign(
     AddAssign => Add
     SubAssign => Sub
     MulAssign => Mul
+    ExpAssign => Exp
     DivAssign => Div
     ModAssign => Mod
     BitAndAssign => BitAnd

@@ -98,6 +98,7 @@ fn Parser::parse_assignment(self : Parser) -> @ast.Expr raise Error {
     PlusAssign => Some(AddAssign)
     MinusAssign => Some(SubAssign)
     StarAssign => Some(MulAssign)
+    StarStarAssign => Some(@ast.ExpAssign)
     SlashAssign => Some(DivAssign)
     PercentAssign => Some(ModAssign)
     BitAndAssign => Some(@ast.BitAndAssign)
@@ -280,7 +281,7 @@ fn Parser::parse_additive(self : Parser) -> @ast.Expr raise Error {
 
 ///|
 fn Parser::parse_multiplicative(self : Parser) -> @ast.Expr raise Error {
-  let mut left = self.parse_unary()
+  let mut left = self.parse_exponentiation()
   while true {
     let op : @ast.BinOp? = match self.peek_kind() {
       Star => Some(@ast.Mul)
@@ -291,13 +292,26 @@ fn Parser::parse_multiplicative(self : Parser) -> @ast.Expr raise Error {
     match op {
       Some(op) => {
         let loc = self.advance().loc
-        let right = self.parse_unary()
+        let right = self.parse_exponentiation()
         left = Binary(op, left, right, loc)
       }
       None => break
     }
   }
   left
+}
+
+///|
+fn Parser::parse_exponentiation(self : Parser) -> @ast.Expr raise Error {
+  let base = self.parse_unary()
+  if self.at(StarStar) {
+    let loc = self.advance().loc
+    // Right-associative: parse right side with exponentiation precedence
+    let exp = self.parse_exponentiation()
+    Binary(@ast.Exp, base, exp, loc)
+  } else {
+    base
+  }
 }
 
 ///|
@@ -569,6 +583,26 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
   let loc = self.advance().loc // consume '{'
   let props : Array[@ast.Property] = []
   while not(self.at(RBrace)) && not(self.at(EOF)) {
+    // Check for getter/setter
+    let prop_kind : @ast.PropKind = match self.peek_kind() {
+      Ident("get") =>
+        match self.peek_kind_at(1) {
+          Ident(_) | String_(_) | Number(_) | LBracket => {
+            self.pos += 1
+            @ast.Get
+          }
+          _ => @ast.Init
+        }
+      Ident("set") =>
+        match self.peek_kind_at(1) {
+          Ident(_) | String_(_) | Number(_) | LBracket => {
+            self.pos += 1
+            @ast.Set
+          }
+          _ => @ast.Init
+        }
+      _ => @ast.Init
+    }
     let key : String = match self.peek_kind() {
       Ident(name) => {
         self.pos += 1
@@ -594,12 +628,39 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
         )
       }
     }
-    let _ = self.expect(Colon)
-    let value = self.parse_assignment()
-    props.push({ key, value })
+    // Check for method shorthand, getter, or setter: identifier followed by (
+    if self.at(LParen) {
+      // Method shorthand or getter/setter
+      let mloc = self.peek().loc
+      let params = self.parse_params()
+      let body = self.parse_block_body()
+      let func_data : @ast.Expr = FuncExpr(
+        Some(key),
+        params,
+        body,
+        mloc,
+      )
+      props.push({ key, value: func_data, kind: prop_kind })
+    } else if self.at(Colon) {
+      // Normal property
+      let _ = self.advance() // consume ':'
+      let value = self.parse_assignment()
+      props.push({ key, value, kind: @ast.Init })
+    } else if self.at(Comma) || self.at(RBrace) {
+      // Shorthand property: { x } => { x: x }
+      let value = Ident(key, loc)
+      props.push({ key, value, kind: @ast.Init })
+    } else {
+      let t = self.peek()
+      raise Failure::Failure(
+        "Expected ':' or '(' in object literal, got \{t.kind} at line \{t.loc.line}, col \{t.loc.col}",
+      )
+    }
     if not(self.at(RBrace)) {
-      let _ = self.expect(Comma)
-
+      // Allow trailing comma
+      if self.at(Comma) {
+        let _ = self.advance()
+      }
     }
   }
   let _ = self.expect(RBrace)

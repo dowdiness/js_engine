@@ -30,7 +30,9 @@ pub fn Environment::def(
   kind : BindingKind,
 ) -> Unit raise Error {
   if self.bindings.contains(name) {
-    raise Failure::Failure("Variable '\{name}' is already declared")
+    raise JsException(
+      String_("SyntaxError: Identifier '\{name}' has already been declared"),
+    )
   }
   self.bindings[name] = { value, kind }
 }
@@ -63,7 +65,8 @@ pub fn Environment::get(self : Environment, name : String) -> Value raise Error 
     None =>
       match self.parent {
         Some(parent) => parent.get(name)
-        None => raise Failure::Failure("'\{name}' is not defined")
+        None =>
+          raise JsException(String_("ReferenceError: \{name} is not defined"))
       }
   }
 }
@@ -77,14 +80,17 @@ pub fn Environment::assign(
   match self.bindings.get(name) {
     Some(binding) =>
       if binding.kind == ConstBinding {
-        raise Failure::Failure("Assignment to constant variable '\{name}'")
+        raise JsException(
+          String_("TypeError: Assignment to constant variable '\{name}'"),
+        )
       } else {
         binding.value = value
       }
     None =>
       match self.parent {
         Some(parent) => parent.assign(name, value)
-        None => raise Failure::Failure("'\{name}' is not defined")
+        None =>
+          raise JsException(String_("ReferenceError: \{name} is not defined"))
       }
   }
 }

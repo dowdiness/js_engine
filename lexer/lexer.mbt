@@ -176,7 +176,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           let last_kind = tokens[tokens.length() - 1].kind
           match last_kind {
             // After these tokens, / starts a regex
-            Assign | EqEq | EqEqEq | BangEq | BangEqEq | LParen | LBracket | LBrace | Comma | Semicolon | Colon | Question | And | Or | Bang | Plus | Minus | Star | Slash | Percent | Lt | Gt | LtEq | GtEq | Return | Typeof | Throw | New | Delete | Void | In | Instanceof | PlusAssign | MinusAssign | StarAssign | SlashAssign | PercentAssign | BitAnd | BitOr | BitXor | Tilde | LShift | RShift | URShift | BitAndAssign | BitOrAssign | BitXorAssign | LShiftAssign | RShiftAssign | URShiftAssign | Case | Arrow => true
+            Assign | EqEq | EqEqEq | BangEq | BangEqEq | LParen | LBracket | LBrace | Comma | Semicolon | Colon | Question | And | Or | Bang | Plus | Minus | Star | StarStar | Slash | Percent | Lt | Gt | LtEq | GtEq | Return | Typeof | Throw | New | Delete | Void | In | Instanceof | PlusAssign | MinusAssign | StarAssign | StarStarAssign | SlashAssign | PercentAssign | BitAnd | BitOr | BitXor | Tilde | LShift | RShift | URShift | BitAndAssign | BitOrAssign | BitXorAssign | LShiftAssign | RShiftAssign | URShiftAssign | Case | Arrow => true
             // RParen after control-flow keyword (if/while/for/switch) starts regex
             RParen => last_rparen_is_control_flow
             _ => false
@@ -450,6 +450,18 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
     }
     if c == '-' && offset + 1 < len && char_at(offset + 1) == '=' {
       tokens.push({ kind: MinusAssign, loc, raw: "-=" })
+      offset += 2
+      col += 2
+      continue
+    }
+    if c == '*' && offset + 1 < len && char_at(offset + 1) == '*' {
+      if offset + 2 < len && char_at(offset + 2) == '=' {
+        tokens.push({ kind: StarStarAssign, loc, raw: "**=" })
+        offset += 3
+        col += 3
+        continue
+      }
+      tokens.push({ kind: StarStar, loc, raw: "**" })
       offset += 2
       col += 2
       continue

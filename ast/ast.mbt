@@ -21,6 +21,7 @@ pub(all) enum BinOp {
   LShift
   RShift
   URShift
+  Exp
   In
   Instanceof
 } derive(Show, Eq)
@@ -48,6 +49,7 @@ pub(all) enum CompoundOp {
   MulAssign
   DivAssign
   ModAssign
+  ExpAssign
   BitAndAssign
   BitOrAssign
   BitXorAssign
@@ -64,9 +66,17 @@ pub(all) enum VarKind {
 } derive(Show, Eq)
 
 ///|
+pub(all) enum PropKind {
+  Init // normal property
+  Get // getter
+  Set // setter
+} derive(Show, Eq)
+
+///|
 pub(all) struct Property {
   key : String
   value : Expr
+  kind : PropKind
 } derive(Show, Eq)
 
 ///|

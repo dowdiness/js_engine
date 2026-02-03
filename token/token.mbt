@@ -52,6 +52,7 @@ pub(all) enum TokenKind {
   Plus
   Minus
   Star
+  StarStar
   Slash
   Percent
   Assign
@@ -72,6 +73,7 @@ pub(all) enum TokenKind {
   PlusAssign
   MinusAssign
   StarAssign
+  StarStarAssign
   SlashAssign
   PercentAssign
   // Bitwise
