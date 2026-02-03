@@ -2789,12 +2789,38 @@ fn Interpreter::eval_logical_assign_and(
         let rhs = self.eval_expr(value_expr, env)
         match obj {
           Object(data) => {
+            // Check writable descriptor
+            match data.descriptors.get(prop) {
+              Some(desc) =>
+                if not(desc.writable) {
+                  if self.strict {
+                    raise JsException(
+                      String_(
+                        "TypeError: Cannot assign to read only property '\{prop}'",
+                      ),
+                    )
+                  }
+                  return rhs
+                }
+              None => ()
+            }
+            // Check extensible for new properties
+            if not(data.properties.contains(prop)) && not(data.extensible) {
+              if self.strict {
+                raise JsException(
+                  String_(
+                    "TypeError: Cannot add property \{prop}, object is not extensible",
+                  ),
+                )
+              }
+              return rhs
+            }
             data.properties[prop] = rhs
             rhs
           }
           _ =>
-            raise Failure::Failure(
-              "Cannot set property at line \{loc.line}, col \{loc.col}",
+            raise JsException(
+              String_("TypeError: Cannot set property '\{prop}' of \{type_of(obj)}"),
             )
         }
       } else {
@@ -2809,7 +2835,34 @@ fn Interpreter::eval_logical_assign_and(
         let rhs = self.eval_expr(value_expr, env)
         match obj {
           Object(data) => {
-            data.properties[key.to_string()] = rhs
+            let prop = key.to_string()
+            // Check writable descriptor
+            match data.descriptors.get(prop) {
+              Some(desc) =>
+                if not(desc.writable) {
+                  if self.strict {
+                    raise JsException(
+                      String_(
+                        "TypeError: Cannot assign to read only property '\{prop}'",
+                      ),
+                    )
+                  }
+                  return rhs
+                }
+              None => ()
+            }
+            // Check extensible for new properties
+            if not(data.properties.contains(prop)) && not(data.extensible) {
+              if self.strict {
+                raise JsException(
+                  String_(
+                    "TypeError: Cannot add property \{prop}, object is not extensible",
+                  ),
+                )
+              }
+              return rhs
+            }
+            data.properties[prop] = rhs
             rhs
           }
           Array(data) =>
@@ -2824,8 +2877,8 @@ fn Interpreter::eval_logical_assign_and(
               _ => rhs
             }
           _ =>
-            raise Failure::Failure(
-              "Cannot set property at line \{loc.line}, col \{loc.col}",
+            raise JsException(
+              String_("TypeError: Cannot set property of \{type_of(obj)}"),
             )
         }
       } else {
@@ -2866,12 +2919,38 @@ fn Interpreter::eval_logical_assign_or(
         let rhs = self.eval_expr(value_expr, env)
         match obj {
           Object(data) => {
+            // Check writable descriptor
+            match data.descriptors.get(prop) {
+              Some(desc) =>
+                if not(desc.writable) {
+                  if self.strict {
+                    raise JsException(
+                      String_(
+                        "TypeError: Cannot assign to read only property '\{prop}'",
+                      ),
+                    )
+                  }
+                  return rhs
+                }
+              None => ()
+            }
+            // Check extensible for new properties
+            if not(data.properties.contains(prop)) && not(data.extensible) {
+              if self.strict {
+                raise JsException(
+                  String_(
+                    "TypeError: Cannot add property \{prop}, object is not extensible",
+                  ),
+                )
+              }
+              return rhs
+            }
             data.properties[prop] = rhs
             rhs
           }
           _ =>
-            raise Failure::Failure(
-              "Cannot set property at line \{loc.line}, col \{loc.col}",
+            raise JsException(
+              String_("TypeError: Cannot set property '\{prop}' of \{type_of(obj)}"),
             )
         }
       } else {
@@ -2886,7 +2965,34 @@ fn Interpreter::eval_logical_assign_or(
         let rhs = self.eval_expr(value_expr, env)
         match obj {
           Object(data) => {
-            data.properties[key.to_string()] = rhs
+            let prop = key.to_string()
+            // Check writable descriptor
+            match data.descriptors.get(prop) {
+              Some(desc) =>
+                if not(desc.writable) {
+                  if self.strict {
+                    raise JsException(
+                      String_(
+                        "TypeError: Cannot assign to read only property '\{prop}'",
+                      ),
+                    )
+                  }
+                  return rhs
+                }
+              None => ()
+            }
+            // Check extensible for new properties
+            if not(data.properties.contains(prop)) && not(data.extensible) {
+              if self.strict {
+                raise JsException(
+                  String_(
+                    "TypeError: Cannot add property \{prop}, object is not extensible",
+                  ),
+                )
+              }
+              return rhs
+            }
+            data.properties[prop] = rhs
             rhs
           }
           Array(data) =>
@@ -2901,8 +3007,8 @@ fn Interpreter::eval_logical_assign_or(
               _ => rhs
             }
           _ =>
-            raise Failure::Failure(
-              "Cannot set property at line \{loc.line}, col \{loc.col}",
+            raise JsException(
+              String_("TypeError: Cannot set property of \{type_of(obj)}"),
             )
         }
       } else {
@@ -2945,12 +3051,38 @@ fn Interpreter::eval_nullish_assign(
           let rhs = self.eval_expr(value_expr, env)
           match obj {
             Object(data) => {
+              // Check writable descriptor
+              match data.descriptors.get(prop) {
+                Some(desc) =>
+                  if not(desc.writable) {
+                    if self.strict {
+                      raise JsException(
+                        String_(
+                          "TypeError: Cannot assign to read only property '\{prop}'",
+                        ),
+                      )
+                    }
+                    return rhs
+                  }
+                None => ()
+              }
+              // Check extensible for new properties
+              if not(data.properties.contains(prop)) && not(data.extensible) {
+                if self.strict {
+                  raise JsException(
+                    String_(
+                      "TypeError: Cannot add property \{prop}, object is not extensible",
+                    ),
+                  )
+                }
+                return rhs
+              }
               data.properties[prop] = rhs
               rhs
             }
             _ =>
-              raise Failure::Failure(
-                "Cannot set property at line \{loc.line}, col \{loc.col}",
+              raise JsException(
+                String_("TypeError: Cannot set property '\{prop}' of \{type_of(obj)}"),
               )
           }
         }
@@ -2966,7 +3098,34 @@ fn Interpreter::eval_nullish_assign(
           let rhs = self.eval_expr(value_expr, env)
           match obj {
             Object(data) => {
-              data.properties[key.to_string()] = rhs
+              let prop = key.to_string()
+              // Check writable descriptor
+              match data.descriptors.get(prop) {
+                Some(desc) =>
+                  if not(desc.writable) {
+                    if self.strict {
+                      raise JsException(
+                        String_(
+                          "TypeError: Cannot assign to read only property '\{prop}'",
+                        ),
+                      )
+                    }
+                    return rhs
+                  }
+                None => ()
+              }
+              // Check extensible for new properties
+              if not(data.properties.contains(prop)) && not(data.extensible) {
+                if self.strict {
+                  raise JsException(
+                    String_(
+                      "TypeError: Cannot add property \{prop}, object is not extensible",
+                    ),
+                  )
+                }
+                return rhs
+              }
+              data.properties[prop] = rhs
               rhs
             }
             Array(data) =>
@@ -2981,8 +3140,8 @@ fn Interpreter::eval_nullish_assign(
                 _ => rhs
               }
             _ =>
-              raise Failure::Failure(
-                "Cannot set property at line \{loc.line}, col \{loc.col}",
+              raise JsException(
+                String_("TypeError: Cannot set property of \{type_of(obj)}"),
               )
           }
         }

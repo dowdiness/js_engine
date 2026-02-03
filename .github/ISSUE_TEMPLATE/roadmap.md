@@ -692,7 +692,7 @@ Phase 1 (DONE) ──► Phase 2 (DONE) ──► Phase 3 (DONE) ──► Phase
 | String.prototype.split limit parameter | Phase 3.6 |
 | Function.prototype.length property | Phase 3.6 |
 | Function.prototype.name property | Phase 3.6 |
-| Logical assignment operators (`&&=`, `\|\|=`, `??=`) | Phase 3.6 |
+| Logical assignment operators (`&&=`, `||=`, `??=`) | Phase 3.6 |
 | Numeric separator literals (`1_000`, `0xFF_FF`) | Phase 3.6 |
 | Hex/binary/octal number literals | Phase 3.6 |
 | Exponent notation (`1e10`) | Phase 3.6 |

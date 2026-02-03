@@ -836,11 +836,21 @@ fn setup_number_builtins(env : Environment) -> Unit {
         }
         // Calculate exponent
         let log_val = @math.log10(abs_n)
-        let exp = log_val.floor().to_int()
+        let mut exp = log_val.floor().to_int()
         // If exponent >= precision or < -6, use exponential notation
         if exp >= precision || exp < -6 {
           // Use exponential notation
-          let mantissa = abs_n / @math.pow(10.0, exp.to_double())
+          let mut mantissa = abs_n / @math.pow(10.0, exp.to_double())
+          // Round mantissa and check for overflow
+          let mult = @math.pow(10.0, (precision - 1).to_double())
+          let rounded_mantissa = ((mantissa * mult) + 0.5).floor() / mult
+          // If rounding caused overflow (mantissa >= 10), adjust
+          if rounded_mantissa >= 10.0 {
+            mantissa = rounded_mantissa / 10.0
+            exp = exp + 1
+          } else {
+            mantissa = rounded_mantissa
+          }
           let buf = StringBuilder::new()
           if is_neg {
             buf.write_string("-")
@@ -947,8 +957,8 @@ fn setup_number_builtins(env : Environment) -> Unit {
         }
         // Calculate exponent
         let log_val = @math.log10(abs_n)
-        let exp = log_val.floor().to_int()
-        let mantissa = abs_n / @math.pow(10.0, exp.to_double())
+        let mut exp = log_val.floor().to_int()
+        let mut mantissa = abs_n / @math.pow(10.0, exp.to_double())
         let buf = StringBuilder::new()
         if is_neg {
           buf.write_string("-")
@@ -966,7 +976,18 @@ fn setup_number_builtins(env : Environment) -> Unit {
                   ),
                 )
               }
-              let mantissa_str = format_number_precision(mantissa, frac_digits + 1)
+              // Round mantissa and check for overflow
+              let precision = frac_digits + 1
+              let mult = @math.pow(10.0, (precision - 1).to_double())
+              let rounded_mantissa = ((mantissa * mult) + 0.5).floor() / mult
+              // If rounding caused overflow (mantissa >= 10), adjust
+              if rounded_mantissa >= 10.0 {
+                mantissa = rounded_mantissa / 10.0
+                exp = exp + 1
+              } else {
+                mantissa = rounded_mantissa
+              }
+              let mantissa_str = format_number_precision(mantissa, precision)
               buf.write_string(mantissa_str)
             }
           }
@@ -1721,9 +1742,18 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
               return String_(buf.to_string())
             }
             let log_val = @math.log10(abs_n)
-            let exp = log_val.floor().to_int()
+            let mut exp = log_val.floor().to_int()
             if exp >= precision || exp < -6 {
-              let mantissa = abs_n / @math.pow(10.0, exp.to_double())
+              let mut mantissa = abs_n / @math.pow(10.0, exp.to_double())
+              // Round mantissa and check for overflow
+              let mult = @math.pow(10.0, (precision - 1).to_double())
+              let rounded_mantissa = ((mantissa * mult) + 0.5).floor() / mult
+              if rounded_mantissa >= 10.0 {
+                mantissa = rounded_mantissa / 10.0
+                exp = exp + 1
+              } else {
+                mantissa = rounded_mantissa
+              }
               let buf = StringBuilder::new()
               if is_neg {
                 buf.write_string("-")
@@ -1827,8 +1857,8 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
               return String_(buf.to_string())
             }
             let log_val = @math.log10(abs_n)
-            let exp = log_val.floor().to_int()
-            let mantissa = abs_n / @math.pow(10.0, exp.to_double())
+            let mut exp = log_val.floor().to_int()
+            let mut mantissa = abs_n / @math.pow(10.0, exp.to_double())
             let buf = StringBuilder::new()
             if is_neg {
               buf.write_string("-")
@@ -1845,7 +1875,17 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
                       ),
                     )
                   }
-                  let mantissa_str = format_number_precision(mantissa, frac_digits + 1)
+                  // Round mantissa and check for overflow
+                  let precision = frac_digits + 1
+                  let mult = @math.pow(10.0, (precision - 1).to_double())
+                  let rounded_mantissa = ((mantissa * mult) + 0.5).floor() / mult
+                  if rounded_mantissa >= 10.0 {
+                    mantissa = rounded_mantissa / 10.0
+                    exp = exp + 1
+                  } else {
+                    mantissa = rounded_mantissa
+                  }
+                  let mantissa_str = format_number_precision(mantissa, precision)
                   buf.write_string(mantissa_str)
                 }
               }
@@ -1872,6 +1912,7 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
 fn format_number_precision(n : Double, precision : Int) -> String {
   // Format a number with exactly `precision` significant digits
   // Used for toPrecision and toExponential
+  // Returns mantissa only (e.g., "1.23" for 1.23, NOT including exponent)
   if precision <= 0 {
     return "0"
   }
@@ -1894,9 +1935,22 @@ fn format_number_precision(n : Double, precision : Int) -> String {
   let int_val = rounded.to_int64()
   let int_str = int_val.to_string()
   let int_chars = int_str.to_array()
+  // Handle rounding overflow (e.g., 9.99 with precision 2 rounds to 100)
+  // When this happens, int_chars.length() > precision, and we need to truncate
+  let actual_chars = if int_chars.length() > precision {
+    // Rounding caused a carry, truncate to precision digits
+    // The extra digit is always trailing (e.g., "100" -> "10" for precision 2)
+    let truncated : Array[Char] = []
+    for i = 0; i < precision; i = i + 1 {
+      truncated.push(int_chars[i])
+    }
+    truncated
+  } else {
+    int_chars
+  }
   let buf = StringBuilder::new()
-  if int_chars.length() == 1 {
-    buf.write_char(int_chars[0])
+  if actual_chars.length() == 1 {
+    buf.write_char(actual_chars[0])
     if precision > 1 {
       buf.write_char('.')
       for _i = 1; _i < precision; _i = _i + 1 {
@@ -1904,11 +1958,18 @@ fn format_number_precision(n : Double, precision : Int) -> String {
       }
     }
   } else {
-    buf.write_char(int_chars[0])
-    if int_chars.length() > 1 {
+    buf.write_char(actual_chars[0])
+    if actual_chars.length() > 1 {
       buf.write_char('.')
-      for i = 1; i < int_chars.length(); i = i + 1 {
-        buf.write_char(int_chars[i])
+      for i = 1; i < actual_chars.length(); i = i + 1 {
+        buf.write_char(actual_chars[i])
+      }
+    }
+    // Pad with zeros if needed to reach precision
+    let digits_so_far = actual_chars.length()
+    if digits_so_far < precision {
+      for _i = digits_so_far; _i < precision; _i = _i + 1 {
+        buf.write_char('0')
       }
     }
   }

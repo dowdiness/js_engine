@@ -291,19 +291,38 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           // Hex number
           offset += 2
           col += 2
+          let mut has_digits = false
+          let mut prev_underscore = true // Treat start as "after underscore" to prevent leading _
           while offset < len {
             let ch = char_at(offset)
             if is_hex_digit(ch) {
               buf.write_char(ch)
               offset += 1
               col += 1
+              has_digits = true
+              prev_underscore = false
             } else if ch == '_' {
-              // Skip numeric separator
+              if prev_underscore {
+                raise Failure::Failure(
+                  "Numeric separator cannot appear consecutively at line \{loc.line}, col \{col}",
+                )
+              }
+              prev_underscore = true
               offset += 1
               col += 1
             } else {
               break
             }
+          }
+          if not(has_digits) {
+            raise Failure::Failure(
+              "Missing hex digits after '0x' at line \{loc.line}, col \{loc.col}",
+            )
+          }
+          if prev_underscore && buf.to_string().length() > 0 {
+            raise Failure::Failure(
+              "Numeric separator cannot appear at the end at line \{loc.line}, col \{col - 1}",
+            )
           }
           let hex_str = buf.to_string()
           let value = parse_hex(hex_str)
@@ -314,18 +333,38 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           // Binary number
           offset += 2
           col += 2
+          let mut has_digits = false
+          let mut prev_underscore = true
           while offset < len {
             let ch = char_at(offset)
             if ch == '0' || ch == '1' {
               buf.write_char(ch)
               offset += 1
               col += 1
+              has_digits = true
+              prev_underscore = false
             } else if ch == '_' {
+              if prev_underscore {
+                raise Failure::Failure(
+                  "Numeric separator cannot appear consecutively at line \{loc.line}, col \{col}",
+                )
+              }
+              prev_underscore = true
               offset += 1
               col += 1
             } else {
               break
             }
+          }
+          if not(has_digits) {
+            raise Failure::Failure(
+              "Missing binary digits after '0b' at line \{loc.line}, col \{loc.col}",
+            )
+          }
+          if prev_underscore && buf.to_string().length() > 0 {
+            raise Failure::Failure(
+              "Numeric separator cannot appear at the end at line \{loc.line}, col \{col - 1}",
+            )
           }
           let bin_str = buf.to_string()
           let value = parse_binary(bin_str)
@@ -336,18 +375,38 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           // Octal number
           offset += 2
           col += 2
+          let mut has_digits = false
+          let mut prev_underscore = true
           while offset < len {
             let ch = char_at(offset)
             if ch >= '0' && ch <= '7' {
               buf.write_char(ch)
               offset += 1
               col += 1
+              has_digits = true
+              prev_underscore = false
             } else if ch == '_' {
+              if prev_underscore {
+                raise Failure::Failure(
+                  "Numeric separator cannot appear consecutively at line \{loc.line}, col \{col}",
+                )
+              }
+              prev_underscore = true
               offset += 1
               col += 1
             } else {
               break
             }
+          }
+          if not(has_digits) {
+            raise Failure::Failure(
+              "Missing octal digits after '0o' at line \{loc.line}, col \{loc.col}",
+            )
+          }
+          if prev_underscore && buf.to_string().length() > 0 {
+            raise Failure::Failure(
+              "Numeric separator cannot appear at the end at line \{loc.line}, col \{col - 1}",
+            )
           }
           let oct_str = buf.to_string()
           let value = parse_octal(oct_str)
@@ -357,41 +416,87 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         }
       }
       // Decimal number with optional numeric separators
+      let mut prev_underscore = true // Prevent leading underscore
       while offset < len {
         let ch = char_at(offset)
         if is_digit(ch) {
           buf.write_char(ch)
           offset += 1
           col += 1
+          prev_underscore = false
         } else if ch == '_' {
-          // Skip numeric separator
+          if prev_underscore {
+            raise Failure::Failure(
+              "Numeric separator cannot appear consecutively at line \{loc.line}, col \{col}",
+            )
+          }
+          prev_underscore = true
           offset += 1
           col += 1
         } else {
           break
         }
       }
+      // Check for trailing underscore before decimal point
+      if prev_underscore && buf.to_string().length() > 0 {
+        // Peek if next is not a decimal point
+        if offset >= len || char_at(offset) != '.' {
+          raise Failure::Failure(
+            "Numeric separator cannot appear at the end at line \{loc.line}, col \{col - 1}",
+          )
+        }
+      }
       // Decimal part
       if offset < len && char_at(offset) == '.' {
+        // Trailing underscore before '.' is actually invalid
+        if prev_underscore && buf.to_string().length() > 0 {
+          raise Failure::Failure(
+            "Numeric separator cannot appear before decimal point at line \{loc.line}, col \{col - 1}",
+          )
+        }
         buf.write_char('.')
         offset += 1
         col += 1
+        prev_underscore = true // Prevent underscore right after '.'
         while offset < len {
           let ch = char_at(offset)
           if is_digit(ch) {
             buf.write_char(ch)
             offset += 1
             col += 1
+            prev_underscore = false
           } else if ch == '_' {
+            if prev_underscore {
+              raise Failure::Failure(
+                "Numeric separator cannot appear consecutively at line \{loc.line}, col \{col}",
+              )
+            }
+            prev_underscore = true
             offset += 1
             col += 1
           } else {
             break
           }
         }
+        // Check trailing underscore after decimal part
+        if prev_underscore {
+          let num_str_so_far = buf.to_string()
+          if num_str_so_far.length() > 0 &&
+            num_str_so_far.to_array()[num_str_so_far.length() - 1] != '.' {
+            raise Failure::Failure(
+              "Numeric separator cannot appear at the end at line \{loc.line}, col \{col - 1}",
+            )
+          }
+        }
       }
       // Exponent part
       if offset < len && (char_at(offset) == 'e' || char_at(offset) == 'E') {
+        // Check for trailing underscore before 'e'
+        if prev_underscore && buf.to_string().length() > 0 {
+          raise Failure::Failure(
+            "Numeric separator cannot appear before exponent at line \{loc.line}, col \{col - 1}",
+          )
+        }
         buf.write_char('e')
         offset += 1
         col += 1
@@ -400,18 +505,38 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           offset += 1
           col += 1
         }
+        let mut has_exp_digits = false
+        prev_underscore = true // Prevent underscore right after e/e+/e-
         while offset < len {
           let ch = char_at(offset)
           if is_digit(ch) {
             buf.write_char(ch)
             offset += 1
             col += 1
+            has_exp_digits = true
+            prev_underscore = false
           } else if ch == '_' {
+            if prev_underscore {
+              raise Failure::Failure(
+                "Numeric separator cannot appear consecutively at line \{loc.line}, col \{col}",
+              )
+            }
+            prev_underscore = true
             offset += 1
             col += 1
           } else {
             break
           }
+        }
+        if not(has_exp_digits) {
+          raise Failure::Failure(
+            "Missing exponent digits at line \{loc.line}, col \{col}",
+          )
+        }
+        if prev_underscore {
+          raise Failure::Failure(
+            "Numeric separator cannot appear at the end at line \{loc.line}, col \{col - 1}",
+          )
         }
       }
       let num_str = buf.to_string()
