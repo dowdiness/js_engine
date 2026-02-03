@@ -25,11 +25,9 @@ test262: build test262-download
 	python3 test262-runner.py \
 		--engine "moon run cmd/main --" \
 		--test262 ./test262 \
-		--timeout 10 \
-		--threads 4 \
 		--output test262-results.json
 
-# Run a quick subset of Test262 (language/expressions and language/statements only)
+# Run a quick subset of Test262 (language/literals only)
 test262-quick: build test262-download
 	python3 test262-runner.py \
 		--engine "moon run cmd/main --" \

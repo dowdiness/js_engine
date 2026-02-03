@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test262 Conformance Runner for the MoonBit JS Engine.
+Test262 Conformance Runner for the MoonBit JS Engine (Optimized).
 
 Usage:
     python3 test262-runner.py [options]
@@ -9,11 +9,24 @@ Options:
     --engine CMD        Command to run the JS engine (default: "moon run cmd/main --")
     --test262 DIR       Path to test262 directory (default: ./test262)
     --filter PATTERN    Only run tests matching this pattern (e.g. "language/expressions")
-    --timeout SECS      Timeout per test in seconds (default: 10)
-    --threads N         Number of parallel workers (default: 1)
+    --timeout SECS      Timeout per test in seconds (default: 5)
+    --threads N         Number of parallel workers (default: auto-detect, min 4)
     --output FILE       Write JSON results to this file
     --summary           Print summary only (no individual failures)
     --verbose           Print each test result as it runs
+
+Performance Optimizations:
+    - Harness file caching to avoid repeated disk I/O
+    - Auto-detected CPU-based parallelism (minimum 4 threads, scales with CPU count)
+    - Moderate timeout (5s) balancing speed and test completion
+    - Optimized progress reporting with ETA
+
+Known Bottleneck:
+    The main bottleneck is `moon run` startup overhead per test (~50-100ms).
+    Future improvements could include:
+    - Building a standalone binary (if MoonBit supports it)
+    - Server mode: persistent process that reads tests from stdin
+    - Batch mode: multiple tests per engine invocation
 """
 
 import argparse
@@ -197,32 +210,54 @@ def should_skip(meta: TestMetadata, filepath: str) -> Optional[str]:
 
 
 # ---------------------------------------------------------------------------
-# Harness loading
+# Harness loading with caching
 # ---------------------------------------------------------------------------
 
+# Global cache for harness files to avoid repeated disk I/O
+_harness_cache = {}
+
 def load_harness(test262_dir: str, includes: list, is_raw: bool) -> str:
-    """Load the required harness files for a test."""
+    """Load the required harness files for a test with caching."""
     if is_raw:
         return ""
+
+    # Create cache key from includes list
+    cache_key = (test262_dir, tuple(sorted(includes)))
+    if cache_key in _harness_cache:
+        return _harness_cache[cache_key]
 
     harness_dir = os.path.join(test262_dir, "harness")
     parts = []
 
     # Always load sta.js and assert.js (unless raw)
     for default_file in ["sta.js", "assert.js"]:
-        path = os.path.join(harness_dir, default_file)
-        if os.path.exists(path):
-            with open(path, "r", encoding="utf-8") as f:
-                parts.append(f.read())
+        file_key = (test262_dir, default_file)
+        if file_key not in _harness_cache:
+            path = os.path.join(harness_dir, default_file)
+            if os.path.exists(path):
+                with open(path, "r", encoding="utf-8") as f:
+                    _harness_cache[file_key] = f.read()
+            else:
+                _harness_cache[file_key] = ""
+        if _harness_cache[file_key]:
+            parts.append(_harness_cache[file_key])
 
     # Load additional includes
     for inc in includes:
-        path = os.path.join(harness_dir, inc)
-        if os.path.exists(path):
-            with open(path, "r", encoding="utf-8") as f:
-                parts.append(f.read())
+        file_key = (test262_dir, inc)
+        if file_key not in _harness_cache:
+            path = os.path.join(harness_dir, inc)
+            if os.path.exists(path):
+                with open(path, "r", encoding="utf-8") as f:
+                    _harness_cache[file_key] = f.read()
+            else:
+                _harness_cache[file_key] = ""
+        if _harness_cache[file_key]:
+            parts.append(_harness_cache[file_key])
 
-    return "\n".join(parts)
+    result = "\n".join(parts)
+    _harness_cache[cache_key] = result
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -545,10 +580,10 @@ def main():
                         help="Path to test262 directory")
     parser.add_argument("--filter", default="",
                         help="Only run tests matching this pattern (e.g. 'language/expressions')")
-    parser.add_argument("--timeout", type=int, default=10,
-                        help="Timeout per test in seconds (default: 10)")
-    parser.add_argument("--threads", type=int, default=1,
-                        help="Number of parallel workers (default: 1)")
+    parser.add_argument("--timeout", type=int, default=5,
+                        help="Timeout per test in seconds (default: 5)")
+    parser.add_argument("--threads", type=int, default=None,
+                        help="Number of parallel workers (default: auto-detect CPU count)")
     parser.add_argument("--output", default="",
                         help="Write JSON results to this file")
     parser.add_argument("--summary", action="store_true",
@@ -557,6 +592,15 @@ def main():
                         help="Print each test result as it runs")
 
     args = parser.parse_args()
+
+    # Auto-detect thread count if not specified
+    if args.threads is None:
+        # Use CPU count, but ensure we use at least 4 threads for good parallelism
+        cpu_count = os.cpu_count() or 4
+        args.threads = max(4, cpu_count)
+
+    # Ensure at least 1 thread
+    args.threads = max(1, args.threads)
 
     engine_cmd = args.engine.split()
     test262_dir = os.path.abspath(args.test262)
@@ -587,6 +631,7 @@ def main():
     print(f"Discovering tests in {test262_dir}...")
     test_files = discover_tests(test262_dir, args.filter)
     print(f"Found {len(test_files)} test files")
+    print(f"Using {args.threads} parallel worker(s) with {args.timeout}s timeout per test")
 
     # Run tests
     results = []
@@ -610,10 +655,11 @@ def main():
                     print(status_mark.get(r.status, "?"), end="", flush=True)
                     if completed % 80 == 0:
                         print()
-                elif completed % 100 == 0:
+                elif completed % 500 == 0:
                     elapsed = time.monotonic() - start_time
                     rate = completed / elapsed if elapsed > 0 else 0
-                    print(f"  Progress: {completed}/{len(test_files)} ({rate:.0f} tests/sec)", flush=True)
+                    eta = (len(test_files) - completed) / rate if rate > 0 else 0
+                    print(f"  Progress: {completed}/{len(test_files)} ({rate:.0f} tests/sec, ETA: {eta/60:.1f}m)", flush=True)
     else:
         for tf in test_files:
             r = run_single_test(engine_cmd, test262_dir, tf, args.timeout, "non-strict")
@@ -624,10 +670,11 @@ def main():
                 print(status_mark.get(r.status, "?"), end="", flush=True)
                 if completed % 80 == 0:
                     print()
-            elif completed % 100 == 0:
+            elif completed % 500 == 0:
                 elapsed = time.monotonic() - start_time
                 rate = completed / elapsed if elapsed > 0 else 0
-                print(f"  Progress: {completed}/{len(test_files)} ({rate:.0f} tests/sec)", flush=True)
+                eta = (len(test_files) - completed) / rate if rate > 0 else 0
+                print(f"  Progress: {completed}/{len(test_files)} ({rate:.0f} tests/sec, ETA: {eta/60:.1f}m)", flush=True)
 
     if args.verbose:
         print()

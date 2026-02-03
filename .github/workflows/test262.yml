@@ -27,6 +27,9 @@ jobs:
           moon version --all
           moon update
 
+      - name: Install dependencies
+        run: moon install
+
       - name: Build JS engine
         run: moon build
 
@@ -46,8 +49,8 @@ jobs:
           python3 test262-runner.py \
             --engine "moon run cmd/main --" \
             --test262 ./test262 \
-            --timeout 10 \
-            --threads 4 \
+            --threads 12 \
+            --timeout 5 \
             --output test262-results.json \
             --summary
         continue-on-error: true
