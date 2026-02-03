@@ -586,7 +586,7 @@ All 6 issues addressed in commit `3439764`:
 
 ## Phase 4: Modern ES6+ Features → ~35-40% pass rate
 
-- [ ] **Classes** — `class`, `extends`, `constructor`, `super`, static methods, getters/setters
+- [x] **Classes** — `class`, `extends`, `constructor`, `super`, static methods, getters/setters ✅ DONE
 - [ ] **Symbols** — `Symbol()`, `Symbol.iterator`, `Symbol.toPrimitive`, `typeof symbol`
 - [ ] **Iterators/Generators** — `function*`, `yield`, `yield*`, iterator protocol
 - [ ] **Promises/async-await** — `Promise`, `.then/.catch/.finally`, `async function`, `await` (requires microtask queue)
@@ -672,7 +672,7 @@ Phase 1 (DONE) ──► Phase 2 (DONE) ──► Phase 3 (DONE) ──► Phase
 
 | Task | Impact | Status |
 |------|--------|--------|
-| **Classes (`class`, `extends`, `super`)** | ~3,000 tests | ❌ TODO |
+| **Classes (`class`, `extends`, `super`)** | ~3,000 tests | ✅ DONE |
 | **Symbols (`Symbol`, `Symbol.iterator`)** | ~2,000 tests | ❌ TODO |
 
 ### 🟡 High (Phase 4 features)
