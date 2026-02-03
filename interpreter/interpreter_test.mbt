@@ -145,10 +145,10 @@ test "const assignment error" {
     let _ = run_js("const x = 5; x = 10")
 
   } catch {
-    Failure::Failure(msg) => err_msg = msg
+    @interpreter.JsException(val) => err_msg = val.to_string()
     _ => err_msg = "unexpected error"
   }
-  inspect(err_msg, content="Assignment to constant variable 'x'")
+  inspect(err_msg, content="TypeError: Assignment to constant variable 'x'")
 }
 
 ///|
@@ -1764,7 +1764,7 @@ test "bound function propagates runtime error" {
     )
 
   } catch {
-    Failure::Failure(msg) => err_msg = msg
+    @interpreter.JsException(val) => err_msg = val.to_string()
     _ => err_msg = "other error"
   }
   inspect(err_msg.contains("Cannot read property"), content="true")

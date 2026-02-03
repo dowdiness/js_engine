@@ -792,7 +792,13 @@ fn expr_to_pattern(expr : @ast.Expr) -> @ast.Pattern raise Error {
       for prop in props {
         // key: value => { key, value: Pattern, default_val }
         let pat = expr_to_pattern(prop.value)
-        prop_pats.push({ key: prop.key, value: pat, default_val: None })
+        // Extract string key from the key expression
+        let key_str : String = match prop.key {
+          StringLit(s, _) => s
+          Ident(s, _) => s
+          _ => raise Failure::Failure("Invalid key in destructuring pattern")
+        }
+        prop_pats.push({ key: key_str, value: pat, default_val: None })
       }
       ObjectPat(prop_pats, rest)
     }
