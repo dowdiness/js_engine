@@ -1,8 +1,22 @@
 ## Current State
 
-**Test262 Pass Rate: ~56%** (pending re-run after Phase 3.5) — 444 unit tests passing (`moon test --target wasm`)
+**Test262 Pass Rate: 8.77%** (1,848 passed / 19,226 failed / 28,556 skipped) — measured after Phase 3.5
 
 The MoonBit JS engine supports basic language features (variables, arithmetic, functions, closures, control flow, try/catch, new, this, switch, for-in, bitwise ops, objects, arrays), plus template literals, arrow functions, prototype chain lookup, Function.call/apply/bind, and built-in methods for Array, String, Object, and Math. Phase 3 added: arguments object, hoisting, strict mode, default/rest parameters, destructuring, spread, for-of, property descriptors, Object.freeze/seal, RegExp, JSON, Number built-ins, Error hierarchy polish, String.fromCharCode, and array HOFs. Phase 3.5 added: optional chaining (`?.`), nullish coalescing (`??`), exponentiation (`**`), computed property names, getters/setters, TDZ for let/const, global `this`/`globalThis`, and ES spec compliance fixes. Phases 1-3.5 complete.
+
+### Test262 Category Highlights (Phase 3.5)
+
+| Category | Pass Rate | Notes |
+|----------|-----------|-------|
+| language/import | 100% (6/6) | Module syntax recognized |
+| language/keywords | 100% (25/25) | All keywords supported |
+| language/punctuators | 90.9% (10/11) | Near-complete |
+| language/line-terminators | 58.5% (24/41) | Good coverage |
+| language/identifiers | 55.6% (115/207) | Solid |
+| language/block-scope | 54.3% (51/94) | TDZ working |
+| language/expressions | 20.0% (769/3846) | Core ops work |
+| language/statements | 21.2% (604/2853) | Control flow works |
+| built-ins/* | 0% | Missing native method implementations |
 
 ### Root Cause of Current Failures
 
@@ -472,10 +486,12 @@ Phase 1 (DONE) ──► Phase 2 (DONE) ──► Phase 3 (DONE) ──► Phase
 
 | Phase | Pass Rate | Unit Tests | Key Unlock |
 |-------|-----------|------------|------------|
-| Phase 1 ✅ | 8.18% (actual) | 195 | Core language, harness dependencies (except template literals) |
-| Phase 2 ✅ | ~25-40% | 288 | Template literals unblock assert.js, arrow functions, prototype chain, built-ins |
-| Phase 3 ✅ | ~56% | 444 | Strict mode, destructuring, spread/rest, RegExp, JSON, property descriptors, array HOFs, Number built-ins |
-| Phase 3.5 ✅ | ~56%+ (pending re-run) | 444 | Optional chaining, nullish coalescing, exponentiation, computed properties, getters/setters, TDZ |
-| Phase 4 | ~60%+ | — | Classes, symbols, generators, promises |
+| Phase 1 ✅ | 8.18% | 195 | Core language, harness dependencies (except template literals) |
+| Phase 2 ✅ | — | 288 | Template literals unblock assert.js, arrow functions, prototype chain, built-ins |
+| Phase 3 ✅ | — | 444 | Strict mode, destructuring, spread/rest, RegExp, JSON, property descriptors, array HOFs, Number built-ins |
+| Phase 3.5 ✅ | **8.77%** (1,848/21,074) | 444 | Optional chaining, nullish coalescing, exponentiation, computed properties, getters/setters, TDZ |
+| Phase 4 | ~15-20% | — | Classes, symbols, generators, promises |
 
-**Next step**: Run `make test262` / `python3 test262-runner.py` to measure actual pass rate after Phase 3.5.
+**Analysis**: The 8.77% pass rate reflects that most test262 failures are in **built-ins** (Array, String, Object, etc.) where native method implementations don't match ECMAScript spec exactly. Language syntax coverage is strong (keywords 100%, punctuators 91%, identifiers 56%, block-scope 54%), but built-in method behavior needs refinement.
+
+**Next step**: Focus on fixing built-in method implementations to match ES spec behavior (especially Array, String, Object methods that are already partially implemented).
