@@ -1963,8 +1963,8 @@ fn get_bound_func_name(target : Value) -> String {
   match target {
     Object(td) =>
       match td.callable {
-        Some(UserFunc(fd)) => "bound " + fd.name.or("")
-        Some(UserFuncExt(fd)) => "bound " + fd.name.or("")
+        Some(UserFunc(fd)) => "bound " + fd.name.unwrap_or("")
+        Some(UserFuncExt(fd)) => "bound " + fd.name.unwrap_or("")
         Some(NativeCallable(n, _)) => "bound " + n
         Some(_) => "bound "
         None => "bound "
@@ -2080,8 +2080,8 @@ fn Interpreter::get_property(
               } else if prop == "name" {
                 // Return the function name
                 let func_name : String = match callable {
-                  UserFunc(func_data) => func_data.name.or("")
-                  UserFuncExt(func_data) => func_data.name.or("")
+                  UserFunc(func_data) => func_data.name.unwrap_or("")
+                  UserFuncExt(func_data) => func_data.name.unwrap_or("")
                   ArrowFunc(_) => ""
                   ArrowFuncExt(_) => ""
                   BoundFunc(target, _, _) => get_bound_func_name(target)
@@ -2255,8 +2255,8 @@ fn Interpreter::get_computed_property(
               } else if prop == "name" {
                 // Return the function name
                 let func_name : String = match callable {
-                  UserFunc(func_data) => func_data.name.or("")
-                  UserFuncExt(func_data) => func_data.name.or("")
+                  UserFunc(func_data) => func_data.name.unwrap_or("")
+                  UserFuncExt(func_data) => func_data.name.unwrap_or("")
                   ArrowFunc(_) => ""
                   ArrowFuncExt(_) => ""
                   BoundFunc(target, _, _) => get_bound_func_name(target)
