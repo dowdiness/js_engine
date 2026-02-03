@@ -2214,11 +2214,23 @@ fn Interpreter::get_property(
                 }
                 return make_native_func("toString", fn(_args) { String_(func_str) })
               } else if prop == "prototype" {
-                // Functions should have a prototype property
+                // Only constructable functions have a prototype property
+                // Non-constructable (arrow functions, bound functions, etc.) return undefined
+                let is_constructable = match callable {
+                  UserFunc(_) | UserFuncExt(_) | NativeCallable(_, _) |
+                  ClassConstructor(_, _, _, _, _, _) => true
+                  ArrowFunc(_) | ArrowFuncExt(_) | BoundFunc(_, _, _) |
+                  FuncCallMethod(_) | FuncApplyMethod(_) | MethodCallable(_, _) |
+                  InterpreterCallable(_, _) => false
+                }
+                if not(is_constructable) {
+                  return Undefined
+                }
+                // For constructable functions, check if prototype exists
                 match data.properties.get("prototype") {
                   Some(p) => return p
                   None => {
-                    // Create a default prototype
+                    // Create and memoize default prototype
                     let proto : Value = Object({
                       properties: {},
                       prototype: Null,
@@ -2227,6 +2239,7 @@ fn Interpreter::get_property(
                       descriptors: {},
                       extensible: true,
                     })
+                    data.properties["prototype"] = proto
                     return proto
                   }
                 }
@@ -2435,11 +2448,23 @@ fn Interpreter::get_computed_property(
                 }
                 return make_native_func("toString", fn(_args) { String_(func_str) })
               } else if prop == "prototype" {
-                // Functions should have a prototype property
+                // Only constructable functions have a prototype property
+                // Non-constructable (arrow functions, bound functions, etc.) return undefined
+                let is_constructable = match callable {
+                  UserFunc(_) | UserFuncExt(_) | NativeCallable(_, _) |
+                  ClassConstructor(_, _, _, _, _, _) => true
+                  ArrowFunc(_) | ArrowFuncExt(_) | BoundFunc(_, _, _) |
+                  FuncCallMethod(_) | FuncApplyMethod(_) | MethodCallable(_, _) |
+                  InterpreterCallable(_, _) => false
+                }
+                if not(is_constructable) {
+                  return Undefined
+                }
+                // For constructable functions, check if prototype exists
                 match data.properties.get("prototype") {
                   Some(p) => return p
                   None => {
-                    // Create a default prototype
+                    // Create and memoize default prototype
                     let proto : Value = Object({
                       properties: {},
                       prototype: Null,
@@ -2448,6 +2473,7 @@ fn Interpreter::get_computed_property(
                       descriptors: {},
                       extensible: true,
                     })
+                    data.properties["prototype"] = proto
                     return proto
                   }
                 }
