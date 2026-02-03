@@ -46,8 +46,6 @@ jobs:
           python3 test262-runner.py \
             --engine "moon run cmd/main --" \
             --test262 ./test262 \
-            --timeout 10 \
-            --threads 4 \
             --output test262-results.json \
             --summary
         continue-on-error: true
