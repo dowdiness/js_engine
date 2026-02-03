@@ -341,17 +341,17 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               if data.extensible {
                 return Bool(false)
               }
-              let mut sealed = true
+              let mut is_sealed = true
               data.properties.each(fn(k, _v) {
                 match data.descriptors.get(k) {
                   Some(d) =>
                     if d.configurable {
-                      sealed = false
+                      is_sealed = false
                     }
-                  None => sealed = false
+                  None => is_sealed = false
                 }
               })
-              Bool(sealed)
+              Bool(is_sealed)
             }
             _ => Bool(true)
           }
