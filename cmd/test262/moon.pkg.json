@@ -6,6 +6,9 @@
       "alias": "lib"
     },
     "moonbitlang/core/env",
-    "moonbitlang/x/fs"
+    {
+      "path": "moonbitlang/x/fs",
+      "alias": "fs"
+    }
   ]
 }

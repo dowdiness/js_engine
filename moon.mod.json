@@ -7,6 +7,6 @@
   "keywords": [],
   "description": "",
   "deps": {
-    "moonbitlang/x": "*"
+    "moonbitlang/x": "0.1.0"
   }
 }
