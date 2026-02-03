@@ -344,20 +344,20 @@ pub fn get_string_method(s : String, prop : String) -> Value {
           Undefined => return Array({ elements: [String_(str)] })
           _ => ()
         }
-        // Get limit parameter (default: 2^32 - 1, effectively unlimited)
-        let limit = if args.length() > 1 {
+        // Get limit parameter (default: 2^32 - 1 per ES spec)
+        let limit : Int64 = if args.length() > 1 {
           match args[1] {
-            Undefined => 4294967295 // 2^32 - 1
+            Undefined => 4294967295L // 2^32 - 1
             _ => {
-              let lim = to_number(args[1]).to_int()
-              if lim < 0 { 0 } else { lim }
+              let lim = to_number(args[1]).to_int64()
+              if lim < 0L { 0L } else { lim }
             }
           }
         } else {
-          4294967295
+          4294967295L
         }
         // If limit is 0, return empty array
-        if limit == 0 {
+        if limit == 0L {
           return Array({ elements: [] })
         }
         let sep = args[0].to_string()
@@ -365,7 +365,8 @@ pub fn get_string_method(s : String, prop : String) -> Value {
         if sep.length() == 0 {
           let result : Array[Value] = []
           let chars = str.to_array()
-          let count = if chars.length() < limit { chars.length() } else { limit }
+          let chars_len = chars.length().to_int64()
+          let count = if chars_len < limit { chars.length() } else { limit.to_int() }
           for i = 0; i < count; i = i + 1 {
             let buf = StringBuilder::new()
             buf.write_char(chars[i])
@@ -382,7 +383,7 @@ pub fn get_string_method(s : String, prop : String) -> Value {
         let mut i = 0
         while i <= slen - sep_len {
           // Check if we've hit the limit (need to leave room for final piece)
-          if result.length() >= limit - 1 {
+          if result.length().to_int64() >= limit - 1L {
             break
           }
           let mut matched = true
@@ -405,7 +406,7 @@ pub fn get_string_method(s : String, prop : String) -> Value {
           }
         }
         // Add remaining part if we haven't hit the limit
-        if result.length() < limit {
+        if result.length().to_int64() < limit {
           let buf = StringBuilder::new()
           for k = last; k < slen; k = k + 1 {
             buf.write_char(s_chars[k])
