@@ -20,6 +20,13 @@ Performance Optimizations:
     - Auto-detected CPU-based parallelism (minimum 4 threads, scales with CPU count)
     - Moderate timeout (5s) balancing speed and test completion
     - Optimized progress reporting with ETA
+
+Known Bottleneck:
+    The main bottleneck is `moon run` startup overhead per test (~50-100ms).
+    Future improvements could include:
+    - Building a standalone binary (if MoonBit supports it)
+    - Server mode: persistent process that reads tests from stdin
+    - Batch mode: multiple tests per engine invocation
 """
 
 import argparse
