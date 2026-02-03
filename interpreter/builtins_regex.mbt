@@ -5,7 +5,7 @@
 // ---- Regex AST ----
 
 ///|
-enum RegexNode {
+priv enum RegexNode {
   Literal(Char)
   Dot // matches any char except newline
   CharClass(Array[(Char, Char)], Bool) // ranges, negated
@@ -18,7 +18,7 @@ enum RegexNode {
 }
 
 ///|
-enum AnchorKind {
+priv enum AnchorKind {
   Start // ^
   End // $
 }
@@ -26,7 +26,7 @@ enum AnchorKind {
 // ---- Regex Parser ----
 
 ///|
-struct RegexParser {
+priv struct RegexParser {
   pattern : Array[Char]
   mut pos : Int
   mut group_count : Int

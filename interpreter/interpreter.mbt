@@ -517,7 +517,7 @@ fn hoist_pattern(pattern : @ast.Pattern, env : Environment) -> Unit raise Error 
 
 ///|
 fn Interpreter::hoist_declarations(
-  self : Interpreter,
+  _self : Interpreter,
   stmts : Array[@ast.Stmt],
   env : Environment,
 ) -> Unit raise Error {
@@ -967,7 +967,7 @@ fn Interpreter::eval_expr(
       let key = self.eval_expr(key_expr, env)
       self.get_computed_property(obj, key, loc)
     }
-    MemberAssign(obj_expr, prop, value_expr, loc) => {
+    MemberAssign(obj_expr, prop, value_expr, _loc) => {
       let obj = self.eval_expr(obj_expr, env)
       let value = self.eval_expr(value_expr, env)
       match obj {
@@ -1007,7 +1007,7 @@ fn Interpreter::eval_expr(
           )
       }
     }
-    ComputedAssign(obj_expr, key_expr, value_expr, loc) => {
+    ComputedAssign(obj_expr, key_expr, value_expr, _loc) => {
       let obj = self.eval_expr(obj_expr, env)
       let key = self.eval_expr(key_expr, env)
       let value = self.eval_expr(value_expr, env)
@@ -1272,7 +1272,7 @@ fn eval_binary_op(
   op : @ast.BinOp,
   left : Value,
   right : Value,
-  loc : @token.Loc,
+  _loc : @token.Loc,
 ) -> Value raise Error {
   match (op, left, right) {
     // String concatenation
@@ -1945,7 +1945,7 @@ fn Interpreter::get_property(
   _self : Interpreter,
   obj : Value,
   prop : String,
-  loc : @token.Loc,
+  _loc : @token.Loc,
 ) -> Value raise Error {
   match obj {
     Object(data) =>
@@ -2066,7 +2066,7 @@ fn Interpreter::get_computed_property(
   _self : Interpreter,
   obj : Value,
   key : Value,
-  loc : @token.Loc,
+  _loc : @token.Loc,
 ) -> Value raise Error {
   match obj {
     Object(data) => {
@@ -2212,7 +2212,7 @@ fn Interpreter::eval_new(
   callee_expr : @ast.Expr,
   arg_exprs : Array[@ast.Expr],
   env : Environment,
-  loc : @token.Loc,
+  _loc : @token.Loc,
 ) -> Value raise Error {
   let ctor = self.eval_expr(callee_expr, env)
   let args : Array[Value] = self.eval_args_with_spread(arg_exprs, env)
