@@ -342,7 +342,7 @@ fn Parser::parse_exponentiation(self : Parser) -> @ast.Expr raise Error {
     match base {
       Unary(op, _, _) =>
         match op {
-          @ast.Neg | @ast.Pos | @ast.Not | @ast.BitNot =>
+          @ast.Neg | @ast.Not | @ast.BitNot =>
             raise Failure::Failure(
               "Unary operator used immediately before exponentiation expression. Parentheses must be used to disambiguate.",
             )
