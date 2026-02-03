@@ -837,20 +837,30 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
                 _ => {
                   let comparefn = args[0]
                   let loc = @token.Loc::default()
+                  // Store any exception to re-throw after sort (spec requires propagation)
+                  let mut caught_error : Error? = None
                   result.sort_by(fn(a, b) {
-                    let compare_result = interp.call_value(
-                        comparefn,
-                        Undefined,
-                        [a, b],
-                        loc,
-                      )
-                      catch {
-                        _ => Number(0.0)
+                    // Skip comparisons if we already have an error
+                    if caught_error.is_empty().not() {
+                      return 0
+                    }
+                    let compare_result = try {
+                      interp.call_value(comparefn, Undefined, [a, b], loc)
+                    } catch {
+                      e => {
+                        caught_error = Some(e)
+                        return 0
                       }
+                    }
                     // Use sign-based comparison to avoid truncating fractional values
                     let cmp = to_number(compare_result)
                     if cmp.is_nan() { 0 } else if cmp < 0.0 { -1 } else if cmp > 0.0 { 1 } else { 0 }
                   })
+                  // Re-throw any caught exception per spec
+                  match caught_error {
+                    Some(e) => raise e
+                    None => ()
+                  }
                 }
               }
             } else {
@@ -1022,19 +1032,30 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
                 _ => {
                   let comparefn = args[0]
                   let loc = @token.Loc::default()
+                  // Store any exception to re-throw after sort (spec requires propagation)
+                  let mut caught_error : Error? = None
                   arr.elements.sort_by(fn(a, b) {
-                    let result = interp.call_value(
-                      comparefn,
-                      Undefined,
-                      [a, b],
-                      loc,
-                    ) catch {
-                      _ => Number(0.0)
+                    // Skip comparisons if we already have an error
+                    if caught_error.is_empty().not() {
+                      return 0
+                    }
+                    let result = try {
+                      interp.call_value(comparefn, Undefined, [a, b], loc)
+                    } catch {
+                      e => {
+                        caught_error = Some(e)
+                        return 0
+                      }
                     }
                     // Use sign-based comparison to avoid truncating fractional values
                     let cmp = to_number(result)
                     if cmp.is_nan() { 0 } else if cmp < 0.0 { -1 } else if cmp > 0.0 { 1 } else { 0 }
                   })
+                  // Re-throw any caught exception per spec
+                  match caught_error {
+                    Some(e) => raise e
+                    None => ()
+                  }
                 }
               }
             } else {
