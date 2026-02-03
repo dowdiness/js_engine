@@ -658,7 +658,7 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
         let kloc = self.advance().loc
         let i = n.to_int()
         let name = if i.to_double() == n { i.to_string() } else { n.to_string() }
-        (StringLit(name, kloc), name, true)
+        (StringLit(name, kloc), name, false)
       }
       LBracket => {
         // Computed property name: [expr]

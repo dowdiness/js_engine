@@ -26,6 +26,7 @@ pub fn Interpreter::new() -> Interpreter {
       callable: None,
       class_name: "global",
       descriptors: {},
+      extensible: true,
     },
   )
   setup_builtins(global, output)
@@ -1151,12 +1152,59 @@ fn Interpreter::eval_expr(
     }
     OptionalCall(callee_expr, arg_exprs, loc) => {
       // func?.(args) - return undefined if func is null/undefined
-      let callee = self.eval_expr(callee_expr, env)
-      match callee {
-        Null | Undefined => Undefined
+      // Need to preserve receiver for method calls
+      let args : Array[Value] = self.eval_args_with_spread(arg_exprs, env)
+      match callee_expr {
+        OptionalMember(obj_expr, prop, mloc) => {
+          let obj = self.eval_expr(obj_expr, env)
+          match obj {
+            Null | Undefined => Undefined
+            _ => {
+              let func_val = self.get_property(obj, prop, mloc)
+              match func_val {
+                Null | Undefined => Undefined
+                _ => self.call_value(func_val, obj, args, loc)
+              }
+            }
+          }
+        }
+        OptionalComputedMember(obj_expr, key_expr, mloc) => {
+          let obj = self.eval_expr(obj_expr, env)
+          match obj {
+            Null | Undefined => Undefined
+            _ => {
+              let key = self.eval_expr(key_expr, env)
+              let func_val = self.get_computed_property(obj, key, mloc)
+              match func_val {
+                Null | Undefined => Undefined
+                _ => self.call_value(func_val, obj, args, loc)
+              }
+            }
+          }
+        }
+        Member(obj_expr, prop, mloc) => {
+          let obj = self.eval_expr(obj_expr, env)
+          let func_val = self.get_property(obj, prop, mloc)
+          match func_val {
+            Null | Undefined => Undefined
+            _ => self.call_value(func_val, obj, args, loc)
+          }
+        }
+        ComputedMember(obj_expr, key_expr, mloc) => {
+          let obj = self.eval_expr(obj_expr, env)
+          let key = self.eval_expr(key_expr, env)
+          let func_val = self.get_computed_property(obj, key, mloc)
+          match func_val {
+            Null | Undefined => Undefined
+            _ => self.call_value(func_val, obj, args, loc)
+          }
+        }
         _ => {
-          let args : Array[Value] = self.eval_args_with_spread(arg_exprs, env)
-          self.call_value(callee, Undefined, args, loc)
+          let callee = self.eval_expr(callee_expr, env)
+          match callee {
+            Null | Undefined => Undefined
+            _ => self.call_value(callee, Undefined, args, loc)
+          }
         }
       }
     }

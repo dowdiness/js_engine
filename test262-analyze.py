@@ -100,7 +100,7 @@ UNSUPPORTED_TEST262_FEATURES = {
     "async-functions", "async-iteration", "top-level-await",
 
     # Generators
-    "generators",
+    "generators", "generator",
 
     # Classes
     "class", "class-fields-private", "class-fields-public",

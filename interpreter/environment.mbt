@@ -30,12 +30,19 @@ pub fn Environment::def(
   value : Value,
   kind : BindingKind,
 ) -> Unit raise Error {
-  if self.bindings.contains(name) {
-    raise JsException(
-      String_("SyntaxError: Identifier '\{name}' has already been declared"),
-    )
+  match self.bindings.get(name) {
+    Some(existing) =>
+      // var can redeclare var, but nothing else can redeclare
+      if kind == VarBinding && existing.kind == VarBinding {
+        // Allow var/var redeclaration - just update the value
+        existing.value = value
+      } else {
+        raise JsException(
+          String_("SyntaxError: Identifier '\{name}' has already been declared"),
+        )
+      }
+    None => self.bindings[name] = { value, kind, initialized: true }
   }
-  self.bindings[name] = { value, kind, initialized: true }
 }
 
 ///| Define a TDZ binding (let/const before initialization)

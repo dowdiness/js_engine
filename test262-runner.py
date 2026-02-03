@@ -99,7 +99,7 @@ SKIP_FEATURES = {
 
     # Missing built-in statics / methods
     "Object.fromEntries", "Object.is", "Object.hasOwn",
-    "Array.from",
+    "Array.from", "Array.prototype.at",
     "String.prototype.replaceAll",
     "String.prototype.isWellFormed", "String.prototype.toWellFormed",
 
