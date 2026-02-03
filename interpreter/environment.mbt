@@ -9,6 +9,7 @@ pub(all) enum BindingKind {
 struct Binding {
   mut value : Value
   kind : BindingKind
+  mut initialized : Bool
 }
 
 ///|
@@ -34,7 +35,39 @@ pub fn Environment::def(
       String_("SyntaxError: Identifier '\{name}' has already been declared"),
     )
   }
-  self.bindings[name] = { value, kind }
+  self.bindings[name] = { value, kind, initialized: true }
+}
+
+///| Define a TDZ binding (let/const before initialization)
+pub fn Environment::def_tdz(
+  self : Environment,
+  name : String,
+  kind : BindingKind,
+) -> Unit raise Error {
+  if self.bindings.contains(name) {
+    raise JsException(
+      String_("SyntaxError: Identifier '\{name}' has already been declared"),
+    )
+  }
+  self.bindings[name] = { value: Undefined, kind, initialized: false }
+}
+
+///| Initialize a TDZ binding (when declaration is executed)
+pub fn Environment::initialize(
+  self : Environment,
+  name : String,
+  value : Value,
+) -> Unit raise Error {
+  match self.bindings.get(name) {
+    Some(binding) => {
+      binding.value = value
+      binding.initialized = true
+    }
+    None =>
+      raise JsException(
+        String_("InternalError: Cannot initialize non-existent binding '\{name}'"),
+      )
+  }
 }
 
 ///|
@@ -43,7 +76,7 @@ pub fn Environment::def_builtin(
   name : String,
   value : Value,
 ) -> Unit {
-  self.bindings[name] = { value, kind: VarBinding }
+  self.bindings[name] = { value, kind: VarBinding, initialized: true }
 }
 
 ///|
@@ -61,7 +94,16 @@ pub fn Environment::has(self : Environment, name : String) -> Bool {
 ///|
 pub fn Environment::get(self : Environment, name : String) -> Value raise Error {
   match self.bindings.get(name) {
-    Some(binding) => binding.value
+    Some(binding) =>
+      if not(binding.initialized) {
+        raise JsException(
+          String_(
+            "ReferenceError: Cannot access '\{name}' before initialization",
+          ),
+        )
+      } else {
+        binding.value
+      }
     None =>
       match self.parent {
         Some(parent) => parent.get(name)
@@ -79,7 +121,13 @@ pub fn Environment::assign(
 ) -> Unit raise Error {
   match self.bindings.get(name) {
     Some(binding) =>
-      if binding.kind == ConstBinding {
+      if not(binding.initialized) {
+        raise JsException(
+          String_(
+            "ReferenceError: Cannot access '\{name}' before initialization",
+          ),
+        )
+      } else if binding.kind == ConstBinding {
         raise JsException(
           String_("TypeError: Assignment to constant variable '\{name}'"),
         )

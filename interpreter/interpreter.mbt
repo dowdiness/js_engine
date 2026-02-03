@@ -10,6 +10,7 @@ pub(all) enum Signal {
 pub(all) struct Interpreter {
   output : Array[String]
   global : Environment
+  global_this : Value
   mut strict : Bool
 }
 
@@ -17,8 +18,21 @@ pub(all) struct Interpreter {
 pub fn Interpreter::new() -> Interpreter {
   let global = Environment::new()
   let output : Array[String] = []
+  // Create global object for 'this' in global context
+  let global_this : Value = Object(
+    {
+      properties: {},
+      prototype: Null,
+      callable: None,
+      class_name: "global",
+      descriptors: {},
+    },
+  )
   setup_builtins(global, output)
-  { output, global, strict: false }
+  // Bind 'this' and 'globalThis' in global scope
+  global.def_builtin("this", global_this)
+  global.def_builtin("globalThis", global_this)
+  { output, global, global_this, strict: false }
 }
 
 ///|
@@ -83,6 +97,10 @@ fn Interpreter::exec_stmt(
         if init is Some(_) {
           env.assign(name, value)
         }
+      } else if (bk == LetBinding || bk == ConstBinding) &&
+        env.bindings.contains(name) {
+        // let/const hoisted with TDZ - initialize it
+        env.initialize(name, value)
       } else {
         env.def(name, value, bk)
       }
@@ -90,6 +108,8 @@ fn Interpreter::exec_stmt(
     }
     Block(stmts, _) => {
       let block_env = Environment::new(parent=Some(env))
+      // Hoist let/const with TDZ markers
+      hoist_block_tdz(stmts, block_env)
       self.exec_stmts(stmts, block_env)
     }
     IfStmt(cond, then_branch, else_branch, _) => {
@@ -539,6 +559,63 @@ fn Interpreter::hoist_declarations(
   }
 }
 
+///| Hoist let/const declarations with TDZ markers at block scope
+fn hoist_block_tdz(stmts : Array[@ast.Stmt], env : Environment) -> Unit raise Error {
+  for stmt in stmts {
+    match stmt {
+      VarDecl(LetKind, name, _, _) =>
+        if not(env.bindings.contains(name)) {
+          env.def_tdz(name, LetBinding)
+        }
+      VarDecl(ConstKind, name, _, _) =>
+        if not(env.bindings.contains(name)) {
+          env.def_tdz(name, ConstBinding)
+        }
+      // DestructureDecl with let/const also needs TDZ
+      DestructureDecl(LetKind, pattern, _, _) =>
+        hoist_pattern_tdz(pattern, env, LetBinding)
+      DestructureDecl(ConstKind, pattern, _, _) =>
+        hoist_pattern_tdz(pattern, env, ConstBinding)
+      _ => ()
+    }
+  }
+}
+
+///| Hoist pattern bindings with TDZ markers
+fn hoist_pattern_tdz(
+  pattern : @ast.Pattern,
+  env : Environment,
+  kind : BindingKind,
+) -> Unit raise Error {
+  match pattern {
+    IdentPat(name) =>
+      if not(env.bindings.contains(name)) {
+        env.def_tdz(name, kind)
+      }
+    ArrayPat(elements, rest) => {
+      for elem in elements {
+        match elem {
+          Some(p) => hoist_pattern_tdz(p, env, kind)
+          None => ()
+        }
+      }
+      match rest {
+        Some(p) => hoist_pattern_tdz(p, env, kind)
+        None => ()
+      }
+    }
+    ObjectPat(props, rest) => {
+      for prop in props {
+        hoist_pattern_tdz(prop.value, env, kind)
+      }
+      match rest {
+        Some(p) => hoist_pattern_tdz(p, env, kind)
+        None => ()
+      }
+    }
+  }
+}
+
 ///|
 fn Interpreter::bind_pattern(
   self : Interpreter,
@@ -551,6 +628,10 @@ fn Interpreter::bind_pattern(
     IdentPat(name) =>
       if bk == VarBinding && env.bindings.contains(name) {
         env.assign(name, value)
+      } else if (bk == LetBinding || bk == ConstBinding) &&
+        env.bindings.contains(name) {
+        // let/const hoisted with TDZ - initialize it
+        env.initialize(name, value)
       } else {
         env.def(name, value, bk)
       }
@@ -807,18 +888,40 @@ fn Interpreter::eval_expr(
       let properties : Map[String, Value] = {}
       let descriptors : Map[String, PropDescriptor] = {}
       for prop in props {
+        // Get the key string - either from static StringLit or by evaluating computed key
+        let key_str : String = if prop.computed {
+          // Evaluate the computed key and convert to string
+          let key_val = self.eval_expr(prop.key, env)
+          match key_val {
+            String_(s) => s
+            Number(n) => {
+              let i = n.to_int()
+              if i.to_double() == n { i.to_string() } else { n.to_string() }
+            }
+            Bool(b) => b.to_string()
+            Null => "null"
+            Undefined => "undefined"
+            _ => key_val.to_string()
+          }
+        } else {
+          // Static key - extract from StringLit
+          match prop.key {
+            StringLit(s, _) => s
+            _ => prop.key.to_string() // fallback
+          }
+        }
         match prop.kind {
-          Init => properties[prop.key] = self.eval_expr(prop.value, env)
+          Init => properties[key_str] = self.eval_expr(prop.value, env)
           Get => {
             // Getter: store the function as __get__<key> for now
             // Real implementation would use accessor descriptors
             let getter = self.eval_expr(prop.value, env)
-            properties["__get__" + prop.key] = getter
+            properties["__get__" + key_str] = getter
           }
           Set => {
             // Setter: store the function as __set__<key> for now
             let setter = self.eval_expr(prop.value, env)
-            properties["__set__" + prop.key] = setter
+            properties["__set__" + key_str] = setter
           }
         }
       }
@@ -1027,6 +1130,36 @@ fn Interpreter::eval_expr(
       self.assign_pattern(pattern, value, env)
       value
     }
+    OptionalMember(obj_expr, prop, loc) => {
+      // obj?.prop - return undefined if obj is null/undefined
+      let obj = self.eval_expr(obj_expr, env)
+      match obj {
+        Null | Undefined => Undefined
+        _ => self.get_property(obj, prop, loc)
+      }
+    }
+    OptionalComputedMember(obj_expr, key_expr, loc) => {
+      // obj?.[key] - return undefined if obj is null/undefined
+      let obj = self.eval_expr(obj_expr, env)
+      match obj {
+        Null | Undefined => Undefined
+        _ => {
+          let key = self.eval_expr(key_expr, env)
+          self.get_computed_property(obj, key, loc)
+        }
+      }
+    }
+    OptionalCall(callee_expr, arg_exprs, loc) => {
+      // func?.(args) - return undefined if func is null/undefined
+      let callee = self.eval_expr(callee_expr, env)
+      match callee {
+        Null | Undefined => Undefined
+        _ => {
+          let args : Array[Value] = self.eval_args_with_spread(arg_exprs, env)
+          self.call_value(callee, Undefined, args, loc)
+        }
+      }
+    }
   }
 }
 
@@ -1039,7 +1172,7 @@ fn Interpreter::eval_binary(
   env : Environment,
   loc : @token.Loc,
 ) -> Value raise Error {
-  // Short-circuit for && and ||
+  // Short-circuit for &&, ||, and ??
   match op {
     And => {
       let left = self.eval_expr(left_expr, env)
@@ -1054,6 +1187,14 @@ fn Interpreter::eval_binary(
         return left
       }
       self.eval_expr(right_expr, env)
+    }
+    NullishCoalesce => {
+      // ?? returns left if it's not null/undefined, otherwise right
+      let left = self.eval_expr(left_expr, env)
+      match left {
+        Null | Undefined => self.eval_expr(right_expr, env)
+        _ => left
+      }
     }
     _ => {
       let left = self.eval_expr(left_expr, env)
@@ -1218,8 +1359,8 @@ fn eval_binary_op(
             ),
           )
       }
-    // And/Or already handled by short-circuit
-    (And, _, _) | (Or, _, _) =>
+    // And/Or/?? already handled by short-circuit
+    (And, _, _) | (Or, _, _) | (NullishCoalesce, _, _) =>
       raise Failure::Failure(
         "Internal error: logical operators should be short-circuited",
       )

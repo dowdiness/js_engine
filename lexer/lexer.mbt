@@ -514,6 +514,23 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       col += 2
       continue
     }
+    // Optional chaining (?.) and nullish coalescing (??)
+    if c == '?' && offset + 1 < len && char_at(offset + 1) == '?' {
+      tokens.push({ kind: QuestionQuestion, loc, raw: "??" })
+      offset += 2
+      col += 2
+      continue
+    }
+    if c == '?' && offset + 1 < len && char_at(offset + 1) == '.' {
+      // Distinguish from ternary with number: x ? .5 : y
+      // ?. is optional chaining only if NOT followed by a digit
+      if offset + 2 >= len || not(is_digit(char_at(offset + 2))) {
+        tokens.push({ kind: QuestionDot, loc, raw: "?." })
+        offset += 2
+        col += 2
+        continue
+      }
+    }
     // Handle } specially for template literal brace-depth tracking
     if c == '}' && template_depth_stack.length() > 0 {
       let top = template_depth_stack.length() - 1

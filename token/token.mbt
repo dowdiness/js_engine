@@ -66,6 +66,8 @@ pub(all) enum TokenKind {
   GtEq
   And
   Or
+  QuestionQuestion // ??
+  QuestionDot // ?.
   Bang
   // Update / Compound assignment
   PlusPlus

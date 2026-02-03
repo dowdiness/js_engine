@@ -136,10 +136,15 @@ fn Parser::parse_ternary(self : Parser) -> @ast.Expr raise Error {
 ///|
 fn Parser::parse_or(self : Parser) -> @ast.Expr raise Error {
   let mut left = self.parse_and()
-  while self.at(Or) {
+  while self.at(Or) || self.at(QuestionQuestion) {
+    let is_nullish = self.at(QuestionQuestion)
     let loc = self.advance().loc
     let right = self.parse_and()
-    left = Binary(@ast.Or, left, right, loc)
+    if is_nullish {
+      left = Binary(@ast.NullishCoalesce, left, right, loc)
+    } else {
+      left = Binary(@ast.Or, left, right, loc)
+    }
   }
   left
 }
@@ -412,6 +417,42 @@ fn Parser::parse_call(self : Parser) -> @ast.Expr raise Error {
       let key = self.parse_expr()
       let _ = self.expect(RBracket)
       expr = ComputedMember(expr, key, loc)
+    } else if self.at(QuestionDot) {
+      // Optional chaining: ?.
+      let loc = self.advance().loc
+      if self.at(LParen) {
+        // Optional call: obj?.(args)
+        let _ = self.advance()
+        let args : Array[@ast.Expr] = []
+        if not(self.at(RParen)) {
+          if self.at(DotDotDot) {
+            let sloc = self.advance().loc
+            args.push(SpreadExpr(self.parse_assignment(), sloc))
+          } else {
+            args.push(self.parse_assignment())
+          }
+          while self.eat(Comma) {
+            if self.at(DotDotDot) {
+              let sloc = self.advance().loc
+              args.push(SpreadExpr(self.parse_assignment(), sloc))
+            } else {
+              args.push(self.parse_assignment())
+            }
+          }
+        }
+        let _ = self.expect(RParen)
+        expr = OptionalCall(expr, args, loc)
+      } else if self.at(LBracket) {
+        // Optional computed member: obj?.[expr]
+        let _ = self.advance()
+        let key = self.parse_expr()
+        let _ = self.expect(RBracket)
+        expr = OptionalComputedMember(expr, key, loc)
+      } else {
+        // Optional member: obj?.prop
+        let name = self.expect_ident()
+        expr = OptionalMember(expr, name, loc)
+      }
     } else {
       break
     }
@@ -603,23 +644,28 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
         }
       _ => @ast.Init
     }
-    let key : String = match self.peek_kind() {
+    // Parse the key - can be identifier, string, number, or computed [expr]
+    let (key_expr, key_name, computed) : (@ast.Expr, String, Bool) = match self.peek_kind() {
       Ident(name) => {
-        self.pos += 1
-        name
+        let kloc = self.advance().loc
+        (StringLit(name, kloc), name, false)
       }
       String_(s) => {
-        self.pos += 1
-        s
+        let kloc = self.advance().loc
+        (StringLit(s, kloc), s, false)
       }
       Number(n) => {
-        self.pos += 1
+        let kloc = self.advance().loc
         let i = n.to_int()
-        if i.to_double() == n {
-          i.to_string()
-        } else {
-          n.to_string()
-        }
+        let name = if i.to_double() == n { i.to_string() } else { n.to_string() }
+        (StringLit(name, kloc), name, true)
+      }
+      LBracket => {
+        // Computed property name: [expr]
+        let _ = self.advance() // consume '['
+        let expr = self.parse_assignment()
+        let _ = self.expect(RBracket)
+        (expr, "", true)
       }
       _ => {
         let t = self.peek()
@@ -635,21 +681,21 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
       let params = self.parse_params()
       let body = self.parse_block_body()
       let func_data : @ast.Expr = FuncExpr(
-        Some(key),
+        if computed { None } else { Some(key_name) },
         params,
         body,
         mloc,
       )
-      props.push({ key, value: func_data, kind: prop_kind })
+      props.push({ key: key_expr, value: func_data, kind: prop_kind, computed })
     } else if self.at(Colon) {
       // Normal property
       let _ = self.advance() // consume ':'
       let value = self.parse_assignment()
-      props.push({ key, value, kind: @ast.Init })
+      props.push({ key: key_expr, value, kind: @ast.Init, computed })
     } else if self.at(Comma) || self.at(RBrace) {
       // Shorthand property: { x } => { x: x }
-      let value = Ident(key, loc)
-      props.push({ key, value, kind: @ast.Init })
+      let value = Ident(key_name, loc)
+      props.push({ key: key_expr, value, kind: @ast.Init, computed: false })
     } else {
       let t = self.peek()
       raise Failure::Failure(

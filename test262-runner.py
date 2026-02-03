@@ -63,7 +63,6 @@ SKIP_FEATURES = {
     "class-static-block",
 
     # Object literal features not yet implemented
-    "computed-property-names",
     "object-spread", "object-rest",
 
     # Iteration / ordering
@@ -105,17 +104,12 @@ SKIP_FEATURES = {
     "String.prototype.isWellFormed", "String.prototype.toWellFormed",
 
     # Missing operators and syntax
-    "exponentiation",
-    "optional-chaining", "nullish-coalescing",
     "numeric-separator-literal", "logical-assignment-operators",
     "new.target",
     "hashbang",
 
     # Intl / locale
     "Intl", "intl-normative-optional",
-
-    # Global
-    "globalThis",
 
     # Other missing features
     "FinalizationRegistry",
