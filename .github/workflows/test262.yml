@@ -27,9 +27,6 @@ jobs:
           moon version --all
           moon update
 
-      - name: Add experimental packages
-        run: moon add moonbitlang/x
-
       - name: Install dependencies
         run: moon install
 

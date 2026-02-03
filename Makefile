@@ -20,14 +20,14 @@ test262-download:
 		echo "Test262 already present."; \
 	fi
 
-# Run the full Test262 conformance suite (optimized with harness caching and parallelism)
+# Run the full Test262 conformance suite
 test262: build test262-download
 	python3 test262-runner.py \
 		--engine "moon run cmd/main --" \
 		--test262 ./test262 \
 		--output test262-results.json
 
-# Run a quick subset of Test262 (language/expressions and language/statements only)
+# Run a quick subset of Test262 (language/literals only)
 test262-quick: build test262-download
 	python3 test262-runner.py \
 		--engine "moon run cmd/main --" \
