@@ -20,13 +20,19 @@ The MoonBit JS engine supports basic language features (variables, arithmetic, f
 
 ### Root Cause of Current Failures
 
-ALL 17,941 test failures are caused by **template literals** (backtick characters) in the `assert.js` harness file. The harness is concatenated into every test, so every non-skipped test fails at parse time before any JS code runs. The `"template"` feature is in SKIP_FEATURES (skipping tests that *declare* template usage), but assert.js itself uses template literals for error messages, breaking ALL remaining tests.
+**Template literals and arrow functions are now fully supported** (Phase 2). The assert.js harness parses and executes correctly.
+
+The current 8.77% pass rate is caused by **built-in method spec compliance issues**:
+- **built-ins/* category: 0% pass rate** — Array, String, Object, Number, etc. methods don't match ECMAScript spec exactly
+- Language syntax coverage is strong (keywords 100%, punctuators 91%, identifiers 56%, block-scope 54%)
+- Most failures occur because built-in methods have subtle behavioral differences from the spec (edge cases, coercion rules, return value semantics)
 
 **Original harness blockers** (`this`, `throw`, `new`, `try/catch`, `switch/case`, `String()`) — **all resolved in Phase 1**.
+**Template literal harness blocker** — **resolved in Phase 2**.
 
 ---
 
-## Phase 1: Core Language Gaps → ~25% pass rate ✅ IMPLEMENTED
+## Phase 1: Core Language Gaps → 8.18% pass rate ✅ IMPLEMENTED
 
 **Goal**: Get the test262 harness executing, then pass basic language tests.
 
@@ -136,20 +142,22 @@ All 6 issues addressed in commit `3439764`:
 - Hex literal method calls fail to parse (e.g., `0x7FFFFFFF.asr()`) — assign to variable first
 - Multiline strings (`#|`) in function call arguments trigger deprecation warning — use `let` binding
 
-### Phase 1 Expected Impact
+### Phase 1 Expected vs Actual Impact
 
-| Category | Est. new passes |
-|----------|----------------|
-| language/expressions | ~1,800 |
-| language/statements | ~700 |
-| language/types + literals | ~350 |
-| language/identifiers, keywords, asi | ~400 |
-| built-ins/Number, Boolean, NaN | ~230 |
-| **Phase 1 total** | **~5,000 (25-26%)** |
+| Category | Est. passes | Actual | Notes |
+|----------|-------------|--------|-------|
+| language/expressions | ~1,800 | 769 | Many tests depend on built-in methods |
+| language/statements | ~700 | 604 | Good coverage |
+| language/types + literals | ~350 | — | Partial coverage |
+| language/identifiers, keywords | ~400 | 140+ | keywords 100%, identifiers 56% |
+| built-ins/* | ~230 | 0 | Spec compliance gaps |
+| **Phase 1 total** | **~5,000 (25-26%)** | **~1,700 (8.18%)** | Built-in 0% dragged overall down |
+
+**Lesson learned**: Original estimates assumed passing language tests would translate to high pass rates. In practice, ~70% of test262 tests depend on built-in object methods, which have 0% pass rate due to spec compliance issues.
 
 ---
 
-## Phase 2: Unblock Test262 Harness → ~25-40% pass rate ✅ IMPLEMENTED
+## Phase 2: Unblock Test262 Harness → 8.5% pass rate ✅ IMPLEMENTED
 
 **Goal**: Template literals + arrow functions + prototype chain + core built-ins → unblock all 17,941 failing tests.
 
@@ -246,10 +254,10 @@ All 6 issues addressed in commit `3439764`:
 - [x] Constants: `PI`, `E`, `LN2`, `LN10`, `LOG2E`, `LOG10E`, `SQRT2`, `SQRT1_2`
 - [x] Methods: `abs`, `floor`, `ceil`, `round`, `trunc`, `sqrt`, `pow`, `min`, `max`, `random` (xorshift32 PRNG), `sign`, `log`, `log2`, `log10`
 
-### 2I. Test262 Runner Update
+### 2I. Test262 Runner Update ✅
 
 **File**: `test262-runner.py`
-- [ ] Remove `"template"` and `"arrow-function"` from `SKIP_FEATURES` (pending CI run)
+- [x] Remove `"template"` and `"arrow-function"` from `SKIP_FEATURES` (completed — features removed, harness now parses correctly)
 
 ### Phase 2 Implementation Notes
 
@@ -286,7 +294,7 @@ All 6 issues addressed in commit `3439764`:
 
 ---
 
-## Phase 3: Advanced Language Features + Full Built-ins → ~56% pass rate ✅ IMPLEMENTED
+## Phase 3: Advanced Language Features + Full Built-ins → 8.7% pass rate ✅ IMPLEMENTED
 
 **Goal**: Arguments, hoisting, strict mode, destructuring, spread/rest, for-of, property descriptors, RegExp, JSON, Number built-ins, array HOFs.
 
@@ -375,11 +383,11 @@ All 6 issues addressed in commit `3439764`:
 
 ---
 
-## Phase 3.5: Test262 Blockers + ES Spec Compliance ✅ IMPLEMENTED
+## Phase 3.5: Test262 Blockers + ES Spec Compliance → 8.77% pass rate ✅ IMPLEMENTED
 
 **Goal**: Fix test262 skip list issues and implement missing ES features blocking significant test counts.
 
-**Status**: All tasks implemented. Fixes address ~5,500+ previously blocked tests from missing object literal syntax alone.
+**Status**: All tasks implemented. Language syntax coverage strong; built-in method spec compliance remains the primary blocker for higher pass rates.
 
 ### 3.5A. Test262 Skip List Fixes ✅
 - [x] **Add 26 missing feature tags** — `optional-chaining`, `nullish-coalescing`, `exponentiation`, `object-spread`, `object-rest`, and other unsupported features added to skip lists
@@ -456,7 +464,9 @@ All 6 issues addressed in commit `3439764`:
 - [ ] **Map/Set** — `new Map()`, `new Set()`, `.get/.set/.has/.delete/.size/.forEach`
 - [ ] **WeakMap/WeakSet** — basic reference-based collections
 
-### Phase 4 Expected Impact: ~1,600 additional tests → cumulative ~12,600 (60%+)
+### Phase 4 Expected Impact: ~1,600 additional tests → cumulative ~3,500-4,500 (15-20%)
+
+**Note**: Original estimate of 60%+ was overly optimistic. Realistic estimate accounts for built-in method spec compliance remaining at 0%. Major pass rate improvements require built-in compliance work (see High Priority TODO).
 
 ---
 
@@ -473,13 +483,13 @@ All 6 issues addressed in commit `3439764`:
 ```
 Phase 1 (DONE) ──► Phase 2 (DONE) ──► Phase 3 (DONE) ──► Phase 3.5 (DONE)
                                                                 │
-                                                          [~56%+ pass rate — pending re-run]
+                                                          [8.77% pass rate — language syntax strong, built-ins blocking]
                                                                 │
                                                                 ▼
                                                           Phase 4 (classes, symbols, generators, promises)
                                                                 │
                                                                 ▼
-                                                          [60%+ pass rate]
+                                                          [15-20%+ pass rate with built-in compliance]
 ```
 
 ## Summary
@@ -487,12 +497,12 @@ Phase 1 (DONE) ──► Phase 2 (DONE) ──► Phase 3 (DONE) ──► Phase
 | Phase | Pass Rate | Unit Tests | Key Unlock |
 |-------|-----------|------------|------------|
 | Phase 1 ✅ | 8.18% | 195 | Core language, harness dependencies (except template literals) |
-| Phase 2 ✅ | — | 288 | Template literals unblock assert.js, arrow functions, prototype chain, built-ins |
-| Phase 3 ✅ | — | 444 | Strict mode, destructuring, spread/rest, RegExp, JSON, property descriptors, array HOFs, Number built-ins |
+| Phase 2 ✅ | ~8.5% | 288 | Template literals unblock assert.js, arrow functions, prototype chain, built-ins |
+| Phase 3 ✅ | ~8.7% | 444 | Strict mode, destructuring, spread/rest, RegExp, JSON, property descriptors, array HOFs, Number built-ins |
 | Phase 3.5 ✅ | **8.77%** (1,848/21,074) | 444 | Optional chaining, nullish coalescing, exponentiation, computed properties, getters/setters, TDZ |
 | Phase 4 | ~15-20% | — | Classes, symbols, generators, promises |
 
-**Analysis**: The 8.77% pass rate reflects that most test262 failures are in **built-ins** (Array, String, Object, etc.) where native method implementations don't match ECMAScript spec exactly. Language syntax coverage is strong (keywords 100%, punctuators 91%, identifiers 56%, block-scope 54%), but built-in method behavior needs refinement.
+**Why pass rate stayed ~8% despite new features**: The test262 suite is heavily weighted toward built-in object tests. Language syntax tests (where this engine excels) represent only ~30% of the suite. The remaining ~70% test built-in methods (Array, String, Object, etc.) where this engine has 0% pass rate due to spec compliance gaps. Adding language features improves coverage of the smaller slice; improving built-in methods will unlock the larger slice.
 
 ---
 
