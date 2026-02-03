@@ -1,34 +1,41 @@
 ## Current State
 
-**Test262 Pass Rate: 8.77%** (1,848 passed / 19,226 failed / 28,556 skipped) — measured after Phase 3.5
+**Test262 Pass Rate: 26.34%** (5,543 passed / 15,500 failed / 28,556 skipped) — measured after Phase 3.6 improvements
 
-The MoonBit JS engine supports basic language features (variables, arithmetic, functions, closures, control flow, try/catch, new, this, switch, for-in, bitwise ops, objects, arrays), plus template literals, arrow functions, prototype chain lookup, Function.call/apply/bind, and built-in methods for Array, String, Object, and Math. Phase 3 added: arguments object, hoisting, strict mode, default/rest parameters, destructuring, spread, for-of, property descriptors, Object.freeze/seal, RegExp, JSON, Number built-ins, Error hierarchy polish, String.fromCharCode, and array HOFs. Phase 3.5 added: optional chaining (`?.`), nullish coalescing (`??`), exponentiation (`**`), computed property names, getters/setters, TDZ for let/const, global `this`/`globalThis`, and ES spec compliance fixes. Phases 1-3.5 complete.
+The MoonBit JS engine supports basic language features (variables, arithmetic, functions, closures, control flow, try/catch, new, this, switch, for-in, bitwise ops, objects, arrays), plus template literals, arrow functions, prototype chain lookup, Function.call/apply/bind, and built-in methods for Array, String, Object, and Math. Phase 3 added: arguments object, hoisting, strict mode, default/rest parameters, destructuring, spread, for-of, property descriptors, Object.freeze/seal, RegExp, JSON, Number built-ins, Error hierarchy polish, String.fromCharCode, and array HOFs. Phase 3.5 added: optional chaining (`?.`), nullish coalescing (`??`), exponentiation (`**`), computed property names, getters/setters, TDZ for let/const, global `this`/`globalThis`, and ES spec compliance fixes. Phase 3.6 added: comma-separated variable declarations, sort comparator exception handling, and built-in spec improvements. Phases 1-3.5 complete, Phase 3.6 in progress.
 
-### Test262 Category Highlights (Phase 3.5)
+### Test262 Category Highlights (Phase 3.6)
 
 | Category | Pass Rate | Notes |
 |----------|-----------|-------|
 | language/import | 100% (6/6) | Module syntax recognized |
 | language/keywords | 100% (25/25) | All keywords supported |
-| language/punctuators | 90.9% (10/11) | Near-complete |
-| language/line-terminators | 58.5% (24/41) | Good coverage |
-| language/identifiers | 55.6% (115/207) | Solid |
-| language/block-scope | 54.3% (51/94) | TDZ working |
-| language/expressions | 20.0% (769/3846) | Core ops work |
-| language/statements | 21.2% (604/2853) | Control flow works |
-| built-ins/* | 0% | Missing native method implementations |
+| language/punctuators | 100% (11/11) | Complete |
+| language/block-scope | 97.9% (92/94) | TDZ working, near-complete |
+| language/asi | 81.4% (83/102) | Automatic semicolon insertion |
+| language/identifiers | 59.4% (123/207) | Solid |
+| language/expressions | 46.4% (1785/3845) | Significant improvement |
+| language/statements | 30.6% (872/2853) | Control flow works |
+| built-ins/Math | 37.0% (105/284) | Good coverage |
+| built-ins/Number | 28.6% (80/280) | Spec compliance improving |
+| built-ins/Boolean | 23.9% (11/46) | Basic support |
+| built-ins/String | 22.6% (218/966) | Core methods working |
+| built-ins/Array | 21.1% (531/2522) | Core methods working |
+| built-ins/Object | 21.3% (670/3151) | Core methods working |
+| built-ins/RegExp | 13.8% (83/602) | Basic regex support |
 
 ### Root Cause of Current Failures
 
 **Template literals and arrow functions are now fully supported** (Phase 2). The assert.js harness parses and executes correctly.
 
-The current 8.77% pass rate is caused by **built-in method spec compliance issues**:
-- **built-ins/* category: 0% pass rate** — Array, String, Object, Number, etc. methods don't match ECMAScript spec exactly
-- Language syntax coverage is strong (keywords 100%, punctuators 91%, identifiers 56%, block-scope 54%)
-- Most failures occur because built-in methods have subtle behavioral differences from the spec (edge cases, coercion rules, return value semantics)
+The current 26.34% pass rate reflects significant progress on built-in spec compliance:
+- **built-ins/* category: ~20-37% pass rate** — Array, String, Object, Number methods now pass many tests
+- Language syntax coverage is strong (keywords 100%, punctuators 100%, block-scope 98%, expressions 46%)
+- Remaining failures are due to: missing Symbol support, generator/async features, and edge cases in built-in methods
 
 **Original harness blockers** (`this`, `throw`, `new`, `try/catch`, `switch/case`, `String()`) — **all resolved in Phase 1**.
 **Template literal harness blocker** — **resolved in Phase 2**.
+**Comma-separated declarations blocker** — **resolved in Phase 3.6** (enabled 17%+ of tests to run).
 
 ---
 
@@ -455,11 +462,26 @@ All 6 issues addressed in commit `3439764`:
 
 ---
 
-## Phase 3.6: Built-in Spec Compliance → ~25-30% pass rate 🔥 HIGHEST PRIORITY
+## Phase 3.6: Built-in Spec Compliance → 26.34% pass rate 🔄 IN PROGRESS
 
 **Goal**: Fix built-in method implementations to match ECMAScript spec. This is the #1 blocker for pass rate improvement.
 
-**Why this matters**: Built-ins account for ~70% of test262 tests. Current 0% pass rate in built-ins/* is the primary reason overall pass rate is stuck at ~8%.
+**Status**: Major progress achieved. Pass rate improved from 8.77% to 26.34% (+17.57 percentage points).
+
+### 3.6 Completed Items ✅
+- [x] **Comma-separated variable declarations** — `var a, b, c;` syntax now parsed correctly via `StmtList` AST node
+- [x] **Sort comparator exception handling** — Exceptions in sort comparefn now propagate per ECMAScript spec
+- [x] **Math.imul 32-bit masking** — Proper ToInt32 conversion for both arguments
+- [x] **String.toWellFormed** — Replaces lone surrogates with U+FFFD
+- [x] **String.isWellFormed** — Correctly detects lone surrogates with proper index advancement
+- [x] **Array.values()** — Returns array iterator
+- [x] **String.codePointAt** — Returns code point at position
+- [x] **Object.fromEntries** — Creates object from iterable of key-value pairs (with TypeError for invalid entries)
+- [x] **Object.setPrototypeOf** — Documented as stub
+- [x] **String.normalize** — Documented as stub (returns input unchanged)
+- [x] **Sort comparator sign handling** — Uses sign-based comparison to avoid truncating fractional values
+
+**Why pass rate jumped**: The comma-separated variable declaration fix unblocked ~17% of test262 tests that were previously failing at parse time.
 
 ### 3.6A. Array Spec Compliance (~2,000 tests)
 
@@ -574,12 +596,12 @@ Phase 1 (DONE) ──► Phase 2 (DONE) ──► Phase 3 (DONE) ──► Phase
                                                                 │
                                                                 ▼
                                                     ┌───────────────────────┐
-                                                    │  Phase 3.6 🔥         │
+                                                    │  Phase 3.6 🔄         │
                                                     │  Built-in Compliance  │
-                                                    │  (HIGHEST PRIORITY)   │
+                                                    │  (IN PROGRESS)        │
                                                     └───────────────────────┘
                                                                 │
-                                                          [25-30% pass rate]
+                                                          [26.34% pass rate] ✅ ACHIEVED
                                                                 │
                                                                 ▼
                                                           Phase 4 (classes, symbols, generators, promises)
@@ -595,11 +617,11 @@ Phase 1 (DONE) ──► Phase 2 (DONE) ──► Phase 3 (DONE) ──► Phase
 | Phase 1 ✅ | 8.18% | 195 | Core language, harness dependencies (except template literals) |
 | Phase 2 ✅ | ~8.5% | 288 | Template literals unblock assert.js, arrow functions, prototype chain, built-ins |
 | Phase 3 ✅ | ~8.7% | 444 | Strict mode, destructuring, spread/rest, RegExp, JSON, property descriptors, array HOFs, Number built-ins |
-| Phase 3.5 ✅ | **8.77%** (1,848/21,074) | 444 | Optional chaining, nullish coalescing, exponentiation, computed properties, getters/setters, TDZ |
-| **Phase 3.6** 🔥 | **~25-30%** | — | **Built-in spec compliance (Array, String, Object, Number, Function)** |
+| Phase 3.5 ✅ | 8.77% (1,848/21,074) | 444 | Optional chaining, nullish coalescing, exponentiation, computed properties, getters/setters, TDZ |
+| **Phase 3.6** 🔄 | **26.34%** (5,543/21,043) | 457 | **Comma-separated declarations, sort exception handling, built-in spec fixes** |
 | Phase 4 | ~35-40% | — | Classes, symbols, generators, promises |
 
-**Why pass rate stayed ~8% despite new features**: The test262 suite is heavily weighted toward built-in object tests. Language syntax tests (where this engine excels) represent only ~30% of the suite. The remaining ~70% test built-in methods (Array, String, Object, etc.) where this engine has 0% pass rate due to spec compliance gaps. **Phase 3.6 targets these built-ins directly.**
+**Why pass rate jumped from 8.77% to 26.34%**: The comma-separated variable declaration fix (`var a, b, c;`) unblocked ~17% of test262 tests that were failing at parse time. Additional built-in spec compliance improvements contributed to the remaining gains. Built-ins are no longer at 0% (Array 21.1%, String 22.6%, Object 21.3%, Math 37.0%).
 
 ---
 
@@ -651,7 +673,22 @@ Phase 1 (DONE) ──► Phase 2 (DONE) ──► Phase 3 (DONE) ──► Phase
 | **`BigInt`** | ~300 tests | ❌ TODO |
 | **TypedArrays / ArrayBuffer** | ~400 tests | ❌ TODO |
 
-### ✅ Recently Completed (Phase 3.5+)
+### ✅ Recently Completed (Phase 3.6)
+
+| Task | Commit |
+|------|--------|
+| Comma-separated variable declarations (`var a, b, c;`) | `4cba348` |
+| Sort comparator exception handling per ECMAScript spec | `0e21a2a` |
+| MoonBit syntax fix: pattern matching for Option check | `943959a` |
+| Document Array constructor sparse array limitation | `d23295b` |
+| Test262 harness simulation tests | `67b2ad4` |
+| Math.imul 32-bit masking | Phase 3.6 |
+| String.toWellFormed/isWellFormed | Phase 3.6 |
+| Array.values() iterator | Phase 3.6 |
+| String.codePointAt | Phase 3.6 |
+| Object.fromEntries with TypeError validation | Phase 3.6 |
+
+### ✅ Previously Completed (Phase 3.5)
 
 | Task | Commit |
 |------|--------|
@@ -685,4 +722,10 @@ All issues from [PR #4 review](https://github.com/dowdiness/js_engine/pull/4) ad
 
 ---
 
-**Next step**: Start **Phase 3.6** — built-in spec compliance is the #1 priority. Begin with Array methods (highest impact) or quick wins like `Array.from()`, `Object.is()`, `Object.fromEntries()`. Each built-in category fixed adds ~5-10% to pass rate.
+**Next step**: Continue **Phase 3.6** improvements. Focus areas:
+1. **Classes (`class`, `extends`, `super`)** — Would unlock ~3,000 tests, needed for many built-in tests
+2. **Symbols (`Symbol`, `Symbol.iterator`)** — Required for proper iterator protocol
+3. **Array spec edge cases** — Sparse array handling, proper length updates
+4. **String Unicode methods** — Full UTF-16 surrogate pair handling
+
+The jump from 8.77% to 26.34% demonstrates that parser fixes have high leverage. Consider investigating remaining parse failures in the test262 results.
