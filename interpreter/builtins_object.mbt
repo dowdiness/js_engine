@@ -409,7 +409,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               if key == "length" {
                 Bool(true)
               } else {
-                let idx = try { @strconv.parse_int!(key) } catch { _ => -1 }
+                let idx = try { @strconv.parse_int(key) } catch { _ => -1 }
                 Bool(idx >= 0 && idx < data.elements.length())
               }
             _ => Bool(false)
