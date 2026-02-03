@@ -174,6 +174,42 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
     }),
   )
 
+  // encodeURIComponent(string)
+  env.def_builtin(
+    "encodeURIComponent",
+    make_native_func("encodeURIComponent", fn(args) {
+      let str = if args.length() > 0 { args[0].to_string() } else { "undefined" }
+      String_(uri_encode(str, true))
+    }),
+  )
+
+  // decodeURIComponent(string)
+  env.def_builtin(
+    "decodeURIComponent",
+    make_native_func("decodeURIComponent", fn(args) {
+      let str = if args.length() > 0 { args[0].to_string() } else { "undefined" }
+      String_(uri_decode(str))
+    }),
+  )
+
+  // encodeURI(string)
+  env.def_builtin(
+    "encodeURI",
+    make_native_func("encodeURI", fn(args) {
+      let str = if args.length() > 0 { args[0].to_string() } else { "undefined" }
+      String_(uri_encode(str, false))
+    }),
+  )
+
+  // decodeURI(string)
+  env.def_builtin(
+    "decodeURI",
+    make_native_func("decodeURI", fn(args) {
+      let str = if args.length() > 0 { args[0].to_string() } else { "undefined" }
+      String_(uri_decode(str))
+    }),
+  )
+
   // String constructor with static methods
   let string_proto : Value = Object({
     properties: {},
@@ -213,12 +249,60 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
   // Number constructor with static methods and prototype
   setup_number_builtins(env)
 
-  // Boolean(value) conversion
+  // Boolean constructor with prototype
+  let boolean_proto_props : Map[String, Value] = {}
+  boolean_proto_props["toString"] = Object({
+    properties: {},
+    prototype: Null,
+    callable: Some(
+      MethodCallable("toString", fn(this_val, _args) {
+        match this_val {
+          Bool(b) => String_(b.to_string())
+          _ => raise JsException(String_("TypeError: Boolean.prototype.toString requires a Boolean"))
+        }
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    extensible: true,
+  })
+  boolean_proto_props["valueOf"] = Object({
+    properties: {},
+    prototype: Null,
+    callable: Some(
+      MethodCallable("valueOf", fn(this_val, _args) {
+        match this_val {
+          Bool(b) => Bool(b)
+          _ => raise JsException(String_("TypeError: Boolean.prototype.valueOf requires a Boolean"))
+        }
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    extensible: true,
+  })
+  let boolean_proto : Value = Object({
+    properties: boolean_proto_props,
+    prototype: Null,
+    callable: None,
+    class_name: "Boolean",
+    descriptors: {},
+    extensible: true,
+  })
   env.def_builtin(
     "Boolean",
-    make_native_func("Boolean", fn(args) {
-      let val = if args.length() > 0 { args[0] } else { Undefined }
-      Bool(is_truthy(val))
+    Object({
+      properties: { "prototype": boolean_proto },
+      prototype: Null,
+      callable: Some(
+        NativeCallable("Boolean", fn(args) {
+          let val = if args.length() > 0 { args[0] } else { Undefined }
+          Bool(is_truthy(val))
+        }),
+      ),
+      class_name: "Function",
+      descriptors: {},
+      extensible: true,
     }),
   )
 
@@ -2005,4 +2089,169 @@ fn json_escape_string(s : String) -> String {
   }
   buf.write_char('"')
   buf.to_string()
+}
+
+///|
+fn uri_encode(s : String, encode_component : Bool) -> String {
+  // Characters that are never encoded
+  // For encodeURIComponent: A-Z a-z 0-9 - _ . ! ~ * ' ( )
+  // For encodeURI: A-Z a-z 0-9 - _ . ! ~ * ' ( ) ; , / ? : @ & = + $ #
+  let buf = StringBuilder::new()
+  let chars = s.to_array()
+  let hex_digits = "0123456789ABCDEF"
+  let hd = hex_digits.to_array()
+  for c in chars {
+    let code = c.to_int()
+    let should_encode = if code >= 65 && code <= 90 {
+      // A-Z
+      false
+    } else if code >= 97 && code <= 122 {
+      // a-z
+      false
+    } else if code >= 48 && code <= 57 {
+      // 0-9
+      false
+    } else if c == '-' || c == '_' || c == '.' || c == '!' || c == '~' || c == '*' || c == '\'' || c == '(' || c == ')' {
+      false
+    } else if not(encode_component) && (c == ';' || c == ',' || c == '/' || c == '?' || c == ':' || c == '@' || c == '&' || c == '=' || c == '+' || c == '$' || c == '#') {
+      false
+    } else {
+      true
+    }
+    if should_encode {
+      if code <= 0x7F {
+        // Single byte
+        buf.write_char('%')
+        buf.write_char(hd[(code >> 4) & 0xF])
+        buf.write_char(hd[code & 0xF])
+      } else if code <= 0x7FF {
+        // Two bytes
+        let b1 = 0xC0 | (code >> 6)
+        let b2 = 0x80 | (code & 0x3F)
+        buf.write_char('%')
+        buf.write_char(hd[(b1 >> 4) & 0xF])
+        buf.write_char(hd[b1 & 0xF])
+        buf.write_char('%')
+        buf.write_char(hd[(b2 >> 4) & 0xF])
+        buf.write_char(hd[b2 & 0xF])
+      } else if code <= 0xFFFF {
+        // Three bytes
+        let b1 = 0xE0 | (code >> 12)
+        let b2 = 0x80 | ((code >> 6) & 0x3F)
+        let b3 = 0x80 | (code & 0x3F)
+        buf.write_char('%')
+        buf.write_char(hd[(b1 >> 4) & 0xF])
+        buf.write_char(hd[b1 & 0xF])
+        buf.write_char('%')
+        buf.write_char(hd[(b2 >> 4) & 0xF])
+        buf.write_char(hd[b2 & 0xF])
+        buf.write_char('%')
+        buf.write_char(hd[(b3 >> 4) & 0xF])
+        buf.write_char(hd[b3 & 0xF])
+      } else {
+        // Four bytes
+        let b1 = 0xF0 | (code >> 18)
+        let b2 = 0x80 | ((code >> 12) & 0x3F)
+        let b3 = 0x80 | ((code >> 6) & 0x3F)
+        let b4 = 0x80 | (code & 0x3F)
+        buf.write_char('%')
+        buf.write_char(hd[(b1 >> 4) & 0xF])
+        buf.write_char(hd[b1 & 0xF])
+        buf.write_char('%')
+        buf.write_char(hd[(b2 >> 4) & 0xF])
+        buf.write_char(hd[b2 & 0xF])
+        buf.write_char('%')
+        buf.write_char(hd[(b3 >> 4) & 0xF])
+        buf.write_char(hd[b3 & 0xF])
+        buf.write_char('%')
+        buf.write_char(hd[(b4 >> 4) & 0xF])
+        buf.write_char(hd[b4 & 0xF])
+      }
+    } else {
+      buf.write_char(c)
+    }
+  }
+  buf.to_string()
+}
+
+///|
+fn uri_decode(s : String) -> String {
+  let buf = StringBuilder::new()
+  let chars = s.to_array()
+  let len = chars.length()
+  let mut i = 0
+  while i < len {
+    if chars[i] == '%' && i + 2 < len {
+      let h1 = hex_char_value(chars[i + 1])
+      let h2 = hex_char_value(chars[i + 2])
+      if h1 >= 0 && h2 >= 0 {
+        let byte1 = (h1 << 4) | h2
+        // Check for multi-byte UTF-8 sequences
+        if byte1 >= 0xF0 && i + 11 < len {
+          // 4-byte sequence
+          let b2 = decode_percent_byte(chars, i + 3)
+          let b3 = decode_percent_byte(chars, i + 6)
+          let b4 = decode_percent_byte(chars, i + 9)
+          if b2 >= 0 && b3 >= 0 && b4 >= 0 {
+            let cp = ((byte1 & 0x07) << 18) | ((b2 & 0x3F) << 12) | ((b3 & 0x3F) << 6) | (b4 & 0x3F)
+            buf.write_char(cp.unsafe_to_char())
+            i = i + 12
+            continue
+          }
+        } else if byte1 >= 0xE0 && i + 8 < len {
+          // 3-byte sequence
+          let b2 = decode_percent_byte(chars, i + 3)
+          let b3 = decode_percent_byte(chars, i + 6)
+          if b2 >= 0 && b3 >= 0 {
+            let cp = ((byte1 & 0x0F) << 12) | ((b2 & 0x3F) << 6) | (b3 & 0x3F)
+            buf.write_char(cp.unsafe_to_char())
+            i = i + 9
+            continue
+          }
+        } else if byte1 >= 0xC0 && i + 5 < len {
+          // 2-byte sequence
+          let b2 = decode_percent_byte(chars, i + 3)
+          if b2 >= 0 {
+            let cp = ((byte1 & 0x1F) << 6) | (b2 & 0x3F)
+            buf.write_char(cp.unsafe_to_char())
+            i = i + 6
+            continue
+          }
+        }
+        // Single byte
+        buf.write_char(byte1.unsafe_to_char())
+        i = i + 3
+        continue
+      }
+    }
+    buf.write_char(chars[i])
+    i = i + 1
+  }
+  buf.to_string()
+}
+
+///|
+fn hex_char_value(c : Char) -> Int {
+  let code = c.to_int()
+  if code >= 48 && code <= 57 {
+    code - 48
+  } else if code >= 65 && code <= 70 {
+    code - 55
+  } else if code >= 97 && code <= 102 {
+    code - 87
+  } else {
+    -1
+  }
+}
+
+///|
+fn decode_percent_byte(chars : Array[Char], pos : Int) -> Int {
+  if chars[pos] == '%' {
+    let h1 = hex_char_value(chars[pos + 1])
+    let h2 = hex_char_value(chars[pos + 2])
+    if h1 >= 0 && h2 >= 0 {
+      return (h1 << 4) | h2
+    }
+  }
+  -1
 }
