@@ -382,12 +382,12 @@ fn char_eq_icase(a : Char, b : Char, icase : Bool) -> Bool {
   }
   // Compare lowercased
   let al = if a >= 'A' && a <= 'Z' {
-    Char::from_int(a.to_int() + 32)
+    (a.to_int() + 32).unsafe_to_char()
   } else {
     a
   }
   let bl = if b >= 'A' && b <= 'Z' {
-    Char::from_int(b.to_int() + 32)
+    (b.to_int() + 32).unsafe_to_char()
   } else {
     b
   }
@@ -404,7 +404,7 @@ fn match_char_class_icase(
   let c = if icase {
     // Lowercase for range comparison
     if ch >= 'A' && ch <= 'Z' {
-      Char::from_int(ch.to_int() + 32)
+      (ch.to_int() + 32).unsafe_to_char()
     } else {
       ch
     }
@@ -415,12 +415,12 @@ fn match_char_class_icase(
   for range in ranges {
     let (lo, hi) = range
     let lo2 = if icase && lo >= 'A' && lo <= 'Z' {
-      Char::from_int(lo.to_int() + 32)
+      (lo.to_int() + 32).unsafe_to_char()
     } else {
       lo
     }
     let hi2 = if icase && hi >= 'A' && hi <= 'Z' {
-      Char::from_int(hi.to_int() + 32)
+      (hi.to_int() + 32).unsafe_to_char()
     } else {
       hi
     }
