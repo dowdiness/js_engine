@@ -425,6 +425,9 @@ fn Parser::parse_postfix(self : Parser) -> @ast.Expr raise Error {
 ///|
 fn Parser::parse_call(self : Parser) -> @ast.Expr raise Error {
   let mut expr = self.parse_primary()
+  // Track if we're in an optional chain - once we see ?., all subsequent
+  // member/computed/call accesses in the chain should short-circuit
+  let mut in_optional_chain = false
   while true {
     if self.at(LParen) {
       let loc = self.advance().loc
@@ -446,19 +449,32 @@ fn Parser::parse_call(self : Parser) -> @ast.Expr raise Error {
         }
       }
       let _ = self.expect(RParen)
-      expr = Call(expr, args, loc)
+      if in_optional_chain {
+        expr = OptionalCall(expr, args, loc)
+      } else {
+        expr = Call(expr, args, loc)
+      }
     } else if self.at(Dot) {
       let _ = self.advance()
       let name = self.expect_ident()
       let loc = self.peek().loc
-      expr = Member(expr, name, loc)
+      if in_optional_chain {
+        expr = OptionalMember(expr, name, loc)
+      } else {
+        expr = Member(expr, name, loc)
+      }
     } else if self.at(LBracket) {
       let loc = self.advance().loc
       let key = self.parse_expr()
       let _ = self.expect(RBracket)
-      expr = ComputedMember(expr, key, loc)
+      if in_optional_chain {
+        expr = OptionalComputedMember(expr, key, loc)
+      } else {
+        expr = ComputedMember(expr, key, loc)
+      }
     } else if self.at(QuestionDot) {
-      // Optional chaining: ?.
+      // Optional chaining: ?. - start/continue optional chain
+      in_optional_chain = true
       let loc = self.advance().loc
       if self.at(LParen) {
         // Optional call: obj?.(args)
