@@ -1073,7 +1073,7 @@ fn flatten_array(
 }
 
 ///|
-fn strict_equal_val(a : Value, b : Value) -> Bool {
+pub fn strict_equal_val(a : Value, b : Value) -> Bool {
   match (a, b) {
     (Number(a), Number(b)) => a == b
     (String_(a), String_(b)) => a == b
@@ -1087,7 +1087,7 @@ fn strict_equal_val(a : Value, b : Value) -> Bool {
 }
 
 ///|
-fn same_value_zero(a : Value, b : Value) -> Bool {
+pub fn same_value_zero(a : Value, b : Value) -> Bool {
   match (a, b) {
     (Number(a), Number(b)) =>
       if a.is_nan() && b.is_nan() {
