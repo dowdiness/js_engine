@@ -766,7 +766,7 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
       props.push({ key: key_expr, value, kind: @ast.Init, computed })
     } else if self.at(Comma) || self.at(RBrace) {
       // Shorthand property: { x } => { x: x }
-      let value = Ident(key_name, loc)
+      let value : @ast.Expr = Ident(key_name, loc)
       props.push({ key: key_expr, value, kind: @ast.Init, computed: false })
     } else {
       let t = self.peek()
