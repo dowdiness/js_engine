@@ -20,8 +20,15 @@ test262-download:
 		echo "Test262 already present."; \
 	fi
 
-# Run the full Test262 conformance suite (optimized with harness caching and parallel execution)
+# Run the full Test262 conformance suite (batch mode: no subprocess overhead!)
 test262: build test262-download
+	python3 test262-batch-runner.py \
+		--engine "moon run cmd/test262" \
+		--test262 ./test262 \
+		--output test262-results.json
+
+# Legacy runner (with subprocess overhead - kept for debugging)
+test262-legacy: build test262-download
 	python3 test262-runner.py \
 		--engine "moon run cmd/main --" \
 		--test262 ./test262 \

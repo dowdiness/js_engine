@@ -1,0 +1,10 @@
+{
+  "is-main": true,
+  "import": [
+    {
+      "path": "dowdiness/js_engine",
+      "alias": "lib"
+    },
+    "moonbitlang/core/io"
+  ]
+}

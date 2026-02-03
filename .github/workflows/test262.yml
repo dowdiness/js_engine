@@ -41,16 +41,12 @@ jobs:
       - name: Install Python dependencies
         run: pip install pyyaml
 
-      - name: Run Test262 conformance tests
+      - name: Run Test262 conformance tests (Batch Mode)
         run: |
-          echo "CPU info:"
-          nproc
-          lscpu | grep -E '^Thread|^Core|^Socket|^CPU\(' || true
-          python3 test262-runner.py \
-            --engine "moon run cmd/main --" \
+          echo "Using batch runner to eliminate subprocess overhead"
+          python3 test262-batch-runner.py \
+            --engine "moon run cmd/test262" \
             --test262 ./test262 \
-            --threads 12 \
-            --timeout 5 \
             --output test262-results.json \
             --summary
         continue-on-error: true
