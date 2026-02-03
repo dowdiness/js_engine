@@ -841,7 +841,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
                   let mut caught_error : Error? = None
                   result.sort_by(fn(a, b) {
                     // Skip comparisons if we already have an error
-                    if caught_error.is_empty().not() {
+                    if caught_error is Some(_) {
                       return 0
                     }
                     let compare_result = try {
@@ -1036,7 +1036,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
                   let mut caught_error : Error? = None
                   arr.elements.sort_by(fn(a, b) {
                     // Skip comparisons if we already have an error
-                    if caught_error.is_empty().not() {
+                    if caught_error is Some(_) {
                       return 0
                     }
                     let result = try {

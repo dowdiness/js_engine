@@ -1259,7 +1259,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 // Store any exception to re-throw after sort (spec requires propagation)
                 let mut caught_error : Error? = None
                 arr.elements.sort_by(fn(a, b) {
-                  if caught_error.is_empty().not() { return 0 }
+                  if caught_error is Some(_) { return 0 }
                   let result = try {
                     interp.call_value(comparefn, Undefined, [a, b], loc)
                   } catch {
@@ -1539,7 +1539,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 // Store any exception to re-throw after sort (spec requires propagation)
                 let mut caught_error : Error? = None
                 result.sort_by(fn(a, b) {
-                  if caught_error.is_empty().not() { return 0 }
+                  if caught_error is Some(_) { return 0 }
                   let cmp_result = try {
                     interp.call_value(comparefn, Undefined, [a, b], loc)
                   } catch {
