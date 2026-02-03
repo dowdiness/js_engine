@@ -522,8 +522,15 @@ fn setup_math_builtins(env : Environment) -> Unit {
     let b = if args.length() > 1 { to_number(args[1]) } else { 0.0 }
     let int_a = to_int32(a)
     let int_b = to_int32(b)
-    // Perform 32-bit multiplication and return lower 32 bits as signed
-    let result = int_a * int_b
+    // Perform 32-bit multiplication and mask to lower 32 bits as signed
+    let product = int_a.to_int64() * int_b.to_int64()
+    let masked = product.land(0xFFFFFFFFL)
+    // Convert to signed 32-bit
+    let result = if masked > 0x7FFFFFFFL {
+      (masked - 0x100000000L).to_int()
+    } else {
+      masked.to_int()
+    }
     Number(result.to_double())
   })
   math_props["fround"] = make_native_func("fround", fn(args) {

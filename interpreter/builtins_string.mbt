@@ -57,7 +57,18 @@ pub fn get_string_method(s : String, prop : String) -> Value {
           0
         }
         if idx >= 0 && idx < chars.length() {
-          Number(chars[idx].to_int().to_double())
+          let code = chars[idx].to_int()
+          // Check for high surrogate
+          if code >= 0xD800 && code <= 0xDBFF && idx + 1 < chars.length() {
+            let next = chars[idx + 1].to_int()
+            // Check for low surrogate
+            if next >= 0xDC00 && next <= 0xDFFF {
+              // Combine surrogate pair to get code point
+              let cp = (code - 0xD800) * 0x400 + (next - 0xDC00) + 0x10000
+              return Number(cp.to_double())
+            }
+          }
+          Number(code.to_double())
         } else {
           Undefined
         }
@@ -767,14 +778,18 @@ pub fn get_string_method(s : String, prop : String) -> Value {
         // Replace lone surrogates with U+FFFD
         let c = str.to_array()
         let buf = StringBuilder::new()
-        for i = 0; i < c.length(); i = i + 1 {
+        let mut i = 0
+        while i < c.length() {
           let code = c[i].to_int()
           if code >= 0xD800 && code <= 0xDBFF {
             if i + 1 < c.length() {
               let next = c[i + 1].to_int()
               if next >= 0xDC00 && next <= 0xDFFF {
-                // Valid surrogate pair
+                // Valid surrogate pair - write both and skip ahead
                 buf.write_char(c[i])
+                buf.write_char(c[i + 1])
+                i = i + 2
+                continue
               } else {
                 buf.write_char('\u{FFFD}')
               }
@@ -786,6 +801,7 @@ pub fn get_string_method(s : String, prop : String) -> Value {
           } else {
             buf.write_char(c[i])
           }
+          i = i + 1
         }
         String_(buf.to_string())
       })

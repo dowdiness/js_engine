@@ -356,7 +356,12 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
       let arr = data
       make_native_func("values", fn(_args) {
         // Returns array of values (basic non-iterator version)
-        Array({ elements: arr.elements })
+        // Return a copy to prevent mutation of the original
+        let result : Array[Value] = []
+        for el in arr.elements {
+          result.push(el)
+        }
+        Array({ elements: result })
       })
     }
     "splice" => {

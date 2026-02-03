@@ -1453,7 +1453,12 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     callable: Some(MethodCallable("values", fn(this_val, _args) {
       match this_val {
         Array(arr) => {
-          Array({ elements: arr.elements })
+          // Return a copy to prevent mutation of the original
+          let result : Array[Value] = []
+          for el in arr.elements {
+            result.push(el)
+          }
+          Array({ elements: result })
         }
         _ => raise JsException(String_("TypeError: values called on non-array"))
       }
