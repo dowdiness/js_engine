@@ -126,6 +126,11 @@ pub(all) enum Expr {
   OptionalMember(Expr, String, @token.Loc) // obj?.prop
   OptionalComputedMember(Expr, Expr, @token.Loc) // obj?.[expr]
   OptionalCall(Expr, Array[Expr], @token.Loc) // func?.(args)
+  // Class expressions
+  ClassExpr(String?, Expr?, Array[ClassMethod], @token.Loc) // name, superclass, methods
+  SuperCall(Array[Expr], @token.Loc) // super(args)
+  SuperMember(String, @token.Loc) // super.prop
+  SuperComputedMember(Expr, @token.Loc) // super[expr]
 } derive(Show, Eq)
 
 ///|
@@ -146,6 +151,15 @@ pub(all) struct PropPat {
   key : String
   value : Pattern
   default_val : Expr?
+} derive(Show, Eq)
+
+///|
+pub(all) struct ClassMethod {
+  key : Expr // StringLit for static keys, any Expr for computed keys
+  value : Expr // Usually FuncExpr or FuncExprExt
+  kind : PropKind // Init for regular method, Get for getter, Set for setter
+  computed : Bool // true for [expr]() syntax
+  is_static : Bool // true for static methods
 } derive(Show, Eq)
 
 ///|
@@ -170,6 +184,8 @@ pub(all) enum Stmt {
   ForOfStmt(VarKind?, String, Expr, Stmt, @token.Loc)
   DestructureDecl(VarKind, Pattern, Expr, @token.Loc)
   LabeledStmt(String, Stmt, @token.Loc)
+  // Class declaration
+  ClassDecl(String, Expr?, Array[ClassMethod], @token.Loc) // name, superclass, methods
 } derive(Show, Eq)
 
 ///|
