@@ -588,10 +588,7 @@ def main():
 
     # Auto-detect thread count if not specified
     if args.threads is None:
-        try:
-            args.threads = os.cpu_count() or 4
-        except:
-            args.threads = 4
+        args.threads = os.cpu_count() or 4
 
     # Ensure at least 1 thread
     args.threads = max(1, args.threads)
