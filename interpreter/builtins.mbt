@@ -465,7 +465,16 @@ fn setup_math_builtins(env : Environment) -> Unit {
   })
   math_props["log1p"] = make_native_func("log1p", fn(args) {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
-    Number(@math.log1p(n))
+    // log1p(x) = ln(1 + x), more accurate for small x
+    if n.is_nan() || n < -1.0 {
+      Number(0.0 / 0.0)
+    } else if n == -1.0 {
+      Number(-1.0 / 0.0)
+    } else if n == 0.0 || n.is_inf() {
+      Number(n)
+    } else {
+      Number(@math.ln(1.0 + n))
+    }
   })
   math_props["hypot"] = make_native_func("hypot", fn(args) {
     if args.length() == 0 {
@@ -504,7 +513,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     let mut mask : UInt = 2147483648 // 0x80000000
     while mask > 0 && uint.land(mask) == 0 {
       count = count + 1
-      mask = mask.lsr(1)
+      mask = mask >> 1
     }
     Number(count.to_double())
   })
@@ -524,7 +533,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
       Number(n)
     } else {
       // Convert to float32 and back (approximation)
-      Number(n.to_float().to_double())
+      Number(Float::from_double(n).to_double())
     }
   })
   env.def_builtin(

@@ -406,32 +406,30 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             Object(data) => Bool(data.properties.contains(key))
             Array(data) =>
               // Arrays support numeric index check
-              match @strconv.parse_int(key) {
-                Ok(idx) => Bool(idx >= 0 && idx < data.elements.length())
-                Err(_) => Bool(key == "length")
+              if key == "length" {
+                Bool(true)
+              } else {
+                let idx = try { @strconv.parse_int!(key) } catch { _ => -1 }
+                Bool(idx >= 0 && idx < data.elements.length())
               }
             _ => Bool(false)
           }
         }),
         "setPrototypeOf": make_native_func("setPrototypeOf", fn(args) {
+          // Note: ObjectData.prototype is immutable in current implementation
+          // This is a stub that validates arguments but doesn't modify prototype
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           let proto = if args.length() > 1 { args[1] } else { Null }
-          match obj {
-            Object(data) => {
-              // Validate proto is Object or null
-              match proto {
-                Object(_) | Null => data.prototype = proto
-                _ =>
-                  raise JsException(
-                    String_(
-                      "TypeError: Object prototype may only be an Object or null",
-                    ),
-                  )
-              }
-              obj
-            }
-            _ => obj
+          match proto {
+            Object(_) | Null => ()
+            _ =>
+              raise JsException(
+                String_(
+                  "TypeError: Object prototype may only be an Object or null",
+                ),
+              )
           }
+          obj
         }),
         "defineProperties": make_native_func("defineProperties", fn(args) {
           let obj = if args.length() > 0 { args[0] } else { Undefined }

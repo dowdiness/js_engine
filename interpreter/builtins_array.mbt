@@ -314,7 +314,7 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
           end = len
         }
         // Copy elements
-        let count = @math.minimum(end - start, len - target)
+        let count = if end - start < len - target { end - start } else { len - target }
         if count > 0 {
           // Copy to temporary first to handle overlapping
           let temp : Array[Value] = []
