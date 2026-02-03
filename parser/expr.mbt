@@ -153,6 +153,14 @@ fn Parser::parse_or(self : Parser) -> @ast.Expr raise Error {
     }
     if is_nullish {
       seen_nullish = true
+      // Check if left contains && - this means "a && b ?? c" pattern
+      match left {
+        Binary(@ast.And, _, _, _) =>
+          raise Failure::Failure(
+            "Cannot mix logical AND (&&) with nullish coalescing (??) without parentheses",
+          )
+        _ => ()
+      }
     } else {
       seen_or = true
     }
@@ -339,10 +347,11 @@ fn Parser::parse_exponentiation(self : Parser) -> @ast.Expr raise Error {
   let base = self.parse_unary()
   if self.at(StarStar) {
     // Check for unary operator on LHS - this is a syntax error in JS
+    // Per ES spec, all unary operators (not just -, !, ~) are disallowed
     match base {
       Unary(op, _, _) =>
         match op {
-          @ast.Neg | @ast.Not | @ast.BitNot =>
+          @ast.Neg | @ast.Not | @ast.BitNot | @ast.Typeof | @ast.Void | @ast.Delete =>
             raise Failure::Failure(
               "Unary operator used immediately before exponentiation expression. Parentheses must be used to disambiguate.",
             )
