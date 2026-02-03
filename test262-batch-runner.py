@@ -42,7 +42,7 @@ def discover_tests(test262_dir, filter_pattern=""):
     return sorted(test_files)
 
 
-def run_tests_batch(engine_cmd, test_files, batch_size=1000):
+def run_tests_batch(engine_cmd, test_files, batch_size=100):
     """Run tests using batch mode - processes in chunks to avoid memory limits."""
     print(f"Processing {len(test_files)} tests in batches of {batch_size}...")
 
@@ -151,8 +151,8 @@ def main():
                         help="Write JSON results to this file")
     parser.add_argument("--summary", action="store_true",
                         help="Print summary only")
-    parser.add_argument("--batch-size", type=int, default=1000,
-                        help="Number of tests per batch (default: 1000)")
+    parser.add_argument("--batch-size", type=int, default=100,
+                        help="Number of tests per batch (default: 100)")
 
     args = parser.parse_args()
 
