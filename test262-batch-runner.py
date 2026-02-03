@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """
-Test262 Batch Runner - Uses persistent MoonBit process to eliminate subprocess overhead.
+Test262 Batch Runner - Uses file-based batch processing to eliminate subprocess overhead.
 
-This runner starts a single MoonBit process that reads tests from stdin,
-eliminating the ~50-100ms startup overhead per test. This can provide
-10-100x speedup compared to spawning a subprocess for each test.
+This runner writes all test sources to a batch file, then invokes MoonBit once
+to process all tests, eliminating the ~50-100ms startup overhead per test.
+This can provide 10-100x speedup compared to spawning a subprocess for each test.
 
 Protocol:
-    Python -> MoonBit: <<<SOURCE>>>\n<javascript code>\n<<<END>>>
-    MoonBit -> Python: PASS or FAIL or ERROR
+    1. Python writes all test sources to batch-input.txt (separated by <<<TESTSEP>>>)
+    2. Python runs: moon run cmd/test262 batch-input.txt
+    3. MoonBit processes all tests and outputs one line per test: PASS/FAIL/ERROR
+    4. Python reads results and cleans up
 
 Usage:
     python3 test262-batch-runner.py [options]
@@ -19,6 +21,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import time
 
 
@@ -40,117 +43,85 @@ def discover_tests(test262_dir, filter_pattern=""):
 
 
 def run_tests_batch(engine_cmd, test_files):
-    """Run tests using batch mode - single process for all tests."""
-    print(f"Starting batch runner: {' '.join(engine_cmd)}")
+    """Run tests using batch mode - single invocation for all tests."""
+    print(f"Creating batch file with {len(test_files)} tests...")
 
-    # Start the batch runner process
-    proc = subprocess.Popen(
-        engine_cmd,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        bufsize=1,  # Line buffered
-    )
-
-    # Wait for READY signal
+    # Create temporary batch file
+    batch_file = None
     try:
-        ready_line = proc.stdout.readline()
-        if "READY" not in ready_line:
-            stderr = proc.stderr.read()
-            print(f"Error: Batch runner didn't signal READY", file=sys.stderr)
-            print(f"Stdout: {ready_line}", file=sys.stderr)
-            print(f"Stderr: {stderr}", file=sys.stderr)
-            proc.terminate()
-            return []
-    except Exception as e:
-        print(f"Error waiting for READY: {e}", file=sys.stderr)
-        proc.terminate()
-        return []
+        # Write all test sources to batch file
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as f:
+            batch_file = f.name
+            for i, test_file in enumerate(test_files):
+                try:
+                    with open(test_file, "r", encoding="utf-8") as tf:
+                        source = tf.read()
+                        f.write(source)
+                        if i < len(test_files) - 1:
+                            f.write("\n<<<TESTSEP>>>\n")
+                except Exception as e:
+                    print(f"Warning: Failed to read {test_file}: {e}", file=sys.stderr)
+                    f.write(f"// ERROR: Failed to read file\n")
+                    if i < len(test_files) - 1:
+                        f.write("\n<<<TESTSEP>>>\n")
 
-    print(f"Batch runner ready. Processing {len(test_files)} tests...")
+        print(f"Running batch processor: {' '.join(engine_cmd + [batch_file])}")
+        start_time = time.monotonic()
 
-    results = []
-    start_time = time.monotonic()
+        # Run batch processor
+        result = subprocess.run(
+            engine_cmd + [batch_file],
+            capture_output=True,
+            text=True,
+            timeout=600  # 10 minute timeout
+        )
 
-    for i, test_file in enumerate(test_files):
-        # Read test source
-        try:
-            with open(test_file, "r", encoding="utf-8") as f:
-                source = f.read()
-        except Exception as e:
-            results.append({
-                "path": test_file,
-                "status": "error",
-                "reason": f"Failed to read file: {e}"
-            })
-            continue
+        elapsed = time.monotonic() - start_time
 
-        # Send test to batch runner using delimiter protocol
-        try:
-            proc.stdin.write("<<<SOURCE>>>\n")
-            proc.stdin.write(source)
-            if not source.endswith("\n"):
-                proc.stdin.write("\n")
-            proc.stdin.write("<<<END>>>\n")
-            proc.stdin.flush()
-        except Exception as e:
-            results.append({
-                "path": test_file,
-                "status": "error",
-                "reason": f"Failed to send test: {e}"
-            })
-            break
+        if result.returncode != 0 and result.stderr:
+            print(f"Batch runner error: {result.stderr}", file=sys.stderr)
 
-        # Read result
-        try:
-            result_line = proc.stdout.readline()
-            if not result_line:
-                results.append({
-                    "path": test_file,
-                    "status": "error",
-                    "reason": "Batch runner died"
-                })
+        # Parse results
+        lines = result.stdout.strip().split("\n")
+        results = []
+
+        # First line should be READY:count
+        if lines and lines[0].startswith("READY:"):
+            test_count = int(lines[0].split(":")[1])
+            print(f"Batch runner ready. Processing {test_count} tests...")
+            lines = lines[1:]  # Skip READY line
+
+        # Each remaining line is a result
+        for i, line in enumerate(lines):
+            if i >= len(test_files):
                 break
 
-            status = result_line.strip().lower()
+            status = line.strip().lower()
             if status not in ["pass", "fail", "error"]:
-                results.append({
-                    "path": test_file,
-                    "status": "error",
-                    "reason": f"Invalid status: {result_line}"
-                })
-            else:
-                results.append({
-                    "path": test_file,
-                    "status": status,
-                    "reason": ""
-                })
+                status = "error"
 
-        except Exception as e:
             results.append({
-                "path": test_file,
-                "status": "error",
-                "reason": f"Failed to read result: {e}"
+                "path": test_files[i],
+                "status": status,
+                "reason": ""
             })
-            break
 
-        # Progress reporting
-        if (i + 1) % 1000 == 0:
-            elapsed = time.monotonic() - start_time
-            rate = (i + 1) / elapsed
-            eta = (len(test_files) - (i + 1)) / rate if rate > 0 else 0
-            print(f"  Progress: {i+1}/{len(test_files)} ({rate:.0f} tests/sec, ETA: {eta/60:.1f}m)")
+        # Fill in missing results as errors
+        while len(results) < len(test_files):
+            results.append({
+                "path": test_files[len(results)],
+                "status": "error",
+                "reason": "No result from batch runner"
+            })
 
-    # Send EXIT command
-    try:
-        proc.stdin.write("EXIT\n")
-        proc.stdin.flush()
-        proc.wait(timeout=5)
-    except:
-        proc.terminate()
+        print(f"Batch processing completed in {elapsed:.1f}s ({len(test_files)/elapsed:.0f} tests/sec)")
 
-    return results
+        return results
+
+    finally:
+        # Clean up batch file
+        if batch_file and os.path.exists(batch_file):
+            os.unlink(batch_file)
 
 
 def main():
