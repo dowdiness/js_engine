@@ -1959,6 +1959,21 @@ fn Interpreter::eval_member(
 }
 
 ///|
+fn get_bound_func_name(target : Value) -> String {
+  match target {
+    Object(td) =>
+      match td.callable {
+        Some(UserFunc(fd)) => "bound " + fd.name.or("")
+        Some(UserFuncExt(fd)) => "bound " + fd.name.or("")
+        Some(NativeCallable(n, _)) => "bound " + n
+        Some(_) => "bound "
+        None => "bound "
+      }
+    _ => "bound "
+  }
+}
+
+///|
 fn Interpreter::get_property(
   _self : Interpreter,
   obj : Value,
@@ -2064,39 +2079,12 @@ fn Interpreter::get_property(
                 return Number(param_count.to_double())
               } else if prop == "name" {
                 // Return the function name
-                let func_name = match callable {
-                  UserFunc(func_data) =>
-                    match func_data.name {
-                      Some(n) => n
-                      None => ""
-                    }
-                  UserFuncExt(func_data) =>
-                    match func_data.name {
-                      Some(n) => n
-                      None => ""
-                    }
-                  ArrowFunc(_) | ArrowFuncExt(_) => ""
-                  BoundFunc(target, _, _) =>
-                    match target {
-                      Object(td) =>
-                        match td.callable {
-                          Some(UserFunc(fd)) =>
-                            "bound " +
-                            match fd.name {
-                              Some(n) => n
-                              None => ""
-                            }
-                          Some(UserFuncExt(fd)) =>
-                            "bound " +
-                            match fd.name {
-                              Some(n) => n
-                              None => ""
-                            }
-                          Some(NativeCallable(n, _)) => "bound " + n
-                          _ => "bound "
-                        }
-                      _ => "bound "
-                    }
+                let func_name : String = match callable {
+                  UserFunc(func_data) => func_data.name.or("")
+                  UserFuncExt(func_data) => func_data.name.or("")
+                  ArrowFunc(_) => ""
+                  ArrowFuncExt(_) => ""
+                  BoundFunc(target, _, _) => get_bound_func_name(target)
                   NativeCallable(n, _) => n
                   FuncCallMethod(_) => "call"
                   FuncApplyMethod(_) => "apply"
@@ -2266,39 +2254,12 @@ fn Interpreter::get_computed_property(
                 return Number(param_count.to_double())
               } else if prop == "name" {
                 // Return the function name
-                let func_name = match callable {
-                  UserFunc(func_data) =>
-                    match func_data.name {
-                      Some(n) => n
-                      None => ""
-                    }
-                  UserFuncExt(func_data) =>
-                    match func_data.name {
-                      Some(n) => n
-                      None => ""
-                    }
-                  ArrowFunc(_) | ArrowFuncExt(_) => ""
-                  BoundFunc(target, _, _) =>
-                    match target {
-                      Object(td) =>
-                        match td.callable {
-                          Some(UserFunc(fd)) =>
-                            "bound " +
-                            match fd.name {
-                              Some(n) => n
-                              None => ""
-                            }
-                          Some(UserFuncExt(fd)) =>
-                            "bound " +
-                            match fd.name {
-                              Some(n) => n
-                              None => ""
-                            }
-                          Some(NativeCallable(n, _)) => "bound " + n
-                          _ => "bound "
-                        }
-                      _ => "bound "
-                    }
+                let func_name : String = match callable {
+                  UserFunc(func_data) => func_data.name.or("")
+                  UserFuncExt(func_data) => func_data.name.or("")
+                  ArrowFunc(_) => ""
+                  ArrowFuncExt(_) => ""
+                  BoundFunc(target, _, _) => get_bound_func_name(target)
                   NativeCallable(n, _) => n
                   FuncCallMethod(_) => "call"
                   FuncApplyMethod(_) => "apply"
