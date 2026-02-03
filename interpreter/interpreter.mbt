@@ -1984,7 +1984,7 @@ fn Interpreter::get_property(
           }
           // Built-in Function methods (for callable objects)
           match data.callable {
-            Some(_) =>
+            Some(callable) =>
               if prop == "call" {
                 return Object({
                   properties: {},
@@ -2024,6 +2024,86 @@ fn Interpreter::get_property(
                     extensible: true,
                   })
                 })
+              } else if prop == "length" {
+                // Return the number of formal parameters
+                let param_count = match callable {
+                  UserFunc(func_data) => func_data.params.length()
+                  UserFuncExt(func_data) => func_data.params.length()
+                  ArrowFunc(func_data) => func_data.params.length()
+                  ArrowFuncExt(func_data) => func_data.params.length()
+                  BoundFunc(target, _, bound_args) =>
+                    match target {
+                      Object(td) =>
+                        match td.callable {
+                          Some(UserFunc(fd)) => {
+                            let diff = fd.params.length() - bound_args.length()
+                            if diff < 0 { 0 } else { diff }
+                          }
+                          Some(UserFuncExt(fd)) => {
+                            let diff = fd.params.length() - bound_args.length()
+                            if diff < 0 { 0 } else { diff }
+                          }
+                          Some(ArrowFunc(fd)) => {
+                            let diff = fd.params.length() - bound_args.length()
+                            if diff < 0 { 0 } else { diff }
+                          }
+                          Some(ArrowFuncExt(fd)) => {
+                            let diff = fd.params.length() - bound_args.length()
+                            if diff < 0 { 0 } else { diff }
+                          }
+                          _ => 0
+                        }
+                      _ => 0
+                    }
+                  NativeCallable(_, _) => 0
+                  FuncCallMethod(_) => 1
+                  FuncApplyMethod(_) => 2
+                  MethodCallable(_, _) => 0
+                  InterpreterCallable(_, _) => 0
+                }
+                return Number(param_count.to_double())
+              } else if prop == "name" {
+                // Return the function name
+                let func_name = match callable {
+                  UserFunc(func_data) =>
+                    match func_data.name {
+                      Some(n) => n
+                      None => ""
+                    }
+                  UserFuncExt(func_data) =>
+                    match func_data.name {
+                      Some(n) => n
+                      None => ""
+                    }
+                  ArrowFunc(_) | ArrowFuncExt(_) => ""
+                  BoundFunc(target, _, _) =>
+                    match target {
+                      Object(td) =>
+                        match td.callable {
+                          Some(UserFunc(fd)) =>
+                            "bound " +
+                            match fd.name {
+                              Some(n) => n
+                              None => ""
+                            }
+                          Some(UserFuncExt(fd)) =>
+                            "bound " +
+                            match fd.name {
+                              Some(n) => n
+                              None => ""
+                            }
+                          Some(NativeCallable(n, _)) => "bound " + n
+                          _ => "bound "
+                        }
+                      _ => "bound "
+                    }
+                  NativeCallable(n, _) => n
+                  FuncCallMethod(_) => "call"
+                  FuncApplyMethod(_) => "apply"
+                  MethodCallable(n, _) => n
+                  InterpreterCallable(n, _) => n
+                }
+                return String_(func_name)
               }
             None => ()
           }
@@ -2106,7 +2186,7 @@ fn Interpreter::get_computed_property(
           }
           // Built-in Function methods (for callable objects)
           match data.callable {
-            Some(_) =>
+            Some(callable) =>
               if prop == "call" {
                 return Object({
                   properties: {},
@@ -2146,6 +2226,86 @@ fn Interpreter::get_computed_property(
                     extensible: true,
                   })
                 })
+              } else if prop == "length" {
+                // Return the number of formal parameters
+                let param_count = match callable {
+                  UserFunc(func_data) => func_data.params.length()
+                  UserFuncExt(func_data) => func_data.params.length()
+                  ArrowFunc(func_data) => func_data.params.length()
+                  ArrowFuncExt(func_data) => func_data.params.length()
+                  BoundFunc(target, _, bound_args) =>
+                    match target {
+                      Object(td) =>
+                        match td.callable {
+                          Some(UserFunc(fd)) => {
+                            let diff = fd.params.length() - bound_args.length()
+                            if diff < 0 { 0 } else { diff }
+                          }
+                          Some(UserFuncExt(fd)) => {
+                            let diff = fd.params.length() - bound_args.length()
+                            if diff < 0 { 0 } else { diff }
+                          }
+                          Some(ArrowFunc(fd)) => {
+                            let diff = fd.params.length() - bound_args.length()
+                            if diff < 0 { 0 } else { diff }
+                          }
+                          Some(ArrowFuncExt(fd)) => {
+                            let diff = fd.params.length() - bound_args.length()
+                            if diff < 0 { 0 } else { diff }
+                          }
+                          _ => 0
+                        }
+                      _ => 0
+                    }
+                  NativeCallable(_, _) => 0
+                  FuncCallMethod(_) => 1
+                  FuncApplyMethod(_) => 2
+                  MethodCallable(_, _) => 0
+                  InterpreterCallable(_, _) => 0
+                }
+                return Number(param_count.to_double())
+              } else if prop == "name" {
+                // Return the function name
+                let func_name = match callable {
+                  UserFunc(func_data) =>
+                    match func_data.name {
+                      Some(n) => n
+                      None => ""
+                    }
+                  UserFuncExt(func_data) =>
+                    match func_data.name {
+                      Some(n) => n
+                      None => ""
+                    }
+                  ArrowFunc(_) | ArrowFuncExt(_) => ""
+                  BoundFunc(target, _, _) =>
+                    match target {
+                      Object(td) =>
+                        match td.callable {
+                          Some(UserFunc(fd)) =>
+                            "bound " +
+                            match fd.name {
+                              Some(n) => n
+                              None => ""
+                            }
+                          Some(UserFuncExt(fd)) =>
+                            "bound " +
+                            match fd.name {
+                              Some(n) => n
+                              None => ""
+                            }
+                          Some(NativeCallable(n, _)) => "bound " + n
+                          _ => "bound "
+                        }
+                      _ => "bound "
+                    }
+                  NativeCallable(n, _) => n
+                  FuncCallMethod(_) => "call"
+                  FuncApplyMethod(_) => "apply"
+                  MethodCallable(n, _) => n
+                  InterpreterCallable(n, _) => n
+                }
+                return String_(func_name)
               }
             None => ()
           }
@@ -2521,6 +2681,13 @@ fn Interpreter::eval_compound_assign(
   env : Environment,
   loc : @token.Loc,
 ) -> Value raise Error {
+  // Handle logical assignment operators with short-circuit semantics
+  match op {
+    LogicalAndAssign => return self.eval_logical_assign_and(target, value_expr, env, loc)
+    LogicalOrAssign => return self.eval_logical_assign_or(target, value_expr, env, loc)
+    NullishAssign => return self.eval_nullish_assign(target, value_expr, env, loc)
+    _ => ()
+  }
   let bin_op : @ast.BinOp = match op {
     AddAssign => Add
     SubAssign => Sub
@@ -2534,6 +2701,7 @@ fn Interpreter::eval_compound_assign(
     LShiftAssign => LShift
     RShiftAssign => RShift
     URShiftAssign => URShift
+    LogicalAndAssign | LogicalOrAssign | NullishAssign => Add // unreachable
   }
   match target {
     Ident(name, _) => {
@@ -2590,6 +2758,240 @@ fn Interpreter::eval_compound_assign(
     _ =>
       raise Failure::Failure(
         "Invalid compound assignment target at line \{loc.line}, col \{loc.col}",
+      )
+  }
+}
+
+///|
+fn Interpreter::eval_logical_assign_and(
+  self : Interpreter,
+  target : @ast.Expr,
+  value_expr : @ast.Expr,
+  env : Environment,
+  loc : @token.Loc,
+) -> Value raise Error {
+  // x &&= y: if x is truthy, assign y to x; return final value
+  match target {
+    Ident(name, _) => {
+      let current = env.get(name)
+      if is_truthy(current) {
+        let rhs = self.eval_expr(value_expr, env)
+        env.assign(name, rhs)
+        rhs
+      } else {
+        current
+      }
+    }
+    Member(obj_expr, prop, mloc) => {
+      let obj = self.eval_expr(obj_expr, env)
+      let current = self.get_property(obj, prop, mloc)
+      if is_truthy(current) {
+        let rhs = self.eval_expr(value_expr, env)
+        match obj {
+          Object(data) => {
+            data.properties[prop] = rhs
+            rhs
+          }
+          _ =>
+            raise Failure::Failure(
+              "Cannot set property at line \{loc.line}, col \{loc.col}",
+            )
+        }
+      } else {
+        current
+      }
+    }
+    ComputedMember(obj_expr, key_expr, mloc) => {
+      let obj = self.eval_expr(obj_expr, env)
+      let key = self.eval_expr(key_expr, env)
+      let current = self.get_computed_property(obj, key, mloc)
+      if is_truthy(current) {
+        let rhs = self.eval_expr(value_expr, env)
+        match obj {
+          Object(data) => {
+            data.properties[key.to_string()] = rhs
+            rhs
+          }
+          Array(data) =>
+            match key {
+              Number(n) => {
+                let i = n.to_int()
+                if i >= 0 && i < data.elements.length() {
+                  data.elements[i] = rhs
+                }
+                rhs
+              }
+              _ => rhs
+            }
+          _ =>
+            raise Failure::Failure(
+              "Cannot set property at line \{loc.line}, col \{loc.col}",
+            )
+        }
+      } else {
+        current
+      }
+    }
+    _ =>
+      raise Failure::Failure(
+        "Invalid assignment target at line \{loc.line}, col \{loc.col}",
+      )
+  }
+}
+
+///|
+fn Interpreter::eval_logical_assign_or(
+  self : Interpreter,
+  target : @ast.Expr,
+  value_expr : @ast.Expr,
+  env : Environment,
+  loc : @token.Loc,
+) -> Value raise Error {
+  // x ||= y: if x is falsy, assign y to x; return final value
+  match target {
+    Ident(name, _) => {
+      let current = env.get(name)
+      if not(is_truthy(current)) {
+        let rhs = self.eval_expr(value_expr, env)
+        env.assign(name, rhs)
+        rhs
+      } else {
+        current
+      }
+    }
+    Member(obj_expr, prop, mloc) => {
+      let obj = self.eval_expr(obj_expr, env)
+      let current = self.get_property(obj, prop, mloc)
+      if not(is_truthy(current)) {
+        let rhs = self.eval_expr(value_expr, env)
+        match obj {
+          Object(data) => {
+            data.properties[prop] = rhs
+            rhs
+          }
+          _ =>
+            raise Failure::Failure(
+              "Cannot set property at line \{loc.line}, col \{loc.col}",
+            )
+        }
+      } else {
+        current
+      }
+    }
+    ComputedMember(obj_expr, key_expr, mloc) => {
+      let obj = self.eval_expr(obj_expr, env)
+      let key = self.eval_expr(key_expr, env)
+      let current = self.get_computed_property(obj, key, mloc)
+      if not(is_truthy(current)) {
+        let rhs = self.eval_expr(value_expr, env)
+        match obj {
+          Object(data) => {
+            data.properties[key.to_string()] = rhs
+            rhs
+          }
+          Array(data) =>
+            match key {
+              Number(n) => {
+                let i = n.to_int()
+                if i >= 0 && i < data.elements.length() {
+                  data.elements[i] = rhs
+                }
+                rhs
+              }
+              _ => rhs
+            }
+          _ =>
+            raise Failure::Failure(
+              "Cannot set property at line \{loc.line}, col \{loc.col}",
+            )
+        }
+      } else {
+        current
+      }
+    }
+    _ =>
+      raise Failure::Failure(
+        "Invalid assignment target at line \{loc.line}, col \{loc.col}",
+      )
+  }
+}
+
+///|
+fn Interpreter::eval_nullish_assign(
+  self : Interpreter,
+  target : @ast.Expr,
+  value_expr : @ast.Expr,
+  env : Environment,
+  loc : @token.Loc,
+) -> Value raise Error {
+  // x ??= y: if x is null or undefined, assign y to x; return final value
+  match target {
+    Ident(name, _) => {
+      let current = env.get(name)
+      match current {
+        Null | Undefined => {
+          let rhs = self.eval_expr(value_expr, env)
+          env.assign(name, rhs)
+          rhs
+        }
+        _ => current
+      }
+    }
+    Member(obj_expr, prop, mloc) => {
+      let obj = self.eval_expr(obj_expr, env)
+      let current = self.get_property(obj, prop, mloc)
+      match current {
+        Null | Undefined => {
+          let rhs = self.eval_expr(value_expr, env)
+          match obj {
+            Object(data) => {
+              data.properties[prop] = rhs
+              rhs
+            }
+            _ =>
+              raise Failure::Failure(
+                "Cannot set property at line \{loc.line}, col \{loc.col}",
+              )
+          }
+        }
+        _ => current
+      }
+    }
+    ComputedMember(obj_expr, key_expr, mloc) => {
+      let obj = self.eval_expr(obj_expr, env)
+      let key = self.eval_expr(key_expr, env)
+      let current = self.get_computed_property(obj, key, mloc)
+      match current {
+        Null | Undefined => {
+          let rhs = self.eval_expr(value_expr, env)
+          match obj {
+            Object(data) => {
+              data.properties[key.to_string()] = rhs
+              rhs
+            }
+            Array(data) =>
+              match key {
+                Number(n) => {
+                  let i = n.to_int()
+                  if i >= 0 && i < data.elements.length() {
+                    data.elements[i] = rhs
+                  }
+                  rhs
+                }
+                _ => rhs
+              }
+            _ =>
+              raise Failure::Failure(
+                "Cannot set property at line \{loc.line}, col \{loc.col}",
+              )
+          }
+        }
+        _ => current
+      }
+    }
+    _ =>
+      raise Failure::Failure(
+        "Invalid assignment target at line \{loc.line}, col \{loc.col}",
       )
   }
 }

@@ -789,6 +789,202 @@ fn setup_number_builtins(env : Environment) -> Unit {
     descriptors: {},
     extensible: true,
   })
+  number_proto_props["toPrecision"] = Object({
+    properties: {},
+    prototype: Null,
+    callable: Some(
+      MethodCallable("toPrecision", fn(this_val, args) {
+        let n = to_number(this_val)
+        // If no argument or undefined, just return toString result
+        if args.length() == 0 {
+          return String_(n.to_string())
+        }
+        match args[0] {
+          Undefined => return String_(n.to_string())
+          _ => ()
+        }
+        let precision = to_number(args[0]).to_int()
+        if precision < 1 || precision > 100 {
+          raise JsException(
+            String_(
+              "RangeError: toPrecision() argument must be between 1 and 100",
+            ),
+          )
+        }
+        if n.is_nan() {
+          return String_("NaN")
+        }
+        if n.is_inf() {
+          return String_(if n > 0.0 { "Infinity" } else { "-Infinity" })
+        }
+        // Use exponential format when needed
+        let is_neg = n < 0.0
+        let abs_n = n.abs()
+        if abs_n == 0.0 {
+          let buf = StringBuilder::new()
+          if is_neg {
+            buf.write_string("-")
+          }
+          buf.write_char('0')
+          if precision > 1 {
+            buf.write_char('.')
+            for _i = 1; _i < precision; _i = _i + 1 {
+              buf.write_char('0')
+            }
+          }
+          return String_(buf.to_string())
+        }
+        // Calculate exponent
+        let log_val = @math.log10(abs_n)
+        let exp = log_val.floor().to_int()
+        // If exponent >= precision or < -6, use exponential notation
+        if exp >= precision || exp < -6 {
+          // Use exponential notation
+          let mantissa = abs_n / @math.pow(10.0, exp.to_double())
+          let buf = StringBuilder::new()
+          if is_neg {
+            buf.write_string("-")
+          }
+          // Format mantissa with precision-1 decimal places
+          let mantissa_str = format_number_precision(mantissa, precision)
+          buf.write_string(mantissa_str)
+          buf.write_char('e')
+          if exp >= 0 {
+            buf.write_char('+')
+          }
+          buf.write_string(exp.to_string())
+          return String_(buf.to_string())
+        }
+        // Use fixed notation
+        let decimal_places = precision - exp - 1
+        let buf = StringBuilder::new()
+        if is_neg {
+          buf.write_string("-")
+        }
+        if decimal_places >= 0 {
+          let multiplier = @math.pow(10.0, decimal_places.to_double())
+          let shifted = abs_n * multiplier
+          let rounded = (shifted + 0.5).floor()
+          let int_val = rounded.to_int64()
+          let int_str = int_val.to_string()
+          let int_len = int_str.length()
+          if int_len <= decimal_places {
+            buf.write_string("0.")
+            for _i = 0; _i < decimal_places - int_len; _i = _i + 1 {
+              buf.write_char('0')
+            }
+            buf.write_string(int_str)
+          } else {
+            let int_part_len = int_len - decimal_places
+            let chars = int_str.to_array()
+            for i = 0; i < int_part_len; i = i + 1 {
+              buf.write_char(chars[i])
+            }
+            if decimal_places > 0 {
+              buf.write_char('.')
+              for i = int_part_len; i < int_len; i = i + 1 {
+                buf.write_char(chars[i])
+              }
+            }
+          }
+        } else {
+          let multiplier = @math.pow(10.0, (-decimal_places).to_double())
+          let shifted = abs_n / multiplier
+          let rounded = (shifted + 0.5).floor()
+          buf.write_string((rounded * multiplier).to_int().to_string())
+        }
+        String_(buf.to_string())
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    extensible: true,
+  })
+  number_proto_props["toExponential"] = Object({
+    properties: {},
+    prototype: Null,
+    callable: Some(
+      MethodCallable("toExponential", fn(this_val, args) {
+        let n = to_number(this_val)
+        if n.is_nan() {
+          return String_("NaN")
+        }
+        if n.is_inf() {
+          return String_(if n > 0.0 { "Infinity" } else { "-Infinity" })
+        }
+        let is_neg = n < 0.0
+        let abs_n = n.abs()
+        // Handle zero specially
+        if abs_n == 0.0 {
+          let buf = StringBuilder::new()
+          if is_neg {
+            buf.write_string("-")
+          }
+          buf.write_char('0')
+          if args.length() > 0 {
+            match args[0] {
+              Undefined => ()
+              _ => {
+                let frac_digits = to_number(args[0]).to_int()
+                if frac_digits < 0 || frac_digits > 100 {
+                  raise JsException(
+                    String_(
+                      "RangeError: toExponential() argument must be between 0 and 100",
+                    ),
+                  )
+                }
+                if frac_digits > 0 {
+                  buf.write_char('.')
+                  for _i = 0; _i < frac_digits; _i = _i + 1 {
+                    buf.write_char('0')
+                  }
+                }
+              }
+            }
+          }
+          buf.write_string("e+0")
+          return String_(buf.to_string())
+        }
+        // Calculate exponent
+        let log_val = @math.log10(abs_n)
+        let exp = log_val.floor().to_int()
+        let mantissa = abs_n / @math.pow(10.0, exp.to_double())
+        let buf = StringBuilder::new()
+        if is_neg {
+          buf.write_string("-")
+        }
+        // Format mantissa
+        if args.length() > 0 {
+          match args[0] {
+            Undefined => buf.write_string(mantissa.to_string())
+            _ => {
+              let frac_digits = to_number(args[0]).to_int()
+              if frac_digits < 0 || frac_digits > 100 {
+                raise JsException(
+                  String_(
+                    "RangeError: toExponential() argument must be between 0 and 100",
+                  ),
+                )
+              }
+              let mantissa_str = format_number_precision(mantissa, frac_digits + 1)
+              buf.write_string(mantissa_str)
+            }
+          }
+        } else {
+          buf.write_string(mantissa.to_string())
+        }
+        buf.write_char('e')
+        if exp >= 0 {
+          buf.write_char('+')
+        }
+        buf.write_string(exp.to_string())
+        String_(buf.to_string())
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    extensible: true,
+  })
   let number_proto : Value = Object({
     properties: number_proto_props,
     prototype: Null,
@@ -1480,8 +1676,243 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
         descriptors: {},
         extensible: true,
       })
+    "toPrecision" =>
+      Object({
+        properties: {},
+        prototype: Null,
+        callable: Some(
+          MethodCallable("toPrecision", fn(this_val, args) {
+            let n = to_number(this_val)
+            if args.length() == 0 {
+              return String_(n.to_string())
+            }
+            match args[0] {
+              Undefined => return String_(n.to_string())
+              _ => ()
+            }
+            let precision = to_number(args[0]).to_int()
+            if precision < 1 || precision > 100 {
+              raise JsException(
+                String_(
+                  "RangeError: toPrecision() argument must be between 1 and 100",
+                ),
+              )
+            }
+            if n.is_nan() {
+              return String_("NaN")
+            }
+            if n.is_inf() {
+              return String_(if n > 0.0 { "Infinity" } else { "-Infinity" })
+            }
+            let is_neg = n < 0.0
+            let abs_n = n.abs()
+            if abs_n == 0.0 {
+              let buf = StringBuilder::new()
+              if is_neg {
+                buf.write_string("-")
+              }
+              buf.write_char('0')
+              if precision > 1 {
+                buf.write_char('.')
+                for _i = 1; _i < precision; _i = _i + 1 {
+                  buf.write_char('0')
+                }
+              }
+              return String_(buf.to_string())
+            }
+            let log_val = @math.log10(abs_n)
+            let exp = log_val.floor().to_int()
+            if exp >= precision || exp < -6 {
+              let mantissa = abs_n / @math.pow(10.0, exp.to_double())
+              let buf = StringBuilder::new()
+              if is_neg {
+                buf.write_string("-")
+              }
+              let mantissa_str = format_number_precision(mantissa, precision)
+              buf.write_string(mantissa_str)
+              buf.write_char('e')
+              if exp >= 0 {
+                buf.write_char('+')
+              }
+              buf.write_string(exp.to_string())
+              return String_(buf.to_string())
+            }
+            let decimal_places = precision - exp - 1
+            let buf = StringBuilder::new()
+            if is_neg {
+              buf.write_string("-")
+            }
+            if decimal_places >= 0 {
+              let multiplier = @math.pow(10.0, decimal_places.to_double())
+              let shifted = abs_n * multiplier
+              let rounded = (shifted + 0.5).floor()
+              let int_val = rounded.to_int64()
+              let int_str = int_val.to_string()
+              let int_len = int_str.length()
+              if int_len <= decimal_places {
+                buf.write_string("0.")
+                for _i = 0; _i < decimal_places - int_len; _i = _i + 1 {
+                  buf.write_char('0')
+                }
+                buf.write_string(int_str)
+              } else {
+                let int_part_len = int_len - decimal_places
+                let chars = int_str.to_array()
+                for i = 0; i < int_part_len; i = i + 1 {
+                  buf.write_char(chars[i])
+                }
+                if decimal_places > 0 {
+                  buf.write_char('.')
+                  for i = int_part_len; i < int_len; i = i + 1 {
+                    buf.write_char(chars[i])
+                  }
+                }
+              }
+            } else {
+              let multiplier = @math.pow(10.0, (-decimal_places).to_double())
+              let shifted = abs_n / multiplier
+              let rounded = (shifted + 0.5).floor()
+              buf.write_string((rounded * multiplier).to_int().to_string())
+            }
+            String_(buf.to_string())
+          }),
+        ),
+        class_name: "Function",
+        descriptors: {},
+        extensible: true,
+      })
+    "toExponential" =>
+      Object({
+        properties: {},
+        prototype: Null,
+        callable: Some(
+          MethodCallable("toExponential", fn(this_val, args) {
+            let n = to_number(this_val)
+            if n.is_nan() {
+              return String_("NaN")
+            }
+            if n.is_inf() {
+              return String_(if n > 0.0 { "Infinity" } else { "-Infinity" })
+            }
+            let is_neg = n < 0.0
+            let abs_n = n.abs()
+            if abs_n == 0.0 {
+              let buf = StringBuilder::new()
+              if is_neg {
+                buf.write_string("-")
+              }
+              buf.write_char('0')
+              if args.length() > 0 {
+                match args[0] {
+                  Undefined => ()
+                  _ => {
+                    let frac_digits = to_number(args[0]).to_int()
+                    if frac_digits < 0 || frac_digits > 100 {
+                      raise JsException(
+                        String_(
+                          "RangeError: toExponential() argument must be between 0 and 100",
+                        ),
+                      )
+                    }
+                    if frac_digits > 0 {
+                      buf.write_char('.')
+                      for _i = 0; _i < frac_digits; _i = _i + 1 {
+                        buf.write_char('0')
+                      }
+                    }
+                  }
+                }
+              }
+              buf.write_string("e+0")
+              return String_(buf.to_string())
+            }
+            let log_val = @math.log10(abs_n)
+            let exp = log_val.floor().to_int()
+            let mantissa = abs_n / @math.pow(10.0, exp.to_double())
+            let buf = StringBuilder::new()
+            if is_neg {
+              buf.write_string("-")
+            }
+            if args.length() > 0 {
+              match args[0] {
+                Undefined => buf.write_string(mantissa.to_string())
+                _ => {
+                  let frac_digits = to_number(args[0]).to_int()
+                  if frac_digits < 0 || frac_digits > 100 {
+                    raise JsException(
+                      String_(
+                        "RangeError: toExponential() argument must be between 0 and 100",
+                      ),
+                    )
+                  }
+                  let mantissa_str = format_number_precision(mantissa, frac_digits + 1)
+                  buf.write_string(mantissa_str)
+                }
+              }
+            } else {
+              buf.write_string(mantissa.to_string())
+            }
+            buf.write_char('e')
+            if exp >= 0 {
+              buf.write_char('+')
+            }
+            buf.write_string(exp.to_string())
+            String_(buf.to_string())
+          }),
+        ),
+        class_name: "Function",
+        descriptors: {},
+        extensible: true,
+      })
     _ => Undefined
   }
+}
+
+///|
+fn format_number_precision(n : Double, precision : Int) -> String {
+  // Format a number with exactly `precision` significant digits
+  // Used for toPrecision and toExponential
+  if precision <= 0 {
+    return "0"
+  }
+  let abs_n = n.abs()
+  if abs_n == 0.0 {
+    let buf = StringBuilder::new()
+    buf.write_char('0')
+    if precision > 1 {
+      buf.write_char('.')
+      for _i = 1; _i < precision; _i = _i + 1 {
+        buf.write_char('0')
+      }
+    }
+    return buf.to_string()
+  }
+  // Round to precision significant digits
+  let multiplier = @math.pow(10.0, (precision - 1).to_double())
+  let shifted = abs_n * multiplier
+  let rounded = (shifted + 0.5).floor()
+  let int_val = rounded.to_int64()
+  let int_str = int_val.to_string()
+  let int_chars = int_str.to_array()
+  let buf = StringBuilder::new()
+  if int_chars.length() == 1 {
+    buf.write_char(int_chars[0])
+    if precision > 1 {
+      buf.write_char('.')
+      for _i = 1; _i < precision; _i = _i + 1 {
+        buf.write_char('0')
+      }
+    }
+  } else {
+    buf.write_char(int_chars[0])
+    if int_chars.length() > 1 {
+      buf.write_char('.')
+      for i = 1; i < int_chars.length(); i = i + 1 {
+        buf.write_char(int_chars[i])
+      }
+    }
+  }
+  buf.to_string()
 }
 
 ///|

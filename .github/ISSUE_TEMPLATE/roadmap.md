@@ -503,7 +503,7 @@ All 6 issues addressed in commit `3439764`:
 ### 3.6B. String Spec Compliance (~1,500 tests)
 
 **Priority methods**:
-- [ ] `String.prototype.split` — regex separator, limit parameter
+- [x] `String.prototype.split` — limit parameter ✅ (regex separator still TODO)
 - [ ] `String.prototype.replace` — replacement patterns ($1, $&, etc.)
 - [ ] `String.prototype.match` — global flag behavior, capture groups
 - [ ] `String.prototype.slice/substring` — negative index normalization
@@ -535,11 +535,11 @@ All 6 issues addressed in commit `3439764`:
 ### 3.6D. Number Spec Compliance (~500 tests)
 
 **Priority methods**:
-- [ ] `Number.isNaN/isFinite/isInteger/isSafeInteger` — type checks
+- [x] `Number.isNaN/isFinite/isInteger/isSafeInteger` — type checks ✅
 - [ ] `Number.parseInt/parseFloat` — edge cases
 - [ ] `Number.prototype.toFixed` — range validation, rounding
-- [ ] `Number.prototype.toPrecision` — significant digits
-- [ ] `Number.prototype.toExponential` — scientific notation
+- [x] `Number.prototype.toPrecision` — significant digits ✅
+- [x] `Number.prototype.toExponential` — scientific notation ✅
 - [ ] `Number.prototype.toString` — radix parameter validation
 
 ### 3.6E. Function Spec Compliance (~300 tests)
@@ -548,8 +548,8 @@ All 6 issues addressed in commit `3439764`:
 - [ ] `Function.prototype.call/apply` — thisArg coercion
 - [ ] `Function.prototype.bind` — partial application, length
 - [ ] `Function.prototype.toString` — source representation
-- [ ] `Function.prototype.length` — parameter count
-- [ ] `Function.prototype.name` — inferred names
+- [x] `Function.prototype.length` — parameter count ✅
+- [x] `Function.prototype.name` — inferred names ✅
 
 ### Phase 3.6 Expected Impact
 
@@ -660,8 +660,8 @@ Phase 1 (DONE) ──► Phase 2 (DONE) ──► Phase 3 (DONE) ──► Phase
 | **Iterators (iterator protocol)** | ~800 tests | ❌ TODO |
 | **`Map` / `Set` collections** | ~600 tests | ❌ TODO |
 | **`instanceof` with Symbol.hasInstance** | ~200 tests | ❌ TODO |
-| **Numeric separator literals (`1_000`)** | ~50 tests | ❌ TODO |
-| **Logical assignment (`&&=`, `||=`, `??=`)** | ~100 tests | ❌ TODO |
+| **Numeric separator literals (`1_000`)** | ~50 tests | ✅ DONE |
+| **Logical assignment (`&&=`, `||=`, `??=`)** | ~100 tests | ✅ DONE |
 
 ### 🟢 Medium (Nice to have)
 
@@ -687,6 +687,15 @@ Phase 1 (DONE) ──► Phase 2 (DONE) ──► Phase 3 (DONE) ──► Phase
 | Array.values() iterator | Phase 3.6 |
 | String.codePointAt | Phase 3.6 |
 | Object.fromEntries with TypeError validation | Phase 3.6 |
+| Number.prototype.toPrecision | Phase 3.6 |
+| Number.prototype.toExponential | Phase 3.6 |
+| String.prototype.split limit parameter | Phase 3.6 |
+| Function.prototype.length property | Phase 3.6 |
+| Function.prototype.name property | Phase 3.6 |
+| Logical assignment operators (`&&=`, `\|\|=`, `??=`) | Phase 3.6 |
+| Numeric separator literals (`1_000`, `0xFF_FF`) | Phase 3.6 |
+| Hex/binary/octal number literals | Phase 3.6 |
+| Exponent notation (`1e10`) | Phase 3.6 |
 
 ### ✅ Previously Completed (Phase 3.5)
 

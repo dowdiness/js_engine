@@ -57,6 +57,9 @@ pub(all) enum CompoundOp {
   LShiftAssign
   RShiftAssign
   URShiftAssign
+  LogicalAndAssign // &&=
+  LogicalOrAssign // ||=
+  NullishAssign // ??=
 } derive(Show, Eq)
 
 ///|

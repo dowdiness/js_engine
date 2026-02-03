@@ -336,19 +336,41 @@ pub fn get_string_method(s : String, prop : String) -> Value {
     "split" => {
       let str = s
       make_native_func("split", fn(args) {
-        let sep = if args.length() > 0 {
-          args[0].to_string()
-        } else {
+        // Handle undefined separator - return array with whole string
+        if args.length() == 0 {
           return Array({ elements: [String_(str)] })
         }
+        match args[0] {
+          Undefined => return Array({ elements: [String_(str)] })
+          _ => ()
+        }
+        // Get limit parameter (default: 2^32 - 1, effectively unlimited)
+        let limit = if args.length() > 1 {
+          match args[1] {
+            Undefined => 4294967295 // 2^32 - 1
+            _ => {
+              let lim = to_number(args[1]).to_int()
+              if lim < 0 { 0 } else { lim }
+            }
+          }
+        } else {
+          4294967295
+        }
+        // If limit is 0, return empty array
+        if limit == 0 {
+          return Array({ elements: [] })
+        }
+        let sep = args[0].to_string()
+        // Empty separator splits into individual characters
         if sep.length() == 0 {
-          let result : Array[Value] = str
-            .to_array()
-            .map(fn(c) {
-              let buf = StringBuilder::new()
-              buf.write_char(c)
-              String_(buf.to_string())
-            })
+          let result : Array[Value] = []
+          let chars = str.to_array()
+          let count = if chars.length() < limit { chars.length() } else { limit }
+          for i = 0; i < count; i = i + 1 {
+            let buf = StringBuilder::new()
+            buf.write_char(chars[i])
+            result.push(String_(buf.to_string()))
+          }
           return Array({ elements: result })
         }
         let result : Array[Value] = []
@@ -359,6 +381,10 @@ pub fn get_string_method(s : String, prop : String) -> Value {
         let mut last = 0
         let mut i = 0
         while i <= slen - sep_len {
+          // Check if we've hit the limit (need to leave room for final piece)
+          if result.length() >= limit - 1 {
+            break
+          }
           let mut matched = true
           for j = 0; j < sep_len; j = j + 1 {
             if s_chars[i + j] != sep_chars[j] {
@@ -378,12 +404,14 @@ pub fn get_string_method(s : String, prop : String) -> Value {
             i = i + 1
           }
         }
-        // Remaining
-        let buf = StringBuilder::new()
-        for k = last; k < slen; k = k + 1 {
-          buf.write_char(s_chars[k])
+        // Add remaining part if we haven't hit the limit
+        if result.length() < limit {
+          let buf = StringBuilder::new()
+          for k = last; k < slen; k = k + 1 {
+            buf.write_char(s_chars[k])
+          }
+          result.push(String_(buf.to_string()))
         }
-        result.push(String_(buf.to_string()))
         Array({ elements: result })
       })
     }

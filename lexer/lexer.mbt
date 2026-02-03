@@ -4,6 +4,50 @@ fn is_digit(c : Char) -> Bool {
 }
 
 ///|
+fn is_hex_digit(c : Char) -> Bool {
+  (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+}
+
+///|
+fn parse_hex(s : String) -> Double {
+  let chars = s.to_array()
+  let mut result = 0.0
+  for c in chars {
+    let digit = if c >= '0' && c <= '9' {
+      c.to_int() - 48
+    } else if c >= 'a' && c <= 'f' {
+      c.to_int() - 87
+    } else {
+      c.to_int() - 55
+    }
+    result = result * 16.0 + digit.to_double()
+  }
+  result
+}
+
+///|
+fn parse_binary(s : String) -> Double {
+  let chars = s.to_array()
+  let mut result = 0.0
+  for c in chars {
+    let digit = c.to_int() - 48
+    result = result * 2.0 + digit.to_double()
+  }
+  result
+}
+
+///|
+fn parse_octal(s : String) -> Double {
+  let chars = s.to_array()
+  let mut result = 0.0
+  for c in chars {
+    let digit = c.to_int() - 48
+    result = result * 8.0 + digit.to_double()
+  }
+  result
+}
+
+///|
 fn is_alpha(c : Char) -> Bool {
   (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_' || c == '$'
 }
@@ -236,23 +280,143 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       }
     }
     let loc = make_loc()
-    // Numbers
+    // Numbers (supports numeric separators, hex, binary, octal, exponent)
     if is_digit(c) {
       let start = offset
-      while offset < len && is_digit(char_at(offset)) {
-        offset += 1
-        col += 1
+      let buf = StringBuilder::new()
+      // Check for hex (0x), binary (0b), octal (0o)
+      if c == '0' && offset + 1 < len {
+        let next = char_at(offset + 1)
+        if next == 'x' || next == 'X' {
+          // Hex number
+          offset += 2
+          col += 2
+          while offset < len {
+            let ch = char_at(offset)
+            if is_hex_digit(ch) {
+              buf.write_char(ch)
+              offset += 1
+              col += 1
+            } else if ch == '_' {
+              // Skip numeric separator
+              offset += 1
+              col += 1
+            } else {
+              break
+            }
+          }
+          let hex_str = buf.to_string()
+          let value = parse_hex(hex_str)
+          let raw = source.view()[start:offset].to_string()
+          tokens.push({ kind: Number(value), loc, raw })
+          continue
+        } else if next == 'b' || next == 'B' {
+          // Binary number
+          offset += 2
+          col += 2
+          while offset < len {
+            let ch = char_at(offset)
+            if ch == '0' || ch == '1' {
+              buf.write_char(ch)
+              offset += 1
+              col += 1
+            } else if ch == '_' {
+              offset += 1
+              col += 1
+            } else {
+              break
+            }
+          }
+          let bin_str = buf.to_string()
+          let value = parse_binary(bin_str)
+          let raw = source.view()[start:offset].to_string()
+          tokens.push({ kind: Number(value), loc, raw })
+          continue
+        } else if next == 'o' || next == 'O' {
+          // Octal number
+          offset += 2
+          col += 2
+          while offset < len {
+            let ch = char_at(offset)
+            if ch >= '0' && ch <= '7' {
+              buf.write_char(ch)
+              offset += 1
+              col += 1
+            } else if ch == '_' {
+              offset += 1
+              col += 1
+            } else {
+              break
+            }
+          }
+          let oct_str = buf.to_string()
+          let value = parse_octal(oct_str)
+          let raw = source.view()[start:offset].to_string()
+          tokens.push({ kind: Number(value), loc, raw })
+          continue
+        }
       }
+      // Decimal number with optional numeric separators
+      while offset < len {
+        let ch = char_at(offset)
+        if is_digit(ch) {
+          buf.write_char(ch)
+          offset += 1
+          col += 1
+        } else if ch == '_' {
+          // Skip numeric separator
+          offset += 1
+          col += 1
+        } else {
+          break
+        }
+      }
+      // Decimal part
       if offset < len && char_at(offset) == '.' {
+        buf.write_char('.')
         offset += 1
         col += 1
-        while offset < len && is_digit(char_at(offset)) {
+        while offset < len {
+          let ch = char_at(offset)
+          if is_digit(ch) {
+            buf.write_char(ch)
+            offset += 1
+            col += 1
+          } else if ch == '_' {
+            offset += 1
+            col += 1
+          } else {
+            break
+          }
+        }
+      }
+      // Exponent part
+      if offset < len && (char_at(offset) == 'e' || char_at(offset) == 'E') {
+        buf.write_char('e')
+        offset += 1
+        col += 1
+        if offset < len && (char_at(offset) == '+' || char_at(offset) == '-') {
+          buf.write_char(char_at(offset))
           offset += 1
           col += 1
         }
+        while offset < len {
+          let ch = char_at(offset)
+          if is_digit(ch) {
+            buf.write_char(ch)
+            offset += 1
+            col += 1
+          } else if ch == '_' {
+            offset += 1
+            col += 1
+          } else {
+            break
+          }
+        }
       }
+      let num_str = buf.to_string()
       let raw = source.view()[start:offset].to_string()
-      let value = @strconv.parse_double(raw)
+      let value = @strconv.parse_double(num_str)
       tokens.push({ kind: Number(value), loc, raw })
       continue
     }
@@ -484,6 +648,16 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       col += 2
       continue
     }
+    // Logical assignment operators (3-char, must check before 2-char)
+    if c == '&' &&
+      offset + 2 < len &&
+      char_at(offset + 1) == '&' &&
+      char_at(offset + 2) == '=' {
+      tokens.push({ kind: AndAssign, loc, raw: "&&=" })
+      offset += 3
+      col += 3
+      continue
+    }
     if c == '&' && offset + 1 < len && char_at(offset + 1) == '&' {
       tokens.push({ kind: And, loc, raw: "&&" })
       offset += 2
@@ -494,6 +668,15 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       tokens.push({ kind: BitAndAssign, loc, raw: "&=" })
       offset += 2
       col += 2
+      continue
+    }
+    if c == '|' &&
+      offset + 2 < len &&
+      char_at(offset + 1) == '|' &&
+      char_at(offset + 2) == '=' {
+      tokens.push({ kind: OrAssign, loc, raw: "||=" })
+      offset += 3
+      col += 3
       continue
     }
     if c == '|' && offset + 1 < len && char_at(offset + 1) == '|' {
@@ -514,7 +697,16 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       col += 2
       continue
     }
-    // Optional chaining (?.) and nullish coalescing (??)
+    // Optional chaining (?.) and nullish coalescing (??) and nullish assignment (??=)
+    if c == '?' &&
+      offset + 2 < len &&
+      char_at(offset + 1) == '?' &&
+      char_at(offset + 2) == '=' {
+      tokens.push({ kind: NullishAssign, loc, raw: "??=" })
+      offset += 3
+      col += 3
+      continue
+    }
     if c == '?' && offset + 1 < len && char_at(offset + 1) == '?' {
       tokens.push({ kind: QuestionQuestion, loc, raw: "??" })
       offset += 2
