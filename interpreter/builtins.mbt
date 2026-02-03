@@ -402,6 +402,147 @@ fn setup_math_builtins(env : Environment) -> Unit {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.log10(n))
   })
+  math_props["sin"] = make_native_func("sin", fn(args) {
+    let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+    Number(@math.sin(n))
+  })
+  math_props["cos"] = make_native_func("cos", fn(args) {
+    let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+    Number(@math.cos(n))
+  })
+  math_props["tan"] = make_native_func("tan", fn(args) {
+    let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+    Number(@math.tan(n))
+  })
+  math_props["asin"] = make_native_func("asin", fn(args) {
+    let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+    Number(@math.asin(n))
+  })
+  math_props["acos"] = make_native_func("acos", fn(args) {
+    let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+    Number(@math.acos(n))
+  })
+  math_props["atan"] = make_native_func("atan", fn(args) {
+    let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+    Number(@math.atan(n))
+  })
+  math_props["atan2"] = make_native_func("atan2", fn(args) {
+    let y = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+    let x = if args.length() > 1 { to_number(args[1]) } else { 0.0 / 0.0 }
+    Number(@math.atan2(y, x))
+  })
+  math_props["sinh"] = make_native_func("sinh", fn(args) {
+    let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+    Number(@math.sinh(n))
+  })
+  math_props["cosh"] = make_native_func("cosh", fn(args) {
+    let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+    Number(@math.cosh(n))
+  })
+  math_props["tanh"] = make_native_func("tanh", fn(args) {
+    let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+    Number(@math.tanh(n))
+  })
+  math_props["asinh"] = make_native_func("asinh", fn(args) {
+    let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+    Number(@math.asinh(n))
+  })
+  math_props["acosh"] = make_native_func("acosh", fn(args) {
+    let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+    Number(@math.acosh(n))
+  })
+  math_props["atanh"] = make_native_func("atanh", fn(args) {
+    let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+    Number(@math.atanh(n))
+  })
+  math_props["exp"] = make_native_func("exp", fn(args) {
+    let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+    Number(@math.exp(n))
+  })
+  math_props["expm1"] = make_native_func("expm1", fn(args) {
+    let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+    Number(@math.expm1(n))
+  })
+  math_props["log1p"] = make_native_func("log1p", fn(args) {
+    let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+    // log1p(x) = ln(1 + x), more accurate for small x
+    if n.is_nan() || n < -1.0 {
+      Number(0.0 / 0.0)
+    } else if n == -1.0 {
+      Number(-1.0 / 0.0)
+    } else if n == 0.0 || n.is_inf() {
+      Number(n)
+    } else {
+      Number(@math.ln(1.0 + n))
+    }
+  })
+  math_props["hypot"] = make_native_func("hypot", fn(args) {
+    if args.length() == 0 {
+      return Number(0.0)
+    }
+    let mut sum = 0.0
+    for arg in args {
+      let n = to_number(arg)
+      if n.is_inf() {
+        return Number(1.0 / 0.0)
+      }
+      if n.is_nan() {
+        return Number(0.0 / 0.0)
+      }
+      sum = sum + n * n
+    }
+    Number(sum.sqrt())
+  })
+  math_props["cbrt"] = make_native_func("cbrt", fn(args) {
+    let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+    if n.is_nan() || n.is_inf() || n == 0.0 {
+      Number(n)
+    } else {
+      let sign : Double = if n < 0.0 { -1.0 } else { 1.0 }
+      Number(sign * @math.pow(n.abs(), 1.0 / 3.0))
+    }
+  })
+  math_props["clz32"] = make_native_func("clz32", fn(args) {
+    let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 }
+    let int_val = to_int32(n)
+    if int_val == 0 {
+      return Number(32.0)
+    }
+    let uint = int_val.reinterpret_as_uint()
+    let mut count = 0
+    let mut mask : UInt = 2147483648 // 0x80000000
+    while mask > 0 && uint.land(mask) == 0 {
+      count = count + 1
+      mask = mask >> 1
+    }
+    Number(count.to_double())
+  })
+  math_props["imul"] = make_native_func("imul", fn(args) {
+    let a = if args.length() > 0 { to_number(args[0]) } else { 0.0 }
+    let b = if args.length() > 1 { to_number(args[1]) } else { 0.0 }
+    let int_a = to_int32(a)
+    let int_b = to_int32(b)
+    // Perform 32-bit multiplication and mask to lower 32 bits as signed
+    let product = int_a.to_int64() * int_b.to_int64()
+    let masked = product.land(0xFFFFFFFFL)
+    // Convert to signed 32-bit
+    let result = if masked > 0x7FFFFFFFL {
+      (masked - 0x100000000L).to_int()
+    } else {
+      masked.to_int()
+    }
+    Number(result.to_double())
+  })
+  math_props["fround"] = make_native_func("fround", fn(args) {
+    let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+    // Round to nearest float32 (basic approximation)
+    if n.is_nan() || n.is_inf() || n == 0.0 {
+      Number(n)
+    } else {
+      // Convert to float32 and back (approximation)
+      Number(Float::from_double(n).to_double())
+    }
+  })
   env.def_builtin(
     "Math",
     Object({
@@ -688,6 +829,23 @@ fn setup_number_builtins(env : Environment) -> Unit {
           Bool(false)
         } else {
           Bool(n.floor() == n)
+        }
+      _ => Bool(false)
+    }
+  })
+  number_props["isSafeInteger"] = make_native_func("isSafeInteger", fn(args) {
+    // Number.isSafeInteger() - check if value is a safe integer
+    // Safe integers are integers in range -(2^53-1) to 2^53-1
+    let val = if args.length() > 0 { args[0] } else { Undefined }
+    match val {
+      Number(n) =>
+        if n.is_nan() || n.is_inf() {
+          Bool(false)
+        } else if n.floor() != n {
+          Bool(false)
+        } else {
+          let max_safe = 9007199254740991.0
+          Bool(n >= -max_safe && n <= max_safe)
         }
       _ => Bool(false)
     }

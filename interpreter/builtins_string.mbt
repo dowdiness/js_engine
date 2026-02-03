@@ -30,6 +30,60 @@ pub fn get_string_method(s : String, prop : String) -> Value {
           Number(0.0 / 0.0)
         }
       })
+    "at" =>
+      make_native_func("at", fn(args) {
+        // String.prototype.at() - access character at index (supports negative)
+        let idx = if args.length() > 0 {
+          to_number(args[0]).to_int()
+        } else {
+          0
+        }
+        let len = chars.length()
+        let actual_idx = if idx < 0 { len + idx } else { idx }
+        if actual_idx >= 0 && actual_idx < len {
+          let buf = StringBuilder::new()
+          buf.write_char(chars[actual_idx])
+          String_(buf.to_string())
+        } else {
+          Undefined
+        }
+      })
+    "codePointAt" =>
+      make_native_func("codePointAt", fn(args) {
+        // String.prototype.codePointAt() - get code point at index
+        let idx = if args.length() > 0 {
+          to_number(args[0]).to_int()
+        } else {
+          0
+        }
+        if idx >= 0 && idx < chars.length() {
+          let code = chars[idx].to_int()
+          // Check for high surrogate
+          if code >= 0xD800 && code <= 0xDBFF && idx + 1 < chars.length() {
+            let next = chars[idx + 1].to_int()
+            // Check for low surrogate
+            if next >= 0xDC00 && next <= 0xDFFF {
+              // Combine surrogate pair to get code point
+              let cp = (code - 0xD800) * 0x400 + (next - 0xDC00) + 0x10000
+              return Number(cp.to_double())
+            }
+          }
+          Number(code.to_double())
+        } else {
+          Undefined
+        }
+      })
+    "concat" => {
+      let str = s
+      make_native_func("concat", fn(args) {
+        let buf = StringBuilder::new()
+        buf.write_string(str)
+        for arg in args {
+          buf.write_string(arg.to_string())
+        }
+        String_(buf.to_string())
+      })
+    }
     "indexOf" => {
       let str = s
       make_native_func("indexOf", fn(args) {
@@ -589,6 +643,175 @@ pub fn get_string_method(s : String, prop : String) -> Value {
     "toString" | "valueOf" => {
       let str = s
       make_native_func(prop, fn(_args) { String_(str) })
+    }
+    "replaceAll" => {
+      let str = s
+      make_native_func("replaceAll", fn(args) {
+        if args.length() == 0 {
+          return String_(str)
+        }
+        // Check if first arg is RegExp
+        match args[0] {
+          Object(data) =>
+            if data.class_name == "RegExp" {
+              // RegExp must have global flag for replaceAll
+              let flags = match data.properties.get("flags") {
+                Some(String_(f)) => f
+                _ => ""
+              }
+              if not(flags.to_array().contains('g')) {
+                raise JsException(
+                  String_(
+                    "TypeError: replaceAll must be called with a global RegExp",
+                  ),
+                )
+              }
+              let pattern = match data.properties.get("source") {
+                Some(String_(s)) => s
+                _ => ""
+              }
+              let replacement = if args.length() > 1 {
+                args[1].to_string()
+              } else {
+                "undefined"
+              }
+              return string_replace_regex(str, pattern, flags, replacement)
+            }
+          _ => ()
+        }
+        let search = args[0].to_string()
+        let replacement = if args.length() > 1 {
+          args[1].to_string()
+        } else {
+          "undefined"
+        }
+        let slen = str.length()
+        let search_len = search.length()
+        if search_len == 0 {
+          // Empty string: insert replacement before each char and at end
+          let buf = StringBuilder::new()
+          let s_chars = str.to_array()
+          for c in s_chars {
+            buf.write_string(replacement)
+            buf.write_char(c)
+          }
+          buf.write_string(replacement)
+          return String_(buf.to_string())
+        }
+        let s_chars = str.to_array()
+        let search_chars = search.to_array()
+        let buf = StringBuilder::new()
+        let mut i = 0
+        while i < slen {
+          if i <= slen - search_len {
+            let mut matched = true
+            for j = 0; j < search_len; j = j + 1 {
+              if s_chars[i + j] != search_chars[j] {
+                matched = false
+                break
+              }
+            }
+            if matched {
+              buf.write_string(replacement)
+              i = i + search_len
+              continue
+            }
+          }
+          buf.write_char(s_chars[i])
+          i = i + 1
+        }
+        String_(buf.to_string())
+      })
+    }
+    "localeCompare" => {
+      let str = s
+      make_native_func("localeCompare", fn(args) {
+        // Basic lexicographic comparison (no locale support)
+        let other = if args.length() > 0 {
+          args[0].to_string()
+        } else {
+          "undefined"
+        }
+        if str < other {
+          Number(-1.0)
+        } else if str > other {
+          Number(1.0)
+        } else {
+          Number(0.0)
+        }
+      })
+    }
+    "normalize" => {
+      let str = s
+      make_native_func("normalize", fn(_args) {
+        // STUB: Unicode normalization (NFC, NFD, NFKC, NFKD) is not implemented.
+        // Returns the input string unchanged. Full implementation requires
+        // Unicode normalization tables and algorithms.
+        String_(str)
+      })
+    }
+    "isWellFormed" => {
+      let str = s
+      make_native_func("isWellFormed", fn(_args) {
+        // Check if string is well-formed UTF-16 (no lone surrogates)
+        let c = str.to_array()
+        let mut i = 0
+        while i < c.length() {
+          let code = c[i].to_int()
+          if code >= 0xD800 && code <= 0xDBFF {
+            // High surrogate - must be followed by low surrogate
+            if i + 1 >= c.length() {
+              return Bool(false)
+            }
+            let next = c[i + 1].to_int()
+            if next < 0xDC00 || next > 0xDFFF {
+              return Bool(false)
+            }
+            // Valid surrogate pair - skip the low surrogate
+            i = i + 2
+            continue
+          } else if code >= 0xDC00 && code <= 0xDFFF {
+            // Lone low surrogate
+            return Bool(false)
+          }
+          i = i + 1
+        }
+        Bool(true)
+      })
+    }
+    "toWellFormed" => {
+      let str = s
+      make_native_func("toWellFormed", fn(_args) {
+        // Replace lone surrogates with U+FFFD
+        let c = str.to_array()
+        let buf = StringBuilder::new()
+        let mut i = 0
+        while i < c.length() {
+          let code = c[i].to_int()
+          if code >= 0xD800 && code <= 0xDBFF {
+            if i + 1 < c.length() {
+              let next = c[i + 1].to_int()
+              if next >= 0xDC00 && next <= 0xDFFF {
+                // Valid surrogate pair - write both and skip ahead
+                buf.write_char(c[i])
+                buf.write_char(c[i + 1])
+                i = i + 2
+                continue
+              } else {
+                buf.write_char('\u{FFFD}')
+              }
+            } else {
+              buf.write_char('\u{FFFD}')
+            }
+          } else if code >= 0xDC00 && code <= 0xDFFF {
+            buf.write_char('\u{FFFD}')
+          } else {
+            buf.write_char(c[i])
+          }
+          i = i + 1
+        }
+        String_(buf.to_string())
+      })
     }
     _ => Undefined
   }

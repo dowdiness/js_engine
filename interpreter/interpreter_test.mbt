@@ -3783,3 +3783,124 @@ test "bugfix: JSON.parse rejects raw control chars in strings" {
     content="[\"SyntaxError: Unexpected control character in JSON\"]",
   )
 }
+
+///|
+test "test262 harness pattern - constructor with prototype method" {
+  let src =
+    #|function Test262Error(message) {
+    #|  this.message = message || "";
+    #|}
+    #|Test262Error.prototype.toString = function() {
+    #|  return "Test262Error: " + this.message;
+    #|};
+    #|var e = new Test262Error("test message");
+    #|console.log(e.message);
+    #|console.log(e.toString());
+  let output = run_output(src)
+  inspect(output, content="[\"test message\", \"Test262Error: test message\"]")
+}
+
+///|
+test "test262 harness pattern - assert._isSameValue" {
+  let src =
+    #|function assert() {}
+    #|assert._isSameValue = function(a, b) {
+    #|  if (a === b) {
+    #|    return a !== 0 || 1 / a === 1 / b;
+    #|  }
+    #|  return a !== a && b !== b;
+    #|};
+    #|console.log(assert._isSameValue("function", "function"));
+    #|console.log(assert._isSameValue(0, -0));
+    #|console.log(assert._isSameValue(NaN, NaN));
+  let output = run_output(src)
+  inspect(output, content="[\"true\", \"false\", \"true\"]")
+}
+
+///|
+test "test262 harness pattern - typeof Array.isArray" {
+  let src =
+    #|var f = Array.isArray;
+    #|console.log(typeof f);
+  let output = run_output(src)
+  inspect(output, content="[\"function\"]")
+}
+
+///|
+test "test262 harness pattern - full assert.sameValue flow" {
+  // This simulates the complete test262 harness and a simple test
+  let src =
+    #|// sta.js harness
+    #|function Test262Error(message) {
+    #|  this.message = message || "";
+    #|}
+    #|Test262Error.prototype.toString = function() {
+    #|  return "Test262Error: " + this.message;
+    #|};
+    #|
+    #|// assert.js harness (simplified)
+    #|function assert(mustBeTrue, message) {
+    #|  if (mustBeTrue === true) {
+    #|    return;
+    #|  }
+    #|  throw new Test262Error(message);
+    #|}
+    #|assert._isSameValue = function(a, b) {
+    #|  if (a === b) {
+    #|    return a !== 0 || 1 / a === 1 / b;
+    #|  }
+    #|  return a !== a && b !== b;
+    #|};
+    #|assert.sameValue = function(actual, expected, message) {
+    #|  if (assert._isSameValue(actual, expected)) {
+    #|    return;
+    #|  }
+    #|  throw new Test262Error(message);
+    #|};
+    #|
+    #|// The actual test (15.4.3.2-0-1.js)
+    #|var f = Array.isArray;
+    #|assert.sameValue(typeof f, "function", "Array.isArray must be a function");
+    #|console.log("TEST PASSED");
+  let output = run_output(src)
+  inspect(output, content="[\"TEST PASSED\"]")
+}
+
+///|
+test "comma-separated var declarations" {
+  let src =
+    #|var a, b, c;
+    #|a = 1;
+    #|b = 2;
+    #|c = 3;
+    #|console.log(a + b + c);
+  let output = run_output(src)
+  inspect(output, content="[\"6\"]")
+}
+
+///|
+test "comma-separated var declarations with initializers" {
+  let src =
+    #|var x = 10, y = 20, z = 30;
+    #|console.log(x + y + z);
+  let output = run_output(src)
+  inspect(output, content="[\"60\"]")
+}
+
+///|
+test "comma-separated let declarations" {
+  let src =
+    #|let a = 1, b = 2;
+    #|console.log(a * b);
+  let output = run_output(src)
+  inspect(output, content="[\"2\"]")
+}
+
+///|
+test "comma-separated const declarations" {
+  let src =
+    #|const PI = 3.14, E = 2.71;
+    #|console.log(PI + E);
+  let output = run_output(src)
+  inspect(output, content="[\"5.85\"]")
+}
