@@ -27,6 +27,9 @@ jobs:
           moon version --all
           moon update
 
+      - name: Install dependencies
+        run: moon install
+
       - name: Build JS engine
         run: moon build
 
