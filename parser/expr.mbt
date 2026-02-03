@@ -98,6 +98,7 @@ fn Parser::parse_assignment(self : Parser) -> @ast.Expr raise Error {
     PlusAssign => Some(AddAssign)
     MinusAssign => Some(SubAssign)
     StarAssign => Some(MulAssign)
+    StarStarAssign => Some(@ast.ExpAssign)
     SlashAssign => Some(DivAssign)
     PercentAssign => Some(ModAssign)
     BitAndAssign => Some(@ast.BitAndAssign)
@@ -135,10 +136,51 @@ fn Parser::parse_ternary(self : Parser) -> @ast.Expr raise Error {
 ///|
 fn Parser::parse_or(self : Parser) -> @ast.Expr raise Error {
   let mut left = self.parse_and()
-  while self.at(Or) {
+  let mut seen_nullish = false
+  let mut seen_or = false
+  while self.at(Or) || self.at(QuestionQuestion) {
+    let is_nullish = self.at(QuestionQuestion)
+    // Check for illegal mixing of ?? with ||
+    if is_nullish && seen_or {
+      raise Failure::Failure(
+        "Cannot mix nullish coalescing (??) with logical OR (||) without parentheses",
+      )
+    }
+    if not(is_nullish) && seen_nullish {
+      raise Failure::Failure(
+        "Cannot mix logical OR (||) with nullish coalescing (??) without parentheses",
+      )
+    }
+    if is_nullish {
+      seen_nullish = true
+      // Check if left contains && - this means "a && b ?? c" pattern
+      match left {
+        Binary(@ast.And, _, _, _) =>
+          raise Failure::Failure(
+            "Cannot mix logical AND (&&) with nullish coalescing (??) without parentheses",
+          )
+        _ => ()
+      }
+    } else {
+      seen_or = true
+    }
     let loc = self.advance().loc
     let right = self.parse_and()
-    left = Binary(@ast.Or, left, right, loc)
+    // Also check if right contains && when using ??
+    if is_nullish {
+      match right {
+        Binary(@ast.And, _, _, _) =>
+          raise Failure::Failure(
+            "Cannot mix nullish coalescing (??) with logical AND (&&) without parentheses",
+          )
+        _ => ()
+      }
+    }
+    if is_nullish {
+      left = Binary(@ast.NullishCoalesce, left, right, loc)
+    } else {
+      left = Binary(@ast.Or, left, right, loc)
+    }
   }
   left
 }
@@ -280,7 +322,7 @@ fn Parser::parse_additive(self : Parser) -> @ast.Expr raise Error {
 
 ///|
 fn Parser::parse_multiplicative(self : Parser) -> @ast.Expr raise Error {
-  let mut left = self.parse_unary()
+  let mut left = self.parse_exponentiation()
   while true {
     let op : @ast.BinOp? = match self.peek_kind() {
       Star => Some(@ast.Mul)
@@ -291,13 +333,39 @@ fn Parser::parse_multiplicative(self : Parser) -> @ast.Expr raise Error {
     match op {
       Some(op) => {
         let loc = self.advance().loc
-        let right = self.parse_unary()
+        let right = self.parse_exponentiation()
         left = Binary(op, left, right, loc)
       }
       None => break
     }
   }
   left
+}
+
+///|
+fn Parser::parse_exponentiation(self : Parser) -> @ast.Expr raise Error {
+  let base = self.parse_unary()
+  if self.at(StarStar) {
+    // Check for unary operator on LHS - this is a syntax error in JS
+    // Per ES spec, all unary operators (not just -, !, ~) are disallowed
+    match base {
+      Unary(op, _, _) =>
+        match op {
+          @ast.Neg | @ast.Not | @ast.BitNot | @ast.Typeof | @ast.Void | @ast.Delete =>
+            raise Failure::Failure(
+              "Unary operator used immediately before exponentiation expression. Parentheses must be used to disambiguate.",
+            )
+          _ => ()
+        }
+      _ => ()
+    }
+    let loc = self.advance().loc
+    // Right-associative: parse right side with exponentiation precedence
+    let exp = self.parse_exponentiation()
+    Binary(@ast.Exp, base, exp, loc)
+  } else {
+    base
+  }
 }
 
 ///|
@@ -366,6 +434,9 @@ fn Parser::parse_postfix(self : Parser) -> @ast.Expr raise Error {
 ///|
 fn Parser::parse_call(self : Parser) -> @ast.Expr raise Error {
   let mut expr = self.parse_primary()
+  // Track if we're in an optional chain - once we see ?., all subsequent
+  // member/computed/call accesses in the chain should short-circuit
+  let mut in_optional_chain = false
   while true {
     if self.at(LParen) {
       let loc = self.advance().loc
@@ -387,17 +458,66 @@ fn Parser::parse_call(self : Parser) -> @ast.Expr raise Error {
         }
       }
       let _ = self.expect(RParen)
-      expr = Call(expr, args, loc)
+      if in_optional_chain {
+        expr = OptionalCall(expr, args, loc)
+      } else {
+        expr = Call(expr, args, loc)
+      }
     } else if self.at(Dot) {
       let _ = self.advance()
       let name = self.expect_ident()
       let loc = self.peek().loc
-      expr = Member(expr, name, loc)
+      if in_optional_chain {
+        expr = OptionalMember(expr, name, loc)
+      } else {
+        expr = Member(expr, name, loc)
+      }
     } else if self.at(LBracket) {
       let loc = self.advance().loc
       let key = self.parse_expr()
       let _ = self.expect(RBracket)
-      expr = ComputedMember(expr, key, loc)
+      if in_optional_chain {
+        expr = OptionalComputedMember(expr, key, loc)
+      } else {
+        expr = ComputedMember(expr, key, loc)
+      }
+    } else if self.at(QuestionDot) {
+      // Optional chaining: ?. - start/continue optional chain
+      in_optional_chain = true
+      let loc = self.advance().loc
+      if self.at(LParen) {
+        // Optional call: obj?.(args)
+        let _ = self.advance()
+        let args : Array[@ast.Expr] = []
+        if not(self.at(RParen)) {
+          if self.at(DotDotDot) {
+            let sloc = self.advance().loc
+            args.push(SpreadExpr(self.parse_assignment(), sloc))
+          } else {
+            args.push(self.parse_assignment())
+          }
+          while self.eat(Comma) {
+            if self.at(DotDotDot) {
+              let sloc = self.advance().loc
+              args.push(SpreadExpr(self.parse_assignment(), sloc))
+            } else {
+              args.push(self.parse_assignment())
+            }
+          }
+        }
+        let _ = self.expect(RParen)
+        expr = OptionalCall(expr, args, loc)
+      } else if self.at(LBracket) {
+        // Optional computed member: obj?.[expr]
+        let _ = self.advance()
+        let key = self.parse_expr()
+        let _ = self.expect(RBracket)
+        expr = OptionalComputedMember(expr, key, loc)
+      } else {
+        // Optional member: obj?.prop
+        let name = self.expect_ident()
+        expr = OptionalMember(expr, name, loc)
+      }
     } else {
       break
     }
@@ -569,23 +689,49 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
   let loc = self.advance().loc // consume '{'
   let props : Array[@ast.Property] = []
   while not(self.at(RBrace)) && not(self.at(EOF)) {
-    let key : String = match self.peek_kind() {
+    // Check for getter/setter
+    let prop_kind : @ast.PropKind = match self.peek_kind() {
+      Ident("get") =>
+        match self.peek_kind_at(1) {
+          Ident(_) | String_(_) | Number(_) | LBracket => {
+            self.pos += 1
+            @ast.Get
+          }
+          _ => @ast.Init
+        }
+      Ident("set") =>
+        match self.peek_kind_at(1) {
+          Ident(_) | String_(_) | Number(_) | LBracket => {
+            self.pos += 1
+            @ast.Set
+          }
+          _ => @ast.Init
+        }
+      _ => @ast.Init
+    }
+    // Parse the key - can be identifier, string, number, or computed [expr]
+    // Track if key was an identifier (needed for shorthand validation)
+    let (key_expr, key_name, computed, is_ident_key) : (@ast.Expr, String, Bool, Bool) = match self.peek_kind() {
       Ident(name) => {
-        self.pos += 1
-        name
+        let kloc = self.advance().loc
+        (StringLit(name, kloc), name, false, true)
       }
       String_(s) => {
-        self.pos += 1
-        s
+        let kloc = self.advance().loc
+        (StringLit(s, kloc), s, false, false)
       }
       Number(n) => {
-        self.pos += 1
+        let kloc = self.advance().loc
         let i = n.to_int()
-        if i.to_double() == n {
-          i.to_string()
-        } else {
-          n.to_string()
-        }
+        let name = if i.to_double() == n { i.to_string() } else { n.to_string() }
+        (StringLit(name, kloc), name, false, false)
+      }
+      LBracket => {
+        // Computed property name: [expr]
+        let _ = self.advance() // consume '['
+        let expr = self.parse_assignment()
+        let _ = self.expect(RBracket)
+        (expr, "", true, false)
       }
       _ => {
         let t = self.peek()
@@ -594,12 +740,62 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
         )
       }
     }
-    let _ = self.expect(Colon)
-    let value = self.parse_assignment()
-    props.push({ key, value })
+    // Check for method shorthand, getter, or setter: identifier followed by (
+    if self.at(LParen) {
+      // Method shorthand or getter/setter
+      let mloc = self.peek().loc
+      let params = self.parse_params()
+      // Validate getter/setter arity
+      match prop_kind {
+        @ast.Get =>
+          if params.length() != 0 {
+            raise Failure::Failure(
+              "Getter must have exactly zero parameters",
+            )
+          }
+        @ast.Set =>
+          if params.length() != 1 {
+            raise Failure::Failure(
+              "Setter must have exactly one parameter",
+            )
+          }
+        @ast.Init => ()
+      }
+      let body = self.parse_block_body()
+      let func_data : @ast.Expr = FuncExpr(
+        if computed { None } else { Some(key_name) },
+        params,
+        body,
+        mloc,
+      )
+      props.push({ key: key_expr, value: func_data, kind: prop_kind, computed })
+    } else if self.at(Colon) {
+      // Normal property
+      let _ = self.advance() // consume ':'
+      let value = self.parse_assignment()
+      props.push({ key: key_expr, value, kind: @ast.Init, computed })
+    } else if self.at(Comma) || self.at(RBrace) {
+      // Shorthand property: { x } => { x: x }
+      // Only identifier keys can use shorthand syntax
+      if not(is_ident_key) {
+        let t = self.peek()
+        raise Failure::Failure(
+          "Shorthand properties require identifier keys at line \{t.loc.line}, col \{t.loc.col}",
+        )
+      }
+      let value : @ast.Expr = Ident(key_name, loc)
+      props.push({ key: key_expr, value, kind: @ast.Init, computed: false })
+    } else {
+      let t = self.peek()
+      raise Failure::Failure(
+        "Expected ':' or '(' in object literal, got \{t.kind} at line \{t.loc.line}, col \{t.loc.col}",
+      )
+    }
     if not(self.at(RBrace)) {
-      let _ = self.expect(Comma)
-
+      // Allow trailing comma
+      if self.at(Comma) {
+        let _ = self.advance()
+      }
     }
   }
   let _ = self.expect(RBrace)
@@ -685,7 +881,13 @@ fn expr_to_pattern(expr : @ast.Expr) -> @ast.Pattern raise Error {
       for prop in props {
         // key: value => { key, value: Pattern, default_val }
         let pat = expr_to_pattern(prop.value)
-        prop_pats.push({ key: prop.key, value: pat, default_val: None })
+        // Extract string key from the key expression
+        let key_str : String = match prop.key {
+          StringLit(s, _) => s
+          Ident(s, _) => s
+          _ => raise Failure::Failure("Invalid key in destructuring pattern")
+        }
+        prop_pats.push({ key: key_str, value: pat, default_val: None })
       }
       ObjectPat(prop_pats, rest)
     }

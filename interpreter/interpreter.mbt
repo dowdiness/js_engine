@@ -10,6 +10,7 @@ pub(all) enum Signal {
 pub(all) struct Interpreter {
   output : Array[String]
   global : Environment
+  global_this : Value
   mut strict : Bool
 }
 
@@ -17,8 +18,22 @@ pub(all) struct Interpreter {
 pub fn Interpreter::new() -> Interpreter {
   let global = Environment::new()
   let output : Array[String] = []
+  // Create global object for 'this' in global context
+  let global_this : Value = Object(
+    {
+      properties: {},
+      prototype: Null,
+      callable: None,
+      class_name: "global",
+      descriptors: {},
+      extensible: true,
+    },
+  )
   setup_builtins(global, output)
-  { output, global, strict: false }
+  // Bind 'this' and 'globalThis' in global scope
+  global.def_builtin("this", global_this)
+  global.def_builtin("globalThis", global_this)
+  { output, global, global_this, strict: false }
 }
 
 ///|
@@ -83,6 +98,10 @@ fn Interpreter::exec_stmt(
         if init is Some(_) {
           env.assign(name, value)
         }
+      } else if (bk == LetBinding || bk == ConstBinding) &&
+        env.bindings.contains(name) {
+        // let/const hoisted with TDZ - initialize it
+        env.initialize(name, value)
       } else {
         env.def(name, value, bk)
       }
@@ -90,6 +109,8 @@ fn Interpreter::exec_stmt(
     }
     Block(stmts, _) => {
       let block_env = Environment::new(parent=Some(env))
+      // Hoist let/const with TDZ markers
+      hoist_block_tdz(stmts, block_env)
       self.exec_stmts(stmts, block_env)
     }
     IfStmt(cond, then_branch, else_branch, _) => {
@@ -327,8 +348,8 @@ fn Interpreter::exec_stmt(
           result
         }
         _ =>
-          raise Failure::Failure(
-            "for-of requires an iterable (array or string)",
+          raise JsException(
+            String_("TypeError: is not iterable"),
           )
       }
       for item in items {
@@ -539,6 +560,63 @@ fn Interpreter::hoist_declarations(
   }
 }
 
+///| Hoist let/const declarations with TDZ markers at block scope
+fn hoist_block_tdz(stmts : Array[@ast.Stmt], env : Environment) -> Unit raise Error {
+  for stmt in stmts {
+    match stmt {
+      VarDecl(LetKind, name, _, _) =>
+        if not(env.bindings.contains(name)) {
+          env.def_tdz(name, LetBinding)
+        }
+      VarDecl(ConstKind, name, _, _) =>
+        if not(env.bindings.contains(name)) {
+          env.def_tdz(name, ConstBinding)
+        }
+      // DestructureDecl with let/const also needs TDZ
+      DestructureDecl(LetKind, pattern, _, _) =>
+        hoist_pattern_tdz(pattern, env, LetBinding)
+      DestructureDecl(ConstKind, pattern, _, _) =>
+        hoist_pattern_tdz(pattern, env, ConstBinding)
+      _ => ()
+    }
+  }
+}
+
+///| Hoist pattern bindings with TDZ markers
+fn hoist_pattern_tdz(
+  pattern : @ast.Pattern,
+  env : Environment,
+  kind : BindingKind,
+) -> Unit raise Error {
+  match pattern {
+    IdentPat(name) =>
+      if not(env.bindings.contains(name)) {
+        env.def_tdz(name, kind)
+      }
+    ArrayPat(elements, rest) => {
+      for elem in elements {
+        match elem {
+          Some(p) => hoist_pattern_tdz(p, env, kind)
+          None => ()
+        }
+      }
+      match rest {
+        Some(p) => hoist_pattern_tdz(p, env, kind)
+        None => ()
+      }
+    }
+    ObjectPat(props, rest) => {
+      for prop in props {
+        hoist_pattern_tdz(prop.value, env, kind)
+      }
+      match rest {
+        Some(p) => hoist_pattern_tdz(p, env, kind)
+        None => ()
+      }
+    }
+  }
+}
+
 ///|
 fn Interpreter::bind_pattern(
   self : Interpreter,
@@ -551,6 +629,10 @@ fn Interpreter::bind_pattern(
     IdentPat(name) =>
       if bk == VarBinding && env.bindings.contains(name) {
         env.assign(name, value)
+      } else if (bk == LetBinding || bk == ConstBinding) &&
+        env.bindings.contains(name) {
+        // let/const hoisted with TDZ - initialize it
+        env.initialize(name, value)
       } else {
         env.def(name, value, bk)
       }
@@ -805,15 +887,51 @@ fn Interpreter::eval_expr(
     }
     ObjectLit(props, _) => {
       let properties : Map[String, Value] = {}
+      let descriptors : Map[String, PropDescriptor] = {}
       for prop in props {
-        properties[prop.key] = self.eval_expr(prop.value, env)
+        // Get the key string - either from static StringLit or by evaluating computed key
+        let key_str : String = if prop.computed {
+          // Evaluate the computed key and convert to string
+          let key_val = self.eval_expr(prop.key, env)
+          match key_val {
+            String_(s) => s
+            Number(n) => {
+              let i = n.to_int()
+              if i.to_double() == n { i.to_string() } else { n.to_string() }
+            }
+            Bool(b) => b.to_string()
+            Null => "null"
+            Undefined => "undefined"
+            _ => key_val.to_string()
+          }
+        } else {
+          // Static key - extract from StringLit
+          match prop.key {
+            StringLit(s, _) => s
+            _ => prop.key.to_string() // fallback
+          }
+        }
+        match prop.kind {
+          Init => properties[key_str] = self.eval_expr(prop.value, env)
+          Get => {
+            // Getter: store the function as __get__<key> for now
+            // Real implementation would use accessor descriptors
+            let getter = self.eval_expr(prop.value, env)
+            properties["__get__" + key_str] = getter
+          }
+          Set => {
+            // Setter: store the function as __set__<key> for now
+            let setter = self.eval_expr(prop.value, env)
+            properties["__set__" + key_str] = setter
+          }
+        }
       }
       Object({
         properties,
         prototype: Null,
         callable: None,
         class_name: "Object",
-        descriptors: {},
+        descriptors,
         extensible: true,
       })
     }
@@ -884,8 +1002,8 @@ fn Interpreter::eval_expr(
           value
         }
         _ =>
-          raise Failure::Failure(
-            "Cannot set property '\{prop}' of \{type_of(obj)} at line \{loc.line}, col \{loc.col}",
+          raise JsException(
+            String_("TypeError: Cannot set property '\{prop}' of \{type_of(obj)}"),
           )
       }
     }
@@ -938,8 +1056,8 @@ fn Interpreter::eval_expr(
             _ => value
           }
         _ =>
-          raise Failure::Failure(
-            "Cannot set property of \{type_of(obj)} at line \{loc.line}, col \{loc.col}",
+          raise JsException(
+            String_("TypeError: Cannot set property of \{type_of(obj)}"),
           )
       }
     }
@@ -1013,6 +1131,98 @@ fn Interpreter::eval_expr(
       self.assign_pattern(pattern, value, env)
       value
     }
+    OptionalMember(obj_expr, prop, loc) => {
+      // obj?.prop - return undefined if obj is null/undefined
+      let obj = self.eval_expr(obj_expr, env)
+      match obj {
+        Null | Undefined => Undefined
+        _ => self.get_property(obj, prop, loc)
+      }
+    }
+    OptionalComputedMember(obj_expr, key_expr, loc) => {
+      // obj?.[key] - return undefined if obj is null/undefined
+      let obj = self.eval_expr(obj_expr, env)
+      match obj {
+        Null | Undefined => Undefined
+        _ => {
+          let key = self.eval_expr(key_expr, env)
+          self.get_computed_property(obj, key, loc)
+        }
+      }
+    }
+    OptionalCall(callee_expr, arg_exprs, loc) => {
+      // func?.(args) - return undefined if func is null/undefined
+      // Per ES spec, arguments are NOT evaluated if function is nullish
+      // Need to preserve receiver for method calls
+      match callee_expr {
+        OptionalMember(obj_expr, prop, mloc) => {
+          let obj = self.eval_expr(obj_expr, env)
+          match obj {
+            Null | Undefined => Undefined
+            _ => {
+              let func_val = self.get_property(obj, prop, mloc)
+              match func_val {
+                Null | Undefined => Undefined
+                _ => {
+                  let args = self.eval_args_with_spread(arg_exprs, env)
+                  self.call_value(func_val, obj, args, loc)
+                }
+              }
+            }
+          }
+        }
+        OptionalComputedMember(obj_expr, key_expr, mloc) => {
+          let obj = self.eval_expr(obj_expr, env)
+          match obj {
+            Null | Undefined => Undefined
+            _ => {
+              let key = self.eval_expr(key_expr, env)
+              let func_val = self.get_computed_property(obj, key, mloc)
+              match func_val {
+                Null | Undefined => Undefined
+                _ => {
+                  let args = self.eval_args_with_spread(arg_exprs, env)
+                  self.call_value(func_val, obj, args, loc)
+                }
+              }
+            }
+          }
+        }
+        Member(obj_expr, prop, mloc) => {
+          let obj = self.eval_expr(obj_expr, env)
+          let func_val = self.get_property(obj, prop, mloc)
+          match func_val {
+            Null | Undefined => Undefined
+            _ => {
+              let args = self.eval_args_with_spread(arg_exprs, env)
+              self.call_value(func_val, obj, args, loc)
+            }
+          }
+        }
+        ComputedMember(obj_expr, key_expr, mloc) => {
+          let obj = self.eval_expr(obj_expr, env)
+          let key = self.eval_expr(key_expr, env)
+          let func_val = self.get_computed_property(obj, key, mloc)
+          match func_val {
+            Null | Undefined => Undefined
+            _ => {
+              let args = self.eval_args_with_spread(arg_exprs, env)
+              self.call_value(func_val, obj, args, loc)
+            }
+          }
+        }
+        _ => {
+          let callee = self.eval_expr(callee_expr, env)
+          match callee {
+            Null | Undefined => Undefined
+            _ => {
+              let args = self.eval_args_with_spread(arg_exprs, env)
+              self.call_value(callee, Undefined, args, loc)
+            }
+          }
+        }
+      }
+    }
   }
 }
 
@@ -1025,7 +1235,7 @@ fn Interpreter::eval_binary(
   env : Environment,
   loc : @token.Loc,
 ) -> Value raise Error {
-  // Short-circuit for && and ||
+  // Short-circuit for &&, ||, and ??
   match op {
     And => {
       let left = self.eval_expr(left_expr, env)
@@ -1040,6 +1250,14 @@ fn Interpreter::eval_binary(
         return left
       }
       self.eval_expr(right_expr, env)
+    }
+    NullishCoalesce => {
+      // ?? returns left if it's not null/undefined, otherwise right
+      let left = self.eval_expr(left_expr, env)
+      match left {
+        Null | Undefined => self.eval_expr(right_expr, env)
+        _ => left
+      }
     }
     _ => {
       let left = self.eval_expr(left_expr, env)
@@ -1082,6 +1300,9 @@ fn eval_binary_op(
     (NotEqEq, l, r) => Bool(not(strict_equal(l, r)))
     (EqEq, l, r) => Bool(loose_equal(l, r))
     (NotEq, l, r) => Bool(not(loose_equal(l, r)))
+    // Exponentiation
+    (Exp, Number(a), Number(b)) => Number(a.pow(b))
+    (Exp, l, r) => Number(to_number(l).pow(to_number(r)))
     // Arithmetic fallbacks (type coercion)
     (Add, l, r) => Number(to_number(l) + to_number(r))
     (Sub, l, r) => Number(to_number(l) - to_number(r))
@@ -1127,17 +1348,39 @@ fn eval_binary_op(
         Number(shifted.land(mask).to_double())
       }
     }
-    // in operator
+    // in operator - walks prototype chain
     (In, l, r) =>
       match r {
-        Object(data) => Bool(data.properties.contains(l.to_string()))
+        Object(data) => {
+          let key = l.to_string()
+          // Check own property first
+          if data.properties.contains(key) {
+            return Bool(true)
+          }
+          // Walk prototype chain
+          let mut current = data.prototype
+          while true {
+            match current {
+              Object(proto_data) =>
+                if proto_data.properties.contains(key) {
+                  return Bool(true)
+                } else {
+                  current = proto_data.prototype
+                }
+              _ => break
+            }
+          }
+          Bool(false)
+        }
         Array(data) => {
           let idx = to_number(l).to_int()
           Bool(idx >= 0 && idx < data.elements.length())
         }
         _ =>
-          raise Failure::Failure(
-            "Cannot use 'in' operator with \{type_of(r)} at line \{loc.line}, col \{loc.col}",
+          raise JsException(
+            String_(
+              "TypeError: Cannot use 'in' operator to search for '\{l.to_string()}' in \{type_of(r)}",
+            ),
           )
       }
     // instanceof
@@ -1173,12 +1416,14 @@ fn eval_binary_op(
           }
         }
         _ =>
-          raise Failure::Failure(
-            "Right-hand side of instanceof is not callable at line \{loc.line}, col \{loc.col}",
+          raise JsException(
+            String_(
+              "TypeError: Right-hand side of 'instanceof' is not an object",
+            ),
           )
       }
-    // And/Or already handled by short-circuit
-    (And, _, _) | (Or, _, _) =>
+    // And/Or/?? already handled by short-circuit
+    (And, _, _) | (Or, _, _) | (NullishCoalesce, _, _) =>
       raise Failure::Failure(
         "Internal error: logical operators should be short-circuited",
       )
@@ -1201,9 +1446,43 @@ fn strict_equal(a : Value, b : Value) -> Bool {
 
 ///|
 fn loose_equal(a : Value, b : Value) -> Bool {
+  // Abstract Equality Comparison Algorithm (ES spec 7.2.14)
   match (a, b) {
+    // Same type: use strict equality
+    (Number(x), Number(y)) => x == y
+    (String_(x), String_(y)) => x == y
+    (Bool(x), Bool(y)) => x == y
+    (Null, Null) => true
+    (Undefined, Undefined) => true
+    (Object(x), Object(y)) => physical_equal(x, y)
+    (Array(x), Array(y)) => physical_equal(x, y)
+    // null == undefined
     (Null, Undefined) | (Undefined, Null) => true
-    _ => strict_equal(a, b)
+    // Number == String: convert string to number
+    (Number(n), String_(s)) => n == to_number(String_(s))
+    (String_(s), Number(n)) => to_number(String_(s)) == n
+    // Boolean == anything: convert boolean to number first
+    (Bool(bval), _) => loose_equal(Number(if bval { 1.0 } else { 0.0 }), b)
+    (_, Bool(bval)) => loose_equal(a, Number(if bval { 1.0 } else { 0.0 }))
+    // Object/Array == Number/String: try ToPrimitive (simplified: use to_string)
+    (Object(_), Number(_)) | (Object(_), String_(_)) => {
+      let prim = String_(a.to_string())
+      loose_equal(prim, b)
+    }
+    (Number(_), Object(_)) | (String_(_), Object(_)) => {
+      let prim = String_(b.to_string())
+      loose_equal(a, prim)
+    }
+    (Array(_), Number(_)) | (Array(_), String_(_)) => {
+      let prim = String_(a.to_string())
+      loose_equal(prim, b)
+    }
+    (Number(_), Array(_)) | (String_(_), Array(_)) => {
+      let prim = String_(b.to_string())
+      loose_equal(a, prim)
+    }
+    // Everything else is false
+    _ => false
   }
 }
 
@@ -1627,14 +1906,9 @@ fn Interpreter::call_value(
         Some(NativeCallable(_, func)) => func(args)
         Some(InterpreterCallable(_, func)) => func(self, this_val, args)
         None =>
-          raise Failure::Failure(
-            "Not a function at line \{loc.line}, col \{loc.col}",
-          )
+          raise JsException(String_("TypeError: is not a function"))
       }
-    _ =>
-      raise Failure::Failure(
-        "Not a function at line \{loc.line}, col \{loc.col}",
-      )
+    _ => raise JsException(String_("TypeError: is not a function"))
   }
 }
 
@@ -1780,8 +2054,8 @@ fn Interpreter::get_property(
       }
     Number(_) => get_number_method(obj, prop)
     Null | Undefined =>
-      raise Failure::Failure(
-        "Cannot read property '\{prop}' of \{type_of(obj)} at line \{loc.line}, col \{loc.col}",
+      raise JsException(
+        String_("TypeError: Cannot read property '\{prop}' of \{type_of(obj)}"),
       )
     _ => Undefined
   }
@@ -1925,8 +2199,8 @@ fn Interpreter::get_computed_property(
         _ => Undefined
       }
     Null | Undefined =>
-      raise Failure::Failure(
-        "Cannot read property of \{type_of(obj)} at line \{loc.line}, col \{loc.col}",
+      raise JsException(
+        String_("TypeError: Cannot read property of \{type_of(obj)}"),
       )
     _ => Undefined
   }
@@ -2130,15 +2404,9 @@ fn Interpreter::eval_new(
           raise JsException(
             String_("TypeError: arrow functions cannot be used as constructors"),
           )
-        _ =>
-          raise Failure::Failure(
-            "Not a constructor at line \{loc.line}, col \{loc.col}",
-          )
+        _ => raise JsException(String_("TypeError: is not a constructor"))
       }
-    _ =>
-      raise Failure::Failure(
-        "Not a constructor at line \{loc.line}, col \{loc.col}",
-      )
+    _ => raise JsException(String_("TypeError: is not a constructor"))
   }
 }
 
@@ -2239,6 +2507,7 @@ fn Interpreter::eval_compound_assign(
     AddAssign => Add
     SubAssign => Sub
     MulAssign => Mul
+    ExpAssign => Exp
     DivAssign => Div
     ModAssign => Mod
     BitAndAssign => BitAnd

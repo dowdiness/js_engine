@@ -38,47 +38,97 @@ YAML_PATTERN = re.compile(r'/\*---(.*?)---\*/', re.DOTALL)
 
 SKIP_FEATURES = {
     # Features this engine definitely doesn't support yet
+
+    # Symbols and related well-known symbols
     "Symbol", "Symbol.iterator", "Symbol.hasInstance", "Symbol.species",
     "Symbol.toPrimitive", "Symbol.toStringTag", "Symbol.asyncIterator",
-    "Promise", "async-functions", "async-iteration",
+    "Symbol.match", "Symbol.replace", "Symbol.search", "Symbol.split",
+    "Symbol.matchAll", "Symbol.isConcatSpreadable",
+    "Symbol.prototype.description", "well-known-symbol",
+
+    # Async / Promises
+    "Promise", "Promise.allSettled", "Promise.any",
+    "Promise.prototype.finally",
+    "async-functions", "async-iteration",
+    "promise-with-resolvers", "promise-try",
+    "top-level-await",
+
+    # Generators
     "generators", "generator",
+
+    # Classes
     "class", "class-fields-private", "class-fields-public",
     "class-methods-private", "class-static-fields-private",
     "class-static-fields-public", "class-static-methods-private",
-    "computed-property-names",
+    "class-static-block",
+
+    # Object literal features not yet implemented
+    "object-spread", "object-rest",
+
+    # Iteration / ordering
     "for-in-order",
+    "iterator-helpers", "iterator-sequencing", "joint-iteration",
+    "set-methods",
+
+    # Collections
     "Map", "Set", "WeakMap", "WeakSet", "WeakRef",
-    "Proxy", "Reflect",
+
+    # Proxy / Reflect
+    "Proxy", "Reflect", "Reflect.construct",
+
+    # Typed arrays and buffers
     "ArrayBuffer", "SharedArrayBuffer", "DataView",
-    "TypedArray", "Float16Array", "Atomics",
+    "DataView.prototype.setUint8",
+    "TypedArray", "Float16Array", "Uint8Array", "Atomics",
+    "resizable-arraybuffer", "arraybuffer-transfer",
+
+    # Tail calls
     "tail-call-optimization",
-    "import.meta", "dynamic-import", "top-level-await",
+
+    # Modules / dynamic import
+    "import.meta", "dynamic-import",
+    "json-modules", "import-assertions", "import-attributes",
+    "source-phase-imports", "source-phase-imports-module-source",
+
+    # RegExp advanced features
     "regexp-lookbehind", "regexp-named-groups", "regexp-unicode-property-escapes",
     "regexp-match-indices", "regexp-v-flag", "regexp-dotall",
+    "regexp-modifiers",
+    "RegExp.escape",
     "String.prototype.matchAll",
-    "Object.fromEntries", "Object.is",
-    "Array.from",
-    "Intl", "intl-normative-optional",
-    "globalThis",
-    "optional-chaining", "nullish-coalescing",
+
+    # Missing built-in statics / methods
+    "Object.fromEntries", "Object.is", "Object.hasOwn",
+    "Array.from", "Array.prototype.at",
+    "String.prototype.replaceAll",
+    "String.prototype.isWellFormed", "String.prototype.toWellFormed",
+
+    # Missing operators and syntax
     "numeric-separator-literal", "logical-assignment-operators",
+    "new.target",
+    "hashbang",
+
+    # Intl / locale
+    "Intl", "intl-normative-optional",
+
+    # Other missing features
     "FinalizationRegistry",
     "BigInt",
     "IsHTMLDDA",
     "cross-realm",
     "caller",
-    "json-modules", "import-assertions", "import-attributes",
-    "resizable-arraybuffer", "arraybuffer-transfer",
     "Temporal", "ShadowRealm",
     "decorators",
-    "iterator-helpers", "set-methods",
-    "promise-with-resolvers", "promise-try",
     "explicit-resource-management",
-    "source-phase-imports", "source-phase-imports-module-source",
-    # Removed in Phase 2+3: arrow-function, template, let, const,
-    # destructuring-binding, destructuring-assignment, default-parameters,
-    # for-of, Object.entries, Array.prototype.flat, Array.prototype.flatMap,
-    # Array.prototype.includes
+    "change-array-by-copy",
+    "array-find-from-last",
+    "string-trimming",
+    "json-parse-with-source",
+
+    # Removed in Phase 2+3 (now supported): arrow-function, template, let,
+    # const, destructuring-binding, destructuring-assignment,
+    # default-parameters, for-of, Object.entries, Array.prototype.flat,
+    # Array.prototype.flatMap, Array.prototype.includes
 }
 
 SKIP_FLAGS = {"module", "async", "CanBlockIsFalse", "CanBlockIsTrue"}

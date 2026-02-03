@@ -9,6 +9,7 @@ pub(all) enum BindingKind {
 struct Binding {
   mut value : Value
   kind : BindingKind
+  mut initialized : Bool
 }
 
 ///|
@@ -29,10 +30,51 @@ pub fn Environment::def(
   value : Value,
   kind : BindingKind,
 ) -> Unit raise Error {
-  if self.bindings.contains(name) {
-    raise Failure::Failure("Variable '\{name}' is already declared")
+  match self.bindings.get(name) {
+    Some(existing) =>
+      // var can redeclare var, but nothing else can redeclare
+      if kind == VarBinding && existing.kind == VarBinding {
+        // Allow var/var redeclaration - just update the value
+        existing.value = value
+      } else {
+        raise JsException(
+          String_("SyntaxError: Identifier '\{name}' has already been declared"),
+        )
+      }
+    None => self.bindings[name] = { value, kind, initialized: true }
   }
-  self.bindings[name] = { value, kind }
+}
+
+///| Define a TDZ binding (let/const before initialization)
+pub fn Environment::def_tdz(
+  self : Environment,
+  name : String,
+  kind : BindingKind,
+) -> Unit raise Error {
+  if self.bindings.contains(name) {
+    raise JsException(
+      String_("SyntaxError: Identifier '\{name}' has already been declared"),
+    )
+  }
+  self.bindings[name] = { value: Undefined, kind, initialized: false }
+}
+
+///| Initialize a TDZ binding (when declaration is executed)
+pub fn Environment::initialize(
+  self : Environment,
+  name : String,
+  value : Value,
+) -> Unit raise Error {
+  match self.bindings.get(name) {
+    Some(binding) => {
+      binding.value = value
+      binding.initialized = true
+    }
+    None =>
+      raise JsException(
+        String_("InternalError: Cannot initialize non-existent binding '\{name}'"),
+      )
+  }
 }
 
 ///|
@@ -41,7 +83,7 @@ pub fn Environment::def_builtin(
   name : String,
   value : Value,
 ) -> Unit {
-  self.bindings[name] = { value, kind: VarBinding }
+  self.bindings[name] = { value, kind: VarBinding, initialized: true }
 }
 
 ///|
@@ -59,11 +101,21 @@ pub fn Environment::has(self : Environment, name : String) -> Bool {
 ///|
 pub fn Environment::get(self : Environment, name : String) -> Value raise Error {
   match self.bindings.get(name) {
-    Some(binding) => binding.value
+    Some(binding) =>
+      if not(binding.initialized) {
+        raise JsException(
+          String_(
+            "ReferenceError: Cannot access '\{name}' before initialization",
+          ),
+        )
+      } else {
+        binding.value
+      }
     None =>
       match self.parent {
         Some(parent) => parent.get(name)
-        None => raise Failure::Failure("'\{name}' is not defined")
+        None =>
+          raise JsException(String_("ReferenceError: \{name} is not defined"))
       }
   }
 }
@@ -76,15 +128,24 @@ pub fn Environment::assign(
 ) -> Unit raise Error {
   match self.bindings.get(name) {
     Some(binding) =>
-      if binding.kind == ConstBinding {
-        raise Failure::Failure("Assignment to constant variable '\{name}'")
+      if not(binding.initialized) {
+        raise JsException(
+          String_(
+            "ReferenceError: Cannot access '\{name}' before initialization",
+          ),
+        )
+      } else if binding.kind == ConstBinding {
+        raise JsException(
+          String_("TypeError: Assignment to constant variable '\{name}'"),
+        )
       } else {
         binding.value = value
       }
     None =>
       match self.parent {
         Some(parent) => parent.assign(name, value)
-        None => raise Failure::Failure("'\{name}' is not defined")
+        None =>
+          raise JsException(String_("ReferenceError: \{name} is not defined"))
       }
   }
 }

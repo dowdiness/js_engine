@@ -52,6 +52,7 @@ pub(all) enum TokenKind {
   Plus
   Minus
   Star
+  StarStar
   Slash
   Percent
   Assign
@@ -65,6 +66,8 @@ pub(all) enum TokenKind {
   GtEq
   And
   Or
+  QuestionQuestion // ??
+  QuestionDot // ?.
   Bang
   // Update / Compound assignment
   PlusPlus
@@ -72,6 +75,7 @@ pub(all) enum TokenKind {
   PlusAssign
   MinusAssign
   StarAssign
+  StarStarAssign
   SlashAssign
   PercentAssign
   // Bitwise

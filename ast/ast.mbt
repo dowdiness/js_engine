@@ -15,12 +15,14 @@ pub(all) enum BinOp {
   GtEq
   And
   Or
+  NullishCoalesce // ??
   BitAnd
   BitOr
   BitXor
   LShift
   RShift
   URShift
+  Exp
   In
   Instanceof
 } derive(Show, Eq)
@@ -48,6 +50,7 @@ pub(all) enum CompoundOp {
   MulAssign
   DivAssign
   ModAssign
+  ExpAssign
   BitAndAssign
   BitOrAssign
   BitXorAssign
@@ -64,9 +67,18 @@ pub(all) enum VarKind {
 } derive(Show, Eq)
 
 ///|
+pub(all) enum PropKind {
+  Init // normal property
+  Get // getter
+  Set // setter
+} derive(Show, Eq)
+
+///|
 pub(all) struct Property {
-  key : String
+  key : Expr // StringLit for static keys, any Expr for computed keys
   value : Expr
+  kind : PropKind
+  computed : Bool // true for [expr]: value syntax
 } derive(Show, Eq)
 
 ///|
@@ -108,6 +120,9 @@ pub(all) enum Expr {
   SpreadExpr(Expr, @token.Loc)
   RegexLit(String, String, @token.Loc) // pattern, flags
   DestructureAssign(Pattern, Expr, @token.Loc)
+  OptionalMember(Expr, String, @token.Loc) // obj?.prop
+  OptionalComputedMember(Expr, Expr, @token.Loc) // obj?.[expr]
+  OptionalCall(Expr, Array[Expr], @token.Loc) // func?.(args)
 } derive(Show, Eq)
 
 ///|

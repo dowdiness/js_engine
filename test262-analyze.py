@@ -86,59 +86,82 @@ FEATURE_SUPPORT_MAP = {
 
 # Test262 features the engine definitely cannot handle
 UNSUPPORTED_TEST262_FEATURES = {
+    # Symbols and related well-known symbols
     "Symbol", "Symbol.iterator", "Symbol.hasInstance", "Symbol.species",
     "Symbol.toPrimitive", "Symbol.toStringTag", "Symbol.asyncIterator",
     "Symbol.match", "Symbol.replace", "Symbol.search", "Symbol.split",
+    "Symbol.matchAll", "Symbol.isConcatSpreadable",
     "Symbol.prototype.description",
     "well-known-symbol",
 
+    # Async / Promises
     "Promise", "Promise.allSettled", "Promise.any", "Promise.prototype.finally",
     "promise-with-resolvers", "promise-try",
     "async-functions", "async-iteration", "top-level-await",
 
-    "generators",
+    # Generators
+    "generators", "generator",
 
+    # Classes
     "class", "class-fields-private", "class-fields-public",
     "class-methods-private", "class-static-fields-private",
     "class-static-fields-public", "class-static-methods-private",
     "class-static-block",
 
-    "computed-property-names",
-    "destructuring-binding", "destructuring-assignment",
-    "default-parameters", "rest-parameters",
+    # Object literal features not yet implemented
+    "object-spread", "object-rest",
 
-    "for-of", "for-in-order",
+    # Iteration / ordering
+    "for-in-order",
+    "iterator-helpers", "iterator-sequencing", "joint-iteration",
+    "set-methods",
+
+    # Collections
     "Map", "Set", "WeakMap", "WeakSet", "WeakRef",
-    "Proxy", "Reflect",
 
+    # Proxy / Reflect
+    "Proxy", "Reflect", "Reflect.construct",
+
+    # Typed arrays and buffers
     "ArrayBuffer", "SharedArrayBuffer", "DataView",
-    "TypedArray", "Float16Array", "Atomics",
+    "DataView.prototype.setUint8",
+    "TypedArray", "Float16Array", "Uint8Array", "Atomics",
     "resizable-arraybuffer", "arraybuffer-transfer",
 
-    "arrow-function",
-    "template",
-
+    # Tail calls
     "tail-call-optimization",
+
+    # Modules / dynamic import
     "import.meta", "dynamic-import",
     "import-assertions", "import-attributes",
     "json-modules",
+    "source-phase-imports", "source-phase-imports-module-source",
 
+    # RegExp advanced features
     "regexp-lookbehind", "regexp-named-groups",
     "regexp-unicode-property-escapes",
     "regexp-match-indices", "regexp-v-flag", "regexp-dotall",
+    "regexp-modifiers",
+    "RegExp.escape",
     "String.prototype.matchAll",
 
-    "Object.fromEntries", "Object.is", "Object.entries",
-    "Object.hasOwn",
-    "Array.prototype.flat", "Array.prototype.flatMap",
-    "Array.prototype.includes", "Array.from",
-    "Array.prototype.at",
+    # Missing built-in statics / methods
+    "Object.fromEntries", "Object.is", "Object.hasOwn",
+    "Array.from", "Array.prototype.at",
+    "String.prototype.replaceAll",
+    "String.prototype.isWellFormed",
+    "String.prototype.toWellFormed",
 
-    "Intl", "intl-normative-optional",
-    "globalThis",
-    "optional-chaining", "nullish-coalescing",
+    # Missing operators and syntax
     "numeric-separator-literal",
     "logical-assignment-operators",
+    "new.target",
+    "hashbang",
+
+    # Intl / locale
+    "Intl", "intl-normative-optional",
+
+    # Other missing features
     "FinalizationRegistry",
     "BigInt",
     "IsHTMLDDA",
@@ -146,16 +169,16 @@ UNSUPPORTED_TEST262_FEATURES = {
     "caller",
     "Temporal", "ShadowRealm",
     "decorators",
-    "iterator-helpers", "set-methods",
     "explicit-resource-management",
-    "source-phase-imports", "source-phase-imports-module-source",
     "change-array-by-copy",
-    "hashbang",
-    "String.prototype.isWellFormed",
-    "String.prototype.toWellFormed",
+    "array-find-from-last",
+    "string-trimming",
     "json-parse-with-source",
-    "RegExp.escape",
-    "Uint8Array",
+
+    # Removed in Phase 2+3 (now supported): arrow-function, template,
+    # destructuring-binding, destructuring-assignment, default-parameters,
+    # rest-parameters, for-of, Object.entries, Array.prototype.flat,
+    # Array.prototype.flatMap, Array.prototype.includes
 }
 
 UNSUPPORTED_FLAGS = {"module", "async", "CanBlockIsFalse", "CanBlockIsTrue"}
