@@ -1575,14 +1575,8 @@ fn Interpreter::eval_binary(
               match has_instance_method {
                 Object(method_data) =>
                   match method_data.callable {
-                    Some(callable) => {
-                      let result = self.call_callable(
-                        callable,
-                        r,
-                        [l],
-                        method_data.class_name,
-                        false,
-                      )
+                    Some(_) => {
+                      let result = self.call_value(has_instance_method, r, [l], loc)
                       Bool(is_truthy(result))
                     }
                     None =>
