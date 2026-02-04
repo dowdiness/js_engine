@@ -1561,6 +1561,51 @@ fn Interpreter::eval_binary(
         _ => left
       }
     }
+    Instanceof => {
+      // instanceof - ES2015+ with Symbol.hasInstance support
+      let l = self.eval_expr(left_expr, env)
+      let r = self.eval_expr(right_expr, env)
+      match r {
+        Object(r_data) => {
+          // First check for Symbol.hasInstance method (ES2015+)
+          let has_instance_sym = get_hasinstance_symbol()
+          match r_data.symbol_properties.get(has_instance_sym.id) {
+            Some(has_instance_method) =>
+              // Call [Symbol.hasInstance](l) and convert result to boolean
+              match has_instance_method {
+                Object(method_data) =>
+                  match method_data.callable {
+                    Some(callable) => {
+                      let result = self.call_callable(
+                        callable,
+                        r,
+                        [l],
+                        method_data.class_name,
+                        false,
+                      )
+                      Bool(to_boolean(result))
+                    }
+                    None =>
+                      // Symbol.hasInstance exists but is not callable, fall through to prototype chain
+                      instanceof_prototype_chain(l, r_data)
+                  }
+                _ =>
+                  // Symbol.hasInstance is not an object, fall through to prototype chain
+                  instanceof_prototype_chain(l, r_data)
+              }
+            None =>
+              // No Symbol.hasInstance, use prototype chain
+              instanceof_prototype_chain(l, r_data)
+          }
+        }
+        _ =>
+          raise JsException(
+            String_(
+              "TypeError: Right-hand side of 'instanceof' is not an object",
+            ),
+          )
+      }
+    }
     _ => {
       let left = self.eval_expr(left_expr, env)
       let right = self.eval_expr(right_expr, env)
@@ -1714,50 +1759,8 @@ fn eval_binary_op(
             ),
           )
       }
-    // instanceof - ES2015+ with Symbol.hasInstance support
-    (Instanceof, l, r) =>
-      match r {
-        Object(r_data) => {
-          // First check for Symbol.hasInstance method (ES2015+)
-          let has_instance_sym = get_hasinstance_symbol()
-          match r_data.symbol_properties.get(has_instance_sym.id) {
-            Some(has_instance_method) =>
-              // Call [Symbol.hasInstance](l) and convert result to boolean
-              match has_instance_method {
-                Object(method_data) =>
-                  match method_data.callable {
-                    Some(callable) => {
-                      let result = self.call_callable(
-                        callable,
-                        r,
-                        [l],
-                        method_data.class_name,
-                        false,
-                      )
-                      Bool(to_boolean(result))
-                    }
-                    None =>
-                      // Symbol.hasInstance exists but is not callable, fall through to prototype chain
-                      self.instanceof_prototype_chain(l, r_data)
-                  }
-                _ =>
-                  // Symbol.hasInstance is not an object, fall through to prototype chain
-                  self.instanceof_prototype_chain(l, r_data)
-              }
-            None =>
-              // No Symbol.hasInstance, use prototype chain
-              self.instanceof_prototype_chain(l, r_data)
-          }
-        }
-        _ =>
-          raise JsException(
-            String_(
-              "TypeError: Right-hand side of 'instanceof' is not an object",
-            ),
-          )
-      }
-    // And/Or/?? already handled by short-circuit
-    (And, _, _) | (Or, _, _) | (NullishCoalesce, _, _) =>
+    // And/Or/??/Instanceof already handled in eval_binary
+    (And, _, _) | (Or, _, _) | (NullishCoalesce, _, _) | (Instanceof, _, _) =>
       raise Failure::Failure(
         "Internal error: logical operators should be short-circuited",
       )
@@ -1766,7 +1769,7 @@ fn eval_binary_op(
 
 ///|
 /// Helper for instanceof: walk prototype chain to check if l's prototype chain includes r's prototype
-fn instanceof_prototype_chain(self : Interpreter, l : Value, r_data : ObjectData) -> Value {
+fn instanceof_prototype_chain(l : Value, r_data : ObjectData) -> Value {
   let target_proto = match r_data.properties.get("prototype") {
     Some(v) => v
     None => Null
