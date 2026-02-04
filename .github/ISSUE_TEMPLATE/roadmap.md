@@ -748,6 +748,7 @@ Phase 1 (DONE) ──► Phase 2 (DONE) ──► Phase 3 (DONE) ──► Phase
 | Object rest patterns include symbol properties | `b4dbef4` |
 | Compound assignments (`+=`, `&&=`, `\|\|=`, `??=`) handle Symbol keys | `b4dbef4` |
 | Symbol.keyFor O(1) reverse lookup optimization | `b4dbef4` |
+| **`instanceof` with Symbol.hasInstance** — custom `[Symbol.hasInstance]` methods, GetMethod prototype chain lookup, OrdinaryHasInstance fallback | `5ba4019` |
 
 ### ✅ Recently Completed (Phase 3.6)
 
