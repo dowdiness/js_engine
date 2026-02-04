@@ -77,7 +77,7 @@ SKIP_FEATURES = {
     "set-methods",
 
     # Collections
-    "Map", "Set", "WeakMap", "WeakSet", "WeakRef",
+    "WeakMap", "WeakSet", "WeakRef",
 
     # Proxy / Reflect
     "Proxy", "Reflect", "Reflect.construct",
