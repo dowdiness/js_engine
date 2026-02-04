@@ -4042,3 +4042,14 @@ test "instanceof with Symbol.hasInstance inherited from prototype" {
   let (_, result) = run_js(src)
   inspect(result, content="true")
 }
+
+///|
+test "instanceof with bound function returns false (no own prototype)" {
+  let src =
+    #|function Foo() {}
+    #|const boundFoo = Foo.bind(null);
+    #|// Bound functions don't have own prototype, should return false per spec
+    #|({}) instanceof boundFoo;
+  let (_, result) = run_js(src)
+  inspect(result, content="false")
+}

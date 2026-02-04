@@ -1604,25 +1604,18 @@ fn Interpreter::eval_binary(
                   )
                 Some(_) => {
                   // Step 3: Get prototype property and walk LHS prototype chain
-                  let target_proto = match r_data.properties.get("prototype") {
+                  // Per OrdinaryHasInstance spec: if prototype is not an object, return false
+                  // This handles bound functions which don't have own prototype property
+                  match r_data.properties.get("prototype") {
                     Some(proto) =>
                       match proto {
-                        Object(_) => proto
-                        _ =>
-                          raise JsException(
-                            String_(
-                              "TypeError: Function has non-object prototype in instanceof check",
-                            ),
-                          )
+                        Object(_) => instanceof_prototype_chain(l, proto)
+                        // Non-object prototype: return false per spec
+                        _ => Bool(false)
                       }
-                    None =>
-                      raise JsException(
-                        String_(
-                          "TypeError: Function has non-object prototype in instanceof check",
-                        ),
-                      )
+                    // No prototype property (e.g., bound functions): return false per spec
+                    None => Bool(false)
                   }
-                  instanceof_prototype_chain(l, target_proto)
                 }
               }
             }
