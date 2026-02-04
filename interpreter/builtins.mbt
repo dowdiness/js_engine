@@ -393,7 +393,7 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
   // Set up iterator protocol on Array and String prototypes
   // Use try/catch since setup_iterator_protocol can raise errors
   try {
-    setup_iterator_protocol!(env)
+    setup_iterator_protocol(env)
   } catch {
     _ => () // Ignore errors during initialization
   }
