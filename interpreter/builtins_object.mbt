@@ -1435,7 +1435,11 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                     e => { caught_error = Some(e); return 0 }
                   }
                   // Use sign-based comparison to avoid truncating fractional values
-                  let cmp = to_number(result)
+                  let cmp = try {
+                    to_number(result)
+                  } catch {
+                    e => { caught_error = Some(e); return 0 }
+                  }
                   if cmp.is_nan() { 0 } else if cmp < 0.0 { -1 } else if cmp > 0.0 { 1 } else { 0 }
                 })
                 match caught_error { Some(e) => raise e; None => () }
@@ -1733,7 +1737,11 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                     e => { caught_error = Some(e); return 0 }
                   }
                   // Use sign-based comparison to avoid truncating fractional values
-                  let cmp = to_number(cmp_result)
+                  let cmp = try {
+                    to_number(cmp_result)
+                  } catch {
+                    e => { caught_error = Some(e); return 0 }
+                  }
                   if cmp.is_nan() { 0 } else if cmp < 0.0 { -1 } else if cmp > 0.0 { 1 } else { 0 }
                 })
                 match caught_error { Some(e) => raise e; None => () }
@@ -1830,6 +1838,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
 
   let array_proto : Value = Object({
     properties: array_proto_props,
+    symbol_properties: {},
     prototype: obj_proto,
     callable: None,
     class_name: "Array",
@@ -1855,6 +1864,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
   // Array.from with mapFn support using InterpreterCallable
   array_props["from"] = Object({
     properties: {},
+    symbol_properties: {},
     prototype: Null,
     callable: Some(InterpreterCallable("from", fn(interp, _this_val, args) {
       let source = if args.length() > 0 { args[0] } else { Undefined }
@@ -1894,7 +1904,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         Object(data) => {
           let len = match data.properties.get("length") {
             Some(Number(n)) => n.to_int()
-            Some(v) => to_number(v).to_int()
+            Some(v) => try { to_number(v).to_int() } catch { _ => 0 }
             None => 0
           }
           for i = 0; i < len; i = i + 1 {
@@ -1924,6 +1934,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     "Array",
     Object({
       properties: array_props,
+      symbol_properties: {},
       prototype: Null,
       callable: Some(
         NativeCallable("Array", fn(args) {
@@ -1959,6 +1970,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
       ),
       class_name: "Function",
       descriptors: {},
+      symbol_descriptors: {},
       extensible: true,
     }),
   )

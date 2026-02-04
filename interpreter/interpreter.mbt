@@ -22,10 +22,12 @@ pub fn Interpreter::new() -> Interpreter {
   let global_this : Value = Object(
     {
       properties: {},
+      symbol_properties: {},
       prototype: Null,
       callable: None,
       class_name: "global",
       descriptors: {},
+      symbol_descriptors: {},
       extensible: true,
     },
   )
@@ -2666,6 +2668,7 @@ fn Interpreter::get_computed_property(
           if prop == "hasOwnProperty" {
             return Object({
               properties: {},
+              symbol_properties: {},
               prototype: Null,
               callable: Some(
                 MethodCallable("hasOwnProperty", fn(this_val, args) {
@@ -2682,6 +2685,7 @@ fn Interpreter::get_computed_property(
               ),
               class_name: "Function",
               descriptors: {},
+              symbol_descriptors: {},
               extensible: true,
             })
           }

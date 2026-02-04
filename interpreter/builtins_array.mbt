@@ -876,7 +876,14 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
                       }
                     }
                     // Use sign-based comparison to avoid truncating fractional values
-                    let cmp = to_number(compare_result)
+                    let cmp = try {
+                      to_number(compare_result)
+                    } catch {
+                      e => {
+                        caught_error = Some(e)
+                        return 0
+                      }
+                    }
                     if cmp.is_nan() { 0 } else if cmp < 0.0 { -1 } else if cmp > 0.0 { 1 } else { 0 }
                   })
                   // Re-throw any caught exception per spec
@@ -1075,7 +1082,14 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
                       }
                     }
                     // Use sign-based comparison to avoid truncating fractional values
-                    let cmp = to_number(result)
+                    let cmp = try {
+                      to_number(result)
+                    } catch {
+                      e => {
+                        caught_error = Some(e)
+                        return 0
+                      }
+                    }
                     if cmp.is_nan() { 0 } else if cmp < 0.0 { -1 } else if cmp > 0.0 { 1 } else { 0 }
                   })
                   // Re-throw any caught exception per spec
