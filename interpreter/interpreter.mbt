@@ -351,7 +351,7 @@ fn Interpreter::exec_stmt(
           match data.callable {
             Some(_) => self.call_value(iterator_method, iterable, [], loc)
             None =>
-              raise JsTypeError(
+              raise TypeError(message=
                 "Result of the Symbol.iterator method is not an object",
               )
           }
@@ -362,13 +362,13 @@ fn Interpreter::exec_stmt(
             Array(arr) => make_array_iterator_value(arr)
             String_(s) => make_string_iterator_value(s)
             _ =>
-              raise JsTypeError(
+              raise TypeError(message=
                 "\{type_of(iterable)} is not iterable (cannot read property Symbol(Symbol.iterator))",
               )
           }
         }
         _ =>
-          raise JsTypeError(
+          raise TypeError(message=
             "Result of the Symbol.iterator method is not an object",
           )
       }
@@ -398,13 +398,13 @@ fn Interpreter::exec_stmt(
               }
               match found {
                 Undefined =>
-                  raise JsTypeError("iterator.next is not a function")
+                  raise TypeError(message="iterator.next is not a function")
                 _ => found
               }
             }
           }
         }
-        _ => raise JsTypeError("Iterator is not an object")
+        _ => raise TypeError(message="Iterator is not an object")
       }
 
       // Iterate using the iterator protocol
@@ -425,7 +425,7 @@ fn Interpreter::exec_stmt(
             }
             (done_val, value_val)
           }
-          _ => raise JsTypeError("Iterator result is not an object")
+          _ => raise TypeError(message="Iterator result is not an object")
         }
 
         // If done, exit the loop
@@ -1150,7 +1150,7 @@ fn Interpreter::eval_expr(
             Some(desc) =>
               if not(desc.writable) {
                 if self.strict {
-                  raise JsTypeError(
+                  raise TypeError(message=
                     "Cannot assign to read only property '\{prop}'",
                   )
                 }
@@ -1161,7 +1161,7 @@ fn Interpreter::eval_expr(
           // Check extensible for new properties
           if not(data.properties.contains(prop)) && not(data.extensible) {
             if self.strict {
-              raise JsTypeError(
+              raise TypeError(message=
                 "Cannot add property \{prop}, object is not extensible",
               )
             }
@@ -1171,7 +1171,7 @@ fn Interpreter::eval_expr(
           value
         }
         _ =>
-          raise JsTypeError(
+          raise TypeError(message=
             "Cannot set property '\{prop}' of \{type_of(obj)}",
           )
       }
@@ -1190,7 +1190,7 @@ fn Interpreter::eval_expr(
                 Some(desc) =>
                   if not(desc.writable) {
                     if self.strict {
-                      raise JsTypeError("Cannot assign to read only property")
+                      raise TypeError(message="Cannot assign to read only property")
                     }
                     return value
                   }
@@ -1199,7 +1199,7 @@ fn Interpreter::eval_expr(
               if not(data.symbol_properties.contains(sym.id)) &&
                 not(data.extensible) {
                 if self.strict {
-                  raise JsTypeError(
+                  raise TypeError(message=
                     "Cannot add property, object is not extensible",
                   )
                 }
@@ -1214,7 +1214,7 @@ fn Interpreter::eval_expr(
                 Some(desc) =>
                   if not(desc.writable) {
                     if self.strict {
-                      raise JsTypeError(
+                      raise TypeError(message=
                         "Cannot assign to read only property '\{prop}'",
                       )
                     }
@@ -1224,7 +1224,7 @@ fn Interpreter::eval_expr(
               }
               if not(data.properties.contains(prop)) && not(data.extensible) {
                 if self.strict {
-                  raise JsTypeError(
+                  raise TypeError(message=
                     "Cannot add property \{prop}, object is not extensible",
                   )
                 }
@@ -1248,7 +1248,7 @@ fn Interpreter::eval_expr(
             }
             _ => value
           }
-        _ => raise JsTypeError("Cannot set property of \{type_of(obj)}")
+        _ => raise TypeError(message="Cannot set property of \{type_of(obj)}")
       }
     }
     NewExpr(callee_expr, arg_exprs, loc) =>
@@ -1560,18 +1560,18 @@ fn Interpreter::eval_binary(
                     }
                     None =>
                       // Symbol.hasInstance exists but is not callable - TypeError per spec
-                      raise JsTypeError("Symbol.hasInstance is not a function")
+                      raise TypeError(message="Symbol.hasInstance is not a function")
                   }
                 _ =>
                   // Symbol.hasInstance is not an object - TypeError per spec
-                  raise JsTypeError("Symbol.hasInstance is not a function")
+                  raise TypeError(message="Symbol.hasInstance is not a function")
               }
             None => {
               // No Symbol.hasInstance found, use OrdinaryHasInstance
               // Step 2: Check if RHS is callable (required for OrdinaryHasInstance)
               match r_data.callable {
                 None =>
-                  raise JsTypeError(
+                  raise TypeError(message=
                     "Right-hand side of 'instanceof' is not callable",
                   )
                 Some(_) => {
@@ -1594,7 +1594,7 @@ fn Interpreter::eval_binary(
           }
         }
         _ =>
-          raise JsTypeError(
+          raise TypeError(message=
             "Right-hand side of 'instanceof' is not an object",
           )
       }
@@ -1617,7 +1617,7 @@ fn eval_binary_op(
   match (op, left, right) {
     // Symbol cannot be converted to string implicitly
     (Add, Symbol(_), _) | (Add, _, Symbol(_)) =>
-      raise JsTypeError("Cannot convert a Symbol value to a string")
+      raise TypeError(message="Cannot convert a Symbol value to a string")
     // String concatenation
     (Add, String_(a), String_(b)) => String_(a + b)
     (Add, String_(a), b) => String_(a + b.to_string())
@@ -1744,7 +1744,7 @@ fn eval_binary_op(
           Bool(idx >= 0 && idx < data.elements.length())
         }
         _ =>
-          raise JsTypeError(
+          raise TypeError(message=
             "Cannot use 'in' operator to search for '\{l.to_string()}' in \{type_of(r)}",
           )
       }
@@ -1905,7 +1905,7 @@ fn Interpreter::eval_unary(
                 Some(desc) =>
                   if not(desc.configurable) {
                     if self.strict {
-                      raise JsTypeError("Cannot delete property '\{prop}'")
+                      raise TypeError(message="Cannot delete property '\{prop}'")
                     }
                     return Bool(false)
                   }
@@ -1928,7 +1928,7 @@ fn Interpreter::eval_unary(
                 Some(desc) =>
                   if not(desc.configurable) {
                     if self.strict {
-                      raise JsTypeError("Cannot delete property '\{k}'")
+                      raise TypeError(message="Cannot delete property '\{k}'")
                     }
                     return Bool(false)
                   }
@@ -2061,13 +2061,13 @@ fn Interpreter::spread_iterable(
           }
           match found {
             Undefined =>
-              raise JsTypeError("iterator.next is not a function")
+              raise TypeError(message="iterator.next is not a function")
             _ => found
           }
         }
       }
     }
-    _ => raise JsTypeError("Iterator result is not an object")
+    _ => raise TypeError(message="Iterator result is not an object")
   }
 
   // Iterate using the iterator protocol
@@ -2422,12 +2422,12 @@ fn Interpreter::call_value(
         Some(NonConstructableCallable(_, func)) => func(args)
         Some(InterpreterCallable(_, func)) => func(self, this_val, args)
         Some(ClassConstructor(name, _, _, _, _, _)) =>
-          raise JsTypeError(
+          raise TypeError(message=
             "Class constructor " + name + " cannot be invoked without 'new'",
           )
-        None => raise JsTypeError("is not a function")
+        None => raise TypeError(message="is not a function")
       }
-    _ => raise JsTypeError("is not a function")
+    _ => raise TypeError(message="is not a function")
   }
 }
 
@@ -2733,7 +2733,7 @@ fn Interpreter::get_property(
         Undefined
       }
     Null | Undefined =>
-      raise JsTypeError("Cannot read property '\{prop}' of \{type_of(obj)}")
+      raise TypeError(message="Cannot read property '\{prop}' of \{type_of(obj)}")
     _ => Undefined
   }
 }
@@ -3076,7 +3076,7 @@ fn Interpreter::get_computed_property(
         _ => Undefined
       }
     Null | Undefined =>
-      raise JsTypeError("Cannot read property of \{type_of(obj)}")
+      raise TypeError(message="Cannot read property of \{type_of(obj)}")
     _ => Undefined
   }
 }
@@ -3283,10 +3283,10 @@ fn Interpreter::eval_new(
         }
         Some(NativeCallable(_, func)) => func(args)
         Some(NonConstructableCallable(name, _)) =>
-          raise JsTypeError(name + " is not a constructor")
+          raise TypeError(message=name + " is not a constructor")
         Some(InterpreterCallable(_, func)) => func(self, Undefined, args)
         Some(ArrowFunc(_)) | Some(ArrowFuncExt(_)) =>
-          raise JsTypeError("arrow functions cannot be used as constructors")
+          raise TypeError(message="arrow functions cannot be used as constructors")
         Some(ClassConstructor(class_name, proto, super_ctor, ctor_fn, closure, super_proto)) => {
           // Create the new instance with the class prototype
           let new_obj = Object({
@@ -3388,9 +3388,9 @@ fn Interpreter::eval_new(
             }
           }
         }
-        _ => raise JsTypeError("is not a constructor")
+        _ => raise TypeError(message="is not a constructor")
       }
-    _ => raise JsTypeError("is not a constructor")
+    _ => raise TypeError(message="is not a constructor")
   }
 }
 
@@ -3414,7 +3414,7 @@ fn Interpreter::create_class(
           }
         }
         _ =>
-          raise JsTypeError("Class extends value is not a constructor")
+          raise TypeError(message="Class extends value is not a constructor")
       }
     }
     None => (None, Null)
@@ -3768,7 +3768,7 @@ fn Interpreter::eval_logical_assign_and(
               Some(desc) =>
                 if not(desc.writable) {
                   if self.strict {
-                    raise JsTypeError(
+                    raise TypeError(message=
                       "Cannot assign to read only property '\{prop}'",
                     )
                   }
@@ -3779,7 +3779,7 @@ fn Interpreter::eval_logical_assign_and(
             // Check extensible for new properties
             if not(data.properties.contains(prop)) && not(data.extensible) {
               if self.strict {
-                raise JsTypeError(
+                raise TypeError(message=
                   "Cannot add property \{prop}, object is not extensible",
                 )
               }
@@ -3789,7 +3789,7 @@ fn Interpreter::eval_logical_assign_and(
             rhs
           }
           _ =>
-            raise JsTypeError(
+            raise TypeError(message=
               "Cannot set property '\{prop}' of \{type_of(obj)}",
             )
         }
@@ -3813,7 +3813,7 @@ fn Interpreter::eval_logical_assign_and(
                   Some(desc) =>
                     if not(desc.writable) {
                       if self.strict {
-                        raise JsTypeError("Cannot assign to read only property")
+                        raise TypeError(message="Cannot assign to read only property")
                       }
                       return rhs
                     }
@@ -3822,7 +3822,7 @@ fn Interpreter::eval_logical_assign_and(
                 if not(data.symbol_properties.contains(sym.id)) &&
                   not(data.extensible) {
                   if self.strict {
-                    raise JsTypeError(
+                    raise TypeError(message=
                       "Cannot add property, object is not extensible",
                     )
                   }
@@ -3838,7 +3838,7 @@ fn Interpreter::eval_logical_assign_and(
                   Some(desc) =>
                     if not(desc.writable) {
                       if self.strict {
-                        raise JsTypeError(
+                        raise TypeError(message=
                           "Cannot assign to read only property '\{prop}'",
                         )
                       }
@@ -3849,7 +3849,7 @@ fn Interpreter::eval_logical_assign_and(
                 // Check extensible for new properties
                 if not(data.properties.contains(prop)) && not(data.extensible) {
                   if self.strict {
-                    raise JsTypeError(
+                    raise TypeError(message=
                       "Cannot add property \{prop}, object is not extensible",
                     )
                   }
@@ -3870,7 +3870,7 @@ fn Interpreter::eval_logical_assign_and(
               }
               _ => rhs
             }
-          _ => raise JsTypeError("Cannot set property of \{type_of(obj)}")
+          _ => raise TypeError(message="Cannot set property of \{type_of(obj)}")
         }
       } else {
         current
@@ -3915,7 +3915,7 @@ fn Interpreter::eval_logical_assign_or(
               Some(desc) =>
                 if not(desc.writable) {
                   if self.strict {
-                    raise JsTypeError(
+                    raise TypeError(message=
                       "Cannot assign to read only property '\{prop}'",
                     )
                   }
@@ -3926,7 +3926,7 @@ fn Interpreter::eval_logical_assign_or(
             // Check extensible for new properties
             if not(data.properties.contains(prop)) && not(data.extensible) {
               if self.strict {
-                raise JsTypeError(
+                raise TypeError(message=
                   "Cannot add property \{prop}, object is not extensible",
                 )
               }
@@ -3936,7 +3936,7 @@ fn Interpreter::eval_logical_assign_or(
             rhs
           }
           _ =>
-            raise JsTypeError(
+            raise TypeError(message=
               "Cannot set property '\{prop}' of \{type_of(obj)}",
             )
         }
@@ -3959,7 +3959,7 @@ fn Interpreter::eval_logical_assign_or(
                   Some(desc) =>
                     if not(desc.writable) {
                       if self.strict {
-                        raise JsTypeError("Cannot assign to read only property")
+                        raise TypeError(message="Cannot assign to read only property")
                       }
                       return rhs
                     }
@@ -3968,7 +3968,7 @@ fn Interpreter::eval_logical_assign_or(
                 if not(data.symbol_properties.contains(sym.id)) &&
                   not(data.extensible) {
                   if self.strict {
-                    raise JsTypeError(
+                    raise TypeError(message=
                       "Cannot add property, object is not extensible",
                     )
                   }
@@ -3983,7 +3983,7 @@ fn Interpreter::eval_logical_assign_or(
                   Some(desc) =>
                     if not(desc.writable) {
                       if self.strict {
-                        raise JsTypeError(
+                        raise TypeError(message=
                           "Cannot assign to read only property '\{prop}'",
                         )
                       }
@@ -3993,7 +3993,7 @@ fn Interpreter::eval_logical_assign_or(
                 }
                 if not(data.properties.contains(prop)) && not(data.extensible) {
                   if self.strict {
-                    raise JsTypeError(
+                    raise TypeError(message=
                       "Cannot add property \{prop}, object is not extensible",
                     )
                   }
@@ -4014,7 +4014,7 @@ fn Interpreter::eval_logical_assign_or(
               }
               _ => rhs
             }
-          _ => raise JsTypeError("Cannot set property of \{type_of(obj)}")
+          _ => raise TypeError(message="Cannot set property of \{type_of(obj)}")
         }
       } else {
         current
@@ -4061,7 +4061,7 @@ fn Interpreter::eval_nullish_assign(
                 Some(desc) =>
                   if not(desc.writable) {
                     if self.strict {
-                      raise JsTypeError(
+                      raise TypeError(message=
                         "Cannot assign to read only property '\{prop}'",
                       )
                     }
@@ -4072,7 +4072,7 @@ fn Interpreter::eval_nullish_assign(
               // Check extensible for new properties
               if not(data.properties.contains(prop)) && not(data.extensible) {
                 if self.strict {
-                  raise JsTypeError(
+                  raise TypeError(message=
                     "Cannot add property \{prop}, object is not extensible",
                   )
                 }
@@ -4082,7 +4082,7 @@ fn Interpreter::eval_nullish_assign(
               rhs
             }
             _ =>
-              raise JsTypeError(
+              raise TypeError(message=
                 "Cannot set property '\{prop}' of \{type_of(obj)}",
               )
           }
@@ -4106,7 +4106,7 @@ fn Interpreter::eval_nullish_assign(
                     Some(desc) =>
                       if not(desc.writable) {
                         if self.strict {
-                          raise JsTypeError("Cannot assign to read only property")
+                          raise TypeError(message="Cannot assign to read only property")
                         }
                         return rhs
                       }
@@ -4115,7 +4115,7 @@ fn Interpreter::eval_nullish_assign(
                   if not(data.symbol_properties.contains(sym.id)) &&
                     not(data.extensible) {
                     if self.strict {
-                      raise JsTypeError(
+                      raise TypeError(message=
                         "Cannot add property, object is not extensible",
                       )
                     }
@@ -4130,7 +4130,7 @@ fn Interpreter::eval_nullish_assign(
                     Some(desc) =>
                       if not(desc.writable) {
                         if self.strict {
-                          raise JsTypeError(
+                          raise TypeError(message=
                             "Cannot assign to read only property '\{prop}'",
                           )
                         }
@@ -4140,7 +4140,7 @@ fn Interpreter::eval_nullish_assign(
                   }
                   if not(data.properties.contains(prop)) && not(data.extensible) {
                     if self.strict {
-                      raise JsTypeError(
+                      raise TypeError(message=
                         "Cannot add property \{prop}, object is not extensible",
                       )
                     }
@@ -4161,7 +4161,7 @@ fn Interpreter::eval_nullish_assign(
                 }
                 _ => rhs
               }
-            _ => raise JsTypeError("Cannot set property of \{type_of(obj)}")
+            _ => raise TypeError(message="Cannot set property of \{type_of(obj)}")
           }
         }
         _ => current

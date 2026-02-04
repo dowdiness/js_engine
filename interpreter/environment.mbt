@@ -37,7 +37,7 @@ pub fn Environment::def(
         // Allow var/var redeclaration - just update the value
         existing.value = value
       } else {
-        raise JsSyntaxError("Identifier '\{name}' has already been declared")
+        raise SyntaxError(message="Identifier '\{name}' has already been declared")
       }
     None => self.bindings[name] = { value, kind, initialized: true }
   }
@@ -50,7 +50,7 @@ pub fn Environment::def_tdz(
   kind : BindingKind,
 ) -> Unit raise Error {
   if self.bindings.contains(name) {
-    raise JsSyntaxError("Identifier '\{name}' has already been declared")
+    raise SyntaxError(message="Identifier '\{name}' has already been declared")
   }
   self.bindings[name] = { value: Undefined, kind, initialized: false }
 }
@@ -67,7 +67,7 @@ pub fn Environment::initialize(
       binding.initialized = true
     }
     None =>
-      raise JsInternalError("Cannot initialize non-existent binding '\{name}'")
+      raise InternalError(message="Cannot initialize non-existent binding '\{name}'")
   }
 }
 
@@ -97,14 +97,14 @@ pub fn Environment::get(self : Environment, name : String) -> Value raise Error 
   match self.bindings.get(name) {
     Some(binding) =>
       if not(binding.initialized) {
-        raise JsReferenceError("Cannot access '\{name}' before initialization")
+        raise ReferenceError(message="Cannot access '\{name}' before initialization")
       } else {
         binding.value
       }
     None =>
       match self.parent {
         Some(parent) => parent.get(name)
-        None => raise JsReferenceError("\{name} is not defined")
+        None => raise ReferenceError(message="\{name} is not defined")
       }
   }
 }
@@ -118,16 +118,16 @@ pub fn Environment::assign(
   match self.bindings.get(name) {
     Some(binding) =>
       if not(binding.initialized) {
-        raise JsReferenceError("Cannot access '\{name}' before initialization")
+        raise ReferenceError(message="Cannot access '\{name}' before initialization")
       } else if binding.kind == ConstBinding {
-        raise JsTypeError("Assignment to constant variable '\{name}'")
+        raise TypeError(message="Assignment to constant variable '\{name}'")
       } else {
         binding.value = value
       }
     None =>
       match self.parent {
         Some(parent) => parent.assign(name, value)
-        None => raise JsReferenceError("\{name} is not defined")
+        None => raise ReferenceError(message="\{name} is not defined")
       }
   }
 }

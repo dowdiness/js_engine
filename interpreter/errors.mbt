@@ -129,7 +129,6 @@ pub fn JsError::to_value(self : JsError) -> Value {
 ///| Convert any catchable error to a JavaScript Error object Value
 pub fn js_error_to_value(err : Error) -> Value {
   match err {
-    // New unified JsError enum variants
     TypeError(message~) => make_error_value("TypeError", message)
     ReferenceError(message~) => make_error_value("ReferenceError", message)
     SyntaxError(message~) => make_error_value("SyntaxError", message)
@@ -139,16 +138,7 @@ pub fn js_error_to_value(err : Error) -> Value {
     InternalError(message~) => make_error_value("InternalError", message)
     AggregateError(message~, errors=_) =>
       make_error_value("AggregateError", message)
-    // Backward compatibility aliases
-    JsTypeError(msg) => make_error_value("TypeError", msg)
-    JsReferenceError(msg) => make_error_value("ReferenceError", msg)
-    JsSyntaxError(msg) => make_error_value("SyntaxError", msg)
-    JsRangeError(msg) => make_error_value("RangeError", msg)
-    JsURIError(msg) => make_error_value("URIError", msg)
-    JsInternalError(msg) => make_error_value("InternalError", msg)
-    // JavaScript throw statement value
-    JsException(val) => val
-    // Fallback for any other error
+    JsException(val) => val // JavaScript throw statement value
     _ => make_error_value("Error", err.to_string())
   }
 }
@@ -156,7 +146,6 @@ pub fn js_error_to_value(err : Error) -> Value {
 ///| Check if an error is a JavaScript catchable error
 pub fn is_js_catchable_error(err : Error) -> Bool {
   match err {
-    // New unified JsError enum variants
     TypeError(_)
     | ReferenceError(_)
     | SyntaxError(_)
@@ -165,49 +154,7 @@ pub fn is_js_catchable_error(err : Error) -> Bool {
     | EvalError(_)
     | InternalError(_)
     | AggregateError(_)
-    // Backward compatibility aliases
-    | JsTypeError(_)
-    | JsReferenceError(_)
-    | JsSyntaxError(_)
-    | JsRangeError(_)
-    | JsURIError(_)
-    | JsInternalError(_)
-    // JavaScript throw statement
     | JsException(_) => true
     _ => false
   }
-}
-
-//==============================================================================
-// Backward compatibility aliases (use JsError variants for new code)
-//==============================================================================
-
-///| Alias for TypeError (backward compatibility)
-pub suberror JsTypeError {
-  JsTypeError(String)
-}
-
-///| Alias for ReferenceError (backward compatibility)
-pub suberror JsReferenceError {
-  JsReferenceError(String)
-}
-
-///| Alias for SyntaxError (backward compatibility)
-pub suberror JsSyntaxError {
-  JsSyntaxError(String)
-}
-
-///| Alias for RangeError (backward compatibility)
-pub suberror JsRangeError {
-  JsRangeError(String)
-}
-
-///| Alias for URIError (backward compatibility)
-pub suberror JsURIError {
-  JsURIError(String)
-}
-
-///| Alias for InternalError (backward compatibility)
-pub suberror JsInternalError {
-  JsInternalError(String)
 }

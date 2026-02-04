@@ -689,7 +689,7 @@ pub fn get_string_method(s : String, prop : String) -> Value {
                 _ => ""
               }
               if not(flags.to_array().contains('g')) {
-                raise JsTypeError(
+                raise TypeError(message=
                   "replaceAll must be called with a global RegExp",
                 )
               }
