@@ -1,4 +1,7 @@
 ///|
+using @errors { TypeError }
+
+///|
 pub(all) struct FuncData {
   name : String?
   params : Array[String]
@@ -341,7 +344,7 @@ pub fn to_number(val : Value) -> Double raise Error {
     Null => 0.0
     Undefined | Object(_) | Array(_) => 0.0 / 0.0
     Symbol(_) =>
-      raise @errors.TypeError(message="Cannot convert a Symbol value to a number")
+      raise TypeError(message="Cannot convert a Symbol value to a number")
   }
 }
 

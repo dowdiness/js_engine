@@ -1,4 +1,7 @@
 ///|
+using @errors { SyntaxError }
+
+///|
 fn Parser::parse_expr(self : Parser) -> @ast.Expr raise Error {
   self.parse_comma()
 }
@@ -86,7 +89,7 @@ fn Parser::parse_assignment(self : Parser) -> @ast.Expr raise Error {
         return DestructureAssign(pattern, value, loc)
       }
       _ =>
-        raise @errors.SyntaxError(
+        raise SyntaxError(
           message="Invalid assignment target at line \{loc.line}, col \{loc.col}",
         )
     }
@@ -143,12 +146,12 @@ fn Parser::parse_or(self : Parser) -> @ast.Expr raise Error {
     let is_nullish = self.at(QuestionQuestion)
     // Check for illegal mixing of ?? with ||
     if is_nullish && seen_or {
-      raise @errors.SyntaxError(
+      raise SyntaxError(
         message="Cannot mix nullish coalescing (??) with logical OR (||) without parentheses",
       )
     }
     if not(is_nullish) && seen_nullish {
-      raise @errors.SyntaxError(
+      raise SyntaxError(
         message="Cannot mix logical OR (||) with nullish coalescing (??) without parentheses",
       )
     }
@@ -157,7 +160,7 @@ fn Parser::parse_or(self : Parser) -> @ast.Expr raise Error {
       // Check if left contains && - this means "a && b ?? c" pattern
       match left {
         Binary(@ast.And, _, _, _) =>
-          raise @errors.SyntaxError(
+          raise SyntaxError(
             message="Cannot mix logical AND (&&) with nullish coalescing (??) without parentheses",
           )
         _ => ()
@@ -171,7 +174,7 @@ fn Parser::parse_or(self : Parser) -> @ast.Expr raise Error {
     if is_nullish {
       match right {
         Binary(@ast.And, _, _, _) =>
-          raise @errors.SyntaxError(
+          raise SyntaxError(
             message="Cannot mix nullish coalescing (??) with logical AND (&&) without parentheses",
           )
         _ => ()
@@ -353,7 +356,7 @@ fn Parser::parse_exponentiation(self : Parser) -> @ast.Expr raise Error {
       Unary(op, _, _) =>
         match op {
           @ast.Neg | @ast.Not | @ast.BitNot | @ast.Typeof | @ast.Void | @ast.Delete =>
-            raise @errors.SyntaxError(
+            raise SyntaxError(
               message="Unary operator used immediately before exponentiation expression. Parentheses must be used to disambiguate.",
             )
         }
@@ -574,7 +577,7 @@ fn Parser::parse_primary(self : Parser) -> @ast.Expr raise Error {
             return ArrowFunc([], body, tok.loc)
           }
           _ =>
-            raise @errors.SyntaxError(
+            raise SyntaxError(
               message="Unexpected ) at line \{tok.loc.line}, col \{tok.loc.col}",
             )
         }
@@ -610,7 +613,7 @@ fn Parser::parse_primary(self : Parser) -> @ast.Expr raise Error {
           }
           _ => {
             let t = self.peek()
-            raise @errors.SyntaxError(
+            raise SyntaxError(
               message="Expected template continuation, got \{t.kind} at line \{t.loc.line}, col \{t.loc.col}",
             )
           }
@@ -623,7 +626,7 @@ fn Parser::parse_primary(self : Parser) -> @ast.Expr raise Error {
       RegexLit(pattern, flags, tok.loc)
     }
     _ =>
-      raise @errors.SyntaxError(
+      raise SyntaxError(
         message="Unexpected token \{tok.kind} at line \{tok.loc.line}, col \{tok.loc.col}",
       )
   }
@@ -737,7 +740,7 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
       }
       _ => {
         let t = self.peek()
-        raise @errors.SyntaxError(
+        raise SyntaxError(
           message="Expected property name, got \{t.kind} at line \{t.loc.line}, col \{t.loc.col}",
         )
       }
@@ -751,13 +754,13 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
       match prop_kind {
         @ast.Get =>
           if params.length() != 0 {
-            raise @errors.SyntaxError(
+            raise SyntaxError(
               message="Getter must have exactly zero parameters",
             )
           }
         @ast.Set =>
           if params.length() != 1 {
-            raise @errors.SyntaxError(
+            raise SyntaxError(
               message="Setter must have exactly one parameter",
             )
           }
@@ -781,7 +784,7 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
       // Only identifier keys can use shorthand syntax
       if not(is_ident_key) {
         let t = self.peek()
-        raise @errors.SyntaxError(
+        raise SyntaxError(
           message="Shorthand properties require identifier keys at line \{t.loc.line}, col \{t.loc.col}",
         )
       }
@@ -789,7 +792,7 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
       props.push({ key: key_expr, value, kind: @ast.Init, computed: false })
     } else {
       let t = self.peek()
-      raise @errors.SyntaxError(
+      raise SyntaxError(
         message="Expected ':' or '(' in object literal, got \{t.kind} at line \{t.loc.line}, col \{t.loc.col}",
       )
     }
@@ -824,7 +827,7 @@ fn Parser::parse_func_expr(self : Parser) -> @ast.Expr raise Error {
         let body = self.parse_block_body()
         return FuncExprExt(name, ext_params, rest_param, body, tok.loc)
       } else {
-        raise @errors.SyntaxError(message=msg)
+        raise SyntaxError(message=msg)
       }
     e => raise e
   }
@@ -856,7 +859,7 @@ fn extract_arrow_params(expr : @ast.Expr) -> Array[String] raise Error {
       }
       params
     }
-    _ => raise @errors.SyntaxError(message="Invalid arrow function parameter list")
+    _ => raise SyntaxError(message="Invalid arrow function parameter list")
   }
 }
 
@@ -885,7 +888,7 @@ fn expr_to_pattern(expr : @ast.Expr) -> @ast.Pattern raise Error {
         let key_str : String = match prop.key {
           StringLit(s, _) => s
           Ident(s, _) => s
-          _ => raise @errors.SyntaxError(message="Invalid key in destructuring pattern")
+          _ => raise SyntaxError(message="Invalid key in destructuring pattern")
         }
         prop_pats.push({ key: key_str, value: pat, default_val: None })
       }
@@ -897,7 +900,7 @@ fn expr_to_pattern(expr : @ast.Expr) -> @ast.Pattern raise Error {
       // the pattern `{x = 5} = obj` would need special parsing.
       // For now, treat as ident pattern (name is the binding)
       IdentPat(name)
-    _ => raise @errors.SyntaxError(message="Invalid destructuring pattern")
+    _ => raise SyntaxError(message="Invalid destructuring pattern")
   }
 }
 
@@ -1004,7 +1007,7 @@ fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
     }
     _ => {
       let t = self.peek()
-      raise @errors.SyntaxError(
+      raise SyntaxError(
         message="Expected method name at line \{t.loc.line}, col \{t.loc.col}",
       )
     }
@@ -1020,11 +1023,11 @@ fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
         match method_kind {
           @ast.Get =>
             if ext_params.length() != 0 {
-              raise @errors.SyntaxError(message="Getter must have exactly zero parameters")
+              raise SyntaxError(message="Getter must have exactly zero parameters")
             }
           @ast.Set =>
             if ext_params.length() != 1 {
-              raise @errors.SyntaxError(message="Setter must have exactly one parameter")
+              raise SyntaxError(message="Setter must have exactly one parameter")
             }
           @ast.Init => ()
         }
@@ -1032,18 +1035,18 @@ fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
         let func_val : @ast.Expr = FuncExprExt(None, ext_params, rest_param, body, mloc)
         return { key: key_expr, value: func_val, kind: method_kind, computed, is_static }
       } else {
-        raise @errors.SyntaxError(message=msg)
+        raise SyntaxError(message=msg)
       }
     e => raise e
   }
   match method_kind {
     @ast.Get =>
       if params.length() != 0 {
-        raise @errors.SyntaxError(message="Getter must have exactly zero parameters")
+        raise SyntaxError(message="Getter must have exactly zero parameters")
       }
     @ast.Set =>
       if params.length() != 1 {
-        raise @errors.SyntaxError(message="Setter must have exactly one parameter")
+        raise SyntaxError(message="Setter must have exactly one parameter")
       }
     @ast.Init => ()
   }
@@ -1095,7 +1098,7 @@ fn Parser::parse_super_expr(self : Parser) -> @ast.Expr raise Error {
     let _ = self.expect(RBracket)
     SuperComputedMember(key, tok.loc)
   } else {
-    raise @errors.SyntaxError(
+    raise SyntaxError(
       message="'super' keyword is only valid inside class constructor and method bodies at line \{tok.loc.line}, col \{tok.loc.col}",
     )
   }

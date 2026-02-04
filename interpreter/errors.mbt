@@ -3,6 +3,19 @@
 ///| Re-exports JsError from shared errors package and provides
 ///| Value conversion helpers for JavaScript try-catch handling.
 
+///|
+using @errors {
+  JsError,
+  TypeError,
+  ReferenceError,
+  SyntaxError,
+  RangeError,
+  URIError,
+  EvalError,
+  InternalError,
+  AggregateError,
+}
+
 //==============================================================================
 // Helper functions to create JavaScript Error object Values
 //==============================================================================
@@ -26,23 +39,23 @@ fn make_error_value(name : String, msg : String) -> Value {
 }
 
 ///| Convert a JsError to a JavaScript Error object Value
-pub fn JsError::to_value(self : @errors.JsError) -> Value {
+pub fn JsError::to_value(self : JsError) -> Value {
   make_error_value(self.name(), self.get_message())
 }
 
 ///| Convert any catchable error to a JavaScript Error object Value
 pub fn js_error_to_value(err : Error) -> Value {
   match err {
-    @errors.TypeError(message~) => make_error_value("TypeError", message)
-    @errors.ReferenceError(message~) =>
+    TypeError(message~) => make_error_value("TypeError", message)
+    ReferenceError(message~) =>
       make_error_value("ReferenceError", message)
-    @errors.SyntaxError(message~) => make_error_value("SyntaxError", message)
-    @errors.RangeError(message~) => make_error_value("RangeError", message)
-    @errors.URIError(message~) => make_error_value("URIError", message)
-    @errors.EvalError(message~) => make_error_value("EvalError", message)
-    @errors.InternalError(message~) =>
+    SyntaxError(message~) => make_error_value("SyntaxError", message)
+    RangeError(message~) => make_error_value("RangeError", message)
+    URIError(message~) => make_error_value("URIError", message)
+    EvalError(message~) => make_error_value("EvalError", message)
+    InternalError(message~) =>
       make_error_value("InternalError", message)
-    @errors.AggregateError(message~, errors=_) =>
+    AggregateError(message~, errors=_) =>
       make_error_value("AggregateError", message)
     JsException(val) => val // JavaScript throw statement value
     _ => make_error_value("Error", err.to_string())
@@ -52,14 +65,14 @@ pub fn js_error_to_value(err : Error) -> Value {
 ///| Check if an error is a JavaScript catchable error
 pub fn is_js_catchable_error(err : Error) -> Bool {
   match err {
-    @errors.TypeError(_)
-    | @errors.ReferenceError(_)
-    | @errors.SyntaxError(_)
-    | @errors.RangeError(_)
-    | @errors.URIError(_)
-    | @errors.EvalError(_)
-    | @errors.InternalError(_)
-    | @errors.AggregateError(_)
+    TypeError(_)
+    | ReferenceError(_)
+    | SyntaxError(_)
+    | RangeError(_)
+    | URIError(_)
+    | EvalError(_)
+    | InternalError(_)
+    | AggregateError(_)
     | JsException(_) => true
     _ => false
   }
