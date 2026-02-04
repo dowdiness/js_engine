@@ -3,10 +3,6 @@
 ///| Re-exports JsError from shared errors package and provides
 ///| Value conversion helpers for JavaScript try-catch handling.
 
-//==============================================================================
-// Helper functions to create JavaScript Error object Values
-//==============================================================================
-
 ///| Create a JavaScript Error object Value with the given name and message
 fn make_error_value(name : String, msg : String) -> Value {
   let err_props : Map[String, Value] = {}
@@ -25,6 +21,27 @@ fn make_error_value(name : String, msg : String) -> Value {
   })
 }
 
+///| Create an AggregateError with the errors array property
+fn make_aggregate_error_value(msg : String, errors : Array[Error]) -> Value {
+  let err_props : Map[String, Value] = {}
+  err_props["message"] = String_(msg)
+  err_props["name"] = String_("AggregateError")
+  err_props["stack"] = String_("AggregateError: " + msg)
+  // Convert errors array to JavaScript array
+  let js_errors : Array[Value] = errors.map(fn(e) { js_error_to_value(e) })
+  err_props["errors"] = Array({ elements: js_errors })
+  Object({
+    properties: err_props,
+    symbol_properties: {},
+    prototype: Null,
+    callable: None,
+    class_name: "AggregateError",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+}
+
 ///| Convert any catchable error to a JavaScript Error object Value
 pub fn js_error_to_value(err : Error) -> Value {
   match err {
@@ -37,8 +54,8 @@ pub fn js_error_to_value(err : Error) -> Value {
     @errors.EvalError(message~) => make_error_value("EvalError", message)
     @errors.InternalError(message~) =>
       make_error_value("InternalError", message)
-    @errors.AggregateError(message~, errors=_) =>
-      make_error_value("AggregateError", message)
+    @errors.AggregateError(message~, errors~) =>
+      make_aggregate_error_value(message, errors)
     JsException(val) => val // JavaScript throw statement value
     _ => make_error_value("Error", err.to_string())
   }
