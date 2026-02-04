@@ -37,9 +37,7 @@ pub fn Environment::def(
         // Allow var/var redeclaration - just update the value
         existing.value = value
       } else {
-        raise JsException(
-          String_("SyntaxError: Identifier '\{name}' has already been declared"),
-        )
+        raise @errors.SyntaxError(message="Identifier '\{name}' has already been declared")
       }
     None => self.bindings[name] = { value, kind, initialized: true }
   }
@@ -52,9 +50,7 @@ pub fn Environment::def_tdz(
   kind : BindingKind,
 ) -> Unit raise Error {
   if self.bindings.contains(name) {
-    raise JsException(
-      String_("SyntaxError: Identifier '\{name}' has already been declared"),
-    )
+    raise @errors.SyntaxError(message="Identifier '\{name}' has already been declared")
   }
   self.bindings[name] = { value: Undefined, kind, initialized: false }
 }
@@ -71,9 +67,7 @@ pub fn Environment::initialize(
       binding.initialized = true
     }
     None =>
-      raise JsException(
-        String_("InternalError: Cannot initialize non-existent binding '\{name}'"),
-      )
+      raise @errors.InternalError(message="Cannot initialize non-existent binding '\{name}'")
   }
 }
 
@@ -103,19 +97,14 @@ pub fn Environment::get(self : Environment, name : String) -> Value raise Error 
   match self.bindings.get(name) {
     Some(binding) =>
       if not(binding.initialized) {
-        raise JsException(
-          String_(
-            "ReferenceError: Cannot access '\{name}' before initialization",
-          ),
-        )
+        raise @errors.ReferenceError(message="Cannot access '\{name}' before initialization")
       } else {
         binding.value
       }
     None =>
       match self.parent {
         Some(parent) => parent.get(name)
-        None =>
-          raise JsException(String_("ReferenceError: \{name} is not defined"))
+        None => raise @errors.ReferenceError(message="\{name} is not defined")
       }
   }
 }
@@ -129,23 +118,16 @@ pub fn Environment::assign(
   match self.bindings.get(name) {
     Some(binding) =>
       if not(binding.initialized) {
-        raise JsException(
-          String_(
-            "ReferenceError: Cannot access '\{name}' before initialization",
-          ),
-        )
+        raise @errors.ReferenceError(message="Cannot access '\{name}' before initialization")
       } else if binding.kind == ConstBinding {
-        raise JsException(
-          String_("TypeError: Assignment to constant variable '\{name}'"),
-        )
+        raise @errors.TypeError(message="Assignment to constant variable '\{name}'")
       } else {
         binding.value = value
       }
     None =>
       match self.parent {
         Some(parent) => parent.assign(name, value)
-        None =>
-          raise JsException(String_("ReferenceError: \{name} is not defined"))
+        None => raise @errors.ReferenceError(message="\{name} is not defined")
       }
   }
 }
