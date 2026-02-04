@@ -96,6 +96,10 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
       let s = match str_val {
         String_(s) => s
         Number(n) => return Number(n)
+        Symbol(_) =>
+          raise JsException(
+            String_("TypeError: Cannot convert a Symbol value to a string"),
+          )
         Bool(_) | Null | Undefined | Object(_) | Array(_) =>
           return Number(0.0 / 0.0)
       }
@@ -1710,6 +1714,7 @@ fn json_stringify_value(
         String_(val.to_string())
       }
     String_(s) => String_(json_escape_string(s))
+    Symbol(_) => Undefined // Symbols are omitted from JSON
     Array(data) => {
       // Cycle detection
       for s in seen {
