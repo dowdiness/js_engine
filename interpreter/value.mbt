@@ -261,6 +261,8 @@ pub impl Show for Value with output(self, logger) {
           logger.write_string("function bound() { [native code] }")
         Some(NativeCallable(name, _)) =>
           logger.write_string("function \{name}() { [native code] }")
+        Some(NonConstructableCallable(name, _)) =>
+          logger.write_string("function \{name}() { [native code] }")
         Some(FuncCallMethod(_)) =>
           logger.write_string("function call() { [native code] }")
         Some(FuncApplyMethod(_)) =>

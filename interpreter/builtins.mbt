@@ -2330,6 +2330,8 @@ fn setup_function_builtins(env : Environment) -> Unit {
               Some(ArrowFuncExt(_)) => String_("() => { [native code] }")
               Some(NativeCallable(name, _)) =>
                 String_("function " + name + "() { [native code] }")
+              Some(NonConstructableCallable(name, _)) =>
+                String_("function " + name + "() { [native code] }")
               Some(BoundFunc(_, _, _)) =>
                 String_("function () { [native code] }")
               Some(MethodCallable(name, _)) =>
