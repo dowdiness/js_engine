@@ -22,6 +22,7 @@ pub(all) enum Callable {
   UserFuncExt(FuncDataExt)
   ArrowFuncExt(FuncDataExt)
   NativeCallable(String, (Array[Value]) -> Value raise Error)
+  NonConstructableCallable(String, (Array[Value]) -> Value raise Error) // like NativeCallable but throws on new
   BoundFunc(Value, Value, Array[Value]) // (target, this_val, bound_args)
   FuncCallMethod(Value) // .call proxy: captures target function
   FuncApplyMethod(Value) // .apply proxy: captures target function

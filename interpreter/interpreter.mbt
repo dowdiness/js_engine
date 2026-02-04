@@ -733,14 +733,28 @@ fn Interpreter::bind_pattern(
           let rest_symbol_props : Map[Int, Value] = {}
           match value {
             Object(data) => {
+              // Only copy own enumerable properties per ES CopyDataProperties
               data.properties.each(fn(k, v) {
                 if not(used_keys.contains(k)) {
-                  rest_props[k] = v
+                  // Check if property is enumerable (default true if no descriptor)
+                  let is_enumerable = match data.descriptors.get(k) {
+                    Some(desc) => desc.enumerable
+                    None => true
+                  }
+                  if is_enumerable {
+                    rest_props[k] = v
+                  }
                 }
               })
-              // Also copy symbol properties (they are never in used_keys)
+              // Also copy enumerable symbol properties (they are never in used_keys)
               data.symbol_properties.each(fn(k, v) {
-                rest_symbol_props[k] = v
+                let is_enumerable = match data.symbol_descriptors.get(k) {
+                  Some(desc) => desc.enumerable
+                  None => true
+                }
+                if is_enumerable {
+                  rest_symbol_props[k] = v
+                }
               })
             }
             _ => ()
@@ -833,14 +847,28 @@ fn Interpreter::assign_pattern(
           let rest_symbol_props : Map[Int, Value] = {}
           match value {
             Object(data) => {
+              // Only copy own enumerable properties per ES CopyDataProperties
               data.properties.each(fn(k, v) {
                 if not(used_keys.contains(k)) {
-                  rest_props[k] = v
+                  // Check if property is enumerable (default true if no descriptor)
+                  let is_enumerable = match data.descriptors.get(k) {
+                    Some(desc) => desc.enumerable
+                    None => true
+                  }
+                  if is_enumerable {
+                    rest_props[k] = v
+                  }
                 }
               })
-              // Also copy symbol properties (they are never in used_keys)
+              // Also copy enumerable symbol properties (they are never in used_keys)
               data.symbol_properties.each(fn(k, v) {
-                rest_symbol_props[k] = v
+                let is_enumerable = match data.symbol_descriptors.get(k) {
+                  Some(desc) => desc.enumerable
+                  None => true
+                }
+                if is_enumerable {
+                  rest_symbol_props[k] = v
+                }
               })
             }
             _ => ()
@@ -2139,6 +2167,7 @@ fn Interpreter::call_value(
         }
         Some(MethodCallable(_, func)) => func(this_val, args)
         Some(NativeCallable(_, func)) => func(args)
+        Some(NonConstructableCallable(_, func)) => func(args)
         Some(InterpreterCallable(_, func)) => func(self, this_val, args)
         Some(ClassConstructor(name, _, _, _, _, _)) =>
           raise JsException(
@@ -2190,6 +2219,7 @@ fn get_bound_func_name(target : Value) -> String {
         Some(UserFunc(fd)) => "bound " + fd.name.unwrap_or("")
         Some(UserFuncExt(fd)) => "bound " + fd.name.unwrap_or("")
         Some(NativeCallable(n, _)) => "bound " + n
+        Some(NonConstructableCallable(n, _)) => "bound " + n
         Some(_) => "bound "
         None => "bound "
       }
@@ -2301,6 +2331,7 @@ fn Interpreter::get_property(
                       _ => 0
                     }
                   NativeCallable(_, _) => 0
+                  NonConstructableCallable(_, _) => 0
                   FuncCallMethod(_) => 1
                   FuncApplyMethod(_) => 2
                   MethodCallable(_, _) => 0
@@ -2321,6 +2352,7 @@ fn Interpreter::get_property(
                   ArrowFuncExt(_) => ""
                   BoundFunc(target, _, _) => get_bound_func_name(target)
                   NativeCallable(n, _) => n
+                  NonConstructableCallable(n, _) => n
                   FuncCallMethod(_) => "call"
                   FuncApplyMethod(_) => "apply"
                   MethodCallable(n, _) => n
@@ -2343,6 +2375,7 @@ fn Interpreter::get_property(
                   ArrowFuncExt(_) => "() => { [native code] }"
                   BoundFunc(_, _, _) => "function () { [native code] }"
                   NativeCallable(n, _) => "function " + n + "() { [native code] }"
+                  NonConstructableCallable(n, _) => "function " + n + "() { [native code] }"
                   FuncCallMethod(_) => "function call() { [native code] }"
                   FuncApplyMethod(_) => "function apply() { [native code] }"
                   MethodCallable(n, _) => "function " + n + "() { [native code] }"
@@ -2358,6 +2391,7 @@ fn Interpreter::get_property(
                   UserFunc(_) | UserFuncExt(_) | NativeCallable(_, _) |
                   ClassConstructor(_, _, _, _, _, _) => true
                   ArrowFunc(_) | ArrowFuncExt(_) | BoundFunc(_, _, _) |
+                  NonConstructableCallable(_, _) |
                   FuncCallMethod(_) | FuncApplyMethod(_) | MethodCallable(_, _) |
                   InterpreterCallable(_, _) => false
                 }
@@ -2592,6 +2626,7 @@ fn Interpreter::get_computed_property(
                       _ => 0
                     }
                   NativeCallable(_, _) => 0
+                  NonConstructableCallable(_, _) => 0
                   FuncCallMethod(_) => 1
                   FuncApplyMethod(_) => 2
                   MethodCallable(_, _) => 0
@@ -2612,6 +2647,7 @@ fn Interpreter::get_computed_property(
                   ArrowFuncExt(_) => ""
                   BoundFunc(target, _, _) => get_bound_func_name(target)
                   NativeCallable(n, _) => n
+                  NonConstructableCallable(n, _) => n
                   FuncCallMethod(_) => "call"
                   FuncApplyMethod(_) => "apply"
                   MethodCallable(n, _) => n
@@ -2634,6 +2670,7 @@ fn Interpreter::get_computed_property(
                   ArrowFuncExt(_) => "() => { [native code] }"
                   BoundFunc(_, _, _) => "function () { [native code] }"
                   NativeCallable(n, _) => "function " + n + "() { [native code] }"
+                  NonConstructableCallable(n, _) => "function " + n + "() { [native code] }"
                   FuncCallMethod(_) => "function call() { [native code] }"
                   FuncApplyMethod(_) => "function apply() { [native code] }"
                   MethodCallable(n, _) => "function " + n + "() { [native code] }"
@@ -2649,6 +2686,7 @@ fn Interpreter::get_computed_property(
                   UserFunc(_) | UserFuncExt(_) | NativeCallable(_, _) |
                   ClassConstructor(_, _, _, _, _, _) => true
                   ArrowFunc(_) | ArrowFuncExt(_) | BoundFunc(_, _, _) |
+                  NonConstructableCallable(_, _) |
                   FuncCallMethod(_) | FuncApplyMethod(_) | MethodCallable(_, _) |
                   InterpreterCallable(_, _) => false
                 }
@@ -2956,6 +2994,10 @@ fn Interpreter::eval_new(
           result
         }
         Some(NativeCallable(_, func)) => func(args)
+        Some(NonConstructableCallable(name, _)) =>
+          raise JsException(
+            String_("TypeError: " + name + " is not a constructor"),
+          )
         Some(InterpreterCallable(_, func)) => func(self, Undefined, args)
         Some(ArrowFunc(_)) | Some(ArrowFuncExt(_)) =>
           raise JsException(

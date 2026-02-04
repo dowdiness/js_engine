@@ -733,7 +733,7 @@ Phase 1 (DONE) ──► Phase 2 (DONE) ──► Phase 3 (DONE) ──► Phase
 | `Object.getOwnPropertySymbols()` returns actual symbol keys | `b4dbef4` |
 | `hasOwnProperty` / `Object.hasOwn` handle Symbol keys | `b4dbef4` |
 | Object rest patterns include symbol properties | `b4dbef4` |
-| Compound assignments (`+=`, `&&=`, `||=`, `??=`) handle Symbol keys | `b4dbef4` |
+| Compound assignments (`+=`, `&&=`, `\|\|=`, `??=`) handle Symbol keys | `b4dbef4` |
 | Symbol.keyFor O(1) reverse lookup optimization | `b4dbef4` |
 
 ### ✅ Recently Completed (Phase 3.6)

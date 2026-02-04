@@ -520,7 +520,7 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
       symbol_properties: {},
       prototype: Null,
       callable: Some(
-        NativeCallable("Symbol", fn(args) {
+        NonConstructableCallable("Symbol", fn(args) {
           let description : String? = if args.length() > 0 {
             match args[0] {
               Undefined => None
