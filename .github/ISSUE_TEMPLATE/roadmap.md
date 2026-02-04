@@ -717,7 +717,7 @@ Phase 1 (DONE) ──► Phase 2 (DONE) ──► Phase 3 (DONE) ──► Phase
 | **Generators (`function*`, `yield`)** | ~1,500 tests | ❌ TODO |
 | **Iterators (iterator protocol)** | ~800 tests | ✅ DONE |
 | **`Map` / `Set` collections** | ~600 tests | ❌ TODO |
-| **`instanceof` with Symbol.hasInstance** | ~200 tests | ❌ TODO |
+| **`instanceof` with Symbol.hasInstance** | ~200 tests | ✅ DONE |
 | **Numeric separator literals (`1_000`)** | ~50 tests | ✅ DONE |
 | **Logical assignment (`&&=`, `||=`, `??=`)** | ~100 tests | ✅ DONE |
 

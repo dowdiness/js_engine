@@ -408,6 +408,8 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
   let to_primitive_sym = new_symbol(Some("Symbol.toPrimitive"))
   let to_string_tag_sym = new_symbol(Some("Symbol.toStringTag"))
   let has_instance_sym = new_symbol(Some("Symbol.hasInstance"))
+  // Store globally for instanceof operator support
+  well_known_hasinstance_sym.val = Some(has_instance_sym)
   let is_concat_spreadable_sym = new_symbol(Some("Symbol.isConcatSpreadable"))
   let species_sym = new_symbol(Some("Symbol.species"))
   let match_sym = new_symbol(Some("Symbol.match"))

@@ -3904,3 +3904,113 @@ test "comma-separated const declarations" {
   let output = run_output(src)
   inspect(output, content="[\"5.85\"]")
 }
+
+// Symbol.hasInstance tests
+
+///|
+test "instanceof with custom Symbol.hasInstance - returns true" {
+  let src =
+    #|const MyClass = {
+    #|  [Symbol.hasInstance](instance) {
+    #|    return instance.isMyClass === true;
+    #|  }
+    #|};
+    #|const obj = { isMyClass: true };
+    #|obj instanceof MyClass;
+  let (_, result) = run_js(src)
+  inspect(result, content="true")
+}
+
+///|
+test "instanceof with custom Symbol.hasInstance - returns false" {
+  let src =
+    #|const MyClass = {
+    #|  [Symbol.hasInstance](instance) {
+    #|    return instance.isMyClass === true;
+    #|  }
+    #|};
+    #|const obj = { isMyClass: false };
+    #|obj instanceof MyClass;
+  let (_, result) = run_js(src)
+  inspect(result, content="false")
+}
+
+///|
+test "instanceof Symbol.hasInstance with null check" {
+  let src =
+    #|const MyClass = {
+    #|  [Symbol.hasInstance](instance) {
+    #|    return instance !== null && instance !== undefined;
+    #|  }
+    #|};
+    #|null instanceof MyClass;
+  let (_, result) = run_js(src)
+  inspect(result, content="false")
+}
+
+///|
+test "instanceof Symbol.hasInstance converts result to boolean" {
+  let src =
+    #|const MyClass = {
+    #|  [Symbol.hasInstance](instance) {
+    #|    return "truthy string";
+    #|  }
+    #|};
+    #|({}) instanceof MyClass;
+  let (_, result) = run_js(src)
+  inspect(result, content="true")
+}
+
+///|
+test "instanceof Symbol.hasInstance returns falsy value" {
+  let src =
+    #|const MyClass = {
+    #|  [Symbol.hasInstance](instance) {
+    #|    return 0;
+    #|  }
+    #|};
+    #|({}) instanceof MyClass;
+  let (_, result) = run_js(src)
+  inspect(result, content="false")
+}
+
+///|
+test "instanceof Symbol.hasInstance on class static method" {
+  let src =
+    #|class MyArray {
+    #|  static [Symbol.hasInstance](instance) {
+    #|    return Array.isArray(instance);
+    #|  }
+    #|}
+    #|[1, 2, 3] instanceof MyArray;
+  let (_, result) = run_js(src)
+  inspect(result, content="true")
+}
+
+///|
+test "instanceof falls back to prototype chain when no Symbol.hasInstance" {
+  let src =
+    #|class Animal {}
+    #|class Dog extends Animal {}
+    #|const dog = new Dog();
+    #|dog instanceof Animal;
+  let (_, result) = run_js(src)
+  inspect(result, content="true")
+}
+
+///|
+test "instanceof Symbol.hasInstance receives correct argument" {
+  let src =
+    #|let receivedArg = null;
+    #|const Checker = {
+    #|  [Symbol.hasInstance](arg) {
+    #|    receivedArg = arg;
+    #|    return true;
+    #|  }
+    #|};
+    #|const testObj = { x: 42 };
+    #|testObj instanceof Checker;
+    #|receivedArg.x;
+  let (_, result) = run_js(src)
+  inspect(result, content="42")
+}

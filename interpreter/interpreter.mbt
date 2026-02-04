@@ -1714,36 +1714,39 @@ fn eval_binary_op(
             ),
           )
       }
-    // instanceof
+    // instanceof - ES2015+ with Symbol.hasInstance support
     (Instanceof, l, r) =>
       match r {
         Object(r_data) => {
-          let target_proto = match r_data.properties.get("prototype") {
-            Some(v) => v
-            None => Null
-          }
-          match l {
-            Object(l_data) => {
-              let mut current = l_data.prototype
-              let mut found = false
-              while true {
-                match current {
-                  Null | Undefined => break
-                  _ =>
-                    if strict_equal(current, target_proto) {
-                      found = true
-                      break
-                    } else {
-                      match current {
-                        Object(data) => current = data.prototype
-                        _ => break
-                      }
+          // First check for Symbol.hasInstance method (ES2015+)
+          let has_instance_sym = get_hasinstance_symbol()
+          match r_data.symbol_properties.get(has_instance_sym.id) {
+            Some(has_instance_method) =>
+              // Call [Symbol.hasInstance](l) and convert result to boolean
+              match has_instance_method {
+                Object(method_data) =>
+                  match method_data.callable {
+                    Some(callable) => {
+                      let result = self.call_callable(
+                        callable,
+                        r,
+                        [l],
+                        method_data.class_name,
+                        false,
+                      )
+                      Bool(to_boolean(result))
                     }
-                }
+                    None =>
+                      // Symbol.hasInstance exists but is not callable, fall through to prototype chain
+                      self.instanceof_prototype_chain(l, r_data)
+                  }
+                _ =>
+                  // Symbol.hasInstance is not an object, fall through to prototype chain
+                  self.instanceof_prototype_chain(l, r_data)
               }
-              Bool(found)
-            }
-            _ => Bool(false)
+            None =>
+              // No Symbol.hasInstance, use prototype chain
+              self.instanceof_prototype_chain(l, r_data)
           }
         }
         _ =>
@@ -1758,6 +1761,38 @@ fn eval_binary_op(
       raise Failure::Failure(
         "Internal error: logical operators should be short-circuited",
       )
+  }
+}
+
+///|
+/// Helper for instanceof: walk prototype chain to check if l's prototype chain includes r's prototype
+fn instanceof_prototype_chain(self : Interpreter, l : Value, r_data : ObjectData) -> Value {
+  let target_proto = match r_data.properties.get("prototype") {
+    Some(v) => v
+    None => Null
+  }
+  match l {
+    Object(l_data) => {
+      let mut current = l_data.prototype
+      let mut found = false
+      while true {
+        match current {
+          Null | Undefined => break
+          _ =>
+            if strict_equal(current, target_proto) {
+              found = true
+              break
+            } else {
+              match current {
+                Object(data) => current = data.prototype
+                _ => break
+              }
+            }
+        }
+      }
+      Bool(found)
+    }
+    _ => Bool(false)
   }
 }
 
