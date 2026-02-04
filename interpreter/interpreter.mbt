@@ -730,20 +730,26 @@ fn Interpreter::bind_pattern(
       match rest {
         Some(rest_pat) => {
           let rest_props : Map[String, Value] = {}
+          let rest_symbol_props : Map[Int, Value] = {}
           match value {
-            Object(data) =>
+            Object(data) => {
               data.properties.each(fn(k, v) {
                 if not(used_keys.contains(k)) {
                   rest_props[k] = v
                 }
               })
+              // Also copy symbol properties (they are never in used_keys)
+              data.symbol_properties.each(fn(k, v) {
+                rest_symbol_props[k] = v
+              })
+            }
             _ => ()
           }
           self.bind_pattern(
             rest_pat,
             Object({
               properties: rest_props,
-              symbol_properties: {},
+              symbol_properties: rest_symbol_props,
               prototype: Null,
               callable: None,
               class_name: "Object",
@@ -824,20 +830,26 @@ fn Interpreter::assign_pattern(
       match rest {
         Some(rest_pat) => {
           let rest_props : Map[String, Value] = {}
+          let rest_symbol_props : Map[Int, Value] = {}
           match value {
-            Object(data) =>
+            Object(data) => {
               data.properties.each(fn(k, v) {
                 if not(used_keys.contains(k)) {
                   rest_props[k] = v
                 }
               })
+              // Also copy symbol properties (they are never in used_keys)
+              data.symbol_properties.each(fn(k, v) {
+                rest_symbol_props[k] = v
+              })
+            }
             _ => ()
           }
           self.assign_pattern(
             rest_pat,
             Object({
               properties: rest_props,
-              symbol_properties: {},
+              symbol_properties: rest_symbol_props,
               prototype: Null,
               callable: None,
               class_name: "Object",
@@ -2382,13 +2394,14 @@ fn Interpreter::get_property(
               prototype: Null,
               callable: Some(
                 MethodCallable("hasOwnProperty", fn(this_val, args) {
-                  let key = if args.length() > 0 {
-                    args[0].to_string()
-                  } else {
-                    "undefined"
-                  }
+                  let key_val = if args.length() > 0 { args[0] } else { Undefined }
                   match this_val {
-                    Object(d) => Bool(d.properties.contains(key))
+                    Object(d) =>
+                      // Handle Symbol keys
+                      match key_val {
+                        Symbol(sym) => Bool(d.symbol_properties.contains(sym.id))
+                        _ => Bool(d.properties.contains(key_val.to_string()))
+                      }
                     _ => Bool(false)
                   }
                 }),
@@ -2672,13 +2685,14 @@ fn Interpreter::get_computed_property(
               prototype: Null,
               callable: Some(
                 MethodCallable("hasOwnProperty", fn(this_val, args) {
-                  let k = if args.length() > 0 {
-                    args[0].to_string()
-                  } else {
-                    "undefined"
-                  }
+                  let key_val = if args.length() > 0 { args[0] } else { Undefined }
                   match this_val {
-                    Object(d) => Bool(d.properties.contains(k))
+                    Object(d) =>
+                      // Handle Symbol keys
+                      match key_val {
+                        Symbol(sym) => Bool(d.symbol_properties.contains(sym.id))
+                        _ => Bool(d.properties.contains(key_val.to_string()))
+                      }
                     _ => Bool(false)
                   }
                 }),
@@ -3371,10 +3385,18 @@ fn Interpreter::eval_compound_assign(
       let rhs = self.eval_expr(value_expr, env)
       let result = eval_binary_op(bin_op, current, rhs, loc)
       match obj {
-        Object(data) => {
-          data.properties[key.to_string()] = result
-          result
-        }
+        Object(data) =>
+          // Handle Symbol keys specially
+          match key {
+            Symbol(sym) => {
+              data.symbol_properties[sym.id] = result
+              result
+            }
+            _ => {
+              data.properties[key.to_string()] = result
+              result
+            }
+          }
         Array(data) =>
           match key {
             Number(n) => {
@@ -3471,37 +3493,67 @@ fn Interpreter::eval_logical_assign_and(
       if is_truthy(current) {
         let rhs = self.eval_expr(value_expr, env)
         match obj {
-          Object(data) => {
-            let prop = key.to_string()
-            // Check writable descriptor
-            match data.descriptors.get(prop) {
-              Some(desc) =>
-                if not(desc.writable) {
+          Object(data) =>
+            // Handle Symbol keys specially
+            match key {
+              Symbol(sym) => {
+                // Check symbol descriptor
+                match data.symbol_descriptors.get(sym.id) {
+                  Some(desc) =>
+                    if not(desc.writable) {
+                      if self.strict {
+                        raise JsException(
+                          String_("TypeError: Cannot assign to read only property"),
+                        )
+                      }
+                      return rhs
+                    }
+                  None => ()
+                }
+                if not(data.symbol_properties.contains(sym.id)) &&
+                  not(data.extensible) {
+                  if self.strict {
+                    raise JsException(
+                      String_("TypeError: Cannot add property, object is not extensible"),
+                    )
+                  }
+                  return rhs
+                }
+                data.symbol_properties[sym.id] = rhs
+                rhs
+              }
+              _ => {
+                let prop = key.to_string()
+                // Check writable descriptor
+                match data.descriptors.get(prop) {
+                  Some(desc) =>
+                    if not(desc.writable) {
+                      if self.strict {
+                        raise JsException(
+                          String_(
+                            "TypeError: Cannot assign to read only property '\{prop}'",
+                          ),
+                        )
+                      }
+                      return rhs
+                    }
+                  None => ()
+                }
+                // Check extensible for new properties
+                if not(data.properties.contains(prop)) && not(data.extensible) {
                   if self.strict {
                     raise JsException(
                       String_(
-                        "TypeError: Cannot assign to read only property '\{prop}'",
+                        "TypeError: Cannot add property \{prop}, object is not extensible",
                       ),
                     )
                   }
                   return rhs
                 }
-              None => ()
-            }
-            // Check extensible for new properties
-            if not(data.properties.contains(prop)) && not(data.extensible) {
-              if self.strict {
-                raise JsException(
-                  String_(
-                    "TypeError: Cannot add property \{prop}, object is not extensible",
-                  ),
-                )
+                data.properties[prop] = rhs
+                rhs
               }
-              return rhs
             }
-            data.properties[prop] = rhs
-            rhs
-          }
           Array(data) =>
             match key {
               Number(n) => {
@@ -3601,37 +3653,64 @@ fn Interpreter::eval_logical_assign_or(
       if not(is_truthy(current)) {
         let rhs = self.eval_expr(value_expr, env)
         match obj {
-          Object(data) => {
-            let prop = key.to_string()
-            // Check writable descriptor
-            match data.descriptors.get(prop) {
-              Some(desc) =>
-                if not(desc.writable) {
+          Object(data) =>
+            // Handle Symbol keys specially
+            match key {
+              Symbol(sym) => {
+                match data.symbol_descriptors.get(sym.id) {
+                  Some(desc) =>
+                    if not(desc.writable) {
+                      if self.strict {
+                        raise JsException(
+                          String_("TypeError: Cannot assign to read only property"),
+                        )
+                      }
+                      return rhs
+                    }
+                  None => ()
+                }
+                if not(data.symbol_properties.contains(sym.id)) &&
+                  not(data.extensible) {
+                  if self.strict {
+                    raise JsException(
+                      String_("TypeError: Cannot add property, object is not extensible"),
+                    )
+                  }
+                  return rhs
+                }
+                data.symbol_properties[sym.id] = rhs
+                rhs
+              }
+              _ => {
+                let prop = key.to_string()
+                match data.descriptors.get(prop) {
+                  Some(desc) =>
+                    if not(desc.writable) {
+                      if self.strict {
+                        raise JsException(
+                          String_(
+                            "TypeError: Cannot assign to read only property '\{prop}'",
+                          ),
+                        )
+                      }
+                      return rhs
+                    }
+                  None => ()
+                }
+                if not(data.properties.contains(prop)) && not(data.extensible) {
                   if self.strict {
                     raise JsException(
                       String_(
-                        "TypeError: Cannot assign to read only property '\{prop}'",
+                        "TypeError: Cannot add property \{prop}, object is not extensible",
                       ),
                     )
                   }
                   return rhs
                 }
-              None => ()
-            }
-            // Check extensible for new properties
-            if not(data.properties.contains(prop)) && not(data.extensible) {
-              if self.strict {
-                raise JsException(
-                  String_(
-                    "TypeError: Cannot add property \{prop}, object is not extensible",
-                  ),
-                )
+                data.properties[prop] = rhs
+                rhs
               }
-              return rhs
             }
-            data.properties[prop] = rhs
-            rhs
-          }
           Array(data) =>
             match key {
               Number(n) => {
@@ -3734,37 +3813,64 @@ fn Interpreter::eval_nullish_assign(
         Null | Undefined => {
           let rhs = self.eval_expr(value_expr, env)
           match obj {
-            Object(data) => {
-              let prop = key.to_string()
-              // Check writable descriptor
-              match data.descriptors.get(prop) {
-                Some(desc) =>
-                  if not(desc.writable) {
+            Object(data) =>
+              // Handle Symbol keys specially
+              match key {
+                Symbol(sym) => {
+                  match data.symbol_descriptors.get(sym.id) {
+                    Some(desc) =>
+                      if not(desc.writable) {
+                        if self.strict {
+                          raise JsException(
+                            String_("TypeError: Cannot assign to read only property"),
+                          )
+                        }
+                        return rhs
+                      }
+                    None => ()
+                  }
+                  if not(data.symbol_properties.contains(sym.id)) &&
+                    not(data.extensible) {
+                    if self.strict {
+                      raise JsException(
+                        String_("TypeError: Cannot add property, object is not extensible"),
+                      )
+                    }
+                    return rhs
+                  }
+                  data.symbol_properties[sym.id] = rhs
+                  rhs
+                }
+                _ => {
+                  let prop = key.to_string()
+                  match data.descriptors.get(prop) {
+                    Some(desc) =>
+                      if not(desc.writable) {
+                        if self.strict {
+                          raise JsException(
+                            String_(
+                              "TypeError: Cannot assign to read only property '\{prop}'",
+                            ),
+                          )
+                        }
+                        return rhs
+                      }
+                    None => ()
+                  }
+                  if not(data.properties.contains(prop)) && not(data.extensible) {
                     if self.strict {
                       raise JsException(
                         String_(
-                          "TypeError: Cannot assign to read only property '\{prop}'",
+                          "TypeError: Cannot add property \{prop}, object is not extensible",
                         ),
                       )
                     }
                     return rhs
                   }
-                None => ()
-              }
-              // Check extensible for new properties
-              if not(data.properties.contains(prop)) && not(data.extensible) {
-                if self.strict {
-                  raise JsException(
-                    String_(
-                      "TypeError: Cannot add property \{prop}, object is not extensible",
-                    ),
-                  )
+                  data.properties[prop] = rhs
+                  rhs
                 }
-                return rhs
               }
-              data.properties[prop] = rhs
-              rhs
-            }
             Array(data) =>
               match key {
                 Number(n) => {

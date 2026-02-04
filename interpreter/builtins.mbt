@@ -492,28 +492,21 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
       None => {
         let sym = new_symbol(Some(key))
         global_symbol_registry[key] = sym
+        symbol_registry_reverse[sym.id] = key // O(1) reverse lookup
         Symbol(sym)
       }
     }
   })
 
-  // Symbol.keyFor(sym) - returns key for symbol in global registry
+  // Symbol.keyFor(sym) - returns key for symbol in global registry (O(1) via reverse lookup)
   symbol_props["keyFor"] = make_native_func("keyFor", fn(args) {
     let sym = if args.length() > 0 { args[0] } else { Undefined }
     match sym {
-      Symbol(sym_data) => {
-        // Search registry for this symbol
-        let mut found : String? = None
-        global_symbol_registry.each(fn(key, registered) {
-          if registered.id == sym_data.id {
-            found = Some(key)
-          }
-        })
-        match found {
+      Symbol(sym_data) =>
+        match symbol_registry_reverse.get(sym_data.id) {
           Some(key) => String_(key)
           None => Undefined
         }
-      }
       _ =>
         raise JsException(String_("TypeError: Symbol.keyFor requires a symbol"))
     }

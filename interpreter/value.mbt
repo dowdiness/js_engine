@@ -102,6 +102,10 @@ pub fn get_symbol_by_id(id : Int) -> SymbolData? {
 let global_symbol_registry : Map[String, SymbolData] = {}
 
 ///|
+/// Reverse lookup: symbol ID -> registry key (for O(1) Symbol.keyFor)
+let symbol_registry_reverse : Map[Int, String] = {}
+
+///|
 pub(all) enum Value {
   Number(Double)
   String_(String)

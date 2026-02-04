@@ -25,13 +25,14 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         prototype: Null,
         callable: Some(
           MethodCallable("hasOwnProperty", fn(this_val, args) {
-            let key = if args.length() > 0 {
-              args[0].to_string()
-            } else {
-              "undefined"
-            }
+            let key_val = if args.length() > 0 { args[0] } else { Undefined }
             match this_val {
-              Object(data) => Bool(data.properties.contains(key))
+              Object(data) =>
+                // Handle Symbol keys
+                match key_val {
+                  Symbol(sym) => Bool(data.symbol_properties.contains(sym.id))
+                  _ => Bool(data.properties.contains(key_val.to_string()))
+                }
               _ => Bool(false)
             }
           }),
@@ -501,14 +502,16 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         "hasOwn": make_native_func("hasOwn", fn(args) {
           // Object.hasOwn() - modern hasOwnProperty replacement
           let obj = if args.length() > 0 { args[0] } else { Undefined }
-          let key = if args.length() > 1 {
-            args[1].to_string()
-          } else {
-            "undefined"
-          }
+          let key_val = if args.length() > 1 { args[1] } else { Undefined }
           match obj {
-            Object(data) => Bool(data.properties.contains(key))
-            Array(data) =>
+            Object(data) =>
+              // Handle Symbol keys
+              match key_val {
+                Symbol(sym) => Bool(data.symbol_properties.contains(sym.id))
+                _ => Bool(data.properties.contains(key_val.to_string()))
+              }
+            Array(data) => {
+              let key = key_val.to_string()
               // Arrays support numeric index check
               if key == "length" {
                 Bool(true)
@@ -516,6 +519,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 let idx = try { @strconv.parse_int(key) } catch { _ => -1 }
                 Bool(idx >= 0 && idx < data.elements.length())
               }
+            }
             _ => Bool(false)
           }
         }),
