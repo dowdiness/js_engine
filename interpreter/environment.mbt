@@ -1,7 +1,4 @@
 ///|
-using @errors { TypeError, SyntaxError, ReferenceError, InternalError }
-
-///|
 pub(all) enum BindingKind {
   LetBinding
   ConstBinding
@@ -40,7 +37,7 @@ pub fn Environment::def(
         // Allow var/var redeclaration - just update the value
         existing.value = value
       } else {
-        raise SyntaxError(message="Identifier '\{name}' has already been declared")
+        raise @errors.SyntaxError(message="Identifier '\{name}' has already been declared")
       }
     None => self.bindings[name] = { value, kind, initialized: true }
   }
@@ -53,7 +50,7 @@ pub fn Environment::def_tdz(
   kind : BindingKind,
 ) -> Unit raise Error {
   if self.bindings.contains(name) {
-    raise SyntaxError(message="Identifier '\{name}' has already been declared")
+    raise @errors.SyntaxError(message="Identifier '\{name}' has already been declared")
   }
   self.bindings[name] = { value: Undefined, kind, initialized: false }
 }
@@ -70,7 +67,7 @@ pub fn Environment::initialize(
       binding.initialized = true
     }
     None =>
-      raise InternalError(message="Cannot initialize non-existent binding '\{name}'")
+      raise @errors.InternalError(message="Cannot initialize non-existent binding '\{name}'")
   }
 }
 
@@ -100,14 +97,14 @@ pub fn Environment::get(self : Environment, name : String) -> Value raise Error 
   match self.bindings.get(name) {
     Some(binding) =>
       if not(binding.initialized) {
-        raise ReferenceError(message="Cannot access '\{name}' before initialization")
+        raise @errors.ReferenceError(message="Cannot access '\{name}' before initialization")
       } else {
         binding.value
       }
     None =>
       match self.parent {
         Some(parent) => parent.get(name)
-        None => raise ReferenceError(message="\{name} is not defined")
+        None => raise @errors.ReferenceError(message="\{name} is not defined")
       }
   }
 }
@@ -121,16 +118,16 @@ pub fn Environment::assign(
   match self.bindings.get(name) {
     Some(binding) =>
       if not(binding.initialized) {
-        raise ReferenceError(message="Cannot access '\{name}' before initialization")
+        raise @errors.ReferenceError(message="Cannot access '\{name}' before initialization")
       } else if binding.kind == ConstBinding {
-        raise TypeError(message="Assignment to constant variable '\{name}'")
+        raise @errors.TypeError(message="Assignment to constant variable '\{name}'")
       } else {
         binding.value = value
       }
     None =>
       match self.parent {
         Some(parent) => parent.assign(name, value)
-        None => raise ReferenceError(message="\{name} is not defined")
+        None => raise @errors.ReferenceError(message="\{name} is not defined")
       }
   }
 }

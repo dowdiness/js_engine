@@ -1,7 +1,4 @@
 ///|
-using @errors { TypeError, SyntaxError, ReferenceError, InternalError }
-
-///|
 pub(all) enum Signal {
   Normal(Value)
   ReturnSignal(Value)
@@ -69,11 +66,11 @@ pub fn Interpreter::run(
     match self.exec_stmt(stmt, self.global) {
       Normal(v) => last = v
       ReturnSignal(_) =>
-        raise SyntaxError(message="return statement outside of function")
+        raise @errors.SyntaxError(message="return statement outside of function")
       BreakSignal(_) =>
-        raise SyntaxError(message="break statement outside of loop")
+        raise @errors.SyntaxError(message="break statement outside of loop")
       ContinueSignal(_) =>
-        raise SyntaxError(message="continue statement outside of loop")
+        raise @errors.SyntaxError(message="continue statement outside of loop")
     }
   }
   last
@@ -354,7 +351,7 @@ fn Interpreter::exec_stmt(
           match data.callable {
             Some(_) => self.call_value(iterator_method, iterable, [], loc)
             None =>
-              raise TypeError(message=
+              raise @errors.TypeError(message=
                 "Result of the Symbol.iterator method is not an object",
               )
           }
@@ -365,13 +362,13 @@ fn Interpreter::exec_stmt(
             Array(arr) => make_array_iterator_value(arr)
             String_(s) => make_string_iterator_value(s)
             _ =>
-              raise TypeError(message=
+              raise @errors.TypeError(message=
                 "\{type_of(iterable)} is not iterable (cannot read property Symbol(Symbol.iterator))",
               )
           }
         }
         _ =>
-          raise TypeError(message=
+          raise @errors.TypeError(message=
             "Result of the Symbol.iterator method is not an object",
           )
       }
@@ -401,13 +398,13 @@ fn Interpreter::exec_stmt(
               }
               match found {
                 Undefined =>
-                  raise TypeError(message="iterator.next is not a function")
+                  raise @errors.TypeError(message="iterator.next is not a function")
                 _ => found
               }
             }
           }
         }
-        _ => raise TypeError(message="Iterator is not an object")
+        _ => raise @errors.TypeError(message="Iterator is not an object")
       }
 
       // Iterate using the iterator protocol
@@ -428,7 +425,7 @@ fn Interpreter::exec_stmt(
             }
             (done_val, value_val)
           }
-          _ => raise TypeError(message="Iterator result is not an object")
+          _ => raise @errors.TypeError(message="Iterator result is not an object")
         }
 
         // If done, exit the loop
@@ -1153,7 +1150,7 @@ fn Interpreter::eval_expr(
             Some(desc) =>
               if not(desc.writable) {
                 if self.strict {
-                  raise TypeError(message=
+                  raise @errors.TypeError(message=
                     "Cannot assign to read only property '\{prop}'",
                   )
                 }
@@ -1164,7 +1161,7 @@ fn Interpreter::eval_expr(
           // Check extensible for new properties
           if not(data.properties.contains(prop)) && not(data.extensible) {
             if self.strict {
-              raise TypeError(message=
+              raise @errors.TypeError(message=
                 "Cannot add property \{prop}, object is not extensible",
               )
             }
@@ -1174,7 +1171,7 @@ fn Interpreter::eval_expr(
           value
         }
         _ =>
-          raise TypeError(message=
+          raise @errors.TypeError(message=
             "Cannot set property '\{prop}' of \{type_of(obj)}",
           )
       }
@@ -1193,7 +1190,7 @@ fn Interpreter::eval_expr(
                 Some(desc) =>
                   if not(desc.writable) {
                     if self.strict {
-                      raise TypeError(message="Cannot assign to read only property")
+                      raise @errors.TypeError(message="Cannot assign to read only property")
                     }
                     return value
                   }
@@ -1202,7 +1199,7 @@ fn Interpreter::eval_expr(
               if not(data.symbol_properties.contains(sym.id)) &&
                 not(data.extensible) {
                 if self.strict {
-                  raise TypeError(message=
+                  raise @errors.TypeError(message=
                     "Cannot add property, object is not extensible",
                   )
                 }
@@ -1217,7 +1214,7 @@ fn Interpreter::eval_expr(
                 Some(desc) =>
                   if not(desc.writable) {
                     if self.strict {
-                      raise TypeError(message=
+                      raise @errors.TypeError(message=
                         "Cannot assign to read only property '\{prop}'",
                       )
                     }
@@ -1227,7 +1224,7 @@ fn Interpreter::eval_expr(
               }
               if not(data.properties.contains(prop)) && not(data.extensible) {
                 if self.strict {
-                  raise TypeError(message=
+                  raise @errors.TypeError(message=
                     "Cannot add property \{prop}, object is not extensible",
                   )
                 }
@@ -1251,7 +1248,7 @@ fn Interpreter::eval_expr(
             }
             _ => value
           }
-        _ => raise TypeError(message="Cannot set property of \{type_of(obj)}")
+        _ => raise @errors.TypeError(message="Cannot set property of \{type_of(obj)}")
       }
     }
     NewExpr(callee_expr, arg_exprs, loc) =>
@@ -1320,7 +1317,7 @@ fn Interpreter::eval_expr(
     }
     RegexLit(pattern, flags, _) => make_regexp_object(pattern, flags)
     SpreadExpr(_, _) =>
-      raise SyntaxError(
+      raise @errors.SyntaxError(
         message="Spread expression used outside of call or array literal",
       )
     DestructureAssign(pattern, value_expr, _) => {
@@ -1472,13 +1469,13 @@ fn Interpreter::eval_expr(
               this_val
             }
             _ =>
-              raise ReferenceError(
+              raise @errors.ReferenceError(
                 message="super() called but [[SuperConstructor]] is not a class at line \{loc.line}",
               )
           }
         }
         _ =>
-          raise ReferenceError(
+          raise @errors.ReferenceError(
             message="super() called but no [[SuperConstructor]] in scope at line \{loc.line}",
           )
       }
@@ -1488,7 +1485,7 @@ fn Interpreter::eval_expr(
       let super_proto = env.get("[[SuperPrototype]]")
       match super_proto {
         Null | Undefined =>
-          raise ReferenceError(
+          raise @errors.ReferenceError(
             message="super.prop used but no [[SuperPrototype]] in scope at line \{loc.line}",
           )
         _ => self.get_property(super_proto, prop, loc)
@@ -1500,7 +1497,7 @@ fn Interpreter::eval_expr(
       let key = self.eval_expr(key_expr, env)
       match super_proto {
         Null | Undefined =>
-          raise ReferenceError(
+          raise @errors.ReferenceError(
             message="super[expr] used but no [[SuperPrototype]] in scope at line \{loc.line}",
           )
         _ => self.get_computed_property(super_proto, key, loc)
@@ -1563,18 +1560,18 @@ fn Interpreter::eval_binary(
                     }
                     None =>
                       // Symbol.hasInstance exists but is not callable - TypeError per spec
-                      raise TypeError(message="Symbol.hasInstance is not a function")
+                      raise @errors.TypeError(message="Symbol.hasInstance is not a function")
                   }
                 _ =>
                   // Symbol.hasInstance is not an object - TypeError per spec
-                  raise TypeError(message="Symbol.hasInstance is not a function")
+                  raise @errors.TypeError(message="Symbol.hasInstance is not a function")
               }
             None => {
               // No Symbol.hasInstance found, use OrdinaryHasInstance
               // Step 2: Check if RHS is callable (required for OrdinaryHasInstance)
               match r_data.callable {
                 None =>
-                  raise TypeError(message=
+                  raise @errors.TypeError(message=
                     "Right-hand side of 'instanceof' is not callable",
                   )
                 Some(_) => {
@@ -1597,7 +1594,7 @@ fn Interpreter::eval_binary(
           }
         }
         _ =>
-          raise TypeError(message=
+          raise @errors.TypeError(message=
             "Right-hand side of 'instanceof' is not an object",
           )
       }
@@ -1620,7 +1617,7 @@ fn eval_binary_op(
   match (op, left, right) {
     // Symbol cannot be converted to string implicitly
     (Add, Symbol(_), _) | (Add, _, Symbol(_)) =>
-      raise TypeError(message="Cannot convert a Symbol value to a string")
+      raise @errors.TypeError(message="Cannot convert a Symbol value to a string")
     // String concatenation
     (Add, String_(a), String_(b)) => String_(a + b)
     (Add, String_(a), b) => String_(a + b.to_string())
@@ -1747,13 +1744,13 @@ fn eval_binary_op(
           Bool(idx >= 0 && idx < data.elements.length())
         }
         _ =>
-          raise TypeError(message=
+          raise @errors.TypeError(message=
             "Cannot use 'in' operator to search for '\{l.to_string()}' in \{type_of(r)}",
           )
       }
     // And/Or/??/Instanceof already handled in eval_binary
     (And, _, _) | (Or, _, _) | (NullishCoalesce, _, _) | (Instanceof, _, _) =>
-      raise InternalError(
+      raise @errors.InternalError(
         message="Internal error: logical operators should be short-circuited",
       )
   }
@@ -1908,7 +1905,7 @@ fn Interpreter::eval_unary(
                 Some(desc) =>
                   if not(desc.configurable) {
                     if self.strict {
-                      raise TypeError(message="Cannot delete property '\{prop}'")
+                      raise @errors.TypeError(message="Cannot delete property '\{prop}'")
                     }
                     return Bool(false)
                   }
@@ -1931,7 +1928,7 @@ fn Interpreter::eval_unary(
                 Some(desc) =>
                   if not(desc.configurable) {
                     if self.strict {
-                      raise TypeError(message="Cannot delete property '\{k}'")
+                      raise @errors.TypeError(message="Cannot delete property '\{k}'")
                     }
                     return Bool(false)
                   }
@@ -1953,7 +1950,7 @@ fn Interpreter::eval_unary(
         Not => Bool(not(is_truthy(val)))
         BitNot => Number(to_int32(to_number(val)).lnot().to_double())
         _ =>
-          raise InternalError(
+          raise @errors.InternalError(
             message="Unexpected unary operator at line \{loc.line}, col \{loc.col}",
           )
       }
@@ -2064,13 +2061,13 @@ fn Interpreter::spread_iterable(
           }
           match found {
             Undefined =>
-              raise TypeError(message="iterator.next is not a function")
+              raise @errors.TypeError(message="iterator.next is not a function")
             _ => found
           }
         }
       }
     }
-    _ => raise TypeError(message="Iterator result is not an object")
+    _ => raise @errors.TypeError(message="Iterator result is not an object")
   }
 
   // Iterate using the iterator protocol
@@ -2224,9 +2221,9 @@ fn Interpreter::call_value(
               Normal(v) => v
               ReturnSignal(v) => v
               BreakSignal(_) =>
-                raise SyntaxError(message="break statement outside of loop")
+                raise @errors.SyntaxError(message="break statement outside of loop")
               ContinueSignal(_) =>
-                raise SyntaxError(message="continue statement outside of loop")
+                raise @errors.SyntaxError(message="continue statement outside of loop")
             }
           } catch {
             e => {
@@ -2253,9 +2250,9 @@ fn Interpreter::call_value(
             Normal(v) => v
             ReturnSignal(v) => v
             BreakSignal(_) =>
-              raise SyntaxError(message="break statement outside of loop")
+              raise @errors.SyntaxError(message="break statement outside of loop")
             ContinueSignal(_) =>
-              raise SyntaxError(message="continue statement outside of loop")
+              raise @errors.SyntaxError(message="continue statement outside of loop")
           }
         }
         Some(UserFuncExt(data)) => {
@@ -2331,9 +2328,9 @@ fn Interpreter::call_value(
               Normal(v) => v
               ReturnSignal(v) => v
               BreakSignal(_) =>
-                raise SyntaxError(message="break statement outside of loop")
+                raise @errors.SyntaxError(message="break statement outside of loop")
               ContinueSignal(_) =>
-                raise SyntaxError(message="continue statement outside of loop")
+                raise @errors.SyntaxError(message="continue statement outside of loop")
             }
           } catch {
             e => {
@@ -2379,9 +2376,9 @@ fn Interpreter::call_value(
             Normal(v) => v
             ReturnSignal(v) => v
             BreakSignal(_) =>
-              raise SyntaxError(message="break statement outside of loop")
+              raise @errors.SyntaxError(message="break statement outside of loop")
             ContinueSignal(_) =>
-              raise SyntaxError(message="continue statement outside of loop")
+              raise @errors.SyntaxError(message="continue statement outside of loop")
           }
         }
         Some(BoundFunc(target, bound_this, bound_args)) => {
@@ -2425,12 +2422,12 @@ fn Interpreter::call_value(
         Some(NonConstructableCallable(_, func)) => func(args)
         Some(InterpreterCallable(_, func)) => func(self, this_val, args)
         Some(ClassConstructor(name, _, _, _, _, _)) =>
-          raise TypeError(message=
+          raise @errors.TypeError(message=
             "Class constructor " + name + " cannot be invoked without 'new'",
           )
-        None => raise TypeError(message="is not a function")
+        None => raise @errors.TypeError(message="is not a function")
       }
-    _ => raise TypeError(message="is not a function")
+    _ => raise @errors.TypeError(message="is not a function")
   }
 }
 
@@ -2453,7 +2450,7 @@ fn Interpreter::eval_member(
           Undefined
         })
       } else {
-        raise TypeError(message="console.\{prop} is not supported")
+        raise @errors.TypeError(message="console.\{prop} is not supported")
       }
     _ => {
       let obj = self.eval_expr(obj_expr, env)
@@ -2736,7 +2733,7 @@ fn Interpreter::get_property(
         Undefined
       }
     Null | Undefined =>
-      raise TypeError(message="Cannot read property '\{prop}' of \{type_of(obj)}")
+      raise @errors.TypeError(message="Cannot read property '\{prop}' of \{type_of(obj)}")
     _ => Undefined
   }
 }
@@ -3079,7 +3076,7 @@ fn Interpreter::get_computed_property(
         _ => Undefined
       }
     Null | Undefined =>
-      raise TypeError(message="Cannot read property of \{type_of(obj)}")
+      raise @errors.TypeError(message="Cannot read property of \{type_of(obj)}")
     _ => Undefined
   }
 }
@@ -3169,9 +3166,9 @@ fn Interpreter::eval_new(
                   _ => new_obj
                 }
               BreakSignal(_) =>
-                raise SyntaxError(message="break statement outside of loop")
+                raise @errors.SyntaxError(message="break statement outside of loop")
               ContinueSignal(_) =>
-                raise SyntaxError(message="continue statement outside of loop")
+                raise @errors.SyntaxError(message="continue statement outside of loop")
             }
           } catch {
             e => {
@@ -3271,9 +3268,9 @@ fn Interpreter::eval_new(
                   _ => new_obj
                 }
               BreakSignal(_) =>
-                raise SyntaxError(message="break statement outside of loop")
+                raise @errors.SyntaxError(message="break statement outside of loop")
               ContinueSignal(_) =>
-                raise SyntaxError(message="continue statement outside of loop")
+                raise @errors.SyntaxError(message="continue statement outside of loop")
             }
           } catch {
             e => {
@@ -3286,10 +3283,10 @@ fn Interpreter::eval_new(
         }
         Some(NativeCallable(_, func)) => func(args)
         Some(NonConstructableCallable(name, _)) =>
-          raise TypeError(message=name + " is not a constructor")
+          raise @errors.TypeError(message=name + " is not a constructor")
         Some(InterpreterCallable(_, func)) => func(self, Undefined, args)
         Some(ArrowFunc(_)) | Some(ArrowFuncExt(_)) =>
-          raise TypeError(message="arrow functions cannot be used as constructors")
+          raise @errors.TypeError(message="arrow functions cannot be used as constructors")
         Some(ClassConstructor(class_name, proto, super_ctor, ctor_fn, closure, super_proto)) => {
           // Create the new instance with the class prototype
           let new_obj = Object({
@@ -3336,9 +3333,9 @@ fn Interpreter::eval_new(
                     _ => new_obj
                   }
                 BreakSignal(_) =>
-                  raise SyntaxError(message="break statement outside of loop")
+                  raise @errors.SyntaxError(message="break statement outside of loop")
                 ContinueSignal(_) =>
-                  raise SyntaxError(message="continue statement outside of loop")
+                  raise @errors.SyntaxError(message="continue statement outside of loop")
               }
             }
             None => {
@@ -3391,9 +3388,9 @@ fn Interpreter::eval_new(
             }
           }
         }
-        _ => raise TypeError(message="is not a constructor")
+        _ => raise @errors.TypeError(message="is not a constructor")
       }
-    _ => raise TypeError(message="is not a constructor")
+    _ => raise @errors.TypeError(message="is not a constructor")
   }
 }
 
@@ -3417,7 +3414,7 @@ fn Interpreter::create_class(
           }
         }
         _ =>
-          raise TypeError(message="Class extends value is not a constructor")
+          raise @errors.TypeError(message="Class extends value is not a constructor")
       }
     }
     None => (None, Null)
@@ -3592,7 +3589,7 @@ fn Interpreter::eval_update(
       match obj {
         Object(data) => data.properties[prop] = new_val
         _ =>
-          raise SyntaxError(
+          raise @errors.SyntaxError(
             message="Invalid update target at line \{loc.line}, col \{loc.col}",
           )
       }
@@ -3624,7 +3621,7 @@ fn Interpreter::eval_update(
             _ => ()
           }
         _ =>
-          raise SyntaxError(
+          raise @errors.SyntaxError(
             message="Invalid update target at line \{loc.line}, col \{loc.col}",
           )
       }
@@ -3635,7 +3632,7 @@ fn Interpreter::eval_update(
       }
     }
     _ =>
-      raise SyntaxError(
+      raise @errors.SyntaxError(
         message="Invalid update target at line \{loc.line}, col \{loc.col}",
       )
   }
@@ -3691,7 +3688,7 @@ fn Interpreter::eval_compound_assign(
           result
         }
         _ =>
-          raise TypeError(
+          raise @errors.TypeError(
             message="Cannot set property at line \{loc.line}, col \{loc.col}",
           )
       }
@@ -3727,13 +3724,13 @@ fn Interpreter::eval_compound_assign(
             _ => result
           }
         _ =>
-          raise TypeError(
+          raise @errors.TypeError(
             message="Cannot set property at line \{loc.line}, col \{loc.col}",
           )
       }
     }
     _ =>
-      raise SyntaxError(
+      raise @errors.SyntaxError(
         message="Invalid compound assignment target at line \{loc.line}, col \{loc.col}",
       )
   }
@@ -3771,7 +3768,7 @@ fn Interpreter::eval_logical_assign_and(
               Some(desc) =>
                 if not(desc.writable) {
                   if self.strict {
-                    raise TypeError(message=
+                    raise @errors.TypeError(message=
                       "Cannot assign to read only property '\{prop}'",
                     )
                   }
@@ -3782,7 +3779,7 @@ fn Interpreter::eval_logical_assign_and(
             // Check extensible for new properties
             if not(data.properties.contains(prop)) && not(data.extensible) {
               if self.strict {
-                raise TypeError(message=
+                raise @errors.TypeError(message=
                   "Cannot add property \{prop}, object is not extensible",
                 )
               }
@@ -3792,7 +3789,7 @@ fn Interpreter::eval_logical_assign_and(
             rhs
           }
           _ =>
-            raise TypeError(message=
+            raise @errors.TypeError(message=
               "Cannot set property '\{prop}' of \{type_of(obj)}",
             )
         }
@@ -3816,7 +3813,7 @@ fn Interpreter::eval_logical_assign_and(
                   Some(desc) =>
                     if not(desc.writable) {
                       if self.strict {
-                        raise TypeError(message="Cannot assign to read only property")
+                        raise @errors.TypeError(message="Cannot assign to read only property")
                       }
                       return rhs
                     }
@@ -3825,7 +3822,7 @@ fn Interpreter::eval_logical_assign_and(
                 if not(data.symbol_properties.contains(sym.id)) &&
                   not(data.extensible) {
                   if self.strict {
-                    raise TypeError(message=
+                    raise @errors.TypeError(message=
                       "Cannot add property, object is not extensible",
                     )
                   }
@@ -3841,7 +3838,7 @@ fn Interpreter::eval_logical_assign_and(
                   Some(desc) =>
                     if not(desc.writable) {
                       if self.strict {
-                        raise TypeError(message=
+                        raise @errors.TypeError(message=
                           "Cannot assign to read only property '\{prop}'",
                         )
                       }
@@ -3852,7 +3849,7 @@ fn Interpreter::eval_logical_assign_and(
                 // Check extensible for new properties
                 if not(data.properties.contains(prop)) && not(data.extensible) {
                   if self.strict {
-                    raise TypeError(message=
+                    raise @errors.TypeError(message=
                       "Cannot add property \{prop}, object is not extensible",
                     )
                   }
@@ -3873,14 +3870,14 @@ fn Interpreter::eval_logical_assign_and(
               }
               _ => rhs
             }
-          _ => raise TypeError(message="Cannot set property of \{type_of(obj)}")
+          _ => raise @errors.TypeError(message="Cannot set property of \{type_of(obj)}")
         }
       } else {
         current
       }
     }
     _ =>
-      raise SyntaxError(
+      raise @errors.SyntaxError(
         message="Invalid assignment target at line \{loc.line}, col \{loc.col}",
       )
   }
@@ -3918,7 +3915,7 @@ fn Interpreter::eval_logical_assign_or(
               Some(desc) =>
                 if not(desc.writable) {
                   if self.strict {
-                    raise TypeError(message=
+                    raise @errors.TypeError(message=
                       "Cannot assign to read only property '\{prop}'",
                     )
                   }
@@ -3929,7 +3926,7 @@ fn Interpreter::eval_logical_assign_or(
             // Check extensible for new properties
             if not(data.properties.contains(prop)) && not(data.extensible) {
               if self.strict {
-                raise TypeError(message=
+                raise @errors.TypeError(message=
                   "Cannot add property \{prop}, object is not extensible",
                 )
               }
@@ -3939,7 +3936,7 @@ fn Interpreter::eval_logical_assign_or(
             rhs
           }
           _ =>
-            raise TypeError(message=
+            raise @errors.TypeError(message=
               "Cannot set property '\{prop}' of \{type_of(obj)}",
             )
         }
@@ -3962,7 +3959,7 @@ fn Interpreter::eval_logical_assign_or(
                   Some(desc) =>
                     if not(desc.writable) {
                       if self.strict {
-                        raise TypeError(message="Cannot assign to read only property")
+                        raise @errors.TypeError(message="Cannot assign to read only property")
                       }
                       return rhs
                     }
@@ -3971,7 +3968,7 @@ fn Interpreter::eval_logical_assign_or(
                 if not(data.symbol_properties.contains(sym.id)) &&
                   not(data.extensible) {
                   if self.strict {
-                    raise TypeError(message=
+                    raise @errors.TypeError(message=
                       "Cannot add property, object is not extensible",
                     )
                   }
@@ -3986,7 +3983,7 @@ fn Interpreter::eval_logical_assign_or(
                   Some(desc) =>
                     if not(desc.writable) {
                       if self.strict {
-                        raise TypeError(message=
+                        raise @errors.TypeError(message=
                           "Cannot assign to read only property '\{prop}'",
                         )
                       }
@@ -3996,7 +3993,7 @@ fn Interpreter::eval_logical_assign_or(
                 }
                 if not(data.properties.contains(prop)) && not(data.extensible) {
                   if self.strict {
-                    raise TypeError(message=
+                    raise @errors.TypeError(message=
                       "Cannot add property \{prop}, object is not extensible",
                     )
                   }
@@ -4017,14 +4014,14 @@ fn Interpreter::eval_logical_assign_or(
               }
               _ => rhs
             }
-          _ => raise TypeError(message="Cannot set property of \{type_of(obj)}")
+          _ => raise @errors.TypeError(message="Cannot set property of \{type_of(obj)}")
         }
       } else {
         current
       }
     }
     _ =>
-      raise SyntaxError(
+      raise @errors.SyntaxError(
         message="Invalid assignment target at line \{loc.line}, col \{loc.col}",
       )
   }
@@ -4064,7 +4061,7 @@ fn Interpreter::eval_nullish_assign(
                 Some(desc) =>
                   if not(desc.writable) {
                     if self.strict {
-                      raise TypeError(message=
+                      raise @errors.TypeError(message=
                         "Cannot assign to read only property '\{prop}'",
                       )
                     }
@@ -4075,7 +4072,7 @@ fn Interpreter::eval_nullish_assign(
               // Check extensible for new properties
               if not(data.properties.contains(prop)) && not(data.extensible) {
                 if self.strict {
-                  raise TypeError(message=
+                  raise @errors.TypeError(message=
                     "Cannot add property \{prop}, object is not extensible",
                   )
                 }
@@ -4085,7 +4082,7 @@ fn Interpreter::eval_nullish_assign(
               rhs
             }
             _ =>
-              raise TypeError(message=
+              raise @errors.TypeError(message=
                 "Cannot set property '\{prop}' of \{type_of(obj)}",
               )
           }
@@ -4109,7 +4106,7 @@ fn Interpreter::eval_nullish_assign(
                     Some(desc) =>
                       if not(desc.writable) {
                         if self.strict {
-                          raise TypeError(message="Cannot assign to read only property")
+                          raise @errors.TypeError(message="Cannot assign to read only property")
                         }
                         return rhs
                       }
@@ -4118,7 +4115,7 @@ fn Interpreter::eval_nullish_assign(
                   if not(data.symbol_properties.contains(sym.id)) &&
                     not(data.extensible) {
                     if self.strict {
-                      raise TypeError(message=
+                      raise @errors.TypeError(message=
                         "Cannot add property, object is not extensible",
                       )
                     }
@@ -4133,7 +4130,7 @@ fn Interpreter::eval_nullish_assign(
                     Some(desc) =>
                       if not(desc.writable) {
                         if self.strict {
-                          raise TypeError(message=
+                          raise @errors.TypeError(message=
                             "Cannot assign to read only property '\{prop}'",
                           )
                         }
@@ -4143,7 +4140,7 @@ fn Interpreter::eval_nullish_assign(
                   }
                   if not(data.properties.contains(prop)) && not(data.extensible) {
                     if self.strict {
-                      raise TypeError(message=
+                      raise @errors.TypeError(message=
                         "Cannot add property \{prop}, object is not extensible",
                       )
                     }
@@ -4164,14 +4161,14 @@ fn Interpreter::eval_nullish_assign(
                 }
                 _ => rhs
               }
-            _ => raise TypeError(message="Cannot set property of \{type_of(obj)}")
+            _ => raise @errors.TypeError(message="Cannot set property of \{type_of(obj)}")
           }
         }
         _ => current
       }
     }
     _ =>
-      raise SyntaxError(
+      raise @errors.SyntaxError(
         message="Invalid assignment target at line \{loc.line}, col \{loc.col}",
       )
   }

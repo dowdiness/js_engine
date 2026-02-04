@@ -1,7 +1,4 @@
 ///|
-using @errors { TypeError }
-
-///|
 pub fn get_string_method(s : String, prop : String) -> Value {
   let chars = s.to_array()
   match prop {
@@ -692,7 +689,7 @@ pub fn get_string_method(s : String, prop : String) -> Value {
                 _ => ""
               }
               if not(flags.to_array().contains('g')) {
-                raise TypeError(message=
+                raise @errors.TypeError(message=
                   "replaceAll must be called with a global RegExp",
                 )
               }

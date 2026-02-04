@@ -2,9 +2,6 @@
 /// Supports: literals, ., *, +, ?, ^, $, \d, \w, \s, \D, \W, \S, \b, \B,
 /// character classes [...], [^...], grouping (...), alternation |, {n}, {n,}, {n,m}
 
-///|
-using @errors { SyntaxError }
-
 // ---- Regex AST ----
 
 ///|
@@ -113,7 +110,7 @@ fn RegexParser::parse_atom(self : RegexParser) -> RegexNode raise Error {
 fn RegexParser::parse_escape(self : RegexParser) -> RegexNode raise Error {
   self.pos += 1 // skip backslash
   if self.pos >= self.pattern.length() {
-    raise SyntaxError(message="Invalid regex: trailing backslash")
+    raise @errors.SyntaxError(message="Invalid regex: trailing backslash")
   }
   let ch = self.pattern[self.pos]
   self.pos += 1
@@ -151,7 +148,7 @@ fn RegexParser::parse_char_class(self : RegexParser) -> RegexNode raise Error {
     let start = if ch == '\\' {
       self.pos += 1
       if self.pos >= self.pattern.length() {
-        raise SyntaxError(message="Invalid regex: unterminated character class")
+        raise @errors.SyntaxError(message="Invalid regex: unterminated character class")
       }
       let escaped = self.pattern[self.pos]
       self.pos += 1
@@ -192,7 +189,7 @@ fn RegexParser::parse_char_class(self : RegexParser) -> RegexNode raise Error {
       let end_ch = if self.pattern[self.pos] == '\\' {
         self.pos += 1
         if self.pos >= self.pattern.length() {
-          raise SyntaxError(message="Invalid regex: unterminated character class")
+          raise @errors.SyntaxError(message="Invalid regex: unterminated character class")
         }
         let esc = self.pattern[self.pos]
         self.pos += 1

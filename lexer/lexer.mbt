@@ -1,7 +1,4 @@
 ///|
-using @errors { SyntaxError }
-
-///|
 fn is_digit(c : Char) -> Bool {
   c >= '0' && c <= '9'
 }
@@ -168,7 +165,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         offset += 1
       }
     }
-    raise SyntaxError(
+    raise @errors.SyntaxError(
       message="Unterminated template literal at line \{line}, col \{col}",
     )
   }
@@ -266,7 +263,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             col += 1
           }
           if offset >= len {
-            raise SyntaxError(
+            raise @errors.SyntaxError(
               message="Unterminated regex literal at line \{rloc.line}, col \{rloc.col}",
             )
           }
@@ -312,7 +309,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
               prev_underscore = false
             } else if ch == '_' {
               if prev_underscore {
-                raise SyntaxError(
+                raise @errors.SyntaxError(
                   message="Numeric separator cannot appear consecutively at line \{loc.line}, col \{col}",
                 )
               }
@@ -324,12 +321,12 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             }
           }
           if not(has_digits) {
-            raise SyntaxError(
+            raise @errors.SyntaxError(
               message="Missing hex digits after '0x' at line \{loc.line}, col \{loc.col}",
             )
           }
           if prev_underscore && buf.to_string().length() > 0 {
-            raise SyntaxError(
+            raise @errors.SyntaxError(
               message="Numeric separator cannot appear at the end at line \{loc.line}, col \{col - 1}",
             )
           }
@@ -354,7 +351,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
               prev_underscore = false
             } else if ch == '_' {
               if prev_underscore {
-                raise SyntaxError(
+                raise @errors.SyntaxError(
                   message="Numeric separator cannot appear consecutively at line \{loc.line}, col \{col}",
                 )
               }
@@ -366,12 +363,12 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             }
           }
           if not(has_digits) {
-            raise SyntaxError(
+            raise @errors.SyntaxError(
               message="Missing binary digits after '0b' at line \{loc.line}, col \{loc.col}",
             )
           }
           if prev_underscore && buf.to_string().length() > 0 {
-            raise SyntaxError(
+            raise @errors.SyntaxError(
               message="Numeric separator cannot appear at the end at line \{loc.line}, col \{col - 1}",
             )
           }
@@ -396,7 +393,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
               prev_underscore = false
             } else if ch == '_' {
               if prev_underscore {
-                raise SyntaxError(
+                raise @errors.SyntaxError(
                   message="Numeric separator cannot appear consecutively at line \{loc.line}, col \{col}",
                 )
               }
@@ -408,12 +405,12 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             }
           }
           if not(has_digits) {
-            raise SyntaxError(
+            raise @errors.SyntaxError(
               message="Missing octal digits after '0o' at line \{loc.line}, col \{loc.col}",
             )
           }
           if prev_underscore && buf.to_string().length() > 0 {
-            raise SyntaxError(
+            raise @errors.SyntaxError(
               message="Numeric separator cannot appear at the end at line \{loc.line}, col \{col - 1}",
             )
           }
@@ -435,7 +432,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           prev_underscore = false
         } else if ch == '_' {
           if prev_underscore {
-            raise SyntaxError(
+            raise @errors.SyntaxError(
               message="Numeric separator cannot appear consecutively at line \{loc.line}, col \{col}",
             )
           }
@@ -450,7 +447,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       if prev_underscore && buf.to_string().length() > 0 {
         // Peek if next is not a decimal point
         if offset >= len || char_at(offset) != '.' {
-          raise SyntaxError(
+          raise @errors.SyntaxError(
             message="Numeric separator cannot appear at the end at line \{loc.line}, col \{col - 1}",
           )
         }
@@ -459,7 +456,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       if offset < len && char_at(offset) == '.' {
         // Trailing underscore before '.' is actually invalid
         if prev_underscore && buf.to_string().length() > 0 {
-          raise SyntaxError(
+          raise @errors.SyntaxError(
             message="Numeric separator cannot appear before decimal point at line \{loc.line}, col \{col - 1}",
           )
         }
@@ -476,7 +473,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             prev_underscore = false
           } else if ch == '_' {
             if prev_underscore {
-              raise SyntaxError(
+              raise @errors.SyntaxError(
                 message="Numeric separator cannot appear consecutively at line \{loc.line}, col \{col}",
               )
             }
@@ -492,7 +489,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           let num_str_so_far = buf.to_string()
           if num_str_so_far.length() > 0 &&
             num_str_so_far.to_array()[num_str_so_far.length() - 1] != '.' {
-            raise SyntaxError(
+            raise @errors.SyntaxError(
               message="Numeric separator cannot appear at the end at line \{loc.line}, col \{col - 1}",
             )
           }
@@ -502,7 +499,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       if offset < len && (char_at(offset) == 'e' || char_at(offset) == 'E') {
         // Check for trailing underscore before 'e'
         if prev_underscore && buf.to_string().length() > 0 {
-          raise SyntaxError(
+          raise @errors.SyntaxError(
             message="Numeric separator cannot appear before exponent at line \{loc.line}, col \{col - 1}",
           )
         }
@@ -526,7 +523,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             prev_underscore = false
           } else if ch == '_' {
             if prev_underscore {
-              raise SyntaxError(
+              raise @errors.SyntaxError(
                 message="Numeric separator cannot appear consecutively at line \{loc.line}, col \{col}",
               )
             }
@@ -538,12 +535,12 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           }
         }
         if not(has_exp_digits) {
-          raise SyntaxError(
+          raise @errors.SyntaxError(
             message="Missing exponent digits at line \{loc.line}, col \{col}",
           )
         }
         if prev_underscore {
-          raise SyntaxError(
+          raise @errors.SyntaxError(
             message="Numeric separator cannot appear at the end at line \{loc.line}, col \{col - 1}",
           )
         }
@@ -603,7 +600,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         }
       }
       if offset >= len {
-        raise SyntaxError(
+        raise @errors.SyntaxError(
           message="Unterminated string at line \{loc.line}, col \{loc.col}",
         )
       }
@@ -918,7 +915,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       ':' => (Colon, ":")
       '?' => (Question, "?")
       _ =>
-        raise SyntaxError(
+        raise @errors.SyntaxError(
           message="Unexpected character '\{c}' at line \{loc.line}, col \{loc.col}",
         )
     }

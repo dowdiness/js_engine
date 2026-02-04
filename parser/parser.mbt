@@ -1,7 +1,4 @@
 ///|
-using @errors { SyntaxError }
-
-///|
 pub(all) struct Parser {
   tokens : Array[@token.Token]
   mut pos : Int
@@ -53,7 +50,7 @@ fn Parser::expect(
     self.advance()
   } else {
     let tok = self.peek()
-    raise SyntaxError(
+    raise @errors.SyntaxError(
       message="Expected \{kind}, got \{tok.kind} at line \{tok.loc.line}, col \{tok.loc.col}",
     )
   }
@@ -68,7 +65,7 @@ fn Parser::expect_ident(self : Parser) -> String raise Error {
     }
     _ => {
       let tok = self.peek()
-      raise SyntaxError(
+      raise @errors.SyntaxError(
         message="Expected identifier, got \{tok.kind} at line \{tok.loc.line}, col \{tok.loc.col}",
       )
     }

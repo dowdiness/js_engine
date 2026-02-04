@@ -1,7 +1,4 @@
 ///|
-using @errors { TypeError, SyntaxError, RangeError, URIError }
-
-///|
 pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
   let _ = output
   // Global constants
@@ -100,7 +97,7 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
         String_(s) => s
         Number(n) => return Number(n)
         Symbol(_) =>
-          raise TypeError(message="Cannot convert a Symbol value to a string")
+          raise @errors.TypeError(message="Cannot convert a Symbol value to a string")
         Bool(_) | Null | Undefined | Object(_) | Array(_) =>
           return Number(0.0 / 0.0)
       }
@@ -268,7 +265,7 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
       MethodCallable("toString", fn(this_val, _args) {
         match this_val {
           Bool(b) => String_(b.to_string())
-          _ => raise TypeError(message="Boolean.prototype.toString requires a Boolean")
+          _ => raise @errors.TypeError(message="Boolean.prototype.toString requires a Boolean")
         }
       }),
     ),
@@ -285,7 +282,7 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
       MethodCallable("valueOf", fn(this_val, _args) {
         match this_val {
           Bool(b) => Bool(b)
-          _ => raise TypeError(message="Boolean.prototype.valueOf requires a Boolean")
+          _ => raise @errors.TypeError(message="Boolean.prototype.valueOf requires a Boolean")
         }
       }),
     ),
@@ -435,7 +432,7 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
               None => String_("Symbol()")
             }
           _ =>
-            raise TypeError(message=
+            raise @errors.TypeError(message=
               "Symbol.prototype.toString requires a Symbol",
             )
         }
@@ -455,7 +452,7 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
         match this_val {
           Symbol(_) => this_val
           _ =>
-            raise TypeError(message=
+            raise @errors.TypeError(message=
               "Symbol.prototype.valueOf requires a Symbol",
             )
         }
@@ -521,7 +518,7 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
           None => Undefined
         }
       _ =>
-        raise TypeError(message="Symbol.keyFor requires a symbol")
+        raise @errors.TypeError(message="Symbol.keyFor requires a symbol")
     }
   })
 
@@ -667,7 +664,7 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
                 match this_val {
                   Array(arr) => make_array_iterator(arr)
                   _ =>
-                    raise TypeError(message=
+                    raise @errors.TypeError(message=
                       "Array.prototype[Symbol.iterator] called on non-array",
                     )
                 }
@@ -689,7 +686,7 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
                 match this_val {
                   Array(arr) => make_array_iterator(arr)
                   _ =>
-                    raise TypeError(message=
+                    raise @errors.TypeError(message=
                       "Array.prototype.values called on non-array",
                     )
                 }
@@ -796,7 +793,7 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
                     iter_obj
                   }
                   _ =>
-                    raise TypeError(message=
+                    raise @errors.TypeError(message=
                       "Array.prototype.keys called on non-array",
                     )
                 }
@@ -905,7 +902,7 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
                     iter_obj
                   }
                   _ =>
-                    raise TypeError(message=
+                    raise @errors.TypeError(message=
                       "Array.prototype.entries called on non-array",
                     )
                 }
@@ -1327,7 +1324,7 @@ fn setup_number_builtins(env : Environment) -> Unit {
           0
         }
         if digits < 0 || digits > 100 {
-          raise RangeError(message=
+          raise @errors.RangeError(message=
             "toFixed() digits argument must be between 0 and 100",
           )
         }
@@ -1389,7 +1386,7 @@ fn setup_number_builtins(env : Environment) -> Unit {
           10
         }
         if radix < 2 || radix > 36 {
-          raise RangeError(message=
+          raise @errors.RangeError(message=
             "toString() radix must be between 2 and 36",
           )
         }
@@ -1463,7 +1460,7 @@ fn setup_number_builtins(env : Environment) -> Unit {
         }
         let precision = to_number(args[0]).to_int()
         if precision < 1 || precision > 100 {
-          raise RangeError(message=
+          raise @errors.RangeError(message=
             "toPrecision() argument must be between 1 and 100",
           )
         }
@@ -1595,7 +1592,7 @@ fn setup_number_builtins(env : Environment) -> Unit {
               _ => {
                 let frac_digits = to_number(args[0]).to_int()
                 if frac_digits < 0 || frac_digits > 100 {
-                  raise RangeError(message=
+                  raise @errors.RangeError(message=
                     "toExponential() argument must be between 0 and 100",
                   )
                 }
@@ -1626,7 +1623,7 @@ fn setup_number_builtins(env : Environment) -> Unit {
             _ => {
               let frac_digits = to_number(args[0]).to_int()
               if frac_digits < 0 || frac_digits > 100 {
-                raise RangeError(message=
+                raise @errors.RangeError(message=
                   "toExponential() argument must be between 0 and 100",
                 )
               }
@@ -1812,7 +1809,7 @@ fn json_parse(input : String) -> Value raise Error {
   letrec parse_value = fn () -> Value raise Error {
     skip_ws()
     if pos[0] >= len {
-      raise SyntaxError(message="Unexpected end of JSON input")
+      raise @errors.SyntaxError(message="Unexpected end of JSON input")
     }
     let c = chars[pos[0]]
     if c == '"' {
@@ -1829,7 +1826,7 @@ fn json_parse(input : String) -> Value raise Error {
         pos[0] += 4
         Bool(true)
       } else {
-        raise SyntaxError(message=
+        raise @errors.SyntaxError(message=
           "Unexpected token in JSON at position \{pos[0]}",
         )
       }
@@ -1842,7 +1839,7 @@ fn json_parse(input : String) -> Value raise Error {
         pos[0] += 5
         Bool(false)
       } else {
-        raise SyntaxError(message=
+        raise @errors.SyntaxError(message=
           "Unexpected token in JSON at position \{pos[0]}",
         )
       }
@@ -1854,14 +1851,14 @@ fn json_parse(input : String) -> Value raise Error {
         pos[0] += 4
         Null
       } else {
-        raise SyntaxError(message=
+        raise @errors.SyntaxError(message=
           "Unexpected token in JSON at position \{pos[0]}",
         )
       }
     } else if c == '-' || (c >= '0' && c <= '9') {
       parse_number()
     } else {
-      raise SyntaxError(message=
+      raise @errors.SyntaxError(message=
         "Unexpected token in JSON at position \{pos[0]}",
       )
     }
@@ -1879,7 +1876,7 @@ fn json_parse(input : String) -> Value raise Error {
       if ch == '\\' {
         pos[0] += 1
         if pos[0] >= len {
-          raise SyntaxError(message=
+          raise @errors.SyntaxError(message=
             "Unexpected end of JSON input",
           )
         }
@@ -1901,7 +1898,7 @@ fn json_parse(input : String) -> Value raise Error {
                 let hex_c = chars[pos[0]]
                 let d = char_to_digit(hex_c, 16)
                 if d < 0 {
-                  raise SyntaxError(message=
+                  raise @errors.SyntaxError(message=
                     "Invalid unicode escape in JSON",
                   )
                 }
@@ -1909,18 +1906,18 @@ fn json_parse(input : String) -> Value raise Error {
               }
               buf.write_char(code.unsafe_to_char())
             } else {
-              raise SyntaxError(message=
+              raise @errors.SyntaxError(message=
                 "Invalid unicode escape in JSON",
               )
             }
           _ =>
-            raise SyntaxError(message=
+            raise @errors.SyntaxError(message=
               "Invalid escape character in JSON",
             )
         }
       } else {
         if ch.to_int() < 32 {
-          raise SyntaxError(message=
+          raise @errors.SyntaxError(message=
             "Unexpected control character in JSON",
           )
         }
@@ -1928,7 +1925,7 @@ fn json_parse(input : String) -> Value raise Error {
       }
       pos[0] += 1
     }
-    raise SyntaxError(message="Unterminated string in JSON")
+    raise @errors.SyntaxError(message="Unterminated string in JSON")
   }
 
   and parse_number = fn () -> Value raise Error {
@@ -1959,7 +1956,7 @@ fn json_parse(input : String) -> Value raise Error {
       buf.write_char(chars[i])
     }
     let n = @strconv.parse_double(buf.to_string()) catch {
-      _ => raise SyntaxError(message="Invalid number in JSON")
+      _ => raise @errors.SyntaxError(message="Invalid number in JSON")
     }
     Number(n)
   }
@@ -1984,7 +1981,7 @@ fn json_parse(input : String) -> Value raise Error {
     while true {
       skip_ws()
       if pos[0] >= len || chars[pos[0]] != '"' {
-        raise SyntaxError(message=
+        raise @errors.SyntaxError(message=
           "Expected property name in JSON at position \{pos[0]}",
         )
       }
@@ -1994,7 +1991,7 @@ fn json_parse(input : String) -> Value raise Error {
       }
       skip_ws()
       if pos[0] >= len || chars[pos[0]] != ':' {
-        raise SyntaxError(message=
+        raise @errors.SyntaxError(message=
           "Expected ':' in JSON at position \{pos[0]}",
         )
       }
@@ -2010,7 +2007,7 @@ fn json_parse(input : String) -> Value raise Error {
     }
     skip_ws()
     if pos[0] >= len || chars[pos[0]] != '}' {
-      raise SyntaxError(message=
+      raise @errors.SyntaxError(message=
         "Expected '}' in JSON at position \{pos[0]}",
       )
     }
@@ -2047,7 +2044,7 @@ fn json_parse(input : String) -> Value raise Error {
     }
     skip_ws()
     if pos[0] >= len || chars[pos[0]] != ']' {
-      raise SyntaxError(message=
+      raise @errors.SyntaxError(message=
         "Expected ']' in JSON at position \{pos[0]}",
       )
     }
@@ -2058,7 +2055,7 @@ fn json_parse(input : String) -> Value raise Error {
   let result = parse_value()
   skip_ws()
   if pos[0] < len {
-    raise SyntaxError(message=
+    raise @errors.SyntaxError(message=
       "Unexpected non-whitespace character after JSON at position \{pos[0]}",
     )
   }
@@ -2090,7 +2087,7 @@ fn json_stringify_value(
         match s {
           Array(sd) =>
             if physical_equal(sd, data) {
-              raise TypeError(message=
+              raise @errors.TypeError(message=
                 "Converting circular structure to JSON",
               )
             }
@@ -2167,7 +2164,7 @@ fn json_stringify_value(
             match s {
               Object(sd) =>
                 if physical_equal(sd, data) {
-                  raise TypeError(message=
+                  raise @errors.TypeError(message=
                     "Converting circular structure to JSON",
                   )
                 }
@@ -2245,7 +2242,7 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
               0
             }
             if digits < 0 || digits > 100 {
-              raise RangeError(message=
+              raise @errors.RangeError(message=
                 "toFixed() digits argument must be between 0 and 100",
               )
             }
@@ -2306,7 +2303,7 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
               10
             }
             if radix < 2 || radix > 36 {
-              raise RangeError(message=
+              raise @errors.RangeError(message=
                 "toString() radix must be between 2 and 36",
               )
             }
@@ -2380,7 +2377,7 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
             }
             let precision = to_number(args[0]).to_int()
             if precision < 1 || precision > 100 {
-              raise RangeError(message=
+              raise @errors.RangeError(message=
                 "toPrecision() argument must be between 1 and 100",
               )
             }
@@ -2505,7 +2502,7 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
                   _ => {
                     let frac_digits = to_number(args[0]).to_int()
                     if frac_digits < 0 || frac_digits > 100 {
-                      raise RangeError(message=
+                      raise @errors.RangeError(message=
                         "toExponential() argument must be between 0 and 100",
                       )
                     }
@@ -2534,7 +2531,7 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
                 _ => {
                   let frac_digits = to_number(args[0]).to_int()
                   if frac_digits < 0 || frac_digits > 100 {
-                    raise RangeError(message=
+                    raise @errors.RangeError(message=
                       "toExponential() argument must be between 0 and 100",
                     )
                   }
@@ -2713,12 +2710,12 @@ fn setup_function_builtins(env : Environment) -> Unit {
               Some(ClassConstructor(name, _, _, _, _, _)) =>
                 String_("class " + name + " { [native code] }")
               None =>
-                raise TypeError(message=
+                raise @errors.TypeError(message=
                   "Function.prototype.toString requires a function",
                 )
             }
           _ =>
-            raise TypeError(message=
+            raise @errors.TypeError(message=
               "Function.prototype.toString requires a function",
             )
         }
@@ -2949,29 +2946,29 @@ fn uri_decode(s : String, preserve_reserved : Bool) -> String raise Error {
     if chars[i] == '%' {
       // Check for valid percent-encoded sequence
       if i + 2 >= len {
-        raise URIError(message="URI malformed")
+        raise @errors.URIError(message="URI malformed")
       }
       let h1 = hex_char_value(chars[i + 1])
       let h2 = hex_char_value(chars[i + 2])
       if h1 < 0 || h2 < 0 {
-        raise URIError(message="URI malformed")
+        raise @errors.URIError(message="URI malformed")
       }
       let byte1 = (h1 << 4) | h2
       // Check for multi-byte UTF-8 sequences
       if byte1 >= 0xF0 {
         // 4-byte sequence
         if i + 11 >= len {
-          raise URIError(message="URI malformed")
+          raise @errors.URIError(message="URI malformed")
         }
         let b2 = decode_percent_byte(chars, i + 3)
         let b3 = decode_percent_byte(chars, i + 6)
         let b4 = decode_percent_byte(chars, i + 9)
         if b2 < 0 || b3 < 0 || b4 < 0 {
-          raise URIError(message="URI malformed")
+          raise @errors.URIError(message="URI malformed")
         }
         // Validate continuation bytes (must be 10xxxxxx)
         if (b2 & 0xC0) != 0x80 || (b3 & 0xC0) != 0x80 || (b4 & 0xC0) != 0x80 {
-          raise URIError(message="URI malformed")
+          raise @errors.URIError(message="URI malformed")
         }
         let cp = ((byte1 & 0x07) << 18) | ((b2 & 0x3F) << 12) | ((b3 & 0x3F) << 6) | (b4 & 0x3F)
         buf.write_char(cp.unsafe_to_char())
@@ -2980,16 +2977,16 @@ fn uri_decode(s : String, preserve_reserved : Bool) -> String raise Error {
       } else if byte1 >= 0xE0 {
         // 3-byte sequence
         if i + 8 >= len {
-          raise URIError(message="URI malformed")
+          raise @errors.URIError(message="URI malformed")
         }
         let b2 = decode_percent_byte(chars, i + 3)
         let b3 = decode_percent_byte(chars, i + 6)
         if b2 < 0 || b3 < 0 {
-          raise URIError(message="URI malformed")
+          raise @errors.URIError(message="URI malformed")
         }
         // Validate continuation bytes
         if (b2 & 0xC0) != 0x80 || (b3 & 0xC0) != 0x80 {
-          raise URIError(message="URI malformed")
+          raise @errors.URIError(message="URI malformed")
         }
         let cp = ((byte1 & 0x0F) << 12) | ((b2 & 0x3F) << 6) | (b3 & 0x3F)
         buf.write_char(cp.unsafe_to_char())
@@ -2998,15 +2995,15 @@ fn uri_decode(s : String, preserve_reserved : Bool) -> String raise Error {
       } else if byte1 >= 0xC0 {
         // 2-byte sequence
         if i + 5 >= len {
-          raise URIError(message="URI malformed")
+          raise @errors.URIError(message="URI malformed")
         }
         let b2 = decode_percent_byte(chars, i + 3)
         if b2 < 0 {
-          raise URIError(message="URI malformed")
+          raise @errors.URIError(message="URI malformed")
         }
         // Validate continuation byte
         if (b2 & 0xC0) != 0x80 {
-          raise URIError(message="URI malformed")
+          raise @errors.URIError(message="URI malformed")
         }
         let cp = ((byte1 & 0x1F) << 6) | (b2 & 0x3F)
         buf.write_char(cp.unsafe_to_char())
@@ -3014,7 +3011,7 @@ fn uri_decode(s : String, preserve_reserved : Bool) -> String raise Error {
         continue
       } else if byte1 >= 0x80 {
         // Invalid: continuation byte without lead byte
-        raise URIError(message="URI malformed")
+        raise @errors.URIError(message="URI malformed")
       }
       // Single byte (ASCII)
       let decoded_char = byte1.unsafe_to_char()

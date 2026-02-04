@@ -1,7 +1,4 @@
 ///|
-using @errors { TypeError, RangeError }
-
-///|
 pub fn get_array_method(data : ArrayData, prop : String) -> Value {
   match prop {
     "push" => {
@@ -558,7 +555,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
               acc = args[1]
             } else {
               if arr.elements.length() == 0 {
-                raise TypeError(message="Reduce of empty array with no initial value")
+                raise @errors.TypeError(message="Reduce of empty array with no initial value")
               }
               acc = arr.elements[0]
               start = 1
@@ -597,7 +594,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
               acc = args[1]
             } else {
               if arr.elements.length() == 0 {
-                raise TypeError(message="Reduce of empty array with no initial value")
+                raise @errors.TypeError(message="Reduce of empty array with no initial value")
               }
               acc = arr.elements[start]
               start = start - 1
@@ -970,7 +967,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
         let len = arr.elements.length()
         let actual_idx = if idx < 0 { len + idx } else { idx }
         if actual_idx < 0 || actual_idx >= len {
-          raise RangeError(message="Invalid index")
+          raise @errors.RangeError(message="Invalid index")
         }
         let result : Array[Value] = []
         for i = 0; i < len; i = i + 1 {

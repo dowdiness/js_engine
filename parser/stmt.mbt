@@ -1,7 +1,4 @@
 ///|
-using @errors { SyntaxError }
-
-///|
 fn Parser::parse_stmt(self : Parser) -> @ast.Stmt raise Error {
   match self.peek_kind() {
     Let | Const | Var => self.parse_var_decl()
@@ -37,7 +34,7 @@ fn Parser::parse_var_decl(self : Parser) -> @ast.Stmt raise Error {
     Const => ConstKind
     Var => VarKind
     _ =>
-      raise SyntaxError(
+      raise @errors.SyntaxError(
         message="Expected let/const/var at line \{tok.loc.line}, col \{tok.loc.col}",
       )
   }
@@ -99,7 +96,7 @@ fn Parser::parse_func_decl(self : Parser) -> @ast.Stmt raise Error {
         let body = self.parse_block_body()
         return FuncDeclExt(name, ext_params, rest_param, body, tok.loc)
       } else {
-        raise SyntaxError(message=msg)
+        raise @errors.SyntaxError(message=msg)
       }
     e => raise e
   }
@@ -158,7 +155,7 @@ fn Parser::parse_params_ext(
       while self.eat(Comma) {
         if rest_param is Some(_) {
           let t = self.peek()
-          raise SyntaxError(
+          raise @errors.SyntaxError(
             message="Rest parameter must be last at line \{t.loc.line}, col \{t.loc.col}",
           )
         }
@@ -392,7 +389,7 @@ fn Parser::parse_try_catch_stmt(self : Parser) -> @ast.Stmt raise Error {
     finally_body = Some(self.parse_block_body())
   }
   if catch_body is None && finally_body is None {
-    raise SyntaxError(
+    raise @errors.SyntaxError(
       message="Missing catch or finally after try at line \{tok.loc.line}, col \{tok.loc.col}",
     )
   }
@@ -431,7 +428,7 @@ fn Parser::parse_switch_stmt(self : Parser) -> @ast.Stmt raise Error {
       cases.push({ condition: None, body })
     } else {
       let t = self.peek()
-      raise SyntaxError(
+      raise @errors.SyntaxError(
         message="Expected case or default in switch at line \{t.loc.line}, col \{t.loc.col}",
       )
     }
@@ -458,7 +455,7 @@ fn Parser::parse_labeled_stmt(self : Parser) -> @ast.Stmt raise Error {
   let label : String = match tok.kind {
     Ident(name) => name
     _ =>
-      raise SyntaxError(
+      raise @errors.SyntaxError(
         message="Expected label name at line \{tok.loc.line}, col \{tok.loc.col}",
       )
   }
