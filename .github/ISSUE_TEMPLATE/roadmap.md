@@ -1,10 +1,10 @@
 ## Current State
 
-**Test262 Pass Rate: 25.7%** (5,767 passed / 16,699 failed / 27,146 skipped) — measured after Phase 4 Symbols
+**Test262 Pass Rate: 25.7%** (5,782 passed / 16,684 failed / 27,146 skipped) — measured after Phase 4 Iteration Protocols
 
-The MoonBit JS engine supports basic language features (variables, arithmetic, functions, closures, control flow, try/catch, new, this, switch, for-in, bitwise ops, objects, arrays), plus template literals, arrow functions, prototype chain lookup, Function.call/apply/bind, and built-in methods for Array, String, Object, and Math. Phase 3 added: arguments object, hoisting, strict mode, default/rest parameters, destructuring, spread, for-of, property descriptors, Object.freeze/seal, RegExp, JSON, Number built-ins, Error hierarchy polish, String.fromCharCode, and array HOFs. Phase 3.5 added: optional chaining (`?.`), nullish coalescing (`??`), exponentiation (`**`), computed property names, getters/setters, TDZ for let/const, global `this`/`globalThis`, and ES spec compliance fixes. Phase 3.6 added: comma-separated variable declarations, sort comparator exception handling, built-in spec improvements, logical assignment operators (`&&=`, `||=`, `??=`), numeric separator literals, number formatting fixes, ES6 classes (`class`, `extends`, `super`, static methods), and spec compliance fixes for URI encoding, prototype property handling, and class method enumerability. Phase 4 added: Symbol primitive type, Symbol.for/keyFor, well-known symbols, symbol-keyed properties. Phases 1-3.6 complete, Phase 4 in progress.
+The MoonBit JS engine supports basic language features (variables, arithmetic, functions, closures, control flow, try/catch, new, this, switch, for-in, bitwise ops, objects, arrays), plus template literals, arrow functions, prototype chain lookup, Function.call/apply/bind, and built-in methods for Array, String, Object, and Math. Phase 3 added: arguments object, hoisting, strict mode, default/rest parameters, destructuring, spread, for-of, property descriptors, Object.freeze/seal, RegExp, JSON, Number built-ins, Error hierarchy polish, String.fromCharCode, and array HOFs. Phase 3.5 added: optional chaining (`?.`), nullish coalescing (`??`), exponentiation (`**`), computed property names, getters/setters, TDZ for let/const, global `this`/`globalThis`, and ES spec compliance fixes. Phase 3.6 added: comma-separated variable declarations, sort comparator exception handling, built-in spec improvements, logical assignment operators (`&&=`, `||=`, `??=`), numeric separator literals, number formatting fixes, ES6 classes (`class`, `extends`, `super`, static methods), and spec compliance fixes for URI encoding, prototype property handling, and class method enumerability. Phase 4 added: Symbol primitive type, Symbol.for/keyFor, well-known symbols, symbol-keyed properties, iteration protocols (Symbol.iterator, Array/String iterators, for-of and spread using iterator protocol). Phases 1-3.6 complete, Phase 4 in progress.
 
-### Test262 Category Highlights (Phase 4 + Symbols)
+### Test262 Category Highlights (Phase 4 + Symbols + Iteration Protocols)
 
 | Category | Pass Rate | Notes |
 |----------|-----------|-------|
@@ -39,20 +39,23 @@ The MoonBit JS engine supports basic language features (variables, arithmetic, f
 | built-ins/Object | 18.1% (581/3211) | Core methods working |
 | built-ins/decodeURI | 17.0% (9/53) | URI decoding with reserved chars |
 | built-ins/decodeURIComponent | 16.7% (9/54) | Full URI component decoding |
-| **built-ins/Symbol** | **12.5% (9/72)** | **NEW: Core Symbol support working** |
+| **built-ins/Symbol** | **12.5% (9/72)** | Core Symbol support working |
 | built-ins/Function | 10.4% (44/425) | Constructor and prototype working |
 | built-ins/RegExp | 10.3% (85/827) | Basic regex support |
+| **built-ins/ArrayIteratorPrototype** | **5.9% (1/17)** | **NEW: Array iterator protocol** |
+| **built-ins/StringIteratorPrototype** | **28.6% (2/7)** | **NEW: String iterator with surrogate pairs** |
 
 ### Root Cause of Current Failures
 
 **Template literals and arrow functions are now fully supported** (Phase 2). The assert.js harness parses and executes correctly.
 
-The current 25.7% pass rate reflects Symbol implementation (tests now running instead of skipped):
+The current 25.7% pass rate reflects Symbol and Iteration Protocol implementation:
 - **built-ins/* category: ~10-47% pass rate** — Array, String, Object, Number, URI methods now pass many tests
 - **ES6 Classes now supported** — `class`, `extends`, `super`, static methods, non-enumerable methods
 - **Symbols now supported** — `Symbol()`, `Symbol.for()`, `Symbol.keyFor()`, well-known symbols, symbol-keyed properties
+- **Iteration Protocols now supported** — `Symbol.iterator`, Array/String iterators, `for-of` and spread using iterator protocol
 - Language syntax coverage is strong (keywords 100%, punctuators 100%, block-scope 97%, expressions 46%)
-- Remaining failures are due to: generator/async features, iterator protocol, Map/Set, and edge cases in built-in methods
+- Remaining failures are due to: generator/async features, Map/Set, and edge cases in built-in methods
 - Note: Pass rate dropped from 27.1% to 25.7% because Symbol tests now run instead of being skipped
 
 **Original harness blockers** (`this`, `throw`, `new`, `try/catch`, `switch/case`, `String()`) — **all resolved in Phase 1**.
@@ -60,6 +63,7 @@ The current 25.7% pass rate reflects Symbol implementation (tests now running in
 **Comma-separated declarations blocker** — **resolved in Phase 3.6** (enabled 17%+ of tests to run).
 **ES6 Classes** — **resolved in Phase 3.6** (unlocked class-related tests).
 **Symbols** — **resolved in Phase 4** (9 tests passing, 63 failing due to spec edge cases).
+**Iteration Protocols** — **resolved in Phase 4** (Array/String iterators, for-of and spread using iterator protocol).
 
 ---
 
@@ -813,7 +817,6 @@ All issues from [PR #4 review](https://github.com/dowdiness/js_engine/pull/4) ad
 **Next step**: Continue **Phase 4** features. Focus areas:
 1. **Map/Set collections** — Common data structures (~600 tests)
 2. **Generators (`function*`, `yield`)** — Required for full iterator support (~1,500 tests)
-3. **Iterators** — Leverage Symbol.iterator for proper iterator protocol
-4. **Remaining built-in edge cases** — Array sparse handling, String Unicode methods
+3. **Remaining built-in edge cases** — Array sparse handling, String Unicode methods
 
-Classes and Symbols are now complete. Map/Set are the next high-impact features, as they don't require major architectural changes like generators or promises.
+Classes, Symbols, and Iteration Protocols are now complete. Map/Set are the next high-impact features, as they don't require major architectural changes like generators or promises.
