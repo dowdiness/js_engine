@@ -52,13 +52,6 @@ YAML_PATTERN = re.compile(r'/\*---(.*?)---\*/', re.DOTALL)
 SKIP_FEATURES = {
     # Features this engine definitely doesn't support yet
 
-    # Symbols and related well-known symbols
-    "Symbol", "Symbol.iterator", "Symbol.hasInstance", "Symbol.species",
-    "Symbol.toPrimitive", "Symbol.toStringTag", "Symbol.asyncIterator",
-    "Symbol.match", "Symbol.replace", "Symbol.search", "Symbol.split",
-    "Symbol.matchAll", "Symbol.isConcatSpreadable",
-    "Symbol.prototype.description", "well-known-symbol",
-
     # Async / Promises
     "Promise", "Promise.allSettled", "Promise.any",
     "Promise.prototype.finally",
