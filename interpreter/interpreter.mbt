@@ -1571,13 +1571,13 @@ fn Interpreter::eval_binary(
           let has_instance_sym = get_hasinstance_symbol()
           let has_instance_method = get_symbol_method(r, has_instance_sym.id)
           match has_instance_method {
-            Some(method) =>
+            Some(has_instance_fn) =>
               // Call [Symbol.hasInstance](l) and convert result to boolean
-              match method {
-                Object(method_data) =>
-                  match method_data.callable {
+              match has_instance_fn {
+                Object(fn_data) =>
+                  match fn_data.callable {
                     Some(_) => {
-                      let result = self.call_value(method, r, [l], loc)
+                      let result = self.call_value(has_instance_fn, r, [l], loc)
                       Bool(is_truthy(result))
                     }
                     None =>
@@ -1842,27 +1842,7 @@ fn instanceof_prototype_chain(l : Value, target_proto : Value) -> Value {
       }
       Bool(found)
     }
-    Array(arr_data) => {
-      // Arrays also have prototype chain
-      let mut current = arr_data.prototype
-      let mut found = false
-      while true {
-        match current {
-          Null | Undefined => break
-          _ =>
-            if strict_equal(current, target_proto) {
-              found = true
-              break
-            } else {
-              match current {
-                Object(data) => current = data.prototype
-                _ => break
-              }
-            }
-        }
-      }
-      Bool(found)
-    }
+    // Arrays and primitives don't have prototype chains in this representation
     _ => Bool(false)
   }
 }
