@@ -3486,24 +3486,25 @@ fn Interpreter::create_class(
   // Create the prototype object
   let proto_props : Map[String, Value] = {}
   let proto_descriptors : Map[String, PropDescriptor] = {}
+  let proto_symbol_props : Map[Int, Value] = {}
+  let proto_symbol_descriptors : Map[Int, PropDescriptor] = {}
   // Create static properties map
   let static_props : Map[String, Value] = {}
   let static_descriptors : Map[String, PropDescriptor] = {}
+  let static_symbol_props : Map[Int, Value] = {}
+  let static_symbol_descriptors : Map[Int, PropDescriptor] = {}
   // Track constructor method
   let mut ctor_fn : (Array[String], Array[@ast.Stmt])? = None
   // Process all methods
   for m in methods {
-    // Get the method key
-    let method_key : String = match m.key {
-      StringLit(s, _) => s
-      _ => {
-        // Computed key - evaluate it
-        let key_val = self.eval_expr(m.key, env)
-        key_val.to_string()
-      }
+    // Get the method key - could be string or symbol
+    let key_val : Value = match m.key {
+      StringLit(s, _) => String_(s)
+      _ => self.eval_expr(m.key, env)
     }
+    let method_key_str : String = key_val.to_string()
     // Check if this is the constructor
-    if method_key == "constructor" && not(m.is_static) {
+    if method_key_str == "constructor" && not(m.is_static) {
       // Extract constructor params and body
       match m.value {
         FuncExpr(_, params, body, _) => ctor_fn = Some((params, body))
@@ -3546,31 +3547,21 @@ fn Interpreter::create_class(
       enumerable: false,
       configurable: true,
     }
-    match m.kind {
-      @ast.Get => {
-        // Getter - for now just store as property
-        // TODO: proper getter implementation
+    // Store method in appropriate map based on key type (string vs symbol)
+    match key_val {
+      Symbol(sym) => {
+        // Symbol key - store in symbol_properties
         if m.is_static {
-          static_props[method_key] = method_val
-          static_descriptors[method_key] = method_descriptor
+          static_symbol_props[sym.id] = method_val
+          static_symbol_descriptors[sym.id] = method_descriptor
         } else {
-          proto_props[method_key] = method_val
-          proto_descriptors[method_key] = method_descriptor
+          proto_symbol_props[sym.id] = method_val
+          proto_symbol_descriptors[sym.id] = method_descriptor
         }
       }
-      @ast.Set => {
-        // Setter - for now just store as property
-        // TODO: proper setter implementation
-        if m.is_static {
-          static_props[method_key] = method_val
-          static_descriptors[method_key] = method_descriptor
-        } else {
-          proto_props[method_key] = method_val
-          proto_descriptors[method_key] = method_descriptor
-        }
-      }
-      @ast.Init => {
-        // Regular method
+      _ => {
+        // String key - store in regular properties
+        let method_key = key_val.to_string()
         if m.is_static {
           static_props[method_key] = method_val
           static_descriptors[method_key] = method_descriptor
@@ -3584,12 +3575,12 @@ fn Interpreter::create_class(
   // Create prototype object
   let proto = Object({
     properties: proto_props,
-    symbol_properties: {},
+    symbol_properties: proto_symbol_props,
     prototype: super_proto,
     callable: None,
     class_name: name,
     descriptors: proto_descriptors,
-    symbol_descriptors: {},
+    symbol_descriptors: proto_symbol_descriptors,
     extensible: true,
   })
   // Add constructor back-reference to prototype
@@ -3597,14 +3588,14 @@ fn Interpreter::create_class(
   // Create the class constructor function
   let class_obj = Object({
     properties: static_props,
-    symbol_properties: {},
+    symbol_properties: static_symbol_props,
     prototype: Null,
     callable: Some(
       ClassConstructor(name, proto, super_ctor, ctor_fn, env, super_proto),
     ),
     class_name: "Function",
     descriptors: static_descriptors,
-    symbol_descriptors: {},
+    symbol_descriptors: static_symbol_descriptors,
     extensible: true,
   })
   // Set prototype.constructor to point to the class (non-enumerable per spec)
