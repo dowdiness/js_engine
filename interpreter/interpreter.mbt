@@ -334,39 +334,106 @@ fn Interpreter::exec_stmt(
       }
       Normal(Undefined)
     }
-    ForOfStmt(var_kind, name, iterable_expr, body, _) => {
+    ForOfStmt(var_kind, name, iterable_expr, body, loc) => {
       let iterable = self.eval_expr(iterable_expr, env)
-      let items : Array[Value] = match iterable {
-        Array(data) => {
-          let result : Array[Value] = []
-          for el in data.elements {
-            result.push(el)
+
+      // Try to get the iterator via Symbol.iterator protocol
+      let iterator_sym = get_iterator_symbol()
+      let iterator_method = self.get_computed_property(
+        iterable,
+        Symbol(iterator_sym),
+        loc,
+      )
+
+      // Get the iterator object by calling the iterator method
+      let iterator = match iterator_method {
+        Object(data) =>
+          match data.callable {
+            Some(_) => self.call_value(iterator_method, iterable, [], loc)
+            None =>
+              raise JsException(
+                String_(
+                  "TypeError: Result of the Symbol.iterator method is not an object",
+                ),
+              )
           }
-          result
-        }
-        String_(s) => {
-          let result : Array[Value] = []
-          let chars = s.to_array()
-          for c in chars {
-            let buf = StringBuilder::new()
-            buf.write_char(c)
-            result.push(String_(buf.to_string()))
+        Undefined => {
+          // Fall back to built-in iteration for arrays and strings
+          // This handles cases where Symbol.iterator might not be set up yet
+          match iterable {
+            Array(arr) => make_array_iterator_value(arr)
+            String_(s) => make_string_iterator_value(s)
+            _ =>
+              raise JsException(
+                String_(
+                  "TypeError: \{type_of(iterable)} is not iterable (cannot read property Symbol(Symbol.iterator))",
+                ),
+              )
           }
-          result
         }
         _ =>
           raise JsException(
-            String_("TypeError: is not iterable"),
+            String_(
+              "TypeError: Result of the Symbol.iterator method is not an object",
+            ),
           )
       }
-      for item in items {
+
+      // Get the next method from the iterator
+      let next_method = match iterator {
+        Object(iter_data) =>
+          match iter_data.properties.get("next") {
+            Some(method) => method
+            None =>
+              raise JsException(
+                String_("TypeError: Iterator result has no 'next' method"),
+              )
+          }
+        _ =>
+          raise JsException(
+            String_("TypeError: Iterator is not an object"),
+          )
+      }
+
+      // Iterate using the iterator protocol
+      while true {
+        // Call iterator.next()
+        let result = self.call_value(next_method, iterator, [], loc)
+
+        // Get 'done' and 'value' from the result
+        let (done, value) = match result {
+          Object(result_data) => {
+            let done_val = match result_data.properties.get("done") {
+              Some(v) => is_truthy(v)
+              None => false
+            }
+            let value_val = match result_data.properties.get("value") {
+              Some(v) => v
+              None => Undefined
+            }
+            (done_val, value_val)
+          }
+          _ =>
+            raise JsException(
+              String_(
+                "TypeError: Iterator result is not an object",
+              ),
+            )
+        }
+
+        // If done, exit the loop
+        if done {
+          break
+        }
+
+        // Bind the value to the loop variable
         let body_env = Environment::new(parent=Some(env))
         match var_kind {
           Some(VarKind) =>
             if env.bindings.contains(name) {
-              env.assign(name, item)
+              env.assign(name, value)
             } else {
-              env.def(name, item, VarBinding)
+              env.def(name, value, VarBinding)
             }
           Some(kind) => {
             let bk : BindingKind = match kind {
@@ -374,10 +441,12 @@ fn Interpreter::exec_stmt(
               ConstKind => ConstBinding
               _ => fail("unreachable")
             }
-            body_env.def(name, item, bk)
+            body_env.def(name, value, bk)
           }
-          None => env.assign(name, item)
+          None => env.assign(name, value)
         }
+
+        // Execute the loop body
         match self.exec_stmt(body, body_env) {
           Normal(_) => ()
           ReturnSignal(v) => return ReturnSignal(v)
@@ -1039,22 +1108,12 @@ fn Interpreter::eval_expr(
       let vals : Array[Value] = []
       for e in elements {
         match e {
-          SpreadExpr(inner, _) => {
+          SpreadExpr(inner, spread_loc) => {
             let val = self.eval_expr(inner, env)
-            match val {
-              Array(data) =>
-                for el in data.elements {
-                  vals.push(el)
-                }
-              String_(s) => {
-                let chars = s.to_array()
-                for c in chars {
-                  let buf = StringBuilder::new()
-                  buf.write_char(c)
-                  vals.push(String_(buf.to_string()))
-                }
-              }
-              _ => vals.push(val)
+            // Use iterator protocol for spreading
+            let spread_vals = self.spread_iterable(val, spread_loc)
+            for v in spread_vals {
+              vals.push(v)
             }
           }
           _ => vals.push(self.eval_expr(e, env))
@@ -1836,6 +1895,127 @@ fn Interpreter::eval_unary(
 }
 
 ///|
+/// Spread an iterable value into an array of values using the iterator protocol
+fn Interpreter::spread_iterable(
+  self : Interpreter,
+  val : Value,
+  loc : @token.Loc,
+) -> Array[Value] raise Error {
+  let result : Array[Value] = []
+
+  // Try to get the iterator via Symbol.iterator protocol
+  let iterator_sym = get_iterator_symbol()
+  let iterator_method = self.get_computed_property(
+    val,
+    Symbol(iterator_sym),
+    loc,
+  )
+
+  // Get the iterator object
+  let iterator = match iterator_method {
+    Object(data) =>
+      match data.callable {
+        Some(_) => self.call_value(iterator_method, val, [], loc)
+        None => {
+          // Not callable, fall back to direct iteration
+          match val {
+            Array(arr) => {
+              for el in arr.elements {
+                result.push(el)
+              }
+              return result
+            }
+            String_(s) => {
+              let chars = s.to_array()
+              for c in chars {
+                let buf = StringBuilder::new()
+                buf.write_char(c)
+                result.push(String_(buf.to_string()))
+              }
+              return result
+            }
+            _ => {
+              result.push(val)
+              return result
+            }
+          }
+        }
+      }
+    Undefined => {
+      // No iterator method, fall back to direct iteration for arrays/strings
+      match val {
+        Array(arr) => {
+          for el in arr.elements {
+            result.push(el)
+          }
+          return result
+        }
+        String_(s) => {
+          let chars = s.to_array()
+          for c in chars {
+            let buf = StringBuilder::new()
+            buf.write_char(c)
+            result.push(String_(buf.to_string()))
+          }
+          return result
+        }
+        _ => {
+          result.push(val)
+          return result
+        }
+      }
+    }
+    _ => {
+      // For non-objects, just return the value itself
+      result.push(val)
+      return result
+    }
+  }
+
+  // Get the next method from the iterator
+  let next_method = match iterator {
+    Object(iter_data) =>
+      match iter_data.properties.get("next") {
+        Some(method) => method
+        None => {
+          result.push(val)
+          return result
+        }
+      }
+    _ => {
+      result.push(val)
+      return result
+    }
+  }
+
+  // Iterate using the iterator protocol
+  while true {
+    let iter_result = self.call_value(next_method, iterator, [], loc)
+
+    let (done, value) = match iter_result {
+      Object(result_data) => {
+        let done_val = match result_data.properties.get("done") {
+          Some(v) => is_truthy(v)
+          None => false
+        }
+        let value_val = match result_data.properties.get("value") {
+          Some(v) => v
+          None => Undefined
+        }
+        (done_val, value_val)
+      }
+      _ => (true, Undefined)
+    }
+
+    if done {
+      break
+    }
+
+    result.push(value)
+  }
+
+  result
+}
 
 ///|
 fn Interpreter::eval_args_with_spread(
@@ -1846,22 +2026,12 @@ fn Interpreter::eval_args_with_spread(
   let args : Array[Value] = []
   for a in arg_exprs {
     match a {
-      SpreadExpr(inner, _) => {
+      SpreadExpr(inner, loc) => {
         let val = self.eval_expr(inner, env)
-        match val {
-          Array(data) =>
-            for el in data.elements {
-              args.push(el)
-            }
-          String_(s) => {
-            let chars = s.to_array()
-            for c in chars {
-              let buf = StringBuilder::new()
-              buf.write_char(c)
-              args.push(String_(buf.to_string()))
-            }
-          }
-          _ => args.push(val)
+        // Use iterator protocol for spreading
+        let spread_vals = self.spread_iterable(val, loc)
+        for v in spread_vals {
+          args.push(v)
         }
       }
       _ => args.push(self.eval_expr(a, env))
@@ -2523,6 +2693,50 @@ fn Interpreter::get_computed_property(
               return Undefined
             }
           }
+        }
+        String_(s) => {
+          // Handle Symbol.iterator for strings
+          let iterator_sym = get_iterator_symbol()
+          if sym.id == iterator_sym.id {
+            // Return a function that creates a string iterator
+            return Object({
+              properties: {},
+              symbol_properties: {},
+              prototype: Null,
+              callable: Some(
+                MethodCallable("[Symbol.iterator]", fn(_this_val, _args) {
+                  make_string_iterator_value(s)
+                }),
+              ),
+              class_name: "Function",
+              descriptors: {},
+              symbol_descriptors: {},
+              extensible: true,
+            })
+          }
+          return Undefined
+        }
+        Array(arr) => {
+          // Handle Symbol.iterator for arrays
+          let iterator_sym = get_iterator_symbol()
+          if sym.id == iterator_sym.id {
+            // Return a function that creates an array iterator
+            return Object({
+              properties: {},
+              symbol_properties: {},
+              prototype: Null,
+              callable: Some(
+                MethodCallable("[Symbol.iterator]", fn(_this_val, _args) {
+                  make_array_iterator_value(arr)
+                }),
+              ),
+              class_name: "Function",
+              descriptors: {},
+              symbol_descriptors: {},
+              extensible: true,
+            })
+          }
+          return Undefined
         }
         _ => return Undefined
       }

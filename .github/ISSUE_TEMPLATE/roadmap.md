@@ -612,14 +612,15 @@ All 6 issues addressed in commit `3439764`:
 
 - [x] **Classes** — `class`, `extends`, `constructor`, `super`, static methods, getters/setters ✅ DONE (Phase 3.6)
 - [x] **Symbols** — `Symbol()`, `Symbol.for()`, `Symbol.keyFor()`, well-known symbols (`iterator`, `toPrimitive`, `toStringTag`, etc.), `typeof symbol`, symbol-keyed properties ✅ DONE
-- [ ] **Iterators/Generators** — `function*`, `yield`, `yield*`, iterator protocol
+- [x] **Iteration Protocol** — `Symbol.iterator`, iterator objects with `next()` method, `{value, done}` result format, iterable spread operator ✅ DONE
+- [ ] **Generators** — `function*`, `yield`, `yield*` (requires stack management)
 - [ ] **Promises/async-await** — `Promise`, `.then/.catch/.finally`, `async function`, `await` (requires microtask queue)
 - [ ] **Map/Set** — `new Map()`, `new Set()`, `.get/.set/.has/.delete/.size/.forEach`
 - [ ] **WeakMap/WeakSet** — basic reference-based collections
 
 ### Phase 4 Expected Impact: ~1,600 additional tests → cumulative ~8,000-9,000 (35-40%)
 
-**Note**: Classes and Symbols are complete. Generators and Promises require more architectural work. Map/Set are the next high-impact features.
+**Note**: Classes, Symbols, and Iteration Protocol are complete. Generators and Promises require more architectural work. Map/Set are the next high-impact features.
 
 ---
 
@@ -710,7 +711,7 @@ Phase 1 (DONE) ──► Phase 2 (DONE) ──► Phase 3 (DONE) ──► Phase
 | Task | Impact | Status |
 |------|--------|--------|
 | **Generators (`function*`, `yield`)** | ~1,500 tests | ❌ TODO |
-| **Iterators (iterator protocol)** | ~800 tests | ❌ TODO |
+| **Iterators (iterator protocol)** | ~800 tests | ✅ DONE |
 | **`Map` / `Set` collections** | ~600 tests | ❌ TODO |
 | **`instanceof` with Symbol.hasInstance** | ~200 tests | ❌ TODO |
 | **Numeric separator literals (`1_000`)** | ~50 tests | ✅ DONE |
@@ -730,6 +731,12 @@ Phase 1 (DONE) ──► Phase 2 (DONE) ──► Phase 3 (DONE) ──► Phase
 
 | Task | Commit |
 |------|--------|
+| **Iteration Protocol** — `Symbol.iterator`, iterator objects, `for-of` support | Phase 4 |
+| `Array.prototype[Symbol.iterator]` — returns array iterator | Phase 4 |
+| `String.prototype[Symbol.iterator]` — returns string character iterator | Phase 4 |
+| `Array.prototype.keys()`, `values()`, `entries()` — iterator methods | Phase 4 |
+| Spread operator uses iterator protocol for custom iterables | Phase 4 |
+| `for-of` statement uses iterator protocol | Phase 4 |
 | **Symbols** (`Symbol()`, `Symbol.for()`, `Symbol.keyFor()`, well-known symbols) | `b4dbef4` |
 | Symbol-keyed properties on objects (`symbol_properties`, `symbol_descriptors`) | `9526049` |
 | `Object.getOwnPropertySymbols()` returns actual symbol keys | `b4dbef4` |
