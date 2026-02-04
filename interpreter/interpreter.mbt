@@ -22,10 +22,12 @@ pub fn Interpreter::new() -> Interpreter {
   let global_this : Value = Object(
     {
       properties: {},
+      symbol_properties: {},
       prototype: Null,
       callable: None,
       class_name: "global",
       descriptors: {},
+      symbol_descriptors: {},
       extensible: true,
     },
   )
@@ -728,23 +730,45 @@ fn Interpreter::bind_pattern(
       match rest {
         Some(rest_pat) => {
           let rest_props : Map[String, Value] = {}
+          let rest_symbol_props : Map[Int, Value] = {}
           match value {
-            Object(data) =>
+            Object(data) => {
+              // Only copy own enumerable properties per ES CopyDataProperties
               data.properties.each(fn(k, v) {
                 if not(used_keys.contains(k)) {
-                  rest_props[k] = v
+                  // Check if property is enumerable (default true if no descriptor)
+                  let is_enumerable = match data.descriptors.get(k) {
+                    Some(desc) => desc.enumerable
+                    None => true
+                  }
+                  if is_enumerable {
+                    rest_props[k] = v
+                  }
                 }
               })
+              // Also copy enumerable symbol properties (they are never in used_keys)
+              data.symbol_properties.each(fn(k, v) {
+                let is_enumerable = match data.symbol_descriptors.get(k) {
+                  Some(desc) => desc.enumerable
+                  None => true
+                }
+                if is_enumerable {
+                  rest_symbol_props[k] = v
+                }
+              })
+            }
             _ => ()
           }
           self.bind_pattern(
             rest_pat,
             Object({
               properties: rest_props,
+              symbol_properties: rest_symbol_props,
               prototype: Null,
               callable: None,
               class_name: "Object",
               descriptors: {},
+              symbol_descriptors: {},
               extensible: true,
             }),
             env,
@@ -820,23 +844,45 @@ fn Interpreter::assign_pattern(
       match rest {
         Some(rest_pat) => {
           let rest_props : Map[String, Value] = {}
+          let rest_symbol_props : Map[Int, Value] = {}
           match value {
-            Object(data) =>
+            Object(data) => {
+              // Only copy own enumerable properties per ES CopyDataProperties
               data.properties.each(fn(k, v) {
                 if not(used_keys.contains(k)) {
-                  rest_props[k] = v
+                  // Check if property is enumerable (default true if no descriptor)
+                  let is_enumerable = match data.descriptors.get(k) {
+                    Some(desc) => desc.enumerable
+                    None => true
+                  }
+                  if is_enumerable {
+                    rest_props[k] = v
+                  }
                 }
               })
+              // Also copy enumerable symbol properties (they are never in used_keys)
+              data.symbol_properties.each(fn(k, v) {
+                let is_enumerable = match data.symbol_descriptors.get(k) {
+                  Some(desc) => desc.enumerable
+                  None => true
+                }
+                if is_enumerable {
+                  rest_symbol_props[k] = v
+                }
+              })
+            }
             _ => ()
           }
           self.assign_pattern(
             rest_pat,
             Object({
               properties: rest_props,
+              symbol_properties: rest_symbol_props,
               prototype: Null,
               callable: None,
               class_name: "Object",
               descriptors: {},
+              symbol_descriptors: {},
               extensible: true,
             }),
             env,
@@ -920,51 +966,72 @@ fn Interpreter::eval_expr(
     }
     ObjectLit(props, _) => {
       let properties : Map[String, Value] = {}
+      let symbol_properties : Map[Int, Value] = {}
       let descriptors : Map[String, PropDescriptor] = {}
       for prop in props {
-        // Get the key string - either from static StringLit or by evaluating computed key
-        let key_str : String = if prop.computed {
-          // Evaluate the computed key and convert to string
+        if prop.computed {
+          // Evaluate the computed key
           let key_val = self.eval_expr(prop.key, env)
           match key_val {
-            String_(s) => s
-            Number(n) => {
-              let i = n.to_int()
-              if i.to_double() == n { i.to_string() } else { n.to_string() }
+            Symbol(sym) =>
+              // Symbol key - store in symbol_properties
+              match prop.kind {
+                Init => symbol_properties[sym.id] = self.eval_expr(prop.value, env)
+                Get | Set => () // Getters/setters for symbols not fully supported yet
+              }
+            _ => {
+              // Convert to string key
+              let key_str : String = match key_val {
+                String_(s) => s
+                Number(n) => {
+                  let i = n.to_int()
+                  if i.to_double() == n { i.to_string() } else { n.to_string() }
+                }
+                Bool(b) => b.to_string()
+                Null => "null"
+                Undefined => "undefined"
+                _ => key_val.to_string()
+              }
+              match prop.kind {
+                Init => properties[key_str] = self.eval_expr(prop.value, env)
+                Get => {
+                  let getter = self.eval_expr(prop.value, env)
+                  properties["__get__" + key_str] = getter
+                }
+                Set => {
+                  let setter = self.eval_expr(prop.value, env)
+                  properties["__set__" + key_str] = setter
+                }
+              }
             }
-            Bool(b) => b.to_string()
-            Null => "null"
-            Undefined => "undefined"
-            _ => key_val.to_string()
           }
         } else {
           // Static key - extract from StringLit
-          match prop.key {
+          let key_str = match prop.key {
             StringLit(s, _) => s
             _ => prop.key.to_string() // fallback
           }
-        }
-        match prop.kind {
-          Init => properties[key_str] = self.eval_expr(prop.value, env)
-          Get => {
-            // Getter: store the function as __get__<key> for now
-            // Real implementation would use accessor descriptors
-            let getter = self.eval_expr(prop.value, env)
-            properties["__get__" + key_str] = getter
-          }
-          Set => {
-            // Setter: store the function as __set__<key> for now
-            let setter = self.eval_expr(prop.value, env)
-            properties["__set__" + key_str] = setter
+          match prop.kind {
+            Init => properties[key_str] = self.eval_expr(prop.value, env)
+            Get => {
+              let getter = self.eval_expr(prop.value, env)
+              properties["__get__" + key_str] = getter
+            }
+            Set => {
+              let setter = self.eval_expr(prop.value, env)
+              properties["__set__" + key_str] = setter
+            }
           }
         }
       }
       Object({
         properties,
+        symbol_properties,
         prototype: Null,
         callable: None,
         class_name: "Object",
         descriptors,
+        symbol_descriptors: {},
         extensible: true,
       })
     }
@@ -1045,35 +1112,65 @@ fn Interpreter::eval_expr(
       let key = self.eval_expr(key_expr, env)
       let value = self.eval_expr(value_expr, env)
       match obj {
-        Object(data) => {
-          let prop = key.to_string()
-          match data.descriptors.get(prop) {
-            Some(desc) =>
-              if not(desc.writable) {
+        Object(data) =>
+          // Handle Symbol keys specially
+          match key {
+            Symbol(sym) => {
+              // Check symbol property descriptor
+              match data.symbol_descriptors.get(sym.id) {
+                Some(desc) =>
+                  if not(desc.writable) {
+                    if self.strict {
+                      raise JsException(
+                        String_("TypeError: Cannot assign to read only property"),
+                      )
+                    }
+                    return value
+                  }
+                None => ()
+              }
+              if not(data.symbol_properties.contains(sym.id)) &&
+                not(data.extensible) {
+                if self.strict {
+                  raise JsException(
+                    String_("TypeError: Cannot add property, object is not extensible"),
+                  )
+                }
+                return value
+              }
+              data.symbol_properties[sym.id] = value
+              value
+            }
+            _ => {
+              let prop = key.to_string()
+              match data.descriptors.get(prop) {
+                Some(desc) =>
+                  if not(desc.writable) {
+                    if self.strict {
+                      raise JsException(
+                        String_(
+                          "TypeError: Cannot assign to read only property '\{prop}'",
+                        ),
+                      )
+                    }
+                    return value
+                  }
+                None => ()
+              }
+              if not(data.properties.contains(prop)) && not(data.extensible) {
                 if self.strict {
                   raise JsException(
                     String_(
-                      "TypeError: Cannot assign to read only property '\{prop}'",
+                      "TypeError: Cannot add property \{prop}, object is not extensible",
                     ),
                   )
                 }
                 return value
               }
-            None => ()
-          }
-          if not(data.properties.contains(prop)) && not(data.extensible) {
-            if self.strict {
-              raise JsException(
-                String_(
-                  "TypeError: Cannot add property \{prop}, object is not extensible",
-                ),
-              )
+              data.properties[prop] = value
+              value
             }
-            return value
           }
-          data.properties[prop] = value
-          value
-        }
         Array(data) =>
           match key {
             Number(n) => {
@@ -1120,10 +1217,12 @@ fn Interpreter::eval_expr(
       let func_data : FuncData = { name: None, params, body, closure: env }
       Object({
         properties: {},
+        symbol_properties: {},
         prototype: Null,
         callable: Some(ArrowFunc(func_data)),
         class_name: "Function",
         descriptors: {},
+        symbol_descriptors: {},
         extensible: true,
       })
     }
@@ -1137,10 +1236,12 @@ fn Interpreter::eval_expr(
       }
       Object({
         properties: {},
+        symbol_properties: {},
         prototype: Null,
         callable: Some(ArrowFuncExt(func_data)),
         class_name: "Function",
         descriptors: {},
+        symbol_descriptors: {},
         extensible: true,
       })
     }
@@ -1394,6 +1495,11 @@ fn eval_binary_op(
   _loc : @token.Loc,
 ) -> Value raise Error {
   match (op, left, right) {
+    // Symbol cannot be converted to string implicitly
+    (Add, Symbol(_), _) | (Add, _, Symbol(_)) =>
+      raise JsException(
+        String_("TypeError: Cannot convert a Symbol value to a string"),
+      )
     // String concatenation
     (Add, String_(a), String_(b)) => String_(a + b)
     (Add, String_(a), b) => String_(a + b.to_string())
@@ -1470,29 +1576,53 @@ fn eval_binary_op(
     // in operator - walks prototype chain
     (In, l, r) =>
       match r {
-        Object(data) => {
-          let key = l.to_string()
-          // Check own property first
-          if data.properties.contains(key) {
-            return Bool(true)
-          }
-          // Walk prototype chain
-          let mut current = data.prototype
-          while true {
-            match current {
-              Object(proto_data) =>
-                if proto_data.properties.contains(key) {
-                  return Bool(true)
-                } else {
-                  current = proto_data.prototype
+        Object(data) =>
+          // Handle Symbol keys
+          match l {
+            Symbol(sym) => {
+              // Check own symbol property first
+              if data.symbol_properties.contains(sym.id) {
+                return Bool(true)
+              }
+              // Walk prototype chain for symbol properties
+              let mut current = data.prototype
+              while true {
+                match current {
+                  Object(proto_data) =>
+                    if proto_data.symbol_properties.contains(sym.id) {
+                      return Bool(true)
+                    } else {
+                      current = proto_data.prototype
+                    }
+                  _ => break
                 }
-              _ => break
+              }
+              Bool(false)
+            }
+            _ => {
+              let key = l.to_string()
+              // Check own property first
+              if data.properties.contains(key) {
+                return Bool(true)
+              }
+              // Walk prototype chain
+              let mut current = data.prototype
+              while true {
+                match current {
+                  Object(proto_data) =>
+                    if proto_data.properties.contains(key) {
+                      return Bool(true)
+                    } else {
+                      current = proto_data.prototype
+                    }
+                  _ => break
+                }
+              }
+              Bool(false)
             }
           }
-          Bool(false)
-        }
         Array(data) => {
-          let idx = to_number(l).to_int()
+          let idx = try { to_number(l).to_int() } catch { _ => -1 }
           Bool(idx >= 0 && idx < data.elements.length())
         }
         _ =>
@@ -1559,6 +1689,7 @@ fn strict_equal(a : Value, b : Value) -> Bool {
     (Undefined, Undefined) => true
     (Object(a), Object(b)) => physical_equal(a, b)
     (Array(a), Array(b)) => physical_equal(a, b)
+    (Symbol(a), Symbol(b)) => a.id == b.id // Symbols compare by identity
     _ => false
   }
 }
@@ -1575,11 +1706,18 @@ fn loose_equal(a : Value, b : Value) -> Bool {
     (Undefined, Undefined) => true
     (Object(x), Object(y)) => physical_equal(x, y)
     (Array(x), Array(y)) => physical_equal(x, y)
+    (Symbol(x), Symbol(y)) => x.id == y.id // Symbols compare by identity only
     // null == undefined
     (Null, Undefined) | (Undefined, Null) => true
     // Number == String: convert string to number
-    (Number(n), String_(s)) => n == to_number(String_(s))
-    (String_(s), Number(n)) => to_number(String_(s)) == n
+    (Number(n), String_(s)) => {
+      let num = try { to_number(String_(s)) } catch { _ => return false }
+      n == num
+    }
+    (String_(s), Number(n)) => {
+      let num = try { to_number(String_(s)) } catch { _ => return false }
+      num == n
+    }
     // Boolean == anything: convert boolean to number first
     (Bool(bval), _) => loose_equal(Number(if bval { 1.0 } else { 0.0 }), b)
     (_, Bool(bval)) => loose_equal(a, Number(if bval { 1.0 } else { 0.0 }))
@@ -1600,6 +1738,8 @@ fn loose_equal(a : Value, b : Value) -> Bool {
       let prim = String_(b.to_string())
       loose_equal(a, prim)
     }
+    // Symbols don't coerce - any comparison with Symbol and different type is false
+    (Symbol(_), _) | (_, Symbol(_)) => false
     // Everything else is false
     _ => false
   }
@@ -1806,10 +1946,12 @@ fn Interpreter::call_value(
               "arguments",
               Object({
                 properties: args_props,
+                symbol_properties: {},
                 prototype: Null,
                 callable: None,
                 class_name: "Arguments",
                 descriptors: {},
+                symbol_descriptors: {},
                 extensible: true,
               }),
               VarBinding,
@@ -1912,10 +2054,12 @@ fn Interpreter::call_value(
               "arguments",
               Object({
                 properties: args_props,
+                symbol_properties: {},
                 prototype: Null,
                 callable: None,
                 class_name: "Arguments",
                 descriptors: {},
+                symbol_descriptors: {},
                 extensible: true,
               }),
               VarBinding,
@@ -2023,6 +2167,7 @@ fn Interpreter::call_value(
         }
         Some(MethodCallable(_, func)) => func(this_val, args)
         Some(NativeCallable(_, func)) => func(args)
+        Some(NonConstructableCallable(_, func)) => func(args)
         Some(InterpreterCallable(_, func)) => func(self, this_val, args)
         Some(ClassConstructor(name, _, _, _, _, _)) =>
           raise JsException(
@@ -2074,6 +2219,7 @@ fn get_bound_func_name(target : Value) -> String {
         Some(UserFunc(fd)) => "bound " + fd.name.unwrap_or("")
         Some(UserFuncExt(fd)) => "bound " + fd.name.unwrap_or("")
         Some(NativeCallable(n, _)) => "bound " + n
+        Some(NonConstructableCallable(n, _)) => "bound " + n
         Some(_) => "bound "
         None => "bound "
       }
@@ -2111,19 +2257,23 @@ fn Interpreter::get_property(
               if prop == "call" {
                 return Object({
                   properties: {},
+                  symbol_properties: {},
                   prototype: Null,
                   callable: Some(FuncCallMethod(obj)),
                   class_name: "Function",
                   descriptors: {},
+                  symbol_descriptors: {},
                   extensible: true,
                 })
               } else if prop == "apply" {
                 return Object({
                   properties: {},
+                  symbol_properties: {},
                   prototype: Null,
                   callable: Some(FuncApplyMethod(obj)),
                   class_name: "Function",
                   descriptors: {},
+                  symbol_descriptors: {},
                   extensible: true,
                 })
               } else if prop == "bind" {
@@ -2140,10 +2290,12 @@ fn Interpreter::get_property(
                   }
                   Object({
                     properties: {},
+                    symbol_properties: {},
                     prototype: Null,
                     callable: Some(BoundFunc(target, bind_this, bound_args)),
                     class_name: "Function",
                     descriptors: {},
+                    symbol_descriptors: {},
                     extensible: true,
                   })
                 })
@@ -2179,6 +2331,7 @@ fn Interpreter::get_property(
                       _ => 0
                     }
                   NativeCallable(_, _) => 0
+                  NonConstructableCallable(_, _) => 0
                   FuncCallMethod(_) => 1
                   FuncApplyMethod(_) => 2
                   MethodCallable(_, _) => 0
@@ -2199,6 +2352,7 @@ fn Interpreter::get_property(
                   ArrowFuncExt(_) => ""
                   BoundFunc(target, _, _) => get_bound_func_name(target)
                   NativeCallable(n, _) => n
+                  NonConstructableCallable(n, _) => n
                   FuncCallMethod(_) => "call"
                   FuncApplyMethod(_) => "apply"
                   MethodCallable(n, _) => n
@@ -2221,6 +2375,7 @@ fn Interpreter::get_property(
                   ArrowFuncExt(_) => "() => { [native code] }"
                   BoundFunc(_, _, _) => "function () { [native code] }"
                   NativeCallable(n, _) => "function " + n + "() { [native code] }"
+                  NonConstructableCallable(n, _) => "function " + n + "() { [native code] }"
                   FuncCallMethod(_) => "function call() { [native code] }"
                   FuncApplyMethod(_) => "function apply() { [native code] }"
                   MethodCallable(n, _) => "function " + n + "() { [native code] }"
@@ -2236,6 +2391,7 @@ fn Interpreter::get_property(
                   UserFunc(_) | UserFuncExt(_) | NativeCallable(_, _) |
                   ClassConstructor(_, _, _, _, _, _) => true
                   ArrowFunc(_) | ArrowFuncExt(_) | BoundFunc(_, _, _) |
+                  NonConstructableCallable(_, _) |
                   FuncCallMethod(_) | FuncApplyMethod(_) | MethodCallable(_, _) |
                   InterpreterCallable(_, _) => false
                 }
@@ -2249,10 +2405,12 @@ fn Interpreter::get_property(
                     // Create and memoize default prototype
                     let proto : Value = Object({
                       properties: {},
+                      symbol_properties: {},
                       prototype: Null,
                       callable: None,
                       class_name: "Object",
                       descriptors: {},
+                      symbol_descriptors: {},
                       extensible: true,
                     })
                     data.properties["prototype"] = proto
@@ -2266,22 +2424,25 @@ fn Interpreter::get_property(
           if prop == "hasOwnProperty" {
             return Object({
               properties: {},
+              symbol_properties: {},
               prototype: Null,
               callable: Some(
                 MethodCallable("hasOwnProperty", fn(this_val, args) {
-                  let key = if args.length() > 0 {
-                    args[0].to_string()
-                  } else {
-                    "undefined"
-                  }
+                  let key_val = if args.length() > 0 { args[0] } else { Undefined }
                   match this_val {
-                    Object(d) => Bool(d.properties.contains(key))
+                    Object(d) =>
+                      // Handle Symbol keys
+                      match key_val {
+                        Symbol(sym) => Bool(d.symbol_properties.contains(sym.id))
+                        _ => Bool(d.properties.contains(key_val.to_string()))
+                      }
                     _ => Bool(false)
                   }
                 }),
               ),
               class_name: "Function",
               descriptors: {},
+              symbol_descriptors: {},
               extensible: true,
             })
           }
@@ -2306,6 +2467,23 @@ fn Interpreter::get_property(
         get_string_method(s, prop)
       }
     Number(_) => get_number_method(obj, prop)
+    Symbol(sym) =>
+      // Symbol properties: description, toString
+      if prop == "description" {
+        match sym.description {
+          Some(desc) => String_(desc)
+          None => Undefined
+        }
+      } else if prop == "toString" {
+        make_native_func("toString", fn(_args) {
+          match sym.description {
+            Some(desc) => String_("Symbol(\{desc})")
+            None => String_("Symbol()")
+          }
+        })
+      } else {
+        Undefined
+      }
     Null | Undefined =>
       raise JsException(
         String_("TypeError: Cannot read property '\{prop}' of \{type_of(obj)}"),
@@ -2321,6 +2499,35 @@ fn Interpreter::get_computed_property(
   key : Value,
   _loc : @token.Loc,
 ) -> Value raise Error {
+  // Handle Symbol keys specially
+  match key {
+    Symbol(sym) =>
+      match obj {
+        Object(data) => {
+          // Look up symbol property
+          match data.symbol_properties.get(sym.id) {
+            Some(v) => return v
+            None => {
+              // Walk prototype chain for symbol properties
+              let mut current = data.prototype
+              while true {
+                match current {
+                  Object(proto_data) =>
+                    match proto_data.symbol_properties.get(sym.id) {
+                      Some(v) => return v
+                      None => current = proto_data.prototype
+                    }
+                  _ => break
+                }
+              }
+              return Undefined
+            }
+          }
+        }
+        _ => return Undefined
+      }
+    _ => ()
+  }
   match obj {
     Object(data) => {
       let prop = key.to_string()
@@ -2345,19 +2552,23 @@ fn Interpreter::get_computed_property(
               if prop == "call" {
                 return Object({
                   properties: {},
+                  symbol_properties: {},
                   prototype: Null,
                   callable: Some(FuncCallMethod(obj)),
                   class_name: "Function",
                   descriptors: {},
+                  symbol_descriptors: {},
                   extensible: true,
                 })
               } else if prop == "apply" {
                 return Object({
                   properties: {},
+                  symbol_properties: {},
                   prototype: Null,
                   callable: Some(FuncApplyMethod(obj)),
                   class_name: "Function",
                   descriptors: {},
+                  symbol_descriptors: {},
                   extensible: true,
                 })
               } else if prop == "bind" {
@@ -2374,10 +2585,12 @@ fn Interpreter::get_computed_property(
                   }
                   Object({
                     properties: {},
+                    symbol_properties: {},
                     prototype: Null,
                     callable: Some(BoundFunc(target, bind_this, bound_args)),
                     class_name: "Function",
                     descriptors: {},
+                    symbol_descriptors: {},
                     extensible: true,
                   })
                 })
@@ -2413,6 +2626,7 @@ fn Interpreter::get_computed_property(
                       _ => 0
                     }
                   NativeCallable(_, _) => 0
+                  NonConstructableCallable(_, _) => 0
                   FuncCallMethod(_) => 1
                   FuncApplyMethod(_) => 2
                   MethodCallable(_, _) => 0
@@ -2433,6 +2647,7 @@ fn Interpreter::get_computed_property(
                   ArrowFuncExt(_) => ""
                   BoundFunc(target, _, _) => get_bound_func_name(target)
                   NativeCallable(n, _) => n
+                  NonConstructableCallable(n, _) => n
                   FuncCallMethod(_) => "call"
                   FuncApplyMethod(_) => "apply"
                   MethodCallable(n, _) => n
@@ -2455,6 +2670,7 @@ fn Interpreter::get_computed_property(
                   ArrowFuncExt(_) => "() => { [native code] }"
                   BoundFunc(_, _, _) => "function () { [native code] }"
                   NativeCallable(n, _) => "function " + n + "() { [native code] }"
+                  NonConstructableCallable(n, _) => "function " + n + "() { [native code] }"
                   FuncCallMethod(_) => "function call() { [native code] }"
                   FuncApplyMethod(_) => "function apply() { [native code] }"
                   MethodCallable(n, _) => "function " + n + "() { [native code] }"
@@ -2470,6 +2686,7 @@ fn Interpreter::get_computed_property(
                   UserFunc(_) | UserFuncExt(_) | NativeCallable(_, _) |
                   ClassConstructor(_, _, _, _, _, _) => true
                   ArrowFunc(_) | ArrowFuncExt(_) | BoundFunc(_, _, _) |
+                  NonConstructableCallable(_, _) |
                   FuncCallMethod(_) | FuncApplyMethod(_) | MethodCallable(_, _) |
                   InterpreterCallable(_, _) => false
                 }
@@ -2483,10 +2700,12 @@ fn Interpreter::get_computed_property(
                     // Create and memoize default prototype
                     let proto : Value = Object({
                       properties: {},
+                      symbol_properties: {},
                       prototype: Null,
                       callable: None,
                       class_name: "Object",
                       descriptors: {},
+                      symbol_descriptors: {},
                       extensible: true,
                     })
                     data.properties["prototype"] = proto
@@ -2500,22 +2719,25 @@ fn Interpreter::get_computed_property(
           if prop == "hasOwnProperty" {
             return Object({
               properties: {},
+              symbol_properties: {},
               prototype: Null,
               callable: Some(
                 MethodCallable("hasOwnProperty", fn(this_val, args) {
-                  let k = if args.length() > 0 {
-                    args[0].to_string()
-                  } else {
-                    "undefined"
-                  }
+                  let key_val = if args.length() > 0 { args[0] } else { Undefined }
                   match this_val {
-                    Object(d) => Bool(d.properties.contains(k))
+                    Object(d) =>
+                      // Handle Symbol keys
+                      match key_val {
+                        Symbol(sym) => Bool(d.symbol_properties.contains(sym.id))
+                        _ => Bool(d.properties.contains(key_val.to_string()))
+                      }
                     _ => Bool(false)
                   }
                 }),
               ),
               class_name: "Function",
               descriptors: {},
+              symbol_descriptors: {},
               extensible: true,
             })
           }
@@ -2597,10 +2819,12 @@ fn Interpreter::eval_new(
             }
             let new_obj = Object({
               properties: {},
+              symbol_properties: {},
               prototype: proto,
               callable: None,
               class_name: "Object",
               descriptors: {},
+              symbol_descriptors: {},
               extensible: true,
             })
             let func_env = Environment::new(parent=Some(data.closure))
@@ -2626,10 +2850,12 @@ fn Interpreter::eval_new(
               "arguments",
               Object({
                 properties: new_args_props,
+                symbol_properties: {},
                 prototype: Null,
                 callable: None,
                 class_name: "Arguments",
                 descriptors: {},
+                symbol_descriptors: {},
                 extensible: true,
               }),
               VarBinding,
@@ -2678,10 +2904,12 @@ fn Interpreter::eval_new(
             }
             let new_obj = Object({
               properties: {},
+              symbol_properties: {},
               prototype: proto,
               callable: None,
               class_name: "Object",
               descriptors: {},
+              symbol_descriptors: {},
               extensible: true,
             })
             let func_env = Environment::new(parent=Some(data.closure))
@@ -2725,10 +2953,12 @@ fn Interpreter::eval_new(
               "arguments",
               Object({
                 properties: new_args_props,
+                symbol_properties: {},
                 prototype: Null,
                 callable: None,
                 class_name: "Arguments",
                 descriptors: {},
+                symbol_descriptors: {},
                 extensible: true,
               }),
               VarBinding,
@@ -2764,6 +2994,10 @@ fn Interpreter::eval_new(
           result
         }
         Some(NativeCallable(_, func)) => func(args)
+        Some(NonConstructableCallable(name, _)) =>
+          raise JsException(
+            String_("TypeError: " + name + " is not a constructor"),
+          )
         Some(InterpreterCallable(_, func)) => func(self, Undefined, args)
         Some(ArrowFunc(_)) | Some(ArrowFuncExt(_)) =>
           raise JsException(
@@ -2773,10 +3007,12 @@ fn Interpreter::eval_new(
           // Create the new instance with the class prototype
           let new_obj = Object({
             properties: {},
+            symbol_properties: {},
             prototype: proto,
             callable: None,
             class_name,
             descriptors: {},
+            symbol_descriptors: {},
             extensible: true,
           })
           // Set up the constructor environment
@@ -3002,10 +3238,12 @@ fn Interpreter::create_class(
   // Create prototype object
   let proto = Object({
     properties: proto_props,
+    symbol_properties: {},
     prototype: super_proto,
     callable: None,
     class_name: name,
     descriptors: proto_descriptors,
+    symbol_descriptors: {},
     extensible: true,
   })
   // Add constructor back-reference to prototype
@@ -3013,12 +3251,14 @@ fn Interpreter::create_class(
   // Create the class constructor function
   let class_obj = Object({
     properties: static_props,
+    symbol_properties: {},
     prototype: Null,
     callable: Some(
       ClassConstructor(name, proto, super_ctor, ctor_fn, env, super_proto),
     ),
     class_name: "Function",
     descriptors: static_descriptors,
+    symbol_descriptors: {},
     extensible: true,
   })
   // Set prototype.constructor to point to the class (non-enumerable per spec)
@@ -3187,10 +3427,18 @@ fn Interpreter::eval_compound_assign(
       let rhs = self.eval_expr(value_expr, env)
       let result = eval_binary_op(bin_op, current, rhs, loc)
       match obj {
-        Object(data) => {
-          data.properties[key.to_string()] = result
-          result
-        }
+        Object(data) =>
+          // Handle Symbol keys specially
+          match key {
+            Symbol(sym) => {
+              data.symbol_properties[sym.id] = result
+              result
+            }
+            _ => {
+              data.properties[key.to_string()] = result
+              result
+            }
+          }
         Array(data) =>
           match key {
             Number(n) => {
@@ -3287,37 +3535,67 @@ fn Interpreter::eval_logical_assign_and(
       if is_truthy(current) {
         let rhs = self.eval_expr(value_expr, env)
         match obj {
-          Object(data) => {
-            let prop = key.to_string()
-            // Check writable descriptor
-            match data.descriptors.get(prop) {
-              Some(desc) =>
-                if not(desc.writable) {
+          Object(data) =>
+            // Handle Symbol keys specially
+            match key {
+              Symbol(sym) => {
+                // Check symbol descriptor
+                match data.symbol_descriptors.get(sym.id) {
+                  Some(desc) =>
+                    if not(desc.writable) {
+                      if self.strict {
+                        raise JsException(
+                          String_("TypeError: Cannot assign to read only property"),
+                        )
+                      }
+                      return rhs
+                    }
+                  None => ()
+                }
+                if not(data.symbol_properties.contains(sym.id)) &&
+                  not(data.extensible) {
+                  if self.strict {
+                    raise JsException(
+                      String_("TypeError: Cannot add property, object is not extensible"),
+                    )
+                  }
+                  return rhs
+                }
+                data.symbol_properties[sym.id] = rhs
+                rhs
+              }
+              _ => {
+                let prop = key.to_string()
+                // Check writable descriptor
+                match data.descriptors.get(prop) {
+                  Some(desc) =>
+                    if not(desc.writable) {
+                      if self.strict {
+                        raise JsException(
+                          String_(
+                            "TypeError: Cannot assign to read only property '\{prop}'",
+                          ),
+                        )
+                      }
+                      return rhs
+                    }
+                  None => ()
+                }
+                // Check extensible for new properties
+                if not(data.properties.contains(prop)) && not(data.extensible) {
                   if self.strict {
                     raise JsException(
                       String_(
-                        "TypeError: Cannot assign to read only property '\{prop}'",
+                        "TypeError: Cannot add property \{prop}, object is not extensible",
                       ),
                     )
                   }
                   return rhs
                 }
-              None => ()
-            }
-            // Check extensible for new properties
-            if not(data.properties.contains(prop)) && not(data.extensible) {
-              if self.strict {
-                raise JsException(
-                  String_(
-                    "TypeError: Cannot add property \{prop}, object is not extensible",
-                  ),
-                )
+                data.properties[prop] = rhs
+                rhs
               }
-              return rhs
             }
-            data.properties[prop] = rhs
-            rhs
-          }
           Array(data) =>
             match key {
               Number(n) => {
@@ -3417,37 +3695,64 @@ fn Interpreter::eval_logical_assign_or(
       if not(is_truthy(current)) {
         let rhs = self.eval_expr(value_expr, env)
         match obj {
-          Object(data) => {
-            let prop = key.to_string()
-            // Check writable descriptor
-            match data.descriptors.get(prop) {
-              Some(desc) =>
-                if not(desc.writable) {
+          Object(data) =>
+            // Handle Symbol keys specially
+            match key {
+              Symbol(sym) => {
+                match data.symbol_descriptors.get(sym.id) {
+                  Some(desc) =>
+                    if not(desc.writable) {
+                      if self.strict {
+                        raise JsException(
+                          String_("TypeError: Cannot assign to read only property"),
+                        )
+                      }
+                      return rhs
+                    }
+                  None => ()
+                }
+                if not(data.symbol_properties.contains(sym.id)) &&
+                  not(data.extensible) {
+                  if self.strict {
+                    raise JsException(
+                      String_("TypeError: Cannot add property, object is not extensible"),
+                    )
+                  }
+                  return rhs
+                }
+                data.symbol_properties[sym.id] = rhs
+                rhs
+              }
+              _ => {
+                let prop = key.to_string()
+                match data.descriptors.get(prop) {
+                  Some(desc) =>
+                    if not(desc.writable) {
+                      if self.strict {
+                        raise JsException(
+                          String_(
+                            "TypeError: Cannot assign to read only property '\{prop}'",
+                          ),
+                        )
+                      }
+                      return rhs
+                    }
+                  None => ()
+                }
+                if not(data.properties.contains(prop)) && not(data.extensible) {
                   if self.strict {
                     raise JsException(
                       String_(
-                        "TypeError: Cannot assign to read only property '\{prop}'",
+                        "TypeError: Cannot add property \{prop}, object is not extensible",
                       ),
                     )
                   }
                   return rhs
                 }
-              None => ()
-            }
-            // Check extensible for new properties
-            if not(data.properties.contains(prop)) && not(data.extensible) {
-              if self.strict {
-                raise JsException(
-                  String_(
-                    "TypeError: Cannot add property \{prop}, object is not extensible",
-                  ),
-                )
+                data.properties[prop] = rhs
+                rhs
               }
-              return rhs
             }
-            data.properties[prop] = rhs
-            rhs
-          }
           Array(data) =>
             match key {
               Number(n) => {
@@ -3550,37 +3855,64 @@ fn Interpreter::eval_nullish_assign(
         Null | Undefined => {
           let rhs = self.eval_expr(value_expr, env)
           match obj {
-            Object(data) => {
-              let prop = key.to_string()
-              // Check writable descriptor
-              match data.descriptors.get(prop) {
-                Some(desc) =>
-                  if not(desc.writable) {
+            Object(data) =>
+              // Handle Symbol keys specially
+              match key {
+                Symbol(sym) => {
+                  match data.symbol_descriptors.get(sym.id) {
+                    Some(desc) =>
+                      if not(desc.writable) {
+                        if self.strict {
+                          raise JsException(
+                            String_("TypeError: Cannot assign to read only property"),
+                          )
+                        }
+                        return rhs
+                      }
+                    None => ()
+                  }
+                  if not(data.symbol_properties.contains(sym.id)) &&
+                    not(data.extensible) {
+                    if self.strict {
+                      raise JsException(
+                        String_("TypeError: Cannot add property, object is not extensible"),
+                      )
+                    }
+                    return rhs
+                  }
+                  data.symbol_properties[sym.id] = rhs
+                  rhs
+                }
+                _ => {
+                  let prop = key.to_string()
+                  match data.descriptors.get(prop) {
+                    Some(desc) =>
+                      if not(desc.writable) {
+                        if self.strict {
+                          raise JsException(
+                            String_(
+                              "TypeError: Cannot assign to read only property '\{prop}'",
+                            ),
+                          )
+                        }
+                        return rhs
+                      }
+                    None => ()
+                  }
+                  if not(data.properties.contains(prop)) && not(data.extensible) {
                     if self.strict {
                       raise JsException(
                         String_(
-                          "TypeError: Cannot assign to read only property '\{prop}'",
+                          "TypeError: Cannot add property \{prop}, object is not extensible",
                         ),
                       )
                     }
                     return rhs
                   }
-                None => ()
-              }
-              // Check extensible for new properties
-              if not(data.properties.contains(prop)) && not(data.extensible) {
-                if self.strict {
-                  raise JsException(
-                    String_(
-                      "TypeError: Cannot add property \{prop}, object is not extensible",
-                    ),
-                  )
+                  data.properties[prop] = rhs
+                  rhs
                 }
-                return rhs
               }
-              data.properties[prop] = rhs
-              rhs
-            }
             Array(data) =>
               match key {
                 Number(n) => {
