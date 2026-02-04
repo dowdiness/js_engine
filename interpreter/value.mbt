@@ -467,6 +467,7 @@ pub fn make_array_iterator_value(arr : ArrayData) -> Value {
 
 ///|
 /// Create a string iterator object that iterates over string characters
+/// Handles Unicode surrogate pairs correctly per ES6 spec
 pub fn make_string_iterator_value(s : String) -> Value {
   let iterator_sym = get_iterator_symbol()
   let chars = s.to_array()
@@ -481,9 +482,30 @@ pub fn make_string_iterator_value(s : String) -> Value {
         let idx = index_ref.val
         if idx < chars.length() {
           let buf = StringBuilder::new()
-          buf.write_char(chars[idx])
+          let c = chars[idx]
+          let code = c.to_int()
+
+          // Check if this is a high surrogate (0xD800-0xDBFF)
+          // and the next char is a low surrogate (0xDC00-0xDFFF)
+          if code >= 0xD800 && code <= 0xDBFF && idx + 1 < chars.length() {
+            let next_code = chars[idx + 1].to_int()
+            if next_code >= 0xDC00 && next_code <= 0xDFFF {
+              // This is a surrogate pair - yield both together
+              buf.write_char(c)
+              buf.write_char(chars[idx + 1])
+              index_ref.val = idx + 2
+            } else {
+              // High surrogate without valid low surrogate - yield as-is
+              buf.write_char(c)
+              index_ref.val = idx + 1
+            }
+          } else {
+            // Regular character or lone surrogate
+            buf.write_char(c)
+            index_ref.val = idx + 1
+          }
+
           let value = String_(buf.to_string())
-          index_ref.val = idx + 1
           let result_props : Map[String, Value] = {}
           result_props["value"] = value
           result_props["done"] = Bool(false)

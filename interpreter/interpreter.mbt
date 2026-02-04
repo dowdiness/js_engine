@@ -379,16 +379,39 @@ fn Interpreter::exec_stmt(
           )
       }
 
-      // Get the next method from the iterator
+      // Get the next method from the iterator (walk prototype chain)
       let next_method = match iterator {
-        Object(iter_data) =>
+        Object(iter_data) => {
+          // First check direct properties
           match iter_data.properties.get("next") {
             Some(next_fn) => next_fn
-            None =>
-              raise JsException(
-                String_("TypeError: Iterator result has no 'next' method"),
-              )
+            None => {
+              // Walk prototype chain
+              let mut found : Value = Undefined
+              let mut current = iter_data.prototype
+              while true {
+                match current {
+                  Object(proto_data) =>
+                    match proto_data.properties.get("next") {
+                      Some(next_fn) => {
+                        found = next_fn
+                        break
+                      }
+                      None => current = proto_data.prototype
+                    }
+                  _ => break
+                }
+              }
+              match found {
+                Undefined =>
+                  raise JsException(
+                    String_("TypeError: iterator.next is not a function"),
+                  )
+                _ => found
+              }
+            }
           }
+        }
         _ =>
           raise JsException(
             String_("TypeError: Iterator is not an object"),
@@ -1972,20 +1995,43 @@ fn Interpreter::spread_iterable(
     }
   }
 
-  // Get the next method from the iterator
+  // Get the next method from the iterator (walk prototype chain)
   let next_method = match iterator {
-    Object(iter_data) =>
+    Object(iter_data) => {
+      // First check direct properties
       match iter_data.properties.get("next") {
         Some(next_fn) => next_fn
         None => {
-          result.push(val)
-          return result
+          // Walk prototype chain
+          let mut found : Value = Undefined
+          let mut current = iter_data.prototype
+          while true {
+            match current {
+              Object(proto_data) =>
+                match proto_data.properties.get("next") {
+                  Some(next_fn) => {
+                    found = next_fn
+                    break
+                  }
+                  None => current = proto_data.prototype
+                }
+              _ => break
+            }
+          }
+          match found {
+            Undefined =>
+              raise JsException(
+                String_("TypeError: iterator.next is not a function"),
+              )
+            _ => found
+          }
         }
       }
-    _ => {
-      result.push(val)
-      return result
     }
+    _ =>
+      raise JsException(
+        String_("TypeError: Iterator result is not an object"),
+      )
   }
 
   // Iterate using the iterator protocol
