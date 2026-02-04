@@ -62,8 +62,8 @@ SKIP_FEATURES = {
     # Generators
     "generators", "generator",
 
-    # Classes
-    "class", "class-fields-private", "class-fields-public",
+    # Classes (advanced features not yet supported)
+    "class-fields-private", "class-fields-public",
     "class-methods-private", "class-static-fields-private",
     "class-static-fields-public", "class-static-methods-private",
     "class-static-block",
@@ -110,7 +110,6 @@ SKIP_FEATURES = {
     "String.prototype.isWellFormed", "String.prototype.toWellFormed",
 
     # Missing operators and syntax
-    "numeric-separator-literal", "logical-assignment-operators",
     "new.target",
     "hashbang",
 
@@ -135,6 +134,8 @@ SKIP_FEATURES = {
     # const, destructuring-binding, destructuring-assignment,
     # default-parameters, for-of, Object.entries, Array.prototype.flat,
     # Array.prototype.flatMap, Array.prototype.includes
+    # Removed in Phase 3.6+4 (now supported): class, numeric-separator-literal,
+    # logical-assignment-operators
 }
 
 SKIP_FLAGS = {"module", "async", "CanBlockIsFalse", "CanBlockIsTrue"}

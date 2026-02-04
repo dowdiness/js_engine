@@ -111,11 +111,24 @@ let symbol_registry_reverse : Map[Int, String] = {}
 pub let well_known_iterator_sym : Ref[SymbolData?] = { val: None }
 
 ///|
+/// Well-known Symbol.hasInstance - stored globally for instanceof operator support
+pub let well_known_hasinstance_sym : Ref[SymbolData?] = { val: None }
+
+///|
 /// Get the well-known Symbol.iterator
 pub fn get_iterator_symbol() -> SymbolData {
   match well_known_iterator_sym.val {
     Some(sym) => sym
     None => abort("Symbol.iterator not initialized")
+  }
+}
+
+///|
+/// Get the well-known Symbol.hasInstance
+pub fn get_hasinstance_symbol() -> SymbolData {
+  match well_known_hasinstance_sym.val {
+    Some(sym) => sym
+    None => abort("Symbol.hasInstance not initialized")
   }
 }
 

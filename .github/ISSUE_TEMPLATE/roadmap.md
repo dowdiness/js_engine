@@ -717,7 +717,7 @@ Phase 1 (DONE) ──► Phase 2 (DONE) ──► Phase 3 (DONE) ──► Phase
 | **Generators (`function*`, `yield`)** | ~1,500 tests | ❌ TODO |
 | **Iterators (iterator protocol)** | ~800 tests | ✅ DONE |
 | **`Map` / `Set` collections** | ~600 tests | ❌ TODO |
-| **`instanceof` with Symbol.hasInstance** | ~200 tests | ❌ TODO |
+| **`instanceof` with Symbol.hasInstance** | ~200 tests | ✅ DONE |
 | **Numeric separator literals (`1_000`)** | ~50 tests | ✅ DONE |
 | **Logical assignment (`&&=`, `||=`, `??=`)** | ~100 tests | ✅ DONE |
 
@@ -748,6 +748,7 @@ Phase 1 (DONE) ──► Phase 2 (DONE) ──► Phase 3 (DONE) ──► Phase
 | Object rest patterns include symbol properties | `b4dbef4` |
 | Compound assignments (`+=`, `&&=`, `\|\|=`, `??=`) handle Symbol keys | `b4dbef4` |
 | Symbol.keyFor O(1) reverse lookup optimization | `b4dbef4` |
+| **`instanceof` with Symbol.hasInstance** — custom `[Symbol.hasInstance]` methods, GetMethod prototype chain lookup, OrdinaryHasInstance fallback | `5ba4019` |
 
 ### ✅ Recently Completed (Phase 3.6)
 

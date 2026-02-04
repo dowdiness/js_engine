@@ -1561,6 +1561,74 @@ fn Interpreter::eval_binary(
         _ => left
       }
     }
+    Instanceof => {
+      // instanceof - ES2015+ with Symbol.hasInstance support (spec: 7.3.21 OrdinaryHasInstance)
+      let l = self.eval_expr(left_expr, env)
+      let r = self.eval_expr(right_expr, env)
+      match r {
+        Object(r_data) => {
+          // Step 1: Check for Symbol.hasInstance method via GetMethod (walks prototype chain)
+          let has_instance_sym = get_hasinstance_symbol()
+          let has_instance_method = get_symbol_method(r, has_instance_sym.id)
+          match has_instance_method {
+            Some(has_instance_fn) =>
+              // Call [Symbol.hasInstance](l) and convert result to boolean
+              match has_instance_fn {
+                Object(fn_data) =>
+                  match fn_data.callable {
+                    Some(_) => {
+                      let result = self.call_value(has_instance_fn, r, [l], loc)
+                      Bool(is_truthy(result))
+                    }
+                    None =>
+                      // Symbol.hasInstance exists but is not callable - TypeError per spec
+                      raise JsException(
+                        String_("TypeError: Symbol.hasInstance is not a function"),
+                      )
+                  }
+                _ =>
+                  // Symbol.hasInstance is not an object - TypeError per spec
+                  raise JsException(
+                    String_("TypeError: Symbol.hasInstance is not a function"),
+                  )
+              }
+            None => {
+              // No Symbol.hasInstance found, use OrdinaryHasInstance
+              // Step 2: Check if RHS is callable (required for OrdinaryHasInstance)
+              match r_data.callable {
+                None =>
+                  raise JsException(
+                    String_(
+                      "TypeError: Right-hand side of 'instanceof' is not callable",
+                    ),
+                  )
+                Some(_) => {
+                  // Step 3: Get prototype property and walk LHS prototype chain
+                  // Per OrdinaryHasInstance spec: if prototype is not an object, return false
+                  // This handles bound functions which don't have own prototype property
+                  match r_data.properties.get("prototype") {
+                    Some(proto) =>
+                      match proto {
+                        Object(_) => instanceof_prototype_chain(l, proto)
+                        // Non-object prototype: return false per spec
+                        _ => Bool(false)
+                      }
+                    // No prototype property (e.g., bound functions): return false per spec
+                    None => Bool(false)
+                  }
+                }
+              }
+            }
+          }
+        }
+        _ =>
+          raise JsException(
+            String_(
+              "TypeError: Right-hand side of 'instanceof' is not an object",
+            ),
+          )
+      }
+    }
     _ => {
       let left = self.eval_expr(left_expr, env)
       let right = self.eval_expr(right_expr, env)
@@ -1714,50 +1782,61 @@ fn eval_binary_op(
             ),
           )
       }
-    // instanceof
-    (Instanceof, l, r) =>
-      match r {
-        Object(r_data) => {
-          let target_proto = match r_data.properties.get("prototype") {
-            Some(v) => v
-            None => Null
-          }
-          match l {
-            Object(l_data) => {
-              let mut current = l_data.prototype
-              let mut found = false
-              while true {
-                match current {
-                  Null | Undefined => break
-                  _ =>
-                    if strict_equal(current, target_proto) {
-                      found = true
-                      break
-                    } else {
-                      match current {
-                        Object(data) => current = data.prototype
-                        _ => break
-                      }
-                    }
-                }
-              }
-              Bool(found)
-            }
-            _ => Bool(false)
-          }
-        }
-        _ =>
-          raise JsException(
-            String_(
-              "TypeError: Right-hand side of 'instanceof' is not an object",
-            ),
-          )
-      }
-    // And/Or/?? already handled by short-circuit
-    (And, _, _) | (Or, _, _) | (NullishCoalesce, _, _) =>
+    // And/Or/??/Instanceof already handled in eval_binary
+    (And, _, _) | (Or, _, _) | (NullishCoalesce, _, _) | (Instanceof, _, _) =>
       raise Failure::Failure(
         "Internal error: logical operators should be short-circuited",
       )
+  }
+}
+
+///|
+/// GetMethod for symbol keys - walks prototype chain to find a symbol-keyed method (spec 7.3.9)
+fn get_symbol_method(obj : Value, symbol_id : Int) -> Value? {
+  let mut current = obj
+  while true {
+    match current {
+      Object(data) =>
+        match data.symbol_properties.get(symbol_id) {
+          Some(val) =>
+            match val {
+              Null | Undefined => return None
+              _ => return Some(val)
+            }
+          None => current = data.prototype
+        }
+      _ => return None
+    }
+  }
+  None
+}
+
+///|
+/// Helper for instanceof: walk prototype chain to check if l's prototype chain includes target_proto
+fn instanceof_prototype_chain(l : Value, target_proto : Value) -> Value {
+  match l {
+    Object(l_data) => {
+      let mut current = l_data.prototype
+      let mut found = false
+      while true {
+        match current {
+          Null | Undefined => break
+          _ =>
+            if strict_equal(current, target_proto) {
+              found = true
+              break
+            } else {
+              match current {
+                Object(data) => current = data.prototype
+                _ => break
+              }
+            }
+        }
+      }
+      Bool(found)
+    }
+    // Arrays and primitives don't have prototype chains in this representation
+    _ => Bool(false)
   }
 }
 
@@ -3400,24 +3479,25 @@ fn Interpreter::create_class(
   // Create the prototype object
   let proto_props : Map[String, Value] = {}
   let proto_descriptors : Map[String, PropDescriptor] = {}
+  let proto_symbol_props : Map[Int, Value] = {}
+  let proto_symbol_descriptors : Map[Int, PropDescriptor] = {}
   // Create static properties map
   let static_props : Map[String, Value] = {}
   let static_descriptors : Map[String, PropDescriptor] = {}
+  let static_symbol_props : Map[Int, Value] = {}
+  let static_symbol_descriptors : Map[Int, PropDescriptor] = {}
   // Track constructor method
   let mut ctor_fn : (Array[String], Array[@ast.Stmt])? = None
   // Process all methods
   for m in methods {
-    // Get the method key
-    let method_key : String = match m.key {
-      StringLit(s, _) => s
-      _ => {
-        // Computed key - evaluate it
-        let key_val = self.eval_expr(m.key, env)
-        key_val.to_string()
-      }
+    // Get the method key - could be string or symbol
+    let key_val : Value = match m.key {
+      StringLit(s, _) => String_(s)
+      _ => self.eval_expr(m.key, env)
     }
+    let method_key_str : String = key_val.to_string()
     // Check if this is the constructor
-    if method_key == "constructor" && not(m.is_static) {
+    if method_key_str == "constructor" && not(m.is_static) {
       // Extract constructor params and body
       match m.value {
         FuncExpr(_, params, body, _) => ctor_fn = Some((params, body))
@@ -3460,31 +3540,21 @@ fn Interpreter::create_class(
       enumerable: false,
       configurable: true,
     }
-    match m.kind {
-      @ast.Get => {
-        // Getter - for now just store as property
-        // TODO: proper getter implementation
+    // Store method in appropriate map based on key type (string vs symbol)
+    match key_val {
+      Symbol(sym) => {
+        // Symbol key - store in symbol_properties
         if m.is_static {
-          static_props[method_key] = method_val
-          static_descriptors[method_key] = method_descriptor
+          static_symbol_props[sym.id] = method_val
+          static_symbol_descriptors[sym.id] = method_descriptor
         } else {
-          proto_props[method_key] = method_val
-          proto_descriptors[method_key] = method_descriptor
+          proto_symbol_props[sym.id] = method_val
+          proto_symbol_descriptors[sym.id] = method_descriptor
         }
       }
-      @ast.Set => {
-        // Setter - for now just store as property
-        // TODO: proper setter implementation
-        if m.is_static {
-          static_props[method_key] = method_val
-          static_descriptors[method_key] = method_descriptor
-        } else {
-          proto_props[method_key] = method_val
-          proto_descriptors[method_key] = method_descriptor
-        }
-      }
-      @ast.Init => {
-        // Regular method
+      _ => {
+        // String key - store in regular properties
+        let method_key = key_val.to_string()
         if m.is_static {
           static_props[method_key] = method_val
           static_descriptors[method_key] = method_descriptor
@@ -3498,12 +3568,12 @@ fn Interpreter::create_class(
   // Create prototype object
   let proto = Object({
     properties: proto_props,
-    symbol_properties: {},
+    symbol_properties: proto_symbol_props,
     prototype: super_proto,
     callable: None,
     class_name: name,
     descriptors: proto_descriptors,
-    symbol_descriptors: {},
+    symbol_descriptors: proto_symbol_descriptors,
     extensible: true,
   })
   // Add constructor back-reference to prototype
@@ -3511,14 +3581,14 @@ fn Interpreter::create_class(
   // Create the class constructor function
   let class_obj = Object({
     properties: static_props,
-    symbol_properties: {},
+    symbol_properties: static_symbol_props,
     prototype: Null,
     callable: Some(
       ClassConstructor(name, proto, super_ctor, ctor_fn, env, super_proto),
     ),
     class_name: "Function",
     descriptors: static_descriptors,
-    symbol_descriptors: {},
+    symbol_descriptors: static_symbol_descriptors,
     extensible: true,
   })
   // Set prototype.constructor to point to the class (non-enumerable per spec)
