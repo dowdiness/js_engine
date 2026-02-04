@@ -25,11 +25,6 @@ fn make_error_value(name : String, msg : String) -> Value {
   })
 }
 
-///| Convert a JsError to a JavaScript Error object Value
-pub fn @errors.JsError::to_value(self : @errors.JsError) -> Value {
-  make_error_value(self.name(), self.get_message())
-}
-
 ///| Convert any catchable error to a JavaScript Error object Value
 pub fn js_error_to_value(err : Error) -> Value {
   match err {
