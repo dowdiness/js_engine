@@ -609,7 +609,7 @@ All 6 issues addressed in commit `3439764`:
 ## Phase 4: Modern ES6+ Features → ~35-40% pass rate 🔄 IN PROGRESS
 
 - [x] **Classes** — `class`, `extends`, `constructor`, `super`, static methods, getters/setters ✅ DONE (Phase 3.6)
-- [ ] **Symbols** — `Symbol()`, `Symbol.iterator`, `Symbol.toPrimitive`, `typeof symbol`
+- [x] **Symbols** — `Symbol()`, `Symbol.for()`, `Symbol.keyFor()`, well-known symbols (`iterator`, `toPrimitive`, `toStringTag`, etc.), `typeof symbol`, symbol-keyed properties ✅ DONE
 - [ ] **Iterators/Generators** — `function*`, `yield`, `yield*`, iterator protocol
 - [ ] **Promises/async-await** — `Promise`, `.then/.catch/.finally`, `async function`, `await` (requires microtask queue)
 - [ ] **Map/Set** — `new Map()`, `new Set()`, `.get/.set/.has/.delete/.size/.forEach`
@@ -617,7 +617,7 @@ All 6 issues addressed in commit `3439764`:
 
 ### Phase 4 Expected Impact: ~1,600 additional tests → cumulative ~8,000-9,000 (35-40%)
 
-**Note**: Classes are complete. Symbols are the next high-impact feature (~2,000 tests). Generators and Promises require more architectural work.
+**Note**: Classes and Symbols are complete. Generators and Promises require more architectural work. Map/Set are the next high-impact features.
 
 ---
 
@@ -701,7 +701,7 @@ Phase 1 (DONE) ──► Phase 2 (DONE) ──► Phase 3 (DONE) ──► Phase
 | Task | Impact | Status |
 |------|--------|--------|
 | **Classes (`class`, `extends`, `super`)** | ~3,000 tests | ✅ DONE (Phase 3.6) |
-| **Symbols (`Symbol`, `Symbol.iterator`)** | ~2,000 tests | ❌ TODO — Next priority |
+| **Symbols (`Symbol`, `Symbol.iterator`)** | ~2,000 tests | ✅ DONE (Phase 4) |
 
 ### 🟡 High (Phase 4 features)
 
@@ -723,6 +723,18 @@ Phase 1 (DONE) ──► Phase 2 (DONE) ──► Phase 3 (DONE) ──► Phase
 | **`Proxy` / `Reflect`** | ~500 tests | ❌ TODO |
 | **`BigInt`** | ~300 tests | ❌ TODO |
 | **TypedArrays / ArrayBuffer** | ~400 tests | ❌ TODO |
+
+### ✅ Recently Completed (Phase 4)
+
+| Task | Commit |
+|------|--------|
+| **Symbols** (`Symbol()`, `Symbol.for()`, `Symbol.keyFor()`, well-known symbols) | `b4dbef4` |
+| Symbol-keyed properties on objects (`symbol_properties`, `symbol_descriptors`) | `9526049` |
+| `Object.getOwnPropertySymbols()` returns actual symbol keys | `b4dbef4` |
+| `hasOwnProperty` / `Object.hasOwn` handle Symbol keys | `b4dbef4` |
+| Object rest patterns include symbol properties | `b4dbef4` |
+| Compound assignments (`+=`, `&&=`, `||=`, `??=`) handle Symbol keys | `b4dbef4` |
+| Symbol.keyFor O(1) reverse lookup optimization | `b4dbef4` |
 
 ### ✅ Recently Completed (Phase 3.6)
 
@@ -789,10 +801,10 @@ All issues from [PR #4 review](https://github.com/dowdiness/js_engine/pull/4) ad
 
 ---
 
-**Next step**: Begin **Phase 4** features. Focus areas:
-1. **Symbols (`Symbol`, `Symbol.iterator`)** — Required for proper iterator protocol (~2,000 tests)
-2. **Map/Set collections** — Common data structures (~600 tests)
-3. **Generators (`function*`, `yield`)** — Required for full iterator support (~1,500 tests)
+**Next step**: Continue **Phase 4** features. Focus areas:
+1. **Map/Set collections** — Common data structures (~600 tests)
+2. **Generators (`function*`, `yield`)** — Required for full iterator support (~1,500 tests)
+3. **Iterators** — Leverage Symbol.iterator for proper iterator protocol
 4. **Remaining built-in edge cases** — Array sparse handling, String Unicode methods
 
-The jump from 8.77% to 27.1% demonstrates that ES6 Classes and parser fixes have high leverage. Classes are now complete — Symbols are the next high-impact feature.
+Classes and Symbols are now complete. Map/Set are the next high-impact features, as they don't require major architectural changes like generators or promises.
