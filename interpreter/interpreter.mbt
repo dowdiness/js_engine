@@ -1583,7 +1583,7 @@ fn Interpreter::eval_binary(
                         method_data.class_name,
                         false,
                       )
-                      Bool(to_boolean(result))
+                      Bool(is_truthy(result))
                     }
                     None =>
                       // Symbol.hasInstance exists but is not callable, fall through to prototype chain
