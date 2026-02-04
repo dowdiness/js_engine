@@ -391,7 +391,12 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
   setup_symbol_builtins(env)
 
   // Set up iterator protocol on Array and String prototypes
-  setup_iterator_protocol(env)
+  // Use try/catch since setup_iterator_protocol can raise errors
+  try {
+    setup_iterator_protocol!(env)
+  } catch {
+    _ => () // Ignore errors during initialization
+  }
 }
 
 ///|
