@@ -242,7 +242,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                   match data.descriptors.get(prop_name) {
                     Some(existing) =>
                       if not(existing.configurable) {
-                        raise TypeError(message=
+                        raise @errors.TypeError(message=
                           "Cannot redefine property: \{prop_name}",
                         )
                       }
@@ -467,24 +467,24 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                       let value = pair.elements[1]
                       properties[key] = value
                     } else {
-                      raise TypeError(message="Iterator value is not an entry object")
+                      raise @errors.TypeError(message="Iterator value is not an entry object")
                     }
                   Object(obj) => {
                     // Object with numeric indices 0 and 1
                     let key = match obj.properties.get("0") {
                       Some(v) => v.to_string()
-                      None => raise TypeError(message="Iterator value is not an entry object")
+                      None => raise @errors.TypeError(message="Iterator value is not an entry object")
                     }
                     let value = match obj.properties.get("1") {
                       Some(v) => v
-                      None => raise TypeError(message="Iterator value is not an entry object")
+                      None => raise @errors.TypeError(message="Iterator value is not an entry object")
                     }
                     properties[key] = value
                   }
-                  _ => raise TypeError(message="Iterator value is not an entry object")
+                  _ => raise @errors.TypeError(message="Iterator value is not an entry object")
                 }
               }
-            _ => raise TypeError(message="Object.fromEntries requires an iterable argument")
+            _ => raise @errors.TypeError(message="Object.fromEntries requires an iterable argument")
           }
           Object({
             properties,
@@ -532,7 +532,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           match proto {
             Object(_) | Null => ()
             _ =>
-              raise TypeError(message=
+              raise @errors.TypeError(message=
                 "Object prototype may only be an Object or null",
               )
           }
@@ -625,7 +625,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Number(arr.elements.length().to_double())
         }
-        _ => raise TypeError(message="push called on non-array")
+        _ => raise @errors.TypeError(message="push called on non-array")
       }
     })),
     class_name: "Function",
@@ -647,7 +647,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             arr.elements.pop() |> Option::unwrap
           }
         }
-        _ => raise TypeError(message="pop called on non-array")
+        _ => raise @errors.TypeError(message="pop called on non-array")
       }
     })),
     class_name: "Function",
@@ -679,7 +679,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           first
         }
-        _ => raise TypeError(message="shift called on non-array")
+        _ => raise @errors.TypeError(message="shift called on non-array")
       }
     })),
     class_name: "Function",
@@ -710,7 +710,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Number(arr.elements.length().to_double())
         }
-        _ => raise TypeError(message="unshift called on non-array")
+        _ => raise @errors.TypeError(message="unshift called on non-array")
       }
     })),
     class_name: "Function",
@@ -742,7 +742,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           })
           String_(parts.join(sep))
         }
-        _ => raise TypeError(message="join called on non-array")
+        _ => raise @errors.TypeError(message="join called on non-array")
       }
     })),
     class_name: "Function",
@@ -777,7 +777,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Number(-1.0)
         }
-        _ => raise TypeError(message="indexOf called on non-array")
+        _ => raise @errors.TypeError(message="indexOf called on non-array")
       }
     })),
     class_name: "Function",
@@ -813,7 +813,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Number(-1.0)
         }
-        _ => raise TypeError(message="lastIndexOf called on non-array")
+        _ => raise @errors.TypeError(message="lastIndexOf called on non-array")
       }
     })),
     class_name: "Function",
@@ -837,7 +837,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Bool(false)
         }
-        _ => raise TypeError(message="includes called on non-array")
+        _ => raise @errors.TypeError(message="includes called on non-array")
       }
     })),
     class_name: "Function",
@@ -882,7 +882,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Array({ elements: result })
         }
-        _ => raise TypeError(message="slice called on non-array")
+        _ => raise @errors.TypeError(message="slice called on non-array")
       }
     })),
     class_name: "Function",
@@ -913,7 +913,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Array({ elements: result })
         }
-        _ => raise TypeError(message="concat called on non-array")
+        _ => raise @errors.TypeError(message="concat called on non-array")
       }
     })),
     class_name: "Function",
@@ -932,7 +932,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           arr.elements.rev_in_place()
           Array(arr)
         }
-        _ => raise TypeError(message="reverse called on non-array")
+        _ => raise @errors.TypeError(message="reverse called on non-array")
       }
     })),
     class_name: "Function",
@@ -961,7 +961,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Array(arr)
         }
-        _ => raise TypeError(message="fill called on non-array")
+        _ => raise @errors.TypeError(message="fill called on non-array")
       }
     })),
     class_name: "Function",
@@ -985,7 +985,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           })
           String_(parts.join(","))
         }
-        _ => raise TypeError(message="toString called on non-array")
+        _ => raise @errors.TypeError(message="toString called on non-array")
       }
     })),
     class_name: "Function",
@@ -1010,7 +1010,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             Undefined
           }
         }
-        _ => raise TypeError(message="at called on non-array")
+        _ => raise @errors.TypeError(message="at called on non-array")
       }
     })),
     class_name: "Function",
@@ -1034,7 +1034,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           })
           String_(parts.join(","))
         }
-        _ => raise TypeError(message="toLocaleString called on non-array")
+        _ => raise @errors.TypeError(message="toLocaleString called on non-array")
       }
     })),
     class_name: "Function",
@@ -1064,7 +1064,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Undefined
         }
-        _ => raise TypeError(message="forEach called on non-array")
+        _ => raise @errors.TypeError(message="forEach called on non-array")
       }
     })),
     class_name: "Function",
@@ -1095,7 +1095,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Array({ elements: result })
         }
-        _ => raise TypeError(message="map called on non-array")
+        _ => raise @errors.TypeError(message="map called on non-array")
       }
     })),
     class_name: "Function",
@@ -1128,7 +1128,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Array({ elements: result })
         }
-        _ => raise TypeError(message="filter called on non-array")
+        _ => raise @errors.TypeError(message="filter called on non-array")
       }
     })),
     class_name: "Function",
@@ -1152,7 +1152,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             acc = args[1]
           } else {
             if arr.elements.length() == 0 {
-              raise TypeError(message="Reduce of empty array with no initial value")
+              raise @errors.TypeError(message="Reduce of empty array with no initial value")
             }
             acc = arr.elements[0]
             start = 1
@@ -1167,7 +1167,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           acc
         }
-        _ => raise TypeError(message="reduce called on non-array")
+        _ => raise @errors.TypeError(message="reduce called on non-array")
       }
     })),
     class_name: "Function",
@@ -1191,7 +1191,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             acc = args[1]
           } else {
             if arr.elements.length() == 0 {
-              raise TypeError(message="Reduce of empty array with no initial value")
+              raise @errors.TypeError(message="Reduce of empty array with no initial value")
             }
             acc = arr.elements[start]
             start = start - 1
@@ -1206,7 +1206,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           acc
         }
-        _ => raise TypeError(message="reduceRight called on non-array")
+        _ => raise @errors.TypeError(message="reduceRight called on non-array")
       }
     })),
     class_name: "Function",
@@ -1238,7 +1238,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Undefined
         }
-        _ => raise TypeError(message="find called on non-array")
+        _ => raise @errors.TypeError(message="find called on non-array")
       }
     })),
     class_name: "Function",
@@ -1270,7 +1270,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Number(-1.0)
         }
-        _ => raise TypeError(message="findIndex called on non-array")
+        _ => raise @errors.TypeError(message="findIndex called on non-array")
       }
     })),
     class_name: "Function",
@@ -1302,7 +1302,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Undefined
         }
-        _ => raise TypeError(message="findLast called on non-array")
+        _ => raise @errors.TypeError(message="findLast called on non-array")
       }
     })),
     class_name: "Function",
@@ -1334,7 +1334,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Number(-1.0)
         }
-        _ => raise TypeError(message="findLastIndex called on non-array")
+        _ => raise @errors.TypeError(message="findLastIndex called on non-array")
       }
     })),
     class_name: "Function",
@@ -1366,7 +1366,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Bool(true)
         }
-        _ => raise TypeError(message="every called on non-array")
+        _ => raise @errors.TypeError(message="every called on non-array")
       }
     })),
     class_name: "Function",
@@ -1398,7 +1398,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Bool(false)
         }
-        _ => raise TypeError(message="some called on non-array")
+        _ => raise @errors.TypeError(message="some called on non-array")
       }
     })),
     class_name: "Function",
@@ -1454,7 +1454,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Array(arr)
         }
-        _ => raise TypeError(message="sort called on non-array")
+        _ => raise @errors.TypeError(message="sort called on non-array")
       }
     })),
     class_name: "Function",
@@ -1475,7 +1475,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           flatten_array_val(arr.elements, depth, result)
           Array({ elements: result })
         }
-        _ => raise TypeError(message="flat called on non-array")
+        _ => raise @errors.TypeError(message="flat called on non-array")
       }
     })),
     class_name: "Function",
@@ -1512,7 +1512,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Array({ elements: result })
         }
-        _ => raise TypeError(message="flatMap called on non-array")
+        _ => raise @errors.TypeError(message="flatMap called on non-array")
       }
     })),
     class_name: "Function",
@@ -1564,7 +1564,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Array({ elements: removed })
         }
-        _ => raise TypeError(message="splice called on non-array")
+        _ => raise @errors.TypeError(message="splice called on non-array")
       }
     })),
     class_name: "Function",
@@ -1607,7 +1607,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Array(arr)
         }
-        _ => raise TypeError(message="copyWithin called on non-array")
+        _ => raise @errors.TypeError(message="copyWithin called on non-array")
       }
     })),
     class_name: "Function",
@@ -1629,7 +1629,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Array({ elements: result })
         }
-        _ => raise TypeError(message="entries called on non-array")
+        _ => raise @errors.TypeError(message="entries called on non-array")
       }
     })),
     class_name: "Function",
@@ -1651,7 +1651,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Array({ elements: result })
         }
-        _ => raise TypeError(message="keys called on non-array")
+        _ => raise @errors.TypeError(message="keys called on non-array")
       }
     })),
     class_name: "Function",
@@ -1674,7 +1674,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Array({ elements: result })
         }
-        _ => raise TypeError(message="values called on non-array")
+        _ => raise @errors.TypeError(message="values called on non-array")
       }
     })),
     class_name: "Function",
@@ -1696,7 +1696,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Array({ elements: result })
         }
-        _ => raise TypeError(message="toReversed called on non-array")
+        _ => raise @errors.TypeError(message="toReversed called on non-array")
       }
     })),
     class_name: "Function",
@@ -1756,7 +1756,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Array({ elements: result })
         }
-        _ => raise TypeError(message="toSorted called on non-array")
+        _ => raise @errors.TypeError(message="toSorted called on non-array")
       }
     })),
     class_name: "Function",
@@ -1794,7 +1794,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Array({ elements: result })
         }
-        _ => raise TypeError(message="toSpliced called on non-array")
+        _ => raise @errors.TypeError(message="toSpliced called on non-array")
       }
     })),
     class_name: "Function",
@@ -1815,7 +1815,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           let len = arr.elements.length()
           let actual_idx = if idx < 0 { len + idx } else { idx }
           if actual_idx < 0 || actual_idx >= len {
-            raise RangeError(message="Invalid index")
+            raise @errors.RangeError(message="Invalid index")
           }
           let result : Array[Value] = []
           for i = 0; i < len; i = i + 1 {
@@ -1827,7 +1827,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Array({ elements: result })
         }
-        _ => raise TypeError(message="with called on non-array")
+        _ => raise @errors.TypeError(message="with called on non-array")
       }
     })),
     class_name: "Function",
@@ -1951,7 +1951,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 // present. This is an intentional simplification.
                 let len = n.to_int()
                 if len < 0 || n != len.to_double() {
-                  raise RangeError(message="Invalid array length")
+                  raise @errors.RangeError(message="Invalid array length")
                 }
                 let elements : Array[Value] = []
                 for _i = 0; _i < len; _i = _i + 1 {
