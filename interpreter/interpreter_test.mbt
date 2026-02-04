@@ -4014,3 +4014,30 @@ test "instanceof Symbol.hasInstance receives correct argument" {
   let (_, result) = run_js(src)
   inspect(result, content="42")
 }
+
+///|
+test "instanceof throws TypeError for non-callable RHS without Symbol.hasInstance" {
+  let src =
+    #|try {
+    #|  ({}) instanceof {};
+    #|  "no error";
+    #|} catch (e) {
+    #|  e.message.includes("not callable") ? "caught" : e.message;
+    #|}
+  let (_, result) = run_js(src)
+  inspect(result, content="caught")
+}
+
+///|
+test "instanceof with Symbol.hasInstance inherited from prototype" {
+  let src =
+    #|const proto = {
+    #|  [Symbol.hasInstance](instance) {
+    #|    return instance.special === true;
+    #|  }
+    #|};
+    #|const Constructor = Object.create(proto);
+    #|({ special: true }) instanceof Constructor;
+  let (_, result) = run_js(src)
+  inspect(result, content="true")
+}

@@ -1562,34 +1562,70 @@ fn Interpreter::eval_binary(
       }
     }
     Instanceof => {
-      // instanceof - ES2015+ with Symbol.hasInstance support
+      // instanceof - ES2015+ with Symbol.hasInstance support (spec: 7.3.21 OrdinaryHasInstance)
       let l = self.eval_expr(left_expr, env)
       let r = self.eval_expr(right_expr, env)
       match r {
         Object(r_data) => {
-          // First check for Symbol.hasInstance method (ES2015+)
+          // Step 1: Check for Symbol.hasInstance method via GetMethod (walks prototype chain)
           let has_instance_sym = get_hasinstance_symbol()
-          match r_data.symbol_properties.get(has_instance_sym.id) {
-            Some(has_instance_method) =>
+          let has_instance_method = get_symbol_method(r, has_instance_sym.id)
+          match has_instance_method {
+            Some(method) =>
               // Call [Symbol.hasInstance](l) and convert result to boolean
-              match has_instance_method {
+              match method {
                 Object(method_data) =>
                   match method_data.callable {
                     Some(_) => {
-                      let result = self.call_value(has_instance_method, r, [l], loc)
+                      let result = self.call_value(method, r, [l], loc)
                       Bool(is_truthy(result))
                     }
                     None =>
-                      // Symbol.hasInstance exists but is not callable, fall through to prototype chain
-                      instanceof_prototype_chain(l, r_data)
+                      // Symbol.hasInstance exists but is not callable - TypeError per spec
+                      raise JsException(
+                        String_("TypeError: Symbol.hasInstance is not a function"),
+                      )
                   }
                 _ =>
-                  // Symbol.hasInstance is not an object, fall through to prototype chain
-                  instanceof_prototype_chain(l, r_data)
+                  // Symbol.hasInstance is not an object - TypeError per spec
+                  raise JsException(
+                    String_("TypeError: Symbol.hasInstance is not a function"),
+                  )
               }
-            None =>
-              // No Symbol.hasInstance, use prototype chain
-              instanceof_prototype_chain(l, r_data)
+            None => {
+              // No Symbol.hasInstance found, use OrdinaryHasInstance
+              // Step 2: Check if RHS is callable (required for OrdinaryHasInstance)
+              match r_data.callable {
+                None =>
+                  raise JsException(
+                    String_(
+                      "TypeError: Right-hand side of 'instanceof' is not callable",
+                    ),
+                  )
+                Some(_) => {
+                  // Step 3: Get prototype property and walk LHS prototype chain
+                  let target_proto = match r_data.properties.get("prototype") {
+                    Some(proto) =>
+                      match proto {
+                        Object(_) => proto
+                        _ =>
+                          raise JsException(
+                            String_(
+                              "TypeError: Function has non-object prototype in instanceof check",
+                            ),
+                          )
+                      }
+                    None =>
+                      raise JsException(
+                        String_(
+                          "TypeError: Function has non-object prototype in instanceof check",
+                        ),
+                      )
+                  }
+                  instanceof_prototype_chain(l, target_proto)
+                }
+              }
+            }
           }
         }
         _ =>
@@ -1762,15 +1798,53 @@ fn eval_binary_op(
 }
 
 ///|
-/// Helper for instanceof: walk prototype chain to check if l's prototype chain includes r's prototype
-fn instanceof_prototype_chain(l : Value, r_data : ObjectData) -> Value {
-  let target_proto = match r_data.properties.get("prototype") {
-    Some(v) => v
-    None => Null
+/// GetMethod for symbol keys - walks prototype chain to find a symbol-keyed method (spec 7.3.9)
+fn get_symbol_method(obj : Value, symbol_id : Int) -> Value? {
+  let mut current = obj
+  while true {
+    match current {
+      Object(data) =>
+        match data.symbol_properties.get(symbol_id) {
+          Some(val) =>
+            match val {
+              Null | Undefined => return None
+              _ => return Some(val)
+            }
+          None => current = data.prototype
+        }
+      _ => return None
+    }
   }
+  None
+}
+
+///|
+/// Helper for instanceof: walk prototype chain to check if l's prototype chain includes target_proto
+fn instanceof_prototype_chain(l : Value, target_proto : Value) -> Value {
   match l {
     Object(l_data) => {
       let mut current = l_data.prototype
+      let mut found = false
+      while true {
+        match current {
+          Null | Undefined => break
+          _ =>
+            if strict_equal(current, target_proto) {
+              found = true
+              break
+            } else {
+              match current {
+                Object(data) => current = data.prototype
+                _ => break
+              }
+            }
+        }
+      }
+      Bool(found)
+    }
+    Array(arr_data) => {
+      // Arrays also have prototype chain
+      let mut current = arr_data.prototype
       let mut found = false
       while true {
         match current {
