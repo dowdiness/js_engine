@@ -383,7 +383,7 @@ fn Interpreter::exec_stmt(
       let next_method = match iterator {
         Object(iter_data) =>
           match iter_data.properties.get("next") {
-            Some(method) => method
+            Some(next_fn) => next_fn
             None =>
               raise JsException(
                 String_("TypeError: Iterator result has no 'next' method"),
@@ -1976,7 +1976,7 @@ fn Interpreter::spread_iterable(
   let next_method = match iterator {
     Object(iter_data) =>
       match iter_data.properties.get("next") {
-        Some(method) => method
+        Some(next_fn) => next_fn
         None => {
           result.push(val)
           return result

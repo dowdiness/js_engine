@@ -547,7 +547,7 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
 
 ///|
 /// Set up iterator protocol on Array and String prototypes
-fn setup_iterator_protocol(env : Environment) -> Unit {
+fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
   let iterator_sym = get_iterator_symbol()
 
   // Helper to create an array iterator object
@@ -643,96 +643,10 @@ fn setup_iterator_protocol(env : Environment) -> Unit {
     iter_obj
   }
 
-  // Helper to create a string iterator object
-  fn make_string_iterator(s : String) -> Value {
-    let chars = s.to_array()
-    let index_ref : Ref[Int] = { val: 0 }
-
-    let next_method = Object({
-      properties: {},
-      symbol_properties: {},
-      prototype: Null,
-      callable: Some(
-        NativeCallable("next", fn(_args) {
-          let idx = index_ref.val
-          if idx < chars.length() {
-            let buf = StringBuilder::new()
-            buf.write_char(chars[idx])
-            let value = String_(buf.to_string())
-            index_ref.val = idx + 1
-            let result_props : Map[String, Value] = {}
-            result_props["value"] = value
-            result_props["done"] = Bool(false)
-            Object({
-              properties: result_props,
-              symbol_properties: {},
-              prototype: Null,
-              callable: None,
-              class_name: "Object",
-              descriptors: {},
-              symbol_descriptors: {},
-              extensible: true,
-            })
-          } else {
-            let result_props : Map[String, Value] = {}
-            result_props["value"] = Undefined
-            result_props["done"] = Bool(true)
-            Object({
-              properties: result_props,
-              symbol_properties: {},
-              prototype: Null,
-              callable: None,
-              class_name: "Object",
-              descriptors: {},
-              symbol_descriptors: {},
-              extensible: true,
-            })
-          }
-        }),
-      ),
-      class_name: "Function",
-      descriptors: {},
-      symbol_descriptors: {},
-      extensible: true,
-    })
-
-    let iter_props : Map[String, Value] = {}
-    iter_props["next"] = next_method
-
-    let iter_obj = Object({
-      properties: iter_props,
-      symbol_properties: {},
-      prototype: Null,
-      callable: None,
-      class_name: "String Iterator",
-      descriptors: {},
-      symbol_descriptors: {},
-      extensible: true,
-    })
-
-    // Add [Symbol.iterator] that returns the iterator itself
-    match iter_obj {
-      Object(data) => data.symbol_properties[iterator_sym.id] = Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          MethodCallable("[Symbol.iterator]", fn(this_val, _args) { this_val }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      })
-      _ => ()
-    }
-
-    iter_obj
-  }
-
   // Get Array constructor and add Symbol.iterator to its prototype
-  match env.get("Array") {
-    Some(Object(array_ctor)) =>
+  let array_val = env.get("Array")
+  match array_val {
+    Object(array_ctor) =>
       match array_ctor.properties.get("prototype") {
         Some(Object(proto_data)) => {
           // Add [Symbol.iterator] method that returns an array iterator
