@@ -555,11 +555,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
               acc = args[1]
             } else {
               if arr.elements.length() == 0 {
-                raise JsException(
-                  String_(
-                    "TypeError: Reduce of empty array with no initial value",
-                  ),
-                )
+                raise JsTypeError("Reduce of empty array with no initial value")
               }
               acc = arr.elements[0]
               start = 1
@@ -598,11 +594,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
               acc = args[1]
             } else {
               if arr.elements.length() == 0 {
-                raise JsException(
-                  String_(
-                    "TypeError: Reduce of empty array with no initial value",
-                  ),
-                )
+                raise JsTypeError("Reduce of empty array with no initial value")
               }
               acc = arr.elements[start]
               start = start - 1
@@ -975,7 +967,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
         let len = arr.elements.length()
         let actual_idx = if idx < 0 { len + idx } else { idx }
         if actual_idx < 0 || actual_idx >= len {
-          raise JsException(String_("RangeError: Invalid index"))
+          raise JsRangeError("Invalid index")
         }
         let result : Array[Value] = []
         for i = 0; i < len; i = i + 1 {

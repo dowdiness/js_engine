@@ -242,10 +242,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                   match data.descriptors.get(prop_name) {
                     Some(existing) =>
                       if not(existing.configurable) {
-                        raise JsException(
-                          String_(
-                            "TypeError: Cannot redefine property: \{prop_name}",
-                          ),
+                        raise JsTypeError(
+                          "Cannot redefine property: \{prop_name}",
                         )
                       }
                     None => ()
@@ -469,24 +467,24 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                       let value = pair.elements[1]
                       properties[key] = value
                     } else {
-                      raise JsException(String_("TypeError: Iterator value is not an entry object"))
+                      raise JsTypeError("Iterator value is not an entry object")
                     }
                   Object(obj) => {
                     // Object with numeric indices 0 and 1
                     let key = match obj.properties.get("0") {
                       Some(v) => v.to_string()
-                      None => raise JsException(String_("TypeError: Iterator value is not an entry object"))
+                      None => raise JsTypeError("Iterator value is not an entry object")
                     }
                     let value = match obj.properties.get("1") {
                       Some(v) => v
-                      None => raise JsException(String_("TypeError: Iterator value is not an entry object"))
+                      None => raise JsTypeError("Iterator value is not an entry object")
                     }
                     properties[key] = value
                   }
-                  _ => raise JsException(String_("TypeError: Iterator value is not an entry object"))
+                  _ => raise JsTypeError("Iterator value is not an entry object")
                 }
               }
-            _ => raise JsException(String_("TypeError: Object.fromEntries requires an iterable argument"))
+            _ => raise JsTypeError("Object.fromEntries requires an iterable argument")
           }
           Object({
             properties,
@@ -534,10 +532,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           match proto {
             Object(_) | Null => ()
             _ =>
-              raise JsException(
-                String_(
-                  "TypeError: Object prototype may only be an Object or null",
-                ),
+              raise JsTypeError(
+                "Object prototype may only be an Object or null",
               )
           }
           obj
@@ -629,7 +625,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Number(arr.elements.length().to_double())
         }
-        _ => raise JsException(String_("TypeError: push called on non-array"))
+        _ => raise JsTypeError("push called on non-array")
       }
     })),
     class_name: "Function",
@@ -651,7 +647,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             arr.elements.pop() |> Option::unwrap
           }
         }
-        _ => raise JsException(String_("TypeError: pop called on non-array"))
+        _ => raise JsTypeError("pop called on non-array")
       }
     })),
     class_name: "Function",
@@ -683,7 +679,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           first
         }
-        _ => raise JsException(String_("TypeError: shift called on non-array"))
+        _ => raise JsTypeError("shift called on non-array")
       }
     })),
     class_name: "Function",
@@ -714,7 +710,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Number(arr.elements.length().to_double())
         }
-        _ => raise JsException(String_("TypeError: unshift called on non-array"))
+        _ => raise JsTypeError("unshift called on non-array")
       }
     })),
     class_name: "Function",
@@ -746,7 +742,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           })
           String_(parts.join(sep))
         }
-        _ => raise JsException(String_("TypeError: join called on non-array"))
+        _ => raise JsTypeError("join called on non-array")
       }
     })),
     class_name: "Function",
@@ -781,7 +777,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Number(-1.0)
         }
-        _ => raise JsException(String_("TypeError: indexOf called on non-array"))
+        _ => raise JsTypeError("indexOf called on non-array")
       }
     })),
     class_name: "Function",
@@ -817,7 +813,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Number(-1.0)
         }
-        _ => raise JsException(String_("TypeError: lastIndexOf called on non-array"))
+        _ => raise JsTypeError("lastIndexOf called on non-array")
       }
     })),
     class_name: "Function",
@@ -841,7 +837,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Bool(false)
         }
-        _ => raise JsException(String_("TypeError: includes called on non-array"))
+        _ => raise JsTypeError("includes called on non-array")
       }
     })),
     class_name: "Function",
@@ -886,7 +882,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Array({ elements: result })
         }
-        _ => raise JsException(String_("TypeError: slice called on non-array"))
+        _ => raise JsTypeError("slice called on non-array")
       }
     })),
     class_name: "Function",
@@ -917,7 +913,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Array({ elements: result })
         }
-        _ => raise JsException(String_("TypeError: concat called on non-array"))
+        _ => raise JsTypeError("concat called on non-array")
       }
     })),
     class_name: "Function",
@@ -936,7 +932,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           arr.elements.rev_in_place()
           Array(arr)
         }
-        _ => raise JsException(String_("TypeError: reverse called on non-array"))
+        _ => raise JsTypeError("reverse called on non-array")
       }
     })),
     class_name: "Function",
@@ -965,7 +961,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Array(arr)
         }
-        _ => raise JsException(String_("TypeError: fill called on non-array"))
+        _ => raise JsTypeError("fill called on non-array")
       }
     })),
     class_name: "Function",
@@ -989,7 +985,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           })
           String_(parts.join(","))
         }
-        _ => raise JsException(String_("TypeError: toString called on non-array"))
+        _ => raise JsTypeError("toString called on non-array")
       }
     })),
     class_name: "Function",
@@ -1014,7 +1010,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             Undefined
           }
         }
-        _ => raise JsException(String_("TypeError: at called on non-array"))
+        _ => raise JsTypeError("at called on non-array")
       }
     })),
     class_name: "Function",
@@ -1038,7 +1034,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           })
           String_(parts.join(","))
         }
-        _ => raise JsException(String_("TypeError: toLocaleString called on non-array"))
+        _ => raise JsTypeError("toLocaleString called on non-array")
       }
     })),
     class_name: "Function",
@@ -1068,7 +1064,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Undefined
         }
-        _ => raise JsException(String_("TypeError: forEach called on non-array"))
+        _ => raise JsTypeError("forEach called on non-array")
       }
     })),
     class_name: "Function",
@@ -1099,7 +1095,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Array({ elements: result })
         }
-        _ => raise JsException(String_("TypeError: map called on non-array"))
+        _ => raise JsTypeError("map called on non-array")
       }
     })),
     class_name: "Function",
@@ -1132,7 +1128,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Array({ elements: result })
         }
-        _ => raise JsException(String_("TypeError: filter called on non-array"))
+        _ => raise JsTypeError("filter called on non-array")
       }
     })),
     class_name: "Function",
@@ -1156,7 +1152,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             acc = args[1]
           } else {
             if arr.elements.length() == 0 {
-              raise JsException(String_("TypeError: Reduce of empty array with no initial value"))
+              raise JsTypeError("Reduce of empty array with no initial value")
             }
             acc = arr.elements[0]
             start = 1
@@ -1171,7 +1167,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           acc
         }
-        _ => raise JsException(String_("TypeError: reduce called on non-array"))
+        _ => raise JsTypeError("reduce called on non-array")
       }
     })),
     class_name: "Function",
@@ -1195,7 +1191,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             acc = args[1]
           } else {
             if arr.elements.length() == 0 {
-              raise JsException(String_("TypeError: Reduce of empty array with no initial value"))
+              raise JsTypeError("Reduce of empty array with no initial value")
             }
             acc = arr.elements[start]
             start = start - 1
@@ -1210,7 +1206,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           acc
         }
-        _ => raise JsException(String_("TypeError: reduceRight called on non-array"))
+        _ => raise JsTypeError("reduceRight called on non-array")
       }
     })),
     class_name: "Function",
@@ -1242,7 +1238,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Undefined
         }
-        _ => raise JsException(String_("TypeError: find called on non-array"))
+        _ => raise JsTypeError("find called on non-array")
       }
     })),
     class_name: "Function",
@@ -1274,7 +1270,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Number(-1.0)
         }
-        _ => raise JsException(String_("TypeError: findIndex called on non-array"))
+        _ => raise JsTypeError("findIndex called on non-array")
       }
     })),
     class_name: "Function",
@@ -1306,7 +1302,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Undefined
         }
-        _ => raise JsException(String_("TypeError: findLast called on non-array"))
+        _ => raise JsTypeError("findLast called on non-array")
       }
     })),
     class_name: "Function",
@@ -1338,7 +1334,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Number(-1.0)
         }
-        _ => raise JsException(String_("TypeError: findLastIndex called on non-array"))
+        _ => raise JsTypeError("findLastIndex called on non-array")
       }
     })),
     class_name: "Function",
@@ -1370,7 +1366,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Bool(true)
         }
-        _ => raise JsException(String_("TypeError: every called on non-array"))
+        _ => raise JsTypeError("every called on non-array")
       }
     })),
     class_name: "Function",
@@ -1402,7 +1398,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Bool(false)
         }
-        _ => raise JsException(String_("TypeError: some called on non-array"))
+        _ => raise JsTypeError("some called on non-array")
       }
     })),
     class_name: "Function",
@@ -1458,7 +1454,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Array(arr)
         }
-        _ => raise JsException(String_("TypeError: sort called on non-array"))
+        _ => raise JsTypeError("sort called on non-array")
       }
     })),
     class_name: "Function",
@@ -1479,7 +1475,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           flatten_array_val(arr.elements, depth, result)
           Array({ elements: result })
         }
-        _ => raise JsException(String_("TypeError: flat called on non-array"))
+        _ => raise JsTypeError("flat called on non-array")
       }
     })),
     class_name: "Function",
@@ -1516,7 +1512,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Array({ elements: result })
         }
-        _ => raise JsException(String_("TypeError: flatMap called on non-array"))
+        _ => raise JsTypeError("flatMap called on non-array")
       }
     })),
     class_name: "Function",
@@ -1568,7 +1564,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Array({ elements: removed })
         }
-        _ => raise JsException(String_("TypeError: splice called on non-array"))
+        _ => raise JsTypeError("splice called on non-array")
       }
     })),
     class_name: "Function",
@@ -1611,7 +1607,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Array(arr)
         }
-        _ => raise JsException(String_("TypeError: copyWithin called on non-array"))
+        _ => raise JsTypeError("copyWithin called on non-array")
       }
     })),
     class_name: "Function",
@@ -1633,7 +1629,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Array({ elements: result })
         }
-        _ => raise JsException(String_("TypeError: entries called on non-array"))
+        _ => raise JsTypeError("entries called on non-array")
       }
     })),
     class_name: "Function",
@@ -1655,7 +1651,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Array({ elements: result })
         }
-        _ => raise JsException(String_("TypeError: keys called on non-array"))
+        _ => raise JsTypeError("keys called on non-array")
       }
     })),
     class_name: "Function",
@@ -1678,7 +1674,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Array({ elements: result })
         }
-        _ => raise JsException(String_("TypeError: values called on non-array"))
+        _ => raise JsTypeError("values called on non-array")
       }
     })),
     class_name: "Function",
@@ -1700,7 +1696,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Array({ elements: result })
         }
-        _ => raise JsException(String_("TypeError: toReversed called on non-array"))
+        _ => raise JsTypeError("toReversed called on non-array")
       }
     })),
     class_name: "Function",
@@ -1760,7 +1756,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Array({ elements: result })
         }
-        _ => raise JsException(String_("TypeError: toSorted called on non-array"))
+        _ => raise JsTypeError("toSorted called on non-array")
       }
     })),
     class_name: "Function",
@@ -1798,7 +1794,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Array({ elements: result })
         }
-        _ => raise JsException(String_("TypeError: toSpliced called on non-array"))
+        _ => raise JsTypeError("toSpliced called on non-array")
       }
     })),
     class_name: "Function",
@@ -1819,7 +1815,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           let len = arr.elements.length()
           let actual_idx = if idx < 0 { len + idx } else { idx }
           if actual_idx < 0 || actual_idx >= len {
-            raise JsException(String_("RangeError: Invalid index"))
+            raise JsRangeError("Invalid index")
           }
           let result : Array[Value] = []
           for i = 0; i < len; i = i + 1 {
@@ -1831,7 +1827,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           Array({ elements: result })
         }
-        _ => raise JsException(String_("TypeError: with called on non-array"))
+        _ => raise JsTypeError("with called on non-array")
       }
     })),
     class_name: "Function",
@@ -1955,9 +1951,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 // present. This is an intentional simplification.
                 let len = n.to_int()
                 if len < 0 || n != len.to_double() {
-                  raise JsException(
-                    String_("RangeError: Invalid array length"),
-                  )
+                  raise JsRangeError("Invalid array length")
                 }
                 let elements : Array[Value] = []
                 for _i = 0; _i < len; _i = _i + 1 {

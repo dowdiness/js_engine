@@ -341,9 +341,7 @@ pub fn to_number(val : Value) -> Double raise Error {
     Null => 0.0
     Undefined | Object(_) | Array(_) => 0.0 / 0.0
     Symbol(_) =>
-      raise JsException(
-        String_("TypeError: Cannot convert a Symbol value to a number"),
-      )
+      raise JsTypeError("Cannot convert a Symbol value to a number")
   }
 }
 

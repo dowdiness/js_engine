@@ -689,10 +689,8 @@ pub fn get_string_method(s : String, prop : String) -> Value {
                 _ => ""
               }
               if not(flags.to_array().contains('g')) {
-                raise JsException(
-                  String_(
-                    "TypeError: replaceAll must be called with a global RegExp",
-                  ),
+                raise JsTypeError(
+                  "replaceAll must be called with a global RegExp",
                 )
               }
               let pattern = match data.properties.get("source") {

@@ -97,9 +97,7 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
         String_(s) => s
         Number(n) => return Number(n)
         Symbol(_) =>
-          raise JsException(
-            String_("TypeError: Cannot convert a Symbol value to a string"),
-          )
+          raise JsTypeError("Cannot convert a Symbol value to a string")
         Bool(_) | Null | Undefined | Object(_) | Array(_) =>
           return Number(0.0 / 0.0)
       }
@@ -267,7 +265,7 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
       MethodCallable("toString", fn(this_val, _args) {
         match this_val {
           Bool(b) => String_(b.to_string())
-          _ => raise JsException(String_("TypeError: Boolean.prototype.toString requires a Boolean"))
+          _ => raise JsTypeError("Boolean.prototype.toString requires a Boolean")
         }
       }),
     ),
@@ -284,7 +282,7 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
       MethodCallable("valueOf", fn(this_val, _args) {
         match this_val {
           Bool(b) => Bool(b)
-          _ => raise JsException(String_("TypeError: Boolean.prototype.valueOf requires a Boolean"))
+          _ => raise JsTypeError("Boolean.prototype.valueOf requires a Boolean")
         }
       }),
     ),
@@ -434,8 +432,8 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
               None => String_("Symbol()")
             }
           _ =>
-            raise JsException(
-              String_("TypeError: Symbol.prototype.toString requires a Symbol"),
+            raise JsTypeError(
+              "Symbol.prototype.toString requires a Symbol",
             )
         }
       }),
@@ -454,8 +452,8 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
         match this_val {
           Symbol(_) => this_val
           _ =>
-            raise JsException(
-              String_("TypeError: Symbol.prototype.valueOf requires a Symbol"),
+            raise JsTypeError(
+              "Symbol.prototype.valueOf requires a Symbol",
             )
         }
       }),
@@ -520,7 +518,7 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
           None => Undefined
         }
       _ =>
-        raise JsException(String_("TypeError: Symbol.keyFor requires a symbol"))
+        raise JsTypeError("Symbol.keyFor requires a symbol")
     }
   })
 
@@ -666,10 +664,8 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
                 match this_val {
                   Array(arr) => make_array_iterator(arr)
                   _ =>
-                    raise JsException(
-                      String_(
-                        "TypeError: Array.prototype[Symbol.iterator] called on non-array",
-                      ),
+                    raise JsTypeError(
+                      "Array.prototype[Symbol.iterator] called on non-array",
                     )
                 }
               }),
@@ -690,8 +686,8 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
                 match this_val {
                   Array(arr) => make_array_iterator(arr)
                   _ =>
-                    raise JsException(
-                      String_("TypeError: Array.prototype.values called on non-array"),
+                    raise JsTypeError(
+                      "Array.prototype.values called on non-array",
                     )
                 }
               }),
@@ -797,8 +793,8 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
                     iter_obj
                   }
                   _ =>
-                    raise JsException(
-                      String_("TypeError: Array.prototype.keys called on non-array"),
+                    raise JsTypeError(
+                      "Array.prototype.keys called on non-array",
                     )
                 }
               }),
@@ -906,10 +902,8 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
                     iter_obj
                   }
                   _ =>
-                    raise JsException(
-                      String_(
-                        "TypeError: Array.prototype.entries called on non-array",
-                      ),
+                    raise JsTypeError(
+                      "Array.prototype.entries called on non-array",
                     )
                 }
               }),
@@ -1330,10 +1324,8 @@ fn setup_number_builtins(env : Environment) -> Unit {
           0
         }
         if digits < 0 || digits > 100 {
-          raise JsException(
-            String_(
-              "RangeError: toFixed() digits argument must be between 0 and 100",
-            ),
+          raise JsRangeError(
+            "toFixed() digits argument must be between 0 and 100",
           )
         }
         if n.is_nan() {
@@ -1394,8 +1386,8 @@ fn setup_number_builtins(env : Environment) -> Unit {
           10
         }
         if radix < 2 || radix > 36 {
-          raise JsException(
-            String_("RangeError: toString() radix must be between 2 and 36"),
+          raise JsRangeError(
+            "toString() radix must be between 2 and 36",
           )
         }
         if n.is_nan() {
@@ -1468,10 +1460,8 @@ fn setup_number_builtins(env : Environment) -> Unit {
         }
         let precision = to_number(args[0]).to_int()
         if precision < 1 || precision > 100 {
-          raise JsException(
-            String_(
-              "RangeError: toPrecision() argument must be between 1 and 100",
-            ),
+          raise JsRangeError(
+            "toPrecision() argument must be between 1 and 100",
           )
         }
         if n.is_nan() {
@@ -1602,10 +1592,8 @@ fn setup_number_builtins(env : Environment) -> Unit {
               _ => {
                 let frac_digits = to_number(args[0]).to_int()
                 if frac_digits < 0 || frac_digits > 100 {
-                  raise JsException(
-                    String_(
-                      "RangeError: toExponential() argument must be between 0 and 100",
-                    ),
+                  raise JsRangeError(
+                    "toExponential() argument must be between 0 and 100",
                   )
                 }
                 if frac_digits > 0 {
@@ -1635,10 +1623,8 @@ fn setup_number_builtins(env : Environment) -> Unit {
             _ => {
               let frac_digits = to_number(args[0]).to_int()
               if frac_digits < 0 || frac_digits > 100 {
-                raise JsException(
-                  String_(
-                    "RangeError: toExponential() argument must be between 0 and 100",
-                  ),
+                raise JsRangeError(
+                  "toExponential() argument must be between 0 and 100",
                 )
               }
               // Round mantissa and check for overflow
@@ -1823,7 +1809,7 @@ fn json_parse(input : String) -> Value raise Error {
   letrec parse_value = fn () -> Value raise Error {
     skip_ws()
     if pos[0] >= len {
-      raise JsException(String_("SyntaxError: Unexpected end of JSON input"))
+      raise JsSyntaxError("Unexpected end of JSON input")
     }
     let c = chars[pos[0]]
     if c == '"' {
@@ -1840,8 +1826,8 @@ fn json_parse(input : String) -> Value raise Error {
         pos[0] += 4
         Bool(true)
       } else {
-        raise JsException(
-          String_("SyntaxError: Unexpected token in JSON at position \{pos[0]}"),
+        raise JsSyntaxError(
+          "Unexpected token in JSON at position \{pos[0]}",
         )
       }
     } else if c == 'f' {
@@ -1853,8 +1839,8 @@ fn json_parse(input : String) -> Value raise Error {
         pos[0] += 5
         Bool(false)
       } else {
-        raise JsException(
-          String_("SyntaxError: Unexpected token in JSON at position \{pos[0]}"),
+        raise JsSyntaxError(
+          "Unexpected token in JSON at position \{pos[0]}",
         )
       }
     } else if c == 'n' {
@@ -1865,15 +1851,15 @@ fn json_parse(input : String) -> Value raise Error {
         pos[0] += 4
         Null
       } else {
-        raise JsException(
-          String_("SyntaxError: Unexpected token in JSON at position \{pos[0]}"),
+        raise JsSyntaxError(
+          "Unexpected token in JSON at position \{pos[0]}",
         )
       }
     } else if c == '-' || (c >= '0' && c <= '9') {
       parse_number()
     } else {
-      raise JsException(
-        String_("SyntaxError: Unexpected token in JSON at position \{pos[0]}"),
+      raise JsSyntaxError(
+        "Unexpected token in JSON at position \{pos[0]}",
       )
     }
   }
@@ -1890,8 +1876,8 @@ fn json_parse(input : String) -> Value raise Error {
       if ch == '\\' {
         pos[0] += 1
         if pos[0] >= len {
-          raise JsException(
-            String_("SyntaxError: Unexpected end of JSON input"),
+          raise JsSyntaxError(
+            "Unexpected end of JSON input",
           )
         }
         let esc = chars[pos[0]]
@@ -1912,34 +1898,34 @@ fn json_parse(input : String) -> Value raise Error {
                 let hex_c = chars[pos[0]]
                 let d = char_to_digit(hex_c, 16)
                 if d < 0 {
-                  raise JsException(
-                    String_("SyntaxError: Invalid unicode escape in JSON"),
+                  raise JsSyntaxError(
+                    "Invalid unicode escape in JSON",
                   )
                 }
                 code = code * 16 + d
               }
               buf.write_char(code.unsafe_to_char())
             } else {
-              raise JsException(
-                String_("SyntaxError: Invalid unicode escape in JSON"),
+              raise JsSyntaxError(
+                "Invalid unicode escape in JSON",
               )
             }
           _ =>
-            raise JsException(
-              String_("SyntaxError: Invalid escape character in JSON"),
+            raise JsSyntaxError(
+              "Invalid escape character in JSON",
             )
         }
       } else {
         if ch.to_int() < 32 {
-          raise JsException(
-            String_("SyntaxError: Unexpected control character in JSON"),
+          raise JsSyntaxError(
+            "Unexpected control character in JSON",
           )
         }
         buf.write_char(ch)
       }
       pos[0] += 1
     }
-    raise JsException(String_("SyntaxError: Unterminated string in JSON"))
+    raise JsSyntaxError("Unterminated string in JSON")
   }
 
   and parse_number = fn () -> Value raise Error {
@@ -1970,7 +1956,7 @@ fn json_parse(input : String) -> Value raise Error {
       buf.write_char(chars[i])
     }
     let n = @strconv.parse_double(buf.to_string()) catch {
-      _ => raise JsException(String_("SyntaxError: Invalid number in JSON"))
+      _ => raise JsSyntaxError("Invalid number in JSON")
     }
     Number(n)
   }
@@ -1995,10 +1981,8 @@ fn json_parse(input : String) -> Value raise Error {
     while true {
       skip_ws()
       if pos[0] >= len || chars[pos[0]] != '"' {
-        raise JsException(
-          String_(
-            "SyntaxError: Expected property name in JSON at position \{pos[0]}",
-          ),
+        raise JsSyntaxError(
+          "Expected property name in JSON at position \{pos[0]}",
         )
       }
       let key = match parse_string() {
@@ -2007,8 +1991,8 @@ fn json_parse(input : String) -> Value raise Error {
       }
       skip_ws()
       if pos[0] >= len || chars[pos[0]] != ':' {
-        raise JsException(
-          String_("SyntaxError: Expected ':' in JSON at position \{pos[0]}"),
+        raise JsSyntaxError(
+          "Expected ':' in JSON at position \{pos[0]}",
         )
       }
       pos[0] += 1
@@ -2023,8 +2007,8 @@ fn json_parse(input : String) -> Value raise Error {
     }
     skip_ws()
     if pos[0] >= len || chars[pos[0]] != '}' {
-      raise JsException(
-        String_("SyntaxError: Expected '}' in JSON at position \{pos[0]}"),
+      raise JsSyntaxError(
+        "Expected '}' in JSON at position \{pos[0]}",
       )
     }
     pos[0] += 1
@@ -2060,8 +2044,8 @@ fn json_parse(input : String) -> Value raise Error {
     }
     skip_ws()
     if pos[0] >= len || chars[pos[0]] != ']' {
-      raise JsException(
-        String_("SyntaxError: Expected ']' in JSON at position \{pos[0]}"),
+      raise JsSyntaxError(
+        "Expected ']' in JSON at position \{pos[0]}",
       )
     }
     pos[0] += 1
@@ -2071,10 +2055,8 @@ fn json_parse(input : String) -> Value raise Error {
   let result = parse_value()
   skip_ws()
   if pos[0] < len {
-    raise JsException(
-      String_(
-        "SyntaxError: Unexpected non-whitespace character after JSON at position \{pos[0]}",
-      ),
+    raise JsSyntaxError(
+      "Unexpected non-whitespace character after JSON at position \{pos[0]}",
     )
   }
   result
@@ -2105,8 +2087,8 @@ fn json_stringify_value(
         match s {
           Array(sd) =>
             if physical_equal(sd, data) {
-              raise JsException(
-                String_("TypeError: Converting circular structure to JSON"),
+              raise JsTypeError(
+                "Converting circular structure to JSON",
               )
             }
           _ => ()
@@ -2182,8 +2164,8 @@ fn json_stringify_value(
             match s {
               Object(sd) =>
                 if physical_equal(sd, data) {
-                  raise JsException(
-                    String_("TypeError: Converting circular structure to JSON"),
+                  raise JsTypeError(
+                    "Converting circular structure to JSON",
                   )
                 }
               _ => ()
@@ -2260,10 +2242,8 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
               0
             }
             if digits < 0 || digits > 100 {
-              raise JsException(
-                String_(
-                  "RangeError: toFixed() digits argument must be between 0 and 100",
-                ),
+              raise JsRangeError(
+                "toFixed() digits argument must be between 0 and 100",
               )
             }
             if n.is_nan() {
@@ -2323,8 +2303,8 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
               10
             }
             if radix < 2 || radix > 36 {
-              raise JsException(
-                String_("RangeError: toString() radix must be between 2 and 36"),
+              raise JsRangeError(
+                "toString() radix must be between 2 and 36",
               )
             }
             if n.is_nan() {
@@ -2397,10 +2377,8 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
             }
             let precision = to_number(args[0]).to_int()
             if precision < 1 || precision > 100 {
-              raise JsException(
-                String_(
-                  "RangeError: toPrecision() argument must be between 1 and 100",
-                ),
+              raise JsRangeError(
+                "toPrecision() argument must be between 1 and 100",
               )
             }
             if n.is_nan() {
@@ -2524,10 +2502,8 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
                   _ => {
                     let frac_digits = to_number(args[0]).to_int()
                     if frac_digits < 0 || frac_digits > 100 {
-                      raise JsException(
-                        String_(
-                          "RangeError: toExponential() argument must be between 0 and 100",
-                        ),
+                      raise JsRangeError(
+                        "toExponential() argument must be between 0 and 100",
                       )
                     }
                     if frac_digits > 0 {
@@ -2555,10 +2531,8 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
                 _ => {
                   let frac_digits = to_number(args[0]).to_int()
                   if frac_digits < 0 || frac_digits > 100 {
-                    raise JsException(
-                      String_(
-                        "RangeError: toExponential() argument must be between 0 and 100",
-                      ),
+                    raise JsRangeError(
+                      "toExponential() argument must be between 0 and 100",
                     )
                   }
                   // Round mantissa and check for overflow
@@ -2736,17 +2710,13 @@ fn setup_function_builtins(env : Environment) -> Unit {
               Some(ClassConstructor(name, _, _, _, _, _)) =>
                 String_("class " + name + " { [native code] }")
               None =>
-                raise JsException(
-                  String_(
-                    "TypeError: Function.prototype.toString requires a function",
-                  ),
+                raise JsTypeError(
+                  "Function.prototype.toString requires a function",
                 )
             }
           _ =>
-            raise JsException(
-              String_(
-                "TypeError: Function.prototype.toString requires a function",
-              ),
+            raise JsTypeError(
+              "Function.prototype.toString requires a function",
             )
         }
       }),
@@ -2976,29 +2946,29 @@ fn uri_decode(s : String, preserve_reserved : Bool) -> String raise Error {
     if chars[i] == '%' {
       // Check for valid percent-encoded sequence
       if i + 2 >= len {
-        raise JsException(String_("URIError: URI malformed"))
+        raise JsURIError("URI malformed")
       }
       let h1 = hex_char_value(chars[i + 1])
       let h2 = hex_char_value(chars[i + 2])
       if h1 < 0 || h2 < 0 {
-        raise JsException(String_("URIError: URI malformed"))
+        raise JsURIError("URI malformed")
       }
       let byte1 = (h1 << 4) | h2
       // Check for multi-byte UTF-8 sequences
       if byte1 >= 0xF0 {
         // 4-byte sequence
         if i + 11 >= len {
-          raise JsException(String_("URIError: URI malformed"))
+          raise JsURIError("URI malformed")
         }
         let b2 = decode_percent_byte(chars, i + 3)
         let b3 = decode_percent_byte(chars, i + 6)
         let b4 = decode_percent_byte(chars, i + 9)
         if b2 < 0 || b3 < 0 || b4 < 0 {
-          raise JsException(String_("URIError: URI malformed"))
+          raise JsURIError("URI malformed")
         }
         // Validate continuation bytes (must be 10xxxxxx)
         if (b2 & 0xC0) != 0x80 || (b3 & 0xC0) != 0x80 || (b4 & 0xC0) != 0x80 {
-          raise JsException(String_("URIError: URI malformed"))
+          raise JsURIError("URI malformed")
         }
         let cp = ((byte1 & 0x07) << 18) | ((b2 & 0x3F) << 12) | ((b3 & 0x3F) << 6) | (b4 & 0x3F)
         buf.write_char(cp.unsafe_to_char())
@@ -3007,16 +2977,16 @@ fn uri_decode(s : String, preserve_reserved : Bool) -> String raise Error {
       } else if byte1 >= 0xE0 {
         // 3-byte sequence
         if i + 8 >= len {
-          raise JsException(String_("URIError: URI malformed"))
+          raise JsURIError("URI malformed")
         }
         let b2 = decode_percent_byte(chars, i + 3)
         let b3 = decode_percent_byte(chars, i + 6)
         if b2 < 0 || b3 < 0 {
-          raise JsException(String_("URIError: URI malformed"))
+          raise JsURIError("URI malformed")
         }
         // Validate continuation bytes
         if (b2 & 0xC0) != 0x80 || (b3 & 0xC0) != 0x80 {
-          raise JsException(String_("URIError: URI malformed"))
+          raise JsURIError("URI malformed")
         }
         let cp = ((byte1 & 0x0F) << 12) | ((b2 & 0x3F) << 6) | (b3 & 0x3F)
         buf.write_char(cp.unsafe_to_char())
@@ -3025,15 +2995,15 @@ fn uri_decode(s : String, preserve_reserved : Bool) -> String raise Error {
       } else if byte1 >= 0xC0 {
         // 2-byte sequence
         if i + 5 >= len {
-          raise JsException(String_("URIError: URI malformed"))
+          raise JsURIError("URI malformed")
         }
         let b2 = decode_percent_byte(chars, i + 3)
         if b2 < 0 {
-          raise JsException(String_("URIError: URI malformed"))
+          raise JsURIError("URI malformed")
         }
         // Validate continuation byte
         if (b2 & 0xC0) != 0x80 {
-          raise JsException(String_("URIError: URI malformed"))
+          raise JsURIError("URI malformed")
         }
         let cp = ((byte1 & 0x1F) << 6) | (b2 & 0x3F)
         buf.write_char(cp.unsafe_to_char())
@@ -3041,7 +3011,7 @@ fn uri_decode(s : String, preserve_reserved : Bool) -> String raise Error {
         continue
       } else if byte1 >= 0x80 {
         // Invalid: continuation byte without lead byte
-        raise JsException(String_("URIError: URI malformed"))
+        raise JsURIError("URI malformed")
       }
       // Single byte (ASCII)
       let decoded_char = byte1.unsafe_to_char()
