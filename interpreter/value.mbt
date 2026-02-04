@@ -107,6 +107,19 @@ let global_symbol_registry : Map[String, SymbolData] = {}
 let symbol_registry_reverse : Map[Int, String] = {}
 
 ///|
+/// Well-known Symbol.iterator - stored globally for iterator protocol support
+pub let well_known_iterator_sym : Ref[SymbolData?] = { val: None }
+
+///|
+/// Get the well-known Symbol.iterator
+pub fn get_iterator_symbol() -> SymbolData {
+  match well_known_iterator_sym.val {
+    Some(sym) => sym
+    None => abort("Symbol.iterator not initialized")
+  }
+}
+
+///|
 pub(all) enum Value {
   Number(Double)
   String_(String)
@@ -359,4 +372,206 @@ pub fn type_of(val : Value) -> String {
     Array(_) => "object"
     Symbol(_) => "symbol"
   }
+}
+
+///|
+/// Create an array iterator object that iterates over array elements
+pub fn make_array_iterator_value(arr : ArrayData) -> Value {
+  let iterator_sym = get_iterator_symbol()
+  let index_ref : Ref[Int] = { val: 0 }
+
+  // Create the next method
+  let next_method = Object({
+    properties: {},
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      NativeCallable("next", fn(_args) {
+        let idx = index_ref.val
+        if idx < arr.elements.length() {
+          let value = arr.elements[idx]
+          index_ref.val = idx + 1
+          let result_props : Map[String, Value] = {}
+          result_props["value"] = value
+          result_props["done"] = Bool(false)
+          Object({
+            properties: result_props,
+            symbol_properties: {},
+            prototype: Null,
+            callable: None,
+            class_name: "Object",
+            descriptors: {},
+            symbol_descriptors: {},
+            extensible: true,
+          })
+        } else {
+          let result_props : Map[String, Value] = {}
+          result_props["value"] = Undefined
+          result_props["done"] = Bool(true)
+          Object({
+            properties: result_props,
+            symbol_properties: {},
+            prototype: Null,
+            callable: None,
+            class_name: "Object",
+            descriptors: {},
+            symbol_descriptors: {},
+            extensible: true,
+          })
+        }
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+
+  // Create the iterator object with next method
+  let iter_props : Map[String, Value] = {}
+  iter_props["next"] = next_method
+
+  // Create symbol properties map with Symbol.iterator
+  let iter_symbol_props : Map[Int, Value] = {}
+
+  let iter_obj = Object({
+    properties: iter_props,
+    symbol_properties: iter_symbol_props,
+    prototype: Null,
+    callable: None,
+    class_name: "Array Iterator",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+
+  // Add [Symbol.iterator] that returns the iterator itself
+  match iter_obj {
+    Object(data) => data.symbol_properties[iterator_sym.id] = Object({
+      properties: {},
+      symbol_properties: {},
+      prototype: Null,
+      callable: Some(
+        MethodCallable("[Symbol.iterator]", fn(this_val, _args) { this_val }),
+      ),
+      class_name: "Function",
+      descriptors: {},
+      symbol_descriptors: {},
+      extensible: true,
+    })
+    _ => ()
+  }
+
+  iter_obj
+}
+
+///|
+/// Create a string iterator object that iterates over string characters
+/// Handles Unicode surrogate pairs correctly per ES6 spec
+pub fn make_string_iterator_value(s : String) -> Value {
+  let iterator_sym = get_iterator_symbol()
+  let chars = s.to_array()
+  let index_ref : Ref[Int] = { val: 0 }
+
+  let next_method = Object({
+    properties: {},
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      NativeCallable("next", fn(_args) {
+        let idx = index_ref.val
+        if idx < chars.length() {
+          let buf = StringBuilder::new()
+          let c = chars[idx]
+          let code = c.to_int()
+
+          // Check if this is a high surrogate (0xD800-0xDBFF)
+          // and the next char is a low surrogate (0xDC00-0xDFFF)
+          if code >= 0xD800 && code <= 0xDBFF && idx + 1 < chars.length() {
+            let next_code = chars[idx + 1].to_int()
+            if next_code >= 0xDC00 && next_code <= 0xDFFF {
+              // This is a surrogate pair - yield both together
+              buf.write_char(c)
+              buf.write_char(chars[idx + 1])
+              index_ref.val = idx + 2
+            } else {
+              // High surrogate without valid low surrogate - yield as-is
+              buf.write_char(c)
+              index_ref.val = idx + 1
+            }
+          } else {
+            // Regular character or lone surrogate
+            buf.write_char(c)
+            index_ref.val = idx + 1
+          }
+
+          let value = String_(buf.to_string())
+          let result_props : Map[String, Value] = {}
+          result_props["value"] = value
+          result_props["done"] = Bool(false)
+          Object({
+            properties: result_props,
+            symbol_properties: {},
+            prototype: Null,
+            callable: None,
+            class_name: "Object",
+            descriptors: {},
+            symbol_descriptors: {},
+            extensible: true,
+          })
+        } else {
+          let result_props : Map[String, Value] = {}
+          result_props["value"] = Undefined
+          result_props["done"] = Bool(true)
+          Object({
+            properties: result_props,
+            symbol_properties: {},
+            prototype: Null,
+            callable: None,
+            class_name: "Object",
+            descriptors: {},
+            symbol_descriptors: {},
+            extensible: true,
+          })
+        }
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+
+  let iter_props : Map[String, Value] = {}
+  iter_props["next"] = next_method
+
+  let iter_obj = Object({
+    properties: iter_props,
+    symbol_properties: {},
+    prototype: Null,
+    callable: None,
+    class_name: "String Iterator",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+
+  // Add [Symbol.iterator] that returns the iterator itself
+  match iter_obj {
+    Object(data) => data.symbol_properties[iterator_sym.id] = Object({
+      properties: {},
+      symbol_properties: {},
+      prototype: Null,
+      callable: Some(
+        MethodCallable("[Symbol.iterator]", fn(this_val, _args) { this_val }),
+      ),
+      class_name: "Function",
+      descriptors: {},
+      symbol_descriptors: {},
+      extensible: true,
+    })
+    _ => ()
+  }
+
+  iter_obj
 }

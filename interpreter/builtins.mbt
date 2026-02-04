@@ -389,12 +389,22 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
 
   // Symbol constructor and well-known symbols
   setup_symbol_builtins(env)
+
+  // Set up iterator protocol on Array and String prototypes
+  // Use try/catch since setup_iterator_protocol can raise errors
+  try {
+    setup_iterator_protocol(env)
+  } catch {
+    _ => () // Ignore errors during initialization
+  }
 }
 
 ///|
 fn setup_symbol_builtins(env : Environment) -> Unit {
   // Create well-known symbols
   let iterator_sym = new_symbol(Some("Symbol.iterator"))
+  // Store globally for iterator protocol support
+  well_known_iterator_sym.val = Some(iterator_sym)
   let to_primitive_sym = new_symbol(Some("Symbol.toPrimitive"))
   let to_string_tag_sym = new_symbol(Some("Symbol.toStringTag"))
   let has_instance_sym = new_symbol(Some("Symbol.hasInstance"))
@@ -538,6 +548,385 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
       extensible: true,
     }),
   )
+}
+
+///|
+/// Set up iterator protocol on Array and String prototypes
+fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
+  let iterator_sym = get_iterator_symbol()
+
+  // Helper to create an array iterator object
+  // Array iterator returns { value, done } for each element
+  fn make_array_iterator(arr : ArrayData) -> Value {
+    // Create mutable index state using a Ref
+    let index_ref : Ref[Int] = { val: 0 }
+
+    // Create the iterator next method
+    let next_method = Object({
+      properties: {},
+      symbol_properties: {},
+      prototype: Null,
+      callable: Some(
+        NativeCallable("next", fn(_args) {
+          let idx = index_ref.val
+          if idx < arr.elements.length() {
+            let value = arr.elements[idx]
+            index_ref.val = idx + 1
+            // Return { value: element, done: false }
+            let result_props : Map[String, Value] = {}
+            result_props["value"] = value
+            result_props["done"] = Bool(false)
+            Object({
+              properties: result_props,
+              symbol_properties: {},
+              prototype: Null,
+              callable: None,
+              class_name: "Object",
+              descriptors: {},
+              symbol_descriptors: {},
+              extensible: true,
+            })
+          } else {
+            // Return { value: undefined, done: true }
+            let result_props : Map[String, Value] = {}
+            result_props["value"] = Undefined
+            result_props["done"] = Bool(true)
+            Object({
+              properties: result_props,
+              symbol_properties: {},
+              prototype: Null,
+              callable: None,
+              class_name: "Object",
+              descriptors: {},
+              symbol_descriptors: {},
+              extensible: true,
+            })
+          }
+        }),
+      ),
+      class_name: "Function",
+      descriptors: {},
+      symbol_descriptors: {},
+      extensible: true,
+    })
+
+    // Create the iterator object
+    let iter_props : Map[String, Value] = {}
+    iter_props["next"] = next_method
+
+    // Iterator should also have Symbol.iterator returning itself
+    let iter_symbol_props : Map[Int, Value] = {}
+
+    let iter_obj = Object({
+      properties: iter_props,
+      symbol_properties: iter_symbol_props,
+      prototype: Null,
+      callable: None,
+      class_name: "Array Iterator",
+      descriptors: {},
+      symbol_descriptors: {},
+      extensible: true,
+    })
+
+    // Add [Symbol.iterator] that returns the iterator itself
+    match iter_obj {
+      Object(data) => data.symbol_properties[iterator_sym.id] = Object({
+        properties: {},
+        symbol_properties: {},
+        prototype: Null,
+        callable: Some(
+          MethodCallable("[Symbol.iterator]", fn(this_val, _args) { this_val }),
+        ),
+        class_name: "Function",
+        descriptors: {},
+        symbol_descriptors: {},
+        extensible: true,
+      })
+      _ => ()
+    }
+
+    iter_obj
+  }
+
+  // Get Array constructor and add Symbol.iterator to its prototype
+  let array_val = env.get("Array")
+  match array_val {
+    Object(array_ctor) =>
+      match array_ctor.properties.get("prototype") {
+        Some(Object(proto_data)) => {
+          // Add [Symbol.iterator] method that returns an array iterator
+          proto_data.symbol_properties[iterator_sym.id] = Object({
+            properties: {},
+            symbol_properties: {},
+            prototype: Null,
+            callable: Some(
+              MethodCallable("[Symbol.iterator]", fn(this_val, _args) {
+                match this_val {
+                  Array(arr) => make_array_iterator(arr)
+                  _ =>
+                    raise JsException(
+                      String_(
+                        "TypeError: Array.prototype[Symbol.iterator] called on non-array",
+                      ),
+                    )
+                }
+              }),
+            ),
+            class_name: "Function",
+            descriptors: {},
+            symbol_descriptors: {},
+            extensible: true,
+          })
+
+          // Also add values() method (alias for [Symbol.iterator])
+          proto_data.properties["values"] = Object({
+            properties: {},
+            symbol_properties: {},
+            prototype: Null,
+            callable: Some(
+              MethodCallable("values", fn(this_val, _args) {
+                match this_val {
+                  Array(arr) => make_array_iterator(arr)
+                  _ =>
+                    raise JsException(
+                      String_("TypeError: Array.prototype.values called on non-array"),
+                    )
+                }
+              }),
+            ),
+            class_name: "Function",
+            descriptors: {},
+            symbol_descriptors: {},
+            extensible: true,
+          })
+
+          // Add keys() method that returns an iterator over indices
+          proto_data.properties["keys"] = Object({
+            properties: {},
+            symbol_properties: {},
+            prototype: Null,
+            callable: Some(
+              MethodCallable("keys", fn(this_val, _args) {
+                match this_val {
+                  Array(arr) => {
+                    let index_ref : Ref[Int] = { val: 0 }
+                    let len = arr.elements.length()
+
+                    let next_method = Object({
+                      properties: {},
+                      symbol_properties: {},
+                      prototype: Null,
+                      callable: Some(
+                        NativeCallable("next", fn(_args) {
+                          let idx = index_ref.val
+                          if idx < len {
+                            index_ref.val = idx + 1
+                            let result_props : Map[String, Value] = {}
+                            result_props["value"] = Number(idx.to_double())
+                            result_props["done"] = Bool(false)
+                            Object({
+                              properties: result_props,
+                              symbol_properties: {},
+                              prototype: Null,
+                              callable: None,
+                              class_name: "Object",
+                              descriptors: {},
+                              symbol_descriptors: {},
+                              extensible: true,
+                            })
+                          } else {
+                            let result_props : Map[String, Value] = {}
+                            result_props["value"] = Undefined
+                            result_props["done"] = Bool(true)
+                            Object({
+                              properties: result_props,
+                              symbol_properties: {},
+                              prototype: Null,
+                              callable: None,
+                              class_name: "Object",
+                              descriptors: {},
+                              symbol_descriptors: {},
+                              extensible: true,
+                            })
+                          }
+                        }),
+                      ),
+                      class_name: "Function",
+                      descriptors: {},
+                      symbol_descriptors: {},
+                      extensible: true,
+                    })
+
+                    let iter_props : Map[String, Value] = {}
+                    iter_props["next"] = next_method
+
+                    let iter_obj = Object({
+                      properties: iter_props,
+                      symbol_properties: {},
+                      prototype: Null,
+                      callable: None,
+                      class_name: "Array Iterator",
+                      descriptors: {},
+                      symbol_descriptors: {},
+                      extensible: true,
+                    })
+
+                    // Add [Symbol.iterator] to keys iterator
+                    match iter_obj {
+                      Object(data) =>
+                        data.symbol_properties[iterator_sym.id] = Object({
+                          properties: {},
+                          symbol_properties: {},
+                          prototype: Null,
+                          callable: Some(
+                            MethodCallable(
+                              "[Symbol.iterator]",
+                              fn(this_val, _args) { this_val },
+                            ),
+                          ),
+                          class_name: "Function",
+                          descriptors: {},
+                          symbol_descriptors: {},
+                          extensible: true,
+                        })
+                      _ => ()
+                    }
+
+                    iter_obj
+                  }
+                  _ =>
+                    raise JsException(
+                      String_("TypeError: Array.prototype.keys called on non-array"),
+                    )
+                }
+              }),
+            ),
+            class_name: "Function",
+            descriptors: {},
+            symbol_descriptors: {},
+            extensible: true,
+          })
+
+          // Add entries() method that returns an iterator over [index, value] pairs
+          proto_data.properties["entries"] = Object({
+            properties: {},
+            symbol_properties: {},
+            prototype: Null,
+            callable: Some(
+              MethodCallable("entries", fn(this_val, _args) {
+                match this_val {
+                  Array(arr) => {
+                    let index_ref : Ref[Int] = { val: 0 }
+
+                    let next_method = Object({
+                      properties: {},
+                      symbol_properties: {},
+                      prototype: Null,
+                      callable: Some(
+                        NativeCallable("next", fn(_args) {
+                          let idx = index_ref.val
+                          if idx < arr.elements.length() {
+                            let value = arr.elements[idx]
+                            index_ref.val = idx + 1
+                            let result_props : Map[String, Value] = {}
+                            result_props["value"] = Array({
+                              elements: [Number(idx.to_double()), value],
+                            })
+                            result_props["done"] = Bool(false)
+                            Object({
+                              properties: result_props,
+                              symbol_properties: {},
+                              prototype: Null,
+                              callable: None,
+                              class_name: "Object",
+                              descriptors: {},
+                              symbol_descriptors: {},
+                              extensible: true,
+                            })
+                          } else {
+                            let result_props : Map[String, Value] = {}
+                            result_props["value"] = Undefined
+                            result_props["done"] = Bool(true)
+                            Object({
+                              properties: result_props,
+                              symbol_properties: {},
+                              prototype: Null,
+                              callable: None,
+                              class_name: "Object",
+                              descriptors: {},
+                              symbol_descriptors: {},
+                              extensible: true,
+                            })
+                          }
+                        }),
+                      ),
+                      class_name: "Function",
+                      descriptors: {},
+                      symbol_descriptors: {},
+                      extensible: true,
+                    })
+
+                    let iter_props : Map[String, Value] = {}
+                    iter_props["next"] = next_method
+
+                    let iter_obj = Object({
+                      properties: iter_props,
+                      symbol_properties: {},
+                      prototype: Null,
+                      callable: None,
+                      class_name: "Array Iterator",
+                      descriptors: {},
+                      symbol_descriptors: {},
+                      extensible: true,
+                    })
+
+                    // Add [Symbol.iterator] to entries iterator
+                    match iter_obj {
+                      Object(data) =>
+                        data.symbol_properties[iterator_sym.id] = Object({
+                          properties: {},
+                          symbol_properties: {},
+                          prototype: Null,
+                          callable: Some(
+                            MethodCallable(
+                              "[Symbol.iterator]",
+                              fn(this_val, _args) { this_val },
+                            ),
+                          ),
+                          class_name: "Function",
+                          descriptors: {},
+                          symbol_descriptors: {},
+                          extensible: true,
+                        })
+                      _ => ()
+                    }
+
+                    iter_obj
+                  }
+                  _ =>
+                    raise JsException(
+                      String_(
+                        "TypeError: Array.prototype.entries called on non-array",
+                      ),
+                    )
+                }
+              }),
+            ),
+            class_name: "Function",
+            descriptors: {},
+            symbol_descriptors: {},
+            extensible: true,
+          })
+        }
+        _ => ()
+      }
+    _ => ()
+  }
+
+  // Add [Symbol.iterator] for String prototype
+  // String's [Symbol.iterator] is accessed via get_string_method, so we store a reference
+  // to tell the interpreter to use string iterator
+  // We'll handle this in the interpreter by checking for Symbol.iterator access on strings
 }
 
 ///|
