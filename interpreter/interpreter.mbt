@@ -15,8 +15,8 @@ pub(all) struct Microtask {
 }
 
 ///|
-/// Timer task for setTimeout/setInterval (macrotask queue)
-/// Timers are processed one at a time with microtask draining between each
+/// Timer task for setTimeout/setInterval (task queue per WHATWG spec)
+/// Timers are processed one at a time with microtask checkpoints between each
 pub(all) struct TimerTask {
   id : Int // Unique timer ID for clearTimeout/clearInterval
   callback : Value // The function to call
@@ -34,7 +34,7 @@ pub(all) struct Interpreter {
   global_this : Value
   mut strict : Bool
   microtask_queue : Array[Microtask] // Event loop microtask queue
-  timer_queue : Array[TimerTask] // Macrotask timer queue
+  timer_queue : Array[TimerTask] // Timer task queue (WHATWG task queue)
   timer_id_counter : Ref[Int] // Next timer ID
   timer_insertion_counter : Ref[Int] // Insertion order counter
 }

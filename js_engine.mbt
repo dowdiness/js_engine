@@ -6,7 +6,7 @@ pub fn run(source : String) -> (Array[String], String) raise Error {
   // Drain microtask queue after script execution
   // This implements the event loop checkpoint per WHATWG spec
   interp.run_microtasks()
-  // Process macrotask queue (timers) with microtask draining between each
+  // Process timer task queue with microtask checkpoints between each
   interp.run_timers()
   (interp.output, result.to_string())
 }

@@ -1524,8 +1524,8 @@ pub fn setup_timers(env : Environment) -> Unit {
 }
 
 ///|
-/// Run the event loop: process all pending timers (macrotasks) with
-/// microtask checkpoints between each.
+/// Run the event loop: process all pending timer tasks with
+/// microtask checkpoints between each (per WHATWG event loop spec).
 /// Timers are sorted by (delay, insertion_order) so they fire in the
 /// correct relative order. After each timer callback, microtasks are
 /// drained before the next timer fires.
@@ -1554,7 +1554,7 @@ pub fn Interpreter::run_timers(self : Interpreter) -> Unit raise Error {
     // Execute the timer callback
     let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
     let _ = self.call_value(timer.callback, Undefined, timer.args, loc)
-    // Drain microtasks after each macrotask (per WHATWG event loop spec)
+    // Microtask checkpoint after each task (per WHATWG event loop spec)
     self.run_microtasks()
     // If this is setInterval and not cancelled, re-enqueue
     if timer.is_interval && not(timer.cancelled) {
