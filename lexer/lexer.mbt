@@ -226,7 +226,62 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           let last_kind = tokens[tokens.length() - 1].kind
           match last_kind {
             // After these tokens, / starts a regex
-            Assign | EqEq | EqEqEq | BangEq | BangEqEq | LParen | LBracket | LBrace | Comma | Semicolon | Colon | Question | QuestionQuestion | QuestionDot | And | Or | Bang | Plus | Minus | Star | StarStar | Slash | Percent | Lt | Gt | LtEq | GtEq | Return | Typeof | Throw | New | Delete | Void | In | Instanceof | PlusAssign | MinusAssign | StarAssign | StarStarAssign | SlashAssign | PercentAssign | BitAnd | BitOr | BitXor | Tilde | LShift | RShift | URShift | BitAndAssign | BitOrAssign | BitXorAssign | LShiftAssign | RShiftAssign | URShiftAssign | Case | Arrow => true
+            Assign
+            | EqEq
+            | EqEqEq
+            | BangEq
+            | BangEqEq
+            | LParen
+            | LBracket
+            | LBrace
+            | Comma
+            | Semicolon
+            | Colon
+            | Question
+            | QuestionQuestion
+            | QuestionDot
+            | And
+            | Or
+            | Bang
+            | Plus
+            | Minus
+            | Star
+            | StarStar
+            | Slash
+            | Percent
+            | Lt
+            | Gt
+            | LtEq
+            | GtEq
+            | Return
+            | Typeof
+            | Throw
+            | New
+            | Delete
+            | Void
+            | In
+            | Instanceof
+            | PlusAssign
+            | MinusAssign
+            | StarAssign
+            | StarStarAssign
+            | SlashAssign
+            | PercentAssign
+            | BitAnd
+            | BitOr
+            | BitXor
+            | Tilde
+            | LShift
+            | RShift
+            | URShift
+            | BitAndAssign
+            | BitOrAssign
+            | BitXorAssign
+            | LShiftAssign
+            | RShiftAssign
+            | URShiftAssign
+            | Case
+            | Arrow => true
             // RParen after control-flow keyword (if/while/for/switch) starts regex
             RParen => last_rparen_is_control_flow
             _ => false

@@ -352,7 +352,12 @@ fn Parser::parse_exponentiation(self : Parser) -> @ast.Expr raise Error {
     match base {
       Unary(op, _, _) =>
         match op {
-          @ast.Neg | @ast.Not | @ast.BitNot | @ast.Typeof | @ast.Void | @ast.Delete =>
+          @ast.Neg
+          | @ast.Not
+          | @ast.BitNot
+          | @ast.Typeof
+          | @ast.Void
+          | @ast.Delete =>
             raise @errors.SyntaxError(
               message="Unary operator used immediately before exponentiation expression. Parentheses must be used to disambiguate.",
             )
@@ -465,7 +470,7 @@ fn Parser::parse_call(self : Parser) -> @ast.Expr raise Error {
       }
     } else if self.at(Dot) {
       let _ = self.advance()
-      let name = self.expect_ident()
+      let name = self.expect_ident_name()
       let loc = self.peek().loc
       if in_optional_chain {
         expr = OptionalMember(expr, name, loc)
@@ -515,7 +520,7 @@ fn Parser::parse_call(self : Parser) -> @ast.Expr raise Error {
         expr = OptionalComputedMember(expr, key, loc)
       } else {
         // Optional member: obj?.prop
-        let name = self.expect_ident()
+        let name = self.expect_ident_name()
         expr = OptionalMember(expr, name, loc)
       }
     } else {
@@ -636,7 +641,7 @@ fn Parser::parse_new_expr(self : Parser) -> @ast.Expr raise Error {
   let mut callee = self.parse_primary()
   while self.at(Dot) {
     let _ = self.advance()
-    let name = self.expect_ident()
+    let name = self.expect_ident_name()
     let mloc = self.peek().loc
     callee = Member(callee, name, mloc)
   }
@@ -713,7 +718,12 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
     }
     // Parse the key - can be identifier, string, number, or computed [expr]
     // Track if key was an identifier (needed for shorthand validation)
-    let (key_expr, key_name, computed, is_ident_key) : (@ast.Expr, String, Bool, Bool) = match self.peek_kind() {
+    let (key_expr, key_name, computed, is_ident_key) : (
+      @ast.Expr,
+      String,
+      Bool,
+      Bool,
+    ) = match self.peek_kind() {
       Ident(name) => {
         let kloc = self.advance().loc
         (StringLit(name, kloc), name, false, true)
@@ -725,7 +735,11 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
       Number(n) => {
         let kloc = self.advance().loc
         let i = n.to_int()
-        let name = if i.to_double() == n { i.to_string() } else { n.to_string() }
+        let name = if i.to_double() == n {
+          i.to_string()
+        } else {
+          n.to_string()
+        }
         (StringLit(name, kloc), name, false, false)
       }
       LBracket => {
@@ -765,7 +779,11 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
       }
       let body = self.parse_block_body()
       let func_data : @ast.Expr = FuncExpr(
-        if computed { None } else { Some(key_name) },
+        if computed {
+          None
+        } else {
+          Some(key_name)
+        },
         params,
         body,
         mloc,
@@ -797,6 +815,7 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
       // Allow trailing comma
       if self.at(Comma) {
         let _ = self.advance()
+
       }
     }
   }
@@ -856,7 +875,8 @@ fn extract_arrow_params(expr : @ast.Expr) -> Array[String] raise Error {
       }
       params
     }
-    _ => raise @errors.SyntaxError(message="Invalid arrow function parameter list")
+    _ =>
+      raise @errors.SyntaxError(message="Invalid arrow function parameter list")
   }
 }
 
@@ -885,7 +905,10 @@ fn expr_to_pattern(expr : @ast.Expr) -> @ast.Pattern raise Error {
         let key_str : String = match prop.key {
           StringLit(s, _) => s
           Ident(s, _) => s
-          _ => raise @errors.SyntaxError(message="Invalid key in destructuring pattern")
+          _ =>
+            raise @errors.SyntaxError(
+              message="Invalid key in destructuring pattern",
+            )
         }
         prop_pats.push({ key: key_str, value: pat, default_val: None })
       }
@@ -922,21 +945,25 @@ fn Parser::parse_class_expr(self : Parser) -> @ast.Expr raise Error {
   ClassExpr(name, superclass, methods, tok.loc)
 }
 
-///| Parse class heritage (superclass expression)
+///|
+/// Parse class heritage (superclass expression)
 fn Parser::parse_class_heritage(self : Parser) -> @ast.Expr raise Error {
   // Parse the superclass expression - can be an identifier or member expression
   let mut expr = self.parse_primary()
   while self.at(Dot) {
     let _ = self.advance()
-    let prop = self.expect_ident()
+    let prop = self.expect_ident_name()
     let loc = self.peek().loc
     expr = Member(expr, prop, loc)
   }
   expr
 }
 
-///| Parse class body (methods and properties)
-fn Parser::parse_class_body(self : Parser) -> Array[@ast.ClassMethod] raise Error {
+///|
+/// Parse class body (methods and properties)
+fn Parser::parse_class_body(
+  self : Parser,
+) -> Array[@ast.ClassMethod] raise Error {
   let _ = self.expect(LBrace)
   let methods : Array[@ast.ClassMethod] = []
   while not(self.at(RBrace)) && not(self.at(EOF)) {
@@ -951,7 +978,8 @@ fn Parser::parse_class_body(self : Parser) -> Array[@ast.ClassMethod] raise Erro
   methods
 }
 
-///| Parse a class method
+///|
+/// Parse a class method
 fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
   // Check for static modifier
   let is_static = self.eat(Static)
@@ -960,22 +988,20 @@ fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
   match self.peek_kind() {
     Get =>
       match self.peek_kind_at(1) {
-        Ident(_) | String_(_) | Number(_) | LBracket | LParen => {
+        Ident(_) | String_(_) | Number(_) | LBracket | LParen =>
           if not(self.at_kind_at(1, LParen)) {
             self.pos += 1
             method_kind = @ast.Get
           }
-        }
         _ => ()
       }
     Set =>
       match self.peek_kind_at(1) {
-        Ident(_) | String_(_) | Number(_) | LBracket | LParen => {
+        Ident(_) | String_(_) | Number(_) | LBracket | LParen =>
           if not(self.at_kind_at(1, LParen)) {
             self.pos += 1
             method_kind = @ast.Set
           }
-        }
         _ => ()
       }
     _ => ()
@@ -1020,17 +1046,33 @@ fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
         match method_kind {
           @ast.Get =>
             if ext_params.length() != 0 {
-              raise @errors.SyntaxError(message="Getter must have exactly zero parameters")
+              raise @errors.SyntaxError(
+                message="Getter must have exactly zero parameters",
+              )
             }
           @ast.Set =>
             if ext_params.length() != 1 {
-              raise @errors.SyntaxError(message="Setter must have exactly one parameter")
+              raise @errors.SyntaxError(
+                message="Setter must have exactly one parameter",
+              )
             }
           @ast.Init => ()
         }
         let body = self.parse_block_body()
-        let func_val : @ast.Expr = FuncExprExt(None, ext_params, rest_param, body, mloc)
-        return { key: key_expr, value: func_val, kind: method_kind, computed, is_static }
+        let func_val : @ast.Expr = FuncExprExt(
+          None,
+          ext_params,
+          rest_param,
+          body,
+          mloc,
+        )
+        return {
+          key: key_expr,
+          value: func_val,
+          kind: method_kind,
+          computed,
+          is_static,
+        }
       } else {
         raise @errors.SyntaxError(message=msg)
       }
@@ -1039,11 +1081,15 @@ fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
   match method_kind {
     @ast.Get =>
       if params.length() != 0 {
-        raise @errors.SyntaxError(message="Getter must have exactly zero parameters")
+        raise @errors.SyntaxError(
+          message="Getter must have exactly zero parameters",
+        )
       }
     @ast.Set =>
       if params.length() != 1 {
-        raise @errors.SyntaxError(message="Setter must have exactly one parameter")
+        raise @errors.SyntaxError(
+          message="Setter must have exactly one parameter",
+        )
       }
     @ast.Init => ()
   }
@@ -1053,11 +1099,16 @@ fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
 }
 
 ///|
-fn Parser::at_kind_at(self : Parser, offset : Int, kind : @token.TokenKind) -> Bool {
+fn Parser::at_kind_at(
+  self : Parser,
+  offset : Int,
+  kind : @token.TokenKind,
+) -> Bool {
   self.peek_kind_at(offset) == kind
 }
 
-///| Parse super expression (super call or super member access)
+///|
+/// Parse super expression (super call or super member access)
 fn Parser::parse_super_expr(self : Parser) -> @ast.Expr raise Error {
   let tok = self.expect(Super)
   // Check what follows super
@@ -1086,7 +1137,7 @@ fn Parser::parse_super_expr(self : Parser) -> @ast.Expr raise Error {
   } else if self.at(Dot) {
     // super.prop - super member access
     let _ = self.advance()
-    let name = self.expect_ident()
+    let name = self.expect_ident_name()
     SuperMember(name, tok.loc)
   } else if self.at(LBracket) {
     // super[expr] - super computed member access

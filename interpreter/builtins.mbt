@@ -97,9 +97,17 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
         String_(s) => s
         Number(n) => return Number(n)
         Symbol(_) =>
-          raise @errors.TypeError(message="Cannot convert a Symbol value to a string")
-        Bool(_) | Null | Undefined | Object(_) | Array(_) | Map(_) | Set(_) =>
-          return Number(0.0 / 0.0)
+          raise @errors.TypeError(
+            message="Cannot convert a Symbol value to a string",
+          )
+        Bool(_)
+        | Null
+        | Undefined
+        | Object(_)
+        | Array(_)
+        | Map(_)
+        | Set(_)
+        | Promise(_) => return Number(0.0 / 0.0)
       }
       let trimmed = trim_start(s)
       if trimmed.length() == 0 {
@@ -180,7 +188,11 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
   env.def_builtin(
     "encodeURIComponent",
     make_native_func("encodeURIComponent", fn(args) {
-      let str = if args.length() > 0 { args[0].to_string() } else { "undefined" }
+      let str = if args.length() > 0 {
+        args[0].to_string()
+      } else {
+        "undefined"
+      }
       String_(uri_encode(str, true))
     }),
   )
@@ -189,7 +201,11 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
   env.def_builtin(
     "decodeURIComponent",
     make_native_func("decodeURIComponent", fn(args) {
-      let str = if args.length() > 0 { args[0].to_string() } else { "undefined" }
+      let str = if args.length() > 0 {
+        args[0].to_string()
+      } else {
+        "undefined"
+      }
       String_(uri_decode(str, false))
     }),
   )
@@ -198,7 +214,11 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
   env.def_builtin(
     "encodeURI",
     make_native_func("encodeURI", fn(args) {
-      let str = if args.length() > 0 { args[0].to_string() } else { "undefined" }
+      let str = if args.length() > 0 {
+        args[0].to_string()
+      } else {
+        "undefined"
+      }
       String_(uri_encode(str, false))
     }),
   )
@@ -207,7 +227,11 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
   env.def_builtin(
     "decodeURI",
     make_native_func("decodeURI", fn(args) {
-      let str = if args.length() > 0 { args[0].to_string() } else { "undefined" }
+      let str = if args.length() > 0 {
+        args[0].to_string()
+      } else {
+        "undefined"
+      }
       String_(uri_decode(str, true))
     }),
   )
@@ -265,7 +289,10 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
       MethodCallable("toString", fn(this_val, _args) {
         match this_val {
           Bool(b) => String_(b.to_string())
-          _ => raise @errors.TypeError(message="Boolean.prototype.toString requires a Boolean")
+          _ =>
+            raise @errors.TypeError(
+              message="Boolean.prototype.toString requires a Boolean",
+            )
         }
       }),
     ),
@@ -282,7 +309,10 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
       MethodCallable("valueOf", fn(this_val, _args) {
         match this_val {
           Bool(b) => Bool(b)
-          _ => raise @errors.TypeError(message="Boolean.prototype.valueOf requires a Boolean")
+          _ =>
+            raise @errors.TypeError(
+              message="Boolean.prototype.valueOf requires a Boolean",
+            )
         }
       }),
     ),
@@ -390,18 +420,18 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
 
   // Set up iterator protocol on Array and String prototypes
   // Use try/catch since setup_iterator_protocol can raise errors
-  try {
-    setup_iterator_protocol(env)
-  } catch {
+  setup_iterator_protocol(env) catch {
     _ => () // Ignore errors during initialization
   }
 
   // Set up Map and Set collections
-  try {
-    setup_map_set_builtins(env)
-  } catch {
-    _ => () // Ignore errors during initialization
-  }
+  setup_map_set_builtins(env)
+
+  // Set up Promise constructor and prototype
+  setup_promise(env)
+
+  // Set up timer APIs (setTimeout, clearTimeout, setInterval, clearInterval)
+  setup_timers(env)
 }
 
 ///|
@@ -439,8 +469,8 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
               None => String_("Symbol()")
             }
           _ =>
-            raise @errors.TypeError(message=
-              "Symbol.prototype.toString requires a Symbol",
+            raise @errors.TypeError(
+              message="Symbol.prototype.toString requires a Symbol",
             )
         }
       }),
@@ -459,8 +489,8 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
         match this_val {
           Symbol(_) => this_val
           _ =>
-            raise @errors.TypeError(message=
-              "Symbol.prototype.valueOf requires a Symbol",
+            raise @errors.TypeError(
+              message="Symbol.prototype.valueOf requires a Symbol",
             )
         }
       }),
@@ -471,7 +501,6 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
     extensible: true,
   })
   symbol_proto_props["description"] = Undefined // Getter, simplified
-
   let symbol_proto : Value = Object({
     properties: symbol_proto_props,
     symbol_properties: {},
@@ -524,8 +553,7 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
           Some(key) => String_(key)
           None => Undefined
         }
-      _ =>
-        raise @errors.TypeError(message="Symbol.keyFor requires a symbol")
+      _ => raise @errors.TypeError(message="Symbol.keyFor requires a symbol")
     }
   })
 
@@ -623,7 +651,6 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
 
     // Iterator should also have Symbol.iterator returning itself
     let iter_symbol_props : Map[Int, Value] = {}
-
     let iter_obj = Object({
       properties: iter_props,
       symbol_properties: iter_symbol_props,
@@ -637,21 +664,21 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
 
     // Add [Symbol.iterator] that returns the iterator itself
     match iter_obj {
-      Object(data) => data.symbol_properties[iterator_sym.id] = Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          MethodCallable("[Symbol.iterator]", fn(this_val, _args) { this_val }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      })
+      Object(data) =>
+        data.symbol_properties[iterator_sym.id] = Object({
+          properties: {},
+          symbol_properties: {},
+          prototype: Null,
+          callable: Some(
+            MethodCallable("[Symbol.iterator]", fn(this_val, _args) { this_val }),
+          ),
+          class_name: "Function",
+          descriptors: {},
+          symbol_descriptors: {},
+          extensible: true,
+        })
       _ => ()
     }
-
     iter_obj
   }
 
@@ -671,8 +698,8 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
                 match this_val {
                   Array(arr) => make_array_iterator(arr)
                   _ =>
-                    raise @errors.TypeError(message=
-                      "Array.prototype[Symbol.iterator] called on non-array",
+                    raise @errors.TypeError(
+                      message="Array.prototype[Symbol.iterator] called on non-array",
                     )
                 }
               }),
@@ -693,8 +720,8 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
                 match this_val {
                   Array(arr) => make_array_iterator(arr)
                   _ =>
-                    raise @errors.TypeError(message=
-                      "Array.prototype.values called on non-array",
+                    raise @errors.TypeError(
+                      message="Array.prototype.values called on non-array",
                     )
                 }
               }),
@@ -716,7 +743,6 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
                   Array(arr) => {
                     let index_ref : Ref[Int] = { val: 0 }
                     let len = arr.elements.length()
-
                     let next_method = Object({
                       properties: {},
                       symbol_properties: {},
@@ -761,10 +787,8 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
                       symbol_descriptors: {},
                       extensible: true,
                     })
-
                     let iter_props : Map[String, Value] = {}
                     iter_props["next"] = next_method
-
                     let iter_obj = Object({
                       properties: iter_props,
                       symbol_properties: {},
@@ -784,10 +808,12 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
                           symbol_properties: {},
                           prototype: Null,
                           callable: Some(
-                            MethodCallable(
-                              "[Symbol.iterator]",
-                              fn(this_val, _args) { this_val },
-                            ),
+                            MethodCallable("[Symbol.iterator]", fn(
+                              this_val,
+                              _args,
+                            ) {
+                              this_val
+                            }),
                           ),
                           class_name: "Function",
                           descriptors: {},
@@ -796,12 +822,11 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
                         })
                       _ => ()
                     }
-
                     iter_obj
                   }
                   _ =>
-                    raise @errors.TypeError(message=
-                      "Array.prototype.keys called on non-array",
+                    raise @errors.TypeError(
+                      message="Array.prototype.keys called on non-array",
                     )
                 }
               }),
@@ -822,7 +847,6 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
                 match this_val {
                   Array(arr) => {
                     let index_ref : Ref[Int] = { val: 0 }
-
                     let next_method = Object({
                       properties: {},
                       symbol_properties: {},
@@ -870,10 +894,8 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
                       symbol_descriptors: {},
                       extensible: true,
                     })
-
                     let iter_props : Map[String, Value] = {}
                     iter_props["next"] = next_method
-
                     let iter_obj = Object({
                       properties: iter_props,
                       symbol_properties: {},
@@ -893,10 +915,12 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
                           symbol_properties: {},
                           prototype: Null,
                           callable: Some(
-                            MethodCallable(
-                              "[Symbol.iterator]",
-                              fn(this_val, _args) { this_val },
-                            ),
+                            MethodCallable("[Symbol.iterator]", fn(
+                              this_val,
+                              _args,
+                            ) {
+                              this_val
+                            }),
                           ),
                           class_name: "Function",
                           descriptors: {},
@@ -905,12 +929,11 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
                         })
                       _ => ()
                     }
-
                     iter_obj
                   }
                   _ =>
-                    raise @errors.TypeError(message=
-                      "Array.prototype.entries called on non-array",
+                    raise @errors.TypeError(
+                      message="Array.prototype.entries called on non-array",
                     )
                 }
               }),
@@ -1160,7 +1183,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     let uint = int_val.reinterpret_as_uint()
     let mut count = 0
     let mut mask : UInt = 2147483648 // 0x80000000
-    while mask > 0 && uint.land(mask) == 0 {
+    while mask > 0 && (uint & mask) == 0 {
       count = count + 1
       mask = mask >> 1
     }
@@ -1173,7 +1196,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     let int_b = to_int32(b)
     // Perform 32-bit multiplication and mask to lower 32 bits as signed
     let product = int_a.to_int64() * int_b.to_int64()
-    let masked = product.land(0xFFFFFFFFL)
+    let masked = product & 0xFFFFFFFFL
     // Convert to signed 32-bit
     let result = if masked > 0x7FFFFFFFL {
       (masked - 0x100000000L).to_int()
@@ -1331,8 +1354,8 @@ fn setup_number_builtins(env : Environment) -> Unit {
           0
         }
         if digits < 0 || digits > 100 {
-          raise @errors.RangeError(message=
-            "toFixed() digits argument must be between 0 and 100",
+          raise @errors.RangeError(
+            message="toFixed() digits argument must be between 0 and 100",
           )
         }
         if n.is_nan() {
@@ -1393,8 +1416,8 @@ fn setup_number_builtins(env : Environment) -> Unit {
           10
         }
         if radix < 2 || radix > 36 {
-          raise @errors.RangeError(message=
-            "toString() radix must be between 2 and 36",
+          raise @errors.RangeError(
+            message="toString() radix must be between 2 and 36",
           )
         }
         if n.is_nan() {
@@ -1467,8 +1490,8 @@ fn setup_number_builtins(env : Environment) -> Unit {
         }
         let precision = to_number(args[0]).to_int()
         if precision < 1 || precision > 100 {
-          raise @errors.RangeError(message=
-            "toPrecision() argument must be between 1 and 100",
+          raise @errors.RangeError(
+            message="toPrecision() argument must be between 1 and 100",
           )
         }
         if n.is_nan() {
@@ -1503,7 +1526,7 @@ fn setup_number_builtins(env : Environment) -> Unit {
           let mut mantissa = abs_n / @math.pow(10.0, exp.to_double())
           // Round mantissa and check for overflow
           let mult = @math.pow(10.0, (precision - 1).to_double())
-          let rounded_mantissa = ((mantissa * mult) + 0.5).floor() / mult
+          let rounded_mantissa = (mantissa * mult + 0.5).floor() / mult
           // If rounding caused overflow (mantissa >= 10), adjust
           if rounded_mantissa >= 10.0 {
             mantissa = rounded_mantissa / 10.0
@@ -1599,8 +1622,8 @@ fn setup_number_builtins(env : Environment) -> Unit {
               _ => {
                 let frac_digits = to_number(args[0]).to_int()
                 if frac_digits < 0 || frac_digits > 100 {
-                  raise @errors.RangeError(message=
-                    "toExponential() argument must be between 0 and 100",
+                  raise @errors.RangeError(
+                    message="toExponential() argument must be between 0 and 100",
                   )
                 }
                 if frac_digits > 0 {
@@ -1630,14 +1653,14 @@ fn setup_number_builtins(env : Environment) -> Unit {
             _ => {
               let frac_digits = to_number(args[0]).to_int()
               if frac_digits < 0 || frac_digits > 100 {
-                raise @errors.RangeError(message=
-                  "toExponential() argument must be between 0 and 100",
+                raise @errors.RangeError(
+                  message="toExponential() argument must be between 0 and 100",
                 )
               }
               // Round mantissa and check for overflow
               let precision = frac_digits + 1
               let mult = @math.pow(10.0, (precision - 1).to_double())
-              let rounded_mantissa = ((mantissa * mult) + 0.5).floor() / mult
+              let rounded_mantissa = (mantissa * mult + 0.5).floor() / mult
               // If rounding caused overflow (mantissa >= 10), adjust
               if rounded_mantissa >= 10.0 {
                 mantissa = rounded_mantissa / 10.0
@@ -1813,7 +1836,7 @@ fn json_parse(input : String) -> Value raise Error {
     }
   }
 
-  letrec parse_value = fn () -> Value raise Error {
+  letrec parse_value = fn() -> Value raise Error {
     skip_ws()
     if pos[0] >= len {
       raise @errors.SyntaxError(message="Unexpected end of JSON input")
@@ -1833,8 +1856,8 @@ fn json_parse(input : String) -> Value raise Error {
         pos[0] += 4
         Bool(true)
       } else {
-        raise @errors.SyntaxError(message=
-          "Unexpected token in JSON at position \{pos[0]}",
+        raise @errors.SyntaxError(
+          message="Unexpected token in JSON at position \{pos[0]}",
         )
       }
     } else if c == 'f' {
@@ -1846,8 +1869,8 @@ fn json_parse(input : String) -> Value raise Error {
         pos[0] += 5
         Bool(false)
       } else {
-        raise @errors.SyntaxError(message=
-          "Unexpected token in JSON at position \{pos[0]}",
+        raise @errors.SyntaxError(
+          message="Unexpected token in JSON at position \{pos[0]}",
         )
       }
     } else if c == 'n' {
@@ -1858,20 +1881,19 @@ fn json_parse(input : String) -> Value raise Error {
         pos[0] += 4
         Null
       } else {
-        raise @errors.SyntaxError(message=
-          "Unexpected token in JSON at position \{pos[0]}",
+        raise @errors.SyntaxError(
+          message="Unexpected token in JSON at position \{pos[0]}",
         )
       }
     } else if c == '-' || (c >= '0' && c <= '9') {
       parse_number()
     } else {
-      raise @errors.SyntaxError(message=
-        "Unexpected token in JSON at position \{pos[0]}",
+      raise @errors.SyntaxError(
+        message="Unexpected token in JSON at position \{pos[0]}",
       )
     }
   }
-
-  and parse_string = fn () -> Value raise Error {
+  and parse_string = fn() -> Value raise Error {
     pos[0] += 1 // skip opening "
     let buf = StringBuilder::new()
     while pos[0] < len {
@@ -1883,9 +1905,7 @@ fn json_parse(input : String) -> Value raise Error {
       if ch == '\\' {
         pos[0] += 1
         if pos[0] >= len {
-          raise @errors.SyntaxError(message=
-            "Unexpected end of JSON input",
-          )
+          raise @errors.SyntaxError(message="Unexpected end of JSON input")
         }
         let esc = chars[pos[0]]
         match esc {
@@ -1905,27 +1925,27 @@ fn json_parse(input : String) -> Value raise Error {
                 let hex_c = chars[pos[0]]
                 let d = char_to_digit(hex_c, 16)
                 if d < 0 {
-                  raise @errors.SyntaxError(message=
-                    "Invalid unicode escape in JSON",
+                  raise @errors.SyntaxError(
+                    message="Invalid unicode escape in JSON",
                   )
                 }
                 code = code * 16 + d
               }
               buf.write_char(code.unsafe_to_char())
             } else {
-              raise @errors.SyntaxError(message=
-                "Invalid unicode escape in JSON",
+              raise @errors.SyntaxError(
+                message="Invalid unicode escape in JSON",
               )
             }
           _ =>
-            raise @errors.SyntaxError(message=
-              "Invalid escape character in JSON",
+            raise @errors.SyntaxError(
+              message="Invalid escape character in JSON",
             )
         }
       } else {
         if ch.to_int() < 32 {
-          raise @errors.SyntaxError(message=
-            "Unexpected control character in JSON",
+          raise @errors.SyntaxError(
+            message="Unexpected control character in JSON",
           )
         }
         buf.write_char(ch)
@@ -1934,8 +1954,7 @@ fn json_parse(input : String) -> Value raise Error {
     }
     raise @errors.SyntaxError(message="Unterminated string in JSON")
   }
-
-  and parse_number = fn () -> Value raise Error {
+  and parse_number = fn() -> Value raise Error {
     let start = pos[0]
     if pos[0] < len && chars[pos[0]] == '-' {
       pos[0] += 1
@@ -1967,8 +1986,7 @@ fn json_parse(input : String) -> Value raise Error {
     }
     Number(n)
   }
-
-  and parse_object = fn () -> Value raise Error {
+  and parse_object = fn() -> Value raise Error {
     pos[0] += 1 // skip {
     let properties : Map[String, Value] = {}
     skip_ws()
@@ -1988,8 +2006,8 @@ fn json_parse(input : String) -> Value raise Error {
     while true {
       skip_ws()
       if pos[0] >= len || chars[pos[0]] != '"' {
-        raise @errors.SyntaxError(message=
-          "Expected property name in JSON at position \{pos[0]}",
+        raise @errors.SyntaxError(
+          message="Expected property name in JSON at position \{pos[0]}",
         )
       }
       let key = match parse_string() {
@@ -1998,8 +2016,8 @@ fn json_parse(input : String) -> Value raise Error {
       }
       skip_ws()
       if pos[0] >= len || chars[pos[0]] != ':' {
-        raise @errors.SyntaxError(message=
-          "Expected ':' in JSON at position \{pos[0]}",
+        raise @errors.SyntaxError(
+          message="Expected ':' in JSON at position \{pos[0]}",
         )
       }
       pos[0] += 1
@@ -2014,8 +2032,8 @@ fn json_parse(input : String) -> Value raise Error {
     }
     skip_ws()
     if pos[0] >= len || chars[pos[0]] != '}' {
-      raise @errors.SyntaxError(message=
-        "Expected '}' in JSON at position \{pos[0]}",
+      raise @errors.SyntaxError(
+        message="Expected '}' in JSON at position \{pos[0]}",
       )
     }
     pos[0] += 1
@@ -2030,8 +2048,7 @@ fn json_parse(input : String) -> Value raise Error {
       extensible: true,
     })
   }
-
-  and parse_array = fn () -> Value raise Error {
+  and parse_array = fn() -> Value raise Error {
     pos[0] += 1 // skip [
     let elements : Array[Value] = []
     skip_ws()
@@ -2051,8 +2068,8 @@ fn json_parse(input : String) -> Value raise Error {
     }
     skip_ws()
     if pos[0] >= len || chars[pos[0]] != ']' {
-      raise @errors.SyntaxError(message=
-        "Expected ']' in JSON at position \{pos[0]}",
+      raise @errors.SyntaxError(
+        message="Expected ']' in JSON at position \{pos[0]}",
       )
     }
     pos[0] += 1
@@ -2062,8 +2079,8 @@ fn json_parse(input : String) -> Value raise Error {
   let result = parse_value()
   skip_ws()
   if pos[0] < len {
-    raise @errors.SyntaxError(message=
-      "Unexpected non-whitespace character after JSON at position \{pos[0]}",
+    raise @errors.SyntaxError(
+      message="Unexpected non-whitespace character after JSON at position \{pos[0]}",
     )
   }
   result
@@ -2090,14 +2107,15 @@ fn json_stringify_value(
     Symbol(_) => Undefined // Symbols are omitted from JSON
     Map(_) => String_("{}") // Maps serialize as empty objects
     Set(_) => String_("{}") // Sets serialize as empty objects
+    Promise(_) => String_("{}") // Promises serialize as empty objects
     Array(data) => {
       // Cycle detection
       for s in seen {
         match s {
           Array(sd) =>
             if physical_equal(sd, data) {
-              raise @errors.TypeError(message=
-                "Converting circular structure to JSON",
+              raise @errors.TypeError(
+                message="Converting circular structure to JSON",
               )
             }
           _ => ()
@@ -2173,8 +2191,8 @@ fn json_stringify_value(
             match s {
               Object(sd) =>
                 if physical_equal(sd, data) {
-                  raise @errors.TypeError(message=
-                    "Converting circular structure to JSON",
+                  raise @errors.TypeError(
+                    message="Converting circular structure to JSON",
                   )
                 }
               _ => ()
@@ -2251,8 +2269,8 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
               0
             }
             if digits < 0 || digits > 100 {
-              raise @errors.RangeError(message=
-                "toFixed() digits argument must be between 0 and 100",
+              raise @errors.RangeError(
+                message="toFixed() digits argument must be between 0 and 100",
               )
             }
             if n.is_nan() {
@@ -2312,8 +2330,8 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
               10
             }
             if radix < 2 || radix > 36 {
-              raise @errors.RangeError(message=
-                "toString() radix must be between 2 and 36",
+              raise @errors.RangeError(
+                message="toString() radix must be between 2 and 36",
               )
             }
             if n.is_nan() {
@@ -2386,8 +2404,8 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
             }
             let precision = to_number(args[0]).to_int()
             if precision < 1 || precision > 100 {
-              raise @errors.RangeError(message=
-                "toPrecision() argument must be between 1 and 100",
+              raise @errors.RangeError(
+                message="toPrecision() argument must be between 1 and 100",
               )
             }
             if n.is_nan() {
@@ -2418,7 +2436,7 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
               let mut mantissa = abs_n / @math.pow(10.0, exp.to_double())
               // Round mantissa and check for overflow
               let mult = @math.pow(10.0, (precision - 1).to_double())
-              let rounded_mantissa = ((mantissa * mult) + 0.5).floor() / mult
+              let rounded_mantissa = (mantissa * mult + 0.5).floor() / mult
               if rounded_mantissa >= 10.0 {
                 mantissa = rounded_mantissa / 10.0
                 exp = exp + 1
@@ -2511,8 +2529,8 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
                   _ => {
                     let frac_digits = to_number(args[0]).to_int()
                     if frac_digits < 0 || frac_digits > 100 {
-                      raise @errors.RangeError(message=
-                        "toExponential() argument must be between 0 and 100",
+                      raise @errors.RangeError(
+                        message="toExponential() argument must be between 0 and 100",
                       )
                     }
                     if frac_digits > 0 {
@@ -2540,21 +2558,23 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
                 _ => {
                   let frac_digits = to_number(args[0]).to_int()
                   if frac_digits < 0 || frac_digits > 100 {
-                    raise @errors.RangeError(message=
-                      "toExponential() argument must be between 0 and 100",
+                    raise @errors.RangeError(
+                      message="toExponential() argument must be between 0 and 100",
                     )
                   }
                   // Round mantissa and check for overflow
                   let precision = frac_digits + 1
                   let mult = @math.pow(10.0, (precision - 1).to_double())
-                  let rounded_mantissa = ((mantissa * mult) + 0.5).floor() / mult
+                  let rounded_mantissa = (mantissa * mult + 0.5).floor() / mult
                   if rounded_mantissa >= 10.0 {
                     mantissa = rounded_mantissa / 10.0
                     exp = exp + 1
                   } else {
                     mantissa = rounded_mantissa
                   }
-                  let mantissa_str = format_number_precision(mantissa, precision)
+                  let mantissa_str = format_number_precision(
+                    mantissa, precision,
+                  )
                   buf.write_string(mantissa_str)
                 }
               }
@@ -2712,6 +2732,8 @@ fn setup_function_builtins(env : Environment) -> Unit {
                 String_("function " + name + "() { [native code] }")
               Some(InterpreterCallable(name, _)) =>
                 String_("function " + name + "() { [native code] }")
+              Some(ConstructorOnlyCallable(name, _)) =>
+                String_("function " + name + "() { [native code] }")
               Some(FuncCallMethod(_)) =>
                 String_("function call() { [native code] }")
               Some(FuncApplyMethod(_)) =>
@@ -2719,13 +2741,13 @@ fn setup_function_builtins(env : Environment) -> Unit {
               Some(ClassConstructor(name, _, _, _, _, _)) =>
                 String_("class " + name + " { [native code] }")
               None =>
-                raise @errors.TypeError(message=
-                  "Function.prototype.toString requires a function",
+                raise @errors.TypeError(
+                  message="Function.prototype.toString requires a function",
                 )
             }
           _ =>
-            raise @errors.TypeError(message=
-              "Function.prototype.toString requires a function",
+            raise @errors.TypeError(
+              message="Function.prototype.toString requires a function",
             )
         }
       }),
@@ -2786,7 +2808,6 @@ fn setup_function_builtins(env : Environment) -> Unit {
     symbol_descriptors: {},
     extensible: true,
   })
-
   let func_proto : Value = Object({
     properties: func_proto_props,
     symbol_properties: {},
@@ -2875,9 +2896,30 @@ fn uri_encode(s : String, encode_component : Bool) -> String {
     } else if code >= 48 && code <= 57 {
       // 0-9
       false
-    } else if c == '-' || c == '_' || c == '.' || c == '!' || c == '~' || c == '*' || c == '\'' || c == '(' || c == ')' {
+    } else if c == '-' ||
+      c == '_' ||
+      c == '.' ||
+      c == '!' ||
+      c == '~' ||
+      c == '*' ||
+      c == '\'' ||
+      c == '(' ||
+      c == ')' {
       false
-    } else if not(encode_component) && (c == ';' || c == ',' || c == '/' || c == '?' || c == ':' || c == '@' || c == '&' || c == '=' || c == '+' || c == '$' || c == '#') {
+    } else if not(encode_component) &&
+      (
+        c == ';' ||
+        c == ',' ||
+        c == '/' ||
+        c == '?' ||
+        c == ':' ||
+        c == '@' ||
+        c == '&' ||
+        c == '=' ||
+        c == '+' ||
+        c == '$' ||
+        c == '#'
+      ) {
       false
     } else {
       true
@@ -2938,11 +2980,21 @@ fn uri_encode(s : String, encode_component : Bool) -> String {
   buf.to_string()
 }
 
-///| Check if a character is a URI reserved character
+///|
+/// Check if a character is a URI reserved character
 fn is_uri_reserved(c : Char) -> Bool {
   // Reserved characters that decodeURI must preserve: ; , / ? : @ & = + $ #
-  c == ';' || c == ',' || c == '/' || c == '?' || c == ':' || c == '@' ||
-  c == '&' || c == '=' || c == '+' || c == '$' || c == '#'
+  c == ';' ||
+  c == ',' ||
+  c == '/' ||
+  c == '?' ||
+  c == ':' ||
+  c == '@' ||
+  c == '&' ||
+  c == '=' ||
+  c == '+' ||
+  c == '$' ||
+  c == '#'
 }
 
 ///|
@@ -2979,7 +3031,10 @@ fn uri_decode(s : String, preserve_reserved : Bool) -> String raise Error {
         if (b2 & 0xC0) != 0x80 || (b3 & 0xC0) != 0x80 || (b4 & 0xC0) != 0x80 {
           raise @errors.URIError(message="URI malformed")
         }
-        let cp = ((byte1 & 0x07) << 18) | ((b2 & 0x3F) << 12) | ((b3 & 0x3F) << 6) | (b4 & 0x3F)
+        let cp = ((byte1 & 0x07) << 18) |
+          ((b2 & 0x3F) << 12) |
+          ((b3 & 0x3F) << 6) |
+          (b4 & 0x3F)
         buf.write_char(cp.unsafe_to_char())
         i = i + 12
         continue

@@ -1,0 +1,51 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "dowdiness/js_engine/errors"
+
+import {
+  "dowdiness/js_engine/token",
+}
+
+// Values
+pub fn internal_error_msg(String) -> Unit raise JsError
+
+pub fn is_js_error(Error) -> Bool
+
+pub fn range_error_msg(String) -> Unit raise JsError
+
+pub fn reference_error(String, @token.Loc) -> Unit raise JsError
+
+pub fn reference_error_msg(String) -> Unit raise JsError
+
+pub fn syntax_error(String, @token.Loc) -> Unit raise JsError
+
+pub fn syntax_error_msg(String) -> Unit raise JsError
+
+pub fn type_error(String, @token.Loc) -> Unit raise JsError
+
+pub fn type_error_msg(String) -> Unit raise JsError
+
+pub fn uri_error_msg(String) -> Unit raise JsError
+
+// Errors
+pub(all) suberror JsError {
+  TypeError(message~ : String)
+  ReferenceError(message~ : String)
+  SyntaxError(message~ : String)
+  RangeError(message~ : String)
+  URIError(message~ : String)
+  EvalError(message~ : String)
+  AggregateError(message~ : String, errors~ : Array[Error])
+  InternalError(message~ : String)
+}
+pub fn JsError::debug(Self) -> String
+pub fn JsError::format(Self) -> String
+pub fn JsError::get_message(Self) -> String
+pub fn JsError::name(Self) -> String
+pub impl Show for JsError
+
+// Types and methods
+
+// Type aliases
+
+// Traits
+

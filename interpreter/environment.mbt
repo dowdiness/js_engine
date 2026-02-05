@@ -37,25 +37,31 @@ pub fn Environment::def(
         // Allow var/var redeclaration - just update the value
         existing.value = value
       } else {
-        raise @errors.SyntaxError(message="Identifier '\{name}' has already been declared")
+        raise @errors.SyntaxError(
+          message="Identifier '\{name}' has already been declared",
+        )
       }
     None => self.bindings[name] = { value, kind, initialized: true }
   }
 }
 
-///| Define a TDZ binding (let/const before initialization)
+///|
+/// Define a TDZ binding (let/const before initialization)
 pub fn Environment::def_tdz(
   self : Environment,
   name : String,
   kind : BindingKind,
 ) -> Unit raise Error {
   if self.bindings.contains(name) {
-    raise @errors.SyntaxError(message="Identifier '\{name}' has already been declared")
+    raise @errors.SyntaxError(
+      message="Identifier '\{name}' has already been declared",
+    )
   }
   self.bindings[name] = { value: Undefined, kind, initialized: false }
 }
 
-///| Initialize a TDZ binding (when declaration is executed)
+///|
+/// Initialize a TDZ binding (when declaration is executed)
 pub fn Environment::initialize(
   self : Environment,
   name : String,
@@ -67,7 +73,9 @@ pub fn Environment::initialize(
       binding.initialized = true
     }
     None =>
-      raise @errors.InternalError(message="Cannot initialize non-existent binding '\{name}'")
+      raise @errors.InternalError(
+        message="Cannot initialize non-existent binding '\{name}'",
+      )
   }
 }
 
@@ -97,7 +105,9 @@ pub fn Environment::get(self : Environment, name : String) -> Value raise Error 
   match self.bindings.get(name) {
     Some(binding) =>
       if not(binding.initialized) {
-        raise @errors.ReferenceError(message="Cannot access '\{name}' before initialization")
+        raise @errors.ReferenceError(
+          message="Cannot access '\{name}' before initialization",
+        )
       } else {
         binding.value
       }
@@ -118,9 +128,13 @@ pub fn Environment::assign(
   match self.bindings.get(name) {
     Some(binding) =>
       if not(binding.initialized) {
-        raise @errors.ReferenceError(message="Cannot access '\{name}' before initialization")
+        raise @errors.ReferenceError(
+          message="Cannot access '\{name}' before initialization",
+        )
       } else if binding.kind == ConstBinding {
-        raise @errors.TypeError(message="Assignment to constant variable '\{name}'")
+        raise @errors.TypeError(
+          message="Assignment to constant variable '\{name}'",
+        )
       } else {
         binding.value = value
       }

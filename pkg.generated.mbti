@@ -1,10 +1,24 @@
 // Generated using `moon info`, DON'T EDIT IT
 package "dowdiness/js_engine"
 
+import {
+  "dowdiness/js_engine/interpreter",
+}
+
 // Values
 pub fn fib(Int) -> Int64
 
+pub fn has_pending_microtasks(@interpreter.Interpreter) -> Bool
+
+pub fn has_pending_timers(@interpreter.Interpreter) -> Bool
+
 pub fn run(String) -> (Array[String], String) raise
+
+pub fn run_microtask_checkpoint(@interpreter.Interpreter) -> Bool raise
+
+pub fn run_timer_checkpoint(@interpreter.Interpreter) -> Unit raise
+
+pub fn run_with_event_loop(String) -> (@interpreter.Interpreter, @interpreter.Value) raise
 
 pub fn sum(data~ : Array[Int], start? : Int, length? : Int) -> Int
 

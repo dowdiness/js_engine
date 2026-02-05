@@ -31,6 +31,10 @@ pub(all) enum Callable {
     String,
     (Interpreter, Value, Array[Value]) -> Value raise Error
   ) // needs interpreter for callback invocation
+  ConstructorOnlyCallable(
+    String,
+    (Interpreter, Array[Value]) -> Value raise Error
+  ) // like InterpreterCallable but throws on call without new
   // Class constructor: (name, prototype, super_ctor, constructor_fn, closure, static_methods)
   // constructor_fn is (params, body) tuple, or None if no explicit constructor
   ClassConstructor(
@@ -39,8 +43,8 @@ pub(all) enum Callable {
     Value?, // super constructor (if extends)
     (Array[String], Array[@ast.Stmt])?, // constructor params and body
     Environment, // closure environment
-    Value, // prototype object reference for super
-  )
+    Value
+  ) // prototype object reference for super
 }
 
 ///|
@@ -86,6 +90,58 @@ pub(all) struct MapData {
 /// Uses SameValueZero for value comparison (NaN === NaN, +0 === -0)
 pub(all) struct SetData {
   values : Array[Value] // Array of unique values
+}
+
+///|
+/// Promise state per ECMAScript spec
+pub(all) enum PromiseState {
+  Pending
+  Fulfilled
+  Rejected
+}
+
+///|
+/// Promise reaction record - stores callbacks for promise resolution
+/// Each reaction contains the handler (onFulfilled or onRejected) and the
+/// dependent promise's resolve/reject capabilities
+pub(all) struct PromiseReaction {
+  handler : Value? // The callback function (None means identity/thrower)
+  resolve : Value // Resolve function for the dependent promise
+  reject : Value // Reject function for the dependent promise
+  reaction_type : PromiseReactionType // Fulfill or Reject
+}
+
+///|
+pub(all) enum PromiseReactionType {
+  Fulfill
+  Reject
+}
+
+///|
+/// Promise data structure per ECMAScript spec
+/// Promises have a state, result value, and queues of pending reactions
+pub(all) struct PromiseData {
+  mut state : PromiseState
+  mut result : Value // undefined when pending, result when settled
+  fulfill_reactions : Array[PromiseReaction] // Called when fulfilled
+  reject_reactions : Array[PromiseReaction] // Called when rejected
+  mut is_handled : Bool // Whether .catch or second arg to .then was provided
+  properties : Map[String, Value] // User-defined properties (p.foo = 1)
+  symbol_properties : Map[Int, Value] // Symbol-keyed properties (p[Symbol()] = 1)
+}
+
+///|
+/// Create a new pending promise data structure
+pub fn new_promise_data() -> PromiseData {
+  {
+    state: Pending,
+    result: Undefined,
+    fulfill_reactions: [],
+    reject_reactions: [],
+    is_handled: false,
+    properties: {},
+    symbol_properties: {},
+  }
 }
 
 ///|
@@ -158,6 +214,7 @@ pub(all) enum Value {
   Symbol(SymbolData)
   Map(MapData)
   Set(SetData)
+  Promise(PromiseData)
 }
 
 ///|
@@ -313,6 +370,8 @@ pub impl Show for Value with output(self, logger) {
           logger.write_string("function \{name}() { [native code] }")
         Some(InterpreterCallable(name, _)) =>
           logger.write_string("function \{name}() { [native code] }")
+        Some(ConstructorOnlyCallable(name, _)) =>
+          logger.write_string("function \{name}() { [native code] }")
         Some(ClassConstructor(name, _, _, _, _, _)) =>
           logger.write_string("class \{name} { [code] }")
         None => logger.write_string("[object \{data.class_name}]")
@@ -326,6 +385,7 @@ pub impl Show for Value with output(self, logger) {
       }
     Map(_) => logger.write_string("[object Map]")
     Set(_) => logger.write_string("[object Set]")
+    Promise(_) => logger.write_string("[object Promise]")
   }
 }
 
@@ -342,6 +402,7 @@ pub fn is_truthy(val : Value) -> Bool {
     Symbol(_) => true // Symbols are always truthy
     Map(_) => true // Maps are always truthy
     Set(_) => true // Sets are always truthy
+    Promise(_) => true // Promises are always truthy
   }
 }
 
@@ -359,9 +420,11 @@ pub fn to_number(val : Value) -> Double raise Error {
     }
     Bool(b) => if b { 1.0 } else { 0.0 }
     Null => 0.0
-    Undefined | Object(_) | Array(_) | Map(_) | Set(_) => 0.0 / 0.0
+    Undefined | Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) => 0.0 / 0.0
     Symbol(_) =>
-      raise @errors.TypeError(message="Cannot convert a Symbol value to a number")
+      raise @errors.TypeError(
+        message="Cannot convert a Symbol value to a number",
+      )
   }
 }
 
@@ -404,6 +467,7 @@ pub fn type_of(val : Value) -> String {
     Symbol(_) => "symbol"
     Map(_) => "object"
     Set(_) => "object"
+    Promise(_) => "object"
   }
 }
 
@@ -466,7 +530,6 @@ pub fn make_array_iterator_value(arr : ArrayData) -> Value {
 
   // Create symbol properties map with Symbol.iterator
   let iter_symbol_props : Map[Int, Value] = {}
-
   let iter_obj = Object({
     properties: iter_props,
     symbol_properties: iter_symbol_props,
@@ -480,21 +543,21 @@ pub fn make_array_iterator_value(arr : ArrayData) -> Value {
 
   // Add [Symbol.iterator] that returns the iterator itself
   match iter_obj {
-    Object(data) => data.symbol_properties[iterator_sym.id] = Object({
-      properties: {},
-      symbol_properties: {},
-      prototype: Null,
-      callable: Some(
-        MethodCallable("[Symbol.iterator]", fn(this_val, _args) { this_val }),
-      ),
-      class_name: "Function",
-      descriptors: {},
-      symbol_descriptors: {},
-      extensible: true,
-    })
+    Object(data) =>
+      data.symbol_properties[iterator_sym.id] = Object({
+        properties: {},
+        symbol_properties: {},
+        prototype: Null,
+        callable: Some(
+          MethodCallable("[Symbol.iterator]", fn(this_val, _args) { this_val }),
+        ),
+        class_name: "Function",
+        descriptors: {},
+        symbol_descriptors: {},
+        extensible: true,
+      })
     _ => ()
   }
-
   iter_obj
 }
 
@@ -505,7 +568,6 @@ pub fn make_string_iterator_value(s : String) -> Value {
   let iterator_sym = get_iterator_symbol()
   let chars = s.to_array()
   let index_ref : Ref[Int] = { val: 0 }
-
   let next_method = Object({
     properties: {},
     symbol_properties: {},
@@ -537,7 +599,6 @@ pub fn make_string_iterator_value(s : String) -> Value {
             buf.write_char(c)
             index_ref.val = idx + 1
           }
-
           let value = String_(buf.to_string())
           let result_props : Map[String, Value] = {}
           result_props["value"] = value
@@ -574,10 +635,8 @@ pub fn make_string_iterator_value(s : String) -> Value {
     symbol_descriptors: {},
     extensible: true,
   })
-
   let iter_props : Map[String, Value] = {}
   iter_props["next"] = next_method
-
   let iter_obj = Object({
     properties: iter_props,
     symbol_properties: {},
@@ -591,20 +650,20 @@ pub fn make_string_iterator_value(s : String) -> Value {
 
   // Add [Symbol.iterator] that returns the iterator itself
   match iter_obj {
-    Object(data) => data.symbol_properties[iterator_sym.id] = Object({
-      properties: {},
-      symbol_properties: {},
-      prototype: Null,
-      callable: Some(
-        MethodCallable("[Symbol.iterator]", fn(this_val, _args) { this_val }),
-      ),
-      class_name: "Function",
-      descriptors: {},
-      symbol_descriptors: {},
-      extensible: true,
-    })
+    Object(data) =>
+      data.symbol_properties[iterator_sym.id] = Object({
+        properties: {},
+        symbol_properties: {},
+        prototype: Null,
+        callable: Some(
+          MethodCallable("[Symbol.iterator]", fn(this_val, _args) { this_val }),
+        ),
+        class_name: "Function",
+        descriptors: {},
+        symbol_descriptors: {},
+        extensible: true,
+      })
     _ => ()
   }
-
   iter_obj
 }

@@ -1,9 +1,13 @@
 ///| Interpreter-specific error handling helpers
+
 ///|
+
 ///| Re-exports JsError from shared errors package and provides
+
 ///| Value conversion helpers for JavaScript try-catch handling.
 
-///| Create a JavaScript Error object Value with the given name and message
+///|
+/// Create a JavaScript Error object Value with the given name and message
 fn make_error_value(name : String, msg : String) -> Value {
   let err_props : Map[String, Value] = {}
   err_props["message"] = String_(msg)
@@ -21,7 +25,8 @@ fn make_error_value(name : String, msg : String) -> Value {
   })
 }
 
-///| Create an AggregateError with the errors array property
+///|
+/// Create an AggregateError with the errors array property
 fn make_aggregate_error_value(msg : String, errors : Array[Error]) -> Value {
   let err_props : Map[String, Value] = {}
   err_props["message"] = String_(msg)
@@ -42,7 +47,8 @@ fn make_aggregate_error_value(msg : String, errors : Array[Error]) -> Value {
   })
 }
 
-///| Convert any catchable error to a JavaScript Error object Value
+///|
+/// Convert any catchable error to a JavaScript Error object Value
 pub fn js_error_to_value(err : Error) -> Value {
   match err {
     @errors.TypeError(message~) => make_error_value("TypeError", message)
@@ -61,7 +67,8 @@ pub fn js_error_to_value(err : Error) -> Value {
   }
 }
 
-///| Check if an error is a JavaScript catchable error
+///|
+/// Check if an error is a JavaScript catchable error
 pub fn is_js_catchable_error(err : Error) -> Bool {
   match err {
     @errors.TypeError(_)

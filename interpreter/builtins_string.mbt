@@ -350,7 +350,11 @@ pub fn get_string_method(s : String, prop : String) -> Value {
             Undefined => 4294967295L // 2^32 - 1
             _ => {
               let lim = to_number(args[1]).to_int64()
-              if lim < 0L { 0L } else { lim }
+              if lim < 0L {
+                0L
+              } else {
+                lim
+              }
             }
           }
         } else {
@@ -366,7 +370,11 @@ pub fn get_string_method(s : String, prop : String) -> Value {
           let result : Array[Value] = []
           let chars = str.to_array()
           let chars_len = chars.length().to_int64()
-          let count = if chars_len < limit { chars.length() } else { limit.to_int() }
+          let count = if chars_len < limit {
+            chars.length()
+          } else {
+            limit.to_int()
+          }
           for i = 0; i < count; i = i + 1 {
             let buf = StringBuilder::new()
             buf.write_char(chars[i])
@@ -689,8 +697,8 @@ pub fn get_string_method(s : String, prop : String) -> Value {
                 _ => ""
               }
               if not(flags.to_array().contains('g')) {
-                raise @errors.TypeError(message=
-                  "replaceAll must be called with a global RegExp",
+                raise @errors.TypeError(
+                  message="replaceAll must be called with a global RegExp",
                 )
               }
               let pattern = match data.properties.get("source") {

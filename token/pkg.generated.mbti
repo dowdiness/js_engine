@@ -59,9 +59,16 @@ pub(all) enum TokenKind {
   Do
   In
   Instanceof
+  Class
+  Extends
+  Super
+  Static
+  Get
+  Set
   Plus
   Minus
   Star
+  StarStar
   Slash
   Percent
   Assign
@@ -75,12 +82,15 @@ pub(all) enum TokenKind {
   GtEq
   And
   Or
+  QuestionQuestion
+  QuestionDot
   Bang
   PlusPlus
   MinusMinus
   PlusAssign
   MinusAssign
   StarAssign
+  StarStarAssign
   SlashAssign
   PercentAssign
   BitAnd
@@ -96,6 +106,9 @@ pub(all) enum TokenKind {
   LShiftAssign
   RShiftAssign
   URShiftAssign
+  AndAssign
+  OrAssign
+  NullishAssign
   LParen
   RParen
   LBrace
