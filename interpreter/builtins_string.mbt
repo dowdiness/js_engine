@@ -891,22 +891,22 @@ fn unicode_to_lower(code : Int) -> Int {
   }
   // Latin Extended-A (U+0100-U+017F) - even codes are uppercase
   if code >= 0x100 && code <= 0x12E {
-    if code.land(1) == 0 {
+    if (code & 1) == 0 {
       return code + 1
     }
   }
   if code >= 0x132 && code <= 0x136 {
-    if code.land(1) == 0 {
+    if (code & 1) == 0 {
       return code + 1
     }
   }
   if code >= 0x139 && code <= 0x147 {
-    if code.land(1) == 1 {
+    if (code & 1) == 1 {
       return code + 1
     }
   }
   if code >= 0x14A && code <= 0x176 {
-    if code.land(1) == 0 {
+    if (code & 1) == 0 {
       return code + 1
     }
   }
@@ -957,22 +957,22 @@ fn unicode_to_upper(code : Int) -> Int {
   }
   // Latin Extended-A (U+0100-U+017F) - odd codes are lowercase
   if code >= 0x101 && code <= 0x12F {
-    if code.land(1) == 1 {
+    if (code & 1) == 1 {
       return code - 1
     }
   }
   if code >= 0x133 && code <= 0x137 {
-    if code.land(1) == 1 {
+    if (code & 1) == 1 {
       return code - 1
     }
   }
   if code >= 0x13A && code <= 0x148 {
-    if code.land(1) == 0 {
+    if (code & 1) == 0 {
       return code - 1
     }
   }
   if code >= 0x14B && code <= 0x177 {
-    if code.land(1) == 1 {
+    if (code & 1) == 1 {
       return code - 1
     }
   }

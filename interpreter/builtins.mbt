@@ -257,7 +257,7 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
           for arg in args {
             let code = to_number(arg).to_int()
             // fromCharCode uses UTF-16 code units, modulo 2^16
-            let code_unit = code.land(0xFFFF)
+            let code_unit = code & 0xFFFF
             buf.write_char(code_unit.unsafe_to_char())
           }
           String_(buf.to_string())
@@ -285,8 +285,8 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
             } else {
               // Supplementary planes - surrogate pair
               let code_adj = code - 0x10000
-              let high = 0xD800 + code_adj.lsr(10)
-              let low = 0xDC00 + code_adj.land(0x3FF)
+              let high = 0xD800 + (code_adj >> 10)
+              let low = 0xDC00 + (code_adj & 0x3FF)
               buf.write_char(high.unsafe_to_char())
               buf.write_char(low.unsafe_to_char())
             }
