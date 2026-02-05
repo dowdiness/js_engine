@@ -1,6 +1,6 @@
 ## Current State
 
-**Test262 Pass Rate: 26.75%** (6,159 passed / 16,864 failed) — full run on 2026-02-05 (`23,023` executed / `49,647` discovered, `26,590` skipped)
+**Test262 Pass Rate: 27.1%** (6,235 passed / 16,787 failed) — full run on 2026-02-05 (`23,022` executed / `49,647` discovered, `26,590` skipped)
 
 The MoonBit JS engine supports basic language features (variables, arithmetic, functions, closures, control flow, try/catch, new, this, switch, for-in, bitwise ops, objects, arrays), plus template literals, arrow functions, prototype chain lookup, Function.call/apply/bind, and built-in methods for Array, String, Object, and Math. Phase 3 added: arguments object, hoisting, strict mode, default/rest parameters, destructuring, spread, for-of, property descriptors, Object.freeze/seal, RegExp, JSON, Number built-ins, Error hierarchy polish, String.fromCharCode, and array HOFs. Phase 3.5 added: optional chaining (`?.`), nullish coalescing (`??`), exponentiation (`**`), computed property names, getters/setters, TDZ for let/const, global `this`/`globalThis`, and ES spec compliance fixes. Phase 3.6 added: comma-separated variable declarations, sort comparator exception handling, built-in spec improvements, logical assignment operators (`&&=`, `||=`, `??=`), numeric separator literals, number formatting fixes, ES6 classes (`class`, `extends`, `super`, static methods), and spec compliance fixes for URI encoding, prototype property handling, and class method enumerability. Phase 4 added: Symbol primitive type, Symbol.for/keyFor, well-known symbols, symbol-keyed properties, iteration protocols (Symbol.iterator, Array/String iterators, for-of and spread using iterator protocol), ES6 Map/Set collections, Promise with microtask queue (Promise.all/race/allSettled/any, .then/.catch/.finally), Promise.resolve thenable assimilation fixes, queueMicrotask zero-argument callback invocation, and WHATWG timer APIs (setTimeout/clearTimeout/setInterval/clearInterval with event loop). Phases 1-3.6 complete, Phase 4 in progress.
 
@@ -37,8 +37,8 @@ The MoonBit JS engine supports basic language features (variables, arithmetic, f
 | language/arguments-object | 21.4% (27/126) | Arguments working |
 | built-ins/JSON | 21.2% (24/113) | parse/stringify working |
 | built-ins/Set | 23.0% (41/178) | ES6 Set collections |
-| built-ins/Object | 20.2% (649/3211) | ES6+ methods, property descriptors |
-| built-ins/Array | 19.9% (529/2659) | Core methods with spec compliance |
+| built-ins/Object | 22.8% (732/3211) | ES6+ methods, ToObject semantics |
+| built-ins/Array | 19.6% (520/2658) | Core methods with spec compliance |
 | built-ins/decodeURI | 17.0% (9/53) | URI decoding with reserved chars |
 | built-ins/decodeURIComponent | 16.7% (9/54) | Full URI component decoding |
 | built-ins/Symbol | 16.7% (12/72) | Core Symbol support working |
@@ -52,7 +52,7 @@ The MoonBit JS engine supports basic language features (variables, arithmetic, f
 
 **Template literals and arrow functions are now fully supported** (Phase 2). The assert.js harness parses and executes correctly.
 
-The current 26.75% pass rate reflects Symbol, Iteration Protocol, Map/Set, Promise/Event Loop, and ongoing built-in method spec compliance improvements:
+The current 27.1% pass rate reflects Symbol, Iteration Protocol, Map/Set, Promise/Event Loop, and ongoing built-in method spec compliance improvements:
 - **built-ins/* category: ~10-47% pass rate** — Array, String, Object, Number, URI methods now pass many tests
 - **ES6 Classes now supported** — `class`, `extends`, `super`, static methods, non-enumerable methods
 - **Symbols now supported** — `Symbol()`, `Symbol.for()`, `Symbol.keyFor()`, well-known symbols, symbol-keyed properties
@@ -640,9 +640,9 @@ All 6 issues addressed in commit `3439764`:
 
 ### Phase 4 Recent Improvements (2026-02-05)
 
-**Built-in Method Spec Compliance Work** — 8 commits improving Test262 pass rate from 26.4% to 26.75% (+86 tests)
+**Built-in Method Spec Compliance Work** — 12 commits improving Test262 pass rate from 26.4% to 27.1% (+152 tests)
 
-#### Object Built-in Improvements (Commits: 80cafe7, a833a5a, 9daf1e5)
+#### Object Built-in Improvements (Commits: 80cafe7, a833a5a, 9daf1e5, ece0fb9, 340f7d8, 3ca3486, 0704106)
 - [x] **Object.keys/values/entries primitive coercion** — Now handle String and Array primitives via ToObject semantics
 - [x] **Object.create property descriptor validation** — Throws TypeError for non-object descriptors (was silently ignoring)
 - [x] **Object.setPrototypeOf primitive handling** — Returns primitives unchanged instead of throwing TypeError
@@ -650,12 +650,19 @@ All 6 issues addressed in commit `3439764`:
 - [x] **Object.freeze/seal symbol properties** — Now properly handles symbol-keyed properties
 - [x] **Object.defineProperty extensibility check** — Checks extensibility for new properties
 - [x] **Array constructor length validation** — Validates maximum length (2^32 - 1)
+- [x] **Object.values() defensive copy** — Array case now creates defensive copy to prevent unintended mutations
+- [x] **Object.entries() string keys** — Array case now returns string keys per ECMAScript spec
+- [x] **Object.create() is_truthy coercion** — Descriptor flags use is_truthy() for type coercion
+- [x] **Object.assign() TypeError on failures** — Throws TypeError for non-writable properties and non-extensible objects
+- [x] **Object.defineProperty() no-op redefinition** — Allows redefinition when new descriptor matches existing
+- [x] **Object.assign() ToObject conversion** — Applies ToObject semantics to String/Array/Promise sources
 
-#### String Built-in Improvements (Commits: 80cafe7, 9daf1e5)
+#### String Built-in Improvements (Commits: 80cafe7, 9daf1e5, 340f7d8)
 - [x] **String.fromCodePoint** — Full Unicode support with surrogate pairs for supplementary planes (U+10000 to U+10FFFF)
 - [x] **String.fromCodePoint validation** — Rejects fractional numbers and out-of-range code points
 - [x] **String.fromCharCode UTF-16 masking** — Properly masks to 16-bit code units
 - [x] **String.raw template tag** — Implements ES6 template string tag function
+- [x] **String.raw length property** — Now uses length property instead of stopping at first missing index
 - [x] **String.repeat validation** — Validates count parameter and throws RangeError for negative/infinite values
 - [x] **Unicode case mapping** — Comprehensive toLower/toUpper with Latin-1, Greek, Cyrillic support
 - [x] **String.toLocaleLowerCase/toUpperCase** — Added locale-aware case conversion methods
@@ -671,10 +678,10 @@ All 6 issues addressed in commit `3439764`:
 - [x] **String.raw loop syntax** — Fixed MoonBit loop/break syntax issue with while loop pattern
 
 #### Impact by Category
-- **Object**: 18.2% → 20.2% (+65 tests, +2.0 percentage points)
+- **Object**: 18.2% → 22.8% (+148 tests, +4.6 percentage points)
 - **String**: 21.9% → 23.7% (+19 tests, +1.8 percentage points)
-- **Array**: 19.8% → 19.9% (+2 tests, +0.1 percentage points)
-- **Overall**: 26.4% → 26.75% (+86 tests, +0.35 percentage points)
+- **Array**: 19.8% → 19.6% (-9 tests, -0.2 percentage points)
+- **Overall**: 26.4% → 27.1% (+152 tests, +0.7 percentage points)
 
 ---
 
@@ -728,11 +735,11 @@ Phase 1 (DONE) ──► Phase 2 (DONE) ──► Phase 3 (DONE) ──► Phase
 | Phase 3 ✅ | ~8.7% | 444 | Strict mode, destructuring, spread/rest, RegExp, JSON, property descriptors, array HOFs, Number built-ins |
 | Phase 3.5 ✅ | 8.77% (1,848/21,074) | 444 | Optional chaining, nullish coalescing, exponentiation, computed properties, getters/setters, TDZ |
 | **Phase 3.6** ✅ | **27.1%** (5,703/21,042) | 457 | **ES6 Classes, comma-separated declarations, built-in spec fixes, URI encoding** |
-| **Phase 4** 🔄 | **26.75%** (6,159/23,023) | — | **Symbols, iteration protocols, Map/Set, Promise/microtask queue, timer APIs, built-in spec compliance** |
+| **Phase 4** 🔄 | **27.1%** (6,235/23,022) | — | **Symbols, iteration protocols, Map/Set, Promise/microtask queue, timer APIs, built-in spec compliance** |
 
-**Why pass rate jumped from 8.77% to 27.1%**: The comma-separated variable declaration fix (`var a, b, c;`) unblocked ~17% of test262 tests that were failing at parse time. ES6 class implementation added support for `class`, `extends`, `super()`, static methods. Built-ins continue to improve (Array 19.9%, String 23.7%, Object 20.2%, Math 38.2%, Function 10.3%).
+**Why pass rate jumped from 8.77% to 27.1%**: The comma-separated variable declaration fix (`var a, b, c;`) unblocked ~17% of test262 tests that were failing at parse time. ES6 class implementation added support for `class`, `extends`, `super()`, static methods. Built-ins continue to improve (Array 19.6%, String 23.7%, Object 22.8%, Math 38.2%, Function 10.3%).
 
-**Phase 4 progress**: Symbols, iteration protocols, Map/Set collections, Promises, and timer APIs are now implemented. The pass rate is now 26.75% (6,159/23,023 executed tests) with ongoing built-in method spec compliance improvements. Recent work added ES6+ methods (String.fromCodePoint, String.raw, Object.setPrototypeOf) and improved spec compliance for Object, String, and Array built-ins (+86 tests). Promise remains at 7.2% (12/167) — most test262 Promise tests require the async test harness (`$DONE` callback) which the runner doesn't support. Timer APIs (setTimeout/setInterval) are working with proper event loop semantics including microtask checkpoints between tasks.
+**Phase 4 progress**: Symbols, iteration protocols, Map/Set collections, Promises, and timer APIs are now implemented. The pass rate is now 27.1% (6,235/23,022 executed tests) with ongoing built-in method spec compliance improvements. Recent work from CodeRabbit PR #17 review added ES6+ methods (String.fromCodePoint, String.raw, Object.setPrototypeOf) and improved spec compliance for Object, String, and Array built-ins (+152 tests). Major improvements include ToObject semantics in Object.assign/values/entries, defensive copying, property descriptor validation with is_truthy() coercion, and no-op redefinition support. Promise remains at 7.2% (12/167) — most test262 Promise tests require the async test harness (`$DONE` callback) which the runner doesn't support. Timer APIs (setTimeout/setInterval) are working with proper event loop semantics including microtask checkpoints between tasks.
 
 ---
 
