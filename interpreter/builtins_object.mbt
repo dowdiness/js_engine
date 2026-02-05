@@ -191,12 +191,51 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           if args.length() > 1 {
             match args[1] {
               Undefined => ()
-              Null | String_(_) | Number(_) | Bool(_) | Symbol(_) | Array(_)
-              | Map(_) | Set(_) | Promise(_) =>
+              // Only reject primitives - Arrays/Maps/Sets/Promises are valid objects
+              Null | String_(_) | Number(_) | Bool(_) | Symbol(_) =>
                 raise @errors.TypeError(
                   message="Property descriptors must be an object",
                 )
-              Object(desc_obj) =>
+              Array(arr_desc) =>
+                // Arrays are objects with numeric indexed properties
+                match obj {
+                  Object(data) =>
+                    arr_desc.properties.each(fn(prop_name, desc_val) {
+                      match desc_val {
+                        Object(desc) => {
+                          match desc.properties.get("value") {
+                            Some(v) => data.properties[prop_name] = v
+                            None =>
+                              if not(data.properties.contains(prop_name)) {
+                                data.properties[prop_name] = Undefined
+                              }
+                          }
+                          let writable = match desc.properties.get("writable") {
+                            Some(v) => is_truthy(v)
+                            _ => false
+                          }
+                          let enumerable = match desc.properties.get("enumerable") {
+                            Some(v) => is_truthy(v)
+                            _ => false
+                          }
+                          let configurable = match
+                            desc.properties.get("configurable") {
+                            Some(v) => is_truthy(v)
+                            _ => false
+                          }
+                          data.descriptors[prop_name] = {
+                            writable,
+                            enumerable,
+                            configurable,
+                          }
+                        }
+                        _ => ()
+                      }
+                    })
+                  _ => ()
+                }
+              Object(desc_obj) | Map(desc_obj) | Set(desc_obj) | Promise(desc_obj) =>
+                // All these are objects with properties
                 match obj {
                   Object(data) =>
                     desc_obj.properties.each(fn(prop_name, desc_val) {
@@ -243,7 +282,84 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             Object(data) => {
               for i = 1; i < args.length(); i = i + 1 {
                 match args[i] {
-                  Object(src) => {
+                  // ToObject conversion: skip null and undefined
+                  Null | Undefined => ()
+                  // ToObject conversion: String primitives enumerate characters
+                  String_(s) => {
+                    let chars = s.to_array()
+                    for idx = 0; idx < chars.length(); idx = idx + 1 {
+                      let k = idx.to_string()
+                      let v = String_(chars[idx].to_string())
+                      // Check writable on target property
+                      let can_write = match data.descriptors.get(k) {
+                        Some(d) => d.writable
+                        None => true
+                      }
+                      let exists = data.properties.contains(k)
+                      if not(can_write) {
+                        raise @errors.TypeError(
+                          message="Cannot assign to read-only property '\{k}'",
+                        )
+                      }
+                      if not(exists) && not(data.extensible) {
+                        raise @errors.TypeError(
+                          message="Cannot add property '\{k}' to non-extensible object",
+                        )
+                      }
+                      data.properties[k] = v
+                    }
+                  }
+                  // ToObject conversion: Arrays are objects
+                  Array(src) => {
+                    // Copy enumerable string properties from Array object
+                    src.properties.each(fn(k, v) {
+                      let enumerable = match src.descriptors.get(k) {
+                        Some(d) => d.enumerable
+                        None => true
+                      }
+                      if enumerable {
+                        let can_write = match data.descriptors.get(k) {
+                          Some(d) => d.writable
+                          None => true
+                        }
+                        let exists = data.properties.contains(k)
+                        if not(can_write) {
+                          raise @errors.TypeError(
+                            message="Cannot assign to read-only property '\{k}'",
+                          )
+                        }
+                        if not(exists) && not(data.extensible) {
+                          raise @errors.TypeError(
+                            message="Cannot add property '\{k}' to non-extensible object",
+                          )
+                        }
+                        data.properties[k] = v
+                      }
+                    })
+                    // Copy array elements as indexed properties
+                    for idx = 0; idx < src.elements.length(); idx = idx + 1 {
+                      let k = idx.to_string()
+                      let v = src.elements[idx]
+                      let can_write = match data.descriptors.get(k) {
+                        Some(d) => d.writable
+                        None => true
+                      }
+                      let exists = data.properties.contains(k)
+                      if not(can_write) {
+                        raise @errors.TypeError(
+                          message="Cannot assign to read-only property '\{k}'",
+                        )
+                      }
+                      if not(exists) && not(data.extensible) {
+                        raise @errors.TypeError(
+                          message="Cannot add property '\{k}' to non-extensible object",
+                        )
+                      }
+                      data.properties[k] = v
+                    }
+                  }
+                  // Regular objects, Maps, Sets, Promises
+                  Object(src) | Map(src) | Set(src) | Promise(src) => {
                     // Copy enumerable string properties
                     src.properties.each(fn(k, v) {
                       let enumerable = match src.descriptors.get(k) {
@@ -301,7 +417,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                       }
                     })
                   }
-                  _ => ()
+                  // ToObject conversion: Number, Bool, Symbol primitives have no enumerable properties
+                  Number(_) | Bool(_) | Symbol(_) => ()
                 }
               }
               target
