@@ -60,7 +60,12 @@ pub fn Interpreter::run_microtasks(self : Interpreter) -> Unit raise Error {
         match obj_data.callable {
           Some(_) => {
             let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
-            let _ = self.call_value(task.callback, Undefined, [task.argument], loc)
+            let _ = self.call_value(
+              task.callback,
+              Undefined,
+              [task.argument],
+              loc,
+            )
 
           }
           None => ()
@@ -100,9 +105,7 @@ fn create_resolving_functions(
           Promise(pd) =>
             if physical_equal(pd, promise_data) {
               // Self-resolution: reject with TypeError
-              let error = make_type_error(
-                "Chaining cycle detected for promise",
-              )
+              let error = make_type_error("Chaining cycle detected for promise")
               reject_promise(i, promise_data, error)
               return Undefined
             }
@@ -119,9 +122,7 @@ fn create_resolving_functions(
             // Get(resolution, "then") walks the prototype chain and
             // invokes accessors per ECMAScript spec
             let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
-            let then_val = try {
-              i.get_property(resolution, "then", loc)
-            } catch {
+            let then_val = i.get_property(resolution, "then", loc) catch {
               e => {
                 // If Get throws, reject the promise with the error
                 let err = js_error_to_value(e)
@@ -134,35 +135,34 @@ fn create_resolving_functions(
                 match then_od.callable {
                   Some(_) => {
                     // Thenable: enqueue PromiseResolveThenableJob
-                    let (res, rej) = create_resolving_functions(
-                      i,
-                      promise_data,
-                    )
+                    let (res, rej) = create_resolving_functions(i, promise_data)
                     let job = Object({
                       properties: {},
                       symbol_properties: {},
                       prototype: Null,
                       callable: Some(
-                        InterpreterCallable(
-                          "PromiseResolveThenableJob",
-                          fn(i2, _t, _a) {
-                            try {
-                              let _ = i2.call_value(
-                                then_val, resolution, [res, rej], loc,
-                              )
+                        InterpreterCallable("PromiseResolveThenableJob", fn(
+                          i2,
+                          _t,
+                          _a,
+                        ) {
+                          try {
+                            let _ = i2.call_value(
+                              then_val,
+                              resolution,
+                              [res, rej],
+                              loc,
+                            )
 
-                            } catch {
-                              e => {
-                                let err = js_error_to_value(e)
-                                let _ = i2.call_value(
-                                  rej, Undefined, [err], loc,
-                                )
+                          } catch {
+                            e => {
+                              let err = js_error_to_value(e)
+                              let _ = i2.call_value(rej, Undefined, [err], loc)
 
-                              }
                             }
-                            Undefined
-                          },
-                        ),
+                          }
+                          Undefined
+                        }),
                       ),
                       class_name: "Function",
                       descriptors: {},
@@ -208,7 +208,6 @@ fn create_resolving_functions(
     symbol_descriptors: {},
     extensible: true,
   })
-
   (resolve_func, reject_func)
 }
 
@@ -222,7 +221,6 @@ fn fulfill_promise(
 ) -> Unit {
   // Can only transition from Pending
   guard promise_data.state is Pending else { return }
-
   promise_data.state = Fulfilled
   promise_data.result = value
 
@@ -246,7 +244,6 @@ fn reject_promise(
 ) -> Unit {
   // Can only transition from Pending
   guard promise_data.state is Pending else { return }
-
   promise_data.state = Rejected
   promise_data.result = reason
 
@@ -282,13 +279,16 @@ fn enqueue_promise_reaction_job(
         match reaction.handler {
           Some(handler) => {
             // Try to call the handler
-            let result = try {
-              i.call_value(handler, Undefined, [value], loc)
-            } catch {
+            let result = i.call_value(handler, Undefined, [value], loc) catch {
               e => {
                 // Handler threw - reject the dependent promise
                 let error_value = js_error_to_value(e)
-                let _ = i.call_value(reaction.reject, Undefined, [error_value], loc)
+                let _ = i.call_value(
+                  reaction.reject,
+                  Undefined,
+                  [error_value],
+                  loc,
+                )
                 return Undefined
               }
             }
@@ -316,7 +316,6 @@ fn enqueue_promise_reaction_job(
     symbol_descriptors: {},
     extensible: true,
   })
-
   interp.enqueue_microtask(job_callback, argument)
 }
 
@@ -371,8 +370,7 @@ pub fn setup_promise(env : Environment) -> Unit {
 
             // Create resolving functions for the result promise
             let (resolve, reject) = create_resolving_functions(
-              interp,
-              result_promise_data,
+              interp, result_promise_data,
             )
 
             // Create reactions
@@ -412,12 +410,11 @@ pub fn setup_promise(env : Environment) -> Unit {
                 )
               }
             }
-
             result_promise
           }
           _ =>
-            raise @errors.TypeError(message=
-              "Promise.prototype.then requires a Promise",
+            raise @errors.TypeError(
+              message="Promise.prototype.then requires a Promise",
             )
         }
       }),
@@ -439,8 +436,8 @@ pub fn setup_promise(env : Environment) -> Unit {
         let then_method = match this_val {
           Promise(pd) => get_promise_method(pd, "then")
           _ =>
-            raise @errors.TypeError(message=
-              "Promise.prototype.catch requires a Promise",
+            raise @errors.TypeError(
+              message="Promise.prototype.catch requires a Promise",
             )
         }
         let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
@@ -465,8 +462,8 @@ pub fn setup_promise(env : Environment) -> Unit {
         let promise_data = match this_val {
           Promise(pd) => pd
           _ =>
-            raise @errors.TypeError(message=
-              "Promise.prototype.finally requires a Promise",
+            raise @errors.TypeError(
+              message="Promise.prototype.finally requires a Promise",
             )
         }
         let on_finally = if args.length() > 0 { args[0] } else { Undefined }
@@ -474,7 +471,6 @@ pub fn setup_promise(env : Environment) -> Unit {
           Object(od) => od.callable is Some(_)
           _ => false
         }
-
         if not(is_callable) {
           // If onFinally is not callable, pass through
           let then_method = get_promise_method(promise_data, "then")
@@ -524,7 +520,12 @@ pub fn setup_promise(env : Environment) -> Unit {
                 Promise(pd) => get_promise_method(pd, "then")
                 _ => Undefined
               }
-              i.call_value(then_method, result_promise, [return_value_thunk], loc)
+              i.call_value(
+                then_method,
+                result_promise,
+                [return_value_thunk],
+                loc,
+              )
             }),
           ),
           class_name: "Function",
@@ -532,13 +533,16 @@ pub fn setup_promise(env : Environment) -> Unit {
           symbol_descriptors: {},
           extensible: true,
         })
-
         let thrower_thunk = Object({
           properties: {},
           symbol_properties: {},
           prototype: Null,
           callable: Some(
-            InterpreterCallable("finallyThrowerThunk", fn(i, _this, inner_args) {
+            InterpreterCallable("finallyThrowerThunk", fn(
+              i,
+              _this,
+              inner_args,
+            ) {
               let reason = if inner_args.length() > 0 {
                 inner_args[0]
               } else {
@@ -569,7 +573,12 @@ pub fn setup_promise(env : Environment) -> Unit {
                 Promise(pd) => get_promise_method(pd, "then")
                 _ => Undefined
               }
-              i.call_value(then_method, result_promise, [throw_reason_thunk], loc)
+              i.call_value(
+                then_method,
+                result_promise,
+                [throw_reason_thunk],
+                loc,
+              )
             }),
           ),
           class_name: "Function",
@@ -577,10 +586,14 @@ pub fn setup_promise(env : Environment) -> Unit {
           symbol_descriptors: {},
           extensible: true,
         })
-
         let then_method = get_promise_method(promise_data, "then")
         let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
-        interp.call_value(then_method, this_val, [value_thunk, thrower_thunk], loc)
+        interp.call_value(
+          then_method,
+          this_val,
+          [value_thunk, thrower_thunk],
+          loc,
+        )
       }),
     ),
     class_name: "Function",
@@ -588,7 +601,6 @@ pub fn setup_promise(env : Environment) -> Unit {
     symbol_descriptors: {},
     extensible: true,
   })
-
   let promise_proto = Object({
     properties: promise_proto_props,
     symbol_properties: {},
@@ -661,7 +673,6 @@ pub fn setup_promise(env : Environment) -> Unit {
         // Get array of promises
         let promises = get_promise_array(interp, iterable)
         let count = promises.length()
-
         if count == 0 {
           // Empty array - return resolved promise with empty array
           let promise_data : PromiseData = {
@@ -680,11 +691,22 @@ pub fn setup_promise(env : Environment) -> Unit {
         let result_data = new_promise_data()
         let result_promise = Promise(result_data)
         let (resolve, reject) = create_resolving_functions(interp, result_data)
+        let bookkeeping_resolve = Object({
+          properties: {},
+          symbol_properties: {},
+          prototype: Null,
+          callable: Some(
+            NativeCallable("allBookkeepingResolve", fn(_args) { Undefined }),
+          ),
+          class_name: "Function",
+          descriptors: {},
+          symbol_descriptors: {},
+          extensible: true,
+        })
 
         // Track results
         let results : Array[Value] = Array::make(count, Undefined)
         let remaining : Ref[Int] = { val: count }
-
         for i = 0; i < count; i = i + 1 {
           let promise = promises[i]
           let index = i
@@ -713,7 +735,11 @@ pub fn setup_promise(env : Environment) -> Unit {
             prototype: Null,
             callable: Some(
               InterpreterCallable("allOnFulfilled", fn(i2, _this2, args2) {
-                let value = if args2.length() > 0 { args2[0] } else { Undefined }
+                let value = if args2.length() > 0 {
+                  args2[0]
+                } else {
+                  Undefined
+                }
                 results[index] = value
                 remaining.val = remaining.val - 1
                 if remaining.val == 0 {
@@ -743,13 +769,13 @@ pub fn setup_promise(env : Environment) -> Unit {
                 Pending => {
                   let fulfill_reaction : PromiseReaction = {
                     handler: Some(on_fulfilled),
-                    resolve,
+                    resolve: bookkeeping_resolve,
                     reject,
                     reaction_type: Fulfill,
                   }
                   let reject_reaction : PromiseReaction = {
                     handler: None,
-                    resolve,
+                    resolve: bookkeeping_resolve,
                     reject,
                     reaction_type: Reject,
                   }
@@ -761,7 +787,7 @@ pub fn setup_promise(env : Environment) -> Unit {
                     interp,
                     {
                       handler: Some(on_fulfilled),
-                      resolve,
+                      resolve: bookkeeping_resolve,
                       reject,
                       reaction_type: Fulfill,
                     },
@@ -778,7 +804,6 @@ pub fn setup_promise(env : Environment) -> Unit {
             _ => ()
           }
         }
-
         result_promise
       }),
     ),
@@ -802,7 +827,6 @@ pub fn setup_promise(env : Environment) -> Unit {
         let result_data = new_promise_data()
         let result_promise = Promise(result_data)
         let (resolve, reject) = create_resolving_functions(interp, result_data)
-
         for promise in promises {
           // Ensure it's a promise
           let p = match promise {
@@ -820,7 +844,6 @@ pub fn setup_promise(env : Environment) -> Unit {
               Promise(pd)
             }
           }
-
           match p {
             Promise(pd) => {
               pd.is_handled = true
@@ -858,7 +881,6 @@ pub fn setup_promise(env : Environment) -> Unit {
             _ => ()
           }
         }
-
         result_promise
       }),
     ),
@@ -878,7 +900,6 @@ pub fn setup_promise(env : Environment) -> Unit {
         let iterable = if args.length() > 0 { args[0] } else { Undefined }
         let promises = get_promise_array(interp, iterable)
         let count = promises.length()
-
         if count == 0 {
           let promise_data : PromiseData = {
             state: Fulfilled,
@@ -891,18 +912,28 @@ pub fn setup_promise(env : Environment) -> Unit {
           }
           return Promise(promise_data)
         }
-
         let result_data = new_promise_data()
         let result_promise = Promise(result_data)
         let (resolve, _reject) = create_resolving_functions(interp, result_data)
-
+        let bookkeeping_resolve = Object({
+          properties: {},
+          symbol_properties: {},
+          prototype: Null,
+          callable: Some(
+            NativeCallable("allSettledBookkeepingResolve", fn(_args) {
+              Undefined
+            }),
+          ),
+          class_name: "Function",
+          descriptors: {},
+          symbol_descriptors: {},
+          extensible: true,
+        })
         let results : Array[Value] = Array::make(count, Undefined)
         let remaining : Ref[Int] = { val: count }
-
         for i = 0; i < count; i = i + 1 {
           let promise = promises[i]
           let index = i
-
           let p = match promise {
             Promise(_) => promise
             _ => {
@@ -918,7 +949,6 @@ pub fn setup_promise(env : Environment) -> Unit {
               Promise(pd)
             }
           }
-
           let on_fulfilled = Object({
             properties: {},
             symbol_properties: {},
@@ -927,9 +957,13 @@ pub fn setup_promise(env : Environment) -> Unit {
               InterpreterCallable("allSettledOnFulfilled", fn(
                 i2,
                 _this2,
-                args2
+                args2,
               ) {
-                let value = if args2.length() > 0 { args2[0] } else { Undefined }
+                let value = if args2.length() > 0 {
+                  args2[0]
+                } else {
+                  Undefined
+                }
                 let result_props : Map[String, Value] = {}
                 result_props["status"] = String_("fulfilled")
                 result_props["value"] = value
@@ -962,7 +996,6 @@ pub fn setup_promise(env : Environment) -> Unit {
             symbol_descriptors: {},
             extensible: true,
           })
-
           let on_rejected = Object({
             properties: {},
             symbol_properties: {},
@@ -971,9 +1004,13 @@ pub fn setup_promise(env : Environment) -> Unit {
               InterpreterCallable("allSettledOnRejected", fn(
                 i2,
                 _this2,
-                args2
+                args2,
               ) {
-                let reason = if args2.length() > 0 { args2[0] } else { Undefined }
+                let reason = if args2.length() > 0 {
+                  args2[0]
+                } else {
+                  Undefined
+                }
                 let result_props : Map[String, Value] = {}
                 result_props["status"] = String_("rejected")
                 result_props["reason"] = reason
@@ -1020,7 +1057,6 @@ pub fn setup_promise(env : Environment) -> Unit {
             symbol_descriptors: {},
             extensible: true,
           })
-
           match p {
             Promise(pd) => {
               pd.is_handled = true
@@ -1028,13 +1064,13 @@ pub fn setup_promise(env : Environment) -> Unit {
                 Pending => {
                   pd.fulfill_reactions.push({
                     handler: Some(on_fulfilled),
-                    resolve,
+                    resolve: bookkeeping_resolve,
                     reject: dummy_reject,
                     reaction_type: Fulfill,
                   })
                   pd.reject_reactions.push({
                     handler: Some(on_rejected),
-                    resolve,
+                    resolve: bookkeeping_resolve,
                     reject: dummy_reject,
                     reaction_type: Reject,
                   })
@@ -1044,7 +1080,7 @@ pub fn setup_promise(env : Environment) -> Unit {
                     interp,
                     {
                       handler: Some(on_fulfilled),
-                      resolve,
+                      resolve: bookkeeping_resolve,
                       reject: dummy_reject,
                       reaction_type: Fulfill,
                     },
@@ -1055,7 +1091,7 @@ pub fn setup_promise(env : Environment) -> Unit {
                     interp,
                     {
                       handler: Some(on_rejected),
-                      resolve,
+                      resolve: bookkeeping_resolve,
                       reject: dummy_reject,
                       reaction_type: Reject,
                     },
@@ -1066,7 +1102,6 @@ pub fn setup_promise(env : Environment) -> Unit {
             _ => ()
           }
         }
-
         result_promise
       }),
     ),
@@ -1086,7 +1121,6 @@ pub fn setup_promise(env : Environment) -> Unit {
         let iterable = if args.length() > 0 { args[0] } else { Undefined }
         let promises = get_promise_array(interp, iterable)
         let count = promises.length()
-
         if count == 0 {
           // Empty array - reject with AggregateError
           let promise_data : PromiseData = {
@@ -1100,18 +1134,26 @@ pub fn setup_promise(env : Environment) -> Unit {
           }
           return Promise(promise_data)
         }
-
         let result_data = new_promise_data()
         let result_promise = Promise(result_data)
         let (resolve, reject) = create_resolving_functions(interp, result_data)
-
+        let bookkeeping_resolve = Object({
+          properties: {},
+          symbol_properties: {},
+          prototype: Null,
+          callable: Some(
+            NativeCallable("anyBookkeepingResolve", fn(_args) { Undefined }),
+          ),
+          class_name: "Function",
+          descriptors: {},
+          symbol_descriptors: {},
+          extensible: true,
+        })
         let errors : Array[Value] = Array::make(count, Undefined)
         let remaining : Ref[Int] = { val: count }
-
         for i = 0; i < count; i = i + 1 {
           let promise = promises[i]
           let index = i
-
           let p = match promise {
             Promise(_) => promise
             _ => {
@@ -1127,21 +1169,23 @@ pub fn setup_promise(env : Environment) -> Unit {
               Promise(pd)
             }
           }
-
           let on_rejected = Object({
             properties: {},
             symbol_properties: {},
             prototype: Null,
             callable: Some(
               InterpreterCallable("anyOnRejected", fn(i2, _this2, args2) {
-                let reason = if args2.length() > 0 { args2[0] } else { Undefined }
+                let reason = if args2.length() > 0 {
+                  args2[0]
+                } else {
+                  Undefined
+                }
                 errors[index] = reason
                 remaining.val = remaining.val - 1
                 if remaining.val == 0 {
                   let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
                   let agg_error = make_aggregate_error(
-                    "All promises were rejected",
-                    errors,
+                    "All promises were rejected", errors,
                   )
                   let _ = i2.call_value(reject, Undefined, [agg_error], loc)
 
@@ -1154,7 +1198,6 @@ pub fn setup_promise(env : Environment) -> Unit {
             symbol_descriptors: {},
             extensible: true,
           })
-
           match p {
             Promise(pd) => {
               pd.is_handled = true
@@ -1168,7 +1211,7 @@ pub fn setup_promise(env : Environment) -> Unit {
                   })
                   pd.reject_reactions.push({
                     handler: Some(on_rejected),
-                    resolve,
+                    resolve: bookkeeping_resolve,
                     reject,
                     reaction_type: Reject,
                   })
@@ -1184,7 +1227,7 @@ pub fn setup_promise(env : Environment) -> Unit {
                     interp,
                     {
                       handler: Some(on_rejected),
-                      resolve,
+                      resolve: bookkeeping_resolve,
                       reject,
                       reaction_type: Reject,
                     },
@@ -1195,7 +1238,6 @@ pub fn setup_promise(env : Environment) -> Unit {
             _ => ()
           }
         }
-
         result_promise
       }),
     ),
@@ -1220,13 +1262,13 @@ pub fn setup_promise(env : Environment) -> Unit {
             match od.callable {
               Some(_) => ()
               None =>
-                raise @errors.TypeError(message=
-                  "Promise resolver undefined is not a function",
+                raise @errors.TypeError(
+                  message="Promise resolver undefined is not a function",
                 )
             }
           _ =>
-            raise @errors.TypeError(message=
-              "Promise resolver undefined is not a function",
+            raise @errors.TypeError(
+              message="Promise resolver undefined is not a function",
             )
         }
 
@@ -1250,7 +1292,6 @@ pub fn setup_promise(env : Environment) -> Unit {
 
           }
         }
-
         promise
       }),
     ),
@@ -1265,7 +1306,6 @@ pub fn setup_promise(env : Environment) -> Unit {
     Object(od) => od.properties["prototype"] = promise_proto
     _ => ()
   }
-
   env.def_builtin("Promise", promise_ctor)
 
   // queueMicrotask(callback) - schedules a microtask
@@ -1286,16 +1326,15 @@ pub fn setup_promise(env : Environment) -> Unit {
               match od.callable {
                 Some(_) => interp.enqueue_microtask(callback, Undefined)
                 None =>
-                  raise @errors.TypeError(message=
-                    "queueMicrotask requires a function argument",
+                  raise @errors.TypeError(
+                    message="queueMicrotask requires a function argument",
                   )
               }
             _ =>
-              raise @errors.TypeError(message=
-                "queueMicrotask requires a function argument",
+              raise @errors.TypeError(
+                message="queueMicrotask requires a function argument",
               )
           }
-
           Undefined
         }),
       ),
@@ -1328,20 +1367,24 @@ pub fn setup_timers(env : Environment) -> Unit {
               match od.callable {
                 Some(_) => ()
                 None =>
-                  raise @errors.TypeError(message=
-                    "setTimeout requires a function as first argument",
+                  raise @errors.TypeError(
+                    message="setTimeout requires a function as first argument",
                   )
               }
             _ =>
-              raise @errors.TypeError(message=
-                "setTimeout requires a function as first argument",
+              raise @errors.TypeError(
+                message="setTimeout requires a function as first argument",
               )
           }
           let delay = if args.length() > 1 {
             match args[1] {
               Number(n) => {
                 let d = n.to_int()
-                if d < 0 { 0 } else { d }
+                if d < 0 {
+                  0
+                } else {
+                  d
+                }
               }
               _ => 0
             }
@@ -1428,20 +1471,24 @@ pub fn setup_timers(env : Environment) -> Unit {
               match od.callable {
                 Some(_) => ()
                 None =>
-                  raise @errors.TypeError(message=
-                    "setInterval requires a function as first argument",
+                  raise @errors.TypeError(
+                    message="setInterval requires a function as first argument",
                   )
               }
             _ =>
-              raise @errors.TypeError(message=
-                "setInterval requires a function as first argument",
+              raise @errors.TypeError(
+                message="setInterval requires a function as first argument",
               )
           }
           let delay = if args.length() > 1 {
             match args[1] {
               Number(n) => {
                 let d = n.to_int()
-                if d < 0 { 0 } else { d }
+                if d < 0 {
+                  0
+                } else {
+                  d
+                }
               }
               _ => 0
             }
@@ -1577,10 +1624,10 @@ fn get_promise_array(
 ) -> Array[Value] raise Error {
   match iterable {
     Undefined | Null =>
-      raise @errors.TypeError(message=
-        "Cannot read properties of " +
-        type_of(iterable) +
-        " (reading 'Symbol(Symbol.iterator)')",
+      raise @errors.TypeError(
+        message="Cannot read properties of " +
+          type_of(iterable) +
+          " (reading 'Symbol(Symbol.iterator)')",
       )
     _ => {
       let loc : @token.Loc = { line: 0, col: 0, offset: 0 }

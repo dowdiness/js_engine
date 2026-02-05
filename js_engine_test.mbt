@@ -144,6 +144,32 @@ test "Promise.allSettled" {
 }
 
 ///|
+test "Promise.any resolves on first fulfillment" {
+  let src =
+    #|Promise.any([
+    #|  Promise.reject("fail-1"),
+    #|  Promise.resolve("ok"),
+    #|  Promise.reject("fail-2")
+    #|]).then(value => console.log(value), err => console.log(err.name));
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"ok\"]")
+}
+
+///|
+test "Promise.any rejects when all reject" {
+  let src =
+    #|Promise.any([
+    #|  Promise.reject("fail-1"),
+    #|  Promise.reject("fail-2")
+    #|]).then(
+    #|  value => console.log("resolved:" + value),
+    #|  err => console.log(err.name)
+    #|);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"AggregateError\"]")
+}
+
+///|
 test "setTimeout basic" {
   let src =
     #|console.log("before");
