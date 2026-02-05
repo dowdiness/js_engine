@@ -89,6 +89,54 @@ pub(all) struct SetData {
 }
 
 ///|
+/// Promise state per ECMAScript spec
+pub(all) enum PromiseState {
+  Pending
+  Fulfilled
+  Rejected
+}
+
+///|
+/// Promise reaction record - stores callbacks for promise resolution
+/// Each reaction contains the handler (onFulfilled or onRejected) and the
+/// dependent promise's resolve/reject capabilities
+pub(all) struct PromiseReaction {
+  handler : Value? // The callback function (None means identity/thrower)
+  resolve : Value // Resolve function for the dependent promise
+  reject : Value // Reject function for the dependent promise
+  reaction_type : PromiseReactionType // Fulfill or Reject
+}
+
+///|
+pub(all) enum PromiseReactionType {
+  Fulfill
+  Reject
+}
+
+///|
+/// Promise data structure per ECMAScript spec
+/// Promises have a state, result value, and queues of pending reactions
+pub(all) struct PromiseData {
+  mut state : PromiseState
+  mut result : Value // undefined when pending, result when settled
+  fulfill_reactions : Array[PromiseReaction] // Called when fulfilled
+  reject_reactions : Array[PromiseReaction] // Called when rejected
+  mut is_handled : Bool // Whether .catch or second arg to .then was provided
+}
+
+///|
+/// Create a new pending promise data structure
+pub fn new_promise_data() -> PromiseData {
+  {
+    state: Pending,
+    result: Undefined,
+    fulfill_reactions: [],
+    reject_reactions: [],
+    is_handled: false,
+  }
+}
+
+///|
 /// Global counter for generating unique symbol IDs
 let symbol_id_counter : Ref[Int] = { val: 0 }
 
@@ -158,6 +206,7 @@ pub(all) enum Value {
   Symbol(SymbolData)
   Map(MapData)
   Set(SetData)
+  Promise(PromiseData)
 }
 
 ///|
@@ -326,6 +375,7 @@ pub impl Show for Value with output(self, logger) {
       }
     Map(_) => logger.write_string("[object Map]")
     Set(_) => logger.write_string("[object Set]")
+    Promise(_) => logger.write_string("[object Promise]")
   }
 }
 
@@ -342,6 +392,7 @@ pub fn is_truthy(val : Value) -> Bool {
     Symbol(_) => true // Symbols are always truthy
     Map(_) => true // Maps are always truthy
     Set(_) => true // Sets are always truthy
+    Promise(_) => true // Promises are always truthy
   }
 }
 
@@ -359,7 +410,7 @@ pub fn to_number(val : Value) -> Double raise Error {
     }
     Bool(b) => if b { 1.0 } else { 0.0 }
     Null => 0.0
-    Undefined | Object(_) | Array(_) | Map(_) | Set(_) => 0.0 / 0.0
+    Undefined | Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) => 0.0 / 0.0
     Symbol(_) =>
       raise @errors.TypeError(message="Cannot convert a Symbol value to a number")
   }
@@ -404,6 +455,7 @@ pub fn type_of(val : Value) -> String {
     Symbol(_) => "symbol"
     Map(_) => "object"
     Set(_) => "object"
+    Promise(_) => "object"
   }
 }
 

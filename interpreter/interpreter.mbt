@@ -7,11 +7,20 @@ pub(all) enum Signal {
 }
 
 ///|
+/// Microtask record for the event loop microtask queue
+/// Stores a callback function and optional argument to pass to it
+pub(all) struct Microtask {
+  callback : Value // The function to call
+  argument : Value // The argument to pass (e.g., promise result)
+}
+
+///|
 pub(all) struct Interpreter {
   output : Array[String]
   global : Environment
   global_this : Value
   mut strict : Bool
+  microtask_queue : Array[Microtask] // Event loop microtask queue
 }
 
 ///|
@@ -35,7 +44,8 @@ pub fn Interpreter::new() -> Interpreter {
   // Bind 'this' and 'globalThis' in global scope
   global.def_builtin("this", global_this)
   global.def_builtin("globalThis", global_this)
-  { output, global, global_this, strict: false }
+  let microtask_queue : Array[Microtask] = []
+  { output, global, global_this, strict: false, microtask_queue }
 }
 
 ///|
@@ -2746,6 +2756,7 @@ fn Interpreter::get_property(
       } else {
         get_set_method(data, prop)
       }
+    Promise(data) => get_promise_method(data, prop)
     Null | Undefined =>
       raise @errors.TypeError(message="Cannot read property '\{prop}' of \{type_of(obj)}")
     _ => Undefined
@@ -3087,6 +3098,11 @@ fn Interpreter::get_computed_property(
     Number(_) =>
       match key {
         String_(method_name) => get_number_method(obj, method_name)
+        _ => Undefined
+      }
+    Promise(data) =>
+      match key {
+        String_(method_name) => get_promise_method(data, method_name)
         _ => Undefined
       }
     Null | Undefined =>
