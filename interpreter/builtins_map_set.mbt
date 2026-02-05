@@ -401,23 +401,31 @@ fn setup_map_builtins(env : Environment) -> Unit raise Error {
                 break
               }
               let value = interp.get_property(result, "value", loc)
-              // Value should be [key, value] pair
-              match value {
-                Array(arr) => {
-                  if arr.elements.length() >= 2 {
-                    let key = arr.elements[0]
-                    let val = arr.elements[1]
-                    // Add to map
-                    match new_map {
-                      Map(data) => data.entries.push((key, val))
-                      _ => ()
+              // Value should be [key, value] pair or array-like with '0' and '1' properties
+              // Try to get key and value from the entry
+              let key = interp.get_computed_property(value, Number(0.0), loc)
+              let val = interp.get_computed_property(value, Number(1.0), loc)
+
+              // Add to map using same SameValueZero upsert logic as Map.prototype.set
+              match new_map {
+                Map(data) => {
+                  // Find existing key using SameValueZero
+                  let mut found = false
+                  for i = 0; i < data.entries.length(); i = i + 1 {
+                    let (k, _) = data.entries[i]
+                    if same_value_zero(k, key) {
+                      // Update existing entry
+                      data.entries[i] = (key, val)
+                      found = true
+                      break
                     }
                   }
+                  if not(found) {
+                    // Add new entry
+                    data.entries.push((key, val))
+                  }
                 }
-                _ =>
-                  raise @errors.TypeError(message=
-                    "Iterator value is not an entry object",
-                  )
+                _ => ()
               }
             }
           }
