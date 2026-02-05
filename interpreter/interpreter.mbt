@@ -95,27 +95,38 @@ pub fn Interpreter::run(
   self : Interpreter,
   stmts : Array[@ast.Stmt],
 ) -> Value raise Error {
-  // Check for "use strict" directive
-  if has_use_strict(stmts) {
-    self.strict = true
-  }
-  // Hoist var declarations and function declarations at global level
-  self.hoist_declarations(stmts, self.global)
-  let mut last : Value = Undefined
-  for stmt in stmts {
-    match self.exec_stmt(stmt, self.global) {
-      Normal(v) => last = v
-      ReturnSignal(_) =>
-        raise @errors.SyntaxError(
-          message="return statement outside of function",
-        )
-      BreakSignal(_) =>
-        raise @errors.SyntaxError(message="break statement outside of loop")
-      ContinueSignal(_) =>
-        raise @errors.SyntaxError(message="continue statement outside of loop")
+  try {
+    // Check for "use strict" directive
+    if has_use_strict(stmts) {
+      self.strict = true
     }
+    // Hoist var declarations and function declarations at global level
+    self.hoist_declarations(stmts, self.global)
+    let mut last : Value = Undefined
+    for stmt in stmts {
+      match self.exec_stmt(stmt, self.global) {
+        Normal(v) => last = v
+        ReturnSignal(_) =>
+          raise @errors.SyntaxError(
+            message="return statement outside of function",
+          )
+        BreakSignal(_) =>
+          raise @errors.SyntaxError(message="break statement outside of loop")
+        ContinueSignal(_) =>
+          raise @errors.SyntaxError(
+            message="continue statement outside of loop",
+          )
+      }
+    }
+    last
+  } catch {
+    e =>
+      if is_js_catchable_error(e) {
+        raise JsException(js_error_to_value(e))
+      } else {
+        raise e
+      }
   }
-  last
 }
 
 ///|
@@ -1034,8 +1045,8 @@ fn Interpreter::exec_try_catch(
         match (catch_param, catch_body) {
           (Some(param), Some(body)) => {
             let catch_env = Environment::new(parent=Some(env))
-            // Convert the error to a JavaScript Error object Value
-            let error_value = js_error_to_value(e)
+            // Convert runtime errors to JS throw values (string errors by default)
+            let error_value = js_error_to_throw_value(e)
             catch_env.def(param, error_value, LetBinding)
             self.exec_stmts(body, catch_env)
           }

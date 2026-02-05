@@ -13,6 +13,34 @@ fn run_output(source : String) -> Array[String] raise Error {
 }
 
 ///|
+fn error_display(val : @interpreter.Value) -> String {
+  match val {
+    @interpreter.Object(data) => {
+      let name = match data.properties.get("name") {
+        Some(n) => n.to_string()
+        None => ""
+      }
+      let message = match data.properties.get("message") {
+        Some(m) => m.to_string()
+        None => ""
+      }
+      if name.length() > 0 {
+        if message.length() > 0 {
+          name + ": " + message
+        } else {
+          name
+        }
+      } else if message.length() > 0 {
+        message
+      } else {
+        val.to_string()
+      }
+    }
+    _ => val.to_string()
+  }
+}
+
+///|
 test "arithmetic" {
   let (_, result) = run_js("1 + 2 * 3")
   inspect(result, content="7")
@@ -145,7 +173,7 @@ test "const assignment error" {
     let _ = run_js("const x = 5; x = 10")
 
   } catch {
-    @interpreter.JsException(val) => err_msg = val.to_string()
+    @interpreter.JsException(val) => err_msg = error_display(val)
     _ => err_msg = "unexpected error"
   }
   inspect(err_msg, content="TypeError: Assignment to constant variable 'x'")
@@ -371,7 +399,7 @@ test "uncaught throw is error" {
     let _ = run_js("throw \"uncaught\"")
 
   } catch {
-    @interpreter.JsException(val) => err_msg = val.to_string()
+    @interpreter.JsException(val) => err_msg = error_display(val)
     _ => err_msg = "unexpected"
   }
   inspect(err_msg, content="uncaught")
@@ -1764,7 +1792,7 @@ test "bound function propagates runtime error" {
     )
 
   } catch {
-    @interpreter.JsException(val) => err_msg = val.to_string()
+    @interpreter.JsException(val) => err_msg = error_display(val)
     _ => err_msg = "other error"
   }
   inspect(err_msg.contains("Cannot read property"), content="true")

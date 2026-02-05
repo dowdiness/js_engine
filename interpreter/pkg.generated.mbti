@@ -30,6 +30,8 @@ pub fn is_js_catchable_error(Error) -> Bool
 
 pub fn is_truthy(Value) -> Bool
 
+pub fn js_error_to_throw_value(Error) -> Value
+
 pub fn js_error_to_value(Error) -> Value
 
 pub fn make_array_iterator_value(ArrayData) -> Value

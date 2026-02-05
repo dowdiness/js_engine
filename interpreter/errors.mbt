@@ -68,6 +68,30 @@ pub fn js_error_to_value(err : Error) -> Value {
 }
 
 ///|
+/// Convert a catchable error to the JS throw value used by this interpreter.
+/// Runtime engine errors are surfaced as strings like "TypeError: ...".
+pub fn js_error_to_throw_value(err : Error) -> Value {
+  match err {
+    @errors.TypeError(message~) => String_("TypeError: " + message)
+    @errors.ReferenceError(message~) => String_("ReferenceError: " + message)
+    @errors.SyntaxError(message~) => String_("SyntaxError: " + message)
+    @errors.RangeError(message~) => String_("RangeError: " + message)
+    @errors.URIError(message~) => String_("URIError: " + message)
+    @errors.EvalError(message~) => String_("EvalError: " + message)
+    @errors.InternalError(message~) => String_("InternalError: " + message)
+    @errors.AggregateError(message~, errors~) => {
+      let error_texts = errors.map(fn(e) {
+        js_error_to_throw_value(e).to_string()
+      })
+      let errors_str = error_texts.join(", ")
+      String_("AggregateError: " + message + " (errors: " + errors_str + ")")
+    }
+    JsException(val) => val
+    _ => String_("Error: " + err.to_string())
+  }
+}
+
+///|
 /// Check if an error is a JavaScript catchable error
 pub fn is_js_catchable_error(err : Error) -> Bool {
   match err {
