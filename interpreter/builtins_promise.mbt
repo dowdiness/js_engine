@@ -109,47 +109,15 @@ fn create_resolving_functions(
           _ => ()
         }
 
-        // Thenable assimilation (ECMAScript §25.6.1.3.2)
-        // If the resolution is an object/function with a callable .then,
-        // subscribe to it rather than fulfilling directly.
+        // Thenable assimilation (ECMAScript §25.6.1.3.2 steps 8-13)
+        // If resolution is not an object, fulfill directly.
+        // Otherwise, perform Get(resolution, "then") and check if callable.
+        // This applies uniformly to both native Promises and plain objects
+        // — the spec has no fast-path for native promises.
         match resolution {
-          Promise(pd) => {
-            // Native promise: subscribe to its settlement
-            let (res, rej) = create_resolving_functions(i, promise_data)
-            // Reset already_resolved for the new resolving functions
-            // (the outer already_resolved already guards re-entry)
-            match pd.state {
-              Pending => {
-                pd.fulfill_reactions.push({
-                  handler: None,
-                  resolve: res,
-                  reject: rej,
-                  reaction_type: Fulfill,
-                })
-                pd.reject_reactions.push({
-                  handler: None,
-                  resolve: res,
-                  reject: rej,
-                  reaction_type: Reject,
-                })
-              }
-              Fulfilled =>
-                enqueue_promise_reaction_job(
-                  i,
-                  { handler: None, resolve: res, reject: rej, reaction_type: Fulfill },
-                  pd.result,
-                )
-              Rejected =>
-                enqueue_promise_reaction_job(
-                  i,
-                  { handler: None, resolve: res, reject: rej, reaction_type: Reject },
-                  pd.result,
-                )
-            }
-          }
-          Object(_) => {
-            // Check for thenable: use Get(resolution, "then") which walks
-            // the prototype chain and invokes accessors per ECMAScript spec
+          Promise(_) | Object(_) => {
+            // Get(resolution, "then") walks the prototype chain and
+            // invokes accessors per ECMAScript spec
             let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
             let then_val = try {
               i.get_property(resolution, "then", loc)
@@ -165,7 +133,7 @@ fn create_resolving_functions(
               Object(then_od) =>
                 match then_od.callable {
                   Some(_) => {
-                    // Thenable: enqueue job to call then(resolve, reject)
+                    // Thenable: enqueue PromiseResolveThenableJob
                     let (res, rej) = create_resolving_functions(
                       i,
                       promise_data,
