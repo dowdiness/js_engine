@@ -3171,16 +3171,14 @@ fn Interpreter::get_computed_property(
         String_(method_name) => get_number_method(obj, method_name)
         _ => Undefined
       }
-    Promise(data) =>
-      match key {
-        String_(prop) =>
-          // Check user-defined properties first, then prototype methods
-          match data.properties.get(prop) {
-            Some(v) => v
-            None => get_promise_method(data, prop)
-          }
-        _ => Undefined
+    Promise(data) => {
+      // Coerce key to string via ToPropertyKey (Symbol handled above)
+      let prop = key.to_string()
+      match data.properties.get(prop) {
+        Some(v) => v
+        None => get_promise_method(data, prop)
       }
+    }
     Null | Undefined =>
       raise @errors.TypeError(message="Cannot read property of \{type_of(obj)}")
     _ => Undefined
