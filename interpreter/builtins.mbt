@@ -322,21 +322,26 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
                   String_(buf.to_string())
                 }
                 Some(Object(raw_obj)) => {
-                  // Handle object with numeric indices
+                  // Handle object with numeric indices - use length property per spec
                   let buf = StringBuilder::new()
-                  let mut i = 0
                   let sub_count = args.length() - 1
-                  let mut done = false
-                  while not(done) {
-                    match raw_obj.properties.get(i.to_string()) {
-                      Some(str_val) => {
-                        buf.write_string(str_val.to_string())
-                        if i < sub_count {
-                          buf.write_string(args[i + 1].to_string())
-                        }
-                        i = i + 1
-                      }
-                      None => done = true
+
+                  // Get length property (treat missing/invalid as 0)
+                  let length = match raw_obj.properties.get("length") {
+                    Some(Number(n)) => n.to_int().max(0)
+                    _ => 0
+                  }
+
+                  // Iterate from 0 to length-1, treating missing indices as Undefined
+                  for i = 0; i < length; i = i + 1 {
+                    let str_val = match raw_obj.properties.get(i.to_string()) {
+                      Some(v) => v
+                      None => Undefined
+                    }
+                    buf.write_string(str_val.to_string())
+                    // Add substitution if available
+                    if i < sub_count {
+                      buf.write_string(args[i + 1].to_string())
                     }
                   }
                   String_(buf.to_string())

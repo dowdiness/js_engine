@@ -423,21 +423,55 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 Object(desc) => {
                   // Check if property exists
                   let prop_exists = data.properties.contains(prop_name)
+
+                  // Build new descriptor flags from input (using is_truthy for coercion)
+                  let existing_desc = data.descriptors.get(prop_name)
+                  let new_writable = match desc.properties.get("writable") {
+                    Some(v) => Some(is_truthy(v))
+                    None => None
+                  }
+                  let new_enumerable = match desc.properties.get("enumerable") {
+                    Some(v) => Some(is_truthy(v))
+                    None => None
+                  }
+                  let new_configurable = match desc.properties.get("configurable") {
+                    Some(v) => Some(is_truthy(v))
+                    None => None
+                  }
+
                   // Check if configurable on existing descriptor
-                  match data.descriptors.get(prop_name) {
-                    Some(existing) =>
+                  match existing_desc {
+                    Some(existing) => {
                       if not(existing.configurable) {
-                        raise @errors.TypeError(
-                          message="Cannot redefine property: \{prop_name}",
-                        )
+                        // Non-configurable property: only allow if new descriptor matches existing
+                        let writable_matches = match new_writable {
+                          Some(w) => w == existing.writable
+                          None => true  // Not specified, no conflict
+                        }
+                        let enumerable_matches = match new_enumerable {
+                          Some(e) => e == existing.enumerable
+                          None => true
+                        }
+                        let configurable_matches = match new_configurable {
+                          Some(c) => c == existing.configurable
+                          None => true
+                        }
+
+                        if not(writable_matches && enumerable_matches && configurable_matches) {
+                          raise @errors.TypeError(
+                            message="Cannot redefine non-configurable property: \{prop_name}",
+                          )
+                        }
                       }
-                    None =>
+                    }
+                    None => {
                       // Check extensibility when adding new property
                       if not(prop_exists) && not(data.extensible) {
                         raise @errors.TypeError(
                           message="Cannot add property \{prop_name}, object is not extensible",
                         )
                       }
+                    }
                   }
                   // Set value
                   match desc.properties.get("value") {
@@ -447,27 +481,26 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                         data.properties[prop_name] = Undefined
                       }
                   }
-                  // Build descriptor
-                  let existing_desc = data.descriptors.get(prop_name)
-                  let writable = match desc.properties.get("writable") {
-                    Some(Bool(b)) => b
-                    _ =>
+                  // Build final descriptor using new values or existing defaults
+                  let writable = match new_writable {
+                    Some(w) => w
+                    None =>
                       match existing_desc {
                         Some(d) => d.writable
                         None => false
                       }
                   }
-                  let enumerable = match desc.properties.get("enumerable") {
-                    Some(Bool(b)) => b
-                    _ =>
+                  let enumerable = match new_enumerable {
+                    Some(e) => e
+                    None =>
                       match existing_desc {
                         Some(d) => d.enumerable
                         None => false
                       }
                   }
-                  let configurable = match desc.properties.get("configurable") {
-                    Some(Bool(b)) => b
-                    _ =>
+                  let configurable = match new_configurable {
+                    Some(c) => c
+                    None =>
                       match existing_desc {
                         Some(d) => d.configurable
                         None => false
