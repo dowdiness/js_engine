@@ -2602,6 +2602,7 @@ fn Interpreter::get_property(
                   FuncApplyMethod(_) => 2
                   MethodCallable(_, _) => 0
                   InterpreterCallable(_, _) => 0
+                  ConstructorOnlyCallable(_, _) => 0
                   ClassConstructor(_, _, _, ctor, _, _) =>
                     match ctor {
                       Some((params, _)) => params.length()
@@ -2955,6 +2956,7 @@ fn Interpreter::get_computed_property(
                   FuncApplyMethod(_) => 2
                   MethodCallable(_, _) => 0
                   InterpreterCallable(_, _) => 0
+                  ConstructorOnlyCallable(_, _) => 0
                   ClassConstructor(_, _, _, ctor, _, _) =>
                     match ctor {
                       Some((params, _)) => params.length()
