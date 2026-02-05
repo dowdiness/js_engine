@@ -136,8 +136,24 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
       let arr = data
       make_native_func("includes", fn(args) {
         let search = if args.length() > 0 { args[0] } else { Undefined }
-        for el in arr.elements {
-          if same_value_zero(el, search) {
+        let from_idx = if args.length() > 1 {
+          to_number(args[1]).to_int()
+        } else {
+          0
+        }
+        let len = arr.elements.length()
+        let start = if from_idx < 0 {
+          let s = len + from_idx
+          if s < 0 {
+            0
+          } else {
+            s
+          }
+        } else {
+          from_idx
+        }
+        for i = start; i < len; i = i + 1 {
+          if same_value_zero(arr.elements[i], search) {
             return Bool(true)
           }
         }

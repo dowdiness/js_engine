@@ -612,12 +612,17 @@ pub fn get_string_method(s : String, prop : String) -> Value {
     "repeat" => {
       let str = s
       make_native_func("repeat", fn(args) {
-        let count = if args.length() > 0 {
-          to_number(args[0]).to_int()
+        let count_num = if args.length() > 0 {
+          to_number(args[0])
         } else {
-          0
+          0.0
         }
-        if count <= 0 {
+        // Check for negative or infinite count
+        if count_num < 0.0 || count_num.is_inf() {
+          raise @errors.RangeError(message="Invalid repeat count")
+        }
+        let count = count_num.to_int()
+        if count == 0 {
           return String_("")
         }
         let buf = StringBuilder::new()

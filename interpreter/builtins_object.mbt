@@ -80,7 +80,15 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           match obj {
             Object(data) => {
               let vals : Array[Value] = []
-              data.properties.each(fn(_k, v) { vals.push(v) })
+              data.properties.each(fn(k, v) {
+                let enumerable = match data.descriptors.get(k) {
+                  Some(d) => d.enumerable
+                  None => true
+                }
+                if enumerable {
+                  vals.push(v)
+                }
+              })
               Array({ elements: vals })
             }
             _ => Array({ elements: [] })
@@ -92,7 +100,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             Object(data) => {
               let entries : Array[Value] = []
               data.properties.each(fn(k, v) {
-                entries.push(Array({ elements: [String_(k), v] }))
+                let enumerable = match data.descriptors.get(k) {
+                  Some(d) => d.enumerable
+                  None => true
+                }
+                if enumerable {
+                  entries.push(Array({ elements: [String_(k), v] }))
+                }
               })
               Array({ elements: entries })
             }
@@ -101,7 +115,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }),
         "create": make_native_func("create", fn(args) {
           let proto = if args.length() > 0 { args[0] } else { Null }
-          Object({
+          let obj = Object({
             properties: {},
             symbol_properties: {},
             prototype: proto,
@@ -111,6 +125,51 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             symbol_descriptors: {},
             extensible: true,
           })
+          // Handle optional second argument (property descriptors)
+          if args.length() > 1 {
+            match args[1] {
+              Undefined => ()
+              Object(desc_obj) =>
+                match obj {
+                  Object(data) =>
+                    desc_obj.properties.each(fn(prop_name, desc_val) {
+                      match desc_val {
+                        Object(desc) => {
+                          match desc.properties.get("value") {
+                            Some(v) => data.properties[prop_name] = v
+                            None =>
+                              if not(data.properties.contains(prop_name)) {
+                                data.properties[prop_name] = Undefined
+                              }
+                          }
+                          let writable = match desc.properties.get("writable") {
+                            Some(Bool(b)) => b
+                            _ => false
+                          }
+                          let enumerable = match desc.properties.get("enumerable") {
+                            Some(Bool(b)) => b
+                            _ => false
+                          }
+                          let configurable = match
+                            desc.properties.get("configurable") {
+                            Some(Bool(b)) => b
+                            _ => false
+                          }
+                          data.descriptors[prop_name] = {
+                            writable,
+                            enumerable,
+                            configurable,
+                          }
+                        }
+                        _ => ()
+                      }
+                    })
+                  _ => ()
+                }
+              _ => ()
+            }
+          }
+          obj
         }),
         "assign": make_native_func("assign", fn(args) {
           let target = if args.length() > 0 { args[0] } else { Undefined }
@@ -118,8 +177,28 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             Object(data) => {
               for i = 1; i < args.length(); i = i + 1 {
                 match args[i] {
-                  Object(src) =>
-                    src.properties.each(fn(k, v) { data.properties[k] = v })
+                  Object(src) => {
+                    // Copy enumerable string properties
+                    src.properties.each(fn(k, v) {
+                      let enumerable = match src.descriptors.get(k) {
+                        Some(d) => d.enumerable
+                        None => true
+                      }
+                      if enumerable {
+                        data.properties[k] = v
+                      }
+                    })
+                    // Copy enumerable symbol properties
+                    src.symbol_properties.each(fn(sym_id, v) {
+                      let enumerable = match src.symbol_descriptors.get(sym_id) {
+                        Some(d) => d.enumerable
+                        None => true
+                      }
+                      if enumerable {
+                        data.symbol_properties[sym_id] = v
+                      }
+                    })
+                  }
                   _ => ()
                 }
               }
