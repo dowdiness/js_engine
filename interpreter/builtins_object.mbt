@@ -72,6 +72,23 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               })
               Array({ elements: keys })
             }
+            String_(s) => {
+              // String objects have enumerable indexed properties
+              let keys : Array[Value] = []
+              let len = s.length()
+              for i = 0; i < len; i = i + 1 {
+                keys.push(String_(i.to_string()))
+              }
+              Array({ elements: keys })
+            }
+            Array(data) => {
+              // Array objects have enumerable indexed properties
+              let keys : Array[Value] = []
+              for i = 0; i < data.elements.length(); i = i + 1 {
+                keys.push(String_(i.to_string()))
+              }
+              Array({ elements: keys })
+            }
             _ => Array({ elements: [] })
           }
         }),
@@ -91,6 +108,19 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               })
               Array({ elements: vals })
             }
+            String_(s) => {
+              // String objects have enumerable indexed properties
+              let vals : Array[Value] = []
+              let chars = s.to_array()
+              for ch in chars {
+                vals.push(String_(ch.to_string()))
+              }
+              Array({ elements: vals })
+            }
+            Array(data) => {
+              // Array objects - return array elements
+              Array({ elements: data.elements })
+            }
             _ => Array({ elements: [] })
           }
         }),
@@ -108,6 +138,34 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                   entries.push(Array({ elements: [String_(k), v] }))
                 }
               })
+              Array({ elements: entries })
+            }
+            String_(s) => {
+              // String objects have enumerable indexed properties
+              let entries : Array[Value] = []
+              let chars = s.to_array()
+              for i = 0; i < chars.length(); i = i + 1 {
+                entries.push(
+                  Array({
+                    elements: [
+                      String_(i.to_string()),
+                      String_(chars[i].to_string()),
+                    ],
+                  }),
+                )
+              }
+              Array({ elements: entries })
+            }
+            Array(data) => {
+              // Array objects
+              let entries : Array[Value] = []
+              for i = 0; i < data.elements.length(); i = i + 1 {
+                entries.push(
+                  Array({
+                    elements: [Number(i.to_double()), data.elements[i]],
+                  }),
+                )
+              }
               Array({ elements: entries })
             }
             _ => Array({ elements: [] })
@@ -185,7 +243,16 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                         None => true
                       }
                       if enumerable {
-                        data.properties[k] = v
+                        // Check writable on target property
+                        let can_write = match data.descriptors.get(k) {
+                          Some(d) => d.writable
+                          None => true
+                        }
+                        // Check extensibility if property doesn't exist
+                        let exists = data.properties.contains(k)
+                        if can_write && (exists || data.extensible) {
+                          data.properties[k] = v
+                        }
                       }
                     })
                     // Copy enumerable symbol properties
@@ -195,7 +262,16 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                         None => true
                       }
                       if enumerable {
-                        data.symbol_properties[sym_id] = v
+                        // Check writable on target property
+                        let can_write = match data.symbol_descriptors.get(sym_id) {
+                          Some(d) => d.writable
+                          None => true
+                        }
+                        // Check extensibility if property doesn't exist
+                        let exists = data.symbol_properties.contains(sym_id)
+                        if can_write && (exists || data.extensible) {
+                          data.symbol_properties[sym_id] = v
+                        }
                       }
                     })
                   }
@@ -319,6 +395,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             Object(data) =>
               match descriptor {
                 Object(desc) => {
+                  // Check if property exists
+                  let prop_exists = data.properties.contains(prop_name)
                   // Check if configurable on existing descriptor
                   match data.descriptors.get(prop_name) {
                     Some(existing) =>
@@ -327,7 +405,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                           message="Cannot redefine property: \{prop_name}",
                         )
                       }
-                    None => ()
+                    None =>
+                      // Check extensibility when adding new property
+                      if not(prop_exists) && not(data.extensible) {
+                        raise @errors.TypeError(
+                          message="Cannot add property \{prop_name}, object is not extensible",
+                        )
+                      }
                   }
                   // Set value
                   match desc.properties.get("value") {
@@ -428,12 +512,26 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           match obj {
             Object(data) => {
               data.extensible = false
+              // Freeze string properties
               let keys : Array[String] = []
               data.properties.each(fn(k, _v) { keys.push(k) })
               for key in keys {
                 data.descriptors[key] = {
                   writable: false,
                   enumerable: match data.descriptors.get(key) {
+                    Some(d) => d.enumerable
+                    None => true
+                  },
+                  configurable: false,
+                }
+              }
+              // Freeze symbol properties
+              let sym_ids : Array[Int] = []
+              data.symbol_properties.each(fn(id, _v) { sym_ids.push(id) })
+              for id in sym_ids {
+                data.symbol_descriptors[id] = {
+                  writable: false,
+                  enumerable: match data.symbol_descriptors.get(id) {
                     Some(d) => d.enumerable
                     None => true
                   },
@@ -450,6 +548,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           match obj {
             Object(data) => {
               data.extensible = false
+              // Seal string properties
               let keys : Array[String] = []
               data.properties.each(fn(k, _v) { keys.push(k) })
               for key in keys {
@@ -459,6 +558,22 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                     None => true
                   },
                   enumerable: match data.descriptors.get(key) {
+                    Some(d) => d.enumerable
+                    None => true
+                  },
+                  configurable: false,
+                }
+              }
+              // Seal symbol properties
+              let sym_ids : Array[Int] = []
+              data.symbol_properties.each(fn(id, _v) { sym_ids.push(id) })
+              for id in sym_ids {
+                data.symbol_descriptors[id] = {
+                  writable: match data.symbol_descriptors.get(id) {
+                    Some(d) => d.writable
+                    None => true
+                  },
+                  enumerable: match data.symbol_descriptors.get(id) {
                     Some(d) => d.enumerable
                     None => true
                   },
