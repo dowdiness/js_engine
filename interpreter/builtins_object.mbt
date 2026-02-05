@@ -118,8 +118,12 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               Array({ elements: vals })
             }
             Array(data) => {
-              // Array objects - return array elements
-              Array({ elements: data.elements })
+              // Array objects - return array elements (defensive copy)
+              let vals : Array[Value] = []
+              for elem in data.elements {
+                vals.push(elem)
+              }
+              Array({ elements: vals })
             }
             _ => Array({ elements: [] })
           }
@@ -157,12 +161,12 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               Array({ elements: entries })
             }
             Array(data) => {
-              // Array objects
+              // Array objects - keys must be strings per spec
               let entries : Array[Value] = []
               for i = 0; i < data.elements.length(); i = i + 1 {
                 entries.push(
                   Array({
-                    elements: [Number(i.to_double()), data.elements[i]],
+                    elements: [String_(i.to_string()), data.elements[i]],
                   }),
                 )
               }
@@ -206,16 +210,16 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                               }
                           }
                           let writable = match desc.properties.get("writable") {
-                            Some(Bool(b)) => b
+                            Some(v) => is_truthy(v)
                             _ => false
                           }
                           let enumerable = match desc.properties.get("enumerable") {
-                            Some(Bool(b)) => b
+                            Some(v) => is_truthy(v)
                             _ => false
                           }
                           let configurable = match
                             desc.properties.get("configurable") {
-                            Some(Bool(b)) => b
+                            Some(v) => is_truthy(v)
                             _ => false
                           }
                           data.descriptors[prop_name] = {
@@ -254,9 +258,18 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                         }
                         // Check extensibility if property doesn't exist
                         let exists = data.properties.contains(k)
-                        if can_write && (exists || data.extensible) {
-                          data.properties[k] = v
+                        // Per ECMAScript spec, Object.assign throws TypeError on Set failure
+                        if not(can_write) {
+                          raise @errors.TypeError(
+                            message="Cannot assign to read-only property '\{k}'",
+                          )
                         }
+                        if not(exists) && not(data.extensible) {
+                          raise @errors.TypeError(
+                            message="Cannot add property '\{k}' to non-extensible object",
+                          )
+                        }
+                        data.properties[k] = v
                       }
                     })
                     // Copy enumerable symbol properties
@@ -273,9 +286,18 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                         }
                         // Check extensibility if property doesn't exist
                         let exists = data.symbol_properties.contains(sym_id)
-                        if can_write && (exists || data.extensible) {
-                          data.symbol_properties[sym_id] = v
+                        // Per ECMAScript spec, Object.assign throws TypeError on Set failure
+                        if not(can_write) {
+                          raise @errors.TypeError(
+                            message="Cannot assign to read-only symbol property",
+                          )
                         }
+                        if not(exists) && not(data.extensible) {
+                          raise @errors.TypeError(
+                            message="Cannot add symbol property to non-extensible object",
+                          )
+                        }
+                        data.symbol_properties[sym_id] = v
                       }
                     })
                   }
