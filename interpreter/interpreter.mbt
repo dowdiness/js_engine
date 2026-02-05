@@ -2147,7 +2147,7 @@ fn Interpreter::spread_iterable(
         Some(_) => self.call_value(iterator_method, val, [], loc)
         None =>
           raise @errors.TypeError(
-            message=val.to_string() +
+            message=type_of(val) +
               " is not iterable (Symbol.iterator is not a function)",
           )
       }
@@ -2171,12 +2171,12 @@ fn Interpreter::spread_iterable(
         }
         _ =>
           raise @errors.TypeError(
-            message=val.to_string() + " is not iterable",
+            message=type_of(val) + " is not iterable",
           )
       }
     _ =>
       raise @errors.TypeError(
-        message=val.to_string() + " is not iterable",
+        message=type_of(val) + " is not iterable",
       )
   }
 

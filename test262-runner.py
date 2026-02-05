@@ -390,6 +390,12 @@ def run_single_test(
                     duration_ms=duration_ms, mode=mode,
                 )
             elif "Test262:AsyncTestComplete" in combined:
+                if exit_code != 0:
+                    return TestResult(
+                        path=test_path, status="fail",
+                        reason=f"async test completed but exited with code {exit_code}",
+                        duration_ms=duration_ms, mode=mode,
+                    )
                 return TestResult(
                     path=test_path, status="pass",
                     duration_ms=duration_ms, mode=mode,
