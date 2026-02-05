@@ -2405,7 +2405,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 // Our implementation fills with undefined instead, making all indices
                 // present. This is an intentional simplification.
                 let len = n.to_int()
-                if len < 0 || n != len.to_double() {
+                if len < 0 || n != len.to_double() || len > 0xFFFFFFFF {
                   raise @errors.RangeError(message="Invalid array length")
                 }
                 let elements : Array[Value] = []

@@ -85,13 +85,14 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
       let arr = data
       make_native_func("indexOf", fn(args) {
         let search = if args.length() > 0 { args[0] } else { Undefined }
+        let len = arr.elements.length()
         let from_idx = if args.length() > 1 {
           to_number(args[1]).to_int()
         } else {
           0
         }
         let start = if from_idx < 0 {
-          let s = arr.elements.length() + from_idx
+          let s = len + from_idx
           if s < 0 {
             0
           } else {
@@ -100,7 +101,11 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
         } else {
           from_idx
         }
-        for i = start; i < arr.elements.length(); i = i + 1 {
+        // If start >= length, return -1
+        if start >= len {
+          return Number(-1.0)
+        }
+        for i = start; i < len; i = i + 1 {
           if strict_equal_val(arr.elements[i], search) {
             return Number(i.to_double())
           }
@@ -236,20 +241,37 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
           0
         }
         let mut end = if args.length() > 2 {
-          to_number(args[2]).to_int()
+          match args[2] {
+            Undefined => alen
+            _ => to_number(args[2]).to_int()
+          }
         } else {
           alen
         }
+        // Normalize negative start
         if start < 0 {
           start = alen + start
+          if start < 0 {
+            start = 0
+          }
         }
+        // Clamp start to array length
+        if start > alen {
+          start = alen
+        }
+        // Normalize negative end
         if end < 0 {
           end = alen + end
+          if end < 0 {
+            end = 0
+          }
+        }
+        // Clamp end to array length
+        if end > alen {
+          end = alen
         }
         for i = start; i < end; i = i + 1 {
-          if i >= 0 && i < alen {
-            arr.elements[i] = fill_val
-          }
+          arr.elements[i] = fill_val
         }
         Array(arr)
       })
@@ -405,13 +427,17 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
           start = alen
         }
         let del_count = if args.length() > 1 {
-          let d = to_number(args[1]).to_int()
-          if d < 0 {
-            0
-          } else if d > alen - start {
+          let d_num = to_number(args[1])
+          // Handle Infinity and negative values
+          if d_num.is_inf() || d_num >= (alen - start).to_double() {
             alen - start
           } else {
-            d
+            let d = d_num.to_int()
+            if d < 0 {
+              0
+            } else {
+              d
+            }
           }
         } else {
           alen - start
