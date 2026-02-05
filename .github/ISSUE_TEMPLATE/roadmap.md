@@ -857,9 +857,493 @@ All issues from [PR #4 review](https://github.com/dowdiness/js_engine/pull/4) ad
 
 ---
 
-**Next step**: Continue **Phase 4** features. Focus areas:
-1. **Generators (`function*`, `yield`)** — Required for full iterator support and async/await (~1,500 tests, requires stack management / coroutine-style suspension)
-2. **async/await** — Requires generators for suspension semantics (~500 tests)
-3. **Remaining built-in edge cases** — Array sparse handling, String Unicode methods, Map/Set spec compliance, Promise spec edge cases
+**Next step**: Execute the **10,000 Test Strategy** below.
 
-Classes, Symbols, Iteration Protocols, Map/Set, Promises, and Timer APIs are now complete. Generators are the next high-impact feature but require significant architectural work (stack management for suspension/resumption). Once generators are in place, async/await can be built on top as syntactic sugar over generator-based promises.
+---
+
+## Strategy: Reaching 10,000 Passing Tests
+
+### Executive Summary
+
+**Current state**: 6,073 passing / 23,023 executed / 49,647 discovered / 26,590 skipped (26.4%)
+**Target**: 10,000 passing tests (~43% of executed, or ~20% of total discovered)
+**Gap**: +3,927 tests needed
+
+The path to 10,000 follows three parallel tracks:
+
+| Track | Strategy | Est. New Passes | Cumulative |
+|-------|----------|----------------|------------|
+| **Track 1** | Unlock skipped tests | +1,800–2,800 | ~7,900–8,900 |
+| **Track 2** | Fix failing tests (spec compliance) | +1,200–1,800 | ~9,100–10,700 |
+| **Track 3** | Generators + async/await | +800–1,200 | ~9,900–11,900 |
+
+**Key insight**: 26,590 tests (53.5%) are currently skipped. Many are skipped for features that ARE already implemented but remain in the skip list. Unlocking these tests is the single highest-leverage action.
+
+---
+
+### Current Gap Analysis
+
+#### Why 26,590 Tests Are Skipped
+
+Tests are skipped for two reasons:
+1. **Feature tags** in `SKIP_FEATURES` (test262-runner.py:52–139) — 97 features listed
+2. **Flags** in `SKIP_FLAGS` (test262-runner.py:141) — `module`, `async`, `CanBlockIsFalse`, `CanBlockIsTrue`
+
+**Critical finding: 15+ features in `SKIP_FEATURES` are already implemented** but were never removed from the skip list after implementation. This means thousands of tests that *could* run are being silently skipped.
+
+#### Why 16,950 Executed Tests Fail
+
+The 16,950 failing tests break down into:
+- **Spec compliance edge cases** (~60%) — Methods exist but don't handle all edge cases per ECMAScript spec
+- **Missing sub-features** (~25%) — Tests require a combination of features, one of which is missing
+- **Error message format mismatches** (~10%) — Correct error type thrown but message format differs
+- **Timeout/crashes** (~5%) — 31 timeouts, 3 runner errors
+
+---
+
+## Phase 5: Unlock Skipped Tests → ~8,000–8,500 pass rate
+
+### Phase 5A: Skip List Cleanup — Remove Implemented Features
+
+**Priority: CRITICAL — Highest ROI action**
+
+The following features are **fully implemented** but still in `SKIP_FEATURES` in both `test262-runner.py` and `test262-analyze.py`:
+
+| Feature Tag | Implemented In | Evidence |
+|-------------|---------------|----------|
+| `Promise` | Phase 4 | `builtins_promise.mbt` — constructor, .then/.catch/.finally |
+| `Promise.allSettled` | Phase 4 | `builtins_promise.mbt` — full implementation |
+| `Promise.any` | Phase 4 | `builtins_promise.mbt` — with AggregateError |
+| `Promise.prototype.finally` | Phase 4 | `builtins_promise.mbt` — full implementation |
+| `Object.fromEntries` | Phase 3.6 | `builtins_object.mbt` — with iterable + TypeError validation |
+| `Object.is` | Phase 3.6 | `builtins_object.mbt` — SameValue algorithm |
+| `Object.hasOwn` | Phase 3.6 | `builtins_object.mbt:513` — handles Symbol keys |
+| `Array.from` | Phase 3.6 | `builtins_object.mbt` — with iterable protocol |
+| `Array.prototype.at` | Phase 3.6 | `builtins_array.mbt` — negative index support |
+| `String.prototype.replaceAll` | Phase 3.6 | `builtins_string.mbt:684` — string + global RegExp |
+| `String.prototype.isWellFormed` | Phase 3.6 | `builtins_string.mbt` — lone surrogate detection |
+| `String.prototype.toWellFormed` | Phase 3.6 | `builtins_string.mbt` — U+FFFD replacement |
+| `change-array-by-copy` | Phase 4 | `builtins_array.mbt` — toReversed, toSpliced, with |
+| `array-find-from-last` | Phase 4 | `builtins_array.mbt:757` — findLast, findLastIndex |
+| `string-trimming` | Phase 2 | `builtins_string.mbt` — trim, trimStart, trimEnd |
+
+Additionally in `test262-analyze.py` only (already removed from runner):
+
+| Feature Tag | Implemented In |
+|-------------|---------------|
+| `class` | Phase 3.6 |
+| `numeric-separator-literal` | Phase 3.6 |
+| `logical-assignment-operators` | Phase 3.6 |
+
+**Action items**:
+- [ ] Remove all 15 implemented features from `SKIP_FEATURES` in `test262-runner.py`
+- [ ] Remove all 18 implemented features from `UNSUPPORTED_TEST262_FEATURES` in `test262-analyze.py`
+- [ ] Run test262 to measure actual impact
+- [ ] Fix any newly-exposed assertion failures in the implementations
+
+**Expected impact**: +500–1,000 new passes (many unlocked tests will also fail due to edge cases, but a meaningful fraction will pass since the core implementations are solid)
+
+### Phase 5B: Async Test Harness ($DONE Pattern) Support
+
+**Priority: HIGH — Unlocks most Promise/async tests**
+
+Currently, the `async` flag in `SKIP_FLAGS` causes ALL async tests to be skipped. This blocks the vast majority of Promise tests despite the engine having a full Promise implementation with event loop.
+
+**How Test262 async tests work**:
+```javascript
+// Test provides $DONE callback
+var p = Promise.resolve(42);
+p.then(function(val) {
+  assert.sameValue(val, 42);
+}).then($DONE, $DONE);
+```
+
+**What needs to change**:
+
+1. **Test runner (`test262-runner.py`)**: For async tests, prepend a `$DONE` shim:
+   ```javascript
+   var __done_called = false;
+   var __done_error = undefined;
+   function $DONE(error) {
+     __done_called = true;
+     if (error) { __done_error = error; }
+   }
+   ```
+
+2. **Engine (`interpreter.mbt`)**: After script execution, drain the event loop (microtask queue + timer queue) until either:
+   - `$DONE` has been called, OR
+   - No more tasks remain, OR
+   - Timeout is reached
+
+3. **Test runner**: After execution, check output for `$DONE` status:
+   - `$DONE()` called with no args → PASS
+   - `$DONE(error)` called → FAIL with error
+   - `$DONE` never called → FAIL (timeout / incomplete)
+
+4. **Remove `async` from `SKIP_FLAGS`** (keep `module`, `CanBlockIsFalse`, `CanBlockIsTrue`)
+
+**Architecture note**: The engine already has microtask queue draining (`drain_microtask_queue`) and timer processing (`process_timer_queue`). The key change is ensuring the engine always runs the event loop to completion after script evaluation, and exposing the `$DONE` result.
+
+**Expected impact**: +800–1,500 new passes (Promise tests, setTimeout tests, async pattern tests)
+
+### Phase 5C: Object Spread/Rest in Object Literals
+
+**Priority: MEDIUM — Unlocks `object-spread` and `object-rest` feature tags**
+
+Currently implemented: `[...array]` (array spread), `fn(...args)` (call spread), `let {a, ...rest} = obj` (destructuring rest)
+NOT implemented: `{...obj}` (object literal spread), `{a, ...rest}` (object literal rest)
+
+**Implementation plan**:
+
+1. **Parser (`parser/expr.mbt`)**: In `parse_object_literal()`, handle `DotDotDot` token:
+   - Parse `...expr` as a `SpreadExpr` property
+   - Store as special property in object literal AST
+
+2. **AST (`ast/ast.mbt`)**: Add `SpreadProp` variant to `Property` or use existing `SpreadExpr`
+
+3. **Interpreter (`interpreter/interpreter.mbt`)**: In `ObjectLit` evaluation:
+   - When encountering spread property, evaluate expression
+   - Copy all enumerable own properties from source to target object
+   - Respect property order (spread properties interleave with regular properties)
+
+4. **Remove `object-spread` and `object-rest` from both skip lists**
+
+**Expected impact**: +200–400 new passes
+
+### Phase 5D: new.target Meta-Property
+
+**Priority: MEDIUM — Unlocks `new.target` feature tag**
+
+`new.target` returns the constructor that was directly invoked with `new`, or `undefined` if the function was called normally.
+
+**Implementation plan**:
+
+1. **Lexer/Parser**: Detect `new.target` as a special meta-property (not `new` + `.` + `target`)
+2. **AST**: Add `NewTargetExpr` node
+3. **Interpreter**: Track current constructor in environment during `eval_new`:
+   - Set `new.target` = constructor function in the constructor's scope
+   - In arrow functions, inherit `new.target` from enclosing scope
+   - Outside constructors, `new.target` = `undefined`
+
+4. **Remove `new.target` from both skip lists**
+
+**Expected impact**: +100–200 new passes
+
+### Phase 5 Summary
+
+| Sub-phase | Action | Est. New Passes |
+|-----------|--------|----------------|
+| 5A | Remove 15 implemented features from skip lists | +500–1,000 |
+| 5B | $DONE async test harness support | +800–1,500 |
+| 5C | Object spread/rest in literals | +200–400 |
+| 5D | new.target meta-property | +100–200 |
+| **Total** | | **+1,600–3,100** |
+
+**Projected cumulative**: ~7,700–9,200 passing tests
+
+---
+
+## Phase 6: Spec Compliance Deep Dive → ~9,000–10,000 pass rate
+
+### Phase 6A: Systematic Failure Analysis
+
+**Priority: HIGH — Data-driven approach to maximize pass rate gains**
+
+Before fixing individual methods, run a failure categorization pass:
+
+1. **Modify test262-runner.py** to capture failure categories:
+   - Parse error (SyntaxError during parsing)
+   - Runtime TypeError / ReferenceError / RangeError
+   - Assertion failure (assert.sameValue, assert.throws)
+   - Timeout
+   - Unexpected output
+
+2. **Group failures by error pattern** to find the top-N root causes:
+   - Example: If 500 tests fail because `Array.prototype.map` doesn't call the callback with `(element, index, array)` (3 args), fixing that single issue resolves 500 tests
+   - Example: If 300 tests fail because `Object.defineProperty` doesn't validate descriptor types correctly, that's one fix for 300 tests
+
+3. **Prioritize fixes by impact**: Fix the root causes that unblock the most tests first
+
+**Expected output**: Ranked list of ~20–30 root causes covering 80% of fixable failures
+
+### Phase 6B: Array Spec Compliance (19.8% → 40%+)
+
+**Target**: +500–700 additional Array tests passing
+
+Key compliance gaps (in priority order):
+
+1. **Sparse array handling** — Many Array methods must skip holes (`undefined` at index vs no index at all):
+   - `forEach`, `map`, `filter`, `reduce`, `every`, `some`, `find`, `findIndex` must use `HasProperty` check
+   - `Array(5)` creates sparse array with 5 holes, not 5 `undefined`s
+
+2. **`this` coercion in callbacks** — Array HOFs must pass `thisArg` as second parameter:
+   - `arr.map(fn, thisArg)` — `fn` is called with `thisArg` as `this`
+   - Currently may not be handling thisArg for all methods
+
+3. **`Array.from()`** edge cases:
+   - Support `mapFn` second argument
+   - Support `thisArg` third argument
+   - Handle array-like objects (not just iterables)
+
+4. **`Array.prototype.sort`** stability and spec compliance:
+   - Stable sort (equal elements maintain order)
+   - `comparefn` returning non-number → coerce to number
+   - `undefined` elements sort to end
+
+5. **Length coercion** — Methods must use `ToLength(Get(O, "length"))`:
+   - Works with array-like objects, not just actual arrays
+   - Clamps to 0..2^53-1 range
+
+6. **Species pattern** — `Array.prototype.map/filter/slice` should respect `Symbol.species`:
+   - Lower priority but affects many tests
+
+### Phase 6C: Object Spec Compliance (18.2% → 35%+)
+
+**Target**: +400–600 additional Object tests passing
+
+Key compliance gaps:
+
+1. **`Object.defineProperty` validation**:
+   - Accessor descriptors (`get`/`set`) cannot have `value` or `writable` — must throw TypeError
+   - Converting between accessor and data descriptors
+   - Generic descriptor (neither accessor nor data)
+
+2. **Property enumeration order**:
+   - Integer indices first (in numeric order), then string keys (in insertion order), then symbols
+   - Affects `Object.keys`, `Object.entries`, `for-in`, etc.
+
+3. **`Object.assign` edge cases**:
+   - Invokes getters on source, setters on target
+   - Skips non-enumerable and inherited properties
+   - If a setter throws, assignment stops but already-assigned properties remain
+
+4. **`Object.create` with properties argument**:
+   - Second argument is a properties descriptor object (like `Object.defineProperties`)
+
+5. **Prototype chain operations**:
+   - `Object.setPrototypeOf` cycle detection
+   - `Object.getPrototypeOf` on non-objects (coerce to object first)
+
+### Phase 6D: String and RegExp Improvements
+
+**Target**: +200–400 additional tests passing
+
+**String priorities**:
+
+1. **`String.prototype.replace` replacement patterns**:
+   - `$&` (matched substring), `$`` (before match), `$'` (after match)
+   - `$1`–`$9` (capture group references)
+   - `$$` (literal dollar sign)
+   - These patterns affect many string tests
+
+2. **`String.prototype.match`** with global flag:
+   - Returns array of all matches (not just first)
+   - Resets `lastIndex` between matches
+
+3. **`String.prototype.search`** edge cases:
+   - Converts string argument to RegExp
+
+4. **Unicode correctness**:
+   - Proper surrogate pair handling in `charAt`, `charCodeAt`, `codePointAt`
+   - `String.prototype[Symbol.iterator]` already handles surrogates
+
+**RegExp priorities** (lower ROI but meaningful):
+
+1. **`regexp-named-groups`** — `(?<name>pattern)` syntax:
+   - Adds `groups` property to match results
+   - Unlocks ~150 tests
+
+2. **`regexp-dotall`** — `s` flag:
+   - Makes `.` match newlines
+   - Unlocks ~50 tests
+
+3. **`String.prototype.matchAll`**:
+   - Returns iterator of all matches with capture groups
+   - Unlocks ~80 tests
+
+### Phase 6E: Expression and Statement Compliance
+
+**Target**: +300–500 additional tests passing
+
+**Expressions (44.8% → 55–60%)**:
+1. **Tagged template literals** — `` tag`string ${expr}` `` — function called with string parts and expressions
+2. **Destructuring edge cases** — Default value evaluation order, computed property keys in patterns
+3. **Comma operator in for-loops** — `for (a = 0, b = 0; ...)` with proper sequencing
+4. **Assignment target validation** — `1 = 2` should throw ReferenceError at parse time
+5. **Optional chaining edge cases** — `a?.b.c.d` when `a` is null (entire chain short-circuits)
+
+**Statements (30.5% → 45–50%)**:
+1. **`for-in` with let/const** — Fresh binding per iteration
+2. **`switch` fall-through edge cases** — Empty cases, default positioning
+3. **Labeled statement interactions** — Nested labels, break/continue with labels in try/finally
+4. **`with` statement** — Low priority but unlocks some tests
+5. **Strict mode restrictions** — `eval` and `arguments` cannot be assigned in strict mode
+
+### Phase 6 Summary
+
+| Sub-phase | Category | Target Improvement | Est. New Passes |
+|-----------|----------|-------------------|----------------|
+| 6A | Failure analysis | Identify top root causes | (enables 6B–6E) |
+| 6B | Array | 19.8% → 40% | +500–700 |
+| 6C | Object | 18.2% → 35% | +400–600 |
+| 6D | String/RegExp | 21.9% → 35% / 10.3% → 20% | +200–400 |
+| 6E | Expressions/Statements | 44.8% → 55% / 30.5% → 45% | +300–500 |
+| **Total** | | | **+1,400–2,200** |
+
+**Projected cumulative**: ~9,100–11,400 passing tests
+
+---
+
+## Phase 7: Generators + async/await → 10,000+ pass rate
+
+### Phase 7A: Generators
+
+**Priority: HIGH — Largest single feature still missing**
+
+Generators (`function*`, `yield`, `yield*`) are the most architecturally significant remaining feature. They require suspension/resumption of execution state, which is fundamentally different from the current tree-walking interpreter model.
+
+**Architecture options**:
+
+1. **Continuation-Passing Style (CPS) transformation**:
+   - Transform generator body into state machine at AST level
+   - Each `yield` becomes a state transition
+   - Pro: No runtime stack manipulation needed
+   - Con: Complex AST transformation, harder to debug
+
+2. **Explicit state machine in interpreter**:
+   - Track generator state: `suspended-start`, `suspended-yield`, `executing`, `completed`
+   - Save/restore local variables and instruction pointer on yield/resume
+   - Pro: Cleaner implementation, easier to understand
+   - Con: Requires environment snapshot/restore
+
+3. **Coroutine/fiber approach** (if MoonBit supports it):
+   - Use language-level coroutines for true suspension
+   - Pro: Most natural semantics
+   - Con: May not be available in MoonBit/WASM
+
+**Recommended approach**: Option 2 (explicit state machine) — convert generator function body into a series of "segments" separated by yield points. Each segment is a sequence of statements. The generator object tracks which segment to execute next, and carries the local environment.
+
+**Implementation plan**:
+
+1. **Parser**: Detect `function*` (generator declaration/expression), `yield` and `yield*` expressions
+2. **AST**: Add `GeneratorDecl`, `GeneratorExpr`, `YieldExpr`, `YieldDelegateExpr` nodes
+3. **Value**: Add `Generator(GeneratorData)` value variant with state machine
+4. **Interpreter**:
+   - `eval_generator_decl` — Create generator function (like regular function but returns generator object on call)
+   - `eval_generator_call` — Create generator object with `next()`, `return()`, `throw()` methods
+   - `eval_yield` — Save state, return `{value, done: false}`
+   - Generator `next(val)` — Resume from saved state, `val` becomes yield result
+   - Generator `return(val)` — Complete generator, return `{value: val, done: true}`
+   - Generator `throw(err)` — Resume generator, throw error at yield point
+5. **Iterator protocol**: Generator objects automatically implement `Symbol.iterator` (return `this`)
+6. **`yield*`**: Delegate to another iterable, forwarding `next/return/throw`
+
+**Test impact**: ~1,500 tests discovered, estimate 30–50% initial pass rate = +450–750 new passes
+**Remove from skip lists**: `generators`, `generator`
+
+### Phase 7B: async/await
+
+**Priority: HIGH — Depends on generators and promises (both implemented)**
+
+async/await is syntactic sugar over Promises + generator-like suspension:
+- `async function` returns a Promise
+- `await expr` suspends until Promise resolves, then resumes with resolved value
+- Rejection causes `await` to throw
+
+**Implementation plan** (assuming generators are done):
+
+1. **Parser**: Detect `async function`, `async () =>`, `await` expression
+2. **AST**: Add `AsyncFuncDecl`, `AsyncFuncExpr`, `AsyncArrowFunc`, `AwaitExpr` nodes
+3. **Interpreter**:
+   - `async function` wraps body in Promise: return value is resolve, thrown error is reject
+   - `await` suspends execution (like `yield`), resumes when Promise settles
+   - Can reuse generator state machine infrastructure
+
+4. **Remove from skip lists**: `async-functions`
+5. **Also remove `async` from `SKIP_FLAGS`** (if not already done in Phase 5B)
+
+**Test impact**: ~500 tests with `async-functions` tag + additional async-flag tests
+**Expected**: +300–400 new passes
+
+### Phase 7 Summary
+
+| Sub-phase | Feature | Est. New Passes |
+|-----------|---------|----------------|
+| 7A | Generators (`function*`, `yield`, `yield*`) | +450–750 |
+| 7B | async/await | +300–400 |
+| **Total** | | **+750–1,150** |
+
+**Projected cumulative**: ~9,850–12,550 passing tests
+
+---
+
+## Implementation Priority & Dependency Graph
+
+```
+Phase 5A ─────────────────────────── (skip list cleanup, no code changes)
+    │
+    ├── Phase 5B ──────────────────── ($DONE harness, engine + runner changes)
+    │       │
+    │       └── Phase 7B ──────────── (async/await, requires 5B + 7A)
+    │
+    ├── Phase 5C ──────────────────── (object spread/rest, parser + interpreter)
+    │
+    └── Phase 5D ──────────────────── (new.target, parser + interpreter)
+
+Phase 6A ─────────────────────────── (failure analysis, diagnostic only)
+    │
+    ├── Phase 6B ──────────────────── (Array compliance)
+    ├── Phase 6C ──────────────────── (Object compliance)
+    ├── Phase 6D ──────────────────── (String/RegExp compliance)
+    └── Phase 6E ──────────────────── (Expression/Statement compliance)
+
+Phase 7A ─────────────────────────── (generators, major architecture)
+    │
+    └── Phase 7B ──────────────────── (async/await, builds on 7A)
+```
+
+**Parallelization**: Phases 5 and 6 are mostly independent and can be worked on in parallel. Phase 7 is sequential (7B depends on 7A). Phase 5A should be done first as it requires no code changes and provides immediate signal on what to prioritize.
+
+---
+
+## Projected Milestones
+
+| Milestone | Passes | Pass Rate | Key Deliverable |
+|-----------|--------|-----------|-----------------|
+| **Current** | 6,073 | 26.4% | Phase 4 complete |
+| **After Phase 5A** | ~6,800 | ~28% | Skip list cleanup |
+| **After Phase 5B** | ~7,800 | ~25%* | $DONE async harness (*denominator increases) |
+| **After Phase 5C+D** | ~8,200 | ~26% | Object spread + new.target |
+| **After Phase 6A–C** | ~9,200 | ~28% | Array + Object spec compliance |
+| **After Phase 6D–E** | ~9,800 | ~30% | String/RegExp + expression fixes |
+| **After Phase 7A** | ~10,400 | ~31% | **Generators — 10K target reached** |
+| **After Phase 7B** | ~10,800 | ~32% | async/await |
+
+*Note: Pass rate percentage may temporarily decrease when more tests are unlocked (larger denominator), even as absolute pass count increases.
+
+---
+
+## Risk Assessment
+
+| Risk | Impact | Mitigation |
+|------|--------|------------|
+| Generator implementation is architecturally complex | Could delay Phase 7 significantly | Start Phase 7A design early; consider CPS transformation over runtime suspension |
+| Removing skip list features exposes many new failures | May temporarily decrease pass *rate* | Focus on absolute pass count, not rate; analyze failures systematically |
+| $DONE harness may not work for all async patterns | Some async tests may still fail | Start with simple $DONE (synchronous microtask drain) before adding timer support |
+| Spec compliance fixes have diminishing returns | Last 20% of failures may be 80% of the work | Use failure analysis (Phase 6A) to stay focused on high-impact fixes |
+| MoonBit language limitations | Some JS patterns may be hard to express | Document workarounds as discovered; the team has already found solutions for many MoonBit-specific issues |
+
+---
+
+## Quick Win Checklist (Do These Immediately)
+
+These changes require minimal code changes and unlock significant test counts:
+
+- [ ] Remove `Promise`, `Promise.allSettled`, `Promise.any`, `Promise.prototype.finally` from `SKIP_FEATURES`
+- [ ] Remove `Object.fromEntries`, `Object.is`, `Object.hasOwn` from `SKIP_FEATURES`
+- [ ] Remove `Array.from`, `Array.prototype.at` from `SKIP_FEATURES`
+- [ ] Remove `String.prototype.replaceAll`, `String.prototype.isWellFormed`, `String.prototype.toWellFormed` from `SKIP_FEATURES`
+- [ ] Remove `change-array-by-copy`, `array-find-from-last`, `string-trimming` from `SKIP_FEATURES`
+- [ ] Sync same removals in `test262-analyze.py` (also remove `class`, `numeric-separator-literal`, `logical-assignment-operators`)
+- [ ] Run full test262 suite to measure baseline after skip list cleanup
+- [ ] Analyze newly-failing tests to identify top-5 root causes
