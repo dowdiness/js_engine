@@ -1137,21 +1137,19 @@ fn Interpreter::eval_expr(
               }
             }
             Array(arr_data) => {
-              // Spread array into object: { ...["a", "b"] } → { "0": "a", "1": "b" }
+              // Spread array into object: only enumerable own properties
+              // length is non-enumerable per spec, so only copy indexed elements
               for i, value in arr_data.elements {
                 properties[i.to_string()] = value
               }
-              properties["length"] = Number(arr_data.elements.length().to_double())
             }
             String_(s) => {
               // Spread string into object: { ..."abc" } → { "0": "a", "1": "b", "2": "c" }
-              let len = s.iter().fold(init=0, fn(acc, _c) { acc + 1 })
               let mut idx = 0
               for ch in s {
                 properties[idx.to_string()] = String_(ch.to_string())
                 idx = idx + 1
               }
-              ignore(len)
             }
             Null | Undefined => () // Skip null/undefined per spec
             Number(_) | Bool(_) => () // Primitives have no enumerable own properties
@@ -2148,31 +2146,13 @@ fn Interpreter::spread_iterable(
       match data.callable {
         Some(_) => self.call_value(iterator_method, val, [], loc)
         None =>
-          // Not callable, fall back to direct iteration
-          match val {
-            Array(arr) => {
-              for el in arr.elements {
-                result.push(el)
-              }
-              return result
-            }
-            String_(s) => {
-              let chars = s.to_array()
-              for c in chars {
-                let buf = StringBuilder::new()
-                buf.write_char(c)
-                result.push(String_(buf.to_string()))
-              }
-              return result
-            }
-            _ => {
-              result.push(val)
-              return result
-            }
-          }
+          raise @errors.TypeError(
+            message=val.to_string() +
+              " is not iterable (Symbol.iterator is not a function)",
+          )
       }
     Undefined =>
-      // No iterator method, fall back to direct iteration for arrays/strings
+      // No iterator method — fall back for arrays/strings which are built-in iterables
       match val {
         Array(arr) => {
           for el in arr.elements {
@@ -2189,16 +2169,15 @@ fn Interpreter::spread_iterable(
           }
           return result
         }
-        _ => {
-          result.push(val)
-          return result
-        }
+        _ =>
+          raise @errors.TypeError(
+            message=val.to_string() + " is not iterable",
+          )
       }
-    _ => {
-      // For non-objects, just return the value itself
-      result.push(val)
-      return result
-    }
+    _ =>
+      raise @errors.TypeError(
+        message=val.to_string() + " is not iterable",
+      )
   }
 
   // Get the next method from the iterator (walk prototype chain)
@@ -2249,7 +2228,10 @@ fn Interpreter::spread_iterable(
         }
         (done_val, value_val)
       }
-      _ => (true, Undefined)
+      _ =>
+        raise @errors.TypeError(
+          message="Iterator result is not an object",
+        )
     }
     if done {
       break
@@ -3659,6 +3641,8 @@ fn Interpreter::eval_new(
             }
             None => {
               // No explicit constructor - if there's a super class, call super()
+              // Save the derived class constructor for new.target propagation
+              let derived_ctor = ctor
               match super_ctor {
                 Some(sc) =>
                   match sc {
@@ -3676,7 +3660,9 @@ fn Interpreter::eval_new(
                         ) => {
                           let super_env = Environment::new(parent=Some(senv))
                           super_env.def_builtin("this", new_obj)
-                          super_env.def("<new.target>", sc, LetBinding)
+                          super_env.def(
+                            "<new.target>", derived_ctor, LetBinding,
+                          )
                           match grand_super {
                             Some(gs) => {
                               super_env.def_builtin("[[SuperConstructor]]", gs)

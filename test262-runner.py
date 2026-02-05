@@ -372,13 +372,9 @@ def run_single_test(
                 )
         elif is_async:
             # Async test: check for $DONE completion markers in output
+            # Check failure first — if both markers appear, failure takes priority
             combined = stdout + "\n" + stderr
-            if "Test262:AsyncTestComplete" in combined:
-                return TestResult(
-                    path=test_path, status="pass",
-                    duration_ms=duration_ms, mode=mode,
-                )
-            elif "Test262:AsyncTestFailure" in combined:
+            if "Test262:AsyncTestFailure" in combined:
                 # Extract failure reason
                 for line in combined.split("\n"):
                     if "Test262:AsyncTestFailure:" in line:
@@ -391,6 +387,11 @@ def run_single_test(
                 return TestResult(
                     path=test_path, status="fail",
                     reason="async test failure (no details)",
+                    duration_ms=duration_ms, mode=mode,
+                )
+            elif "Test262:AsyncTestComplete" in combined:
+                return TestResult(
+                    path=test_path, status="pass",
                     duration_ms=duration_ms, mode=mode,
                 )
             else:
