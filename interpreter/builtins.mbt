@@ -322,7 +322,8 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
                   let buf = StringBuilder::new()
                   let mut i = 0
                   let sub_count = args.length() - 1
-                  loop {
+                  let mut done = false
+                  while not(done) {
                     match raw_obj.properties.get(i.to_string()) {
                       Some(str_val) => {
                         buf.write_string(str_val.to_string())
@@ -331,7 +332,7 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
                         }
                         i = i + 1
                       }
-                      None => break
+                      None => done = true
                     }
                   }
                   String_(buf.to_string())
