@@ -191,16 +191,18 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           if args.length() > 1 {
             match args[1] {
               Undefined => ()
-              // Only reject primitives - Arrays/Maps/Sets/Promises are valid objects
-              Null | String_(_) | Number(_) | Bool(_) | Symbol(_) =>
+              // Per ECMAScript spec, only Object with properties field accepted
+              // Arrays, Maps, Sets don't have properties field in our implementation
+              Null | String_(_) | Number(_) | Bool(_) | Symbol(_) | Array(_)
+              | Map(_) | Set(_) =>
                 raise @errors.TypeError(
                   message="Property descriptors must be an object",
                 )
-              Array(arr_desc) =>
-                // Arrays are objects with numeric indexed properties
+              Object(desc_obj) =>
+                // Objects have properties field
                 match obj {
                   Object(data) =>
-                    arr_desc.properties.each(fn(prop_name, desc_val) {
+                    desc_obj.properties.each(fn(prop_name, desc_val) {
                       match desc_val {
                         Object(desc) => {
                           match desc.properties.get("value") {
@@ -234,8 +236,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                     })
                   _ => ()
                 }
-              Object(desc_obj) | Map(desc_obj) | Set(desc_obj) | Promise(desc_obj) =>
-                // All these are objects with properties
+              Promise(desc_obj) =>
+                // Promises also have properties field
                 match obj {
                   Object(data) =>
                     desc_obj.properties.each(fn(prop_name, desc_val) {
@@ -309,33 +311,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                       data.properties[k] = v
                     }
                   }
-                  // ToObject conversion: Arrays are objects
+                  // ToObject conversion: Arrays enumerate elements as indexed properties
                   Array(src) => {
-                    // Copy enumerable string properties from Array object
-                    src.properties.each(fn(k, v) {
-                      let enumerable = match src.descriptors.get(k) {
-                        Some(d) => d.enumerable
-                        None => true
-                      }
-                      if enumerable {
-                        let can_write = match data.descriptors.get(k) {
-                          Some(d) => d.writable
-                          None => true
-                        }
-                        let exists = data.properties.contains(k)
-                        if not(can_write) {
-                          raise @errors.TypeError(
-                            message="Cannot assign to read-only property '\{k}'",
-                          )
-                        }
-                        if not(exists) && not(data.extensible) {
-                          raise @errors.TypeError(
-                            message="Cannot add property '\{k}' to non-extensible object",
-                          )
-                        }
-                        data.properties[k] = v
-                      }
-                    })
                     // Copy array elements as indexed properties
                     for idx = 0; idx < src.elements.length(); idx = idx + 1 {
                       let k = idx.to_string()
@@ -358,8 +335,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                       data.properties[k] = v
                     }
                   }
-                  // Regular objects, Maps, Sets, Promises
-                  Object(src) | Map(src) | Set(src) | Promise(src) => {
+                  // Regular objects have properties and descriptors
+                  Object(src) => {
                     // Copy enumerable string properties
                     src.properties.each(fn(k, v) {
                       let enumerable = match src.descriptors.get(k) {
@@ -417,8 +394,49 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                       }
                     })
                   }
-                  // ToObject conversion: Number, Bool, Symbol primitives have no enumerable properties
-                  Number(_) | Bool(_) | Symbol(_) => ()
+                  // Promises have properties but no descriptors
+                  Promise(src) => {
+                    // Copy all string properties (no descriptors to check)
+                    src.properties.each(fn(k, v) {
+                      let can_write = match data.descriptors.get(k) {
+                        Some(d) => d.writable
+                        None => true
+                      }
+                      let exists = data.properties.contains(k)
+                      if not(can_write) {
+                        raise @errors.TypeError(
+                          message="Cannot assign to read-only property '\{k}'",
+                        )
+                      }
+                      if not(exists) && not(data.extensible) {
+                        raise @errors.TypeError(
+                          message="Cannot add property '\{k}' to non-extensible object",
+                        )
+                      }
+                      data.properties[k] = v
+                    })
+                    // Copy symbol properties
+                    src.symbol_properties.each(fn(sym_id, v) {
+                      let can_write = match data.symbol_descriptors.get(sym_id) {
+                        Some(d) => d.writable
+                        None => true
+                      }
+                      let exists = data.symbol_properties.contains(sym_id)
+                      if not(can_write) {
+                        raise @errors.TypeError(
+                          message="Cannot assign to read-only symbol property",
+                        )
+                      }
+                      if not(exists) && not(data.extensible) {
+                        raise @errors.TypeError(
+                          message="Cannot add symbol property to non-extensible object",
+                        )
+                      }
+                      data.symbol_properties[sym_id] = v
+                    })
+                  }
+                  // ToObject conversion: Map, Set, Number, Bool, Symbol have no enumerable properties
+                  Map(_) | Set(_) | Number(_) | Bool(_) | Symbol(_) => ()
                 }
               }
               target
