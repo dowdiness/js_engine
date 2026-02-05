@@ -363,61 +363,61 @@ fn setup_map_builtins(env : Environment) -> Unit raise Error {
         // If iterable provided, populate map
         if args.length() > 0 {
           let iterable = args[0]
-          match iterable {
-            Undefined | Null => () // No iterable, create empty map
-            _ => {
-              // Get iterator from iterable using Symbol.iterator
-              let iterator_sym = get_iterator_symbol()
-              let iterator_method = interp.get_computed_property(
-                iterable,
-                Symbol(iterator_sym),
-                loc,
-              )
-              let iterator = match iterator_method {
-                Object(data) =>
-                  match data.callable {
-                    Some(_) => interp.call_value(iterator_method, iterable, [], loc)
-                    None =>
-                      raise @errors.TypeError(message=
-                        "Result of the Symbol.iterator method is not an object",
-                      )
-                  }
-                _ =>
-                  raise @errors.TypeError(message=
-                    "\{type_of(iterable)} is not iterable",
-                  )
-              }
-
-              // Iterate over the iterator
-              loop {
-                let next_method = interp.get_property(iterator, "next", loc)
-                let result = interp.call_value(next_method, iterator, [], loc)
-                let done = match interp.get_property(result, "done", loc) {
-                  Bool(b) => b
-                  _ => false
-                }
-                if done {
-                  break
-                }
-                let value = interp.get_property(result, "value", loc)
-                // Value should be [key, value] pair
-                match value {
-                  Array(arr) => {
-                    if arr.elements.length() >= 2 {
-                      let key = arr.elements[0]
-                      let val = arr.elements[1]
-                      // Add to map
-                      match new_map {
-                        Map(data) => data.entries.push((key, val))
-                        _ => ()
-                      }
-                    }
-                  }
-                  _ =>
+          if not(match iterable {
+            Undefined | Null => true
+            _ => false
+          }) {
+            // Get iterator from iterable using Symbol.iterator
+            let iterator_sym = get_iterator_symbol()
+            let iterator_method = interp.get_computed_property(
+              iterable,
+              Symbol(iterator_sym),
+              loc,
+            )
+            let iterator = match iterator_method {
+              Object(data) =>
+                match data.callable {
+                  Some(_) => interp.call_value(iterator_method, iterable, [], loc)
+                  None =>
                     raise @errors.TypeError(message=
-                      "Iterator value is not an entry object",
+                      "Result of the Symbol.iterator method is not an object",
                     )
                 }
+              _ =>
+                raise @errors.TypeError(message=
+                  "\{type_of(iterable)} is not iterable",
+                )
+            }
+
+            // Iterate over the iterator
+            while true {
+              let next_method = interp.get_property(iterator, "next", loc)
+              let result = interp.call_value(next_method, iterator, [], loc)
+              let done = match interp.get_property(result, "done", loc) {
+                Bool(b) => b
+                _ => false
+              }
+              if done {
+                break
+              }
+              let value = interp.get_property(result, "value", loc)
+              // Value should be [key, value] pair
+              match value {
+                Array(arr) => {
+                  if arr.elements.length() >= 2 {
+                    let key = arr.elements[0]
+                    let val = arr.elements[1]
+                    // Add to map
+                    match new_map {
+                      Map(data) => data.entries.push((key, val))
+                      _ => ()
+                    }
+                  }
+                }
+                _ =>
+                  raise @errors.TypeError(message=
+                    "Iterator value is not an entry object",
+                  )
               }
             }
           }
@@ -702,59 +702,59 @@ fn setup_set_builtins(env : Environment) -> Unit raise Error {
         // If iterable provided, populate set
         if args.length() > 0 {
           let iterable = args[0]
-          match iterable {
-            Undefined | Null => () // No iterable, create empty set
-            _ => {
-              // Get iterator from iterable using Symbol.iterator
-              let iterator_sym = get_iterator_symbol()
-              let iterator_method = interp.get_computed_property(
-                iterable,
-                Symbol(iterator_sym),
-                loc,
-              )
-              let iterator = match iterator_method {
-                Object(data) =>
-                  match data.callable {
-                    Some(_) => interp.call_value(iterator_method, iterable, [], loc)
-                    None =>
-                      raise @errors.TypeError(message=
-                        "Result of the Symbol.iterator method is not an object",
-                      )
-                  }
-                _ =>
-                  raise @errors.TypeError(message=
-                    "\{type_of(iterable)} is not iterable",
-                  )
-              }
+          if not(match iterable {
+            Undefined | Null => true
+            _ => false
+          }) {
+            // Get iterator from iterable using Symbol.iterator
+            let iterator_sym = get_iterator_symbol()
+            let iterator_method = interp.get_computed_property(
+              iterable,
+              Symbol(iterator_sym),
+              loc,
+            )
+            let iterator = match iterator_method {
+              Object(data) =>
+                match data.callable {
+                  Some(_) => interp.call_value(iterator_method, iterable, [], loc)
+                  None =>
+                    raise @errors.TypeError(message=
+                      "Result of the Symbol.iterator method is not an object",
+                    )
+                }
+              _ =>
+                raise @errors.TypeError(message=
+                  "\{type_of(iterable)} is not iterable",
+                )
+            }
 
-              // Iterate over the iterator
-              loop {
-                let next_method = interp.get_property(iterator, "next", loc)
-                let result = interp.call_value(next_method, iterator, [], loc)
-                let done = match interp.get_property(result, "done", loc) {
-                  Bool(b) => b
-                  _ => false
-                }
-                if done {
-                  break
-                }
-                let value = interp.get_property(result, "value", loc)
-                // Add to set (using SameValueZero)
-                match new_set {
-                  Set(data) => {
-                    let mut found = false
-                    for i = 0; i < data.values.length(); i = i + 1 {
-                      if same_value_zero(data.values[i], value) {
-                        found = true
-                        break
-                      }
-                    }
-                    if not(found) {
-                      data.values.push(value)
+            // Iterate over the iterator
+            while true {
+              let next_method = interp.get_property(iterator, "next", loc)
+              let result = interp.call_value(next_method, iterator, [], loc)
+              let done = match interp.get_property(result, "done", loc) {
+                Bool(b) => b
+                _ => false
+              }
+              if done {
+                break
+              }
+              let value = interp.get_property(result, "value", loc)
+              // Add to set (using SameValueZero)
+              match new_set {
+                Set(data) => {
+                  let mut found = false
+                  for i = 0; i < data.values.length(); i = i + 1 {
+                    if same_value_zero(data.values[i], value) {
+                      found = true
+                      break
                     }
                   }
-                  _ => ()
+                  if not(found) {
+                    data.values.push(value)
+                  }
                 }
+                _ => ()
               }
             }
           }
