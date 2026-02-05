@@ -127,6 +127,7 @@ pub(all) struct PromiseData {
   reject_reactions : Array[PromiseReaction] // Called when rejected
   mut is_handled : Bool // Whether .catch or second arg to .then was provided
   properties : Map[String, Value] // User-defined properties (p.foo = 1)
+  symbol_properties : Map[Int, Value] // Symbol-keyed properties (p[Symbol()] = 1)
 }
 
 ///|
@@ -139,6 +140,7 @@ pub fn new_promise_data() -> PromiseData {
     reject_reactions: [],
     is_handled: false,
     properties: {},
+    symbol_properties: {},
   }
 }
 

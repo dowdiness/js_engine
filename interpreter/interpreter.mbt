@@ -37,6 +37,7 @@ pub(all) struct Interpreter {
   timer_queue : Array[TimerTask] // Timer task queue (WHATWG task queue)
   timer_id_counter : Ref[Int] // Next timer ID
   timer_insertion_counter : Ref[Int] // Insertion order counter
+  cancelled_timer_ids : Map[Int, Bool] // IDs cancelled during callback execution
 }
 
 ///|
@@ -64,6 +65,7 @@ pub fn Interpreter::new() -> Interpreter {
   let timer_queue : Array[TimerTask] = []
   let timer_id_counter : Ref[Int] = { val: 1 }
   let timer_insertion_counter : Ref[Int] = { val: 0 }
+  let cancelled_timer_ids : Map[Int, Bool] = {}
   {
     output,
     global,
@@ -73,6 +75,7 @@ pub fn Interpreter::new() -> Interpreter {
     timer_queue,
     timer_id_counter,
     timer_insertion_counter,
+    cancelled_timer_ids,
   }
 }
 
@@ -1290,11 +1293,18 @@ fn Interpreter::eval_expr(
             }
             _ => value
           }
-        Promise(data) => {
-          let prop = key.to_string()
-          data.properties[prop] = value
-          value
-        }
+        Promise(data) =>
+          match key {
+            Symbol(sym) => {
+              data.symbol_properties[sym.id] = value
+              value
+            }
+            _ => {
+              let prop = key.to_string()
+              data.properties[prop] = value
+              value
+            }
+          }
         _ => raise @errors.TypeError(message="Cannot set property of \{type_of(obj)}")
       }
     }
@@ -2891,6 +2901,11 @@ fn Interpreter::get_computed_property(
           }
           return Undefined
         }
+        Promise(data) =>
+          match data.symbol_properties.get(sym.id) {
+            Some(v) => return v
+            None => return Undefined
+          }
         _ => return Undefined
       }
     _ => ()

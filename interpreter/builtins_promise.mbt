@@ -147,58 +147,65 @@ fn create_resolving_functions(
                 )
             }
           }
-          Object(od) => {
-            // Check for thenable: object with callable .then property
-            match od.properties.get("then") {
-              Some(then_val) =>
-                match then_val {
-                  Object(then_od) =>
-                    match then_od.callable {
-                      Some(_) => {
-                        // Thenable: enqueue job to call then(resolve, reject)
-                        let (res, rej) = create_resolving_functions(
-                          i,
-                          promise_data,
-                        )
-                        let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
-                        let job = Object({
-                          properties: {},
-                          symbol_properties: {},
-                          prototype: Null,
-                          callable: Some(
-                            InterpreterCallable(
-                              "PromiseResolveThenableJob",
-                              fn(i2, _t, _a) {
-                                try {
-                                  let _ = i2.call_value(
-                                    then_val, resolution, [res, rej], loc,
-                                  )
+          Object(_) => {
+            // Check for thenable: use Get(resolution, "then") which walks
+            // the prototype chain and invokes accessors per ECMAScript spec
+            let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
+            let then_val = try {
+              i.get_property(resolution, "then", loc)
+            } catch {
+              e => {
+                // If Get throws, reject the promise with the error
+                let err = js_error_to_value(e)
+                reject_promise(i, promise_data, err)
+                return Undefined
+              }
+            }
+            match then_val {
+              Object(then_od) =>
+                match then_od.callable {
+                  Some(_) => {
+                    // Thenable: enqueue job to call then(resolve, reject)
+                    let (res, rej) = create_resolving_functions(
+                      i,
+                      promise_data,
+                    )
+                    let job = Object({
+                      properties: {},
+                      symbol_properties: {},
+                      prototype: Null,
+                      callable: Some(
+                        InterpreterCallable(
+                          "PromiseResolveThenableJob",
+                          fn(i2, _t, _a) {
+                            try {
+                              let _ = i2.call_value(
+                                then_val, resolution, [res, rej], loc,
+                              )
 
-                                } catch {
-                                  e => {
-                                    let err = js_error_to_value(e)
-                                    let _ = i2.call_value(
-                                      rej, Undefined, [err], loc,
-                                    )
+                            } catch {
+                              e => {
+                                let err = js_error_to_value(e)
+                                let _ = i2.call_value(
+                                  rej, Undefined, [err], loc,
+                                )
 
-                                  }
-                                }
-                                Undefined
-                              },
-                            ),
-                          ),
-                          class_name: "Function",
-                          descriptors: {},
-                          symbol_descriptors: {},
-                          extensible: true,
-                        })
-                        i.enqueue_microtask(job, Undefined)
-                      }
-                      None => fulfill_promise(i, promise_data, resolution)
-                    }
-                  _ => fulfill_promise(i, promise_data, resolution)
+                              }
+                            }
+                            Undefined
+                          },
+                        ),
+                      ),
+                      class_name: "Function",
+                      descriptors: {},
+                      symbol_descriptors: {},
+                      extensible: true,
+                    })
+                    i.enqueue_microtask(job, Undefined)
+                  }
+                  None => fulfill_promise(i, promise_data, resolution)
                 }
-              None => fulfill_promise(i, promise_data, resolution)
+              _ => fulfill_promise(i, promise_data, resolution)
             }
           }
           _ => fulfill_promise(i, promise_data, resolution)
@@ -663,6 +670,7 @@ pub fn setup_promise(env : Environment) -> Unit {
           reject_reactions: [],
           is_handled: false,
           properties: {},
+          symbol_properties: {},
         }
         Promise(promise_data)
       }),
@@ -695,6 +703,7 @@ pub fn setup_promise(env : Environment) -> Unit {
             reject_reactions: [],
             is_handled: false,
             properties: {},
+            symbol_properties: {},
           }
           return Promise(promise_data)
         }
@@ -723,6 +732,7 @@ pub fn setup_promise(env : Environment) -> Unit {
                 reject_reactions: [],
                 is_handled: false,
                 properties: {},
+                symbol_properties: {},
               }
               Promise(pd)
             }
@@ -837,6 +847,7 @@ pub fn setup_promise(env : Environment) -> Unit {
                 reject_reactions: [],
                 is_handled: false,
                 properties: {},
+                symbol_properties: {},
               }
               Promise(pd)
             }
@@ -908,6 +919,7 @@ pub fn setup_promise(env : Environment) -> Unit {
             reject_reactions: [],
             is_handled: false,
             properties: {},
+            symbol_properties: {},
           }
           return Promise(promise_data)
         }
@@ -933,6 +945,7 @@ pub fn setup_promise(env : Environment) -> Unit {
                 reject_reactions: [],
                 is_handled: false,
                 properties: {},
+                symbol_properties: {},
               }
               Promise(pd)
             }
@@ -1115,6 +1128,7 @@ pub fn setup_promise(env : Environment) -> Unit {
             reject_reactions: [],
             is_handled: false,
             properties: {},
+            symbol_properties: {},
           }
           return Promise(promise_data)
         }
@@ -1140,6 +1154,7 @@ pub fn setup_promise(env : Environment) -> Unit {
                 reject_reactions: [],
                 is_handled: false,
                 properties: {},
+                symbol_properties: {},
               }
               Promise(pd)
             }
@@ -1410,13 +1425,16 @@ pub fn setup_timers(env : Environment) -> Unit {
           } else {
             return Undefined
           }
-          // Mark timer as cancelled
+          // Mark timer as cancelled in queue
           for timer in interp.timer_queue {
             if timer.id == id {
               timer.cancelled = true
               break
             }
           }
+          // Also record in cancelled set so run_timers won't re-enqueue
+          // an interval whose callback called clearInterval on itself
+          interp.cancelled_timer_ids[id] = true
           Undefined
         }),
       ),
@@ -1512,6 +1530,9 @@ pub fn setup_timers(env : Environment) -> Unit {
               break
             }
           }
+          // Also record in cancelled set so run_timers won't re-enqueue
+          // an interval whose callback called clearInterval on itself
+          interp.cancelled_timer_ids[id] = true
           Undefined
         }),
       ),
@@ -1556,8 +1577,13 @@ pub fn Interpreter::run_timers(self : Interpreter) -> Unit raise Error {
     let _ = self.call_value(timer.callback, Undefined, timer.args, loc)
     // Microtask checkpoint after each task (per WHATWG event loop spec)
     self.run_microtasks()
-    // If this is setInterval and not cancelled, re-enqueue
-    if timer.is_interval && not(timer.cancelled) {
+    // If this is setInterval and not cancelled, re-enqueue.
+    // Check both the timer's cancelled flag and cancelled_timer_ids,
+    // because clearInterval called inside the callback can't mark the
+    // already-removed timer struct — it records in cancelled_timer_ids instead.
+    if timer.is_interval &&
+      not(timer.cancelled) &&
+      not(self.cancelled_timer_ids.contains(timer.id)) {
       let order = self.timer_insertion_counter.val
       self.timer_insertion_counter.val = order + 1
       self.timer_queue.push({
@@ -1571,6 +1597,8 @@ pub fn Interpreter::run_timers(self : Interpreter) -> Unit raise Error {
       })
     }
   }
+  // Clear the cancelled set for this run
+  self.cancelled_timer_ids.clear()
 }
 
 ///|
@@ -1607,6 +1635,7 @@ fn promise_resolve_value(value : Value) -> Value {
         reject_reactions: [],
         is_handled: false,
         properties: {},
+        symbol_properties: {},
       }
       Promise(pd)
     }
