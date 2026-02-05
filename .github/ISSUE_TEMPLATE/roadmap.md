@@ -1,8 +1,8 @@
 ## Current State
 
-**Test262 Pass Rate: 26.2%** (6,023 passed / 16,999 failed) — measured after Phase 4 Promise/Event Loop implementation
+**Test262 Pass Rate: 26.4%** (6,073 passed / 16,950 failed; 31 timeouts; 3 runner errors) — full run on 2026-02-05 (`23,023` executed / `49,647` discovered, `26,590` skipped)
 
-The MoonBit JS engine supports basic language features (variables, arithmetic, functions, closures, control flow, try/catch, new, this, switch, for-in, bitwise ops, objects, arrays), plus template literals, arrow functions, prototype chain lookup, Function.call/apply/bind, and built-in methods for Array, String, Object, and Math. Phase 3 added: arguments object, hoisting, strict mode, default/rest parameters, destructuring, spread, for-of, property descriptors, Object.freeze/seal, RegExp, JSON, Number built-ins, Error hierarchy polish, String.fromCharCode, and array HOFs. Phase 3.5 added: optional chaining (`?.`), nullish coalescing (`??`), exponentiation (`**`), computed property names, getters/setters, TDZ for let/const, global `this`/`globalThis`, and ES spec compliance fixes. Phase 3.6 added: comma-separated variable declarations, sort comparator exception handling, built-in spec improvements, logical assignment operators (`&&=`, `||=`, `??=`), numeric separator literals, number formatting fixes, ES6 classes (`class`, `extends`, `super`, static methods), and spec compliance fixes for URI encoding, prototype property handling, and class method enumerability. Phase 4 added: Symbol primitive type, Symbol.for/keyFor, well-known symbols, symbol-keyed properties, iteration protocols (Symbol.iterator, Array/String iterators, for-of and spread using iterator protocol), ES6 Map/Set collections, Promise with microtask queue (Promise.all/race/allSettled/any, .then/.catch/.finally, thenable assimilation per ECMAScript spec), and WHATWG timer APIs (setTimeout/clearTimeout/setInterval/clearInterval with event loop). Phases 1-3.6 complete, Phase 4 in progress.
+The MoonBit JS engine supports basic language features (variables, arithmetic, functions, closures, control flow, try/catch, new, this, switch, for-in, bitwise ops, objects, arrays), plus template literals, arrow functions, prototype chain lookup, Function.call/apply/bind, and built-in methods for Array, String, Object, and Math. Phase 3 added: arguments object, hoisting, strict mode, default/rest parameters, destructuring, spread, for-of, property descriptors, Object.freeze/seal, RegExp, JSON, Number built-ins, Error hierarchy polish, String.fromCharCode, and array HOFs. Phase 3.5 added: optional chaining (`?.`), nullish coalescing (`??`), exponentiation (`**`), computed property names, getters/setters, TDZ for let/const, global `this`/`globalThis`, and ES spec compliance fixes. Phase 3.6 added: comma-separated variable declarations, sort comparator exception handling, built-in spec improvements, logical assignment operators (`&&=`, `||=`, `??=`), numeric separator literals, number formatting fixes, ES6 classes (`class`, `extends`, `super`, static methods), and spec compliance fixes for URI encoding, prototype property handling, and class method enumerability. Phase 4 added: Symbol primitive type, Symbol.for/keyFor, well-known symbols, symbol-keyed properties, iteration protocols (Symbol.iterator, Array/String iterators, for-of and spread using iterator protocol), ES6 Map/Set collections, Promise with microtask queue (Promise.all/race/allSettled/any, .then/.catch/.finally), Promise.resolve thenable assimilation fixes, queueMicrotask zero-argument callback invocation, and WHATWG timer APIs (setTimeout/clearTimeout/setInterval/clearInterval with event loop). Phases 1-3.6 complete, Phase 4 in progress.
 
 ### Test262 Category Highlights (Phase 4 + Symbols + Iteration + Map/Set + Promise + Timers)
 
@@ -21,7 +21,7 @@ The MoonBit JS engine supports basic language features (variables, arithmetic, f
 | language/rest-parameters | 54.5% (6/11) | Basic support |
 | language/types | 52.7% (58/110) | Good coverage |
 | built-ins/encodeURIComponent | 46.7% (14/30) | URI encoding working |
-| language/expressions | 44.7% (1917/4290) | Significant improvement |
+| language/expressions | 44.8% (1920/4290) | Significant improvement |
 | built-ins/encodeURI | 43.3% (13/30) | URI encoding working |
 | built-ins/Math | 38.2% (109/285) | Good coverage |
 | built-ins/global | 34.5% (10/29) | GlobalThis working |
@@ -36,29 +36,30 @@ The MoonBit JS engine supports basic language features (variables, arithmetic, f
 | built-ins/String | 21.9% (232/1059) | split limit added |
 | language/arguments-object | 21.4% (27/126) | Arguments working |
 | built-ins/JSON | 21.2% (24/113) | parse/stringify working |
-| built-ins/Array | 19.8% (526/2658) | Core methods working |
-| built-ins/Set | 19.7% (35/178) | ES6 Set collections |
+| built-ins/Array | 19.8% (527/2659) | Core methods working |
+| built-ins/Set | 23.0% (41/178) | ES6 Set collections |
 | built-ins/Object | 18.2% (584/3211) | Core methods working |
 | built-ins/decodeURI | 17.0% (9/53) | URI decoding with reserved chars |
 | built-ins/decodeURIComponent | 16.7% (9/54) | Full URI component decoding |
-| built-ins/Symbol | 12.5% (9/72) | Core Symbol support working |
+| built-ins/Symbol | 16.7% (12/72) | Core Symbol support working |
 | built-ins/Function | 10.3% (44/428) | Constructor and prototype working |
 | built-ins/RegExp | 10.3% (85/827) | Basic regex support |
 | **built-ins/Promise** | **7.2% (12/167)** | **NEW: Promise with microtask queue, thenable assimilation** |
 | built-ins/ArrayIteratorPrototype | 5.9% (1/17) | Array iterator protocol |
-| built-ins/Map | 4.6% (8/175) | ES6 Map collections |
+| built-ins/Map | 19.4% (34/175) | ES6 Map collections |
 
 ### Root Cause of Current Failures
 
 **Template literals and arrow functions are now fully supported** (Phase 2). The assert.js harness parses and executes correctly.
 
-The current 26.2% pass rate reflects Symbol, Iteration Protocol, Map/Set, and Promise/Event Loop implementation:
+The current 26.4% pass rate reflects Symbol, Iteration Protocol, Map/Set, and Promise/Event Loop implementation:
 - **built-ins/* category: ~10-47% pass rate** — Array, String, Object, Number, URI methods now pass many tests
 - **ES6 Classes now supported** — `class`, `extends`, `super`, static methods, non-enumerable methods
 - **Symbols now supported** — `Symbol()`, `Symbol.for()`, `Symbol.keyFor()`, well-known symbols, symbol-keyed properties
 - **Iteration Protocols now supported** — `Symbol.iterator`, Array/String iterators, `for-of` and spread using iterator protocol
-- **Map/Set now supported** — ES6 collections with basic functionality (Map 4.6%, Set 19.7% pass rates)
+- **Map/Set now supported** — ES6 collections with basic functionality (Map 19.4%, Set 23.0% pass rates)
 - **Promises now supported** — `Promise` constructor, `.then/.catch/.finally`, `Promise.all/race/allSettled/any`, thenable assimilation per ECMAScript spec, microtask queue (7.2% pass rate)
+- **Promise spec regressions fixed** — `Promise.resolve` thenable assimilation and `queueMicrotask` callback arity now match spec-visible behavior
 - **WHATWG Timer APIs now supported** — `setTimeout`, `clearTimeout`, `setInterval`, `clearInterval` with event loop and microtask checkpoints
 - Language syntax coverage is strong (keywords 100%, punctuators 100%, block-scope 97%, expressions 45%)
 - Remaining failures are due to: generator/async features, Promise spec edge cases (most test262 Promise tests require async harness), and edge cases in built-in methods
@@ -67,7 +68,7 @@ The current 26.2% pass rate reflects Symbol, Iteration Protocol, Map/Set, and Pr
 **Template literal harness blocker** — **resolved in Phase 2**.
 **Comma-separated declarations blocker** — **resolved in Phase 3.6** (enabled 17%+ of tests to run).
 **ES6 Classes** — **resolved in Phase 3.6** (unlocked class-related tests).
-**Symbols** — **resolved in Phase 4** (9 tests passing, 63 failing due to spec edge cases).
+**Symbols** — **resolved in Phase 4** (12 tests passing, 60 failing due to spec edge cases).
 **Iteration Protocols** — **resolved in Phase 4** (Array/String iterators, for-of and spread using iterator protocol).
 **Map/Set Collections** — **resolved in Phase 4** (basic functionality working, many spec edge cases remain).
 **Promises** — **resolved in Phase 4** (12 tests passing, 155 failing; most failures due to async test harness requirements).
@@ -674,7 +675,7 @@ Phase 1 (DONE) ──► Phase 2 (DONE) ──► Phase 3 (DONE) ──► Phase
                                                     │  ❌ async/await       │
                                                     └───────────────────────┘
                                                                 │
-                                                          [26.2% pass rate] (current)
+                                                          [26.4% pass rate] (current)
                                                                 │
                                                                 ▼
                                                           [35-40% pass rate]
@@ -689,11 +690,11 @@ Phase 1 (DONE) ──► Phase 2 (DONE) ──► Phase 3 (DONE) ──► Phase
 | Phase 3 ✅ | ~8.7% | 444 | Strict mode, destructuring, spread/rest, RegExp, JSON, property descriptors, array HOFs, Number built-ins |
 | Phase 3.5 ✅ | 8.77% (1,848/21,074) | 444 | Optional chaining, nullish coalescing, exponentiation, computed properties, getters/setters, TDZ |
 | **Phase 3.6** ✅ | **27.1%** (5,703/21,042) | 457 | **ES6 Classes, comma-separated declarations, built-in spec fixes, URI encoding** |
-| **Phase 4** 🔄 | **26.2%** (6,023/23,022) | — | **Symbols, iteration protocols, Map/Set, Promise/microtask queue, timer APIs** |
+| **Phase 4** 🔄 | **26.4%** (6,073/23,023) | — | **Symbols, iteration protocols, Map/Set, Promise/microtask queue, timer APIs** |
 
 **Why pass rate jumped from 8.77% to 27.1%**: The comma-separated variable declaration fix (`var a, b, c;`) unblocked ~17% of test262 tests that were failing at parse time. ES6 class implementation added support for `class`, `extends`, `super()`, static methods. Built-ins continue to improve (Array 19.8%, String 21.9%, Object 18.2%, Math 38.2%, Function 10.3%).
 
-**Phase 4 progress**: Symbols, iteration protocols, Map/Set collections, Promises, and timer APIs are now implemented. The pass rate settled at 26.2% as newly-enabled categories (Map/Set, Promise) run but have low pass rates due to spec compliance edge cases. Promise achieves 7.2% (12/167) — most test262 Promise tests require the async test harness (`$DONE` callback) which the runner doesn't support. Timer APIs (setTimeout/setInterval) are working with proper event loop semantics including microtask checkpoints between tasks.
+**Phase 4 progress**: Symbols, iteration protocols, Map/Set collections, Promises, and timer APIs are now implemented. The pass rate is now 26.4% (6,073/23,023 executed tests) as newly-enabled categories (Map/Set, Promise) run but still have many spec compliance edge cases. Promise remains at 7.2% (12/167) — most test262 Promise tests require the async test harness (`$DONE` callback) which the runner doesn't support. Timer APIs (setTimeout/setInterval) are working with proper event loop semantics including microtask checkpoints between tasks.
 
 ---
 
@@ -762,6 +763,8 @@ Phase 1 (DONE) ──► Phase 2 (DONE) ──► Phase 3 (DONE) ──► Phase
 | `PromiseResolveThenableJob` enqueued as microtask for spec-compliant thenable unwrapping | Phase 4 |
 | `queueMicrotask()` Web Platform API | Phase 4 |
 | Microtask queue with index-based O(n) draining (not O(n²) remove(0)) | Phase 4 |
+| `queueMicrotask` callbacks invoked with zero args; Promise jobs keep one reaction arg | Phase 4 |
+| `Promise.resolve` path now uses resolving functions so thenables are assimilated correctly | Phase 4 |
 | User-defined properties on Promise values (`properties` + `symbol_properties` on PromiseData) | Phase 4 |
 | Promise computed property read coerces non-string keys via ToPropertyKey | Phase 4 |
 | **Event Loop / Timer APIs** — WHATWG Timer APIs with event loop | Phase 4 |
