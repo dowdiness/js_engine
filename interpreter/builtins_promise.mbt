@@ -57,7 +57,7 @@ pub fn Interpreter::run_microtasks(self : Interpreter) -> Unit raise Error {
         match obj_data.callable {
           Some(_) => {
             // Create a dummy location for the call
-            let loc : @token.Loc = { line: 0, column: 0, pos: 0 }
+            let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
             let _ = self.call_value(task.callback, Undefined, [task.argument], loc)
 
           }
@@ -72,7 +72,7 @@ pub fn Interpreter::run_microtasks(self : Interpreter) -> Unit raise Error {
 /// Create resolve and reject capability functions for a promise
 /// Returns (resolve_func, reject_func)
 fn create_resolving_functions(
-  interp : Interpreter,
+  _interp : Interpreter,
   promise_data : PromiseData,
 ) -> (Value, Value) {
   // Track whether already resolved (prevents multiple resolution)
@@ -189,7 +189,7 @@ fn enqueue_promise_reaction_job(
     callable: Some(
       InterpreterCallable("PromiseReactionJob", fn(i, _this, args) {
         let value = if args.length() > 0 { args[0] } else { Undefined }
-        let loc : @token.Loc = { line: 0, column: 0, pos: 0 }
+        let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
 
         // If handler is None, use identity (fulfill) or thrower (reject)
         match reaction.handler {
@@ -354,7 +354,7 @@ pub fn setup_promise(env : Environment) -> Unit {
               "Promise.prototype.catch requires a Promise",
             )
         }
-        let loc : @token.Loc = { line: 0, column: 0, pos: 0 }
+        let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
         let on_rejected = if args.length() > 0 { args[0] } else { Undefined }
         interp.call_value(then_method, this_val, [Undefined, on_rejected], loc)
       }),
@@ -389,7 +389,7 @@ pub fn setup_promise(env : Environment) -> Unit {
         if not(is_callable) {
           // If onFinally is not callable, pass through
           let then_method = get_promise_method(promise_data, "then")
-          let loc : @token.Loc = { line: 0, column: 0, pos: 0 }
+          let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
           return interp.call_value(
             then_method,
             this_val,
@@ -410,7 +410,7 @@ pub fn setup_promise(env : Environment) -> Unit {
               } else {
                 Undefined
               }
-              let loc : @token.Loc = { line: 0, column: 0, pos: 0 }
+              let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
               // Call onFinally
               let _ = i.call_value(on_finally, Undefined, [], loc)
               // Return the original value
@@ -434,7 +434,7 @@ pub fn setup_promise(env : Environment) -> Unit {
               } else {
                 Undefined
               }
-              let loc : @token.Loc = { line: 0, column: 0, pos: 0 }
+              let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
               // Call onFinally
               let _ = i.call_value(on_finally, Undefined, [], loc)
               // Re-throw the reason
@@ -448,7 +448,7 @@ pub fn setup_promise(env : Environment) -> Unit {
         })
 
         let then_method = get_promise_method(promise_data, "then")
-        let loc : @token.Loc = { line: 0, column: 0, pos: 0 }
+        let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
         interp.call_value(then_method, this_val, [value_thunk, thrower_thunk], loc)
       }),
     ),
@@ -595,7 +595,7 @@ pub fn setup_promise(env : Environment) -> Unit {
                 results[index] = value
                 remaining.val = remaining.val - 1
                 if remaining.val == 0 {
-                  let loc : @token.Loc = { line: 0, column: 0, pos: 0 }
+                  let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
                   let _ = i2.call_value(
                     resolve,
                     Undefined,
@@ -817,7 +817,7 @@ pub fn setup_promise(env : Environment) -> Unit {
                 })
                 remaining.val = remaining.val - 1
                 if remaining.val == 0 {
-                  let loc : @token.Loc = { line: 0, column: 0, pos: 0 }
+                  let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
                   let _ = i2.call_value(
                     resolve,
                     Undefined,
@@ -861,7 +861,7 @@ pub fn setup_promise(env : Environment) -> Unit {
                 })
                 remaining.val = remaining.val - 1
                 if remaining.val == 0 {
-                  let loc : @token.Loc = { line: 0, column: 0, pos: 0 }
+                  let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
                   let _ = i2.call_value(
                     resolve,
                     Undefined,
@@ -1006,7 +1006,7 @@ pub fn setup_promise(env : Environment) -> Unit {
                 errors[index] = reason
                 remaining.val = remaining.val - 1
                 if remaining.val == 0 {
-                  let loc : @token.Loc = { line: 0, column: 0, pos: 0 }
+                  let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
                   let agg_error = make_aggregate_error(
                     "All promises were rejected",
                     errors,
@@ -1107,7 +1107,7 @@ pub fn setup_promise(env : Environment) -> Unit {
         let (resolve, reject) = create_resolving_functions(interp, promise_data)
 
         // Call executor synchronously
-        let loc : @token.Loc = { line: 0, column: 0, pos: 0 }
+        let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
         try {
           let _ = interp.call_value(executor, Undefined, [resolve, reject], loc)
 
