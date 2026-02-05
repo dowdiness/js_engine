@@ -267,11 +267,15 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
           let buf = StringBuilder::new()
           for arg in args {
             let num = to_number(arg)
-            // Check if it's an integer
+            // Check if it's a valid number
             if num.is_nan() || num.is_inf() {
               raise @errors.RangeError(message="Invalid code point")
             }
+            // Check if it's an integer (no fractional part)
             let code = num.to_int()
+            if code.to_double() != num {
+              raise @errors.RangeError(message="Invalid code point")
+            }
             // Valid Unicode code points: 0 to 0x10FFFF
             if code < 0 || code > 0x10FFFF {
               raise @errors.RangeError(

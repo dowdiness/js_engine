@@ -187,6 +187,11 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           if args.length() > 1 {
             match args[1] {
               Undefined => ()
+              Null | String_(_) | Number(_) | Bool(_) | Symbol(_) | Array(_)
+              | Map(_) | Set(_) | Promise(_) =>
+                raise @errors.TypeError(
+                  message="Property descriptors must be an object",
+                )
               Object(desc_obj) =>
                 match obj {
                   Object(data) =>
@@ -224,7 +229,6 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                     })
                   _ => ()
                 }
-              _ => ()
             }
           }
           obj
@@ -741,7 +745,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 message="Object prototype may only be an Object or null",
               )
           }
-          // Set the prototype if obj is an Object
+          // Set the prototype if obj is an Object (return primitives unchanged)
           match obj {
             Object(data) => {
               // Check if object is extensible (frozen/sealed objects can't change prototype)
@@ -752,10 +756,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               }
               data.prototype = proto
             }
-            _ =>
-              raise @errors.TypeError(
-                message="Object.setPrototypeOf called on non-object",
-              )
+            // Per ECMAScript spec, primitives are returned unchanged
+            _ => ()
           }
           obj
         }),
