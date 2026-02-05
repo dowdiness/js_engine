@@ -45,18 +45,16 @@ pub fn Interpreter::new() -> Interpreter {
   let global = Environment::new()
   let output : Array[String] = []
   // Create global object for 'this' in global context
-  let global_this : Value = Object(
-    {
-      properties: {},
-      symbol_properties: {},
-      prototype: Null,
-      callable: None,
-      class_name: "global",
-      descriptors: {},
-      symbol_descriptors: {},
-      extensible: true,
-    },
-  )
+  let global_this : Value = Object({
+    properties: {},
+    symbol_properties: {},
+    prototype: Null,
+    callable: None,
+    class_name: "global",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
   setup_builtins(global, output)
   // Bind 'this' and 'globalThis' in global scope
   global.def_builtin("this", global_this)
@@ -107,7 +105,9 @@ pub fn Interpreter::run(
     match self.exec_stmt(stmt, self.global) {
       Normal(v) => last = v
       ReturnSignal(_) =>
-        raise @errors.SyntaxError(message="return statement outside of function")
+        raise @errors.SyntaxError(
+          message="return statement outside of function",
+        )
       BreakSignal(_) =>
         raise @errors.SyntaxError(message="break statement outside of loop")
       ContinueSignal(_) =>
@@ -156,11 +156,10 @@ fn Interpreter::exec_stmt(
       hoist_block_tdz(stmts, block_env)
       self.exec_stmts(stmts, block_env)
     }
-    StmtList(stmts, _) => {
+    StmtList(stmts, _) =>
       // Execute statements in same scope (no new environment)
       // Used for comma-separated declarations like: var a, b, c;
       self.exec_stmts(stmts, env)
-    }
     IfStmt(cond, then_branch, else_branch, _) => {
       let cond_val = self.eval_expr(cond, env)
       if is_truthy(cond_val) {
@@ -392,31 +391,30 @@ fn Interpreter::exec_stmt(
           match data.callable {
             Some(_) => self.call_value(iterator_method, iterable, [], loc)
             None =>
-              raise @errors.TypeError(message=
-                "Result of the Symbol.iterator method is not an object",
+              raise @errors.TypeError(
+                message="Result of the Symbol.iterator method is not an object",
               )
           }
-        Undefined => {
+        Undefined =>
           // Fall back to built-in iteration for arrays and strings
           // This handles cases where Symbol.iterator might not be set up yet
           match iterable {
             Array(arr) => make_array_iterator_value(arr)
             String_(s) => make_string_iterator_value(s)
             _ =>
-              raise @errors.TypeError(message=
-                "\{type_of(iterable)} is not iterable (cannot read property Symbol(Symbol.iterator))",
+              raise @errors.TypeError(
+                message="\{type_of(iterable)} is not iterable (cannot read property Symbol(Symbol.iterator))",
               )
           }
-        }
         _ =>
-          raise @errors.TypeError(message=
-            "Result of the Symbol.iterator method is not an object",
+          raise @errors.TypeError(
+            message="Result of the Symbol.iterator method is not an object",
           )
       }
 
       // Get the next method from the iterator (walk prototype chain)
       let next_method = match iterator {
-        Object(iter_data) => {
+        Object(iter_data) =>
           // First check direct properties
           match iter_data.properties.get("next") {
             Some(next_fn) => next_fn
@@ -439,12 +437,13 @@ fn Interpreter::exec_stmt(
               }
               match found {
                 Undefined =>
-                  raise @errors.TypeError(message="iterator.next is not a function")
+                  raise @errors.TypeError(
+                    message="iterator.next is not a function",
+                  )
                 _ => found
               }
             }
           }
-        }
         _ => raise @errors.TypeError(message="Iterator is not an object")
       }
 
@@ -466,7 +465,8 @@ fn Interpreter::exec_stmt(
             }
             (done_val, value_val)
           }
-          _ => raise @errors.TypeError(message="Iterator result is not an object")
+          _ =>
+            raise @errors.TypeError(message="Iterator result is not an object")
         }
 
         // If done, exit the loop
@@ -689,7 +689,7 @@ fn Interpreter::hoist_declarations(
         }
       }
       DestructureDecl(VarKind, pattern, _, _) => hoist_pattern(pattern, env)
-      StmtList(inner_stmts, _) => {
+      StmtList(inner_stmts, _) =>
         // Recursively hoist declarations from StmtList (comma-separated decls)
         for inner in inner_stmts {
           match inner {
@@ -697,18 +697,22 @@ fn Interpreter::hoist_declarations(
               if not(env.bindings.contains(name)) {
                 env.def(name, Undefined, VarBinding)
               }
-            DestructureDecl(VarKind, pattern, _, _) => hoist_pattern(pattern, env)
+            DestructureDecl(VarKind, pattern, _, _) =>
+              hoist_pattern(pattern, env)
             _ => ()
           }
         }
-      }
       _ => ()
     }
   }
 }
 
-///| Hoist let/const declarations with TDZ markers at block scope
-fn hoist_block_tdz(stmts : Array[@ast.Stmt], env : Environment) -> Unit raise Error {
+///|
+/// Hoist let/const declarations with TDZ markers at block scope
+fn hoist_block_tdz(
+  stmts : Array[@ast.Stmt],
+  env : Environment,
+) -> Unit raise Error {
   for stmt in stmts {
     match stmt {
       VarDecl(LetKind, name, _, _) =>
@@ -734,7 +738,8 @@ fn hoist_block_tdz(stmts : Array[@ast.Stmt], env : Environment) -> Unit raise Er
   }
 }
 
-///| Hoist pattern bindings with TDZ markers
+///|
+/// Hoist pattern bindings with TDZ markers
 fn hoist_pattern_tdz(
   pattern : @ast.Pattern,
   env : Environment,
@@ -1100,7 +1105,8 @@ fn Interpreter::eval_expr(
             Symbol(sym) =>
               // Symbol key - store in symbol_properties
               match prop.kind {
-                Init => symbol_properties[sym.id] = self.eval_expr(prop.value, env)
+                Init =>
+                  symbol_properties[sym.id] = self.eval_expr(prop.value, env)
                 Get | Set => () // Getters/setters for symbols not fully supported yet
               }
             _ => {
@@ -1109,7 +1115,11 @@ fn Interpreter::eval_expr(
                 String_(s) => s
                 Number(n) => {
                   let i = n.to_int()
-                  if i.to_double() == n { i.to_string() } else { n.to_string() }
+                  if i.to_double() == n {
+                    i.to_string()
+                  } else {
+                    n.to_string()
+                  }
                 }
                 Bool(b) => b.to_string()
                 Null => "null"
@@ -1191,8 +1201,8 @@ fn Interpreter::eval_expr(
             Some(desc) =>
               if not(desc.writable) {
                 if self.strict {
-                  raise @errors.TypeError(message=
-                    "Cannot assign to read only property '\{prop}'",
+                  raise @errors.TypeError(
+                    message="Cannot assign to read only property '\{prop}'",
                   )
                 }
                 return value
@@ -1202,8 +1212,8 @@ fn Interpreter::eval_expr(
           // Check extensible for new properties
           if not(data.properties.contains(prop)) && not(data.extensible) {
             if self.strict {
-              raise @errors.TypeError(message=
-                "Cannot add property \{prop}, object is not extensible",
+              raise @errors.TypeError(
+                message="Cannot add property \{prop}, object is not extensible",
               )
             }
             return value
@@ -1216,8 +1226,8 @@ fn Interpreter::eval_expr(
           value
         }
         _ =>
-          raise @errors.TypeError(message=
-            "Cannot set property '\{prop}' of \{type_of(obj)}",
+          raise @errors.TypeError(
+            message="Cannot set property '\{prop}' of \{type_of(obj)}",
           )
       }
     }
@@ -1235,7 +1245,9 @@ fn Interpreter::eval_expr(
                 Some(desc) =>
                   if not(desc.writable) {
                     if self.strict {
-                      raise @errors.TypeError(message="Cannot assign to read only property")
+                      raise @errors.TypeError(
+                        message="Cannot assign to read only property",
+                      )
                     }
                     return value
                   }
@@ -1244,8 +1256,8 @@ fn Interpreter::eval_expr(
               if not(data.symbol_properties.contains(sym.id)) &&
                 not(data.extensible) {
                 if self.strict {
-                  raise @errors.TypeError(message=
-                    "Cannot add property, object is not extensible",
+                  raise @errors.TypeError(
+                    message="Cannot add property, object is not extensible",
                   )
                 }
                 return value
@@ -1259,8 +1271,8 @@ fn Interpreter::eval_expr(
                 Some(desc) =>
                   if not(desc.writable) {
                     if self.strict {
-                      raise @errors.TypeError(message=
-                        "Cannot assign to read only property '\{prop}'",
+                      raise @errors.TypeError(
+                        message="Cannot assign to read only property '\{prop}'",
                       )
                     }
                     return value
@@ -1269,8 +1281,8 @@ fn Interpreter::eval_expr(
               }
               if not(data.properties.contains(prop)) && not(data.extensible) {
                 if self.strict {
-                  raise @errors.TypeError(message=
-                    "Cannot add property \{prop}, object is not extensible",
+                  raise @errors.TypeError(
+                    message="Cannot add property \{prop}, object is not extensible",
                   )
                 }
                 return value
@@ -1305,7 +1317,10 @@ fn Interpreter::eval_expr(
               value
             }
           }
-        _ => raise @errors.TypeError(message="Cannot set property of \{type_of(obj)}")
+        _ =>
+          raise @errors.TypeError(
+            message="Cannot set property of \{type_of(obj)}",
+          )
       }
     }
     NewExpr(callee_expr, arg_exprs, loc) =>
@@ -1401,7 +1416,7 @@ fn Interpreter::eval_expr(
         }
       }
     }
-    OptionalCall(callee_expr, arg_exprs, loc) => {
+    OptionalCall(callee_expr, arg_exprs, loc) =>
       // func?.(args) - return undefined if func is null/undefined
       // Per ES spec, arguments are NOT evaluated if function is nullish
       // Need to preserve receiver for method calls
@@ -1473,7 +1488,6 @@ fn Interpreter::eval_expr(
           }
         }
       }
-    }
     ClassExpr(name, superclass, methods, _) =>
       self.create_class(name.unwrap_or(""), superclass, methods, env)
     SuperCall(arg_exprs, loc) => {
@@ -1484,9 +1498,18 @@ fn Interpreter::eval_expr(
       let args = self.eval_args_with_spread(arg_exprs, env)
       // Call the super constructor
       match super_ctor {
-        Object(data) => {
+        Object(data) =>
           match data.callable {
-            Some(ClassConstructor(_, _, _super_ctor, ctor_fn, ctor_env, super_proto)) => {
+            Some(
+              ClassConstructor(
+                _,
+                _,
+                _super_ctor,
+                ctor_fn,
+                ctor_env,
+                super_proto
+              )
+            ) => {
               // Create new environment for the constructor call
               let call_env = Environment::new(parent=Some(ctor_env))
               call_env.def_builtin("this", this_val)
@@ -1502,7 +1525,11 @@ fn Interpreter::eval_expr(
               match ctor_fn {
                 Some((ctor_params, ctor_body)) => {
                   for i = 0; i < ctor_params.length(); i = i + 1 {
-                    let val : Value = if i < args.length() { args[i] } else { Undefined }
+                    let val : Value = if i < args.length() {
+                      args[i]
+                    } else {
+                      Undefined
+                    }
                     call_env.def(ctor_params[i], val, LetBinding)
                   }
                   self.hoist_declarations(ctor_body, call_env)
@@ -1530,7 +1557,6 @@ fn Interpreter::eval_expr(
                 message="super() called but [[SuperConstructor]] is not a class at line \{loc.line}",
               )
           }
-        }
         _ =>
           raise @errors.ReferenceError(
             message="super() called but no [[SuperConstructor]] in scope at line \{loc.line}",
@@ -1617,21 +1643,25 @@ fn Interpreter::eval_binary(
                     }
                     None =>
                       // Symbol.hasInstance exists but is not callable - TypeError per spec
-                      raise @errors.TypeError(message="Symbol.hasInstance is not a function")
+                      raise @errors.TypeError(
+                        message="Symbol.hasInstance is not a function",
+                      )
                   }
                 _ =>
                   // Symbol.hasInstance is not an object - TypeError per spec
-                  raise @errors.TypeError(message="Symbol.hasInstance is not a function")
+                  raise @errors.TypeError(
+                    message="Symbol.hasInstance is not a function",
+                  )
               }
-            None => {
+            None =>
               // No Symbol.hasInstance found, use OrdinaryHasInstance
               // Step 2: Check if RHS is callable (required for OrdinaryHasInstance)
               match r_data.callable {
                 None =>
-                  raise @errors.TypeError(message=
-                    "Right-hand side of 'instanceof' is not callable",
+                  raise @errors.TypeError(
+                    message="Right-hand side of 'instanceof' is not callable",
                   )
-                Some(_) => {
+                Some(_) =>
                   // Step 3: Get prototype property and walk LHS prototype chain
                   // Per OrdinaryHasInstance spec: if prototype is not an object, return false
                   // This handles bound functions which don't have own prototype property
@@ -1645,14 +1675,12 @@ fn Interpreter::eval_binary(
                     // No prototype property (e.g., bound functions): return false per spec
                     None => Bool(false)
                   }
-                }
               }
-            }
           }
         }
         _ =>
-          raise @errors.TypeError(message=
-            "Right-hand side of 'instanceof' is not an object",
+          raise @errors.TypeError(
+            message="Right-hand side of 'instanceof' is not an object",
           )
       }
     }
@@ -1674,7 +1702,9 @@ fn eval_binary_op(
   match (op, left, right) {
     // Symbol cannot be converted to string implicitly
     (Add, Symbol(_), _) | (Add, _, Symbol(_)) =>
-      raise @errors.TypeError(message="Cannot convert a Symbol value to a string")
+      raise @errors.TypeError(
+        message="Cannot convert a Symbol value to a string",
+      )
     // String concatenation
     (Add, String_(a), String_(b)) => String_(a + b)
     (Add, String_(a), b) => String_(a + b.to_string())
@@ -1797,12 +1827,12 @@ fn eval_binary_op(
             }
           }
         Array(data) => {
-          let idx = try { to_number(l).to_int() } catch { _ => -1 }
+          let idx = to_number(l).to_int() catch { _ => -1 }
           Bool(idx >= 0 && idx < data.elements.length())
         }
         _ =>
-          raise @errors.TypeError(message=
-            "Cannot use 'in' operator to search for '\{l.to_string()}' in \{type_of(r)}",
+          raise @errors.TypeError(
+            message="Cannot use 'in' operator to search for '\{l.to_string()}' in \{type_of(r)}",
           )
       }
     // And/Or/??/Instanceof already handled in eval_binary
@@ -1899,11 +1929,11 @@ fn loose_equal(a : Value, b : Value) -> Bool {
     (Null, Undefined) | (Undefined, Null) => true
     // Number == String: convert string to number
     (Number(n), String_(s)) => {
-      let num = try { to_number(String_(s)) } catch { _ => return false }
+      let num = to_number(String_(s)) catch { _ => return false }
       n == num
     }
     (String_(s), Number(n)) => {
-      let num = try { to_number(String_(s)) } catch { _ => return false }
+      let num = to_number(String_(s)) catch { _ => return false }
       num == n
     }
     // Boolean == anything: convert boolean to number first
@@ -1966,7 +1996,9 @@ fn Interpreter::eval_unary(
                 Some(desc) =>
                   if not(desc.configurable) {
                     if self.strict {
-                      raise @errors.TypeError(message="Cannot delete property '\{prop}'")
+                      raise @errors.TypeError(
+                        message="Cannot delete property '\{prop}'",
+                      )
                     }
                     return Bool(false)
                   }
@@ -1989,7 +2021,9 @@ fn Interpreter::eval_unary(
                 Some(desc) =>
                   if not(desc.configurable) {
                     if self.strict {
-                      raise @errors.TypeError(message="Cannot delete property '\{k}'")
+                      raise @errors.TypeError(
+                        message="Cannot delete property '\{k}'",
+                      )
                     }
                     return Bool(false)
                   }
@@ -2041,7 +2075,7 @@ fn Interpreter::spread_iterable(
     Object(data) =>
       match data.callable {
         Some(_) => self.call_value(iterator_method, val, [], loc)
-        None => {
+        None =>
           // Not callable, fall back to direct iteration
           match val {
             Array(arr) => {
@@ -2064,9 +2098,8 @@ fn Interpreter::spread_iterable(
               return result
             }
           }
-        }
       }
-    Undefined => {
+    Undefined =>
       // No iterator method, fall back to direct iteration for arrays/strings
       match val {
         Array(arr) => {
@@ -2089,7 +2122,6 @@ fn Interpreter::spread_iterable(
           return result
         }
       }
-    }
     _ => {
       // For non-objects, just return the value itself
       result.push(val)
@@ -2099,7 +2131,7 @@ fn Interpreter::spread_iterable(
 
   // Get the next method from the iterator (walk prototype chain)
   let next_method = match iterator {
-    Object(iter_data) => {
+    Object(iter_data) =>
       // First check direct properties
       match iter_data.properties.get("next") {
         Some(next_fn) => next_fn
@@ -2127,14 +2159,12 @@ fn Interpreter::spread_iterable(
           }
         }
       }
-    }
     _ => raise @errors.TypeError(message="Iterator result is not an object")
   }
 
   // Iterate using the iterator protocol
   while true {
     let iter_result = self.call_value(next_method, iterator, [], loc)
-
     let (done, value) = match iter_result {
       Object(result_data) => {
         let done_val = match result_data.properties.get("done") {
@@ -2149,14 +2179,11 @@ fn Interpreter::spread_iterable(
       }
       _ => (true, Undefined)
     }
-
     if done {
       break
     }
-
     result.push(value)
   }
-
   result
 }
 
@@ -2282,9 +2309,13 @@ fn Interpreter::call_value(
               Normal(v) => v
               ReturnSignal(v) => v
               BreakSignal(_) =>
-                raise @errors.SyntaxError(message="break statement outside of loop")
+                raise @errors.SyntaxError(
+                  message="break statement outside of loop",
+                )
               ContinueSignal(_) =>
-                raise @errors.SyntaxError(message="continue statement outside of loop")
+                raise @errors.SyntaxError(
+                  message="continue statement outside of loop",
+                )
             }
           } catch {
             e => {
@@ -2311,9 +2342,13 @@ fn Interpreter::call_value(
             Normal(v) => v
             ReturnSignal(v) => v
             BreakSignal(_) =>
-              raise @errors.SyntaxError(message="break statement outside of loop")
+              raise @errors.SyntaxError(
+                message="break statement outside of loop",
+              )
             ContinueSignal(_) =>
-              raise @errors.SyntaxError(message="continue statement outside of loop")
+              raise @errors.SyntaxError(
+                message="continue statement outside of loop",
+              )
           }
         }
         Some(UserFuncExt(data)) => {
@@ -2389,9 +2424,13 @@ fn Interpreter::call_value(
               Normal(v) => v
               ReturnSignal(v) => v
               BreakSignal(_) =>
-                raise @errors.SyntaxError(message="break statement outside of loop")
+                raise @errors.SyntaxError(
+                  message="break statement outside of loop",
+                )
               ContinueSignal(_) =>
-                raise @errors.SyntaxError(message="continue statement outside of loop")
+                raise @errors.SyntaxError(
+                  message="continue statement outside of loop",
+                )
             }
           } catch {
             e => {
@@ -2437,9 +2476,13 @@ fn Interpreter::call_value(
             Normal(v) => v
             ReturnSignal(v) => v
             BreakSignal(_) =>
-              raise @errors.SyntaxError(message="break statement outside of loop")
+              raise @errors.SyntaxError(
+                message="break statement outside of loop",
+              )
             ContinueSignal(_) =>
-              raise @errors.SyntaxError(message="continue statement outside of loop")
+              raise @errors.SyntaxError(
+                message="continue statement outside of loop",
+              )
           }
         }
         Some(BoundFunc(target, bound_this, bound_args)) => {
@@ -2483,12 +2526,14 @@ fn Interpreter::call_value(
         Some(NonConstructableCallable(_, func)) => func(args)
         Some(InterpreterCallable(_, func)) => func(self, this_val, args)
         Some(ConstructorOnlyCallable(name, _)) =>
-          raise @errors.TypeError(message=
-            name + " constructor cannot be invoked without 'new'",
+          raise @errors.TypeError(
+            message=name + " constructor cannot be invoked without 'new'",
           )
         Some(ClassConstructor(name, _, _, _, _, _)) =>
-          raise @errors.TypeError(message=
-            "Class constructor " + name + " cannot be invoked without 'new'",
+          raise @errors.TypeError(
+            message="Class constructor " +
+              name +
+              " cannot be invoked without 'new'",
           )
         None => raise @errors.TypeError(message="is not a function")
       }
@@ -2625,19 +2670,35 @@ fn Interpreter::get_property(
                         match td.callable {
                           Some(UserFunc(fd)) => {
                             let diff = fd.params.length() - bound_args.length()
-                            if diff < 0 { 0 } else { diff }
+                            if diff < 0 {
+                              0
+                            } else {
+                              diff
+                            }
                           }
                           Some(UserFuncExt(fd)) => {
                             let diff = fd.params.length() - bound_args.length()
-                            if diff < 0 { 0 } else { diff }
+                            if diff < 0 {
+                              0
+                            } else {
+                              diff
+                            }
                           }
                           Some(ArrowFunc(fd)) => {
                             let diff = fd.params.length() - bound_args.length()
-                            if diff < 0 { 0 } else { diff }
+                            if diff < 0 {
+                              0
+                            } else {
+                              diff
+                            }
                           }
                           Some(ArrowFuncExt(fd)) => {
                             let diff = fd.params.length() - bound_args.length()
-                            if diff < 0 { 0 } else { diff }
+                            if diff < 0 {
+                              0
+                            } else {
+                              diff
+                            }
                           }
                           _ => 0
                         }
@@ -2689,28 +2750,41 @@ fn Interpreter::get_property(
                   ArrowFunc(_) => "() => { [native code] }"
                   ArrowFuncExt(_) => "() => { [native code] }"
                   BoundFunc(_, _, _) => "function () { [native code] }"
-                  NativeCallable(n, _) => "function " + n + "() { [native code] }"
-                  NonConstructableCallable(n, _) => "function " + n + "() { [native code] }"
+                  NativeCallable(n, _) =>
+                    "function " + n + "() { [native code] }"
+                  NonConstructableCallable(n, _) =>
+                    "function " + n + "() { [native code] }"
                   FuncCallMethod(_) => "function call() { [native code] }"
                   FuncApplyMethod(_) => "function apply() { [native code] }"
-                  MethodCallable(n, _) => "function " + n + "() { [native code] }"
-                  InterpreterCallable(n, _) => "function " + n + "() { [native code] }"
-                  ConstructorOnlyCallable(n, _) => "function " + n + "() { [native code] }"
+                  MethodCallable(n, _) =>
+                    "function " + n + "() { [native code] }"
+                  InterpreterCallable(n, _) =>
+                    "function " + n + "() { [native code] }"
+                  ConstructorOnlyCallable(n, _) =>
+                    "function " + n + "() { [native code] }"
                   ClassConstructor(n, _, _, _, _, _) =>
                     "class " + n + " { [native code] }"
                 }
-                return make_native_func("toString", fn(_args) { String_(func_str) })
+                return make_native_func("toString", fn(_args) {
+                  String_(func_str)
+                })
               } else if prop == "prototype" {
                 // Only constructable functions have a prototype property
                 // Non-constructable (arrow functions, bound functions, etc.) return undefined
                 let is_constructable = match callable {
-                  UserFunc(_) | UserFuncExt(_) | NativeCallable(_, _) |
-                  ConstructorOnlyCallable(_, _) |
-                  ClassConstructor(_, _, _, _, _, _) => true
-                  ArrowFunc(_) | ArrowFuncExt(_) | BoundFunc(_, _, _) |
-                  NonConstructableCallable(_, _) |
-                  FuncCallMethod(_) | FuncApplyMethod(_) | MethodCallable(_, _) |
-                  InterpreterCallable(_, _) => false
+                  UserFunc(_)
+                  | UserFuncExt(_)
+                  | NativeCallable(_, _)
+                  | ConstructorOnlyCallable(_, _)
+                  | ClassConstructor(_, _, _, _, _, _) => true
+                  ArrowFunc(_)
+                  | ArrowFuncExt(_)
+                  | BoundFunc(_, _, _)
+                  | NonConstructableCallable(_, _)
+                  | FuncCallMethod(_)
+                  | FuncApplyMethod(_)
+                  | MethodCallable(_, _)
+                  | InterpreterCallable(_, _) => false
                 }
                 if not(is_constructable) {
                   return Undefined
@@ -2745,12 +2819,17 @@ fn Interpreter::get_property(
               prototype: Null,
               callable: Some(
                 MethodCallable("hasOwnProperty", fn(this_val, args) {
-                  let key_val = if args.length() > 0 { args[0] } else { Undefined }
+                  let key_val = if args.length() > 0 {
+                    args[0]
+                  } else {
+                    Undefined
+                  }
                   match this_val {
                     Object(d) =>
                       // Handle Symbol keys
                       match key_val {
-                        Symbol(sym) => Bool(d.symbol_properties.contains(sym.id))
+                        Symbol(sym) =>
+                          Bool(d.symbol_properties.contains(sym.id))
                         _ => Bool(d.properties.contains(key_val.to_string()))
                       }
                     _ => Bool(false)
@@ -2820,7 +2899,9 @@ fn Interpreter::get_property(
         None => get_promise_method(data, prop)
       }
     Null | Undefined =>
-      raise @errors.TypeError(message="Cannot read property '\{prop}' of \{type_of(obj)}")
+      raise @errors.TypeError(
+        message="Cannot read property '\{prop}' of \{type_of(obj)}",
+      )
     _ => Undefined
   }
 }
@@ -2836,7 +2917,7 @@ fn Interpreter::get_computed_property(
   match key {
     Symbol(sym) =>
       match obj {
-        Object(data) => {
+        Object(data) =>
           // Look up symbol property
           match data.symbol_properties.get(sym.id) {
             Some(v) => return v
@@ -2856,7 +2937,6 @@ fn Interpreter::get_computed_property(
               return Undefined
             }
           }
-        }
         String_(s) => {
           // Handle Symbol.iterator for strings
           let iterator_sym = get_iterator_symbol()
@@ -2989,19 +3069,35 @@ fn Interpreter::get_computed_property(
                         match td.callable {
                           Some(UserFunc(fd)) => {
                             let diff = fd.params.length() - bound_args.length()
-                            if diff < 0 { 0 } else { diff }
+                            if diff < 0 {
+                              0
+                            } else {
+                              diff
+                            }
                           }
                           Some(UserFuncExt(fd)) => {
                             let diff = fd.params.length() - bound_args.length()
-                            if diff < 0 { 0 } else { diff }
+                            if diff < 0 {
+                              0
+                            } else {
+                              diff
+                            }
                           }
                           Some(ArrowFunc(fd)) => {
                             let diff = fd.params.length() - bound_args.length()
-                            if diff < 0 { 0 } else { diff }
+                            if diff < 0 {
+                              0
+                            } else {
+                              diff
+                            }
                           }
                           Some(ArrowFuncExt(fd)) => {
                             let diff = fd.params.length() - bound_args.length()
-                            if diff < 0 { 0 } else { diff }
+                            if diff < 0 {
+                              0
+                            } else {
+                              diff
+                            }
                           }
                           _ => 0
                         }
@@ -3053,28 +3149,41 @@ fn Interpreter::get_computed_property(
                   ArrowFunc(_) => "() => { [native code] }"
                   ArrowFuncExt(_) => "() => { [native code] }"
                   BoundFunc(_, _, _) => "function () { [native code] }"
-                  NativeCallable(n, _) => "function " + n + "() { [native code] }"
-                  NonConstructableCallable(n, _) => "function " + n + "() { [native code] }"
+                  NativeCallable(n, _) =>
+                    "function " + n + "() { [native code] }"
+                  NonConstructableCallable(n, _) =>
+                    "function " + n + "() { [native code] }"
                   FuncCallMethod(_) => "function call() { [native code] }"
                   FuncApplyMethod(_) => "function apply() { [native code] }"
-                  MethodCallable(n, _) => "function " + n + "() { [native code] }"
-                  InterpreterCallable(n, _) => "function " + n + "() { [native code] }"
-                  ConstructorOnlyCallable(n, _) => "function " + n + "() { [native code] }"
+                  MethodCallable(n, _) =>
+                    "function " + n + "() { [native code] }"
+                  InterpreterCallable(n, _) =>
+                    "function " + n + "() { [native code] }"
+                  ConstructorOnlyCallable(n, _) =>
+                    "function " + n + "() { [native code] }"
                   ClassConstructor(n, _, _, _, _, _) =>
                     "class " + n + " { [native code] }"
                 }
-                return make_native_func("toString", fn(_args) { String_(func_str) })
+                return make_native_func("toString", fn(_args) {
+                  String_(func_str)
+                })
               } else if prop == "prototype" {
                 // Only constructable functions have a prototype property
                 // Non-constructable (arrow functions, bound functions, etc.) return undefined
                 let is_constructable = match callable {
-                  UserFunc(_) | UserFuncExt(_) | NativeCallable(_, _) |
-                  ConstructorOnlyCallable(_, _) |
-                  ClassConstructor(_, _, _, _, _, _) => true
-                  ArrowFunc(_) | ArrowFuncExt(_) | BoundFunc(_, _, _) |
-                  NonConstructableCallable(_, _) |
-                  FuncCallMethod(_) | FuncApplyMethod(_) | MethodCallable(_, _) |
-                  InterpreterCallable(_, _) => false
+                  UserFunc(_)
+                  | UserFuncExt(_)
+                  | NativeCallable(_, _)
+                  | ConstructorOnlyCallable(_, _)
+                  | ClassConstructor(_, _, _, _, _, _) => true
+                  ArrowFunc(_)
+                  | ArrowFuncExt(_)
+                  | BoundFunc(_, _, _)
+                  | NonConstructableCallable(_, _)
+                  | FuncCallMethod(_)
+                  | FuncApplyMethod(_)
+                  | MethodCallable(_, _)
+                  | InterpreterCallable(_, _) => false
                 }
                 if not(is_constructable) {
                   return Undefined
@@ -3109,12 +3218,17 @@ fn Interpreter::get_computed_property(
               prototype: Null,
               callable: Some(
                 MethodCallable("hasOwnProperty", fn(this_val, args) {
-                  let key_val = if args.length() > 0 { args[0] } else { Undefined }
+                  let key_val = if args.length() > 0 {
+                    args[0]
+                  } else {
+                    Undefined
+                  }
                   match this_val {
                     Object(d) =>
                       // Handle Symbol keys
                       match key_val {
-                        Symbol(sym) => Bool(d.symbol_properties.contains(sym.id))
+                        Symbol(sym) =>
+                          Bool(d.symbol_properties.contains(sym.id))
                         _ => Bool(d.properties.contains(key_val.to_string()))
                       }
                     _ => Bool(false)
@@ -3270,9 +3384,13 @@ fn Interpreter::eval_new(
                   _ => new_obj
                 }
               BreakSignal(_) =>
-                raise @errors.SyntaxError(message="break statement outside of loop")
+                raise @errors.SyntaxError(
+                  message="break statement outside of loop",
+                )
               ContinueSignal(_) =>
-                raise @errors.SyntaxError(message="continue statement outside of loop")
+                raise @errors.SyntaxError(
+                  message="continue statement outside of loop",
+                )
             }
           } catch {
             e => {
@@ -3372,9 +3490,13 @@ fn Interpreter::eval_new(
                   _ => new_obj
                 }
               BreakSignal(_) =>
-                raise @errors.SyntaxError(message="break statement outside of loop")
+                raise @errors.SyntaxError(
+                  message="break statement outside of loop",
+                )
               ContinueSignal(_) =>
-                raise @errors.SyntaxError(message="continue statement outside of loop")
+                raise @errors.SyntaxError(
+                  message="continue statement outside of loop",
+                )
             }
           } catch {
             e => {
@@ -3391,8 +3513,19 @@ fn Interpreter::eval_new(
         Some(InterpreterCallable(_, func)) => func(self, Undefined, args)
         Some(ConstructorOnlyCallable(_, func)) => func(self, args)
         Some(ArrowFunc(_)) | Some(ArrowFuncExt(_)) =>
-          raise @errors.TypeError(message="arrow functions cannot be used as constructors")
-        Some(ClassConstructor(class_name, proto, super_ctor, ctor_fn, closure, super_proto)) => {
+          raise @errors.TypeError(
+            message="arrow functions cannot be used as constructors",
+          )
+        Some(
+          ClassConstructor(
+            class_name,
+            proto,
+            super_ctor,
+            ctor_fn,
+            closure,
+            super_proto
+          )
+        ) => {
           // Create the new instance with the class prototype
           let new_obj = Object({
             properties: {},
@@ -3438,32 +3571,51 @@ fn Interpreter::eval_new(
                     _ => new_obj
                   }
                 BreakSignal(_) =>
-                  raise @errors.SyntaxError(message="break statement outside of loop")
+                  raise @errors.SyntaxError(
+                    message="break statement outside of loop",
+                  )
                 ContinueSignal(_) =>
-                  raise @errors.SyntaxError(message="continue statement outside of loop")
+                  raise @errors.SyntaxError(
+                    message="continue statement outside of loop",
+                  )
               }
             }
             None => {
               // No explicit constructor - if there's a super class, call super()
               match super_ctor {
-                Some(sc) => {
+                Some(sc) =>
                   match sc {
-                    Object(super_data) => {
+                    Object(super_data) =>
                       match super_data.callable {
-                        Some(ClassConstructor(_, _, grand_super, ctor, senv, sproto)) => {
+                        Some(
+                          ClassConstructor(
+                            _,
+                            _,
+                            grand_super,
+                            ctor,
+                            senv,
+                            sproto
+                          )
+                        ) => {
                           let super_env = Environment::new(parent=Some(senv))
                           super_env.def_builtin("this", new_obj)
                           match grand_super {
                             Some(gs) => {
                               super_env.def_builtin("[[SuperConstructor]]", gs)
-                              super_env.def_builtin("[[SuperPrototype]]", sproto)
+                              super_env.def_builtin(
+                                "[[SuperPrototype]]", sproto,
+                              )
                             }
                             None => ()
                           }
                           match ctor {
                             Some((params, body)) => {
                               for i = 0; i < params.length(); i = i + 1 {
-                                let val : Value = if i < args.length() { args[i] } else { Undefined }
+                                let val : Value = if i < args.length() {
+                                  args[i]
+                                } else {
+                                  Undefined
+                                }
                                 super_env.def(params[i], val, LetBinding)
                               }
                               self.hoist_declarations(body, super_env)
@@ -3483,10 +3635,8 @@ fn Interpreter::eval_new(
                         }
                         _ => ()
                       }
-                    }
                     _ => ()
                   }
-                }
                 None => ()
               }
               new_obj
@@ -3512,14 +3662,15 @@ fn Interpreter::create_class(
     Some(expr) => {
       let super_val = self.eval_expr(expr, env)
       match super_val {
-        Object(super_data) => {
+        Object(super_data) =>
           match super_data.properties.get("prototype") {
             Some(sp) => (Some(super_val), sp)
             None => (Some(super_val), Null)
           }
-        }
         _ =>
-          raise @errors.TypeError(message="Class extends value is not a constructor")
+          raise @errors.TypeError(
+            message="Class extends value is not a constructor",
+          )
       }
     }
     None => (None, Null)
@@ -3561,12 +3712,7 @@ fn Interpreter::create_class(
     // Create the method function value
     let method_val : Value = match m.value {
       FuncExpr(fn_name, params, body, _) => {
-        let func_data : FuncData = {
-          name: fn_name,
-          params,
-          body,
-          closure: env,
-        }
+        let func_data : FuncData = { name: fn_name, params, body, closure: env }
         make_func(func_data)
       }
       FuncExprExt(fn_name, params, rest, body, _) => {
@@ -3590,7 +3736,7 @@ fn Interpreter::create_class(
     }
     // Store method in appropriate map based on key type (string vs symbol)
     match key_val {
-      Symbol(sym) => {
+      Symbol(sym) =>
         // Symbol key - store in symbol_properties
         if m.is_static {
           static_symbol_props[sym.id] = method_val
@@ -3599,7 +3745,6 @@ fn Interpreter::create_class(
           proto_symbol_props[sym.id] = method_val
           proto_symbol_descriptors[sym.id] = method_descriptor
         }
-      }
       _ => {
         // String key - store in regular properties
         let method_key = key_val.to_string()
@@ -3754,9 +3899,12 @@ fn Interpreter::eval_compound_assign(
 ) -> Value raise Error {
   // Handle logical assignment operators with short-circuit semantics
   match op {
-    LogicalAndAssign => return self.eval_logical_assign_and(target, value_expr, env, loc)
-    LogicalOrAssign => return self.eval_logical_assign_or(target, value_expr, env, loc)
-    NullishAssign => return self.eval_nullish_assign(target, value_expr, env, loc)
+    LogicalAndAssign =>
+      return self.eval_logical_assign_and(target, value_expr, env, loc)
+    LogicalOrAssign =>
+      return self.eval_logical_assign_or(target, value_expr, env, loc)
+    NullishAssign =>
+      return self.eval_nullish_assign(target, value_expr, env, loc)
     _ => ()
   }
   let bin_op : @ast.BinOp = match op {
@@ -3873,8 +4021,8 @@ fn Interpreter::eval_logical_assign_and(
               Some(desc) =>
                 if not(desc.writable) {
                   if self.strict {
-                    raise @errors.TypeError(message=
-                      "Cannot assign to read only property '\{prop}'",
+                    raise @errors.TypeError(
+                      message="Cannot assign to read only property '\{prop}'",
                     )
                   }
                   return rhs
@@ -3884,8 +4032,8 @@ fn Interpreter::eval_logical_assign_and(
             // Check extensible for new properties
             if not(data.properties.contains(prop)) && not(data.extensible) {
               if self.strict {
-                raise @errors.TypeError(message=
-                  "Cannot add property \{prop}, object is not extensible",
+                raise @errors.TypeError(
+                  message="Cannot add property \{prop}, object is not extensible",
                 )
               }
               return rhs
@@ -3894,8 +4042,8 @@ fn Interpreter::eval_logical_assign_and(
             rhs
           }
           _ =>
-            raise @errors.TypeError(message=
-              "Cannot set property '\{prop}' of \{type_of(obj)}",
+            raise @errors.TypeError(
+              message="Cannot set property '\{prop}' of \{type_of(obj)}",
             )
         }
       } else {
@@ -3918,7 +4066,9 @@ fn Interpreter::eval_logical_assign_and(
                   Some(desc) =>
                     if not(desc.writable) {
                       if self.strict {
-                        raise @errors.TypeError(message="Cannot assign to read only property")
+                        raise @errors.TypeError(
+                          message="Cannot assign to read only property",
+                        )
                       }
                       return rhs
                     }
@@ -3927,8 +4077,8 @@ fn Interpreter::eval_logical_assign_and(
                 if not(data.symbol_properties.contains(sym.id)) &&
                   not(data.extensible) {
                   if self.strict {
-                    raise @errors.TypeError(message=
-                      "Cannot add property, object is not extensible",
+                    raise @errors.TypeError(
+                      message="Cannot add property, object is not extensible",
                     )
                   }
                   return rhs
@@ -3943,8 +4093,8 @@ fn Interpreter::eval_logical_assign_and(
                   Some(desc) =>
                     if not(desc.writable) {
                       if self.strict {
-                        raise @errors.TypeError(message=
-                          "Cannot assign to read only property '\{prop}'",
+                        raise @errors.TypeError(
+                          message="Cannot assign to read only property '\{prop}'",
                         )
                       }
                       return rhs
@@ -3954,8 +4104,8 @@ fn Interpreter::eval_logical_assign_and(
                 // Check extensible for new properties
                 if not(data.properties.contains(prop)) && not(data.extensible) {
                   if self.strict {
-                    raise @errors.TypeError(message=
-                      "Cannot add property \{prop}, object is not extensible",
+                    raise @errors.TypeError(
+                      message="Cannot add property \{prop}, object is not extensible",
                     )
                   }
                   return rhs
@@ -3975,7 +4125,10 @@ fn Interpreter::eval_logical_assign_and(
               }
               _ => rhs
             }
-          _ => raise @errors.TypeError(message="Cannot set property of \{type_of(obj)}")
+          _ =>
+            raise @errors.TypeError(
+              message="Cannot set property of \{type_of(obj)}",
+            )
         }
       } else {
         current
@@ -4020,8 +4173,8 @@ fn Interpreter::eval_logical_assign_or(
               Some(desc) =>
                 if not(desc.writable) {
                   if self.strict {
-                    raise @errors.TypeError(message=
-                      "Cannot assign to read only property '\{prop}'",
+                    raise @errors.TypeError(
+                      message="Cannot assign to read only property '\{prop}'",
                     )
                   }
                   return rhs
@@ -4031,8 +4184,8 @@ fn Interpreter::eval_logical_assign_or(
             // Check extensible for new properties
             if not(data.properties.contains(prop)) && not(data.extensible) {
               if self.strict {
-                raise @errors.TypeError(message=
-                  "Cannot add property \{prop}, object is not extensible",
+                raise @errors.TypeError(
+                  message="Cannot add property \{prop}, object is not extensible",
                 )
               }
               return rhs
@@ -4041,8 +4194,8 @@ fn Interpreter::eval_logical_assign_or(
             rhs
           }
           _ =>
-            raise @errors.TypeError(message=
-              "Cannot set property '\{prop}' of \{type_of(obj)}",
+            raise @errors.TypeError(
+              message="Cannot set property '\{prop}' of \{type_of(obj)}",
             )
         }
       } else {
@@ -4064,7 +4217,9 @@ fn Interpreter::eval_logical_assign_or(
                   Some(desc) =>
                     if not(desc.writable) {
                       if self.strict {
-                        raise @errors.TypeError(message="Cannot assign to read only property")
+                        raise @errors.TypeError(
+                          message="Cannot assign to read only property",
+                        )
                       }
                       return rhs
                     }
@@ -4073,8 +4228,8 @@ fn Interpreter::eval_logical_assign_or(
                 if not(data.symbol_properties.contains(sym.id)) &&
                   not(data.extensible) {
                   if self.strict {
-                    raise @errors.TypeError(message=
-                      "Cannot add property, object is not extensible",
+                    raise @errors.TypeError(
+                      message="Cannot add property, object is not extensible",
                     )
                   }
                   return rhs
@@ -4088,8 +4243,8 @@ fn Interpreter::eval_logical_assign_or(
                   Some(desc) =>
                     if not(desc.writable) {
                       if self.strict {
-                        raise @errors.TypeError(message=
-                          "Cannot assign to read only property '\{prop}'",
+                        raise @errors.TypeError(
+                          message="Cannot assign to read only property '\{prop}'",
                         )
                       }
                       return rhs
@@ -4098,8 +4253,8 @@ fn Interpreter::eval_logical_assign_or(
                 }
                 if not(data.properties.contains(prop)) && not(data.extensible) {
                   if self.strict {
-                    raise @errors.TypeError(message=
-                      "Cannot add property \{prop}, object is not extensible",
+                    raise @errors.TypeError(
+                      message="Cannot add property \{prop}, object is not extensible",
                     )
                   }
                   return rhs
@@ -4119,7 +4274,10 @@ fn Interpreter::eval_logical_assign_or(
               }
               _ => rhs
             }
-          _ => raise @errors.TypeError(message="Cannot set property of \{type_of(obj)}")
+          _ =>
+            raise @errors.TypeError(
+              message="Cannot set property of \{type_of(obj)}",
+            )
         }
       } else {
         current
@@ -4166,8 +4324,8 @@ fn Interpreter::eval_nullish_assign(
                 Some(desc) =>
                   if not(desc.writable) {
                     if self.strict {
-                      raise @errors.TypeError(message=
-                        "Cannot assign to read only property '\{prop}'",
+                      raise @errors.TypeError(
+                        message="Cannot assign to read only property '\{prop}'",
                       )
                     }
                     return rhs
@@ -4177,8 +4335,8 @@ fn Interpreter::eval_nullish_assign(
               // Check extensible for new properties
               if not(data.properties.contains(prop)) && not(data.extensible) {
                 if self.strict {
-                  raise @errors.TypeError(message=
-                    "Cannot add property \{prop}, object is not extensible",
+                  raise @errors.TypeError(
+                    message="Cannot add property \{prop}, object is not extensible",
                   )
                 }
                 return rhs
@@ -4187,8 +4345,8 @@ fn Interpreter::eval_nullish_assign(
               rhs
             }
             _ =>
-              raise @errors.TypeError(message=
-                "Cannot set property '\{prop}' of \{type_of(obj)}",
+              raise @errors.TypeError(
+                message="Cannot set property '\{prop}' of \{type_of(obj)}",
               )
           }
         }
@@ -4211,7 +4369,9 @@ fn Interpreter::eval_nullish_assign(
                     Some(desc) =>
                       if not(desc.writable) {
                         if self.strict {
-                          raise @errors.TypeError(message="Cannot assign to read only property")
+                          raise @errors.TypeError(
+                            message="Cannot assign to read only property",
+                          )
                         }
                         return rhs
                       }
@@ -4220,8 +4380,8 @@ fn Interpreter::eval_nullish_assign(
                   if not(data.symbol_properties.contains(sym.id)) &&
                     not(data.extensible) {
                     if self.strict {
-                      raise @errors.TypeError(message=
-                        "Cannot add property, object is not extensible",
+                      raise @errors.TypeError(
+                        message="Cannot add property, object is not extensible",
                       )
                     }
                     return rhs
@@ -4235,8 +4395,8 @@ fn Interpreter::eval_nullish_assign(
                     Some(desc) =>
                       if not(desc.writable) {
                         if self.strict {
-                          raise @errors.TypeError(message=
-                            "Cannot assign to read only property '\{prop}'",
+                          raise @errors.TypeError(
+                            message="Cannot assign to read only property '\{prop}'",
                           )
                         }
                         return rhs
@@ -4245,8 +4405,8 @@ fn Interpreter::eval_nullish_assign(
                   }
                   if not(data.properties.contains(prop)) && not(data.extensible) {
                     if self.strict {
-                      raise @errors.TypeError(message=
-                        "Cannot add property \{prop}, object is not extensible",
+                      raise @errors.TypeError(
+                        message="Cannot add property \{prop}, object is not extensible",
                       )
                     }
                     return rhs
@@ -4266,7 +4426,10 @@ fn Interpreter::eval_nullish_assign(
                 }
                 _ => rhs
               }
-            _ => raise @errors.TypeError(message="Cannot set property of \{type_of(obj)}")
+            _ =>
+              raise @errors.TypeError(
+                message="Cannot set property of \{type_of(obj)}",
+              )
           }
         }
         _ => current

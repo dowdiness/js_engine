@@ -314,7 +314,11 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
           end = len
         }
         // Copy elements
-        let count = if end - start < len - target { end - start } else { len - target }
+        let count = if end - start < len - target {
+          end - start
+        } else {
+          len - target
+        }
         if count > 0 {
           // Copy to temporary first to handle overlapping
           let temp : Array[Value] = []
@@ -336,7 +340,9 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
         // Returns array of [index, value] pairs (basic non-iterator version)
         let result : Array[Value] = []
         for i = 0; i < arr.elements.length(); i = i + 1 {
-          result.push(Array({ elements: [Number(i.to_double()), arr.elements[i]] }))
+          result.push(
+            Array({ elements: [Number(i.to_double()), arr.elements[i]] }),
+          )
         }
         Array({ elements: result })
       })
@@ -555,7 +561,9 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
               acc = args[1]
             } else {
               if arr.elements.length() == 0 {
-                raise @errors.TypeError(message="Reduce of empty array with no initial value")
+                raise @errors.TypeError(
+                  message="Reduce of empty array with no initial value",
+                )
               }
               acc = arr.elements[0]
               start = 1
@@ -594,7 +602,9 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
               acc = args[1]
             } else {
               if arr.elements.length() == 0 {
-                raise @errors.TypeError(message="Reduce of empty array with no initial value")
+                raise @errors.TypeError(
+                  message="Reduce of empty array with no initial value",
+                )
               }
               acc = arr.elements[start]
               start = start - 1
@@ -859,24 +869,33 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
                     if caught_error is Some(_) {
                       return 0
                     }
-                    let compare_result = try {
-                      interp.call_value(comparefn, Undefined, [a, b], loc)
-                    } catch {
+                    let compare_result = interp.call_value(
+                      comparefn,
+                      Undefined,
+                      [a, b],
+                      loc,
+                    ) catch {
                       e => {
                         caught_error = Some(e)
                         return 0
                       }
                     }
                     // Use sign-based comparison to avoid truncating fractional values
-                    let cmp = try {
-                      to_number(compare_result)
-                    } catch {
+                    let cmp = to_number(compare_result) catch {
                       e => {
                         caught_error = Some(e)
                         return 0
                       }
                     }
-                    if cmp.is_nan() { 0 } else if cmp < 0.0 { -1 } else if cmp > 0.0 { 1 } else { 0 }
+                    if cmp.is_nan() {
+                      0
+                    } else if cmp < 0.0 {
+                      -1
+                    } else if cmp > 0.0 {
+                      1
+                    } else {
+                      0
+                    }
                   })
                   // Re-throw any caught exception per spec
                   match caught_error {
@@ -1065,24 +1084,33 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
                     if caught_error is Some(_) {
                       return 0
                     }
-                    let result = try {
-                      interp.call_value(comparefn, Undefined, [a, b], loc)
-                    } catch {
+                    let result = interp.call_value(
+                      comparefn,
+                      Undefined,
+                      [a, b],
+                      loc,
+                    ) catch {
                       e => {
                         caught_error = Some(e)
                         return 0
                       }
                     }
                     // Use sign-based comparison to avoid truncating fractional values
-                    let cmp = try {
-                      to_number(result)
-                    } catch {
+                    let cmp = to_number(result) catch {
                       e => {
                         caught_error = Some(e)
                         return 0
                       }
                     }
-                    if cmp.is_nan() { 0 } else if cmp < 0.0 { -1 } else if cmp > 0.0 { 1 } else { 0 }
+                    if cmp.is_nan() {
+                      0
+                    } else if cmp < 0.0 {
+                      -1
+                    } else if cmp > 0.0 {
+                      1
+                    } else {
+                      0
+                    }
                   })
                   // Re-throw any caught exception per spec
                   match caught_error {
@@ -1175,7 +1203,7 @@ pub fn same_value(a : Value, b : Value) -> Bool {
         true
       } else if x == 0.0 && y == 0.0 {
         // Check for +0 vs -0
-        (1.0 / x) == (1.0 / y)
+        1.0 / x == 1.0 / y
       } else {
         x == y
       }

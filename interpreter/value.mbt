@@ -43,8 +43,8 @@ pub(all) enum Callable {
     Value?, // super constructor (if extends)
     (Array[String], Array[@ast.Stmt])?, // constructor params and body
     Environment, // closure environment
-    Value, // prototype object reference for super
-  )
+    Value
+  ) // prototype object reference for super
 }
 
 ///|
@@ -422,7 +422,9 @@ pub fn to_number(val : Value) -> Double raise Error {
     Null => 0.0
     Undefined | Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) => 0.0 / 0.0
     Symbol(_) =>
-      raise @errors.TypeError(message="Cannot convert a Symbol value to a number")
+      raise @errors.TypeError(
+        message="Cannot convert a Symbol value to a number",
+      )
   }
 }
 
@@ -528,7 +530,6 @@ pub fn make_array_iterator_value(arr : ArrayData) -> Value {
 
   // Create symbol properties map with Symbol.iterator
   let iter_symbol_props : Map[Int, Value] = {}
-
   let iter_obj = Object({
     properties: iter_props,
     symbol_properties: iter_symbol_props,
@@ -542,21 +543,21 @@ pub fn make_array_iterator_value(arr : ArrayData) -> Value {
 
   // Add [Symbol.iterator] that returns the iterator itself
   match iter_obj {
-    Object(data) => data.symbol_properties[iterator_sym.id] = Object({
-      properties: {},
-      symbol_properties: {},
-      prototype: Null,
-      callable: Some(
-        MethodCallable("[Symbol.iterator]", fn(this_val, _args) { this_val }),
-      ),
-      class_name: "Function",
-      descriptors: {},
-      symbol_descriptors: {},
-      extensible: true,
-    })
+    Object(data) =>
+      data.symbol_properties[iterator_sym.id] = Object({
+        properties: {},
+        symbol_properties: {},
+        prototype: Null,
+        callable: Some(
+          MethodCallable("[Symbol.iterator]", fn(this_val, _args) { this_val }),
+        ),
+        class_name: "Function",
+        descriptors: {},
+        symbol_descriptors: {},
+        extensible: true,
+      })
     _ => ()
   }
-
   iter_obj
 }
 
@@ -567,7 +568,6 @@ pub fn make_string_iterator_value(s : String) -> Value {
   let iterator_sym = get_iterator_symbol()
   let chars = s.to_array()
   let index_ref : Ref[Int] = { val: 0 }
-
   let next_method = Object({
     properties: {},
     symbol_properties: {},
@@ -599,7 +599,6 @@ pub fn make_string_iterator_value(s : String) -> Value {
             buf.write_char(c)
             index_ref.val = idx + 1
           }
-
           let value = String_(buf.to_string())
           let result_props : Map[String, Value] = {}
           result_props["value"] = value
@@ -636,10 +635,8 @@ pub fn make_string_iterator_value(s : String) -> Value {
     symbol_descriptors: {},
     extensible: true,
   })
-
   let iter_props : Map[String, Value] = {}
   iter_props["next"] = next_method
-
   let iter_obj = Object({
     properties: iter_props,
     symbol_properties: {},
@@ -653,20 +650,20 @@ pub fn make_string_iterator_value(s : String) -> Value {
 
   // Add [Symbol.iterator] that returns the iterator itself
   match iter_obj {
-    Object(data) => data.symbol_properties[iterator_sym.id] = Object({
-      properties: {},
-      symbol_properties: {},
-      prototype: Null,
-      callable: Some(
-        MethodCallable("[Symbol.iterator]", fn(this_val, _args) { this_val }),
-      ),
-      class_name: "Function",
-      descriptors: {},
-      symbol_descriptors: {},
-      extensible: true,
-    })
+    Object(data) =>
+      data.symbol_properties[iterator_sym.id] = Object({
+        properties: {},
+        symbol_properties: {},
+        prototype: Null,
+        callable: Some(
+          MethodCallable("[Symbol.iterator]", fn(this_val, _args) { this_val }),
+        ),
+        class_name: "Function",
+        descriptors: {},
+        symbol_descriptors: {},
+        extensible: true,
+      })
     _ => ()
   }
-
   iter_obj
 }

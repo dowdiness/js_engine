@@ -10,11 +10,29 @@ pub fn get_array_method(ArrayData, String) -> Value
 
 pub fn get_array_method_with_interp(ArrayData, String) -> Value
 
+pub fn get_hasinstance_symbol() -> SymbolData
+
+pub fn get_iterator_symbol() -> SymbolData
+
+pub fn get_map_method(MapData, String) -> Value
+
 pub fn get_number_method(Value, String) -> Value
+
+pub fn get_promise_method(PromiseData, String) -> Value
+
+pub fn get_set_method(SetData, String) -> Value
 
 pub fn get_string_method(String, String) -> Value
 
+pub fn get_symbol_by_id(Int) -> SymbolData?
+
+pub fn is_js_catchable_error(Error) -> Bool
+
 pub fn is_truthy(Value) -> Bool
+
+pub fn js_error_to_value(Error) -> Value
+
+pub fn make_array_iterator_value(ArrayData) -> Value
 
 pub fn make_func(FuncData) -> Value
 
@@ -22,7 +40,17 @@ pub fn make_func_ext(FuncDataExt) -> Value
 
 pub fn make_native_func(String, (Array[Value]) -> Value raise) -> Value
 
+pub fn make_object(Map[String, Value], Value, Callable?, String, Map[String, PropDescriptor], Bool) -> Value
+
+pub fn make_plain_object() -> Value
+
 pub fn make_regexp_object(String, String) -> Value
+
+pub fn make_string_iterator_value(String) -> Value
+
+pub fn new_promise_data() -> PromiseData
+
+pub fn new_symbol(String?) -> SymbolData
 
 pub fn regex_match_at(String, String, String, Int) -> RegexMatch? raise
 
@@ -30,9 +58,21 @@ pub fn regex_search(String, String, String) -> RegexMatch? raise
 
 pub fn regex_search_all(String, String, String) -> Array[RegexMatch] raise
 
+pub fn same_value(Value, Value) -> Bool
+
+pub fn same_value_zero(Value, Value) -> Bool
+
 pub fn setup_builtins(Environment, Array[String]) -> Unit
 
+pub fn setup_map_set_builtins(Environment) -> Unit
+
 pub fn setup_object_builtins(Environment) -> Unit
+
+pub fn setup_promise(Environment) -> Unit
+
+pub fn setup_timers(Environment) -> Unit
+
+pub fn strict_equal_val(Value, Value) -> Bool
 
 pub fn string_match_regex(String, String, String) -> Value
 
@@ -42,9 +82,13 @@ pub fn string_search_regex(String, String, String) -> Value
 
 pub fn to_int32(Double) -> Int
 
-pub fn to_number(Value) -> Double
+pub fn to_number(Value) -> Double raise
 
 pub fn type_of(Value) -> String
+
+pub let well_known_hasinstance_sym : Ref[SymbolData?]
+
+pub let well_known_iterator_sym : Ref[SymbolData?]
 
 // Errors
 pub suberror JsException {
@@ -52,8 +96,6 @@ pub suberror JsException {
 }
 
 // Types and methods
-type AnchorKind
-
 pub(all) struct ArrayData {
   elements : Array[Value]
 }
@@ -74,11 +116,14 @@ pub(all) enum Callable {
   UserFuncExt(FuncDataExt)
   ArrowFuncExt(FuncDataExt)
   NativeCallable(String, (Array[Value]) -> Value raise)
+  NonConstructableCallable(String, (Array[Value]) -> Value raise)
   BoundFunc(Value, Value, Array[Value])
   FuncCallMethod(Value)
   FuncApplyMethod(Value)
   MethodCallable(String, (Value, Array[Value]) -> Value raise)
   InterpreterCallable(String, (Interpreter, Value, Array[Value]) -> Value raise)
+  ConstructorOnlyCallable(String, (Interpreter, Array[Value]) -> Value raise)
+  ClassConstructor(String, Value, Value?, (Array[String], Array[@ast.Stmt])?, Environment, Value)
 }
 
 pub(all) struct Environment {
@@ -88,8 +133,10 @@ pub(all) struct Environment {
 pub fn Environment::assign(Self, String, Value) -> Unit raise
 pub fn Environment::def(Self, String, Value, BindingKind) -> Unit raise
 pub fn Environment::def_builtin(Self, String, Value) -> Unit
+pub fn Environment::def_tdz(Self, String, BindingKind) -> Unit raise
 pub fn Environment::get(Self, String) -> Value raise
 pub fn Environment::has(Self, String) -> Bool
+pub fn Environment::initialize(Self, String, Value) -> Unit raise
 pub fn Environment::new(parent? : Self?) -> Self
 
 pub(all) struct FuncData {
@@ -110,18 +157,66 @@ pub(all) struct FuncDataExt {
 pub(all) struct Interpreter {
   output : Array[String]
   global : Environment
+  global_this : Value
   mut strict : Bool
+  microtask_queue : Array[Microtask]
+  timer_queue : Array[TimerTask]
+  timer_id_counter : Ref[Int]
+  timer_insertion_counter : Ref[Int]
+  cancelled_timer_ids : Map[Int, Bool]
 }
+pub fn Interpreter::enqueue_microtask(Self, Value, Value) -> Unit
 pub fn Interpreter::new() -> Self
 pub fn Interpreter::run(Self, Array[@ast.Stmt]) -> Value raise
+pub fn Interpreter::run_microtasks(Self) -> Unit raise
+pub fn Interpreter::run_timers(Self) -> Unit raise
+
+pub(all) struct MapData {
+  entries : Array[(Value, Value)]
+}
+
+pub(all) struct Microtask {
+  callback : Value
+  argument : Value
+}
 
 pub(all) struct ObjectData {
   properties : Map[String, Value]
+  symbol_properties : Map[Int, Value]
   prototype : Value
   callable : Callable?
   class_name : String
   descriptors : Map[String, PropDescriptor]
+  symbol_descriptors : Map[Int, PropDescriptor]
   mut extensible : Bool
+}
+
+pub(all) struct PromiseData {
+  mut state : PromiseState
+  mut result : Value
+  fulfill_reactions : Array[PromiseReaction]
+  reject_reactions : Array[PromiseReaction]
+  mut is_handled : Bool
+  properties : Map[String, Value]
+  symbol_properties : Map[Int, Value]
+}
+
+pub(all) struct PromiseReaction {
+  handler : Value?
+  resolve : Value
+  reject : Value
+  reaction_type : PromiseReactionType
+}
+
+pub(all) enum PromiseReactionType {
+  Fulfill
+  Reject
+}
+
+pub(all) enum PromiseState {
+  Pending
+  Fulfilled
+  Rejected
 }
 
 pub(all) struct PropDescriptor {
@@ -132,15 +227,30 @@ pub(all) struct PropDescriptor {
 
 type RegexMatch
 
-type RegexNode
-
-type RegexParser
+pub(all) struct SetData {
+  values : Array[Value]
+}
 
 pub(all) enum Signal {
   Normal(Value)
   ReturnSignal(Value)
   BreakSignal(String?)
   ContinueSignal(String?)
+}
+
+pub(all) struct SymbolData {
+  id : Int
+  description : String?
+}
+
+pub(all) struct TimerTask {
+  id : Int
+  callback : Value
+  args : Array[Value]
+  delay : Int
+  mut cancelled : Bool
+  is_interval : Bool
+  insertion_order : Int
 }
 
 pub(all) enum Value {
@@ -151,6 +261,10 @@ pub(all) enum Value {
   Undefined
   Object(ObjectData)
   Array(ArrayData)
+  Symbol(SymbolData)
+  Map(MapData)
+  Set(SetData)
+  Promise(PromiseData)
 }
 pub impl Show for Value
 

@@ -84,8 +84,8 @@ fn setup_map_builtins(env : Environment) -> Unit {
             Undefined
           }
           _ =>
-            raise @errors.TypeError(message=
-              "Method Map.prototype.get called on incompatible receiver",
+            raise @errors.TypeError(
+              message="Method Map.prototype.get called on incompatible receiver",
             )
         }
       }),
@@ -121,8 +121,8 @@ fn setup_map_builtins(env : Environment) -> Unit {
             this_val
           }
           _ =>
-            raise @errors.TypeError(message=
-              "Method Map.prototype.set called on incompatible receiver",
+            raise @errors.TypeError(
+              message="Method Map.prototype.set called on incompatible receiver",
             )
         }
       }),
@@ -153,8 +153,8 @@ fn setup_map_builtins(env : Environment) -> Unit {
             Bool(false)
           }
           _ =>
-            raise @errors.TypeError(message=
-              "Method Map.prototype.has called on incompatible receiver",
+            raise @errors.TypeError(
+              message="Method Map.prototype.has called on incompatible receiver",
             )
         }
       }),
@@ -186,8 +186,8 @@ fn setup_map_builtins(env : Environment) -> Unit {
             Bool(false)
           }
           _ =>
-            raise @errors.TypeError(message=
-              "Method Map.prototype.delete called on incompatible receiver",
+            raise @errors.TypeError(
+              message="Method Map.prototype.delete called on incompatible receiver",
             )
         }
       }),
@@ -211,8 +211,8 @@ fn setup_map_builtins(env : Environment) -> Unit {
             Undefined
           }
           _ =>
-            raise @errors.TypeError(message=
-              "Method Map.prototype.clear called on incompatible receiver",
+            raise @errors.TypeError(
+              message="Method Map.prototype.clear called on incompatible receiver",
             )
         }
       }),
@@ -239,13 +239,19 @@ fn setup_map_builtins(env : Environment) -> Unit {
             for i = 0; i < data.entries.length(); i = i + 1 {
               let (key, value) = data.entries[i]
               // Call callback(value, key, map)
-              let _ = interp.call_value(callback, this_arg, [value, key, this_val], loc)
+              let _ = interp.call_value(
+                callback,
+                this_arg,
+                [value, key, this_val],
+                loc,
+              )
+
             }
             Undefined
           }
           _ =>
-            raise @errors.TypeError(message=
-              "Method Map.prototype.forEach called on incompatible receiver",
+            raise @errors.TypeError(
+              message="Method Map.prototype.forEach called on incompatible receiver",
             )
         }
       }),
@@ -266,8 +272,8 @@ fn setup_map_builtins(env : Environment) -> Unit {
         match this_val {
           Map(data) => make_map_keys_iterator(data)
           _ =>
-            raise @errors.TypeError(message=
-              "Method Map.prototype.keys called on incompatible receiver",
+            raise @errors.TypeError(
+              message="Method Map.prototype.keys called on incompatible receiver",
             )
         }
       }),
@@ -288,8 +294,8 @@ fn setup_map_builtins(env : Environment) -> Unit {
         match this_val {
           Map(data) => make_map_values_iterator(data)
           _ =>
-            raise @errors.TypeError(message=
-              "Method Map.prototype.values called on incompatible receiver",
+            raise @errors.TypeError(
+              message="Method Map.prototype.values called on incompatible receiver",
             )
         }
       }),
@@ -310,8 +316,8 @@ fn setup_map_builtins(env : Environment) -> Unit {
         match this_val {
           Map(data) => make_map_entries_iterator(data)
           _ =>
-            raise @errors.TypeError(message=
-              "Method Map.prototype.entries called on incompatible receiver",
+            raise @errors.TypeError(
+              message="Method Map.prototype.entries called on incompatible receiver",
             )
         }
       }),
@@ -363,10 +369,12 @@ fn setup_map_builtins(env : Environment) -> Unit {
         // If iterable provided, populate map
         if args.length() > 0 {
           let iterable = args[0]
-          if not(match iterable {
-            Undefined | Null => true
-            _ => false
-          }) {
+          if not(
+              match iterable {
+                Undefined | Null => true
+                _ => false
+              },
+            ) {
             // Get iterator from iterable using Symbol.iterator
             let iterator_sym = get_iterator_symbol()
             let iterator_method = interp.get_computed_property(
@@ -377,15 +385,16 @@ fn setup_map_builtins(env : Environment) -> Unit {
             let iterator = match iterator_method {
               Object(data) =>
                 match data.callable {
-                  Some(_) => interp.call_value(iterator_method, iterable, [], loc)
+                  Some(_) =>
+                    interp.call_value(iterator_method, iterable, [], loc)
                   None =>
-                    raise @errors.TypeError(message=
-                      "Result of the Symbol.iterator method is not an object",
+                    raise @errors.TypeError(
+                      message="Result of the Symbol.iterator method is not an object",
                     )
                 }
               _ =>
-                raise @errors.TypeError(message=
-                  "\{type_of(iterable)} is not iterable",
+                raise @errors.TypeError(
+                  message="\{type_of(iterable)} is not iterable",
                 )
             }
 
@@ -430,7 +439,6 @@ fn setup_map_builtins(env : Environment) -> Unit {
             }
           }
         }
-
         new_map
       }),
     ),
@@ -439,7 +447,6 @@ fn setup_map_builtins(env : Environment) -> Unit {
     symbol_descriptors: {},
     extensible: true,
   })
-
   env.def_builtin("Map", map_ctor)
 }
 
@@ -472,8 +479,8 @@ fn setup_set_builtins(env : Environment) -> Unit {
             this_val
           }
           _ =>
-            raise @errors.TypeError(message=
-              "Method Set.prototype.add called on incompatible receiver",
+            raise @errors.TypeError(
+              message="Method Set.prototype.add called on incompatible receiver",
             )
         }
       }),
@@ -503,8 +510,8 @@ fn setup_set_builtins(env : Environment) -> Unit {
             Bool(false)
           }
           _ =>
-            raise @errors.TypeError(message=
-              "Method Set.prototype.has called on incompatible receiver",
+            raise @errors.TypeError(
+              message="Method Set.prototype.has called on incompatible receiver",
             )
         }
       }),
@@ -535,8 +542,8 @@ fn setup_set_builtins(env : Environment) -> Unit {
             Bool(false)
           }
           _ =>
-            raise @errors.TypeError(message=
-              "Method Set.prototype.delete called on incompatible receiver",
+            raise @errors.TypeError(
+              message="Method Set.prototype.delete called on incompatible receiver",
             )
         }
       }),
@@ -560,8 +567,8 @@ fn setup_set_builtins(env : Environment) -> Unit {
             Undefined
           }
           _ =>
-            raise @errors.TypeError(message=
-              "Method Set.prototype.clear called on incompatible receiver",
+            raise @errors.TypeError(
+              message="Method Set.prototype.clear called on incompatible receiver",
             )
         }
       }),
@@ -588,13 +595,19 @@ fn setup_set_builtins(env : Environment) -> Unit {
             for i = 0; i < data.values.length(); i = i + 1 {
               let value = data.values[i]
               // Call callback(value, value, set) - note: Set forEach passes value twice
-              let _ = interp.call_value(callback, this_arg, [value, value, this_val], loc)
+              let _ = interp.call_value(
+                callback,
+                this_arg,
+                [value, value, this_val],
+                loc,
+              )
+
             }
             Undefined
           }
           _ =>
-            raise @errors.TypeError(message=
-              "Method Set.prototype.forEach called on incompatible receiver",
+            raise @errors.TypeError(
+              message="Method Set.prototype.forEach called on incompatible receiver",
             )
         }
       }),
@@ -615,8 +628,8 @@ fn setup_set_builtins(env : Environment) -> Unit {
         match this_val {
           Set(data) => make_set_values_iterator(data)
           _ =>
-            raise @errors.TypeError(message=
-              "Method Set.prototype.keys called on incompatible receiver",
+            raise @errors.TypeError(
+              message="Method Set.prototype.keys called on incompatible receiver",
             )
         }
       }),
@@ -637,8 +650,8 @@ fn setup_set_builtins(env : Environment) -> Unit {
         match this_val {
           Set(data) => make_set_values_iterator(data)
           _ =>
-            raise @errors.TypeError(message=
-              "Method Set.prototype.values called on incompatible receiver",
+            raise @errors.TypeError(
+              message="Method Set.prototype.values called on incompatible receiver",
             )
         }
       }),
@@ -659,8 +672,8 @@ fn setup_set_builtins(env : Environment) -> Unit {
         match this_val {
           Set(data) => make_set_entries_iterator(data)
           _ =>
-            raise @errors.TypeError(message=
-              "Method Set.prototype.entries called on incompatible receiver",
+            raise @errors.TypeError(
+              message="Method Set.prototype.entries called on incompatible receiver",
             )
         }
       }),
@@ -710,10 +723,12 @@ fn setup_set_builtins(env : Environment) -> Unit {
         // If iterable provided, populate set
         if args.length() > 0 {
           let iterable = args[0]
-          if not(match iterable {
-            Undefined | Null => true
-            _ => false
-          }) {
+          if not(
+              match iterable {
+                Undefined | Null => true
+                _ => false
+              },
+            ) {
             // Get iterator from iterable using Symbol.iterator
             let iterator_sym = get_iterator_symbol()
             let iterator_method = interp.get_computed_property(
@@ -724,15 +739,16 @@ fn setup_set_builtins(env : Environment) -> Unit {
             let iterator = match iterator_method {
               Object(data) =>
                 match data.callable {
-                  Some(_) => interp.call_value(iterator_method, iterable, [], loc)
+                  Some(_) =>
+                    interp.call_value(iterator_method, iterable, [], loc)
                   None =>
-                    raise @errors.TypeError(message=
-                      "Result of the Symbol.iterator method is not an object",
+                    raise @errors.TypeError(
+                      message="Result of the Symbol.iterator method is not an object",
                     )
                 }
               _ =>
-                raise @errors.TypeError(message=
-                  "\{type_of(iterable)} is not iterable",
+                raise @errors.TypeError(
+                  message="\{type_of(iterable)} is not iterable",
                 )
             }
 
@@ -767,7 +783,6 @@ fn setup_set_builtins(env : Environment) -> Unit {
             }
           }
         }
-
         new_set
       }),
     ),
@@ -776,7 +791,6 @@ fn setup_set_builtins(env : Environment) -> Unit {
     symbol_descriptors: {},
     extensible: true,
   })
-
   env.def_builtin("Set", set_ctor)
 }
 
@@ -785,7 +799,6 @@ fn setup_set_builtins(env : Environment) -> Unit {
 fn make_map_keys_iterator(map_data : MapData) -> Value {
   let iterator_sym = get_iterator_symbol()
   let index_ref : Ref[Int] = { val: 0 }
-
   let next_method = Object({
     properties: {},
     symbol_properties: {},
@@ -831,10 +844,8 @@ fn make_map_keys_iterator(map_data : MapData) -> Value {
     symbol_descriptors: {},
     extensible: true,
   })
-
   let iter_props : Map[String, Value] = {}
   iter_props["next"] = next_method
-
   let iter_obj = Object({
     properties: iter_props,
     symbol_properties: {},
@@ -848,21 +859,21 @@ fn make_map_keys_iterator(map_data : MapData) -> Value {
 
   // Add [Symbol.iterator] that returns the iterator itself
   match iter_obj {
-    Object(data) => data.symbol_properties[iterator_sym.id] = Object({
-      properties: {},
-      symbol_properties: {},
-      prototype: Null,
-      callable: Some(
-        MethodCallable("[Symbol.iterator]", fn(this_val, _args) { this_val }),
-      ),
-      class_name: "Function",
-      descriptors: {},
-      symbol_descriptors: {},
-      extensible: true,
-    })
+    Object(data) =>
+      data.symbol_properties[iterator_sym.id] = Object({
+        properties: {},
+        symbol_properties: {},
+        prototype: Null,
+        callable: Some(
+          MethodCallable("[Symbol.iterator]", fn(this_val, _args) { this_val }),
+        ),
+        class_name: "Function",
+        descriptors: {},
+        symbol_descriptors: {},
+        extensible: true,
+      })
     _ => ()
   }
-
   iter_obj
 }
 
@@ -871,7 +882,6 @@ fn make_map_keys_iterator(map_data : MapData) -> Value {
 fn make_map_values_iterator(map_data : MapData) -> Value {
   let iterator_sym = get_iterator_symbol()
   let index_ref : Ref[Int] = { val: 0 }
-
   let next_method = Object({
     properties: {},
     symbol_properties: {},
@@ -917,10 +927,8 @@ fn make_map_values_iterator(map_data : MapData) -> Value {
     symbol_descriptors: {},
     extensible: true,
   })
-
   let iter_props : Map[String, Value] = {}
   iter_props["next"] = next_method
-
   let iter_obj = Object({
     properties: iter_props,
     symbol_properties: {},
@@ -934,21 +942,21 @@ fn make_map_values_iterator(map_data : MapData) -> Value {
 
   // Add [Symbol.iterator] that returns the iterator itself
   match iter_obj {
-    Object(data) => data.symbol_properties[iterator_sym.id] = Object({
-      properties: {},
-      symbol_properties: {},
-      prototype: Null,
-      callable: Some(
-        MethodCallable("[Symbol.iterator]", fn(this_val, _args) { this_val }),
-      ),
-      class_name: "Function",
-      descriptors: {},
-      symbol_descriptors: {},
-      extensible: true,
-    })
+    Object(data) =>
+      data.symbol_properties[iterator_sym.id] = Object({
+        properties: {},
+        symbol_properties: {},
+        prototype: Null,
+        callable: Some(
+          MethodCallable("[Symbol.iterator]", fn(this_val, _args) { this_val }),
+        ),
+        class_name: "Function",
+        descriptors: {},
+        symbol_descriptors: {},
+        extensible: true,
+      })
     _ => ()
   }
-
   iter_obj
 }
 
@@ -957,7 +965,6 @@ fn make_map_values_iterator(map_data : MapData) -> Value {
 fn make_map_entries_iterator(map_data : MapData) -> Value {
   let iterator_sym = get_iterator_symbol()
   let index_ref : Ref[Int] = { val: 0 }
-
   let next_method = Object({
     properties: {},
     symbol_properties: {},
@@ -1005,10 +1012,8 @@ fn make_map_entries_iterator(map_data : MapData) -> Value {
     symbol_descriptors: {},
     extensible: true,
   })
-
   let iter_props : Map[String, Value] = {}
   iter_props["next"] = next_method
-
   let iter_obj = Object({
     properties: iter_props,
     symbol_properties: {},
@@ -1022,21 +1027,21 @@ fn make_map_entries_iterator(map_data : MapData) -> Value {
 
   // Add [Symbol.iterator] that returns the iterator itself
   match iter_obj {
-    Object(data) => data.symbol_properties[iterator_sym.id] = Object({
-      properties: {},
-      symbol_properties: {},
-      prototype: Null,
-      callable: Some(
-        MethodCallable("[Symbol.iterator]", fn(this_val, _args) { this_val }),
-      ),
-      class_name: "Function",
-      descriptors: {},
-      symbol_descriptors: {},
-      extensible: true,
-    })
+    Object(data) =>
+      data.symbol_properties[iterator_sym.id] = Object({
+        properties: {},
+        symbol_properties: {},
+        prototype: Null,
+        callable: Some(
+          MethodCallable("[Symbol.iterator]", fn(this_val, _args) { this_val }),
+        ),
+        class_name: "Function",
+        descriptors: {},
+        symbol_descriptors: {},
+        extensible: true,
+      })
     _ => ()
   }
-
   iter_obj
 }
 
@@ -1045,7 +1050,6 @@ fn make_map_entries_iterator(map_data : MapData) -> Value {
 fn make_set_values_iterator(set_data : SetData) -> Value {
   let iterator_sym = get_iterator_symbol()
   let index_ref : Ref[Int] = { val: 0 }
-
   let next_method = Object({
     properties: {},
     symbol_properties: {},
@@ -1091,10 +1095,8 @@ fn make_set_values_iterator(set_data : SetData) -> Value {
     symbol_descriptors: {},
     extensible: true,
   })
-
   let iter_props : Map[String, Value] = {}
   iter_props["next"] = next_method
-
   let iter_obj = Object({
     properties: iter_props,
     symbol_properties: {},
@@ -1108,21 +1110,21 @@ fn make_set_values_iterator(set_data : SetData) -> Value {
 
   // Add [Symbol.iterator] that returns the iterator itself
   match iter_obj {
-    Object(data) => data.symbol_properties[iterator_sym.id] = Object({
-      properties: {},
-      symbol_properties: {},
-      prototype: Null,
-      callable: Some(
-        MethodCallable("[Symbol.iterator]", fn(this_val, _args) { this_val }),
-      ),
-      class_name: "Function",
-      descriptors: {},
-      symbol_descriptors: {},
-      extensible: true,
-    })
+    Object(data) =>
+      data.symbol_properties[iterator_sym.id] = Object({
+        properties: {},
+        symbol_properties: {},
+        prototype: Null,
+        callable: Some(
+          MethodCallable("[Symbol.iterator]", fn(this_val, _args) { this_val }),
+        ),
+        class_name: "Function",
+        descriptors: {},
+        symbol_descriptors: {},
+        extensible: true,
+      })
     _ => ()
   }
-
   iter_obj
 }
 
@@ -1131,7 +1133,6 @@ fn make_set_values_iterator(set_data : SetData) -> Value {
 fn make_set_entries_iterator(set_data : SetData) -> Value {
   let iterator_sym = get_iterator_symbol()
   let index_ref : Ref[Int] = { val: 0 }
-
   let next_method = Object({
     properties: {},
     symbol_properties: {},
@@ -1179,10 +1180,8 @@ fn make_set_entries_iterator(set_data : SetData) -> Value {
     symbol_descriptors: {},
     extensible: true,
   })
-
   let iter_props : Map[String, Value] = {}
   iter_props["next"] = next_method
-
   let iter_obj = Object({
     properties: iter_props,
     symbol_properties: {},
@@ -1196,20 +1195,20 @@ fn make_set_entries_iterator(set_data : SetData) -> Value {
 
   // Add [Symbol.iterator] that returns the iterator itself
   match iter_obj {
-    Object(data) => data.symbol_properties[iterator_sym.id] = Object({
-      properties: {},
-      symbol_properties: {},
-      prototype: Null,
-      callable: Some(
-        MethodCallable("[Symbol.iterator]", fn(this_val, _args) { this_val }),
-      ),
-      class_name: "Function",
-      descriptors: {},
-      symbol_descriptors: {},
-      extensible: true,
-    })
+    Object(data) =>
+      data.symbol_properties[iterator_sym.id] = Object({
+        properties: {},
+        symbol_properties: {},
+        prototype: Null,
+        callable: Some(
+          MethodCallable("[Symbol.iterator]", fn(this_val, _args) { this_val }),
+        ),
+        class_name: "Function",
+        descriptors: {},
+        symbol_descriptors: {},
+        extensible: true,
+      })
     _ => ()
   }
-
   iter_obj
 }

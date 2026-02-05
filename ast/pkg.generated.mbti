@@ -26,17 +26,29 @@ pub(all) enum BinOp {
   GtEq
   And
   Or
+  NullishCoalesce
   BitAnd
   BitOr
   BitXor
   LShift
   RShift
   URShift
+  Exp
   In
   Instanceof
 }
 pub impl Eq for BinOp
 pub impl Show for BinOp
+
+pub(all) struct ClassMethod {
+  key : Expr
+  value : Expr
+  kind : PropKind
+  computed : Bool
+  is_static : Bool
+}
+pub impl Eq for ClassMethod
+pub impl Show for ClassMethod
 
 pub(all) enum CompoundOp {
   AddAssign
@@ -44,12 +56,16 @@ pub(all) enum CompoundOp {
   MulAssign
   DivAssign
   ModAssign
+  ExpAssign
   BitAndAssign
   BitOrAssign
   BitXorAssign
   LShiftAssign
   RShiftAssign
   URShiftAssign
+  LogicalAndAssign
+  LogicalOrAssign
+  NullishAssign
 }
 pub impl Eq for CompoundOp
 pub impl Show for CompoundOp
@@ -86,6 +102,13 @@ pub(all) enum Expr {
   SpreadExpr(Expr, @token.Loc)
   RegexLit(String, String, @token.Loc)
   DestructureAssign(Pattern, Expr, @token.Loc)
+  OptionalMember(Expr, String, @token.Loc)
+  OptionalComputedMember(Expr, Expr, @token.Loc)
+  OptionalCall(Expr, Array[Expr], @token.Loc)
+  ClassExpr(String?, Expr?, Array[ClassMethod], @token.Loc)
+  SuperCall(Array[Expr], @token.Loc)
+  SuperMember(String, @token.Loc)
+  SuperComputedMember(Expr, @token.Loc)
 }
 pub impl Eq for Expr
 pub impl Show for Expr
@@ -111,6 +134,14 @@ pub(all) struct Program {
 pub impl Eq for Program
 pub impl Show for Program
 
+pub(all) enum PropKind {
+  Init
+  Get
+  Set
+}
+pub impl Eq for PropKind
+pub impl Show for PropKind
+
 pub(all) struct PropPat {
   key : String
   value : Pattern
@@ -120,8 +151,10 @@ pub impl Eq for PropPat
 pub impl Show for PropPat
 
 pub(all) struct Property {
-  key : String
+  key : Expr
   value : Expr
+  kind : PropKind
+  computed : Bool
 }
 pub impl Eq for Property
 pub impl Show for Property
@@ -130,6 +163,7 @@ pub(all) enum Stmt {
   ExprStmt(Expr, @token.Loc)
   VarDecl(VarKind, String, Expr?, @token.Loc)
   Block(Array[Stmt], @token.Loc)
+  StmtList(Array[Stmt], @token.Loc)
   IfStmt(Expr, Stmt, Stmt?, @token.Loc)
   WhileStmt(Expr, Stmt, @token.Loc)
   ForStmt(Stmt?, Expr?, Expr?, Stmt, @token.Loc)
@@ -146,6 +180,7 @@ pub(all) enum Stmt {
   ForOfStmt(VarKind?, String, Expr, Stmt, @token.Loc)
   DestructureDecl(VarKind, Pattern, Expr, @token.Loc)
   LabeledStmt(String, Stmt, @token.Loc)
+  ClassDecl(String, Expr?, Array[ClassMethod], @token.Loc)
 }
 pub impl Eq for Stmt
 pub impl Show for Stmt
