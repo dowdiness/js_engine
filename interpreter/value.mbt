@@ -58,7 +58,7 @@ pub(all) struct PropDescriptor {
 pub(all) struct ObjectData {
   properties : Map[String, Value]
   symbol_properties : Map[Int, Value] // Symbol-keyed properties (key is symbol ID)
-  prototype : Value
+  mut prototype : Value // Mutable to support Object.setPrototypeOf()
   callable : Callable?
   class_name : String
   descriptors : Map[String, PropDescriptor]

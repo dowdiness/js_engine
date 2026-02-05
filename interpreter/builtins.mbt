@@ -256,9 +256,106 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
           let buf = StringBuilder::new()
           for arg in args {
             let code = to_number(arg).to_int()
-            buf.write_char(code.unsafe_to_char())
+            // fromCharCode uses UTF-16 code units, modulo 2^16
+            let code_unit = code & 0xFFFF
+            buf.write_char(code_unit.unsafe_to_char())
           }
           String_(buf.to_string())
+        }),
+        "fromCodePoint": make_native_func("fromCodePoint", fn(args) {
+          // String.fromCodePoint() - accepts Unicode code points (not code units)
+          let buf = StringBuilder::new()
+          for arg in args {
+            let num = to_number(arg)
+            // Check if it's a valid number
+            if num.is_nan() || num.is_inf() {
+              raise @errors.RangeError(message="Invalid code point")
+            }
+            // Check if it's an integer (no fractional part)
+            let code = num.to_int()
+            if code.to_double() != num {
+              raise @errors.RangeError(message="Invalid code point")
+            }
+            // Valid Unicode code points: 0 to 0x10FFFF
+            if code < 0 || code > 0x10FFFF {
+              raise @errors.RangeError(
+                message="Invalid code point \{code.to_string()}",
+              )
+            }
+            // Convert code point to UTF-16
+            if code <= 0xFFFF {
+              // BMP (Basic Multilingual Plane) - single code unit
+              buf.write_char(code.unsafe_to_char())
+            } else {
+              // Supplementary planes - surrogate pair
+              let code_adj = code - 0x10000
+              let high = 0xD800 + (code_adj >> 10)
+              let low = 0xDC00 + (code_adj & 0x3FF)
+              buf.write_char(high.unsafe_to_char())
+              buf.write_char(low.unsafe_to_char())
+            }
+          }
+          String_(buf.to_string())
+        }),
+        "raw": make_native_func("raw", fn(args) {
+          // String.raw(template, ...substitutions)
+          // Returns raw string content without processing escape sequences
+          if args.length() == 0 {
+            return String_("")
+          }
+          let template = args[0]
+          match template {
+            Object(data) =>
+              match data.properties.get("raw") {
+                Some(Array(raw_data)) => {
+                  let buf = StringBuilder::new()
+                  let raw_strings = raw_data.elements
+                  let sub_count = args.length() - 1
+                  for i = 0; i < raw_strings.length(); i = i + 1 {
+                    // Add raw string segment
+                    buf.write_string(raw_strings[i].to_string())
+                    // Add substitution if available
+                    if i < sub_count {
+                      buf.write_string(args[i + 1].to_string())
+                    }
+                  }
+                  String_(buf.to_string())
+                }
+                Some(Object(raw_obj)) => {
+                  // Handle object with numeric indices - use length property per spec
+                  let buf = StringBuilder::new()
+                  let sub_count = args.length() - 1
+
+                  // Get length property (treat missing/invalid as 0)
+                  let length = match raw_obj.properties.get("length") {
+                    Some(Number(n)) => n.to_int().max(0)
+                    _ => 0
+                  }
+
+                  // Iterate from 0 to length-1, treating missing indices as Undefined
+                  for i = 0; i < length; i = i + 1 {
+                    let str_val = match raw_obj.properties.get(i.to_string()) {
+                      Some(v) => v
+                      None => Undefined
+                    }
+                    buf.write_string(str_val.to_string())
+                    // Add substitution if available
+                    if i < sub_count {
+                      buf.write_string(args[i + 1].to_string())
+                    }
+                  }
+                  String_(buf.to_string())
+                }
+                _ =>
+                  raise @errors.TypeError(
+                    message="Cannot convert to string template",
+                  )
+              }
+            _ =>
+              raise @errors.TypeError(
+                message="Cannot convert to string template",
+              )
+          }
         }),
       },
       symbol_properties: {},
