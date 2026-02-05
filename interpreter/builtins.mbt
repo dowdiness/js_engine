@@ -398,18 +398,10 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
   }
 
   // Set up Map and Set collections
-  try {
-    setup_map_set_builtins(env)
-  } catch {
-    _ => () // Ignore errors during initialization
-  }
+  setup_map_set_builtins(env)
 
   // Set up Promise constructor and prototype
-  try {
-    setup_promise(env)
-  } catch {
-    _ => () // Ignore errors during initialization
-  }
+  setup_promise(env)
 }
 
 ///|

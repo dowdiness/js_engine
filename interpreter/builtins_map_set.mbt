@@ -51,14 +51,14 @@ pub fn get_set_method(_data : SetData, prop : String) -> Value {
 
 ///|
 /// Setup Map and Set constructors and prototypes
-pub fn setup_map_set_builtins(env : Environment) -> Unit raise Error {
+pub fn setup_map_set_builtins(env : Environment) -> Unit {
   setup_map_builtins(env)
   setup_set_builtins(env)
 }
 
 ///|
 /// Setup Map constructor and prototype
-fn setup_map_builtins(env : Environment) -> Unit raise Error {
+fn setup_map_builtins(env : Environment) -> Unit {
   let iterator_sym = get_iterator_symbol()
 
   // Map.prototype methods
@@ -445,7 +445,7 @@ fn setup_map_builtins(env : Environment) -> Unit raise Error {
 
 ///|
 /// Setup Set constructor and prototype
-fn setup_set_builtins(env : Environment) -> Unit raise Error {
+fn setup_set_builtins(env : Environment) -> Unit {
   let iterator_sym = get_iterator_symbol()
 
   // Set.prototype methods
