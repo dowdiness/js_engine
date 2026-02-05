@@ -1817,6 +1817,8 @@ fn strict_equal(a : Value, b : Value) -> Bool {
     (Object(a), Object(b)) => physical_equal(a, b)
     (Array(a), Array(b)) => physical_equal(a, b)
     (Symbol(a), Symbol(b)) => a.id == b.id // Symbols compare by identity
+    (Map(a), Map(b)) => physical_equal(a, b) // Maps compare by reference
+    (Set(a), Set(b)) => physical_equal(a, b) // Sets compare by reference
     _ => false
   }
 }
@@ -2731,6 +2733,18 @@ fn Interpreter::get_property(
         })
       } else {
         Undefined
+      }
+    Map(data) =>
+      if prop == "size" {
+        Number(data.entries.length().to_double())
+      } else {
+        get_map_method(data, prop)
+      }
+    Set(data) =>
+      if prop == "size" {
+        Number(data.values.length().to_double())
+      } else {
+        get_set_method(data, prop)
       }
     Null | Undefined =>
       raise @errors.TypeError(message="Cannot read property '\{prop}' of \{type_of(obj)}")

@@ -75,6 +75,20 @@ pub(all) struct SymbolData {
 }
 
 ///|
+/// Map data structure - stores key-value pairs with insertion order preservation
+/// Uses SameValueZero for key comparison (NaN === NaN, +0 === -0)
+pub(all) struct MapData {
+  entries : Array[(Value, Value)] // Array of (key, value) pairs
+}
+
+///|
+/// Set data structure - stores unique values with insertion order preservation
+/// Uses SameValueZero for value comparison (NaN === NaN, +0 === -0)
+pub(all) struct SetData {
+  values : Array[Value] // Array of unique values
+}
+
+///|
 /// Global counter for generating unique symbol IDs
 let symbol_id_counter : Ref[Int] = { val: 0 }
 
@@ -142,6 +156,8 @@ pub(all) enum Value {
   Object(ObjectData)
   Array(ArrayData)
   Symbol(SymbolData)
+  Map(MapData)
+  Set(SetData)
 }
 
 ///|
@@ -308,6 +324,8 @@ pub impl Show for Value with output(self, logger) {
         Some(desc) => logger.write_string("Symbol(\{desc})")
         None => logger.write_string("Symbol()")
       }
+    Map(_) => logger.write_string("[object Map]")
+    Set(_) => logger.write_string("[object Set]")
   }
 }
 
@@ -322,6 +340,8 @@ pub fn is_truthy(val : Value) -> Bool {
     Object(_) => true
     Array(_) => true
     Symbol(_) => true // Symbols are always truthy
+    Map(_) => true // Maps are always truthy
+    Set(_) => true // Sets are always truthy
   }
 }
 
@@ -339,7 +359,7 @@ pub fn to_number(val : Value) -> Double raise Error {
     }
     Bool(b) => if b { 1.0 } else { 0.0 }
     Null => 0.0
-    Undefined | Object(_) | Array(_) => 0.0 / 0.0
+    Undefined | Object(_) | Array(_) | Map(_) | Set(_) => 0.0 / 0.0
     Symbol(_) =>
       raise @errors.TypeError(message="Cannot convert a Symbol value to a number")
   }
@@ -382,6 +402,8 @@ pub fn type_of(val : Value) -> String {
       }
     Array(_) => "object"
     Symbol(_) => "symbol"
+    Map(_) => "object"
+    Set(_) => "object"
   }
 }
 

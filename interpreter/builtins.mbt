@@ -98,7 +98,7 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
         Number(n) => return Number(n)
         Symbol(_) =>
           raise @errors.TypeError(message="Cannot convert a Symbol value to a string")
-        Bool(_) | Null | Undefined | Object(_) | Array(_) =>
+        Bool(_) | Null | Undefined | Object(_) | Array(_) | Map(_) | Set(_) =>
           return Number(0.0 / 0.0)
       }
       let trimmed = trim_start(s)
@@ -392,6 +392,13 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
   // Use try/catch since setup_iterator_protocol can raise errors
   try {
     setup_iterator_protocol(env)
+  } catch {
+    _ => () // Ignore errors during initialization
+  }
+
+  // Set up Map and Set collections
+  try {
+    setup_map_set_builtins(env)
   } catch {
     _ => () // Ignore errors during initialization
   }
@@ -2081,6 +2088,8 @@ fn json_stringify_value(
       }
     String_(s) => String_(json_escape_string(s))
     Symbol(_) => Undefined // Symbols are omitted from JSON
+    Map(_) => String_("{}") // Maps serialize as empty objects
+    Set(_) => String_("{}") // Sets serialize as empty objects
     Array(data) => {
       // Cycle detection
       for s in seen {
