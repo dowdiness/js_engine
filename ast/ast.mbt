@@ -74,6 +74,7 @@ pub(all) enum PropKind {
   Init // normal property
   Get // getter
   Set // setter
+  Spread // spread property: { ...expr }
 } derive(Show, Eq)
 
 ///|
@@ -131,6 +132,7 @@ pub(all) enum Expr {
   SuperCall(Array[Expr], @token.Loc) // super(args)
   SuperMember(String, @token.Loc) // super.prop
   SuperComputedMember(Expr, @token.Loc) // super[expr]
+  NewTargetExpr(@token.Loc) // new.target
 } derive(Show, Eq)
 
 ///|

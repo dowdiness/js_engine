@@ -4081,3 +4081,156 @@ test "instanceof with bound function returns false (no own prototype)" {
   let (_, result) = run_js(src)
   inspect(result, content="false")
 }
+
+// =============================================================================
+// Phase 5: Object spread in object literals
+// =============================================================================
+
+///|
+test "object spread basic" {
+  let output = run_output(
+    #|const a = { x: 1, y: 2 };
+    #|const b = { ...a, z: 3 };
+    #|console.log(b.x);
+    #|console.log(b.y);
+    #|console.log(b.z);
+  ,
+  )
+  inspect(output, content="[\"1\", \"2\", \"3\"]")
+}
+
+///|
+test "object spread overrides earlier properties" {
+  let output = run_output(
+    #|const a = { x: 1, y: 2 };
+    #|const b = { x: 10, ...a };
+    #|console.log(b.x);
+  ,
+  )
+  inspect(output, content="[\"1\"]")
+}
+
+///|
+test "object spread later properties override spread" {
+  let output = run_output(
+    #|const a = { x: 1, y: 2 };
+    #|const b = { ...a, x: 10 };
+    #|console.log(b.x);
+  ,
+  )
+  inspect(output, content="[\"10\"]")
+}
+
+///|
+test "object spread null and undefined are skipped" {
+  let output = run_output(
+    #|const a = { ...null, ...undefined, x: 1 };
+    #|console.log(a.x);
+  ,
+  )
+  inspect(output, content="[\"1\"]")
+}
+
+///|
+test "object spread from array" {
+  let output = run_output(
+    #|const a = { ...[10, 20, 30] };
+    #|console.log(a["0"]);
+    #|console.log(a["1"]);
+    #|console.log(a["2"]);
+  ,
+  )
+  inspect(output, content="[\"10\", \"20\", \"30\"]")
+}
+
+///|
+test "object spread multiple sources" {
+  let output = run_output(
+    #|const a = { x: 1 };
+    #|const b = { y: 2 };
+    #|const c = { ...a, ...b, z: 3 };
+    #|console.log(c.x);
+    #|console.log(c.y);
+    #|console.log(c.z);
+  ,
+  )
+  inspect(output, content="[\"1\", \"2\", \"3\"]")
+}
+
+///|
+test "object spread string" {
+  let output = run_output(
+    #|const a = { ..."hi" };
+    #|console.log(a["0"]);
+    #|console.log(a["1"]);
+  ,
+  )
+  inspect(output, content="[\"h\", \"i\"]")
+}
+
+///|
+test "object rest in destructuring" {
+  let output = run_output(
+    #|const { x, ...rest } = { x: 1, y: 2, z: 3 };
+    #|console.log(x);
+    #|console.log(rest.y);
+    #|console.log(rest.z);
+  ,
+  )
+  inspect(output, content="[\"1\", \"2\", \"3\"]")
+}
+
+// =============================================================================
+// Phase 5: new.target meta-property
+// =============================================================================
+
+///|
+test "new.target in constructor" {
+  let output = run_output(
+    #|function Foo() {
+    #|  console.log(new.target === Foo);
+    #|}
+    #|new Foo();
+  ,
+  )
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "new.target undefined in regular call" {
+  let output = run_output(
+    #|function Foo() {
+    #|  console.log(new.target === undefined);
+    #|}
+    #|Foo();
+  ,
+  )
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "new.target in arrow function inherits from enclosing" {
+  let output = run_output(
+    #|function Foo() {
+    #|  const check = () => new.target;
+    #|  console.log(check() === Foo);
+    #|}
+    #|new Foo();
+  ,
+  )
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "new.target in class constructor" {
+  let output = run_output(
+    #|class MyClass {
+    #|  constructor() {
+    #|    console.log(new.target === MyClass);
+    #|  }
+    #|}
+    #|new MyClass();
+  ,
+  )
+  inspect(output, content="[\"true\"]")
+}

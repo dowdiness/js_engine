@@ -1110,6 +1110,55 @@ fn Interpreter::eval_expr(
       let symbol_properties : Map[Int, Value] = {}
       let descriptors : Map[String, PropDescriptor] = {}
       for prop in props {
+        // Handle spread property: { ...expr }
+        if prop.kind == @ast.Spread {
+          let spread_val = self.eval_expr(prop.key, env)
+          match spread_val {
+            Object(data) => {
+              // Copy all enumerable own properties
+              for key, value in data.properties {
+                match data.descriptors.get(key) {
+                  Some(desc) =>
+                    if desc.enumerable {
+                      properties[key] = value
+                    }
+                  None => properties[key] = value
+                }
+              }
+              // Copy symbol properties too
+              for sym_id, value in data.symbol_properties {
+                match data.symbol_descriptors.get(sym_id) {
+                  Some(desc) =>
+                    if desc.enumerable {
+                      symbol_properties[sym_id] = value
+                    }
+                  None => symbol_properties[sym_id] = value
+                }
+              }
+            }
+            Array(arr_data) => {
+              // Spread array into object: { ...["a", "b"] } → { "0": "a", "1": "b" }
+              for i, value in arr_data.elements {
+                properties[i.to_string()] = value
+              }
+              properties["length"] = Number(arr_data.elements.length().to_double())
+            }
+            String_(s) => {
+              // Spread string into object: { ..."abc" } → { "0": "a", "1": "b", "2": "c" }
+              let len = s.iter().fold(init=0, fn(acc, _c) { acc + 1 })
+              let mut idx = 0
+              for ch in s {
+                properties[idx.to_string()] = String_(ch.to_string())
+                idx = idx + 1
+              }
+              ignore(len)
+            }
+            Null | Undefined => () // Skip null/undefined per spec
+            Number(_) | Bool(_) => () // Primitives have no enumerable own properties
+            _ => ()
+          }
+          continue
+        }
         if prop.computed {
           // Evaluate the computed key
           let key_val = self.eval_expr(prop.key, env)
@@ -1120,6 +1169,7 @@ fn Interpreter::eval_expr(
                 Init =>
                   symbol_properties[sym.id] = self.eval_expr(prop.value, env)
                 Get | Set => () // Getters/setters for symbols not fully supported yet
+                Spread => () // handled above
               }
             _ => {
               // Convert to string key
@@ -1148,6 +1198,7 @@ fn Interpreter::eval_expr(
                   let setter = self.eval_expr(prop.value, env)
                   properties["__set__" + key_str] = setter
                 }
+                Spread => () // handled above
               }
             }
           }
@@ -1167,6 +1218,7 @@ fn Interpreter::eval_expr(
               let setter = self.eval_expr(prop.value, env)
               properties["__set__" + key_str] = setter
             }
+            Spread => () // handled above
           }
         }
       }
@@ -1596,6 +1648,14 @@ fn Interpreter::eval_expr(
             message="super[expr] used but no [[SuperPrototype]] in scope at line \{loc.line}",
           )
         _ => self.get_computed_property(super_proto, key, loc)
+      }
+    }
+    NewTargetExpr(_) => {
+      // new.target - returns the constructor called with new, or undefined
+      try {
+        env.get("<new.target>")
+      } catch {
+        _ => Undefined
       }
     }
   }
@@ -2277,6 +2337,7 @@ fn Interpreter::call_value(
               self.strict = true
             }
             func_env.def("this", this_val, LetBinding)
+            func_env.def("<new.target>", Undefined, LetBinding)
             for i = 0; i < data.params.length(); i = i + 1 {
               let val : Value = if i < args.length() {
                 args[i]
@@ -2372,6 +2433,7 @@ fn Interpreter::call_value(
               self.strict = true
             }
             func_env.def("this", this_val, LetBinding)
+            func_env.def("<new.target>", Undefined, LetBinding)
             // Bind params with defaults
             for i = 0; i < data.params.length(); i = i + 1 {
               let param = data.params[i]
@@ -3347,6 +3409,7 @@ fn Interpreter::eval_new(
             })
             let func_env = Environment::new(parent=Some(data.closure))
             func_env.def("this", new_obj, LetBinding)
+            func_env.def("<new.target>", ctor, LetBinding)
             for i = 0; i < data.params.length(); i = i + 1 {
               let val : Value = if i < args.length() {
                 args[i]
@@ -3436,6 +3499,7 @@ fn Interpreter::eval_new(
             })
             let func_env = Environment::new(parent=Some(data.closure))
             func_env.def("this", new_obj, LetBinding)
+            func_env.def("<new.target>", ctor, LetBinding)
             for i = 0; i < data.params.length(); i = i + 1 {
               let param = data.params[i]
               let val : Value = if i < args.length() &&
@@ -3552,6 +3616,7 @@ fn Interpreter::eval_new(
           // Set up the constructor environment
           let ctor_env = Environment::new(parent=Some(closure))
           ctor_env.def_builtin("this", new_obj)
+          ctor_env.def("<new.target>", ctor, LetBinding)
           // Set up [[SuperConstructor]] and [[SuperPrototype]] for super() calls
           match super_ctor {
             Some(sc) => {
@@ -3611,6 +3676,7 @@ fn Interpreter::eval_new(
                         ) => {
                           let super_env = Environment::new(parent=Some(senv))
                           super_env.def_builtin("this", new_obj)
+                          super_env.def("<new.target>", sc, LetBinding)
                           match grand_super {
                             Some(gs) => {
                               super_env.def_builtin("[[SuperConstructor]]", gs)

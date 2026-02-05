@@ -52,9 +52,7 @@ YAML_PATTERN = re.compile(r'/\*---(.*?)---\*/', re.DOTALL)
 SKIP_FEATURES = {
     # Features this engine definitely doesn't support yet
 
-    # Async / Promises
-    "Promise", "Promise.allSettled", "Promise.any",
-    "Promise.prototype.finally",
+    # Async / Promises (async-functions and async-iteration still unsupported)
     "async-functions", "async-iteration",
     "promise-with-resolvers", "promise-try",
     "top-level-await",
@@ -67,9 +65,6 @@ SKIP_FEATURES = {
     "class-methods-private", "class-static-fields-private",
     "class-static-fields-public", "class-static-methods-private",
     "class-static-block",
-
-    # Object literal features not yet implemented
-    "object-spread", "object-rest",
 
     # Iteration / ordering
     "for-in-order",
@@ -103,14 +98,7 @@ SKIP_FEATURES = {
     "RegExp.escape",
     "String.prototype.matchAll",
 
-    # Missing built-in statics / methods
-    "Object.fromEntries", "Object.is", "Object.hasOwn",
-    "Array.from", "Array.prototype.at",
-    "String.prototype.replaceAll",
-    "String.prototype.isWellFormed", "String.prototype.toWellFormed",
-
     # Missing operators and syntax
-    "new.target",
     "hashbang",
 
     # Intl / locale
@@ -125,9 +113,6 @@ SKIP_FEATURES = {
     "Temporal", "ShadowRealm",
     "decorators",
     "explicit-resource-management",
-    "change-array-by-copy",
-    "array-find-from-last",
-    "string-trimming",
     "json-parse-with-source",
 
     # Removed in Phase 2+3 (now supported): arrow-function, template, let,
@@ -136,9 +121,36 @@ SKIP_FEATURES = {
     # Array.prototype.flatMap, Array.prototype.includes
     # Removed in Phase 3.6+4 (now supported): class, numeric-separator-literal,
     # logical-assignment-operators
+    # Removed in Phase 5 (now supported): Promise, Promise.allSettled,
+    # Promise.any, Promise.prototype.finally, Object.fromEntries, Object.is,
+    # Object.hasOwn, Array.from, Array.prototype.at,
+    # String.prototype.replaceAll, String.prototype.isWellFormed,
+    # String.prototype.toWellFormed, change-array-by-copy,
+    # array-find-from-last, string-trimming, new.target,
+    # object-spread, object-rest
 }
 
-SKIP_FLAGS = {"module", "async", "CanBlockIsFalse", "CanBlockIsTrue"}
+SKIP_FLAGS = {"module", "CanBlockIsFalse", "CanBlockIsTrue"}
+
+# Preamble injected before all test harness code to provide host-defined print()
+PRINT_PREAMBLE = 'function print() { var s = ""; for (var i = 0; i < arguments.length; i++) { if (i > 0) s += " "; s += String(arguments[i]); } console.log(s); }\n'
+
+# Fallback $DONE for async tests that don't include donePrintHandle.js
+DONE_FALLBACK = """
+if (typeof $DONE === "undefined") {
+  function $DONE(error) {
+    if (error) {
+      if (typeof error === "object" && error !== null && "stack" in error) {
+        print("Test262:AsyncTestFailure:" + error.stack);
+      } else {
+        print("Test262:AsyncTestFailure:" + String(error));
+      }
+    } else {
+      print("Test262:AsyncTestComplete");
+    }
+  }
+}
+"""
 
 
 @dataclass
@@ -210,18 +222,21 @@ def should_skip(meta: TestMetadata, filepath: str) -> Optional[str]:
 # Global cache for harness files to avoid repeated disk I/O
 _harness_cache = {}
 
-def load_harness(test262_dir: str, includes: list, is_raw: bool) -> str:
+def load_harness(test262_dir: str, includes: list, is_raw: bool, is_async: bool = False) -> str:
     """Load the required harness files for a test with caching."""
     if is_raw:
         return ""
 
     # Create cache key from includes list
-    cache_key = (test262_dir, tuple(sorted(includes)))
+    cache_key = (test262_dir, tuple(sorted(includes)), is_async)
     if cache_key in _harness_cache:
         return _harness_cache[cache_key]
 
     harness_dir = os.path.join(test262_dir, "harness")
     parts = []
+
+    # Inject print() preamble for host environment compatibility
+    parts.append(PRINT_PREAMBLE)
 
     # Always load sta.js and assert.js (unless raw)
     for default_file in ["sta.js", "assert.js"]:
@@ -248,6 +263,10 @@ def load_harness(test262_dir: str, includes: list, is_raw: bool) -> str:
                 _harness_cache[file_key] = ""
         if _harness_cache[file_key]:
             parts.append(_harness_cache[file_key])
+
+    # For async tests, inject $DONE fallback if not provided by harness includes
+    if is_async:
+        parts.append(DONE_FALLBACK)
 
     result = "\n".join(parts)
     _harness_cache[cache_key] = result
@@ -288,8 +307,11 @@ def run_single_test(
     if skip_reason:
         return TestResult(path=test_path, status="skip", reason=skip_reason, mode=mode)
 
+    # Check if this is an async test
+    is_async = "async" in meta.flags
+
     # Build the full source with harness
-    harness = load_harness(test262_dir, meta.includes, meta.raw)
+    harness = load_harness(test262_dir, meta.includes, meta.raw, is_async)
 
     if mode == "strict" and not meta.raw:
         full_source = '"use strict";\n' + harness + "\n" + source
@@ -346,6 +368,43 @@ def run_single_test(
                 return TestResult(
                     path=test_path, status="fail",
                     reason=f"Expected {neg_type} error but test passed normally",
+                    duration_ms=duration_ms, mode=mode,
+                )
+        elif is_async:
+            # Async test: check for $DONE completion markers in output
+            combined = stdout + "\n" + stderr
+            if "Test262:AsyncTestComplete" in combined:
+                return TestResult(
+                    path=test_path, status="pass",
+                    duration_ms=duration_ms, mode=mode,
+                )
+            elif "Test262:AsyncTestFailure" in combined:
+                # Extract failure reason
+                for line in combined.split("\n"):
+                    if "Test262:AsyncTestFailure:" in line:
+                        reason = line.split("Test262:AsyncTestFailure:", 1)[1].strip()
+                        return TestResult(
+                            path=test_path, status="fail",
+                            reason=reason[:200],
+                            duration_ms=duration_ms, mode=mode,
+                        )
+                return TestResult(
+                    path=test_path, status="fail",
+                    reason="async test failure (no details)",
+                    duration_ms=duration_ms, mode=mode,
+                )
+            else:
+                # $DONE was never called — check if there was an error
+                if exit_code != 0 or "Error:" in stdout or "Test262Error" in stdout:
+                    error_msg = stdout if stdout else stderr
+                    return TestResult(
+                        path=test_path, status="fail",
+                        reason=error_msg[:200],
+                        duration_ms=duration_ms, mode=mode,
+                    )
+                return TestResult(
+                    path=test_path, status="fail",
+                    reason="async test did not call $DONE",
                     duration_ms=duration_ms, mode=mode,
                 )
         else:
