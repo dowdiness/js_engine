@@ -1147,6 +1147,7 @@ pub fn strict_equal_val(a : Value, b : Value) -> Bool {
     (Object(a), Object(b)) => physical_equal(a, b)
     (Array(a), Array(b)) => physical_equal(a, b)
     (Symbol(a), Symbol(b)) => a.id == b.id // Symbols compare by identity
+    (Promise(a), Promise(b)) => physical_equal(a, b) // Promises compare by reference
     _ => false
   }
 }

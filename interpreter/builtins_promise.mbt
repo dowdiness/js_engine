@@ -1178,7 +1178,7 @@ pub fn setup_promise(env : Environment) -> Unit {
 
 ///|
 /// Helper to extract array of values from iterable (simplified version)
-fn get_promise_array(iterable : Value) -> Array[Value] {
+fn get_promise_array(iterable : Value) -> Array[Value] raise Error {
   match iterable {
     Array(data) => {
       let result : Array[Value] = []
@@ -1187,7 +1187,16 @@ fn get_promise_array(iterable : Value) -> Array[Value] {
       }
       result
     }
-    _ => []
+    Undefined | Null =>
+      raise @errors.TypeError(message=
+        "Cannot read properties of " +
+        type_of(iterable) +
+        " (reading 'Symbol(Symbol.iterator)')",
+      )
+    _ =>
+      raise @errors.TypeError(message=
+        type_of(iterable) + " is not iterable",
+      )
   }
 }
 

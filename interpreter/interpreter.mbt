@@ -1829,6 +1829,7 @@ fn strict_equal(a : Value, b : Value) -> Bool {
     (Symbol(a), Symbol(b)) => a.id == b.id // Symbols compare by identity
     (Map(a), Map(b)) => physical_equal(a, b) // Maps compare by reference
     (Set(a), Set(b)) => physical_equal(a, b) // Sets compare by reference
+    (Promise(a), Promise(b)) => physical_equal(a, b) // Promises compare by reference
     _ => false
   }
 }
@@ -1846,6 +1847,7 @@ fn loose_equal(a : Value, b : Value) -> Bool {
     (Object(x), Object(y)) => physical_equal(x, y)
     (Array(x), Array(y)) => physical_equal(x, y)
     (Symbol(x), Symbol(y)) => x.id == y.id // Symbols compare by identity only
+    (Promise(x), Promise(y)) => physical_equal(x, y) // Promises compare by reference
     // null == undefined
     (Null, Undefined) | (Undefined, Null) => true
     // Number == String: convert string to number
