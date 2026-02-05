@@ -15,12 +15,28 @@ pub(all) struct Microtask {
 }
 
 ///|
+/// Timer task for setTimeout/setInterval (macrotask queue)
+/// Timers are processed one at a time with microtask draining between each
+pub(all) struct TimerTask {
+  id : Int // Unique timer ID for clearTimeout/clearInterval
+  callback : Value // The function to call
+  args : Array[Value] // Additional arguments to pass to the callback
+  delay : Int // Delay in ms (used for ordering, not real waiting)
+  mut cancelled : Bool // Whether clearTimeout was called
+  is_interval : Bool // Whether this is a setInterval (repeats)
+  insertion_order : Int // Stable sort tiebreaker for equal delays
+}
+
+///|
 pub(all) struct Interpreter {
   output : Array[String]
   global : Environment
   global_this : Value
   mut strict : Bool
   microtask_queue : Array[Microtask] // Event loop microtask queue
+  timer_queue : Array[TimerTask] // Macrotask timer queue
+  timer_id_counter : Ref[Int] // Next timer ID
+  timer_insertion_counter : Ref[Int] // Insertion order counter
 }
 
 ///|
@@ -45,7 +61,19 @@ pub fn Interpreter::new() -> Interpreter {
   global.def_builtin("this", global_this)
   global.def_builtin("globalThis", global_this)
   let microtask_queue : Array[Microtask] = []
-  { output, global, global_this, strict: false, microtask_queue }
+  let timer_queue : Array[TimerTask] = []
+  let timer_id_counter : Ref[Int] = { val: 1 }
+  let timer_insertion_counter : Ref[Int] = { val: 0 }
+  {
+    output,
+    global,
+    global_this,
+    strict: false,
+    microtask_queue,
+    timer_queue,
+    timer_id_counter,
+    timer_insertion_counter,
+  }
 }
 
 ///|

@@ -1325,6 +1325,255 @@ pub fn setup_promise(env : Environment) -> Unit {
 }
 
 ///|
+/// Setup timer builtins: setTimeout, clearTimeout, setInterval, clearInterval
+/// These implement the WHATWG Timer APIs
+/// Reference: https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#timers
+pub fn setup_timers(env : Environment) -> Unit {
+  // setTimeout(callback, delay, ...args) -> timerId
+  env.def_builtin(
+    "setTimeout",
+    Object({
+      properties: {},
+      symbol_properties: {},
+      prototype: Null,
+      callable: Some(
+        InterpreterCallable("setTimeout", fn(interp, _this, args) {
+          let callback = if args.length() > 0 { args[0] } else { Undefined }
+          // Validate callback is callable
+          match callback {
+            Object(od) =>
+              match od.callable {
+                Some(_) => ()
+                None =>
+                  raise @errors.TypeError(message=
+                    "setTimeout requires a function as first argument",
+                  )
+              }
+            _ =>
+              raise @errors.TypeError(message=
+                "setTimeout requires a function as first argument",
+              )
+          }
+          let delay = if args.length() > 1 {
+            match args[1] {
+              Number(n) => {
+                let d = n.to_int()
+                if d < 0 { 0 } else { d }
+              }
+              _ => 0
+            }
+          } else {
+            0
+          }
+          // Collect extra arguments to pass to callback
+          let extra_args : Array[Value] = []
+          for i = 2; i < args.length(); i = i + 1 {
+            extra_args.push(args[i])
+          }
+          let id = interp.timer_id_counter.val
+          interp.timer_id_counter.val = id + 1
+          let order = interp.timer_insertion_counter.val
+          interp.timer_insertion_counter.val = order + 1
+          interp.timer_queue.push({
+            id,
+            callback,
+            args: extra_args,
+            delay,
+            cancelled: false,
+            is_interval: false,
+            insertion_order: order,
+          })
+          Number(id.to_double())
+        }),
+      ),
+      class_name: "Function",
+      descriptors: {},
+      symbol_descriptors: {},
+      extensible: true,
+    }),
+  )
+
+  // clearTimeout(id)
+  env.def_builtin(
+    "clearTimeout",
+    Object({
+      properties: {},
+      symbol_properties: {},
+      prototype: Null,
+      callable: Some(
+        InterpreterCallable("clearTimeout", fn(interp, _this, args) {
+          let id = if args.length() > 0 {
+            match args[0] {
+              Number(n) => n.to_int()
+              _ => return Undefined
+            }
+          } else {
+            return Undefined
+          }
+          // Mark timer as cancelled
+          for timer in interp.timer_queue {
+            if timer.id == id {
+              timer.cancelled = true
+              break
+            }
+          }
+          Undefined
+        }),
+      ),
+      class_name: "Function",
+      descriptors: {},
+      symbol_descriptors: {},
+      extensible: true,
+    }),
+  )
+
+  // setInterval(callback, delay, ...args) -> timerId
+  env.def_builtin(
+    "setInterval",
+    Object({
+      properties: {},
+      symbol_properties: {},
+      prototype: Null,
+      callable: Some(
+        InterpreterCallable("setInterval", fn(interp, _this, args) {
+          let callback = if args.length() > 0 { args[0] } else { Undefined }
+          match callback {
+            Object(od) =>
+              match od.callable {
+                Some(_) => ()
+                None =>
+                  raise @errors.TypeError(message=
+                    "setInterval requires a function as first argument",
+                  )
+              }
+            _ =>
+              raise @errors.TypeError(message=
+                "setInterval requires a function as first argument",
+              )
+          }
+          let delay = if args.length() > 1 {
+            match args[1] {
+              Number(n) => {
+                let d = n.to_int()
+                if d < 0 { 0 } else { d }
+              }
+              _ => 0
+            }
+          } else {
+            0
+          }
+          let extra_args : Array[Value] = []
+          for i = 2; i < args.length(); i = i + 1 {
+            extra_args.push(args[i])
+          }
+          let id = interp.timer_id_counter.val
+          interp.timer_id_counter.val = id + 1
+          let order = interp.timer_insertion_counter.val
+          interp.timer_insertion_counter.val = order + 1
+          interp.timer_queue.push({
+            id,
+            callback,
+            args: extra_args,
+            delay,
+            cancelled: false,
+            is_interval: true,
+            insertion_order: order,
+          })
+          Number(id.to_double())
+        }),
+      ),
+      class_name: "Function",
+      descriptors: {},
+      symbol_descriptors: {},
+      extensible: true,
+    }),
+  )
+
+  // clearInterval(id) - same semantics as clearTimeout
+  env.def_builtin(
+    "clearInterval",
+    Object({
+      properties: {},
+      symbol_properties: {},
+      prototype: Null,
+      callable: Some(
+        InterpreterCallable("clearInterval", fn(interp, _this, args) {
+          let id = if args.length() > 0 {
+            match args[0] {
+              Number(n) => n.to_int()
+              _ => return Undefined
+            }
+          } else {
+            return Undefined
+          }
+          for timer in interp.timer_queue {
+            if timer.id == id {
+              timer.cancelled = true
+              break
+            }
+          }
+          Undefined
+        }),
+      ),
+      class_name: "Function",
+      descriptors: {},
+      symbol_descriptors: {},
+      extensible: true,
+    }),
+  )
+}
+
+///|
+/// Run the event loop: process all pending timers (macrotasks) with
+/// microtask checkpoints between each.
+/// Timers are sorted by (delay, insertion_order) so they fire in the
+/// correct relative order. After each timer callback, microtasks are
+/// drained before the next timer fires.
+///
+/// For setInterval, the timer is re-enqueued after each invocation
+/// until cancelled. A safety limit prevents infinite loops.
+pub fn Interpreter::run_timers(self : Interpreter) -> Unit raise Error {
+  // Safety limit to prevent infinite loops from setInterval
+  let max_iterations = 10000
+  let mut iterations = 0
+  while self.timer_queue.length() > 0 && iterations < max_iterations {
+    iterations = iterations + 1
+    // Sort timers by delay (ascending), then by insertion order (ascending)
+    self.timer_queue.sort_by(fn(a, b) {
+      if a.delay != b.delay {
+        a.delay - b.delay
+      } else {
+        a.insertion_order - b.insertion_order
+      }
+    })
+    // Take the first (soonest) timer
+    let timer = self.timer_queue.remove(0)
+    if timer.cancelled {
+      continue
+    }
+    // Execute the timer callback
+    let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
+    let _ = self.call_value(timer.callback, Undefined, timer.args, loc)
+    // Drain microtasks after each macrotask (per WHATWG event loop spec)
+    self.run_microtasks()
+    // If this is setInterval and not cancelled, re-enqueue
+    if timer.is_interval && not(timer.cancelled) {
+      let order = self.timer_insertion_counter.val
+      self.timer_insertion_counter.val = order + 1
+      self.timer_queue.push({
+        id: timer.id,
+        callback: timer.callback,
+        args: timer.args,
+        delay: timer.delay,
+        cancelled: false,
+        is_interval: true,
+        insertion_order: order,
+      })
+    }
+  }
+}
+
+///|
 /// Helper to extract array of values from iterable using iterator protocol
 fn get_promise_array(
   interp : Interpreter,

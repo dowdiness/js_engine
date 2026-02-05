@@ -402,6 +402,9 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
 
   // Set up Promise constructor and prototype
   setup_promise(env)
+
+  // Set up timer APIs (setTimeout, clearTimeout, setInterval, clearInterval)
+  setup_timers(env)
 }
 
 ///|

@@ -142,3 +142,101 @@ test "Promise.allSettled" {
   let (output, _) = @js_engine.run(src)
   inspect(output, content="[\"fulfilled\", \"rejected\"]")
 }
+
+///|
+test "setTimeout basic" {
+  let src =
+    #|console.log("before");
+    #|setTimeout(() => console.log("timer"), 0);
+    #|console.log("after");
+  let (output, _) = @js_engine.run(src)
+  // Timer fires after synchronous code
+  inspect(output, content="[\"before\", \"after\", \"timer\"]")
+}
+
+///|
+test "setTimeout ordering by delay" {
+  let src =
+    #|setTimeout(() => console.log("slow"), 100);
+    #|setTimeout(() => console.log("fast"), 0);
+    #|setTimeout(() => console.log("medium"), 50);
+  let (output, _) = @js_engine.run(src)
+  // Timers fire in order of increasing delay
+  inspect(output, content="[\"fast\", \"medium\", \"slow\"]")
+}
+
+///|
+test "setTimeout with extra arguments" {
+  let src =
+    #|setTimeout((a, b) => console.log(a + b), 0, "hello", " world");
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"hello world\"]")
+}
+
+///|
+test "clearTimeout cancels timer" {
+  let src =
+    #|var id = setTimeout(() => console.log("cancelled"), 0);
+    #|clearTimeout(id);
+    #|setTimeout(() => console.log("ran"), 0);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"ran\"]")
+}
+
+///|
+test "setTimeout returns numeric ID" {
+  let src =
+    #|var id1 = setTimeout(() => {}, 0);
+    #|var id2 = setTimeout(() => {}, 0);
+    #|console.log(typeof id1);
+    #|console.log(id2 > id1);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"number\", \"true\"]")
+}
+
+///|
+test "microtasks run before timers" {
+  let src =
+    #|setTimeout(() => console.log("timer"), 0);
+    #|Promise.resolve().then(() => console.log("microtask"));
+    #|console.log("sync");
+  let (output, _) = @js_engine.run(src)
+  // Order: sync code, then microtasks, then timers
+  inspect(output, content="[\"sync\", \"microtask\", \"timer\"]")
+}
+
+///|
+test "setTimeout with Promise inside" {
+  let src =
+    #|setTimeout(() => {
+    #|  console.log("timer");
+    #|  Promise.resolve().then(() => console.log("microtask in timer"));
+    #|}, 0);
+    #|console.log("sync");
+  let (output, _) = @js_engine.run(src)
+  // Microtasks from timer callback drain before next timer
+  inspect(output, content="[\"sync\", \"timer\", \"microtask in timer\"]")
+}
+
+///|
+test "setInterval basic" {
+  let src =
+    #|var count = 0;
+    #|var id = setInterval(() => {
+    #|  count++;
+    #|  console.log("tick " + count);
+    #|  if (count >= 3) { clearInterval(id); }
+    #|}, 100);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"tick 1\", \"tick 2\", \"tick 3\"]")
+}
+
+///|
+test "setTimeout equal delays preserve insertion order" {
+  let src =
+    #|setTimeout(() => console.log("first"), 0);
+    #|setTimeout(() => console.log("second"), 0);
+    #|setTimeout(() => console.log("third"), 0);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"first\", \"second\", \"third\"]")
+}
