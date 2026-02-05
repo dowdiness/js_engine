@@ -78,11 +78,44 @@ fn Parser::expect_ident(self : Parser) -> String raise Error {
 fn Parser::expect_ident_name(self : Parser) -> String raise Error {
   let tok = self.peek()
   match tok.kind {
-    Ident(_) | Let | Const | Var | Function | Return | If | Else | While |
-    For | Break | Continue | Typeof | Throw | Try | Catch | Finally | New |
-    This | Switch | Case | Default | Void | Delete | Do | In | Instanceof |
-    Of | Class | Extends | Super | Static | Get | Set | True | False | Null |
-    Undefined => {
+    Ident(_)
+    | Let
+    | Const
+    | Var
+    | Function
+    | Return
+    | If
+    | Else
+    | While
+    | For
+    | Break
+    | Continue
+    | Typeof
+    | Throw
+    | Try
+    | Catch
+    | Finally
+    | New
+    | This
+    | Switch
+    | Case
+    | Default
+    | Void
+    | Delete
+    | Do
+    | In
+    | Instanceof
+    | Of
+    | Class
+    | Extends
+    | Super
+    | Static
+    | Get
+    | Set
+    | True
+    | False
+    | Null
+    | Undefined => {
       self.pos += 1
       tok.raw
     }
