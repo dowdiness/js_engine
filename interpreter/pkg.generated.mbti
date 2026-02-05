@@ -248,6 +248,7 @@ pub(all) struct TimerTask {
   callback : Value
   args : Array[Value]
   delay : Int
+  period : Int
   mut cancelled : Bool
   is_interval : Bool
   insertion_order : Int

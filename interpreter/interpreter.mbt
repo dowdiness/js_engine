@@ -21,7 +21,8 @@ pub(all) struct TimerTask {
   id : Int // Unique timer ID for clearTimeout/clearInterval
   callback : Value // The function to call
   args : Array[Value] // Additional arguments to pass to the callback
-  delay : Int // Delay in ms (used for ordering, not real waiting)
+  delay : Int // Absolute fire-at time in virtual ms (used for ordering)
+  period : Int // Interval repeat period (0 for setTimeout)
   mut cancelled : Bool // Whether clearTimeout was called
   is_interval : Bool // Whether this is a setInterval (repeats)
   insertion_order : Int // Stable sort tiebreaker for equal delays

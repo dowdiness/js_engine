@@ -470,7 +470,7 @@ fn Parser::parse_call(self : Parser) -> @ast.Expr raise Error {
       }
     } else if self.at(Dot) {
       let _ = self.advance()
-      let name = self.expect_ident()
+      let name = self.expect_ident_name()
       let loc = self.peek().loc
       if in_optional_chain {
         expr = OptionalMember(expr, name, loc)
@@ -520,7 +520,7 @@ fn Parser::parse_call(self : Parser) -> @ast.Expr raise Error {
         expr = OptionalComputedMember(expr, key, loc)
       } else {
         // Optional member: obj?.prop
-        let name = self.expect_ident()
+        let name = self.expect_ident_name()
         expr = OptionalMember(expr, name, loc)
       }
     } else {
@@ -641,7 +641,7 @@ fn Parser::parse_new_expr(self : Parser) -> @ast.Expr raise Error {
   let mut callee = self.parse_primary()
   while self.at(Dot) {
     let _ = self.advance()
-    let name = self.expect_ident()
+    let name = self.expect_ident_name()
     let mloc = self.peek().loc
     callee = Member(callee, name, mloc)
   }
@@ -952,7 +952,7 @@ fn Parser::parse_class_heritage(self : Parser) -> @ast.Expr raise Error {
   let mut expr = self.parse_primary()
   while self.at(Dot) {
     let _ = self.advance()
-    let prop = self.expect_ident()
+    let prop = self.expect_ident_name()
     let loc = self.peek().loc
     expr = Member(expr, prop, loc)
   }
@@ -1137,7 +1137,7 @@ fn Parser::parse_super_expr(self : Parser) -> @ast.Expr raise Error {
   } else if self.at(Dot) {
     // super.prop - super member access
     let _ = self.advance()
-    let name = self.expect_ident()
+    let name = self.expect_ident_name()
     SuperMember(name, tok.loc)
   } else if self.at(LBracket) {
     // super[expr] - super computed member access
