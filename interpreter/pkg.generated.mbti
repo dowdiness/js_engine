@@ -165,7 +165,7 @@ pub(all) struct Interpreter {
   timer_insertion_counter : Ref[Int]
   cancelled_timer_ids : Map[Int, Bool]
 }
-pub fn Interpreter::enqueue_microtask(Self, Value, Value) -> Unit
+pub fn Interpreter::enqueue_microtask(Self, Value, Array[Value]) -> Unit
 pub fn Interpreter::new() -> Self
 pub fn Interpreter::run(Self, Array[@ast.Stmt]) -> Value raise
 pub fn Interpreter::run_microtasks(Self) -> Unit raise
@@ -177,7 +177,7 @@ pub(all) struct MapData {
 
 pub(all) struct Microtask {
   callback : Value
-  argument : Value
+  args : Array[Value]
 }
 
 pub(all) struct ObjectData {

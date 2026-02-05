@@ -8,10 +8,10 @@ pub(all) enum Signal {
 
 ///|
 /// Microtask record for the event loop microtask queue
-/// Stores a callback function and optional argument to pass to it
+/// Stores a callback function and argument list to pass to it
 pub(all) struct Microtask {
   callback : Value // The function to call
-  argument : Value // The argument to pass (e.g., promise result)
+  args : Array[Value] // Arguments to pass (Promise jobs pass one, queueMicrotask passes none)
 }
 
 ///|

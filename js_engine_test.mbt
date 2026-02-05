@@ -42,6 +42,16 @@ test "Promise.resolve" {
 }
 
 ///|
+test "Promise.resolve assimilates thenables" {
+  let src =
+    #|Promise.resolve({
+    #|  then: function(resolve) { resolve(1); }
+    #|}).then(x => console.log(x));
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"1\"]")
+}
+
+///|
 test "Promise constructor with resolve" {
   let src =
     #|const p = new Promise((resolve, reject) => {
@@ -106,6 +116,16 @@ test "queueMicrotask" {
   let (output, _) = @js_engine.run(src)
   // Microtask runs after synchronous code
   inspect(output, content="[\"start\", \"end\", \"microtask\"]")
+}
+
+///|
+test "queueMicrotask callback gets no args" {
+  let src =
+    #|queueMicrotask(function() {
+    #|  console.log(arguments.length);
+    #|});
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"0\"]")
 }
 
 ///|

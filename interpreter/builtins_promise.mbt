@@ -37,9 +37,9 @@ pub fn get_promise_method(_data : PromiseData, prop : String) -> Value {
 pub fn Interpreter::enqueue_microtask(
   self : Interpreter,
   callback : Value,
-  argument : Value,
+  args : Array[Value],
 ) -> Unit {
-  self.microtask_queue.push({ callback, argument })
+  self.microtask_queue.push({ callback, args })
 }
 
 ///|
@@ -54,18 +54,13 @@ pub fn Interpreter::run_microtasks(self : Interpreter) -> Unit raise Error {
   while head < self.microtask_queue.length() {
     let task = self.microtask_queue[head]
     head = head + 1
-    // Call the callback with the argument
+    // Call the callback with queued arguments
     match task.callback {
       Object(obj_data) =>
         match obj_data.callable {
           Some(_) => {
             let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
-            let _ = self.call_value(
-              task.callback,
-              Undefined,
-              [task.argument],
-              loc,
-            )
+            let _ = self.call_value(task.callback, Undefined, task.args, loc)
 
           }
           None => ()
@@ -169,7 +164,7 @@ fn create_resolving_functions(
                       symbol_descriptors: {},
                       extensible: true,
                     })
-                    i.enqueue_microtask(job, Undefined)
+                    i.enqueue_microtask(job, [])
                   }
                   None => fulfill_promise(i, promise_data, resolution)
                 }
@@ -316,7 +311,7 @@ fn enqueue_promise_reaction_job(
     symbol_descriptors: {},
     extensible: true,
   })
-  interp.enqueue_microtask(job_callback, argument)
+  interp.enqueue_microtask(job_callback, [argument])
 }
 
 ///|
@@ -501,7 +496,7 @@ pub fn setup_promise(env : Environment) -> Unit {
               // Call onFinally
               let finally_result = i.call_value(on_finally, Undefined, [], loc)
               // Wrap result via PromiseResolve algorithm
-              let result_promise = promise_resolve_value(finally_result)
+              let result_promise = promise_resolve_value(i, finally_result)
               // Create a thunk that returns the original value
               let return_value_thunk = Object({
                 properties: {},
@@ -552,7 +547,7 @@ pub fn setup_promise(env : Environment) -> Unit {
               // Call onFinally
               let finally_result = i.call_value(on_finally, Undefined, [], loc)
               // Wrap result via PromiseResolve algorithm
-              let result_promise = promise_resolve_value(finally_result)
+              let result_promise = promise_resolve_value(i, finally_result)
               // Create a thunk that re-throws the original reason
               let throw_reason_thunk = Object({
                 properties: {},
@@ -624,9 +619,9 @@ pub fn setup_promise(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("resolve", fn(_interp, _this, args) {
+      InterpreterCallable("resolve", fn(interp, _this, args) {
         let value = if args.length() > 0 { args[0] } else { Undefined }
-        promise_resolve_value(value)
+        promise_resolve_value(interp, value)
       }),
     ),
     class_name: "Function",
@@ -1324,7 +1319,7 @@ pub fn setup_promise(env : Environment) -> Unit {
           match callback {
             Object(od) =>
               match od.callable {
-                Some(_) => interp.enqueue_microtask(callback, Undefined)
+                Some(_) => interp.enqueue_microtask(callback, [])
                 None =>
                   raise @errors.TypeError(
                     message="queueMicrotask requires a function argument",
@@ -1641,21 +1636,28 @@ fn get_promise_array(
 
 ///|
 /// PromiseResolve algorithm (ECMAScript §27.2.4.7)
-/// If value is already a Promise, return it; otherwise wrap in a fulfilled Promise
-fn promise_resolve_value(value : Value) -> Value {
+/// If value is already a Promise, return it; otherwise resolve a new Promise with it
+fn promise_resolve_value(
+  interp : Interpreter,
+  value : Value,
+) -> Value raise Error {
   match value {
     Promise(_) => value
     _ => {
       let pd : PromiseData = {
-        state: Fulfilled,
-        result: value,
+        state: Pending,
+        result: Undefined,
         fulfill_reactions: [],
         reject_reactions: [],
         is_handled: false,
         properties: {},
         symbol_properties: {},
       }
-      Promise(pd)
+      let promise = Promise(pd)
+      let (resolve, _reject) = create_resolving_functions(interp, pd)
+      let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
+      let _ = interp.call_value(resolve, Undefined, [value], loc)
+      promise
     }
   }
 }
