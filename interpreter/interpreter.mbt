@@ -2435,6 +2435,10 @@ fn Interpreter::call_value(
         Some(NativeCallable(_, func)) => func(args)
         Some(NonConstructableCallable(_, func)) => func(args)
         Some(InterpreterCallable(_, func)) => func(self, this_val, args)
+        Some(ConstructorOnlyCallable(name, _)) =>
+          raise @errors.TypeError(message=
+            name + " constructor cannot be invoked without 'new'",
+          )
         Some(ClassConstructor(name, _, _, _, _, _)) =>
           raise @errors.TypeError(message=
             "Class constructor " + name + " cannot be invoked without 'new'",
@@ -2619,6 +2623,7 @@ fn Interpreter::get_property(
                   FuncApplyMethod(_) => "apply"
                   MethodCallable(n, _) => n
                   InterpreterCallable(n, _) => n
+                  ConstructorOnlyCallable(n, _) => n
                   ClassConstructor(n, _, _, _, _, _) => n
                 }
                 return String_(func_name)
@@ -2642,6 +2647,7 @@ fn Interpreter::get_property(
                   FuncApplyMethod(_) => "function apply() { [native code] }"
                   MethodCallable(n, _) => "function " + n + "() { [native code] }"
                   InterpreterCallable(n, _) => "function " + n + "() { [native code] }"
+                  ConstructorOnlyCallable(n, _) => "function " + n + "() { [native code] }"
                   ClassConstructor(n, _, _, _, _, _) =>
                     "class " + n + " { [native code] }"
                 }
@@ -2651,6 +2657,7 @@ fn Interpreter::get_property(
                 // Non-constructable (arrow functions, bound functions, etc.) return undefined
                 let is_constructable = match callable {
                   UserFunc(_) | UserFuncExt(_) | NativeCallable(_, _) |
+                  ConstructorOnlyCallable(_, _) |
                   ClassConstructor(_, _, _, _, _, _) => true
                   ArrowFunc(_) | ArrowFuncExt(_) | BoundFunc(_, _, _) |
                   NonConstructableCallable(_, _) |
@@ -2969,6 +2976,7 @@ fn Interpreter::get_computed_property(
                   FuncApplyMethod(_) => "apply"
                   MethodCallable(n, _) => n
                   InterpreterCallable(n, _) => n
+                  ConstructorOnlyCallable(n, _) => n
                   ClassConstructor(n, _, _, _, _, _) => n
                 }
                 return String_(func_name)
@@ -2992,6 +3000,7 @@ fn Interpreter::get_computed_property(
                   FuncApplyMethod(_) => "function apply() { [native code] }"
                   MethodCallable(n, _) => "function " + n + "() { [native code] }"
                   InterpreterCallable(n, _) => "function " + n + "() { [native code] }"
+                  ConstructorOnlyCallable(n, _) => "function " + n + "() { [native code] }"
                   ClassConstructor(n, _, _, _, _, _) =>
                     "class " + n + " { [native code] }"
                 }
@@ -3001,6 +3010,7 @@ fn Interpreter::get_computed_property(
                 // Non-constructable (arrow functions, bound functions, etc.) return undefined
                 let is_constructable = match callable {
                   UserFunc(_) | UserFuncExt(_) | NativeCallable(_, _) |
+                  ConstructorOnlyCallable(_, _) |
                   ClassConstructor(_, _, _, _, _, _) => true
                   ArrowFunc(_) | ArrowFuncExt(_) | BoundFunc(_, _, _) |
                   NonConstructableCallable(_, _) |
@@ -3317,6 +3327,7 @@ fn Interpreter::eval_new(
         Some(NonConstructableCallable(name, _)) =>
           raise @errors.TypeError(message=name + " is not a constructor")
         Some(InterpreterCallable(_, func)) => func(self, Undefined, args)
+        Some(ConstructorOnlyCallable(_, func)) => func(self, args)
         Some(ArrowFunc(_)) | Some(ArrowFuncExt(_)) =>
           raise @errors.TypeError(message="arrow functions cannot be used as constructors")
         Some(ClassConstructor(class_name, proto, super_ctor, ctor_fn, closure, super_proto)) => {

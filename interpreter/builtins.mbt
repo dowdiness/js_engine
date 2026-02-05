@@ -2721,6 +2721,8 @@ fn setup_function_builtins(env : Environment) -> Unit {
                 String_("function " + name + "() { [native code] }")
               Some(InterpreterCallable(name, _)) =>
                 String_("function " + name + "() { [native code] }")
+              Some(ConstructorOnlyCallable(name, _)) =>
+                String_("function " + name + "() { [native code] }")
               Some(FuncCallMethod(_)) =>
                 String_("function call() { [native code] }")
               Some(FuncApplyMethod(_)) =>

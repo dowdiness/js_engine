@@ -31,6 +31,10 @@ pub(all) enum Callable {
     String,
     (Interpreter, Value, Array[Value]) -> Value raise Error
   ) // needs interpreter for callback invocation
+  ConstructorOnlyCallable(
+    String,
+    (Interpreter, Array[Value]) -> Value raise Error
+  ) // like InterpreterCallable but throws on call without new
   // Class constructor: (name, prototype, super_ctor, constructor_fn, closure, static_methods)
   // constructor_fn is (params, body) tuple, or None if no explicit constructor
   ClassConstructor(
@@ -361,6 +365,8 @@ pub impl Show for Value with output(self, logger) {
         Some(MethodCallable(name, _)) =>
           logger.write_string("function \{name}() { [native code] }")
         Some(InterpreterCallable(name, _)) =>
+          logger.write_string("function \{name}() { [native code] }")
+        Some(ConstructorOnlyCallable(name, _)) =>
           logger.write_string("function \{name}() { [native code] }")
         Some(ClassConstructor(name, _, _, _, _, _)) =>
           logger.write_string("class \{name} { [code] }")

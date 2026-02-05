@@ -90,6 +90,21 @@ fn create_resolving_functions(
         }
         already_resolved.val = true
         let resolution = if args.length() > 0 { args[0] } else { Undefined }
+
+        // Check for self-resolution (ECMAScript spec requirement)
+        match resolution {
+          Promise(pd) =>
+            if physical_equal(pd, promise_data) {
+              // Self-resolution: reject with TypeError
+              let error = make_type_error(
+                "Chaining cycle detected for promise",
+              )
+              reject_promise(i, promise_data, error)
+              return Undefined
+            }
+          _ => ()
+        }
+
         fulfill_promise(i, promise_data, resolution)
         Undefined
       }),
@@ -399,6 +414,8 @@ pub fn setup_promise(env : Environment) -> Unit {
         }
 
         // Create wrapper functions that call onFinally then pass through value
+        // Per ECMAScript §27.2.5.3, we must await the result of onFinally
+        // by chaining through Promise.resolve(onFinally_result).then(...)
         let value_thunk = Object({
           properties: {},
           symbol_properties: {},
@@ -412,9 +429,40 @@ pub fn setup_promise(env : Environment) -> Unit {
               }
               let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
               // Call onFinally
-              let _ = i.call_value(on_finally, Undefined, [], loc)
-              // Return the original value
-              value
+              let finally_result = i.call_value(on_finally, Undefined, [], loc)
+              // Create a promise that resolves to finally_result
+              let result_promise = match finally_result {
+                Promise(_) => finally_result
+                _ => {
+                  let pd : PromiseData = {
+                    state: Fulfilled,
+                    result: finally_result,
+                    fulfill_reactions: [],
+                    reject_reactions: [],
+                    is_handled: false,
+                  }
+                  Promise(pd)
+                }
+              }
+              // Create a thunk that returns the original value
+              let return_value_thunk = Object({
+                properties: {},
+                symbol_properties: {},
+                prototype: Null,
+                callable: Some(
+                  InterpreterCallable("returnValue", fn(_i2, _t, _a) { value }),
+                ),
+                class_name: "Function",
+                descriptors: {},
+                symbol_descriptors: {},
+                extensible: true,
+              })
+              // Chain: Promise.resolve(finally_result).then(() => value)
+              let then_method = match result_promise {
+                Promise(pd) => get_promise_method(pd, "then")
+                _ => Undefined
+              }
+              i.call_value(then_method, result_promise, [return_value_thunk], loc)
             }),
           ),
           class_name: "Function",
@@ -436,9 +484,42 @@ pub fn setup_promise(env : Environment) -> Unit {
               }
               let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
               // Call onFinally
-              let _ = i.call_value(on_finally, Undefined, [], loc)
-              // Re-throw the reason
-              raise JsException(reason)
+              let finally_result = i.call_value(on_finally, Undefined, [], loc)
+              // Create a promise that resolves to finally_result
+              let result_promise = match finally_result {
+                Promise(_) => finally_result
+                _ => {
+                  let pd : PromiseData = {
+                    state: Fulfilled,
+                    result: finally_result,
+                    fulfill_reactions: [],
+                    reject_reactions: [],
+                    is_handled: false,
+                  }
+                  Promise(pd)
+                }
+              }
+              // Create a thunk that re-throws the original reason
+              let throw_reason_thunk = Object({
+                properties: {},
+                symbol_properties: {},
+                prototype: Null,
+                callable: Some(
+                  InterpreterCallable("throwReason", fn(_i2, _t, _a) {
+                    raise JsException(reason)
+                  }),
+                ),
+                class_name: "Function",
+                descriptors: {},
+                symbol_descriptors: {},
+                extensible: true,
+              })
+              // Chain: Promise.resolve(finally_result).then(() => { throw reason })
+              let then_method = match result_promise {
+                Promise(pd) => get_promise_method(pd, "then")
+                _ => Undefined
+              }
+              i.call_value(then_method, result_promise, [throw_reason_thunk], loc)
             }),
           ),
           class_name: "Function",
@@ -1073,14 +1154,13 @@ pub fn setup_promise(env : Environment) -> Unit {
     extensible: true,
   })
 
-  // Promise constructor itself
+  // Promise constructor itself - requires 'new' keyword
   let promise_ctor = Object({
     properties: promise_ctor_props,
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("Promise", fn(interp, _this, args) {
-        // Promise must be called with new
+      ConstructorOnlyCallable("Promise", fn(interp, args) {
         let executor = if args.length() > 0 { args[0] } else { Undefined }
 
         // Validate executor is callable
@@ -1198,6 +1278,24 @@ fn get_promise_array(iterable : Value) -> Array[Value] raise Error {
         type_of(iterable) + " is not iterable",
       )
   }
+}
+
+///|
+/// Helper to create a TypeError value (for promise rejection)
+fn make_type_error(message : String) -> Value {
+  let props : Map[String, Value] = {}
+  props["name"] = String_("TypeError")
+  props["message"] = String_(message)
+  Object({
+    properties: props,
+    symbol_properties: {},
+    prototype: Null,
+    callable: None,
+    class_name: "TypeError",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
 }
 
 ///|
