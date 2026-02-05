@@ -296,11 +296,8 @@ pub fn get_string_method(s : String, prop : String) -> Value {
         let buf = StringBuilder::new()
         for c in s_chars {
           let code = c.to_int()
-          if code >= 65 && code <= 90 {
-            buf.write_char((code + 32).unsafe_to_char())
-          } else {
-            buf.write_char(c)
-          }
+          let lower = unicode_to_lower(code)
+          buf.write_char(lower.unsafe_to_char())
         }
         String_(buf.to_string())
       })
@@ -312,11 +309,36 @@ pub fn get_string_method(s : String, prop : String) -> Value {
         let buf = StringBuilder::new()
         for c in s_chars {
           let code = c.to_int()
-          if code >= 97 && code <= 122 {
-            buf.write_char((code - 32).unsafe_to_char())
-          } else {
-            buf.write_char(c)
-          }
+          let upper = unicode_to_upper(code)
+          buf.write_char(upper.unsafe_to_char())
+        }
+        String_(buf.to_string())
+      })
+    }
+    "toLocaleLowerCase" => {
+      // Locale-specific lowercase (currently uses same Unicode mapping)
+      let str = s
+      make_native_func("toLocaleLowerCase", fn(_args) {
+        let s_chars = str.to_array()
+        let buf = StringBuilder::new()
+        for c in s_chars {
+          let code = c.to_int()
+          let lower = unicode_to_lower(code)
+          buf.write_char(lower.unsafe_to_char())
+        }
+        String_(buf.to_string())
+      })
+    }
+    "toLocaleUpperCase" => {
+      // Locale-specific uppercase (currently uses same Unicode mapping)
+      let str = s
+      make_native_func("toLocaleUpperCase", fn(_args) {
+        let s_chars = str.to_array()
+        let buf = StringBuilder::new()
+        for c in s_chars {
+          let code = c.to_int()
+          let upper = unicode_to_upper(code)
+          buf.write_char(upper.unsafe_to_char())
         }
         String_(buf.to_string())
       })
@@ -854,6 +876,138 @@ pub fn get_string_method(s : String, prop : String) -> Value {
       })
     }
     _ => Undefined
+  }
+}
+
+///| Unicode-aware character to lowercase conversion
+fn unicode_to_lower(code : Int) -> Int {
+  // ASCII uppercase (A-Z)
+  if code >= 65 && code <= 90 {
+    return code + 32
+  }
+  // Latin-1 Supplement (U+00C0-U+00DE, excluding U+00D7 multiplication sign)
+  if code >= 0xC0 && code <= 0xDE && code != 0xD7 {
+    return code + 32
+  }
+  // Latin Extended-A (U+0100-U+017F) - even codes are uppercase
+  if code >= 0x100 && code <= 0x12E {
+    if code.land(1) == 0 {
+      return code + 1
+    }
+  }
+  if code >= 0x132 && code <= 0x136 {
+    if code.land(1) == 0 {
+      return code + 1
+    }
+  }
+  if code >= 0x139 && code <= 0x147 {
+    if code.land(1) == 1 {
+      return code + 1
+    }
+  }
+  if code >= 0x14A && code <= 0x176 {
+    if code.land(1) == 0 {
+      return code + 1
+    }
+  }
+  // Greek uppercase (U+0391-U+03A9, U+03AA-U+03AB)
+  if code >= 0x391 && code <= 0x3A9 {
+    return code + 32
+  }
+  if code >= 0x3AA && code <= 0x3AB {
+    return code + 32
+  }
+  // Cyrillic uppercase (U+0410-U+042F)
+  if code >= 0x410 && code <= 0x42F {
+    return code + 32
+  }
+  // Special cases
+  match code {
+    0x178 => 0xFF // Ÿ -> ÿ
+    0x179 => 0x17A // Ź -> ź
+    0x17B => 0x17C // Ż -> ż
+    0x17D => 0x17E // Ž -> ž
+    0x181 => 0x253 // Ɓ -> ɓ
+    0x186 => 0x254 // Ɔ -> ɔ
+    0x189 => 0x256 // Ɖ -> ɖ
+    0x18A => 0x257 // Ɗ -> ɗ
+    0x18E => 0x1DD // Ǝ -> ǝ
+    0x18F => 0x259 // Ə -> ə
+    0x190 => 0x25B // Ɛ -> ɛ
+    0x193 => 0x260 // Ɠ -> ɠ
+    0x194 => 0x263 // Ɣ -> ɣ
+    0x197 => 0x268 // Ɨ -> ɨ
+    0x196 => 0x269 // Ɩ -> ɩ
+    0x19C => 0x26F // Ɯ -> ɯ
+    0x19D => 0x272 // Ɲ -> ɲ
+    0x19F => 0x275 // Ɵ -> ɵ
+    _ => code
+  }
+}
+
+///| Unicode-aware character to uppercase conversion
+fn unicode_to_upper(code : Int) -> Int {
+  // ASCII lowercase (a-z)
+  if code >= 97 && code <= 122 {
+    return code - 32
+  }
+  // Latin-1 Supplement lowercase (U+00E0-U+00FE, excluding U+00F7 division sign)
+  if code >= 0xE0 && code <= 0xFE && code != 0xF7 {
+    return code - 32
+  }
+  // Latin Extended-A (U+0100-U+017F) - odd codes are lowercase
+  if code >= 0x101 && code <= 0x12F {
+    if code.land(1) == 1 {
+      return code - 1
+    }
+  }
+  if code >= 0x133 && code <= 0x137 {
+    if code.land(1) == 1 {
+      return code - 1
+    }
+  }
+  if code >= 0x13A && code <= 0x148 {
+    if code.land(1) == 0 {
+      return code - 1
+    }
+  }
+  if code >= 0x14B && code <= 0x177 {
+    if code.land(1) == 1 {
+      return code - 1
+    }
+  }
+  // Greek lowercase (U+03B1-U+03C9, U+03CA-U+03CB)
+  if code >= 0x3B1 && code <= 0x3C9 {
+    return code - 32
+  }
+  if code >= 0x3CA && code <= 0x3CB {
+    return code - 32
+  }
+  // Cyrillic lowercase (U+0430-U+044F)
+  if code >= 0x430 && code <= 0x44F {
+    return code - 32
+  }
+  // Special cases
+  match code {
+    0xFF => 0x178 // ÿ -> Ÿ
+    0x17A => 0x179 // ź -> Ź
+    0x17C => 0x17B // ż -> Ż
+    0x17E => 0x17D // ž -> Ž
+    0x253 => 0x181 // ɓ -> Ɓ
+    0x254 => 0x186 // ɔ -> Ɔ
+    0x256 => 0x189 // ɖ -> Ɖ
+    0x257 => 0x18A // ɗ -> Ɗ
+    0x1DD => 0x18E // ǝ -> Ǝ
+    0x259 => 0x18F // ə -> Ə
+    0x25B => 0x190 // ɛ -> Ɛ
+    0x260 => 0x193 // ɠ -> Ɠ
+    0x263 => 0x194 // ɣ -> Ɣ
+    0x268 => 0x197 // ɨ -> Ɨ
+    0x269 => 0x196 // ɩ -> Ɩ
+    0x26F => 0x19C // ɯ -> Ɯ
+    0x272 => 0x19D // ɲ -> Ɲ
+    0x275 => 0x19F // ɵ -> Ɵ
+    _ => code
   }
 }
 

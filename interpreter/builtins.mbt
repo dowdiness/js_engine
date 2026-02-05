@@ -256,7 +256,40 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
           let buf = StringBuilder::new()
           for arg in args {
             let code = to_number(arg).to_int()
-            buf.write_char(code.unsafe_to_char())
+            // fromCharCode uses UTF-16 code units, modulo 2^16
+            let code_unit = code.land(0xFFFF)
+            buf.write_char(code_unit.unsafe_to_char())
+          }
+          String_(buf.to_string())
+        }),
+        "fromCodePoint": make_native_func("fromCodePoint", fn(args) {
+          // String.fromCodePoint() - accepts Unicode code points (not code units)
+          let buf = StringBuilder::new()
+          for arg in args {
+            let num = to_number(arg)
+            // Check if it's an integer
+            if num.is_nan() || num.is_inf() {
+              raise @errors.RangeError(message="Invalid code point")
+            }
+            let code = num.to_int()
+            // Valid Unicode code points: 0 to 0x10FFFF
+            if code < 0 || code > 0x10FFFF {
+              raise @errors.RangeError(
+                message="Invalid code point \{code.to_string()}",
+              )
+            }
+            // Convert code point to UTF-16
+            if code <= 0xFFFF {
+              // BMP (Basic Multilingual Plane) - single code unit
+              buf.write_char(code.unsafe_to_char())
+            } else {
+              // Supplementary planes - surrogate pair
+              let code_adj = code - 0x10000
+              let high = 0xD800 + code_adj.lsr(10)
+              let low = 0xDC00 + code_adj.land(0x3FF)
+              buf.write_char(high.unsafe_to_char())
+              buf.write_char(low.unsafe_to_char())
+            }
           }
           String_(buf.to_string())
         }),
