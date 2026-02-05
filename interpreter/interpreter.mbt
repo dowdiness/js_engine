@@ -1180,6 +1180,10 @@ fn Interpreter::eval_expr(
           data.properties[prop] = value
           value
         }
+        Promise(data) => {
+          data.properties[prop] = value
+          value
+        }
         _ =>
           raise @errors.TypeError(message=
             "Cannot set property '\{prop}' of \{type_of(obj)}",
@@ -1258,6 +1262,11 @@ fn Interpreter::eval_expr(
             }
             _ => value
           }
+        Promise(data) => {
+          let prop = key.to_string()
+          data.properties[prop] = value
+          value
+        }
         _ => raise @errors.TypeError(message="Cannot set property of \{type_of(obj)}")
       }
     }
@@ -2766,7 +2775,12 @@ fn Interpreter::get_property(
       } else {
         get_set_method(data, prop)
       }
-    Promise(data) => get_promise_method(data, prop)
+    Promise(data) =>
+      // Check user-defined properties first, then prototype methods
+      match data.properties.get(prop) {
+        Some(v) => v
+        None => get_promise_method(data, prop)
+      }
     Null | Undefined =>
       raise @errors.TypeError(message="Cannot read property '\{prop}' of \{type_of(obj)}")
     _ => Undefined
@@ -3116,7 +3130,12 @@ fn Interpreter::get_computed_property(
       }
     Promise(data) =>
       match key {
-        String_(method_name) => get_promise_method(data, method_name)
+        String_(prop) =>
+          // Check user-defined properties first, then prototype methods
+          match data.properties.get(prop) {
+            Some(v) => v
+            None => get_promise_method(data, prop)
+          }
         _ => Undefined
       }
     Null | Undefined =>

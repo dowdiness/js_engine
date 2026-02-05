@@ -529,20 +529,8 @@ pub fn setup_promise(env : Environment) -> Unit {
               let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
               // Call onFinally
               let finally_result = i.call_value(on_finally, Undefined, [], loc)
-              // Create a promise that resolves to finally_result
-              let result_promise = match finally_result {
-                Promise(_) => finally_result
-                _ => {
-                  let pd : PromiseData = {
-                    state: Fulfilled,
-                    result: finally_result,
-                    fulfill_reactions: [],
-                    reject_reactions: [],
-                    is_handled: false,
-                  }
-                  Promise(pd)
-                }
-              }
+              // Wrap result via PromiseResolve algorithm
+              let result_promise = promise_resolve_value(finally_result)
               // Create a thunk that returns the original value
               let return_value_thunk = Object({
                 properties: {},
@@ -584,20 +572,8 @@ pub fn setup_promise(env : Environment) -> Unit {
               let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
               // Call onFinally
               let finally_result = i.call_value(on_finally, Undefined, [], loc)
-              // Create a promise that resolves to finally_result
-              let result_promise = match finally_result {
-                Promise(_) => finally_result
-                _ => {
-                  let pd : PromiseData = {
-                    state: Fulfilled,
-                    result: finally_result,
-                    fulfill_reactions: [],
-                    reject_reactions: [],
-                    is_handled: false,
-                  }
-                  Promise(pd)
-                }
-              }
+              // Wrap result via PromiseResolve algorithm
+              let result_promise = promise_resolve_value(finally_result)
               // Create a thunk that re-throws the original reason
               let throw_reason_thunk = Object({
                 properties: {},
@@ -663,22 +639,7 @@ pub fn setup_promise(env : Environment) -> Unit {
     callable: Some(
       InterpreterCallable("resolve", fn(_interp, _this, args) {
         let value = if args.length() > 0 { args[0] } else { Undefined }
-
-        // If value is already a promise, return it
-        match value {
-          Promise(_) => value
-          _ => {
-            // Create a fulfilled promise
-            let promise_data : PromiseData = {
-              state: Fulfilled,
-              result: value,
-              fulfill_reactions: [],
-              reject_reactions: [],
-              is_handled: false,
-            }
-            Promise(promise_data)
-          }
-        }
+        promise_resolve_value(value)
       }),
     ),
     class_name: "Function",
@@ -701,6 +662,7 @@ pub fn setup_promise(env : Environment) -> Unit {
           fulfill_reactions: [],
           reject_reactions: [],
           is_handled: false,
+          properties: {},
         }
         Promise(promise_data)
       }),
@@ -732,6 +694,7 @@ pub fn setup_promise(env : Environment) -> Unit {
             fulfill_reactions: [],
             reject_reactions: [],
             is_handled: false,
+            properties: {},
           }
           return Promise(promise_data)
         }
@@ -759,6 +722,7 @@ pub fn setup_promise(env : Environment) -> Unit {
                 fulfill_reactions: [],
                 reject_reactions: [],
                 is_handled: false,
+                properties: {},
               }
               Promise(pd)
             }
@@ -872,6 +836,7 @@ pub fn setup_promise(env : Environment) -> Unit {
                 fulfill_reactions: [],
                 reject_reactions: [],
                 is_handled: false,
+                properties: {},
               }
               Promise(pd)
             }
@@ -942,6 +907,7 @@ pub fn setup_promise(env : Environment) -> Unit {
             fulfill_reactions: [],
             reject_reactions: [],
             is_handled: false,
+            properties: {},
           }
           return Promise(promise_data)
         }
@@ -966,6 +932,7 @@ pub fn setup_promise(env : Environment) -> Unit {
                 fulfill_reactions: [],
                 reject_reactions: [],
                 is_handled: false,
+                properties: {},
               }
               Promise(pd)
             }
@@ -1147,6 +1114,7 @@ pub fn setup_promise(env : Environment) -> Unit {
             fulfill_reactions: [],
             reject_reactions: [],
             is_handled: false,
+            properties: {},
           }
           return Promise(promise_data)
         }
@@ -1171,6 +1139,7 @@ pub fn setup_promise(env : Environment) -> Unit {
                 fulfill_reactions: [],
                 reject_reactions: [],
                 is_handled: false,
+                properties: {},
               }
               Promise(pd)
             }
@@ -1371,6 +1340,26 @@ fn get_promise_array(
     _ => {
       let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
       interp.spread_iterable(iterable, loc)
+    }
+  }
+}
+
+///|
+/// PromiseResolve algorithm (ECMAScript §27.2.4.7)
+/// If value is already a Promise, return it; otherwise wrap in a fulfilled Promise
+fn promise_resolve_value(value : Value) -> Value {
+  match value {
+    Promise(_) => value
+    _ => {
+      let pd : PromiseData = {
+        state: Fulfilled,
+        result: value,
+        fulfill_reactions: [],
+        reject_reactions: [],
+        is_handled: false,
+        properties: {},
+      }
+      Promise(pd)
     }
   }
 }

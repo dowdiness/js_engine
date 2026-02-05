@@ -126,6 +126,7 @@ pub(all) struct PromiseData {
   fulfill_reactions : Array[PromiseReaction] // Called when fulfilled
   reject_reactions : Array[PromiseReaction] // Called when rejected
   mut is_handled : Bool // Whether .catch or second arg to .then was provided
+  properties : Map[String, Value] // User-defined properties (p.foo = 1)
 }
 
 ///|
@@ -137,6 +138,7 @@ pub fn new_promise_data() -> PromiseData {
     fulfill_reactions: [],
     reject_reactions: [],
     is_handled: false,
+    properties: {},
   }
 }
 
