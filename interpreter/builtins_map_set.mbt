@@ -17,13 +17,13 @@ let set_prototype_ref : Ref[Value?] = { val: None }
 
 ///|
 /// Get Map.prototype methods for a Map instance
-pub fn get_map_method(data : MapData, prop : String) -> Value {
+pub fn get_map_method(_data : MapData, prop : String) -> Value {
   match map_prototype_ref.val {
-    Some(Map_proto) =>
-      match Map_proto {
+    Some(proto) =>
+      match proto {
         Object(proto_data) =>
           match proto_data.properties.get(prop) {
-            Some(method) => method
+            Some(m) => m
             None => Undefined
           }
         _ => Undefined
@@ -34,47 +34,18 @@ pub fn get_map_method(data : MapData, prop : String) -> Value {
 
 ///|
 /// Get Set.prototype methods for a Set instance
-pub fn get_set_method(data : SetData, prop : String) -> Value {
+pub fn get_set_method(_data : SetData, prop : String) -> Value {
   match set_prototype_ref.val {
-    Some(Set_proto) =>
-      match Set_proto {
+    Some(proto) =>
+      match proto {
         Object(proto_data) =>
           match proto_data.properties.get(prop) {
-            Some(method) => method
+            Some(m) => m
             None => Undefined
           }
         _ => Undefined
       }
     None => Undefined
-  }
-}
-
-///|
-/// Helper: SameValueZero equality check (used by Map/Set)
-/// NaN === NaN, +0 === -0, otherwise use strict equality
-fn same_value_zero(a : Value, b : Value) -> Bool {
-  match (a, b) {
-    (Number(x), Number(y)) => {
-      // NaN === NaN
-      if x.is_nan() && y.is_nan() {
-        return true
-      }
-      // +0 === -0
-      if x == 0.0 && y == 0.0 {
-        return true
-      }
-      x == y
-    }
-    (String_(x), String_(y)) => x == y
-    (Bool(x), Bool(y)) => x == y
-    (Null, Null) => true
-    (Undefined, Undefined) => true
-    (Symbol(x), Symbol(y)) => x.id == y.id
-    (Object(x), Object(y)) => physical_equal(x, y)
-    (Array(x), Array(y)) => physical_equal(x, y)
-    (Map(x), Map(y)) => physical_equal(x, y)
-    (Set(x), Set(y)) => physical_equal(x, y)
-    _ => false
   }
 }
 
@@ -91,7 +62,7 @@ fn setup_map_builtins(env : Environment) -> Unit raise Error {
   let iterator_sym = get_iterator_symbol()
 
   // Map.prototype methods
-  let map_proto_props : @map.Map[String, Value] = {}
+  let map_proto_props : Map[String, Value] = {}
 
   // Map.prototype.get(key)
   map_proto_props["get"] = Object({
@@ -208,7 +179,7 @@ fn setup_map_builtins(env : Environment) -> Unit raise Error {
             for i = 0; i < data.entries.length(); i = i + 1 {
               let (k, _) = data.entries[i]
               if same_value_zero(k, key) {
-                data.entries.remove(i)
+                let _ = data.entries.remove(i)
                 return Bool(true)
               }
             }
@@ -263,11 +234,12 @@ fn setup_map_builtins(env : Environment) -> Unit raise Error {
           Map(data) => {
             let callback = if args.length() > 0 { args[0] } else { Undefined }
             let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+            let loc = @token.Loc::default()
             // Iterate over entries
             for i = 0; i < data.entries.length(); i = i + 1 {
               let (key, value) = data.entries[i]
               // Call callback(value, key, map)
-              interp.call_value(callback, this_arg, [value, key, this_val])!
+              let _ = interp.call_value(callback, this_arg, [value, key, this_val], loc)
             }
             Undefined
           }
@@ -386,6 +358,7 @@ fn setup_map_builtins(env : Environment) -> Unit raise Error {
       InterpreterCallable("Map", fn(interp, _this_val, args) {
         // Create new Map instance
         let new_map : Value = Map({ entries: [] })
+        let loc = @token.Loc::default()
 
         // If iterable provided, populate map
         if args.length() > 0 {
@@ -393,22 +366,40 @@ fn setup_map_builtins(env : Environment) -> Unit raise Error {
           match iterable {
             Undefined | Null => () // No iterable, create empty map
             _ => {
-              // Get iterator from iterable
-              let iterator = interp.get_iterator(iterable)!
+              // Get iterator from iterable using Symbol.iterator
+              let iterator_sym = get_iterator_symbol()
+              let iterator_method = interp.get_computed_property(
+                iterable,
+                Symbol(iterator_sym),
+                loc,
+              )
+              let iterator = match iterator_method {
+                Object(data) =>
+                  match data.callable {
+                    Some(_) => interp.call_value(iterator_method, iterable, [], loc)
+                    None =>
+                      raise @errors.TypeError(message=
+                        "Result of the Symbol.iterator method is not an object",
+                      )
+                  }
+                _ =>
+                  raise @errors.TypeError(message=
+                    "\{type_of(iterable)} is not iterable",
+                  )
+              }
+
+              // Iterate over the iterator
               loop {
-                let result = interp.call_value(
-                  interp.get_property(iterator, "next")!,
-                  iterator,
-                  [],
-                )!
-                let done = match interp.get_property(result, "done")! {
+                let next_method = interp.get_property(iterator, "next", loc)
+                let result = interp.call_value(next_method, iterator, [], loc)
+                let done = match interp.get_property(result, "done", loc) {
                   Bool(b) => b
                   _ => false
                 }
                 if done {
                   break
                 }
-                let value = interp.get_property(result, "value")!
+                let value = interp.get_property(result, "value", loc)
                 // Value should be [key, value] pair
                 match value {
                   Array(arr) => {
@@ -450,7 +441,7 @@ fn setup_set_builtins(env : Environment) -> Unit raise Error {
   let iterator_sym = get_iterator_symbol()
 
   // Set.prototype methods
-  let set_proto_props : @map.Map[String, Value] = {}
+  let set_proto_props : Map[String, Value] = {}
 
   // Set.prototype.add(value)
   set_proto_props["add"] = Object({
@@ -529,7 +520,7 @@ fn setup_set_builtins(env : Environment) -> Unit raise Error {
             // Find and remove value using SameValueZero
             for i = 0; i < data.values.length(); i = i + 1 {
               if same_value_zero(data.values[i], value) {
-                data.values.remove(i)
+                let _ = data.values.remove(i)
                 return Bool(true)
               }
             }
@@ -584,11 +575,12 @@ fn setup_set_builtins(env : Environment) -> Unit raise Error {
           Set(data) => {
             let callback = if args.length() > 0 { args[0] } else { Undefined }
             let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+            let loc = @token.Loc::default()
             // Iterate over values
             for i = 0; i < data.values.length(); i = i + 1 {
               let value = data.values[i]
               // Call callback(value, value, set) - note: Set forEach passes value twice
-              interp.call_value(callback, this_arg, [value, value, this_val])!
+              let _ = interp.call_value(callback, this_arg, [value, value, this_val], loc)
             }
             Undefined
           }
@@ -705,6 +697,7 @@ fn setup_set_builtins(env : Environment) -> Unit raise Error {
       InterpreterCallable("Set", fn(interp, _this_val, args) {
         // Create new Set instance
         let new_set : Value = Set({ values: [] })
+        let loc = @token.Loc::default()
 
         // If iterable provided, populate set
         if args.length() > 0 {
@@ -712,22 +705,40 @@ fn setup_set_builtins(env : Environment) -> Unit raise Error {
           match iterable {
             Undefined | Null => () // No iterable, create empty set
             _ => {
-              // Get iterator from iterable
-              let iterator = interp.get_iterator(iterable)!
+              // Get iterator from iterable using Symbol.iterator
+              let iterator_sym = get_iterator_symbol()
+              let iterator_method = interp.get_computed_property(
+                iterable,
+                Symbol(iterator_sym),
+                loc,
+              )
+              let iterator = match iterator_method {
+                Object(data) =>
+                  match data.callable {
+                    Some(_) => interp.call_value(iterator_method, iterable, [], loc)
+                    None =>
+                      raise @errors.TypeError(message=
+                        "Result of the Symbol.iterator method is not an object",
+                      )
+                  }
+                _ =>
+                  raise @errors.TypeError(message=
+                    "\{type_of(iterable)} is not iterable",
+                  )
+              }
+
+              // Iterate over the iterator
               loop {
-                let result = interp.call_value(
-                  interp.get_property(iterator, "next")!,
-                  iterator,
-                  [],
-                )!
-                let done = match interp.get_property(result, "done")! {
+                let next_method = interp.get_property(iterator, "next", loc)
+                let result = interp.call_value(next_method, iterator, [], loc)
+                let done = match interp.get_property(result, "done", loc) {
                   Bool(b) => b
                   _ => false
                 }
                 if done {
                   break
                 }
-                let value = interp.get_property(result, "value")!
+                let value = interp.get_property(result, "value", loc)
                 // Add to set (using SameValueZero)
                 match new_set {
                   Set(data) => {
@@ -777,7 +788,7 @@ fn make_map_keys_iterator(map_data : MapData) -> Value {
         if idx < map_data.entries.length() {
           let (key, _) = map_data.entries[idx]
           index_ref.val = idx + 1
-          let result_props : @map.Map[String, Value] = {}
+          let result_props : Map[String, Value] = {}
           result_props["value"] = key
           result_props["done"] = Bool(false)
           Object({
@@ -791,7 +802,7 @@ fn make_map_keys_iterator(map_data : MapData) -> Value {
             extensible: true,
           })
         } else {
-          let result_props : @map.Map[String, Value] = {}
+          let result_props : Map[String, Value] = {}
           result_props["value"] = Undefined
           result_props["done"] = Bool(true)
           Object({
@@ -813,7 +824,7 @@ fn make_map_keys_iterator(map_data : MapData) -> Value {
     extensible: true,
   })
 
-  let iter_props : @map.Map[String, Value] = {}
+  let iter_props : Map[String, Value] = {}
   iter_props["next"] = next_method
 
   let iter_obj = Object({
@@ -863,7 +874,7 @@ fn make_map_values_iterator(map_data : MapData) -> Value {
         if idx < map_data.entries.length() {
           let (_, value) = map_data.entries[idx]
           index_ref.val = idx + 1
-          let result_props : @map.Map[String, Value] = {}
+          let result_props : Map[String, Value] = {}
           result_props["value"] = value
           result_props["done"] = Bool(false)
           Object({
@@ -877,7 +888,7 @@ fn make_map_values_iterator(map_data : MapData) -> Value {
             extensible: true,
           })
         } else {
-          let result_props : @map.Map[String, Value] = {}
+          let result_props : Map[String, Value] = {}
           result_props["value"] = Undefined
           result_props["done"] = Bool(true)
           Object({
@@ -899,7 +910,7 @@ fn make_map_values_iterator(map_data : MapData) -> Value {
     extensible: true,
   })
 
-  let iter_props : @map.Map[String, Value] = {}
+  let iter_props : Map[String, Value] = {}
   iter_props["next"] = next_method
 
   let iter_obj = Object({
@@ -951,7 +962,7 @@ fn make_map_entries_iterator(map_data : MapData) -> Value {
           index_ref.val = idx + 1
           // Return [key, value] array
           let entry_array = Array({ elements: [key, value] })
-          let result_props : @map.Map[String, Value] = {}
+          let result_props : Map[String, Value] = {}
           result_props["value"] = entry_array
           result_props["done"] = Bool(false)
           Object({
@@ -965,7 +976,7 @@ fn make_map_entries_iterator(map_data : MapData) -> Value {
             extensible: true,
           })
         } else {
-          let result_props : @map.Map[String, Value] = {}
+          let result_props : Map[String, Value] = {}
           result_props["value"] = Undefined
           result_props["done"] = Bool(true)
           Object({
@@ -987,7 +998,7 @@ fn make_map_entries_iterator(map_data : MapData) -> Value {
     extensible: true,
   })
 
-  let iter_props : @map.Map[String, Value] = {}
+  let iter_props : Map[String, Value] = {}
   iter_props["next"] = next_method
 
   let iter_obj = Object({
@@ -1037,7 +1048,7 @@ fn make_set_values_iterator(set_data : SetData) -> Value {
         if idx < set_data.values.length() {
           let value = set_data.values[idx]
           index_ref.val = idx + 1
-          let result_props : @map.Map[String, Value] = {}
+          let result_props : Map[String, Value] = {}
           result_props["value"] = value
           result_props["done"] = Bool(false)
           Object({
@@ -1051,7 +1062,7 @@ fn make_set_values_iterator(set_data : SetData) -> Value {
             extensible: true,
           })
         } else {
-          let result_props : @map.Map[String, Value] = {}
+          let result_props : Map[String, Value] = {}
           result_props["value"] = Undefined
           result_props["done"] = Bool(true)
           Object({
@@ -1073,7 +1084,7 @@ fn make_set_values_iterator(set_data : SetData) -> Value {
     extensible: true,
   })
 
-  let iter_props : @map.Map[String, Value] = {}
+  let iter_props : Map[String, Value] = {}
   iter_props["next"] = next_method
 
   let iter_obj = Object({
@@ -1125,7 +1136,7 @@ fn make_set_entries_iterator(set_data : SetData) -> Value {
           index_ref.val = idx + 1
           // Return [value, value] array (Set entries are [value, value] pairs)
           let entry_array = Array({ elements: [value, value] })
-          let result_props : @map.Map[String, Value] = {}
+          let result_props : Map[String, Value] = {}
           result_props["value"] = entry_array
           result_props["done"] = Bool(false)
           Object({
@@ -1139,7 +1150,7 @@ fn make_set_entries_iterator(set_data : SetData) -> Value {
             extensible: true,
           })
         } else {
-          let result_props : @map.Map[String, Value] = {}
+          let result_props : Map[String, Value] = {}
           result_props["value"] = Undefined
           result_props["done"] = Bool(true)
           Object({
@@ -1161,7 +1172,7 @@ fn make_set_entries_iterator(set_data : SetData) -> Value {
     extensible: true,
   })
 
-  let iter_props : @map.Map[String, Value] = {}
+  let iter_props : Map[String, Value] = {}
   iter_props["next"] = next_method
 
   let iter_obj = Object({
