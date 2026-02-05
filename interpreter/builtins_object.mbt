@@ -614,18 +614,32 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
         }),
         "setPrototypeOf": make_native_func("setPrototypeOf", fn(args) {
-          // KNOWN LIMITATION: Object.setPrototypeOf does not actually modify the prototype chain.
-          // ObjectData.prototype is set at object creation and is currently immutable.
-          // This stub validates arguments and returns the object per spec behavior,
-          // but prototype-based inheritance changes will not take effect.
-          // Implementing full mutable prototypes requires architectural changes.
+          // Object.setPrototypeOf(obj, prototype)
+          // Sets the prototype of the specified object
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           let proto = if args.length() > 1 { args[1] } else { Null }
+          // Validate proto is Object or null
           match proto {
             Object(_) | Null => ()
             _ =>
               raise @errors.TypeError(
                 message="Object prototype may only be an Object or null",
+              )
+          }
+          // Set the prototype if obj is an Object
+          match obj {
+            Object(data) => {
+              // Check if object is extensible (frozen/sealed objects can't change prototype)
+              if not(data.extensible) {
+                raise @errors.TypeError(
+                  message="Cannot set prototype of non-extensible object",
+                )
+              }
+              data.prototype = proto
+            }
+            _ =>
+              raise @errors.TypeError(
+                message="Object.setPrototypeOf called on non-object",
               )
           }
           obj

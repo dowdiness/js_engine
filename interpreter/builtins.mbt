@@ -293,6 +293,60 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
           }
           String_(buf.to_string())
         }),
+        "raw": make_native_func("raw", fn(args) {
+          // String.raw(template, ...substitutions)
+          // Returns raw string content without processing escape sequences
+          if args.length() == 0 {
+            return String_("")
+          }
+          let template = args[0]
+          match template {
+            Object(data) =>
+              match data.properties.get("raw") {
+                Some(Array(raw_data)) => {
+                  let buf = StringBuilder::new()
+                  let raw_strings = raw_data.elements
+                  let sub_count = args.length() - 1
+                  for i = 0; i < raw_strings.length(); i = i + 1 {
+                    // Add raw string segment
+                    buf.write_string(raw_strings[i].to_string())
+                    // Add substitution if available
+                    if i < sub_count {
+                      buf.write_string(args[i + 1].to_string())
+                    }
+                  }
+                  String_(buf.to_string())
+                }
+                Some(Object(raw_obj)) => {
+                  // Handle object with numeric indices
+                  let buf = StringBuilder::new()
+                  let mut i = 0
+                  let sub_count = args.length() - 1
+                  loop {
+                    match raw_obj.properties.get(i.to_string()) {
+                      Some(str_val) => {
+                        buf.write_string(str_val.to_string())
+                        if i < sub_count {
+                          buf.write_string(args[i + 1].to_string())
+                        }
+                        i = i + 1
+                      }
+                      None => break
+                    }
+                  }
+                  String_(buf.to_string())
+                }
+                _ =>
+                  raise @errors.TypeError(
+                    message="Cannot convert to string template",
+                  )
+              }
+            _ =>
+              raise @errors.TypeError(
+                message="Cannot convert to string template",
+              )
+          }
+        }),
       },
       symbol_properties: {},
       prototype: Null,
