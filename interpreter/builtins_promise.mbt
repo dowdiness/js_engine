@@ -49,14 +49,16 @@ pub fn Interpreter::enqueue_microtask(
 pub fn Interpreter::run_microtasks(self : Interpreter) -> Unit raise Error {
   // Process microtasks until queue is empty
   // Note: new microtasks can be enqueued during execution
-  while self.microtask_queue.length() > 0 {
-    let task = self.microtask_queue.remove(0)
+  // Use index-based draining to avoid O(n²) from repeated remove(0)
+  let mut head = 0
+  while head < self.microtask_queue.length() {
+    let task = self.microtask_queue[head]
+    head = head + 1
     // Call the callback with the argument
     match task.callback {
       Object(obj_data) =>
         match obj_data.callable {
           Some(_) => {
-            // Create a dummy location for the call
             let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
             let _ = self.call_value(task.callback, Undefined, [task.argument], loc)
 
@@ -66,6 +68,8 @@ pub fn Interpreter::run_microtasks(self : Interpreter) -> Unit raise Error {
       _ => ()
     }
   }
+  // Clear processed microtasks
+  self.microtask_queue.clear()
 }
 
 ///|
@@ -105,7 +109,100 @@ fn create_resolving_functions(
           _ => ()
         }
 
-        fulfill_promise(i, promise_data, resolution)
+        // Thenable assimilation (ECMAScript §25.6.1.3.2)
+        // If the resolution is an object/function with a callable .then,
+        // subscribe to it rather than fulfilling directly.
+        match resolution {
+          Promise(pd) => {
+            // Native promise: subscribe to its settlement
+            let (res, rej) = create_resolving_functions(i, promise_data)
+            // Reset already_resolved for the new resolving functions
+            // (the outer already_resolved already guards re-entry)
+            match pd.state {
+              Pending => {
+                pd.fulfill_reactions.push({
+                  handler: None,
+                  resolve: res,
+                  reject: rej,
+                  reaction_type: Fulfill,
+                })
+                pd.reject_reactions.push({
+                  handler: None,
+                  resolve: res,
+                  reject: rej,
+                  reaction_type: Reject,
+                })
+              }
+              Fulfilled =>
+                enqueue_promise_reaction_job(
+                  i,
+                  { handler: None, resolve: res, reject: rej, reaction_type: Fulfill },
+                  pd.result,
+                )
+              Rejected =>
+                enqueue_promise_reaction_job(
+                  i,
+                  { handler: None, resolve: res, reject: rej, reaction_type: Reject },
+                  pd.result,
+                )
+            }
+          }
+          Object(od) => {
+            // Check for thenable: object with callable .then property
+            match od.properties.get("then") {
+              Some(then_val) =>
+                match then_val {
+                  Object(then_od) =>
+                    match then_od.callable {
+                      Some(_) => {
+                        // Thenable: enqueue job to call then(resolve, reject)
+                        let (res, rej) = create_resolving_functions(
+                          i,
+                          promise_data,
+                        )
+                        let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
+                        let job = Object({
+                          properties: {},
+                          symbol_properties: {},
+                          prototype: Null,
+                          callable: Some(
+                            InterpreterCallable(
+                              "PromiseResolveThenableJob",
+                              fn(i2, _t, _a) {
+                                try {
+                                  let _ = i2.call_value(
+                                    then_val, resolution, [res, rej], loc,
+                                  )
+
+                                } catch {
+                                  e => {
+                                    let err = js_error_to_value(e)
+                                    let _ = i2.call_value(
+                                      rej, Undefined, [err], loc,
+                                    )
+
+                                  }
+                                }
+                                Undefined
+                              },
+                            ),
+                          ),
+                          class_name: "Function",
+                          descriptors: {},
+                          symbol_descriptors: {},
+                          extensible: true,
+                        })
+                        i.enqueue_microtask(job, Undefined)
+                      }
+                      None => fulfill_promise(i, promise_data, resolution)
+                    }
+                  _ => fulfill_promise(i, promise_data, resolution)
+                }
+              None => fulfill_promise(i, promise_data, resolution)
+            }
+          }
+          _ => fulfill_promise(i, promise_data, resolution)
+        }
         Undefined
       }),
     ),
@@ -330,7 +427,9 @@ pub fn setup_promise(env : Environment) -> Unit {
                   promise_data.result,
                 )
               Rejected => {
-                promise_data.is_handled = true
+                if on_rejected is Some(_) {
+                  promise_data.is_handled = true
+                }
                 enqueue_promise_reaction_job(
                   interp,
                   reject_reaction,
@@ -622,7 +721,7 @@ pub fn setup_promise(env : Environment) -> Unit {
         let iterable = if args.length() > 0 { args[0] } else { Undefined }
 
         // Get array of promises
-        let promises = get_promise_array(iterable)
+        let promises = get_promise_array(interp, iterable)
         let count = promises.length()
 
         if count == 0 {
@@ -755,7 +854,7 @@ pub fn setup_promise(env : Environment) -> Unit {
     callable: Some(
       InterpreterCallable("race", fn(interp, _this, args) {
         let iterable = if args.length() > 0 { args[0] } else { Undefined }
-        let promises = get_promise_array(iterable)
+        let promises = get_promise_array(interp, iterable)
 
         // Create result promise
         let result_data = new_promise_data()
@@ -833,7 +932,7 @@ pub fn setup_promise(env : Environment) -> Unit {
     callable: Some(
       InterpreterCallable("allSettled", fn(interp, _this, args) {
         let iterable = if args.length() > 0 { args[0] } else { Undefined }
-        let promises = get_promise_array(iterable)
+        let promises = get_promise_array(interp, iterable)
         let count = promises.length()
 
         if count == 0 {
@@ -1037,7 +1136,7 @@ pub fn setup_promise(env : Environment) -> Unit {
     callable: Some(
       InterpreterCallable("any", fn(interp, _this, args) {
         let iterable = if args.length() > 0 { args[0] } else { Undefined }
-        let promises = get_promise_array(iterable)
+        let promises = get_promise_array(interp, iterable)
         let count = promises.length()
 
         if count == 0 {
@@ -1257,26 +1356,22 @@ pub fn setup_promise(env : Environment) -> Unit {
 }
 
 ///|
-/// Helper to extract array of values from iterable (simplified version)
-fn get_promise_array(iterable : Value) -> Array[Value] raise Error {
+/// Helper to extract array of values from iterable using iterator protocol
+fn get_promise_array(
+  interp : Interpreter,
+  iterable : Value,
+) -> Array[Value] raise Error {
   match iterable {
-    Array(data) => {
-      let result : Array[Value] = []
-      for elem in data.elements {
-        result.push(elem)
-      }
-      result
-    }
     Undefined | Null =>
       raise @errors.TypeError(message=
         "Cannot read properties of " +
         type_of(iterable) +
         " (reading 'Symbol(Symbol.iterator)')",
       )
-    _ =>
-      raise @errors.TypeError(message=
-        type_of(iterable) + " is not iterable",
-      )
+    _ => {
+      let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
+      interp.spread_iterable(iterable, loc)
+    }
   }
 }
 
