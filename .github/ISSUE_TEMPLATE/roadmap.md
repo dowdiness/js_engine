@@ -176,6 +176,7 @@ All 6 issues addressed in commit `3439764`:
 - `test`, `method`, `constructor` are reserved keywords — cannot be used as identifiers
 - `T?` not allowed in toplevel struct declarations — must use `Option[T]`
 - `type!` syntax deprecated — use `suberror` instead
+- `!` error handling syntax deprecated — use `raise Error` in function signatures instead of `!Error`
 - `.lsl()`, `.asr()` methods deprecated — use `<<`, `>>` infix operators
 - Hex literal method calls fail to parse (e.g., `0x7FFFFFFF.asr()`) — assign to variable first
 - Multiline strings (`#|`) in function call arguments trigger deprecation warning — use `let` binding
