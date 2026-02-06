@@ -496,6 +496,42 @@ fn Parser::parse_call(self : Parser) -> @ast.Expr raise Error {
       } else {
         expr = ComputedMember(expr, key, loc)
       }
+    } else if self.peek_kind() is NoSubTemplate(_) || self.peek_kind() is TemplateHead(_) {
+      // Tagged template: tag`string` or tag`str${expr}str`
+      let tloc = self.peek().loc
+      match self.peek_kind() {
+        NoSubTemplate(s) => {
+          self.pos += 1
+          expr = TaggedTemplate(expr, [s], [], tloc)
+        }
+        TemplateHead(first_str) => {
+          self.pos += 1
+          let strings : Array[String] = [first_str]
+          let exprs : Array[@ast.Expr] = []
+          while true {
+            exprs.push(self.parse_expr())
+            match self.peek_kind() {
+              TemplateMiddle(s) => {
+                self.pos += 1
+                strings.push(s)
+              }
+              TemplateTail(s) => {
+                self.pos += 1
+                strings.push(s)
+                break
+              }
+              _ => {
+                let t = self.peek()
+                raise @errors.SyntaxError(
+                  message="Expected template continuation, got \{t.kind} at line \{t.loc.line}, col \{t.loc.col}",
+                )
+              }
+            }
+          }
+          expr = TaggedTemplate(expr, strings, exprs, tloc)
+        }
+        _ => ()
+      }
     } else if self.at(QuestionDot) {
       // Optional chaining: ?. - start/continue optional chain
       in_optional_chain = true
@@ -863,40 +899,64 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
     if self.at(LParen) {
       // Method shorthand or getter/setter
       let mloc = self.peek().loc
-      let params = self.parse_params()
-      // Validate getter/setter arity
-      match prop_kind {
-        @ast.Get =>
-          if params.length() != 0 {
-            raise @errors.SyntaxError(
-              message="Getter must have exactly zero parameters",
+      let saved_pos = self.pos
+      let func_data : @ast.Expr = try {
+        let params = self.parse_params()
+        // Validate getter/setter arity
+        match prop_kind {
+          @ast.Get =>
+            if params.length() != 0 {
+              raise @errors.SyntaxError(
+                message="Getter must have exactly zero parameters",
+              )
+            }
+          @ast.Set =>
+            if params.length() != 1 {
+              raise @errors.SyntaxError(
+                message="Setter must have exactly one parameter",
+              )
+            }
+          @ast.Init | @ast.Spread => ()
+        }
+        let body = self.parse_block_body()
+        @ast.Expr::FuncExpr(
+          if computed { None } else { Some(key_name) },
+          params,
+          body,
+          mloc,
+        )
+      } catch {
+        Failure::Failure(msg) =>
+          if msg == "REST_PARAM_FOUND" || msg == "DEFAULT_PARAM_FOUND" || msg == "DESTRUCTURE_PARAM_FOUND" {
+            self.pos = saved_pos
+            let (ext_params, rest_param) = self.parse_params_ext()
+            let body = self.parse_block_body()
+            FuncExprExt(
+              if computed { None } else { Some(key_name) },
+              ext_params,
+              rest_param,
+              body,
+              mloc,
             )
+          } else {
+            raise @errors.SyntaxError(message=msg)
           }
-        @ast.Set =>
-          if params.length() != 1 {
-            raise @errors.SyntaxError(
-              message="Setter must have exactly one parameter",
-            )
-          }
-        @ast.Init | @ast.Spread => ()
+        e => raise e
       }
-      let body = self.parse_block_body()
-      let func_data : @ast.Expr = FuncExpr(
-        if computed {
-          None
-        } else {
-          Some(key_name)
-        },
-        params,
-        body,
-        mloc,
-      )
       props.push({ key: key_expr, value: func_data, kind: prop_kind, computed })
     } else if self.at(Colon) {
       // Normal property
       let _ = self.advance() // consume ':'
       let value = self.parse_assignment()
       props.push({ key: key_expr, value, kind: @ast.Init, computed })
+    } else if self.at(Assign) && is_ident_key {
+      // Shorthand with default (cover assignment pattern): { x = 42 }
+      // This is valid in destructuring: { x = 42 } = obj
+      let _ = self.advance() // consume '='
+      let default_val = self.parse_assignment()
+      // Represent as Assign expr so destructuring can pick it up
+      let value : @ast.Expr = Assign(key_name, default_val, loc)
+      props.push({ key: key_expr, value, kind: @ast.Init, computed: false })
     } else if self.at(Comma) || self.at(RBrace) {
       // Shorthand property: { x } => { x: x }
       // Only identifier keys can use shorthand syntax

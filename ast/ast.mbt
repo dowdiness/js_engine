@@ -134,6 +134,7 @@ pub(all) enum Expr {
   SuperMember(String, @token.Loc) // super.prop
   SuperComputedMember(Expr, @token.Loc) // super[expr]
   NewTargetExpr(@token.Loc) // new.target
+  TaggedTemplate(Expr, Array[String], Array[Expr], @token.Loc) // tag`str${expr}str`
 } derive(Show, Eq)
 
 ///|
@@ -186,6 +187,8 @@ pub(all) enum Stmt {
   DoWhileStmt(Stmt, Expr, @token.Loc)
   ForInStmt(VarKind?, String, Expr, Stmt, @token.Loc)
   ForOfStmt(VarKind?, String, Expr, Stmt, @token.Loc)
+  ForInStmtPat(VarKind, Pattern, Expr, Stmt, @token.Loc)
+  ForOfStmtPat(VarKind, Pattern, Expr, Stmt, @token.Loc)
   DestructureDecl(VarKind, Pattern, Expr, @token.Loc)
   LabeledStmt(String, Stmt, @token.Loc)
   // Class declaration

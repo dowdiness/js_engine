@@ -281,6 +281,28 @@ fn Parser::parse_for_stmt(self : Parser) -> @ast.Stmt raise Error {
       Const => ConstKind
       _ => VarKind
     }
+    // Check for destructuring pattern in for-of/for-in: for (let [a,b] of ...) or for (let {x,y} of ...)
+    if self.at(LBracket) || self.at(LBrace) {
+      let pat = self.parse_pattern()
+      if self.eat(Of) {
+        let obj = self.parse_assignment()
+        let _ = self.expect(RParen)
+        let body = self.parse_stmt()
+        return ForOfStmtPat(var_kind, pat, obj, body, tok.loc)
+      }
+      if self.eat(In) {
+        let obj = self.parse_expr()
+        let _ = self.expect(RParen)
+        let body = self.parse_stmt()
+        return ForInStmtPat(var_kind, pat, obj, body, tok.loc)
+      }
+      // Destructuring in regular for: for (let [a,b] = ...; ...; ...)
+      let _ = self.expect(Assign)
+      let init_expr = self.parse_assignment()
+      self.eat_semicolon()
+      let init : @ast.Stmt? = Some(DestructureDecl(var_kind, pat, init_expr, var_tok.loc))
+      return self.parse_for_rest(init, tok.loc)
+    }
     let name = self.expect_ident()
     if self.eat(In) {
       // for-in with var declaration

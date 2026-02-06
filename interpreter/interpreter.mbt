@@ -528,6 +528,157 @@ fn Interpreter::exec_stmt(
       }
       Normal(Undefined)
     }
+    ForInStmtPat(var_kind, pattern, obj_expr, body, _) => {
+      let obj = self.eval_expr(obj_expr, env)
+      let keys = collect_for_in_keys(obj)
+      let bk : BindingKind = match var_kind {
+        LetKind => LetBinding
+        ConstKind => ConstBinding
+        VarKind => VarBinding
+      }
+      for key in keys {
+        let body_env = Environment::new(parent=Some(env))
+        self.bind_pattern(pattern, String_(key), body_env, bk)
+        match self.exec_stmt(body, body_env) {
+          Normal(_) => ()
+          ReturnSignal(v) => return ReturnSignal(v)
+          BreakSignal(None) => break
+          BreakSignal(Some(l)) =>
+            if label == Some(l) {
+              break
+            } else {
+              return BreakSignal(Some(l))
+            }
+          ContinueSignal(None) => continue
+          ContinueSignal(Some(l)) =>
+            if label == Some(l) {
+              continue
+            } else {
+              return ContinueSignal(Some(l))
+            }
+        }
+      }
+      Normal(Undefined)
+    }
+    ForOfStmtPat(var_kind, pattern, iterable_expr, body, loc) => {
+      let iterable = self.eval_expr(iterable_expr, env)
+
+      // Try to get the iterator via Symbol.iterator protocol
+      let iterator_sym = get_iterator_symbol()
+      let iterator_method = self.get_computed_property(
+        iterable,
+        Symbol(iterator_sym),
+        loc,
+      )
+
+      // Get the iterator object
+      let iterator = match iterator_method {
+        Object(data) =>
+          match data.callable {
+            Some(_) => self.call_value(iterator_method, iterable, [], loc)
+            None =>
+              raise @errors.TypeError(
+                message="Result of the Symbol.iterator method is not an object",
+              )
+          }
+        Undefined =>
+          match iterable {
+            Array(arr) => make_array_iterator_value(arr)
+            String_(s) => make_string_iterator_value(s)
+            _ =>
+              raise @errors.TypeError(
+                message="\{type_of(iterable)} is not iterable",
+              )
+          }
+        _ =>
+          raise @errors.TypeError(
+            message="Result of the Symbol.iterator method is not an object",
+          )
+      }
+
+      // Get the next method
+      let next_method = match iterator {
+        Object(iter_data) =>
+          match iter_data.properties.get("next") {
+            Some(next_fn) => next_fn
+            None => {
+              let mut found : Value = Undefined
+              let mut current = iter_data.prototype
+              while true {
+                match current {
+                  Object(proto_data) =>
+                    match proto_data.properties.get("next") {
+                      Some(next_fn) => {
+                        found = next_fn
+                        break
+                      }
+                      None => current = proto_data.prototype
+                    }
+                  _ => break
+                }
+              }
+              match found {
+                Undefined =>
+                  raise @errors.TypeError(
+                    message="iterator.next is not a function",
+                  )
+                _ => found
+              }
+            }
+          }
+        _ => raise @errors.TypeError(message="Iterator is not an object")
+      }
+
+      let bk : BindingKind = match var_kind {
+        LetKind => LetBinding
+        ConstKind => ConstBinding
+        VarKind => VarBinding
+      }
+
+      // Iterate using the iterator protocol
+      while true {
+        let result = self.call_value(next_method, iterator, [], loc)
+        let (done, value) = match result {
+          Object(result_data) => {
+            let done_val = match result_data.properties.get("done") {
+              Some(v) => is_truthy(v)
+              None => false
+            }
+            let value_val = match result_data.properties.get("value") {
+              Some(v) => v
+              None => Undefined
+            }
+            (done_val, value_val)
+          }
+          _ =>
+            raise @errors.TypeError(message="Iterator result is not an object")
+        }
+        if done {
+          break
+        }
+        let body_env = Environment::new(parent=Some(env))
+        self.bind_pattern(pattern, value, body_env, bk)
+        match self.exec_stmt(body, body_env) {
+          Normal(_) => ()
+          ReturnSignal(v) => return ReturnSignal(v)
+          BreakSignal(None) => break
+          BreakSignal(Some(l)) =>
+            if label == Some(l) {
+              break
+            } else {
+              return BreakSignal(Some(l))
+            }
+          ContinueSignal(None) => continue
+          ContinueSignal(Some(l)) =>
+            if label == Some(l) {
+              continue
+            } else {
+              return ContinueSignal(Some(l))
+            }
+        }
+      }
+      Normal(Undefined)
+    }
     DestructureDecl(kind, pattern, init_expr, _) => {
       let bk : BindingKind = match kind {
         LetKind => LetBinding
@@ -1407,6 +1558,48 @@ fn Interpreter::eval_expr(
         }
       }
       String_(buf.to_string())
+    }
+    TaggedTemplate(tag_expr, strings, exprs, loc) => {
+      let tag = self.eval_expr(tag_expr, env)
+      // Build the strings array (template object)
+      let str_vals : Array[Value] = []
+      for s in strings {
+        str_vals.push(String_(s))
+      }
+      // Build the raw array (same as cooked for now - raw doesn't process escapes)
+      let raw_vals : Array[Value] = []
+      for s in strings {
+        raw_vals.push(String_(s))
+      }
+      let raw_arr = Array({ elements: raw_vals })
+      // Create the template strings object as an array-like object with raw property
+      let template_obj = Object({
+        properties: {
+          "length": Number(strings.length().to_double()),
+          "raw": raw_arr,
+        },
+        symbol_properties: {},
+        prototype: try { self.global.get("[[ObjectPrototype]]") } catch { _ => Null },
+        callable: None,
+        class_name: "Array",
+        descriptors: {},
+        symbol_descriptors: {},
+        extensible: true,
+      })
+      // Add indexed string properties
+      match template_obj {
+        Object(data) =>
+          for i, s in strings {
+            data.properties[i.to_string()] = String_(s)
+          }
+        _ => ()
+      }
+      // Build args: [templateObj, ...substitutions]
+      let args : Array[Value] = [template_obj]
+      for e in exprs {
+        args.push(self.eval_expr(e, env))
+      }
+      self.call_value(tag, Undefined, args, loc)
     }
     ArrowFunc(params, body, _) => {
       let func_data : FuncData = { name: None, params, body, closure: env }
