@@ -86,22 +86,19 @@ FEATURE_SUPPORT_MAP = {
 
 # Test262 features the engine definitely cannot handle
 UNSUPPORTED_TEST262_FEATURES = {
-    # Async / Promises
-    "Promise", "Promise.allSettled", "Promise.any", "Promise.prototype.finally",
+    # Async / Promises (async-functions and async-iteration still unsupported)
+    "async-functions", "async-iteration",
     "promise-with-resolvers", "promise-try",
-    "async-functions", "async-iteration", "top-level-await",
+    "top-level-await",
 
     # Generators
     "generators", "generator",
 
-    # Classes
-    "class", "class-fields-private", "class-fields-public",
+    # Classes (advanced features not yet supported)
+    "class-fields-private", "class-fields-public",
     "class-methods-private", "class-static-fields-private",
     "class-static-fields-public", "class-static-methods-private",
     "class-static-block",
-
-    # Object literal features not yet implemented
-    "object-spread", "object-rest",
 
     # Iteration / ordering
     "for-in-order",
@@ -137,17 +134,7 @@ UNSUPPORTED_TEST262_FEATURES = {
     "RegExp.escape",
     "String.prototype.matchAll",
 
-    # Missing built-in statics / methods
-    "Object.fromEntries", "Object.is", "Object.hasOwn",
-    "Array.from", "Array.prototype.at",
-    "String.prototype.replaceAll",
-    "String.prototype.isWellFormed",
-    "String.prototype.toWellFormed",
-
     # Missing operators and syntax
-    "numeric-separator-literal",
-    "logical-assignment-operators",
-    "new.target",
     "hashbang",
 
     # Intl / locale
@@ -162,18 +149,24 @@ UNSUPPORTED_TEST262_FEATURES = {
     "Temporal", "ShadowRealm",
     "decorators",
     "explicit-resource-management",
-    "change-array-by-copy",
-    "array-find-from-last",
-    "string-trimming",
     "json-parse-with-source",
 
     # Removed in Phase 2+3 (now supported): arrow-function, template,
     # destructuring-binding, destructuring-assignment, default-parameters,
     # rest-parameters, for-of, Object.entries, Array.prototype.flat,
     # Array.prototype.flatMap, Array.prototype.includes
+    # Removed in Phase 3.6+4 (now supported): class, numeric-separator-literal,
+    # logical-assignment-operators
+    # Removed in Phase 5 (now supported): Promise, Promise.allSettled,
+    # Promise.any, Promise.prototype.finally, Object.fromEntries, Object.is,
+    # Object.hasOwn, Array.from, Array.prototype.at,
+    # String.prototype.replaceAll, String.prototype.isWellFormed,
+    # String.prototype.toWellFormed, change-array-by-copy,
+    # array-find-from-last, string-trimming, new.target,
+    # object-spread, object-rest
 }
 
-UNSUPPORTED_FLAGS = {"module", "async", "CanBlockIsFalse", "CanBlockIsTrue"}
+UNSUPPORTED_FLAGS = {"module", "CanBlockIsFalse", "CanBlockIsTrue"}
 
 # Test262 categories that map well to engine capabilities
 CATEGORY_ANALYSIS = {

@@ -637,6 +637,17 @@ fn Parser::parse_primary(self : Parser) -> @ast.Expr raise Error {
 ///|
 fn Parser::parse_new_expr(self : Parser) -> @ast.Expr raise Error {
   let loc = self.advance().loc // consume 'new'
+  // Check for new.target meta-property
+  if self.at(Dot) {
+    match self.peek_kind_at(1) {
+      Ident("target") => {
+        let _ = self.advance() // consume '.'
+        let _ = self.advance() // consume 'target'
+        return NewTargetExpr(loc)
+      }
+      _ => ()
+    }
+  }
   // Parse constructor — allow member access (new Foo.Bar())
   let mut callee = self.parse_primary()
   while self.at(Dot) {
@@ -696,6 +707,25 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
   let loc = self.advance().loc // consume '{'
   let props : Array[@ast.Property] = []
   while not(self.at(RBrace)) && not(self.at(EOF)) {
+    // Check for spread property: { ...expr }
+    if self.at(DotDotDot) {
+      let spread_loc = self.advance().loc
+      let expr = self.parse_assignment()
+      props.push(
+        {
+          key: expr,
+          value: UndefinedLit(spread_loc),
+          kind: @ast.Spread,
+          computed: false,
+        },
+      )
+      if not(self.at(RBrace)) {
+        if self.at(Comma) {
+          let _ = self.advance()
+        }
+      }
+      continue
+    }
     // Check for getter/setter
     let prop_kind : @ast.PropKind = match self.peek_kind() {
       Ident("get") =>
@@ -775,7 +805,7 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
               message="Setter must have exactly one parameter",
             )
           }
-        @ast.Init => ()
+        @ast.Init | @ast.Spread => ()
       }
       let body = self.parse_block_body()
       let func_data : @ast.Expr = FuncExpr(
@@ -1056,7 +1086,7 @@ fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
                 message="Setter must have exactly one parameter",
               )
             }
-          @ast.Init => ()
+          @ast.Init | @ast.Spread => ()
         }
         let body = self.parse_block_body()
         let func_val : @ast.Expr = FuncExprExt(
@@ -1091,7 +1121,7 @@ fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
           message="Setter must have exactly one parameter",
         )
       }
-    @ast.Init => ()
+    @ast.Init | @ast.Spread => ()
   }
   let body = self.parse_block_body()
   let func_val : @ast.Expr = FuncExpr(None, params, body, mloc)
