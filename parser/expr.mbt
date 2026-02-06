@@ -454,6 +454,10 @@ fn Parser::parse_call(self : Parser) -> @ast.Expr raise Error {
           args.push(self.parse_assignment())
         }
         while self.eat(Comma) {
+          // Trailing comma support: if we see ) after comma, stop
+          if self.at(RParen) {
+            break
+          }
           if self.at(DotDotDot) {
             let sloc = self.advance().loc
             args.push(SpreadExpr(self.parse_assignment(), sloc))
@@ -502,6 +506,7 @@ fn Parser::parse_call(self : Parser) -> @ast.Expr raise Error {
             args.push(self.parse_assignment())
           }
           while self.eat(Comma) {
+            if self.at(RParen) { break }
             if self.at(DotDotDot) {
               let sloc = self.advance().loc
               args.push(SpreadExpr(self.parse_assignment(), sloc))
@@ -668,6 +673,7 @@ fn Parser::parse_new_expr(self : Parser) -> @ast.Expr raise Error {
         args.push(self.parse_assignment())
       }
       while self.eat(Comma) {
+        if self.at(RParen) { break }
         if self.at(DotDotDot) {
           let sloc = self.advance().loc
           args.push(SpreadExpr(self.parse_assignment(), sloc))
@@ -727,22 +733,27 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
       continue
     }
     // Check for getter/setter
+    // Note: The lexer produces Get/Set tokens for "get"/"set" keywords.
+    // We need to distinguish: { get foo() {} } (getter) vs { get: 42 } (property named "get")
+    // Also handle: { get() {} } (method named "get")
     let prop_kind : @ast.PropKind = match self.peek_kind() {
-      Ident("get") =>
+      Get =>
         match self.peek_kind_at(1) {
           Ident(_) | String_(_) | Number(_) | LBracket => {
+            // get <name>(...) - this is a getter
             self.pos += 1
             @ast.Get
           }
-          _ => @ast.Init
+          _ => @ast.Init // get: value, get(), get} etc.
         }
-      Ident("set") =>
+      Set =>
         match self.peek_kind_at(1) {
           Ident(_) | String_(_) | Number(_) | LBracket => {
+            // set <name>(...) - this is a setter
             self.pos += 1
             @ast.Set
           }
-          _ => @ast.Init
+          _ => @ast.Init // set: value, set(), set} etc.
         }
       _ => @ast.Init
     }
@@ -780,10 +791,59 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
         (expr, "", true, false)
       }
       _ => {
-        let t = self.peek()
-        raise @errors.SyntaxError(
-          message="Expected property name, got \{t.kind} at line \{t.loc.line}, col \{t.loc.col}",
-        )
+        // Keywords can be used as property names in object literals
+        let kw_name : String? = match self.peek_kind() {
+          Get => Some("get")
+          Set => Some("set")
+          Let => Some("let")
+          Const => Some("const")
+          Var => Some("var")
+          Function => Some("function")
+          Return => Some("return")
+          If => Some("if")
+          Else => Some("else")
+          While => Some("while")
+          For => Some("for")
+          Break => Some("break")
+          Continue => Some("continue")
+          True => Some("true")
+          False => Some("false")
+          Null => Some("null")
+          Undefined => Some("undefined")
+          Typeof => Some("typeof")
+          Throw => Some("throw")
+          Try => Some("try")
+          Catch => Some("catch")
+          Finally => Some("finally")
+          New => Some("new")
+          This => Some("this")
+          Switch => Some("switch")
+          Case => Some("case")
+          Default => Some("default")
+          Void => Some("void")
+          Delete => Some("delete")
+          Do => Some("do")
+          In => Some("in")
+          Instanceof => Some("instanceof")
+          Of => Some("of")
+          Class => Some("class")
+          Extends => Some("extends")
+          Super => Some("super")
+          Static => Some("static")
+          _ => None
+        }
+        match kw_name {
+          Some(name) => {
+            let kloc = self.advance().loc
+            (StringLit(name, kloc), name, false, true)
+          }
+          None => {
+            let t = self.peek()
+            raise @errors.SyntaxError(
+              message="Expected property name, got \{t.kind} at line \{t.loc.line}, col \{t.loc.col}",
+            )
+          }
+        }
       }
     }
     // Check for method shorthand, getter, or setter: identifier followed by (
@@ -1036,7 +1096,7 @@ fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
       }
     _ => ()
   }
-  // Parse method name
+  // Parse method name (keywords can be used as method names)
   let (key_expr, computed) : (@ast.Expr, Bool) = match self.peek_kind() {
     Ident(name) => {
       let kloc = self.advance().loc
@@ -1059,10 +1119,59 @@ fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
       (expr, true)
     }
     _ => {
-      let t = self.peek()
-      raise @errors.SyntaxError(
-        message="Expected method name at line \{t.loc.line}, col \{t.loc.col}",
-      )
+      // Keywords can be used as method names in classes
+      let kw_name : String? = match self.peek_kind() {
+        Get => Some("get")
+        Set => Some("set")
+        Let => Some("let")
+        Const => Some("const")
+        Var => Some("var")
+        Function => Some("function")
+        Return => Some("return")
+        If => Some("if")
+        Else => Some("else")
+        While => Some("while")
+        For => Some("for")
+        Break => Some("break")
+        Continue => Some("continue")
+        True => Some("true")
+        False => Some("false")
+        Null => Some("null")
+        Undefined => Some("undefined")
+        Typeof => Some("typeof")
+        Throw => Some("throw")
+        Try => Some("try")
+        Catch => Some("catch")
+        Finally => Some("finally")
+        New => Some("new")
+        This => Some("this")
+        Switch => Some("switch")
+        Case => Some("case")
+        Default => Some("default")
+        Void => Some("void")
+        Delete => Some("delete")
+        Do => Some("do")
+        In => Some("in")
+        Instanceof => Some("instanceof")
+        Of => Some("of")
+        Class => Some("class")
+        Extends => Some("extends")
+        Super => Some("super")
+        Static => Some("static")
+        _ => None
+      }
+      match kw_name {
+        Some(name) => {
+          let kloc = self.advance().loc
+          (StringLit(name, kloc), false)
+        }
+        None => {
+          let t = self.peek()
+          raise @errors.SyntaxError(
+            message="Expected method name at line \{t.loc.line}, col \{t.loc.col}",
+          )
+        }
+      }
     }
   }
   // Parse method parameters and body
@@ -1154,6 +1263,7 @@ fn Parser::parse_super_expr(self : Parser) -> @ast.Expr raise Error {
         args.push(self.parse_assignment())
       }
       while self.eat(Comma) {
+        if self.at(RParen) { break }
         if self.at(DotDotDot) {
           let sloc = self.advance().loc
           args.push(SpreadExpr(self.parse_assignment(), sloc))
