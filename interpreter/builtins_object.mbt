@@ -93,8 +93,12 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 if key == "length" {
                   Bool(true)
                 } else {
-                  let idx = try { @strconv.parse_int!(key) } catch { _ => -1 }
-                  Bool(idx >= 0 && idx < data.elements.length())
+                  let idx = try { @strconv.parse_int(key) } catch { _ => -1 }
+                  Bool(
+                    idx >= 0 &&
+                    idx.to_string() == key &&
+                    idx < data.elements.length(),
+                  )
                 }
               }
               String_(s) => {
@@ -102,8 +106,10 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 if key == "length" {
                   Bool(true)
                 } else {
-                  let idx = try { @strconv.parse_int!(key) } catch { _ => -1 }
-                  Bool(idx >= 0 && idx < s.length())
+                  let idx = try { @strconv.parse_int(key) } catch { _ => -1 }
+                  Bool(
+                    idx >= 0 && idx.to_string() == key && idx < s.length(),
+                  )
                 }
               }
               _ => Bool(false)
@@ -137,16 +143,22 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 if key == "length" {
                   Bool(false) // length is not enumerable
                 } else {
-                  let idx = try { @strconv.parse_int!(key) } catch { _ => -1 }
-                  Bool(idx >= 0 && idx < data.elements.length())
+                  let idx = try { @strconv.parse_int(key) } catch { _ => -1 }
+                  Bool(
+                    idx >= 0 &&
+                    idx.to_string() == key &&
+                    idx < data.elements.length(),
+                  )
                 }
               }
               String_(s) => {
                 if key == "length" {
                   Bool(false)
                 } else {
-                  let idx = try { @strconv.parse_int!(key) } catch { _ => -1 }
-                  Bool(idx >= 0 && idx < s.length())
+                  let idx = try { @strconv.parse_int(key) } catch { _ => -1 }
+                  Bool(
+                    idx >= 0 && idx.to_string() == key && idx < s.length(),
+                  )
                 }
               }
               _ => Bool(false)
@@ -163,8 +175,30 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         symbol_properties: {},
         prototype: Null,
         callable: Some(
-          MethodCallable("isPrototypeOf", fn(_this_val, _args) {
-            // Simplified stub - always false for now
+          MethodCallable("isPrototypeOf", fn(this_val, args) {
+            // Walk the argument's prototype chain looking for this_val
+            let arg = if args.length() > 0 { args[0] } else { Undefined }
+            let mut current : Value = match arg {
+              Object(data) => data.prototype
+              _ => return Bool(false)
+            }
+            while true {
+              match current {
+                Null | Undefined => return Bool(false)
+                Object(proto_data) => {
+                  // Compare by reference identity - check if this_val is the same object
+                  match this_val {
+                    Object(this_data) =>
+                      if physical_equal(this_data, proto_data) {
+                        return Bool(true)
+                      }
+                    _ => ()
+                  }
+                  current = proto_data.prototype
+                }
+                _ => return Bool(false)
+              }
+            }
             Bool(false)
           }),
         ),
@@ -872,8 +906,14 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                   )
                 } else {
                   // Check indexed properties
-                  let idx = try { @strconv.parse_int!(prop_name) } catch { _ => -1 }
-                  if idx >= 0 && idx < data.elements.length() {
+                  let idx = try {
+                    @strconv.parse_int(prop_name)
+                  } catch {
+                    _ => -1
+                  }
+                  if idx >= 0 &&
+                    idx.to_string() == prop_name &&
+                    idx < data.elements.length() {
                     make_desc(data.elements[idx], true, true, true)
                   } else {
                     Undefined
@@ -888,8 +928,14 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                     false,
                   )
                 } else {
-                  let idx = try { @strconv.parse_int!(prop_name) } catch { _ => -1 }
-                  if idx >= 0 && idx < s.length() {
+                  let idx = try {
+                    @strconv.parse_int(prop_name)
+                  } catch {
+                    _ => -1
+                  }
+                  if idx >= 0 &&
+                    idx.to_string() == prop_name &&
+                    idx < s.length() {
                     let chars = s.to_array()
                     let buf = StringBuilder::new()
                     buf.write_char(chars[idx])
@@ -1117,7 +1163,11 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 Bool(true)
               } else {
                 let idx = @strconv.parse_int(key) catch { _ => -1 }
-                Bool(idx >= 0 && idx < data.elements.length())
+                Bool(
+                  idx >= 0 &&
+                  idx.to_string() == key &&
+                  idx < data.elements.length(),
+                )
               }
             }
             _ => Bool(false)
@@ -2829,11 +2879,30 @@ pub fn get_array_like_element(val : Value, index : Int) -> Value {
       } else {
         Undefined
       }
-    Object(data) =>
+    Object(data) => {
+      // Walk prototype chain for property lookup
       match data.properties.get(key) {
         Some(v) => v
-        None => Undefined
+        None => {
+          let mut current = data.prototype
+          let mut result : Value = Undefined
+          while true {
+            match current {
+              Object(proto_data) =>
+                match proto_data.properties.get(key) {
+                  Some(v) => {
+                    result = v
+                    break
+                  }
+                  None => current = proto_data.prototype
+                }
+              _ => break
+            }
+          }
+          result
+        }
       }
+    }
     String_(s) => {
       let chars = s.to_array()
       if index >= 0 && index < chars.length() {
@@ -2854,7 +2923,25 @@ pub fn has_array_like_element(val : Value, index : Int) -> Bool {
   let key = index.to_string()
   match val {
     Array(data) => index >= 0 && index < data.elements.length()
-    Object(data) => data.properties.contains(key)
+    Object(data) => {
+      if data.properties.contains(key) {
+        return true
+      }
+      // Walk prototype chain
+      let mut current = data.prototype
+      while true {
+        match current {
+          Object(proto_data) =>
+            if proto_data.properties.contains(key) {
+              return true
+            } else {
+              current = proto_data.prototype
+            }
+          _ => break
+        }
+      }
+      false
+    }
     String_(s) => index >= 0 && index < s.length()
     _ => false
   }

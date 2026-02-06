@@ -884,7 +884,9 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
         match kw_name {
           Some(name) => {
             let kloc = self.advance().loc
-            (StringLit(name, kloc), name, false, true)
+            // Keywords are not valid IdentifierReference, so is_ident_key = false
+            // This prevents `{ for }` or `{ for = 42 }` shorthand syntax
+            (StringLit(name, kloc), name, false, false)
           }
           None => {
             let t = self.peek()
