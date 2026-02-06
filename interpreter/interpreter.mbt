@@ -1220,10 +1220,11 @@ fn Interpreter::eval_expr(
           }
         }
       }
+      let obj_prototype : Value = try { env.get("[[ObjectPrototype]]") } catch { _ => Null }
       Object({
         properties,
         symbol_properties,
-        prototype: Null,
+        prototype: obj_prototype,
         callable: None,
         class_name: "Object",
         descriptors,

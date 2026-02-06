@@ -4,8 +4,40 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
   // Object.getPrototypeOf, Object.getOwnPropertyNames
   let obj_proto : Value = Object({
     properties: {
-      "toString": make_native_func("toString", fn(_args) {
-        String_("[object Object]")
+      "toString": Object({
+        properties: {},
+        symbol_properties: {},
+        prototype: Null,
+        callable: Some(
+          MethodCallable("toString", fn(this_val, _args) {
+            match this_val {
+              Undefined => String_("[object Undefined]")
+              Null => String_("[object Null]")
+              Bool(_) => String_("[object Boolean]")
+              Number(_) => String_("[object Number]")
+              String_(_) => String_("[object String]")
+              Array(_) => String_("[object Array]")
+              Symbol(_) => String_("[object Symbol]")
+              Object(data) =>
+                if data.class_name == "Function" {
+                  String_("[object Function]")
+                } else if data.class_name == "RegExp" {
+                  String_("[object RegExp]")
+                } else if data.class_name == "Error" {
+                  String_("[object Error]")
+                } else if data.class_name == "Date" {
+                  String_("[object Date]")
+                } else {
+                  String_("[object Object]")
+                }
+              _ => String_("[object Object]")
+            }
+          }),
+        ),
+        class_name: "Function",
+        descriptors: {},
+        symbol_descriptors: {},
+        extensible: true,
       }),
       "valueOf": Object({
         properties: {},
@@ -28,13 +60,88 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             let key_val = if args.length() > 0 { args[0] } else { Undefined }
             match this_val {
               Object(data) =>
-                // Handle Symbol keys
                 match key_val {
                   Symbol(sym) => Bool(data.symbol_properties.contains(sym.id))
                   _ => Bool(data.properties.contains(key_val.to_string()))
                 }
+              Array(data) => {
+                let key = key_val.to_string()
+                if key == "length" {
+                  Bool(true)
+                } else {
+                  let idx = try { @strconv.parse_int!(key) } catch { _ => -1 }
+                  Bool(idx >= 0 && idx < data.elements.length())
+                }
+              }
+              String_(s) => {
+                let key = key_val.to_string()
+                if key == "length" {
+                  Bool(true)
+                } else {
+                  let idx = try { @strconv.parse_int!(key) } catch { _ => -1 }
+                  Bool(idx >= 0 && idx < s.length())
+                }
+              }
               _ => Bool(false)
             }
+          }),
+        ),
+        class_name: "Function",
+        descriptors: {},
+        symbol_descriptors: {},
+        extensible: true,
+      }),
+      "propertyIsEnumerable": Object({
+        properties: {},
+        symbol_properties: {},
+        prototype: Null,
+        callable: Some(
+          MethodCallable("propertyIsEnumerable", fn(this_val, args) {
+            let key_val = if args.length() > 0 { args[0] } else { Undefined }
+            let key = key_val.to_string()
+            match this_val {
+              Object(data) =>
+                if data.properties.contains(key) {
+                  match data.descriptors.get(key) {
+                    Some(d) => Bool(d.enumerable)
+                    None => Bool(true)
+                  }
+                } else {
+                  Bool(false)
+                }
+              Array(data) => {
+                if key == "length" {
+                  Bool(false) // length is not enumerable
+                } else {
+                  let idx = try { @strconv.parse_int!(key) } catch { _ => -1 }
+                  Bool(idx >= 0 && idx < data.elements.length())
+                }
+              }
+              String_(s) => {
+                if key == "length" {
+                  Bool(false)
+                } else {
+                  let idx = try { @strconv.parse_int!(key) } catch { _ => -1 }
+                  Bool(idx >= 0 && idx < s.length())
+                }
+              }
+              _ => Bool(false)
+            }
+          }),
+        ),
+        class_name: "Function",
+        descriptors: {},
+        symbol_descriptors: {},
+        extensible: true,
+      }),
+      "isPrototypeOf": Object({
+        properties: {},
+        symbol_properties: {},
+        prototype: Null,
+        callable: Some(
+          MethodCallable("isPrototypeOf", fn(_this_val, _args) {
+            // Simplified stub - always false for now
+            Bool(false)
           }),
         ),
         class_name: "Function",
@@ -47,10 +154,18 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     prototype: Null,
     callable: None,
     class_name: "Object",
-    descriptors: {},
+    descriptors: {
+      "toString": { writable: true, enumerable: false, configurable: true },
+      "valueOf": { writable: true, enumerable: false, configurable: true },
+      "hasOwnProperty": { writable: true, enumerable: false, configurable: true },
+      "propertyIsEnumerable": { writable: true, enumerable: false, configurable: true },
+      "isPrototypeOf": { writable: true, enumerable: false, configurable: true },
+    },
     symbol_descriptors: {},
     extensible: true,
   })
+  // Store Object.prototype so plain objects {} can link to it
+  env.def_builtin("[[ObjectPrototype]]", obj_proto)
   env.def_builtin(
     "Object",
     Object({
@@ -461,6 +576,23 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               data.properties.each(fn(k, _v) { keys.push(String_(k)) })
               Array({ elements: keys })
             }
+            Array(data) => {
+              let keys : Array[Value] = []
+              for i = 0; i < data.elements.length(); i = i + 1 {
+                keys.push(String_(i.to_string()))
+              }
+              keys.push(String_("length"))
+              Array({ elements: keys })
+            }
+            String_(s) => {
+              let keys : Array[Value] = []
+              let chars = s.to_array()
+              for i = 0; i < chars.length(); i = i + 1 {
+                keys.push(String_(i.to_string()))
+              }
+              keys.push(String_("length"))
+              Array({ elements: keys })
+            }
             _ => Array({ elements: [] })
           }
         }),
@@ -662,6 +794,29 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             } else {
               ""
             }
+            fn make_desc(
+              val : Value,
+              writable : Bool,
+              enumerable : Bool,
+              configurable : Bool
+            ) -> Value {
+              Object({
+                properties: {
+                  "value": val,
+                  "writable": Bool(writable),
+                  "enumerable": Bool(enumerable),
+                  "configurable": Bool(configurable),
+                },
+                symbol_properties: {},
+                prototype: Null,
+                callable: None,
+                class_name: "Object",
+                descriptors: {},
+                symbol_descriptors: {},
+                extensible: true,
+              })
+            }
+
             match obj {
               Object(data) =>
                 match data.properties.get(prop_name) {
@@ -679,23 +834,45 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                       Some(d) => d.configurable
                       None => true
                     }
-                    Object({
-                      properties: {
-                        "value": val,
-                        "writable": Bool(writable),
-                        "enumerable": Bool(enumerable),
-                        "configurable": Bool(configurable),
-                      },
-                      symbol_properties: {},
-                      prototype: Null,
-                      callable: None,
-                      class_name: "Object",
-                      descriptors: {},
-                      symbol_descriptors: {},
-                      extensible: true,
-                    })
+                    make_desc(val, writable, enumerable, configurable)
                   }
                   None => Undefined
+                }
+              Array(data) =>
+                if prop_name == "length" {
+                  make_desc(
+                    Number(data.elements.length().to_double()),
+                    true,
+                    false,
+                    false,
+                  )
+                } else {
+                  // Check indexed properties
+                  let idx = try { @strconv.parse_int!(prop_name) } catch { _ => -1 }
+                  if idx >= 0 && idx < data.elements.length() {
+                    make_desc(data.elements[idx], true, true, true)
+                  } else {
+                    Undefined
+                  }
+                }
+              String_(s) =>
+                if prop_name == "length" {
+                  make_desc(
+                    Number(s.length().to_double()),
+                    false,
+                    false,
+                    false,
+                  )
+                } else {
+                  let idx = try { @strconv.parse_int!(prop_name) } catch { _ => -1 }
+                  if idx >= 0 && idx < s.length() {
+                    let chars = s.to_array()
+                    let buf = StringBuilder::new()
+                    buf.write_char(chars[idx])
+                    make_desc(String_(buf.to_string()), false, true, false)
+                  } else {
+                    Undefined
+                  }
                 }
               _ => Undefined
             }
