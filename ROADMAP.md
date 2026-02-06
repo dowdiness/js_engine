@@ -12,6 +12,7 @@
 | 6A-6G | +~2,350 | ~8,500 | Parser fixes, prototype chains, destructuring, tagged templates |
 | 6H | +1,202 | 9,489 | Error prototype chain fix |
 | 6I-6L | +56 | 9,545 | Leading decimals, canonical indices, PR review fixes |
+| JS Target | — | 9,545 | JS backend support, Error toString fix, backend-specific argv handling |
 
 For detailed implementation notes on Phases 1-6, see [docs/PHASE_HISTORY.md](docs/PHASE_HISTORY.md).
 
@@ -54,6 +55,29 @@ For detailed implementation notes on Phases 1-6, see [docs/PHASE_HISTORY.md](doc
 | Map/WeakMap | 169 | Medium |
 | Math | 134 | Easy |
 | JSON | 59 | Medium |
+
+---
+
+## JavaScript Self-Hosting
+
+**Status**: Working. The engine compiles to JavaScript via `moon build --target js` and runs on Node.js.
+
+```bash
+moon build --target js
+node ./target/js/release/build/cmd/main/main.js 'console.log(1 + 2)'
+# => 3
+```
+
+All 507 unit tests pass on both WASM-GC and JS targets. See [docs/SELF_HOST_JS_RESEARCH.md](docs/SELF_HOST_JS_RESEARCH.md) for full analysis.
+
+### What was needed
+- **Backend-specific argv handling**: `process.argv` on JS includes `["node", "script.js", ...]`, so user args start at index 2 (vs index 1 on WASM). Solved with `.js.mbt` / `.wasm.mbt` / `.wasm-gc.mbt` files.
+- **Error toString fix**: Error objects now format as `"TypeError: message"` instead of `"[object TypeError]"`, matching `Error.prototype.toString()`.
+
+### Future directions
+- **npm distribution**: Configure ESM/CJS output, publish as sandboxed JS evaluator
+- **Browser playground**: IIFE build for in-browser JS interpretation (no fs dependencies)
+- **Self-interpretation**: Run the JS-compiled engine through itself (requires higher Test262 compliance to handle MoonBit's JS output)
 
 ---
 

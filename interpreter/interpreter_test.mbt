@@ -4050,8 +4050,7 @@ test "instanceof throws TypeError for non-callable RHS without Symbol.hasInstanc
     #|  ({}) instanceof {};
     #|  "no error";
     #|} catch (e) {
-    #|  // e is a string in this interpreter, not an Error object
-    #|  (typeof e === "string" && e.includes("not callable")) ? "caught" : e;
+    #|  (e instanceof TypeError) ? "caught" : String(e);
     #|}
   let (_, result) = run_js(src)
   inspect(result, content="caught")
