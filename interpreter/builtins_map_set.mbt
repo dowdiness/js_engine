@@ -448,6 +448,14 @@ fn setup_map_builtins(env : Environment) -> Unit {
     extensible: true,
   })
   env.def_builtin("Map", map_ctor)
+  // Set Map.prototype.constructor = Map
+  match map_proto {
+    Object(data) => {
+      data.properties["constructor"] = map_ctor
+      data.descriptors["constructor"] = { writable: true, enumerable: false, configurable: true }
+    }
+    _ => ()
+  }
 }
 
 ///|
@@ -792,6 +800,14 @@ fn setup_set_builtins(env : Environment) -> Unit {
     extensible: true,
   })
   env.def_builtin("Set", set_ctor)
+  // Set Set.prototype.constructor = Set
+  match set_proto {
+    Object(data) => {
+      data.properties["constructor"] = set_ctor
+      data.descriptors["constructor"] = { writable: true, enumerable: false, configurable: true }
+    }
+    _ => ()
+  }
 }
 
 ///|

@@ -1199,6 +1199,16 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     }),
   )
 
+  // Set Object.prototype.constructor = Object
+  match obj_proto {
+    Object(data) => {
+      let obj_ctor = try { env.get("Object") } catch { _ => Undefined }
+      data.properties["constructor"] = obj_ctor
+      data.descriptors["constructor"] = { writable: true, enumerable: false, configurable: true }
+    }
+    _ => ()
+  }
+
   // Create Array.prototype with all array methods
   let array_proto_props : Map[String, Value] = {}
 
@@ -2725,6 +2735,15 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
       extensible: true,
     }),
   )
+  // Set Array.prototype.constructor = Array
+  match array_proto {
+    Object(data) => {
+      let arr_ctor = try { env.get("Array") } catch { _ => Undefined }
+      data.properties["constructor"] = arr_ctor
+      data.descriptors["constructor"] = { writable: true, enumerable: false, configurable: true }
+    }
+    _ => ()
+  }
 }
 
 ///|

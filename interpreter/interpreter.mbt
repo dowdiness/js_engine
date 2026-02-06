@@ -2644,7 +2644,7 @@ fn get_bound_func_name(target : Value) -> String {
 
 ///|
 fn Interpreter::get_property(
-  _self : Interpreter,
+  self : Interpreter,
   obj : Value,
   prop : String,
   _loc : @token.Loc,
@@ -2911,15 +2911,30 @@ fn Interpreter::get_property(
       if prop == "length" {
         Number(data.elements.length().to_double())
       } else {
-        get_array_method_with_interp(data, prop)
+        let result = get_array_method_with_interp(data, prop)
+        match result {
+          Undefined => lookup_builtin_proto(self.global, "Array", prop)
+          _ => result
+        }
       }
     String_(s) =>
       if prop == "length" {
         Number(s.length().to_double())
       } else {
-        get_string_method(s, prop)
+        let result = get_string_method(s, prop)
+        match result {
+          Undefined => lookup_builtin_proto(self.global, "String", prop)
+          _ => result
+        }
       }
-    Number(_) => get_number_method(obj, prop)
+    Number(_) => {
+      let result = get_number_method(obj, prop)
+      match result {
+        Undefined => lookup_builtin_proto(self.global, "Number", prop)
+        _ => result
+      }
+    }
+    Bool(_) => lookup_builtin_proto(self.global, "Boolean", prop)
     Symbol(sym) =>
       // Symbol properties: description, toString
       if prop == "description" {
@@ -2935,7 +2950,7 @@ fn Interpreter::get_property(
           }
         })
       } else {
-        Undefined
+        lookup_builtin_proto(self.global, "Symbol", prop)
       }
     Map(data) =>
       if prop == "size" {
@@ -2959,6 +2974,38 @@ fn Interpreter::get_property(
       raise @errors.TypeError(
         message="Cannot read property '\{prop}' of \{type_of(obj)}",
       )
+    _ => Undefined
+  }
+}
+
+///|
+/// Look up a property on a built-in constructor's prototype (e.g. Array.prototype.constructor)
+fn lookup_builtin_proto(env : Environment, ctor_name : String, prop : String) -> Value {
+  let ctor = try { env.get(ctor_name) } catch { _ => return Undefined }
+  match ctor {
+    Object(ctor_data) =>
+      match ctor_data.properties.get("prototype") {
+        Some(Object(proto_data)) =>
+          match proto_data.properties.get(prop) {
+            Some(v) => v
+            None => {
+              // Walk up prototype chain from the prototype
+              let mut current = proto_data.prototype
+              while true {
+                match current {
+                  Object(pdata) =>
+                    match pdata.properties.get(prop) {
+                      Some(v) => return v
+                      None => current = pdata.prototype
+                    }
+                  _ => break
+                }
+              }
+              Undefined
+            }
+          }
+        _ => Undefined
+      }
     _ => Undefined
   }
 }

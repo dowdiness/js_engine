@@ -1302,6 +1302,14 @@ pub fn setup_promise(env : Environment) -> Unit {
     _ => ()
   }
   env.def_builtin("Promise", promise_ctor)
+  // Set Promise.prototype.constructor = Promise
+  match promise_proto {
+    Object(data) => {
+      data.properties["constructor"] = promise_ctor
+      data.descriptors["constructor"] = { writable: true, enumerable: false, configurable: true }
+    }
+    _ => ()
+  }
 
   // queueMicrotask(callback) - schedules a microtask
   // Part of the Web Platform APIs, used for scheduling microtasks directly

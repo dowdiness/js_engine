@@ -375,6 +375,15 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
 
   // Populate String.prototype with methods for .call() support
   setup_string_prototype(string_proto)
+  // Set String.prototype.constructor = String
+  match string_proto {
+    Object(data) => {
+      let ctor = try { env.get("String") } catch { _ => Undefined }
+      data.properties["constructor"] = ctor
+      data.descriptors["constructor"] = { writable: true, enumerable: false, configurable: true }
+    }
+    _ => ()
+  }
 
   // Number constructor with static methods and prototype
   setup_number_builtins(env)
@@ -449,6 +458,16 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
       extensible: true,
     }),
   )
+
+  // Set Boolean.prototype.constructor = Boolean
+  match boolean_proto {
+    Object(data) => {
+      let ctor = try { env.get("Boolean") } catch { _ => Undefined }
+      data.properties["constructor"] = ctor
+      data.descriptors["constructor"] = { writable: true, enumerable: false, configurable: true }
+    }
+    _ => ()
+  }
 
   // Function constructor with prototype
   setup_function_builtins(env)
@@ -683,6 +702,15 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
       extensible: true,
     }),
   )
+  // Set Symbol.prototype.constructor = Symbol
+  match symbol_proto {
+    Object(data) => {
+      let ctor = try { env.get("Symbol") } catch { _ => Undefined }
+      data.properties["constructor"] = ctor
+      data.descriptors["constructor"] = { writable: true, enumerable: false, configurable: true }
+    }
+    _ => ()
+  }
 }
 
 ///|
@@ -1391,6 +1419,15 @@ fn register_error_ctor(
       extensible: true,
     }),
   )
+  // Set ErrorType.prototype.constructor = ErrorType
+  match proto_obj {
+    Object(data) => {
+      let ctor = try { env.get(name) } catch { _ => Undefined }
+      data.properties["constructor"] = ctor
+      data.descriptors["constructor"] = { writable: true, enumerable: false, configurable: true }
+    }
+    _ => ()
+  }
   proto_obj
 }
 
@@ -1871,6 +1908,15 @@ fn setup_number_builtins(env : Environment) -> Unit {
       extensible: true,
     }),
   )
+  // Set Number.prototype.constructor = Number
+  match number_proto {
+    Object(data) => {
+      let ctor = try { env.get("Number") } catch { _ => Undefined }
+      data.properties["constructor"] = ctor
+      data.descriptors["constructor"] = { writable: true, enumerable: false, configurable: true }
+    }
+    _ => ()
+  }
 }
 
 ///|
