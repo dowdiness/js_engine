@@ -381,6 +381,15 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                           let has_get = desc.properties.contains("get")
                           let has_set = desc.properties.contains("set")
                           let is_accessor = has_get || has_set
+                          let has_value = desc.properties.contains("value")
+                          let has_writable = desc.properties.contains("writable")
+                          let is_data = has_value || has_writable
+                          // Accessor and data descriptor properties cannot be mixed
+                          if is_accessor && is_data {
+                            raise @errors.TypeError(
+                              message="Invalid property descriptor. Cannot both specify accessors and a value or writable attribute, #<Object>",
+                            )
+                          }
                           if is_accessor {
                             // Accessor descriptor
                             if not(data.properties.contains(prop_name)) {
@@ -395,6 +404,33 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                               Some(Undefined) => None
                               Some(v) => Some(v)
                               None => None
+                            }
+                            // Validate getter/setter are callable (or undefined)
+                            match getter {
+                              Some(Object(g)) =>
+                                if g.callable is None {
+                                  raise @errors.TypeError(
+                                    message="Getter must be a function: [object Object]",
+                                  )
+                                }
+                              Some(Undefined) | None => ()
+                              Some(_) =>
+                                raise @errors.TypeError(
+                                  message="Getter must be a function: \{getter.unwrap().to_string()}",
+                                )
+                            }
+                            match setter {
+                              Some(Object(s)) =>
+                                if s.callable is None {
+                                  raise @errors.TypeError(
+                                    message="Setter must be a function: [object Object]",
+                                  )
+                                }
+                              Some(Undefined) | None => ()
+                              Some(_) =>
+                                raise @errors.TypeError(
+                                  message="Setter must be a function: \{setter.unwrap().to_string()}",
+                                )
                             }
                             let enumerable = match desc.properties.get("enumerable") {
                               Some(v) => is_truthy(v)
@@ -457,6 +493,14 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                           let has_get = desc.properties.contains("get")
                           let has_set = desc.properties.contains("set")
                           let is_accessor = has_get || has_set
+                          let has_value = desc.properties.contains("value")
+                          let has_writable = desc.properties.contains("writable")
+                          let is_data = has_value || has_writable
+                          if is_accessor && is_data {
+                            raise @errors.TypeError(
+                              message="Invalid property descriptor. Cannot both specify accessors and a value or writable attribute, #<Object>",
+                            )
+                          }
                           if is_accessor {
                             if not(data.properties.contains(prop_name)) {
                               data.properties[prop_name] = Undefined
@@ -470,6 +514,33 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                               Some(Undefined) => None
                               Some(v) => Some(v)
                               None => None
+                            }
+                            // Validate getter/setter are callable (or undefined)
+                            match getter {
+                              Some(Object(g)) =>
+                                if g.callable is None {
+                                  raise @errors.TypeError(
+                                    message="Getter must be a function: [object Object]",
+                                  )
+                                }
+                              Some(Undefined) | None => ()
+                              Some(_) =>
+                                raise @errors.TypeError(
+                                  message="Getter must be a function: \{getter.unwrap().to_string()}",
+                                )
+                            }
+                            match setter {
+                              Some(Object(s)) =>
+                                if s.callable is None {
+                                  raise @errors.TypeError(
+                                    message="Setter must be a function: [object Object]",
+                                  )
+                                }
+                              Some(Undefined) | None => ()
+                              Some(_) =>
+                                raise @errors.TypeError(
+                                  message="Setter must be a function: \{setter.unwrap().to_string()}",
+                                )
                             }
                             let enumerable = match desc.properties.get("enumerable") {
                               Some(v) => is_truthy(v)

@@ -4570,3 +4570,45 @@ test "defineProperties validates getter is callable" {
   )
   inspect(output, content="[\"true\"]")
 }
+
+///|
+test "Object.create rejects non-callable getter" {
+  let output = run_output(
+    #|try {
+    #|  Object.create({}, { x: { get: 42 } });
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e instanceof TypeError);
+    #|}
+  ,
+  )
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "Object.create rejects non-callable setter" {
+  let output = run_output(
+    #|try {
+    #|  Object.create({}, { x: { set: "bad" } });
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e instanceof TypeError);
+    #|}
+  ,
+  )
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "Object.create rejects accessor-data mixing" {
+  let output = run_output(
+    #|try {
+    #|  Object.create({}, { x: { get: function(){}, value: 1 } });
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e instanceof TypeError);
+    #|}
+  ,
+  )
+  inspect(output, content="[\"true\"]")
+}
