@@ -933,6 +933,33 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       let top = template_depth_stack.length() - 1
       template_depth_stack[top] = template_depth_stack[top] + 1
     }
+    // .5 style number literals (leading decimal point)
+    if c == '.' && offset + 1 < len && is_digit(char_at(offset + 1)) {
+      let num_start = offset
+      offset += 1 // skip '.'
+      col += 1
+      while offset < len && is_digit(char_at(offset)) {
+        offset += 1
+        col += 1
+      }
+      // Handle exponent part: e.g., .5e10
+      if offset < len && (char_at(offset) == 'e' || char_at(offset) == 'E') {
+        offset += 1
+        col += 1
+        if offset < len && (char_at(offset) == '+' || char_at(offset) == '-') {
+          offset += 1
+          col += 1
+        }
+        while offset < len && is_digit(char_at(offset)) {
+          offset += 1
+          col += 1
+        }
+      }
+      let num_str = source.view()[num_start:offset].to_string()
+      let value = try { @strconv.parse_double(num_str) } catch { _ => 0.0 }
+      tokens.push({ kind: Number(value), loc, raw: "" })
+      continue
+    }
     // ... (spread/rest)
     if c == '.' &&
       offset + 2 < len &&

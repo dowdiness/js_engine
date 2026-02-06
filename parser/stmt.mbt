@@ -318,14 +318,36 @@ fn Parser::parse_for_stmt(self : Parser) -> @ast.Stmt raise Error {
       let body = self.parse_stmt()
       return ForOfStmt(Some(var_kind), name, obj, body, tok.loc)
     }
-    // Regular for — finish parsing the var decl init
+    // Regular for — finish parsing the var decl init (may have multiple comma-separated decls)
     let init_val : @ast.Expr? = if self.eat(Assign) {
       Some(self.parse_assignment())
     } else {
       None
     }
+    let decls : Array[@ast.Stmt] = [VarDecl(var_kind, name, init_val, var_tok.loc)]
+    while self.eat(Comma) {
+      // Handle destructuring in for-init: for (var i = 0, {x} = obj; ...)
+      if self.at(LBracket) || self.at(LBrace) {
+        let pat = self.parse_pattern()
+        let _ = self.expect(Assign)
+        let val = self.parse_assignment()
+        decls.push(DestructureDecl(var_kind, pat, val, var_tok.loc))
+      } else {
+        let next_name = self.expect_ident()
+        let next_val : @ast.Expr? = if self.eat(Assign) {
+          Some(self.parse_assignment())
+        } else {
+          None
+        }
+        decls.push(VarDecl(var_kind, next_name, next_val, var_tok.loc))
+      }
+    }
     self.eat_semicolon()
-    let init : @ast.Stmt? = Some(VarDecl(var_kind, name, init_val, var_tok.loc))
+    let init : @ast.Stmt? = if decls.length() == 1 {
+      Some(decls[0])
+    } else {
+      Some(StmtList(decls, var_tok.loc))
+    }
     return self.parse_for_rest(init, tok.loc)
   }
   // Check for for-in / for-of with bare identifier
