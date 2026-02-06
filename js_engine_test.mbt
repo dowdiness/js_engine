@@ -286,3 +286,37 @@ test "setTimeout equal delays preserve insertion order" {
   let (output, _) = @js_engine.run(src)
   inspect(output, content="[\"first\", \"second\", \"third\"]")
 }
+
+///|
+test "unicode escape in identifier" {
+  let src =
+    #|var \u0061 = 42;
+    #|console.log(a);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"42\"]")
+}
+
+///|
+test "unicode escape in string literal" {
+  let src =
+    #|console.log("\u0048\u0065\u006C\u006C\u006F");
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"Hello\"]")
+}
+
+///|
+test "unicode escape extended in string" {
+  let src =
+    #|console.log("\u{48}\u{65}\u{6C}\u{6C}\u{6F}");
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"Hello\"]")
+}
+
+///|
+test "unicode escape identifier mid-word" {
+  let src =
+    #|var ab\u0063 = 10;
+    #|console.log(abc);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"10\"]")
+}

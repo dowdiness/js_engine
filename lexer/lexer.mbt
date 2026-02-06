@@ -58,6 +58,19 @@ fn is_alnum(c : Char) -> Bool {
 }
 
 ///|
+fn write_code_point(buf : StringBuilder, cp : Int) -> Unit {
+  if cp <= 0xFFFF {
+    buf.write_char(Char::from_int(cp))
+  } else {
+    let cp2 = cp - 0x10000
+    let high = 0xD800 + (cp2 >> 10)
+    let low = 0xDC00 + (cp2 & 0x3FF)
+    buf.write_char(Char::from_int(high))
+    buf.write_char(Char::from_int(low))
+  }
+}
+
+///|
 fn resolve_keyword(s : String) -> @token.TokenKind {
   match s {
     "let" => Let
@@ -123,6 +136,59 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
     chars[i]
   }
 
+  // Parse unicode escape after \u has been consumed.
+  // offset should point at '{' or first hex digit.
+  // Returns the code point as Int.
+  fn parse_unicode_escape() -> Int raise Error {
+    if offset < len && char_at(offset) == '{' {
+      // \u{XXXXX} extended form
+      offset += 1
+      col += 1
+      let hex_buf = StringBuilder::new()
+      while offset < len && is_hex_digit(char_at(offset)) {
+        hex_buf.write_char(char_at(offset))
+        offset += 1
+        col += 1
+      }
+      let hex_str = hex_buf.to_string()
+      if hex_str.length() == 0 || hex_str.length() > 6 {
+        raise @errors.SyntaxError(
+          message="Invalid Unicode escape sequence at line \{line}, col \{col}",
+        )
+      }
+      if offset >= len || char_at(offset) != '}' {
+        raise @errors.SyntaxError(
+          message="Invalid Unicode escape sequence at line \{line}, col \{col}",
+        )
+      }
+      offset += 1 // skip }
+      col += 1
+      let cp = parse_hex(hex_str).to_int()
+      if cp > 0x10FFFF {
+        raise @errors.SyntaxError(
+          message="Undefined Unicode code-point at line \{line}, col \{col}",
+        )
+      }
+      cp
+    } else {
+      // \uXXXX - exactly 4 hex digits
+      let hex_buf = StringBuilder::new()
+      let mut count = 0
+      while count < 4 {
+        if offset >= len || not(is_hex_digit(char_at(offset))) {
+          raise @errors.SyntaxError(
+            message="Invalid Unicode escape sequence at line \{line}, col \{col}",
+          )
+        }
+        hex_buf.write_char(char_at(offset))
+        offset += 1
+        col += 1
+        count += 1
+      }
+      parse_hex(hex_buf.to_string()).to_int()
+    }
+  }
+
   fn scan_template_string() -> (String, Bool) raise Error {
     let buf = StringBuilder::new()
     while offset < len {
@@ -147,6 +213,13 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           '\\' => buf.write_char('\\')
           '`' => buf.write_char('`')
           '$' => buf.write_char('$')
+          'u' => {
+            offset += 1 // skip 'u'
+            col += 1
+            let cp = parse_unicode_escape()
+            write_code_point(buf, cp)
+            continue
+          }
           _ => {
             buf.write_char('\\')
             buf.write_char(esc)
@@ -606,16 +679,41 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       tokens.push({ kind: Number(value), loc, raw })
       continue
     }
-    // Identifiers / Keywords
-    if is_alpha(c) {
-      let start = offset
-      while offset < len && is_alnum(char_at(offset)) {
+    // Identifiers / Keywords (including \uXXXX and \u{XXXXX} escapes)
+    if is_alpha(c) ||
+      (c == '\\' && offset + 1 < len && char_at(offset + 1) == 'u') {
+      let ident_buf = StringBuilder::new()
+      if c == '\\' {
+        // Unicode escape at identifier start
+        offset += 2 // skip \ and u
+        col += 2
+        let cp = parse_unicode_escape()
+        write_code_point(ident_buf, cp)
+      } else {
+        ident_buf.write_char(c)
         offset += 1
         col += 1
       }
-      let raw = source.view()[start:offset].to_string()
-      let kind = resolve_keyword(raw)
-      tokens.push({ kind, loc, raw })
+      while offset < len {
+        let ch = char_at(offset)
+        if is_alnum(ch) {
+          ident_buf.write_char(ch)
+          offset += 1
+          col += 1
+        } else if ch == '\\' &&
+          offset + 1 < len &&
+          char_at(offset + 1) == 'u' {
+          offset += 2 // skip \ and u
+          col += 2
+          let cp = parse_unicode_escape()
+          write_code_point(ident_buf, cp)
+        } else {
+          break
+        }
+      }
+      let decoded = ident_buf.to_string()
+      let kind = resolve_keyword(decoded)
+      tokens.push({ kind, loc, raw: decoded })
       continue
     }
     // Strings
@@ -636,6 +734,13 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             '\\' => buf.write_char('\\')
             '\'' => buf.write_char('\'')
             '"' => buf.write_char('"')
+            'u' => {
+              offset += 1 // skip 'u'
+              col += 1
+              let cp = parse_unicode_escape()
+              write_code_point(buf, cp)
+              continue
+            }
             _ => {
               buf.write_char('\\')
               buf.write_char(esc)
