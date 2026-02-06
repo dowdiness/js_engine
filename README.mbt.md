@@ -2,6 +2,8 @@
 
 A minimal JavaScript tree-walking interpreter written in [MoonBit](https://www.moonbitlang.com/).
 
+Self-hosting is already achieved: the engine compiles to JavaScript via MoonBit's JS target and runs on Node.js. See [docs/SELF_HOST_JS_RESEARCH.md](docs/SELF_HOST_JS_RESEARCH.md) and [ROADMAP.md](ROADMAP.md) for details.
+
 ## Features
 
 - Numeric literals (IEEE 754 doubles), strings, booleans, `null`, `undefined`
