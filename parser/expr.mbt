@@ -43,7 +43,7 @@ fn Parser::parse_assignment(self : Parser) -> @ast.Expr raise Error {
         if self.at(Arrow) {
           // Check if this has defaults or rest
           let has_ext = rest_param is Some(_) ||
-            ext_params.iter().any(fn(p) { p.default_val is Some(_) })
+            ext_params.iter().any(fn(p) { p.default_val is Some(_) || p.pattern is Some(_) })
           if has_ext {
             let loc = self.advance().loc // consume =>
             let body = self.parse_arrow_body()
@@ -353,6 +353,7 @@ fn Parser::parse_exponentiation(self : Parser) -> @ast.Expr raise Error {
       Unary(op, _, _) =>
         match op {
           @ast.Neg
+          | @ast.Pos
           | @ast.Not
           | @ast.BitNot
           | @ast.Typeof
@@ -376,6 +377,11 @@ fn Parser::parse_exponentiation(self : Parser) -> @ast.Expr raise Error {
 ///|
 fn Parser::parse_unary(self : Parser) -> @ast.Expr raise Error {
   match self.peek_kind() {
+    Plus => {
+      let loc = self.advance().loc
+      let expr = self.parse_unary()
+      Unary(@ast.Pos, expr, loc)
+    }
     Minus => {
       let loc = self.advance().loc
       let expr = self.parse_unary()
@@ -454,6 +460,10 @@ fn Parser::parse_call(self : Parser) -> @ast.Expr raise Error {
           args.push(self.parse_assignment())
         }
         while self.eat(Comma) {
+          // Trailing comma support: if we see ) after comma, stop
+          if self.at(RParen) {
+            break
+          }
           if self.at(DotDotDot) {
             let sloc = self.advance().loc
             args.push(SpreadExpr(self.parse_assignment(), sloc))
@@ -486,6 +496,42 @@ fn Parser::parse_call(self : Parser) -> @ast.Expr raise Error {
       } else {
         expr = ComputedMember(expr, key, loc)
       }
+    } else if self.peek_kind() is NoSubTemplate(_) || self.peek_kind() is TemplateHead(_) {
+      // Tagged template: tag`string` or tag`str${expr}str`
+      let tloc = self.peek().loc
+      match self.peek_kind() {
+        NoSubTemplate(s) => {
+          self.pos += 1
+          expr = TaggedTemplate(expr, [s], [], tloc)
+        }
+        TemplateHead(first_str) => {
+          self.pos += 1
+          let strings : Array[String] = [first_str]
+          let exprs : Array[@ast.Expr] = []
+          while true {
+            exprs.push(self.parse_expr())
+            match self.peek_kind() {
+              TemplateMiddle(s) => {
+                self.pos += 1
+                strings.push(s)
+              }
+              TemplateTail(s) => {
+                self.pos += 1
+                strings.push(s)
+                break
+              }
+              _ => {
+                let t = self.peek()
+                raise @errors.SyntaxError(
+                  message="Expected template continuation, got \{t.kind} at line \{t.loc.line}, col \{t.loc.col}",
+                )
+              }
+            }
+          }
+          expr = TaggedTemplate(expr, strings, exprs, tloc)
+        }
+        _ => ()
+      }
     } else if self.at(QuestionDot) {
       // Optional chaining: ?. - start/continue optional chain
       in_optional_chain = true
@@ -502,6 +548,7 @@ fn Parser::parse_call(self : Parser) -> @ast.Expr raise Error {
             args.push(self.parse_assignment())
           }
           while self.eat(Comma) {
+            if self.at(RParen) { break }
             if self.at(DotDotDot) {
               let sloc = self.advance().loc
               args.push(SpreadExpr(self.parse_assignment(), sloc))
@@ -668,6 +715,7 @@ fn Parser::parse_new_expr(self : Parser) -> @ast.Expr raise Error {
         args.push(self.parse_assignment())
       }
       while self.eat(Comma) {
+        if self.at(RParen) { break }
         if self.at(DotDotDot) {
           let sloc = self.advance().loc
           args.push(SpreadExpr(self.parse_assignment(), sloc))
@@ -687,6 +735,12 @@ fn Parser::parse_array_literal(self : Parser) -> @ast.Expr raise Error {
   let loc = self.advance().loc // consume '['
   let elements : Array[@ast.Expr] = []
   while not(self.at(RBracket)) && not(self.at(EOF)) {
+    // Handle elisions: [1,,3] or [,,] - consecutive commas create undefined holes
+    if self.at(Comma) {
+      elements.push(UndefinedLit(self.peek().loc))
+      let _ = self.advance() // consume comma
+      continue
+    }
     if self.at(DotDotDot) {
       let sloc = self.advance().loc
       elements.push(SpreadExpr(self.parse_assignment(), sloc))
@@ -694,8 +748,9 @@ fn Parser::parse_array_literal(self : Parser) -> @ast.Expr raise Error {
       elements.push(self.parse_assignment())
     }
     if not(self.at(RBracket)) {
-      let _ = self.expect(Comma)
-
+      if self.at(Comma) {
+        let _ = self.advance() // consume comma
+      }
     }
   }
   let _ = self.expect(RBracket)
@@ -727,22 +782,27 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
       continue
     }
     // Check for getter/setter
+    // Note: The lexer produces Get/Set tokens for "get"/"set" keywords.
+    // We need to distinguish: { get foo() {} } (getter) vs { get: 42 } (property named "get")
+    // Also handle: { get() {} } (method named "get")
     let prop_kind : @ast.PropKind = match self.peek_kind() {
-      Ident("get") =>
+      Get =>
         match self.peek_kind_at(1) {
           Ident(_) | String_(_) | Number(_) | LBracket => {
+            // get <name>(...) - this is a getter
             self.pos += 1
             @ast.Get
           }
-          _ => @ast.Init
+          _ => @ast.Init // get: value, get(), get} etc.
         }
-      Ident("set") =>
+      Set =>
         match self.peek_kind_at(1) {
           Ident(_) | String_(_) | Number(_) | LBracket => {
+            // set <name>(...) - this is a setter
             self.pos += 1
             @ast.Set
           }
-          _ => @ast.Init
+          _ => @ast.Init // set: value, set(), set} etc.
         }
       _ => @ast.Init
     }
@@ -780,50 +840,125 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
         (expr, "", true, false)
       }
       _ => {
-        let t = self.peek()
-        raise @errors.SyntaxError(
-          message="Expected property name, got \{t.kind} at line \{t.loc.line}, col \{t.loc.col}",
-        )
+        // Keywords can be used as property names in object literals
+        let kw_name : String? = match self.peek_kind() {
+          Get => Some("get")
+          Set => Some("set")
+          Let => Some("let")
+          Const => Some("const")
+          Var => Some("var")
+          Function => Some("function")
+          Return => Some("return")
+          If => Some("if")
+          Else => Some("else")
+          While => Some("while")
+          For => Some("for")
+          Break => Some("break")
+          Continue => Some("continue")
+          True => Some("true")
+          False => Some("false")
+          Null => Some("null")
+          Undefined => Some("undefined")
+          Typeof => Some("typeof")
+          Throw => Some("throw")
+          Try => Some("try")
+          Catch => Some("catch")
+          Finally => Some("finally")
+          New => Some("new")
+          This => Some("this")
+          Switch => Some("switch")
+          Case => Some("case")
+          Default => Some("default")
+          Void => Some("void")
+          Delete => Some("delete")
+          Do => Some("do")
+          In => Some("in")
+          Instanceof => Some("instanceof")
+          Of => Some("of")
+          Class => Some("class")
+          Extends => Some("extends")
+          Super => Some("super")
+          Static => Some("static")
+          _ => None
+        }
+        match kw_name {
+          Some(name) => {
+            let kloc = self.advance().loc
+            // Keywords are not valid IdentifierReference, so is_ident_key = false
+            // This prevents `{ for }` or `{ for = 42 }` shorthand syntax
+            (StringLit(name, kloc), name, false, false)
+          }
+          None => {
+            let t = self.peek()
+            raise @errors.SyntaxError(
+              message="Expected property name, got \{t.kind} at line \{t.loc.line}, col \{t.loc.col}",
+            )
+          }
+        }
       }
     }
     // Check for method shorthand, getter, or setter: identifier followed by (
     if self.at(LParen) {
       // Method shorthand or getter/setter
       let mloc = self.peek().loc
-      let params = self.parse_params()
-      // Validate getter/setter arity
-      match prop_kind {
-        @ast.Get =>
-          if params.length() != 0 {
-            raise @errors.SyntaxError(
-              message="Getter must have exactly zero parameters",
+      let saved_pos = self.pos
+      let func_data : @ast.Expr = try {
+        let params = self.parse_params()
+        // Validate getter/setter arity
+        match prop_kind {
+          @ast.Get =>
+            if params.length() != 0 {
+              raise @errors.SyntaxError(
+                message="Getter must have exactly zero parameters",
+              )
+            }
+          @ast.Set =>
+            if params.length() != 1 {
+              raise @errors.SyntaxError(
+                message="Setter must have exactly one parameter",
+              )
+            }
+          @ast.Init | @ast.Spread => ()
+        }
+        let body = self.parse_block_body()
+        @ast.Expr::FuncExpr(
+          if computed { None } else { Some(key_name) },
+          params,
+          body,
+          mloc,
+        )
+      } catch {
+        Failure::Failure(msg) =>
+          if msg == "REST_PARAM_FOUND" || msg == "DEFAULT_PARAM_FOUND" || msg == "DESTRUCTURE_PARAM_FOUND" {
+            self.pos = saved_pos
+            let (ext_params, rest_param) = self.parse_params_ext()
+            let body = self.parse_block_body()
+            FuncExprExt(
+              if computed { None } else { Some(key_name) },
+              ext_params,
+              rest_param,
+              body,
+              mloc,
             )
+          } else {
+            raise @errors.SyntaxError(message=msg)
           }
-        @ast.Set =>
-          if params.length() != 1 {
-            raise @errors.SyntaxError(
-              message="Setter must have exactly one parameter",
-            )
-          }
-        @ast.Init | @ast.Spread => ()
+        e => raise e
       }
-      let body = self.parse_block_body()
-      let func_data : @ast.Expr = FuncExpr(
-        if computed {
-          None
-        } else {
-          Some(key_name)
-        },
-        params,
-        body,
-        mloc,
-      )
       props.push({ key: key_expr, value: func_data, kind: prop_kind, computed })
     } else if self.at(Colon) {
       // Normal property
       let _ = self.advance() // consume ':'
       let value = self.parse_assignment()
       props.push({ key: key_expr, value, kind: @ast.Init, computed })
+    } else if self.at(Assign) && is_ident_key {
+      // Shorthand with default (cover assignment pattern): { x = 42 }
+      // This is valid in destructuring: { x = 42 } = obj
+      let eq_tok = self.advance() // consume '='
+      let default_val = self.parse_assignment()
+      // Represent as Assign expr so destructuring can pick it up
+      let value : @ast.Expr = Assign(key_name, default_val, eq_tok.loc)
+      props.push({ key: key_expr, value, kind: @ast.Init, computed: false })
     } else if self.at(Comma) || self.at(RBrace) {
       // Shorthand property: { x } => { x: x }
       // Only identifier keys can use shorthand syntax
@@ -867,7 +1002,7 @@ fn Parser::parse_func_expr(self : Parser) -> @ast.Expr raise Error {
   let saved_pos = self.pos
   let params = self.parse_params() catch {
     Failure::Failure(msg) =>
-      if msg == "REST_PARAM_FOUND" || msg == "DEFAULT_PARAM_FOUND" {
+      if msg == "REST_PARAM_FOUND" || msg == "DEFAULT_PARAM_FOUND" || msg == "DESTRUCTURE_PARAM_FOUND" {
         self.pos = saved_pos
         let (ext_params, rest_param) = self.parse_params_ext()
         let body = self.parse_block_body()
@@ -1036,7 +1171,7 @@ fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
       }
     _ => ()
   }
-  // Parse method name
+  // Parse method name (keywords can be used as method names)
   let (key_expr, computed) : (@ast.Expr, Bool) = match self.peek_kind() {
     Ident(name) => {
       let kloc = self.advance().loc
@@ -1059,10 +1194,59 @@ fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
       (expr, true)
     }
     _ => {
-      let t = self.peek()
-      raise @errors.SyntaxError(
-        message="Expected method name at line \{t.loc.line}, col \{t.loc.col}",
-      )
+      // Keywords can be used as method names in classes
+      let kw_name : String? = match self.peek_kind() {
+        Get => Some("get")
+        Set => Some("set")
+        Let => Some("let")
+        Const => Some("const")
+        Var => Some("var")
+        Function => Some("function")
+        Return => Some("return")
+        If => Some("if")
+        Else => Some("else")
+        While => Some("while")
+        For => Some("for")
+        Break => Some("break")
+        Continue => Some("continue")
+        True => Some("true")
+        False => Some("false")
+        Null => Some("null")
+        Undefined => Some("undefined")
+        Typeof => Some("typeof")
+        Throw => Some("throw")
+        Try => Some("try")
+        Catch => Some("catch")
+        Finally => Some("finally")
+        New => Some("new")
+        This => Some("this")
+        Switch => Some("switch")
+        Case => Some("case")
+        Default => Some("default")
+        Void => Some("void")
+        Delete => Some("delete")
+        Do => Some("do")
+        In => Some("in")
+        Instanceof => Some("instanceof")
+        Of => Some("of")
+        Class => Some("class")
+        Extends => Some("extends")
+        Super => Some("super")
+        Static => Some("static")
+        _ => None
+      }
+      match kw_name {
+        Some(name) => {
+          let kloc = self.advance().loc
+          (StringLit(name, kloc), false)
+        }
+        None => {
+          let t = self.peek()
+          raise @errors.SyntaxError(
+            message="Expected method name at line \{t.loc.line}, col \{t.loc.col}",
+          )
+        }
+      }
     }
   }
   // Parse method parameters and body
@@ -1070,7 +1254,7 @@ fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
   let saved_pos = self.pos
   let params = self.parse_params() catch {
     Failure::Failure(msg) =>
-      if msg == "REST_PARAM_FOUND" || msg == "DEFAULT_PARAM_FOUND" {
+      if msg == "REST_PARAM_FOUND" || msg == "DEFAULT_PARAM_FOUND" || msg == "DESTRUCTURE_PARAM_FOUND" {
         self.pos = saved_pos
         let (ext_params, rest_param) = self.parse_params_ext()
         match method_kind {
@@ -1154,6 +1338,7 @@ fn Parser::parse_super_expr(self : Parser) -> @ast.Expr raise Error {
         args.push(self.parse_assignment())
       }
       while self.eat(Comma) {
+        if self.at(RParen) { break }
         if self.at(DotDotDot) {
           let sloc = self.advance().loc
           args.push(SpreadExpr(self.parse_assignment(), sloc))

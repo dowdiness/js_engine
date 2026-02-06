@@ -122,7 +122,7 @@ pub fn Interpreter::run(
   } catch {
     e =>
       if is_js_catchable_error(e) {
-        raise JsException(js_error_to_value(e))
+        raise JsException(js_error_to_value_with_env(e, Some(self.global)))
       } else {
         raise e
       }
@@ -507,6 +507,167 @@ fn Interpreter::exec_stmt(
         }
 
         // Execute the loop body
+        match self.exec_stmt(body, body_env) {
+          Normal(_) => ()
+          ReturnSignal(v) => return ReturnSignal(v)
+          BreakSignal(None) => break
+          BreakSignal(Some(l)) =>
+            if label == Some(l) {
+              break
+            } else {
+              return BreakSignal(Some(l))
+            }
+          ContinueSignal(None) => continue
+          ContinueSignal(Some(l)) =>
+            if label == Some(l) {
+              continue
+            } else {
+              return ContinueSignal(Some(l))
+            }
+        }
+      }
+      Normal(Undefined)
+    }
+    ForInStmtPat(var_kind, pattern, obj_expr, body, _) => {
+      let obj = self.eval_expr(obj_expr, env)
+      let keys = collect_for_in_keys(obj)
+      let bk : BindingKind = match var_kind {
+        LetKind => LetBinding
+        ConstKind => ConstBinding
+        VarKind => VarBinding
+      }
+      for key in keys {
+        let body_env = Environment::new(parent=Some(env))
+        // var bindings go to outer env (function/global scoped), let/const to body_env
+        let bind_env = match var_kind {
+          VarKind => env
+          _ => body_env
+        }
+        self.bind_pattern(pattern, String_(key), bind_env, bk)
+        match self.exec_stmt(body, body_env) {
+          Normal(_) => ()
+          ReturnSignal(v) => return ReturnSignal(v)
+          BreakSignal(None) => break
+          BreakSignal(Some(l)) =>
+            if label == Some(l) {
+              break
+            } else {
+              return BreakSignal(Some(l))
+            }
+          ContinueSignal(None) => continue
+          ContinueSignal(Some(l)) =>
+            if label == Some(l) {
+              continue
+            } else {
+              return ContinueSignal(Some(l))
+            }
+        }
+      }
+      Normal(Undefined)
+    }
+    ForOfStmtPat(var_kind, pattern, iterable_expr, body, loc) => {
+      let iterable = self.eval_expr(iterable_expr, env)
+
+      // Try to get the iterator via Symbol.iterator protocol
+      let iterator_sym = get_iterator_symbol()
+      let iterator_method = self.get_computed_property(
+        iterable,
+        Symbol(iterator_sym),
+        loc,
+      )
+
+      // Get the iterator object
+      let iterator = match iterator_method {
+        Object(data) =>
+          match data.callable {
+            Some(_) => self.call_value(iterator_method, iterable, [], loc)
+            None =>
+              raise @errors.TypeError(
+                message="Result of the Symbol.iterator method is not an object",
+              )
+          }
+        Undefined =>
+          match iterable {
+            Array(arr) => make_array_iterator_value(arr)
+            String_(s) => make_string_iterator_value(s)
+            _ =>
+              raise @errors.TypeError(
+                message="\{type_of(iterable)} is not iterable",
+              )
+          }
+        _ =>
+          raise @errors.TypeError(
+            message="Result of the Symbol.iterator method is not an object",
+          )
+      }
+
+      // Get the next method
+      let next_method = match iterator {
+        Object(iter_data) =>
+          match iter_data.properties.get("next") {
+            Some(next_fn) => next_fn
+            None => {
+              let mut found : Value = Undefined
+              let mut current = iter_data.prototype
+              while true {
+                match current {
+                  Object(proto_data) =>
+                    match proto_data.properties.get("next") {
+                      Some(next_fn) => {
+                        found = next_fn
+                        break
+                      }
+                      None => current = proto_data.prototype
+                    }
+                  _ => break
+                }
+              }
+              match found {
+                Undefined =>
+                  raise @errors.TypeError(
+                    message="iterator.next is not a function",
+                  )
+                _ => found
+              }
+            }
+          }
+        _ => raise @errors.TypeError(message="Iterator is not an object")
+      }
+
+      let bk : BindingKind = match var_kind {
+        LetKind => LetBinding
+        ConstKind => ConstBinding
+        VarKind => VarBinding
+      }
+
+      // Iterate using the iterator protocol
+      while true {
+        let result = self.call_value(next_method, iterator, [], loc)
+        let (done, value) = match result {
+          Object(result_data) => {
+            let done_val = match result_data.properties.get("done") {
+              Some(v) => is_truthy(v)
+              None => false
+            }
+            let value_val = match result_data.properties.get("value") {
+              Some(v) => v
+              None => Undefined
+            }
+            (done_val, value_val)
+          }
+          _ =>
+            raise @errors.TypeError(message="Iterator result is not an object")
+        }
+        if done {
+          break
+        }
+        let body_env = Environment::new(parent=Some(env))
+        // var bindings go to outer env (function/global scoped), let/const to body_env
+        let bind_env = match var_kind {
+          VarKind => env
+          _ => body_env
+        }
+        self.bind_pattern(pattern, value, bind_env, bk)
         match self.exec_stmt(body, body_env) {
           Normal(_) => ()
           ReturnSignal(v) => return ReturnSignal(v)
@@ -1045,8 +1206,8 @@ fn Interpreter::exec_try_catch(
         match (catch_param, catch_body) {
           (Some(param), Some(body)) => {
             let catch_env = Environment::new(parent=Some(env))
-            // Convert runtime errors to JS throw values (string errors by default)
-            let error_value = js_error_to_throw_value(e)
+            // Convert runtime errors to proper JS Error objects with prototype chain
+            let error_value = js_error_to_value_with_env(e, Some(env))
             catch_env.def(param, error_value, LetBinding)
             self.exec_stmts(body, catch_env)
           }
@@ -1220,10 +1381,11 @@ fn Interpreter::eval_expr(
           }
         }
       }
+      let obj_prototype : Value = try { env.get("[[ObjectPrototype]]") } catch { _ => Null }
       Object({
         properties,
         symbol_properties,
-        prototype: Null,
+        prototype: obj_prototype,
         callable: None,
         class_name: "Object",
         descriptors,
@@ -1406,6 +1568,46 @@ fn Interpreter::eval_expr(
         }
       }
       String_(buf.to_string())
+    }
+    TaggedTemplate(tag_expr, strings, exprs, loc) => {
+      let tag = self.eval_expr(tag_expr, env)
+      // Build the raw array (same as cooked for now - raw doesn't process escapes)
+      let raw_vals : Array[Value] = []
+      for s in strings {
+        raw_vals.push(String_(s))
+      }
+      let raw_arr = Array({ elements: raw_vals })
+      // Create the template strings object as an array-like object with raw property
+      let props : Map[String, Value] = {}
+      props["length"] = Number(strings.length().to_double())
+      props["raw"] = raw_arr
+      for i, s in strings {
+        props[i.to_string()] = String_(s)
+      }
+      let template_obj = Object({
+        properties: props,
+        symbol_properties: {},
+        prototype: try { self.global.get("[[ObjectPrototype]]") } catch {
+          _ => Null
+        },
+        callable: None,
+        class_name: "Array",
+        descriptors: {},
+        symbol_descriptors: {},
+        extensible: true,
+      })
+      // Build args: [templateObj, ...substitutions]
+      let args : Array[Value] = [template_obj]
+      for e in exprs {
+        args.push(self.eval_expr(e, env))
+      }
+      // Resolve this binding for member expression tags (e.g., String.raw`...`)
+      let this_val : Value = match tag_expr {
+        Member(obj_expr, _, _) | ComputedMember(obj_expr, _, _) =>
+          self.eval_expr(obj_expr, env)
+        _ => Undefined
+      }
+      self.call_value(tag, this_val, args, loc)
     }
     ArrowFunc(params, body, _) => {
       let func_data : FuncData = { name: None, params, body, closure: env }
@@ -2112,6 +2314,7 @@ fn Interpreter::eval_unary(
       let val = self.eval_expr(operand, env)
       match op {
         Neg => Number(-to_number(val))
+        Pos => Number(to_number(val))
         Not => Bool(not(is_truthy(val)))
         BitNot => Number(to_int32(to_number(val)).lnot().to_double())
         _ =>
@@ -2417,31 +2620,55 @@ fn Interpreter::call_value(
             func_env.def("this", this_val, LetBinding)
             func_env.def("<new.target>", Undefined, LetBinding)
             // Bind params with defaults
+            let mut effective_param_count = 0
             for i = 0; i < data.params.length(); i = i + 1 {
               let param = data.params[i]
-              let val : Value = if i < args.length() &&
-                not(args[i] is Undefined) {
-                args[i]
+              // Skip rest destructuring params - they're bound via rest_param
+              if data.rest_param is Some(rn) && param.name == rn {
+                continue
+              }
+              let val : Value = if effective_param_count < args.length() &&
+                not(args[effective_param_count] is Undefined) {
+                args[effective_param_count]
               } else {
                 match param.default_val {
                   Some(default_expr) => self.eval_expr(default_expr, func_env)
-                  None => if i < args.length() { args[i] } else { Undefined }
+                  None =>
+                    if effective_param_count < args.length() {
+                      args[effective_param_count]
+                    } else {
+                      Undefined
+                    }
                 }
               }
               func_env.def(param.name, val, LetBinding)
+              // Destructure if pattern param
+              match param.pattern {
+                Some(pat) => self.bind_pattern(pat, val, func_env, LetBinding)
+                None => ()
+              }
+              effective_param_count = effective_param_count + 1
             }
             // Rest param
             match data.rest_param {
               Some(rest_name) => {
                 let rest_elements : Array[Value] = []
-                for i = data.params.length(); i < args.length(); i = i + 1 {
+                for i = effective_param_count; i < args.length(); i = i + 1 {
                   rest_elements.push(args[i])
                 }
-                func_env.def(
-                  rest_name,
-                  Array({ elements: rest_elements }),
-                  LetBinding,
-                )
+                let rest_val = Array({ elements: rest_elements })
+                func_env.def(rest_name, rest_val, LetBinding)
+                // Apply destructuring pattern if present
+                for p in data.params {
+                  if p.name == rest_name {
+                    match p.pattern {
+                      Some(pat) =>
+                        self.bind_pattern(pat, rest_val, func_env, LetBinding)
+                      None => ()
+                    }
+                    break
+                  }
+                }
               }
               None => ()
             }
@@ -2500,30 +2727,55 @@ fn Interpreter::call_value(
         Some(ArrowFuncExt(data)) => {
           let func_env = Environment::new(parent=Some(data.closure))
           // Arrow functions do NOT rebind this
+          let mut effective_param_count = 0
           for i = 0; i < data.params.length(); i = i + 1 {
             let param = data.params[i]
-            let val : Value = if i < args.length() && not(args[i] is Undefined) {
-              args[i]
+            // Skip rest destructuring params
+            if data.rest_param is Some(rn) && param.name == rn {
+              continue
+            }
+            let val : Value = if effective_param_count < args.length() &&
+              not(args[effective_param_count] is Undefined) {
+              args[effective_param_count]
             } else {
               match param.default_val {
                 Some(default_expr) => self.eval_expr(default_expr, func_env)
-                None => if i < args.length() { args[i] } else { Undefined }
+                None =>
+                  if effective_param_count < args.length() {
+                    args[effective_param_count]
+                  } else {
+                    Undefined
+                  }
               }
             }
             func_env.def(param.name, val, LetBinding)
+            // Destructure if pattern param
+            match param.pattern {
+              Some(pat) => self.bind_pattern(pat, val, func_env, LetBinding)
+              None => ()
+            }
+            effective_param_count = effective_param_count + 1
           }
           // Rest param
           match data.rest_param {
             Some(rest_name) => {
               let rest_elements : Array[Value] = []
-              for i = data.params.length(); i < args.length(); i = i + 1 {
+              for i = effective_param_count; i < args.length(); i = i + 1 {
                 rest_elements.push(args[i])
               }
-              func_env.def(
-                rest_name,
-                Array({ elements: rest_elements }),
-                LetBinding,
-              )
+              let rest_val = Array({ elements: rest_elements })
+              func_env.def(rest_name, rest_val, LetBinding)
+              // Apply destructuring pattern if present
+              for p in data.params {
+                if p.name == rest_name {
+                  match p.pattern {
+                    Some(pat) =>
+                      self.bind_pattern(pat, rest_val, func_env, LetBinding)
+                    None => ()
+                  }
+                  break
+                }
+              }
             }
             None => ()
           }
@@ -2643,7 +2895,7 @@ fn get_bound_func_name(target : Value) -> String {
 
 ///|
 fn Interpreter::get_property(
-  _self : Interpreter,
+  self : Interpreter,
   obj : Value,
   prop : String,
   _loc : @token.Loc,
@@ -2910,15 +3162,30 @@ fn Interpreter::get_property(
       if prop == "length" {
         Number(data.elements.length().to_double())
       } else {
-        get_array_method_with_interp(data, prop)
+        let result = get_array_method_with_interp(data, prop)
+        match result {
+          Undefined => lookup_builtin_proto(self.global, "Array", prop)
+          _ => result
+        }
       }
     String_(s) =>
       if prop == "length" {
         Number(s.length().to_double())
       } else {
-        get_string_method(s, prop)
+        let result = get_string_method(s, prop)
+        match result {
+          Undefined => lookup_builtin_proto(self.global, "String", prop)
+          _ => result
+        }
       }
-    Number(_) => get_number_method(obj, prop)
+    Number(_) => {
+      let result = get_number_method(obj, prop)
+      match result {
+        Undefined => lookup_builtin_proto(self.global, "Number", prop)
+        _ => result
+      }
+    }
+    Bool(_) => lookup_builtin_proto(self.global, "Boolean", prop)
     Symbol(sym) =>
       // Symbol properties: description, toString
       if prop == "description" {
@@ -2934,7 +3201,7 @@ fn Interpreter::get_property(
           }
         })
       } else {
-        Undefined
+        lookup_builtin_proto(self.global, "Symbol", prop)
       }
     Map(data) =>
       if prop == "size" {
@@ -2958,6 +3225,38 @@ fn Interpreter::get_property(
       raise @errors.TypeError(
         message="Cannot read property '\{prop}' of \{type_of(obj)}",
       )
+    _ => Undefined
+  }
+}
+
+///|
+/// Look up a property on a built-in constructor's prototype (e.g. Array.prototype.constructor)
+fn lookup_builtin_proto(env : Environment, ctor_name : String, prop : String) -> Value {
+  let ctor = try { env.get(ctor_name) } catch { _ => return Undefined }
+  match ctor {
+    Object(ctor_data) =>
+      match ctor_data.properties.get("prototype") {
+        Some(Object(proto_data)) =>
+          match proto_data.properties.get(prop) {
+            Some(v) => v
+            None => {
+              // Walk up prototype chain from the prototype
+              let mut current = proto_data.prototype
+              while true {
+                match current {
+                  Object(pdata) =>
+                    match pdata.properties.get(prop) {
+                      Some(v) => return v
+                      None => current = pdata.prototype
+                    }
+                  _ => break
+                }
+              }
+              Undefined
+            }
+          }
+        _ => Undefined
+      }
     _ => Undefined
   }
 }
@@ -3482,30 +3781,53 @@ fn Interpreter::eval_new(
             let func_env = Environment::new(parent=Some(data.closure))
             func_env.def("this", new_obj, LetBinding)
             func_env.def("<new.target>", ctor, LetBinding)
+            let mut effective_param_count = 0
             for i = 0; i < data.params.length(); i = i + 1 {
               let param = data.params[i]
-              let val : Value = if i < args.length() &&
-                not(args[i] is Undefined) {
-                args[i]
+              // Skip rest destructuring params
+              if data.rest_param is Some(rn) && param.name == rn {
+                continue
+              }
+              let val : Value = if effective_param_count < args.length() &&
+                not(args[effective_param_count] is Undefined) {
+                args[effective_param_count]
               } else {
                 match param.default_val {
                   Some(default_expr) => self.eval_expr(default_expr, func_env)
-                  None => if i < args.length() { args[i] } else { Undefined }
+                  None =>
+                    if effective_param_count < args.length() {
+                      args[effective_param_count]
+                    } else {
+                      Undefined
+                    }
                 }
               }
               func_env.def(param.name, val, LetBinding)
+              match param.pattern {
+                Some(pat) => self.bind_pattern(pat, val, func_env, LetBinding)
+                None => ()
+              }
+              effective_param_count = effective_param_count + 1
             }
             match data.rest_param {
               Some(rest_name) => {
                 let rest_elements : Array[Value] = []
-                for i = data.params.length(); i < args.length(); i = i + 1 {
+                for i = effective_param_count; i < args.length(); i = i + 1 {
                   rest_elements.push(args[i])
                 }
-                func_env.def(
-                  rest_name,
-                  Array({ elements: rest_elements }),
-                  LetBinding,
-                )
+                let rest_val = Array({ elements: rest_elements })
+                func_env.def(rest_name, rest_val, LetBinding)
+                // Apply destructuring pattern if present
+                for p in data.params {
+                  if p.name == rest_name {
+                    match p.pattern {
+                      Some(pat) =>
+                        self.bind_pattern(pat, rest_val, func_env, LetBinding)
+                      None => ()
+                    }
+                    break
+                  }
+                }
               }
               None => ()
             }

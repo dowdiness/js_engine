@@ -49,3 +49,9 @@ This is a [MoonBit](https://docs.moonbitlang.com) project.
 
 - agent-todo.md has some small tasks that are easy for AI to pick up, agent is
   welcome to finish the tasks and check the box when you are done
+
+## Project Documentation
+
+- `ROADMAP.md` — Current test262 pass rate, failure breakdown, next phase targets, architecture decisions
+- `docs/PHASE_HISTORY.md` — Archived detailed implementation notes for completed phases (1-6)
+- `README.md` — Project overview, usage, package structure

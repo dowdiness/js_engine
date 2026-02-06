@@ -373,6 +373,18 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
     }),
   )
 
+  // Populate String.prototype with methods for .call() support
+  setup_string_prototype(string_proto)
+  // Set String.prototype.constructor = String
+  match string_proto {
+    Object(data) => {
+      let ctor = try { env.get("String") } catch { _ => Undefined }
+      data.properties["constructor"] = ctor
+      data.descriptors["constructor"] = { writable: true, enumerable: false, configurable: true }
+    }
+    _ => ()
+  }
+
   // Number constructor with static methods and prototype
   setup_number_builtins(env)
 
@@ -446,6 +458,16 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
       extensible: true,
     }),
   )
+
+  // Set Boolean.prototype.constructor = Boolean
+  match boolean_proto {
+    Object(data) => {
+      let ctor = try { env.get("Boolean") } catch { _ => Undefined }
+      data.properties["constructor"] = ctor
+      data.descriptors["constructor"] = { writable: true, enumerable: false, configurable: true }
+    }
+    _ => ()
+  }
 
   // Function constructor with prototype
   setup_function_builtins(env)
@@ -680,6 +702,15 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
       extensible: true,
     }),
   )
+  // Set Symbol.prototype.constructor = Symbol
+  match symbol_proto {
+    Object(data) => {
+      let ctor = try { env.get("Symbol") } catch { _ => Undefined }
+      data.properties["constructor"] = ctor
+      data.descriptors["constructor"] = { writable: true, enumerable: false, configurable: true }
+    }
+    _ => ()
+  }
 }
 
 ///|
@@ -1388,6 +1419,15 @@ fn register_error_ctor(
       extensible: true,
     }),
   )
+  // Set ErrorType.prototype.constructor = ErrorType
+  match proto_obj {
+    Object(data) => {
+      let ctor = try { env.get(name) } catch { _ => Undefined }
+      data.properties["constructor"] = ctor
+      data.descriptors["constructor"] = { writable: true, enumerable: false, configurable: true }
+    }
+    _ => ()
+  }
   proto_obj
 }
 
@@ -1444,7 +1484,27 @@ fn setup_number_builtins(env : Environment) -> Unit {
     prototype: Null,
     callable: Some(
       MethodCallable("toFixed", fn(this_val, args) {
-        let n = to_number(this_val)
+        let n : Double = match this_val {
+          Number(v) => v
+          Object(data) =>
+            if data.class_name == "Number" {
+              match data.properties.get("[[NumberData]]") {
+                Some(Number(v)) => v
+                _ =>
+                  raise @errors.TypeError(
+                    message="Number.prototype.toFixed requires that 'this' be a Number",
+                  )
+              }
+            } else {
+              raise @errors.TypeError(
+                message="Number.prototype.toFixed requires that 'this' be a Number",
+              )
+            }
+          _ =>
+            raise @errors.TypeError(
+              message="Number.prototype.toFixed requires that 'this' be a Number",
+            )
+        }
         let digits = if args.length() > 0 {
           to_number(args[0]).to_int()
         } else {
@@ -1506,7 +1566,28 @@ fn setup_number_builtins(env : Environment) -> Unit {
     prototype: Null,
     callable: Some(
       MethodCallable("toString", fn(this_val, args) {
-        let n = to_number(this_val)
+        // Validate this is a number
+        let n : Double = match this_val {
+          Number(v) => v
+          Object(data) =>
+            if data.class_name == "Number" {
+              match data.properties.get("[[NumberData]]") {
+                Some(Number(v)) => v
+                _ =>
+                  raise @errors.TypeError(
+                    message="Number.prototype.toString requires that 'this' be a Number",
+                  )
+              }
+            } else {
+              raise @errors.TypeError(
+                message="Number.prototype.toString requires that 'this' be a Number",
+              )
+            }
+          _ =>
+            raise @errors.TypeError(
+              message="Number.prototype.toString requires that 'this' be a Number",
+            )
+        }
         let radix = if args.length() > 0 {
           to_number(args[0]).to_int()
         } else {
@@ -1562,7 +1643,27 @@ fn setup_number_builtins(env : Environment) -> Unit {
     prototype: Null,
     callable: Some(
       MethodCallable("valueOf", fn(this_val, _args) {
-        Number(to_number(this_val))
+        match this_val {
+          Number(_) => this_val
+          Object(data) =>
+            if data.class_name == "Number" {
+              match data.properties.get("[[NumberData]]") {
+                Some(Number(v)) => Number(v)
+                _ =>
+                  raise @errors.TypeError(
+                    message="Number.prototype.valueOf requires that 'this' be a Number",
+                  )
+              }
+            } else {
+              raise @errors.TypeError(
+                message="Number.prototype.valueOf requires that 'this' be a Number",
+              )
+            }
+          _ =>
+            raise @errors.TypeError(
+              message="Number.prototype.valueOf requires that 'this' be a Number",
+            )
+        }
       }),
     ),
     class_name: "Function",
@@ -1868,6 +1969,15 @@ fn setup_number_builtins(env : Environment) -> Unit {
       extensible: true,
     }),
   )
+  // Set Number.prototype.constructor = Number
+  match number_proto {
+    Object(data) => {
+      let ctor = try { env.get("Number") } catch { _ => Undefined }
+      data.properties["constructor"] = ctor
+      data.descriptors["constructor"] = { writable: true, enumerable: false, configurable: true }
+    }
+    _ => ()
+  }
 }
 
 ///|

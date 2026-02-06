@@ -67,6 +67,12 @@ moon test --update # Update snapshot tests
 moon build        # Build
 ```
 
+## Documentation
+
+- [ROADMAP.md](ROADMAP.md) — Current test262 status, failure breakdown, future targets, architecture overview
+- [docs/PHASE_HISTORY.md](docs/PHASE_HISTORY.md) — Archived implementation notes for completed phases (1-6)
+- [AGENTS.md](AGENTS.md) — MoonBit coding conventions and tooling guide for AI agents
+
 ## License
 
 Apache-2.0

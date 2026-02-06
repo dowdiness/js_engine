@@ -933,6 +933,74 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       let top = template_depth_stack.length() - 1
       template_depth_stack[top] = template_depth_stack[top] + 1
     }
+    // .5 style number literals (leading decimal point)
+    if c == '.' && offset + 1 < len && is_digit(char_at(offset + 1)) {
+      let num_start = offset
+      offset += 1 // skip '.'
+      col += 1
+      while offset < len && (is_digit(char_at(offset)) || char_at(offset) == '_') {
+        if char_at(offset) == '_' {
+          // Numeric separator must be between digits
+          if offset + 1 >= len || not(is_digit(char_at(offset + 1))) {
+            raise @errors.SyntaxError(
+              message="Numeric separators are not allowed at the end of numeric literals at line \{line}, col \{col}",
+            )
+          }
+        }
+        offset += 1
+        col += 1
+      }
+      // Handle exponent part: e.g., .5e10
+      if offset < len && (char_at(offset) == 'e' || char_at(offset) == 'E') {
+        let exp_start = offset
+        offset += 1
+        col += 1
+        if offset < len && (char_at(offset) == '+' || char_at(offset) == '-') {
+          offset += 1
+          col += 1
+        }
+        let digit_start = offset
+        while offset < len &&
+          (is_digit(char_at(offset)) || char_at(offset) == '_') {
+          if char_at(offset) == '_' {
+            if offset + 1 >= len || not(is_digit(char_at(offset + 1))) {
+              raise @errors.SyntaxError(
+                message="Numeric separators are not allowed at the end of numeric literals at line \{line}, col \{col}",
+              )
+            }
+          }
+          offset += 1
+          col += 1
+        }
+        // Exponent must have at least one digit
+        if offset == digit_start {
+          let _ = exp_start
+          raise @errors.SyntaxError(
+            message="Invalid or unexpected token at line \{line}, col \{col}",
+          )
+        }
+      }
+      let raw_str = source.view()[num_start:offset].to_string()
+      // Remove numeric separators for parsing
+      // Remove numeric separators for parsing
+      let buf = StringBuilder::new()
+      for ch in raw_str {
+        if ch != '_' {
+          buf.write_char(ch)
+        }
+      }
+      let num_str = buf.to_string()
+      let value = try {
+        @strconv.parse_double(num_str)
+      } catch {
+        _ =>
+          raise @errors.SyntaxError(
+            message="Invalid or unexpected token at line \{line}, col \{col}",
+          )
+      }
+      tokens.push({ kind: Number(value), loc, raw: num_str })
+      continue
+    }
     // ... (spread/rest)
     if c == '.' &&
       offset + 2 < len &&

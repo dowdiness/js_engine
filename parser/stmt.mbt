@@ -1,6 +1,11 @@
 ///|
 fn Parser::parse_stmt(self : Parser) -> @ast.Stmt raise Error {
   match self.peek_kind() {
+    Semicolon => {
+      // Empty statement
+      let loc = self.advance().loc
+      ExprStmt(UndefinedLit(loc), loc)
+    }
     Let | Const | Var => self.parse_var_decl()
     Function => self.parse_func_decl()
     Class => self.parse_class_decl()
@@ -90,7 +95,7 @@ fn Parser::parse_func_decl(self : Parser) -> @ast.Stmt raise Error {
   let saved_pos = self.pos
   let params = self.parse_params() catch {
     Failure::Failure(msg) =>
-      if msg == "REST_PARAM_FOUND" || msg == "DEFAULT_PARAM_FOUND" {
+      if msg == "REST_PARAM_FOUND" || msg == "DEFAULT_PARAM_FOUND" || msg == "DESTRUCTURE_PARAM_FOUND" {
         self.pos = saved_pos
         let (ext_params, rest_param) = self.parse_params_ext()
         let body = self.parse_block_body()
@@ -114,6 +119,10 @@ fn Parser::parse_params(self : Parser) -> Array[String] raise Error {
       // Let extended parse handle it
       raise Failure::Failure("REST_PARAM_FOUND")
     }
+    // Destructuring patterns trigger extended parse
+    if self.at(LBrace) || self.at(LBracket) {
+      raise Failure::Failure("DESTRUCTURE_PARAM_FOUND")
+    }
     params.push(self.expect_ident())
     // Check for default value — trigger extended parse
     if self.at(Assign) {
@@ -122,6 +131,9 @@ fn Parser::parse_params(self : Parser) -> Array[String] raise Error {
     while self.eat(Comma) {
       if self.at(DotDotDot) {
         raise Failure::Failure("REST_PARAM_FOUND")
+      }
+      if self.at(LBrace) || self.at(LBracket) {
+        raise Failure::Failure("DESTRUCTURE_PARAM_FOUND")
       }
       params.push(self.expect_ident())
       if self.at(Assign) {
@@ -140,10 +152,29 @@ fn Parser::parse_params_ext(
   let _ = self.expect(LParen)
   let params : Array[@ast.Param] = []
   let mut rest_param : String? = None
+  let mut synth_idx = 0
   if not(self.at(RParen)) {
     // Check for rest param
     if self.eat(DotDotDot) {
-      rest_param = Some(self.expect_ident())
+      if self.at(LBrace) || self.at(LBracket) {
+        let pat = self.parse_pattern()
+        let sname = "$rest"
+        rest_param = Some(sname)
+        params.push({ name: sname, default_val: None, pattern: Some(pat) })
+      } else {
+        rest_param = Some(self.expect_ident())
+      }
+    } else if self.at(LBrace) || self.at(LBracket) {
+      // Destructuring parameter
+      let pat = self.parse_pattern()
+      let sname = "$" + synth_idx.to_string()
+      synth_idx = synth_idx + 1
+      let default_val : @ast.Expr? = if self.eat(Assign) {
+        Some(self.parse_assignment())
+      } else {
+        None
+      }
+      params.push({ name: sname, default_val, pattern: Some(pat) })
     } else {
       let name = self.expect_ident()
       let default_val : @ast.Expr? = if self.eat(Assign) {
@@ -151,25 +182,43 @@ fn Parser::parse_params_ext(
       } else {
         None
       }
-      params.push({ name, default_val })
-      while self.eat(Comma) {
-        if rest_param is Some(_) {
-          let t = self.peek()
-          raise @errors.SyntaxError(
-            message="Rest parameter must be last at line \{t.loc.line}, col \{t.loc.col}",
-          )
-        }
-        if self.eat(DotDotDot) {
-          rest_param = Some(self.expect_ident())
+      params.push({ name, default_val, pattern: None })
+    }
+    while self.eat(Comma) {
+      if self.at(RParen) { break } // trailing comma
+      if rest_param is Some(_) {
+        let t = self.peek()
+        raise @errors.SyntaxError(
+          message="Rest parameter must be last at line \{t.loc.line}, col \{t.loc.col}",
+        )
+      }
+      if self.eat(DotDotDot) {
+        if self.at(LBrace) || self.at(LBracket) {
+          let pat = self.parse_pattern()
+          let sname = "$rest"
+          rest_param = Some(sname)
+          params.push({ name: sname, default_val: None, pattern: Some(pat) })
         } else {
-          let pname = self.expect_ident()
-          let pdefault : @ast.Expr? = if self.eat(Assign) {
-            Some(self.parse_assignment())
-          } else {
-            None
-          }
-          params.push({ name: pname, default_val: pdefault })
+          rest_param = Some(self.expect_ident())
         }
+      } else if self.at(LBrace) || self.at(LBracket) {
+        let pat = self.parse_pattern()
+        let sname = "$" + synth_idx.to_string()
+        synth_idx = synth_idx + 1
+        let pdefault : @ast.Expr? = if self.eat(Assign) {
+          Some(self.parse_assignment())
+        } else {
+          None
+        }
+        params.push({ name: sname, default_val: pdefault, pattern: Some(pat) })
+      } else {
+        let pname = self.expect_ident()
+        let pdefault : @ast.Expr? = if self.eat(Assign) {
+          Some(self.parse_assignment())
+        } else {
+          None
+        }
+        params.push({ name: pname, default_val: pdefault, pattern: None })
       }
     }
   }
@@ -232,6 +281,28 @@ fn Parser::parse_for_stmt(self : Parser) -> @ast.Stmt raise Error {
       Const => ConstKind
       _ => VarKind
     }
+    // Check for destructuring pattern in for-of/for-in: for (let [a,b] of ...) or for (let {x,y} of ...)
+    if self.at(LBracket) || self.at(LBrace) {
+      let pat = self.parse_pattern()
+      if self.eat(Of) {
+        let obj = self.parse_assignment()
+        let _ = self.expect(RParen)
+        let body = self.parse_stmt()
+        return ForOfStmtPat(var_kind, pat, obj, body, tok.loc)
+      }
+      if self.eat(In) {
+        let obj = self.parse_expr()
+        let _ = self.expect(RParen)
+        let body = self.parse_stmt()
+        return ForInStmtPat(var_kind, pat, obj, body, tok.loc)
+      }
+      // Destructuring in regular for: for (let [a,b] = ...; ...; ...)
+      let _ = self.expect(Assign)
+      let init_expr = self.parse_assignment()
+      self.eat_semicolon()
+      let init : @ast.Stmt? = Some(DestructureDecl(var_kind, pat, init_expr, var_tok.loc))
+      return self.parse_for_rest(init, tok.loc)
+    }
     let name = self.expect_ident()
     if self.eat(In) {
       // for-in with var declaration
@@ -247,14 +318,36 @@ fn Parser::parse_for_stmt(self : Parser) -> @ast.Stmt raise Error {
       let body = self.parse_stmt()
       return ForOfStmt(Some(var_kind), name, obj, body, tok.loc)
     }
-    // Regular for — finish parsing the var decl init
+    // Regular for — finish parsing the var decl init (may have multiple comma-separated decls)
     let init_val : @ast.Expr? = if self.eat(Assign) {
       Some(self.parse_assignment())
     } else {
       None
     }
+    let decls : Array[@ast.Stmt] = [VarDecl(var_kind, name, init_val, var_tok.loc)]
+    while self.eat(Comma) {
+      // Handle destructuring in for-init: for (var i = 0, {x} = obj; ...)
+      if self.at(LBracket) || self.at(LBrace) {
+        let pat = self.parse_pattern()
+        let _ = self.expect(Assign)
+        let val = self.parse_assignment()
+        decls.push(DestructureDecl(var_kind, pat, val, var_tok.loc))
+      } else {
+        let next_name = self.expect_ident()
+        let next_val : @ast.Expr? = if self.eat(Assign) {
+          Some(self.parse_assignment())
+        } else {
+          None
+        }
+        decls.push(VarDecl(var_kind, next_name, next_val, var_tok.loc))
+      }
+    }
     self.eat_semicolon()
-    let init : @ast.Stmt? = Some(VarDecl(var_kind, name, init_val, var_tok.loc))
+    let init : @ast.Stmt? = if decls.length() == 1 {
+      Some(decls[0])
+    } else {
+      Some(StmtList(decls, var_tok.loc))
+    }
     return self.parse_for_rest(init, tok.loc)
   }
   // Check for for-in / for-of with bare identifier

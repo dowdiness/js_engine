@@ -4,8 +4,64 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
   // Object.getPrototypeOf, Object.getOwnPropertyNames
   let obj_proto : Value = Object({
     properties: {
-      "toString": make_native_func("toString", fn(_args) {
-        String_("[object Object]")
+      "toString": Object({
+        properties: {},
+        symbol_properties: {},
+        prototype: Null,
+        callable: Some(
+          MethodCallable("toString", fn(this_val, _args) {
+            match this_val {
+              Undefined => String_("[object Undefined]")
+              Null => String_("[object Null]")
+              Bool(_) => String_("[object Boolean]")
+              Number(_) => String_("[object Number]")
+              String_(_) => String_("[object String]")
+              Array(_) => String_("[object Array]")
+              Symbol(_) => String_("[object Symbol]")
+              Map(_) => String_("[object Map]")
+              Set(_) => String_("[object Set]")
+              Promise(_) => String_("[object Promise]")
+              Object(data) =>
+                if data.class_name == "Function" {
+                  String_("[object Function]")
+                } else if data.class_name == "RegExp" {
+                  String_("[object RegExp]")
+                } else if data.class_name == "Error" ||
+                  data.class_name == "TypeError" ||
+                  data.class_name == "ReferenceError" ||
+                  data.class_name == "SyntaxError" ||
+                  data.class_name == "RangeError" ||
+                  data.class_name == "URIError" ||
+                  data.class_name == "EvalError" ||
+                  data.class_name == "AggregateError" {
+                  String_("[object Error]")
+                } else if data.class_name == "Date" {
+                  String_("[object Date]")
+                } else if data.class_name == "Map" {
+                  String_("[object Map]")
+                } else if data.class_name == "Set" {
+                  String_("[object Set]")
+                } else if data.class_name == "Promise" {
+                  String_("[object Promise]")
+                } else if data.class_name == "Arguments" {
+                  String_("[object Arguments]")
+                } else if data.class_name == "Number" {
+                  String_("[object Number]")
+                } else if data.class_name == "String" {
+                  String_("[object String]")
+                } else if data.class_name == "Boolean" {
+                  String_("[object Boolean]")
+                } else {
+                  String_("[object Object]")
+                }
+              _ => String_("[object Object]")
+            }
+          }),
+        ),
+        class_name: "Function",
+        descriptors: {},
+        symbol_descriptors: {},
+        extensible: true,
       }),
       "valueOf": Object({
         properties: {},
@@ -28,13 +84,122 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             let key_val = if args.length() > 0 { args[0] } else { Undefined }
             match this_val {
               Object(data) =>
-                // Handle Symbol keys
                 match key_val {
                   Symbol(sym) => Bool(data.symbol_properties.contains(sym.id))
                   _ => Bool(data.properties.contains(key_val.to_string()))
                 }
+              Array(data) => {
+                let key = key_val.to_string()
+                if key == "length" {
+                  Bool(true)
+                } else {
+                  let idx = try { @strconv.parse_int(key) } catch { _ => -1 }
+                  Bool(
+                    idx >= 0 &&
+                    idx.to_string() == key &&
+                    idx < data.elements.length(),
+                  )
+                }
+              }
+              String_(s) => {
+                let key = key_val.to_string()
+                if key == "length" {
+                  Bool(true)
+                } else {
+                  let idx = try { @strconv.parse_int(key) } catch { _ => -1 }
+                  Bool(
+                    idx >= 0 && idx.to_string() == key && idx < s.length(),
+                  )
+                }
+              }
               _ => Bool(false)
             }
+          }),
+        ),
+        class_name: "Function",
+        descriptors: {},
+        symbol_descriptors: {},
+        extensible: true,
+      }),
+      "propertyIsEnumerable": Object({
+        properties: {},
+        symbol_properties: {},
+        prototype: Null,
+        callable: Some(
+          MethodCallable("propertyIsEnumerable", fn(this_val, args) {
+            let key_val = if args.length() > 0 { args[0] } else { Undefined }
+            let key = key_val.to_string()
+            match this_val {
+              Object(data) =>
+                if data.properties.contains(key) {
+                  match data.descriptors.get(key) {
+                    Some(d) => Bool(d.enumerable)
+                    None => Bool(true)
+                  }
+                } else {
+                  Bool(false)
+                }
+              Array(data) => {
+                if key == "length" {
+                  Bool(false) // length is not enumerable
+                } else {
+                  let idx = try { @strconv.parse_int(key) } catch { _ => -1 }
+                  Bool(
+                    idx >= 0 &&
+                    idx.to_string() == key &&
+                    idx < data.elements.length(),
+                  )
+                }
+              }
+              String_(s) => {
+                if key == "length" {
+                  Bool(false)
+                } else {
+                  let idx = try { @strconv.parse_int(key) } catch { _ => -1 }
+                  Bool(
+                    idx >= 0 && idx.to_string() == key && idx < s.length(),
+                  )
+                }
+              }
+              _ => Bool(false)
+            }
+          }),
+        ),
+        class_name: "Function",
+        descriptors: {},
+        symbol_descriptors: {},
+        extensible: true,
+      }),
+      "isPrototypeOf": Object({
+        properties: {},
+        symbol_properties: {},
+        prototype: Null,
+        callable: Some(
+          MethodCallable("isPrototypeOf", fn(this_val, args) {
+            // Walk the argument's prototype chain looking for this_val
+            let arg = if args.length() > 0 { args[0] } else { Undefined }
+            let mut current : Value = match arg {
+              Object(data) => data.prototype
+              _ => return Bool(false)
+            }
+            while true {
+              match current {
+                Null | Undefined => return Bool(false)
+                Object(proto_data) => {
+                  // Compare by reference identity - check if this_val is the same object
+                  match this_val {
+                    Object(this_data) =>
+                      if physical_equal(this_data, proto_data) {
+                        return Bool(true)
+                      }
+                    _ => ()
+                  }
+                  current = proto_data.prototype
+                }
+                _ => return Bool(false)
+              }
+            }
+            Bool(false)
           }),
         ),
         class_name: "Function",
@@ -47,10 +212,18 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     prototype: Null,
     callable: None,
     class_name: "Object",
-    descriptors: {},
+    descriptors: {
+      "toString": { writable: true, enumerable: false, configurable: true },
+      "valueOf": { writable: true, enumerable: false, configurable: true },
+      "hasOwnProperty": { writable: true, enumerable: false, configurable: true },
+      "propertyIsEnumerable": { writable: true, enumerable: false, configurable: true },
+      "isPrototypeOf": { writable: true, enumerable: false, configurable: true },
+    },
     symbol_descriptors: {},
     extensible: true,
   })
+  // Store Object.prototype so plain objects {} can link to it
+  env.def_builtin("[[ObjectPrototype]]", obj_proto)
   env.def_builtin(
     "Object",
     Object({
@@ -461,6 +634,23 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               data.properties.each(fn(k, _v) { keys.push(String_(k)) })
               Array({ elements: keys })
             }
+            Array(data) => {
+              let keys : Array[Value] = []
+              for i = 0; i < data.elements.length(); i = i + 1 {
+                keys.push(String_(i.to_string()))
+              }
+              keys.push(String_("length"))
+              Array({ elements: keys })
+            }
+            String_(s) => {
+              let keys : Array[Value] = []
+              let chars = s.to_array()
+              for i = 0; i < chars.length(); i = i + 1 {
+                keys.push(String_(i.to_string()))
+              }
+              keys.push(String_("length"))
+              Array({ elements: keys })
+            }
             _ => Array({ elements: [] })
           }
         }),
@@ -662,6 +852,29 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             } else {
               ""
             }
+            fn make_desc(
+              val : Value,
+              writable : Bool,
+              enumerable : Bool,
+              configurable : Bool
+            ) -> Value {
+              Object({
+                properties: {
+                  "value": val,
+                  "writable": Bool(writable),
+                  "enumerable": Bool(enumerable),
+                  "configurable": Bool(configurable),
+                },
+                symbol_properties: {},
+                prototype: Null,
+                callable: None,
+                class_name: "Object",
+                descriptors: {},
+                symbol_descriptors: {},
+                extensible: true,
+              })
+            }
+
             match obj {
               Object(data) =>
                 match data.properties.get(prop_name) {
@@ -679,23 +892,57 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                       Some(d) => d.configurable
                       None => true
                     }
-                    Object({
-                      properties: {
-                        "value": val,
-                        "writable": Bool(writable),
-                        "enumerable": Bool(enumerable),
-                        "configurable": Bool(configurable),
-                      },
-                      symbol_properties: {},
-                      prototype: Null,
-                      callable: None,
-                      class_name: "Object",
-                      descriptors: {},
-                      symbol_descriptors: {},
-                      extensible: true,
-                    })
+                    make_desc(val, writable, enumerable, configurable)
                   }
                   None => Undefined
+                }
+              Array(data) =>
+                if prop_name == "length" {
+                  make_desc(
+                    Number(data.elements.length().to_double()),
+                    true,
+                    false,
+                    false,
+                  )
+                } else {
+                  // Check indexed properties
+                  let idx = try {
+                    @strconv.parse_int(prop_name)
+                  } catch {
+                    _ => -1
+                  }
+                  if idx >= 0 &&
+                    idx.to_string() == prop_name &&
+                    idx < data.elements.length() {
+                    make_desc(data.elements[idx], true, true, true)
+                  } else {
+                    Undefined
+                  }
+                }
+              String_(s) =>
+                if prop_name == "length" {
+                  make_desc(
+                    Number(s.length().to_double()),
+                    false,
+                    false,
+                    false,
+                  )
+                } else {
+                  let idx = try {
+                    @strconv.parse_int(prop_name)
+                  } catch {
+                    _ => -1
+                  }
+                  if idx >= 0 &&
+                    idx.to_string() == prop_name &&
+                    idx < s.length() {
+                    let chars = s.to_array()
+                    let buf = StringBuilder::new()
+                    buf.write_char(chars[idx])
+                    make_desc(String_(buf.to_string()), false, true, false)
+                  } else {
+                    Undefined
+                  }
                 }
               _ => Undefined
             }
@@ -916,7 +1163,11 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 Bool(true)
               } else {
                 let idx = @strconv.parse_int(key) catch { _ => -1 }
-                Bool(idx >= 0 && idx < data.elements.length())
+                Bool(
+                  idx >= 0 &&
+                  idx.to_string() == key &&
+                  idx < data.elements.length(),
+                )
               }
             }
             _ => Bool(false)
@@ -1004,7 +1255,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               Object({
                 properties: {},
                 symbol_properties: {},
-                prototype: Null,
+                prototype: obj_proto,
                 callable: None,
                 class_name: "Object",
                 descriptors: {},
@@ -1021,6 +1272,16 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
       extensible: true,
     }),
   )
+
+  // Set Object.prototype.constructor = Object
+  match obj_proto {
+    Object(data) => {
+      let obj_ctor = try { env.get("Object") } catch { _ => Undefined }
+      data.properties["constructor"] = obj_ctor
+      data.descriptors["constructor"] = { writable: true, enumerable: false, configurable: true }
+    }
+    _ => ()
+  }
 
   // Create Array.prototype with all array methods
   let array_proto_props : Map[String, Value] = {}
@@ -1143,26 +1404,24 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     prototype: Null,
     callable: Some(
       MethodCallable("join", fn(this_val, args) {
-        match this_val {
-          Array(arr) => {
-            let sep = if args.length() > 0 {
-              match args[0] {
-                Undefined => ","
-                v => v.to_string()
-              }
-            } else {
-              ","
-            }
-            let parts : Array[String] = arr.elements.map(fn(v) {
-              match v {
-                Null | Undefined => ""
-                _ => v.to_string()
-              }
-            })
-            String_(parts.join(sep))
+        let len = to_array_like_length(this_val)
+        let sep = if args.length() > 0 {
+          match args[0] {
+            Undefined => ","
+            v => v.to_string()
           }
-          _ => raise @errors.TypeError(message="join called on non-array")
+        } else {
+          ","
         }
+        let parts : Array[String] = []
+        for i = 0; i < len; i = i + 1 {
+          let v = get_array_like_element(this_val, i)
+          match v {
+            Null | Undefined => parts.push("")
+            _ => parts.push(v.to_string())
+          }
+        }
+        String_(parts.join(sep))
       }),
     ),
     class_name: "Function",
@@ -1176,33 +1435,30 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     prototype: Null,
     callable: Some(
       MethodCallable("indexOf", fn(this_val, args) {
-        match this_val {
-          Array(arr) => {
-            let search = if args.length() > 0 { args[0] } else { Undefined }
-            let from_idx = if args.length() > 1 {
-              to_number(args[1]).to_int()
-            } else {
-              0
-            }
-            let start = if from_idx < 0 {
-              let s = arr.elements.length() + from_idx
-              if s < 0 {
-                0
-              } else {
-                s
-              }
-            } else {
-              from_idx
-            }
-            for i = start; i < arr.elements.length(); i = i + 1 {
-              if strict_equal_val(arr.elements[i], search) {
-                return Number(i.to_double())
-              }
-            }
-            Number(-1.0)
-          }
-          _ => raise @errors.TypeError(message="indexOf called on non-array")
+        let len = to_array_like_length(this_val)
+        let search = if args.length() > 0 { args[0] } else { Undefined }
+        let from_idx = if args.length() > 1 {
+          to_number(args[1]).to_int()
+        } else {
+          0
         }
+        let start = if from_idx < 0 {
+          let s = len + from_idx
+          if s < 0 { 0 } else { s }
+        } else {
+          from_idx
+        }
+        for i = start; i < len; i = i + 1 {
+          if has_array_like_element(this_val, i) {
+            if strict_equal_val(
+              get_array_like_element(this_val, i),
+              search,
+            ) {
+              return Number(i.to_double())
+            }
+          }
+        }
+        Number(-1.0)
       }),
     ),
     class_name: "Function",
@@ -1216,31 +1472,31 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     prototype: Null,
     callable: Some(
       MethodCallable("lastIndexOf", fn(this_val, args) {
-        match this_val {
-          Array(arr) => {
-            let search = if args.length() > 0 { args[0] } else { Undefined }
-            let start = if args.length() > 1 {
-              to_number(args[1]).to_int()
-            } else {
-              arr.elements.length() - 1
-            }
-            let from = if start < 0 {
-              arr.elements.length() + start
-            } else if start >= arr.elements.length() {
-              arr.elements.length() - 1
-            } else {
-              start
-            }
-            for i = from; i >= 0; i = i - 1 {
-              if strict_equal_val(arr.elements[i], search) {
-                return Number(i.to_double())
-              }
-            }
-            Number(-1.0)
-          }
-          _ =>
-            raise @errors.TypeError(message="lastIndexOf called on non-array")
+        let len = to_array_like_length(this_val)
+        let search = if args.length() > 0 { args[0] } else { Undefined }
+        let start = if args.length() > 1 {
+          to_number(args[1]).to_int()
+        } else {
+          len - 1
         }
+        let from = if start < 0 {
+          len + start
+        } else if start >= len {
+          len - 1
+        } else {
+          start
+        }
+        for i = from; i >= 0; i = i - 1 {
+          if has_array_like_element(this_val, i) {
+            if strict_equal_val(
+              get_array_like_element(this_val, i),
+              search,
+            ) {
+              return Number(i.to_double())
+            }
+          }
+        }
+        Number(-1.0)
       }),
     ),
     class_name: "Function",
@@ -1254,18 +1510,25 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     prototype: Null,
     callable: Some(
       MethodCallable("includes", fn(this_val, args) {
-        match this_val {
-          Array(arr) => {
-            let search = if args.length() > 0 { args[0] } else { Undefined }
-            for el in arr.elements {
-              if same_value_zero(el, search) {
-                return Bool(true)
-              }
-            }
-            Bool(false)
-          }
-          _ => raise @errors.TypeError(message="includes called on non-array")
+        let len = to_array_like_length(this_val)
+        let search = if args.length() > 0 { args[0] } else { Undefined }
+        let from_idx = if args.length() > 1 {
+          to_number(args[1]).to_int()
+        } else {
+          0
         }
+        let start = if from_idx < 0 {
+          let s = len + from_idx
+          if s < 0 { 0 } else { s }
+        } else {
+          from_idx
+        }
+        for i = start; i < len; i = i + 1 {
+          if same_value_zero(get_array_like_element(this_val, i), search) {
+            return Bool(true)
+          }
+        }
+        Bool(false)
       }),
     ),
     class_name: "Function",
@@ -1279,45 +1542,34 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     prototype: Null,
     callable: Some(
       MethodCallable("slice", fn(this_val, args) {
-        match this_val {
-          Array(arr) => {
-            let alen = arr.elements.length()
-            let mut start = if args.length() > 0 {
-              to_number(args[0]).to_int()
-            } else {
-              0
-            }
-            let mut end = if args.length() > 1 {
-              match args[1] {
-                Undefined => alen
-                _ => to_number(args[1]).to_int()
-              }
-            } else {
-              alen
-            }
-            if start < 0 {
-              start = alen + start
-              if start < 0 {
-                start = 0
-              }
-            }
-            if end < 0 {
-              end = alen + end
-              if end < 0 {
-                end = 0
-              }
-            }
-            if end > alen {
-              end = alen
-            }
-            let result : Array[Value] = []
-            for i = start; i < end; i = i + 1 {
-              result.push(arr.elements[i])
-            }
-            Array({ elements: result })
-          }
-          _ => raise @errors.TypeError(message="slice called on non-array")
+        let alen = to_array_like_length(this_val)
+        let mut start = if args.length() > 0 {
+          to_number(args[0]).to_int()
+        } else {
+          0
         }
+        let mut end = if args.length() > 1 {
+          match args[1] {
+            Undefined => alen
+            _ => to_number(args[1]).to_int()
+          }
+        } else {
+          alen
+        }
+        if start < 0 {
+          start = alen + start
+          if start < 0 { start = 0 }
+        }
+        if end < 0 {
+          end = alen + end
+          if end < 0 { end = 0 }
+        }
+        if end > alen { end = alen }
+        let result : Array[Value] = []
+        for i = start; i < end; i = i + 1 {
+          result.push(get_array_like_element(this_val, i))
+        }
+        Array({ elements: result })
       }),
     ),
     class_name: "Function",
@@ -1331,25 +1583,29 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     prototype: Null,
     callable: Some(
       MethodCallable("concat", fn(this_val, args) {
+        let result : Array[Value] = []
+        // Add elements from this
+        let len = to_array_like_length(this_val)
         match this_val {
-          Array(arr) => {
-            let result : Array[Value] = []
+          Array(arr) =>
             for el in arr.elements {
               result.push(el)
             }
-            for arg in args {
-              match arg {
-                Array(other) =>
-                  for el in other.elements {
-                    result.push(el)
-                  }
-                _ => result.push(arg)
-              }
+          _ =>
+            for i = 0; i < len; i = i + 1 {
+              result.push(get_array_like_element(this_val, i))
             }
-            Array({ elements: result })
-          }
-          _ => raise @errors.TypeError(message="concat called on non-array")
         }
+        for arg in args {
+          match arg {
+            Array(other) =>
+              for el in other.elements {
+                result.push(el)
+              }
+            _ => result.push(arg)
+          }
+        }
+        Array({ elements: result })
       }),
     ),
     class_name: "Function",
@@ -1425,18 +1681,16 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     prototype: Null,
     callable: Some(
       MethodCallable("toString", fn(this_val, _args) {
-        match this_val {
-          Array(arr) => {
-            let parts : Array[String] = arr.elements.map(fn(v) {
-              match v {
-                Null | Undefined => ""
-                _ => v.to_string()
-              }
-            })
-            String_(parts.join(","))
+        let len = to_array_like_length(this_val)
+        let parts : Array[String] = []
+        for i = 0; i < len; i = i + 1 {
+          let v = get_array_like_element(this_val, i)
+          match v {
+            Null | Undefined => parts.push("")
+            _ => parts.push(v.to_string())
           }
-          _ => raise @errors.TypeError(message="toString called on non-array")
         }
+        String_(parts.join(","))
       }),
     ),
     class_name: "Function",
@@ -1450,22 +1704,17 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     prototype: Null,
     callable: Some(
       MethodCallable("at", fn(this_val, args) {
-        match this_val {
-          Array(arr) => {
-            let idx = if args.length() > 0 {
-              to_number(args[0]).to_int()
-            } else {
-              0
-            }
-            let len = arr.elements.length()
-            let actual_idx = if idx < 0 { len + idx } else { idx }
-            if actual_idx >= 0 && actual_idx < len {
-              arr.elements[actual_idx]
-            } else {
-              Undefined
-            }
-          }
-          _ => raise @errors.TypeError(message="at called on non-array")
+        let len = to_array_like_length(this_val)
+        let idx = if args.length() > 0 {
+          to_number(args[0]).to_int()
+        } else {
+          0
+        }
+        let actual_idx = if idx < 0 { len + idx } else { idx }
+        if actual_idx >= 0 && actual_idx < len {
+          get_array_like_element(this_val, actual_idx)
+        } else {
+          Undefined
         }
       }),
     ),
@@ -1480,21 +1729,16 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     prototype: Null,
     callable: Some(
       MethodCallable("toLocaleString", fn(this_val, _args) {
-        match this_val {
-          Array(arr) => {
-            let parts : Array[String] = arr.elements.map(fn(v) {
-              match v {
-                Null | Undefined => ""
-                _ => v.to_string()
-              }
-            })
-            String_(parts.join(","))
+        let len = to_array_like_length(this_val)
+        let parts : Array[String] = []
+        for i = 0; i < len; i = i + 1 {
+          let v = get_array_like_element(this_val, i)
+          match v {
+            Null | Undefined => parts.push("")
+            _ => parts.push(v.to_string())
           }
-          _ =>
-            raise @errors.TypeError(
-              message="toLocaleString called on non-array",
-            )
         }
+        String_(parts.join(","))
       }),
     ),
     class_name: "Function",
@@ -1510,24 +1754,21 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     prototype: Null,
     callable: Some(
       InterpreterCallable("forEach", fn(interp, this_val, args) {
-        match this_val {
-          Array(arr) => {
-            let callback = if args.length() > 0 { args[0] } else { Undefined }
-            let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-            let loc = @token.Loc::default()
-            for i = 0; i < arr.elements.length(); i = i + 1 {
-              let _ = interp.call_value(
-                callback,
-                this_arg,
-                [arr.elements[i], Number(i.to_double()), Array(arr)],
-                loc,
-              )
-
-            }
-            Undefined
+        let callback = if args.length() > 0 { args[0] } else { Undefined }
+        let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+        let loc = @token.Loc::default()
+        let len = to_array_like_length(this_val)
+        for i = 0; i < len; i = i + 1 {
+          if has_array_like_element(this_val, i) {
+            let _ = interp.call_value(
+              callback,
+              this_arg,
+              [get_array_like_element(this_val, i), Number(i.to_double()), this_val],
+              loc,
+            )
           }
-          _ => raise @errors.TypeError(message="forEach called on non-array")
         }
+        Undefined
       }),
     ),
     class_name: "Function",
@@ -1541,25 +1782,25 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     prototype: Null,
     callable: Some(
       InterpreterCallable("map", fn(interp, this_val, args) {
-        match this_val {
-          Array(arr) => {
-            let callback = if args.length() > 0 { args[0] } else { Undefined }
-            let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-            let loc = @token.Loc::default()
-            let result : Array[Value] = []
-            for i = 0; i < arr.elements.length(); i = i + 1 {
-              let val = interp.call_value(
-                callback,
-                this_arg,
-                [arr.elements[i], Number(i.to_double()), Array(arr)],
-                loc,
-              )
-              result.push(val)
-            }
-            Array({ elements: result })
+        let callback = if args.length() > 0 { args[0] } else { Undefined }
+        let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+        let loc = @token.Loc::default()
+        let len = to_array_like_length(this_val)
+        let result : Array[Value] = []
+        for i = 0; i < len; i = i + 1 {
+          if has_array_like_element(this_val, i) {
+            let val = interp.call_value(
+              callback,
+              this_arg,
+              [get_array_like_element(this_val, i), Number(i.to_double()), this_val],
+              loc,
+            )
+            result.push(val)
+          } else {
+            result.push(Undefined)
           }
-          _ => raise @errors.TypeError(message="map called on non-array")
         }
+        Array({ elements: result })
       }),
     ),
     class_name: "Function",
@@ -1573,27 +1814,26 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     prototype: Null,
     callable: Some(
       InterpreterCallable("filter", fn(interp, this_val, args) {
-        match this_val {
-          Array(arr) => {
-            let callback = if args.length() > 0 { args[0] } else { Undefined }
-            let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-            let loc = @token.Loc::default()
-            let result : Array[Value] = []
-            for i = 0; i < arr.elements.length(); i = i + 1 {
-              let val = interp.call_value(
-                callback,
-                this_arg,
-                [arr.elements[i], Number(i.to_double()), Array(arr)],
-                loc,
-              )
-              if is_truthy(val) {
-                result.push(arr.elements[i])
-              }
+        let callback = if args.length() > 0 { args[0] } else { Undefined }
+        let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+        let loc = @token.Loc::default()
+        let len = to_array_like_length(this_val)
+        let result : Array[Value] = []
+        for i = 0; i < len; i = i + 1 {
+          if has_array_like_element(this_val, i) {
+            let el = get_array_like_element(this_val, i)
+            let val = interp.call_value(
+              callback,
+              this_arg,
+              [el, Number(i.to_double()), this_val],
+              loc,
+            )
+            if is_truthy(val) {
+              result.push(el)
             }
-            Array({ elements: result })
           }
-          _ => raise @errors.TypeError(message="filter called on non-array")
         }
+        Array({ elements: result })
       }),
     ),
     class_name: "Function",
@@ -1607,35 +1847,33 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     prototype: Null,
     callable: Some(
       InterpreterCallable("reduce", fn(interp, this_val, args) {
-        match this_val {
-          Array(arr) => {
-            let callback = if args.length() > 0 { args[0] } else { Undefined }
-            let loc = @token.Loc::default()
-            let mut acc : Value = Undefined
-            let mut start = 0
-            if args.length() > 1 {
-              acc = args[1]
-            } else {
-              if arr.elements.length() == 0 {
-                raise @errors.TypeError(
-                  message="Reduce of empty array with no initial value",
-                )
-              }
-              acc = arr.elements[0]
-              start = 1
-            }
-            for i = start; i < arr.elements.length(); i = i + 1 {
-              acc = interp.call_value(
-                callback,
-                Undefined,
-                [acc, arr.elements[i], Number(i.to_double()), Array(arr)],
-                loc,
-              )
-            }
-            acc
+        let callback = if args.length() > 0 { args[0] } else { Undefined }
+        let loc = @token.Loc::default()
+        let len = to_array_like_length(this_val)
+        let mut acc : Value = Undefined
+        let mut start = 0
+        if args.length() > 1 {
+          acc = args[1]
+        } else {
+          if len == 0 {
+            raise @errors.TypeError(
+              message="Reduce of empty array with no initial value",
+            )
           }
-          _ => raise @errors.TypeError(message="reduce called on non-array")
+          acc = get_array_like_element(this_val, 0)
+          start = 1
         }
+        for i = start; i < len; i = i + 1 {
+          if has_array_like_element(this_val, i) {
+            acc = interp.call_value(
+              callback,
+              Undefined,
+              [acc, get_array_like_element(this_val, i), Number(i.to_double()), this_val],
+              loc,
+            )
+          }
+        }
+        acc
       }),
     ),
     class_name: "Function",
@@ -1649,36 +1887,33 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     prototype: Null,
     callable: Some(
       InterpreterCallable("reduceRight", fn(interp, this_val, args) {
-        match this_val {
-          Array(arr) => {
-            let callback = if args.length() > 0 { args[0] } else { Undefined }
-            let loc = @token.Loc::default()
-            let mut acc : Value = Undefined
-            let mut start = arr.elements.length() - 1
-            if args.length() > 1 {
-              acc = args[1]
-            } else {
-              if arr.elements.length() == 0 {
-                raise @errors.TypeError(
-                  message="Reduce of empty array with no initial value",
-                )
-              }
-              acc = arr.elements[start]
-              start = start - 1
-            }
-            for i = start; i >= 0; i = i - 1 {
-              acc = interp.call_value(
-                callback,
-                Undefined,
-                [acc, arr.elements[i], Number(i.to_double()), Array(arr)],
-                loc,
-              )
-            }
-            acc
+        let callback = if args.length() > 0 { args[0] } else { Undefined }
+        let loc = @token.Loc::default()
+        let len = to_array_like_length(this_val)
+        let mut acc : Value = Undefined
+        let mut start = len - 1
+        if args.length() > 1 {
+          acc = args[1]
+        } else {
+          if len == 0 {
+            raise @errors.TypeError(
+              message="Reduce of empty array with no initial value",
+            )
           }
-          _ =>
-            raise @errors.TypeError(message="reduceRight called on non-array")
+          acc = get_array_like_element(this_val, start)
+          start = start - 1
         }
+        for i = start; i >= 0; i = i - 1 {
+          if has_array_like_element(this_val, i) {
+            acc = interp.call_value(
+              callback,
+              Undefined,
+              [acc, get_array_like_element(this_val, i), Number(i.to_double()), this_val],
+              loc,
+            )
+          }
+        }
+        acc
       }),
     ),
     class_name: "Function",
@@ -1692,26 +1927,18 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     prototype: Null,
     callable: Some(
       InterpreterCallable("find", fn(interp, this_val, args) {
-        match this_val {
-          Array(arr) => {
-            let callback = if args.length() > 0 { args[0] } else { Undefined }
-            let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-            let loc = @token.Loc::default()
-            for i = 0; i < arr.elements.length(); i = i + 1 {
-              let val = interp.call_value(
-                callback,
-                this_arg,
-                [arr.elements[i], Number(i.to_double()), Array(arr)],
-                loc,
-              )
-              if is_truthy(val) {
-                return arr.elements[i]
-              }
-            }
-            Undefined
-          }
-          _ => raise @errors.TypeError(message="find called on non-array")
+        let callback = if args.length() > 0 { args[0] } else { Undefined }
+        let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+        let loc = @token.Loc::default()
+        let len = to_array_like_length(this_val)
+        for i = 0; i < len; i = i + 1 {
+          let el = get_array_like_element(this_val, i)
+          let val = interp.call_value(
+            callback, this_arg, [el, Number(i.to_double()), this_val], loc,
+          )
+          if is_truthy(val) { return el }
         }
+        Undefined
       }),
     ),
     class_name: "Function",
@@ -1725,26 +1952,18 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     prototype: Null,
     callable: Some(
       InterpreterCallable("findIndex", fn(interp, this_val, args) {
-        match this_val {
-          Array(arr) => {
-            let callback = if args.length() > 0 { args[0] } else { Undefined }
-            let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-            let loc = @token.Loc::default()
-            for i = 0; i < arr.elements.length(); i = i + 1 {
-              let val = interp.call_value(
-                callback,
-                this_arg,
-                [arr.elements[i], Number(i.to_double()), Array(arr)],
-                loc,
-              )
-              if is_truthy(val) {
-                return Number(i.to_double())
-              }
-            }
-            Number(-1.0)
-          }
-          _ => raise @errors.TypeError(message="findIndex called on non-array")
+        let callback = if args.length() > 0 { args[0] } else { Undefined }
+        let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+        let loc = @token.Loc::default()
+        let len = to_array_like_length(this_val)
+        for i = 0; i < len; i = i + 1 {
+          let el = get_array_like_element(this_val, i)
+          let val = interp.call_value(
+            callback, this_arg, [el, Number(i.to_double()), this_val], loc,
+          )
+          if is_truthy(val) { return Number(i.to_double()) }
         }
+        Number(-1.0)
       }),
     ),
     class_name: "Function",
@@ -1758,26 +1977,18 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     prototype: Null,
     callable: Some(
       InterpreterCallable("findLast", fn(interp, this_val, args) {
-        match this_val {
-          Array(arr) => {
-            let callback = if args.length() > 0 { args[0] } else { Undefined }
-            let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-            let loc = @token.Loc::default()
-            for i = arr.elements.length() - 1; i >= 0; i = i - 1 {
-              let val = interp.call_value(
-                callback,
-                this_arg,
-                [arr.elements[i], Number(i.to_double()), Array(arr)],
-                loc,
-              )
-              if is_truthy(val) {
-                return arr.elements[i]
-              }
-            }
-            Undefined
-          }
-          _ => raise @errors.TypeError(message="findLast called on non-array")
+        let callback = if args.length() > 0 { args[0] } else { Undefined }
+        let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+        let loc = @token.Loc::default()
+        let len = to_array_like_length(this_val)
+        for i = len - 1; i >= 0; i = i - 1 {
+          let el = get_array_like_element(this_val, i)
+          let val = interp.call_value(
+            callback, this_arg, [el, Number(i.to_double()), this_val], loc,
+          )
+          if is_truthy(val) { return el }
         }
+        Undefined
       }),
     ),
     class_name: "Function",
@@ -1791,27 +2002,18 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     prototype: Null,
     callable: Some(
       InterpreterCallable("findLastIndex", fn(interp, this_val, args) {
-        match this_val {
-          Array(arr) => {
-            let callback = if args.length() > 0 { args[0] } else { Undefined }
-            let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-            let loc = @token.Loc::default()
-            for i = arr.elements.length() - 1; i >= 0; i = i - 1 {
-              let val = interp.call_value(
-                callback,
-                this_arg,
-                [arr.elements[i], Number(i.to_double()), Array(arr)],
-                loc,
-              )
-              if is_truthy(val) {
-                return Number(i.to_double())
-              }
-            }
-            Number(-1.0)
-          }
-          _ =>
-            raise @errors.TypeError(message="findLastIndex called on non-array")
+        let callback = if args.length() > 0 { args[0] } else { Undefined }
+        let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+        let loc = @token.Loc::default()
+        let len = to_array_like_length(this_val)
+        for i = len - 1; i >= 0; i = i - 1 {
+          let el = get_array_like_element(this_val, i)
+          let val = interp.call_value(
+            callback, this_arg, [el, Number(i.to_double()), this_val], loc,
+          )
+          if is_truthy(val) { return Number(i.to_double()) }
         }
+        Number(-1.0)
       }),
     ),
     class_name: "Function",
@@ -1825,26 +2027,21 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     prototype: Null,
     callable: Some(
       InterpreterCallable("every", fn(interp, this_val, args) {
-        match this_val {
-          Array(arr) => {
-            let callback = if args.length() > 0 { args[0] } else { Undefined }
-            let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-            let loc = @token.Loc::default()
-            for i = 0; i < arr.elements.length(); i = i + 1 {
-              let val = interp.call_value(
-                callback,
-                this_arg,
-                [arr.elements[i], Number(i.to_double()), Array(arr)],
-                loc,
-              )
-              if not(is_truthy(val)) {
-                return Bool(false)
-              }
-            }
-            Bool(true)
+        let callback = if args.length() > 0 { args[0] } else { Undefined }
+        let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+        let loc = @token.Loc::default()
+        let len = to_array_like_length(this_val)
+        for i = 0; i < len; i = i + 1 {
+          if has_array_like_element(this_val, i) {
+            let val = interp.call_value(
+              callback, this_arg,
+              [get_array_like_element(this_val, i), Number(i.to_double()), this_val],
+              loc,
+            )
+            if not(is_truthy(val)) { return Bool(false) }
           }
-          _ => raise @errors.TypeError(message="every called on non-array")
         }
+        Bool(true)
       }),
     ),
     class_name: "Function",
@@ -1858,26 +2055,21 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     prototype: Null,
     callable: Some(
       InterpreterCallable("some", fn(interp, this_val, args) {
-        match this_val {
-          Array(arr) => {
-            let callback = if args.length() > 0 { args[0] } else { Undefined }
-            let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-            let loc = @token.Loc::default()
-            for i = 0; i < arr.elements.length(); i = i + 1 {
-              let val = interp.call_value(
-                callback,
-                this_arg,
-                [arr.elements[i], Number(i.to_double()), Array(arr)],
-                loc,
-              )
-              if is_truthy(val) {
-                return Bool(true)
-              }
-            }
-            Bool(false)
+        let callback = if args.length() > 0 { args[0] } else { Undefined }
+        let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+        let loc = @token.Loc::default()
+        let len = to_array_like_length(this_val)
+        for i = 0; i < len; i = i + 1 {
+          if has_array_like_element(this_val, i) {
+            let val = interp.call_value(
+              callback, this_arg,
+              [get_array_like_element(this_val, i), Number(i.to_double()), this_val],
+              loc,
+            )
+            if is_truthy(val) { return Bool(true) }
           }
-          _ => raise @errors.TypeError(message="some called on non-array")
         }
+        Bool(false)
       }),
     ),
     class_name: "Function",
@@ -2617,6 +2809,15 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
       extensible: true,
     }),
   )
+  // Set Array.prototype.constructor = Array
+  match array_proto {
+    Object(data) => {
+      let arr_ctor = try { env.get("Array") } catch { _ => Undefined }
+      data.properties["constructor"] = arr_ctor
+      data.descriptors["constructor"] = { writable: true, enumerable: false, configurable: true }
+    }
+    _ => ()
+  }
 }
 
 ///|
@@ -2635,5 +2836,113 @@ fn flatten_array_val(
         }
       _ => result.push(el)
     }
+  }
+}
+
+///|
+/// ToLength: Get length from any value as per ECMAScript spec (array-like objects)
+pub fn to_array_like_length(val : Value) -> Int {
+  match val {
+    Array(data) => data.elements.length()
+    Object(data) =>
+      match data.properties.get("length") {
+        Some(Number(n)) => {
+          let len = n.to_int()
+          if len < 0 { 0 } else { len }
+        }
+        Some(v) => {
+          let n = try { to_number(v) } catch { _ => 0.0 }
+          if n.is_nan() {
+            0
+          } else if n.is_inf() {
+            if n > 0.0 { 0x7FFFFFFF } else { 0 }
+          } else {
+            let i = n.to_int()
+            if i < 0 { 0 } else { i }
+          }
+        }
+        None => 0
+      }
+    String_(s) => s.length()
+    _ => 0
+  }
+}
+
+///|
+/// Get indexed element from array-like value
+pub fn get_array_like_element(val : Value, index : Int) -> Value {
+  let key = index.to_string()
+  match val {
+    Array(data) =>
+      if index >= 0 && index < data.elements.length() {
+        data.elements[index]
+      } else {
+        Undefined
+      }
+    Object(data) => {
+      // Walk prototype chain for property lookup
+      match data.properties.get(key) {
+        Some(v) => v
+        None => {
+          let mut current = data.prototype
+          let mut result : Value = Undefined
+          while true {
+            match current {
+              Object(proto_data) =>
+                match proto_data.properties.get(key) {
+                  Some(v) => {
+                    result = v
+                    break
+                  }
+                  None => current = proto_data.prototype
+                }
+              _ => break
+            }
+          }
+          result
+        }
+      }
+    }
+    String_(s) => {
+      let chars = s.to_array()
+      if index >= 0 && index < chars.length() {
+        let buf = StringBuilder::new()
+        buf.write_char(chars[index])
+        String_(buf.to_string())
+      } else {
+        Undefined
+      }
+    }
+    _ => Undefined
+  }
+}
+
+///|
+/// Check if array-like value has indexed property
+pub fn has_array_like_element(val : Value, index : Int) -> Bool {
+  let key = index.to_string()
+  match val {
+    Array(data) => index >= 0 && index < data.elements.length()
+    Object(data) => {
+      if data.properties.contains(key) {
+        return true
+      }
+      // Walk prototype chain
+      let mut current = data.prototype
+      while true {
+        match current {
+          Object(proto_data) =>
+            if proto_data.properties.contains(key) {
+              return true
+            } else {
+              current = proto_data.prototype
+            }
+          _ => break
+        }
+      }
+      false
+    }
+    String_(s) => index >= 0 && index < s.length()
+    _ => false
   }
 }
