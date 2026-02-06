@@ -122,7 +122,7 @@ pub fn Interpreter::run(
   } catch {
     e =>
       if is_js_catchable_error(e) {
-        raise JsException(js_error_to_value(e))
+        raise JsException(js_error_to_value_with_env(e, Some(self.global)))
       } else {
         raise e
       }
@@ -1196,8 +1196,8 @@ fn Interpreter::exec_try_catch(
         match (catch_param, catch_body) {
           (Some(param), Some(body)) => {
             let catch_env = Environment::new(parent=Some(env))
-            // Convert runtime errors to JS throw values (string errors by default)
-            let error_value = js_error_to_throw_value(e)
+            // Convert runtime errors to proper JS Error objects with prototype chain
+            let error_value = js_error_to_value_with_env(e, Some(env))
             catch_env.def(param, error_value, LetBinding)
             self.exec_stmts(body, catch_env)
           }
