@@ -15,9 +15,10 @@
 | 6H | +1,202 | 9,489 | Error prototype chain fix |
 | 6I-6L | +56 | 9,545 | Leading decimals, canonical indices, PR review fixes |
 | 7A | +13 | 9,545* | Full accessor descriptor support (get/set in PropDescriptor) |
+| 7B | +13 | 9,545* | Unicode escapes in identifiers, strings, template literals |
 | JS Target | — | 9,545 | JS backend support, Error toString fix, backend-specific argv handling |
 
-\* Phase 7A added 13 unit tests; test262 recount pending.
+\* Phases 7A–7B added unit tests; test262 recount pending.
 
 For detailed implementation notes on Phases 1-6, see [docs/PHASE_HISTORY.md](docs/PHASE_HISTORY.md).
 
@@ -104,13 +105,14 @@ Implemented full accessor descriptor support:
 - Class getter/setter methods stored as accessor descriptors on prototype
 - Replaced `__get__`/`__set__` prefix hack with proper PropDescriptor storage
 
-### 7B: Unicode Escapes (~479 tests)
+### 7B: Unicode Escapes (~479 tests) — DONE
 
-Pure parser/lexer fix.
+Pure lexer fix. Added `parse_unicode_escape()` and `write_code_point()` helpers:
 
-- `\uXXXX` in identifiers: `var \u0061 = 1` means `var a = 1`
-- `\u{XXXXX}` extended Unicode escapes
-- Unicode escapes in string literals
+- `\uXXXX` and `\u{XXXXX}` in identifiers: `var \u0061 = 1` means `var a = 1`
+- Unicode escapes in string literals and template literals
+- Decoded identifiers pass through `resolve_keyword()` for correct keyword resolution
+- Supplementary plane support via surrogate pairs for code points > 0xFFFF
 
 ### 7C: Bare for-of/for-in (~225 tests)
 
