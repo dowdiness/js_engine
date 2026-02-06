@@ -72,6 +72,23 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               })
               Array({ elements: keys })
             }
+            String_(s) => {
+              // String objects have enumerable indexed properties
+              let keys : Array[Value] = []
+              let len = s.length()
+              for i = 0; i < len; i = i + 1 {
+                keys.push(String_(i.to_string()))
+              }
+              Array({ elements: keys })
+            }
+            Array(data) => {
+              // Array objects have enumerable indexed properties
+              let keys : Array[Value] = []
+              for i = 0; i < data.elements.length(); i = i + 1 {
+                keys.push(String_(i.to_string()))
+              }
+              Array({ elements: keys })
+            }
             _ => Array({ elements: [] })
           }
         }),
@@ -80,7 +97,32 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           match obj {
             Object(data) => {
               let vals : Array[Value] = []
-              data.properties.each(fn(_k, v) { vals.push(v) })
+              data.properties.each(fn(k, v) {
+                let enumerable = match data.descriptors.get(k) {
+                  Some(d) => d.enumerable
+                  None => true
+                }
+                if enumerable {
+                  vals.push(v)
+                }
+              })
+              Array({ elements: vals })
+            }
+            String_(s) => {
+              // String objects have enumerable indexed properties
+              let vals : Array[Value] = []
+              let chars = s.to_array()
+              for ch in chars {
+                vals.push(String_(ch.to_string()))
+              }
+              Array({ elements: vals })
+            }
+            Array(data) => {
+              // Array objects - return array elements (defensive copy)
+              let vals : Array[Value] = []
+              for elem in data.elements {
+                vals.push(elem)
+              }
               Array({ elements: vals })
             }
             _ => Array({ elements: [] })
@@ -92,8 +134,42 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             Object(data) => {
               let entries : Array[Value] = []
               data.properties.each(fn(k, v) {
-                entries.push(Array({ elements: [String_(k), v] }))
+                let enumerable = match data.descriptors.get(k) {
+                  Some(d) => d.enumerable
+                  None => true
+                }
+                if enumerable {
+                  entries.push(Array({ elements: [String_(k), v] }))
+                }
               })
+              Array({ elements: entries })
+            }
+            String_(s) => {
+              // String objects have enumerable indexed properties
+              let entries : Array[Value] = []
+              let chars = s.to_array()
+              for i = 0; i < chars.length(); i = i + 1 {
+                entries.push(
+                  Array({
+                    elements: [
+                      String_(i.to_string()),
+                      String_(chars[i].to_string()),
+                    ],
+                  }),
+                )
+              }
+              Array({ elements: entries })
+            }
+            Array(data) => {
+              // Array objects - keys must be strings per spec
+              let entries : Array[Value] = []
+              for i = 0; i < data.elements.length(); i = i + 1 {
+                entries.push(
+                  Array({
+                    elements: [String_(i.to_string()), data.elements[i]],
+                  }),
+                )
+              }
               Array({ elements: entries })
             }
             _ => Array({ elements: [] })
@@ -101,7 +177,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }),
         "create": make_native_func("create", fn(args) {
           let proto = if args.length() > 0 { args[0] } else { Null }
-          Object({
+          let obj = Object({
             properties: {},
             symbol_properties: {},
             prototype: proto,
@@ -111,6 +187,96 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             symbol_descriptors: {},
             extensible: true,
           })
+          // Handle optional second argument (property descriptors)
+          if args.length() > 1 {
+            match args[1] {
+              Undefined => ()
+              // Per ECMAScript spec, only Object with properties field accepted
+              // Arrays, Maps, Sets don't have properties field in our implementation
+              Null | String_(_) | Number(_) | Bool(_) | Symbol(_) | Array(_)
+              | Map(_) | Set(_) =>
+                raise @errors.TypeError(
+                  message="Property descriptors must be an object",
+                )
+              Object(desc_obj) =>
+                // Objects have properties field
+                match obj {
+                  Object(data) =>
+                    desc_obj.properties.each(fn(prop_name, desc_val) {
+                      match desc_val {
+                        Object(desc) => {
+                          match desc.properties.get("value") {
+                            Some(v) => data.properties[prop_name] = v
+                            None =>
+                              if not(data.properties.contains(prop_name)) {
+                                data.properties[prop_name] = Undefined
+                              }
+                          }
+                          let writable = match desc.properties.get("writable") {
+                            Some(v) => is_truthy(v)
+                            _ => false
+                          }
+                          let enumerable = match desc.properties.get("enumerable") {
+                            Some(v) => is_truthy(v)
+                            _ => false
+                          }
+                          let configurable = match
+                            desc.properties.get("configurable") {
+                            Some(v) => is_truthy(v)
+                            _ => false
+                          }
+                          data.descriptors[prop_name] = {
+                            writable,
+                            enumerable,
+                            configurable,
+                          }
+                        }
+                        _ => ()
+                      }
+                    })
+                  _ => ()
+                }
+              Promise(desc_obj) =>
+                // Promises also have properties field
+                match obj {
+                  Object(data) =>
+                    desc_obj.properties.each(fn(prop_name, desc_val) {
+                      match desc_val {
+                        Object(desc) => {
+                          match desc.properties.get("value") {
+                            Some(v) => data.properties[prop_name] = v
+                            None =>
+                              if not(data.properties.contains(prop_name)) {
+                                data.properties[prop_name] = Undefined
+                              }
+                          }
+                          let writable = match desc.properties.get("writable") {
+                            Some(v) => is_truthy(v)
+                            _ => false
+                          }
+                          let enumerable = match desc.properties.get("enumerable") {
+                            Some(v) => is_truthy(v)
+                            _ => false
+                          }
+                          let configurable = match
+                            desc.properties.get("configurable") {
+                            Some(v) => is_truthy(v)
+                            _ => false
+                          }
+                          data.descriptors[prop_name] = {
+                            writable,
+                            enumerable,
+                            configurable,
+                          }
+                        }
+                        _ => ()
+                      }
+                    })
+                  _ => ()
+                }
+            }
+          }
+          obj
         }),
         "assign": make_native_func("assign", fn(args) {
           let target = if args.length() > 0 { args[0] } else { Undefined }
@@ -118,9 +284,159 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             Object(data) => {
               for i = 1; i < args.length(); i = i + 1 {
                 match args[i] {
-                  Object(src) =>
-                    src.properties.each(fn(k, v) { data.properties[k] = v })
-                  _ => ()
+                  // ToObject conversion: skip null and undefined
+                  Null | Undefined => ()
+                  // ToObject conversion: String primitives enumerate characters
+                  String_(s) => {
+                    let chars = s.to_array()
+                    for idx = 0; idx < chars.length(); idx = idx + 1 {
+                      let k = idx.to_string()
+                      let v = String_(chars[idx].to_string())
+                      // Check writable on target property
+                      let can_write = match data.descriptors.get(k) {
+                        Some(d) => d.writable
+                        None => true
+                      }
+                      let exists = data.properties.contains(k)
+                      if not(can_write) {
+                        raise @errors.TypeError(
+                          message="Cannot assign to read-only property '\{k}'",
+                        )
+                      }
+                      if not(exists) && not(data.extensible) {
+                        raise @errors.TypeError(
+                          message="Cannot add property '\{k}' to non-extensible object",
+                        )
+                      }
+                      data.properties[k] = v
+                    }
+                  }
+                  // ToObject conversion: Arrays enumerate elements as indexed properties
+                  Array(src) => {
+                    // Copy array elements as indexed properties
+                    for idx = 0; idx < src.elements.length(); idx = idx + 1 {
+                      let k = idx.to_string()
+                      let v = src.elements[idx]
+                      let can_write = match data.descriptors.get(k) {
+                        Some(d) => d.writable
+                        None => true
+                      }
+                      let exists = data.properties.contains(k)
+                      if not(can_write) {
+                        raise @errors.TypeError(
+                          message="Cannot assign to read-only property '\{k}'",
+                        )
+                      }
+                      if not(exists) && not(data.extensible) {
+                        raise @errors.TypeError(
+                          message="Cannot add property '\{k}' to non-extensible object",
+                        )
+                      }
+                      data.properties[k] = v
+                    }
+                  }
+                  // Regular objects have properties and descriptors
+                  Object(src) => {
+                    // Copy enumerable string properties
+                    src.properties.each(fn(k, v) {
+                      let enumerable = match src.descriptors.get(k) {
+                        Some(d) => d.enumerable
+                        None => true
+                      }
+                      if enumerable {
+                        // Check writable on target property
+                        let can_write = match data.descriptors.get(k) {
+                          Some(d) => d.writable
+                          None => true
+                        }
+                        // Check extensibility if property doesn't exist
+                        let exists = data.properties.contains(k)
+                        // Per ECMAScript spec, Object.assign throws TypeError on Set failure
+                        if not(can_write) {
+                          raise @errors.TypeError(
+                            message="Cannot assign to read-only property '\{k}'",
+                          )
+                        }
+                        if not(exists) && not(data.extensible) {
+                          raise @errors.TypeError(
+                            message="Cannot add property '\{k}' to non-extensible object",
+                          )
+                        }
+                        data.properties[k] = v
+                      }
+                    })
+                    // Copy enumerable symbol properties
+                    src.symbol_properties.each(fn(sym_id, v) {
+                      let enumerable = match src.symbol_descriptors.get(sym_id) {
+                        Some(d) => d.enumerable
+                        None => true
+                      }
+                      if enumerable {
+                        // Check writable on target property
+                        let can_write = match data.symbol_descriptors.get(sym_id) {
+                          Some(d) => d.writable
+                          None => true
+                        }
+                        // Check extensibility if property doesn't exist
+                        let exists = data.symbol_properties.contains(sym_id)
+                        // Per ECMAScript spec, Object.assign throws TypeError on Set failure
+                        if not(can_write) {
+                          raise @errors.TypeError(
+                            message="Cannot assign to read-only symbol property",
+                          )
+                        }
+                        if not(exists) && not(data.extensible) {
+                          raise @errors.TypeError(
+                            message="Cannot add symbol property to non-extensible object",
+                          )
+                        }
+                        data.symbol_properties[sym_id] = v
+                      }
+                    })
+                  }
+                  // Promises have properties but no descriptors
+                  Promise(src) => {
+                    // Copy all string properties (no descriptors to check)
+                    src.properties.each(fn(k, v) {
+                      let can_write = match data.descriptors.get(k) {
+                        Some(d) => d.writable
+                        None => true
+                      }
+                      let exists = data.properties.contains(k)
+                      if not(can_write) {
+                        raise @errors.TypeError(
+                          message="Cannot assign to read-only property '\{k}'",
+                        )
+                      }
+                      if not(exists) && not(data.extensible) {
+                        raise @errors.TypeError(
+                          message="Cannot add property '\{k}' to non-extensible object",
+                        )
+                      }
+                      data.properties[k] = v
+                    })
+                    // Copy symbol properties
+                    src.symbol_properties.each(fn(sym_id, v) {
+                      let can_write = match data.symbol_descriptors.get(sym_id) {
+                        Some(d) => d.writable
+                        None => true
+                      }
+                      let exists = data.symbol_properties.contains(sym_id)
+                      if not(can_write) {
+                        raise @errors.TypeError(
+                          message="Cannot assign to read-only symbol property",
+                        )
+                      }
+                      if not(exists) && not(data.extensible) {
+                        raise @errors.TypeError(
+                          message="Cannot add symbol property to non-extensible object",
+                        )
+                      }
+                      data.symbol_properties[sym_id] = v
+                    })
+                  }
+                  // ToObject conversion: Map, Set, Number, Bool, Symbol have no enumerable properties
+                  Map(_) | Set(_) | Number(_) | Bool(_) | Symbol(_) => ()
                 }
               }
               target
@@ -240,15 +556,57 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             Object(data) =>
               match descriptor {
                 Object(desc) => {
+                  // Check if property exists
+                  let prop_exists = data.properties.contains(prop_name)
+
+                  // Build new descriptor flags from input (using is_truthy for coercion)
+                  let existing_desc = data.descriptors.get(prop_name)
+                  let new_writable = match desc.properties.get("writable") {
+                    Some(v) => Some(is_truthy(v))
+                    None => None
+                  }
+                  let new_enumerable = match desc.properties.get("enumerable") {
+                    Some(v) => Some(is_truthy(v))
+                    None => None
+                  }
+                  let new_configurable = match desc.properties.get("configurable") {
+                    Some(v) => Some(is_truthy(v))
+                    None => None
+                  }
+
                   // Check if configurable on existing descriptor
-                  match data.descriptors.get(prop_name) {
-                    Some(existing) =>
+                  match existing_desc {
+                    Some(existing) => {
                       if not(existing.configurable) {
+                        // Non-configurable property: only allow if new descriptor matches existing
+                        let writable_matches = match new_writable {
+                          Some(w) => w == existing.writable
+                          None => true  // Not specified, no conflict
+                        }
+                        let enumerable_matches = match new_enumerable {
+                          Some(e) => e == existing.enumerable
+                          None => true
+                        }
+                        let configurable_matches = match new_configurable {
+                          Some(c) => c == existing.configurable
+                          None => true
+                        }
+
+                        if not(writable_matches && enumerable_matches && configurable_matches) {
+                          raise @errors.TypeError(
+                            message="Cannot redefine non-configurable property: \{prop_name}",
+                          )
+                        }
+                      }
+                    }
+                    None => {
+                      // Check extensibility when adding new property
+                      if not(prop_exists) && not(data.extensible) {
                         raise @errors.TypeError(
-                          message="Cannot redefine property: \{prop_name}",
+                          message="Cannot add property \{prop_name}, object is not extensible",
                         )
                       }
-                    None => ()
+                    }
                   }
                   // Set value
                   match desc.properties.get("value") {
@@ -258,27 +616,26 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                         data.properties[prop_name] = Undefined
                       }
                   }
-                  // Build descriptor
-                  let existing_desc = data.descriptors.get(prop_name)
-                  let writable = match desc.properties.get("writable") {
-                    Some(Bool(b)) => b
-                    _ =>
+                  // Build final descriptor using new values or existing defaults
+                  let writable = match new_writable {
+                    Some(w) => w
+                    None =>
                       match existing_desc {
                         Some(d) => d.writable
                         None => false
                       }
                   }
-                  let enumerable = match desc.properties.get("enumerable") {
-                    Some(Bool(b)) => b
-                    _ =>
+                  let enumerable = match new_enumerable {
+                    Some(e) => e
+                    None =>
                       match existing_desc {
                         Some(d) => d.enumerable
                         None => false
                       }
                   }
-                  let configurable = match desc.properties.get("configurable") {
-                    Some(Bool(b)) => b
-                    _ =>
+                  let configurable = match new_configurable {
+                    Some(c) => c
+                    None =>
                       match existing_desc {
                         Some(d) => d.configurable
                         None => false
@@ -349,12 +706,26 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           match obj {
             Object(data) => {
               data.extensible = false
+              // Freeze string properties
               let keys : Array[String] = []
               data.properties.each(fn(k, _v) { keys.push(k) })
               for key in keys {
                 data.descriptors[key] = {
                   writable: false,
                   enumerable: match data.descriptors.get(key) {
+                    Some(d) => d.enumerable
+                    None => true
+                  },
+                  configurable: false,
+                }
+              }
+              // Freeze symbol properties
+              let sym_ids : Array[Int] = []
+              data.symbol_properties.each(fn(id, _v) { sym_ids.push(id) })
+              for id in sym_ids {
+                data.symbol_descriptors[id] = {
+                  writable: false,
+                  enumerable: match data.symbol_descriptors.get(id) {
                     Some(d) => d.enumerable
                     None => true
                   },
@@ -371,6 +742,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           match obj {
             Object(data) => {
               data.extensible = false
+              // Seal string properties
               let keys : Array[String] = []
               data.properties.each(fn(k, _v) { keys.push(k) })
               for key in keys {
@@ -380,6 +752,22 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                     None => true
                   },
                   enumerable: match data.descriptors.get(key) {
+                    Some(d) => d.enumerable
+                    None => true
+                  },
+                  configurable: false,
+                }
+              }
+              // Seal symbol properties
+              let sym_ids : Array[Int] = []
+              data.symbol_properties.each(fn(id, _v) { sym_ids.push(id) })
+              for id in sym_ids {
+                data.symbol_descriptors[id] = {
+                  writable: match data.symbol_descriptors.get(id) {
+                    Some(d) => d.writable
+                    None => true
+                  },
+                  enumerable: match data.symbol_descriptors.get(id) {
                     Some(d) => d.enumerable
                     None => true
                   },
@@ -535,19 +923,31 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
         }),
         "setPrototypeOf": make_native_func("setPrototypeOf", fn(args) {
-          // KNOWN LIMITATION: Object.setPrototypeOf does not actually modify the prototype chain.
-          // ObjectData.prototype is set at object creation and is currently immutable.
-          // This stub validates arguments and returns the object per spec behavior,
-          // but prototype-based inheritance changes will not take effect.
-          // Implementing full mutable prototypes requires architectural changes.
+          // Object.setPrototypeOf(obj, prototype)
+          // Sets the prototype of the specified object
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           let proto = if args.length() > 1 { args[1] } else { Null }
+          // Validate proto is Object or null
           match proto {
             Object(_) | Null => ()
             _ =>
               raise @errors.TypeError(
                 message="Object prototype may only be an Object or null",
               )
+          }
+          // Set the prototype if obj is an Object (return primitives unchanged)
+          match obj {
+            Object(data) => {
+              // Check if object is extensible (frozen/sealed objects can't change prototype)
+              if not(data.extensible) {
+                raise @errors.TypeError(
+                  message="Cannot set prototype of non-extensible object",
+                )
+              }
+              data.prototype = proto
+            }
+            // Per ECMAScript spec, primitives are returned unchanged
+            _ => ()
           }
           obj
         }),
@@ -2195,7 +2595,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 // Our implementation fills with undefined instead, making all indices
                 // present. This is an intentional simplification.
                 let len = n.to_int()
-                if len < 0 || n != len.to_double() {
+                if len < 0 || n != len.to_double() || len > 0xFFFFFFFF {
                   raise @errors.RangeError(message="Invalid array length")
                 }
                 let elements : Array[Value] = []
