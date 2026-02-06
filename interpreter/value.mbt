@@ -375,14 +375,18 @@ pub impl Show for Value with output(self, logger) {
         Some(ClassConstructor(name, _, _, _, _, _)) =>
           logger.write_string("class \{name} { [code] }")
         None =>
-          match (data.properties.get("name"), data.properties.get("message")) {
-            (Some(String_(name)), Some(String_(msg))) =>
-              if msg.length() > 0 {
-                logger.write_string("\{name}: \{msg}")
-              } else {
-                logger.write_string(name)
-              }
-            _ => logger.write_string("[object \{data.class_name}]")
+          if data.class_name.has_suffix("Error") {
+            match (data.properties.get("name"), data.properties.get("message")) {
+              (Some(String_(name)), Some(String_(msg))) =>
+                if msg.length() > 0 {
+                  logger.write_string("\{name}: \{msg}")
+                } else {
+                  logger.write_string(name)
+                }
+              _ => logger.write_string("[object \{data.class_name}]")
+            }
+          } else {
+            logger.write_string("[object \{data.class_name}]")
           }
       }
     Array(data) =>

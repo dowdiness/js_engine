@@ -10,7 +10,7 @@ This document researches what is needed to **self-host this JavaScript engine by
 
 ## 1. Current Architecture
 
-```
+```text
 Source Code (MoonBit)
     ↓  moon build [--target wasm-gc]
 WASM binary
@@ -59,22 +59,22 @@ moon test --target js           # Run tests on JS backend
 
 ### 3.2 FFI Usage
 
-```
+```text
 $ grep -r 'extern\s+"(wasm\|js)"' --include="*.mbt" .
 (no results)
 ```
 
 **Zero FFI calls.** The entire codebase is pure MoonBit with no `extern "wasm"` or `extern "js"` declarations. This is the ideal case for cross-target compilation.
 
-### 3.3 Platform-Specific Code
+### 3.3 Platform-Specific Code (Resolved)
 
-The only platform interaction is:
-```moonbit
-// cmd/main/main.mbt
-let args = @env.args()
-```
+The only platform interaction was `@env.args()` for CLI argument parsing. On the JS target, this returns raw `process.argv` (`["node", "script.js", source, ...]`), while on WASM the runtime strips the prefix so user args start at index 1.
 
-`@env.args()` is part of MoonBit's core library and is supported on all targets (WASM, JS, Native). On the JS target, it maps to `process.argv`.
+**Solution implemented:** Backend-specific files using MoonBit's target file convention:
+- `cmd/main/args.js.mbt` — reads source from `args[2]` (skipping `node` and script path)
+- `cmd/main/args.wasm.mbt` / `args.wasm-gc.mbt` — reads source from `args[1]`
+
+The shared `cmd/main/main.mbt` calls `get_source_arg() -> String?` defined in these files.
 
 ### 3.4 Data Structures
 
@@ -196,19 +196,13 @@ MoonBit's JS output is compact. The 27K LOC MoonBit source should produce a reas
 
 The engine implements its own event loop with microtask and timer queues. This is application-level code (not relying on the host event loop), so it should work identically on both targets.
 
-### 5.5 `@env.args()` Behavior
+### 5.5 `@env.args()` Behavior (Resolved)
 
-**Risk: Very Low**
+**Status: Fixed**
 
-On the JS target, `@env.args()` maps to `process.argv`. The semantics are equivalent. The only difference: `process.argv[0]` is `"node"` and `process.argv[1]` is the script path, whereas the WASM target may have different argv layout. The CLI code uses `args[1]` to get the JS source, which would need to be adjusted to `args[2]` if running via `node main.mjs '<code>'`.
+On the JS target, `@env.args()` returns raw `process.argv` (`["node", "script.js", source, ...]`), while on WASM the runtime provides `["program", source, ...]`. This caused the engine to try parsing the script path as JavaScript source.
 
-**Mitigation:** May need a small wrapper or adjustment in `cmd/main/main.mbt` for the JS target. Alternatively, create a `cmd/main/main.js.mbt` file with JS-specific arg parsing:
-
-```moonbit
-// cmd/main/main.js.mbt (JS-target specific)
-// process.argv = ["node", "main.mjs", "<source>"]
-// args index may differ from WASM target
-```
+**Solution:** Backend-specific `args.js.mbt` / `args.wasm.mbt` / `args.wasm-gc.mbt` files each define `get_source_arg() -> String?` with the correct index. See section 3.3.
 
 ---
 
@@ -248,12 +242,12 @@ This is a long-term goal that would improve naturally as Test262 compliance incr
 
 ## 7. Recommended Approach
 
-### Phase A: Validate JS Compilation (Minimal Effort)
+### Phase A: Validate JS Compilation -- DONE
 
-1. Run `moon build --target js` -- expect it to work with zero changes
-2. Run `moon test --target js` -- fix any test failures
-3. Manually test: `moon run cmd/main --target js -- 'console.log("hello")'`
-4. Fix `@env.args()` index offset if needed
+1. ~~Run `moon build --target js`~~ -- builds with zero errors
+2. ~~Run `moon test --target js`~~ -- all 507 tests pass
+3. ~~Manually test~~ -- `node ./target/js/release/build/cmd/main/main.js 'console.log(1 + 2)'` outputs `3`
+4. ~~Fix `@env.args()` index offset~~ -- solved with backend-specific `args.js.mbt`
 
 ### Phase B: Test262 on JS Target (Medium Effort)
 
@@ -282,12 +276,11 @@ This is a long-term goal that would improve naturally as Test262 compliance incr
 
 | Aspect | Status |
 |---|---|
-| FFI calls to port | **0** (none) |
-| Platform-specific code | **1 line** (`@env.args()`, already cross-platform) |
-| Expected code changes | **0-5 lines** (args index adjustment) |
-| Dependencies to audit | **3** (all core MoonBit, all JS-compatible) |
-| Blocking issues | **None identified** |
+| JS target compilation | **Working** |
+| Unit tests (507) | **All passing** on both WASM-GC and JS targets |
+| FFI calls ported | **0** (none needed) |
+| Code changes required | **3 new files** (backend-specific argv), **1 edit** (Error toString) |
 | Build command | `moon build --target js` |
-| Estimated risk | **Low** -- this codebase is almost ideally suited for JS target |
+| Run command | `node ./target/js/release/build/cmd/main/main.js '<code>'` |
 
-The codebase's pure-MoonBit, zero-FFI architecture makes it an excellent candidate for JS-target compilation. The primary work is validation and testing, not porting.
+The codebase's pure-MoonBit, zero-FFI architecture made JS-target compilation straightforward. The only issues encountered were the `process.argv` offset difference (solved with backend-specific files) and Error object toString formatting (solved by checking `class_name`).
