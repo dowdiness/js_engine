@@ -1,146 +1,126 @@
-# JS Engine — Test262 Compliance Roadmap
+# JS Engine Roadmap
 
-## Current Status (Phase 6 + PR Review Fixes Complete)
+## Current Status
 
-- **Passed**: 9,545 / 24,213 executed (39.4%)
-- **Skipped**: 25,381 (features not yet implemented: Temporal, async-iteration, generators, private fields, TypedArray, BigInt, modules, etc.)
-- **Failed**: 14,668
-- **Timeout**: 56
+**Test262**: 9,545 / 24,213 passed (39.4%) | 25,381 skipped | 14,668 failed | 56 timeouts
 
-### Phase History
+## Phase History
 
 | Phase | Tests | Cumulative | Key Changes |
 |-------|-------|------------|-------------|
-| 1-5 | — | 6,351 | Base interpreter, classes, promises, iterators |
-| 6A | +~200 | ~6,550 | Parser fixes, Array spec compliance |
-| 6B | +~200 | ~6,750 | String.prototype methods, array elisions, trailing commas |
-| 6C | +~400 | ~7,150 | Object.prototype chain fix for plain objects |
-| 6D | +~250 | ~7,400 | Constructor property on all built-in prototypes |
-| 6E | +~450 | ~7,850 | Unary +, empty statements, Object(null) fix |
-| 6F | +~400 | ~8,250 | Destructuring parameters in functions/arrows |
-| 6G | +~250 | ~8,500 | for-of/in destructuring, tagged templates, object method params |
-| 6H | +1,202 | 9,489 | **Error prototype chain fix** (try-catch creates proper Error objects) |
-| 6I | +est.50 | ~9,540 | Leading decimal literals (.5), comma-separated for-init |
-| 6J | +est.50 | ~9,590 | Number.prototype this-validation, String.split limit |
-| 6K | +32 | 9,521 | PR review fixes: var scoping, rest destructuring, toString tags, AggregateError |
-| 6L | +24 | 9,545 | PR review round 2: canonical indices, isPrototypeOf, prototype chain walk |
+| 1-5 | — | 6,351 | Core language, classes, promises, iterators, skip list cleanup |
+| 6A-6G | +~2,350 | ~8,500 | Parser fixes, prototype chains, destructuring, tagged templates |
+| 6H | +1,202 | 9,489 | Error prototype chain fix |
+| 6I-6L | +56 | 9,545 | Leading decimals, canonical indices, PR review fixes |
+
+For detailed implementation notes on Phases 1-6, see [docs/PHASE_HISTORY.md](docs/PHASE_HISTORY.md).
 
 ---
 
 ## Failure Breakdown
 
-### Parser / Syntax Errors (~1,700 tests)
+### Parser/Syntax (~1,700 tests)
 
-| Category | Count | Description | Difficulty |
-|----------|-------|-------------|------------|
-| Unicode escapes | 479 | `\u0041` in identifiers/strings | Medium |
-| for-of destructuring (bare) | 225 | `for (x of ...)` without let/var | Easy |
-| Generator functions | 160 | `function*`, `yield` keyword | Hard |
-| get/set as identifiers | 127 | `get`/`set` used as regular property names | Easy |
-| Destructuring defaults in patterns | ~100 | `{a = 1}` in more destructuring contexts | Medium |
-| async $DONE not called | 98 | Async tests needing event loop | Hard |
-| LBracket/LBrace in patterns | 122 | Additional destructuring pattern contexts | Medium |
-| Comma after destructuring | ~60 | Destructuring in comma expressions | Medium |
-| Other syntax | ~200 | Miscellaneous parser gaps | Varies |
+| Category | Count | Difficulty |
+|----------|-------|------------|
+| Unicode escapes in identifiers/strings | 479 | Medium |
+| Bare `for (x of ...)` without let/var | 225 | Easy |
+| Generator functions (`function*`, `yield`) | 160 | Hard |
+| `get`/`set` as regular identifiers | 127 | Easy |
+| Destructuring defaults in more contexts | ~100 | Medium |
+| Async $DONE not called (event loop) | 98 | Hard |
+| Additional destructuring pattern contexts | 122 | Medium |
+| Other syntax gaps | ~260 | Varies |
 
-### Runtime / Semantic Errors (JsException ~12,476 tests)
+### Runtime/Semantic (~12,476 tests)
 
-| Category | Count | Description | Priority |
-|----------|-------|-------------|----------|
-| Object.defineProperty | 809 | Property descriptor enforcement | High |
-| Object.defineProperties | 541 | Bulk property definition | High (same as above) |
-| language/statements | 1,111 | Statement edge cases (class, for, with) | Medium |
-| language/expressions | 1,233 | Expression edge cases | Medium |
-| staging/sm | 841 | SpiderMonkey staging tests | Low |
-| String.prototype | 681 | String method edge cases | Medium |
-| RegExp | 671 | Regular expression features | Hard |
-| annexB/language | 608 | Annex B (legacy) behaviors | Low |
-| Date | 534 | Date object methods | Medium |
-| Promise | 446 | Promise combinators, edge cases | Medium |
-| Function | 320 | Function object properties | Medium |
-| DataView | 311 | Binary data views (needs TypedArray) | Hard |
-| Object.create | 176 | Object.create with descriptors | High |
-| Object.getOwnPropertyDescriptor | 193 | Descriptor retrieval accuracy | High |
-| Math | 134 | Math method gaps | Easy |
-| Number | 187 | Number method edge cases | Easy |
-| Map/WeakMap | 169 | Map/WeakMap compliance | Medium |
-| JSON | 59 | JSON.parse/stringify edge cases | Medium |
-| eval-code | 205 | Direct/indirect eval | Hard |
+| Category | Count | Priority |
+|----------|-------|----------|
+| Object.defineProperty/defineProperties | 1,350 | High |
+| language/expressions | 1,233 | Medium |
+| language/statements | 1,111 | Medium |
+| staging/sm (SpiderMonkey) | 841 | Low |
+| String.prototype | 681 | Medium |
+| RegExp | 671 | Hard |
+| annexB/language (legacy) | 608 | Low |
+| Date | 534 | Medium |
+| Promise | 446 | Medium |
+| Function | 320 | Medium |
+| DataView (needs TypedArray) | 311 | Hard |
+| eval-code | 205 | Hard |
+| Object.getOwnPropertyDescriptor | 193 | High |
+| Number | 187 | Easy |
+| Object.create | 176 | High |
+| Map/WeakMap | 169 | Medium |
+| Math | 134 | Easy |
+| JSON | 59 | Medium |
 
 ---
 
-## Recommended Phase 7 Targets (reaching 10,000+)
+## Phase 7 Targets (reaching 10,000+)
 
-### 7A: Object.defineProperty & Property Descriptors (~1,500 tests potential)
-**Impact: Very High** — 809 + 541 + 193 + 176 = 1,719 tests depend on this
+### 7A: Property Descriptors (~1,500 tests potential)
 
-- Implement full property descriptor semantics (writable, enumerable, configurable enforcement)
-- `Object.defineProperty()` must enforce descriptor rules
-- `Object.defineProperties()` for batch definitions
-- `Object.getOwnPropertyDescriptor()` must return proper descriptor objects
+809 + 541 + 193 + 176 = 1,719 tests depend on full descriptor semantics.
+
+- Full property descriptor enforcement (writable, enumerable, configurable)
+- Accessor vs data descriptor validation in `defineProperty`
 - `Object.create()` with property descriptor map
-- Property access must respect `writable: false`, `configurable: false`
-- Getter/setter descriptors (accessor properties)
+- `Object.getOwnPropertyDescriptor()` returning proper descriptor objects
 
-### 7B: Unicode Escape Sequences (~479 tests)
-**Impact: High** — Pure parser/lexer fix
+### 7B: Unicode Escapes (~479 tests)
 
-- Handle `\uXXXX` in identifiers: `var \u0061 = 1` means `var a = 1`
-- Handle `\u{XXXXX}` extended Unicode escapes
-- Handle Unicode escapes in string literals beyond current support
+Pure parser/lexer fix.
 
-### 7C: Bare for-of/for-in Improvements (~225 tests)
-**Impact: Medium** — Parser fix
+- `\uXXXX` in identifiers: `var \u0061 = 1` means `var a = 1`
+- `\u{XXXXX}` extended Unicode escapes
+- Unicode escapes in string literals
 
-- `for (x of arr)` without `let`/`var`/`const` (bare identifier assignment)
-- Currently only handles `for (let x of ...)` pattern with destructuring
+### 7C: Bare for-of/for-in (~225 tests)
 
-### 7D: get/set as Regular Identifiers (~127 tests)
-**Impact: Medium** — Parser fix
+Parser fix: `for (x of arr)` without `let`/`var`/`const`.
 
-- `get` and `set` should be treated as regular identifiers when not in getter/setter position
-- e.g., `var get = 5; var set = 10;` should work
+### 7D: get/set as Identifiers (~127 tests)
+
+Parser fix: `get`/`set` treated as regular identifiers outside getter/setter position.
 
 ### 7E: Math Built-ins (~134 tests)
-**Impact: Easy wins**
 
-- Add missing Math methods: `Math.cbrt`, `Math.log2`, `Math.log10`, `Math.sign`, `Math.trunc`, `Math.fround`, `Math.clz32`, `Math.imul`, `Math.hypot`, `Math.acosh`, `Math.asinh`, `Math.atanh`, `Math.cosh`, `Math.sinh`, `Math.tanh`, `Math.expm1`, `Math.log1p`
-
----
-
-## Recommended Phase 8+ Targets (reaching 15,000+)
-
-### Generator Functions (~3,241 skipped + ~160 failing)
-- `function*` syntax, `yield` / `yield*`
-- Generator protocol (next/return/throw)
-- Would also unblock async-iteration tests (3,731 more)
-
-### Regular Expressions (~671 failing)
-- Capture groups, backreferences
-- Unicode flag, sticky flag
-- RegExp.prototype methods
-
-### with Statement (~150+ failing)
-- Dynamic scope injection via `with (obj) { ... }`
-
-### eval() Improvements (~205 failing)
-- Direct vs indirect eval semantics
-- Proper scope chain for eval
-
-### Date Object (~534 failing)
-- Date parsing, formatting
-- Date.prototype methods
+Missing methods: `cbrt`, `log2`, `log10`, `sign`, `trunc`, `fround`, `clz32`, `imul`, `hypot`, `acosh`, `asinh`, `atanh`, `cosh`, `sinh`, `tanh`, `expm1`, `log1p`.
 
 ---
 
-## Skipped Feature Categories (25,381 tests)
+## Phase 8+ Targets (reaching 15,000+)
 
-These tests require features not yet implemented:
+### Generators (~3,400 tests: 3,241 skipped + 160 failing)
 
-| Feature | Skipped Tests | Notes |
-|---------|--------------|-------|
+`function*`, `yield`, `yield*`. Would also unblock async-iteration (3,731 more skipped).
+
+Architecture: explicit state machine — convert generator body into segments separated by yield points. Generator object tracks current segment + local environment.
+
+### async/await (~500 tests)
+
+Syntactic sugar over Promises + generator-like suspension. Depends on generators.
+
+### Other Features
+
+| Feature | Impact | Notes |
+|---------|--------|-------|
+| RegExp improvements | ~671 | Capture groups, backreferences, unicode/sticky flags |
+| `with` statement | ~150 | Dynamic scope injection |
+| eval() improvements | ~205 | Direct vs indirect eval semantics |
+| Date object | ~534 | Date parsing, formatting, prototype methods |
+| WeakMap/WeakSet | ~200 | Reference-based collections |
+| Proxy/Reflect | ~500 | Meta-programming |
+
+---
+
+## Skipped Features (25,381 tests)
+
+| Feature | Skipped | Notes |
+|---------|---------|-------|
 | Temporal | 4,228 | TC39 Stage 3 date/time API |
-| async-iteration | 3,731 | Requires generators first |
+| async-iteration | 3,731 | Requires generators |
 | generators | 3,241 | function*, yield |
 | class-methods-private | 1,304 | #privateMethod |
 | TypedArray | 1,257 | Int8Array, Uint8Array, etc. |
@@ -149,3 +129,23 @@ These tests require features not yet implemented:
 | module | 812 | import/export |
 | class-fields-public | 723 | Public field declarations |
 | regexp-unicode-property | 679 | Unicode property escapes |
+
+---
+
+## Architecture
+
+### Key Decisions
+
+1. **Functions are objects** — `Object` with `callable` field, enabling property assignment on functions
+2. **Exception propagation** — MoonBit's native `raise` with `JsException(Value)` suberror
+3. **Property descriptors** — `ObjectData.descriptors` map alongside `properties`
+4. **Array storage** — Dedicated `Array(ArrayData)` variant with `elements: Array[Value]`
+5. **Builtin organization** — Split into `builtins_object.mbt`, `builtins_array.mbt`, `builtins_string.mbt`, etc.
+
+### Value Variants
+
+`Number`, `String_`, `Bool`, `Null`, `Undefined`, `Object`, `Array`, `Symbol`, `Map`, `Set`, `Promise`
+
+### Signal Types
+
+`Normal(Value)`, `ReturnSignal(Value)`, `BreakSignal(String?)`, `ContinueSignal(String?)`
