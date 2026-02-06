@@ -4,7 +4,7 @@
 
 **Test262**: 9,545 / 24,213 passed (39.4%) | 25,381 skipped | 14,668 failed | 56 timeouts
 
-**Unit tests**: 520 total, 514 passed, 6 failed (pre-existing error message formatting)
+**Unit tests**: 534 total, 534 passed, 0 failed
 
 ## Phase History
 

@@ -4612,3 +4612,32 @@ test "Object.create rejects accessor-data mixing" {
   )
   inspect(output, content="[\"true\"]")
 }
+
+///|
+test "getOwnPropertyDescriptors includes symbol-keyed properties" {
+  let output = run_output(
+    #|const sym = Symbol('test');
+    #|const obj = {};
+    #|obj[sym] = 42;
+    #|const descs = Object.getOwnPropertyDescriptors(obj);
+    #|const symDesc = descs[sym];
+    #|console.log(symDesc.value);
+    #|console.log(symDesc.writable);
+    #|console.log(symDesc.enumerable);
+  ,
+  )
+  inspect(output, content="[\"42\", \"true\", \"true\"]")
+}
+
+///|
+test "inherited non-writable data property blocks assignment" {
+  let output = run_output(
+    #|const proto = {};
+    #|Object.defineProperty(proto, 'x', { value: 1, writable: false });
+    #|const obj = Object.create(proto);
+    #|obj.x = 99;
+    #|console.log(obj.x);
+  ,
+  )
+  inspect(output, content="[\"1\"]")
+}

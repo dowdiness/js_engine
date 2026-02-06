@@ -3727,6 +3727,14 @@ fn Interpreter::set_property(
                             )
                           }
                           return value
+                        } else if not(desc.writable) {
+                          // Inherited non-writable data property blocks assignment
+                          if self.strict {
+                            raise @errors.TypeError(
+                              message="Cannot assign to read only property '\{prop}'",
+                            )
+                          }
+                          return value
                         }
                     }
                   None => ()
@@ -3841,6 +3849,13 @@ fn Interpreter::set_computed_property(
                                 )
                               }
                               return value
+                            } else if not(desc.writable) {
+                              if self.strict {
+                                raise @errors.TypeError(
+                                  message="Cannot assign to read only property",
+                                )
+                              }
+                              return value
                             }
                         }
                       None => ()
@@ -3909,6 +3924,13 @@ fn Interpreter::set_computed_property(
                               if self.strict {
                                 raise @errors.TypeError(
                                   message="Cannot set property \{prop} which has only a getter",
+                                )
+                              }
+                              return value
+                            } else if not(desc.writable) {
+                              if self.strict {
+                                raise @errors.TypeError(
+                                  message="Cannot assign to read only property '\{prop}'",
                                 )
                               }
                               return value

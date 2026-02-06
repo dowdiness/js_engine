@@ -892,9 +892,87 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                     })
                   }
                 })
+                // Also include symbol-keyed property descriptors
+                let sym_descs : Map[Int, Value] = {}
+                data.symbol_properties.each(fn(sym_id, val) {
+                  let desc = data.symbol_descriptors.get(sym_id)
+                  let is_accessor = match desc {
+                    Some(d) => d.getter is Some(_) || d.setter is Some(_)
+                    None => false
+                  }
+                  if is_accessor {
+                    let getter_val : Value = match desc {
+                      Some(d) =>
+                        match d.getter {
+                          Some(g) => g
+                          None => Undefined
+                        }
+                      None => Undefined
+                    }
+                    let setter_val : Value = match desc {
+                      Some(d) =>
+                        match d.setter {
+                          Some(s) => s
+                          None => Undefined
+                        }
+                      None => Undefined
+                    }
+                    let enumerable = match desc {
+                      Some(d) => d.enumerable
+                      None => true
+                    }
+                    let configurable = match desc {
+                      Some(d) => d.configurable
+                      None => true
+                    }
+                    sym_descs[sym_id] = Object({
+                      properties: {
+                        "get": getter_val,
+                        "set": setter_val,
+                        "enumerable": Bool(enumerable),
+                        "configurable": Bool(configurable),
+                      },
+                      symbol_properties: {},
+                      prototype: Null,
+                      callable: None,
+                      class_name: "Object",
+                      descriptors: {},
+                      symbol_descriptors: {},
+                      extensible: true,
+                    })
+                  } else {
+                    let writable = match desc {
+                      Some(d) => d.writable
+                      None => true
+                    }
+                    let enumerable = match desc {
+                      Some(d) => d.enumerable
+                      None => true
+                    }
+                    let configurable = match desc {
+                      Some(d) => d.configurable
+                      None => true
+                    }
+                    sym_descs[sym_id] = Object({
+                      properties: {
+                        "value": val,
+                        "writable": Bool(writable),
+                        "enumerable": Bool(enumerable),
+                        "configurable": Bool(configurable),
+                      },
+                      symbol_properties: {},
+                      prototype: Null,
+                      callable: None,
+                      class_name: "Object",
+                      descriptors: {},
+                      symbol_descriptors: {},
+                      extensible: true,
+                    })
+                  }
+                })
                 Object({
                   properties: descriptors_props,
-                  symbol_properties: {},
+                  symbol_properties: sym_descs,
                   prototype: Null,
                   callable: None,
                   class_name: "Object",
