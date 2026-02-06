@@ -1,6 +1,11 @@
 ///|
 fn Parser::parse_stmt(self : Parser) -> @ast.Stmt raise Error {
   match self.peek_kind() {
+    Semicolon => {
+      // Empty statement
+      let loc = self.advance().loc
+      ExprStmt(UndefinedLit(loc), loc)
+    }
     Let | Const | Var => self.parse_var_decl()
     Function => self.parse_func_decl()
     Class => self.parse_class_decl()
@@ -114,6 +119,10 @@ fn Parser::parse_params(self : Parser) -> Array[String] raise Error {
       // Let extended parse handle it
       raise Failure::Failure("REST_PARAM_FOUND")
     }
+    // Destructuring patterns trigger extended parse
+    if self.at(LBrace) || self.at(LBracket) {
+      raise Failure::Failure("DESTRUCTURE_PARAM_FOUND")
+    }
     params.push(self.expect_ident())
     // Check for default value — trigger extended parse
     if self.at(Assign) {
@@ -122,6 +131,9 @@ fn Parser::parse_params(self : Parser) -> Array[String] raise Error {
     while self.eat(Comma) {
       if self.at(DotDotDot) {
         raise Failure::Failure("REST_PARAM_FOUND")
+      }
+      if self.at(LBrace) || self.at(LBracket) {
+        raise Failure::Failure("DESTRUCTURE_PARAM_FOUND")
       }
       params.push(self.expect_ident())
       if self.at(Assign) {

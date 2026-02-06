@@ -2113,6 +2113,7 @@ fn Interpreter::eval_unary(
       let val = self.eval_expr(operand, env)
       match op {
         Neg => Number(-to_number(val))
+        Pos => Number(to_number(val))
         Not => Bool(not(is_truthy(val)))
         BitNot => Number(to_int32(to_number(val)).lnot().to_double())
         _ =>

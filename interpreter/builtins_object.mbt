@@ -1181,7 +1181,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               Object({
                 properties: {},
                 symbol_properties: {},
-                prototype: Null,
+                prototype: obj_proto,
                 callable: None,
                 class_name: "Object",
                 descriptors: {},

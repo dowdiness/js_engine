@@ -353,6 +353,7 @@ fn Parser::parse_exponentiation(self : Parser) -> @ast.Expr raise Error {
       Unary(op, _, _) =>
         match op {
           @ast.Neg
+          | @ast.Pos
           | @ast.Not
           | @ast.BitNot
           | @ast.Typeof
@@ -376,6 +377,11 @@ fn Parser::parse_exponentiation(self : Parser) -> @ast.Expr raise Error {
 ///|
 fn Parser::parse_unary(self : Parser) -> @ast.Expr raise Error {
   match self.peek_kind() {
+    Plus => {
+      let loc = self.advance().loc
+      let expr = self.parse_unary()
+      Unary(@ast.Pos, expr, loc)
+    }
     Minus => {
       let loc = self.advance().loc
       let expr = self.parse_unary()
