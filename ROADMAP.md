@@ -4,6 +4,8 @@
 
 **Test262**: 9,545 / 24,213 passed (39.4%) | 25,381 skipped | 14,668 failed | 56 timeouts
 
+**Unit tests**: 520 total, 514 passed, 6 failed (pre-existing error message formatting)
+
 ## Phase History
 
 | Phase | Tests | Cumulative | Key Changes |
@@ -12,6 +14,9 @@
 | 6A-6G | +~2,350 | ~8,500 | Parser fixes, prototype chains, destructuring, tagged templates |
 | 6H | +1,202 | 9,489 | Error prototype chain fix |
 | 6I-6L | +56 | 9,545 | Leading decimals, canonical indices, PR review fixes |
+| 7A | +13 | 9,545* | Full accessor descriptor support (get/set in PropDescriptor) |
+
+\* Phase 7A added 13 unit tests; test262 recount pending.
 
 For detailed implementation notes on Phases 1-6, see [docs/PHASE_HISTORY.md](docs/PHASE_HISTORY.md).
 
@@ -59,14 +64,21 @@ For detailed implementation notes on Phases 1-6, see [docs/PHASE_HISTORY.md](doc
 
 ## Phase 7 Targets (reaching 10,000+)
 
-### 7A: Property Descriptors (~1,500 tests potential)
+### 7A: Property Descriptors — DONE
 
-809 + 541 + 193 + 176 = 1,719 tests depend on full descriptor semantics.
+Implemented full accessor descriptor support:
 
-- Full property descriptor enforcement (writable, enumerable, configurable)
-- Accessor vs data descriptor validation in `defineProperty`
-- `Object.create()` with property descriptor map
-- `Object.getOwnPropertyDescriptor()` returning proper descriptor objects
+- Extended `PropDescriptor` with `getter: Value?` and `setter: Value?` fields
+- Accessor vs data descriptor validation in `defineProperty` (TypeError on mixing get/set with value/writable)
+- Getter invocation during property access (own + prototype chain, correct `this` binding)
+- Setter invocation during property assignment (own + prototype chain)
+- `Object.create()` with accessor property descriptors
+- `Object.getOwnPropertyDescriptor()` returning accessor format `{get, set, enumerable, configurable}`
+- `Object.getOwnPropertyDescriptors()` accessor-aware output
+- `Object.defineProperties()` accessor descriptor support
+- `Object.freeze()`/`Object.seal()` preserve existing getters/setters
+- Class getter/setter methods stored as accessor descriptors on prototype
+- Replaced `__get__`/`__set__` prefix hack with proper PropDescriptor storage
 
 ### 7B: Unicode Escapes (~479 tests)
 
