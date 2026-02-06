@@ -693,6 +693,12 @@ fn Parser::parse_array_literal(self : Parser) -> @ast.Expr raise Error {
   let loc = self.advance().loc // consume '['
   let elements : Array[@ast.Expr] = []
   while not(self.at(RBracket)) && not(self.at(EOF)) {
+    // Handle elisions: [1,,3] or [,,] - consecutive commas create undefined holes
+    if self.at(Comma) {
+      elements.push(UndefinedLit(self.peek().loc))
+      let _ = self.advance() // consume comma
+      continue
+    }
     if self.at(DotDotDot) {
       let sloc = self.advance().loc
       elements.push(SpreadExpr(self.parse_assignment(), sloc))
@@ -700,8 +706,9 @@ fn Parser::parse_array_literal(self : Parser) -> @ast.Expr raise Error {
       elements.push(self.parse_assignment())
     }
     if not(self.at(RBracket)) {
-      let _ = self.expect(Comma)
-
+      if self.at(Comma) {
+        let _ = self.advance() // consume comma
+      }
     }
   }
   let _ = self.expect(RBracket)

@@ -1018,6 +1018,84 @@ fn string_trim(s : String) -> String {
 }
 
 ///|
+/// Extract string from a this value (for String.prototype methods called via .call())
+pub fn this_to_string(this_val : Value) -> String raise Error {
+  match this_val {
+    String_(s) => s
+    Number(n) => n.to_string()
+    Bool(b) => if b { "true" } else { "false" }
+    Null => raise @errors.TypeError(message="String.prototype method called on null")
+    Undefined =>
+      raise @errors.TypeError(
+        message="String.prototype method called on undefined",
+      )
+    Object(data) =>
+      // Check if it's a String wrapper object
+      if data.class_name == "String" {
+        match data.properties.get("__primitiveValue__") {
+          Some(String_(s)) => s
+          _ => this_val.to_string()
+        }
+      } else {
+        this_val.to_string()
+      }
+    _ => this_val.to_string()
+  }
+}
+
+///|
+/// Populate String.prototype with all string methods
+pub fn setup_string_prototype(string_proto : Value) -> Unit {
+  match string_proto {
+    Object(data) => {
+      let methods = [
+        "charAt", "charCodeAt", "at", "codePointAt", "indexOf", "lastIndexOf",
+        "includes", "startsWith", "endsWith", "slice", "substring", "toUpperCase",
+        "toLowerCase", "trim", "trimStart", "trimEnd", "padStart", "padEnd",
+        "repeat", "replace", "replaceAll", "split", "search", "match", "concat",
+        "normalize", "isWellFormed", "toWellFormed", "localeCompare", "toString",
+        "valueOf",
+      ]
+      for method_name in methods {
+        let mname = method_name
+        data.properties[mname] = Object({
+          properties: {},
+          symbol_properties: {},
+          prototype: Null,
+          callable: Some(
+            MethodCallable(mname, fn(this_val, args) {
+              let s = this_to_string(this_val)
+              let meth_val = get_string_method(s, mname)
+              match meth_val {
+                Object(fdata) =>
+                  match fdata.callable {
+                    Some(NativeCallable(_, f)) => f(args)
+                    _ => Undefined
+                  }
+                _ => Undefined
+              }
+            }),
+          ),
+          class_name: "Function",
+          descriptors: {},
+          symbol_descriptors: {},
+          extensible: true,
+        })
+        // Make methods non-enumerable
+        data.descriptors[mname] = {
+          writable: true,
+          enumerable: false,
+          configurable: true,
+        }
+      }
+      // Add constructor back-reference placeholder
+      data.properties["constructor"] = Undefined
+    }
+    _ => ()
+  }
+}
+
+///|
 fn string_trim_end(s : String) -> String {
   let chars = s.to_array()
   let mut end = chars.length()

@@ -373,6 +373,9 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
     }),
   )
 
+  // Populate String.prototype with methods for .call() support
+  setup_string_prototype(string_proto)
+
   // Number constructor with static methods and prototype
   setup_number_builtins(env)
 
