@@ -2,9 +2,9 @@
 
 ## Current Status (Phase 6 + PR Review Fixes Complete)
 
-- **Passed**: 9,521 / 24,213 executed (39.3%)
+- **Passed**: 9,545 / 24,213 executed (39.4%)
 - **Skipped**: 25,381 (features not yet implemented: Temporal, async-iteration, generators, private fields, TypedArray, BigInt, modules, etc.)
-- **Failed**: 14,692
+- **Failed**: 14,668
 - **Timeout**: 56
 
 ### Phase History
@@ -23,6 +23,7 @@
 | 6I | +est.50 | ~9,540 | Leading decimal literals (.5), comma-separated for-init |
 | 6J | +est.50 | ~9,590 | Number.prototype this-validation, String.split limit |
 | 6K | +32 | 9,521 | PR review fixes: var scoping, rest destructuring, toString tags, AggregateError |
+| 6L | +24 | 9,545 | PR review round 2: canonical indices, isPrototypeOf, prototype chain walk |
 
 ---
 
