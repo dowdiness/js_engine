@@ -2431,6 +2431,11 @@ fn Interpreter::call_value(
                 }
               }
               func_env.def(param.name, val, LetBinding)
+              // Destructure if pattern param
+              match param.pattern {
+                Some(pat) => self.bind_pattern(pat, val, func_env, LetBinding)
+                None => ()
+              }
             }
             // Rest param
             match data.rest_param {
@@ -2513,6 +2518,11 @@ fn Interpreter::call_value(
               }
             }
             func_env.def(param.name, val, LetBinding)
+            // Destructure if pattern param
+            match param.pattern {
+              Some(pat) => self.bind_pattern(pat, val, func_env, LetBinding)
+              None => ()
+            }
           }
           // Rest param
           match data.rest_param {
@@ -3543,6 +3553,10 @@ fn Interpreter::eval_new(
                 }
               }
               func_env.def(param.name, val, LetBinding)
+              match param.pattern {
+                Some(pat) => self.bind_pattern(pat, val, func_env, LetBinding)
+                None => ()
+              }
             }
             match data.rest_param {
               Some(rest_name) => {

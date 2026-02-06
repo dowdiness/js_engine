@@ -140,6 +140,7 @@ pub(all) enum Expr {
 pub(all) struct Param {
   name : String
   default_val : Expr?
+  pattern : Pattern? // For destructuring parameters like ({x, y}) or ([a, b])
 } derive(Show, Eq)
 
 ///|

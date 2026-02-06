@@ -43,7 +43,7 @@ fn Parser::parse_assignment(self : Parser) -> @ast.Expr raise Error {
         if self.at(Arrow) {
           // Check if this has defaults or rest
           let has_ext = rest_param is Some(_) ||
-            ext_params.iter().any(fn(p) { p.default_val is Some(_) })
+            ext_params.iter().any(fn(p) { p.default_val is Some(_) || p.pattern is Some(_) })
           if has_ext {
             let loc = self.advance().loc // consume =>
             let body = self.parse_arrow_body()
@@ -940,7 +940,7 @@ fn Parser::parse_func_expr(self : Parser) -> @ast.Expr raise Error {
   let saved_pos = self.pos
   let params = self.parse_params() catch {
     Failure::Failure(msg) =>
-      if msg == "REST_PARAM_FOUND" || msg == "DEFAULT_PARAM_FOUND" {
+      if msg == "REST_PARAM_FOUND" || msg == "DEFAULT_PARAM_FOUND" || msg == "DESTRUCTURE_PARAM_FOUND" {
         self.pos = saved_pos
         let (ext_params, rest_param) = self.parse_params_ext()
         let body = self.parse_block_body()
@@ -1192,7 +1192,7 @@ fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
   let saved_pos = self.pos
   let params = self.parse_params() catch {
     Failure::Failure(msg) =>
-      if msg == "REST_PARAM_FOUND" || msg == "DEFAULT_PARAM_FOUND" {
+      if msg == "REST_PARAM_FOUND" || msg == "DEFAULT_PARAM_FOUND" || msg == "DESTRUCTURE_PARAM_FOUND" {
         self.pos = saved_pos
         let (ext_params, rest_param) = self.parse_params_ext()
         match method_kind {

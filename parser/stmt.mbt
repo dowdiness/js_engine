@@ -95,7 +95,7 @@ fn Parser::parse_func_decl(self : Parser) -> @ast.Stmt raise Error {
   let saved_pos = self.pos
   let params = self.parse_params() catch {
     Failure::Failure(msg) =>
-      if msg == "REST_PARAM_FOUND" || msg == "DEFAULT_PARAM_FOUND" {
+      if msg == "REST_PARAM_FOUND" || msg == "DEFAULT_PARAM_FOUND" || msg == "DESTRUCTURE_PARAM_FOUND" {
         self.pos = saved_pos
         let (ext_params, rest_param) = self.parse_params_ext()
         let body = self.parse_block_body()
@@ -152,10 +152,29 @@ fn Parser::parse_params_ext(
   let _ = self.expect(LParen)
   let params : Array[@ast.Param] = []
   let mut rest_param : String? = None
+  let mut synth_idx = 0
   if not(self.at(RParen)) {
     // Check for rest param
     if self.eat(DotDotDot) {
-      rest_param = Some(self.expect_ident())
+      if self.at(LBrace) || self.at(LBracket) {
+        let pat = self.parse_pattern()
+        let sname = "$rest"
+        rest_param = Some(sname)
+        params.push({ name: sname, default_val: None, pattern: Some(pat) })
+      } else {
+        rest_param = Some(self.expect_ident())
+      }
+    } else if self.at(LBrace) || self.at(LBracket) {
+      // Destructuring parameter
+      let pat = self.parse_pattern()
+      let sname = "$" + synth_idx.to_string()
+      synth_idx = synth_idx + 1
+      let default_val : @ast.Expr? = if self.eat(Assign) {
+        Some(self.parse_assignment())
+      } else {
+        None
+      }
+      params.push({ name: sname, default_val, pattern: Some(pat) })
     } else {
       let name = self.expect_ident()
       let default_val : @ast.Expr? = if self.eat(Assign) {
@@ -163,25 +182,43 @@ fn Parser::parse_params_ext(
       } else {
         None
       }
-      params.push({ name, default_val })
-      while self.eat(Comma) {
-        if rest_param is Some(_) {
-          let t = self.peek()
-          raise @errors.SyntaxError(
-            message="Rest parameter must be last at line \{t.loc.line}, col \{t.loc.col}",
-          )
-        }
-        if self.eat(DotDotDot) {
-          rest_param = Some(self.expect_ident())
+      params.push({ name, default_val, pattern: None })
+    }
+    while self.eat(Comma) {
+      if self.at(RParen) { break } // trailing comma
+      if rest_param is Some(_) {
+        let t = self.peek()
+        raise @errors.SyntaxError(
+          message="Rest parameter must be last at line \{t.loc.line}, col \{t.loc.col}",
+        )
+      }
+      if self.eat(DotDotDot) {
+        if self.at(LBrace) || self.at(LBracket) {
+          let pat = self.parse_pattern()
+          let sname = "$rest"
+          rest_param = Some(sname)
+          params.push({ name: sname, default_val: None, pattern: Some(pat) })
         } else {
-          let pname = self.expect_ident()
-          let pdefault : @ast.Expr? = if self.eat(Assign) {
-            Some(self.parse_assignment())
-          } else {
-            None
-          }
-          params.push({ name: pname, default_val: pdefault })
+          rest_param = Some(self.expect_ident())
         }
+      } else if self.at(LBrace) || self.at(LBracket) {
+        let pat = self.parse_pattern()
+        let sname = "$" + synth_idx.to_string()
+        synth_idx = synth_idx + 1
+        let pdefault : @ast.Expr? = if self.eat(Assign) {
+          Some(self.parse_assignment())
+        } else {
+          None
+        }
+        params.push({ name: sname, default_val: pdefault, pattern: Some(pat) })
+      } else {
+        let pname = self.expect_ident()
+        let pdefault : @ast.Expr? = if self.eat(Assign) {
+          Some(self.parse_assignment())
+        } else {
+          None
+        }
+        params.push({ name: pname, default_val: pdefault, pattern: None })
       }
     }
   }
