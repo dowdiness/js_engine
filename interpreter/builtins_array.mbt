@@ -602,13 +602,21 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
             if args.length() > 1 {
               acc = args[1]
             } else {
-              if arr.elements.length() == 0 {
+              // Find first present element (skip sparse holes)
+              let mut found = false
+              for i = 0; i < arr.elements.length(); i = i + 1 {
+                if not(arr.elements[i] is Undefined) {
+                  acc = arr.elements[i]
+                  start = i + 1
+                  found = true
+                  break
+                }
+              }
+              if not(found) {
                 raise @errors.TypeError(
                   message="Reduce of empty array with no initial value",
                 )
               }
-              acc = arr.elements[0]
-              start = 1
             }
             for i = start; i < arr.elements.length(); i = i + 1 {
               acc = interp.call_value(
@@ -643,13 +651,21 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
             if args.length() > 1 {
               acc = args[1]
             } else {
-              if arr.elements.length() == 0 {
+              // Find last present element (skip sparse holes)
+              let mut found = false
+              for i = arr.elements.length() - 1; i >= 0; i = i - 1 {
+                if not(arr.elements[i] is Undefined) {
+                  acc = arr.elements[i]
+                  start = i - 1
+                  found = true
+                  break
+                }
+              }
+              if not(found) {
                 raise @errors.TypeError(
                   message="Reduce of empty array with no initial value",
                 )
               }
-              acc = arr.elements[start]
-              start = start - 1
             }
             for i = start; i >= 0; i = i - 1 {
               acc = interp.call_value(

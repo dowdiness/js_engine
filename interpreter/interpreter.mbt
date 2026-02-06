@@ -538,7 +538,12 @@ fn Interpreter::exec_stmt(
       }
       for key in keys {
         let body_env = Environment::new(parent=Some(env))
-        self.bind_pattern(pattern, String_(key), body_env, bk)
+        // var bindings go to outer env (function/global scoped), let/const to body_env
+        let bind_env = match var_kind {
+          VarKind => env
+          _ => body_env
+        }
+        self.bind_pattern(pattern, String_(key), bind_env, bk)
         match self.exec_stmt(body, body_env) {
           Normal(_) => ()
           ReturnSignal(v) => return ReturnSignal(v)
@@ -657,7 +662,12 @@ fn Interpreter::exec_stmt(
           break
         }
         let body_env = Environment::new(parent=Some(env))
-        self.bind_pattern(pattern, value, body_env, bk)
+        // var bindings go to outer env (function/global scoped), let/const to body_env
+        let bind_env = match var_kind {
+          VarKind => env
+          _ => body_env
+        }
+        self.bind_pattern(pattern, value, bind_env, bk)
         match self.exec_stmt(body, body_env) {
           Normal(_) => ()
           ReturnSignal(v) => return ReturnSignal(v)
@@ -1561,11 +1571,6 @@ fn Interpreter::eval_expr(
     }
     TaggedTemplate(tag_expr, strings, exprs, loc) => {
       let tag = self.eval_expr(tag_expr, env)
-      // Build the strings array (template object)
-      let str_vals : Array[Value] = []
-      for s in strings {
-        str_vals.push(String_(s))
-      }
       // Build the raw array (same as cooked for now - raw doesn't process escapes)
       let raw_vals : Array[Value] = []
       for s in strings {
@@ -1573,33 +1578,36 @@ fn Interpreter::eval_expr(
       }
       let raw_arr = Array({ elements: raw_vals })
       // Create the template strings object as an array-like object with raw property
+      let props : Map[String, Value] = {}
+      props["length"] = Number(strings.length().to_double())
+      props["raw"] = raw_arr
+      for i, s in strings {
+        props[i.to_string()] = String_(s)
+      }
       let template_obj = Object({
-        properties: {
-          "length": Number(strings.length().to_double()),
-          "raw": raw_arr,
-        },
+        properties: props,
         symbol_properties: {},
-        prototype: try { self.global.get("[[ObjectPrototype]]") } catch { _ => Null },
+        prototype: try { self.global.get("[[ObjectPrototype]]") } catch {
+          _ => Null
+        },
         callable: None,
         class_name: "Array",
         descriptors: {},
         symbol_descriptors: {},
         extensible: true,
       })
-      // Add indexed string properties
-      match template_obj {
-        Object(data) =>
-          for i, s in strings {
-            data.properties[i.to_string()] = String_(s)
-          }
-        _ => ()
-      }
       // Build args: [templateObj, ...substitutions]
       let args : Array[Value] = [template_obj]
       for e in exprs {
         args.push(self.eval_expr(e, env))
       }
-      self.call_value(tag, Undefined, args, loc)
+      // Resolve this binding for member expression tags (e.g., String.raw`...`)
+      let this_val : Value = match tag_expr {
+        Member(obj_expr, _, _) | ComputedMember(obj_expr, _, _) =>
+          self.eval_expr(obj_expr, env)
+        _ => Undefined
+      }
+      self.call_value(tag, this_val, args, loc)
     }
     ArrowFunc(params, body, _) => {
       let func_data : FuncData = { name: None, params, body, closure: env }
@@ -2612,15 +2620,25 @@ fn Interpreter::call_value(
             func_env.def("this", this_val, LetBinding)
             func_env.def("<new.target>", Undefined, LetBinding)
             // Bind params with defaults
+            let mut effective_param_count = 0
             for i = 0; i < data.params.length(); i = i + 1 {
               let param = data.params[i]
-              let val : Value = if i < args.length() &&
-                not(args[i] is Undefined) {
-                args[i]
+              // Skip rest destructuring params - they're bound via rest_param
+              if data.rest_param is Some(rn) && param.name == rn {
+                continue
+              }
+              let val : Value = if effective_param_count < args.length() &&
+                not(args[effective_param_count] is Undefined) {
+                args[effective_param_count]
               } else {
                 match param.default_val {
                   Some(default_expr) => self.eval_expr(default_expr, func_env)
-                  None => if i < args.length() { args[i] } else { Undefined }
+                  None =>
+                    if effective_param_count < args.length() {
+                      args[effective_param_count]
+                    } else {
+                      Undefined
+                    }
                 }
               }
               func_env.def(param.name, val, LetBinding)
@@ -2629,19 +2647,28 @@ fn Interpreter::call_value(
                 Some(pat) => self.bind_pattern(pat, val, func_env, LetBinding)
                 None => ()
               }
+              effective_param_count = effective_param_count + 1
             }
             // Rest param
             match data.rest_param {
               Some(rest_name) => {
                 let rest_elements : Array[Value] = []
-                for i = data.params.length(); i < args.length(); i = i + 1 {
+                for i = effective_param_count; i < args.length(); i = i + 1 {
                   rest_elements.push(args[i])
                 }
-                func_env.def(
-                  rest_name,
-                  Array({ elements: rest_elements }),
-                  LetBinding,
-                )
+                let rest_val = Array({ elements: rest_elements })
+                func_env.def(rest_name, rest_val, LetBinding)
+                // Apply destructuring pattern if present
+                for p in data.params {
+                  if p.name == rest_name {
+                    match p.pattern {
+                      Some(pat) =>
+                        self.bind_pattern(pat, rest_val, func_env, LetBinding)
+                      None => ()
+                    }
+                    break
+                  }
+                }
               }
               None => ()
             }
@@ -2700,14 +2727,25 @@ fn Interpreter::call_value(
         Some(ArrowFuncExt(data)) => {
           let func_env = Environment::new(parent=Some(data.closure))
           // Arrow functions do NOT rebind this
+          let mut effective_param_count = 0
           for i = 0; i < data.params.length(); i = i + 1 {
             let param = data.params[i]
-            let val : Value = if i < args.length() && not(args[i] is Undefined) {
-              args[i]
+            // Skip rest destructuring params
+            if data.rest_param is Some(rn) && param.name == rn {
+              continue
+            }
+            let val : Value = if effective_param_count < args.length() &&
+              not(args[effective_param_count] is Undefined) {
+              args[effective_param_count]
             } else {
               match param.default_val {
                 Some(default_expr) => self.eval_expr(default_expr, func_env)
-                None => if i < args.length() { args[i] } else { Undefined }
+                None =>
+                  if effective_param_count < args.length() {
+                    args[effective_param_count]
+                  } else {
+                    Undefined
+                  }
               }
             }
             func_env.def(param.name, val, LetBinding)
@@ -2716,19 +2754,28 @@ fn Interpreter::call_value(
               Some(pat) => self.bind_pattern(pat, val, func_env, LetBinding)
               None => ()
             }
+            effective_param_count = effective_param_count + 1
           }
           // Rest param
           match data.rest_param {
             Some(rest_name) => {
               let rest_elements : Array[Value] = []
-              for i = data.params.length(); i < args.length(); i = i + 1 {
+              for i = effective_param_count; i < args.length(); i = i + 1 {
                 rest_elements.push(args[i])
               }
-              func_env.def(
-                rest_name,
-                Array({ elements: rest_elements }),
-                LetBinding,
-              )
+              let rest_val = Array({ elements: rest_elements })
+              func_env.def(rest_name, rest_val, LetBinding)
+              // Apply destructuring pattern if present
+              for p in data.params {
+                if p.name == rest_name {
+                  match p.pattern {
+                    Some(pat) =>
+                      self.bind_pattern(pat, rest_val, func_env, LetBinding)
+                    None => ()
+                  }
+                  break
+                }
+              }
             }
             None => ()
           }
@@ -3734,15 +3781,25 @@ fn Interpreter::eval_new(
             let func_env = Environment::new(parent=Some(data.closure))
             func_env.def("this", new_obj, LetBinding)
             func_env.def("<new.target>", ctor, LetBinding)
+            let mut effective_param_count = 0
             for i = 0; i < data.params.length(); i = i + 1 {
               let param = data.params[i]
-              let val : Value = if i < args.length() &&
-                not(args[i] is Undefined) {
-                args[i]
+              // Skip rest destructuring params
+              if data.rest_param is Some(rn) && param.name == rn {
+                continue
+              }
+              let val : Value = if effective_param_count < args.length() &&
+                not(args[effective_param_count] is Undefined) {
+                args[effective_param_count]
               } else {
                 match param.default_val {
                   Some(default_expr) => self.eval_expr(default_expr, func_env)
-                  None => if i < args.length() { args[i] } else { Undefined }
+                  None =>
+                    if effective_param_count < args.length() {
+                      args[effective_param_count]
+                    } else {
+                      Undefined
+                    }
                 }
               }
               func_env.def(param.name, val, LetBinding)
@@ -3750,18 +3807,27 @@ fn Interpreter::eval_new(
                 Some(pat) => self.bind_pattern(pat, val, func_env, LetBinding)
                 None => ()
               }
+              effective_param_count = effective_param_count + 1
             }
             match data.rest_param {
               Some(rest_name) => {
                 let rest_elements : Array[Value] = []
-                for i = data.params.length(); i < args.length(); i = i + 1 {
+                for i = effective_param_count; i < args.length(); i = i + 1 {
                   rest_elements.push(args[i])
                 }
-                func_env.def(
-                  rest_name,
-                  Array({ elements: rest_elements }),
-                  LetBinding,
-                )
+                let rest_val = Array({ elements: rest_elements })
+                func_env.def(rest_name, rest_val, LetBinding)
+                // Apply destructuring pattern if present
+                for p in data.params {
+                  if p.name == rest_name {
+                    match p.pattern {
+                      Some(pat) =>
+                        self.bind_pattern(pat, rest_val, func_env, LetBinding)
+                      None => ()
+                    }
+                    break
+                  }
+                }
               }
               None => ()
             }

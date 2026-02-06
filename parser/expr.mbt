@@ -952,10 +952,10 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
     } else if self.at(Assign) && is_ident_key {
       // Shorthand with default (cover assignment pattern): { x = 42 }
       // This is valid in destructuring: { x = 42 } = obj
-      let _ = self.advance() // consume '='
+      let eq_tok = self.advance() // consume '='
       let default_val = self.parse_assignment()
       // Represent as Assign expr so destructuring can pick it up
-      let value : @ast.Expr = Assign(key_name, default_val, loc)
+      let value : @ast.Expr = Assign(key_name, default_val, eq_tok.loc)
       props.push({ key: key_expr, value, kind: @ast.Init, computed: false })
     } else if self.at(Comma) || self.at(RBrace) {
       // Shorthand property: { x } => { x: x }

@@ -52,18 +52,39 @@ fn make_error_value_with_env(
 
 ///|
 /// Create an AggregateError with the errors array property
-fn make_aggregate_error_value(msg : String, errors : Array[Error]) -> Value {
+fn make_aggregate_error_value(
+  msg : String,
+  errors : Array[Error],
+  env : Environment?,
+) -> Value {
   let err_props : Map[String, Value] = {}
   err_props["message"] = String_(msg)
   err_props["name"] = String_("AggregateError")
   err_props["stack"] = String_("AggregateError: " + msg)
   // Convert errors array to JavaScript array
-  let js_errors : Array[Value] = errors.map(fn(e) { js_error_to_value(e) })
+  let js_errors : Array[Value] = errors.map(fn(e) {
+    js_error_to_value_with_env(e, env)
+  })
   err_props["errors"] = Array({ elements: js_errors })
+  // Try to look up the proper prototype from the environment
+  let proto : Value = match env {
+    Some(e) => {
+      let ctor : Value = try { e.get("AggregateError") } catch { _ => Null }
+      match ctor {
+        Object(ctor_data) =>
+          match ctor_data.properties.get("prototype") {
+            Some(p) => p
+            None => Null
+          }
+        _ => Null
+      }
+    }
+    None => Null
+  }
   Object({
     properties: err_props,
     symbol_properties: {},
-    prototype: Null,
+    prototype: proto,
     callable: None,
     class_name: "AggregateError",
     descriptors: {},
@@ -97,7 +118,7 @@ pub fn js_error_to_value_with_env(err : Error, env : Environment?) -> Value {
     @errors.InternalError(message~) =>
       make_error_value_with_env("InternalError", message, env)
     @errors.AggregateError(message~, errors~) =>
-      make_aggregate_error_value(message, errors)
+      make_aggregate_error_value(message, errors, env)
     JsException(val) => val // JavaScript throw statement value
     _ => make_error_value_with_env("Error", err.to_string(), env)
   }

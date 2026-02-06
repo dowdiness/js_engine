@@ -1029,6 +1029,10 @@ pub fn this_to_string(this_val : Value) -> String raise Error {
       raise @errors.TypeError(
         message="String.prototype method called on undefined",
       )
+    Symbol(_) =>
+      raise @errors.TypeError(
+        message="Cannot convert a Symbol value to a string",
+      )
     Object(data) =>
       // Check if it's a String wrapper object
       if data.class_name == "String" {

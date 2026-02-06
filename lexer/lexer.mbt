@@ -944,20 +944,36 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       }
       // Handle exponent part: e.g., .5e10
       if offset < len && (char_at(offset) == 'e' || char_at(offset) == 'E') {
+        let exp_start = offset
         offset += 1
         col += 1
         if offset < len && (char_at(offset) == '+' || char_at(offset) == '-') {
           offset += 1
           col += 1
         }
+        let digit_start = offset
         while offset < len && is_digit(char_at(offset)) {
           offset += 1
           col += 1
         }
+        // Exponent must have at least one digit
+        if offset == digit_start {
+          let _ = exp_start
+          raise @errors.SyntaxError(
+            message="Invalid or unexpected token at line \{line}, col \{col}",
+          )
+        }
       }
       let num_str = source.view()[num_start:offset].to_string()
-      let value = try { @strconv.parse_double(num_str) } catch { _ => 0.0 }
-      tokens.push({ kind: Number(value), loc, raw: "" })
+      let value = try {
+        @strconv.parse_double(num_str)
+      } catch {
+        _ =>
+          raise @errors.SyntaxError(
+            message="Invalid or unexpected token at line \{line}, col \{col}",
+          )
+      }
+      tokens.push({ kind: Number(value), loc, raw: num_str })
       continue
     }
     // ... (spread/rest)

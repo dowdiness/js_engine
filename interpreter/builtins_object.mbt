@@ -18,15 +18,39 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               String_(_) => String_("[object String]")
               Array(_) => String_("[object Array]")
               Symbol(_) => String_("[object Symbol]")
+              Map(_) => String_("[object Map]")
+              Set(_) => String_("[object Set]")
+              Promise(_) => String_("[object Promise]")
               Object(data) =>
                 if data.class_name == "Function" {
                   String_("[object Function]")
                 } else if data.class_name == "RegExp" {
                   String_("[object RegExp]")
-                } else if data.class_name == "Error" {
+                } else if data.class_name == "Error" ||
+                  data.class_name == "TypeError" ||
+                  data.class_name == "ReferenceError" ||
+                  data.class_name == "SyntaxError" ||
+                  data.class_name == "RangeError" ||
+                  data.class_name == "URIError" ||
+                  data.class_name == "EvalError" ||
+                  data.class_name == "AggregateError" {
                   String_("[object Error]")
                 } else if data.class_name == "Date" {
                   String_("[object Date]")
+                } else if data.class_name == "Map" {
+                  String_("[object Map]")
+                } else if data.class_name == "Set" {
+                  String_("[object Set]")
+                } else if data.class_name == "Promise" {
+                  String_("[object Promise]")
+                } else if data.class_name == "Arguments" {
+                  String_("[object Arguments]")
+                } else if data.class_name == "Number" {
+                  String_("[object Number]")
+                } else if data.class_name == "String" {
+                  String_("[object String]")
+                } else if data.class_name == "Boolean" {
+                  String_("[object Boolean]")
                 } else {
                   String_("[object Object]")
                 }
