@@ -374,7 +374,16 @@ pub impl Show for Value with output(self, logger) {
           logger.write_string("function \{name}() { [native code] }")
         Some(ClassConstructor(name, _, _, _, _, _)) =>
           logger.write_string("class \{name} { [code] }")
-        None => logger.write_string("[object \{data.class_name}]")
+        None =>
+          match (data.properties.get("name"), data.properties.get("message")) {
+            (Some(String_(name)), Some(String_(msg))) =>
+              if msg.length() > 0 {
+                logger.write_string("\{name}: \{msg}")
+              } else {
+                logger.write_string(name)
+              }
+            _ => logger.write_string("[object \{data.class_name}]")
+          }
       }
     Array(data) =>
       logger.write_string(data.elements.map(fn(v) { v.to_string() }).join(","))
