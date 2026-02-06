@@ -52,6 +52,8 @@ pub(all) struct PropDescriptor {
   mut writable : Bool
   mut enumerable : Bool
   mut configurable : Bool
+  mut getter : Value? // Accessor descriptor: get function (None = not an accessor)
+  mut setter : Value? // Accessor descriptor: set function (None = not an accessor)
 }
 
 ///|
@@ -375,15 +377,20 @@ pub impl Show for Value with output(self, logger) {
         Some(ClassConstructor(name, _, _, _, _, _)) =>
           logger.write_string("class \{name} { [code] }")
         None =>
+          // Error objects: use Error.prototype.toString() format "name: message"
           if data.class_name.has_suffix("Error") {
-            match (data.properties.get("name"), data.properties.get("message")) {
-              (Some(String_(name)), Some(String_(msg))) =>
-                if msg.length() > 0 {
-                  logger.write_string("\{name}: \{msg}")
-                } else {
-                  logger.write_string(name)
-                }
-              _ => logger.write_string("[object \{data.class_name}]")
+            let name = match data.properties.get("name") {
+              Some(String_(s)) => s
+              _ => data.class_name
+            }
+            let msg = match data.properties.get("message") {
+              Some(String_(s)) => s
+              _ => ""
+            }
+            if msg == "" {
+              logger.write_string(name)
+            } else {
+              logger.write_string(name + ": " + msg)
             }
           } else {
             logger.write_string("[object \{data.class_name}]")

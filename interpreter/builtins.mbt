@@ -380,7 +380,7 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
     Object(data) => {
       let ctor = try { env.get("String") } catch { _ => Undefined }
       data.properties["constructor"] = ctor
-      data.descriptors["constructor"] = { writable: true, enumerable: false, configurable: true }
+      data.descriptors["constructor"] = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
     }
     _ => ()
   }
@@ -464,7 +464,7 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
     Object(data) => {
       let ctor = try { env.get("Boolean") } catch { _ => Undefined }
       data.properties["constructor"] = ctor
-      data.descriptors["constructor"] = { writable: true, enumerable: false, configurable: true }
+      data.descriptors["constructor"] = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
     }
     _ => ()
   }
@@ -707,7 +707,7 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
     Object(data) => {
       let ctor = try { env.get("Symbol") } catch { _ => Undefined }
       data.properties["constructor"] = ctor
-      data.descriptors["constructor"] = { writable: true, enumerable: false, configurable: true }
+      data.descriptors["constructor"] = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
     }
     _ => ()
   }
@@ -1424,7 +1424,7 @@ fn register_error_ctor(
     Object(data) => {
       let ctor = try { env.get(name) } catch { _ => Undefined }
       data.properties["constructor"] = ctor
-      data.descriptors["constructor"] = { writable: true, enumerable: false, configurable: true }
+      data.descriptors["constructor"] = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
     }
     _ => ()
   }
@@ -1974,7 +1974,7 @@ fn setup_number_builtins(env : Environment) -> Unit {
     Object(data) => {
       let ctor = try { env.get("Number") } catch { _ => Undefined }
       data.properties["constructor"] = ctor
-      data.descriptors["constructor"] = { writable: true, enumerable: false, configurable: true }
+      data.descriptors["constructor"] = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
     }
     _ => ()
   }
