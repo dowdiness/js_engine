@@ -376,7 +376,32 @@ pub impl Show for Value with output(self, logger) {
           logger.write_string("function \{name}() { [native code] }")
         Some(ClassConstructor(name, _, _, _, _, _)) =>
           logger.write_string("class \{name} { [code] }")
-        None => logger.write_string("[object \{data.class_name}]")
+        None =>
+          // Error objects: use Error.prototype.toString() format "name: message"
+          if data.class_name == "Error" ||
+            data.class_name == "TypeError" ||
+            data.class_name == "ReferenceError" ||
+            data.class_name == "SyntaxError" ||
+            data.class_name == "RangeError" ||
+            data.class_name == "URIError" ||
+            data.class_name == "EvalError" ||
+            data.class_name == "AggregateError" {
+            let name = match data.properties.get("name") {
+              Some(String_(s)) => s
+              _ => data.class_name
+            }
+            let msg = match data.properties.get("message") {
+              Some(String_(s)) => s
+              _ => ""
+            }
+            if msg == "" {
+              logger.write_string(name)
+            } else {
+              logger.write_string(name + ": " + msg)
+            }
+          } else {
+            logger.write_string("[object \{data.class_name}]")
+          }
       }
     Array(data) =>
       logger.write_string(data.elements.map(fn(v) { v.to_string() }).join(","))
