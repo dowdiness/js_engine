@@ -2,8 +2,8 @@
   "name": "dowdiness/js_engine",
   "version": "0.1.0",
   "readme": "README.mbt.md",
-  "repository": "",
+  "repository": "https://github.com/dowdiness/js_engine",
   "license": "Apache-2.0",
-  "keywords": [],
-  "description": ""
+  "keywords": ["javascript", "interpreter"],
+  "description": "JavaScript interpreter in MoonBit"
 }

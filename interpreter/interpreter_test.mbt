@@ -4050,7 +4050,7 @@ test "instanceof throws TypeError for non-callable RHS without Symbol.hasInstanc
     #|  ({}) instanceof {};
     #|  "no error";
     #|} catch (e) {
-    #|  (e instanceof TypeError) ? "caught" : e;
+    #|  (e instanceof TypeError) ? "caught" : String(e);
     #|}
   let (_, result) = run_js(src)
   inspect(result, content="caught")

@@ -378,14 +378,7 @@ pub impl Show for Value with output(self, logger) {
           logger.write_string("class \{name} { [code] }")
         None =>
           // Error objects: use Error.prototype.toString() format "name: message"
-          if data.class_name == "Error" ||
-            data.class_name == "TypeError" ||
-            data.class_name == "ReferenceError" ||
-            data.class_name == "SyntaxError" ||
-            data.class_name == "RangeError" ||
-            data.class_name == "URIError" ||
-            data.class_name == "EvalError" ||
-            data.class_name == "AggregateError" {
+          if data.class_name.has_suffix("Error") {
             let name = match data.properties.get("name") {
               Some(String_(s)) => s
               _ => data.class_name
