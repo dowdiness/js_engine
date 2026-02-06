@@ -412,10 +412,6 @@ pub fn get_string_method(s : String, prop : String) -> Value {
         let mut last = 0
         let mut i = 0
         while i <= slen - sep_len {
-          // Check if we've hit the limit (need to leave room for final piece)
-          if result.length().to_int64() >= limit - 1L {
-            break
-          }
           let mut matched = true
           for j = 0; j < sep_len; j = j + 1 {
             if s_chars[i + j] != sep_chars[j] {
@@ -429,6 +425,10 @@ pub fn get_string_method(s : String, prop : String) -> Value {
               buf.write_char(s_chars[k])
             }
             result.push(String_(buf.to_string()))
+            // Per spec: if we've reached the limit, return immediately
+            if result.length().to_int64() >= limit {
+              return Array({ elements: result })
+            }
             last = i + sep_len
             i = i + sep_len
           } else {

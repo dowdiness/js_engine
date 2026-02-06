@@ -1484,7 +1484,24 @@ fn setup_number_builtins(env : Environment) -> Unit {
     prototype: Null,
     callable: Some(
       MethodCallable("toFixed", fn(this_val, args) {
-        let n = to_number(this_val)
+        let n : Double = match this_val {
+          Number(v) => v
+          Object(data) =>
+            if data.class_name == "Number" {
+              match data.properties.get("[[NumberData]]") {
+                Some(Number(v)) => v
+                _ => 0.0
+              }
+            } else {
+              raise @errors.TypeError(
+                message="Number.prototype.toFixed requires that 'this' be a Number",
+              )
+            }
+          _ =>
+            raise @errors.TypeError(
+              message="Number.prototype.toFixed requires that 'this' be a Number",
+            )
+        }
         let digits = if args.length() > 0 {
           to_number(args[0]).to_int()
         } else {
@@ -1546,7 +1563,25 @@ fn setup_number_builtins(env : Environment) -> Unit {
     prototype: Null,
     callable: Some(
       MethodCallable("toString", fn(this_val, args) {
-        let n = to_number(this_val)
+        // Validate this is a number
+        let n : Double = match this_val {
+          Number(v) => v
+          Object(data) =>
+            if data.class_name == "Number" {
+              match data.properties.get("[[NumberData]]") {
+                Some(Number(v)) => v
+                _ => 0.0
+              }
+            } else {
+              raise @errors.TypeError(
+                message="Number.prototype.toString requires that 'this' be a Number",
+              )
+            }
+          _ =>
+            raise @errors.TypeError(
+              message="Number.prototype.toString requires that 'this' be a Number",
+            )
+        }
         let radix = if args.length() > 0 {
           to_number(args[0]).to_int()
         } else {
@@ -1602,7 +1637,24 @@ fn setup_number_builtins(env : Environment) -> Unit {
     prototype: Null,
     callable: Some(
       MethodCallable("valueOf", fn(this_val, _args) {
-        Number(to_number(this_val))
+        match this_val {
+          Number(_) => this_val
+          Object(data) =>
+            if data.class_name == "Number" {
+              match data.properties.get("[[NumberData]]") {
+                Some(Number(v)) => Number(v)
+                _ => Number(0.0)
+              }
+            } else {
+              raise @errors.TypeError(
+                message="Number.prototype.valueOf requires that 'this' be a Number",
+              )
+            }
+          _ =>
+            raise @errors.TypeError(
+              message="Number.prototype.valueOf requires that 'this' be a Number",
+            )
+        }
       }),
     ),
     class_name: "Function",
