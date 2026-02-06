@@ -58,15 +58,40 @@ fn is_alnum(c : Char) -> Bool {
 }
 
 ///|
+fn is_id_start_cp(cp : Int) -> Bool {
+  // For ASCII range, validate strictly; for non-ASCII, accept (Unicode letters)
+  if cp < 128 {
+    let c = Char::from_int(cp)
+    is_alpha(c)
+  } else {
+    true
+  }
+}
+
+///|
+fn is_id_continue_cp(cp : Int) -> Bool {
+  // For ASCII range, validate strictly; for non-ASCII, accept
+  if cp < 128 {
+    let c = Char::from_int(cp)
+    is_alnum(c)
+  } else {
+    true
+  }
+}
+
+///|
 fn write_code_point(buf : StringBuilder, cp : Int) -> Unit {
   if cp <= 0xFFFF {
     buf.write_char(Char::from_int(cp))
   } else {
+    // Supplementary plane: encode as UTF-16 surrogate pair.
+    // Use unsafe_to_char because surrogates are not valid Unicode scalar values
+    // and Char::from_int rejects them.
     let cp2 = cp - 0x10000
     let high = 0xD800 + (cp2 >> 10)
     let low = 0xDC00 + (cp2 & 0x3FF)
-    buf.write_char(Char::from_int(high))
-    buf.write_char(Char::from_int(low))
+    buf.write_char(high.unsafe_to_char())
+    buf.write_char(low.unsafe_to_char())
   }
 }
 
@@ -688,6 +713,11 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         offset += 2 // skip \ and u
         col += 2
         let cp = parse_unicode_escape()
+        if not(is_id_start_cp(cp)) {
+          raise @errors.SyntaxError(
+            message="Invalid Unicode escape sequence at line \{line}, col \{col}",
+          )
+        }
         write_code_point(ident_buf, cp)
       } else {
         ident_buf.write_char(c)
@@ -706,6 +736,11 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           offset += 2 // skip \ and u
           col += 2
           let cp = parse_unicode_escape()
+          if not(is_id_continue_cp(cp)) {
+            raise @errors.SyntaxError(
+              message="Invalid Unicode escape sequence at line \{line}, col \{col}",
+            )
+          }
           write_code_point(ident_buf, cp)
         } else {
           break
