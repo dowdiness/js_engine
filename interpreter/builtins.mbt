@@ -1490,7 +1490,10 @@ fn setup_number_builtins(env : Environment) -> Unit {
             if data.class_name == "Number" {
               match data.properties.get("[[NumberData]]") {
                 Some(Number(v)) => v
-                _ => 0.0
+                _ =>
+                  raise @errors.TypeError(
+                    message="Number.prototype.toFixed requires that 'this' be a Number",
+                  )
               }
             } else {
               raise @errors.TypeError(
@@ -1570,7 +1573,10 @@ fn setup_number_builtins(env : Environment) -> Unit {
             if data.class_name == "Number" {
               match data.properties.get("[[NumberData]]") {
                 Some(Number(v)) => v
-                _ => 0.0
+                _ =>
+                  raise @errors.TypeError(
+                    message="Number.prototype.toString requires that 'this' be a Number",
+                  )
               }
             } else {
               raise @errors.TypeError(
@@ -1643,7 +1649,10 @@ fn setup_number_builtins(env : Environment) -> Unit {
             if data.class_name == "Number" {
               match data.properties.get("[[NumberData]]") {
                 Some(Number(v)) => Number(v)
-                _ => Number(0.0)
+                _ =>
+                  raise @errors.TypeError(
+                    message="Number.prototype.valueOf requires that 'this' be a Number",
+                  )
               }
             } else {
               raise @errors.TypeError(
