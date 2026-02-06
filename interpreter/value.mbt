@@ -52,6 +52,8 @@ pub(all) struct PropDescriptor {
   mut writable : Bool
   mut enumerable : Bool
   mut configurable : Bool
+  mut getter : Value? // Accessor descriptor: get function (None = not an accessor)
+  mut setter : Value? // Accessor descriptor: set function (None = not an accessor)
 }
 
 ///|

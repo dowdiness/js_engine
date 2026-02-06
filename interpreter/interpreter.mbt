@@ -1270,6 +1270,7 @@ fn Interpreter::eval_expr(
       let properties : Map[String, Value] = {}
       let symbol_properties : Map[Int, Value] = {}
       let descriptors : Map[String, PropDescriptor] = {}
+      let symbol_descriptors : Map[Int, PropDescriptor] = {}
       for prop in props {
         // Handle spread property: { ...expr }
         if prop.kind == @ast.Spread {
@@ -1282,6 +1283,16 @@ fn Interpreter::eval_expr(
                   Some(desc) =>
                     if desc.enumerable {
                       properties[key] = value
+                      // Preserve accessor descriptors from spread source
+                      if desc.getter is Some(_) || desc.setter is Some(_) {
+                        descriptors[key] = {
+                          writable: desc.writable,
+                          enumerable: true,
+                          configurable: desc.configurable,
+                          getter: desc.getter,
+                          setter: desc.setter,
+                        }
+                      }
                     }
                   None => properties[key] = value
                 }
@@ -1305,7 +1316,7 @@ fn Interpreter::eval_expr(
               }
             }
             String_(s) => {
-              // Spread string into object: { ..."abc" } → { "0": "a", "1": "b", "2": "c" }
+              // Spread string into object: { ..."abc" } -> { "0": "a", "1": "b", "2": "c" }
               let mut idx = 0
               for ch in s {
                 properties[idx.to_string()] = String_(ch.to_string())
@@ -1327,7 +1338,35 @@ fn Interpreter::eval_expr(
               match prop.kind {
                 Init =>
                   symbol_properties[sym.id] = self.eval_expr(prop.value, env)
-                Get | Set => () // Getters/setters for symbols not fully supported yet
+                Get => {
+                  let getter = self.eval_expr(prop.value, env)
+                  // Store accessor in descriptor, use Undefined as placeholder in properties
+                  if not(symbol_properties.contains(sym.id)) {
+                    symbol_properties[sym.id] = Undefined
+                  }
+                  let existing = symbol_descriptors.get(sym.id)
+                  symbol_descriptors[sym.id] = {
+                    writable: false,
+                    enumerable: true,
+                    configurable: true,
+                    getter: Some(getter),
+                    setter: match existing { Some(d) => d.setter; None => None },
+                  }
+                }
+                Set => {
+                  let setter = self.eval_expr(prop.value, env)
+                  if not(symbol_properties.contains(sym.id)) {
+                    symbol_properties[sym.id] = Undefined
+                  }
+                  let existing = symbol_descriptors.get(sym.id)
+                  symbol_descriptors[sym.id] = {
+                    writable: false,
+                    enumerable: true,
+                    configurable: true,
+                    getter: match existing { Some(d) => d.getter; None => None },
+                    setter: Some(setter),
+                  }
+                }
                 Spread => () // handled above
               }
             _ => {
@@ -1351,11 +1390,31 @@ fn Interpreter::eval_expr(
                 Init => properties[key_str] = self.eval_expr(prop.value, env)
                 Get => {
                   let getter = self.eval_expr(prop.value, env)
-                  properties["__get__" + key_str] = getter
+                  if not(properties.contains(key_str)) {
+                    properties[key_str] = Undefined
+                  }
+                  let existing = descriptors.get(key_str)
+                  descriptors[key_str] = {
+                    writable: false,
+                    enumerable: true,
+                    configurable: true,
+                    getter: Some(getter),
+                    setter: match existing { Some(d) => d.setter; None => None },
+                  }
                 }
                 Set => {
                   let setter = self.eval_expr(prop.value, env)
-                  properties["__set__" + key_str] = setter
+                  if not(properties.contains(key_str)) {
+                    properties[key_str] = Undefined
+                  }
+                  let existing = descriptors.get(key_str)
+                  descriptors[key_str] = {
+                    writable: false,
+                    enumerable: true,
+                    configurable: true,
+                    getter: match existing { Some(d) => d.getter; None => None },
+                    setter: Some(setter),
+                  }
                 }
                 Spread => () // handled above
               }
@@ -1371,11 +1430,31 @@ fn Interpreter::eval_expr(
             Init => properties[key_str] = self.eval_expr(prop.value, env)
             Get => {
               let getter = self.eval_expr(prop.value, env)
-              properties["__get__" + key_str] = getter
+              if not(properties.contains(key_str)) {
+                properties[key_str] = Undefined
+              }
+              let existing = descriptors.get(key_str)
+              descriptors[key_str] = {
+                writable: false,
+                enumerable: true,
+                configurable: true,
+                getter: Some(getter),
+                setter: match existing { Some(d) => d.setter; None => None },
+              }
             }
             Set => {
               let setter = self.eval_expr(prop.value, env)
-              properties["__set__" + key_str] = setter
+              if not(properties.contains(key_str)) {
+                properties[key_str] = Undefined
+              }
+              let existing = descriptors.get(key_str)
+              descriptors[key_str] = {
+                writable: false,
+                enumerable: true,
+                configurable: true,
+                getter: match existing { Some(d) => d.getter; None => None },
+                setter: Some(setter),
+              }
             }
             Spread => () // handled above
           }
@@ -1389,7 +1468,7 @@ fn Interpreter::eval_expr(
         callable: None,
         class_name: "Object",
         descriptors,
-        symbol_descriptors: {},
+        symbol_descriptors,
         extensible: true,
       })
     }
@@ -1415,23 +1494,68 @@ fn Interpreter::eval_expr(
       let key = self.eval_expr(key_expr, env)
       self.get_computed_property(obj, key, loc)
     }
-    MemberAssign(obj_expr, prop, value_expr, _loc) => {
+    MemberAssign(obj_expr, prop, value_expr, loc) => {
       let obj = self.eval_expr(obj_expr, env)
       let value = self.eval_expr(value_expr, env)
       match obj {
         Object(data) => {
-          // Check writable descriptor
+          // Check for accessor descriptor (setter)
           match data.descriptors.get(prop) {
             Some(desc) =>
-              if not(desc.writable) {
-                if self.strict {
-                  raise @errors.TypeError(
-                    message="Cannot assign to read only property '\{prop}'",
-                  )
+              match desc.setter {
+                Some(setter) => {
+                  let _ = self.call_value(setter, obj, [value], loc)
+                  return value
                 }
-                return value
+                None =>
+                  // If it's an accessor property with no setter, throw in strict mode
+                  if desc.getter is Some(_) {
+                    if self.strict {
+                      raise @errors.TypeError(
+                        message="Cannot set property \{prop} which has only a getter",
+                      )
+                    }
+                    return value
+                  } else if not(desc.writable) {
+                    if self.strict {
+                      raise @errors.TypeError(
+                        message="Cannot assign to read only property '\{prop}'",
+                      )
+                    }
+                    return value
+                  }
               }
-            None => ()
+            None => {
+              // Walk prototype chain to check for inherited setters
+              let mut current = data.prototype
+              while true {
+                match current {
+                  Object(proto_data) => {
+                    match proto_data.descriptors.get(prop) {
+                      Some(desc) =>
+                        match desc.setter {
+                          Some(setter) => {
+                            let _ = self.call_value(setter, obj, [value], loc)
+                            return value
+                          }
+                          None =>
+                            if desc.getter is Some(_) {
+                              if self.strict {
+                                raise @errors.TypeError(
+                                  message="Cannot set property \{prop} which has only a getter",
+                                )
+                              }
+                              return value
+                            }
+                        }
+                      None => ()
+                    }
+                    current = proto_data.prototype
+                  }
+                  _ => break
+                }
+              }
+            }
           }
           // Check extensible for new properties
           if not(data.properties.contains(prop)) && not(data.extensible) {
@@ -1455,7 +1579,7 @@ fn Interpreter::eval_expr(
           )
       }
     }
-    ComputedAssign(obj_expr, key_expr, value_expr, _loc) => {
+    ComputedAssign(obj_expr, key_expr, value_expr, loc) => {
       let obj = self.eval_expr(obj_expr, env)
       let key = self.eval_expr(key_expr, env)
       let value = self.eval_expr(value_expr, env)
@@ -1464,16 +1588,30 @@ fn Interpreter::eval_expr(
           // Handle Symbol keys specially
           match key {
             Symbol(sym) => {
-              // Check symbol property descriptor
+              // Check symbol property accessor descriptor (setter)
               match data.symbol_descriptors.get(sym.id) {
                 Some(desc) =>
-                  if not(desc.writable) {
-                    if self.strict {
-                      raise @errors.TypeError(
-                        message="Cannot assign to read only property",
-                      )
+                  match desc.setter {
+                    Some(setter) => {
+                      let _ = self.call_value(setter, obj, [value], loc)
+                      return value
                     }
-                    return value
+                    None =>
+                      if desc.getter is Some(_) {
+                        if self.strict {
+                          raise @errors.TypeError(
+                            message="Cannot set property which has only a getter",
+                          )
+                        }
+                        return value
+                      } else if not(desc.writable) {
+                        if self.strict {
+                          raise @errors.TypeError(
+                            message="Cannot assign to read only property",
+                          )
+                        }
+                        return value
+                      }
                   }
                 None => ()
               }
@@ -1491,15 +1629,30 @@ fn Interpreter::eval_expr(
             }
             _ => {
               let prop = key.to_string()
+              // Check for accessor descriptor (setter) on string key
               match data.descriptors.get(prop) {
                 Some(desc) =>
-                  if not(desc.writable) {
-                    if self.strict {
-                      raise @errors.TypeError(
-                        message="Cannot assign to read only property '\{prop}'",
-                      )
+                  match desc.setter {
+                    Some(setter) => {
+                      let _ = self.call_value(setter, obj, [value], loc)
+                      return value
                     }
-                    return value
+                    None =>
+                      if desc.getter is Some(_) {
+                        if self.strict {
+                          raise @errors.TypeError(
+                            message="Cannot set property \{prop} which has only a getter",
+                          )
+                        }
+                        return value
+                      } else if not(desc.writable) {
+                        if self.strict {
+                          raise @errors.TypeError(
+                            message="Cannot assign to read only property '\{prop}'",
+                          )
+                        }
+                        return value
+                      }
                   }
                 None => ()
               }
@@ -2898,10 +3051,19 @@ fn Interpreter::get_property(
   self : Interpreter,
   obj : Value,
   prop : String,
-  _loc : @token.Loc,
+  loc : @token.Loc,
 ) -> Value raise Error {
   match obj {
-    Object(data) =>
+    Object(data) => {
+      // Check for accessor descriptor (getter) on own property
+      match data.descriptors.get(prop) {
+        Some(desc) =>
+          match desc.getter {
+            Some(getter) => return self.call_value(getter, obj, [], loc)
+            None => ()
+          }
+        None => ()
+      }
       match data.properties.get(prop) {
         Some(v) => v
         None => {
@@ -2909,11 +3071,21 @@ fn Interpreter::get_property(
           let mut current = data.prototype
           while true {
             match current {
-              Object(proto_data) =>
+              Object(proto_data) => {
+                // Check for accessor descriptor (getter) on prototype property
+                match proto_data.descriptors.get(prop) {
+                  Some(desc) =>
+                    match desc.getter {
+                      Some(getter) => return self.call_value(getter, obj, [], loc)
+                      None => ()
+                    }
+                  None => ()
+                }
                 match proto_data.properties.get(prop) {
                   Some(v) => return v
                   None => current = proto_data.prototype
                 }
+              }
               _ => break
             }
           }
@@ -3158,6 +3330,7 @@ fn Interpreter::get_property(
           Undefined
         }
       }
+    }
     Array(data) =>
       if prop == "length" {
         Number(data.elements.length().to_double())
@@ -3263,16 +3436,25 @@ fn lookup_builtin_proto(env : Environment, ctor_name : String, prop : String) ->
 
 ///|
 fn Interpreter::get_computed_property(
-  _self : Interpreter,
+  self : Interpreter,
   obj : Value,
   key : Value,
-  _loc : @token.Loc,
+  loc : @token.Loc,
 ) -> Value raise Error {
   // Handle Symbol keys specially
   match key {
     Symbol(sym) =>
       match obj {
-        Object(data) =>
+        Object(data) => {
+          // Check for symbol accessor descriptor (getter)
+          match data.symbol_descriptors.get(sym.id) {
+            Some(desc) =>
+              match desc.getter {
+                Some(getter) => return self.call_value(getter, obj, [], loc)
+                None => ()
+              }
+            None => ()
+          }
           // Look up symbol property
           match data.symbol_properties.get(sym.id) {
             Some(v) => return v
@@ -3281,17 +3463,29 @@ fn Interpreter::get_computed_property(
               let mut current = data.prototype
               while true {
                 match current {
-                  Object(proto_data) =>
+                  Object(proto_data) => {
+                    // Check for accessor on prototype
+                    match proto_data.symbol_descriptors.get(sym.id) {
+                      Some(desc) =>
+                        match desc.getter {
+                          Some(getter) =>
+                            return self.call_value(getter, obj, [], loc)
+                          None => ()
+                        }
+                      None => ()
+                    }
                     match proto_data.symbol_properties.get(sym.id) {
                       Some(v) => return v
                       None => current = proto_data.prototype
                     }
+                  }
                   _ => break
                 }
               }
               return Undefined
             }
           }
+        }
         String_(s) => {
           // Handle Symbol.iterator for strings
           let iterator_sym = get_iterator_symbol()
@@ -3348,6 +3542,15 @@ fn Interpreter::get_computed_property(
   match obj {
     Object(data) => {
       let prop = key.to_string()
+      // Check for accessor descriptor (getter) on own property
+      match data.descriptors.get(prop) {
+        Some(desc) =>
+          match desc.getter {
+            Some(getter) => return self.call_value(getter, obj, [], loc)
+            None => ()
+          }
+        None => ()
+      }
       match data.properties.get(prop) {
         Some(v) => v
         None => {
@@ -3355,11 +3558,22 @@ fn Interpreter::get_computed_property(
           let mut current = data.prototype
           while true {
             match current {
-              Object(proto_data) =>
+              Object(proto_data) => {
+                // Check for accessor descriptor on prototype
+                match proto_data.descriptors.get(prop) {
+                  Some(desc) =>
+                    match desc.getter {
+                      Some(getter) =>
+                        return self.call_value(getter, obj, [], loc)
+                      None => ()
+                    }
+                  None => ()
+                }
                 match proto_data.properties.get(prop) {
                   Some(v) => return v
                   None => current = proto_data.prototype
                 }
+              }
               _ => break
             }
           }
@@ -4115,31 +4329,122 @@ fn Interpreter::create_class(
     }
     // Handle getter/setter vs regular method
     // Class methods are non-enumerable per spec
-    let method_descriptor : PropDescriptor = {
-      writable: true,
-      enumerable: false,
-      configurable: true,
-    }
-    // Store method in appropriate map based on key type (string vs symbol)
-    match key_val {
-      Symbol(sym) =>
-        // Symbol key - store in symbol_properties
-        if m.is_static {
-          static_symbol_props[sym.id] = method_val
-          static_symbol_descriptors[sym.id] = method_descriptor
-        } else {
-          proto_symbol_props[sym.id] = method_val
-          proto_symbol_descriptors[sym.id] = method_descriptor
+    match m.kind {
+      Get => {
+        // Getter method - store as accessor descriptor
+        match key_val {
+          Symbol(sym) => {
+            let (props, descs) = if m.is_static {
+              (static_symbol_props, static_symbol_descriptors)
+            } else {
+              (proto_symbol_props, proto_symbol_descriptors)
+            }
+            if not(props.contains(sym.id)) {
+              props[sym.id] = Undefined
+            }
+            let existing = descs.get(sym.id)
+            descs[sym.id] = {
+              writable: false,
+              enumerable: false,
+              configurable: true,
+              getter: Some(method_val),
+              setter: match existing { Some(d) => d.setter; None => None },
+            }
+          }
+          _ => {
+            let method_key = key_val.to_string()
+            let (props, descs) = if m.is_static {
+              (static_props, static_descriptors)
+            } else {
+              (proto_props, proto_descriptors)
+            }
+            if not(props.contains(method_key)) {
+              props[method_key] = Undefined
+            }
+            let existing = descs.get(method_key)
+            descs[method_key] = {
+              writable: false,
+              enumerable: false,
+              configurable: true,
+              getter: Some(method_val),
+              setter: match existing { Some(d) => d.setter; None => None },
+            }
+          }
         }
+      }
+      Set => {
+        // Setter method - store as accessor descriptor
+        match key_val {
+          Symbol(sym) => {
+            let (props, descs) = if m.is_static {
+              (static_symbol_props, static_symbol_descriptors)
+            } else {
+              (proto_symbol_props, proto_symbol_descriptors)
+            }
+            if not(props.contains(sym.id)) {
+              props[sym.id] = Undefined
+            }
+            let existing = descs.get(sym.id)
+            descs[sym.id] = {
+              writable: false,
+              enumerable: false,
+              configurable: true,
+              getter: match existing { Some(d) => d.getter; None => None },
+              setter: Some(method_val),
+            }
+          }
+          _ => {
+            let method_key = key_val.to_string()
+            let (props, descs) = if m.is_static {
+              (static_props, static_descriptors)
+            } else {
+              (proto_props, proto_descriptors)
+            }
+            if not(props.contains(method_key)) {
+              props[method_key] = Undefined
+            }
+            let existing = descs.get(method_key)
+            descs[method_key] = {
+              writable: false,
+              enumerable: false,
+              configurable: true,
+              getter: match existing { Some(d) => d.getter; None => None },
+              setter: Some(method_val),
+            }
+          }
+        }
+      }
       _ => {
-        // String key - store in regular properties
-        let method_key = key_val.to_string()
-        if m.is_static {
-          static_props[method_key] = method_val
-          static_descriptors[method_key] = method_descriptor
-        } else {
-          proto_props[method_key] = method_val
-          proto_descriptors[method_key] = method_descriptor
+        // Regular method or Init
+        let method_descriptor : PropDescriptor = {
+          writable: true,
+          enumerable: false,
+          configurable: true,
+          getter: None,
+          setter: None,
+        }
+        // Store method in appropriate map based on key type (string vs symbol)
+        match key_val {
+          Symbol(sym) =>
+            // Symbol key - store in symbol_properties
+            if m.is_static {
+              static_symbol_props[sym.id] = method_val
+              static_symbol_descriptors[sym.id] = method_descriptor
+            } else {
+              proto_symbol_props[sym.id] = method_val
+              proto_symbol_descriptors[sym.id] = method_descriptor
+            }
+          _ => {
+            // String key - store in regular properties
+            let method_key = key_val.to_string()
+            if m.is_static {
+              static_props[method_key] = method_val
+              static_descriptors[method_key] = method_descriptor
+            } else {
+              proto_props[method_key] = method_val
+              proto_descriptors[method_key] = method_descriptor
+            }
+          }
         }
       }
     }
@@ -4178,6 +4483,8 @@ fn Interpreter::create_class(
         writable: true,
         enumerable: false,
         configurable: true,
+        getter: None,
+        setter: None,
       }
     }
     _ => ()

@@ -1090,6 +1090,8 @@ pub fn setup_string_prototype(string_proto : Value) -> Unit {
           writable: true,
           enumerable: false,
           configurable: true,
+          getter: None,
+          setter: None,
         }
       }
       // Add constructor back-reference placeholder

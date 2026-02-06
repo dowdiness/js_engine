@@ -4234,3 +4234,188 @@ test "new.target in class constructor" {
   )
   inspect(output, content="[\"true\"]")
 }
+
+// ==================== Property Descriptor Tests (Phase 7A) ====================
+
+test "object literal getter" {
+  let output = run_output(
+    #|const obj = { get x() { return 42; } };
+    #|console.log(obj.x);
+  ,
+  )
+  inspect(output, content="[\"42\"]")
+}
+
+test "object literal setter" {
+  let output = run_output(
+    #|const obj = {
+    #|  _val: 0,
+    #|  get val() { return this._val; },
+    #|  set val(v) { this._val = v * 2; }
+    #|};
+    #|obj.val = 5;
+    #|console.log(obj.val);
+  ,
+  )
+  inspect(output, content="[\"10\"]")
+}
+
+test "defineProperty accessor descriptor" {
+  let output = run_output(
+    #|const obj = {};
+    #|let stored = 0;
+    #|Object.defineProperty(obj, 'x', {
+    #|  get: function() { return stored; },
+    #|  set: function(v) { stored = v + 1; },
+    #|  enumerable: true,
+    #|  configurable: true
+    #|});
+    #|obj.x = 10;
+    #|console.log(obj.x);
+  ,
+  )
+  inspect(output, content="[\"11\"]")
+}
+
+test "defineProperty accessor vs data validation" {
+  let output = run_output(
+    #|try {
+    #|  Object.defineProperty({}, 'x', {
+    #|    get: function() { return 1; },
+    #|    value: 42
+    #|  });
+    #|  console.log('no error');
+    #|} catch(e) {
+    #|  console.log('TypeError caught');
+    #|}
+  ,
+  )
+  inspect(output, content="[\"TypeError caught\"]")
+}
+
+test "getOwnPropertyDescriptor accessor" {
+  let output = run_output(
+    #|const obj = { get x() { return 1; } };
+    #|const desc = Object.getOwnPropertyDescriptor(obj, 'x');
+    #|console.log(typeof desc.get);
+    #|console.log(desc.enumerable);
+    #|console.log(desc.configurable);
+    #|console.log(desc.value);
+    #|console.log(desc.writable);
+  ,
+  )
+  inspect(output, content="[\"function\", \"true\", \"true\", \"undefined\", \"undefined\"]")
+}
+
+test "class getter and setter" {
+  let output = run_output(
+    #|class Temp {
+    #|  constructor(c) { this._c = c; }
+    #|  get fahrenheit() { return this._c * 9/5 + 32; }
+    #|  set fahrenheit(f) { this._c = (f - 32) * 5/9; }
+    #|}
+    #|const t = new Temp(100);
+    #|console.log(t.fahrenheit);
+    #|t.fahrenheit = 32;
+    #|console.log(t._c);
+  ,
+  )
+  inspect(output, content="[\"212\", \"0\"]")
+}
+
+test "defineProperty getter only (no setter)" {
+  let output = run_output(
+    #|const obj = {};
+    #|Object.defineProperty(obj, 'x', {
+    #|  get: function() { return 42; }
+    #|});
+    #|console.log(obj.x);
+    #|obj.x = 100;
+    #|console.log(obj.x);
+  ,
+  )
+  inspect(output, content="[\"42\", \"42\"]")
+}
+
+test "accessor property enumerable in Object.keys" {
+  let output = run_output(
+    #|const obj = {};
+    #|Object.defineProperty(obj, 'a', { get: function() { return 1; }, enumerable: true });
+    #|Object.defineProperty(obj, 'b', { get: function() { return 2; }, enumerable: false });
+    #|obj.c = 3;
+    #|console.log(Object.keys(obj).join(','));
+  ,
+  )
+  inspect(output, content="[\"a,c\"]")
+}
+
+test "Object.create with accessor descriptor" {
+  let output = run_output(
+    #|let stored = 0;
+    #|const obj = Object.create(null, {
+    #|  x: {
+    #|    get: function() { return stored; },
+    #|    set: function(v) { stored = v; },
+    #|    enumerable: true,
+    #|    configurable: true
+    #|  }
+    #|});
+    #|obj.x = 42;
+    #|console.log(obj.x);
+  ,
+  )
+  inspect(output, content="[\"42\"]")
+}
+
+test "defineProperties with accessor" {
+  let output = run_output(
+    #|const obj = {};
+    #|Object.defineProperties(obj, {
+    #|  x: { get: function() { return 10; }, enumerable: true },
+    #|  y: { value: 20, writable: true, enumerable: true }
+    #|});
+    #|console.log(obj.x);
+    #|console.log(obj.y);
+  ,
+  )
+  inspect(output, content="[\"10\", \"20\"]")
+}
+
+test "getter this binding" {
+  let output = run_output(
+    #|const obj = {
+    #|  name: 'hello',
+    #|  get upper() { return this.name.toUpperCase(); }
+    #|};
+    #|console.log(obj.upper);
+  ,
+  )
+  inspect(output, content="[\"HELLO\"]")
+}
+
+test "getOwnPropertyDescriptors with accessor" {
+  let output = run_output(
+    #|const obj = { get x() { return 1; }, y: 2 };
+    #|const descs = Object.getOwnPropertyDescriptors(obj);
+    #|console.log(typeof descs.x.get);
+    #|console.log(descs.x.value);
+    #|console.log(descs.y.value);
+    #|console.log(descs.y.writable);
+  ,
+  )
+  inspect(output, content="[\"function\", \"undefined\", \"2\", \"true\"]")
+}
+
+test "inherited getter on prototype chain" {
+  let output = run_output(
+    #|const proto = {};
+    #|Object.defineProperty(proto, 'x', {
+    #|  get: function() { return this._x * 2; }
+    #|});
+    #|const obj = Object.create(proto);
+    #|obj._x = 5;
+    #|console.log(obj.x);
+  ,
+  )
+  inspect(output, content="[\"10\"]")
+}
