@@ -908,6 +908,34 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                     None
                   }
 
+                  // Validate getter/setter are callable (or undefined)
+                  match new_getter {
+                    Some(Object(g)) =>
+                      if g.callable is None {
+                        raise @errors.TypeError(
+                          message="Getter must be a function: [object Object]",
+                        )
+                      }
+                    Some(Undefined) | None => ()
+                    Some(_) =>
+                      raise @errors.TypeError(
+                        message="Getter must be a function: \{new_getter.unwrap().to_string()}",
+                      )
+                  }
+                  match new_setter {
+                    Some(Object(s)) =>
+                      if s.callable is None {
+                        raise @errors.TypeError(
+                          message="Setter must be a function: [object Object]",
+                        )
+                      }
+                    Some(Undefined) | None => ()
+                    Some(_) =>
+                      raise @errors.TypeError(
+                        message="Setter must be a function: \{new_setter.unwrap().to_string()}",
+                      )
+                  }
+
                   // Check if configurable on existing descriptor
                   match existing_desc {
                     Some(existing) => {
@@ -923,6 +951,41 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                           raise @errors.TypeError(
                             message="Cannot redefine non-configurable property: \{prop_name}",
                           )
+                        }
+
+                        // Non-configurable accessor property: cannot change getter/setter
+                        if existing_is_accessor && is_accessor {
+                          let enumerable_ok = match new_enumerable {
+                            Some(e) => e == existing.enumerable
+                            None => true
+                          }
+                          let configurable_ok = match new_configurable {
+                            Some(c) => c == existing.configurable
+                            None => true
+                          }
+                          // Check if getter is being changed
+                          let getter_ok = match new_getter {
+                            Some(g) =>
+                              match existing.getter {
+                                Some(eg) => strict_equal_val(g, eg)
+                                None => g is Undefined
+                              }
+                            None => true
+                          }
+                          // Check if setter is being changed
+                          let setter_ok = match new_setter {
+                            Some(s) =>
+                              match existing.setter {
+                                Some(es) => strict_equal_val(s, es)
+                                None => s is Undefined
+                              }
+                            None => true
+                          }
+                          if not(enumerable_ok && configurable_ok && getter_ok && setter_ok) {
+                            raise @errors.TypeError(
+                              message="Cannot redefine non-configurable property: \{prop_name}",
+                            )
+                          }
                         }
 
                         // Non-configurable data property: check writable/enumerable/configurable
@@ -1546,11 +1609,25 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                   Object(desc) => {
                     let has_get = desc.properties.contains("get")
                     let has_set = desc.properties.contains("set")
+                    let has_value = desc.properties.contains("value")
+                    let has_writable = desc.properties.contains("writable")
                     let is_accessor = has_get || has_set
+                    let is_data = has_value || has_writable
+                    // Accessor and data descriptor properties cannot be mixed
+                    if is_accessor && is_data {
+                      raise @errors.TypeError(
+                        message="Invalid property descriptor. Cannot both specify accessors and a value or writable attribute, #<Object>",
+                      )
+                    }
+                    // Check extensibility for new properties
+                    let prop_exists = data.properties.contains(prop_name)
+                    if not(prop_exists) && not(data.extensible) {
+                      raise @errors.TypeError(
+                        message="Cannot add property \{prop_name}, object is not extensible",
+                      )
+                    }
                     if is_accessor {
-                      if not(data.properties.contains(prop_name)) {
-                        data.properties[prop_name] = Undefined
-                      }
+                      // Validate getter/setter are callable
                       let getter : Value? = match desc.properties.get("get") {
                         Some(Undefined) => None
                         Some(v) => Some(v)
@@ -1561,20 +1638,75 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                         Some(v) => Some(v)
                         None => None
                       }
+                      match getter {
+                        Some(Object(g)) =>
+                          if g.callable is None {
+                            raise @errors.TypeError(
+                              message="Getter must be a function: [object Object]",
+                            )
+                          }
+                        Some(Undefined) | None => ()
+                        Some(_) =>
+                          raise @errors.TypeError(
+                            message="Getter must be a function: \{getter.unwrap().to_string()}",
+                          )
+                      }
+                      match setter {
+                        Some(Object(s)) =>
+                          if s.callable is None {
+                            raise @errors.TypeError(
+                              message="Setter must be a function: [object Object]",
+                            )
+                          }
+                        Some(Undefined) | None => ()
+                        Some(_) =>
+                          raise @errors.TypeError(
+                            message="Setter must be a function: \{setter.unwrap().to_string()}",
+                          )
+                      }
+                      if not(data.properties.contains(prop_name)) {
+                        data.properties[prop_name] = Undefined
+                      }
+                      let existing_desc = data.descriptors.get(prop_name)
                       let enumerable = match desc.properties.get("enumerable") {
                         Some(v) => is_truthy(v)
-                        _ => false
+                        _ =>
+                          match existing_desc {
+                            Some(d) => d.enumerable
+                            None => false
+                          }
                       }
                       let configurable = match desc.properties.get("configurable") {
                         Some(v) => is_truthy(v)
-                        _ => false
+                        _ =>
+                          match existing_desc {
+                            Some(d) => d.configurable
+                            None => false
+                          }
+                      }
+                      // Preserve existing getter/setter if not being replaced
+                      let final_getter = match getter {
+                        Some(_) => getter
+                        None =>
+                          match existing_desc {
+                            Some(d) => d.getter
+                            None => None
+                          }
+                      }
+                      let final_setter = match setter {
+                        Some(_) => setter
+                        None =>
+                          match existing_desc {
+                            Some(d) => d.setter
+                            None => None
+                          }
                       }
                       data.descriptors[prop_name] = {
                         writable: false,
                         enumerable,
                         configurable,
-                        getter,
-                        setter,
+                        getter: final_getter,
+                        setter: final_setter,
                       }
                     } else {
                       match desc.properties.get("value") {
@@ -1584,18 +1716,31 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                             data.properties[prop_name] = Undefined
                           }
                       }
+                      let existing_desc = data.descriptors.get(prop_name)
                       let writable = match desc.properties.get("writable") {
                         Some(v) => is_truthy(v)
-                        _ => false
+                        _ =>
+                          match existing_desc {
+                            Some(d) => d.writable
+                            None => false
+                          }
                       }
                       let enumerable = match desc.properties.get("enumerable") {
                         Some(v) => is_truthy(v)
-                        _ => false
+                        _ =>
+                          match existing_desc {
+                            Some(d) => d.enumerable
+                            None => false
+                          }
                       }
                       let configurable = match
                         desc.properties.get("configurable") {
                         Some(v) => is_truthy(v)
-                        _ => false
+                        _ =>
+                          match existing_desc {
+                            Some(d) => d.configurable
+                            None => false
+                          }
                       }
                       data.descriptors[prop_name] = {
                         writable,

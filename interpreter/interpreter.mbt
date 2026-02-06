@@ -1266,7 +1266,7 @@ fn Interpreter::eval_expr(
       let func_data : FuncData = { name, params, body, closure: env }
       make_func(func_data)
     }
-    ObjectLit(props, _) => {
+    ObjectLit(props, obj_loc) => {
       let properties : Map[String, Value] = {}
       let symbol_properties : Map[Int, Value] = {}
       let descriptors : Map[String, PropDescriptor] = {}
@@ -1278,23 +1278,21 @@ fn Interpreter::eval_expr(
           match spread_val {
             Object(data) => {
               // Copy all enumerable own properties
-              for key, value in data.properties {
+              // Per ES spec, spread invokes [[Get]] (which triggers getters)
+              // and creates data properties (not accessor descriptors)
+              for key, _value in data.properties {
                 match data.descriptors.get(key) {
                   Some(desc) =>
                     if desc.enumerable {
-                      properties[key] = value
-                      // Preserve accessor descriptors from spread source
-                      if desc.getter is Some(_) || desc.setter is Some(_) {
-                        descriptors[key] = {
-                          writable: desc.writable,
-                          enumerable: true,
-                          configurable: desc.configurable,
-                          getter: desc.getter,
-                          setter: desc.setter,
-                        }
+                      // Invoke getter if present, otherwise use raw value
+                      let val : Value = match desc.getter {
+                        Some(getter) =>
+                          self.call_value(getter, spread_val, [], obj_loc)
+                        None => _value
                       }
+                      properties[key] = val
                     }
-                  None => properties[key] = value
+                  None => properties[key] = _value
                 }
               }
               // Copy symbol properties too
@@ -1497,208 +1495,13 @@ fn Interpreter::eval_expr(
     MemberAssign(obj_expr, prop, value_expr, loc) => {
       let obj = self.eval_expr(obj_expr, env)
       let value = self.eval_expr(value_expr, env)
-      match obj {
-        Object(data) => {
-          // Check for accessor descriptor (setter)
-          match data.descriptors.get(prop) {
-            Some(desc) =>
-              match desc.setter {
-                Some(setter) => {
-                  let _ = self.call_value(setter, obj, [value], loc)
-                  return value
-                }
-                None =>
-                  // If it's an accessor property with no setter, throw in strict mode
-                  if desc.getter is Some(_) {
-                    if self.strict {
-                      raise @errors.TypeError(
-                        message="Cannot set property \{prop} which has only a getter",
-                      )
-                    }
-                    return value
-                  } else if not(desc.writable) {
-                    if self.strict {
-                      raise @errors.TypeError(
-                        message="Cannot assign to read only property '\{prop}'",
-                      )
-                    }
-                    return value
-                  }
-              }
-            None => {
-              // Walk prototype chain to check for inherited setters
-              let mut current = data.prototype
-              while true {
-                match current {
-                  Object(proto_data) => {
-                    match proto_data.descriptors.get(prop) {
-                      Some(desc) =>
-                        match desc.setter {
-                          Some(setter) => {
-                            let _ = self.call_value(setter, obj, [value], loc)
-                            return value
-                          }
-                          None =>
-                            if desc.getter is Some(_) {
-                              if self.strict {
-                                raise @errors.TypeError(
-                                  message="Cannot set property \{prop} which has only a getter",
-                                )
-                              }
-                              return value
-                            }
-                        }
-                      None => ()
-                    }
-                    current = proto_data.prototype
-                  }
-                  _ => break
-                }
-              }
-            }
-          }
-          // Check extensible for new properties
-          if not(data.properties.contains(prop)) && not(data.extensible) {
-            if self.strict {
-              raise @errors.TypeError(
-                message="Cannot add property \{prop}, object is not extensible",
-              )
-            }
-            return value
-          }
-          data.properties[prop] = value
-          value
-        }
-        Promise(data) => {
-          data.properties[prop] = value
-          value
-        }
-        _ =>
-          raise @errors.TypeError(
-            message="Cannot set property '\{prop}' of \{type_of(obj)}",
-          )
-      }
+      self.set_property(obj, prop, value, loc)
     }
     ComputedAssign(obj_expr, key_expr, value_expr, loc) => {
       let obj = self.eval_expr(obj_expr, env)
       let key = self.eval_expr(key_expr, env)
       let value = self.eval_expr(value_expr, env)
-      match obj {
-        Object(data) =>
-          // Handle Symbol keys specially
-          match key {
-            Symbol(sym) => {
-              // Check symbol property accessor descriptor (setter)
-              match data.symbol_descriptors.get(sym.id) {
-                Some(desc) =>
-                  match desc.setter {
-                    Some(setter) => {
-                      let _ = self.call_value(setter, obj, [value], loc)
-                      return value
-                    }
-                    None =>
-                      if desc.getter is Some(_) {
-                        if self.strict {
-                          raise @errors.TypeError(
-                            message="Cannot set property which has only a getter",
-                          )
-                        }
-                        return value
-                      } else if not(desc.writable) {
-                        if self.strict {
-                          raise @errors.TypeError(
-                            message="Cannot assign to read only property",
-                          )
-                        }
-                        return value
-                      }
-                  }
-                None => ()
-              }
-              if not(data.symbol_properties.contains(sym.id)) &&
-                not(data.extensible) {
-                if self.strict {
-                  raise @errors.TypeError(
-                    message="Cannot add property, object is not extensible",
-                  )
-                }
-                return value
-              }
-              data.symbol_properties[sym.id] = value
-              value
-            }
-            _ => {
-              let prop = key.to_string()
-              // Check for accessor descriptor (setter) on string key
-              match data.descriptors.get(prop) {
-                Some(desc) =>
-                  match desc.setter {
-                    Some(setter) => {
-                      let _ = self.call_value(setter, obj, [value], loc)
-                      return value
-                    }
-                    None =>
-                      if desc.getter is Some(_) {
-                        if self.strict {
-                          raise @errors.TypeError(
-                            message="Cannot set property \{prop} which has only a getter",
-                          )
-                        }
-                        return value
-                      } else if not(desc.writable) {
-                        if self.strict {
-                          raise @errors.TypeError(
-                            message="Cannot assign to read only property '\{prop}'",
-                          )
-                        }
-                        return value
-                      }
-                  }
-                None => ()
-              }
-              if not(data.properties.contains(prop)) && not(data.extensible) {
-                if self.strict {
-                  raise @errors.TypeError(
-                    message="Cannot add property \{prop}, object is not extensible",
-                  )
-                }
-                return value
-              }
-              data.properties[prop] = value
-              value
-            }
-          }
-        Array(data) =>
-          match key {
-            Number(n) => {
-              let i = n.to_int()
-              if i >= 0 {
-                while data.elements.length() <= i {
-                  data.elements.push(Undefined)
-                }
-                data.elements[i] = value
-              }
-              value
-            }
-            _ => value
-          }
-        Promise(data) =>
-          match key {
-            Symbol(sym) => {
-              data.symbol_properties[sym.id] = value
-              value
-            }
-            _ => {
-              let prop = key.to_string()
-              data.properties[prop] = value
-              value
-            }
-          }
-        _ =>
-          raise @errors.TypeError(
-            message="Cannot set property of \{type_of(obj)}",
-          )
-      }
+      self.set_computed_property(obj, key, value, loc)
     }
     NewExpr(callee_expr, arg_exprs, loc) =>
       self.eval_new(callee_expr, arg_exprs, env, loc)
@@ -3869,6 +3672,311 @@ fn Interpreter::get_computed_property(
 }
 
 ///|
+fn Interpreter::set_property(
+  self : Interpreter,
+  obj : Value,
+  prop : String,
+  value : Value,
+  loc : @token.Loc,
+) -> Value raise Error {
+  match obj {
+    Object(data) => {
+      // Check for accessor descriptor (setter)
+      match data.descriptors.get(prop) {
+        Some(desc) =>
+          match desc.setter {
+            Some(setter) => {
+              let _ = self.call_value(setter, obj, [value], loc)
+              return value
+            }
+            None =>
+              if desc.getter is Some(_) {
+                if self.strict {
+                  raise @errors.TypeError(
+                    message="Cannot set property \{prop} which has only a getter",
+                  )
+                }
+                return value
+              } else if not(desc.writable) {
+                if self.strict {
+                  raise @errors.TypeError(
+                    message="Cannot assign to read only property '\{prop}'",
+                  )
+                }
+                return value
+              }
+          }
+        None => {
+          // Walk prototype chain for inherited setters
+          let mut current = data.prototype
+          while true {
+            match current {
+              Object(proto_data) => {
+                match proto_data.descriptors.get(prop) {
+                  Some(desc) =>
+                    match desc.setter {
+                      Some(setter) => {
+                        let _ = self.call_value(setter, obj, [value], loc)
+                        return value
+                      }
+                      None =>
+                        if desc.getter is Some(_) {
+                          if self.strict {
+                            raise @errors.TypeError(
+                              message="Cannot set property \{prop} which has only a getter",
+                            )
+                          }
+                          return value
+                        }
+                    }
+                  None => ()
+                }
+                current = proto_data.prototype
+              }
+              _ => break
+            }
+          }
+        }
+      }
+      // Check extensible for new properties
+      if not(data.properties.contains(prop)) && not(data.extensible) {
+        if self.strict {
+          raise @errors.TypeError(
+            message="Cannot add property \{prop}, object is not extensible",
+          )
+        }
+        return value
+      }
+      data.properties[prop] = value
+      value
+    }
+    Array(data) => {
+      if prop == "length" {
+        let n = to_number(value).to_int()
+        while data.elements.length() > n {
+          let _ = data.elements.pop()
+        }
+      } else {
+        // try numeric index
+        try {
+          let i = @strconv.parse_int(prop)
+          if i >= 0 {
+            while data.elements.length() <= i {
+              data.elements.push(Undefined)
+            }
+            data.elements[i] = value
+          }
+        } catch {
+          _ => ()
+        }
+      }
+      value
+    }
+    Promise(data) => {
+      data.properties[prop] = value
+      value
+    }
+    _ =>
+      raise @errors.TypeError(
+        message="Cannot set property '\{prop}' of \{type_of(obj)}",
+      )
+  }
+}
+
+///|
+fn Interpreter::set_computed_property(
+  self : Interpreter,
+  obj : Value,
+  key : Value,
+  value : Value,
+  loc : @token.Loc,
+) -> Value raise Error {
+  match obj {
+    Object(data) =>
+      match key {
+        Symbol(sym) => {
+          // Check symbol property accessor descriptor (setter)
+          match data.symbol_descriptors.get(sym.id) {
+            Some(desc) =>
+              match desc.setter {
+                Some(setter) => {
+                  let _ = self.call_value(setter, obj, [value], loc)
+                  return value
+                }
+                None =>
+                  if desc.getter is Some(_) {
+                    if self.strict {
+                      raise @errors.TypeError(
+                        message="Cannot set property which has only a getter",
+                      )
+                    }
+                    return value
+                  } else if not(desc.writable) {
+                    if self.strict {
+                      raise @errors.TypeError(
+                        message="Cannot assign to read only property",
+                      )
+                    }
+                    return value
+                  }
+              }
+            None => {
+              // Walk prototype chain for inherited symbol setters
+              let mut current = data.prototype
+              while true {
+                match current {
+                  Object(proto_data) => {
+                    match proto_data.symbol_descriptors.get(sym.id) {
+                      Some(desc) =>
+                        match desc.setter {
+                          Some(setter) => {
+                            let _ = self.call_value(setter, obj, [value], loc)
+                            return value
+                          }
+                          None =>
+                            if desc.getter is Some(_) {
+                              if self.strict {
+                                raise @errors.TypeError(
+                                  message="Cannot set property which has only a getter",
+                                )
+                              }
+                              return value
+                            }
+                        }
+                      None => ()
+                    }
+                    current = proto_data.prototype
+                  }
+                  _ => break
+                }
+              }
+            }
+          }
+          if not(data.symbol_properties.contains(sym.id)) &&
+            not(data.extensible) {
+            if self.strict {
+              raise @errors.TypeError(
+                message="Cannot add property, object is not extensible",
+              )
+            }
+            return value
+          }
+          data.symbol_properties[sym.id] = value
+          value
+        }
+        _ => {
+          let prop = key.to_string()
+          // Check for accessor descriptor (setter) on string key
+          match data.descriptors.get(prop) {
+            Some(desc) =>
+              match desc.setter {
+                Some(setter) => {
+                  let _ = self.call_value(setter, obj, [value], loc)
+                  return value
+                }
+                None =>
+                  if desc.getter is Some(_) {
+                    if self.strict {
+                      raise @errors.TypeError(
+                        message="Cannot set property \{prop} which has only a getter",
+                      )
+                    }
+                    return value
+                  } else if not(desc.writable) {
+                    if self.strict {
+                      raise @errors.TypeError(
+                        message="Cannot assign to read only property '\{prop}'",
+                      )
+                    }
+                    return value
+                  }
+              }
+            None => {
+              // Walk prototype chain for inherited setters
+              let mut current = data.prototype
+              while true {
+                match current {
+                  Object(proto_data) => {
+                    match proto_data.descriptors.get(prop) {
+                      Some(desc) =>
+                        match desc.setter {
+                          Some(setter) => {
+                            let _ = self.call_value(setter, obj, [value], loc)
+                            return value
+                          }
+                          None =>
+                            if desc.getter is Some(_) {
+                              if self.strict {
+                                raise @errors.TypeError(
+                                  message="Cannot set property \{prop} which has only a getter",
+                                )
+                              }
+                              return value
+                            }
+                        }
+                      None => ()
+                    }
+                    current = proto_data.prototype
+                  }
+                  _ => break
+                }
+              }
+            }
+          }
+          if not(data.properties.contains(prop)) && not(data.extensible) {
+            if self.strict {
+              raise @errors.TypeError(
+                message="Cannot add property \{prop}, object is not extensible",
+              )
+            }
+            return value
+          }
+          data.properties[prop] = value
+          value
+        }
+      }
+    Array(data) =>
+      match key {
+        Number(n) => {
+          let i = n.to_int()
+          if i >= 0 {
+            while data.elements.length() <= i {
+              data.elements.push(Undefined)
+            }
+            data.elements[i] = value
+          }
+          value
+        }
+        _ => {
+          let prop = key.to_string()
+          if prop == "length" {
+            let n = to_number(value).to_int()
+            while data.elements.length() > n {
+              let _ = data.elements.pop()
+            }
+          }
+          value
+        }
+      }
+    Promise(data) =>
+      match key {
+        Symbol(sym) => {
+          data.symbol_properties[sym.id] = value
+          value
+        }
+        _ => {
+          data.properties[key.to_string()] = value
+          value
+        }
+      }
+    _ =>
+      raise @errors.TypeError(
+        message="Cannot set property of \{type_of(obj)}",
+      )
+  }
+}
+
+///|
 fn Interpreter::eval_new(
   self : Interpreter,
   callee_expr : @ast.Expr,
@@ -4529,13 +4637,7 @@ fn Interpreter::eval_update(
         Increment => Number(num + 1.0)
         Decrement => Number(num - 1.0)
       }
-      match obj {
-        Object(data) => data.properties[prop] = new_val
-        _ =>
-          raise @errors.SyntaxError(
-            message="Invalid update target at line \{loc.line}, col \{loc.col}",
-          )
-      }
+      let _ = self.set_property(obj, prop, new_val, loc)
       if prefix {
         new_val
       } else {
@@ -4551,23 +4653,7 @@ fn Interpreter::eval_update(
         Increment => Number(num + 1.0)
         Decrement => Number(num - 1.0)
       }
-      match obj {
-        Object(data) => data.properties[key.to_string()] = new_val
-        Array(data) =>
-          match key {
-            Number(n) => {
-              let i = n.to_int()
-              if i >= 0 && i < data.elements.length() {
-                data.elements[i] = new_val
-              }
-            }
-            _ => ()
-          }
-        _ =>
-          raise @errors.SyntaxError(
-            message="Invalid update target at line \{loc.line}, col \{loc.col}",
-          )
-      }
+      let _ = self.set_computed_property(obj, key, new_val, loc)
       if prefix {
         new_val
       } else {
@@ -4628,16 +4714,8 @@ fn Interpreter::eval_compound_assign(
       let current = self.get_property(obj, prop, mloc)
       let rhs = self.eval_expr(value_expr, env)
       let result = eval_binary_op(bin_op, current, rhs, loc)
-      match obj {
-        Object(data) => {
-          data.properties[prop] = result
-          result
-        }
-        _ =>
-          raise @errors.TypeError(
-            message="Cannot set property at line \{loc.line}, col \{loc.col}",
-          )
-      }
+      let _ = self.set_property(obj, prop, result, loc)
+      result
     }
     ComputedMember(obj_expr, key_expr, mloc) => {
       let obj = self.eval_expr(obj_expr, env)
@@ -4645,35 +4723,8 @@ fn Interpreter::eval_compound_assign(
       let current = self.get_computed_property(obj, key, mloc)
       let rhs = self.eval_expr(value_expr, env)
       let result = eval_binary_op(bin_op, current, rhs, loc)
-      match obj {
-        Object(data) =>
-          // Handle Symbol keys specially
-          match key {
-            Symbol(sym) => {
-              data.symbol_properties[sym.id] = result
-              result
-            }
-            _ => {
-              data.properties[key.to_string()] = result
-              result
-            }
-          }
-        Array(data) =>
-          match key {
-            Number(n) => {
-              let i = n.to_int()
-              if i >= 0 && i < data.elements.length() {
-                data.elements[i] = result
-              }
-              result
-            }
-            _ => result
-          }
-        _ =>
-          raise @errors.TypeError(
-            message="Cannot set property at line \{loc.line}, col \{loc.col}",
-          )
-      }
+      let _ = self.set_computed_property(obj, key, result, loc)
+      result
     }
     _ =>
       raise @errors.SyntaxError(
@@ -4707,38 +4758,7 @@ fn Interpreter::eval_logical_assign_and(
       let current = self.get_property(obj, prop, mloc)
       if is_truthy(current) {
         let rhs = self.eval_expr(value_expr, env)
-        match obj {
-          Object(data) => {
-            // Check writable descriptor
-            match data.descriptors.get(prop) {
-              Some(desc) =>
-                if not(desc.writable) {
-                  if self.strict {
-                    raise @errors.TypeError(
-                      message="Cannot assign to read only property '\{prop}'",
-                    )
-                  }
-                  return rhs
-                }
-              None => ()
-            }
-            // Check extensible for new properties
-            if not(data.properties.contains(prop)) && not(data.extensible) {
-              if self.strict {
-                raise @errors.TypeError(
-                  message="Cannot add property \{prop}, object is not extensible",
-                )
-              }
-              return rhs
-            }
-            data.properties[prop] = rhs
-            rhs
-          }
-          _ =>
-            raise @errors.TypeError(
-              message="Cannot set property '\{prop}' of \{type_of(obj)}",
-            )
-        }
+        self.set_property(obj, prop, rhs, loc)
       } else {
         current
       }
@@ -4749,80 +4769,7 @@ fn Interpreter::eval_logical_assign_and(
       let current = self.get_computed_property(obj, key, mloc)
       if is_truthy(current) {
         let rhs = self.eval_expr(value_expr, env)
-        match obj {
-          Object(data) =>
-            // Handle Symbol keys specially
-            match key {
-              Symbol(sym) => {
-                // Check symbol descriptor
-                match data.symbol_descriptors.get(sym.id) {
-                  Some(desc) =>
-                    if not(desc.writable) {
-                      if self.strict {
-                        raise @errors.TypeError(
-                          message="Cannot assign to read only property",
-                        )
-                      }
-                      return rhs
-                    }
-                  None => ()
-                }
-                if not(data.symbol_properties.contains(sym.id)) &&
-                  not(data.extensible) {
-                  if self.strict {
-                    raise @errors.TypeError(
-                      message="Cannot add property, object is not extensible",
-                    )
-                  }
-                  return rhs
-                }
-                data.symbol_properties[sym.id] = rhs
-                rhs
-              }
-              _ => {
-                let prop = key.to_string()
-                // Check writable descriptor
-                match data.descriptors.get(prop) {
-                  Some(desc) =>
-                    if not(desc.writable) {
-                      if self.strict {
-                        raise @errors.TypeError(
-                          message="Cannot assign to read only property '\{prop}'",
-                        )
-                      }
-                      return rhs
-                    }
-                  None => ()
-                }
-                // Check extensible for new properties
-                if not(data.properties.contains(prop)) && not(data.extensible) {
-                  if self.strict {
-                    raise @errors.TypeError(
-                      message="Cannot add property \{prop}, object is not extensible",
-                    )
-                  }
-                  return rhs
-                }
-                data.properties[prop] = rhs
-                rhs
-              }
-            }
-          Array(data) =>
-            match key {
-              Number(n) => {
-                let i = n.to_int()
-                if i >= 0 && i < data.elements.length() {
-                  data.elements[i] = rhs
-                }
-                rhs
-              }
-              _ => rhs
-            }
-          _ =>
-            raise @errors.TypeError(
-              message="Cannot set property of \{type_of(obj)}",
-            )
-        }
+        self.set_computed_property(obj, key, rhs, loc)
       } else {
         current
       }
@@ -4859,38 +4806,7 @@ fn Interpreter::eval_logical_assign_or(
       let current = self.get_property(obj, prop, mloc)
       if not(is_truthy(current)) {
         let rhs = self.eval_expr(value_expr, env)
-        match obj {
-          Object(data) => {
-            // Check writable descriptor
-            match data.descriptors.get(prop) {
-              Some(desc) =>
-                if not(desc.writable) {
-                  if self.strict {
-                    raise @errors.TypeError(
-                      message="Cannot assign to read only property '\{prop}'",
-                    )
-                  }
-                  return rhs
-                }
-              None => ()
-            }
-            // Check extensible for new properties
-            if not(data.properties.contains(prop)) && not(data.extensible) {
-              if self.strict {
-                raise @errors.TypeError(
-                  message="Cannot add property \{prop}, object is not extensible",
-                )
-              }
-              return rhs
-            }
-            data.properties[prop] = rhs
-            rhs
-          }
-          _ =>
-            raise @errors.TypeError(
-              message="Cannot set property '\{prop}' of \{type_of(obj)}",
-            )
-        }
+        self.set_property(obj, prop, rhs, loc)
       } else {
         current
       }
@@ -4901,77 +4817,7 @@ fn Interpreter::eval_logical_assign_or(
       let current = self.get_computed_property(obj, key, mloc)
       if not(is_truthy(current)) {
         let rhs = self.eval_expr(value_expr, env)
-        match obj {
-          Object(data) =>
-            // Handle Symbol keys specially
-            match key {
-              Symbol(sym) => {
-                match data.symbol_descriptors.get(sym.id) {
-                  Some(desc) =>
-                    if not(desc.writable) {
-                      if self.strict {
-                        raise @errors.TypeError(
-                          message="Cannot assign to read only property",
-                        )
-                      }
-                      return rhs
-                    }
-                  None => ()
-                }
-                if not(data.symbol_properties.contains(sym.id)) &&
-                  not(data.extensible) {
-                  if self.strict {
-                    raise @errors.TypeError(
-                      message="Cannot add property, object is not extensible",
-                    )
-                  }
-                  return rhs
-                }
-                data.symbol_properties[sym.id] = rhs
-                rhs
-              }
-              _ => {
-                let prop = key.to_string()
-                match data.descriptors.get(prop) {
-                  Some(desc) =>
-                    if not(desc.writable) {
-                      if self.strict {
-                        raise @errors.TypeError(
-                          message="Cannot assign to read only property '\{prop}'",
-                        )
-                      }
-                      return rhs
-                    }
-                  None => ()
-                }
-                if not(data.properties.contains(prop)) && not(data.extensible) {
-                  if self.strict {
-                    raise @errors.TypeError(
-                      message="Cannot add property \{prop}, object is not extensible",
-                    )
-                  }
-                  return rhs
-                }
-                data.properties[prop] = rhs
-                rhs
-              }
-            }
-          Array(data) =>
-            match key {
-              Number(n) => {
-                let i = n.to_int()
-                if i >= 0 && i < data.elements.length() {
-                  data.elements[i] = rhs
-                }
-                rhs
-              }
-              _ => rhs
-            }
-          _ =>
-            raise @errors.TypeError(
-              message="Cannot set property of \{type_of(obj)}",
-            )
-        }
+        self.set_computed_property(obj, key, rhs, loc)
       } else {
         current
       }
@@ -5010,38 +4856,7 @@ fn Interpreter::eval_nullish_assign(
       match current {
         Null | Undefined => {
           let rhs = self.eval_expr(value_expr, env)
-          match obj {
-            Object(data) => {
-              // Check writable descriptor
-              match data.descriptors.get(prop) {
-                Some(desc) =>
-                  if not(desc.writable) {
-                    if self.strict {
-                      raise @errors.TypeError(
-                        message="Cannot assign to read only property '\{prop}'",
-                      )
-                    }
-                    return rhs
-                  }
-                None => ()
-              }
-              // Check extensible for new properties
-              if not(data.properties.contains(prop)) && not(data.extensible) {
-                if self.strict {
-                  raise @errors.TypeError(
-                    message="Cannot add property \{prop}, object is not extensible",
-                  )
-                }
-                return rhs
-              }
-              data.properties[prop] = rhs
-              rhs
-            }
-            _ =>
-              raise @errors.TypeError(
-                message="Cannot set property '\{prop}' of \{type_of(obj)}",
-              )
-          }
+          self.set_property(obj, prop, rhs, loc)
         }
         _ => current
       }
@@ -5053,77 +4868,7 @@ fn Interpreter::eval_nullish_assign(
       match current {
         Null | Undefined => {
           let rhs = self.eval_expr(value_expr, env)
-          match obj {
-            Object(data) =>
-              // Handle Symbol keys specially
-              match key {
-                Symbol(sym) => {
-                  match data.symbol_descriptors.get(sym.id) {
-                    Some(desc) =>
-                      if not(desc.writable) {
-                        if self.strict {
-                          raise @errors.TypeError(
-                            message="Cannot assign to read only property",
-                          )
-                        }
-                        return rhs
-                      }
-                    None => ()
-                  }
-                  if not(data.symbol_properties.contains(sym.id)) &&
-                    not(data.extensible) {
-                    if self.strict {
-                      raise @errors.TypeError(
-                        message="Cannot add property, object is not extensible",
-                      )
-                    }
-                    return rhs
-                  }
-                  data.symbol_properties[sym.id] = rhs
-                  rhs
-                }
-                _ => {
-                  let prop = key.to_string()
-                  match data.descriptors.get(prop) {
-                    Some(desc) =>
-                      if not(desc.writable) {
-                        if self.strict {
-                          raise @errors.TypeError(
-                            message="Cannot assign to read only property '\{prop}'",
-                          )
-                        }
-                        return rhs
-                      }
-                    None => ()
-                  }
-                  if not(data.properties.contains(prop)) && not(data.extensible) {
-                    if self.strict {
-                      raise @errors.TypeError(
-                        message="Cannot add property \{prop}, object is not extensible",
-                      )
-                    }
-                    return rhs
-                  }
-                  data.properties[prop] = rhs
-                  rhs
-                }
-              }
-            Array(data) =>
-              match key {
-                Number(n) => {
-                  let i = n.to_int()
-                  if i >= 0 && i < data.elements.length() {
-                    data.elements[i] = rhs
-                  }
-                  rhs
-                }
-                _ => rhs
-              }
-            _ =>
-              raise @errors.TypeError(
-                message="Cannot set property of \{type_of(obj)}",
-              )
-          }
+          self.set_computed_property(obj, key, rhs, loc)
         }
         _ => current
       }

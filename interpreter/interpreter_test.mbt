@@ -4418,3 +4418,155 @@ test "inherited getter on prototype chain" {
   )
   inspect(output, content="[\"10\"]")
 }
+
+///|
+test "defineProperty rejects non-callable getter" {
+  let output = run_output(
+    #|try {
+    #|  Object.defineProperty({}, 'x', { get: 42 });
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e instanceof TypeError);
+    #|}
+  ,
+  )
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "defineProperty rejects non-callable setter" {
+  let output = run_output(
+    #|try {
+    #|  Object.defineProperty({}, 'x', { set: "not a function" });
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e instanceof TypeError);
+    #|}
+  ,
+  )
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "non-configurable accessor cannot be redefined" {
+  let output = run_output(
+    #|const obj = {};
+    #|Object.defineProperty(obj, 'x', {
+    #|  get: function() { return 1; },
+    #|  configurable: false
+    #|});
+    #|try {
+    #|  Object.defineProperty(obj, 'x', {
+    #|    get: function() { return 2; }
+    #|  });
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e instanceof TypeError);
+    #|}
+  ,
+  )
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "spread invokes getters and creates data properties" {
+  let output = run_output(
+    #|const source = {};
+    #|Object.defineProperty(source, 'x', {
+    #|  get: function() { return 42; },
+    #|  enumerable: true
+    #|});
+    #|const copy = { ...source };
+    #|console.log(copy.x);
+    #|const desc = Object.getOwnPropertyDescriptor(copy, 'x');
+    #|console.log(desc.value);
+    #|console.log(typeof desc.get);
+  ,
+  )
+  inspect(output, content="[\"42\", \"42\", \"undefined\"]")
+}
+
+///|
+test "computed assignment walks prototype chain for setters" {
+  let output = run_output(
+    #|let stored = 0;
+    #|const proto = {};
+    #|Object.defineProperty(proto, 'x', {
+    #|  set: function(v) { stored = v; },
+    #|  get: function() { return stored; }
+    #|});
+    #|const obj = Object.create(proto);
+    #|const key = 'x';
+    #|obj[key] = 99;
+    #|console.log(stored);
+    #|console.log(obj[key]);
+  ,
+  )
+  inspect(output, content="[\"99\", \"99\"]")
+}
+
+///|
+test "update expression invokes setter" {
+  let output = run_output(
+    #|let stored = 5;
+    #|const obj = {};
+    #|Object.defineProperty(obj, 'x', {
+    #|  get: function() { return stored; },
+    #|  set: function(v) { stored = v; }
+    #|});
+    #|obj.x++;
+    #|console.log(stored);
+    #|console.log(obj.x);
+  ,
+  )
+  inspect(output, content="[\"6\", \"6\"]")
+}
+
+///|
+test "compound assignment invokes setter" {
+  let output = run_output(
+    #|let stored = 10;
+    #|const obj = {};
+    #|Object.defineProperty(obj, 'x', {
+    #|  get: function() { return stored; },
+    #|  set: function(v) { stored = v; }
+    #|});
+    #|obj.x += 5;
+    #|console.log(stored);
+    #|console.log(obj.x);
+  ,
+  )
+  inspect(output, content="[\"15\", \"15\"]")
+}
+
+///|
+test "defineProperties validates accessor vs data mixing" {
+  let output = run_output(
+    #|try {
+    #|  Object.defineProperties({}, {
+    #|    x: { get: function() {}, value: 1 }
+    #|  });
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e instanceof TypeError);
+    #|}
+  ,
+  )
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "defineProperties validates getter is callable" {
+  let output = run_output(
+    #|try {
+    #|  Object.defineProperties({}, {
+    #|    x: { get: 123 }
+    #|  });
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e instanceof TypeError);
+    #|}
+  ,
+  )
+  inspect(output, content="[\"true\"]")
+}
