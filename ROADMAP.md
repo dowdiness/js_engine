@@ -1,10 +1,10 @@
 # JS Engine — Test262 Compliance Roadmap
 
-## Current Status (Phase 6 Complete)
+## Current Status (Phase 6 + PR Review Fixes Complete)
 
-- **Passed**: 9,489 / 24,272 executed (39.1%)
+- **Passed**: 9,521 / 24,213 executed (39.3%)
 - **Skipped**: 25,381 (features not yet implemented: Temporal, async-iteration, generators, private fields, TypedArray, BigInt, modules, etc.)
-- **Failed**: 14,724
+- **Failed**: 14,692
 - **Timeout**: 56
 
 ### Phase History
@@ -22,6 +22,7 @@
 | 6H | +1,202 | 9,489 | **Error prototype chain fix** (try-catch creates proper Error objects) |
 | 6I | +est.50 | ~9,540 | Leading decimal literals (.5), comma-separated for-init |
 | 6J | +est.50 | ~9,590 | Number.prototype this-validation, String.split limit |
+| 6K | +32 | 9,521 | PR review fixes: var scoping, rest destructuring, toString tags, AggregateError |
 
 ---
 
