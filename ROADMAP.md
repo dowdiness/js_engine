@@ -156,6 +156,7 @@ Full import/export declaration support:
 - `language/export`: 3/3 passing (100%)
 - `language/module-code`: 176/273 passing (64.5%), 319 skipped
 - `language/import`: 11/93 passing (11.8%), 19 skipped
+- +12 tests in other directories (e.g., `reserved-words`) from module-related fixes
 
 ---
 
@@ -195,7 +196,7 @@ Syntactic sugar over Promises + generator-like suspension. Depends on generators
 | TypedArray | 1,257 | Int8Array, Uint8Array, etc. |
 | BigInt | 1,250 | Arbitrary precision integers |
 | class-static-methods-private | 1,133 | static #method |
-| module | 422 | import/export implemented; remaining skips from multi-module dependency tests |
+| module | 422 | import/export implemented; 338 in module dirs + 84 module-flagged tests in other dirs |
 | class-fields-public | 723 | Public field declarations |
 | regexp-unicode-property | 679 | Unicode property escapes |
 
