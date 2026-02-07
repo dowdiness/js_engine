@@ -2,9 +2,9 @@
 
 ## Current Status
 
-**Test262**: 10,657 / 24,190 passed (44.1%) | 25,381 skipped | 13,533 failed | 79 timeouts
+**Test262**: 10,662 / 24,191 passed (44.1%) | 25,381 skipped | 13,529 failed | 78 timeouts
 
-**Unit tests**: 552 total, 552 passed, 0 failed
+**Unit tests**: 580 total, 580 passed, 0 failed
 
 ## Phase History
 
@@ -17,6 +17,7 @@
 | 7A | — | 9,545 | Full accessor descriptor support (get/set in PropDescriptor) |
 | 7B | +1,047 | 10,592 | Unicode escapes in identifiers, strings, template literals |
 | 7C-E | +65 | 10,657 | Bare for-of/for-in, get/set as identifiers, Math function lengths |
+| 7F | +5 | 10,662 | ES Modules (import/export declarations) |
 | JS Target | — | — | JS backend support, Error toString fix, backend-specific argv handling |
 
 For detailed implementation notes on Phases 1-6, see [docs/PHASE_HISTORY.md](docs/PHASE_HISTORY.md).
@@ -140,6 +141,19 @@ All Math methods already existed. Fixes for test262 compliance:
 - Global `well_known_tostringtag_sym` for Symbol.toStringTag access across builtins
 - Reordered builtin initialization: `setup_symbol_builtins` before `setup_math_builtins`
 
+### 7F: ES Modules (~812 skipped tests) — DONE
+
+Full import/export declaration support:
+
+- Lexer: `import`, `export`, `from`, `as` keywords
+- Parser: All import/export syntax forms including default, named, namespace, re-exports, side-effect imports
+- Interpreter: Module registry, module-scoped environments, export collection with live bindings
+- `export default function/class` hoisting (named functions hoisted, anonymous supported)
+- Module namespace objects with non-writable, non-configurable, enumerable properties
+- Import/export restricted to module top-level only (SyntaxError in nested blocks)
+- Public API: `run_module()` for single modules, `run_modules()` for multi-module dependency chains
+- `language/import`: 6/6 passing (100%). `language/module-code` (592 tests) still skipped (requires module-aware test harness)
+
 ---
 
 ## Phase 8+ Targets (reaching 15,000+)
@@ -178,7 +192,7 @@ Syntactic sugar over Promises + generator-like suspension. Depends on generators
 | TypedArray | 1,257 | Int8Array, Uint8Array, etc. |
 | BigInt | 1,250 | Arbitrary precision integers |
 | class-static-methods-private | 1,133 | static #method |
-| module | 812 | import/export |
+| module | 812 | import/export (static declarations implemented; module-code tests need harness) |
 | class-fields-public | 723 | Public field declarations |
 | regexp-unicode-property | 679 | Unicode property escapes |
 
