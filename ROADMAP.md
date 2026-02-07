@@ -2,9 +2,9 @@
 
 ## Current Status
 
-**Test262**: 9,545 / 24,213 passed (39.4%) | 25,381 skipped | 14,668 failed | 56 timeouts
+**Test262**: 10,592 / 24,190 passed (43.8%) | 25,381 skipped | 13,598 failed | 79 timeouts
 
-**Unit tests**: 534 total, 534 passed, 0 failed
+**Unit tests**: 547 total, 547 passed, 0 failed
 
 ## Phase History
 
@@ -14,10 +14,9 @@
 | 6A-6G | +~2,350 | ~8,500 | Parser fixes, prototype chains, destructuring, tagged templates |
 | 6H | +1,202 | 9,489 | Error prototype chain fix |
 | 6I-6L | +56 | 9,545 | Leading decimals, canonical indices, PR review fixes |
-| 7A | +13 | 9,545* | Full accessor descriptor support (get/set in PropDescriptor) |
-| JS Target | — | 9,545 | JS backend support, Error toString fix, backend-specific argv handling |
-
-\* Phase 7A added 13 unit tests; test262 recount pending.
+| 7A | — | 9,545 | Full accessor descriptor support (get/set in PropDescriptor) |
+| 7B | +1,047 | 10,592 | Unicode escapes in identifiers, strings, template literals |
+| JS Target | — | — | JS backend support, Error toString fix, backend-specific argv handling |
 
 For detailed implementation notes on Phases 1-6, see [docs/PHASE_HISTORY.md](docs/PHASE_HISTORY.md).
 
@@ -73,7 +72,7 @@ node ./target/js/release/build/cmd/main/main.js 'console.log(1 + 2)'
 # => 3
 ```
 
-All 507 unit tests pass on both WASM-GC and JS targets. See [docs/SELF_HOST_JS_RESEARCH.md](docs/SELF_HOST_JS_RESEARCH.md) for full analysis.
+All 547 unit tests pass on both WASM-GC and JS targets. See [docs/SELF_HOST_JS_RESEARCH.md](docs/SELF_HOST_JS_RESEARCH.md) for full analysis.
 
 ### What was needed
 - **Backend-specific argv handling**: `process.argv` on JS includes `["node", "script.js", ...]`, so user args start at index 2 (vs index 1 on WASM). Solved with `.js.mbt` / `.wasm.mbt` / `.wasm-gc.mbt` files.
@@ -104,13 +103,14 @@ Implemented full accessor descriptor support:
 - Class getter/setter methods stored as accessor descriptors on prototype
 - Replaced `__get__`/`__set__` prefix hack with proper PropDescriptor storage
 
-### 7B: Unicode Escapes (~479 tests)
+### 7B: Unicode Escapes (~479 tests) — DONE
 
-Pure parser/lexer fix.
+Pure lexer fix. Added `parse_unicode_escape()` and `write_code_point()` helpers:
 
-- `\uXXXX` in identifiers: `var \u0061 = 1` means `var a = 1`
-- `\u{XXXXX}` extended Unicode escapes
-- Unicode escapes in string literals
+- `\uXXXX` and `\u{XXXXX}` in identifiers: `var \u0061 = 1` means `var a = 1`
+- Unicode escapes in string literals and template literals
+- Decoded identifiers pass through `resolve_keyword()` for correct keyword resolution
+- Supplementary plane support via surrogate pairs for code points > 0xFFFF
 
 ### 7C: Bare for-of/for-in (~225 tests)
 

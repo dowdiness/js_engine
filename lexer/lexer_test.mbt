@@ -216,3 +216,109 @@ test "lex slash assign vs comment" {
   let kinds = tok_kinds("x /= 2")
   inspect(kinds, content="[Ident(\"x\"), SlashAssign, Number(2), EOF]")
 }
+
+///|
+test "lex unicode escape in string \\uXXXX" {
+  let kinds = tok_kinds("\"\\u0041\"")
+  inspect(kinds, content="[String_(\"A\"), EOF]")
+}
+
+///|
+test "lex unicode escape in string \\u{} extended" {
+  let kinds = tok_kinds("\"\\u{42}\"")
+  inspect(kinds, content="[String_(\"B\"), EOF]")
+}
+
+///|
+test "lex unicode escape in identifier start" {
+  let kinds = tok_kinds("\\u0061")
+  inspect(kinds, content="[Ident(\"a\"), EOF]")
+}
+
+///|
+test "lex unicode escape in identifier middle" {
+  let kinds = tok_kinds("a\\u0062c")
+  inspect(kinds, content="[Ident(\"abc\"), EOF]")
+}
+
+///|
+test "lex unicode escape identifier resolves to keyword" {
+  let kinds = tok_kinds("\\u0076\\u0061\\u0072")
+  inspect(kinds, content="[Var, EOF]")
+}
+
+///|
+test "lex unicode escape var decl" {
+  let kinds = tok_kinds("var \\u0061 = 1")
+  inspect(kinds, content="[Var, Ident(\"a\"), Assign, Number(1), EOF]")
+}
+
+///|
+test "lex unicode escape extended in identifier" {
+  let kinds = tok_kinds("\\u{61}")
+  inspect(kinds, content="[Ident(\"a\"), EOF]")
+}
+
+///|
+test "lex unicode escape in template literal" {
+  let kinds = tok_kinds("`\\u0048i`")
+  inspect(kinds, content="[NoSubTemplate(\"Hi\"), EOF]")
+}
+
+///|
+test "lex multiple unicode escapes in string" {
+  let kinds = tok_kinds("\"\\u0048\\u0065\\u006C\\u006C\\u006F\"")
+  inspect(kinds, content="[String_(\"Hello\"), EOF]")
+}
+
+///|
+test "lex unicode escape supplementary plane in string" {
+  // \u{1F600} is U+1F600 (😀) — exercises surrogate pair path
+  let tokens = @lexer.tokenize("\"\\u{1F600}\"")
+  // Should produce a String_ token (surrogate pair encoded)
+  match tokens[0].kind {
+    String_(_) => ()
+    _ => fail("Expected String_ token")
+  }
+}
+
+///|
+test "lex unicode escape invalid identifier start" {
+  // \u0031 is '1' — not valid at identifier start
+  let result = try {
+    Ok(@lexer.tokenize("\\u0031"))
+  } catch {
+    _ => Err(())
+  }
+  inspect(result, content="Err(())")
+}
+
+///|
+test "lex unicode escape invalid hex digits" {
+  let result = try {
+    Ok(@lexer.tokenize("\"\\u00GZ\""))
+  } catch {
+    _ => Err(())
+  }
+  inspect(result, content="Err(())")
+}
+
+///|
+test "lex unicode escape empty braces" {
+  let result = try {
+    Ok(@lexer.tokenize("\"\\u{}\""))
+  } catch {
+    _ => Err(())
+  }
+  inspect(result, content="Err(())")
+}
+
+///|
+test "lex unicode escape code point too large" {
+  let result = try {
+    Ok(@lexer.tokenize("\"\\u{110000}\""))
+  } catch {
+    _ => Err(())
+  }
+  inspect(result, content="Err(())")
+}
