@@ -514,44 +514,35 @@ fn generator_start(
   // Bind parameters
   match gen.params_ext {
     Some(params_ext) => {
-      // Extended params with defaults
+      // Extended params with defaults (aligned with UserFuncExt semantics)
       let mut effective_count = 0
       for i = 0; i < params_ext.length(); i = i + 1 {
         let param = params_ext[i]
-        match param.pattern {
-          Some(pat) => {
-            let val = if i < gen.args.length() {
-              gen.args[i]
-            } else {
-              match param.default_val {
-                Some(d) => interp.eval_expr(d, func_env)
-                None => Undefined
+        // Skip rest destructuring params - they're bound via rest_param
+        if gen.rest_param is Some(rn) && param.name == rn {
+          continue
+        }
+        let val : Value = if effective_count < gen.args.length() &&
+          not(gen.args[effective_count] is Undefined) {
+          gen.args[effective_count]
+        } else {
+          match param.default_val {
+            Some(d) => interp.eval_expr(d, func_env)
+            None =>
+              if effective_count < gen.args.length() {
+                gen.args[effective_count]
+              } else {
+                Undefined
               }
-            }
-            func_env.def(param.name, val, LetBinding)
-            interp.bind_pattern(pat, val, func_env, LetBinding)
-          }
-          None => {
-            let val = if i < gen.args.length() {
-              let arg = gen.args[i]
-              match arg {
-                Undefined =>
-                  match param.default_val {
-                    Some(d) => interp.eval_expr(d, func_env)
-                    None => Undefined
-                  }
-                _ => arg
-              }
-            } else {
-              match param.default_val {
-                Some(d) => interp.eval_expr(d, func_env)
-                None => Undefined
-              }
-            }
-            func_env.def(param.name, val, LetBinding)
-            effective_count += 1
           }
         }
+        func_env.def(param.name, val, LetBinding)
+        // Destructure if pattern param
+        match param.pattern {
+          Some(pat) => interp.bind_pattern(pat, val, func_env, LetBinding)
+          None => ()
+        }
+        effective_count = effective_count + 1
       }
       // Rest param
       match gen.rest_param {
@@ -560,7 +551,19 @@ fn generator_start(
           for i = effective_count; i < gen.args.length(); i = i + 1 {
             rest_elems.push(gen.args[i])
           }
-          func_env.def(rp, Array({ elements: rest_elems }), LetBinding)
+          let rest_val = Array({ elements: rest_elems })
+          func_env.def(rp, rest_val, LetBinding)
+          // Apply destructuring pattern if present
+          for p in params_ext {
+            if p.name == rp {
+              match p.pattern {
+                Some(pat) =>
+                  interp.bind_pattern(pat, rest_val, func_env, LetBinding)
+                None => ()
+              }
+              break
+            }
+          }
         }
         None => ()
       }
@@ -885,7 +888,16 @@ fn delegate_resume(
           }
         }
         None => {
-          // No .throw — close delegate and throw in outer
+          // No .throw — close delegate via .return() if available, then throw
+          let return_method = get_optional_method(iterator, "return")
+          match return_method {
+            Some(rm) => {
+              // Close the delegate so finally blocks execute
+              let _ = interp.call_value(rm, iterator, [], loc)
+
+            }
+            None => ()
+          }
           gen.delegating = false
           gen.delegate_iterator = Undefined
           gen.delegate_next = Undefined
