@@ -20,8 +20,24 @@ fn Parser::parse_stmt(self : Parser) -> @ast.Stmt raise Error {
     Switch => self.parse_switch_stmt()
     Do => self.parse_do_while_stmt()
     LBrace => self.parse_block_stmt()
-    Import => self.parse_import_decl()
-    Export => self.parse_export_decl()
+    Import =>
+      if self.allow_import_export {
+        self.parse_import_decl()
+      } else {
+        let tok = self.peek()
+        raise @errors.SyntaxError(
+          message="'import' declarations may only appear at top level of a module at line \{tok.loc.line}, col \{tok.loc.col}",
+        )
+      }
+    Export =>
+      if self.allow_import_export {
+        self.parse_export_decl()
+      } else {
+        let tok = self.peek()
+        raise @errors.SyntaxError(
+          message="'export' declarations may only appear at top level of a module at line \{tok.loc.line}, col \{tok.loc.col}",
+        )
+      }
     Ident(_) | Get | Set | From | As =>
       // Labeled statement: ident ':'
       if self.peek_kind_at(1) == Colon {
@@ -231,11 +247,14 @@ fn Parser::parse_params_ext(
 ///|
 fn Parser::parse_block_body(self : Parser) -> Array[@ast.Stmt] raise Error {
   let _ = self.expect(LBrace)
+  let saved_allow = self.allow_import_export
+  self.allow_import_export = false
   let stmts : Array[@ast.Stmt] = []
   while not(self.at(RBrace)) && not(self.at(EOF)) {
     stmts.push(self.parse_stmt())
   }
   let _ = self.expect(RBrace)
+  self.allow_import_export = saved_allow
   stmts
 }
 
@@ -730,10 +749,6 @@ fn Parser::expect_module_export_name(self : Parser) -> String raise Error {
     Ident(name) => {
       self.pos += 1
       name
-    }
-    String_(s) => {
-      self.pos += 1
-      s
     }
     Default => {
       self.pos += 1

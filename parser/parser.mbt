@@ -2,11 +2,12 @@
 pub(all) struct Parser {
   tokens : Array[@token.Token]
   mut pos : Int
+  mut allow_import_export : Bool // true at module top-level, false in nested blocks
 }
 
 ///|
 pub fn Parser::new(tokens : Array[@token.Token]) -> Parser {
-  { tokens, pos: 0 }
+  { tokens, pos: 0, allow_import_export: true }
 }
 
 ///|
