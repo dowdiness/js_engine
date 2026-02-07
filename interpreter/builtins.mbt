@@ -484,6 +484,9 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
   // Object, Array constructors and built-in methods
   setup_object_builtins(env)
 
+  // Symbol constructor and well-known symbols (must be before Math for Symbol.toStringTag)
+  setup_symbol_builtins(env)
+
   // Math object
   setup_math_builtins(env)
 
@@ -534,9 +537,6 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
     }),
   )
 
-  // Symbol constructor and well-known symbols
-  setup_symbol_builtins(env)
-
   // Set up iterator protocol on Array and String prototypes
   // Use try/catch since setup_iterator_protocol can raise errors
   setup_iterator_protocol(env) catch {
@@ -561,6 +561,7 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
   well_known_iterator_sym.val = Some(iterator_sym)
   let to_primitive_sym = new_symbol(Some("Symbol.toPrimitive"))
   let to_string_tag_sym = new_symbol(Some("Symbol.toStringTag"))
+  well_known_tostringtag_sym.val = Some(to_string_tag_sym)
   let has_instance_sym = new_symbol(Some("Symbol.hasInstance"))
   // Store globally for instanceof operator support
   well_known_hasinstance_sym.val = Some(has_instance_sym)
@@ -1094,19 +1095,19 @@ fn setup_math_builtins(env : Environment) -> Unit {
   math_props["LOG10E"] = Number(0.4342944819032518)
   math_props["SQRT2"] = Number(1.4142135623730951)
   math_props["SQRT1_2"] = Number(0.7071067811865476)
-  math_props["abs"] = make_native_func("abs", fn(args) {
+  math_props["abs"] = make_native_func_with_length("abs", 1, fn(args) {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(n.abs())
   })
-  math_props["floor"] = make_native_func("floor", fn(args) {
+  math_props["floor"] = make_native_func_with_length("floor", 1, fn(args) {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(n.floor())
   })
-  math_props["ceil"] = make_native_func("ceil", fn(args) {
+  math_props["ceil"] = make_native_func_with_length("ceil", 1, fn(args) {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(n.ceil())
   })
-  math_props["round"] = make_native_func("round", fn(args) {
+  math_props["round"] = make_native_func_with_length("round", 1, fn(args) {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     if n.is_nan() || n.is_inf() || n == 0.0 {
       Number(n)
@@ -1119,7 +1120,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
       }
     }
   })
-  math_props["trunc"] = make_native_func("trunc", fn(args) {
+  math_props["trunc"] = make_native_func_with_length("trunc", 1, fn(args) {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     if n >= 0.0 {
       Number(n.floor())
@@ -1127,16 +1128,16 @@ fn setup_math_builtins(env : Environment) -> Unit {
       Number(-(-n).floor())
     }
   })
-  math_props["sqrt"] = make_native_func("sqrt", fn(args) {
+  math_props["sqrt"] = make_native_func_with_length("sqrt", 1, fn(args) {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(n.sqrt())
   })
-  math_props["pow"] = make_native_func("pow", fn(args) {
+  math_props["pow"] = make_native_func_with_length("pow", 2, fn(args) {
     let base = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     let exp = if args.length() > 1 { to_number(args[1]) } else { 0.0 / 0.0 }
     Number(@math.pow(base, exp))
   })
-  math_props["min"] = make_native_func("min", fn(args) {
+  math_props["min"] = make_native_func_with_length("min", 2, fn(args) {
     if args.length() == 0 {
       return Number(1.0 / 0.0)
     }
@@ -1152,7 +1153,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     }
     Number(result)
   })
-  math_props["max"] = make_native_func("max", fn(args) {
+  math_props["max"] = make_native_func_with_length("max", 2, fn(args) {
     if args.length() == 0 {
       return Number(-1.0 / 0.0)
     }
@@ -1169,7 +1170,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     Number(result)
   })
   let rng_state : Array[Int] = [123456789]
-  math_props["random"] = make_native_func("random", fn(_args) {
+  math_props["random"] = make_native_func_with_length("random", 0, fn(_args) {
     let mut s = rng_state[0]
     s = s ^ (s << 13)
     s = s ^ (s.reinterpret_as_uint() >> 17).reinterpret_as_int()
@@ -1178,7 +1179,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     let normalized = s.land(0x7FFFFFFF).to_double() / 2147483648.0
     Number(normalized)
   })
-  math_props["sign"] = make_native_func("sign", fn(args) {
+  math_props["sign"] = make_native_func_with_length("sign", 1, fn(args) {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     if n.is_nan() {
       Number(0.0 / 0.0)
@@ -1190,80 +1191,80 @@ fn setup_math_builtins(env : Environment) -> Unit {
       Number(n) // preserves +0/-0
     }
   })
-  math_props["log"] = make_native_func("log", fn(args) {
+  math_props["log"] = make_native_func_with_length("log", 1, fn(args) {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.ln(n))
   })
-  math_props["log2"] = make_native_func("log2", fn(args) {
+  math_props["log2"] = make_native_func_with_length("log2", 1, fn(args) {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.log2(n))
   })
-  math_props["log10"] = make_native_func("log10", fn(args) {
+  math_props["log10"] = make_native_func_with_length("log10", 1, fn(args) {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.log10(n))
   })
-  math_props["sin"] = make_native_func("sin", fn(args) {
+  math_props["sin"] = make_native_func_with_length("sin", 1, fn(args) {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.sin(n))
   })
-  math_props["cos"] = make_native_func("cos", fn(args) {
+  math_props["cos"] = make_native_func_with_length("cos", 1, fn(args) {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.cos(n))
   })
-  math_props["tan"] = make_native_func("tan", fn(args) {
+  math_props["tan"] = make_native_func_with_length("tan", 1, fn(args) {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.tan(n))
   })
-  math_props["asin"] = make_native_func("asin", fn(args) {
+  math_props["asin"] = make_native_func_with_length("asin", 1, fn(args) {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.asin(n))
   })
-  math_props["acos"] = make_native_func("acos", fn(args) {
+  math_props["acos"] = make_native_func_with_length("acos", 1, fn(args) {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.acos(n))
   })
-  math_props["atan"] = make_native_func("atan", fn(args) {
+  math_props["atan"] = make_native_func_with_length("atan", 1, fn(args) {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.atan(n))
   })
-  math_props["atan2"] = make_native_func("atan2", fn(args) {
+  math_props["atan2"] = make_native_func_with_length("atan2", 2, fn(args) {
     let y = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     let x = if args.length() > 1 { to_number(args[1]) } else { 0.0 / 0.0 }
     Number(@math.atan2(y, x))
   })
-  math_props["sinh"] = make_native_func("sinh", fn(args) {
+  math_props["sinh"] = make_native_func_with_length("sinh", 1, fn(args) {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.sinh(n))
   })
-  math_props["cosh"] = make_native_func("cosh", fn(args) {
+  math_props["cosh"] = make_native_func_with_length("cosh", 1, fn(args) {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.cosh(n))
   })
-  math_props["tanh"] = make_native_func("tanh", fn(args) {
+  math_props["tanh"] = make_native_func_with_length("tanh", 1, fn(args) {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.tanh(n))
   })
-  math_props["asinh"] = make_native_func("asinh", fn(args) {
+  math_props["asinh"] = make_native_func_with_length("asinh", 1, fn(args) {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.asinh(n))
   })
-  math_props["acosh"] = make_native_func("acosh", fn(args) {
+  math_props["acosh"] = make_native_func_with_length("acosh", 1, fn(args) {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.acosh(n))
   })
-  math_props["atanh"] = make_native_func("atanh", fn(args) {
+  math_props["atanh"] = make_native_func_with_length("atanh", 1, fn(args) {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.atanh(n))
   })
-  math_props["exp"] = make_native_func("exp", fn(args) {
+  math_props["exp"] = make_native_func_with_length("exp", 1, fn(args) {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.exp(n))
   })
-  math_props["expm1"] = make_native_func("expm1", fn(args) {
+  math_props["expm1"] = make_native_func_with_length("expm1", 1, fn(args) {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.expm1(n))
   })
-  math_props["log1p"] = make_native_func("log1p", fn(args) {
+  math_props["log1p"] = make_native_func_with_length("log1p", 1, fn(args) {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     // log1p(x) = ln(1 + x), more accurate for small x
     if n.is_nan() || n < -1.0 {
@@ -1276,7 +1277,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
       Number(@math.ln(1.0 + n))
     }
   })
-  math_props["hypot"] = make_native_func("hypot", fn(args) {
+  math_props["hypot"] = make_native_func_with_length("hypot", 2, fn(args) {
     if args.length() == 0 {
       return Number(0.0)
     }
@@ -1293,7 +1294,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     }
     Number(sum.sqrt())
   })
-  math_props["cbrt"] = make_native_func("cbrt", fn(args) {
+  math_props["cbrt"] = make_native_func_with_length("cbrt", 1, fn(args) {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     if n.is_nan() || n.is_inf() || n == 0.0 {
       Number(n)
@@ -1302,7 +1303,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
       Number(sign * @math.pow(n.abs(), 1.0 / 3.0))
     }
   })
-  math_props["clz32"] = make_native_func("clz32", fn(args) {
+  math_props["clz32"] = make_native_func_with_length("clz32", 1, fn(args) {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 }
     let int_val = to_int32(n)
     if int_val == 0 {
@@ -1317,7 +1318,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     }
     Number(count.to_double())
   })
-  math_props["imul"] = make_native_func("imul", fn(args) {
+  math_props["imul"] = make_native_func_with_length("imul", 2, fn(args) {
     let a = if args.length() > 0 { to_number(args[0]) } else { 0.0 }
     let b = if args.length() > 1 { to_number(args[1]) } else { 0.0 }
     let int_a = to_int32(a)
@@ -1333,7 +1334,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     }
     Number(result.to_double())
   })
-  math_props["fround"] = make_native_func("fround", fn(args) {
+  math_props["fround"] = make_native_func_with_length("fround", 1, fn(args) {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     // Round to nearest float32 (basic approximation)
     if n.is_nan() || n.is_inf() || n == 0.0 {
@@ -1343,11 +1344,15 @@ fn setup_math_builtins(env : Environment) -> Unit {
       Number(Float::from_double(n).to_double())
     }
   })
+  // Set up Symbol.toStringTag for Math
+  let math_symbol_props : Map[Int, Value] = {}
+  let tostringtag_sym = get_tostringtag_symbol()
+  math_symbol_props[tostringtag_sym.id] = String_("Math")
   env.def_builtin(
     "Math",
     Object({
       properties: math_props,
-      symbol_properties: {},
+      symbol_properties: math_symbol_props,
       prototype: Null,
       callable: None,
       class_name: "Math",

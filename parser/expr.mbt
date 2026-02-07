@@ -28,6 +28,18 @@ fn Parser::parse_assignment(self : Parser) -> @ast.Expr raise Error {
         }
         _ => ()
       }
+    Get | Set => {
+      let name : String = if self.peek_kind() is Get { "get" } else { "set" }
+      match self.peek_kind_at(1) {
+        Arrow => {
+          let loc = self.advance().loc // consume get/set
+          let _ = self.advance() // consume =>
+          let body = self.parse_arrow_body()
+          return ArrowFunc([name], body, loc)
+        }
+        _ => ()
+      }
+    }
     _ => ()
   }
   // Try to parse arrow function with extended params: (a = 1, ...rest) => ...
@@ -608,6 +620,14 @@ fn Parser::parse_primary(self : Parser) -> @ast.Expr raise Error {
     Ident(name) => {
       self.pos += 1
       Ident(name, tok.loc)
+    }
+    Get => {
+      self.pos += 1
+      Ident("get", tok.loc)
+    }
+    Set => {
+      self.pos += 1
+      Ident("set", tok.loc)
     }
     This => {
       self.pos += 1
