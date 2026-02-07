@@ -20,7 +20,9 @@ fn Parser::parse_stmt(self : Parser) -> @ast.Stmt raise Error {
     Switch => self.parse_switch_stmt()
     Do => self.parse_do_while_stmt()
     LBrace => self.parse_block_stmt()
-    Ident(_) | Get | Set =>
+    Import => self.parse_import_decl()
+    Export => self.parse_export_decl()
+    Ident(_) | Get | Set | From | As =>
       // Labeled statement: ident ':'
       if self.peek_kind_at(1) == Colon {
         self.parse_labeled_stmt()
@@ -580,6 +582,8 @@ fn Parser::parse_labeled_stmt(self : Parser) -> @ast.Stmt raise Error {
     Ident(name) => name
     Get => "get"
     Set => "set"
+    From => "from"
+    As => "as"
     _ =>
       raise @errors.SyntaxError(
         message="Expected label name at line \{tok.loc.line}, col \{tok.loc.col}",
@@ -689,4 +693,375 @@ fn Parser::parse_class_decl(self : Parser) -> @ast.Stmt raise Error {
   }
   let methods = self.parse_class_body()
   ClassDecl(name, superclass, methods, tok.loc)
+}
+
+///|
+/// Expect the contextual keyword 'from' (which is tokenized as From)
+fn Parser::expect_from(self : Parser) -> @token.Token raise Error {
+  if self.at(From) {
+    self.advance()
+  } else {
+    let tok = self.peek()
+    raise @errors.SyntaxError(
+      message="Expected 'from', got \{tok.kind} at line \{tok.loc.line}, col \{tok.loc.col}",
+    )
+  }
+}
+
+///|
+/// Expect 'as' contextual keyword
+fn Parser::expect_as(self : Parser) -> @token.Token raise Error {
+  if self.at(As) {
+    self.advance()
+  } else {
+    let tok = self.peek()
+    raise @errors.SyntaxError(
+      message="Expected 'as', got \{tok.kind} at line \{tok.loc.line}, col \{tok.loc.col}",
+    )
+  }
+}
+
+///|
+/// Accept an identifier or a keyword-as-identifier for import/export specifiers
+/// In import/export specifiers, keywords like 'default' can be used: export { x as default }
+fn Parser::expect_module_export_name(self : Parser) -> String raise Error {
+  let tok = self.peek()
+  match tok.kind {
+    Ident(name) => {
+      self.pos += 1
+      name
+    }
+    String_(s) => {
+      self.pos += 1
+      s
+    }
+    Default => {
+      self.pos += 1
+      "default"
+    }
+    Get => {
+      self.pos += 1
+      "get"
+    }
+    Set => {
+      self.pos += 1
+      "set"
+    }
+    From => {
+      self.pos += 1
+      "from"
+    }
+    As => {
+      self.pos += 1
+      "as"
+    }
+    Let => {
+      self.pos += 1
+      "let"
+    }
+    Const => {
+      self.pos += 1
+      "const"
+    }
+    Var => {
+      self.pos += 1
+      "var"
+    }
+    Class => {
+      self.pos += 1
+      "class"
+    }
+    Function => {
+      self.pos += 1
+      "function"
+    }
+    If => {
+      self.pos += 1
+      "if"
+    }
+    Else => {
+      self.pos += 1
+      "else"
+    }
+    Return => {
+      self.pos += 1
+      "return"
+    }
+    Typeof => {
+      self.pos += 1
+      "typeof"
+    }
+    New => {
+      self.pos += 1
+      "new"
+    }
+    This => {
+      self.pos += 1
+      "this"
+    }
+    Void => {
+      self.pos += 1
+      "void"
+    }
+    Delete => {
+      self.pos += 1
+      "delete"
+    }
+    In => {
+      self.pos += 1
+      "in"
+    }
+    Instanceof => {
+      self.pos += 1
+      "instanceof"
+    }
+    Static => {
+      self.pos += 1
+      "static"
+    }
+    Import => {
+      self.pos += 1
+      "import"
+    }
+    Export => {
+      self.pos += 1
+      "export"
+    }
+    _ =>
+      raise @errors.SyntaxError(
+        message="Expected identifier or keyword in module specifier, got \{tok.kind} at line \{tok.loc.line}, col \{tok.loc.col}",
+      )
+  }
+}
+
+///|
+/// Parse import declaration
+/// Forms:
+///   import 'source'
+///   import defaultExport from 'source'
+///   import { name1, name2 as alias } from 'source'
+///   import * as namespace from 'source'
+///   import defaultExport, { name1 } from 'source'
+///   import defaultExport, * as namespace from 'source'
+fn Parser::parse_import_decl(self : Parser) -> @ast.Stmt raise Error {
+  let tok = self.expect(Import)
+  // import 'source' - side effect only import
+  if self.peek_kind() is String_(_) {
+    let source = match self.advance().kind {
+      String_(s) => s
+      _ => abort("unreachable")
+    }
+    self.eat_semicolon()
+    return ImportDecl(None, [], None, source, tok.loc)
+  }
+  let mut default_import : String? = None
+  let mut specifiers : Array[@ast.ImportSpecifier] = []
+  let mut namespace_import : String? = None
+  // Check for * as namespace
+  if self.at(Star) {
+    let _ = self.advance() // consume *
+    let _ = self.expect_as()
+    namespace_import = Some(self.expect_ident())
+  } else if self.at(LBrace) {
+    // { name1, name2 as alias }
+    specifiers = self.parse_import_specifiers()
+  } else {
+    // default import name
+    default_import = Some(self.expect_ident())
+    // May be followed by , { ... } or , * as name
+    if self.eat(Comma) {
+      if self.at(Star) {
+        let _ = self.advance() // consume *
+        let _ = self.expect_as()
+        namespace_import = Some(self.expect_ident())
+      } else if self.at(LBrace) {
+        specifiers = self.parse_import_specifiers()
+      } else {
+        let t = self.peek()
+        raise @errors.SyntaxError(
+          message="Expected '{' or '*' after ',' in import at line \{t.loc.line}, col \{t.loc.col}",
+        )
+      }
+    }
+  }
+  let _ = self.expect_from()
+  let source = match self.peek_kind() {
+    String_(s) => {
+      self.pos += 1
+      s
+    }
+    _ => {
+      let t = self.peek()
+      raise @errors.SyntaxError(
+        message="Expected module source string after 'from' at line \{t.loc.line}, col \{t.loc.col}",
+      )
+    }
+  }
+  self.eat_semicolon()
+  ImportDecl(default_import, specifiers, namespace_import, source, tok.loc)
+}
+
+///|
+/// Parse import specifiers: { name1, name2 as alias, ... }
+fn Parser::parse_import_specifiers(
+  self : Parser,
+) -> Array[@ast.ImportSpecifier] raise Error {
+  let _ = self.expect(LBrace)
+  let specs : Array[@ast.ImportSpecifier] = []
+  while not(self.at(RBrace)) && not(self.at(EOF)) {
+    let imported = self.expect_module_export_name()
+    let local = if self.at(As) {
+      let _ = self.advance() // consume 'as'
+      self.expect_ident()
+    } else {
+      imported
+    }
+    specs.push({ local, imported })
+    if not(self.at(RBrace)) {
+      let _ = self.expect(Comma)
+
+    }
+  }
+  let _ = self.expect(RBrace)
+  specs
+}
+
+///|
+/// Parse export declaration
+/// Forms:
+///   export { name1, name2 as alias }
+///   export { name1 } from 'source'
+///   export let/const/var name = value
+///   export function name() {}
+///   export class Name {}
+///   export default expression
+///   export default function name() {}
+///   export default class Name {}
+///   export * from 'source'
+///   export * as name from 'source'
+fn Parser::parse_export_decl(self : Parser) -> @ast.Stmt raise Error {
+  let tok = self.expect(Export)
+  // export default ...
+  if self.at(Default) {
+    let _ = self.advance() // consume 'default'
+    // export default function name() {}
+    if self.at(Function) {
+      let func_stmt = self.parse_func_decl()
+      // Wrap in ExportDefaultDecl: extract the function as an expression
+      let expr = match func_stmt {
+        FuncDecl(name, params, body, loc) =>
+          @ast.FuncExpr(Some(name), params, body, loc)
+        FuncDeclExt(name, params, rest, body, loc) =>
+          @ast.FuncExprExt(Some(name), params, rest, body, loc)
+        _ => abort("unreachable")
+      }
+      return ExportDefaultDecl(expr, tok.loc)
+    }
+    // export default class Name {}
+    if self.at(Class) {
+      let class_stmt = self.parse_class_decl()
+      let expr = match class_stmt {
+        ClassDecl(name, super_class, methods, loc) =>
+          @ast.ClassExpr(Some(name), super_class, methods, loc)
+        _ => abort("unreachable")
+      }
+      return ExportDefaultDecl(expr, tok.loc)
+    }
+    // export default expression
+    let expr = self.parse_assignment()
+    self.eat_semicolon()
+    return ExportDefaultDecl(expr, tok.loc)
+  }
+  // export * from 'source' or export * as name from 'source'
+  if self.at(Star) {
+    let _ = self.advance() // consume *
+    let alias : String? = if self.at(As) {
+      let _ = self.advance() // consume 'as'
+      Some(self.expect_module_export_name())
+    } else {
+      None
+    }
+    let _ = self.expect_from()
+    let source = match self.peek_kind() {
+      String_(s) => {
+        self.pos += 1
+        s
+      }
+      _ => {
+        let t = self.peek()
+        raise @errors.SyntaxError(
+          message="Expected module source string at line \{t.loc.line}, col \{t.loc.col}",
+        )
+      }
+    }
+    self.eat_semicolon()
+    return ExportAllDecl(alias, source, tok.loc)
+  }
+  // export { name1, name2 as alias } [from 'source']
+  if self.at(LBrace) {
+    let specs = self.parse_export_specifiers()
+    let source : String? = if self.at(From) {
+      let _ = self.advance() // consume 'from'
+      match self.peek_kind() {
+        String_(s) => {
+          self.pos += 1
+          Some(s)
+        }
+        _ => {
+          let t = self.peek()
+          raise @errors.SyntaxError(
+            message="Expected module source string at line \{t.loc.line}, col \{t.loc.col}",
+          )
+        }
+      }
+    } else {
+      None
+    }
+    self.eat_semicolon()
+    return ExportNamedDecl(None, specs, source, tok.loc)
+  }
+  // export let/const/var ...
+  if self.at(Let) || self.at(Const) || self.at(Var) {
+    let decl = self.parse_var_decl()
+    return ExportNamedDecl(Some(decl), [], None, tok.loc)
+  }
+  // export function name() {}
+  if self.at(Function) {
+    let decl = self.parse_func_decl()
+    return ExportNamedDecl(Some(decl), [], None, tok.loc)
+  }
+  // export class Name {}
+  if self.at(Class) {
+    let decl = self.parse_class_decl()
+    return ExportNamedDecl(Some(decl), [], None, tok.loc)
+  }
+  let t = self.peek()
+  raise @errors.SyntaxError(
+    message="Unexpected token after export at line \{t.loc.line}, col \{t.loc.col}",
+  )
+}
+
+///|
+/// Parse export specifiers: { name1, name2 as alias, ... }
+fn Parser::parse_export_specifiers(
+  self : Parser,
+) -> Array[@ast.ExportSpecifier] raise Error {
+  let _ = self.expect(LBrace)
+  let specs : Array[@ast.ExportSpecifier] = []
+  while not(self.at(RBrace)) && not(self.at(EOF)) {
+    let local = self.expect_module_export_name()
+    let exported = if self.at(As) {
+      let _ = self.advance() // consume 'as'
+      self.expect_module_export_name()
+    } else {
+      local
+    }
+    specs.push({ local, exported })
+    if not(self.at(RBrace)) {
+      let _ = self.expect(Comma)
+
+    }
+  }
+  let _ = self.expect(RBrace)
+  specs
 }

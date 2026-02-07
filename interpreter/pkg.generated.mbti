@@ -166,11 +166,15 @@ pub(all) struct Interpreter {
   timer_id_counter : Ref[Int]
   timer_insertion_counter : Ref[Int]
   cancelled_timer_ids : Map[Int, Bool]
+  module_registry : Map[String, Map[String, Value]]
+  module_exports : Map[String, Value]
 }
 pub fn Interpreter::enqueue_microtask(Self, Value, Array[Value]) -> Unit
 pub fn Interpreter::new() -> Self
+pub fn Interpreter::register_module(Self, String, Map[String, Value]) -> Unit
 pub fn Interpreter::run(Self, Array[@ast.Stmt]) -> Value raise
 pub fn Interpreter::run_microtasks(Self) -> Unit raise
+pub fn Interpreter::run_module(Self, Array[@ast.Stmt]) -> Map[String, Value] raise
 pub fn Interpreter::run_timers(Self) -> Unit raise
 
 pub(all) struct MapData {

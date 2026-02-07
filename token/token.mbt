@@ -55,6 +55,11 @@ pub(all) enum TokenKind {
   Static
   Get
   Set
+  // Module-related
+  Import
+  Export
+  From
+  As
   // Operators
   Plus
   Minus

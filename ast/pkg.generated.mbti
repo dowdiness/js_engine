@@ -40,6 +40,20 @@ pub(all) enum BinOp {
 pub impl Eq for BinOp
 pub impl Show for BinOp
 
+pub(all) struct ExportSpecifier {
+  local : String
+  exported : String
+}
+pub impl Eq for ExportSpecifier
+pub impl Show for ExportSpecifier
+
+pub(all) struct ImportSpecifier {
+  local : String
+  imported : String
+}
+pub impl Eq for ImportSpecifier
+pub impl Show for ImportSpecifier
+
 pub(all) struct ClassMethod {
   key : Expr
   value : Expr
@@ -181,6 +195,10 @@ pub(all) enum Stmt {
   DestructureDecl(VarKind, Pattern, Expr, @token.Loc)
   LabeledStmt(String, Stmt, @token.Loc)
   ClassDecl(String, Expr?, Array[ClassMethod], @token.Loc)
+  ImportDecl(String?, Array[ImportSpecifier], String?, String, @token.Loc)
+  ExportNamedDecl(Stmt?, Array[ExportSpecifier], String?, @token.Loc)
+  ExportDefaultDecl(Expr, @token.Loc)
+  ExportAllDecl(String?, String, @token.Loc)
 }
 pub impl Eq for Stmt
 pub impl Show for Stmt

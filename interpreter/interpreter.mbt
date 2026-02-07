@@ -39,6 +39,9 @@ pub(all) struct Interpreter {
   timer_id_counter : Ref[Int] // Next timer ID
   timer_insertion_counter : Ref[Int] // Insertion order counter
   cancelled_timer_ids : Map[Int, Bool] // IDs cancelled during callback execution
+  // ES Modules support
+  module_registry : Map[String, Map[String, Value]] // module specifier -> exports namespace
+  module_exports : Map[String, Value] // current module's exports being built
 }
 
 ///|
@@ -75,6 +78,8 @@ pub fn Interpreter::new() -> Interpreter {
     timer_id_counter,
     timer_insertion_counter,
     cancelled_timer_ids,
+    module_registry: {},
+    module_exports: {},
   }
 }
 
@@ -873,6 +878,30 @@ fn Interpreter::exec_stmt(
       }
       Normal(Undefined)
     }
+    // ES Module declarations
+    ImportDecl(default_import, specifiers, namespace_import, source, loc) =>
+      self.exec_import(default_import, specifiers, namespace_import, source, env, loc)
+    ExportNamedDecl(decl, specifiers, source, loc) =>
+      self.exec_export_named(decl, specifiers, source, env, loc)
+    ExportDefaultDecl(expr, _) => {
+      let value = self.eval_expr(expr, env)
+      self.module_exports["default"] = value
+      // Named default exports also bind the name locally
+      match expr {
+        FuncExpr(Some(name), _, _, _) | FuncExprExt(Some(name), _, _, _, _) =>
+          if not(env.bindings.contains(name)) {
+            env.def(name, value, LetBinding)
+          }
+        ClassExpr(Some(name), _, _, _) =>
+          if not(env.bindings.contains(name)) {
+            env.def(name, value, LetBinding)
+          }
+        _ => ()
+      }
+      Normal(Undefined)
+    }
+    ExportAllDecl(alias, source, loc) =>
+      self.exec_export_all(alias, source, loc)
   }
 }
 
@@ -1014,6 +1043,11 @@ fn Interpreter::hoist_declarations(
             _ => ()
           }
         }
+      // Export with declaration: hoist the inner declaration
+      ExportNamedDecl(Some(decl), _, _, _) => {
+        let inner_stmts : Array[@ast.Stmt] = [decl]
+        self.hoist_declarations(inner_stmts, env)
+      }
       _ => ()
     }
   }
@@ -1045,6 +1079,11 @@ fn hoist_block_tdz(
         if not(env.bindings.contains(name)) {
           env.def_tdz(name, LetBinding)
         }
+      // Export with declaration: hoist let/const inner declarations with TDZ
+      ExportNamedDecl(Some(decl), _, _, _) => {
+        let inner_stmts : Array[@ast.Stmt] = [decl]
+        hoist_block_tdz(inner_stmts, env)
+      }
       _ => ()
     }
   }
@@ -5063,5 +5102,278 @@ fn Interpreter::eval_nullish_assign(
       raise @errors.SyntaxError(
         message="Invalid assignment target at line \{loc.line}, col \{loc.col}",
       )
+  }
+}
+
+///|
+/// Execute an import declaration
+fn Interpreter::exec_import(
+  self : Interpreter,
+  default_import : String?,
+  specifiers : Array[@ast.ImportSpecifier],
+  namespace_import : String?,
+  source : String,
+  env : Environment,
+  loc : @token.Loc,
+) -> Signal raise Error {
+  // Look up module in registry
+  let module_exports = match self.module_registry.get(source) {
+    Some(exports) => exports
+    None =>
+      raise @errors.SyntaxError(
+        message="Cannot find module '\{source}' at line \{loc.line}, col \{loc.col}",
+      )
+  }
+  // import defaultExport from 'source'
+  match default_import {
+    Some(name) => {
+      let value = match module_exports.get("default") {
+        Some(v) => v
+        None =>
+          raise @errors.SyntaxError(
+            message="Module '\{source}' does not have a default export at line \{loc.line}, col \{loc.col}",
+          )
+      }
+      env.def(name, value, ConstBinding)
+    }
+    None => ()
+  }
+  // import { name1, name2 as alias } from 'source'
+  for spec in specifiers {
+    let value = match module_exports.get(spec.imported) {
+      Some(v) => v
+      None =>
+        raise @errors.SyntaxError(
+          message="Module '\{source}' does not export '\{spec.imported}' at line \{loc.line}, col \{loc.col}",
+        )
+    }
+    env.def(spec.local, value, ConstBinding)
+  }
+  // import * as namespace from 'source'
+  match namespace_import {
+    Some(name) => {
+      // Create a namespace object with all exports as properties
+      let ns_props : Map[String, Value] = {}
+      module_exports.each(fn(k, v) { ns_props[k] = v })
+      let ns_obj : Value = Object({
+        properties: ns_props,
+        symbol_properties: {},
+        prototype: Null,
+        callable: None,
+        class_name: "Module",
+        descriptors: {},
+        symbol_descriptors: {},
+        extensible: false,
+      })
+      env.def(name, ns_obj, ConstBinding)
+    }
+    None => ()
+  }
+  Normal(Undefined)
+}
+
+///|
+/// Execute a named export declaration
+fn Interpreter::exec_export_named(
+  self : Interpreter,
+  decl : @ast.Stmt?,
+  specifiers : Array[@ast.ExportSpecifier],
+  source : String?,
+  env : Environment,
+  loc : @token.Loc,
+) -> Signal raise Error {
+  // export let/const/var/function/class ...
+  match decl {
+    Some(inner_decl) => {
+      let signal = self.exec_stmt(inner_decl, env)
+      // Extract declared names and add to module_exports
+      self.extract_export_names(inner_decl, env)
+      return signal
+    }
+    None => ()
+  }
+  // export { name1, name2 as alias } [from 'source']
+  match source {
+    Some(src) => {
+      // Re-export from another module
+      let src_exports = match self.module_registry.get(src) {
+        Some(exports) => exports
+        None =>
+          raise @errors.SyntaxError(
+            message="Cannot find module '\{src}' at line \{loc.line}, col \{loc.col}",
+          )
+      }
+      for spec in specifiers {
+        let value = match src_exports.get(spec.local) {
+          Some(v) => v
+          None =>
+            raise @errors.SyntaxError(
+              message="Module '\{src}' does not export '\{spec.local}' at line \{loc.line}, col \{loc.col}",
+            )
+        }
+        self.module_exports[spec.exported] = value
+      }
+    }
+    None =>
+      // Local re-export: export { name1, name2 as alias }
+      for spec in specifiers {
+        let value = env.get(spec.local)
+        self.module_exports[spec.exported] = value
+      }
+  }
+  Normal(Undefined)
+}
+
+///|
+/// Execute export * from 'source' or export * as name from 'source'
+fn Interpreter::exec_export_all(
+  self : Interpreter,
+  alias : String?,
+  source : String,
+  loc : @token.Loc,
+) -> Signal raise Error {
+  let src_exports = match self.module_registry.get(source) {
+    Some(exports) => exports
+    None =>
+      raise @errors.SyntaxError(
+        message="Cannot find module '\{source}' at line \{loc.line}, col \{loc.col}",
+      )
+  }
+  match alias {
+    Some(name) => {
+      // export * as name from 'source' - create namespace object
+      let ns_props : Map[String, Value] = {}
+      src_exports.each(fn(k, v) { ns_props[k] = v })
+      let ns_obj : Value = Object({
+        properties: ns_props,
+        symbol_properties: {},
+        prototype: Null,
+        callable: None,
+        class_name: "Module",
+        descriptors: {},
+        symbol_descriptors: {},
+        extensible: false,
+      })
+      self.module_exports[name] = ns_obj
+    }
+    None =>
+      // export * from 'source' - re-export all (except default)
+      src_exports.each(fn(k, v) {
+        if k != "default" {
+          self.module_exports[k] = v
+        }
+      })
+  }
+  Normal(Undefined)
+}
+
+///|
+/// Extract exported names from a declaration statement
+fn Interpreter::extract_export_names(
+  self : Interpreter,
+  decl : @ast.Stmt,
+  env : Environment,
+) -> Unit raise Error {
+  match decl {
+    VarDecl(_, name, _, _) => self.module_exports[name] = env.get(name)
+    FuncDecl(name, _, _, _) => self.module_exports[name] = env.get(name)
+    FuncDeclExt(name, _, _, _, _) => self.module_exports[name] = env.get(name)
+    ClassDecl(name, _, _, _) => self.module_exports[name] = env.get(name)
+    DestructureDecl(_, pattern, _, _) =>
+      self.extract_pattern_export_names(pattern, env)
+    StmtList(stmts, _) =>
+      for stmt in stmts {
+        self.extract_export_names(stmt, env)
+      }
+    _ => ()
+  }
+}
+
+///|
+/// Extract names from a destructuring pattern and add to module exports
+fn Interpreter::extract_pattern_export_names(
+  self : Interpreter,
+  pattern : @ast.Pattern,
+  env : Environment,
+) -> Unit raise Error {
+  match pattern {
+    IdentPat(name) => self.module_exports[name] = env.get(name)
+    ArrayPat(elements, rest) => {
+      for elem in elements {
+        match elem {
+          Some(p) => self.extract_pattern_export_names(p, env)
+          None => ()
+        }
+      }
+      match rest {
+        Some(p) => self.extract_pattern_export_names(p, env)
+        None => ()
+      }
+    }
+    ObjectPat(props, rest) => {
+      for prop in props {
+        self.extract_pattern_export_names(prop.value, env)
+      }
+      match rest {
+        Some(p) => self.extract_pattern_export_names(p, env)
+        None => ()
+      }
+    }
+  }
+}
+
+///|
+/// Register a module's exports in the module registry
+pub fn Interpreter::register_module(
+  self : Interpreter,
+  specifier : String,
+  exports : Map[String, Value],
+) -> Unit {
+  self.module_registry[specifier] = exports
+}
+
+///|
+/// Run a module source and return its exports
+pub fn Interpreter::run_module(
+  self : Interpreter,
+  stmts : Array[@ast.Stmt],
+) -> Map[String, Value] raise Error {
+  // Save and reset module exports for this module
+  let saved_exports = self.module_exports
+  self.module_exports = {}
+  // Create a module-scoped environment that inherits from global
+  let module_env = Environment::new(parent=Some(self.global))
+  try {
+    // Modules are always strict mode
+    let saved_strict = self.strict
+    self.strict = true
+    // Hoist var declarations and function declarations
+    self.hoist_declarations(stmts, module_env)
+    // Also hoist block-scoped (let/const/class) with TDZ
+    hoist_block_tdz(stmts, module_env)
+    for stmt in stmts {
+      match self.exec_stmt(stmt, module_env) {
+        Normal(_) => ()
+        ReturnSignal(_) =>
+          raise @errors.SyntaxError(
+            message="return statement outside of function",
+          )
+        BreakSignal(_) =>
+          raise @errors.SyntaxError(message="break statement outside of loop")
+        ContinueSignal(_) =>
+          raise @errors.SyntaxError(
+            message="continue statement outside of loop",
+          )
+      }
+    }
+    self.strict = saved_strict
+    let exports = self.module_exports
+    self.module_exports = saved_exports
+    exports
+  } catch {
+    e => {
+      self.module_exports = saved_exports
+      raise e
+    }
   }
 }

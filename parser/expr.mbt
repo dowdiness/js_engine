@@ -28,11 +28,16 @@ fn Parser::parse_assignment(self : Parser) -> @ast.Expr raise Error {
         }
         _ => ()
       }
-    Get | Set => {
-      let name : String = if self.peek_kind() is Get { "get" } else { "set" }
+    Get | Set | From | As => {
+      let name : String = match self.peek_kind() {
+        Get => "get"
+        Set => "set"
+        From => "from"
+        _ => "as"
+      }
       match self.peek_kind_at(1) {
         Arrow => {
-          let loc = self.advance().loc // consume get/set
+          let loc = self.advance().loc // consume keyword
           let _ = self.advance() // consume =>
           let body = self.parse_arrow_body()
           return ArrowFunc([name], body, loc)
@@ -629,6 +634,14 @@ fn Parser::parse_primary(self : Parser) -> @ast.Expr raise Error {
       self.pos += 1
       Ident("set", tok.loc)
     }
+    From => {
+      self.pos += 1
+      Ident("from", tok.loc)
+    }
+    As => {
+      self.pos += 1
+      Ident("as", tok.loc)
+    }
     This => {
       self.pos += 1
       ThisExpr(tok.loc)
@@ -808,7 +821,12 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
     let prop_kind : @ast.PropKind = match self.peek_kind() {
       Get =>
         match self.peek_kind_at(1) {
-          Ident(_) | String_(_) | Number(_) | LBracket => {
+          Ident(_) | String_(_) | Number(_) | LBracket | Get | Set | From | As
+          | Import | Export | Let | Const | Var | Function | Return | If | Else
+          | While | For | Break | Continue | True | False | Null | Undefined
+          | Typeof | Throw | Try | Catch | Finally | New | This | Switch | Case
+          | Default | Void | Delete | Do | In | Instanceof | Of | Class | Extends
+          | Super | Static => {
             // get <name>(...) - this is a getter
             self.pos += 1
             @ast.Get
@@ -817,7 +835,12 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
         }
       Set =>
         match self.peek_kind_at(1) {
-          Ident(_) | String_(_) | Number(_) | LBracket => {
+          Ident(_) | String_(_) | Number(_) | LBracket | Get | Set | From | As
+          | Import | Export | Let | Const | Var | Function | Return | If | Else
+          | While | For | Break | Continue | True | False | Null | Undefined
+          | Typeof | Throw | Try | Catch | Finally | New | This | Switch | Case
+          | Default | Void | Delete | Do | In | Instanceof | Of | Class | Extends
+          | Super | Static => {
             // set <name>(...) - this is a setter
             self.pos += 1
             @ast.Set
@@ -899,6 +922,10 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
           Extends => Some("extends")
           Super => Some("super")
           Static => Some("static")
+          Import => Some("import")
+          Export => Some("export")
+          From => Some("from")
+          As => Some("as")
           _ => None
         }
         match kw_name {
@@ -1173,7 +1200,12 @@ fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
   match self.peek_kind() {
     Get =>
       match self.peek_kind_at(1) {
-        Ident(_) | String_(_) | Number(_) | LBracket | LParen =>
+        Ident(_) | String_(_) | Number(_) | LBracket | LParen | Get | Set
+        | From | As | Import | Export | Let | Const | Var | Function | Return
+        | If | Else | While | For | Break | Continue | True | False | Null
+        | Undefined | Typeof | Throw | Try | Catch | Finally | New | This
+        | Switch | Case | Default | Void | Delete | Do | In | Instanceof | Of
+        | Class | Extends | Super | Static =>
           if not(self.at_kind_at(1, LParen)) {
             self.pos += 1
             method_kind = @ast.Get
@@ -1182,7 +1214,12 @@ fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
       }
     Set =>
       match self.peek_kind_at(1) {
-        Ident(_) | String_(_) | Number(_) | LBracket | LParen =>
+        Ident(_) | String_(_) | Number(_) | LBracket | LParen | Get | Set
+        | From | As | Import | Export | Let | Const | Var | Function | Return
+        | If | Else | While | For | Break | Continue | True | False | Null
+        | Undefined | Typeof | Throw | Try | Catch | Finally | New | This
+        | Switch | Case | Default | Void | Delete | Do | In | Instanceof | Of
+        | Class | Extends | Super | Static =>
           if not(self.at_kind_at(1, LParen)) {
             self.pos += 1
             method_kind = @ast.Set
@@ -1253,6 +1290,10 @@ fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
         Extends => Some("extends")
         Super => Some("super")
         Static => Some("static")
+        Import => Some("import")
+        Export => Some("export")
+        From => Some("from")
+        As => Some("as")
         _ => None
       }
       match kw_name {

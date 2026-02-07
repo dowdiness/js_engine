@@ -65,6 +65,10 @@ pub(all) enum TokenKind {
   Static
   Get
   Set
+  Import
+  Export
+  From
+  As
   Plus
   Minus
   Star

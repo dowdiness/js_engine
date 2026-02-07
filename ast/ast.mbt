@@ -159,6 +159,18 @@ pub(all) struct PropPat {
 } derive(Show, Eq)
 
 ///|
+pub(all) struct ImportSpecifier {
+  local : String // local binding name
+  imported : String // name exported by the module
+} derive(Show, Eq)
+
+///|
+pub(all) struct ExportSpecifier {
+  local : String // local binding name
+  exported : String // name to export as
+} derive(Show, Eq)
+
+///|
 pub(all) struct ClassMethod {
   key : Expr // StringLit for static keys, any Expr for computed keys
   value : Expr // Usually FuncExpr or FuncExprExt
@@ -195,6 +207,35 @@ pub(all) enum Stmt {
   LabeledStmt(String, Stmt, @token.Loc)
   // Class declaration
   ClassDecl(String, Expr?, Array[ClassMethod], @token.Loc) // name, superclass, methods
+  // Module declarations
+  // import defaultExport from 'source'
+  // import { spec1, spec2 } from 'source'
+  // import * as namespace from 'source'
+  // import 'source' (side effect only)
+  ImportDecl(
+    String?, // default import name
+    Array[ImportSpecifier], // named imports: { a, b as c }
+    String?, // namespace import: * as name
+    String, // module source string
+    @token.Loc,
+  )
+  // export { spec1, spec2 }
+  // export { spec1 } from 'source' (re-export)
+  ExportNamedDecl(
+    Stmt?, // declaration (var/let/const/func/class)
+    Array[ExportSpecifier], // named specifiers
+    String?, // source for re-export
+    @token.Loc,
+  )
+  // export default expression
+  ExportDefaultDecl(Expr, @token.Loc)
+  // export * from 'source'
+  // export * as name from 'source'
+  ExportAllDecl(
+    String?, // optional alias: export * as name
+    String, // source module
+    @token.Loc,
+  )
 } derive(Show, Eq)
 
 ///|
