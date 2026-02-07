@@ -190,6 +190,7 @@ pub(all) enum GenState {
 }
 
 pub(all) struct GeneratorObject {
+  id : Int
   mut state : GenState
   body : Array[@ast.Stmt]
   params : Array[String]

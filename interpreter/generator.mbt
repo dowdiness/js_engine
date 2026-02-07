@@ -26,6 +26,7 @@ pub(all) enum ResumeAction {
 ///|
 /// Generator object stored as internal data on an ObjectData
 pub(all) struct GeneratorObject {
+  id : Int // generator object ID for cleanup
   mut state : GenState
   // The interpreter, body, params, closure, etc. needed to execute
   body : Array[@ast.Stmt]
@@ -102,6 +103,21 @@ fn next_gen_id() -> Int {
   let id = gen_id_counter.val
   gen_id_counter.val = id + 1
   id
+}
+
+///|
+/// Mark generator as completed and remove from global map to free resources
+fn complete_generator(gen : GeneratorObject) -> Unit {
+  gen.state = Completed
+  // Clear heavy references to reduce memory pressure while keeping
+  // the object in the map so subsequent .next/.throw/.return calls
+  // correctly return {done: true} instead of "incompatible receiver".
+  gen.env = None
+  gen.delegate_iterator = Undefined
+  gen.delegate_next = Undefined
+  gen.for_of_iterator = Undefined
+  gen.for_of_next = Undefined
+  gen.loop_env_stack.clear()
 }
 
 ///|
@@ -233,7 +249,7 @@ fn Interpreter::make_generator_function(
   self : Interpreter,
   name : String?,
   params : Array[String],
-  _rest_param : String?,
+  rest_param : String?,
   body : Array[@ast.Stmt],
   closure : Environment,
 ) -> Value {
@@ -270,7 +286,7 @@ fn Interpreter::make_generator_function(
             name,
             params,
             None,
-            None,
+            rest_param,
             body,
             closure,
             func_prototype,
@@ -358,6 +374,7 @@ fn create_generator_instance(
 ) -> Value raise Error {
   let gen_id = next_gen_id()
   let gen_obj : GeneratorObject = {
+    id: gen_id,
     state: SuspendedStart,
     body,
     params,
@@ -445,12 +462,12 @@ fn generator_resume(
         }
         Throw(e) => {
           // .throw(e) on SuspendedStart: complete generator and throw
-          gen.state = Completed
+          complete_generator(gen)
           raise JsException(e)
         }
         Return(v) => {
           // .return(v) on SuspendedStart: complete generator and return done
-          gen.state = Completed
+          complete_generator(gen)
           make_iterator_result(v, true)
         }
       }
@@ -612,7 +629,7 @@ fn run_generator_body(
         GeneratorReturnSignal(v) => {
           // .return(v) was injected at yield point and propagated up
           // (possibly through finally blocks). Complete the generator.
-          gen.state = Completed
+          complete_generator(gen)
           current_generator.val = prev_gen
           return make_iterator_result(v, true)
         }
@@ -623,7 +640,7 @@ fn run_generator_body(
       match signal {
         Normal(v) => last_val = v
         ReturnSignal(v) => {
-          gen.state = Completed
+          complete_generator(gen)
           current_generator.val = prev_gen
           return make_iterator_result(v, true)
         }
@@ -631,11 +648,11 @@ fn run_generator_body(
       }
     }
     // Body completed normally
-    gen.state = Completed
+    complete_generator(gen)
     make_iterator_result(last_val, true)
   } catch {
     e => {
-      gen.state = Completed
+      complete_generator(gen)
       current_generator.val = prev_gen
       raise e
     }
@@ -658,7 +675,7 @@ fn generator_continue(
       run_generator_body(interp, gen, env)
     }
     None => {
-      gen.state = Completed
+      complete_generator(gen)
       make_iterator_result(Undefined, true)
     }
   }
@@ -833,13 +850,12 @@ fn delegate_resume(
       let (done, value) = extract_iter_result(result)
       if done {
         // Delegate completed — yield* expression evaluates to the return value
-        // Resume the outer generator body
+        // Resume the outer generator body (state is already Executing from caller)
         gen.delegating = false
         gen.delegate_iterator = Undefined
         gen.delegate_next = Undefined
         gen.yield_value = value
         gen.resume_action = NextAction
-        gen.state = SuspendedYield
         generator_continue(interp, gen)
       } else {
         // Delegate yielded — suspend the outer generator
@@ -861,7 +877,6 @@ fn delegate_resume(
             gen.delegate_next = Undefined
             gen.yield_value = value
             gen.resume_action = NextAction
-            gen.state = SuspendedYield
             generator_continue(interp, gen)
           } else {
             // Delegate yielded after throw (e.g. from catch block)
@@ -874,7 +889,6 @@ fn delegate_resume(
           gen.delegating = false
           gen.delegate_iterator = Undefined
           gen.delegate_next = Undefined
-          gen.state = SuspendedYield
           gen.yield_value = Undefined
           gen.resume_action = ThrowAction(e)
           generator_continue(interp, gen)
@@ -893,7 +907,7 @@ fn delegate_resume(
             gen.delegating = false
             gen.delegate_iterator = Undefined
             gen.delegate_next = Undefined
-            gen.state = Completed
+            complete_generator(gen)
             make_iterator_result(value, true)
           } else {
             // Delegate yielded from finally — outer stays suspended delegating
@@ -906,7 +920,7 @@ fn delegate_resume(
           gen.delegating = false
           gen.delegate_iterator = Undefined
           gen.delegate_next = Undefined
-          gen.state = Completed
+          complete_generator(gen)
           make_iterator_result(v, true)
         }
       }

@@ -1629,7 +1629,92 @@ fn Interpreter::assign_pattern(
     ArrayPat(elements, rest) => {
       let arr_elements : Array[Value] = match value {
         Array(data) => data.elements
-        _ => []
+        _ => {
+          // Try iterator protocol for non-array iterables (e.g. generators)
+          let loc = @token.Loc::default()
+          let iterator_sym = get_iterator_symbol()
+          let iterator_method = self.get_computed_property(
+            value,
+            Symbol(iterator_sym),
+            loc,
+          )
+          match iterator_method {
+            Object(data) =>
+              match data.callable {
+                Some(_) => {
+                  let iterator = self.call_value(
+                    iterator_method,
+                    value,
+                    [],
+                    loc,
+                  )
+                  // Get next method from iterator (walk prototype chain)
+                  let next_method : Value = match iterator {
+                    Object(iter_data) =>
+                      match iter_data.properties.get("next") {
+                        Some(next_fn) => next_fn
+                        None => {
+                          let mut found : Value = Undefined
+                          let mut current = iter_data.prototype
+                          while true {
+                            match current {
+                              Object(proto_data) =>
+                                match proto_data.properties.get("next") {
+                                  Some(next_fn) => {
+                                    found = next_fn
+                                    break
+                                  }
+                                  None => current = proto_data.prototype
+                                }
+                              _ => break
+                            }
+                          }
+                          found
+                        }
+                      }
+                    _ => Undefined
+                  }
+                  match next_method {
+                    Undefined => []
+                    _ => {
+                      let collected : Array[Value] = []
+                      while true {
+                        let iter_result = self.call_value(
+                          next_method,
+                          iterator,
+                          [],
+                          loc,
+                        )
+                        let (done, val) = match iter_result {
+                          Object(result_data) => {
+                            let done_val = match
+                              result_data.properties.get("done") {
+                              Some(v) => is_truthy(v)
+                              None => false
+                            }
+                            let value_val = match
+                              result_data.properties.get("value") {
+                              Some(v) => v
+                              None => Undefined
+                            }
+                            (done_val, value_val)
+                          }
+                          _ => (true, Undefined)
+                        }
+                        if done {
+                          break
+                        }
+                        collected.push(val)
+                      }
+                      collected
+                    }
+                  }
+                }
+                None => []
+              }
+            _ => []
+          }
+        }
       }
       for i = 0; i < elements.length(); i = i + 1 {
         match elements[i] {
