@@ -1,4 +1,5 @@
-///| JS target: process.argv = ["node", "script.js", ...]
+///|
+/// JS target: process.argv = ["node", "script.js", ...]
 fn parse_args(args : Array[String]) -> (Bool, String?) {
   // JS target has 2 extra prefix args: ["node", "script.js", ...]
   if args.length() < 3 {

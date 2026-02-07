@@ -78,7 +78,9 @@ pub fn run_timer_checkpoint(
 ///|
 /// Run a JavaScript module source and return its exports
 /// The module is executed in strict mode and its exports are collected
-pub fn run_module(source : String) -> (Array[String], Map[String, @interpreter.Value]) raise Error {
+pub fn run_module(
+  source : String,
+) -> (Array[String], Map[String, @interpreter.Value]) raise Error {
   let interp = @interpreter.Interpreter::new()
   let prog = @parser.parse(source)
   let exports = interp.run_module(prog.stmts)

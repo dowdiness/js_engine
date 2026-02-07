@@ -378,9 +378,15 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
   // Set String.prototype.constructor = String
   match string_proto {
     Object(data) => {
-      let ctor = try { env.get("String") } catch { _ => Undefined }
+      let ctor = env.get("String") catch { _ => Undefined }
       data.properties["constructor"] = ctor
-      data.descriptors["constructor"] = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+      data.descriptors["constructor"] = {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
     }
     _ => ()
   }
@@ -462,9 +468,15 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
   // Set Boolean.prototype.constructor = Boolean
   match boolean_proto {
     Object(data) => {
-      let ctor = try { env.get("Boolean") } catch { _ => Undefined }
+      let ctor = env.get("Boolean") catch { _ => Undefined }
       data.properties["constructor"] = ctor
-      data.descriptors["constructor"] = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+      data.descriptors["constructor"] = {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
     }
     _ => ()
   }
@@ -706,9 +718,15 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
   // Set Symbol.prototype.constructor = Symbol
   match symbol_proto {
     Object(data) => {
-      let ctor = try { env.get("Symbol") } catch { _ => Undefined }
+      let ctor = env.get("Symbol") catch { _ => Undefined }
       data.properties["constructor"] = ctor
-      data.descriptors["constructor"] = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+      data.descriptors["constructor"] = {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
     }
     _ => ()
   }
@@ -1427,9 +1445,15 @@ fn register_error_ctor(
   // Set ErrorType.prototype.constructor = ErrorType
   match proto_obj {
     Object(data) => {
-      let ctor = try { env.get(name) } catch { _ => Undefined }
+      let ctor = env.get(name) catch { _ => Undefined }
       data.properties["constructor"] = ctor
-      data.descriptors["constructor"] = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+      data.descriptors["constructor"] = {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
     }
     _ => ()
   }
@@ -1977,9 +2001,15 @@ fn setup_number_builtins(env : Environment) -> Unit {
   // Set Number.prototype.constructor = Number
   match number_proto {
     Object(data) => {
-      let ctor = try { env.get("Number") } catch { _ => Undefined }
+      let ctor = env.get("Number") catch { _ => Undefined }
       data.properties["constructor"] = ctor
-      data.descriptors["constructor"] = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+      data.descriptors["constructor"] = {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
     }
     _ => ()
   }

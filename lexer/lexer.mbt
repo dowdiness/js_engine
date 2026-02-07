@@ -732,9 +732,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           ident_buf.write_char(ch)
           offset += 1
           col += 1
-        } else if ch == '\\' &&
-          offset + 1 < len &&
-          char_at(offset + 1) == 'u' {
+        } else if ch == '\\' && offset + 1 < len && char_at(offset + 1) == 'u' {
           offset += 2 // skip \ and u
           col += 2
           let cp = parse_unicode_escape()
@@ -1080,7 +1078,8 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       let num_start = offset
       offset += 1 // skip '.'
       col += 1
-      while offset < len && (is_digit(char_at(offset)) || char_at(offset) == '_') {
+      while offset < len &&
+            (is_digit(char_at(offset)) || char_at(offset) == '_') {
         if char_at(offset) == '_' {
           // Numeric separator must be between digits
           if offset + 1 >= len || not(is_digit(char_at(offset + 1))) {
@@ -1103,7 +1102,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         }
         let digit_start = offset
         while offset < len &&
-          (is_digit(char_at(offset)) || char_at(offset) == '_') {
+              (is_digit(char_at(offset)) || char_at(offset) == '_') {
           if char_at(offset) == '_' {
             if offset + 1 >= len || not(is_digit(char_at(offset + 1))) {
               raise @errors.SyntaxError(
@@ -1132,9 +1131,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         }
       }
       let num_str = buf.to_string()
-      let value = try {
-        @strconv.parse_double(num_str)
-      } catch {
+      let value = @strconv.parse_double(num_str) catch {
         _ =>
           raise @errors.SyntaxError(
             message="Invalid or unexpected token at line \{line}, col \{col}",

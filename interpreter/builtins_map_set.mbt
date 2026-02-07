@@ -452,7 +452,13 @@ fn setup_map_builtins(env : Environment) -> Unit {
   match map_proto {
     Object(data) => {
       data.properties["constructor"] = map_ctor
-      data.descriptors["constructor"] = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+      data.descriptors["constructor"] = {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
     }
     _ => ()
   }
@@ -804,7 +810,13 @@ fn setup_set_builtins(env : Environment) -> Unit {
   match set_proto {
     Object(data) => {
       data.properties["constructor"] = set_ctor
-      data.descriptors["constructor"] = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+      data.descriptors["constructor"] = {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
     }
     _ => ()
   }

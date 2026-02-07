@@ -285,40 +285,24 @@ test "lex unicode escape supplementary plane in string" {
 ///|
 test "lex unicode escape invalid identifier start" {
   // \u0031 is '1' — not valid at identifier start
-  let result = try {
-    Ok(@lexer.tokenize("\\u0031"))
-  } catch {
-    _ => Err(())
-  }
+  let result = Ok(@lexer.tokenize("\\u0031")) catch { _ => Err(()) }
   inspect(result, content="Err(())")
 }
 
 ///|
 test "lex unicode escape invalid hex digits" {
-  let result = try {
-    Ok(@lexer.tokenize("\"\\u00GZ\""))
-  } catch {
-    _ => Err(())
-  }
+  let result = Ok(@lexer.tokenize("\"\\u00GZ\"")) catch { _ => Err(()) }
   inspect(result, content="Err(())")
 }
 
 ///|
 test "lex unicode escape empty braces" {
-  let result = try {
-    Ok(@lexer.tokenize("\"\\u{}\""))
-  } catch {
-    _ => Err(())
-  }
+  let result = Ok(@lexer.tokenize("\"\\u{}\"")) catch { _ => Err(()) }
   inspect(result, content="Err(())")
 }
 
 ///|
 test "lex unicode escape code point too large" {
-  let result = try {
-    Ok(@lexer.tokenize("\"\\u{110000}\""))
-  } catch {
-    _ => Err(())
-  }
+  let result = Ok(@lexer.tokenize("\"\\u{110000}\"")) catch { _ => Err(()) }
   inspect(result, content="Err(())")
 }

@@ -217,7 +217,7 @@ pub(all) enum Stmt {
     Array[ImportSpecifier], // named imports: { a, b as c }
     String?, // namespace import: * as name
     String, // module source string
-    @token.Loc,
+    @token.Loc
   )
   // export { spec1, spec2 }
   // export { spec1 } from 'source' (re-export)
@@ -225,7 +225,7 @@ pub(all) enum Stmt {
     Stmt?, // declaration (var/let/const/func/class)
     Array[ExportSpecifier], // named specifiers
     String?, // source for re-export
-    @token.Loc,
+    @token.Loc
   )
   // export default expression
   ExportDefaultDecl(Expr, @token.Loc)
@@ -234,7 +234,7 @@ pub(all) enum Stmt {
   ExportAllDecl(
     String?, // optional alias: export * as name
     String, // source module
-    @token.Loc,
+    @token.Loc
   )
 } derive(Show, Eq)
 

@@ -93,7 +93,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 if key == "length" {
                   Bool(true)
                 } else {
-                  let idx = try { @strconv.parse_int(key) } catch { _ => -1 }
+                  let idx = @strconv.parse_int(key) catch { _ => -1 }
                   Bool(
                     idx >= 0 &&
                     idx.to_string() == key &&
@@ -106,10 +106,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 if key == "length" {
                   Bool(true)
                 } else {
-                  let idx = try { @strconv.parse_int(key) } catch { _ => -1 }
-                  Bool(
-                    idx >= 0 && idx.to_string() == key && idx < s.length(),
-                  )
+                  let idx = @strconv.parse_int(key) catch { _ => -1 }
+                  Bool(idx >= 0 && idx.to_string() == key && idx < s.length())
                 }
               }
               _ => Bool(false)
@@ -139,28 +137,24 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 } else {
                   Bool(false)
                 }
-              Array(data) => {
+              Array(data) =>
                 if key == "length" {
                   Bool(false) // length is not enumerable
                 } else {
-                  let idx = try { @strconv.parse_int(key) } catch { _ => -1 }
+                  let idx = @strconv.parse_int(key) catch { _ => -1 }
                   Bool(
                     idx >= 0 &&
                     idx.to_string() == key &&
                     idx < data.elements.length(),
                   )
                 }
-              }
-              String_(s) => {
+              String_(s) =>
                 if key == "length" {
                   Bool(false)
                 } else {
-                  let idx = try { @strconv.parse_int(key) } catch { _ => -1 }
-                  Bool(
-                    idx >= 0 && idx.to_string() == key && idx < s.length(),
-                  )
+                  let idx = @strconv.parse_int(key) catch { _ => -1 }
+                  Bool(idx >= 0 && idx.to_string() == key && idx < s.length())
                 }
-              }
               _ => Bool(false)
             }
           }),
@@ -213,11 +207,41 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     callable: None,
     class_name: "Object",
     descriptors: {
-      "toString": { writable: true, enumerable: false, configurable: true, getter: None, setter: None },
-      "valueOf": { writable: true, enumerable: false, configurable: true, getter: None, setter: None },
-      "hasOwnProperty": { writable: true, enumerable: false, configurable: true, getter: None, setter: None },
-      "propertyIsEnumerable": { writable: true, enumerable: false, configurable: true, getter: None, setter: None },
-      "isPrototypeOf": { writable: true, enumerable: false, configurable: true, getter: None, setter: None },
+      "toString": {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      },
+      "valueOf": {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      },
+      "hasOwnProperty": {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      },
+      "propertyIsEnumerable": {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      },
+      "isPrototypeOf": {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      },
     },
     symbol_descriptors: {},
     extensible: true,
@@ -338,9 +362,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               let entries : Array[Value] = []
               for i = 0; i < data.elements.length(); i = i + 1 {
                 entries.push(
-                  Array({
-                    elements: [String_(i.to_string()), data.elements[i]],
-                  }),
+                  Array({ elements: [String_(i.to_string()), data.elements[i]] }),
                 )
               }
               Array({ elements: entries })
@@ -366,8 +388,14 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               Undefined => ()
               // Per ECMAScript spec, only Object with properties field accepted
               // Arrays, Maps, Sets don't have properties field in our implementation
-              Null | String_(_) | Number(_) | Bool(_) | Symbol(_) | Array(_)
-              | Map(_) | Set(_) =>
+              Null
+              | String_(_)
+              | Number(_)
+              | Bool(_)
+              | Symbol(_)
+              | Array(_)
+              | Map(_)
+              | Set(_) =>
                 raise @errors.TypeError(
                   message="Property descriptors must be an object",
                 )
@@ -382,7 +410,9 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                           let has_set = desc.properties.contains("set")
                           let is_accessor = has_get || has_set
                           let has_value = desc.properties.contains("value")
-                          let has_writable = desc.properties.contains("writable")
+                          let has_writable = desc.properties.contains(
+                            "writable",
+                          )
                           let is_data = has_value || has_writable
                           // Accessor and data descriptor properties cannot be mixed
                           if is_accessor && is_data {
@@ -395,12 +425,14 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                             if not(data.properties.contains(prop_name)) {
                               data.properties[prop_name] = Undefined
                             }
-                            let getter : Value? = match desc.properties.get("get") {
+                            let getter : Value? = match
+                              desc.properties.get("get") {
                               Some(Undefined) => None
                               Some(v) => Some(v)
                               None => None
                             }
-                            let setter : Value? = match desc.properties.get("set") {
+                            let setter : Value? = match
+                              desc.properties.get("set") {
                               Some(Undefined) => None
                               Some(v) => Some(v)
                               None => None
@@ -432,11 +464,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                                   message="Setter must be a function: \{setter.unwrap().to_string()}",
                                 )
                             }
-                            let enumerable = match desc.properties.get("enumerable") {
+                            let enumerable = match
+                              desc.properties.get("enumerable") {
                               Some(v) => is_truthy(v)
                               _ => false
                             }
-                            let configurable = match desc.properties.get("configurable") {
+                            let configurable = match
+                              desc.properties.get("configurable") {
                               Some(v) => is_truthy(v)
                               _ => false
                             }
@@ -456,11 +490,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                                   data.properties[prop_name] = Undefined
                                 }
                             }
-                            let writable = match desc.properties.get("writable") {
+                            let writable = match
+                              desc.properties.get("writable") {
                               Some(v) => is_truthy(v)
                               _ => false
                             }
-                            let enumerable = match desc.properties.get("enumerable") {
+                            let enumerable = match
+                              desc.properties.get("enumerable") {
                               Some(v) => is_truthy(v)
                               _ => false
                             }
@@ -494,7 +530,9 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                           let has_set = desc.properties.contains("set")
                           let is_accessor = has_get || has_set
                           let has_value = desc.properties.contains("value")
-                          let has_writable = desc.properties.contains("writable")
+                          let has_writable = desc.properties.contains(
+                            "writable",
+                          )
                           let is_data = has_value || has_writable
                           if is_accessor && is_data {
                             raise @errors.TypeError(
@@ -505,12 +543,14 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                             if not(data.properties.contains(prop_name)) {
                               data.properties[prop_name] = Undefined
                             }
-                            let getter : Value? = match desc.properties.get("get") {
+                            let getter : Value? = match
+                              desc.properties.get("get") {
                               Some(Undefined) => None
                               Some(v) => Some(v)
                               None => None
                             }
-                            let setter : Value? = match desc.properties.get("set") {
+                            let setter : Value? = match
+                              desc.properties.get("set") {
                               Some(Undefined) => None
                               Some(v) => Some(v)
                               None => None
@@ -542,11 +582,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                                   message="Setter must be a function: \{setter.unwrap().to_string()}",
                                 )
                             }
-                            let enumerable = match desc.properties.get("enumerable") {
+                            let enumerable = match
+                              desc.properties.get("enumerable") {
                               Some(v) => is_truthy(v)
                               _ => false
                             }
-                            let configurable = match desc.properties.get("configurable") {
+                            let configurable = match
+                              desc.properties.get("configurable") {
                               Some(v) => is_truthy(v)
                               _ => false
                             }
@@ -565,11 +607,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                                   data.properties[prop_name] = Undefined
                                 }
                             }
-                            let writable = match desc.properties.get("writable") {
+                            let writable = match
+                              desc.properties.get("writable") {
                               Some(v) => is_truthy(v)
                               _ => false
                             }
-                            let enumerable = match desc.properties.get("enumerable") {
+                            let enumerable = match
+                              desc.properties.get("enumerable") {
                               Some(v) => is_truthy(v)
                               _ => false
                             }
@@ -630,7 +674,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                     }
                   }
                   // ToObject conversion: Arrays enumerate elements as indexed properties
-                  Array(src) => {
+                  Array(src) =>
                     // Copy array elements as indexed properties
                     for idx = 0; idx < src.elements.length(); idx = idx + 1 {
                       let k = idx.to_string()
@@ -652,7 +696,6 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                       }
                       data.properties[k] = v
                     }
-                  }
                   // Regular objects have properties and descriptors
                   Object(src) => {
                     // Copy enumerable string properties
@@ -685,13 +728,15 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                     })
                     // Copy enumerable symbol properties
                     src.symbol_properties.each(fn(sym_id, v) {
-                      let enumerable = match src.symbol_descriptors.get(sym_id) {
+                      let enumerable = match
+                        src.symbol_descriptors.get(sym_id) {
                         Some(d) => d.enumerable
                         None => true
                       }
                       if enumerable {
                         // Check writable on target property
-                        let can_write = match data.symbol_descriptors.get(sym_id) {
+                        let can_write = match
+                          data.symbol_descriptors.get(sym_id) {
                           Some(d) => d.writable
                           None => true
                         }
@@ -735,7 +780,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                     })
                     // Copy symbol properties
                     src.symbol_properties.each(fn(sym_id, v) {
-                      let can_write = match data.symbol_descriptors.get(sym_id) {
+                      let can_write = match
+                        data.symbol_descriptors.get(sym_id) {
                         Some(d) => d.writable
                         None => true
                       }
@@ -832,11 +878,19 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                   }
                   if is_accessor {
                     let getter_val : Value = match desc {
-                      Some(d) => match d.getter { Some(g) => g; None => Undefined }
+                      Some(d) =>
+                        match d.getter {
+                          Some(g) => g
+                          None => Undefined
+                        }
                       None => Undefined
                     }
                     let setter_val : Value = match desc {
-                      Some(d) => match d.setter { Some(s) => s; None => Undefined }
+                      Some(d) =>
+                        match d.setter {
+                          Some(s) => s
+                          None => Undefined
+                        }
                       None => Undefined
                     }
                     let enumerable = match desc {
@@ -1032,7 +1086,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                     Some(v) => Some(is_truthy(v))
                     None => None
                   }
-                  let new_configurable = match desc.properties.get("configurable") {
+                  let new_configurable = match
+                    desc.properties.get("configurable") {
                     Some(v) => Some(is_truthy(v))
                     None => None
                   }
@@ -1087,10 +1142,11 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
 
                   // Check if configurable on existing descriptor
                   match existing_desc {
-                    Some(existing) => {
+                    Some(existing) =>
                       if not(existing.configurable) {
                         // Non-configurable: cannot change between accessor and data
-                        let existing_is_accessor = existing.getter is Some(_) || existing.setter is Some(_)
+                        let existing_is_accessor = existing.getter is Some(_) ||
+                          existing.setter is Some(_)
                         if existing_is_accessor && is_data {
                           raise @errors.TypeError(
                             message="Cannot redefine non-configurable property: \{prop_name}",
@@ -1130,7 +1186,12 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                               }
                             None => true
                           }
-                          if not(enumerable_ok && configurable_ok && getter_ok && setter_ok) {
+                          if not(
+                              enumerable_ok &&
+                              configurable_ok &&
+                              getter_ok &&
+                              setter_ok,
+                            ) {
                             raise @errors.TypeError(
                               message="Cannot redefine non-configurable property: \{prop_name}",
                             )
@@ -1140,14 +1201,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                         // Non-configurable data property: check writable/enumerable/configurable
                         if not(is_accessor) {
                           let writable_matches = match new_writable {
-                            Some(w) => {
+                            Some(w) =>
                               // Non-configurable, non-writable property cannot become writable
                               if not(existing.writable) && w {
                                 false
                               } else {
                                 true
                               }
-                            }
                             None => true
                           }
                           let enumerable_matches = match new_enumerable {
@@ -1160,7 +1220,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                           }
 
                           // For non-configurable, non-writable: value must match
-                          let value_matches = if not(existing.writable) && has_value {
+                          let value_matches = if not(existing.writable) &&
+                            has_value {
                             match desc.properties.get("value") {
                               Some(v) =>
                                 match data.properties.get(prop_name) {
@@ -1172,32 +1233,32 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                           } else {
                             true
                           }
-
-                          if not(writable_matches && enumerable_matches && configurable_matches && value_matches) {
+                          if not(
+                              writable_matches &&
+                              enumerable_matches &&
+                              configurable_matches &&
+                              value_matches,
+                            ) {
                             raise @errors.TypeError(
                               message="Cannot redefine non-configurable property: \{prop_name}",
                             )
                           }
                         }
                       }
-                    }
-                    None => {
+                    None =>
                       // Check extensibility when adding new property
                       if not(prop_exists) && not(data.extensible) {
                         raise @errors.TypeError(
                           message="Cannot add property \{prop_name}, object is not extensible",
                         )
                       }
-                    }
                   }
-
                   if is_accessor {
                     // Accessor descriptor
                     // Set a placeholder in properties if not present
                     if not(data.properties.contains(prop_name)) {
                       data.properties[prop_name] = Undefined
                     }
-
                     let enumerable = match new_enumerable {
                       Some(e) => e
                       None =>
@@ -1314,7 +1375,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               val : Value,
               writable : Bool,
               enumerable : Bool,
-              configurable : Bool
+              configurable : Bool,
             ) -> Value {
               Object({
                 properties: {
@@ -1416,11 +1477,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                   )
                 } else {
                   // Check indexed properties
-                  let idx = try {
-                    @strconv.parse_int(prop_name)
-                  } catch {
-                    _ => -1
-                  }
+                  let idx = @strconv.parse_int(prop_name) catch { _ => -1 }
                   if idx >= 0 &&
                     idx.to_string() == prop_name &&
                     idx < data.elements.length() {
@@ -1431,18 +1488,9 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 }
               String_(s) =>
                 if prop_name == "length" {
-                  make_desc(
-                    Number(s.length().to_double()),
-                    false,
-                    false,
-                    false,
-                  )
+                  make_desc(Number(s.length().to_double()), false, false, false)
                 } else {
-                  let idx = try {
-                    @strconv.parse_int(prop_name)
-                  } catch {
-                    _ => -1
-                  }
+                  let idx = @strconv.parse_int(prop_name) catch { _ => -1 }
                   if idx >= 0 &&
                     idx.to_string() == prop_name &&
                     idx < s.length() {
@@ -1825,7 +1873,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                             None => false
                           }
                       }
-                      let configurable = match desc.properties.get("configurable") {
+                      let configurable = match
+                        desc.properties.get("configurable") {
                         Some(v) => is_truthy(v)
                         _ =>
                           match existing_desc {
@@ -1940,9 +1989,15 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
   // Set Object.prototype.constructor = Object
   match obj_proto {
     Object(data) => {
-      let obj_ctor = try { env.get("Object") } catch { _ => Undefined }
+      let obj_ctor = env.get("Object") catch { _ => Undefined }
       data.properties["constructor"] = obj_ctor
-      data.descriptors["constructor"] = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+      data.descriptors["constructor"] = {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
     }
     _ => ()
   }
@@ -2108,16 +2163,17 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }
         let start = if from_idx < 0 {
           let s = len + from_idx
-          if s < 0 { 0 } else { s }
+          if s < 0 {
+            0
+          } else {
+            s
+          }
         } else {
           from_idx
         }
         for i = start; i < len; i = i + 1 {
           if has_array_like_element(this_val, i) {
-            if strict_equal_val(
-              get_array_like_element(this_val, i),
-              search,
-            ) {
+            if strict_equal_val(get_array_like_element(this_val, i), search) {
               return Number(i.to_double())
             }
           }
@@ -2152,10 +2208,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }
         for i = from; i >= 0; i = i - 1 {
           if has_array_like_element(this_val, i) {
-            if strict_equal_val(
-              get_array_like_element(this_val, i),
-              search,
-            ) {
+            if strict_equal_val(get_array_like_element(this_val, i), search) {
               return Number(i.to_double())
             }
           }
@@ -2183,7 +2236,11 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }
         let start = if from_idx < 0 {
           let s = len + from_idx
-          if s < 0 { 0 } else { s }
+          if s < 0 {
+            0
+          } else {
+            s
+          }
         } else {
           from_idx
         }
@@ -2222,13 +2279,19 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }
         if start < 0 {
           start = alen + start
-          if start < 0 { start = 0 }
+          if start < 0 {
+            start = 0
+          }
         }
         if end < 0 {
           end = alen + end
-          if end < 0 { end = 0 }
+          if end < 0 {
+            end = 0
+          }
         }
-        if end > alen { end = alen }
+        if end > alen {
+          end = alen
+        }
         let result : Array[Value] = []
         for i = start; i < end; i = i + 1 {
           result.push(get_array_like_element(this_val, i))
@@ -2427,9 +2490,14 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             let _ = interp.call_value(
               callback,
               this_arg,
-              [get_array_like_element(this_val, i), Number(i.to_double()), this_val],
+              [
+                get_array_like_element(this_val, i),
+                Number(i.to_double()),
+                this_val,
+              ],
               loc,
             )
+
           }
         }
         Undefined
@@ -2456,7 +2524,11 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             let val = interp.call_value(
               callback,
               this_arg,
-              [get_array_like_element(this_val, i), Number(i.to_double()), this_val],
+              [
+                get_array_like_element(this_val, i),
+                Number(i.to_double()),
+                this_val,
+              ],
               loc,
             )
             result.push(val)
@@ -2532,7 +2604,12 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             acc = interp.call_value(
               callback,
               Undefined,
-              [acc, get_array_like_element(this_val, i), Number(i.to_double()), this_val],
+              [
+                acc,
+                get_array_like_element(this_val, i),
+                Number(i.to_double()),
+                this_val,
+              ],
               loc,
             )
           }
@@ -2572,7 +2649,12 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             acc = interp.call_value(
               callback,
               Undefined,
-              [acc, get_array_like_element(this_val, i), Number(i.to_double()), this_val],
+              [
+                acc,
+                get_array_like_element(this_val, i),
+                Number(i.to_double()),
+                this_val,
+              ],
               loc,
             )
           }
@@ -2598,9 +2680,14 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         for i = 0; i < len; i = i + 1 {
           let el = get_array_like_element(this_val, i)
           let val = interp.call_value(
-            callback, this_arg, [el, Number(i.to_double()), this_val], loc,
+            callback,
+            this_arg,
+            [el, Number(i.to_double()), this_val],
+            loc,
           )
-          if is_truthy(val) { return el }
+          if is_truthy(val) {
+            return el
+          }
         }
         Undefined
       }),
@@ -2623,9 +2710,14 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         for i = 0; i < len; i = i + 1 {
           let el = get_array_like_element(this_val, i)
           let val = interp.call_value(
-            callback, this_arg, [el, Number(i.to_double()), this_val], loc,
+            callback,
+            this_arg,
+            [el, Number(i.to_double()), this_val],
+            loc,
           )
-          if is_truthy(val) { return Number(i.to_double()) }
+          if is_truthy(val) {
+            return Number(i.to_double())
+          }
         }
         Number(-1.0)
       }),
@@ -2648,9 +2740,14 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         for i = len - 1; i >= 0; i = i - 1 {
           let el = get_array_like_element(this_val, i)
           let val = interp.call_value(
-            callback, this_arg, [el, Number(i.to_double()), this_val], loc,
+            callback,
+            this_arg,
+            [el, Number(i.to_double()), this_val],
+            loc,
           )
-          if is_truthy(val) { return el }
+          if is_truthy(val) {
+            return el
+          }
         }
         Undefined
       }),
@@ -2673,9 +2770,14 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         for i = len - 1; i >= 0; i = i - 1 {
           let el = get_array_like_element(this_val, i)
           let val = interp.call_value(
-            callback, this_arg, [el, Number(i.to_double()), this_val], loc,
+            callback,
+            this_arg,
+            [el, Number(i.to_double()), this_val],
+            loc,
           )
-          if is_truthy(val) { return Number(i.to_double()) }
+          if is_truthy(val) {
+            return Number(i.to_double())
+          }
         }
         Number(-1.0)
       }),
@@ -2698,11 +2800,18 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         for i = 0; i < len; i = i + 1 {
           if has_array_like_element(this_val, i) {
             let val = interp.call_value(
-              callback, this_arg,
-              [get_array_like_element(this_val, i), Number(i.to_double()), this_val],
+              callback,
+              this_arg,
+              [
+                get_array_like_element(this_val, i),
+                Number(i.to_double()),
+                this_val,
+              ],
               loc,
             )
-            if not(is_truthy(val)) { return Bool(false) }
+            if not(is_truthy(val)) {
+              return Bool(false)
+            }
           }
         }
         Bool(true)
@@ -2726,11 +2835,18 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         for i = 0; i < len; i = i + 1 {
           if has_array_like_element(this_val, i) {
             let val = interp.call_value(
-              callback, this_arg,
-              [get_array_like_element(this_val, i), Number(i.to_double()), this_val],
+              callback,
+              this_arg,
+              [
+                get_array_like_element(this_val, i),
+                Number(i.to_double()),
+                this_val,
+              ],
               loc,
             )
-            if is_truthy(val) { return Bool(true) }
+            if is_truthy(val) {
+              return Bool(true)
+            }
           }
         }
         Bool(false)
@@ -3476,9 +3592,15 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
   // Set Array.prototype.constructor = Array
   match array_proto {
     Object(data) => {
-      let arr_ctor = try { env.get("Array") } catch { _ => Undefined }
+      let arr_ctor = env.get("Array") catch { _ => Undefined }
       data.properties["constructor"] = arr_ctor
-      data.descriptors["constructor"] = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+      data.descriptors["constructor"] = {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
     }
     _ => ()
   }
@@ -3512,17 +3634,29 @@ pub fn to_array_like_length(val : Value) -> Int {
       match data.properties.get("length") {
         Some(Number(n)) => {
           let len = n.to_int()
-          if len < 0 { 0 } else { len }
+          if len < 0 {
+            0
+          } else {
+            len
+          }
         }
         Some(v) => {
-          let n = try { to_number(v) } catch { _ => 0.0 }
+          let n = to_number(v) catch { _ => 0.0 }
           if n.is_nan() {
             0
           } else if n.is_inf() {
-            if n > 0.0 { 0x7FFFFFFF } else { 0 }
+            if n > 0.0 {
+              0x7FFFFFFF
+            } else {
+              0
+            }
           } else {
             let i = n.to_int()
-            if i < 0 { 0 } else { i }
+            if i < 0 {
+              0
+            } else {
+              i
+            }
           }
         }
         None => 0
@@ -3543,7 +3677,7 @@ pub fn get_array_like_element(val : Value, index : Int) -> Value {
       } else {
         Undefined
       }
-    Object(data) => {
+    Object(data) =>
       // Walk prototype chain for property lookup
       match data.properties.get(key) {
         Some(v) => v
@@ -3566,7 +3700,6 @@ pub fn get_array_like_element(val : Value, index : Int) -> Value {
           result
         }
       }
-    }
     String_(s) => {
       let chars = s.to_array()
       if index >= 0 && index < chars.length() {

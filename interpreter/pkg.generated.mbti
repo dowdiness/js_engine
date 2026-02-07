@@ -6,6 +6,8 @@ import {
 }
 
 // Values
+pub fn get_array_like_element(Value, Int) -> Value
+
 pub fn get_array_method(ArrayData, String) -> Value
 
 pub fn get_array_method_with_interp(ArrayData, String) -> Value
@@ -26,6 +28,10 @@ pub fn get_string_method(String, String) -> Value
 
 pub fn get_symbol_by_id(Int) -> SymbolData?
 
+pub fn get_tostringtag_symbol() -> SymbolData
+
+pub fn has_array_like_element(Value, Int) -> Bool
+
 pub fn is_js_catchable_error(Error) -> Bool
 
 pub fn is_truthy(Value) -> Bool
@@ -34,6 +40,8 @@ pub fn js_error_to_throw_value(Error) -> Value
 
 pub fn js_error_to_value(Error) -> Value
 
+pub fn js_error_to_value_with_env(Error, Environment?) -> Value
+
 pub fn make_array_iterator_value(ArrayData) -> Value
 
 pub fn make_func(FuncData) -> Value
@@ -41,6 +49,8 @@ pub fn make_func(FuncData) -> Value
 pub fn make_func_ext(FuncDataExt) -> Value
 
 pub fn make_native_func(String, (Array[Value]) -> Value raise) -> Value
+
+pub fn make_native_func_with_length(String, Int, (Array[Value]) -> Value raise) -> Value
 
 pub fn make_object(Map[String, Value], Value, Callable?, String, Map[String, PropDescriptor], Bool) -> Value
 
@@ -72,6 +82,8 @@ pub fn setup_object_builtins(Environment) -> Unit
 
 pub fn setup_promise(Environment) -> Unit
 
+pub fn setup_string_prototype(Value) -> Unit
+
 pub fn setup_timers(Environment) -> Unit
 
 pub fn strict_equal_val(Value, Value) -> Bool
@@ -82,6 +94,10 @@ pub fn string_replace_regex(String, String, String, String) -> Value
 
 pub fn string_search_regex(String, String, String) -> Value
 
+pub fn this_to_string(Value) -> String raise
+
+pub fn to_array_like_length(Value) -> Int
+
 pub fn to_int32(Double) -> Int
 
 pub fn to_number(Value) -> Double raise
@@ -91,6 +107,8 @@ pub fn type_of(Value) -> String
 pub let well_known_hasinstance_sym : Ref[SymbolData?]
 
 pub let well_known_iterator_sym : Ref[SymbolData?]
+
+pub let well_known_tostringtag_sym : Ref[SymbolData?]
 
 // Errors
 pub suberror JsException {
@@ -190,7 +208,7 @@ pub(all) struct Microtask {
 pub(all) struct ObjectData {
   properties : Map[String, Value]
   symbol_properties : Map[Int, Value]
-  prototype : Value
+  mut prototype : Value
   callable : Callable?
   class_name : String
   descriptors : Map[String, PropDescriptor]
@@ -230,6 +248,8 @@ pub(all) struct PropDescriptor {
   mut writable : Bool
   mut enumerable : Bool
   mut configurable : Bool
+  mut getter : Value?
+  mut setter : Value?
 }
 
 type RegexMatch

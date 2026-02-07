@@ -61,7 +61,9 @@ fn Parser::parse_assignment(self : Parser) -> @ast.Expr raise Error {
         if self.at(Arrow) {
           // Check if this has defaults or rest
           let has_ext = rest_param is Some(_) ||
-            ext_params.iter().any(fn(p) { p.default_val is Some(_) || p.pattern is Some(_) })
+            ext_params
+            .iter()
+            .any(fn(p) { p.default_val is Some(_) || p.pattern is Some(_) })
           if has_ext {
             let loc = self.advance().loc // consume =>
             let body = self.parse_arrow_body()
@@ -514,7 +516,8 @@ fn Parser::parse_call(self : Parser) -> @ast.Expr raise Error {
       } else {
         expr = ComputedMember(expr, key, loc)
       }
-    } else if self.peek_kind() is NoSubTemplate(_) || self.peek_kind() is TemplateHead(_) {
+    } else if self.peek_kind() is NoSubTemplate(_) ||
+      self.peek_kind() is TemplateHead(_) {
       // Tagged template: tag`string` or tag`str${expr}str`
       let tloc = self.peek().loc
       match self.peek_kind() {
@@ -566,7 +569,9 @@ fn Parser::parse_call(self : Parser) -> @ast.Expr raise Error {
             args.push(self.parse_assignment())
           }
           while self.eat(Comma) {
-            if self.at(RParen) { break }
+            if self.at(RParen) {
+              break
+            }
             if self.at(DotDotDot) {
               let sloc = self.advance().loc
               args.push(SpreadExpr(self.parse_assignment(), sloc))
@@ -749,7 +754,9 @@ fn Parser::parse_new_expr(self : Parser) -> @ast.Expr raise Error {
         args.push(self.parse_assignment())
       }
       while self.eat(Comma) {
-        if self.at(RParen) { break }
+        if self.at(RParen) {
+          break
+        }
         if self.at(DotDotDot) {
           let sloc = self.advance().loc
           args.push(SpreadExpr(self.parse_assignment(), sloc))
@@ -783,7 +790,8 @@ fn Parser::parse_array_literal(self : Parser) -> @ast.Expr raise Error {
     }
     if not(self.at(RBracket)) {
       if self.at(Comma) {
-        let _ = self.advance() // consume comma
+        let _ = self.advance()
+         // consume comma
       }
     }
   }
@@ -800,17 +808,16 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
     if self.at(DotDotDot) {
       let spread_loc = self.advance().loc
       let expr = self.parse_assignment()
-      props.push(
-        {
-          key: expr,
-          value: UndefinedLit(spread_loc),
-          kind: @ast.Spread,
-          computed: false,
-        },
-      )
+      props.push({
+        key: expr,
+        value: UndefinedLit(spread_loc),
+        kind: @ast.Spread,
+        computed: false,
+      })
       if not(self.at(RBrace)) {
         if self.at(Comma) {
           let _ = self.advance()
+
         }
       }
       continue
@@ -822,32 +829,110 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
     let prop_kind : @ast.PropKind = match self.peek_kind() {
       Get =>
         match self.peek_kind_at(1) {
-          Ident(_) | String_(_) | Number(_) | LBracket | Get | Set | From | As
-          | Import | Export | Let | Const | Var | Function | Return | If | Else
-          | While | For | Break | Continue | True | False | Null | Undefined
-          | Typeof | Throw | Try | Catch | Finally | New | This | Switch | Case
-          | Default | Void | Delete | Do | In | Instanceof | Of | Class | Extends
-          | Super | Static => {
+          Ident(_)
+          | String_(_)
+          | Number(_)
+          | LBracket
+          | Get
+          | Set
+          | From
+          | As
+          | Import
+          | Export
+          | Let
+          | Const
+          | Var
+          | Function
+          | Return
+          | If
+          | Else
+          | While
+          | For
+          | Break
+          | Continue
+          | True
+          | False
+          | Null
+          | Undefined
+          | Typeof
+          | Throw
+          | Try
+          | Catch
+          | Finally
+          | New
+          | This
+          | Switch
+          | Case
+          | Default
+          | Void
+          | Delete
+          | Do
+          | In
+          | Instanceof
+          | Of
+          | Class
+          | Extends
+          | Super
+          | Static => {
             // get <name>(...) - this is a getter
             self.pos += 1
             @ast.Get
           }
-          _ => @ast.Init // get: value, get(), get} etc.
-        }
+          _ => @ast.Init
+        } // get: value, get(), get} etc.
       Set =>
         match self.peek_kind_at(1) {
-          Ident(_) | String_(_) | Number(_) | LBracket | Get | Set | From | As
-          | Import | Export | Let | Const | Var | Function | Return | If | Else
-          | While | For | Break | Continue | True | False | Null | Undefined
-          | Typeof | Throw | Try | Catch | Finally | New | This | Switch | Case
-          | Default | Void | Delete | Do | In | Instanceof | Of | Class | Extends
-          | Super | Static => {
+          Ident(_)
+          | String_(_)
+          | Number(_)
+          | LBracket
+          | Get
+          | Set
+          | From
+          | As
+          | Import
+          | Export
+          | Let
+          | Const
+          | Var
+          | Function
+          | Return
+          | If
+          | Else
+          | While
+          | For
+          | Break
+          | Continue
+          | True
+          | False
+          | Null
+          | Undefined
+          | Typeof
+          | Throw
+          | Try
+          | Catch
+          | Finally
+          | New
+          | This
+          | Switch
+          | Case
+          | Default
+          | Void
+          | Delete
+          | Do
+          | In
+          | Instanceof
+          | Of
+          | Class
+          | Extends
+          | Super
+          | Static => {
             // set <name>(...) - this is a setter
             self.pos += 1
             @ast.Set
           }
-          _ => @ast.Init // set: value, set(), set} etc.
-        }
+          _ => @ast.Init
+        } // set: value, set(), set} etc.
       _ => @ast.Init
     }
     // Parse the key - can be identifier, string, number, or computed [expr]
@@ -970,19 +1055,29 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
         }
         let body = self.parse_block_body()
         @ast.Expr::FuncExpr(
-          if computed { None } else { Some(key_name) },
+          if computed {
+            None
+          } else {
+            Some(key_name)
+          },
           params,
           body,
           mloc,
         )
       } catch {
         Failure::Failure(msg) =>
-          if msg == "REST_PARAM_FOUND" || msg == "DEFAULT_PARAM_FOUND" || msg == "DESTRUCTURE_PARAM_FOUND" {
+          if msg == "REST_PARAM_FOUND" ||
+            msg == "DEFAULT_PARAM_FOUND" ||
+            msg == "DESTRUCTURE_PARAM_FOUND" {
             self.pos = saved_pos
             let (ext_params, rest_param) = self.parse_params_ext()
             let body = self.parse_block_body()
             FuncExprExt(
-              if computed { None } else { Some(key_name) },
+              if computed {
+                None
+              } else {
+                Some(key_name)
+              },
               ext_params,
               rest_param,
               body,
@@ -1050,7 +1145,9 @@ fn Parser::parse_func_expr(self : Parser) -> @ast.Expr raise Error {
   let saved_pos = self.pos
   let params = self.parse_params() catch {
     Failure::Failure(msg) =>
-      if msg == "REST_PARAM_FOUND" || msg == "DEFAULT_PARAM_FOUND" || msg == "DESTRUCTURE_PARAM_FOUND" {
+      if msg == "REST_PARAM_FOUND" ||
+        msg == "DEFAULT_PARAM_FOUND" ||
+        msg == "DESTRUCTURE_PARAM_FOUND" {
         self.pos = saved_pos
         let (ext_params, rest_param) = self.parse_params_ext()
         let body = self.parse_block_body()
@@ -1201,12 +1298,52 @@ fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
   match self.peek_kind() {
     Get =>
       match self.peek_kind_at(1) {
-        Ident(_) | String_(_) | Number(_) | LBracket | LParen | Get | Set
-        | From | As | Import | Export | Let | Const | Var | Function | Return
-        | If | Else | While | For | Break | Continue | True | False | Null
-        | Undefined | Typeof | Throw | Try | Catch | Finally | New | This
-        | Switch | Case | Default | Void | Delete | Do | In | Instanceof | Of
-        | Class | Extends | Super | Static =>
+        Ident(_)
+        | String_(_)
+        | Number(_)
+        | LBracket
+        | LParen
+        | Get
+        | Set
+        | From
+        | As
+        | Import
+        | Export
+        | Let
+        | Const
+        | Var
+        | Function
+        | Return
+        | If
+        | Else
+        | While
+        | For
+        | Break
+        | Continue
+        | True
+        | False
+        | Null
+        | Undefined
+        | Typeof
+        | Throw
+        | Try
+        | Catch
+        | Finally
+        | New
+        | This
+        | Switch
+        | Case
+        | Default
+        | Void
+        | Delete
+        | Do
+        | In
+        | Instanceof
+        | Of
+        | Class
+        | Extends
+        | Super
+        | Static =>
           if not(self.at_kind_at(1, LParen)) {
             self.pos += 1
             method_kind = @ast.Get
@@ -1215,12 +1352,52 @@ fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
       }
     Set =>
       match self.peek_kind_at(1) {
-        Ident(_) | String_(_) | Number(_) | LBracket | LParen | Get | Set
-        | From | As | Import | Export | Let | Const | Var | Function | Return
-        | If | Else | While | For | Break | Continue | True | False | Null
-        | Undefined | Typeof | Throw | Try | Catch | Finally | New | This
-        | Switch | Case | Default | Void | Delete | Do | In | Instanceof | Of
-        | Class | Extends | Super | Static =>
+        Ident(_)
+        | String_(_)
+        | Number(_)
+        | LBracket
+        | LParen
+        | Get
+        | Set
+        | From
+        | As
+        | Import
+        | Export
+        | Let
+        | Const
+        | Var
+        | Function
+        | Return
+        | If
+        | Else
+        | While
+        | For
+        | Break
+        | Continue
+        | True
+        | False
+        | Null
+        | Undefined
+        | Typeof
+        | Throw
+        | Try
+        | Catch
+        | Finally
+        | New
+        | This
+        | Switch
+        | Case
+        | Default
+        | Void
+        | Delete
+        | Do
+        | In
+        | Instanceof
+        | Of
+        | Class
+        | Extends
+        | Super
+        | Static =>
           if not(self.at_kind_at(1, LParen)) {
             self.pos += 1
             method_kind = @ast.Set
@@ -1316,7 +1493,9 @@ fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
   let saved_pos = self.pos
   let params = self.parse_params() catch {
     Failure::Failure(msg) =>
-      if msg == "REST_PARAM_FOUND" || msg == "DEFAULT_PARAM_FOUND" || msg == "DESTRUCTURE_PARAM_FOUND" {
+      if msg == "REST_PARAM_FOUND" ||
+        msg == "DEFAULT_PARAM_FOUND" ||
+        msg == "DESTRUCTURE_PARAM_FOUND" {
         self.pos = saved_pos
         let (ext_params, rest_param) = self.parse_params_ext()
         match method_kind {
@@ -1400,7 +1579,9 @@ fn Parser::parse_super_expr(self : Parser) -> @ast.Expr raise Error {
         args.push(self.parse_assignment())
       }
       while self.eat(Comma) {
-        if self.at(RParen) { break }
+        if self.at(RParen) {
+          break
+        }
         if self.at(DotDotDot) {
           let sloc = self.advance().loc
           args.push(SpreadExpr(self.parse_assignment(), sloc))

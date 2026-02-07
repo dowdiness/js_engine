@@ -16,11 +16,11 @@ pub fn run(String) -> (Array[String], String) raise
 
 pub fn run_microtask_checkpoint(@interpreter.Interpreter) -> Bool raise
 
-pub fn run_timer_checkpoint(@interpreter.Interpreter) -> Unit raise
-
 pub fn run_module(String) -> (Array[String], Map[String, @interpreter.Value]) raise
 
 pub fn run_modules(Array[(String, String)]) -> (Array[String], Map[String, @interpreter.Value]) raise
+
+pub fn run_timer_checkpoint(@interpreter.Interpreter) -> Unit raise
 
 pub fn run_with_event_loop(String) -> (@interpreter.Interpreter, @interpreter.Value) raise
 

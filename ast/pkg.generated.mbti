@@ -40,20 +40,6 @@ pub(all) enum BinOp {
 pub impl Eq for BinOp
 pub impl Show for BinOp
 
-pub(all) struct ExportSpecifier {
-  local_name : String
-  exported : String
-}
-pub impl Eq for ExportSpecifier
-pub impl Show for ExportSpecifier
-
-pub(all) struct ImportSpecifier {
-  local_name : String
-  imported : String
-}
-pub impl Eq for ImportSpecifier
-pub impl Show for ImportSpecifier
-
 pub(all) struct ClassMethod {
   key : Expr
   value : Expr
@@ -83,6 +69,13 @@ pub(all) enum CompoundOp {
 }
 pub impl Eq for CompoundOp
 pub impl Show for CompoundOp
+
+pub(all) struct ExportSpecifier {
+  local_name : String
+  exported : String
+}
+pub impl Eq for ExportSpecifier
+pub impl Show for ExportSpecifier
 
 pub(all) enum Expr {
   NumberLit(Double, @token.Loc)
@@ -123,13 +116,23 @@ pub(all) enum Expr {
   SuperCall(Array[Expr], @token.Loc)
   SuperMember(String, @token.Loc)
   SuperComputedMember(Expr, @token.Loc)
+  NewTargetExpr(@token.Loc)
+  TaggedTemplate(Expr, Array[String], Array[Expr], @token.Loc)
 }
 pub impl Eq for Expr
 pub impl Show for Expr
 
+pub(all) struct ImportSpecifier {
+  local_name : String
+  imported : String
+}
+pub impl Eq for ImportSpecifier
+pub impl Show for ImportSpecifier
+
 pub(all) struct Param {
   name : String
   default_val : Expr?
+  pattern : Pattern?
 }
 pub impl Eq for Param
 pub impl Show for Param
@@ -152,6 +155,7 @@ pub(all) enum PropKind {
   Init
   Get
   Set
+  Spread
 }
 pub impl Eq for PropKind
 pub impl Show for PropKind
@@ -192,6 +196,10 @@ pub(all) enum Stmt {
   DoWhileStmt(Stmt, Expr, @token.Loc)
   ForInStmt(VarKind?, String, Expr, Stmt, @token.Loc)
   ForOfStmt(VarKind?, String, Expr, Stmt, @token.Loc)
+  ForInStmtPat(VarKind?, Pattern, Expr, Stmt, @token.Loc)
+  ForOfStmtPat(VarKind?, Pattern, Expr, Stmt, @token.Loc)
+  ForInExpr(Expr, Expr, Stmt, @token.Loc)
+  ForOfExpr(Expr, Expr, Stmt, @token.Loc)
   DestructureDecl(VarKind, Pattern, Expr, @token.Loc)
   LabeledStmt(String, Stmt, @token.Loc)
   ClassDecl(String, Expr?, Array[ClassMethod], @token.Loc)
@@ -212,6 +220,7 @@ pub impl Show for SwitchCase
 
 pub(all) enum UnaryOp {
   Neg
+  Pos
   Not
   Typeof
   Void

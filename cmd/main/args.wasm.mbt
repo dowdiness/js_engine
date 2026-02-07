@@ -1,4 +1,5 @@
-///| WASM target: args = ["program", ...]
+///|
+/// WASM target: args = ["program", ...]
 fn parse_args(args : Array[String]) -> (Bool, String?) {
   if args.length() < 2 {
     return (false, None)

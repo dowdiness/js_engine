@@ -634,11 +634,7 @@ pub fn get_string_method(s : String, prop : String) -> Value {
     "repeat" => {
       let str = s
       make_native_func("repeat", fn(args) {
-        let count_num = if args.length() > 0 {
-          to_number(args[0])
-        } else {
-          0.0
-        }
+        let count_num = if args.length() > 0 { to_number(args[0]) } else { 0.0 }
         // Check for negative or infinite count
         if count_num < 0.0 || count_num.is_inf() {
           raise @errors.RangeError(message="Invalid repeat count")
@@ -879,7 +875,8 @@ pub fn get_string_method(s : String, prop : String) -> Value {
   }
 }
 
-///| Unicode-aware character to lowercase conversion
+///|
+/// Unicode-aware character to lowercase conversion
 fn unicode_to_lower(code : Int) -> Int {
   // ASCII uppercase (A-Z)
   if code >= 65 && code <= 90 {
@@ -945,7 +942,8 @@ fn unicode_to_lower(code : Int) -> Int {
   }
 }
 
-///| Unicode-aware character to uppercase conversion
+///|
+/// Unicode-aware character to uppercase conversion
 fn unicode_to_upper(code : Int) -> Int {
   // ASCII lowercase (a-z)
   if code >= 97 && code <= 122 {
@@ -1024,7 +1022,8 @@ pub fn this_to_string(this_val : Value) -> String raise Error {
     String_(s) => s
     Number(n) => n.to_string()
     Bool(b) => if b { "true" } else { "false" }
-    Null => raise @errors.TypeError(message="String.prototype method called on null")
+    Null =>
+      raise @errors.TypeError(message="String.prototype method called on null")
     Undefined =>
       raise @errors.TypeError(
         message="String.prototype method called on undefined",
@@ -1053,12 +1052,11 @@ pub fn setup_string_prototype(string_proto : Value) -> Unit {
   match string_proto {
     Object(data) => {
       let methods = [
-        "charAt", "charCodeAt", "at", "codePointAt", "indexOf", "lastIndexOf",
-        "includes", "startsWith", "endsWith", "slice", "substring", "toUpperCase",
-        "toLowerCase", "trim", "trimStart", "trimEnd", "padStart", "padEnd",
-        "repeat", "replace", "replaceAll", "split", "search", "match", "concat",
-        "normalize", "isWellFormed", "toWellFormed", "localeCompare", "toString",
-        "valueOf",
+        "charAt", "charCodeAt", "at", "codePointAt", "indexOf", "lastIndexOf", "includes",
+        "startsWith", "endsWith", "slice", "substring", "toUpperCase", "toLowerCase",
+        "trim", "trimStart", "trimEnd", "padStart", "padEnd", "repeat", "replace",
+        "replaceAll", "split", "search", "match", "concat", "normalize", "isWellFormed",
+        "toWellFormed", "localeCompare", "toString", "valueOf",
       ]
       for method_name in methods {
         let mname = method_name

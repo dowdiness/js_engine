@@ -26,7 +26,7 @@ fn make_error_value_with_env(
   // Try to look up the proper prototype from the environment
   let proto : Value = match env {
     Some(e) => {
-      let ctor : Value = try { e.get(name) } catch { _ => Null }
+      let ctor : Value = e.get(name) catch { _ => Null }
       match ctor {
         Object(ctor_data) =>
           match ctor_data.properties.get("prototype") {
@@ -69,7 +69,7 @@ fn make_aggregate_error_value(
   // Try to look up the proper prototype from the environment
   let proto : Value = match env {
     Some(e) => {
-      let ctor : Value = try { e.get("AggregateError") } catch { _ => Null }
+      let ctor : Value = e.get("AggregateError") catch { _ => Null }
       match ctor {
         Object(ctor_data) =>
           match ctor_data.properties.get("prototype") {

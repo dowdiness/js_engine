@@ -113,7 +113,9 @@ fn Parser::parse_func_decl(self : Parser) -> @ast.Stmt raise Error {
   let saved_pos = self.pos
   let params = self.parse_params() catch {
     Failure::Failure(msg) =>
-      if msg == "REST_PARAM_FOUND" || msg == "DEFAULT_PARAM_FOUND" || msg == "DESTRUCTURE_PARAM_FOUND" {
+      if msg == "REST_PARAM_FOUND" ||
+        msg == "DEFAULT_PARAM_FOUND" ||
+        msg == "DESTRUCTURE_PARAM_FOUND" {
         self.pos = saved_pos
         let (ext_params, rest_param) = self.parse_params_ext()
         let body = self.parse_block_body()
@@ -203,7 +205,9 @@ fn Parser::parse_params_ext(
       params.push({ name, default_val, pattern: None })
     }
     while self.eat(Comma) {
-      if self.at(RParen) { break } // trailing comma
+      if self.at(RParen) {
+        break
+      } // trailing comma
       if rest_param is Some(_) {
         let t = self.peek()
         raise @errors.SyntaxError(
@@ -321,7 +325,9 @@ fn Parser::parse_for_stmt(self : Parser) -> @ast.Stmt raise Error {
       let _ = self.expect(Assign)
       let init_expr = self.parse_assignment()
       self.eat_semicolon()
-      let init : @ast.Stmt? = Some(DestructureDecl(var_kind, pat, init_expr, var_tok.loc))
+      let init : @ast.Stmt? = Some(
+        DestructureDecl(var_kind, pat, init_expr, var_tok.loc),
+      )
       return self.parse_for_rest(init, tok.loc)
     }
     let name = self.expect_ident()
@@ -345,7 +351,9 @@ fn Parser::parse_for_stmt(self : Parser) -> @ast.Stmt raise Error {
     } else {
       None
     }
-    let decls : Array[@ast.Stmt] = [VarDecl(var_kind, name, init_val, var_tok.loc)]
+    let decls : Array[@ast.Stmt] = [
+      VarDecl(var_kind, name, init_val, var_tok.loc),
+    ]
     while self.eat(Comma) {
       // Handle destructuring in for-init: for (var i = 0, {x} = obj; ...)
       if self.at(LBracket) || self.at(LBrace) {
@@ -384,7 +392,8 @@ fn Parser::parse_for_stmt(self : Parser) -> @ast.Stmt raise Error {
           let _ = self.expect(RParen)
           let body = self.parse_stmt()
           match expr {
-            Ident(name, _) => return ForOfStmt(None, name, iterable, body, tok.loc)
+            Ident(name, _) =>
+              return ForOfStmt(None, name, iterable, body, tok.loc)
             ArrayLit(_, _) | ObjectLit(_, _) => {
               let pattern = expr_to_pattern(expr)
               return ForOfStmtPat(None, pattern, iterable, body, tok.loc)

@@ -882,7 +882,9 @@ fn Interpreter::exec_stmt(
     }
     // ES Module declarations
     ImportDecl(default_import, specifiers, namespace_import, source, loc) =>
-      self.exec_import(default_import, specifiers, namespace_import, source, env, loc)
+      self.exec_import(
+        default_import, specifiers, namespace_import, source, env, loc,
+      )
     ExportNamedDecl(decl, specifiers, source, loc) =>
       self.exec_export_named(decl, specifiers, source, env, loc)
     ExportDefaultDecl(expr, _) => {
@@ -1409,11 +1411,13 @@ fn Interpreter::assign_to_expr(
     Member(obj_expr, prop, loc) => {
       let obj = self.eval_expr(obj_expr, env)
       let _ = self.set_property(obj, prop, value, loc)
+
     }
     ComputedMember(obj_expr, key_expr, loc) => {
       let obj = self.eval_expr(obj_expr, env)
       let key = self.eval_expr(key_expr, env)
       let _ = self.set_computed_property(obj, key, value, loc)
+
     }
     _ =>
       raise @errors.ReferenceError(
@@ -1539,13 +1543,12 @@ fn Interpreter::eval_expr(
                 }
               }
             }
-            Array(arr_data) => {
+            Array(arr_data) =>
               // Spread array into object: only enumerable own properties
               // length is non-enumerable per spec, so only copy indexed elements
               for i, value in arr_data.elements {
                 properties[i.to_string()] = value
               }
-            }
             String_(s) => {
               // Spread string into object: { ..."abc" } -> { "0": "a", "1": "b", "2": "c" }
               let mut idx = 0
@@ -1581,7 +1584,10 @@ fn Interpreter::eval_expr(
                     enumerable: true,
                     configurable: true,
                     getter: Some(getter),
-                    setter: match existing { Some(d) => d.setter; None => None },
+                    setter: match existing {
+                      Some(d) => d.setter
+                      None => None
+                    },
                   }
                 }
                 Set => {
@@ -1594,7 +1600,10 @@ fn Interpreter::eval_expr(
                     writable: false,
                     enumerable: true,
                     configurable: true,
-                    getter: match existing { Some(d) => d.getter; None => None },
+                    getter: match existing {
+                      Some(d) => d.getter
+                      None => None
+                    },
                     setter: Some(setter),
                   }
                 }
@@ -1630,7 +1639,10 @@ fn Interpreter::eval_expr(
                     enumerable: true,
                     configurable: true,
                     getter: Some(getter),
-                    setter: match existing { Some(d) => d.setter; None => None },
+                    setter: match existing {
+                      Some(d) => d.setter
+                      None => None
+                    },
                   }
                 }
                 Set => {
@@ -1643,7 +1655,10 @@ fn Interpreter::eval_expr(
                     writable: false,
                     enumerable: true,
                     configurable: true,
-                    getter: match existing { Some(d) => d.getter; None => None },
+                    getter: match existing {
+                      Some(d) => d.getter
+                      None => None
+                    },
                     setter: Some(setter),
                   }
                 }
@@ -1670,7 +1685,10 @@ fn Interpreter::eval_expr(
                 enumerable: true,
                 configurable: true,
                 getter: Some(getter),
-                setter: match existing { Some(d) => d.setter; None => None },
+                setter: match existing {
+                  Some(d) => d.setter
+                  None => None
+                },
               }
             }
             Set => {
@@ -1683,7 +1701,10 @@ fn Interpreter::eval_expr(
                 writable: false,
                 enumerable: true,
                 configurable: true,
-                getter: match existing { Some(d) => d.getter; None => None },
+                getter: match existing {
+                  Some(d) => d.getter
+                  None => None
+                },
                 setter: Some(setter),
               }
             }
@@ -1691,7 +1712,9 @@ fn Interpreter::eval_expr(
           }
         }
       }
-      let obj_prototype : Value = try { env.get("[[ObjectPrototype]]") } catch { _ => Null }
+      let obj_prototype : Value = env.get("[[ObjectPrototype]]") catch {
+        _ => Null
+      }
       Object({
         properties,
         symbol_properties,
@@ -1776,7 +1799,7 @@ fn Interpreter::eval_expr(
       let template_obj = Object({
         properties: props,
         symbol_properties: {},
-        prototype: try { self.global.get("[[ObjectPrototype]]") } catch {
+        prototype: self.global.get("[[ObjectPrototype]]") catch {
           _ => Null
         },
         callable: None,
@@ -2039,14 +2062,11 @@ fn Interpreter::eval_expr(
         _ => self.get_computed_property(super_proto, key, loc)
       }
     }
-    NewTargetExpr(_) => {
+    NewTargetExpr(_) =>
       // new.target - returns the constructor called with new, or undefined
-      try {
-        env.get("<new.target>")
-      } catch {
+      env.get("<new.target>") catch {
         _ => Undefined
       }
-    }
   }
 }
 
@@ -2561,15 +2581,9 @@ fn Interpreter::spread_iterable(
           }
           return result
         }
-        _ =>
-          raise @errors.TypeError(
-            message=type_of(val) + " is not iterable",
-          )
+        _ => raise @errors.TypeError(message=type_of(val) + " is not iterable")
       }
-    _ =>
-      raise @errors.TypeError(
-        message=type_of(val) + " is not iterable",
-      )
+    _ => raise @errors.TypeError(message=type_of(val) + " is not iterable")
   }
 
   // Get the next method from the iterator (walk prototype chain)
@@ -2620,10 +2634,7 @@ fn Interpreter::spread_iterable(
         }
         (done_val, value_val)
       }
-      _ =>
-        raise @errors.TypeError(
-          message="Iterator result is not an object",
-        )
+      _ => raise @errors.TypeError(message="Iterator result is not an object")
     }
     if done {
       break
@@ -3112,7 +3123,8 @@ fn Interpreter::get_property(
                 match proto_data.descriptors.get(prop) {
                   Some(desc) =>
                     match desc.getter {
-                      Some(getter) => return self.call_value(getter, obj, [], loc)
+                      Some(getter) =>
+                        return self.call_value(getter, obj, [], loc)
                       None => ()
                     }
                   None => ()
@@ -3440,8 +3452,12 @@ fn Interpreter::get_property(
 
 ///|
 /// Look up a property on a built-in constructor's prototype (e.g. Array.prototype.constructor)
-fn lookup_builtin_proto(env : Environment, ctor_name : String, prop : String) -> Value {
-  let ctor = try { env.get(ctor_name) } catch { _ => return Undefined }
+fn lookup_builtin_proto(
+  env : Environment,
+  ctor_name : String,
+  prop : String,
+) -> Value {
+  let ctor = env.get(ctor_name) catch { _ => return Undefined }
   match ctor {
     Object(ctor_data) =>
       match ctor_data.properties.get("prototype") {
@@ -3996,6 +4012,7 @@ fn Interpreter::set_property(
         let n = to_number(value).to_int()
         while data.elements.length() > n {
           let _ = data.elements.pop()
+
         }
       } else {
         // try numeric index
@@ -4208,6 +4225,7 @@ fn Interpreter::set_computed_property(
             let n = to_number(value).to_int()
             while data.elements.length() > n {
               let _ = data.elements.pop()
+
             }
           }
           value
@@ -4225,9 +4243,7 @@ fn Interpreter::set_computed_property(
         }
       }
     _ =>
-      raise @errors.TypeError(
-        message="Cannot set property of \{type_of(obj)}",
-      )
+      raise @errors.TypeError(message="Cannot set property of \{type_of(obj)}")
   }
 }
 
@@ -4560,7 +4576,9 @@ fn Interpreter::eval_new(
                           let super_env = Environment::new(parent=Some(senv))
                           super_env.def_builtin("this", new_obj)
                           super_env.def(
-                            "<new.target>", derived_ctor, LetBinding,
+                            "<new.target>",
+                            derived_ctor,
+                            LetBinding,
                           )
                           match grand_super {
                             Some(gs) => {
@@ -4693,7 +4711,7 @@ fn Interpreter::create_class(
     // Handle getter/setter vs regular method
     // Class methods are non-enumerable per spec
     match m.kind {
-      Get => {
+      Get =>
         // Getter method - store as accessor descriptor
         match key_val {
           Symbol(sym) => {
@@ -4711,7 +4729,10 @@ fn Interpreter::create_class(
               enumerable: false,
               configurable: true,
               getter: Some(method_val),
-              setter: match existing { Some(d) => d.setter; None => None },
+              setter: match existing {
+                Some(d) => d.setter
+                None => None
+              },
             }
           }
           _ => {
@@ -4730,12 +4751,14 @@ fn Interpreter::create_class(
               enumerable: false,
               configurable: true,
               getter: Some(method_val),
-              setter: match existing { Some(d) => d.setter; None => None },
+              setter: match existing {
+                Some(d) => d.setter
+                None => None
+              },
             }
           }
         }
-      }
-      Set => {
+      Set =>
         // Setter method - store as accessor descriptor
         match key_val {
           Symbol(sym) => {
@@ -4752,7 +4775,10 @@ fn Interpreter::create_class(
               writable: false,
               enumerable: false,
               configurable: true,
-              getter: match existing { Some(d) => d.getter; None => None },
+              getter: match existing {
+                Some(d) => d.getter
+                None => None
+              },
               setter: Some(method_val),
             }
           }
@@ -4771,12 +4797,14 @@ fn Interpreter::create_class(
               writable: false,
               enumerable: false,
               configurable: true,
-              getter: match existing { Some(d) => d.getter; None => None },
+              getter: match existing {
+                Some(d) => d.getter
+                None => None
+              },
               setter: Some(method_val),
             }
           }
         }
-      }
       _ => {
         // Regular method or Init
         let method_descriptor : PropDescriptor = {
@@ -5325,7 +5353,8 @@ fn Interpreter::extract_export_names(
   match decl {
     VarDecl(_, name, _, _) => self.module_export_bindings.push((name, name))
     FuncDecl(name, _, _, _) => self.module_export_bindings.push((name, name))
-    FuncDeclExt(name, _, _, _, _) => self.module_export_bindings.push((name, name))
+    FuncDeclExt(name, _, _, _, _) =>
+      self.module_export_bindings.push((name, name))
     ClassDecl(name, _, _, _) => self.module_export_bindings.push((name, name))
     DestructureDecl(_, pattern, _, _) =>
       self.extract_pattern_export_names(pattern)

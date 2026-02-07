@@ -1306,7 +1306,13 @@ pub fn setup_promise(env : Environment) -> Unit {
   match promise_proto {
     Object(data) => {
       data.properties["constructor"] = promise_ctor
-      data.descriptors["constructor"] = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+      data.descriptors["constructor"] = {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
     }
     _ => ()
   }
