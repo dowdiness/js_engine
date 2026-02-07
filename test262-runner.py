@@ -57,9 +57,6 @@ SKIP_FEATURES = {
     "promise-with-resolvers", "promise-try",
     "top-level-await",
 
-    # Generators
-    "generators", "generator",
-
     # Classes (advanced features not yet supported)
     "class-fields-private", "class-fields-public",
     "class-methods-private", "class-static-fields-private",
