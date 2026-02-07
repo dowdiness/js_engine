@@ -166,7 +166,7 @@ UNSUPPORTED_TEST262_FEATURES = {
     # object-spread, object-rest
 }
 
-UNSUPPORTED_FLAGS = {"module", "CanBlockIsFalse", "CanBlockIsTrue"}
+UNSUPPORTED_FLAGS = {"CanBlockIsFalse", "CanBlockIsTrue"}
 
 # Test262 categories that map well to engine capabilities
 CATEGORY_ANALYSIS = {

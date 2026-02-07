@@ -1,9 +1,15 @@
-///| WASM-GC target: args = ["program", source, ...]
-fn get_source_arg() -> String? {
-  let args = @env.args()
+///| WASM-GC target: args = ["program", ...]
+fn parse_args(args : Array[String]) -> (Bool, String?) {
   if args.length() < 2 {
-    None
+    return (false, None)
+  }
+  if args[1] == "--module" {
+    if args.length() < 3 {
+      (true, None)
+    } else {
+      (true, Some(args[2]))
+    }
   } else {
-    Some(args[1])
+    (false, Some(args[1]))
   }
 }
