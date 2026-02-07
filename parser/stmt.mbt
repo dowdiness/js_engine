@@ -368,7 +368,12 @@ fn Parser::parse_for_stmt(self : Parser) -> @ast.Stmt raise Error {
               let pattern = expr_to_pattern(expr)
               return ForOfStmtPat(None, pattern, iterable, body, tok.loc)
             }
-            _ => return ForOfExpr(expr, iterable, body, tok.loc)
+            Member(_, _, _) | ComputedMember(_, _, _) =>
+              return ForOfExpr(expr, iterable, body, tok.loc)
+            _ =>
+              raise @errors.SyntaxError(
+                message="Invalid left-hand side in for-of at line \{tok.loc.line}, col \{tok.loc.col}",
+              )
           }
         }
         if self.at(In) {
@@ -382,7 +387,12 @@ fn Parser::parse_for_stmt(self : Parser) -> @ast.Stmt raise Error {
               let pattern = expr_to_pattern(expr)
               return ForInStmtPat(None, pattern, obj, body, tok.loc)
             }
-            _ => return ForInExpr(expr, obj, body, tok.loc)
+            Member(_, _, _) | ComputedMember(_, _, _) =>
+              return ForInExpr(expr, obj, body, tok.loc)
+            _ =>
+              raise @errors.SyntaxError(
+                message="Invalid left-hand side in for-in at line \{tok.loc.line}, col \{tok.loc.col}",
+              )
           }
         }
         // Not for-in/for-of, restore position
