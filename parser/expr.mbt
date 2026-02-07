@@ -791,7 +791,7 @@ fn Parser::parse_array_literal(self : Parser) -> @ast.Expr raise Error {
     if not(self.at(RBracket)) {
       if self.at(Comma) {
         let _ = self.advance()
-         // consume comma
+        // consume comma
       }
     }
   }

@@ -727,7 +727,7 @@ test "ES module: live bindings - export let mutation within module" {
   )
   // Without live bindings, x would be 1 (snapshot at declaration time)
   // With live bindings, x should be 3 (resolved at end of module execution)
-  inspect(exports.get("x"), content="Some(Number(3))")
+  inspect(exports.get("x"), content="Some(3)")
 }
 
 ///|
@@ -739,7 +739,7 @@ test "ES module: live bindings - export { x } deferred" {
       #|// x is exported after all statements run
     ),
   )
-  inspect(exports.get("x"), content="Some(Number(1))")
+  inspect(exports.get("x"), content="Some(1)")
 }
 
 ///|
