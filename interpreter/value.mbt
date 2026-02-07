@@ -205,6 +205,19 @@ pub fn get_hasinstance_symbol() -> SymbolData {
 }
 
 ///|
+/// Well-known Symbol.toStringTag - stored globally for @@toStringTag support
+pub let well_known_tostringtag_sym : Ref[SymbolData?] = { val: None }
+
+///|
+/// Get the well-known Symbol.toStringTag
+pub fn get_tostringtag_symbol() -> SymbolData {
+  match well_known_tostringtag_sym.val {
+    Some(sym) => sym
+    None => abort("Symbol.toStringTag not initialized")
+  }
+}
+
+///|
 pub(all) enum Value {
   Number(Double)
   String_(String)
@@ -281,6 +294,27 @@ pub fn make_native_func(
 ) -> Value {
   Object({
     properties: {},
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(NativeCallable(name, func)),
+    class_name: "Function",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+}
+
+///|
+/// Helper to create a native function with explicit length property
+pub fn make_native_func_with_length(
+  name : String,
+  length : Int,
+  func : (Array[Value]) -> Value raise Error,
+) -> Value {
+  let props : Map[String, Value] = {}
+  props["length"] = Number(length.to_double())
+  Object({
+    properties: props,
     symbol_properties: {},
     prototype: Null,
     callable: Some(NativeCallable(name, func)),

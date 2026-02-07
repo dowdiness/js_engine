@@ -20,7 +20,7 @@ fn Parser::parse_stmt(self : Parser) -> @ast.Stmt raise Error {
     Switch => self.parse_switch_stmt()
     Do => self.parse_do_while_stmt()
     LBrace => self.parse_block_stmt()
-    Ident(_) =>
+    Ident(_) | Get | Set =>
       // Labeled statement: ident ':'
       if self.peek_kind_at(1) == Colon {
         self.parse_labeled_stmt()
@@ -288,13 +288,13 @@ fn Parser::parse_for_stmt(self : Parser) -> @ast.Stmt raise Error {
         let obj = self.parse_assignment()
         let _ = self.expect(RParen)
         let body = self.parse_stmt()
-        return ForOfStmtPat(var_kind, pat, obj, body, tok.loc)
+        return ForOfStmtPat(Some(var_kind), pat, obj, body, tok.loc)
       }
       if self.eat(In) {
         let obj = self.parse_expr()
         let _ = self.expect(RParen)
         let body = self.parse_stmt()
-        return ForInStmtPat(var_kind, pat, obj, body, tok.loc)
+        return ForInStmtPat(Some(var_kind), pat, obj, body, tok.loc)
       }
       // Destructuring in regular for: for (let [a,b] = ...; ...; ...)
       let _ = self.expect(Assign)
@@ -350,25 +350,56 @@ fn Parser::parse_for_stmt(self : Parser) -> @ast.Stmt raise Error {
     }
     return self.parse_for_rest(init, tok.loc)
   }
-  // Check for for-in / for-of with bare identifier
-  match self.peek_kind() {
-    Ident(name) =>
-      if self.peek_kind_at(1) == In {
-        self.pos += 1 // consume ident
-        self.pos += 1 // consume 'in'
-        let obj = self.parse_expr()
-        let _ = self.expect(RParen)
-        let body = self.parse_stmt()
-        return ForInStmt(None, name, obj, body, tok.loc)
-      } else if self.peek_kind_at(1) == Of {
-        self.pos += 1 // consume ident
-        self.pos += 1 // consume 'of'
-        let obj = self.parse_expr()
-        let _ = self.expect(RParen)
-        let body = self.parse_stmt()
-        return ForOfStmt(None, name, obj, body, tok.loc)
+  // Check for for-in / for-of with bare expression (no let/var/const)
+  // This handles: for (x of arr), for ({x} of arr), for ([x] of arr), for (a.b of arr), etc.
+  if not(self.at(Semicolon)) {
+    let saved_pos = self.pos
+    let try_expr : @ast.Expr? = Some(self.parse_call()) catch { _ => None }
+    match try_expr {
+      Some(expr) => {
+        if self.at(Of) {
+          self.pos += 1 // consume 'of'
+          let iterable = self.parse_assignment()
+          let _ = self.expect(RParen)
+          let body = self.parse_stmt()
+          match expr {
+            Ident(name, _) => return ForOfStmt(None, name, iterable, body, tok.loc)
+            ArrayLit(_, _) | ObjectLit(_, _) => {
+              let pattern = expr_to_pattern(expr)
+              return ForOfStmtPat(None, pattern, iterable, body, tok.loc)
+            }
+            Member(_, _, _) | ComputedMember(_, _, _) =>
+              return ForOfExpr(expr, iterable, body, tok.loc)
+            _ =>
+              raise @errors.SyntaxError(
+                message="Invalid left-hand side in for-of at line \{tok.loc.line}, col \{tok.loc.col}",
+              )
+          }
+        }
+        if self.at(In) {
+          self.pos += 1 // consume 'in'
+          let obj = self.parse_expr()
+          let _ = self.expect(RParen)
+          let body = self.parse_stmt()
+          match expr {
+            Ident(name, _) => return ForInStmt(None, name, obj, body, tok.loc)
+            ArrayLit(_, _) | ObjectLit(_, _) => {
+              let pattern = expr_to_pattern(expr)
+              return ForInStmtPat(None, pattern, obj, body, tok.loc)
+            }
+            Member(_, _, _) | ComputedMember(_, _, _) =>
+              return ForInExpr(expr, obj, body, tok.loc)
+            _ =>
+              raise @errors.SyntaxError(
+                message="Invalid left-hand side in for-in at line \{tok.loc.line}, col \{tok.loc.col}",
+              )
+          }
+        }
+        // Not for-in/for-of, restore position
+        self.pos = saved_pos
       }
-    _ => ()
+      None => self.pos = saved_pos
+    }
   }
   // Regular for-loop
   let init : @ast.Stmt? = if self.at(Semicolon) {
@@ -547,6 +578,8 @@ fn Parser::parse_labeled_stmt(self : Parser) -> @ast.Stmt raise Error {
   let tok = self.advance() // consume identifier
   let label : String = match tok.kind {
     Ident(name) => name
+    Get => "get"
+    Set => "set"
     _ =>
       raise @errors.SyntaxError(
         message="Expected label name at line \{tok.loc.line}, col \{tok.loc.col}",

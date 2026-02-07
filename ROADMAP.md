@@ -2,9 +2,9 @@
 
 ## Current Status
 
-**Test262**: 10,592 / 24,190 passed (43.8%) | 25,381 skipped | 13,598 failed | 79 timeouts
+**Test262**: 10,657 / 24,190 passed (44.1%) | 25,381 skipped | 13,533 failed | 79 timeouts
 
-**Unit tests**: 547 total, 547 passed, 0 failed
+**Unit tests**: 552 total, 552 passed, 0 failed
 
 ## Phase History
 
@@ -16,6 +16,7 @@
 | 6I-6L | +56 | 9,545 | Leading decimals, canonical indices, PR review fixes |
 | 7A | — | 9,545 | Full accessor descriptor support (get/set in PropDescriptor) |
 | 7B | +1,047 | 10,592 | Unicode escapes in identifiers, strings, template literals |
+| 7C-E | +65 | 10,657 | Bare for-of/for-in, get/set as identifiers, Math function lengths |
 | JS Target | — | — | JS backend support, Error toString fix, backend-specific argv handling |
 
 For detailed implementation notes on Phases 1-6, see [docs/PHASE_HISTORY.md](docs/PHASE_HISTORY.md).
@@ -28,10 +29,10 @@ For detailed implementation notes on Phases 1-6, see [docs/PHASE_HISTORY.md](doc
 
 | Category | Count | Difficulty |
 |----------|-------|------------|
-| Unicode escapes in identifiers/strings | 479 | Medium |
-| Bare `for (x of ...)` without let/var | 225 | Easy |
+| Unicode escapes in identifiers/strings | 479 | ✅ Done (7B) |
+| Bare `for (x of ...)` without let/var | 225 | ✅ Done (7C) |
 | Generator functions (`function*`, `yield`) | 160 | Hard |
-| `get`/`set` as regular identifiers | 127 | Easy |
+| `get`/`set` as regular identifiers | 127 | ✅ Done (7D) |
 | Destructuring defaults in more contexts | ~100 | Medium |
 | Async $DONE not called (event loop) | 98 | Hard |
 | Additional destructuring pattern contexts | 122 | Medium |
@@ -57,7 +58,7 @@ For detailed implementation notes on Phases 1-6, see [docs/PHASE_HISTORY.md](doc
 | Number | 187 | Easy |
 | Object.create | 176 | High |
 | Map/WeakMap | 169 | Medium |
-| Math | 134 | Easy |
+| Math | 134 | ✅ Done (7E) |
 | JSON | 59 | Medium |
 
 ---
@@ -112,17 +113,32 @@ Pure lexer fix. Added `parse_unicode_escape()` and `write_code_point()` helpers:
 - Decoded identifiers pass through `resolve_keyword()` for correct keyword resolution
 - Supplementary plane support via surrogate pairs for code points > 0xFFFF
 
-### 7C: Bare for-of/for-in (~225 tests)
+### 7C: Bare for-of/for-in (~225 tests) — DONE
 
-Parser fix: `for (x of arr)` without `let`/`var`/`const`.
+Parser + interpreter fix for `for (x of arr)` without `let`/`var`/`const`:
 
-### 7D: get/set as Identifiers (~127 tests)
+- Speculative parsing approach: `parse_call()` to get LHS, then check for `of`/`in`
+- Bare destructuring: `for ({x} of arr)`, `for ([x] of arr)` via `ForOfStmtPat`/`ForInStmtPat` with `VarKind?`
+- Bare member expressions: `for (a.b of arr)` via new `ForOfExpr`/`ForInExpr` AST nodes
+- Assignment to existing variables via `assign_pattern` (no new bindings)
 
-Parser fix: `get`/`set` treated as regular identifiers outside getter/setter position.
+### 7D: get/set as Identifiers (~127 tests) — DONE
 
-### 7E: Math Built-ins (~134 tests)
+Parser fix: `get`/`set` treated as regular identifiers outside getter/setter position:
 
-Missing methods: `cbrt`, `log2`, `log10`, `sign`, `trunc`, `fround`, `clz32`, `imul`, `hypot`, `acosh`, `asinh`, `atanh`, `cosh`, `sinh`, `tanh`, `expm1`, `log1p`.
+- Updated `expect_ident()` to accept `Get`/`Set` tokens as identifiers
+- Updated `parse_primary()` to produce `Ident("get")`/`Ident("set")` for standalone usage
+- Handled in `parse_assignment()` for single-param arrow functions (`get => ...`)
+- Statement-level handling: `get`/`set` as labels, expression statements
+
+### 7E: Math Built-ins (~134 tests) — DONE
+
+All Math methods already existed. Fixes for test262 compliance:
+
+- Added correct `.length` property to all Math methods via `make_native_func_with_length`
+- Added `Math[Symbol.toStringTag] = "Math"` via well-known symbol
+- Global `well_known_tostringtag_sym` for Symbol.toStringTag access across builtins
+- Reordered builtin initialization: `setup_symbol_builtins` before `setup_math_builtins`
 
 ---
 

@@ -531,19 +531,23 @@ fn Interpreter::exec_stmt(
     ForInStmtPat(var_kind, pattern, obj_expr, body, _) => {
       let obj = self.eval_expr(obj_expr, env)
       let keys = collect_for_in_keys(obj)
-      let bk : BindingKind = match var_kind {
-        LetKind => LetBinding
-        ConstKind => ConstBinding
-        VarKind => VarBinding
-      }
       for key in keys {
         let body_env = Environment::new(parent=Some(env))
-        // var bindings go to outer env (function/global scoped), let/const to body_env
-        let bind_env = match var_kind {
-          VarKind => env
-          _ => body_env
+        match var_kind {
+          Some(kind) => {
+            let bk : BindingKind = match kind {
+              LetKind => LetBinding
+              ConstKind => ConstBinding
+              VarKind => VarBinding
+            }
+            let bind_env = match kind {
+              VarKind => env
+              _ => body_env
+            }
+            self.bind_pattern(pattern, String_(key), bind_env, bk)
+          }
+          None => self.assign_pattern(pattern, String_(key), env)
         }
-        self.bind_pattern(pattern, String_(key), bind_env, bk)
         match self.exec_stmt(body, body_env) {
           Normal(_) => ()
           ReturnSignal(v) => return ReturnSignal(v)
@@ -634,12 +638,6 @@ fn Interpreter::exec_stmt(
         _ => raise @errors.TypeError(message="Iterator is not an object")
       }
 
-      let bk : BindingKind = match var_kind {
-        LetKind => LetBinding
-        ConstKind => ConstBinding
-        VarKind => VarBinding
-      }
-
       // Iterate using the iterator protocol
       while true {
         let result = self.call_value(next_method, iterator, [], loc)
@@ -662,12 +660,153 @@ fn Interpreter::exec_stmt(
           break
         }
         let body_env = Environment::new(parent=Some(env))
-        // var bindings go to outer env (function/global scoped), let/const to body_env
-        let bind_env = match var_kind {
-          VarKind => env
-          _ => body_env
+        match var_kind {
+          Some(kind) => {
+            let bk : BindingKind = match kind {
+              LetKind => LetBinding
+              ConstKind => ConstBinding
+              VarKind => VarBinding
+            }
+            let bind_env = match kind {
+              VarKind => env
+              _ => body_env
+            }
+            self.bind_pattern(pattern, value, bind_env, bk)
+          }
+          None => self.assign_pattern(pattern, value, env)
         }
-        self.bind_pattern(pattern, value, bind_env, bk)
+        match self.exec_stmt(body, body_env) {
+          Normal(_) => ()
+          ReturnSignal(v) => return ReturnSignal(v)
+          BreakSignal(None) => break
+          BreakSignal(Some(l)) =>
+            if label == Some(l) {
+              break
+            } else {
+              return BreakSignal(Some(l))
+            }
+          ContinueSignal(None) => continue
+          ContinueSignal(Some(l)) =>
+            if label == Some(l) {
+              continue
+            } else {
+              return ContinueSignal(Some(l))
+            }
+        }
+      }
+      Normal(Undefined)
+    }
+    ForInExpr(lhs_expr, obj_expr, body, _) => {
+      let obj = self.eval_expr(obj_expr, env)
+      let keys = collect_for_in_keys(obj)
+      for key in keys {
+        let body_env = Environment::new(parent=Some(env))
+        self.assign_to_expr(lhs_expr, String_(key), env)
+        match self.exec_stmt(body, body_env) {
+          Normal(_) => ()
+          ReturnSignal(v) => return ReturnSignal(v)
+          BreakSignal(None) => break
+          BreakSignal(Some(l)) =>
+            if label == Some(l) {
+              break
+            } else {
+              return BreakSignal(Some(l))
+            }
+          ContinueSignal(None) => continue
+          ContinueSignal(Some(l)) =>
+            if label == Some(l) {
+              continue
+            } else {
+              return ContinueSignal(Some(l))
+            }
+        }
+      }
+      Normal(Undefined)
+    }
+    ForOfExpr(lhs_expr, iterable_expr, body, loc) => {
+      let iterable = self.eval_expr(iterable_expr, env)
+      let iterator_sym = get_iterator_symbol()
+      let iterator_method = self.get_computed_property(
+        iterable,
+        Symbol(iterator_sym),
+        loc,
+      )
+      let iterator = match iterator_method {
+        Object(data) =>
+          match data.callable {
+            Some(_) => self.call_value(iterator_method, iterable, [], loc)
+            None =>
+              raise @errors.TypeError(
+                message="Result of the Symbol.iterator method is not an object",
+              )
+          }
+        Undefined =>
+          match iterable {
+            Array(arr) => make_array_iterator_value(arr)
+            String_(s) => make_string_iterator_value(s)
+            _ =>
+              raise @errors.TypeError(
+                message="\{type_of(iterable)} is not iterable",
+              )
+          }
+        _ =>
+          raise @errors.TypeError(
+            message="Result of the Symbol.iterator method is not an object",
+          )
+      }
+      let next_method = match iterator {
+        Object(iter_data) =>
+          match iter_data.properties.get("next") {
+            Some(next_fn) => next_fn
+            None => {
+              let mut found : Value = Undefined
+              let mut current = iter_data.prototype
+              while true {
+                match current {
+                  Object(proto_data) =>
+                    match proto_data.properties.get("next") {
+                      Some(next_fn) => {
+                        found = next_fn
+                        break
+                      }
+                      None => current = proto_data.prototype
+                    }
+                  _ => break
+                }
+              }
+              match found {
+                Undefined =>
+                  raise @errors.TypeError(
+                    message="iterator.next is not a function",
+                  )
+                _ => found
+              }
+            }
+          }
+        _ => raise @errors.TypeError(message="Iterator is not an object")
+      }
+      while true {
+        let result = self.call_value(next_method, iterator, [], loc)
+        let (done, value) = match result {
+          Object(result_data) => {
+            let done_val = match result_data.properties.get("done") {
+              Some(v) => is_truthy(v)
+              None => false
+            }
+            let value_val = match result_data.properties.get("value") {
+              Some(v) => v
+              None => Undefined
+            }
+            (done_val, value_val)
+          }
+          _ =>
+            raise @errors.TypeError(message="Iterator result is not an object")
+        }
+        if done {
+          break
+        }
+        let body_env = Environment::new(parent=Some(env))
+        self.assign_to_expr(lhs_expr, value, env)
         match self.exec_stmt(body, body_env) {
           Normal(_) => ()
           ReturnSignal(v) => return ReturnSignal(v)
@@ -1186,6 +1325,31 @@ fn Interpreter::assign_pattern(
         None => ()
       }
     }
+  }
+}
+
+///|
+fn Interpreter::assign_to_expr(
+  self : Interpreter,
+  expr : @ast.Expr,
+  value : Value,
+  env : Environment,
+) -> Unit raise Error {
+  match expr {
+    Ident(name, _) => env.assign(name, value)
+    Member(obj_expr, prop, loc) => {
+      let obj = self.eval_expr(obj_expr, env)
+      let _ = self.set_property(obj, prop, value, loc)
+    }
+    ComputedMember(obj_expr, key_expr, loc) => {
+      let obj = self.eval_expr(obj_expr, env)
+      let key = self.eval_expr(key_expr, env)
+      let _ = self.set_computed_property(obj, key, value, loc)
+    }
+    _ =>
+      raise @errors.ReferenceError(
+        message="Invalid left-hand side in for-in/for-of",
+      )
   }
 }
 

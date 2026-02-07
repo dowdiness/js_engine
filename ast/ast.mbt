@@ -187,8 +187,10 @@ pub(all) enum Stmt {
   DoWhileStmt(Stmt, Expr, @token.Loc)
   ForInStmt(VarKind?, String, Expr, Stmt, @token.Loc)
   ForOfStmt(VarKind?, String, Expr, Stmt, @token.Loc)
-  ForInStmtPat(VarKind, Pattern, Expr, Stmt, @token.Loc)
-  ForOfStmtPat(VarKind, Pattern, Expr, Stmt, @token.Loc)
+  ForInStmtPat(VarKind?, Pattern, Expr, Stmt, @token.Loc)
+  ForOfStmtPat(VarKind?, Pattern, Expr, Stmt, @token.Loc)
+  ForInExpr(Expr, Expr, Stmt, @token.Loc) // for (expr in obj) where expr is member/computed
+  ForOfExpr(Expr, Expr, Stmt, @token.Loc) // for (expr of iterable) where expr is member/computed
   DestructureDecl(VarKind, Pattern, Expr, @token.Loc)
   LabeledStmt(String, Stmt, @token.Loc)
   // Class declaration

@@ -63,6 +63,14 @@ fn Parser::expect_ident(self : Parser) -> String raise Error {
       self.pos += 1
       name
     }
+    Get => {
+      self.pos += 1
+      "get"
+    }
+    Set => {
+      self.pos += 1
+      "set"
+    }
     _ => {
       let tok = self.peek()
       raise @errors.SyntaxError(
