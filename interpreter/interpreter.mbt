@@ -42,6 +42,7 @@ pub(all) struct Interpreter {
   // ES Modules support
   module_registry : Map[String, Map[String, Value]] // module specifier -> exports namespace
   mut module_exports : Map[String, Value] // current module's exports being built
+  mut module_export_bindings : Array[(String, String)] // deferred: (export_name, local_binding_name)
 }
 
 ///|
@@ -80,6 +81,7 @@ pub fn Interpreter::new() -> Interpreter {
     cancelled_timer_ids,
     module_registry: {},
     module_exports: {},
+    module_export_bindings: [],
   }
 }
 
@@ -1047,6 +1049,34 @@ fn Interpreter::hoist_declarations(
       ExportNamedDecl(Some(decl), _, _, _) => {
         let inner_stmts : Array[@ast.Stmt] = [decl]
         _self.hoist_declarations(inner_stmts, env)
+      }
+      // export default function name() {} - hoist the named function
+      ExportDefaultDecl(FuncExpr(Some(name), params, body, _), _) => {
+        let func_data : FuncData = {
+          name: Some(name),
+          params,
+          body,
+          closure: env,
+        }
+        if env.bindings.contains(name) {
+          env.assign(name, make_func(func_data))
+        } else {
+          env.def(name, make_func(func_data), VarBinding)
+        }
+      }
+      ExportDefaultDecl(FuncExprExt(Some(name), params, rest_param, body, _), _) => {
+        let func_data : FuncDataExt = {
+          name: Some(name),
+          params,
+          rest_param,
+          body,
+          closure: env,
+        }
+        if env.bindings.contains(name) {
+          env.assign(name, make_func_ext(func_data))
+        } else {
+          env.def(name, make_func_ext(func_data), VarBinding)
+        }
       }
       _ => ()
     }
@@ -5186,8 +5216,8 @@ fn Interpreter::exec_export_named(
   match decl {
     Some(inner_decl) => {
       let signal = self.exec_stmt(inner_decl, env)
-      // Extract declared names and add to module_exports
-      self.extract_export_names(inner_decl, env)
+      // Record declared names for deferred resolution (live bindings)
+      self.extract_export_names(inner_decl)
       return signal
     }
     None => ()
@@ -5195,7 +5225,7 @@ fn Interpreter::exec_export_named(
   // export { name1, name2 as alias } [from 'source']
   match source {
     Some(src) => {
-      // Re-export from another module
+      // Re-export from another module - resolve immediately (source already finalized)
       let src_exports = match self.module_registry.get(src) {
         Some(exports) => exports
         None =>
@@ -5215,10 +5245,9 @@ fn Interpreter::exec_export_named(
       }
     }
     None =>
-      // Local re-export: export { name1, name2 as alias }
+      // Local export: defer resolution for live bindings
       for spec in specifiers {
-        let value = env.get(spec.local_name)
-        self.module_exports[spec.exported] = value
+        self.module_export_bindings.push((spec.exported, spec.local_name))
       }
   }
   Normal(Undefined)
@@ -5268,54 +5297,52 @@ fn Interpreter::exec_export_all(
 }
 
 ///|
-/// Extract exported names from a declaration statement
+/// Record exported names from a declaration for deferred resolution (live bindings)
 fn Interpreter::extract_export_names(
   self : Interpreter,
   decl : @ast.Stmt,
-  env : Environment,
-) -> Unit raise Error {
+) -> Unit {
   match decl {
-    VarDecl(_, name, _, _) => self.module_exports[name] = env.get(name)
-    FuncDecl(name, _, _, _) => self.module_exports[name] = env.get(name)
-    FuncDeclExt(name, _, _, _, _) => self.module_exports[name] = env.get(name)
-    ClassDecl(name, _, _, _) => self.module_exports[name] = env.get(name)
+    VarDecl(_, name, _, _) => self.module_export_bindings.push((name, name))
+    FuncDecl(name, _, _, _) => self.module_export_bindings.push((name, name))
+    FuncDeclExt(name, _, _, _, _) => self.module_export_bindings.push((name, name))
+    ClassDecl(name, _, _, _) => self.module_export_bindings.push((name, name))
     DestructureDecl(_, pattern, _, _) =>
-      self.extract_pattern_export_names(pattern, env)
+      self.extract_pattern_export_names(pattern)
     StmtList(stmts, _) =>
       for stmt in stmts {
-        self.extract_export_names(stmt, env)
+        self.extract_export_names(stmt)
       }
     _ => ()
   }
 }
 
 ///|
-/// Extract names from a destructuring pattern and add to module exports
+/// Record names from a destructuring pattern for deferred export resolution
 fn Interpreter::extract_pattern_export_names(
   self : Interpreter,
   pattern : @ast.Pattern,
-  env : Environment,
-) -> Unit raise Error {
+) -> Unit {
   match pattern {
-    IdentPat(name) => self.module_exports[name] = env.get(name)
+    IdentPat(name) => self.module_export_bindings.push((name, name))
     ArrayPat(elements, rest) => {
       for elem in elements {
         match elem {
-          Some(p) => self.extract_pattern_export_names(p, env)
+          Some(p) => self.extract_pattern_export_names(p)
           None => ()
         }
       }
       match rest {
-        Some(p) => self.extract_pattern_export_names(p, env)
+        Some(p) => self.extract_pattern_export_names(p)
         None => ()
       }
     }
     ObjectPat(props, rest) => {
       for prop in props {
-        self.extract_pattern_export_names(prop.value, env)
+        self.extract_pattern_export_names(prop.value)
       }
       match rest {
-        Some(p) => self.extract_pattern_export_names(p, env)
+        Some(p) => self.extract_pattern_export_names(p)
         None => ()
       }
     }
@@ -5340,7 +5367,9 @@ pub fn Interpreter::run_module(
 ) -> Map[String, Value] raise Error {
   // Save and reset module exports for this module
   let saved_exports = self.module_exports
+  let saved_bindings = self.module_export_bindings
   self.module_exports = {}
+  self.module_export_bindings = []
   // Create a module-scoped environment that inherits from global
   let module_env = Environment::new(parent=Some(self.global))
   try {
@@ -5367,12 +5396,19 @@ pub fn Interpreter::run_module(
       }
     }
     self.strict = saved_strict
+    // Resolve deferred export bindings from module environment (live bindings)
+    for pair in self.module_export_bindings {
+      let (export_name, local_name) = pair
+      self.module_exports[export_name] = module_env.get(local_name)
+    }
     let exports = self.module_exports
     self.module_exports = saved_exports
+    self.module_export_bindings = saved_bindings
     exports
   } catch {
     e => {
       self.module_exports = saved_exports
+      self.module_export_bindings = saved_bindings
       raise e
     }
   }

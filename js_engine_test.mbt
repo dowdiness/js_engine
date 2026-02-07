@@ -680,6 +680,55 @@ test "ES module: re-export with alias" {
 }
 
 ///|
+test "ES module: live bindings - export let mutation within module" {
+  // Live bindings ensure exports reflect the final value after all statements run
+  let (_, exports) = @js_engine.run_module(
+    #|export let x = 1;
+    #|x = 2;
+    #|x = 3;
+    ,
+  )
+  // Without live bindings, x would be 1 (snapshot at declaration time)
+  // With live bindings, x should be 3 (resolved at end of module execution)
+  inspect(exports.get("x"), content="Some(Number(3))")
+}
+
+///|
+test "ES module: live bindings - export { x } deferred" {
+  let (_, exports) = @js_engine.run_module(
+    #|let x = 1;
+    #|export { x };
+    #|// x is exported after all statements run
+    ,
+  )
+  inspect(exports.get("x"), content="Some(Number(1))")
+}
+
+///|
+test "ES module: export default function hoisting" {
+  let modules : Array[(String, String)] = [
+    (
+      "./hoisted",
+      #|// Call the function before the export default declaration
+      #|const result = greet('world');
+      #|export { result };
+      #|export default function greet(name) { return 'hello ' + name; }
+      ,
+    ),
+    (
+      "./main",
+      #|import greet from './hoisted';
+      #|import { result } from './hoisted';
+      #|console.log(result);
+      #|console.log(greet('moon'));
+      ,
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  inspect(output, content="[\"hello world\", \"hello moon\"]")
+}
+
+///|
 test "ES module: export default class with methods" {
   let modules : Array[(String, String)] = [
     (
