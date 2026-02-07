@@ -5184,14 +5184,24 @@ fn Interpreter::exec_import(
     Some(name) => {
       // Create a namespace object with all exports as properties
       let ns_props : Map[String, Value] = {}
-      module_exports.each(fn(k, v) { ns_props[k] = v })
+      let ns_descs : Map[String, PropDescriptor] = {}
+      module_exports.each(fn(k, v) {
+        ns_props[k] = v
+        ns_descs[k] = {
+          writable: false,
+          enumerable: true,
+          configurable: false,
+          getter: None,
+          setter: None,
+        }
+      })
       let ns_obj : Value = Object({
         properties: ns_props,
         symbol_properties: {},
         prototype: Null,
         callable: None,
         class_name: "Module",
-        descriptors: {},
+        descriptors: ns_descs,
         symbol_descriptors: {},
         extensible: false,
       })
@@ -5272,14 +5282,24 @@ fn Interpreter::exec_export_all(
     Some(name) => {
       // export * as name from 'source' - create namespace object
       let ns_props : Map[String, Value] = {}
-      src_exports.each(fn(k, v) { ns_props[k] = v })
+      let ns_descs : Map[String, PropDescriptor] = {}
+      src_exports.each(fn(k, v) {
+        ns_props[k] = v
+        ns_descs[k] = {
+          writable: false,
+          enumerable: true,
+          configurable: false,
+          getter: None,
+          setter: None,
+        }
+      })
       let ns_obj : Value = Object({
         properties: ns_props,
         symbol_properties: {},
         prototype: Null,
         callable: None,
         class_name: "Module",
-        descriptors: {},
+        descriptors: ns_descs,
         symbol_descriptors: {},
         extensible: false,
       })
@@ -5368,13 +5388,13 @@ pub fn Interpreter::run_module(
   // Save and reset module exports for this module
   let saved_exports = self.module_exports
   let saved_bindings = self.module_export_bindings
+  let saved_strict = self.strict
   self.module_exports = {}
   self.module_export_bindings = []
   // Create a module-scoped environment that inherits from global
   let module_env = Environment::new(parent=Some(self.global))
   try {
     // Modules are always strict mode
-    let saved_strict = self.strict
     self.strict = true
     // Hoist var declarations and function declarations
     self.hoist_declarations(stmts, module_env)
@@ -5407,6 +5427,7 @@ pub fn Interpreter::run_module(
     exports
   } catch {
     e => {
+      self.strict = saved_strict
       self.module_exports = saved_exports
       self.module_export_bindings = saved_bindings
       raise e

@@ -944,27 +944,14 @@ fn Parser::parse_export_decl(self : Parser) -> @ast.Stmt raise Error {
   // export default ...
   if self.at(Default) {
     let _ = self.advance() // consume 'default'
-    // export default function name() {}
+    // export default function [name]() {} - name is optional
     if self.at(Function) {
-      let func_stmt = self.parse_func_decl()
-      // Wrap in ExportDefaultDecl: extract the function as an expression
-      let expr = match func_stmt {
-        FuncDecl(name, params, body, loc) =>
-          @ast.FuncExpr(Some(name), params, body, loc)
-        FuncDeclExt(name, params, rest, body, loc) =>
-          @ast.FuncExprExt(Some(name), params, rest, body, loc)
-        _ => abort("unreachable")
-      }
+      let expr = self.parse_func_expr()
       return ExportDefaultDecl(expr, tok.loc)
     }
-    // export default class Name {}
+    // export default class [Name] {} - name is optional
     if self.at(Class) {
-      let class_stmt = self.parse_class_decl()
-      let expr = match class_stmt {
-        ClassDecl(name, super_class, methods, loc) =>
-          @ast.ClassExpr(Some(name), super_class, methods, loc)
-        _ => abort("unreachable")
-      }
+      let expr = self.parse_class_expr()
       return ExportDefaultDecl(expr, tok.loc)
     }
     // export default expression

@@ -751,3 +751,44 @@ test "ES module: export default class with methods" {
   let (output, _) = @js_engine.run_modules(modules)
   inspect(output, content="[\"1\", \"2\"]")
 }
+
+///|
+test "ES module: anonymous export default function" {
+  let modules : Array[(String, String)] = [
+    (
+      "./add",
+      #|export default function(a, b) { return a + b; }
+      ,
+    ),
+    (
+      "./main",
+      #|import add from './add';
+      #|console.log(add(2, 3));
+      ,
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  inspect(output, content="[\"5\"]")
+}
+
+///|
+test "ES module: anonymous export default class" {
+  let modules : Array[(String, String)] = [
+    (
+      "./greeter",
+      #|export default class {
+      #|  greet(name) { return 'hi ' + name; }
+      #|}
+      ,
+    ),
+    (
+      "./main",
+      #|import Greeter from './greeter';
+      #|const g = new Greeter();
+      #|console.log(g.greet('world'));
+      ,
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  inspect(output, content="[\"hi world\"]")
+}

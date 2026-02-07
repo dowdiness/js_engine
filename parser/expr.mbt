@@ -33,7 +33,8 @@ fn Parser::parse_assignment(self : Parser) -> @ast.Expr raise Error {
         Get => "get"
         Set => "set"
         From => "from"
-        _ => "as"
+        As => "as"
+        _ => abort("unreachable")
       }
       match self.peek_kind_at(1) {
         Arrow => {
