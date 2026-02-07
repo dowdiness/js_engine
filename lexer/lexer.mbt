@@ -133,6 +133,10 @@ fn resolve_keyword(s : String) -> @token.TokenKind {
     "static" => Static
     "get" => Get
     "set" => Set
+    "import" => Import
+    "export" => Export
+    "from" => From
+    "as" => As
     _ => Ident(s)
   }
 }

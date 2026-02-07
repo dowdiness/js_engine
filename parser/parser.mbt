@@ -2,11 +2,12 @@
 pub(all) struct Parser {
   tokens : Array[@token.Token]
   mut pos : Int
+  mut allow_import_export : Bool // true at module top-level, false in nested blocks
 }
 
 ///|
 pub fn Parser::new(tokens : Array[@token.Token]) -> Parser {
-  { tokens, pos: 0 }
+  { tokens, pos: 0, allow_import_export: true }
 }
 
 ///|
@@ -71,6 +72,14 @@ fn Parser::expect_ident(self : Parser) -> String raise Error {
       self.pos += 1
       "set"
     }
+    From => {
+      self.pos += 1
+      "from"
+    }
+    As => {
+      self.pos += 1
+      "as"
+    }
     _ => {
       let tok = self.peek()
       raise @errors.SyntaxError(
@@ -120,6 +129,10 @@ fn Parser::expect_ident_name(self : Parser) -> String raise Error {
     | Static
     | Get
     | Set
+    | Import
+    | Export
+    | From
+    | As
     | True
     | False
     | Null

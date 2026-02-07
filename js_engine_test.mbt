@@ -320,3 +320,475 @@ test "unicode escape identifier mid-word" {
   let (output, _) = @js_engine.run(src)
   inspect(output, content="[\"10\"]")
 }
+
+///|
+test "ES module: export named declaration" {
+  let (output, exports) = @js_engine.run_module(
+    #|export const x = 42;
+    #|export let y = "hello";
+    #|console.log(x, y);
+    ,
+  )
+  inspect(output, content="[\"42 hello\"]")
+  inspect(exports.get("x"), content="Some(42)")
+  inspect(exports.get("y"), content="Some(hello)")
+}
+
+///|
+test "ES module: export function declaration" {
+  let (_output, exports) = @js_engine.run_module(
+    #|export function add(a, b) { return a + b; }
+    ,
+  )
+  inspect(exports.contains("add"), content="true")
+}
+
+///|
+test "ES module: export default expression" {
+  let (_output, exports) = @js_engine.run_module(
+    #|export default 42;
+    ,
+  )
+  inspect(exports.get("default"), content="Some(42)")
+}
+
+///|
+test "ES module: export default function" {
+  let (_output, exports) = @js_engine.run_module(
+    #|export default function greet() { return "hi"; }
+    ,
+  )
+  inspect(exports.contains("default"), content="true")
+}
+
+///|
+test "ES module: export default class" {
+  let (_output, exports) = @js_engine.run_module(
+    #|export default class Foo { constructor() { this.x = 1; } }
+    ,
+  )
+  inspect(exports.contains("default"), content="true")
+}
+
+///|
+test "ES module: export named specifiers" {
+  let (_output, exports) = @js_engine.run_module(
+    #|const a = 1;
+    #|const b = 2;
+    #|export { a, b };
+    ,
+  )
+  inspect(exports.get("a"), content="Some(1)")
+  inspect(exports.get("b"), content="Some(2)")
+}
+
+///|
+test "ES module: export named with alias" {
+  let (_output, exports) = @js_engine.run_module(
+    #|const x = 10;
+    #|export { x as myX };
+    ,
+  )
+  inspect(exports.get("myX"), content="Some(10)")
+  inspect(exports.contains("x"), content="false")
+}
+
+///|
+test "ES module: export class declaration" {
+  let (_output, exports) = @js_engine.run_module(
+    #|export class MyClass {
+    #|  getValue() { return 99; }
+    #|}
+    ,
+  )
+  inspect(exports.contains("MyClass"), content="true")
+}
+
+///|
+test "ES module: import named from module" {
+  let modules : Array[(String, String)] = [
+    (
+      "./math",
+      #|export const PI = 3.14;
+      #|export function double(x) { return x * 2; }
+      ,
+    ),
+    (
+      "./main",
+      #|import { PI, double } from './math';
+      #|console.log(PI);
+      #|console.log(double(5));
+      ,
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  inspect(output, content="[\"3.14\", \"10\"]")
+}
+
+///|
+test "ES module: import default" {
+  let modules : Array[(String, String)] = [
+    (
+      "./greet",
+      #|export default function() { return "hello"; }
+      ,
+    ),
+    (
+      "./main",
+      #|import greet from './greet';
+      #|console.log(greet());
+      ,
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  inspect(output, content="[\"hello\"]")
+}
+
+///|
+test "ES module: import with alias" {
+  let modules : Array[(String, String)] = [
+    (
+      "./data",
+      #|export const value = 100;
+      ,
+    ),
+    (
+      "./main",
+      #|import { value as v } from './data';
+      #|console.log(v);
+      ,
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  inspect(output, content="[\"100\"]")
+}
+
+///|
+test "ES module: import namespace" {
+  let modules : Array[(String, String)] = [
+    (
+      "./utils",
+      #|export const a = 1;
+      #|export const b = 2;
+      #|export const c = 3;
+      ,
+    ),
+    (
+      "./main",
+      #|import * as utils from './utils';
+      #|console.log(utils.a);
+      #|console.log(utils.b);
+      #|console.log(utils.c);
+      ,
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  inspect(output, content="[\"1\", \"2\", \"3\"]")
+}
+
+///|
+test "ES module: import default and named" {
+  let modules : Array[(String, String)] = [
+    (
+      "./mod",
+      #|export default 42;
+      #|export const name = "test";
+      ,
+    ),
+    (
+      "./main",
+      #|import val, { name } from './mod';
+      #|console.log(val);
+      #|console.log(name);
+      ,
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  inspect(output, content="[\"42\", \"test\"]")
+}
+
+///|
+test "ES module: re-export named" {
+  let modules : Array[(String, String)] = [
+    (
+      "./base",
+      #|export const x = 10;
+      #|export const y = 20;
+      ,
+    ),
+    (
+      "./reexport",
+      #|export { x, y } from './base';
+      ,
+    ),
+    (
+      "./main",
+      #|import { x, y } from './reexport';
+      #|console.log(x + y);
+      ,
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  inspect(output, content="[\"30\"]")
+}
+
+///|
+test "ES module: re-export all" {
+  let modules : Array[(String, String)] = [
+    (
+      "./source",
+      #|export const a = 1;
+      #|export const b = 2;
+      ,
+    ),
+    (
+      "./barrel",
+      #|export * from './source';
+      ,
+    ),
+    (
+      "./main",
+      #|import { a, b } from './barrel';
+      #|console.log(a + b);
+      ,
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  inspect(output, content="[\"3\"]")
+}
+
+///|
+test "ES module: re-export all as namespace" {
+  let modules : Array[(String, String)] = [
+    (
+      "./inner",
+      #|export const val = 99;
+      ,
+    ),
+    (
+      "./outer",
+      #|export * as inner from './inner';
+      ,
+    ),
+    (
+      "./main",
+      #|import { inner } from './outer';
+      #|console.log(inner.val);
+      ,
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  inspect(output, content="[\"99\"]")
+}
+
+///|
+test "ES module: side-effect import" {
+  let modules : Array[(String, String)] = [
+    (
+      "./side-effect",
+      #|console.log("side effect executed");
+      ,
+    ),
+    (
+      "./main",
+      #|import './side-effect';
+      #|console.log("main");
+      ,
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  inspect(output, content="[\"side effect executed\", \"main\"]")
+}
+
+///|
+test "ES module: export var declaration" {
+  let (_output, exports) = @js_engine.run_module(
+    #|export var count = 0;
+    ,
+  )
+  inspect(exports.get("count"), content="Some(0)")
+}
+
+///|
+test "ES module: mixed exports" {
+  let (_output, exports) = @js_engine.run_module(
+    #|export const X = 1;
+    #|export function getX() { return X; }
+    #|export default "default_value";
+    ,
+  )
+  inspect(exports.get("X"), content="Some(1)")
+  inspect(exports.contains("getX"), content="true")
+  inspect(exports.get("default"), content="Some(default_value)")
+}
+
+///|
+test "ES module: from and as as identifiers" {
+  let src =
+    #|var from = 10;
+    #|var as = 20;
+    #|console.log(from + as);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"30\"]")
+}
+
+///|
+test "ES module: import default and namespace" {
+  let modules : Array[(String, String)] = [
+    (
+      "./lib",
+      #|export default function() { return "default"; }
+      #|export const a = 1;
+      #|export const b = 2;
+      ,
+    ),
+    (
+      "./main",
+      #|import def, * as lib from './lib';
+      #|console.log(def());
+      #|console.log(lib.a);
+      #|console.log(lib.b);
+      ,
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  inspect(output, content="[\"default\", \"1\", \"2\"]")
+}
+
+///|
+test "ES module: re-export with alias" {
+  let modules : Array[(String, String)] = [
+    (
+      "./original",
+      #|export const value = 42;
+      ,
+    ),
+    (
+      "./alias",
+      #|export { value as renamedValue } from './original';
+      ,
+    ),
+    (
+      "./main",
+      #|import { renamedValue } from './alias';
+      #|console.log(renamedValue);
+      ,
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  inspect(output, content="[\"42\"]")
+}
+
+///|
+test "ES module: live bindings - export let mutation within module" {
+  // Live bindings ensure exports reflect the final value after all statements run
+  let (_, exports) = @js_engine.run_module(
+    #|export let x = 1;
+    #|x = 2;
+    #|x = 3;
+    ,
+  )
+  // Without live bindings, x would be 1 (snapshot at declaration time)
+  // With live bindings, x should be 3 (resolved at end of module execution)
+  inspect(exports.get("x"), content="Some(Number(3))")
+}
+
+///|
+test "ES module: live bindings - export { x } deferred" {
+  let (_, exports) = @js_engine.run_module(
+    #|let x = 1;
+    #|export { x };
+    #|// x is exported after all statements run
+    ,
+  )
+  inspect(exports.get("x"), content="Some(Number(1))")
+}
+
+///|
+test "ES module: export default function hoisting" {
+  let modules : Array[(String, String)] = [
+    (
+      "./hoisted",
+      #|// Call the function before the export default declaration
+      #|const result = greet('world');
+      #|export { result };
+      #|export default function greet(name) { return 'hello ' + name; }
+      ,
+    ),
+    (
+      "./main",
+      #|import greet from './hoisted';
+      #|import { result } from './hoisted';
+      #|console.log(result);
+      #|console.log(greet('moon'));
+      ,
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  inspect(output, content="[\"hello world\", \"hello moon\"]")
+}
+
+///|
+test "ES module: export default class with methods" {
+  let modules : Array[(String, String)] = [
+    (
+      "./counter",
+      #|export default class Counter {
+      #|  constructor(start) { this.count = start; }
+      #|  increment() { this.count++; return this.count; }
+      #|}
+      ,
+    ),
+    (
+      "./main",
+      #|import Counter from './counter';
+      #|const c = new Counter(0);
+      #|console.log(c.increment());
+      #|console.log(c.increment());
+      ,
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  inspect(output, content="[\"1\", \"2\"]")
+}
+
+///|
+test "ES module: anonymous export default function" {
+  let modules : Array[(String, String)] = [
+    (
+      "./add",
+      #|export default function(a, b) { return a + b; }
+      ,
+    ),
+    (
+      "./main",
+      #|import add from './add';
+      #|console.log(add(2, 3));
+      ,
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  inspect(output, content="[\"5\"]")
+}
+
+///|
+test "ES module: anonymous export default class" {
+  let modules : Array[(String, String)] = [
+    (
+      "./greeter",
+      #|export default class {
+      #|  greet(name) { return 'hi ' + name; }
+      #|}
+      ,
+    ),
+    (
+      "./main",
+      #|import Greeter from './greeter';
+      #|const g = new Greeter();
+      #|console.log(g.greet('world'));
+      ,
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  inspect(output, content="[\"hi world\"]")
+}

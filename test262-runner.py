@@ -130,7 +130,7 @@ SKIP_FEATURES = {
     # object-spread, object-rest
 }
 
-SKIP_FLAGS = {"module", "CanBlockIsFalse", "CanBlockIsTrue"}
+SKIP_FLAGS = {"CanBlockIsFalse", "CanBlockIsTrue"}
 
 # Preamble injected before all test harness code to provide host-defined print()
 PRINT_PREAMBLE = 'function print() { var s = ""; for (var i = 0; i < arguments.length; i++) { if (i > 0) s += " "; s += String(arguments[i]); } console.log(s); }\n'
@@ -310,6 +310,9 @@ def run_single_test(
     # Check if this is an async test
     is_async = "async" in meta.flags
 
+    # Check if this is a module test
+    is_module = "module" in meta.flags
+
     # Build the full source with harness
     harness = load_harness(test262_dir, meta.includes, meta.raw, is_async)
 
@@ -318,10 +321,13 @@ def run_single_test(
     else:
         full_source = harness + "\n" + source
 
+    # Build engine command - add --module flag for module tests
+    cmd = engine_cmd + (["--module"] if is_module else []) + [full_source]
+
     start = time.monotonic()
     try:
         result = subprocess.run(
-            engine_cmd + [full_source],
+            cmd,
             capture_output=True,
             text=True,
             timeout=timeout,

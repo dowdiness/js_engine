@@ -74,3 +74,37 @@ pub fn run_timer_checkpoint(
 ) -> Unit raise Error {
   interp.run_timers()
 }
+
+///|
+/// Run a JavaScript module source and return its exports
+/// The module is executed in strict mode and its exports are collected
+pub fn run_module(source : String) -> (Array[String], Map[String, @interpreter.Value]) raise Error {
+  let interp = @interpreter.Interpreter::new()
+  let prog = @parser.parse(source)
+  let exports = interp.run_module(prog.stmts)
+  interp.run_microtasks()
+  interp.run_timers()
+  (interp.output, exports)
+}
+
+///|
+/// Run multiple modules with dependency resolution
+/// modules is a list of (specifier, source) pairs in dependency order
+/// (dependencies must come before dependents)
+/// Returns the exports of the last module
+pub fn run_modules(
+  modules : Array[(String, String)],
+) -> (Array[String], Map[String, @interpreter.Value]) raise Error {
+  let interp = @interpreter.Interpreter::new()
+  let mut last_exports : Map[String, @interpreter.Value] = {}
+  for pair in modules {
+    let (specifier, source) = pair
+    let prog = @parser.parse(source)
+    let exports = interp.run_module(prog.stmts)
+    interp.register_module(specifier, exports)
+    last_exports = exports
+  }
+  interp.run_microtasks()
+  interp.run_timers()
+  (interp.output, last_exports)
+}
