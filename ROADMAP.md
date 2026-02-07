@@ -2,7 +2,7 @@
 
 ## Current Status
 
-**Test262**: 10,592+ / 24,190 passed (43.8%+) | 25,381 skipped | ~13,112 failed | 79 timeouts
+**Test262**: 10,657 / 24,190 passed (44.1%) | 25,381 skipped | 13,533 failed | 79 timeouts
 
 **Unit tests**: 552 total, 552 passed, 0 failed
 
@@ -16,7 +16,7 @@
 | 6I-6L | +56 | 9,545 | Leading decimals, canonical indices, PR review fixes |
 | 7A | — | 9,545 | Full accessor descriptor support (get/set in PropDescriptor) |
 | 7B | +1,047 | 10,592 | Unicode escapes in identifiers, strings, template literals |
-| 7C-E | — | 10,592+ | Bare for-of/for-in, get/set as identifiers, Math function lengths |
+| 7C-E | +65 | 10,657 | Bare for-of/for-in, get/set as identifiers, Math function lengths |
 | JS Target | — | — | JS backend support, Error toString fix, backend-specific argv handling |
 
 For detailed implementation notes on Phases 1-6, see [docs/PHASE_HISTORY.md](docs/PHASE_HISTORY.md).
