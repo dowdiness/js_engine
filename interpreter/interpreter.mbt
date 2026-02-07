@@ -191,8 +191,40 @@ fn Interpreter::exec_stmt(
       }
     }
     WhileStmt(cond, body, _) => {
-      while is_truthy(self.eval_expr(cond, env)) {
-        match self.exec_stmt(body, env) {
+      let gen_opt = current_generator.val
+      let resuming_loop = match gen_opt {
+        Some(g) => g.loop_env_stack.length() > 0
+        _ => false
+      }
+      let mut first_iteration = resuming_loop
+      // If resuming, pop the env marker (we push env as a marker for while loops)
+      if resuming_loop {
+        match gen_opt {
+          Some(g) => {
+            let _ = g.loop_env_stack.pop()
+
+          }
+          _ => ()
+        }
+      }
+      while true {
+        if first_iteration {
+          first_iteration = false
+        } else if not(is_truthy(self.eval_expr(cond, env))) {
+          break
+        }
+        let body_signal = self.exec_stmt(body, env) catch {
+          e => {
+            if e is YieldSignal(_) {
+              match gen_opt {
+                Some(g) => g.loop_env_stack.push(env)
+                _ => ()
+              }
+            }
+            raise e
+          }
+        }
+        match body_signal {
           Normal(_) => ()
           ReturnSignal(v) => return ReturnSignal(v)
           BreakSignal(None) => break
@@ -214,21 +246,53 @@ fn Interpreter::exec_stmt(
       Normal(Undefined)
     }
     ForStmt(init, cond, update, body, _) => {
-      let for_env = Environment::new(parent=Some(env))
-      match init {
-        Some(init_stmt) => {
-          let _ = self.exec_stmt(init_stmt, for_env)
-
-        }
-        None => ()
+      // Check if we're resuming inside a generator loop
+      let gen_opt = current_generator.val
+      let resuming_loop = match gen_opt {
+        Some(g) => g.loop_env_stack.length() > 0
+        _ => false
       }
-      while true {
-        match cond {
-          Some(c) => if not(is_truthy(self.eval_expr(c, for_env))) { break }
+      let for_env = if resuming_loop {
+        // Use saved loop env from stack (pop from end = outermost first)
+        match gen_opt {
+          Some(g) => g.loop_env_stack.pop().unwrap()
+          _ => Environment::new(parent=Some(env))
+        }
+      } else {
+        let e = Environment::new(parent=Some(env))
+        match init {
+          Some(init_stmt) => {
+            let _ = self.exec_stmt(init_stmt, e)
+
+          }
           None => ()
         }
+        e
+      }
+      let mut first_iteration = resuming_loop // skip condition on first resumed iteration
+      while true {
+        if first_iteration {
+          first_iteration = false
+        } else {
+          match cond {
+            Some(c) => if not(is_truthy(self.eval_expr(c, for_env))) { break }
+            None => ()
+          }
+        }
         let mut do_continue = false
-        match self.exec_stmt(body, for_env) {
+        let body_signal = self.exec_stmt(body, for_env) catch {
+          e => {
+            if e is YieldSignal(_) {
+              // Yield inside for loop body — save for_env for resume
+              match gen_opt {
+                Some(g) => g.loop_env_stack.push(for_env)
+                _ => ()
+              }
+            }
+            raise e
+          }
+        }
+        match body_signal {
           Normal(_) => ()
           ReturnSignal(v) => return ReturnSignal(v)
           BreakSignal(None) => break
@@ -331,8 +395,33 @@ fn Interpreter::exec_stmt(
       Normal(Undefined)
     }
     DoWhileStmt(body, cond, _) => {
+      let gen_opt = current_generator.val
+      let resuming_loop = match gen_opt {
+        Some(g) => g.loop_env_stack.length() > 0
+        _ => false
+      }
+      if resuming_loop {
+        match gen_opt {
+          Some(g) => {
+            let _ = g.loop_env_stack.pop()
+
+          }
+          _ => ()
+        }
+      }
       while true {
-        match self.exec_stmt(body, env) {
+        let body_signal = self.exec_stmt(body, env) catch {
+          e => {
+            if e is YieldSignal(_) {
+              match gen_opt {
+                Some(g) => g.loop_env_stack.push(env)
+                _ => ()
+              }
+            }
+            raise e
+          }
+        }
+        match body_signal {
           Normal(_) => ()
           ReturnSignal(v) => return ReturnSignal(v)
           BreakSignal(None) => break
@@ -394,80 +483,157 @@ fn Interpreter::exec_stmt(
       Normal(Undefined)
     }
     ForOfStmt(var_kind, name, iterable_expr, body, loc) => {
-      let iterable = self.eval_expr(iterable_expr, env)
-
-      // Try to get the iterator via Symbol.iterator protocol
-      let iterator_sym = get_iterator_symbol()
-      let iterator_method = self.get_computed_property(
-        iterable,
-        Symbol(iterator_sym),
-        loc,
-      )
-
-      // Get the iterator object by calling the iterator method
-      let iterator = match iterator_method {
-        Object(data) =>
-          match data.callable {
-            Some(_) => self.call_value(iterator_method, iterable, [], loc)
-            None =>
-              raise @errors.TypeError(
-                message="Result of the Symbol.iterator method is not an object",
-              )
-          }
-        Undefined =>
-          // Fall back to built-in iteration for arrays and strings
-          // This handles cases where Symbol.iterator might not be set up yet
-          match iterable {
-            Array(arr) => make_array_iterator_value(arr)
-            String_(s) => make_string_iterator_value(s)
-            _ =>
-              raise @errors.TypeError(
-                message="\{type_of(iterable)} is not iterable (cannot read property Symbol(Symbol.iterator))",
-              )
-          }
-        _ =>
-          raise @errors.TypeError(
-            message="Result of the Symbol.iterator method is not an object",
-          )
+      // Check if we're resuming inside a generator for-of
+      let gen_opt = current_generator.val
+      let resuming_for_of = match gen_opt {
+        Some(g) => g.for_of_resume
+        _ => false
       }
+      let (iterator, next_method) = if resuming_for_of {
+        // Restore saved iterator state
+        match gen_opt {
+          Some(g) => {
+            g.for_of_resume = false
+            let it = g.for_of_iterator
+            let nm = g.for_of_next
+            g.for_of_iterator = Undefined
+            g.for_of_next = Undefined
+            (it, nm)
+          }
+          _ => abort("unreachable: for-of resume without generator")
+        }
+      } else {
+        let iterable = self.eval_expr(iterable_expr, env)
 
-      // Get the next method from the iterator (walk prototype chain)
-      let next_method = match iterator {
-        Object(iter_data) =>
-          // First check direct properties
-          match iter_data.properties.get("next") {
-            Some(next_fn) => next_fn
-            None => {
-              // Walk prototype chain
-              let mut found : Value = Undefined
-              let mut current = iter_data.prototype
-              while true {
-                match current {
-                  Object(proto_data) =>
-                    match proto_data.properties.get("next") {
-                      Some(next_fn) => {
-                        found = next_fn
-                        break
+        // Try to get the iterator via Symbol.iterator protocol
+        let iterator_sym = get_iterator_symbol()
+        let iterator_method = self.get_computed_property(
+          iterable,
+          Symbol(iterator_sym),
+          loc,
+        )
+
+        // Get the iterator object by calling the iterator method
+        let it = match iterator_method {
+          Object(data) =>
+            match data.callable {
+              Some(_) => self.call_value(iterator_method, iterable, [], loc)
+              None =>
+                raise @errors.TypeError(
+                  message="Result of the Symbol.iterator method is not an object",
+                )
+            }
+          Undefined =>
+            // Fall back to built-in iteration for arrays and strings
+            match iterable {
+              Array(arr) => make_array_iterator_value(arr)
+              String_(s) => make_string_iterator_value(s)
+              _ =>
+                raise @errors.TypeError(
+                  message="\{type_of(iterable)} is not iterable (cannot read property Symbol(Symbol.iterator))",
+                )
+            }
+          _ =>
+            raise @errors.TypeError(
+              message="Result of the Symbol.iterator method is not an object",
+            )
+        }
+
+        // Get the next method from the iterator (walk prototype chain)
+        let nm = match it {
+          Object(iter_data) =>
+            match iter_data.properties.get("next") {
+              Some(next_fn) => next_fn
+              None => {
+                let mut found : Value = Undefined
+                let mut current = iter_data.prototype
+                while true {
+                  match current {
+                    Object(proto_data) =>
+                      match proto_data.properties.get("next") {
+                        Some(next_fn) => {
+                          found = next_fn
+                          break
+                        }
+                        None => current = proto_data.prototype
                       }
-                      None => current = proto_data.prototype
-                    }
-                  _ => break
+                    _ => break
+                  }
+                }
+                match found {
+                  Undefined =>
+                    raise @errors.TypeError(
+                      message="iterator.next is not a function",
+                    )
+                  _ => found
                 }
               }
-              match found {
-                Undefined =>
-                  raise @errors.TypeError(
-                    message="iterator.next is not a function",
-                  )
-                _ => found
-              }
             }
-          }
-        _ => raise @errors.TypeError(message="Iterator is not an object")
+          _ => raise @errors.TypeError(message="Iterator is not an object")
+        }
+        (it, nm)
       }
-
+      // If resuming, first resume the body without calling next()
+      let mut first_resume = resuming_for_of
       // Iterate using the iterator protocol
       while true {
+        if first_resume {
+          // On resume, the body was interrupted by yield — replay it
+          // The loop variable is already bound from before the yield
+          first_resume = false
+          let body_env = Environment::new(parent=Some(env))
+          // We need the loop variable bound. Since we're replaying the body,
+          // gen.resuming will handle the yield. But we need the loop variable.
+          // It's in the saved loop env stack.
+          let resuming_loop = match gen_opt {
+            Some(g) => g.loop_env_stack.length() > 0
+            _ => false
+          }
+          let actual_body_env = if resuming_loop {
+            match gen_opt {
+              Some(g) => g.loop_env_stack.pop().unwrap()
+              _ => body_env
+            }
+          } else {
+            body_env
+          }
+          let body_signal = self.exec_stmt(body, actual_body_env) catch {
+            e => {
+              if e is YieldSignal(_) {
+                match gen_opt {
+                  Some(g) => {
+                    g.for_of_iterator = iterator
+                    g.for_of_next = next_method
+                    g.for_of_resume = true
+                    g.loop_env_stack.push(actual_body_env)
+                  }
+                  _ => ()
+                }
+              }
+              raise e
+            }
+          }
+          match body_signal {
+            Normal(_) => ()
+            ReturnSignal(v) => return ReturnSignal(v)
+            BreakSignal(None) => break
+            BreakSignal(Some(l)) =>
+              if label == Some(l) {
+                break
+              } else {
+                return BreakSignal(Some(l))
+              }
+            ContinueSignal(None) => continue
+            ContinueSignal(Some(l)) =>
+              if label == Some(l) {
+                continue
+              } else {
+                return ContinueSignal(Some(l))
+              }
+          }
+          // After resume body completes, continue the loop normally below
+          continue
+        }
         // Call iterator.next()
         let result = self.call_value(next_method, iterator, [], loc)
 
@@ -514,7 +680,24 @@ fn Interpreter::exec_stmt(
         }
 
         // Execute the loop body
-        match self.exec_stmt(body, body_env) {
+        let body_signal = self.exec_stmt(body, body_env) catch {
+          e => {
+            if e is YieldSignal(_) {
+              // Save for-of state for resume
+              match gen_opt {
+                Some(g) => {
+                  g.for_of_iterator = iterator
+                  g.for_of_next = next_method
+                  g.for_of_resume = true
+                  g.loop_env_stack.push(body_env)
+                }
+                _ => ()
+              }
+            }
+            raise e
+          }
+        }
+        match body_signal {
           Normal(_) => ()
           ReturnSignal(v) => return ReturnSignal(v)
           BreakSignal(None) => break
@@ -860,6 +1043,36 @@ fn Interpreter::exec_stmt(
       }
       Normal(Undefined)
     }
+    GeneratorDecl(name, params, body, _) => {
+      let gen_func = self.make_generator_function(
+        Some(name),
+        params,
+        None,
+        body,
+        env,
+      )
+      if env.bindings.contains(name) {
+        env.assign(name, gen_func)
+      } else {
+        env.def(name, gen_func, VarBinding)
+      }
+      Normal(Undefined)
+    }
+    GeneratorDeclExt(name, params, rest_param, body, _) => {
+      let gen_func = self.make_generator_function_ext(
+        Some(name),
+        params,
+        rest_param,
+        body,
+        env,
+      )
+      if env.bindings.contains(name) {
+        env.assign(name, gen_func)
+      } else {
+        env.def(name, gen_func, VarBinding)
+      }
+      Normal(Undefined)
+    }
     LabeledStmt(lbl, body, _) =>
       match self.exec_stmt(body, env, label=Some(lbl)) {
         BreakSignal(Some(l)) =>
@@ -893,6 +1106,11 @@ fn Interpreter::exec_stmt(
       // Named default exports also bind the name locally
       match expr {
         FuncExpr(Some(name), _, _, _) | FuncExprExt(Some(name), _, _, _, _) =>
+          if not(env.bindings.contains(name)) {
+            env.def(name, value, LetBinding)
+          }
+        GeneratorExpr(Some(name), _, _, _)
+        | GeneratorExprExt(Some(name), _, _, _, _) =>
           if not(env.bindings.contains(name)) {
             env.def(name, value, LetBinding)
           }
@@ -1031,6 +1249,34 @@ fn Interpreter::hoist_declarations(
           env.assign(name, make_func_ext(func_data))
         } else {
           env.def(name, make_func_ext(func_data), VarBinding)
+        }
+      }
+      GeneratorDecl(name, params, body, _) => {
+        let gen_func = _self.make_generator_function(
+          Some(name),
+          params,
+          None,
+          body,
+          env,
+        )
+        if env.bindings.contains(name) {
+          env.assign(name, gen_func)
+        } else {
+          env.def(name, gen_func, VarBinding)
+        }
+      }
+      GeneratorDeclExt(name, params, rest_param, body, _) => {
+        let gen_func = _self.make_generator_function_ext(
+          Some(name),
+          params,
+          rest_param,
+          body,
+          env,
+        )
+        if env.bindings.contains(name) {
+          env.assign(name, gen_func)
+        } else {
+          env.def(name, gen_func, VarBinding)
         }
       }
       DestructureDecl(VarKind, pattern, _, _) => hoist_pattern(pattern, env)
@@ -1179,7 +1425,92 @@ fn Interpreter::bind_pattern(
     ArrayPat(elements, rest) => {
       let arr_elements : Array[Value] = match value {
         Array(data) => data.elements
-        _ => []
+        _ => {
+          // Try iterator protocol for non-array iterables (e.g. generators)
+          let loc = @token.Loc::default()
+          let iterator_sym = get_iterator_symbol()
+          let iterator_method = self.get_computed_property(
+            value,
+            Symbol(iterator_sym),
+            loc,
+          )
+          match iterator_method {
+            Object(data) =>
+              match data.callable {
+                Some(_) => {
+                  let iterator = self.call_value(
+                    iterator_method,
+                    value,
+                    [],
+                    loc,
+                  )
+                  // Get next method from iterator (walk prototype chain)
+                  let next_method : Value = match iterator {
+                    Object(iter_data) =>
+                      match iter_data.properties.get("next") {
+                        Some(next_fn) => next_fn
+                        None => {
+                          let mut found : Value = Undefined
+                          let mut current = iter_data.prototype
+                          while true {
+                            match current {
+                              Object(proto_data) =>
+                                match proto_data.properties.get("next") {
+                                  Some(next_fn) => {
+                                    found = next_fn
+                                    break
+                                  }
+                                  None => current = proto_data.prototype
+                                }
+                              _ => break
+                            }
+                          }
+                          found
+                        }
+                      }
+                    _ => Undefined
+                  }
+                  match next_method {
+                    Undefined => []
+                    _ => {
+                      let collected : Array[Value] = []
+                      while true {
+                        let iter_result = self.call_value(
+                          next_method,
+                          iterator,
+                          [],
+                          loc,
+                        )
+                        let (done, val) = match iter_result {
+                          Object(result_data) => {
+                            let done_val = match
+                              result_data.properties.get("done") {
+                              Some(v) => is_truthy(v)
+                              None => false
+                            }
+                            let value_val = match
+                              result_data.properties.get("value") {
+                              Some(v) => v
+                              None => Undefined
+                            }
+                            (done_val, value_val)
+                          }
+                          _ => (true, Undefined)
+                        }
+                        if done {
+                          break
+                        }
+                        collected.push(val)
+                      }
+                      collected
+                    }
+                  }
+                }
+                None => []
+              }
+            _ => []
+          }
+        }
       }
       for i = 0; i < elements.length(); i = i + 1 {
         match elements[i] {
@@ -1435,38 +1766,158 @@ fn Interpreter::exec_try_catch(
   finally_body : Array[@ast.Stmt]?,
   env : Environment,
 ) -> Signal raise Error {
-  let try_env = Environment::new(parent=Some(env))
-  let result : Signal = self.exec_stmts(try_body, try_env) catch {
-    e =>
-      // Check if this is a JavaScript-catchable error
-      if is_js_catchable_error(e) {
-        match (catch_param, catch_body) {
-          (Some(param), Some(body)) => {
-            let catch_env = Environment::new(parent=Some(env))
-            // Convert runtime errors to proper JS Error objects with prototype chain
-            let error_value = js_error_to_value_with_env(e, Some(env))
-            catch_env.def(param, error_value, LetBinding)
-            self.exec_stmts(body, catch_env)
-          }
-          _ => Normal(Undefined)
-        }
+  // Check if we're resuming inside a generator at a specific phase
+  let gen_opt = current_generator.val
+  let start_phase = match gen_opt {
+    Some(g) =>
+      if g.try_resume_phase >= 0 {
+        let p = g.try_resume_phase
+        g.try_resume_phase = -1 // consume it
+        p
       } else {
-        // Re-raise non-JS errors (like MoonBit Failure errors)
-        raise e
+        0
       }
+    _ => 0
   }
+  let mut result : Signal = Normal(Undefined)
+  let mut pending_error : Error? = match gen_opt {
+    Some(g) =>
+      if start_phase == 2 {
+        // Resuming in finally — restore pending error and result
+        result = g.try_resume_result
+        g.try_resume_result = Normal(Undefined)
+        let pe = g.try_resume_pending_error
+        g.try_resume_pending_error = None
+        pe
+      } else {
+        None
+      }
+    _ => None
+  }
+  // Phase 0: Try body (skip if resuming at catch or finally)
+  if start_phase == 0 {
+    let try_env = Environment::new(parent=Some(env))
+    result = self.exec_stmts(try_body, try_env) catch {
+      e =>
+        if e is YieldSignal(_) {
+          // Yield inside try body — save phase for resume
+          match gen_opt {
+            Some(g) => g.try_resume_phase = 0
+            _ => ()
+          }
+          raise e
+        } else if e is GeneratorReturnSignal(_) {
+          // .return(v) injected at yield — save for finally
+          pending_error = Some(e)
+          Normal(Undefined)
+        } else if is_js_catchable_error(e) {
+          // JS exception caught — run catch body (phase 1)
+          match (catch_param, catch_body) {
+            (Some(param), Some(body)) => {
+              let catch_env = Environment::new(parent=Some(env))
+              let error_value = js_error_to_value_with_env(e, Some(env))
+              catch_env.def(param, error_value, LetBinding)
+              self.exec_stmts(body, catch_env) catch {
+                ce =>
+                  if ce is YieldSignal(_) {
+                    // Yield inside catch body — save phase and error for resume
+                    match gen_opt {
+                      Some(g) => {
+                        g.try_resume_phase = 1
+                        g.try_resume_error = error_value
+                      }
+                      _ => ()
+                    }
+                    raise ce
+                  } else {
+                    raise ce
+                  }
+              }
+            }
+            _ => Normal(Undefined)
+          }
+        } else {
+          raise e
+        }
+    }
+  } else if start_phase == 1 {
+    // Resuming in catch body — skip try, go directly to catch
+    match (catch_param, catch_body) {
+      (Some(param), Some(body)) => {
+        let catch_env = Environment::new(parent=Some(env))
+        // Restore saved error value
+        let error_value = match gen_opt {
+          Some(g) => {
+            let ev = g.try_resume_error
+            g.try_resume_error = Undefined
+            ev
+          }
+          _ => Undefined
+        }
+        catch_env.def(param, error_value, LetBinding)
+        result = self.exec_stmts(body, catch_env) catch {
+          ce =>
+            if ce is YieldSignal(_) {
+              // Yield inside catch body again — save phase
+              match gen_opt {
+                Some(g) => {
+                  g.try_resume_phase = 1
+                  g.try_resume_error = error_value
+                }
+                _ => ()
+              }
+              raise ce
+            } else {
+              raise ce
+            }
+        }
+      }
+      _ => result = Normal(Undefined)
+    }
+  }
+  // else start_phase == 2: skip try and catch, go to finally
+  // Phase 2: Finally body (always runs if present)
   match finally_body {
     Some(body) => {
       let finally_result = self.exec_stmts(
         body,
         Environment::new(parent=Some(env)),
-      )
-      match finally_result {
-        Normal(_) => result
-        other => other
+      ) catch {
+        fe =>
+          if fe is YieldSignal(_) {
+            // Yield inside finally body — save phase and pending state for resume
+            match gen_opt {
+              Some(g) => {
+                g.try_resume_phase = 2
+                g.try_resume_result = result
+                g.try_resume_pending_error = pending_error
+              }
+              _ => ()
+            }
+            raise fe
+          } else {
+            raise fe
+          }
+      }
+      match pending_error {
+        Some(e) =>
+          match finally_result {
+            Normal(_) => raise e
+            ReturnSignal(_) => finally_result
+            _ => raise e
+          }
+        None =>
+          match finally_result {
+            Normal(_) => result
+            other => other
+          }
       }
     }
-    None => result
+    None =>
+      match pending_error {
+        Some(e) => raise e
+        None => result
+      }
   }
 }
 
@@ -1503,6 +1954,11 @@ fn Interpreter::eval_expr(
       let func_data : FuncData = { name, params, body, closure: env }
       make_func(func_data)
     }
+    GeneratorExpr(name, params, body, _) =>
+      self.make_generator_function(name, params, None, body, env)
+    GeneratorExprExt(name, params, rest_param, body, _) =>
+      self.make_generator_function_ext(name, params, rest_param, body, env)
+    YieldExpr(argument, delegate, _) => self.eval_yield(argument, delegate, env)
     ObjectLit(props, obj_loc) => {
       let properties : Map[String, Value] = {}
       let symbol_properties : Map[Int, Value] = {}
@@ -4483,7 +4939,15 @@ fn Interpreter::eval_new(
         Some(NativeCallable(_, func)) => func(args)
         Some(NonConstructableCallable(name, _)) =>
           raise @errors.TypeError(message=name + " is not a constructor")
-        Some(InterpreterCallable(_, func)) => func(self, Undefined, args)
+        Some(InterpreterCallable(_, func)) =>
+          // Generator functions are not constructible
+          if obj_data.class_name == "GeneratorFunction" {
+            raise @errors.TypeError(
+              message="cannot use 'new' with a generator function",
+            )
+          } else {
+            func(self, Undefined, args)
+          }
         Some(ConstructorOnlyCallable(_, func)) => func(self, args)
         Some(ArrowFunc(_)) | Some(ArrowFuncExt(_)) =>
           raise @errors.TypeError(
@@ -5354,6 +5818,10 @@ fn Interpreter::extract_export_names(
     VarDecl(_, name, _, _) => self.module_export_bindings.push((name, name))
     FuncDecl(name, _, _, _) => self.module_export_bindings.push((name, name))
     FuncDeclExt(name, _, _, _, _) =>
+      self.module_export_bindings.push((name, name))
+    GeneratorDecl(name, _, _, _) =>
+      self.module_export_bindings.push((name, name))
+    GeneratorDeclExt(name, _, _, _, _) =>
       self.module_export_bindings.push((name, name))
     ClassDecl(name, _, _, _) => self.module_export_bindings.push((name, name))
     DestructureDecl(_, pattern, _, _) =>

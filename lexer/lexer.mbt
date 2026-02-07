@@ -137,6 +137,7 @@ fn resolve_keyword(s : String) -> @token.TokenKind {
     "export" => Export
     "from" => From
     "as" => As
+    "yield" => Yield
     _ => Ident(s)
   }
 }

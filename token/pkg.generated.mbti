@@ -65,6 +65,7 @@ pub(all) enum TokenKind {
   Static
   Get
   Set
+  Yield
   Import
   Export
   From

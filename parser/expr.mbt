@@ -16,6 +16,10 @@ fn Parser::parse_comma(self : Parser) -> @ast.Expr raise Error {
 
 ///|
 fn Parser::parse_assignment(self : Parser) -> @ast.Expr raise Error {
+  // yield expression in generator context (very low precedence, near assignment)
+  if self.at(Yield) && self.in_generator() {
+    return self.parse_yield_expr()
+  }
   // Check for single-param arrow: ident => ...
   match self.peek_kind() {
     Ident(name) =>
@@ -648,6 +652,16 @@ fn Parser::parse_primary(self : Parser) -> @ast.Expr raise Error {
       self.pos += 1
       Ident("as", tok.loc)
     }
+    Yield =>
+      // Outside generator context, yield is a valid identifier
+      if not(self.in_generator()) {
+        self.pos += 1
+        Ident("yield", tok.loc)
+      } else {
+        raise @errors.SyntaxError(
+          message="Unexpected yield in primary expression at line \{tok.loc.line}, col \{tok.loc.col}",
+        )
+      }
     This => {
       self.pos += 1
       ThisExpr(tok.loc)
@@ -1134,6 +1148,10 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
 ///|
 fn Parser::parse_func_expr(self : Parser) -> @ast.Expr raise Error {
   let tok = self.expect(Function)
+  // Check for function* (generator expression)
+  if self.at(Star) {
+    return self.parse_generator_expr(tok)
+  }
   // Optional name
   let name : String? = match self.peek_kind() {
     Ident(n) => {
@@ -1150,26 +1168,120 @@ fn Parser::parse_func_expr(self : Parser) -> @ast.Expr raise Error {
         msg == "DESTRUCTURE_PARAM_FOUND" {
         self.pos = saved_pos
         let (ext_params, rest_param) = self.parse_params_ext()
+        self.push_generator_context(false)
         let body = self.parse_block_body()
+        self.pop_generator_context()
         return FuncExprExt(name, ext_params, rest_param, body, tok.loc)
       } else {
         raise @errors.SyntaxError(message=msg)
       }
     e => raise e
   }
+  self.push_generator_context(false)
   let body = self.parse_block_body()
+  self.pop_generator_context()
   FuncExpr(name, params, body, tok.loc)
 }
 
 ///|
+fn Parser::parse_generator_expr(
+  self : Parser,
+  func_tok : @token.Token,
+) -> @ast.Expr raise Error {
+  let _ = self.expect(Star) // consume *
+  // Optional name
+  let name : String? = match self.peek_kind() {
+    Ident(n) => {
+      self.pos += 1
+      Some(n)
+    }
+    _ => None
+  }
+  let saved_pos = self.pos
+  let params = self.parse_params() catch {
+    Failure::Failure(msg) =>
+      if msg == "REST_PARAM_FOUND" ||
+        msg == "DEFAULT_PARAM_FOUND" ||
+        msg == "DESTRUCTURE_PARAM_FOUND" {
+        self.pos = saved_pos
+        let (ext_params, rest_param) = self.parse_params_ext()
+        self.push_generator_context(true)
+        let body = self.parse_block_body()
+        self.pop_generator_context()
+        return GeneratorExprExt(
+          name,
+          ext_params,
+          rest_param,
+          body,
+          func_tok.loc,
+        )
+      } else {
+        raise @errors.SyntaxError(message=msg)
+      }
+    e => raise e
+  }
+  self.push_generator_context(true)
+  let body = self.parse_block_body()
+  self.pop_generator_context()
+  GeneratorExpr(name, params, body, func_tok.loc)
+}
+
+///|
+fn Parser::parse_yield_expr(self : Parser) -> @ast.Expr raise Error {
+  let tok = self.expect(Yield)
+  // Check for yield* (delegate)
+  // No LineTerminator between yield and * — we check if * is on same line
+  let delegate = if self.at(Star) {
+    let star_tok = self.peek()
+    // Only treat as yield* if star is on the same line as yield
+    if star_tok.loc.line == tok.loc.line {
+      let _ = self.advance() // consume *
+      true
+    } else {
+      false
+    }
+  } else {
+    false
+  }
+  // Parse argument: yield is prefix unary with very low precedence
+  // yield without argument (e.g., at statement end, before }, ), ], ;, comma)
+  let has_argument = not(
+    self.at(Semicolon) ||
+    self.at(RParen) ||
+    self.at(RBracket) ||
+    self.at(RBrace) ||
+    self.at(Comma) ||
+    self.at(Colon) ||
+    self.at(EOF),
+  )
+  // Also check if the next token is on a different line (ASI)
+  let next_on_new_line = if has_argument {
+    let next_tok = self.peek()
+    next_tok.loc.line != tok.loc.line && not(delegate)
+  } else {
+    false
+  }
+  if delegate || (has_argument && not(next_on_new_line)) {
+    let argument = self.parse_assignment()
+    YieldExpr(Some(argument), delegate, tok.loc)
+  } else {
+    YieldExpr(None, false, tok.loc)
+  }
+}
+
+///|
 fn Parser::parse_arrow_body(self : Parser) -> Array[@ast.Stmt] raise Error {
-  if self.at(LBrace) {
+  // Arrow functions are never generators; yield is illegal inside them
+  self.push_generator_context(false)
+  let result = if self.at(LBrace) {
     self.parse_block_body()
   } else {
     let expr = self.parse_assignment()
     let loc = @token.Loc::default()
-    [ReturnStmt(Some(expr), loc)]
+    [@ast.ReturnStmt(Some(expr), loc)]
   }
+  self.pop_generator_context()
+  result
 }
 
 ///|

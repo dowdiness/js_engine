@@ -3,11 +3,28 @@ pub(all) struct Parser {
   tokens : Array[@token.Token]
   mut pos : Int
   mut allow_import_export : Bool // true at module top-level, false in nested blocks
+  generator_depth : Array[Bool] // Stack: true when inside a generator function body
 }
 
 ///|
 pub fn Parser::new(tokens : Array[@token.Token]) -> Parser {
-  { tokens, pos: 0, allow_import_export: true }
+  { tokens, pos: 0, allow_import_export: true, generator_depth: [false] }
+}
+
+///|
+fn Parser::in_generator(self : Parser) -> Bool {
+  self.generator_depth[self.generator_depth.length() - 1]
+}
+
+///|
+fn Parser::push_generator_context(self : Parser, is_generator : Bool) -> Unit {
+  self.generator_depth.push(is_generator)
+}
+
+///|
+fn Parser::pop_generator_context(self : Parser) -> Unit {
+  let _ = self.generator_depth.pop()
+
 }
 
 ///|
@@ -80,6 +97,17 @@ fn Parser::expect_ident(self : Parser) -> String raise Error {
       self.pos += 1
       "as"
     }
+    Yield =>
+      // yield is only a keyword inside generator bodies; outside it's an identifier
+      if not(self.in_generator()) {
+        self.pos += 1
+        "yield"
+      } else {
+        let tok = self.peek()
+        raise @errors.SyntaxError(
+          message="Expected identifier, got \{tok.kind} at line \{tok.loc.line}, col \{tok.loc.col}",
+        )
+      }
     _ => {
       let tok = self.peek()
       raise @errors.SyntaxError(
@@ -133,6 +161,7 @@ fn Parser::expect_ident_name(self : Parser) -> String raise Error {
     | Export
     | From
     | As
+    | Yield
     | True
     | False
     | Null

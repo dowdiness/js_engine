@@ -118,6 +118,9 @@ pub(all) enum Expr {
   SuperComputedMember(Expr, @token.Loc)
   NewTargetExpr(@token.Loc)
   TaggedTemplate(Expr, Array[String], Array[Expr], @token.Loc)
+  GeneratorExpr(String?, Array[String], Array[Stmt], @token.Loc)
+  GeneratorExprExt(String?, Array[Param], String?, Array[Stmt], @token.Loc)
+  YieldExpr(Expr?, Bool, @token.Loc)
 }
 pub impl Eq for Expr
 pub impl Show for Expr
@@ -202,6 +205,8 @@ pub(all) enum Stmt {
   ForOfExpr(Expr, Expr, Stmt, @token.Loc)
   DestructureDecl(VarKind, Pattern, Expr, @token.Loc)
   LabeledStmt(String, Stmt, @token.Loc)
+  GeneratorDecl(String, Array[String], Array[Stmt], @token.Loc)
+  GeneratorDeclExt(String, Array[Param], String?, Array[Stmt], @token.Loc)
   ClassDecl(String, Expr?, Array[ClassMethod], @token.Loc)
   ImportDecl(String?, Array[ImportSpecifier], String?, String, @token.Loc)
   ExportNamedDecl(Stmt?, Array[ExportSpecifier], String?, @token.Loc)

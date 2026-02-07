@@ -7,7 +7,13 @@ fn Parser::parse_stmt(self : Parser) -> @ast.Stmt raise Error {
       ExprStmt(UndefinedLit(loc), loc)
     }
     Let | Const | Var => self.parse_var_decl()
-    Function => self.parse_func_decl()
+    Function =>
+      // Check for function* (generator declaration)
+      if self.peek_kind_at(1) == Star {
+        self.parse_generator_decl()
+      } else {
+        self.parse_func_decl()
+      }
     Class => self.parse_class_decl()
     If => self.parse_if_stmt()
     While => self.parse_while_stmt()
@@ -38,6 +44,9 @@ fn Parser::parse_stmt(self : Parser) -> @ast.Stmt raise Error {
           message="'export' declarations may only appear at top level of a module at line \{tok.loc.line}, col \{tok.loc.col}",
         )
       }
+    Yield =>
+      // In generator context, yield is an expression statement; outside it's an identifier
+      self.parse_expr_stmt()
     Ident(_) | Get | Set | From | As =>
       // Labeled statement: ident ':'
       if self.peek_kind_at(1) == Colon {
@@ -118,15 +127,47 @@ fn Parser::parse_func_decl(self : Parser) -> @ast.Stmt raise Error {
         msg == "DESTRUCTURE_PARAM_FOUND" {
         self.pos = saved_pos
         let (ext_params, rest_param) = self.parse_params_ext()
+        self.push_generator_context(false)
         let body = self.parse_block_body()
+        self.pop_generator_context()
         return FuncDeclExt(name, ext_params, rest_param, body, tok.loc)
       } else {
         raise @errors.SyntaxError(message=msg)
       }
     e => raise e
   }
+  self.push_generator_context(false)
   let body = self.parse_block_body()
+  self.pop_generator_context()
   FuncDecl(name, params, body, tok.loc)
+}
+
+///|
+fn Parser::parse_generator_decl(self : Parser) -> @ast.Stmt raise Error {
+  let tok = self.expect(Function)
+  let _ = self.expect(Star) // consume *
+  let name = self.expect_ident()
+  let saved_pos = self.pos
+  let params = self.parse_params() catch {
+    Failure::Failure(msg) =>
+      if msg == "REST_PARAM_FOUND" ||
+        msg == "DEFAULT_PARAM_FOUND" ||
+        msg == "DESTRUCTURE_PARAM_FOUND" {
+        self.pos = saved_pos
+        let (ext_params, rest_param) = self.parse_params_ext()
+        self.push_generator_context(true)
+        let body = self.parse_block_body()
+        self.pop_generator_context()
+        return GeneratorDeclExt(name, ext_params, rest_param, body, tok.loc)
+      } else {
+        raise @errors.SyntaxError(message=msg)
+      }
+    e => raise e
+  }
+  self.push_generator_context(true)
+  let body = self.parse_block_body()
+  self.pop_generator_context()
+  GeneratorDecl(name, params, body, tok.loc)
 }
 
 ///|

@@ -4696,3 +4696,1130 @@ test "inherited non-writable data property blocks assignment" {
   )
   inspect(output, content="[\"1\"]")
 }
+
+// ================================================================
+// Generator Tests
+// ================================================================
+
+///|
+test "generator: function* returns object with next method" {
+  let output = run_output(
+    (
+      #|function* g() { yield 1; }
+      #|const it = g();
+      #|console.log(typeof it);
+      #|console.log(typeof it.next);
+    ),
+  )
+  inspect(output, content="[\"object\", \"function\"]")
+}
+
+///|
+test "generator: basic yield and done" {
+  let output = run_output(
+    (
+      #|function* g() {
+      #|  yield 1;
+      #|  yield 2;
+      #|  yield 3;
+      #|}
+      #|const it = g();
+      #|const a = it.next();
+      #|console.log(a.value, a.done);
+      #|const b = it.next();
+      #|console.log(b.value, b.done);
+      #|const c = it.next();
+      #|console.log(c.value, c.done);
+      #|const d = it.next();
+      #|console.log(d.value, d.done);
+    ),
+  )
+  inspect(
+    output,
+    content="[\"1 false\", \"2 false\", \"3 false\", \"undefined true\"]",
+  )
+}
+
+///|
+test "generator: return in generator body" {
+  let output = run_output(
+    (
+      #|function* g() {
+      #|  yield 1;
+      #|  return 42;
+      #|}
+      #|const it = g();
+      #|let r = it.next();
+      #|console.log(r.value, r.done);
+      #|r = it.next();
+      #|console.log(r.value, r.done);
+      #|r = it.next();
+      #|console.log(r.value, r.done);
+    ),
+  )
+  inspect(output, content="[\"1 false\", \"42 true\", \"undefined true\"]")
+}
+
+///|
+test "generator: first next() arg is ignored" {
+  let output = run_output(
+    (
+      #|function* g() {
+      #|  yield 1;
+      #|}
+      #|const it = g();
+      #|const r = it.next(999);
+      #|console.log(r.value, r.done);
+    ),
+  )
+  inspect(output, content="[\"1 false\"]")
+}
+
+///|
+test "generator: completed generator returns done" {
+  let output = run_output(
+    (
+      #|function* g() { yield 1; }
+      #|const it = g();
+      #|it.next();
+      #|it.next();
+      #|const r = it.next();
+      #|console.log(r.value, r.done);
+    ),
+  )
+  inspect(output, content="[\"undefined true\"]")
+}
+
+///|
+test "generator: Symbol.iterator returns self" {
+  let output = run_output(
+    (
+      #|function* g() { yield 1; }
+      #|const it = g();
+      #|console.log(it[Symbol.iterator]() === it);
+    ),
+  )
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "generator: new with generator throws TypeError" {
+  let output = run_output(
+    (
+      #|function* g() { yield 1; }
+      #|try {
+      #|  new g();
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "generator: two next() results are different objects" {
+  let output = run_output(
+    (
+      #|function* g() { yield 1; yield 2; }
+      #|const it = g();
+      #|const a = it.next();
+      #|const b = it.next();
+      #|console.log(a !== b);
+    ),
+  )
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "generator: .throw(e) on SuspendedStart completes and throws" {
+  let output = run_output(
+    (
+      #|function* g() { yield 1; }
+      #|const it = g();
+      #|try {
+      #|  it.throw(new Error("boom"));
+      #|} catch(e) {
+      #|  console.log(e.message);
+      #|}
+      #|const r = it.next();
+      #|console.log(r.value, r.done);
+    ),
+  )
+  inspect(output, content="[\"boom\", \"undefined true\"]")
+}
+
+///|
+test "generator: .return(v) on SuspendedStart returns done" {
+  let output = run_output(
+    (
+      #|function* g() { yield 1; }
+      #|const it = g();
+      #|const r = it.return(42);
+      #|console.log(r.value, r.done);
+      #|const r2 = it.next();
+      #|console.log(r2.value, r2.done);
+    ),
+  )
+  inspect(output, content="[\"42 true\", \"undefined true\"]")
+}
+
+///|
+test "generator: .throw(e) on Completed throws" {
+  let output = run_output(
+    (
+      #|function* g() { yield 1; }
+      #|const it = g();
+      #|it.next();
+      #|it.next();
+      #|try {
+      #|  it.throw(new Error("done-throw"));
+      #|} catch(e) {
+      #|  console.log(e.message);
+      #|}
+    ),
+  )
+  inspect(output, content="[\"done-throw\"]")
+}
+
+///|
+test "generator: .return(v) on Completed returns done" {
+  let output = run_output(
+    (
+      #|function* g() { yield 1; }
+      #|const it = g();
+      #|it.next();
+      #|it.next();
+      #|const r = it.return(99);
+      #|console.log(r.value, r.done);
+    ),
+  )
+  inspect(output, content="[\"99 true\"]")
+}
+
+///|
+test "generator: generator expression" {
+  let output = run_output(
+    (
+      #|const g = function*() { yield 10; yield 20; };
+      #|const it = g();
+      #|console.log(it.next().value);
+      #|console.log(it.next().value);
+    ),
+  )
+  inspect(output, content="[\"10\", \"20\"]")
+}
+
+///|
+test "generator: generator with parameters" {
+  let output = run_output(
+    (
+      #|function* add(a, b) {
+      #|  yield a;
+      #|  yield b;
+      #|  yield a + b;
+      #|}
+      #|const it = add(3, 7);
+      #|console.log(it.next().value);
+      #|console.log(it.next().value);
+      #|console.log(it.next().value);
+      #|console.log(it.next().done);
+    ),
+  )
+  inspect(output, content="[\"3\", \"7\", \"10\", \"true\"]")
+}
+
+///|
+test "generator: yield inside for loop (range)" {
+  let output = run_output(
+    (
+      #|function* range(start, end) {
+      #|  for (let i = start; i < end; i++) {
+      #|    yield i;
+      #|  }
+      #|}
+      #|const it = range(1, 4);
+      #|console.log(it.next().value);
+      #|console.log(it.next().value);
+      #|console.log(it.next().value);
+      #|console.log(it.next().done);
+    ),
+  )
+  inspect(output, content="[\"1\", \"2\", \"3\", \"true\"]")
+}
+
+///|
+test "generator: for-of consumes generator" {
+  let output = run_output(
+    (
+      #|function* g() { yield 1; yield 2; yield 3; }
+      #|let results = [];
+      #|for (const x of g()) {
+      #|  results.push(x);
+      #|}
+      #|console.log(results.join(','));
+    ),
+  )
+  inspect(output, content="[\"1,2,3\"]")
+}
+
+///|
+test "generator: spread operator with generator" {
+  let output = run_output(
+    (
+      #|function* g() { yield 1; yield 2; yield 3; }
+      #|const arr = [...g()];
+      #|console.log(arr.join(','));
+    ),
+  )
+  inspect(output, content="[\"1,2,3\"]")
+}
+
+///|
+test "generator: destructuring assignment from generator" {
+  let output = run_output(
+    (
+      #|function* g() { yield 10; yield 20; yield 30; }
+      #|const [a, b] = g();
+      #|console.log(a, b);
+    ),
+  )
+  inspect(output, content="[\"10 20\"]")
+}
+
+///|
+test "generator: .return() on yielded generator" {
+  let output = run_output(
+    (
+      #|function* g() { yield 1; yield 2; yield 3; }
+      #|const it = g();
+      #|console.log(it.next().value);
+      #|const r = it.return(42);
+      #|console.log(r.value, r.done);
+      #|console.log(it.next().value, it.next().done);
+    ),
+  )
+  inspect(output, content="[\"1\", \"42 true\", \"undefined true\"]")
+}
+
+///|
+test "generator: yield as expression receives next value" {
+  let output = run_output(
+    (
+      #|function* g() {
+      #|  const x = yield 1;
+      #|  yield x + 10;
+      #|}
+      #|const it = g();
+      #|console.log(it.next().value);
+      #|console.log(it.next(5).value);
+    ),
+  )
+  inspect(output, content="[\"1\", \"15\"]")
+}
+
+///|
+test "generator: yield in conditional" {
+  let output = run_output(
+    (
+      #|function* g() {
+      #|  if (true) {
+      #|    yield 1;
+      #|  } else {
+      #|    yield 2;
+      #|  }
+      #|  yield 3;
+      #|}
+      #|const it = g();
+      #|console.log(it.next().value);
+      #|console.log(it.next().value);
+      #|console.log(it.next().done);
+    ),
+  )
+  inspect(output, content="[\"1\", \"3\", \"true\"]")
+}
+
+///|
+test "generator: multiple independent generators" {
+  let output = run_output(
+    (
+      #|function* g() { yield 1; yield 2; }
+      #|const a = g();
+      #|const b = g();
+      #|console.log(a.next().value);
+      #|console.log(b.next().value);
+      #|console.log(a.next().value);
+      #|console.log(b.next().value);
+    ),
+  )
+  inspect(output, content="[\"1\", \"1\", \"2\", \"2\"]")
+}
+
+///|
+test "generator: generator with default params" {
+  let output = run_output(
+    (
+      #|function* g(x = 10) {
+      #|  yield x;
+      #|  yield x + 1;
+      #|}
+      #|const it = g();
+      #|console.log(it.next().value);
+      #|console.log(it.next().value);
+      #|const it2 = g(5);
+      #|console.log(it2.next().value);
+    ),
+  )
+  inspect(output, content="[\"10\", \"11\", \"5\"]")
+}
+
+///|
+test "generator: generator instance supports property assignment" {
+  let output = run_output(
+    (
+      #|function* g() { yield 1; }
+      #|const it = g();
+      #|it.x = 42;
+      #|console.log(it.x);
+    ),
+  )
+  inspect(output, content="[\"42\"]")
+}
+
+///|
+test "generator: yield without argument yields undefined" {
+  let output = run_output(
+    (
+      #|function* g() {
+      #|  yield;
+      #|  yield;
+      #|}
+      #|const it = g();
+      #|const a = it.next();
+      #|console.log(a.value, a.done);
+      #|const b = it.next();
+      #|console.log(b.value, b.done);
+    ),
+  )
+  inspect(output, content="[\"undefined false\", \"undefined false\"]")
+}
+
+// ================================================================
+// Generator Phase 4: Exception handling in generators
+// ================================================================
+
+///|
+test "generator: .throw() caught by try/catch in generator" {
+  let output = run_output(
+    (
+      #|function* g() {
+      #|  try {
+      #|    yield 1;
+      #|    yield 2;
+      #|  } catch(e) {
+      #|    yield "caught: " + e.message;
+      #|  }
+      #|  yield 3;
+      #|}
+      #|const it = g();
+      #|console.log(it.next().value);
+      #|console.log(it.throw(new Error("boom")).value);
+      #|console.log(it.next().value);
+      #|console.log(it.next().done);
+    ),
+  )
+  inspect(output, content="[\"1\", \"caught: boom\", \"3\", \"true\"]")
+}
+
+///|
+test "generator: uncaught .throw() completes generator and rethrows" {
+  let output = run_output(
+    (
+      #|function* g() {
+      #|  yield 1;
+      #|  yield 2;
+      #|}
+      #|const it = g();
+      #|console.log(it.next().value);
+      #|try {
+      #|  it.throw(new Error("fail"));
+      #|} catch(e) {
+      #|  console.log(e.message);
+      #|}
+      #|const r = it.next();
+      #|console.log(r.value, r.done);
+    ),
+  )
+  inspect(output, content="[\"1\", \"fail\", \"undefined true\"]")
+}
+
+///|
+test "generator: .throw() caught continues and yields more" {
+  let output = run_output(
+    (
+      #|function* g() {
+      #|  let result;
+      #|  try {
+      #|    result = yield 1;
+      #|  } catch(e) {
+      #|    result = "error: " + e.message;
+      #|  }
+      #|  yield result;
+      #|}
+      #|const it = g();
+      #|console.log(it.next().value);
+      #|console.log(it.throw(new Error("oops")).value);
+      #|console.log(it.next().done);
+    ),
+  )
+  inspect(output, content="[\"1\", \"error: oops\", \"true\"]")
+}
+
+///|
+test "generator: .return() on suspended generator completes it" {
+  let output = run_output(
+    (
+      #|function* g() {
+      #|  yield 1;
+      #|  yield 2;
+      #|  yield 3;
+      #|}
+      #|const it = g();
+      #|console.log(it.next().value);
+      #|const r = it.return(42);
+      #|console.log(r.value, r.done);
+      #|const r2 = it.next();
+      #|console.log(r2.value, r2.done);
+    ),
+  )
+  inspect(output, content="[\"1\", \"42 true\", \"undefined true\"]")
+}
+
+///|
+test "generator: .return() inside try executes finally" {
+  let output = run_output(
+    (
+      #|function* g() {
+      #|  try {
+      #|    yield 1;
+      #|    yield 2;
+      #|  } finally {
+      #|    console.log("finally ran");
+      #|  }
+      #|}
+      #|const it = g();
+      #|console.log(it.next().value);
+      #|const r = it.return(42);
+      #|console.log(r.value, r.done);
+    ),
+  )
+  inspect(output, content="[\"1\", \"finally ran\", \"42 true\"]")
+}
+
+///|
+test "generator: .return() when finally yields" {
+  let output = run_output(
+    (
+      #|function* g() {
+      #|  try {
+      #|    yield 1;
+      #|  } finally {
+      #|    yield "from-finally";
+      #|  }
+      #|}
+      #|const it = g();
+      #|console.log(it.next().value);
+      #|const r = it.return(42);
+      #|console.log(r.value, r.done);
+      #|const r2 = it.next();
+      #|console.log(r2.value, r2.done);
+    ),
+  )
+  inspect(output, content="[\"1\", \"from-finally false\", \"42 true\"]")
+}
+
+///|
+test "generator: .throw() in try/catch/finally runs finally" {
+  let output = run_output(
+    (
+      #|function* g() {
+      #|  try {
+      #|    yield 1;
+      #|  } catch(e) {
+      #|    yield "caught: " + e.message;
+      #|  } finally {
+      #|    console.log("finally");
+      #|  }
+      #|}
+      #|const it = g();
+      #|console.log(it.next().value);
+      #|console.log(it.throw(new Error("err")).value);
+      #|it.next();
+    ),
+  )
+  inspect(output, content="[\"1\", \"caught: err\", \"finally\"]")
+}
+
+///|
+test "generator: multiple .throw() with try/catch" {
+  let output = run_output(
+    (
+      #|function* g() {
+      #|  while (true) {
+      #|    try {
+      #|      yield "waiting";
+      #|    } catch(e) {
+      #|      console.log("got: " + e.message);
+      #|    }
+      #|  }
+      #|}
+      #|const it = g();
+      #|it.next();
+      #|it.throw(new Error("a"));
+      #|it.throw(new Error("b"));
+    ),
+  )
+  inspect(output, content="[\"got: a\", \"got: b\"]")
+}
+
+// ================================================================
+// Generator Phase 5: Control-flow integration (loops)
+// ================================================================
+
+///|
+test "generator: yield inside while loop" {
+  let output = run_output(
+    (
+      #|function* g() {
+      #|  let i = 0;
+      #|  while (i < 3) {
+      #|    yield i;
+      #|    i++;
+      #|  }
+      #|}
+      #|const it = g();
+      #|console.log(it.next().value);
+      #|console.log(it.next().value);
+      #|console.log(it.next().value);
+      #|console.log(it.next().done);
+    ),
+  )
+  inspect(output, content="[\"0\", \"1\", \"2\", \"true\"]")
+}
+
+///|
+test "generator: yield inside for loop with return" {
+  let output = run_output(
+    (
+      #|function* g() {
+      #|  for (let i = 0; i < 10; i++) {
+      #|    if (i === 3) return "done";
+      #|    yield i;
+      #|  }
+      #|}
+      #|const it = g();
+      #|console.log(it.next().value);
+      #|console.log(it.next().value);
+      #|console.log(it.next().value);
+      #|const r = it.next();
+      #|console.log(r.value, r.done);
+    ),
+  )
+  inspect(output, content="[\"0\", \"1\", \"2\", \"done true\"]")
+}
+
+///|
+test "generator: yield in for loop preserves loop variable" {
+  let output = run_output(
+    (
+      #|function* fib(n) {
+      #|  let a = 0, b = 1;
+      #|  for (let i = 0; i < n; i++) {
+      #|    yield a;
+      #|    const temp = a;
+      #|    a = b;
+      #|    b = temp + b;
+      #|  }
+      #|}
+      #|const it = fib(6);
+      #|const results = [];
+      #|let r = it.next();
+      #|while (!r.done) {
+      #|  results.push(r.value);
+      #|  r = it.next();
+      #|}
+      #|console.log(results.join(","));
+    ),
+  )
+  inspect(output, content="[\"0,1,1,2,3,5\"]")
+}
+
+///|
+test "generator: yield in nested loops" {
+  let output = run_output(
+    (
+      #|function* g() {
+      #|  for (let i = 0; i < 2; i++) {
+      #|    for (let j = 0; j < 2; j++) {
+      #|      yield i * 10 + j;
+      #|    }
+      #|  }
+      #|}
+      #|const it = g();
+      #|console.log(it.next().value);
+      #|console.log(it.next().value);
+      #|console.log(it.next().value);
+      #|console.log(it.next().value);
+      #|console.log(it.next().done);
+    ),
+  )
+  inspect(output, content="[\"0\", \"1\", \"10\", \"11\", \"true\"]")
+}
+
+///|
+test "generator: break inside generator loop" {
+  let output = run_output(
+    (
+      #|function* g() {
+      #|  for (let i = 0; i < 10; i++) {
+      #|    yield i;
+      #|    if (i >= 2) break;
+      #|  }
+      #|  yield "after loop";
+      #|}
+      #|const it = g();
+      #|console.log(it.next().value);
+      #|console.log(it.next().value);
+      #|console.log(it.next().value);
+      #|console.log(it.next().value);
+      #|console.log(it.next().done);
+    ),
+  )
+  inspect(output, content="[\"0\", \"1\", \"2\", \"after loop\", \"true\"]")
+}
+
+///|
+test "generator: yield inside for-of in generator" {
+  let output = run_output(
+    (
+      #|function* flatten(arrays) {
+      #|  for (const arr of arrays) {
+      #|    yield arr;
+      #|  }
+      #|}
+      #|const it = flatten([10, 20, 30]);
+      #|console.log(it.next().value);
+      #|console.log(it.next().value);
+      #|console.log(it.next().value);
+      #|console.log(it.next().done);
+    ),
+  )
+  inspect(output, content="[\"10\", \"20\", \"30\", \"true\"]")
+}
+
+///|
+test "generator: for-of consuming generator inside generator" {
+  let output = run_output(
+    (
+      #|function* source() { yield 1; yield 2; yield 3; }
+      #|function* doubled() {
+      #|  for (const x of source()) {
+      #|    yield x * 2;
+      #|  }
+      #|}
+      #|const it = doubled();
+      #|console.log(it.next().value);
+      #|console.log(it.next().value);
+      #|console.log(it.next().value);
+      #|console.log(it.next().done);
+    ),
+  )
+  inspect(output, content="[\"2\", \"4\", \"6\", \"true\"]")
+}
+
+// ================================================================
+// Generator Phase 6: yield* delegation
+// ================================================================
+
+///|
+test "generator: yield* basic delegation" {
+  let output = run_output(
+    (
+      #|function* inner() {
+      #|  yield 1;
+      #|  yield 2;
+      #|}
+      #|function* outer() {
+      #|  yield 0;
+      #|  yield* inner();
+      #|  yield 3;
+      #|}
+      #|const it = outer();
+      #|console.log(it.next().value);
+      #|console.log(it.next().value);
+      #|console.log(it.next().value);
+      #|console.log(it.next().value);
+      #|console.log(it.next().done);
+    ),
+  )
+  inspect(output, content="[\"0\", \"1\", \"2\", \"3\", \"true\"]")
+}
+
+///|
+test "generator: yield* with return value" {
+  let output = run_output(
+    (
+      #|function* inner() {
+      #|  yield 1;
+      #|  return "done";
+      #|}
+      #|function* outer() {
+      #|  const result = yield* inner();
+      #|  yield result;
+      #|}
+      #|const it = outer();
+      #|console.log(it.next().value);
+      #|console.log(it.next().value);
+      #|console.log(it.next().done);
+    ),
+  )
+  inspect(output, content="[\"1\", \"done\", \"true\"]")
+}
+
+///|
+test "generator: yield* over array" {
+  let output = run_output(
+    (
+      #|function* g() {
+      #|  yield* [10, 20, 30];
+      #|}
+      #|const it = g();
+      #|console.log(it.next().value);
+      #|console.log(it.next().value);
+      #|console.log(it.next().value);
+      #|console.log(it.next().done);
+    ),
+  )
+  inspect(output, content="[\"10\", \"20\", \"30\", \"true\"]")
+}
+
+///|
+test "generator: yield* over string" {
+  let output = run_output(
+    (
+      #|function* g() {
+      #|  yield* "abc";
+      #|}
+      #|const it = g();
+      #|console.log(it.next().value);
+      #|console.log(it.next().value);
+      #|console.log(it.next().value);
+      #|console.log(it.next().done);
+    ),
+  )
+  inspect(output, content="[\"a\", \"b\", \"c\", \"true\"]")
+}
+
+///|
+test "generator: yield* nested delegation" {
+  let output = run_output(
+    (
+      #|function* a() { yield 1; yield 2; }
+      #|function* b() { yield* a(); yield 3; }
+      #|function* c() { yield* b(); yield 4; }
+      #|const it = c();
+      #|console.log(it.next().value);
+      #|console.log(it.next().value);
+      #|console.log(it.next().value);
+      #|console.log(it.next().value);
+      #|console.log(it.next().done);
+    ),
+  )
+  inspect(output, content="[\"1\", \"2\", \"3\", \"4\", \"true\"]")
+}
+
+///|
+test "generator: yield* forwards .return() to delegate" {
+  let output = run_output(
+    (
+      #|function* inner() {
+      #|  try {
+      #|    yield 1;
+      #|    yield 2;
+      #|  } finally {
+      #|    console.log("inner finally");
+      #|  }
+      #|}
+      #|function* outer() {
+      #|  yield* inner();
+      #|  yield 3;
+      #|}
+      #|const it = outer();
+      #|console.log(it.next().value);
+      #|const r = it.return(42);
+      #|console.log(r.value, r.done);
+    ),
+  )
+  inspect(output, content="[\"1\", \"inner finally\", \"42 true\"]")
+}
+
+///|
+test "generator: yield* forwards .throw() to delegate" {
+  let output = run_output(
+    (
+      #|function* inner() {
+      #|  try {
+      #|    yield 1;
+      #|  } catch(e) {
+      #|    yield "caught: " + e.message;
+      #|  }
+      #|}
+      #|function* outer() {
+      #|  yield* inner();
+      #|  yield "after";
+      #|}
+      #|const it = outer();
+      #|console.log(it.next().value);
+      #|console.log(it.throw(new Error("err")).value);
+      #|console.log(it.next().value);
+      #|console.log(it.next().done);
+    ),
+  )
+  inspect(output, content="[\"1\", \"caught: err\", \"after\", \"true\"]")
+}
+
+// ================================================================
+// Generator Phase 7: Language integration
+// ================================================================
+
+///|
+test "generator: for-of consuming generator (integration)" {
+  let output = run_output(
+    (
+      #|function* range(n) {
+      #|  for (let i = 0; i < n; i++) yield i;
+      #|}
+      #|const results = [];
+      #|for (const x of range(5)) {
+      #|  results.push(x);
+      #|}
+      #|console.log(results.join(","));
+    ),
+  )
+  inspect(output, content="[\"0,1,2,3,4\"]")
+}
+
+///|
+test "generator: spread with generator (integration)" {
+  let output = run_output(
+    (
+      #|function* g() { yield 1; yield 2; yield 3; }
+      #|const arr = [...g()];
+      #|console.log(arr.length);
+      #|console.log(arr.join(","));
+    ),
+  )
+  inspect(output, content="[\"3\", \"1,2,3\"]")
+}
+
+///|
+test "generator: destructuring with generator (integration)" {
+  let output = run_output(
+    (
+      #|function* g() { yield "a"; yield "b"; yield "c"; }
+      #|const [first, second] = g();
+      #|console.log(first, second);
+    ),
+  )
+  inspect(output, content="[\"a b\"]")
+}
+
+///|
+test "generator: generator as method" {
+  let output = run_output(
+    (
+      #|const obj = {
+      #|  items: function*() {
+      #|    yield 1;
+      #|    yield 2;
+      #|    yield 3;
+      #|  }
+      #|};
+      #|const results = [];
+      #|for (const x of obj.items()) {
+      #|  results.push(x);
+      #|}
+      #|console.log(results.join(","));
+    ),
+  )
+  inspect(output, content="[\"1,2,3\"]")
+}
+
+///|
+test "generator: yield* over spread result" {
+  let output = run_output(
+    (
+      #|function* a() { yield 1; yield 2; }
+      #|function* b() { yield 3; yield 4; }
+      #|function* combined() {
+      #|  yield* a();
+      #|  yield* b();
+      #|}
+      #|console.log([...combined()].join(","));
+    ),
+  )
+  inspect(output, content="[\"1,2,3,4\"]")
+}
+
+///|
+test "generator: generator with closures" {
+  let output = run_output(
+    (
+      #|function* counter(start) {
+      #|  let count = start;
+      #|  while (true) {
+      #|    const reset = yield count;
+      #|    if (reset) {
+      #|      count = start;
+      #|    } else {
+      #|      count++;
+      #|    }
+      #|  }
+      #|}
+      #|const c = counter(1);
+      #|console.log(c.next().value);
+      #|console.log(c.next().value);
+      #|console.log(c.next().value);
+      #|console.log(c.next(true).value);
+      #|console.log(c.next().value);
+    ),
+  )
+  inspect(output, content="[\"1\", \"2\", \"3\", \"1\", \"2\"]")
+}
+
+///|
+test "generator: infinite fibonacci generator" {
+  let output = run_output(
+    (
+      #|function* fibonacci() {
+      #|  let a = 0, b = 1;
+      #|  while (true) {
+      #|    yield a;
+      #|    const temp = a;
+      #|    a = b;
+      #|    b = temp + b;
+      #|  }
+      #|}
+      #|const fib = fibonacci();
+      #|const results = [];
+      #|for (let i = 0; i < 8; i++) {
+      #|  results.push(fib.next().value);
+      #|}
+      #|console.log(results.join(","));
+    ),
+  )
+  inspect(output, content="[\"0,1,1,2,3,5,8,13\"]")
+}
+
+///|
+test "generator: generator pipeline" {
+  let output = run_output(
+    (
+      #|function* naturals() {
+      #|  let i = 1;
+      #|  while (true) yield i++;
+      #|}
+      #|function* take(n, iter) {
+      #|  let count = 0;
+      #|  for (const v of iter) {
+      #|    if (count >= n) return;
+      #|    yield v;
+      #|    count++;
+      #|  }
+      #|}
+      #|function* map(fn, iter) {
+      #|  for (const v of iter) {
+      #|    yield fn(v);
+      #|  }
+      #|}
+      #|const squares = map(x => x * x, take(5, naturals()));
+      #|console.log([...squares].join(","));
+    ),
+  )
+  inspect(output, content="[\"1,4,9,16,25\"]")
+}
+
+// ================================================================
+// Generator Phase 8: Hardening / stress tests
+// ================================================================
+
+///|
+test "generator: deep iteration stress test" {
+  let output = run_output(
+    (
+      #|function* range(n) {
+      #|  for (let i = 0; i < n; i++) yield i;
+      #|}
+      #|let sum = 0;
+      #|for (const x of range(100)) {
+      #|  sum += x;
+      #|}
+      #|console.log(sum);
+    ),
+  )
+  inspect(output, content="[\"4950\"]")
+}
+
+///|
+test "generator: yield* chain stress" {
+  let output = run_output(
+    (
+      #|function* single(v) { yield v; }
+      #|function* chain(n) {
+      #|  for (let i = 0; i < n; i++) {
+      #|    yield* single(i);
+      #|  }
+      #|}
+      #|let sum = 0;
+      #|for (const x of chain(50)) sum += x;
+      #|console.log(sum);
+    ),
+  )
+  inspect(output, content="[\"1225\"]")
+}
+
+///|
+test "generator: alternating yield and yield*" {
+  let output = run_output(
+    (
+      #|function* inner() { yield "a"; yield "b"; }
+      #|function* outer() {
+      #|  yield 1;
+      #|  yield* inner();
+      #|  yield 2;
+      #|  yield* inner();
+      #|  yield 3;
+      #|}
+      #|console.log([...outer()].join(","));
+    ),
+  )
+  inspect(output, content="[\"1,a,b,2,a,b,3\"]")
+}
+
+///|
+test "generator: generator state isolation" {
+  let output = run_output(
+    (
+      #|function* counter() {
+      #|  let i = 0;
+      #|  while (true) yield i++;
+      #|}
+      #|const a = counter();
+      #|const b = counter();
+      #|a.next(); a.next(); a.next();
+      #|console.log(a.next().value);
+      #|console.log(b.next().value);
+    ),
+  )
+  inspect(output, content="[\"3\", \"0\"]")
+}

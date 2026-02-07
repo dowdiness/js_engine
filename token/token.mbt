@@ -55,6 +55,8 @@ pub(all) enum TokenKind {
   Static
   Get
   Set
+  // Generator-related
+  Yield
   // Module-related
   Import
   Export
