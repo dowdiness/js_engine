@@ -41,14 +41,14 @@ pub impl Eq for BinOp
 pub impl Show for BinOp
 
 pub(all) struct ExportSpecifier {
-  local : String
+  local_name : String
   exported : String
 }
 pub impl Eq for ExportSpecifier
 pub impl Show for ExportSpecifier
 
 pub(all) struct ImportSpecifier {
-  local : String
+  local_name : String
   imported : String
 }
 pub impl Eq for ImportSpecifier

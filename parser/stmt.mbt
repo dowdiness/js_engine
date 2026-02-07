@@ -910,13 +910,13 @@ fn Parser::parse_import_specifiers(
   let specs : Array[@ast.ImportSpecifier] = []
   while not(self.at(RBrace)) && not(self.at(EOF)) {
     let imported = self.expect_module_export_name()
-    let local = if self.at(As) {
+    let local_name = if self.at(As) {
       let _ = self.advance() // consume 'as'
       self.expect_ident()
     } else {
       imported
     }
-    specs.push({ local, imported })
+    specs.push({ local_name, imported })
     if not(self.at(RBrace)) {
       let _ = self.expect(Comma)
 
@@ -975,7 +975,7 @@ fn Parser::parse_export_decl(self : Parser) -> @ast.Stmt raise Error {
   // export * from 'source' or export * as name from 'source'
   if self.at(Star) {
     let _ = self.advance() // consume *
-    let alias : String? = if self.at(As) {
+    let ns_alias : String? = if self.at(As) {
       let _ = self.advance() // consume 'as'
       Some(self.expect_module_export_name())
     } else {
@@ -995,7 +995,7 @@ fn Parser::parse_export_decl(self : Parser) -> @ast.Stmt raise Error {
       }
     }
     self.eat_semicolon()
-    return ExportAllDecl(alias, source, tok.loc)
+    return ExportAllDecl(ns_alias, source, tok.loc)
   }
   // export { name1, name2 as alias } [from 'source']
   if self.at(LBrace) {
@@ -1049,14 +1049,14 @@ fn Parser::parse_export_specifiers(
   let _ = self.expect(LBrace)
   let specs : Array[@ast.ExportSpecifier] = []
   while not(self.at(RBrace)) && not(self.at(EOF)) {
-    let local = self.expect_module_export_name()
+    let local_name = self.expect_module_export_name()
     let exported = if self.at(As) {
       let _ = self.advance() // consume 'as'
       self.expect_module_export_name()
     } else {
-      local
+      local_name
     }
-    specs.push({ local, exported })
+    specs.push({ local_name, exported })
     if not(self.at(RBrace)) {
       let _ = self.expect(Comma)
 

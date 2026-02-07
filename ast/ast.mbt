@@ -160,13 +160,13 @@ pub(all) struct PropPat {
 
 ///|
 pub(all) struct ImportSpecifier {
-  local : String // local binding name
+  local_name : String // local binding name
   imported : String // name exported by the module
 } derive(Show, Eq)
 
 ///|
 pub(all) struct ExportSpecifier {
-  local : String // local binding name
+  local_name : String // local binding name
   exported : String // name to export as
 } derive(Show, Eq)
 

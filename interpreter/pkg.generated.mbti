@@ -167,7 +167,7 @@ pub(all) struct Interpreter {
   timer_insertion_counter : Ref[Int]
   cancelled_timer_ids : Map[Int, Bool]
   module_registry : Map[String, Map[String, Value]]
-  module_exports : Map[String, Value]
+  mut module_exports : Map[String, Value]
 }
 pub fn Interpreter::enqueue_microtask(Self, Value, Array[Value]) -> Unit
 pub fn Interpreter::new() -> Self

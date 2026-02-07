@@ -41,7 +41,7 @@ pub(all) struct Interpreter {
   cancelled_timer_ids : Map[Int, Bool] // IDs cancelled during callback execution
   // ES Modules support
   module_registry : Map[String, Map[String, Value]] // module specifier -> exports namespace
-  module_exports : Map[String, Value] // current module's exports being built
+  mut module_exports : Map[String, Value] // current module's exports being built
 }
 
 ///|
@@ -900,8 +900,8 @@ fn Interpreter::exec_stmt(
       }
       Normal(Undefined)
     }
-    ExportAllDecl(alias, source, loc) =>
-      self.exec_export_all(alias, source, loc)
+    ExportAllDecl(ns_alias, source, loc) =>
+      self.exec_export_all(ns_alias, source, loc)
   }
 }
 
@@ -1046,7 +1046,7 @@ fn Interpreter::hoist_declarations(
       // Export with declaration: hoist the inner declaration
       ExportNamedDecl(Some(decl), _, _, _) => {
         let inner_stmts : Array[@ast.Stmt] = [decl]
-        self.hoist_declarations(inner_stmts, env)
+        _self.hoist_declarations(inner_stmts, env)
       }
       _ => ()
     }
@@ -5147,7 +5147,7 @@ fn Interpreter::exec_import(
           message="Module '\{source}' does not export '\{spec.imported}' at line \{loc.line}, col \{loc.col}",
         )
     }
-    env.def(spec.local, value, ConstBinding)
+    env.def(spec.local_name, value, ConstBinding)
   }
   // import * as namespace from 'source'
   match namespace_import {
@@ -5204,11 +5204,11 @@ fn Interpreter::exec_export_named(
           )
       }
       for spec in specifiers {
-        let value = match src_exports.get(spec.local) {
+        let value = match src_exports.get(spec.local_name) {
           Some(v) => v
           None =>
             raise @errors.SyntaxError(
-              message="Module '\{src}' does not export '\{spec.local}' at line \{loc.line}, col \{loc.col}",
+              message="Module '\{src}' does not export '\{spec.local_name}' at line \{loc.line}, col \{loc.col}",
             )
         }
         self.module_exports[spec.exported] = value
@@ -5217,7 +5217,7 @@ fn Interpreter::exec_export_named(
     None =>
       // Local re-export: export { name1, name2 as alias }
       for spec in specifiers {
-        let value = env.get(spec.local)
+        let value = env.get(spec.local_name)
         self.module_exports[spec.exported] = value
       }
   }
@@ -5228,7 +5228,7 @@ fn Interpreter::exec_export_named(
 /// Execute export * from 'source' or export * as name from 'source'
 fn Interpreter::exec_export_all(
   self : Interpreter,
-  alias : String?,
+  ns_alias : String?,
   source : String,
   loc : @token.Loc,
 ) -> Signal raise Error {
@@ -5239,7 +5239,7 @@ fn Interpreter::exec_export_all(
         message="Cannot find module '\{source}' at line \{loc.line}, col \{loc.col}",
       )
   }
-  match alias {
+  match ns_alias {
     Some(name) => {
       // export * as name from 'source' - create namespace object
       let ns_props : Map[String, Value] = {}
