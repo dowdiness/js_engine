@@ -61,8 +61,7 @@ fn is_alnum(c : Char) -> Bool {
 fn is_id_start_cp(cp : Int) -> Bool {
   // For ASCII range, validate strictly; for non-ASCII, accept (Unicode letters)
   if cp < 128 {
-    let c = Char::from_int(cp)
-    is_alpha(c)
+    is_alpha(cp.unsafe_to_char())
   } else {
     true
   }
@@ -72,8 +71,7 @@ fn is_id_start_cp(cp : Int) -> Bool {
 fn is_id_continue_cp(cp : Int) -> Bool {
   // For ASCII range, validate strictly; for non-ASCII, accept
   if cp < 128 {
-    let c = Char::from_int(cp)
-    is_alnum(c)
+    is_alnum(cp.unsafe_to_char())
   } else {
     true
   }
@@ -82,7 +80,7 @@ fn is_id_continue_cp(cp : Int) -> Bool {
 ///|
 fn write_code_point(buf : StringBuilder, cp : Int) -> Unit {
   if cp <= 0xFFFF {
-    buf.write_char(Char::from_int(cp))
+    buf.write_char(cp.unsafe_to_char())
   } else {
     // Supplementary plane: encode as UTF-16 surrogate pair.
     // Use unsafe_to_char because surrogates are not valid Unicode scalar values

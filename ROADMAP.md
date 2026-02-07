@@ -2,9 +2,9 @@
 
 ## Current Status
 
-**Test262**: 9,545 / 24,213 passed (39.4%) | 25,381 skipped | 14,668 failed | 56 timeouts
+**Test262**: 10,592 / 24,190 passed (43.8%) | 25,381 skipped | 13,598 failed | 79 timeouts
 
-**Unit tests**: 534 total, 534 passed, 0 failed
+**Unit tests**: 547 total, 547 passed, 0 failed
 
 ## Phase History
 
@@ -14,11 +14,9 @@
 | 6A-6G | +~2,350 | ~8,500 | Parser fixes, prototype chains, destructuring, tagged templates |
 | 6H | +1,202 | 9,489 | Error prototype chain fix |
 | 6I-6L | +56 | 9,545 | Leading decimals, canonical indices, PR review fixes |
-| 7A | +13 | 9,545* | Full accessor descriptor support (get/set in PropDescriptor) |
-| 7B | +13 | 9,545* | Unicode escapes in identifiers, strings, template literals |
-| JS Target | — | 9,545 | JS backend support, Error toString fix, backend-specific argv handling |
-
-\* Phases 7A–7B added unit tests; test262 recount pending.
+| 7A | — | 9,545 | Full accessor descriptor support (get/set in PropDescriptor) |
+| 7B | +1,047 | 10,592 | Unicode escapes in identifiers, strings, template literals |
+| JS Target | — | — | JS backend support, Error toString fix, backend-specific argv handling |
 
 For detailed implementation notes on Phases 1-6, see [docs/PHASE_HISTORY.md](docs/PHASE_HISTORY.md).
 
