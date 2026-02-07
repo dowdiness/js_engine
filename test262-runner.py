@@ -459,7 +459,7 @@ def discover_tests(test262_dir: str, filter_pattern: str = "") -> list:
     for root, dirs, files in os.walk(test_dir):
         # Skip intl402 and staging directories for core conformance
         rel = os.path.relpath(root, test_dir)
-        if rel.startswith("intl402"):
+        if rel.startswith("intl402") or rel.startswith("staging"):
             continue
         for f in sorted(files):
             if not f.endswith(".js"):
