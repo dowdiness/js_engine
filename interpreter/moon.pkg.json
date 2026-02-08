@@ -3,10 +3,8 @@
     "dowdiness/js_engine/ast",
     "dowdiness/js_engine/token",
     "dowdiness/js_engine/errors",
+    "dowdiness/js_engine/parser",
     "moonbitlang/core/strconv",
     "moonbitlang/core/math"
-  ],
-  "test-import": [
-    "dowdiness/js_engine/parser"
   ]
 }

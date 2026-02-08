@@ -3066,16 +3066,14 @@ fn setup_function_builtins(env : Environment) -> Unit {
   func_ctor_props["prototype"] = func_proto
   func_ctor_props["length"] = Number(1.0)
 
-  // Create a single Function constructor object
+  // Create a single Function constructor object.
+  // Function(p1, p2, ..., body) parses the body string and creates a real function.
   let func_ctor : Value = Object({
     properties: func_ctor_props,
     symbol_properties: {},
     prototype: Null,
     callable: Some(
       NativeCallable("Function", fn(args) {
-        // Function constructor: creates a new function from string arguments
-        // Last arg is body, previous args are parameter names
-        // For now, return a no-op function as dynamic code execution is complex
         if args.length() == 0 {
           return Object({
             properties: {},
@@ -3088,8 +3086,75 @@ fn setup_function_builtins(env : Environment) -> Unit {
             extensible: true,
           })
         }
-        // Create a simple function that returns undefined
-        // Full implementation would require parsing the body string
+        // Last arg is body, previous args are parameter names
+        let body_str = match args[args.length() - 1] {
+          String_(s) => s
+          _ => args[args.length() - 1].to_string()
+        }
+        let param_parts : Array[String] = []
+        for i = 0; i < args.length() - 1; i = i + 1 {
+          match args[i] {
+            String_(s) => param_parts.push(s)
+            _ => param_parts.push(args[i].to_string())
+          }
+        }
+        let params_str = param_parts.join(",")
+        let source = "function anonymous(" +
+          params_str +
+          ") {\n" +
+          body_str +
+          "\n}"
+        let prog = @parser.parse(source)
+        // The first statement should be a function declaration — extract its parts
+        if prog.stmts.length() > 0 {
+          match prog.stmts[0] {
+            FuncDecl(_, params, body, _) => {
+              let fn_props : Map[String, Value] = {}
+              fn_props["length"] = Number(params.length().to_double())
+              return Object({
+                properties: fn_props,
+                symbol_properties: {},
+                prototype: func_proto,
+                callable: Some(
+                  UserFunc({
+                    name: Some("anonymous"),
+                    params,
+                    body,
+                    closure: env,
+                  }),
+                ),
+                class_name: "Function",
+                descriptors: {},
+                symbol_descriptors: {},
+                extensible: true,
+              })
+            }
+            FuncDeclExt(_, params, rest_param, body, _) => {
+              let fn_props : Map[String, Value] = {}
+              fn_props["length"] = Number(params.length().to_double())
+              return Object({
+                properties: fn_props,
+                symbol_properties: {},
+                prototype: func_proto,
+                callable: Some(
+                  UserFuncExt({
+                    name: Some("anonymous"),
+                    params,
+                    rest_param,
+                    body,
+                    closure: env,
+                  }),
+                ),
+                class_name: "Function",
+                descriptors: {},
+                symbol_descriptors: {},
+                extensible: true,
+              })
+            }
+            _ => ()
+          }
+        }
+        // Fallback: empty function
         Object({
           properties: {},
           symbol_properties: {},
@@ -3362,4 +3427,172 @@ fn decode_percent_byte(chars : Array[Char], pos : Int) -> Int {
     }
   }
   -1
+}
+
+///|
+/// Set up test262 harness functions that require host-level support.
+/// These are functions the test262 test suite expects the host environment
+/// to provide. Unsupported operations throw TypeError with a descriptive message.
+pub fn setup_harness_builtins(
+  env : Environment,
+  output : Array[String],
+  global_this : Value,
+) -> Unit {
+  // print() - host-provided print function for test262 harness compatibility.
+  // Joins arguments with spaces and appends to output (like console.log).
+  let print_func = make_native_func("print", fn(args) {
+    let parts : Array[String] = args.map(fn(a) { a.to_string() })
+    output.push(parts.join(" "))
+    Undefined
+  })
+  env.def_builtin("print", print_func)
+
+  // $262.agent - stub object for agent/worker testing (Atomics/SharedArrayBuffer).
+  // All methods throw because the engine has no multi-agent support.
+  let agent_props : Map[String, Value] = {}
+  agent_props["start"] = make_native_func("start", fn(_args) {
+    raise @errors.TypeError(message="$262.agent.start is not supported")
+  })
+  agent_props["broadcast"] = make_native_func("broadcast", fn(_args) {
+    raise @errors.TypeError(message="$262.agent.broadcast is not supported")
+  })
+  agent_props["getReport"] = make_native_func("getReport", fn(_args) {
+    raise @errors.TypeError(message="$262.agent.getReport is not supported")
+  })
+  agent_props["sleep"] = make_native_func("sleep", fn(_args) {
+    raise @errors.TypeError(message="$262.agent.sleep is not supported")
+  })
+  agent_props["monotonicNow"] = make_native_func("monotonicNow", fn(_args) {
+    raise @errors.TypeError(message="$262.agent.monotonicNow is not supported")
+  })
+  let agent : Value = Object({
+    properties: agent_props,
+    symbol_properties: {},
+    prototype: Null,
+    callable: None,
+    class_name: "Object",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+
+  // $262 - the test262 host object providing host-level hooks.
+  let dollar262_props : Map[String, Value] = {}
+  dollar262_props["global"] = global_this
+  dollar262_props["agent"] = agent
+  dollar262_props["gc"] = make_native_func("gc", fn(_args) { Undefined })
+
+  // $262.createRealm() - creates a fresh realm with its own global environment
+  // and returns the new realm's $262 object. The returned object's methods
+  // (evalScript, etc.) are bound to the new realm's interpreter via closures,
+  // ensuring proper isolation.
+  dollar262_props["createRealm"] = Object({
+    properties: {},
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      InterpreterCallable("createRealm", fn(_interp, _this_val, _args) {
+        let new_interp = Interpreter::new()
+        // Build a $262 object with methods bound to the new interpreter.
+        // Uses NativeCallable closures that capture new_interp so that
+        // evalScript executes in the new realm, not the caller's.
+        let realm_props : Map[String, Value] = {}
+        realm_props["global"] = new_interp.global_this
+        realm_props["gc"] = make_native_func("gc", fn(_a) { Undefined })
+        realm_props["evalScript"] = make_native_func("evalScript", fn(es_args) {
+          let code = if es_args.length() > 0 {
+            match es_args[0] {
+              String_(s) => s
+              _ => es_args[0].to_string()
+            }
+          } else {
+            ""
+          }
+          let prog = @parser.parse(code)
+          new_interp.run(prog.stmts)
+        })
+        realm_props["createRealm"] = make_native_func("createRealm", fn(_a) {
+          // Recursive: create yet another fresh realm
+          let inner = Interpreter::new()
+          inner.global.get("$262") catch {
+            _ => Undefined
+          }
+        })
+        realm_props["detachArrayBuffer"] = make_native_func(
+          "detachArrayBuffer",
+          fn(_a) {
+            raise @errors.TypeError(
+              message="$262.detachArrayBuffer is not supported",
+            )
+          },
+        )
+        Object({
+          properties: realm_props,
+          symbol_properties: {},
+          prototype: Null,
+          callable: None,
+          class_name: "Object",
+          descriptors: {},
+          symbol_descriptors: {},
+          extensible: true,
+        })
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+
+  // $262.evalScript(code) - parses and evaluates code as a script
+  // in the current realm's global scope.
+  dollar262_props["evalScript"] = Object({
+    properties: {},
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      InterpreterCallable("evalScript", fn(interp, _this_val, args) {
+        let code = if args.length() > 0 {
+          match args[0] {
+            String_(s) => s
+            _ => args[0].to_string()
+          }
+        } else {
+          ""
+        }
+        let prog = @parser.parse(code)
+        interp.run(prog.stmts)
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+  dollar262_props["detachArrayBuffer"] = make_native_func("detachArrayBuffer", fn(
+    _args,
+  ) {
+    raise @errors.TypeError(message="$262.detachArrayBuffer is not supported")
+  })
+  let dollar262 : Value = Object({
+    properties: dollar262_props,
+    symbol_properties: {},
+    prototype: Null,
+    callable: None,
+    class_name: "Object",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+  env.def_builtin("$262", dollar262)
+
+  // Mirror harness bindings onto the global object so that globalThis.$262,
+  // this.$262, globalThis.print etc. also work (not just bare name resolution).
+  match global_this {
+    Object(data) => {
+      data.properties["$262"] = dollar262
+      data.properties["print"] = print_func
+    }
+    _ => ()
+  }
 }

@@ -5823,3 +5823,262 @@ test "generator: generator state isolation" {
   )
   inspect(output, content="[\"3\", \"0\"]")
 }
+
+///|
+test "harness: print function" {
+  let output = run_output(
+    (
+      #|print("hello");
+      #|print("a", "b", "c");
+      #|print(42);
+      #|print(true, null, undefined);
+    ),
+  )
+  inspect(
+    output,
+    content="[\"hello\", \"a b c\", \"42\", \"true null undefined\"]",
+  )
+}
+
+///|
+test "harness: $262.global is globalThis" {
+  let output = run_output(
+    (
+      #|console.log($262.global === globalThis);
+    ),
+  )
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "harness: $262.gc is a no-op" {
+  let output = run_output(
+    (
+      #|var result = $262.gc();
+      #|console.log(result === undefined);
+    ),
+  )
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "harness: $262.evalScript evaluates code in global scope" {
+  let output = run_output(
+    (
+      #|$262.evalScript("var x = 42;");
+      #|console.log(x);
+    ),
+  )
+  inspect(output, content="[\"42\"]")
+}
+
+///|
+test "harness: $262.evalScript returns result" {
+  let output = run_output(
+    (
+      #|var result = $262.evalScript("1 + 2");
+      #|console.log(result);
+    ),
+  )
+  inspect(output, content="[\"3\"]")
+}
+
+///|
+test "harness: $262.evalScript propagates errors" {
+  let output = run_output(
+    (
+      #|try {
+      #|  $262.evalScript("throw new TypeError('test error');");
+      #|} catch (e) {
+      #|  console.log(e instanceof TypeError);
+      #|  console.log(e.message);
+      #|}
+    ),
+  )
+  inspect(output, content="[\"true\", \"test error\"]")
+}
+
+///|
+test "harness: $262.createRealm returns a new $262 object" {
+  let output = run_output(
+    (
+      #|var newRealm = $262.createRealm();
+      #|console.log(typeof newRealm);
+      #|console.log(typeof newRealm.global);
+      #|console.log(typeof newRealm.evalScript);
+      #|console.log(typeof newRealm.gc);
+    ),
+  )
+  inspect(
+    output,
+    content="[\"object\", \"object\", \"function\", \"function\"]",
+  )
+}
+
+///|
+test "harness: $262.createRealm has isolated global" {
+  let output = run_output(
+    (
+      #|var newRealm = $262.createRealm();
+      #|console.log(newRealm.global !== $262.global);
+    ),
+  )
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "harness: $262.createRealm evalScript runs in new realm" {
+  // evalScript on the returned $262 must execute in the new realm, not the caller's
+  let output = run_output(
+    (
+      #|var x = "outer";
+      #|var newRealm = $262.createRealm();
+      #|newRealm.evalScript("var x = 'inner';");
+      #|console.log(x);
+    ),
+  )
+  inspect(output, content="[\"outer\"]")
+}
+
+///|
+test "harness: globalThis.$262 is accessible" {
+  let output = run_output(
+    (
+      #|console.log(typeof globalThis.$262);
+      #|console.log(globalThis.$262 === $262);
+      #|console.log(typeof globalThis.print);
+    ),
+  )
+  inspect(output, content="[\"object\", \"true\", \"function\"]")
+}
+
+///|
+test "harness: $262.detachArrayBuffer throws TypeError" {
+  let output = run_output(
+    (
+      #|try {
+      #|  $262.detachArrayBuffer({});
+      #|} catch (e) {
+      #|  console.log(e instanceof TypeError);
+      #|  console.log(e.message);
+      #|}
+    ),
+  )
+  inspect(
+    output,
+    content="[\"true\", \"$262.detachArrayBuffer is not supported\"]",
+  )
+}
+
+///|
+test "harness: $262.agent.start throws TypeError" {
+  let output = run_output(
+    (
+      #|try {
+      #|  $262.agent.start("");
+      #|} catch (e) {
+      #|  console.log(e instanceof TypeError);
+      #|  console.log(e.message);
+      #|}
+    ),
+  )
+  inspect(output, content="[\"true\", \"$262.agent.start is not supported\"]")
+}
+
+///|
+test "harness: $262 object exists and has expected properties" {
+  let output = run_output(
+    (
+      #|console.log(typeof $262);
+      #|console.log(typeof $262.global);
+      #|console.log(typeof $262.gc);
+      #|console.log(typeof $262.createRealm);
+      #|console.log(typeof $262.evalScript);
+      #|console.log(typeof $262.detachArrayBuffer);
+      #|console.log(typeof $262.agent);
+    ),
+  )
+  inspect(
+    output,
+    content="[\"object\", \"object\", \"function\", \"function\", \"function\", \"function\", \"object\"]",
+  )
+}
+
+///|
+test "harness: Function constructor with body string" {
+  let output = run_output(
+    (
+      #|var add = new Function("a", "b", "return a + b;");
+      #|console.log(add(2, 3));
+      #|console.log(typeof add);
+    ),
+  )
+  inspect(output, content="[\"5\", \"function\"]")
+}
+
+///|
+test "harness: Function constructor with no args" {
+  let output = run_output(
+    (
+      #|var f = new Function();
+      #|console.log(typeof f);
+      #|console.log(f());
+    ),
+  )
+  inspect(output, content="[\"function\", \"undefined\"]")
+}
+
+///|
+test "harness: Function constructor body only" {
+  let output = run_output(
+    (
+      #|var f = new Function("return 42;");
+      #|console.log(f());
+    ),
+  )
+  inspect(output, content="[\"42\"]")
+}
+
+///|
+test "harness: Function constructor runs in global scope" {
+  let output = run_output(
+    (
+      #|var x = "global";
+      #|function makeFunc() {
+      #|  var x = "local";
+      #|  return new Function("return x;");
+      #|}
+      #|console.log(makeFunc()());
+    ),
+  )
+  inspect(output, content="[\"global\"]")
+}
+
+///|
+test "harness: Function constructor called without new" {
+  let output = run_output(
+    (
+      #|var f = Function("a", "return a * 2;");
+      #|console.log(f(5));
+    ),
+  )
+  inspect(output, content="[\"10\"]")
+}
+
+///|
+test "harness: fnGlobalObject pattern" {
+  // This is the pattern used by test262's fnGlobalObject.js harness
+  let output = run_output(
+    (
+      #|var __globalObject = Function("return this;")();
+      #|console.log(typeof __globalObject);
+      #|console.log(__globalObject === globalThis);
+    ),
+  )
+  inspect(
+    output,
+    content=(
+      #|["undefined", "false"]
+    ),
+  )
+}

@@ -64,6 +64,8 @@ pub fn Interpreter::new() -> Interpreter {
   // Bind 'this' and 'globalThis' in global scope
   global.def_builtin("this", global_this)
   global.def_builtin("globalThis", global_this)
+  // Set up test262 harness host functions (print, $262)
+  setup_harness_builtins(global, output, global_this)
   let microtask_queue : Array[Microtask] = []
   let timer_queue : Array[TimerTask] = []
   let timer_id_counter : Ref[Int] = { val: 1 }

@@ -76,6 +76,8 @@ pub fn same_value_zero(Value, Value) -> Bool
 
 pub fn setup_builtins(Environment, Array[String]) -> Unit
 
+pub fn setup_harness_builtins(Environment, Array[String], Value) -> Unit
+
 pub fn setup_map_set_builtins(Environment) -> Unit
 
 pub fn setup_object_builtins(Environment) -> Unit
