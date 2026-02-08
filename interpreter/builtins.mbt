@@ -2026,30 +2026,41 @@ fn setup_json_builtins(env : Environment) -> Unit {
     let str = if args.length() > 0 { args[0].to_string() } else { "" }
     json_parse(str)
   })
-  json_props["stringify"] = make_native_func("stringify", fn(args) {
-    let val = if args.length() > 0 { args[0] } else { Undefined }
-    let indent = if args.length() > 2 {
-      match args[2] {
-        Number(n) => {
-          let spaces = n.to_int()
-          if spaces > 0 {
-            let buf = StringBuilder::new()
-            for _i = 0; _i < spaces; _i = _i + 1 {
-              buf.write_char(' ')
+  json_props["stringify"] = Object({
+    properties: {},
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      InterpreterCallable("stringify", fn(interp, _this, args) {
+        let val = if args.length() > 0 { args[0] } else { Undefined }
+        let indent = if args.length() > 2 {
+          match args[2] {
+            Number(n) => {
+              let spaces = n.to_int()
+              if spaces > 0 {
+                let buf = StringBuilder::new()
+                for _i = 0; _i < spaces; _i = _i + 1 {
+                  buf.write_char(' ')
+                }
+                Some(buf.to_string())
+              } else {
+                None
+              }
             }
-            Some(buf.to_string())
-          } else {
-            None
+            String_(s) => if s.length() > 0 { Some(s) } else { None }
+            _ => None
           }
+        } else {
+          None
         }
-        String_(s) => if s.length() > 0 { Some(s) } else { None }
-        _ => None
-      }
-    } else {
-      None
-    }
-    let seen : Array[Value] = []
-    json_stringify_value(val, seen, indent, 0)
+        let seen : Array[Value] = []
+        json_stringify_value(val, seen, indent, 0, Some(interp))
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
   })
   env.def_builtin(
     "JSON",
@@ -2338,6 +2349,7 @@ fn json_stringify_value(
   seen : Array[Value],
   indent : String?,
   depth : Int,
+  interp : Interpreter?,
 ) -> Value raise Error {
   match val {
     Undefined => Undefined
@@ -2373,7 +2385,9 @@ fn json_stringify_value(
       buf.write_char('[')
       let mut first = true
       for el in data.elements {
-        let stringified = json_stringify_value(el, seen, indent, new_depth)
+        let stringified = json_stringify_value(
+          el, seen, indent, new_depth, interp,
+        )
         match stringified {
           Undefined => {
             if not(first) {
@@ -2448,21 +2462,34 @@ fn json_stringify_value(
           match to_json_fn {
             Some(Object(to_json_data)) =>
               match to_json_data.callable {
-                Some(MethodCallable(_, func)) => {
-                  let json_val = func(val, [])
-                  return json_stringify_value(json_val, seen, indent, depth)
+                Some(_) => {
+                  let to_json_obj : Value = Object(to_json_data)
+                  let json_val : Value? = match interp {
+                    Some(ip) =>
+                      Some(
+                        ip.call_value(
+                          to_json_obj, val, [], @token.Loc::default(),
+                        ),
+                      )
+                    None =>
+                      // Fallback for calls without interpreter access
+                      match to_json_data.callable {
+                        Some(MethodCallable(_, func)) => Some(func(val, []))
+                        Some(NativeCallable(_, func)) => Some(func([]))
+                        Some(NonConstructableCallable(_, func)) =>
+                          Some(func([]))
+                        _ => None // cannot call without interpreter, skip
+                      }
+                  }
+                  match json_val {
+                    Some(v) =>
+                      return json_stringify_value(
+                        v, seen, indent, depth, interp,
+                      )
+                    None => ()
+                  }
                 }
-                Some(NativeCallable(_, func)) => {
-                  let json_val = func([])
-                  return json_stringify_value(json_val, seen, indent, depth)
-                }
-                Some(NonConstructableCallable(_, func)) => {
-                  let json_val = func([])
-                  return json_stringify_value(json_val, seen, indent, depth)
-                }
-                // User-defined functions require the interpreter to call;
-                // they are handled at a higher level. Skip here.
-                _ => ()
+                None => ()
               }
             _ => ()
           }
@@ -2488,7 +2515,9 @@ fn json_stringify_value(
             if k.has_prefix("[[") {
               return
             }
-            let stringified = json_stringify_value(v, seen, indent, new_depth)
+            let stringified = json_stringify_value(
+              v, seen, indent, new_depth, interp,
+            )
             match stringified {
               Undefined => () // Skip undefined values
               String_(s) => {
