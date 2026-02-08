@@ -109,7 +109,7 @@ fn next_gen_id() -> Int {
 /// Mark generator as completed and remove from global map to free resources
 fn complete_generator(gen : GeneratorObject) -> Unit {
   gen.state = Completed
-  // Clear heavy references to reduce memory pressure while keeping
+  // Clear references to reduce memory pressure while keeping
   // the object in the map so subsequent .next/.throw/.return calls
   // correctly return {done: true} instead of "incompatible receiver".
   gen.env = None
@@ -118,6 +118,13 @@ fn complete_generator(gen : GeneratorObject) -> Unit {
   gen.for_of_iterator = Undefined
   gen.for_of_next = Undefined
   gen.loop_env_stack.clear()
+  // Clear mutable fields to allow GC
+  // Note: body/args/closure/this_val are immutable and may be shared
+  // across generator instances from the same function, so leave them.
+  gen.yield_value = Undefined
+  gen.try_resume_error = Undefined
+  gen.try_resume_result = Normal(Undefined)
+  gen.try_resume_pending_error = None
 }
 
 ///|
@@ -785,14 +792,11 @@ fn Interpreter::eval_yield(
         }
         raise YieldSignal(yielded_value)
       }
-    None => {
-      // Not inside a generator — evaluate argument and yield
-      let yielded_value = match argument {
-        Some(expr) => self.eval_expr(expr, env)
-        None => Undefined
-      }
-      raise YieldSignal(yielded_value)
-    }
+    None =>
+      // Parser prevents YieldExpr outside generator context, so this is unreachable
+      raise @errors.TypeError(
+        message="Internal error: yield outside generator context",
+      )
   }
 }
 
@@ -881,8 +885,14 @@ fn delegate_resume(
           match return_method {
             Some(rm) => {
               // Close the delegate so finally blocks execute
-              let _ = interp.call_value(rm, iterator, [], loc)
-
+              let close_result = interp.call_value(rm, iterator, [], loc)
+              match close_result {
+                Object(_) => ()
+                _ =>
+                  raise @errors.TypeError(
+                    message="Iterator close result is not an object",
+                  )
+              }
             }
             None => ()
           }
