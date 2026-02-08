@@ -3066,16 +3066,14 @@ fn setup_function_builtins(env : Environment) -> Unit {
   func_ctor_props["prototype"] = func_proto
   func_ctor_props["length"] = Number(1.0)
 
-  // Create a single Function constructor object
+  // Create a single Function constructor object.
+  // Function(p1, p2, ..., body) parses the body string and creates a real function.
   let func_ctor : Value = Object({
     properties: func_ctor_props,
     symbol_properties: {},
     prototype: Null,
     callable: Some(
       NativeCallable("Function", fn(args) {
-        // Function constructor: creates a new function from string arguments
-        // Last arg is body, previous args are parameter names
-        // For now, return a no-op function as dynamic code execution is complex
         if args.length() == 0 {
           return Object({
             properties: {},
@@ -3088,8 +3086,75 @@ fn setup_function_builtins(env : Environment) -> Unit {
             extensible: true,
           })
         }
-        // Create a simple function that returns undefined
-        // Full implementation would require parsing the body string
+        // Last arg is body, previous args are parameter names
+        let body_str = match args[args.length() - 1] {
+          String_(s) => s
+          _ => args[args.length() - 1].to_string()
+        }
+        let param_parts : Array[String] = []
+        for i = 0; i < args.length() - 1; i = i + 1 {
+          match args[i] {
+            String_(s) => param_parts.push(s)
+            _ => param_parts.push(args[i].to_string())
+          }
+        }
+        let params_str = param_parts.join(",")
+        let source = "function anonymous(" +
+          params_str +
+          ") {\n" +
+          body_str +
+          "\n}"
+        let prog = @parser.parse(source)
+        // The first statement should be a function declaration — extract its parts
+        if prog.stmts.length() > 0 {
+          match prog.stmts[0] {
+            FuncDecl(_, params, body, _) => {
+              let fn_props : Map[String, Value] = {}
+              fn_props["length"] = Number(params.length().to_double())
+              return Object({
+                properties: fn_props,
+                symbol_properties: {},
+                prototype: func_proto,
+                callable: Some(
+                  UserFunc({
+                    name: Some("anonymous"),
+                    params,
+                    body,
+                    closure: env,
+                  }),
+                ),
+                class_name: "Function",
+                descriptors: {},
+                symbol_descriptors: {},
+                extensible: true,
+              })
+            }
+            FuncDeclExt(_, params, rest_param, body, _) => {
+              let fn_props : Map[String, Value] = {}
+              fn_props["length"] = Number(params.length().to_double())
+              return Object({
+                properties: fn_props,
+                symbol_properties: {},
+                prototype: func_proto,
+                callable: Some(
+                  UserFuncExt({
+                    name: Some("anonymous"),
+                    params,
+                    rest_param,
+                    body,
+                    closure: env,
+                  }),
+                ),
+                class_name: "Function",
+                descriptors: {},
+                symbol_descriptors: {},
+                extensible: true,
+              })
+            }
+            _ => ()
+          }
+        }
+        // Fallback: empty function
         Object({
           properties: {},
           symbol_properties: {},
@@ -3418,11 +3483,52 @@ pub fn setup_harness_builtins(
   dollar262_props["global"] = global_this
   dollar262_props["agent"] = agent
   dollar262_props["gc"] = make_native_func("gc", fn(_args) { Undefined })
-  dollar262_props["createRealm"] = make_native_func("createRealm", fn(_args) {
-    raise @errors.TypeError(message="$262.createRealm is not supported")
+
+  // $262.createRealm() - creates a fresh realm with its own global environment
+  // and returns the new realm's $262 object.
+  dollar262_props["createRealm"] = Object({
+    properties: {},
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      InterpreterCallable("createRealm", fn(_interp, _this_val, _args) {
+        let new_interp = Interpreter::new()
+        // Return the new realm's $262 object
+        new_interp.global.get("$262") catch {
+          _ => Undefined
+        }
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
   })
-  dollar262_props["evalScript"] = make_native_func("evalScript", fn(_args) {
-    raise @errors.TypeError(message="$262.evalScript is not supported")
+
+  // $262.evalScript(code) - parses and evaluates code as a script
+  // in the current realm's global scope.
+  dollar262_props["evalScript"] = Object({
+    properties: {},
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      InterpreterCallable("evalScript", fn(interp, _this_val, args) {
+        let code = if args.length() > 0 {
+          match args[0] {
+            String_(s) => s
+            _ => args[0].to_string()
+          }
+        } else {
+          ""
+        }
+        let prog = @parser.parse(code)
+        interp.run(prog.stmts)
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
   })
   dollar262_props["detachArrayBuffer"] = make_native_func("detachArrayBuffer", fn(
     _args,

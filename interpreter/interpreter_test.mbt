@@ -5862,33 +5862,68 @@ test "harness: $262.gc is a no-op" {
 }
 
 ///|
-test "harness: $262.createRealm throws TypeError" {
+test "harness: $262.evalScript evaluates code in global scope" {
   let output = run_output(
     (
-      #|try {
-      #|  $262.createRealm();
-      #|} catch (e) {
-      #|  console.log(e instanceof TypeError);
-      #|  console.log(e.message);
-      #|}
+      #|$262.evalScript("var x = 42;");
+      #|console.log(x);
     ),
   )
-  inspect(output, content="[\"true\", \"$262.createRealm is not supported\"]")
+  inspect(output, content="[\"42\"]")
 }
 
 ///|
-test "harness: $262.evalScript throws TypeError" {
+test "harness: $262.evalScript returns result" {
+  let output = run_output(
+    (
+      #|var result = $262.evalScript("1 + 2");
+      #|console.log(result);
+    ),
+  )
+  inspect(output, content="[\"3\"]")
+}
+
+///|
+test "harness: $262.evalScript propagates errors" {
   let output = run_output(
     (
       #|try {
-      #|  $262.evalScript("1 + 1");
+      #|  $262.evalScript("throw new TypeError('test error');");
       #|} catch (e) {
       #|  console.log(e instanceof TypeError);
       #|  console.log(e.message);
       #|}
     ),
   )
-  inspect(output, content="[\"true\", \"$262.evalScript is not supported\"]")
+  inspect(output, content="[\"true\", \"test error\"]")
+}
+
+///|
+test "harness: $262.createRealm returns a new $262 object" {
+  let output = run_output(
+    (
+      #|var newRealm = $262.createRealm();
+      #|console.log(typeof newRealm);
+      #|console.log(typeof newRealm.global);
+      #|console.log(typeof newRealm.evalScript);
+      #|console.log(typeof newRealm.gc);
+    ),
+  )
+  inspect(
+    output,
+    content="[\"object\", \"object\", \"function\", \"function\"]",
+  )
+}
+
+///|
+test "harness: $262.createRealm has isolated global" {
+  let output = run_output(
+    (
+      #|var newRealm = $262.createRealm();
+      #|console.log(newRealm.global !== $262.global);
+    ),
+  )
+  inspect(output, content="[\"true\"]")
 }
 
 ///|
@@ -5941,4 +5976,80 @@ test "harness: $262 object exists and has expected properties" {
     output,
     content="[\"object\", \"object\", \"function\", \"function\", \"function\", \"function\", \"object\"]",
   )
+}
+
+///|
+test "harness: Function constructor with body string" {
+  let output = run_output(
+    (
+      #|var add = new Function("a", "b", "return a + b;");
+      #|console.log(add(2, 3));
+      #|console.log(typeof add);
+    ),
+  )
+  inspect(output, content="[\"5\", \"function\"]")
+}
+
+///|
+test "harness: Function constructor with no args" {
+  let output = run_output(
+    (
+      #|var f = new Function();
+      #|console.log(typeof f);
+      #|console.log(f());
+    ),
+  )
+  inspect(output, content="[\"function\", \"undefined\"]")
+}
+
+///|
+test "harness: Function constructor body only" {
+  let output = run_output(
+    (
+      #|var f = new Function("return 42;");
+      #|console.log(f());
+    ),
+  )
+  inspect(output, content="[\"42\"]")
+}
+
+///|
+test "harness: Function constructor runs in global scope" {
+  let output = run_output(
+    (
+      #|var x = "global";
+      #|function makeFunc() {
+      #|  var x = "local";
+      #|  return new Function("return x;");
+      #|}
+      #|console.log(makeFunc()());
+    ),
+  )
+  inspect(output, content="[\"global\"]")
+}
+
+///|
+test "harness: Function constructor called without new" {
+  let output = run_output(
+    (
+      #|var f = Function("a", "return a * 2;");
+      #|console.log(f(5));
+    ),
+  )
+  inspect(output, content="[\"10\"]")
+}
+
+///|
+test "harness: fnGlobalObject pattern" {
+  // This is the pattern used by test262's fnGlobalObject.js harness
+  let output = run_output(
+    (
+      #|var __globalObject = Function("return this;")();
+      #|console.log(typeof __globalObject);
+      #|console.log(__globalObject === globalThis);
+    ),
+  )
+  inspect(output, content=(
+    #|["undefined", "false"]
+  ))
 }
