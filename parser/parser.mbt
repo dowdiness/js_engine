@@ -97,6 +97,10 @@ fn Parser::expect_ident(self : Parser) -> String raise Error {
       self.pos += 1
       "as"
     }
+    Of => {
+      self.pos += 1
+      "of"
+    }
     Yield =>
       // yield is only a keyword inside generator bodies; outside it's an identifier
       if not(self.in_generator()) {

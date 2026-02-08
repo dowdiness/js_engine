@@ -91,9 +91,21 @@ fn Parser::parse_assignment(self : Parser) -> @ast.Expr raise Error {
   match self.peek_kind() {
     Arrow => {
       let loc = self.advance().loc // consume =>
-      let params = extract_arrow_params(expr)
-      let body = self.parse_arrow_body()
-      return ArrowFunc(params, body, loc)
+      // Try simple params first, fall back to extended params for defaults/destructuring
+      let simple_params : Array[String]? = Some(extract_arrow_params(expr)) catch {
+        _ => None
+      }
+      match simple_params {
+        Some(params) => {
+          let body = self.parse_arrow_body()
+          return ArrowFunc(params, body, loc)
+        }
+        None => {
+          let (ext_params, rest_param) = expr_to_ext_arrow_params(expr)
+          let body = self.parse_arrow_body()
+          return ArrowFuncExt(ext_params, rest_param, body, loc)
+        }
+      }
     }
     _ => ()
   }
@@ -651,6 +663,10 @@ fn Parser::parse_primary(self : Parser) -> @ast.Expr raise Error {
     As => {
       self.pos += 1
       Ident("as", tok.loc)
+    }
+    Of => {
+      self.pos += 1
+      Ident("of", tok.loc)
     }
     Yield =>
       // Outside generator context, yield is a valid identifier
@@ -1452,6 +1468,53 @@ fn extract_arrow_params(expr : @ast.Expr) -> Array[String] raise Error {
 }
 
 ///|
+/// Convert an expression to extended arrow function parameters.
+/// Handles defaults, destructuring, and rest params that extract_arrow_params cannot.
+fn expr_to_ext_arrow_params(
+  expr : @ast.Expr,
+) -> (Array[@ast.Param], String?) raise Error {
+  let params : Array[@ast.Param] = []
+  let mut rest_param : String? = None
+  let mut synth_idx = 0
+  fn collect(e : @ast.Expr) -> Unit raise Error {
+    match e {
+      Ident(name, _) =>
+        params.push({ name, default_val: None, pattern: None })
+      Assign(name, default_expr, _) =>
+        params.push({ name, default_val: Some(default_expr), pattern: None })
+      Grouping(inner, _) => collect(inner)
+      Comma(left, right, _) => {
+        collect(left)
+        collect(right)
+      }
+      SpreadExpr(Ident(name, _), _) => rest_param = Some(name)
+      ArrayLit(_, _) | ObjectLit(_, _) => {
+        let pat = expr_to_pattern(e)
+        let sname = "$" + synth_idx.to_string()
+        synth_idx = synth_idx + 1
+        params.push({ name: sname, default_val: None, pattern: Some(pat) })
+      }
+      DestructureAssign(pat, default_expr, _) => {
+        let sname = "$" + synth_idx.to_string()
+        synth_idx = synth_idx + 1
+        params.push({
+          name: sname,
+          default_val: Some(default_expr),
+          pattern: Some(pat),
+        })
+      }
+      _ =>
+        raise @errors.SyntaxError(
+          message="Invalid arrow function parameter list",
+        )
+    }
+  }
+
+  collect(expr)
+  (params, rest_param)
+}
+
+///|
 fn expr_to_pattern(expr : @ast.Expr) -> @ast.Pattern raise Error {
   match expr {
     Ident(name, _) => IdentPat(name)
@@ -1467,6 +1530,9 @@ fn expr_to_pattern(expr : @ast.Expr) -> @ast.Pattern raise Error {
           DestructureAssign(pat, default_expr, _) =>
             // [{x} = {x: 1}] → DefaultPat(ObjectPat(...), ObjectLit(...))
             pats.push(Some(DefaultPat(pat, default_expr)))
+          UndefinedLit(_) =>
+            // [,a] → hole (elision) in array pattern
+            pats.push(None)
           _ => pats.push(Some(expr_to_pattern(elem)))
         }
       }
@@ -1490,19 +1556,11 @@ fn expr_to_pattern(expr : @ast.Expr) -> @ast.Pattern raise Error {
               message="Invalid key in destructuring pattern",
             )
         }
-        // Check if value is an assignment (shorthand with default: { x = 5 })
-        match prop.value {
-          Assign(_, default_expr, _) =>
-            prop_pats.push({
-              key: key_str,
-              value: IdentPat(key_str),
-              default_val: Some(default_expr),
-            })
-          _ => {
-            let pat = expr_to_pattern(prop.value)
-            prop_pats.push({ key: key_str, value: pat, default_val: None })
-          }
-        }
+        // Convert value expression to pattern
+        // Assign(name, default) becomes DefaultPat(IdentPat(name), default)
+        // which correctly handles both shorthand {x = 5} and non-shorthand {a: b = 1}
+        let pat = expr_to_pattern(prop.value)
+        prop_pats.push({ key: key_str, value: pat, default_val: None })
       }
       ObjectPat(prop_pats, rest)
     }
@@ -1512,6 +1570,8 @@ fn expr_to_pattern(expr : @ast.Expr) -> @ast.Pattern raise Error {
     DestructureAssign(pat, default_expr, _) =>
       // Handle complex patterns with defaults: [{x} = {}]
       DefaultPat(pat, default_expr)
+    // Member expression targets for destructuring assignment: [obj.x] = [1]
+    Member(_, _, _) | ComputedMember(_, _, _) => AssignTarget(expr)
     _ => raise @errors.SyntaxError(message="Invalid destructuring pattern")
   }
 }
