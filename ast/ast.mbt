@@ -154,6 +154,7 @@ pub(all) enum Pattern {
   IdentPat(String)
   ArrayPat(Array[Pattern?], Pattern?) // elements (None = hole), rest pattern
   ObjectPat(Array[PropPat], Pattern?) // properties, rest pattern
+  DefaultPat(Pattern, Expr) // pattern with default initializer: pat = expr
 } derive(Show, Eq)
 
 ///|

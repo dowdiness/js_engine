@@ -836,6 +836,155 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
       }
       continue
     }
+    // Check for generator method: { *gen() { yield 1; } }
+    if self.at(Star) {
+      let _ = self.advance() // consume '*'
+      // Parse the method name
+      let (gen_key_expr, gen_key_name, gen_computed) : (
+        @ast.Expr,
+        String,
+        Bool,
+      ) = match self.peek_kind() {
+        Ident(name) => {
+          let kloc = self.advance().loc
+          (StringLit(name, kloc), name, false)
+        }
+        String_(s) => {
+          let kloc = self.advance().loc
+          (StringLit(s, kloc), s, false)
+        }
+        Number(n) => {
+          let kloc = self.advance().loc
+          let i = n.to_int()
+          let name = if i.to_double() == n {
+            i.to_string()
+          } else {
+            n.to_string()
+          }
+          (StringLit(name, kloc), name, false)
+        }
+        LBracket => {
+          let _ = self.advance()
+          let expr = self.parse_assignment()
+          let _ = self.expect(RBracket)
+          (expr, "", true)
+        }
+        _ => {
+          let kw_name : String? = match self.peek_kind() {
+            Get => Some("get")
+            Set => Some("set")
+            Let => Some("let")
+            Const => Some("const")
+            Var => Some("var")
+            Function => Some("function")
+            Return => Some("return")
+            If => Some("if")
+            Else => Some("else")
+            While => Some("while")
+            For => Some("for")
+            Break => Some("break")
+            Continue => Some("continue")
+            True => Some("true")
+            False => Some("false")
+            Null => Some("null")
+            Undefined => Some("undefined")
+            Typeof => Some("typeof")
+            Throw => Some("throw")
+            Try => Some("try")
+            Catch => Some("catch")
+            Finally => Some("finally")
+            New => Some("new")
+            This => Some("this")
+            Switch => Some("switch")
+            Case => Some("case")
+            Default => Some("default")
+            Void => Some("void")
+            Delete => Some("delete")
+            Do => Some("do")
+            In => Some("in")
+            Instanceof => Some("instanceof")
+            Of => Some("of")
+            Class => Some("class")
+            Extends => Some("extends")
+            Super => Some("super")
+            Static => Some("static")
+            Import => Some("import")
+            Export => Some("export")
+            From => Some("from")
+            As => Some("as")
+            _ => None
+          }
+          match kw_name {
+            Some(name) => {
+              let kloc = self.advance().loc
+              (StringLit(name, kloc), name, false)
+            }
+            None => {
+              let t = self.peek()
+              raise @errors.SyntaxError(
+                message="Expected method name after * at line \{t.loc.line}, col \{t.loc.col}",
+              )
+            }
+          }
+        }
+      }
+      // Parse generator method params and body
+      let gen_mloc = self.peek().loc
+      let gen_saved_pos = self.pos
+      let gen_func_data : @ast.Expr = try {
+        let params = self.parse_params()
+        self.push_generator_context(true)
+        let body = self.parse_block_body()
+        self.pop_generator_context()
+        @ast.Expr::GeneratorExpr(
+          if gen_computed {
+            None
+          } else {
+            Some(gen_key_name)
+          },
+          params,
+          body,
+          gen_mloc,
+        )
+      } catch {
+        Failure::Failure(msg) =>
+          if msg == "REST_PARAM_FOUND" ||
+            msg == "DEFAULT_PARAM_FOUND" ||
+            msg == "DESTRUCTURE_PARAM_FOUND" {
+            self.pos = gen_saved_pos
+            let (ext_params, rest_param) = self.parse_params_ext()
+            self.push_generator_context(true)
+            let body = self.parse_block_body()
+            self.pop_generator_context()
+            GeneratorExprExt(
+              if gen_computed {
+                None
+              } else {
+                Some(gen_key_name)
+              },
+              ext_params,
+              rest_param,
+              body,
+              gen_mloc,
+            )
+          } else {
+            raise @errors.SyntaxError(message=msg)
+          }
+        e => raise e
+      }
+      props.push({
+        key: gen_key_expr,
+        value: gen_func_data,
+        kind: @ast.Init,
+        computed: gen_computed,
+      })
+      if not(self.at(RBrace)) {
+        if self.at(Comma) {
+          let _ = self.advance()
+        }
+      }
+      continue
+    }
     // Check for getter/setter
     // Note: The lexer produces Get/Set tokens for "get"/"set" keywords.
     // We need to distinguish: { get foo() {} } (getter) vs { get: 42 } (property named "get")
@@ -1312,6 +1461,12 @@ fn expr_to_pattern(expr : @ast.Expr) -> @ast.Pattern raise Error {
       for elem in elements {
         match elem {
           SpreadExpr(inner, _) => rest = Some(expr_to_pattern(inner))
+          Assign(name, default_expr, _) =>
+            // [a = 1] → DefaultPat(IdentPat("a"), NumberLit(1))
+            pats.push(Some(DefaultPat(IdentPat(name), default_expr)))
+          DestructureAssign(pat, default_expr, _) =>
+            // [{x} = {x: 1}] → DefaultPat(ObjectPat(...), ObjectLit(...))
+            pats.push(Some(DefaultPat(pat, default_expr)))
           _ => pats.push(Some(expr_to_pattern(elem)))
         }
       }
@@ -1319,10 +1474,13 @@ fn expr_to_pattern(expr : @ast.Expr) -> @ast.Pattern raise Error {
     }
     ObjectLit(props, _) => {
       let prop_pats : Array[@ast.PropPat] = []
-      let rest : @ast.Pattern? = None
+      let mut rest : @ast.Pattern? = None
       for prop in props {
+        if prop.kind == @ast.Spread {
+          rest = Some(expr_to_pattern(prop.key))
+          continue
+        }
         // key: value => { key, value: Pattern, default_val }
-        let pat = expr_to_pattern(prop.value)
         // Extract string key from the key expression
         let key_str : String = match prop.key {
           StringLit(s, _) => s
@@ -1332,16 +1490,28 @@ fn expr_to_pattern(expr : @ast.Expr) -> @ast.Pattern raise Error {
               message="Invalid key in destructuring pattern",
             )
         }
-        prop_pats.push({ key: key_str, value: pat, default_val: None })
+        // Check if value is an assignment (shorthand with default: { x = 5 })
+        match prop.value {
+          Assign(_, default_expr, _) =>
+            prop_pats.push({
+              key: key_str,
+              value: IdentPat(key_str),
+              default_val: Some(default_expr),
+            })
+          _ => {
+            let pat = expr_to_pattern(prop.value)
+            prop_pats.push({ key: key_str, value: pat, default_val: None })
+          }
+        }
       }
       ObjectPat(prop_pats, rest)
     }
-    Assign(name, _default_expr, _) =>
+    Assign(name, default_expr, _) =>
       // Handle default values in destructuring: { x = 5 } or [a = 1]
-      // This shouldn't appear in normal array/object expressions, but
-      // the pattern `{x = 5} = obj` would need special parsing.
-      // For now, treat as ident pattern (name is the binding)
-      IdentPat(name)
+      DefaultPat(IdentPat(name), default_expr)
+    DestructureAssign(pat, default_expr, _) =>
+      // Handle complex patterns with defaults: [{x} = {}]
+      DefaultPat(pat, default_expr)
     _ => raise @errors.SyntaxError(message="Invalid destructuring pattern")
   }
 }
@@ -1405,118 +1575,122 @@ fn Parser::parse_class_body(
 fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
   // Check for static modifier
   let is_static = self.eat(Static)
-  // Check for getter/setter
+  // Check for generator modifier: *method() {} or static *method() {}
+  let is_generator = self.eat(Star)
+  // Check for getter/setter (not valid with generator *)
   let mut method_kind : @ast.PropKind = @ast.Init
-  match self.peek_kind() {
-    Get =>
-      match self.peek_kind_at(1) {
-        Ident(_)
-        | String_(_)
-        | Number(_)
-        | LBracket
-        | LParen
-        | Get
-        | Set
-        | From
-        | As
-        | Import
-        | Export
-        | Let
-        | Const
-        | Var
-        | Function
-        | Return
-        | If
-        | Else
-        | While
-        | For
-        | Break
-        | Continue
-        | True
-        | False
-        | Null
-        | Undefined
-        | Typeof
-        | Throw
-        | Try
-        | Catch
-        | Finally
-        | New
-        | This
-        | Switch
-        | Case
-        | Default
-        | Void
-        | Delete
-        | Do
-        | In
-        | Instanceof
-        | Of
-        | Class
-        | Extends
-        | Super
-        | Static =>
-          if not(self.at_kind_at(1, LParen)) {
-            self.pos += 1
-            method_kind = @ast.Get
-          }
-        _ => ()
-      }
-    Set =>
-      match self.peek_kind_at(1) {
-        Ident(_)
-        | String_(_)
-        | Number(_)
-        | LBracket
-        | LParen
-        | Get
-        | Set
-        | From
-        | As
-        | Import
-        | Export
-        | Let
-        | Const
-        | Var
-        | Function
-        | Return
-        | If
-        | Else
-        | While
-        | For
-        | Break
-        | Continue
-        | True
-        | False
-        | Null
-        | Undefined
-        | Typeof
-        | Throw
-        | Try
-        | Catch
-        | Finally
-        | New
-        | This
-        | Switch
-        | Case
-        | Default
-        | Void
-        | Delete
-        | Do
-        | In
-        | Instanceof
-        | Of
-        | Class
-        | Extends
-        | Super
-        | Static =>
-          if not(self.at_kind_at(1, LParen)) {
-            self.pos += 1
-            method_kind = @ast.Set
-          }
-        _ => ()
-      }
-    _ => ()
+  if not(is_generator) {
+    match self.peek_kind() {
+      Get =>
+        match self.peek_kind_at(1) {
+          Ident(_)
+          | String_(_)
+          | Number(_)
+          | LBracket
+          | LParen
+          | Get
+          | Set
+          | From
+          | As
+          | Import
+          | Export
+          | Let
+          | Const
+          | Var
+          | Function
+          | Return
+          | If
+          | Else
+          | While
+          | For
+          | Break
+          | Continue
+          | True
+          | False
+          | Null
+          | Undefined
+          | Typeof
+          | Throw
+          | Try
+          | Catch
+          | Finally
+          | New
+          | This
+          | Switch
+          | Case
+          | Default
+          | Void
+          | Delete
+          | Do
+          | In
+          | Instanceof
+          | Of
+          | Class
+          | Extends
+          | Super
+          | Static =>
+            if not(self.at_kind_at(1, LParen)) {
+              self.pos += 1
+              method_kind = @ast.Get
+            }
+          _ => ()
+        }
+      Set =>
+        match self.peek_kind_at(1) {
+          Ident(_)
+          | String_(_)
+          | Number(_)
+          | LBracket
+          | LParen
+          | Get
+          | Set
+          | From
+          | As
+          | Import
+          | Export
+          | Let
+          | Const
+          | Var
+          | Function
+          | Return
+          | If
+          | Else
+          | While
+          | For
+          | Break
+          | Continue
+          | True
+          | False
+          | Null
+          | Undefined
+          | Typeof
+          | Throw
+          | Try
+          | Catch
+          | Finally
+          | New
+          | This
+          | Switch
+          | Case
+          | Default
+          | Void
+          | Delete
+          | Do
+          | In
+          | Instanceof
+          | Of
+          | Class
+          | Extends
+          | Super
+          | Static =>
+            if not(self.at_kind_at(1, LParen)) {
+              self.pos += 1
+              method_kind = @ast.Set
+            }
+          _ => ()
+        }
+      _ => ()
+    }
   }
   // Parse method name (keywords can be used as method names)
   let (key_expr, computed) : (@ast.Expr, Bool) = match self.peek_kind() {
@@ -1625,14 +1799,26 @@ fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
             }
           @ast.Init | @ast.Spread => ()
         }
+        self.push_generator_context(is_generator)
         let body = self.parse_block_body()
-        let func_val : @ast.Expr = FuncExprExt(
-          None,
-          ext_params,
-          rest_param,
-          body,
-          mloc,
-        )
+        self.pop_generator_context()
+        let func_val : @ast.Expr = if is_generator {
+          GeneratorExprExt(
+            None,
+            ext_params,
+            rest_param,
+            body,
+            mloc,
+          )
+        } else {
+          FuncExprExt(
+            None,
+            ext_params,
+            rest_param,
+            body,
+            mloc,
+          )
+        }
         return {
           key: key_expr,
           value: func_val,
@@ -1660,8 +1846,14 @@ fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
       }
     @ast.Init | @ast.Spread => ()
   }
+  self.push_generator_context(is_generator)
   let body = self.parse_block_body()
-  let func_val : @ast.Expr = FuncExpr(None, params, body, mloc)
+  self.pop_generator_context()
+  let func_val : @ast.Expr = if is_generator {
+    GeneratorExpr(None, params, body, mloc)
+  } else {
+    FuncExpr(None, params, body, mloc)
+  }
   { key: key_expr, value: func_val, kind: method_kind, computed, is_static }
 }
 
