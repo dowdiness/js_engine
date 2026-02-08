@@ -744,10 +744,19 @@ fn Interpreter::eval_yield(
         let iterator = match iterator_method {
           Object(data) =>
             match data.callable {
-              Some(_) => self.call_value(iterator_method, iterable, [], loc)
+              Some(_) => {
+                let result = self.call_value(iterator_method, iterable, [], loc)
+                match result {
+                  Object(_) => result
+                  _ =>
+                    raise @errors.TypeError(
+                      message="Result of the Symbol.iterator method is not an object",
+                    )
+                }
+              }
               None =>
                 raise @errors.TypeError(
-                  message="Result of the Symbol.iterator method is not an object",
+                  message="Symbol.iterator is not a function",
                 )
             }
           _ =>
@@ -895,12 +904,14 @@ fn delegate_resume(
           let result = interp.call_value(rm, iterator, [v], loc)
           let (done, value) = extract_iter_result(result)
           if done {
-            // Delegate completed after .return() — outer also completes
+            // Delegate completed after .return() — propagate through outer
+            // body so finally blocks execute
             gen.delegating = false
             gen.delegate_iterator = Undefined
             gen.delegate_next = Undefined
-            complete_generator(gen)
-            make_iterator_result(value, true)
+            gen.yield_value = value
+            gen.resume_action = ReturnAction(value)
+            generator_continue(interp, gen)
           } else {
             // Delegate yielded from finally — outer stays suspended delegating
             gen.state = SuspendedYield
@@ -908,12 +919,13 @@ fn delegate_resume(
           }
         }
         None => {
-          // No .return — close delegation, return from outer
+          // No .return — propagate return through outer body for finally blocks
           gen.delegating = false
           gen.delegate_iterator = Undefined
           gen.delegate_next = Undefined
-          complete_generator(gen)
-          make_iterator_result(v, true)
+          gen.yield_value = v
+          gen.resume_action = ReturnAction(v)
+          generator_continue(interp, gen)
         }
       }
     }
@@ -921,20 +933,24 @@ fn delegate_resume(
 }
 
 ///|
-/// Get an optional method from an object (returns None if not found/not callable)
-fn get_optional_method(obj : Value, name : String) -> Value? {
+/// Get an optional method from an object per ES spec GetMethod.
+/// Returns None if property is undefined/null/missing.
+/// Throws TypeError if property exists but is not callable.
+fn get_optional_method(obj : Value, name : String) -> Value? raise Error {
   match obj {
     Object(data) =>
       // Check direct properties first
       match data.properties.get(name) {
         Some(v) =>
           match v {
+            Undefined | Null => None
             Object(fd) =>
               match fd.callable {
                 Some(_) => Some(v)
-                None => None
+                None =>
+                  raise @errors.TypeError(message="\{name} is not a function")
               }
-            _ => None
+            _ => raise @errors.TypeError(message="\{name} is not a function")
           }
         None => {
           // Walk prototype chain
@@ -945,12 +961,19 @@ fn get_optional_method(obj : Value, name : String) -> Value? {
                 match proto_data.properties.get(name) {
                   Some(v) =>
                     match v {
+                      Undefined | Null => return None
                       Object(fd) =>
                         match fd.callable {
                           Some(_) => return Some(v)
-                          None => return None
+                          None =>
+                            raise @errors.TypeError(
+                              message="\{name} is not a function",
+                            )
                         }
-                      _ => return None
+                      _ =>
+                        raise @errors.TypeError(
+                          message="\{name} is not a function",
+                        )
                     }
                   None => current = proto_data.prototype
                 }
