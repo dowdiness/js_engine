@@ -928,6 +928,7 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
             Export => Some("export")
             From => Some("from")
             As => Some("as")
+            Yield => Some("yield")
             _ => None
           }
           match kw_name {
@@ -1191,6 +1192,7 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
           Export => Some("export")
           From => Some("from")
           As => Some("as")
+          Yield => Some("yield")
           _ => None
         }
         match kw_name {
@@ -1521,9 +1523,18 @@ fn expr_to_pattern(expr : @ast.Expr) -> @ast.Pattern raise Error {
     ArrayLit(elements, _) => {
       let pats : Array[@ast.Pattern?] = []
       let mut rest : @ast.Pattern? = None
+      let mut rest_seen = false
       for elem in elements {
+        if rest_seen {
+          raise @errors.SyntaxError(
+            message="Rest element must be last in array destructuring pattern",
+          )
+        }
         match elem {
-          SpreadExpr(inner, _) => rest = Some(expr_to_pattern(inner))
+          SpreadExpr(inner, _) => {
+            rest = Some(expr_to_pattern(inner))
+            rest_seen = true
+          }
           Assign(name, default_expr, _) =>
             // [a = 1] → DefaultPat(IdentPat("a"), NumberLit(1))
             pats.push(Some(DefaultPat(IdentPat(name), default_expr)))
@@ -1541,9 +1552,16 @@ fn expr_to_pattern(expr : @ast.Expr) -> @ast.Pattern raise Error {
     ObjectLit(props, _) => {
       let prop_pats : Array[@ast.PropPat] = []
       let mut rest : @ast.Pattern? = None
+      let mut rest_seen = false
       for prop in props {
+        if rest_seen {
+          raise @errors.SyntaxError(
+            message="Rest element must be last in object destructuring pattern",
+          )
+        }
         if prop.kind == @ast.Spread {
           rest = Some(expr_to_pattern(prop.key))
+          rest_seen = true
           continue
         }
         // key: value => { key, value: Pattern, default_val }
@@ -1818,6 +1836,7 @@ fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
         Export => Some("export")
         From => Some("from")
         As => Some("as")
+        Yield => Some("yield")
         _ => None
       }
       match kw_name {
