@@ -370,7 +370,7 @@ fn create_generator_instance(
   body : Array[@ast.Stmt],
   closure : Environment,
   func_prototype : Value,
-) -> Value raise Error {
+) -> Value {
   let gen_id = next_gen_id()
   let gen_obj : GeneratorObject = {
     id: gen_id,

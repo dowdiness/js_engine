@@ -3987,7 +3987,6 @@ fn Interpreter::get_property(
       raise @errors.TypeError(
         message="Cannot read property '\{prop}' of \{type_of(obj)}",
       )
-    _ => Undefined
   }
 }
 
