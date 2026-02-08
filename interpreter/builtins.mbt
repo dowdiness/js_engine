@@ -3440,14 +3440,12 @@ pub fn setup_harness_builtins(
 ) -> Unit {
   // print() - host-provided print function for test262 harness compatibility.
   // Joins arguments with spaces and appends to output (like console.log).
-  env.def_builtin(
-    "print",
-    make_native_func("print", fn(args) {
-      let parts : Array[String] = args.map(fn(a) { a.to_string() })
-      output.push(parts.join(" "))
-      Undefined
-    }),
-  )
+  let print_func = make_native_func("print", fn(args) {
+    let parts : Array[String] = args.map(fn(a) { a.to_string() })
+    output.push(parts.join(" "))
+    Undefined
+  })
+  env.def_builtin("print", print_func)
 
   // $262.agent - stub object for agent/worker testing (Atomics/SharedArrayBuffer).
   // All methods throw because the engine has no multi-agent support.
@@ -3485,7 +3483,9 @@ pub fn setup_harness_builtins(
   dollar262_props["gc"] = make_native_func("gc", fn(_args) { Undefined })
 
   // $262.createRealm() - creates a fresh realm with its own global environment
-  // and returns the new realm's $262 object.
+  // and returns the new realm's $262 object. The returned object's methods
+  // (evalScript, etc.) are bound to the new realm's interpreter via closures,
+  // ensuring proper isolation.
   dollar262_props["createRealm"] = Object({
     properties: {},
     symbol_properties: {},
@@ -3493,10 +3493,49 @@ pub fn setup_harness_builtins(
     callable: Some(
       InterpreterCallable("createRealm", fn(_interp, _this_val, _args) {
         let new_interp = Interpreter::new()
-        // Return the new realm's $262 object
-        new_interp.global.get("$262") catch {
-          _ => Undefined
-        }
+        // Build a $262 object with methods bound to the new interpreter.
+        // Uses NativeCallable closures that capture new_interp so that
+        // evalScript executes in the new realm, not the caller's.
+        let realm_props : Map[String, Value] = {}
+        realm_props["global"] = new_interp.global_this
+        realm_props["gc"] = make_native_func("gc", fn(_a) { Undefined })
+        realm_props["evalScript"] = make_native_func("evalScript", fn(es_args) {
+          let code = if es_args.length() > 0 {
+            match es_args[0] {
+              String_(s) => s
+              _ => es_args[0].to_string()
+            }
+          } else {
+            ""
+          }
+          let prog = @parser.parse(code)
+          new_interp.run(prog.stmts)
+        })
+        realm_props["createRealm"] = make_native_func("createRealm", fn(_a) {
+          // Recursive: create yet another fresh realm
+          let inner = Interpreter::new()
+          inner.global.get("$262") catch {
+            _ => Undefined
+          }
+        })
+        realm_props["detachArrayBuffer"] = make_native_func(
+          "detachArrayBuffer",
+          fn(_a) {
+            raise @errors.TypeError(
+              message="$262.detachArrayBuffer is not supported",
+            )
+          },
+        )
+        Object({
+          properties: realm_props,
+          symbol_properties: {},
+          prototype: Null,
+          callable: None,
+          class_name: "Object",
+          descriptors: {},
+          symbol_descriptors: {},
+          extensible: true,
+        })
       }),
     ),
     class_name: "Function",
@@ -3535,17 +3574,25 @@ pub fn setup_harness_builtins(
   ) {
     raise @errors.TypeError(message="$262.detachArrayBuffer is not supported")
   })
-  env.def_builtin(
-    "$262",
-    Object({
-      properties: dollar262_props,
-      symbol_properties: {},
-      prototype: Null,
-      callable: None,
-      class_name: "Object",
-      descriptors: {},
-      symbol_descriptors: {},
-      extensible: true,
-    }),
-  )
+  let dollar262 : Value = Object({
+    properties: dollar262_props,
+    symbol_properties: {},
+    prototype: Null,
+    callable: None,
+    class_name: "Object",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+  env.def_builtin("$262", dollar262)
+
+  // Mirror harness bindings onto the global object so that globalThis.$262,
+  // this.$262, globalThis.print etc. also work (not just bare name resolution).
+  match global_this {
+    Object(data) => {
+      data.properties["$262"] = dollar262
+      data.properties["print"] = print_func
+    }
+    _ => ()
+  }
 }

@@ -5927,6 +5927,32 @@ test "harness: $262.createRealm has isolated global" {
 }
 
 ///|
+test "harness: $262.createRealm evalScript runs in new realm" {
+  // evalScript on the returned $262 must execute in the new realm, not the caller's
+  let output = run_output(
+    (
+      #|var x = "outer";
+      #|var newRealm = $262.createRealm();
+      #|newRealm.evalScript("var x = 'inner';");
+      #|console.log(x);
+    ),
+  )
+  inspect(output, content="[\"outer\"]")
+}
+
+///|
+test "harness: globalThis.$262 is accessible" {
+  let output = run_output(
+    (
+      #|console.log(typeof globalThis.$262);
+      #|console.log(globalThis.$262 === $262);
+      #|console.log(typeof globalThis.print);
+    ),
+  )
+  inspect(output, content="[\"object\", \"true\", \"function\"]")
+}
+
+///|
 test "harness: $262.detachArrayBuffer throws TypeError" {
   let output = run_output(
     (
@@ -6049,7 +6075,10 @@ test "harness: fnGlobalObject pattern" {
       #|console.log(__globalObject === globalThis);
     ),
   )
-  inspect(output, content=(
-    #|["undefined", "false"]
-  ))
+  inspect(
+    output,
+    content=(
+      #|["undefined", "false"]
+    ),
+  )
 }
