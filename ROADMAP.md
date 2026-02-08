@@ -2,9 +2,9 @@
 
 ## Current Status
 
-**Test262**: 11,316 / 25,801 passed (43.86%) | 22,200 skipped | 14,485 failed | 138 timeouts
+**Test262**: 11,333 / 25,795 passed (43.93%) | 22,200 skipped | 14,462 failed | 144 timeouts
 
-**Unit tests**: 639 total, 639 passed, 0 failed
+**Unit tests**: 658 total, 658 passed, 0 failed
 
 ## Phase History
 
@@ -19,6 +19,7 @@
 | 7C-E | +65 | 10,657 | Bare for-of/for-in, get/set as identifiers, Math function lengths |
 | 7F | +202 | 10,864 | ES Modules (import/export declarations) |
 | 8 | +452 | 11,316 | ES6 generators (function*, yield, yield*) |
+| 8B | +17 | 11,333 | Test262 harness functions (print, $262, Function constructor) |
 | JS Target | — | — | JS backend support, Error toString fix, backend-specific argv handling |
 
 For detailed implementation notes on Phases 1-6, see [docs/PHASE_HISTORY.md](docs/PHASE_HISTORY.md).
@@ -75,7 +76,7 @@ node ./target/js/release/build/cmd/main/main.js 'console.log(1 + 2)'
 # => 3
 ```
 
-All 639 unit tests pass on both WASM-GC and JS targets. See [docs/SELF_HOST_JS_RESEARCH.md](docs/SELF_HOST_JS_RESEARCH.md) for full analysis.
+All 658 unit tests pass on both WASM-GC and JS targets. See [docs/SELF_HOST_JS_RESEARCH.md](docs/SELF_HOST_JS_RESEARCH.md) for full analysis.
 
 ### What was needed
 - **Backend-specific argv handling**: `process.argv` on JS includes `["node", "script.js", ...]`, so user args start at index 2 (vs index 1 on WASM). Solved with `.js.mbt` / `.wasm.mbt` / `.wasm-gc.mbt` files.
@@ -180,7 +181,23 @@ For the original implementation plan, see [docs/GENERATOR_PLAN.md](docs/GENERATO
 
 ### Generators — DONE
 
-See Phase 8 section above. `function*`, `yield`, `yield*` fully implemented with 639 unit tests and +452 test262 tests gained. Unblocks async-iteration as a next target.
+See Phase 8 section above. `function*`, `yield`, `yield*` fully implemented with 658 unit tests and +452 test262 tests gained. Unblocks async-iteration as a next target.
+
+### 8B: Test262 Harness Functions (+17 tests) — DONE
+
+Host-level harness functions required by the test262 test suite:
+
+- **`print()` builtin**: Native function that appends output, matching test262's expected host function
+- **`$262` object**: Host-defined object per test262 spec with the following methods:
+  - `$262.global` — reference to the global object
+  - `$262.gc()` — no-op stub (garbage collection hint)
+  - `$262.detachArrayBuffer()` — no-op stub (TypedArray prerequisite)
+  - `$262.evalScript(code)` — evaluates code string in the current realm via `@parser.parse()`
+  - `$262.createRealm()` — creates a fresh `Interpreter` with isolated global, returns a new `$262` bound to that realm
+  - `$262.agent.*` — no-op stubs for SharedArrayBuffer agent protocol (start, broadcast, getReport, sleep, monotonicNow)
+- **`Function` constructor**: Parses body strings via `@parser.parse()` to create real functions (enables `Function("return this;")()` pattern used by `fnGlobalObject.js` harness)
+- **Global object mirroring**: Both `print` and `$262` are accessible via environment bindings and as `globalThis` properties
+- **Realm isolation**: `createRealm()` returns `$262` with `NativeCallable` closures capturing the new interpreter, ensuring `evalScript` runs in the new realm (not the caller's)
 
 ### async/await (~500 tests)
 
