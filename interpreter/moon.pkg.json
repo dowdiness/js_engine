@@ -5,6 +5,7 @@
     "dowdiness/js_engine/errors",
     "dowdiness/js_engine/parser",
     "moonbitlang/core/strconv",
-    "moonbitlang/core/math"
+    "moonbitlang/core/math",
+    "moonbitlang/core/env"
   ]
 }

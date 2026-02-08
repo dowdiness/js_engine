@@ -5022,7 +5022,19 @@ fn Interpreter::eval_new(
           self.strict = saved_strict
           result
         }
-        Some(NativeCallable(_, func)) => func(args)
+        Some(NativeCallable(_, func)) => {
+          is_constructing.val = true
+          let result = try {
+            func(args)
+          } catch {
+            e => {
+              is_constructing.val = false
+              raise e
+            }
+          }
+          is_constructing.val = false
+          result
+        }
         Some(NonConstructableCallable(name, _)) =>
           raise @errors.TypeError(message=name + " is not a constructor")
         Some(InterpreterCallable(_, func)) =>

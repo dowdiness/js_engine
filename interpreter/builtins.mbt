@@ -561,6 +561,9 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
   // Set up Promise constructor and prototype
   setup_promise(env)
 
+  // Set up Date constructor and prototype
+  setup_date_builtins(env)
+
   // Set up timer APIs (setTimeout, clearTimeout, setInterval, clearInterval)
   setup_timers(env)
 }
@@ -572,6 +575,7 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
   // Store globally for iterator protocol support
   well_known_iterator_sym.val = Some(iterator_sym)
   let to_primitive_sym = new_symbol(Some("Symbol.toPrimitive"))
+  well_known_toprimitive_sym.val = Some(to_primitive_sym)
   let to_string_tag_sym = new_symbol(Some("Symbol.toStringTag"))
   well_known_tostringtag_sym.val = Some(to_string_tag_sym)
   let has_instance_sym = new_symbol(Some("Symbol.hasInstance"))
@@ -2022,30 +2026,41 @@ fn setup_json_builtins(env : Environment) -> Unit {
     let str = if args.length() > 0 { args[0].to_string() } else { "" }
     json_parse(str)
   })
-  json_props["stringify"] = make_native_func("stringify", fn(args) {
-    let val = if args.length() > 0 { args[0] } else { Undefined }
-    let indent = if args.length() > 2 {
-      match args[2] {
-        Number(n) => {
-          let spaces = n.to_int()
-          if spaces > 0 {
-            let buf = StringBuilder::new()
-            for _i = 0; _i < spaces; _i = _i + 1 {
-              buf.write_char(' ')
+  json_props["stringify"] = Object({
+    properties: {},
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      InterpreterCallable("stringify", fn(interp, _this, args) {
+        let val = if args.length() > 0 { args[0] } else { Undefined }
+        let indent = if args.length() > 2 {
+          match args[2] {
+            Number(n) => {
+              let spaces = n.to_int()
+              if spaces > 0 {
+                let buf = StringBuilder::new()
+                for _i = 0; _i < spaces; _i = _i + 1 {
+                  buf.write_char(' ')
+                }
+                Some(buf.to_string())
+              } else {
+                None
+              }
             }
-            Some(buf.to_string())
-          } else {
-            None
+            String_(s) => if s.length() > 0 { Some(s) } else { None }
+            _ => None
           }
+        } else {
+          None
         }
-        String_(s) => if s.length() > 0 { Some(s) } else { None }
-        _ => None
-      }
-    } else {
-      None
-    }
-    let seen : Array[Value] = []
-    json_stringify_value(val, seen, indent, 0)
+        let seen : Array[Value] = []
+        json_stringify_value(val, seen, indent, 0, Some(interp))
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
   })
   env.def_builtin(
     "JSON",
@@ -2334,6 +2349,7 @@ fn json_stringify_value(
   seen : Array[Value],
   indent : String?,
   depth : Int,
+  interp : Interpreter?,
 ) -> Value raise Error {
   match val {
     Undefined => Undefined
@@ -2369,7 +2385,9 @@ fn json_stringify_value(
       buf.write_char('[')
       let mut first = true
       for el in data.elements {
-        let stringified = json_stringify_value(el, seen, indent, new_depth)
+        let stringified = json_stringify_value(
+          el, seen, indent, new_depth, interp,
+        )
         match stringified {
           Undefined => {
             if not(first) {
@@ -2428,6 +2446,53 @@ fn json_stringify_value(
       match data.callable {
         Some(_) => Undefined // Functions are not serialized
         None => {
+          // Check for toJSON method by walking the full prototype chain
+          let mut to_json_fn : Value? = None
+          let mut cur : Value? = Some(val)
+          while to_json_fn is None {
+            match cur {
+              Some(Object(obj_data)) =>
+                match obj_data.properties.get("toJSON") {
+                  Some(v) => to_json_fn = Some(v)
+                  None => cur = Some(obj_data.prototype)
+                }
+              _ => break
+            }
+          }
+          match to_json_fn {
+            Some(Object(to_json_data)) =>
+              match to_json_data.callable {
+                Some(_) => {
+                  let to_json_obj : Value = Object(to_json_data)
+                  let json_val : Value? = match interp {
+                    Some(ip) =>
+                      Some(
+                        ip.call_value(
+                          to_json_obj, val, [], @token.Loc::default(),
+                        ),
+                      )
+                    None =>
+                      // Fallback for calls without interpreter access
+                      match to_json_data.callable {
+                        Some(MethodCallable(_, func)) => Some(func(val, []))
+                        Some(NativeCallable(_, func)) => Some(func([]))
+                        Some(NonConstructableCallable(_, func)) =>
+                          Some(func([]))
+                        _ => None // cannot call without interpreter, skip
+                      }
+                  }
+                  match json_val {
+                    Some(v) =>
+                      return json_stringify_value(
+                        v, seen, indent, depth, interp,
+                      )
+                    None => ()
+                  }
+                }
+                None => ()
+              }
+            _ => ()
+          }
           // Cycle detection
           for s in seen {
             match s {
@@ -2446,7 +2511,13 @@ fn json_stringify_value(
           buf.write_char('{')
           let mut first = true
           data.properties.each(fn(k, v) {
-            let stringified = json_stringify_value(v, seen, indent, new_depth)
+            // Skip internal properties (e.g., [[DateValue]], [[NumberData]])
+            if k.has_prefix("[[") {
+              return
+            }
+            let stringified = json_stringify_value(
+              v, seen, indent, new_depth, interp,
+            )
             match stringified {
               Undefined => () // Skip undefined values
               String_(s) => {

@@ -147,6 +147,12 @@ pub fn new_promise_data() -> PromiseData {
 }
 
 ///|
+/// Flag set by eval_new before calling a NativeCallable so the callee can
+/// distinguish `new Foo()` from `Foo()`.  Safe because NativeCallable has
+/// no Interpreter access and therefore cannot re-enter eval_new.
+pub let is_constructing : Ref[Bool] = { val: false }
+
+///|
 /// Global counter for generating unique symbol IDs
 let symbol_id_counter : Ref[Int] = { val: 0 }
 
@@ -201,6 +207,19 @@ pub fn get_hasinstance_symbol() -> SymbolData {
   match well_known_hasinstance_sym.val {
     Some(sym) => sym
     None => abort("Symbol.hasInstance not initialized")
+  }
+}
+
+///|
+/// Well-known Symbol.toPrimitive - stored globally for @@toPrimitive support
+pub let well_known_toprimitive_sym : Ref[SymbolData?] = { val: None }
+
+///|
+/// Get the well-known Symbol.toPrimitive
+pub fn get_toprimitive_symbol() -> SymbolData {
+  match well_known_toprimitive_sym.val {
+    Some(sym) => sym
+    None => abort("Symbol.toPrimitive not initialized")
   }
 }
 
@@ -474,7 +493,16 @@ pub fn to_number(val : Value) -> Double raise Error {
     }
     Bool(b) => if b { 1.0 } else { 0.0 }
     Null => 0.0
-    Undefined | Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) => 0.0 / 0.0
+    Object(data) =>
+      if data.class_name == "Date" {
+        match data.properties.get("[[DateValue]]") {
+          Some(Number(v)) => v
+          _ => 0.0 / 0.0
+        }
+      } else {
+        0.0 / 0.0
+      }
+    Undefined | Array(_) | Map(_) | Set(_) | Promise(_) => 0.0 / 0.0
     Symbol(_) =>
       raise @errors.TypeError(
         message="Cannot convert a Symbol value to a number",
