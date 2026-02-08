@@ -230,6 +230,66 @@ Overall: 10,864 → 11,316 passing (+452), with ~3,200 previously-skipped genera
 
 ---
 
+## Phase 8C: Date Object (45.27% pass rate)
+
+Full ES5/ES6 Date implementation with constructor, prototype methods, static methods, and JSON.stringify improvements.
+
+### Key Implementations
+
+- **Date constructor**: `new Date()` (current time), `new Date(value)` (milliseconds/string), `new Date(y,m,d,h,m,s,ms)` (components)
+- **Called without `new`**: `Date()` returns current date string via `is_constructing` global flag
+- **Static methods**: `Date.now()`, `Date.parse()` (ISO 8601), `Date.UTC()`
+- **Prototype getters**: getTime, getFullYear, getMonth, getDate, getDay, getHours, getMinutes, getSeconds, getMilliseconds (+ UTC variants)
+- **Prototype setters**: setTime, setFullYear, setMonth, setDate, setHours, setMinutes, setSeconds, setMilliseconds (+ UTC variants)
+- **Formatting**: toString, toISOString, toUTCString, toDateString, toTimeString, toLocaleString, toLocaleDateString, toLocaleTimeString, toGMTString
+- **Conversion**: valueOf, toJSON, `Symbol.toPrimitive` with hint-based dispatch
+- **Legacy**: getYear, setYear (Annex B)
+- **Internal slot**: `[[DateValue]]` as non-enumerable property via PropDescriptor
+
+### Date Algorithms
+
+- `day_from_year(y)`: Floor division (not truncation) for correct pre-1970 leap year handling
+- `year_from_time(t)`: Linear adjustment from `(d / 365.2425 + 1970)` approximation
+- `month_from_time(t)`, `date_from_time(t)`: Day-in-year based with leap year awareness
+- `make_day(y, m, d)`, `make_date(day, time)`: Spec-compliant date composition
+- `time_clip(t)`: Uses floor/ceil instead of `.to_int()` to avoid integer overflow
+- ISO 8601 parser: Manual whitespace trimming (MoonBit `String.trim` API differs)
+
+### JSON.stringify Improvements
+
+- Walk full prototype chain when resolving `toJSON` (while loop, not single-level)
+- Invoke any callable `toJSON` via `Interpreter::call_value` (promoted from NativeCallable to InterpreterCallable)
+- Filter internal `[[...]]` properties from JSON serialization
+
+### Test262 Results
+
+| Category | Passed | Failed | Skipped | Rate |
+|----------|--------|--------|---------|------|
+| built-ins/Date | 249 | 285 | 60 | 46.6% |
+
+Overall: 11,333 → 11,678 passing (+345)
+
+### Files Changed
+
+- `interpreter/builtins_date.mbt` (~1,800 lines, new file) — Date implementation
+- `interpreter/builtins.mbt` — Date registration, JSON.stringify improvements
+- `interpreter/value.mbt` — `is_constructing` flag, `well_known_toprimitive_sym`, Date `to_number`
+- `interpreter/interpreter.mbt` — `is_constructing` flag management in `eval_new`
+- `interpreter/moon.pkg.json` — Added `moonbitlang/core/env` import
+
+### Bug Fixes
+
+1. `day_from_year` integer division → floor division for pre-1970 dates (e.g., year 1967)
+2. `year_from_time` binary search → linear adjustment for negative timestamps
+3. `time_clip` integer overflow → floor/ceil for large timestamps
+4. `toJSON` prototype chain walk: single-level → full chain
+5. `toJSON` callable dispatch: MethodCallable-only → any callable via interpreter
+6. `Date()` without `new`: returned object → returns string per spec
+
+**Unit tests**: 658 total (unchanged)
+
+---
+
 ## MoonBit-Specific Workarounds
 
 These are language-specific gotchas discovered during development:

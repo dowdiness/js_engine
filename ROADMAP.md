@@ -2,7 +2,7 @@
 
 ## Current Status
 
-**Test262**: 11,333 / 25,795 passed (43.93%) | 22,200 skipped | 14,462 failed | 144 timeouts
+**Test262**: 11,678 / 25,794 passed (45.27%) | 22,200 skipped | 14,116 failed | 144 timeouts
 
 **Unit tests**: 658 total, 658 passed, 0 failed
 
@@ -20,6 +20,7 @@
 | 7F | +202 | 10,864 | ES Modules (import/export declarations) |
 | 8 | +452 | 11,316 | ES6 generators (function*, yield, yield*) |
 | 8B | +17 | 11,333 | Test262 harness functions (print, $262, Function constructor) |
+| 8C | +345 | 11,678 | Date object (constructor, prototype methods, static methods) |
 | JS Target | — | — | JS backend support, Error toString fix, backend-specific argv handling |
 
 For detailed implementation notes on Phases 1-6, see [docs/PHASE_HISTORY.md](docs/PHASE_HISTORY.md).
@@ -52,7 +53,7 @@ For detailed implementation notes on Phases 1-6, see [docs/PHASE_HISTORY.md](doc
 | String.prototype | 681 | Medium |
 | RegExp | 671 | Hard |
 | annexB/language (legacy) | 608 | Low |
-| Date | 534 | Medium |
+| Date | 534 | ✅ Done (8C) — 249 pass (46.6%) |
 | Promise | 446 | Medium |
 | Function | 320 | Medium |
 | DataView (needs TypedArray) | 311 | Hard |
@@ -199,6 +200,29 @@ Host-level harness functions required by the test262 test suite:
 - **Global object mirroring**: Both `print` and `$262` are accessible via environment bindings and as `globalThis` properties
 - **Realm isolation**: `createRealm()` returns `$262` with `NativeCallable` closures capturing the new interpreter, ensuring `evalScript` runs in the new realm (not the caller's)
 
+### 8C: Date Object (+345 tests) — DONE
+
+Full ES5/ES6 Date implementation:
+
+- **Constructor**: `new Date()`, `new Date(value)`, `new Date(string)`, `new Date(y,m,d,h,min,s,ms)` with proper argument coercion
+- **Called without `new`**: `Date()` returns current date as string (not an object), using `is_constructing` flag
+- **Static methods**: `Date.now()`, `Date.parse()`, `Date.UTC()`
+- **Prototype getters**: `getTime`, `getFullYear`, `getMonth`, `getDate`, `getDay`, `getHours`, `getMinutes`, `getSeconds`, `getMilliseconds` (+ UTC variants)
+- **Prototype setters**: `setTime`, `setFullYear`, `setMonth`, `setDate`, `setHours`, `setMinutes`, `setSeconds`, `setMilliseconds` (+ UTC variants)
+- **Formatting**: `toString`, `toISOString`, `toUTCString`, `toDateString`, `toTimeString`, `toLocaleDateString`, `toLocaleTimeString`, `toLocaleString`, `toGMTString`
+- **Conversion**: `valueOf`, `toJSON`, `Symbol.toPrimitive` (hint-based: "string" → toString, "number"/"default" → valueOf)
+- **Legacy**: `getYear`, `setYear` (Annex B)
+- **ISO 8601 parsing**: `Date.parse()` handles `YYYY-MM-DDTHH:mm:ss.sssZ` with timezone offset
+- **Internal slot**: `[[DateValue]]` stored as non-enumerable property with `PropDescriptor`
+- **Date algorithms**: `day_from_year` (floor division for pre-1970 correctness), `year_from_time` (linear adjustment), `month_from_time`, `date_from_time`, `week_day`, `make_day`/`make_date`, `time_clip`
+
+Also improved JSON.stringify to:
+- Walk full prototype chain when resolving `toJSON` methods
+- Invoke any callable `toJSON` (not just MethodCallable) by promoting to InterpreterCallable
+- Filter internal `[[...]]` properties from serialization
+
+**Test262**: built-ins/Date 249/534 passing (46.6%), 60 skipped
+
 ### async/await (~500 tests)
 
 Syntactic sugar over Promises + generator-like suspension. Now unblocked by generator implementation.
@@ -210,7 +234,7 @@ Syntactic sugar over Promises + generator-like suspension. Now unblocked by gene
 | RegExp improvements | ~671 | Capture groups, backreferences, unicode/sticky flags |
 | `with` statement | ~150 | Dynamic scope injection |
 | eval() improvements | ~205 | Direct vs indirect eval semantics |
-| Date object | ~534 | Date parsing, formatting, prototype methods |
+| Date object | ~534 | ✅ Done (8C) — 249/534 pass (46.6%) |
 | WeakMap/WeakSet | ~200 | Reference-based collections |
 | Proxy/Reflect | ~500 | Meta-programming |
 
