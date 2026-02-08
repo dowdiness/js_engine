@@ -561,6 +561,9 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
   // Set up Promise constructor and prototype
   setup_promise(env)
 
+  // Set up Date constructor and prototype
+  setup_date_builtins(env)
+
   // Set up timer APIs (setTimeout, clearTimeout, setInterval, clearInterval)
   setup_timers(env)
 }
@@ -572,6 +575,7 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
   // Store globally for iterator protocol support
   well_known_iterator_sym.val = Some(iterator_sym)
   let to_primitive_sym = new_symbol(Some("Symbol.toPrimitive"))
+  well_known_toprimitive_sym.val = Some(to_primitive_sym)
   let to_string_tag_sym = new_symbol(Some("Symbol.toStringTag"))
   well_known_tostringtag_sym.val = Some(to_string_tag_sym)
   let has_instance_sym = new_symbol(Some("Symbol.hasInstance"))
@@ -2428,6 +2432,27 @@ fn json_stringify_value(
       match data.callable {
         Some(_) => Undefined // Functions are not serialized
         None => {
+          // Check for toJSON method (e.g., Date objects)
+          // Look on own properties first, then on prototype
+          let to_json_fn : Value? = match data.properties.get("toJSON") {
+            Some(v) => Some(v)
+            None =>
+              match data.prototype {
+                Object(proto_data) => proto_data.properties.get("toJSON")
+                _ => None
+              }
+          }
+          match to_json_fn {
+            Some(Object(to_json_data)) =>
+              match to_json_data.callable {
+                Some(MethodCallable(_, func)) => {
+                  let json_val = func(val, [])
+                  return json_stringify_value(json_val, seen, indent, depth)
+                }
+                _ => ()
+              }
+            _ => ()
+          }
           // Cycle detection
           for s in seen {
             match s {
@@ -2446,6 +2471,10 @@ fn json_stringify_value(
           buf.write_char('{')
           let mut first = true
           data.properties.each(fn(k, v) {
+            // Skip internal properties (e.g., [[DateValue]], [[NumberData]])
+            if k.has_prefix("[[") {
+              return
+            }
             let stringified = json_stringify_value(v, seen, indent, new_depth)
             match stringified {
               Undefined => () // Skip undefined values

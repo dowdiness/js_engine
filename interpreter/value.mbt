@@ -205,6 +205,19 @@ pub fn get_hasinstance_symbol() -> SymbolData {
 }
 
 ///|
+/// Well-known Symbol.toPrimitive - stored globally for @@toPrimitive support
+pub let well_known_toprimitive_sym : Ref[SymbolData?] = { val: None }
+
+///|
+/// Get the well-known Symbol.toPrimitive
+pub fn get_toprimitive_symbol() -> SymbolData {
+  match well_known_toprimitive_sym.val {
+    Some(sym) => sym
+    None => abort("Symbol.toPrimitive not initialized")
+  }
+}
+
+///|
 /// Well-known Symbol.toStringTag - stored globally for @@toStringTag support
 pub let well_known_tostringtag_sym : Ref[SymbolData?] = { val: None }
 
@@ -474,7 +487,16 @@ pub fn to_number(val : Value) -> Double raise Error {
     }
     Bool(b) => if b { 1.0 } else { 0.0 }
     Null => 0.0
-    Undefined | Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) => 0.0 / 0.0
+    Object(data) =>
+      if data.class_name == "Date" {
+        match data.properties.get("[[DateValue]]") {
+          Some(Number(v)) => v
+          _ => 0.0 / 0.0
+        }
+      } else {
+        0.0 / 0.0
+      }
+    Undefined | Array(_) | Map(_) | Set(_) | Promise(_) => 0.0 / 0.0
     Symbol(_) =>
       raise @errors.TypeError(
         message="Cannot convert a Symbol value to a number",
