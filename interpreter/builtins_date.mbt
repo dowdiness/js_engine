@@ -1702,8 +1702,11 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
       prototype: Null,
       callable: Some(
         NativeCallable("Date", fn(args) {
-          // NativeCallable is used for both new Date() and Date()
-          // For simplicity, always create a Date object (new Date behavior)
+          // Date() without new returns a string of the current date/time
+          // new Date(...) returns a Date object
+          if not(is_constructing.val) {
+            return String_(date_to_string(current_time_ms().floor()))
+          }
           let t = if args.length() == 0 {
             // new Date() - current time
             current_time_ms().floor()

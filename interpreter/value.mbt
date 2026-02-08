@@ -147,6 +147,12 @@ pub fn new_promise_data() -> PromiseData {
 }
 
 ///|
+/// Flag set by eval_new before calling a NativeCallable so the callee can
+/// distinguish `new Foo()` from `Foo()`.  Safe because NativeCallable has
+/// no Interpreter access and therefore cannot re-enter eval_new.
+pub let is_constructing : Ref[Bool] = { val: false }
+
+///|
 /// Global counter for generating unique symbol IDs
 let symbol_id_counter : Ref[Int] = { val: 0 }
 
