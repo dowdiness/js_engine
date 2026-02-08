@@ -3363,3 +3363,83 @@ fn decode_percent_byte(chars : Array[Char], pos : Int) -> Int {
   }
   -1
 }
+
+///|
+/// Set up test262 harness functions that require host-level support.
+/// These are functions the test262 test suite expects the host environment
+/// to provide. Unsupported operations throw TypeError with a descriptive message.
+pub fn setup_harness_builtins(
+  env : Environment,
+  output : Array[String],
+  global_this : Value,
+) -> Unit {
+  // print() - host-provided print function for test262 harness compatibility.
+  // Joins arguments with spaces and appends to output (like console.log).
+  env.def_builtin(
+    "print",
+    make_native_func("print", fn(args) {
+      let parts : Array[String] = args.map(fn(a) { a.to_string() })
+      output.push(parts.join(" "))
+      Undefined
+    }),
+  )
+
+  // $262.agent - stub object for agent/worker testing (Atomics/SharedArrayBuffer).
+  // All methods throw because the engine has no multi-agent support.
+  let agent_props : Map[String, Value] = {}
+  agent_props["start"] = make_native_func("start", fn(_args) {
+    raise @errors.TypeError(message="$262.agent.start is not supported")
+  })
+  agent_props["broadcast"] = make_native_func("broadcast", fn(_args) {
+    raise @errors.TypeError(message="$262.agent.broadcast is not supported")
+  })
+  agent_props["getReport"] = make_native_func("getReport", fn(_args) {
+    raise @errors.TypeError(message="$262.agent.getReport is not supported")
+  })
+  agent_props["sleep"] = make_native_func("sleep", fn(_args) {
+    raise @errors.TypeError(message="$262.agent.sleep is not supported")
+  })
+  agent_props["monotonicNow"] = make_native_func("monotonicNow", fn(_args) {
+    raise @errors.TypeError(message="$262.agent.monotonicNow is not supported")
+  })
+  let agent : Value = Object({
+    properties: agent_props,
+    symbol_properties: {},
+    prototype: Null,
+    callable: None,
+    class_name: "Object",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+
+  // $262 - the test262 host object providing host-level hooks.
+  let dollar262_props : Map[String, Value] = {}
+  dollar262_props["global"] = global_this
+  dollar262_props["agent"] = agent
+  dollar262_props["gc"] = make_native_func("gc", fn(_args) { Undefined })
+  dollar262_props["createRealm"] = make_native_func("createRealm", fn(_args) {
+    raise @errors.TypeError(message="$262.createRealm is not supported")
+  })
+  dollar262_props["evalScript"] = make_native_func("evalScript", fn(_args) {
+    raise @errors.TypeError(message="$262.evalScript is not supported")
+  })
+  dollar262_props["detachArrayBuffer"] = make_native_func("detachArrayBuffer", fn(
+    _args,
+  ) {
+    raise @errors.TypeError(message="$262.detachArrayBuffer is not supported")
+  })
+  env.def_builtin(
+    "$262",
+    Object({
+      properties: dollar262_props,
+      symbol_properties: {},
+      prototype: Null,
+      callable: None,
+      class_name: "Object",
+      descriptors: {},
+      symbol_descriptors: {},
+      extensible: true,
+    }),
+  )
+}

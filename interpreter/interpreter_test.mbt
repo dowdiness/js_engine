@@ -5823,3 +5823,122 @@ test "generator: generator state isolation" {
   )
   inspect(output, content="[\"3\", \"0\"]")
 }
+
+///|
+test "harness: print function" {
+  let output = run_output(
+    (
+      #|print("hello");
+      #|print("a", "b", "c");
+      #|print(42);
+      #|print(true, null, undefined);
+    ),
+  )
+  inspect(
+    output,
+    content="[\"hello\", \"a b c\", \"42\", \"true null undefined\"]",
+  )
+}
+
+///|
+test "harness: $262.global is globalThis" {
+  let output = run_output(
+    (
+      #|console.log($262.global === globalThis);
+    ),
+  )
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "harness: $262.gc is a no-op" {
+  let output = run_output(
+    (
+      #|var result = $262.gc();
+      #|console.log(result === undefined);
+    ),
+  )
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "harness: $262.createRealm throws TypeError" {
+  let output = run_output(
+    (
+      #|try {
+      #|  $262.createRealm();
+      #|} catch (e) {
+      #|  console.log(e instanceof TypeError);
+      #|  console.log(e.message);
+      #|}
+    ),
+  )
+  inspect(output, content="[\"true\", \"$262.createRealm is not supported\"]")
+}
+
+///|
+test "harness: $262.evalScript throws TypeError" {
+  let output = run_output(
+    (
+      #|try {
+      #|  $262.evalScript("1 + 1");
+      #|} catch (e) {
+      #|  console.log(e instanceof TypeError);
+      #|  console.log(e.message);
+      #|}
+    ),
+  )
+  inspect(output, content="[\"true\", \"$262.evalScript is not supported\"]")
+}
+
+///|
+test "harness: $262.detachArrayBuffer throws TypeError" {
+  let output = run_output(
+    (
+      #|try {
+      #|  $262.detachArrayBuffer({});
+      #|} catch (e) {
+      #|  console.log(e instanceof TypeError);
+      #|  console.log(e.message);
+      #|}
+    ),
+  )
+  inspect(
+    output,
+    content="[\"true\", \"$262.detachArrayBuffer is not supported\"]",
+  )
+}
+
+///|
+test "harness: $262.agent.start throws TypeError" {
+  let output = run_output(
+    (
+      #|try {
+      #|  $262.agent.start("");
+      #|} catch (e) {
+      #|  console.log(e instanceof TypeError);
+      #|  console.log(e.message);
+      #|}
+    ),
+  )
+  inspect(output, content="[\"true\", \"$262.agent.start is not supported\"]")
+}
+
+///|
+test "harness: $262 object exists and has expected properties" {
+  let output = run_output(
+    (
+      #|console.log(typeof $262);
+      #|console.log(typeof $262.global);
+      #|console.log(typeof $262.gc);
+      #|console.log(typeof $262.createRealm);
+      #|console.log(typeof $262.evalScript);
+      #|console.log(typeof $262.detachArrayBuffer);
+      #|console.log(typeof $262.agent);
+    ),
+  )
+  inspect(
+    output,
+    content="[\"object\", \"object\", \"function\", \"function\", \"function\", \"function\", \"object\"]",
+  )
+}
