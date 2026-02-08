@@ -2,9 +2,9 @@
 
 ## Current Status
 
-**Test262**: 10,864 / 24,581 passed (44.2%) | 24,991 skipped | 13,717 failed | 78 timeouts
+**Test262**: 11,316 / 25,801 passed (43.86%) | 22,200 skipped | 14,485 failed | 138 timeouts
 
-**Unit tests**: 580 total, 580 passed, 0 failed
+**Unit tests**: 639 total, 639 passed, 0 failed
 
 ## Phase History
 
@@ -18,6 +18,7 @@
 | 7B | +1,047 | 10,592 | Unicode escapes in identifiers, strings, template literals |
 | 7C-E | +65 | 10,657 | Bare for-of/for-in, get/set as identifiers, Math function lengths |
 | 7F | +202 | 10,864 | ES Modules (import/export declarations) |
+| 8 | +452 | 11,316 | ES6 generators (function*, yield, yield*) |
 | JS Target | — | — | JS backend support, Error toString fix, backend-specific argv handling |
 
 For detailed implementation notes on Phases 1-6, see [docs/PHASE_HISTORY.md](docs/PHASE_HISTORY.md).
@@ -26,13 +27,13 @@ For detailed implementation notes on Phases 1-6, see [docs/PHASE_HISTORY.md](doc
 
 ## Failure Breakdown
 
-### Parser/Syntax (~1,700 tests)
+### Parser/Syntax (~1,500 tests)
 
 | Category | Count | Difficulty |
 |----------|-------|------------|
 | Unicode escapes in identifiers/strings | 479 | ✅ Done (7B) |
 | Bare `for (x of ...)` without let/var | 225 | ✅ Done (7C) |
-| Generator functions (`function*`, `yield`) | 160 | Hard |
+| Generator functions (`function*`, `yield`) | 160 | ✅ Done (8) |
 | `get`/`set` as regular identifiers | 127 | ✅ Done (7D) |
 | Destructuring defaults in more contexts | ~100 | Medium |
 | Async $DONE not called (event loop) | 98 | Hard |
@@ -74,7 +75,7 @@ node ./target/js/release/build/cmd/main/main.js 'console.log(1 + 2)'
 # => 3
 ```
 
-All 547 unit tests pass on both WASM-GC and JS targets. See [docs/SELF_HOST_JS_RESEARCH.md](docs/SELF_HOST_JS_RESEARCH.md) for full analysis.
+All 639 unit tests pass on both WASM-GC and JS targets. See [docs/SELF_HOST_JS_RESEARCH.md](docs/SELF_HOST_JS_RESEARCH.md) for full analysis.
 
 ### What was needed
 - **Backend-specific argv handling**: `process.argv` on JS includes `["node", "script.js", ...]`, so user args start at index 2 (vs index 1 on WASM). Solved with `.js.mbt` / `.wasm.mbt` / `.wasm-gc.mbt` files.
@@ -158,19 +159,32 @@ Full import/export declaration support:
 - `language/import`: 11/93 passing (11.8%), 19 skipped
 - +12 tests in other directories (e.g., `reserved-words`) from module-related fixes
 
+### 8: ES6 Generators (+452 tests) — DONE
+
+Full `function*` / `yield` / `yield*` implementation:
+
+- **Architecture**: Statement replay model — generator body is re-executed from the beginning on each `.next()`, replaying past statements and resuming at the saved program counter. Avoids the complexity of a separate frame-stack/step-engine while reusing the existing interpreter.
+- **GeneratorObject**: Carries body, params, closure, env, PC, and delegation state as fields on a `Value::Object` with internal generator payload
+- **Protocol**: `.next()`, `.throw()`, `.return()` with full state machine (SuspendedStart, Executing, SuspendedYield, Completed)
+- **yield***: Delegated iteration with forwarding of `.next()`, `.throw()`, `.return()` to delegate iterator, IteratorClose on abrupt completion
+- **Control flow**: `try/catch/finally` with phase tracking, loops with saved environment stacks, labeled break/continue
+- **Spec compliance**: GetMethod semantics, IteratorClose result validation, TypeError for non-iterable yield* delegates, re-entrancy guard
+- **Test262**: GeneratorPrototype 26/58 (44.8%), GeneratorFunction 0/20 (0.0%)
+- **Unit tests**: 59 new generator-specific tests (580 → 639)
+
+For the original implementation plan, see [docs/GENERATOR_PLAN.md](docs/GENERATOR_PLAN.md).
+
 ---
 
 ## Phase 8+ Targets (reaching 15,000+)
 
-### Generators (~3,400 tests: 3,241 skipped + 160 failing)
+### Generators — DONE
 
-`function*`, `yield`, `yield*`. Would also unblock async-iteration (3,731 more skipped).
-
-Architecture: explicit state machine — convert generator body into segments separated by yield points. Generator object tracks current segment + local environment.
+See Phase 8 section above. `function*`, `yield`, `yield*` fully implemented with 639 unit tests and +452 test262 tests gained. Unblocks async-iteration as a next target.
 
 ### async/await (~500 tests)
 
-Syntactic sugar over Promises + generator-like suspension. Depends on generators.
+Syntactic sugar over Promises + generator-like suspension. Now unblocked by generator implementation.
 
 ### Other Features
 
@@ -185,20 +199,20 @@ Syntactic sugar over Promises + generator-like suspension. Depends on generators
 
 ---
 
-## Skipped Features (24,991 tests)
+## Skipped Features (22,200 tests)
 
 | Feature | Skipped | Notes |
 |---------|---------|-------|
 | Temporal | 4,228 | TC39 Stage 3 date/time API |
-| async-iteration | 3,731 | Requires generators |
-| generators | 3,241 | function*, yield |
+| async-iteration | 3,731 | Requires async generators |
 | class-methods-private | 1,304 | #privateMethod |
 | TypedArray | 1,257 | Int8Array, Uint8Array, etc. |
 | BigInt | 1,250 | Arbitrary precision integers |
 | class-static-methods-private | 1,133 | static #method |
-| module | 422 | import/export implemented; 338 in module dirs + 84 module-flagged tests in other dirs |
 | class-fields-public | 723 | Public field declarations |
 | regexp-unicode-property | 679 | Unicode property escapes |
+| module | 422 | import/export implemented; 338 in module dirs + 84 module-flagged tests in other dirs |
+| generators | — | ✅ No longer skipped (implemented in Phase 8) |
 
 ---
 
@@ -219,3 +233,7 @@ Syntactic sugar over Promises + generator-like suspension. Depends on generators
 ### Signal Types
 
 `Normal(Value)`, `ReturnSignal(Value)`, `BreakSignal(String?)`, `ContinueSignal(String?)`
+
+### Generator Suberrors
+
+`YieldSignal(Value)`, `GeneratorReturnSignal(Value)` — used for control flow within generator execution, caught by the generator runtime to suspend or complete the generator.
