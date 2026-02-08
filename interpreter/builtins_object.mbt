@@ -54,7 +54,6 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 } else {
                   String_("[object Object]")
                 }
-              _ => String_("[object Object]")
             }
           }),
         ),

@@ -111,8 +111,16 @@ pub let well_known_iterator_sym : Ref[SymbolData?]
 pub let well_known_tostringtag_sym : Ref[SymbolData?]
 
 // Errors
+pub suberror GeneratorReturnSignal {
+  GeneratorReturnSignal(Value)
+}
+
 pub suberror JsException {
   JsException(Value)
+}
+
+pub suberror YieldSignal {
+  YieldSignal(Value)
 }
 
 // Types and methods
@@ -172,6 +180,43 @@ pub(all) struct FuncDataExt {
   rest_param : String?
   body : Array[@ast.Stmt]
   closure : Environment
+}
+
+pub(all) enum GenState {
+  SuspendedStart
+  Executing
+  SuspendedYield
+  Completed
+}
+
+pub(all) struct GeneratorObject {
+  id : Int
+  mut state : GenState
+  body : Array[@ast.Stmt]
+  params : Array[String]
+  params_ext : Array[@ast.Param]?
+  rest_param : String?
+  closure : Environment
+  name : String?
+  interpreter : Interpreter
+  args : Array[Value]
+  this_val : Value
+  mut env : Environment?
+  mut pc : Int
+  mut yield_value : Value
+  mut resuming : Bool
+  mut resume_action : ResumeAction
+  mut try_resume_phase : Int
+  mut try_resume_error : Value
+  mut try_resume_result : Signal
+  mut try_resume_pending_error : Error?
+  loop_env_stack : Array[Environment]
+  mut for_of_iterator : Value
+  mut for_of_next : Value
+  mut for_of_resume : Bool
+  mut delegate_iterator : Value
+  mut delegate_next : Value
+  mut delegating : Bool
 }
 
 pub(all) struct Interpreter {
@@ -253,6 +298,18 @@ pub(all) struct PropDescriptor {
 }
 
 type RegexMatch
+
+pub(all) enum ResumeAction {
+  NextAction
+  ThrowAction(Value)
+  ReturnAction(Value)
+}
+
+pub(all) enum ResumeKind {
+  Next(Value)
+  Throw(Value)
+  Return(Value)
+}
 
 pub(all) struct SetData {
   values : Array[Value]

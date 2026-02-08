@@ -135,6 +135,11 @@ pub(all) enum Expr {
   SuperComputedMember(Expr, @token.Loc) // super[expr]
   NewTargetExpr(@token.Loc) // new.target
   TaggedTemplate(Expr, Array[String], Array[Expr], @token.Loc) // tag`str${expr}str`
+  // Generator expressions
+  GeneratorExpr(String?, Array[String], Array[Stmt], @token.Loc) // name, params, body
+  GeneratorExprExt(String?, Array[Param], String?, Array[Stmt], @token.Loc) // name, params, rest_param, body
+  // Yield expression
+  YieldExpr(Expr?, Bool, @token.Loc) // argument, delegate (yield* vs yield)
 } derive(Show, Eq)
 
 ///|
@@ -205,6 +210,9 @@ pub(all) enum Stmt {
   ForOfExpr(Expr, Expr, Stmt, @token.Loc) // for (expr of iterable) where expr is member/computed
   DestructureDecl(VarKind, Pattern, Expr, @token.Loc)
   LabeledStmt(String, Stmt, @token.Loc)
+  // Generator declarations
+  GeneratorDecl(String, Array[String], Array[Stmt], @token.Loc) // name, params, body
+  GeneratorDeclExt(String, Array[Param], String?, Array[Stmt], @token.Loc) // name, params, rest_param, body
   // Class declaration
   ClassDecl(String, Expr?, Array[ClassMethod], @token.Loc) // name, superclass, methods
   // Module declarations

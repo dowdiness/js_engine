@@ -10,6 +10,7 @@ on:
 jobs:
   test262:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     permissions:
       contents: read
 
@@ -31,7 +32,7 @@ jobs:
         run: moon install
 
       - name: Build JS engine
-        run: moon build
+        run: moon build --target js
 
       - name: Download Test262
         run: |
@@ -47,9 +48,9 @@ jobs:
       - name: Run Test262 conformance tests
         run: |
           python3 test262-runner.py \
-            --engine "moon run cmd/main --" \
+            --engine "node target/js/release/build/cmd/main/main.js" \
             --test262 ./test262 \
-            --threads 12 \
+            --threads 4 \
             --timeout 5 \
             --output test262-results.json \
             --summary

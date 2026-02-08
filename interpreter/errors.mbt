@@ -7,12 +7,6 @@
 ///| Value conversion helpers for JavaScript try-catch handling.
 
 ///|
-/// Create a JavaScript Error object Value with the given name and message
-fn make_error_value(name : String, msg : String) -> Value {
-  make_error_value_with_env(name, msg, None)
-}
-
-///|
 /// Create a JavaScript Error object Value with proper prototype chain
 fn make_error_value_with_env(
   name : String,

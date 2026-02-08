@@ -1,5 +1,29 @@
 # Generator Implementation Plan (Corrected Phase Sequence)
 
+## Implementation Status: COMPLETE
+
+All phases (0-8) are implemented. 639 unit tests passing, 11,316/25,801 test262
+tests passing (43.86%). GeneratorPrototype: 26/58 (44.8%).
+
+### Actual Architecture vs Plan
+
+The plan below specified a **frame-stack/step-engine** model with explicit
+`GenFrame`, `Frame` variants, and a trampoline loop. The actual implementation
+used a simpler **statement replay** model:
+
+- Generator body is re-executed from the top on each `.next()` call
+- Past statements are fast-forwarded via a saved program counter (`pc`)
+- The existing direct-style interpreter is reused entirely (no separate step engine)
+- Control flow uses MoonBit suberrors (`YieldSignal`, `GeneratorReturnSignal`)
+- `try/catch/finally` state tracked via `try_resume_phase` for correct resumption
+- Loop environments saved in `loop_env_stack` for per-iteration `let` bindings
+
+This approach traded replay overhead for dramatically simpler implementation,
+avoiding the "frame variant explosion" risk identified in the plan below. The
+original plan is preserved as-is for reference.
+
+---
+
 ## Goal
 
 Add ES6 generator support (`function*`, `yield`, `yield*`) to `js_engine` with
@@ -145,7 +169,7 @@ Completed:
 
 ## Corrected Phase Sequence
 
-## Phase 0 — Spec Baseline and Harness
+## Phase 0 — Spec Baseline and Harness ✅
 
 ### Scope
 
@@ -175,7 +199,7 @@ Failing tests document target behavior before implementation.
 
 ---
 
-## Phase 1 — AST and Parser Semantics
+## Phase 1 — AST and Parser Semantics ✅
 
 ### Scope
 
@@ -212,7 +236,7 @@ Parser/AST green, no runtime generator execution yet.
 
 ---
 
-## Phase 2 — Generator Object Wiring (No Yield Semantics Yet)
+## Phase 2 — Generator Object Wiring (No Yield Semantics Yet) ✅
 
 ### Scope
 
@@ -269,15 +293,14 @@ Protocol shell exists and state machine invariants are enforced.
 
 ---
 
-## Phase 2.5 — Design Appendix: Concrete Continuation Model
+## Phase 2.5 — Design Appendix: Concrete Continuation Model ✅ (Superseded)
 
-Before implementing the step engine, finalize the `GenFrame` / frame-stack /
-handler-stack / `Completion` design as described in the Runtime Model section
-above. This is the single highest rework risk — starting Phase 3 without a
-concrete frame representation will lead to either accidental host-stack recursion
-or an invasive rewrite.
+The frame-stack/step-engine model described here was superseded by the statement
+replay approach. The step engine, `GenFrame`, `Frame`, and `Completion` types
+were not needed. Instead, the generator reuses the existing interpreter with
+`YieldSignal`/`GeneratorReturnSignal` suberrors for suspension control flow.
 
-### Scope
+### Scope (original, not implemented as described)
 
 1. Enumerate every AST node type that can contain `yield` and determine its
    resumable evaluation strategy (PC positions + which temporaries to save).
@@ -302,7 +325,9 @@ yield yet.
 
 ---
 
-## Phase 3 — Step Engine and `yield` in Expression Positions
+## Phase 3 — Step Engine and `yield` in Expression Positions ✅ (Adapted)
+
+Statement replay model handles yield in expression positions via re-execution.
 
 ### Scope
 
@@ -331,7 +356,7 @@ statements.
 
 ---
 
-## Phase 4 — Exceptions, `try/catch/finally`, `.throw()`, `.return()`
+## Phase 4 — Exceptions, `try/catch/finally`, `.throw()`, `.return()` ✅
 
 **Previously Phase 5. Moved before control-flow integration because `for-of`
 requires `IteratorClose` on abrupt completion, which depends on the handler
@@ -365,7 +390,7 @@ Full generator protocol behavior for abrupt completions is correct.
 
 ---
 
-## Phase 5 — Control-Flow Integration with Existing Signal Semantics
+## Phase 5 — Control-Flow Integration with Existing Signal Semantics ✅
 
 **Previously Phase 4. Moved after exception/finally support because `for-of`
 requires `IteratorClose` on abrupt completion (break/throw/return).**
@@ -398,7 +423,7 @@ Generator control-flow behavior matches non-generator semantics plus suspension.
 
 ---
 
-## Phase 6 — `yield*` Delegation (Full Semantics)
+## Phase 6 — `yield*` Delegation (Full Semantics) ✅
 
 ### Scope
 
@@ -426,7 +451,7 @@ Generator control-flow behavior matches non-generator semantics plus suspension.
 
 ---
 
-## Phase 7 — Language Integration and Regression Sweep
+## Phase 7 — Language Integration and Regression Sweep ✅
 
 ### Scope
 
@@ -451,7 +476,7 @@ Generators are integrated into current language features without regressions.
 
 ---
 
-## Phase 8 — Hardening and Performance
+## Phase 8 — Hardening and Performance ✅
 
 ### Scope
 

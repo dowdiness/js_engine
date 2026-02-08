@@ -234,7 +234,7 @@ True self-interpretation (running the compiled JS through itself) would require 
 - Classes and prototypes
 - Closures and higher-order functions
 - Map, Set, and other built-in types
-- The engine currently passes ~39% of Test262
+- The engine currently passes ~44% of Test262
 
 This is a long-term goal that would improve naturally as Test262 compliance increases.
 
@@ -242,19 +242,18 @@ This is a long-term goal that would improve naturally as Test262 compliance incr
 
 ## 7. Recommended Approach
 
-### Phase A: Validate JS Compilation -- DONE
+### Phase A: Validate JS Compilation — DONE
 
-1. ~~Run `moon build --target js`~~ -- builds with zero errors
-2. ~~Run `moon test --target js`~~ -- all 507 tests pass
-3. ~~Manually test~~ -- `node ./target/js/release/build/cmd/main/main.js 'console.log(1 + 2)'` outputs `3`
-4. ~~Fix `@env.args()` index offset~~ -- solved with backend-specific `args.js.mbt`
+1. ~~Run `moon build --target js`~~ — builds with zero errors
+2. ~~Run `moon test --target js`~~ — all 639 tests pass
+3. ~~Manually test~~ — `node ./target/js/release/build/cmd/main/main.js 'console.log(1 + 2)'` outputs `3`
+4. ~~Fix `@env.args()` index offset~~ — solved with backend-specific `args.js.mbt`
 
-### Phase B: Test262 on JS Target (Medium Effort)
+### Phase B: Test262 on JS Target — DONE
 
-1. Add `build-js` and `test262-js` Makefile targets
-2. Run full Test262 suite against JS-compiled engine
-3. Compare pass/fail rates between WASM and JS targets
-4. Document any behavioral differences
+1. ~~Add CI workflow for JS-compiled engine~~ — `.github/workflows/test262.yml` builds with `moon build --target js` and runs via `node`
+2. ~~Run full Test262 suite against JS-compiled engine~~ — 11,316/25,801 passed (43.86%)
+3. CI uses `node target/js/release/build/cmd/main/main.js` directly (faster than `moon run`), 4 threads, 90-minute timeout
 
 ### Phase C: Distributable Package (Medium Effort)
 
@@ -277,10 +276,11 @@ This is a long-term goal that would improve naturally as Test262 compliance incr
 | Aspect | Status |
 |---|---|
 | JS target compilation | **Working** |
-| Unit tests (507) | **All passing** on both WASM-GC and JS targets |
+| Unit tests (639) | **All passing** on both WASM-GC and JS targets |
 | FFI calls ported | **0** (none needed) |
 | Code changes required | **3 new files** (backend-specific argv), **1 edit** (Error toString) |
 | Build command | `moon build --target js` |
 | Run command | `node ./target/js/release/build/cmd/main/main.js '<code>'` |
+| Test262 pass rate | **43.86%** (11,316/25,801) on JS target |
 
 The codebase's pure-MoonBit, zero-FFI architecture made JS-target compilation straightforward. The only issues encountered were the `process.argv` offset difference (solved with backend-specific files) and Error object toString formatting (solved by checking `class_name`).

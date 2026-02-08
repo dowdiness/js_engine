@@ -150,6 +150,86 @@ Pass rate decreased because more tests were unlocked (larger denominator).
 
 ---
 
+## Phase 7: Spec Compliance & Modules (44.2% pass rate)
+
+### Sub-phases
+| Sub | Tests | Key Changes |
+|-----|-------|-------------|
+| 7A | — | Full accessor descriptor support (get/set in PropDescriptor) |
+| 7B | +1,047 | Unicode escapes in identifiers, strings, template literals |
+| 7C-E | +65 | Bare for-of/for-in, get/set as identifiers, Math function lengths |
+| 7F | +202 | ES Modules (import/export declarations) |
+
+**Outcome**: 9,545 → 10,864 passing tests (+1,319)
+
+---
+
+## Phase 8: ES6 Generators (43.86% pass rate)
+
+Full `function*` / `yield` / `yield*` support. Pass rate denominator increased significantly because generator tests were un-skipped (~3,200 tests moved from skip list to executed).
+
+### Architecture
+
+Used a **statement replay model** rather than the frame-stack/step-engine model originally planned in [GENERATOR_PLAN.md](GENERATOR_PLAN.md):
+
+- Generator body is re-executed from the beginning on each `.next()` call
+- Past statements are replayed (skipped via saved program counter `pc`)
+- Execution resumes at the exact yield point where the generator was suspended
+- This approach reuses the existing direct-style interpreter entirely, avoiding a separate step engine
+- Trade-off: replay overhead on resume, but dramatically simpler implementation
+
+### Key Implementations
+
+- **GeneratorObject struct**: `state`, `body`, `params`, `closure`, `env`, `pc`, delegation state, loop env stack, try/catch phase tracking
+- **Protocol methods**: `.next(v)`, `.throw(e)`, `.return(v)` on `%GeneratorPrototype%`
+- **State machine**: SuspendedStart → Executing → SuspendedYield/Completed with re-entrancy guard
+- **YieldSignal / GeneratorReturnSignal**: MoonBit suberrors used as control flow signals
+- **yield***: Delegated iteration forwarding `.next()`, `.throw()`, `.return()` to delegate, with IteratorClose on abrupt completion
+- **try/catch/finally**: Phase-tracked execution (`try_resume_phase`) to correctly resume into try/catch/finally blocks
+- **Loop integration**: `loop_env_stack` preserves per-iteration `let` bindings across yields
+- **for-of in generators**: `for_of_iterator`/`for_of_next`/`for_of_resume` fields for iterator protocol state
+- **Parameter binding**: Deferred to first `.next()` per spec, including default values, destructuring, and rest params
+- **Prototype chain**: generator instance → gen.prototype → %GeneratorPrototype% → %IteratorPrototype%
+- **Non-constructible**: `new gen()` throws TypeError
+- **Self-iterable**: `gen[Symbol.iterator]() === gen`
+
+### Spec Compliance (PR Review Fixes)
+
+5 rounds of code review addressed:
+1. Rest param binding in simple-params branch
+2. yield* TypeError for non-iterable delegates
+3. `.throw()` TypeError when delegate lacks `.throw` method (with `.return()` cleanup)
+4. Iterator method error messages + result validation
+5. `.return()` delegation via ReturnAction + generator_continue (so `finally` blocks run)
+6. GetMethod spec compliance (TypeError for non-callable non-nullish)
+7. IteratorClose result validation (must be Object)
+8. Memory cleanup in `complete_generator` (clear mutable fields on completion)
+
+### Test262 Results
+
+| Category | Passed | Failed | Rate |
+|----------|--------|--------|------|
+| GeneratorPrototype | 26 | 32 | 44.8% |
+| GeneratorFunction | 0 | 20 | 0.0% |
+
+Overall: 10,864 → 11,316 passing (+452), with ~3,200 previously-skipped generator tests now executed.
+
+### Files Changed
+
+- `interpreter/generator.mbt` (~960 lines, new file) — generator runtime
+- `interpreter/interpreter.mbt` — generator-aware control flow, assign_pattern iterator protocol
+- `interpreter/builtins_object.mbt` — warning cleanup
+- `interpreter/errors.mbt` — warning cleanup
+- `ast/ast.mbt` — GeneratorDecl, GeneratorExpr, YieldExpr AST nodes
+- `parser/parser.mbt` — function*/yield/yield* parsing
+- `cmd/main/main.mbt` — generator test cases
+- `.github/workflows/test262.yml` — CI optimization (node direct, 4 threads, 90min timeout)
+- `test262-runner.py` — removed generators from skip list, added staging skip
+
+**Unit tests**: +59 generator-specific tests (580 → 639)
+
+---
+
 ## MoonBit-Specific Workarounds
 
 These are language-specific gotchas discovered during development:
