@@ -54,10 +54,13 @@ fn days_in_year(y : Int) -> Int {
 ///|
 /// Day number of the first day of year y
 fn day_from_year(y : Int) -> Double {
-  365.0 * (y - 1970).to_double() +
-  ((y - 1969) / 4).to_double().floor() -
-  ((y - 1901) / 100).to_double().floor() +
-  ((y - 1601) / 400).to_double().floor()
+  // Division must use floor (not truncation) per ES spec, so compute in
+  // floating-point where .floor() gives correct results for negative values.
+  let yd = (y - 1970).to_double()
+  365.0 * yd +
+  ((y - 1969).to_double() / 4.0).floor() -
+  ((y - 1901).to_double() / 100.0).floor() +
+  ((y - 1601).to_double() / 400.0).floor()
 }
 
 ///|
