@@ -85,8 +85,8 @@ fn make_iterator_result(value : Value, done : Bool) -> Value {
 /// Get or create %GeneratorPrototype% for the given interpreter.
 /// We create a new prototype each time to avoid stale symbol IDs
 /// across interpreter instances (each test creates a new interpreter).
-fn get_generator_prototype(interp : Interpreter) -> Value {
-  init_generator_prototype(interp)
+fn get_generator_prototype(_interp : Interpreter) -> Value {
+  init_generator_prototype()
 }
 
 ///|
@@ -126,7 +126,7 @@ let current_generator : Ref[GeneratorObject?] = { val: None }
 
 ///|
 /// Initialize %GeneratorPrototype% with next, throw, return methods
-fn init_generator_prototype(interp : Interpreter) -> Value {
+fn init_generator_prototype() -> Value {
   let iterator_sym = get_iterator_symbol()
   let props : Map[String, Value] = {}
   let sym_props : Map[Int, Value] = {}
@@ -217,7 +217,6 @@ fn init_generator_prototype(interp : Interpreter) -> Value {
     symbol_descriptors: {},
     extensible: true,
   })
-  ignore(interp)
   Object({
     properties: props,
     symbol_properties: sym_props,
@@ -568,12 +567,24 @@ fn generator_start(
         None => ()
       }
     }
-    None =>
+    None => {
       // Simple params
       for i = 0; i < gen.params.length(); i = i + 1 {
         let val = if i < gen.args.length() { gen.args[i] } else { Undefined }
         func_env.def(gen.params[i], val, LetBinding)
       }
+      // Bind rest param if present
+      match gen.rest_param {
+        Some(rp) => {
+          let rest_elems : Array[Value] = []
+          for i = gen.params.length(); i < gen.args.length(); i = i + 1 {
+            rest_elems.push(gen.args[i])
+          }
+          func_env.def(rp, Array({ elements: rest_elems }), LetBinding)
+        }
+        None => ()
+      }
+    }
   }
   // Create arguments object
   let args_props : Map[String, Value] = {}
@@ -740,14 +751,7 @@ fn Interpreter::eval_yield(
                 )
             }
           _ =>
-            // Check if it's already an iterator (generators return self)
-            match iterable {
-              Object(_) => iterable
-              _ =>
-                raise @errors.TypeError(
-                  message="yield* delegate is not iterable",
-                )
-            }
+            raise @errors.TypeError(message="yield* delegate is not iterable")
         }
         // Get next method
         let next_method = get_iterator_next(iterator)
@@ -786,34 +790,9 @@ fn Interpreter::eval_yield(
 ///|
 /// Get iterator's next method (walk prototype chain)
 fn get_iterator_next(iterator : Value) -> Value raise Error {
-  match iterator {
-    Object(iter_data) =>
-      match iter_data.properties.get("next") {
-        Some(next_fn) => next_fn
-        None => {
-          let mut found : Value = Undefined
-          let mut current = iter_data.prototype
-          while true {
-            match current {
-              Object(proto_data) =>
-                match proto_data.properties.get("next") {
-                  Some(next_fn) => {
-                    found = next_fn
-                    break
-                  }
-                  None => current = proto_data.prototype
-                }
-              _ => break
-            }
-          }
-          match found {
-            Undefined =>
-              raise @errors.TypeError(message="iterator.next is not a function")
-            _ => found
-          }
-        }
-      }
-    _ => raise @errors.TypeError(message="Iterator is not an object")
+  match get_optional_method(iterator, "next") {
+    Some(next_fn) => next_fn
+    None => raise @errors.TypeError(message="iterator.next is not a function")
   }
 }
 
@@ -888,7 +867,7 @@ fn delegate_resume(
           }
         }
         None => {
-          // No .throw — close delegate via .return() if available, then throw
+          // No .throw — per ES spec, close delegate via .return() then throw TypeError
           let return_method = get_optional_method(iterator, "return")
           match return_method {
             Some(rm) => {
@@ -901,9 +880,10 @@ fn delegate_resume(
           gen.delegating = false
           gen.delegate_iterator = Undefined
           gen.delegate_next = Undefined
-          gen.yield_value = Undefined
-          gen.resume_action = ThrowAction(e)
-          generator_continue(interp, gen)
+          // Per spec: raise TypeError, not the original error
+          raise @errors.TypeError(
+            message="Iterator does not have a 'throw' method",
+          )
         }
       }
     }
