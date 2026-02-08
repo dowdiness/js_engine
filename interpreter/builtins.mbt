@@ -2432,15 +2432,18 @@ fn json_stringify_value(
       match data.callable {
         Some(_) => Undefined // Functions are not serialized
         None => {
-          // Check for toJSON method (e.g., Date objects)
-          // Look on own properties first, then on prototype
-          let to_json_fn : Value? = match data.properties.get("toJSON") {
-            Some(v) => Some(v)
-            None =>
-              match data.prototype {
-                Object(proto_data) => proto_data.properties.get("toJSON")
-                _ => None
-              }
+          // Check for toJSON method by walking the full prototype chain
+          let mut to_json_fn : Value? = None
+          let mut cur : Value? = Some(val)
+          while to_json_fn is None {
+            match cur {
+              Some(Object(obj_data)) =>
+                match obj_data.properties.get("toJSON") {
+                  Some(v) => to_json_fn = Some(v)
+                  None => cur = Some(obj_data.prototype)
+                }
+              _ => break
+            }
           }
           match to_json_fn {
             Some(Object(to_json_data)) =>
@@ -2449,6 +2452,16 @@ fn json_stringify_value(
                   let json_val = func(val, [])
                   return json_stringify_value(json_val, seen, indent, depth)
                 }
+                Some(NativeCallable(_, func)) => {
+                  let json_val = func([])
+                  return json_stringify_value(json_val, seen, indent, depth)
+                }
+                Some(NonConstructableCallable(_, func)) => {
+                  let json_val = func([])
+                  return json_stringify_value(json_val, seen, indent, depth)
+                }
+                // User-defined functions require the interpreter to call;
+                // they are handled at a higher level. Skip here.
                 _ => ()
               }
             _ => ()
