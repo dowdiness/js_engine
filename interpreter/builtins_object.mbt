@@ -2185,6 +2185,60 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                   _ => ()
                 }
               })
+            (Array(arr_data), Object(desc_obj)) =>
+              // Handle defineProperties on Array targets
+              desc_obj.properties.each(fn(prop_name, desc_val) {
+                let desc_enumerable = match
+                  desc_obj.descriptors.get(prop_name) {
+                  Some(d) => d.enumerable
+                  None => true
+                }
+                if not(desc_enumerable) {
+                  return
+                }
+                match desc_val {
+                  Object(desc) => {
+                    let value = match desc.properties.get("value") {
+                      Some(v) => v
+                      None => Undefined
+                    }
+                    if prop_name == "length" {
+                      match desc.properties.get("value") {
+                        Some(Number(n)) => {
+                          let new_len = n.to_int()
+                          if new_len < 0 || new_len.to_double() != n {
+                            raise @errors.RangeError(
+                              message="Invalid array length",
+                            )
+                          }
+                          while arr_data.elements.length() > new_len {
+                            let _removed = arr_data.elements.pop()
+                          }
+                          while arr_data.elements.length() < new_len {
+                            arr_data.elements.push(Undefined)
+                          }
+                        }
+                        Some(_) =>
+                          raise @errors.RangeError(
+                            message="Invalid array length",
+                          )
+                        None => ()
+                      }
+                    } else {
+                      let idx = @strconv.parse_int(prop_name) catch {
+                        _ => -1
+                      }
+                      if idx >= 0 && idx.to_string() == prop_name {
+                        while arr_data.elements.length() <= idx {
+                          arr_data.elements.push(Undefined)
+                        }
+                        arr_data.elements[idx] = value
+                      }
+                    }
+                  }
+                  _ => ()
+                }
+              })
             _ => ()
           }
           obj
