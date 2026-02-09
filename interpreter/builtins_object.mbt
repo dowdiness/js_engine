@@ -1182,122 +1182,35 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 prop_name
               }
 
-              // Check if configurable on existing descriptor
+              // Validate non-configurable constraints or extensibility
               match existing_desc {
                 Some(existing) =>
-                  if not(existing.configurable) {
-                    // Non-configurable: cannot change between accessor and data
-                    let existing_is_accessor = existing.getter is Some(_) ||
-                      existing.setter is Some(_)
-                    if existing_is_accessor && is_data {
-                      raise @errors.TypeError(
-                        message="Cannot redefine non-configurable property: \{prop_display}",
-                      )
-                    }
-                    if not(existing_is_accessor) && is_accessor {
-                      raise @errors.TypeError(
-                        message="Cannot redefine non-configurable property: \{prop_display}",
-                      )
-                    }
-
-                    // Non-configurable: cannot change enumerable
-                    let enumerable_ok = match new_enumerable {
-                      Some(e) => e == existing.enumerable
-                      None => true
-                    }
-                    let configurable_ok = match new_configurable {
-                      Some(c) => c == existing.configurable
-                      None => true
-                    }
-
-                    // Non-configurable accessor property: cannot change getter/setter
-                    if existing_is_accessor && is_accessor {
-                      // Check if getter is being changed
-                      let getter_ok = match new_getter {
-                        Some(g) =>
-                          match existing.getter {
-                            Some(eg) => strict_equal_val(g, eg)
-                            None => g is Undefined
-                          }
-                        None => true
-                      }
-                      // Check if setter is being changed
-                      let setter_ok = match new_setter {
-                        Some(s) =>
-                          match existing.setter {
-                            Some(es) => strict_equal_val(s, es)
-                            None => s is Undefined
-                          }
-                        None => true
-                      }
-                      if not(
-                          enumerable_ok &&
-                          configurable_ok &&
-                          getter_ok &&
-                          setter_ok,
-                        ) {
-                        raise @errors.TypeError(
-                          message="Cannot redefine non-configurable property: \{prop_display}",
-                        )
-                      }
-                    }
-
-                    // Non-configurable data property: check writable/enumerable/configurable
-                    if not(existing_is_accessor) && not(is_accessor) {
-                      let writable_matches = match new_writable {
-                        Some(w) =>
-                          // Non-configurable, non-writable property cannot become writable
-                          if not(existing.writable) && w {
-                            false
-                          } else {
-                            true
-                          }
-                        None => true
-                      }
-
-                      // For non-configurable, non-writable: value must match
-                      let value_matches = if not(existing.writable) &&
-                        has_value {
-                        let old_v : Value = if is_symbol_key {
-                          match data.symbol_properties.get(sym_id) {
-                            Some(v) => v
-                            None => Undefined
-                          }
-                        } else {
-                          match data.properties.get(prop_name) {
-                            Some(v) => v
-                            None => Undefined
-                          }
-                        }
-                        match desc_props.get("value") {
-                          Some(v) => strict_equal_val(v, old_v)
-                          None => true
+                  validate_non_configurable(
+                    existing,
+                    prop_display,
+                    is_accessor,
+                    is_data,
+                    has_value,
+                    new_writable,
+                    new_enumerable,
+                    new_configurable,
+                    new_getter,
+                    new_setter,
+                    fn() {
+                      if is_symbol_key {
+                        match data.symbol_properties.get(sym_id) {
+                          Some(v) => v
+                          None => Undefined
                         }
                       } else {
-                        true
+                        match data.properties.get(prop_name) {
+                          Some(v) => v
+                          None => Undefined
+                        }
                       }
-                      if not(
-                          writable_matches &&
-                          enumerable_ok &&
-                          configurable_ok &&
-                          value_matches,
-                        ) {
-                        raise @errors.TypeError(
-                          message="Cannot redefine non-configurable property: \{prop_display}",
-                        )
-                      }
-                    }
-
-                    // Non-configurable generic descriptor (no accessor, no data fields)
-                    if not(existing_is_accessor) && not(is_accessor) == false &&
-                      not(is_data) {
-                      if not(enumerable_ok && configurable_ok) {
-                        raise @errors.TypeError(
-                          message="Cannot redefine non-configurable property: \{prop_display}",
-                        )
-                      }
-                    }
-                  }
+                    },
+                    fn() { desc_props.get("value") },
+                  )
                 None =>
                   // Check extensibility when adding new property
                   if not(prop_exists) && not(data.extensible) {
@@ -2050,8 +1963,9 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           let descs = if args.length() > 1 { args[1] } else { Undefined }
           // Per ES spec, Object.defineProperties on non-object throws TypeError
+          // Array, Map, Set, Promise are JS objects
           match obj {
-            Object(_) => ()
+            Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) => ()
             _ =>
               raise @errors.TypeError(
                 message="Object.defineProperties called on non-object",
@@ -2146,66 +2060,28 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                       None => None
                     }
 
-                    // Non-configurable validation
+                    // Validate non-configurable constraints or extensibility
                     match existing_desc {
                       Some(existing) =>
-                        if not(existing.configurable) {
-                          let existing_is_accessor = existing.getter is Some(_) ||
-                            existing.setter is Some(_)
-                          if existing_is_accessor && is_data {
-                            raise @errors.TypeError(
-                              message="Cannot redefine non-configurable property: \{prop_name}",
-                            )
-                          }
-                          if not(existing_is_accessor) && is_accessor {
-                            raise @errors.TypeError(
-                              message="Cannot redefine non-configurable property: \{prop_name}",
-                            )
-                          }
-                          let enumerable_ok = match new_enumerable {
-                            Some(e) => e == existing.enumerable
-                            None => true
-                          }
-                          let configurable_ok = match new_configurable {
-                            Some(c) => c == existing.configurable
-                            None => true
-                          }
-                          if not(enumerable_ok && configurable_ok) {
-                            raise @errors.TypeError(
-                              message="Cannot redefine non-configurable property: \{prop_name}",
-                            )
-                          }
-                          if not(existing_is_accessor) && not(is_accessor) {
-                            let writable_ok = match new_writable {
-                              Some(w) =>
-                                if not(existing.writable) && w {
-                                  false
-                                } else {
-                                  true
-                                }
-                              None => true
+                        validate_non_configurable(
+                          existing,
+                          prop_name,
+                          is_accessor,
+                          is_data,
+                          has_value,
+                          new_writable,
+                          new_enumerable,
+                          new_configurable,
+                          new_getter,
+                          new_setter,
+                          fn() {
+                            match data.properties.get(prop_name) {
+                              Some(v) => v
+                              None => Undefined
                             }
-                            let value_ok = if not(existing.writable) &&
-                              has_value {
-                              match desc.properties.get("value") {
-                                Some(v) =>
-                                  match data.properties.get(prop_name) {
-                                    Some(old_v) =>
-                                      strict_equal_val(v, old_v)
-                                    None => false
-                                  }
-                                None => true
-                              }
-                            } else {
-                              true
-                            }
-                            if not(writable_ok && value_ok) {
-                              raise @errors.TypeError(
-                                message="Cannot redefine non-configurable property: \{prop_name}",
-                              )
-                            }
-                          }
-                        }
+                          },
+                          fn() { desc.properties.get("value") },
+                        )
                       None =>
                         if not(prop_exists) && not(data.extensible) {
                           raise @errors.TypeError(
@@ -3960,6 +3836,105 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
       }
     }
     _ => ()
+  }
+}
+
+///| Validate non-configurable property constraints.
+/// Throws TypeError if the proposed descriptor change violates invariants.
+fn validate_non_configurable(
+  existing : PropDescriptor,
+  prop_display : String,
+  is_accessor : Bool,
+  is_data : Bool,
+  has_value : Bool,
+  new_writable : Bool?,
+  new_enumerable : Bool?,
+  new_configurable : Bool?,
+  new_getter : Value?,
+  new_setter : Value?,
+  get_old_value : () -> Value,
+  get_new_value : () -> Value?,
+) -> Unit raise Error {
+  if existing.configurable {
+    return
+  }
+  let existing_is_accessor = existing.getter is Some(_) ||
+    existing.setter is Some(_)
+  // Cannot change between accessor and data
+  if existing_is_accessor && is_data {
+    raise @errors.TypeError(
+      message="Cannot redefine non-configurable property: \{prop_display}",
+    )
+  }
+  if not(existing_is_accessor) && is_accessor {
+    raise @errors.TypeError(
+      message="Cannot redefine non-configurable property: \{prop_display}",
+    )
+  }
+  let enumerable_ok = match new_enumerable {
+    Some(e) => e == existing.enumerable
+    None => true
+  }
+  let configurable_ok = match new_configurable {
+    Some(c) => c == existing.configurable
+    None => true
+  }
+  // Non-configurable accessor: validate getter/setter identity
+  if existing_is_accessor && is_accessor {
+    let getter_ok = match new_getter {
+      Some(g) =>
+        match existing.getter {
+          Some(eg) => strict_equal_val(g, eg)
+          None => g is Undefined
+        }
+      None => true
+    }
+    let setter_ok = match new_setter {
+      Some(s) =>
+        match existing.setter {
+          Some(es) => strict_equal_val(s, es)
+          None => s is Undefined
+        }
+      None => true
+    }
+    if not(enumerable_ok && configurable_ok && getter_ok && setter_ok) {
+      raise @errors.TypeError(
+        message="Cannot redefine non-configurable property: \{prop_display}",
+      )
+    }
+  }
+  // Non-configurable data: validate writable/value
+  if not(existing_is_accessor) && not(is_accessor) {
+    let writable_ok = match new_writable {
+      Some(w) =>
+        if not(existing.writable) && w {
+          false
+        } else {
+          true
+        }
+      None => true
+    }
+    let value_ok = if not(existing.writable) && has_value {
+      match get_new_value() {
+        Some(v) => strict_equal_val(v, get_old_value())
+        None => true
+      }
+    } else {
+      true
+    }
+    if not(writable_ok && enumerable_ok && configurable_ok && value_ok) {
+      raise @errors.TypeError(
+        message="Cannot redefine non-configurable property: \{prop_display}",
+      )
+    }
+  }
+  // Generic descriptor (no accessor/data fields)
+  if not(is_accessor) && not(is_data) {
+    if not(enumerable_ok && configurable_ok) {
+      raise @errors.TypeError(
+        message="Cannot redefine non-configurable property: \{prop_display}",
+      )
+    }
   }
 }
 
