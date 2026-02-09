@@ -1372,16 +1372,17 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 // Check if prop_name is a valid array index
                 let idx = @strconv.parse_int(prop_name) catch { _ => -1 }
                 if idx >= 0 && idx.to_string() == prop_name {
-                  // Set value at the given index
-                  let value = match desc_props.get("value") {
-                    Some(v) => v
-                    None => Undefined
+                  // Only write value if descriptor specifies one
+                  match desc_props.get("value") {
+                    Some(v) => {
+                      // Extend array if needed
+                      while arr_data.elements.length() <= idx {
+                        arr_data.elements.push(Undefined)
+                      }
+                      arr_data.elements[idx] = v
+                    }
+                    None => ()
                   }
-                  // Extend array if needed
-                  while arr_data.elements.length() <= idx {
-                    arr_data.elements.push(Undefined)
-                  }
-                  arr_data.elements[idx] = value
                 }
                 // Non-index properties on arrays: silently succeed
                 // (our Array representation doesn't support named props)
@@ -2198,10 +2199,6 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 }
                 match desc_val {
                   Object(desc) => {
-                    let value = match desc.properties.get("value") {
-                      Some(v) => v
-                      None => Undefined
-                    }
                     if prop_name == "length" {
                       match desc.properties.get("value") {
                         Some(Number(n)) => {
@@ -2229,10 +2226,16 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                         _ => -1
                       }
                       if idx >= 0 && idx.to_string() == prop_name {
-                        while arr_data.elements.length() <= idx {
-                          arr_data.elements.push(Undefined)
+                        // Only write value if descriptor specifies one
+                        match desc.properties.get("value") {
+                          Some(v) => {
+                            while arr_data.elements.length() <= idx {
+                              arr_data.elements.push(Undefined)
+                            }
+                            arr_data.elements[idx] = v
+                          }
+                          None => ()
                         }
-                        arr_data.elements[idx] = value
                       }
                     }
                   }
