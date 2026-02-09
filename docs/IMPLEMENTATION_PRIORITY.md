@@ -81,6 +81,12 @@ Key changes:
 2. **P4b**: `getOwnPropertyDescriptor` now supports Symbol keys and returns correct descriptors for function built-in properties (`length`, `name`, `prototype`). Function `prototype` property now has correct descriptor flags (`writable: true, enumerable: false, configurable: false`).
 3. **P4c**: `defineProperties` now throws TypeError on non-object target, validates non-configurable transitions, and only iterates enumerable own properties of the descriptors object. `defineProperty` now throws TypeError on non-object descriptors and accepts Array/Map/Set/Promise as valid JS object types for both target and descriptor arguments. Array targets support basic index and length property definition.
 
+**PR review fixes** (PR #30):
+1. `defineProperties` now accepts Array/Map/Set/Promise targets (was Object-only)
+2. Fixed dead code in non-configurable generic descriptor check (`not(is_accessor) == false` → correct logic)
+3. Added getter/setter identity validation in `defineProperties` for non-configurable accessor properties
+4. Extracted shared `validate_non_configurable` helper (~95 lines), eliminating ~150 lines of duplicated validation
+
 **Object test results**: 88.8% pass rate (2547/2868 executed) on `built-ins/Object`.
 
 ---
@@ -165,8 +171,9 @@ Focus:
 | P2 | Destructuring defaults | +500–644 | — | — |
 | P3 | Remaining parser gaps | +200–285 | — | — |
 | **P0–P3 combined** | **All four phases** | **+1,500–2,025** | **+7,439** | **74.2%** |
+| P4 | Object descriptors + harness cascade | +500–1,500 | — | — |
 
-The actual gain (+7,439) far exceeded the projected range (+1,500–2,025) because:
+The actual gain from P0–P3 (+7,439) far exceeded the projected range (+1,500–2,025) because:
 1. Error message propagation (P0) unlocked many tests that were failing due to assertion format mismatches
 2. Generator method fixes (P1) cascaded through class and object expression tests
 3. Destructuring defaults (P2) fixed patterns used pervasively in test262 harness code

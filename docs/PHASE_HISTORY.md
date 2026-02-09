@@ -394,3 +394,58 @@ These are language-specific gotchas discovered during development:
 | Getter/setter arity validation | Getters=0, Setters=1 |
 | Global this extensible field | Set to true |
 | Skip lists sync | Both files synced |
+
+---
+
+## Phase 10: P4 Object Descriptor Compliance
+
+Comprehensive object descriptor compliance targeting the P4 milestone from [IMPLEMENTATION_PRIORITY.md](IMPLEMENTATION_PRIORITY.md). Focused on strict non-configurable invariants, Symbol key support, function property descriptors, and Array target handling.
+
+### P4a: Symbol Key Support in defineProperty
+
+**Problem**: `defineProperty` and `getOwnPropertyDescriptor` converted all property keys to strings via `.to_string()`, making Symbol-keyed property operations silently wrong.
+
+**Fix**:
+- `defineProperty`: Checks `prop_val is Symbol(_)` and routes to `data.symbol_properties` / `data.symbol_descriptors` instead of `data.properties` / `data.descriptors`
+- `getOwnPropertyDescriptor`: Same Symbol key detection; returns correct descriptors for Symbol-keyed properties including accessor descriptors
+- Full non-configurable/non-writable validation extended to Symbol-keyed properties
+
+### P4b: Function Property Descriptors
+
+**Problem**: `getOwnPropertyDescriptor` returned `undefined` for function built-in properties (`length`, `name`), and `prototype` had wrong descriptor flags (defaulted to all-true).
+
+**Fix**:
+- `getOwnPropertyDescriptor` on Object with `callable`: returns descriptors for `length` (param count, `{writable: false, enumerable: false, configurable: true}`), `name` (function name, same flags), and `prototype` (from existing property)
+- `make_func` / `make_func_ext` in `value.mbt`: `prototype` property now created with correct descriptor `{writable: true, enumerable: false, configurable: false}` per ES spec
+
+### P4c: defineProperties Validation + Array Targets
+
+**Problem**: `defineProperties` had no non-configurable validation, didn't throw TypeError on non-object targets, and iterated non-enumerable properties of the descriptor object. `defineProperty` rejected Array/Map/Set/Promise targets and descriptors despite them being valid JS objects.
+
+**Fix**:
+- `defineProperty`: Accepts `Array(_) | Map(_) | Set(_) | Promise(_)` as targets and descriptors
+- `defineProperty` on Array targets: handles index property setting and `length` changes (truncation/extension)
+- `defineProperties`: Throws TypeError on non-object target, only iterates enumerable own properties
+- Shared `validate_non_configurable` helper function (~95 lines) eliminates ~150 lines of duplicated validation logic between `defineProperty` and `defineProperties`
+
+### PR Review Fixes (PR #30)
+
+Addressed 4 review issues:
+1. **defineProperties Array targets**: Match pattern updated to `Object(_) | Array(_) | Map(_) | Set(_) | Promise(_)`
+2. **Dead code removal**: `not(existing_is_accessor) && not(is_accessor) == false` (always false due to precedence) replaced with correct generic descriptor check
+3. **Accessor identity checks**: `defineProperties` now validates getter/setter identity for non-configurable accessor properties, mirroring `defineProperty`
+4. **Shared validation helper**: Extracted `validate_non_configurable` used by both `defineProperty` and `defineProperties`
+
+### Test262 Results
+
+| Category | Passed | Failed | Skip | Rate |
+|----------|--------|--------|------|------|
+| built-ins/Object | 2,547 | 321 | 112 | 88.8% |
+
+### Files Changed
+
+- `interpreter/builtins_object.mbt` — defineProperty, getOwnPropertyDescriptor, defineProperties rewrite + shared validator (~+850/-520 lines)
+- `interpreter/value.mbt` — Function prototype descriptor initialization (+20 lines)
+- `docs/IMPLEMENTATION_PRIORITY.md` — P4 marked as done
+
+**Unit tests**: 658 total, 658 passed, 0 failed (no regressions)
