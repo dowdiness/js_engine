@@ -692,7 +692,14 @@ fn Parser::parse_array_pattern(self : Parser) -> @ast.Pattern raise Error {
       rest = Some(self.parse_pattern())
       break
     }
-    elements.push(Some(self.parse_pattern()))
+    let pat = self.parse_pattern()
+    // Check for default value: element = expr
+    if self.eat(Assign) {
+      let default_expr = self.parse_assignment()
+      elements.push(Some(DefaultPat(pat, default_expr)))
+    } else {
+      elements.push(Some(pat))
+    }
     if not(self.at(RBracket)) && not(self.at(DotDotDot)) {
       let _ = self.expect(Comma)
 

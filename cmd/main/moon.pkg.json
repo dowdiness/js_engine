@@ -5,6 +5,8 @@
       "path": "dowdiness/js_engine",
       "alias": "lib"
     },
-    "moonbitlang/core/env"
+    "moonbitlang/core/env",
+    "dowdiness/js_engine/interpreter",
+    "dowdiness/js_engine/errors"
   ]
 }

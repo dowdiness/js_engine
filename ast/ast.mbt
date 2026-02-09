@@ -154,6 +154,8 @@ pub(all) enum Pattern {
   IdentPat(String)
   ArrayPat(Array[Pattern?], Pattern?) // elements (None = hole), rest pattern
   ObjectPat(Array[PropPat], Pattern?) // properties, rest pattern
+  DefaultPat(Pattern, Expr) // pattern with default initializer: pat = expr
+  AssignTarget(Expr) // member expression target for destructuring assignment: [obj.x] = [1]
 } derive(Show, Eq)
 
 ///|

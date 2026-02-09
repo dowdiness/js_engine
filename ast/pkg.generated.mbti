@@ -144,6 +144,8 @@ pub(all) enum Pattern {
   IdentPat(String)
   ArrayPat(Array[Pattern?], Pattern?)
   ObjectPat(Array[PropPat], Pattern?)
+  DefaultPat(Pattern, Expr)
+  AssignTarget(Expr)
 }
 pub impl Eq for Pattern
 pub impl Show for Pattern

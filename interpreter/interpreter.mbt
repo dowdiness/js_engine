@@ -1190,6 +1190,8 @@ fn hoist_pattern(pattern : @ast.Pattern, env : Environment) -> Unit raise Error 
       if not(env.bindings.contains(name)) {
         env.def(name, Undefined, VarBinding)
       }
+    DefaultPat(inner_pat, _) => hoist_pattern(inner_pat, env)
+    AssignTarget(_) => () // member expressions don't need hoisting
     ArrayPat(elements, rest) => {
       for elem in elements {
         match elem {
@@ -1381,6 +1383,8 @@ fn hoist_pattern_tdz(
       if not(env.bindings.contains(name)) {
         env.def_tdz(name, kind)
       }
+    DefaultPat(inner_pat, _) => hoist_pattern_tdz(inner_pat, env, kind)
+    AssignTarget(_) => () // member expressions don't need TDZ hoisting
     ArrayPat(elements, rest) => {
       for elem in elements {
         match elem {
@@ -1424,6 +1428,18 @@ fn Interpreter::bind_pattern(
       } else {
         env.def(name, value, bk)
       }
+    DefaultPat(inner_pat, default_expr) => {
+      let final_val : Value = if value is Undefined {
+        self.eval_expr(default_expr, env)
+      } else {
+        value
+      }
+      self.bind_pattern(inner_pat, final_val, env, bk)
+    }
+    AssignTarget(expr) =>
+      // Member expression targets are only valid in assignment destructuring,
+      // not in binding declarations (let/const/var). Delegate to assign_to_expr.
+      self.assign_to_expr(expr, value, env)
     ArrayPat(elements, rest) => {
       let arr_elements : Array[Value] = match value {
         Array(data) => data.elements
@@ -1628,6 +1644,17 @@ fn Interpreter::assign_pattern(
 ) -> Unit raise Error {
   match pattern {
     IdentPat(name) => env.assign(name, value)
+    DefaultPat(inner_pat, default_expr) => {
+      let final_val : Value = if value is Undefined {
+        self.eval_expr(default_expr, env)
+      } else {
+        value
+      }
+      self.assign_pattern(inner_pat, final_val, env)
+    }
+    AssignTarget(expr) =>
+      // Member expression assignment target: [obj.x] = [1]
+      self.assign_to_expr(expr, value, env)
     ArrayPat(elements, rest) => {
       let arr_elements : Array[Value] = match value {
         Array(data) => data.elements
@@ -5940,6 +5967,8 @@ fn Interpreter::extract_pattern_export_names(
 ) -> Unit {
   match pattern {
     IdentPat(name) => self.module_export_bindings.push((name, name))
+    DefaultPat(inner_pat, _) => self.extract_pattern_export_names(inner_pat)
+    AssignTarget(_) => () // member expressions don't export names
     ArrayPat(elements, rest) => {
       for elem in elements {
         match elem {

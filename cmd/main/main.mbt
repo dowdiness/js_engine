@@ -24,6 +24,14 @@ fn main {
           }
         }
       } catch {
+        @interpreter.JsException(value) => println("\{value}")
+        @errors.TypeError(message~) => println("TypeError: \{message}")
+        @errors.ReferenceError(message~) => println("ReferenceError: \{message}")
+        @errors.SyntaxError(message~) => println("SyntaxError: \{message}")
+        @errors.RangeError(message~) => println("RangeError: \{message}")
+        @errors.URIError(message~) => println("URIError: \{message}")
+        @errors.EvalError(message~) => println("EvalError: \{message}")
+        @errors.InternalError(message~) => println("InternalError: \{message}")
         Failure::Failure(msg) => println("Error: \{msg}")
         e => println("Error: \{e}")
       }

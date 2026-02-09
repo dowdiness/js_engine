@@ -290,6 +290,83 @@ Overall: 11,333 → 11,678 passing (+345)
 
 ---
 
+## Phase 9: P0–P3 Spec Compliance Sweep (74.17% pass rate)
+
+Massive compliance push targeting four priority areas from failure analysis. Jumped from 11,678 to 19,117 passing tests (+7,439).
+
+### P0: JsException Error Diagnostics
+
+**Problem**: All uncaught JS exceptions printed as the opaque string `Error: dowdiness/js_engine/interpreter.JsException.JsException`, making CI failures undiagnosable.
+
+**Fix**: Rewrote `cmd/main/main.mbt` error handler to catch `JsException(value)` and all `JsError` variants (`TypeError`, `ReferenceError`, `SyntaxError`, `RangeError`, `URIError`, `EvalError`, `InternalError`) with proper formatting.
+
+**Impact**: No direct pass-rate change, but made every subsequent CI run actionable.
+
+### P1: Generator Methods in Class/Object Bodies (~830–1,096 tests)
+
+**Problem**: `SyntaxError: Expected method name at line X, col Y` when parsing `class C { *gen() { yield 1; } }` or `{ *gen() { yield } }`.
+
+**Fix**:
+- `parse_class_method()`: Added `is_generator = self.eat(Star)` after static check, wrapped get/set detection in `if not(is_generator)`, produces `GeneratorExpr`/`GeneratorExprExt` when generator
+- `parse_object_literal()`: Detects `*` before method name, parses as generator with `push_generator_context(true)` for yield expression support
+- Both paths include full keyword-to-name mapping (40+ keywords as valid method names)
+
+### P2: Destructuring Defaults (~644 tests)
+
+**Problem**: `SyntaxError: Expected Comma, got Assign` for `[a = 1] = arr` and runtime failures for `{x = 5} = obj`.
+
+**Fix**:
+- AST: Added `DefaultPat(Pattern, Expr)` variant to `Pattern` enum
+- Parser: `parse_array_pattern()` handles `= expr` after each element
+- Parser: `expr_to_pattern()` converts `Assign(name, expr)` to `DefaultPat(IdentPat(name), expr)` and `DestructureAssign(expr, default)` to `DefaultPat(pattern, default)`
+- Interpreter: All 5 pattern-matching sites (`bind_pattern`, `assign_pattern`, `hoist_pattern`, `hoist_pattern_tdz`, `extract_pattern_export_names`) updated for `DefaultPat`
+- Runtime evaluates default expression when bound value is `undefined`
+
+### P3: Parser Cleanup (~285 tests)
+
+**Problem**: `Invalid destructuring pattern` and `Invalid arrow function parameter list` errors across various contexts.
+
+**Fixes**:
+1. **Object destructuring `{a: b = 1}` bug**: Removed buggy special `Assign` case in ObjectLit handler of `expr_to_pattern` that was binding to property key instead of assignment target
+2. **Array elision holes**: `UndefinedLit` → `None` in array pattern conversion
+3. **`AssignTarget(Expr)` pattern**: New Pattern variant for member expression targets in destructuring assignment (`[obj.x] = [1]`)
+4. **`Of` as contextual identifier**: Added to `expect_ident()` and `parse_primary()`
+5. **Complex arrow params**: Created `expr_to_ext_arrow_params()` fallback for destructuring/default patterns in arrow function parameters
+6. All 5 interpreter pattern-matching sites updated for `AssignTarget`
+
+### PR Review Fixes
+
+Addressed CodeRabbit review feedback:
+1. **Rest-element-must-be-last validation**: `rest_seen` flag in `expr_to_pattern` raises `SyntaxError` if elements follow a rest/spread element in array or object destructuring
+2. **`Yield` keyword mapping**: Added `Yield => Some("yield")` to all three keyword-to-name match blocks so `yield` is accepted as a method/property name
+
+### Test262 Results
+
+| Category | Passed | Failed | Rate |
+|----------|--------|--------|------|
+| language/expressions | 4,637 | 1,062 | 81.4% |
+| language/statements | 3,130 | 1,187 | 72.5% |
+| built-ins/Object | 2,834 | 466 | 85.9% |
+| built-ins/Array | 2,182 | 701 | 75.7% |
+| built-ins/String | 1,050 | 108 | 90.7% |
+| built-ins/Date | 511 | 23 | 95.7% |
+| built-ins/NativeErrors | 82 | 0 | 100.0% |
+
+Overall: 11,678 → 19,117 passing (+7,439), 45.27% → 74.17%
+
+### Files Changed
+
+- `cmd/main/main.mbt` — Error handler rewrite for JsException/JsError
+- `cmd/main/moon.pkg.json` — Added interpreter and errors imports
+- `ast/ast.mbt` — `DefaultPat`, `AssignTarget` pattern variants
+- `ast/pkg.generated.mbti` — Updated interface file
+- `parser/expr.mbt` — Generator methods, destructuring patterns, arrow params, keyword mappings
+- `parser/parser.mbt` — `Of` in `expect_ident()`
+- `parser/stmt.mbt` — Array pattern defaults
+- `interpreter/interpreter.mbt` — `DefaultPat`, `AssignTarget` in all 5 pattern sites
+
+---
+
 ## MoonBit-Specific Workarounds
 
 These are language-specific gotchas discovered during development:

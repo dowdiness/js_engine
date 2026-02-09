@@ -2,7 +2,7 @@
 
 ## Current Status
 
-**Test262**: 11,678 / 25,794 passed (45.27%) | 22,200 skipped | 14,116 failed | 144 timeouts
+**Test262**: 19,117 / 25,775 passed (74.17%) | 22,200 skipped | 6,658 failed | 164 timeouts
 
 **Unit tests**: 658 total, 658 passed, 0 failed
 
@@ -22,6 +22,7 @@
 | 8B | +17 | 11,333 | Test262 harness functions (print, $262, Function constructor) |
 | 8C | +345 | 11,678 | Date object (constructor, prototype methods, static methods) |
 | JS Target | — | — | JS backend support, Error toString fix, backend-specific argv handling |
+| 9 | +7,439 | 19,117 | P0-P3: error diagnostics, generator methods, destructuring defaults, parser cleanup |
 
 For detailed implementation notes on Phases 1-6, see [docs/PHASE_HISTORY.md](docs/PHASE_HISTORY.md).
 
@@ -29,41 +30,52 @@ For detailed implementation notes on Phases 1-6, see [docs/PHASE_HISTORY.md](doc
 
 ## Failure Breakdown
 
-### Parser/Syntax (~1,500 tests)
+### Failure Breakdown by Category (6,658 remaining failures)
 
-| Category | Count | Difficulty |
-|----------|-------|------------|
-| Unicode escapes in identifiers/strings | 479 | ✅ Done (7B) |
-| Bare `for (x of ...)` without let/var | 225 | ✅ Done (7C) |
-| Generator functions (`function*`, `yield`) | 160 | ✅ Done (8) |
-| `get`/`set` as regular identifiers | 127 | ✅ Done (7D) |
-| Destructuring defaults in more contexts | ~100 | Medium |
-| Async $DONE not called (event loop) | 98 | Hard |
-| Additional destructuring pattern contexts | 122 | Medium |
-| Other syntax gaps | ~260 | Varies |
+Top failing categories from the latest CI run:
 
-### Runtime/Semantic (~12,476 tests)
+| Category | Pass | Fail | Rate | Priority |
+|----------|------|------|------|----------|
+| language/expressions | 4,637 | 1,062 | 81.4% | Medium |
+| language/statements | 3,130 | 1,187 | 72.5% | Medium |
+| built-ins/Array | 2,182 | 701 | 75.7% | Medium |
+| built-ins/Object | 2,834 | 466 | 85.9% | Medium |
+| annexB/language | 254 | 565 | 31.0% | Low |
+| built-ins/Promise | 206 | 382 | 35.0% | Medium |
+| built-ins/DataView | 7 | 304 | 2.3% | Hard (needs TypedArray) |
+| built-ins/RegExp | 598 | 229 | 72.3% | Hard |
+| language/eval-code | 141 | 205 | 40.8% | Hard |
+| language/module-code | 108 | 190 | 36.2% | Medium |
+| language/literals | 225 | 111 | 67.0% | Medium |
+| built-ins/String | 1,050 | 108 | 90.7% | Low |
+| built-ins/Function | 327 | 103 | 76.0% | Medium |
+| built-ins/Number | 265 | 55 | 82.8% | Easy |
+| language/identifiers | 154 | 54 | 74.0% | Medium |
+| language/block-scope | 47 | 62 | 43.1% | Medium |
+| built-ins/ArrayBuffer | 10 | 51 | 16.4% | Hard (needs TypedArray) |
+| language/statementList | 32 | 48 | 40.0% | Medium |
+| language/white-space | 27 | 40 | 40.3% | Easy |
+| built-ins/Map | 136 | 36 | 79.1% | Medium |
 
-| Category | Count | Priority |
-|----------|-------|----------|
-| Object.defineProperty/defineProperties | 1,350 | High |
-| language/expressions | 1,233 | Medium |
-| language/statements | 1,111 | Medium |
-| staging/sm (SpiderMonkey) | 841 | Low |
-| String.prototype | 681 | Medium |
-| RegExp | 671 | Hard |
-| annexB/language (legacy) | 608 | Low |
-| Date | 534 | ✅ Done (8C) — 249 pass (46.6%) |
-| Promise | 446 | Medium |
-| Function | 320 | Medium |
-| DataView (needs TypedArray) | 311 | Hard |
-| eval-code | 205 | Hard |
-| Object.getOwnPropertyDescriptor | 193 | High |
-| Number | 187 | Easy |
-| Object.create | 176 | High |
-| Map/WeakMap | 169 | Medium |
-| Math | 134 | ✅ Done (7E) |
-| JSON | 59 | Medium |
+### High-Performing Categories (>90% pass rate)
+
+| Category | Pass | Fail | Rate |
+|----------|------|------|------|
+| built-ins/NativeErrors | 82 | 0 | 100.0% |
+| language/punctuators | 11 | 0 | 100.0% |
+| language/source-text | 1 | 0 | 100.0% |
+| built-ins/parseFloat | 52 | 1 | 98.1% |
+| built-ins/parseInt | 53 | 1 | 98.1% |
+| built-ins/Math | 280 | 6 | 97.9% |
+| built-ins/Set | 171 | 6 | 96.6% |
+| language/keywords | 24 | 1 | 96.0% |
+| built-ins/Date | 511 | 23 | 95.7% |
+| language/arguments-object | 153 | 8 | 95.0% |
+| language/computed-property-names | 45 | 3 | 93.8% |
+| language/asi | 95 | 7 | 93.1% |
+| built-ins/JSON | 105 | 8 | 92.9% |
+| built-ins/String | 1,050 | 108 | 90.7% |
+| language/rest-parameters | 10 | 1 | 90.9% |
 
 ---
 
@@ -178,7 +190,7 @@ For the original implementation plan, see [docs/GENERATOR_PLAN.md](docs/GENERATO
 
 ---
 
-## Phase 8+ Targets (reaching 15,000+)
+## Phase 8+ Targets (reaching 20,000+)
 
 ### Generators — DONE
 
@@ -221,7 +233,19 @@ Also improved JSON.stringify to:
 - Invoke any callable `toJSON` (not just MethodCallable) by promoting to InterpreterCallable
 - Filter internal `[[...]]` properties from serialization
 
-**Test262**: built-ins/Date 249/534 passing (46.6%), 60 skipped
+**Test262**: built-ins/Date 511/534 passing (95.7%), 60 skipped
+
+### 9: P0–P3 Spec Compliance Sweep (+7,439 tests) — DONE
+
+Massive compliance push addressing four priority areas identified in failure analysis:
+
+- **P0: Error diagnostics** — `cmd/main/main.mbt` now catches `JsException(value)` and all `JsError` variants (TypeError, ReferenceError, SyntaxError, etc.) with proper formatting instead of printing opaque MoonBit error types. Makes CI failures actionable.
+- **P1: Generator methods in class/object bodies** — `parse_class_method()` and `parse_object_literal()` now recognize `*` for generator method definitions (`class C { *gen() { yield 1; } }`, `{ *gen() { yield } }`). Full keyword-to-name mapping for method names.
+- **P2: Destructuring defaults** — Added `DefaultPat(Pattern, Expr)` to the Pattern enum. Parser handles `= expr` after destructuring elements. Interpreter evaluates defaults when source value is `undefined`.
+- **P3: Parser cleanup** — Fixed `{a: b = 1}` binding to correct name (`b` not `a`). Added `AssignTarget(Expr)` for member expression targets in destructuring assignment. Added `Of` as contextual identifier. Arrow function parameter fallback for complex patterns via `expr_to_ext_arrow_params`. Array elision holes.
+- **PR review fixes** — Rest-element-must-be-last validation in destructuring patterns. `Yield` keyword accepted as method/property name in all keyword-to-name mappings.
+
+**Test262**: 11,678 → 19,117 passing (45.27% → 74.17%)
 
 ### async/await (~500 tests)
 
@@ -231,12 +255,13 @@ Syntactic sugar over Promises + generator-like suspension. Now unblocked by gene
 
 | Feature | Impact | Notes |
 |---------|--------|-------|
-| RegExp improvements | ~671 | Capture groups, backreferences, unicode/sticky flags |
+| RegExp improvements | ~229 fail | Capture groups, backreferences, unicode/sticky flags |
 | `with` statement | ~150 | Dynamic scope injection |
-| eval() improvements | ~205 | Direct vs indirect eval semantics |
-| Date object | ~534 | ✅ Done (8C) — 249/534 pass (46.6%) |
-| WeakMap/WeakSet | ~200 | Reference-based collections |
+| eval() improvements | ~205 fail | Direct vs indirect eval semantics |
+| Date object | — | ✅ Done (8C+9) — 511/534 pass (95.7%) |
+| WeakMap/WeakSet | ~59 fail | Reference-based collections |
 | Proxy/Reflect | ~500 | Meta-programming |
+| Promise improvements | ~382 fail | Iterator protocol, thenable assimilation, microtask ordering |
 
 ---
 
