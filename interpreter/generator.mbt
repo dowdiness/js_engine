@@ -145,7 +145,7 @@ fn init_generator_prototype() -> Value {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("next", fn(ip, this_val, args) {
+      InterpreterCallable("next", fn(ip, this_val, args) raise {
         let arg = if args.length() > 0 { args[0] } else { Undefined }
         generator_resume(ip, this_val, Next(arg))
       }),
@@ -169,7 +169,7 @@ fn init_generator_prototype() -> Value {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("throw", fn(ip, this_val, args) {
+      InterpreterCallable("throw", fn(ip, this_val, args) raise {
         let arg = if args.length() > 0 { args[0] } else { Undefined }
         generator_resume(ip, this_val, Throw(arg))
       }),
@@ -193,7 +193,7 @@ fn init_generator_prototype() -> Value {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("return", fn(ip, this_val, args) {
+      InterpreterCallable("return", fn(ip, this_val, args) raise {
         let arg = if args.length() > 0 { args[0] } else { Undefined }
         generator_resume(ip, this_val, Return(arg))
       }),

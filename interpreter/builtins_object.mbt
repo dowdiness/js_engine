@@ -369,7 +369,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => Array({ elements: [] })
           }
         }),
-        "create": make_native_func("create", fn(args) {
+        "create": make_native_func("create", fn(args) raise {
           let proto = if args.length() > 0 { args[0] } else { Null }
           let obj = Object({
             properties: {},
@@ -402,7 +402,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 // Objects have properties field
                 match obj {
                   Object(data) =>
-                    desc_obj.properties.each(fn(prop_name, desc_val) {
+                    desc_obj.properties.each(fn(prop_name, desc_val) raise {
                       match desc_val {
                         Object(desc) => {
                           let has_get = desc.properties.contains("get")
@@ -522,7 +522,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 // Promises also have properties field
                 match obj {
                   Object(data) =>
-                    desc_obj.properties.each(fn(prop_name, desc_val) {
+                    desc_obj.properties.each(fn(prop_name, desc_val) raise {
                       match desc_val {
                         Object(desc) => {
                           let has_get = desc.properties.contains("get")
@@ -639,7 +639,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           obj
         }),
-        "assign": make_native_func("assign", fn(args) {
+        "assign": make_native_func("assign", fn(args) raise {
           let target = if args.length() > 0 { args[0] } else { Undefined }
           match target {
             Object(data) => {
@@ -698,7 +698,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                   // Regular objects have properties and descriptors
                   Object(src) => {
                     // Copy enumerable string properties
-                    src.properties.each(fn(k, v) {
+                    src.properties.each(fn(k, v) raise {
                       let enumerable = match src.descriptors.get(k) {
                         Some(d) => d.enumerable
                         None => true
@@ -726,7 +726,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                       }
                     })
                     // Copy enumerable symbol properties
-                    src.symbol_properties.each(fn(sym_id, v) {
+                    src.symbol_properties.each(fn(sym_id, v) raise {
                       let enumerable = match
                         src.symbol_descriptors.get(sym_id) {
                         Some(d) => d.enumerable
@@ -759,7 +759,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                   // Promises have properties but no descriptors
                   Promise(src) => {
                     // Copy all string properties (no descriptors to check)
-                    src.properties.each(fn(k, v) {
+                    src.properties.each(fn(k, v) raise {
                       let can_write = match data.descriptors.get(k) {
                         Some(d) => d.writable
                         None => true
@@ -778,7 +778,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                       data.properties[k] = v
                     })
                     // Copy symbol properties
-                    src.symbol_properties.each(fn(sym_id, v) {
+                    src.symbol_properties.each(fn(sym_id, v) raise {
                       let can_write = match
                         data.symbol_descriptors.get(sym_id) {
                         Some(d) => d.writable
@@ -1048,7 +1048,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             }
           },
         ),
-        "defineProperty": make_native_func("defineProperty", fn(args) {
+        "defineProperty": make_native_func("defineProperty", fn(args) raise {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           let prop_val = if args.length() > 1 { args[1] } else { Undefined }
           let descriptor = if args.length() > 2 { args[2] } else { Undefined }
@@ -1845,7 +1845,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           let y = if args.length() > 1 { args[1] } else { Undefined }
           Bool(same_value(x, y))
         }),
-        "fromEntries": make_native_func("fromEntries", fn(args) {
+        "fromEntries": make_native_func("fromEntries", fn(args) raise {
           // Object.fromEntries() - create object from iterable of key-value pairs
           let iterable = if args.length() > 0 { args[0] } else { Undefined }
           let properties : Map[String, Value] = {}
@@ -1931,7 +1931,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => Bool(false)
           }
         }),
-        "setPrototypeOf": make_native_func("setPrototypeOf", fn(args) {
+        "setPrototypeOf": make_native_func("setPrototypeOf", fn(args) raise {
           // Object.setPrototypeOf(obj, prototype)
           // Sets the prototype of the specified object
           let obj = if args.length() > 0 { args[0] } else { Undefined }
@@ -1960,7 +1960,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           obj
         }),
-        "defineProperties": make_native_func("defineProperties", fn(args) {
+        "defineProperties": make_native_func("defineProperties", fn(args) raise {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           let descs = if args.length() > 1 { args[1] } else { Undefined }
           // Per ES spec, Object.defineProperties on non-object throws TypeError
@@ -1975,7 +1975,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           match (obj, descs) {
             (Object(data), Object(desc_obj)) =>
               // Only iterate enumerable own properties of descriptors object
-              desc_obj.properties.each(fn(prop_name, desc_val) {
+              desc_obj.properties.each(fn(prop_name, desc_val) raise {
                 let desc_enumerable = match
                   desc_obj.descriptors.get(prop_name) {
                   Some(d) => d.enumerable
@@ -2188,7 +2188,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               })
             (Array(arr_data), Object(desc_obj)) =>
               // Handle defineProperties on Array targets
-              desc_obj.properties.each(fn(prop_name, desc_val) {
+              desc_obj.properties.each(fn(prop_name, desc_val) raise {
                 let desc_enumerable = match
                   desc_obj.descriptors.get(prop_name) {
                   Some(d) => d.enumerable
@@ -2301,7 +2301,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("push", fn(this_val, args) {
+      MethodCallable("push", fn(this_val, args) raise {
         match this_val {
           Array(arr) => {
             for arg in args {
@@ -2323,7 +2323,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("pop", fn(this_val, _args) {
+      MethodCallable("pop", fn(this_val, _args) raise {
         match this_val {
           Array(arr) =>
             if arr.elements.length() == 0 {
@@ -2345,7 +2345,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("shift", fn(this_val, _args) {
+      MethodCallable("shift", fn(this_val, _args) raise {
         match this_val {
           Array(arr) => {
             if arr.elements.length() == 0 {
@@ -2379,7 +2379,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("unshift", fn(this_val, args) {
+      MethodCallable("unshift", fn(this_val, args) raise {
         match this_val {
           Array(arr) => {
             let old : Array[Value] = []
@@ -2443,7 +2443,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("indexOf", fn(this_val, args) {
+      MethodCallable("indexOf", fn(this_val, args) raise {
         let len = to_array_like_length(this_val)
         let search = if args.length() > 0 { args[0] } else { Undefined }
         let from_idx = if args.length() > 1 {
@@ -2481,7 +2481,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("lastIndexOf", fn(this_val, args) {
+      MethodCallable("lastIndexOf", fn(this_val, args) raise {
         let len = to_array_like_length(this_val)
         let search = if args.length() > 0 { args[0] } else { Undefined }
         let start = if args.length() > 1 {
@@ -2516,7 +2516,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("includes", fn(this_val, args) {
+      MethodCallable("includes", fn(this_val, args) raise {
         let len = to_array_like_length(this_val)
         let search = if args.length() > 0 { args[0] } else { Undefined }
         let from_idx = if args.length() > 1 {
@@ -2552,7 +2552,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("slice", fn(this_val, args) {
+      MethodCallable("slice", fn(this_val, args) raise {
         let alen = to_array_like_length(this_val)
         let mut start = if args.length() > 0 {
           to_number(args[0]).to_int()
@@ -2635,7 +2635,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("reverse", fn(this_val, _args) {
+      MethodCallable("reverse", fn(this_val, _args) raise {
         match this_val {
           Array(arr) => {
             arr.elements.rev_in_place()
@@ -2655,7 +2655,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("fill", fn(this_val, args) {
+      MethodCallable("fill", fn(this_val, args) raise {
         match this_val {
           Array(arr) => {
             let fill_val = if args.length() > 0 { args[0] } else { Undefined }
@@ -2720,7 +2720,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("at", fn(this_val, args) {
+      MethodCallable("at", fn(this_val, args) raise {
         let len = to_array_like_length(this_val)
         let idx = if args.length() > 0 {
           to_number(args[0]).to_int()
@@ -2770,7 +2770,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("forEach", fn(interp, this_val, args) {
+      InterpreterCallable("forEach", fn(interp, this_val, args) raise {
         let callback = if args.length() > 0 { args[0] } else { Undefined }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
@@ -2803,7 +2803,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("map", fn(interp, this_val, args) {
+      InterpreterCallable("map", fn(interp, this_val, args) raise {
         let callback = if args.length() > 0 { args[0] } else { Undefined }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
@@ -2839,7 +2839,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("filter", fn(interp, this_val, args) {
+      InterpreterCallable("filter", fn(interp, this_val, args) raise {
         let callback = if args.length() > 0 { args[0] } else { Undefined }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
@@ -2872,7 +2872,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("reduce", fn(interp, this_val, args) {
+      InterpreterCallable("reduce", fn(interp, this_val, args) raise {
         let callback = if args.length() > 0 { args[0] } else { Undefined }
         let loc = @token.Loc::default()
         let len = to_array_like_length(this_val)
@@ -2917,7 +2917,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("reduceRight", fn(interp, this_val, args) {
+      InterpreterCallable("reduceRight", fn(interp, this_val, args) raise {
         let callback = if args.length() > 0 { args[0] } else { Undefined }
         let loc = @token.Loc::default()
         let len = to_array_like_length(this_val)
@@ -2962,7 +2962,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("find", fn(interp, this_val, args) {
+      InterpreterCallable("find", fn(interp, this_val, args) raise {
         let callback = if args.length() > 0 { args[0] } else { Undefined }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
@@ -2992,7 +2992,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("findIndex", fn(interp, this_val, args) {
+      InterpreterCallable("findIndex", fn(interp, this_val, args) raise {
         let callback = if args.length() > 0 { args[0] } else { Undefined }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
@@ -3022,7 +3022,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("findLast", fn(interp, this_val, args) {
+      InterpreterCallable("findLast", fn(interp, this_val, args) raise {
         let callback = if args.length() > 0 { args[0] } else { Undefined }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
@@ -3052,7 +3052,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("findLastIndex", fn(interp, this_val, args) {
+      InterpreterCallable("findLastIndex", fn(interp, this_val, args) raise {
         let callback = if args.length() > 0 { args[0] } else { Undefined }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
@@ -3082,7 +3082,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("every", fn(interp, this_val, args) {
+      InterpreterCallable("every", fn(interp, this_val, args) raise {
         let callback = if args.length() > 0 { args[0] } else { Undefined }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
@@ -3117,7 +3117,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("some", fn(interp, this_val, args) {
+      InterpreterCallable("some", fn(interp, this_val, args) raise {
         let callback = if args.length() > 0 { args[0] } else { Undefined }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
@@ -3152,7 +3152,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("sort", fn(interp, this_val, args) {
+      InterpreterCallable("sort", fn(interp, this_val, args) raise {
         match this_val {
           Array(arr) => {
             if args.length() > 0 {
@@ -3241,7 +3241,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("flat", fn(this_val, args) {
+      MethodCallable("flat", fn(this_val, args) raise {
         match this_val {
           Array(arr) => {
             let depth = if args.length() > 0 {
@@ -3267,7 +3267,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("flatMap", fn(interp, this_val, args) {
+      InterpreterCallable("flatMap", fn(interp, this_val, args) raise {
         match this_val {
           Array(arr) => {
             let callback = if args.length() > 0 { args[0] } else { Undefined }
@@ -3305,7 +3305,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("splice", fn(this_val, args) {
+      MethodCallable("splice", fn(this_val, args) raise {
         match this_val {
           Array(arr) => {
             let alen = arr.elements.length()
@@ -3373,7 +3373,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("copyWithin", fn(this_val, args) {
+      MethodCallable("copyWithin", fn(this_val, args) raise {
         match this_val {
           Array(arr) => {
             let len = arr.elements.length()
@@ -3448,7 +3448,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("entries", fn(this_val, _args) {
+      MethodCallable("entries", fn(this_val, _args) raise {
         match this_val {
           Array(arr) => {
             let result : Array[Value] = []
@@ -3473,7 +3473,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("keys", fn(this_val, _args) {
+      MethodCallable("keys", fn(this_val, _args) raise {
         match this_val {
           Array(arr) => {
             let result : Array[Value] = []
@@ -3496,7 +3496,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("values", fn(this_val, _args) {
+      MethodCallable("values", fn(this_val, _args) raise {
         match this_val {
           Array(arr) => {
             // Return a copy to prevent mutation of the original
@@ -3520,7 +3520,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("toReversed", fn(this_val, _args) {
+      MethodCallable("toReversed", fn(this_val, _args) raise {
         match this_val {
           Array(arr) => {
             let result : Array[Value] = []
@@ -3543,7 +3543,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("toSorted", fn(interp, this_val, args) {
+      InterpreterCallable("toSorted", fn(interp, this_val, args) raise {
         match this_val {
           Array(arr) => {
             let result : Array[Value] = []
@@ -3636,7 +3636,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("toSpliced", fn(this_val, args) {
+      MethodCallable("toSpliced", fn(this_val, args) raise {
         match this_val {
           Array(arr) => {
             let len = arr.elements.length()
@@ -3692,7 +3692,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("with", fn(this_val, args) {
+      MethodCallable("with", fn(this_val, args) raise {
         match this_val {
           Array(arr) => {
             let idx = if args.length() > 0 {
@@ -3756,7 +3756,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("from", fn(interp, _this_val, args) {
+      InterpreterCallable("from", fn(interp, _this_val, args) raise {
         let source = if args.length() > 0 { args[0] } else { Undefined }
         let map_fn = if args.length() > 1 {
           match args[1] {
@@ -3844,7 +3844,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
       symbol_properties: {},
       prototype: Null,
       callable: Some(
-        NativeCallable("Array", fn(args) {
+        NativeCallable("Array", fn(args) raise {
           // Array constructor behavior
           if args.length() == 1 {
             match args[0] {

@@ -83,7 +83,7 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
     }
     "indexOf" => {
       let arr = data
-      make_native_func("indexOf", fn(args) {
+      make_native_func("indexOf", fn(args) raise {
         let search = if args.length() > 0 { args[0] } else { Undefined }
         let len = arr.elements.length()
         let from_idx = if args.length() > 1 {
@@ -115,7 +115,7 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
     }
     "lastIndexOf" => {
       let arr = data
-      make_native_func("lastIndexOf", fn(args) {
+      make_native_func("lastIndexOf", fn(args) raise {
         let search = if args.length() > 0 { args[0] } else { Undefined }
         let start = if args.length() > 1 {
           to_number(args[1]).to_int()
@@ -139,7 +139,7 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
     }
     "includes" => {
       let arr = data
-      make_native_func("includes", fn(args) {
+      make_native_func("includes", fn(args) raise {
         let search = if args.length() > 0 { args[0] } else { Undefined }
         let from_idx = if args.length() > 1 {
           to_number(args[1]).to_int()
@@ -167,7 +167,7 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
     }
     "slice" => {
       let arr = data
-      make_native_func("slice", fn(args) {
+      make_native_func("slice", fn(args) raise {
         let alen = arr.elements.length()
         let mut start = if args.length() > 0 {
           to_number(args[0]).to_int()
@@ -232,7 +232,7 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
     }
     "fill" => {
       let arr = data
-      make_native_func("fill", fn(args) {
+      make_native_func("fill", fn(args) raise {
         let fill_val = if args.length() > 0 { args[0] } else { Undefined }
         let alen = arr.elements.length()
         let mut start = if args.length() > 1 {
@@ -290,7 +290,7 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
     }
     "at" => {
       let arr = data
-      make_native_func("at", fn(args) {
+      make_native_func("at", fn(args) raise {
         // Array.prototype.at() - access element at index (supports negative)
         let idx = if args.length() > 0 {
           to_number(args[0]).to_int()
@@ -308,7 +308,7 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
     }
     "copyWithin" => {
       let arr = data
-      make_native_func("copyWithin", fn(args) {
+      make_native_func("copyWithin", fn(args) raise {
         // Array.prototype.copyWithin(target, start, end?)
         let len = arr.elements.length()
         let mut target = if args.length() > 0 {
@@ -410,7 +410,7 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
     }
     "splice" => {
       let arr = data
-      make_native_func("splice", fn(args) {
+      make_native_func("splice", fn(args) raise {
         let alen = arr.elements.length()
         let mut start = if args.length() > 0 {
           to_number(args[0]).to_int()
@@ -499,7 +499,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
         symbol_properties: {},
         prototype: Null,
         callable: Some(
-          InterpreterCallable("forEach", fn(interp, this_val, args) {
+          InterpreterCallable("forEach", fn(interp, this_val, args) raise {
             let _ = this_val
             let callback = if args.length() > 0 { args[0] } else { Undefined }
             let this_arg = if args.length() > 1 { args[1] } else { Undefined }
@@ -529,7 +529,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
         symbol_properties: {},
         prototype: Null,
         callable: Some(
-          InterpreterCallable("map", fn(interp, this_val, args) {
+          InterpreterCallable("map", fn(interp, this_val, args) raise {
             let _ = this_val
             let callback = if args.length() > 0 { args[0] } else { Undefined }
             let this_arg = if args.length() > 1 { args[1] } else { Undefined }
@@ -560,7 +560,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
         symbol_properties: {},
         prototype: Null,
         callable: Some(
-          InterpreterCallable("filter", fn(interp, this_val, args) {
+          InterpreterCallable("filter", fn(interp, this_val, args) raise {
             let _ = this_val
             let callback = if args.length() > 0 { args[0] } else { Undefined }
             let this_arg = if args.length() > 1 { args[1] } else { Undefined }
@@ -593,7 +593,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
         symbol_properties: {},
         prototype: Null,
         callable: Some(
-          InterpreterCallable("reduce", fn(interp, this_val, args) {
+          InterpreterCallable("reduce", fn(interp, this_val, args) raise {
             let _ = this_val
             let callback = if args.length() > 0 { args[0] } else { Undefined }
             let loc = @token.Loc::default()
@@ -634,7 +634,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
         symbol_properties: {},
         prototype: Null,
         callable: Some(
-          InterpreterCallable("reduceRight", fn(interp, this_val, args) {
+          InterpreterCallable("reduceRight", fn(interp, this_val, args) raise {
             let _ = this_val
             let callback = if args.length() > 0 { args[0] } else { Undefined }
             let loc = @token.Loc::default()
@@ -675,7 +675,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
         symbol_properties: {},
         prototype: Null,
         callable: Some(
-          InterpreterCallable("find", fn(interp, this_val, args) {
+          InterpreterCallable("find", fn(interp, this_val, args) raise {
             let _ = this_val
             let callback = if args.length() > 0 { args[0] } else { Undefined }
             let this_arg = if args.length() > 1 { args[1] } else { Undefined }
@@ -707,7 +707,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
         symbol_properties: {},
         prototype: Null,
         callable: Some(
-          InterpreterCallable("findIndex", fn(interp, this_val, args) {
+          InterpreterCallable("findIndex", fn(interp, this_val, args) raise {
             let _ = this_val
             let callback = if args.length() > 0 { args[0] } else { Undefined }
             let this_arg = if args.length() > 1 { args[1] } else { Undefined }
@@ -739,7 +739,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
         symbol_properties: {},
         prototype: Null,
         callable: Some(
-          InterpreterCallable("every", fn(interp, this_val, args) {
+          InterpreterCallable("every", fn(interp, this_val, args) raise {
             let _ = this_val
             let callback = if args.length() > 0 { args[0] } else { Undefined }
             let this_arg = if args.length() > 1 { args[1] } else { Undefined }
@@ -771,7 +771,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
         symbol_properties: {},
         prototype: Null,
         callable: Some(
-          InterpreterCallable("some", fn(interp, this_val, args) {
+          InterpreterCallable("some", fn(interp, this_val, args) raise {
             let _ = this_val
             let callback = if args.length() > 0 { args[0] } else { Undefined }
             let this_arg = if args.length() > 1 { args[1] } else { Undefined }
@@ -803,7 +803,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
         symbol_properties: {},
         prototype: Null,
         callable: Some(
-          InterpreterCallable("findLast", fn(interp, this_val, args) {
+          InterpreterCallable("findLast", fn(interp, this_val, args) raise {
             let _ = this_val
             let callback = if args.length() > 0 { args[0] } else { Undefined }
             let this_arg = if args.length() > 1 { args[1] } else { Undefined }
@@ -835,7 +835,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
         symbol_properties: {},
         prototype: Null,
         callable: Some(
-          InterpreterCallable("findLastIndex", fn(interp, this_val, args) {
+          InterpreterCallable("findLastIndex", fn(interp, this_val, args) raise {
             let _ = this_val
             let callback = if args.length() > 0 { args[0] } else { Undefined }
             let this_arg = if args.length() > 1 { args[1] } else { Undefined }
@@ -878,7 +878,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
         symbol_properties: {},
         prototype: Null,
         callable: Some(
-          InterpreterCallable("toSorted", fn(interp, this_val, args) {
+          InterpreterCallable("toSorted", fn(interp, this_val, args) raise {
             let _ = this_val
             // Create a copy of the array
             let result : Array[Value] = []
@@ -970,7 +970,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
     }
     "toSpliced" => {
       let arr = data
-      make_native_func("toSpliced", fn(args) {
+      make_native_func("toSpliced", fn(args) raise {
         // Non-mutating splice
         let len = arr.elements.length()
         let mut start = if args.length() > 0 {
@@ -1017,7 +1017,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
     }
     "with" => {
       let arr = data
-      make_native_func("with", fn(args) {
+      make_native_func("with", fn(args) raise {
         // Non-mutating element replacement
         let idx = if args.length() > 0 {
           to_number(args[0]).to_int()
@@ -1043,7 +1043,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
     }
     "flat" => {
       let arr = data
-      make_native_func("flat", fn(args) {
+      make_native_func("flat", fn(args) raise {
         let depth = if args.length() > 0 {
           to_number(args[0]).to_int()
         } else {
@@ -1061,7 +1061,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
         symbol_properties: {},
         prototype: Null,
         callable: Some(
-          InterpreterCallable("flatMap", fn(interp, this_val, args) {
+          InterpreterCallable("flatMap", fn(interp, this_val, args) raise {
             let _ = this_val
             let callback = if args.length() > 0 { args[0] } else { Undefined }
             let this_arg = if args.length() > 1 { args[1] } else { Undefined }
@@ -1099,7 +1099,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
         symbol_properties: {},
         prototype: Null,
         callable: Some(
-          InterpreterCallable("sort", fn(interp, this_val, args) {
+          InterpreterCallable("sort", fn(interp, this_val, args) raise {
             let _ = this_val
             if args.length() > 0 {
               match args[0] {

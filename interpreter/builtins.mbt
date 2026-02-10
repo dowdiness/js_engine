@@ -43,7 +43,7 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
   // isNaN(value)
   env.def_builtin(
     "isNaN",
-    make_native_func("isNaN", fn(args) {
+    make_native_func("isNaN", fn(args) raise {
       let val = if args.length() > 0 { args[0] } else { Undefined }
       let n = to_number(val)
       Bool(n.is_nan())
@@ -53,7 +53,7 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
   // isFinite(value)
   env.def_builtin(
     "isFinite",
-    make_native_func("isFinite", fn(args) {
+    make_native_func("isFinite", fn(args) raise {
       let val = if args.length() > 0 { args[0] } else { Undefined }
       let n = to_number(val)
       Bool(not(n.is_nan()) && not(n.is_inf()))
@@ -63,7 +63,7 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
   // parseInt(string, radix?)
   env.def_builtin(
     "parseInt",
-    make_native_func("parseInt", fn(args) {
+    make_native_func("parseInt", fn(args) raise {
       let str_val = if args.length() > 0 { args[0] } else { Undefined }
       let s = match str_val {
         String_(s) => s
@@ -125,7 +125,7 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
   // parseFloat(string)
   env.def_builtin(
     "parseFloat",
-    make_native_func("parseFloat", fn(args) {
+    make_native_func("parseFloat", fn(args) raise {
       let str_val = if args.length() > 0 { args[0] } else { Undefined }
       let s = match str_val {
         String_(s) => s
@@ -234,7 +234,7 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
   // decodeURIComponent(string) - decodes everything
   env.def_builtin(
     "decodeURIComponent",
-    make_native_func("decodeURIComponent", fn(args) {
+    make_native_func("decodeURIComponent", fn(args) raise {
       let str = if args.length() > 0 {
         args[0].to_string()
       } else {
@@ -260,7 +260,7 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
   // decodeURI(string) - preserves reserved characters (; , / ? : @ & = + $ #)
   env.def_builtin(
     "decodeURI",
-    make_native_func("decodeURI", fn(args) {
+    make_native_func("decodeURI", fn(args) raise {
       let str = if args.length() > 0 {
         args[0].to_string()
       } else {
@@ -286,7 +286,7 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
     Object({
       properties: {
         "prototype": string_proto,
-        "fromCharCode": make_native_func("fromCharCode", fn(args) {
+        "fromCharCode": make_native_func("fromCharCode", fn(args) raise {
           let buf = StringBuilder::new()
           for arg in args {
             let code = to_number(arg).to_int()
@@ -296,7 +296,7 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
           }
           String_(buf.to_string())
         }),
-        "fromCodePoint": make_native_func("fromCodePoint", fn(args) {
+        "fromCodePoint": make_native_func("fromCodePoint", fn(args) raise {
           // String.fromCodePoint() - accepts Unicode code points (not code units)
           let buf = StringBuilder::new()
           for arg in args {
@@ -331,7 +331,7 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
           }
           String_(buf.to_string())
         }),
-        "raw": make_native_func("raw", fn(args) {
+        "raw": make_native_func("raw", fn(args) raise {
           // String.raw(template, ...substitutions)
           // Returns raw string content without processing escape sequences
           if args.length() == 0 {
@@ -435,7 +435,7 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("toString", fn(this_val, _args) {
+      MethodCallable("toString", fn(this_val, _args) raise {
         match this_val {
           Bool(b) => String_(b.to_string())
           _ =>
@@ -455,7 +455,7 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("valueOf", fn(this_val, _args) {
+      MethodCallable("valueOf", fn(this_val, _args) raise {
         match this_val {
           Bool(b) => Bool(b)
           _ =>
@@ -631,7 +631,7 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("toString", fn(this_val, _args) {
+      MethodCallable("toString", fn(this_val, _args) raise {
         match this_val {
           Symbol(sym) =>
             match sym.description {
@@ -655,7 +655,7 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("valueOf", fn(this_val, _args) {
+      MethodCallable("valueOf", fn(this_val, _args) raise {
         match this_val {
           Symbol(_) => this_val
           _ =>
@@ -715,7 +715,7 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
   })
 
   // Symbol.keyFor(sym) - returns key for symbol in global registry (O(1) via reverse lookup)
-  symbol_props["keyFor"] = make_native_func("keyFor", fn(args) {
+  symbol_props["keyFor"] = make_native_func("keyFor", fn(args) raise {
     let sym = if args.length() > 0 { args[0] } else { Undefined }
     match sym {
       Symbol(sym_data) =>
@@ -879,7 +879,7 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
             symbol_properties: {},
             prototype: Null,
             callable: Some(
-              MethodCallable("[Symbol.iterator]", fn(this_val, _args) {
+              MethodCallable("[Symbol.iterator]", fn(this_val, _args) raise {
                 match this_val {
                   Array(arr) => make_array_iterator(arr)
                   _ =>
@@ -901,7 +901,7 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
             symbol_properties: {},
             prototype: Null,
             callable: Some(
-              MethodCallable("values", fn(this_val, _args) {
+              MethodCallable("values", fn(this_val, _args) raise {
                 match this_val {
                   Array(arr) => make_array_iterator(arr)
                   _ =>
@@ -923,7 +923,7 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
             symbol_properties: {},
             prototype: Null,
             callable: Some(
-              MethodCallable("keys", fn(this_val, _args) {
+              MethodCallable("keys", fn(this_val, _args) raise {
                 match this_val {
                   Array(arr) => {
                     let index_ref : Ref[Int] = { val: 0 }
@@ -1028,7 +1028,7 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
             symbol_properties: {},
             prototype: Null,
             callable: Some(
-              MethodCallable("entries", fn(this_val, _args) {
+              MethodCallable("entries", fn(this_val, _args) raise {
                 match this_val {
                   Array(arr) => {
                     let index_ref : Ref[Int] = { val: 0 }
@@ -1151,19 +1151,19 @@ fn setup_math_builtins(env : Environment) -> Unit {
   math_props["LOG10E"] = Number(0.4342944819032518)
   math_props["SQRT2"] = Number(1.4142135623730951)
   math_props["SQRT1_2"] = Number(0.7071067811865476)
-  math_props["abs"] = make_native_func_with_length("abs", 1, fn(args) {
+  math_props["abs"] = make_native_func_with_length("abs", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(n.abs())
   })
-  math_props["floor"] = make_native_func_with_length("floor", 1, fn(args) {
+  math_props["floor"] = make_native_func_with_length("floor", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(n.floor())
   })
-  math_props["ceil"] = make_native_func_with_length("ceil", 1, fn(args) {
+  math_props["ceil"] = make_native_func_with_length("ceil", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(n.ceil())
   })
-  math_props["round"] = make_native_func_with_length("round", 1, fn(args) {
+  math_props["round"] = make_native_func_with_length("round", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     if n.is_nan() || n.is_inf() || n == 0.0 {
       Number(n)
@@ -1176,7 +1176,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
       }
     }
   })
-  math_props["trunc"] = make_native_func_with_length("trunc", 1, fn(args) {
+  math_props["trunc"] = make_native_func_with_length("trunc", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     if n >= 0.0 {
       Number(n.floor())
@@ -1184,16 +1184,16 @@ fn setup_math_builtins(env : Environment) -> Unit {
       Number(-(-n).floor())
     }
   })
-  math_props["sqrt"] = make_native_func_with_length("sqrt", 1, fn(args) {
+  math_props["sqrt"] = make_native_func_with_length("sqrt", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(n.sqrt())
   })
-  math_props["pow"] = make_native_func_with_length("pow", 2, fn(args) {
+  math_props["pow"] = make_native_func_with_length("pow", 2, fn(args) raise {
     let base = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     let exp = if args.length() > 1 { to_number(args[1]) } else { 0.0 / 0.0 }
     Number(@math.pow(base, exp))
   })
-  math_props["min"] = make_native_func_with_length("min", 2, fn(args) {
+  math_props["min"] = make_native_func_with_length("min", 2, fn(args) raise {
     if args.length() == 0 {
       return Number(1.0 / 0.0)
     }
@@ -1209,7 +1209,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     }
     Number(result)
   })
-  math_props["max"] = make_native_func_with_length("max", 2, fn(args) {
+  math_props["max"] = make_native_func_with_length("max", 2, fn(args) raise {
     if args.length() == 0 {
       return Number(-1.0 / 0.0)
     }
@@ -1235,7 +1235,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     let normalized = s.land(0x7FFFFFFF).to_double() / 2147483648.0
     Number(normalized)
   })
-  math_props["sign"] = make_native_func_with_length("sign", 1, fn(args) {
+  math_props["sign"] = make_native_func_with_length("sign", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     if n.is_nan() {
       Number(0.0 / 0.0)
@@ -1247,80 +1247,80 @@ fn setup_math_builtins(env : Environment) -> Unit {
       Number(n) // preserves +0/-0
     }
   })
-  math_props["log"] = make_native_func_with_length("log", 1, fn(args) {
+  math_props["log"] = make_native_func_with_length("log", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.ln(n))
   })
-  math_props["log2"] = make_native_func_with_length("log2", 1, fn(args) {
+  math_props["log2"] = make_native_func_with_length("log2", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.log2(n))
   })
-  math_props["log10"] = make_native_func_with_length("log10", 1, fn(args) {
+  math_props["log10"] = make_native_func_with_length("log10", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.log10(n))
   })
-  math_props["sin"] = make_native_func_with_length("sin", 1, fn(args) {
+  math_props["sin"] = make_native_func_with_length("sin", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.sin(n))
   })
-  math_props["cos"] = make_native_func_with_length("cos", 1, fn(args) {
+  math_props["cos"] = make_native_func_with_length("cos", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.cos(n))
   })
-  math_props["tan"] = make_native_func_with_length("tan", 1, fn(args) {
+  math_props["tan"] = make_native_func_with_length("tan", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.tan(n))
   })
-  math_props["asin"] = make_native_func_with_length("asin", 1, fn(args) {
+  math_props["asin"] = make_native_func_with_length("asin", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.asin(n))
   })
-  math_props["acos"] = make_native_func_with_length("acos", 1, fn(args) {
+  math_props["acos"] = make_native_func_with_length("acos", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.acos(n))
   })
-  math_props["atan"] = make_native_func_with_length("atan", 1, fn(args) {
+  math_props["atan"] = make_native_func_with_length("atan", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.atan(n))
   })
-  math_props["atan2"] = make_native_func_with_length("atan2", 2, fn(args) {
+  math_props["atan2"] = make_native_func_with_length("atan2", 2, fn(args) raise {
     let y = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     let x = if args.length() > 1 { to_number(args[1]) } else { 0.0 / 0.0 }
     Number(@math.atan2(y, x))
   })
-  math_props["sinh"] = make_native_func_with_length("sinh", 1, fn(args) {
+  math_props["sinh"] = make_native_func_with_length("sinh", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.sinh(n))
   })
-  math_props["cosh"] = make_native_func_with_length("cosh", 1, fn(args) {
+  math_props["cosh"] = make_native_func_with_length("cosh", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.cosh(n))
   })
-  math_props["tanh"] = make_native_func_with_length("tanh", 1, fn(args) {
+  math_props["tanh"] = make_native_func_with_length("tanh", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.tanh(n))
   })
-  math_props["asinh"] = make_native_func_with_length("asinh", 1, fn(args) {
+  math_props["asinh"] = make_native_func_with_length("asinh", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.asinh(n))
   })
-  math_props["acosh"] = make_native_func_with_length("acosh", 1, fn(args) {
+  math_props["acosh"] = make_native_func_with_length("acosh", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.acosh(n))
   })
-  math_props["atanh"] = make_native_func_with_length("atanh", 1, fn(args) {
+  math_props["atanh"] = make_native_func_with_length("atanh", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.atanh(n))
   })
-  math_props["exp"] = make_native_func_with_length("exp", 1, fn(args) {
+  math_props["exp"] = make_native_func_with_length("exp", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.exp(n))
   })
-  math_props["expm1"] = make_native_func_with_length("expm1", 1, fn(args) {
+  math_props["expm1"] = make_native_func_with_length("expm1", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.expm1(n))
   })
-  math_props["log1p"] = make_native_func_with_length("log1p", 1, fn(args) {
+  math_props["log1p"] = make_native_func_with_length("log1p", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     // log1p(x) = ln(1 + x), more accurate for small x
     if n.is_nan() || n < -1.0 {
@@ -1333,7 +1333,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
       Number(@math.ln(1.0 + n))
     }
   })
-  math_props["hypot"] = make_native_func_with_length("hypot", 2, fn(args) {
+  math_props["hypot"] = make_native_func_with_length("hypot", 2, fn(args) raise {
     if args.length() == 0 {
       return Number(0.0)
     }
@@ -1350,7 +1350,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     }
     Number(sum.sqrt())
   })
-  math_props["cbrt"] = make_native_func_with_length("cbrt", 1, fn(args) {
+  math_props["cbrt"] = make_native_func_with_length("cbrt", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     if n.is_nan() || n.is_inf() || n == 0.0 {
       Number(n)
@@ -1359,7 +1359,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
       Number(sign * @math.pow(n.abs(), 1.0 / 3.0))
     }
   })
-  math_props["clz32"] = make_native_func_with_length("clz32", 1, fn(args) {
+  math_props["clz32"] = make_native_func_with_length("clz32", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 }
     let int_val = to_int32(n)
     if int_val == 0 {
@@ -1374,7 +1374,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     }
     Number(count.to_double())
   })
-  math_props["imul"] = make_native_func_with_length("imul", 2, fn(args) {
+  math_props["imul"] = make_native_func_with_length("imul", 2, fn(args) raise {
     let a = if args.length() > 0 { to_number(args[0]) } else { 0.0 }
     let b = if args.length() > 1 { to_number(args[1]) } else { 0.0 }
     let int_a = to_int32(a)
@@ -1390,7 +1390,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     }
     Number(result.to_double())
   })
-  math_props["fround"] = make_native_func_with_length("fround", 1, fn(args) {
+  math_props["fround"] = make_native_func_with_length("fround", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     // Round to nearest float32 (basic approximation)
     if n.is_nan() || n.is_inf() || n == 0.0 {
@@ -1550,7 +1550,7 @@ fn setup_number_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("toFixed", fn(this_val, args) {
+      MethodCallable("toFixed", fn(this_val, args) raise {
         let n : Double = match this_val {
           Number(v) => v
           Object(data) =>
@@ -1632,7 +1632,7 @@ fn setup_number_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("toString", fn(this_val, args) {
+      MethodCallable("toString", fn(this_val, args) raise {
         // Validate this is a number
         let n : Double = match this_val {
           Number(v) => v
@@ -1709,7 +1709,7 @@ fn setup_number_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("valueOf", fn(this_val, _args) {
+      MethodCallable("valueOf", fn(this_val, _args) raise {
         match this_val {
           Number(_) => this_val
           Object(data) =>
@@ -1743,7 +1743,7 @@ fn setup_number_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("toPrecision", fn(this_val, args) {
+      MethodCallable("toPrecision", fn(this_val, args) raise {
         let n = to_number(this_val)
         // If no argument or undefined, just return toString result
         if args.length() == 0 {
@@ -1864,7 +1864,7 @@ fn setup_number_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("toExponential", fn(this_val, args) {
+      MethodCallable("toExponential", fn(this_val, args) raise {
         let n = to_number(this_val)
         if n.is_nan() {
           return String_("NaN")
@@ -2025,7 +2025,7 @@ fn setup_number_builtins(env : Environment) -> Unit {
       symbol_properties: {},
       prototype: Null,
       callable: Some(
-        NativeCallable("Number", fn(args) {
+        NativeCallable("Number", fn(args) raise {
           let val = if args.length() > 0 { args[0] } else { Undefined }
           Number(to_number(val))
         }),
@@ -2056,7 +2056,7 @@ fn setup_number_builtins(env : Environment) -> Unit {
 ///|
 fn setup_json_builtins(env : Environment) -> Unit {
   let json_props : Map[String, Value] = {}
-  json_props["parse"] = make_native_func("parse", fn(args) {
+  json_props["parse"] = make_native_func("parse", fn(args) raise {
     let str = if args.length() > 0 { args[0].to_string() } else { "" }
     json_parse(str)
   })
@@ -2065,7 +2065,7 @@ fn setup_json_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("stringify", fn(interp, _this, args) {
+      InterpreterCallable("stringify", fn(interp, _this, args) raise {
         let val = if args.length() > 0 { args[0] } else { Undefined }
         let indent = if args.length() > 2 {
           match args[2] {
@@ -2544,7 +2544,7 @@ fn json_stringify_value(
           let buf = StringBuilder::new()
           buf.write_char('{')
           let mut first = true
-          data.properties.each(fn(k, v) {
+          data.properties.each(fn(k, v) raise {
             // Skip internal properties (e.g., [[DateValue]], [[NumberData]])
             if k.has_prefix("[[") {
               return
@@ -2608,7 +2608,7 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
         symbol_properties: {},
         prototype: Null,
         callable: Some(
-          MethodCallable("toFixed", fn(this_val, args) {
+          MethodCallable("toFixed", fn(this_val, args) raise {
             let n = to_number(this_val)
             let digits = if args.length() > 0 {
               to_number(args[0]).to_int()
@@ -2669,7 +2669,7 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
         symbol_properties: {},
         prototype: Null,
         callable: Some(
-          MethodCallable("toString", fn(this_val, args) {
+          MethodCallable("toString", fn(this_val, args) raise {
             let n = to_number(this_val)
             let radix = if args.length() > 0 {
               to_number(args[0]).to_int()
@@ -2725,7 +2725,7 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
         symbol_properties: {},
         prototype: Null,
         callable: Some(
-          MethodCallable("valueOf", fn(this_val, _args) {
+          MethodCallable("valueOf", fn(this_val, _args) raise {
             Number(to_number(this_val))
           }),
         ),
@@ -2740,7 +2740,7 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
         symbol_properties: {},
         prototype: Null,
         callable: Some(
-          MethodCallable("toPrecision", fn(this_val, args) {
+          MethodCallable("toPrecision", fn(this_val, args) raise {
             let n = to_number(this_val)
             if args.length() == 0 {
               return String_(n.to_string())
@@ -2854,7 +2854,7 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
         symbol_properties: {},
         prototype: Null,
         callable: Some(
-          MethodCallable("toExponential", fn(this_val, args) {
+          MethodCallable("toExponential", fn(this_val, args) raise {
             let n = to_number(this_val)
             if n.is_nan() {
               return String_("NaN")
@@ -3055,7 +3055,7 @@ fn setup_function_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("toString", fn(this_val, _args) {
+      MethodCallable("toString", fn(this_val, _args) raise {
         match this_val {
           Object(data) =>
             match data.callable {
@@ -3178,7 +3178,7 @@ fn setup_function_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      NativeCallable("Function", fn(args) {
+      NativeCallable("Function", fn(args) raise {
         if args.length() == 0 {
           return Object({
             properties: {},
@@ -3555,19 +3555,19 @@ pub fn setup_harness_builtins(
   // $262.agent - stub object for agent/worker testing (Atomics/SharedArrayBuffer).
   // All methods throw because the engine has no multi-agent support.
   let agent_props : Map[String, Value] = {}
-  agent_props["start"] = make_native_func("start", fn(_args) {
+  agent_props["start"] = make_native_func("start", fn(_args) raise {
     raise @errors.TypeError(message="$262.agent.start is not supported")
   })
-  agent_props["broadcast"] = make_native_func("broadcast", fn(_args) {
+  agent_props["broadcast"] = make_native_func("broadcast", fn(_args) raise {
     raise @errors.TypeError(message="$262.agent.broadcast is not supported")
   })
-  agent_props["getReport"] = make_native_func("getReport", fn(_args) {
+  agent_props["getReport"] = make_native_func("getReport", fn(_args) raise {
     raise @errors.TypeError(message="$262.agent.getReport is not supported")
   })
-  agent_props["sleep"] = make_native_func("sleep", fn(_args) {
+  agent_props["sleep"] = make_native_func("sleep", fn(_args) raise {
     raise @errors.TypeError(message="$262.agent.sleep is not supported")
   })
-  agent_props["monotonicNow"] = make_native_func("monotonicNow", fn(_args) {
+  agent_props["monotonicNow"] = make_native_func("monotonicNow", fn(_args) raise {
     raise @errors.TypeError(message="$262.agent.monotonicNow is not supported")
   })
   let agent : Value = Object({
@@ -3604,7 +3604,7 @@ pub fn setup_harness_builtins(
         let realm_props : Map[String, Value] = {}
         realm_props["global"] = new_interp.global_this
         realm_props["gc"] = make_native_func("gc", fn(_a) { Undefined })
-        realm_props["evalScript"] = make_native_func("evalScript", fn(es_args) {
+        realm_props["evalScript"] = make_native_func("evalScript", fn(es_args) raise {
           let code = if es_args.length() > 0 {
             match es_args[0] {
               String_(s) => s
@@ -3625,7 +3625,7 @@ pub fn setup_harness_builtins(
         })
         realm_props["detachArrayBuffer"] = make_native_func(
           "detachArrayBuffer",
-          fn(_a) {
+          fn(_a) raise {
             raise @errors.TypeError(
               message="$262.detachArrayBuffer is not supported",
             )
@@ -3656,7 +3656,7 @@ pub fn setup_harness_builtins(
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("evalScript", fn(interp, _this_val, args) {
+      InterpreterCallable("evalScript", fn(interp, _this_val, args) raise {
         let code = if args.length() > 0 {
           match args[0] {
             String_(s) => s
@@ -3676,7 +3676,7 @@ pub fn setup_harness_builtins(
   })
   dollar262_props["detachArrayBuffer"] = make_native_func("detachArrayBuffer", fn(
     _args,
-  ) {
+  ) raise {
     raise @errors.TypeError(message="$262.detachArrayBuffer is not supported")
   })
   let dollar262 : Value = Object({

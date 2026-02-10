@@ -70,7 +70,7 @@ fn setup_map_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("get", fn(this_val, args) {
+      MethodCallable("get", fn(this_val, args) raise {
         match this_val {
           Map(data) => {
             let key = if args.length() > 0 { args[0] } else { Undefined }
@@ -102,7 +102,7 @@ fn setup_map_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("set", fn(this_val, args) {
+      MethodCallable("set", fn(this_val, args) raise {
         match this_val {
           Map(data) => {
             let key = if args.length() > 0 { args[0] } else { Undefined }
@@ -139,7 +139,7 @@ fn setup_map_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("has", fn(this_val, args) {
+      MethodCallable("has", fn(this_val, args) raise {
         match this_val {
           Map(data) => {
             let key = if args.length() > 0 { args[0] } else { Undefined }
@@ -171,7 +171,7 @@ fn setup_map_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("delete", fn(this_val, args) {
+      MethodCallable("delete", fn(this_val, args) raise {
         match this_val {
           Map(data) => {
             let key = if args.length() > 0 { args[0] } else { Undefined }
@@ -204,7 +204,7 @@ fn setup_map_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("clear", fn(this_val, _args) {
+      MethodCallable("clear", fn(this_val, _args) raise {
         match this_val {
           Map(data) => {
             data.entries.clear()
@@ -229,7 +229,7 @@ fn setup_map_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("forEach", fn(interp, this_val, args) {
+      InterpreterCallable("forEach", fn(interp, this_val, args) raise {
         match this_val {
           Map(data) => {
             let callback = if args.length() > 0 { args[0] } else { Undefined }
@@ -268,7 +268,7 @@ fn setup_map_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("keys", fn(this_val, _args) {
+      MethodCallable("keys", fn(this_val, _args) raise {
         match this_val {
           Map(data) => make_map_keys_iterator(data)
           _ =>
@@ -290,7 +290,7 @@ fn setup_map_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("values", fn(this_val, _args) {
+      MethodCallable("values", fn(this_val, _args) raise {
         match this_val {
           Map(data) => make_map_values_iterator(data)
           _ =>
@@ -312,7 +312,7 @@ fn setup_map_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("entries", fn(this_val, _args) {
+      MethodCallable("entries", fn(this_val, _args) raise {
         match this_val {
           Map(data) => make_map_entries_iterator(data)
           _ =>
@@ -361,7 +361,7 @@ fn setup_map_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("Map", fn(interp, _this_val, args) {
+      InterpreterCallable("Map", fn(interp, _this_val, args) raise {
         // Create new Map instance
         let new_map : Value = Map({ entries: [] })
         let loc = @token.Loc::default()
@@ -478,7 +478,7 @@ fn setup_set_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("add", fn(this_val, args) {
+      MethodCallable("add", fn(this_val, args) raise {
         match this_val {
           Set(data) => {
             let value = if args.length() > 0 { args[0] } else { Undefined }
@@ -511,7 +511,7 @@ fn setup_set_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("has", fn(this_val, args) {
+      MethodCallable("has", fn(this_val, args) raise {
         match this_val {
           Set(data) => {
             let value = if args.length() > 0 { args[0] } else { Undefined }
@@ -542,7 +542,7 @@ fn setup_set_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("delete", fn(this_val, args) {
+      MethodCallable("delete", fn(this_val, args) raise {
         match this_val {
           Set(data) => {
             let value = if args.length() > 0 { args[0] } else { Undefined }
@@ -574,7 +574,7 @@ fn setup_set_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("clear", fn(this_val, _args) {
+      MethodCallable("clear", fn(this_val, _args) raise {
         match this_val {
           Set(data) => {
             data.values.clear()
@@ -599,7 +599,7 @@ fn setup_set_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("forEach", fn(interp, this_val, args) {
+      InterpreterCallable("forEach", fn(interp, this_val, args) raise {
         match this_val {
           Set(data) => {
             let callback = if args.length() > 0 { args[0] } else { Undefined }
@@ -638,7 +638,7 @@ fn setup_set_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("keys", fn(this_val, _args) {
+      MethodCallable("keys", fn(this_val, _args) raise {
         match this_val {
           Set(data) => make_set_values_iterator(data)
           _ =>
@@ -660,7 +660,7 @@ fn setup_set_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("values", fn(this_val, _args) {
+      MethodCallable("values", fn(this_val, _args) raise {
         match this_val {
           Set(data) => make_set_values_iterator(data)
           _ =>
@@ -682,7 +682,7 @@ fn setup_set_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("entries", fn(this_val, _args) {
+      MethodCallable("entries", fn(this_val, _args) raise {
         match this_val {
           Set(data) => make_set_entries_iterator(data)
           _ =>
@@ -729,7 +729,7 @@ fn setup_set_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("Set", fn(interp, _this_val, args) {
+      InterpreterCallable("Set", fn(interp, _this_val, args) raise {
         // Create new Set instance
         let new_set : Value = Set({ values: [] })
         let loc = @token.Loc::default()
