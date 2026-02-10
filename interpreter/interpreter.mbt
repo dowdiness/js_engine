@@ -3259,7 +3259,7 @@ fn is_eval_function(val : Value) -> Bool {
   match val {
     Object(obj_data) =>
       match obj_data.callable {
-        Some(InterpreterCallable("eval", _)) => true
+        Some(NonConstructableCallable("eval", _)) => true
         _ => false
       }
     _ => false
@@ -3760,7 +3760,20 @@ fn Interpreter::call_value(
         }
         Some(MethodCallable(_, func)) => func(this_val, args)
         Some(NativeCallable(_, func)) => func(args)
-        Some(NonConstructableCallable(_, func)) => func(args)
+        Some(NonConstructableCallable(name, func)) =>
+          if name == "eval" {
+            // Indirect eval: route through perform_eval for interpreter access
+            if args.length() == 0 {
+              Undefined
+            } else {
+              match args[0] {
+                String_(code) => self.perform_eval(code, self.global, false)
+                other => other
+              }
+            }
+          } else {
+            func(args)
+          }
         Some(InterpreterCallable(_, func)) => func(self, this_val, args)
         Some(ConstructorOnlyCallable(name, _)) =>
           raise @errors.TypeError(
@@ -5225,14 +5238,12 @@ fn Interpreter::eval_new(
         }
         Some(NonConstructableCallable(name, _)) =>
           raise @errors.TypeError(message=name + " is not a constructor")
-        Some(InterpreterCallable(name, func)) =>
+        Some(InterpreterCallable(_, func)) =>
           // Generator functions are not constructible
           if obj_data.class_name == "GeneratorFunction" {
             raise @errors.TypeError(
               message="cannot use 'new' with a generator function",
             )
-          } else if name == "eval" {
-            raise @errors.TypeError(message="eval is not a constructor")
           } else {
             func(self, Undefined, args)
           }

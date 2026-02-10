@@ -6,9 +6,10 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
   env.def_builtin("Infinity", Number(1.0 / 0.0))
   env.def_builtin("undefined", Undefined)
 
-  // eval(x) — indirect eval (called as a value, not as direct eval call)
+  // eval(x) — NonConstructableCallable so that new eval() throws TypeError.
   // Direct eval is handled at the call-site in eval_call.
-  // This InterpreterCallable handles indirect eval: (0,eval)("code"), var e = eval; e("code"), etc.
+  // Indirect eval (0,eval)("code") is intercepted in call_value where the
+  // interpreter is available for perform_eval.
   let eval_func : Value = Object({
     properties: {
       "length": Number(1.0),
@@ -16,14 +17,12 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("eval", fn(interp, _this_val, args) {
+      NonConstructableCallable("eval", fn(args) {
+        // Non-string argument returns as-is (string case handled in call_value)
         if args.length() == 0 {
           return Undefined
         }
-        match args[0] {
-          String_(code) => interp.perform_eval(code, interp.global, false)
-          other => other // non-string argument returns as-is
-        }
+        args[0]
       }),
     ),
     class_name: "Function",
