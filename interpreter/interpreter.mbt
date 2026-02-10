@@ -3267,6 +3267,17 @@ fn is_eval_function(val : Value) -> Bool {
 }
 
 ///|
+/// Recursively strip Grouping nodes from an expression.
+/// Per ES spec, grouping parentheses do not change the Reference type,
+/// so ((eval))("code") is still a direct eval call.
+fn unwrap_grouping(expr : @ast.Expr) -> @ast.Expr {
+  match expr {
+    Grouping(inner, _) => unwrap_grouping(inner)
+    _ => expr
+  }
+}
+
+///|
 /// Execute eval code in a given environment.
 /// If `direct` is true, executes in the caller's environment (direct eval).
 /// If `direct` is false, executes in the global environment (indirect eval).
@@ -3368,11 +3379,11 @@ fn Interpreter::eval_call(
   env : Environment,
   loc : @token.Loc,
 ) -> Value raise Error {
-  // Detect direct eval: eval(...) or (eval)(...) where eval resolves to the
-  // global eval function. Per ES spec, grouping parentheses do not change the
-  // Reference, so (eval)("code") is still a direct eval call.
-  match callee_expr {
-    Ident("eval", _) | Grouping(Ident("eval", _), _) => {
+  // Detect direct eval: eval(...), (eval)(...), ((eval))(...) etc.
+  // Per ES spec, grouping parentheses do not change the Reference type,
+  // so any nesting of parens around eval is still a direct eval call.
+  match unwrap_grouping(callee_expr) {
+    Ident("eval", _) => {
       // Check if this identifier actually resolves to the global eval function
       let callee = try {
         env.get("eval")

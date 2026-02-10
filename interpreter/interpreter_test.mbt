@@ -6441,6 +6441,23 @@ test "eval: parenthesized eval is direct eval" {
 }
 
 ///|
+test "eval: nested grouping ((eval)) is direct eval" {
+  // ((eval))("x") should also be direct eval — grouping does not
+  // change the Reference type regardless of nesting depth
+  let output = run_output(
+    (
+      #|var x = "global";
+      #|function f() {
+      #|  var x = "local";
+      #|  return ((eval))("x");
+      #|}
+      #|console.log(f());
+    ),
+  )
+  inspect(output, content="[\"local\"]")
+}
+
+///|
 test "eval: new eval() throws TypeError" {
   // eval is not a constructor — new eval() should throw TypeError
   let output = run_output(

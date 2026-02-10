@@ -6,7 +6,7 @@ Usage:
     python3 test262-runner.py [options]
 
 Options:
-    --engine CMD        Command to run the JS engine (default: "moon run cmd/main --")
+    --engine CMD        Command to run the JS engine (default: "node _build/js/debug/build/cmd/main/main.js")
     --test262 DIR       Path to test262 directory (default: ./test262)
     --filter PATTERN    Only run tests matching this pattern (e.g. "language/expressions")
     --timeout SECS      Timeout per test in seconds (default: 5)
@@ -21,10 +21,12 @@ Performance Optimizations:
     - Moderate timeout (5s) balancing speed and test completion
     - Optimized progress reporting with ETA
 
+Prerequisites:
+    Run `moon build --target js` first to produce the JS bundle.
+
 Known Bottleneck:
-    The main bottleneck is `moon run` startup overhead per test (~50-100ms).
+    The main bottleneck is per-test Node.js startup overhead (~30-50ms).
     Future improvements could include:
-    - Building a standalone binary (if MoonBit supports it)
     - Server mode: persistent process that reads tests from stdin
     - Batch mode: multiple tests per engine invocation
 """
@@ -637,8 +639,8 @@ def save_results(results: list, agg: dict, output_file: str):
 
 def main():
     parser = argparse.ArgumentParser(description="Test262 conformance runner for MoonBit JS Engine")
-    parser.add_argument("--engine", default="moon run cmd/main --",
-                        help="Command to invoke the JS engine (default: 'moon run cmd/main --')")
+    parser.add_argument("--engine", default="node _build/js/debug/build/cmd/main/main.js",
+                        help="Command to invoke the JS engine (default: 'node _build/js/debug/build/cmd/main/main.js')")
     parser.add_argument("--test262", default="./test262",
                         help="Path to test262 directory")
     parser.add_argument("--filter", default="",
