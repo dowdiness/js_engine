@@ -6,7 +6,7 @@ Usage:
     python3 test262-runner.py [options]
 
 Options:
-    --engine CMD        Command to run the JS engine (default: "node _build/js/debug/build/cmd/main/main.js")
+    --engine CMD        Command to run the JS engine (default: auto-detect built JS bundle)
     --test262 DIR       Path to test262 directory (default: ./test262)
     --filter PATTERN    Only run tests matching this pattern (e.g. "language/expressions")
     --timeout SECS      Timeout per test in seconds (default: 5)
@@ -639,8 +639,8 @@ def save_results(results: list, agg: dict, output_file: str):
 
 def main():
     parser = argparse.ArgumentParser(description="Test262 conformance runner for MoonBit JS Engine")
-    parser.add_argument("--engine", default="node _build/js/debug/build/cmd/main/main.js",
-                        help="Command to invoke the JS engine (default: 'node _build/js/debug/build/cmd/main/main.js')")
+    parser.add_argument("--engine", default=None,
+                        help="Command to invoke the JS engine (default: auto-detect built JS bundle)")
     parser.add_argument("--test262", default="./test262",
                         help="Path to test262 directory")
     parser.add_argument("--filter", default="",
@@ -657,6 +657,24 @@ def main():
                         help="Print each test result as it runs")
 
     args = parser.parse_args()
+
+    # Auto-detect engine JS bundle if not specified
+    if args.engine is None:
+        # Probe known build output paths (CI uses target/, local uses _build/)
+        candidates = [
+            "target/js/release/build/cmd/main/main.js",
+            "_build/js/release/build/cmd/main/main.js",
+            "_build/js/debug/build/cmd/main/main.js",
+        ]
+        for path in candidates:
+            if os.path.isfile(path):
+                args.engine = f"node {path}"
+                break
+        if args.engine is None:
+            print("Error: No built JS bundle found. Run `moon build --target js` first.", file=sys.stderr)
+            print(f"  Searched: {', '.join(candidates)}", file=sys.stderr)
+            sys.exit(1)
+        print(f"Using engine: {args.engine}")
 
     # Auto-detect thread count if not specified
     if args.threads is None:
