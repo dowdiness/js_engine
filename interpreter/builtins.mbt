@@ -6,6 +6,41 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
   env.def_builtin("Infinity", Number(1.0 / 0.0))
   env.def_builtin("undefined", Undefined)
 
+  // eval(x) — indirect eval (called as a value, not as direct eval call)
+  // Direct eval is handled at the call-site in eval_call.
+  // This InterpreterCallable handles indirect eval: (0,eval)("code"), var e = eval; e("code"), etc.
+  let eval_func : Value = Object({
+    properties: {
+      "length": Number(1.0),
+    },
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      InterpreterCallable("eval", fn(interp, _this_val, args) {
+        if args.length() == 0 {
+          return Undefined
+        }
+        match args[0] {
+          String_(code) => interp.perform_eval(code, interp.global, false)
+          other => other // non-string argument returns as-is
+        }
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {
+      "length": {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      },
+    },
+    symbol_descriptors: {},
+    extensible: true,
+  })
+  env.def_builtin("eval", eval_func)
+
   // isNaN(value)
   env.def_builtin(
     "isNaN",

@@ -64,6 +64,15 @@ pub fn Interpreter::new() -> Interpreter {
   // Bind 'this' and 'globalThis' in global scope
   global.def_builtin("this", global_this)
   global.def_builtin("globalThis", global_this)
+  // Mirror eval onto the global object (globalThis.eval)
+  match global.bindings.get("eval") {
+    Some(binding) =>
+      match global_this {
+        Object(data) => data.properties["eval"] = binding.value
+        _ => ()
+      }
+    None => ()
+  }
   // Set up test262 harness host functions (print, $262)
   setup_harness_builtins(global, output, global_this)
   let microtask_queue : Array[Microtask] = []
@@ -157,8 +166,10 @@ fn Interpreter::exec_stmt(
         Some(expr) => self.eval_expr(expr, env)
         None => Undefined
       }
-      // For var declarations that were hoisted, use assign instead of def
-      if bk == VarBinding && env.bindings.contains(name) {
+      // For var declarations that were hoisted, use assign instead of def.
+      // Check parent scope too — var may have been hoisted to a parent env
+      // (e.g., eval hoists var to caller scope, block-scoped var goes to function scope).
+      if bk == VarBinding && (env.bindings.contains(name) || env.has(name)) {
         if init is Some(_) {
           env.assign(name, value)
         }
@@ -3238,6 +3249,106 @@ fn Interpreter::eval_args_with_spread(
 }
 
 ///|
+/// Check if a value is the global eval function
+fn is_eval_function(val : Value) -> Bool {
+  match val {
+    Object(obj_data) =>
+      match obj_data.callable {
+        Some(InterpreterCallable("eval", _)) => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+///|
+/// Execute eval code in a given environment.
+/// If `direct` is true, executes in the caller's environment (direct eval).
+/// If `direct` is false, executes in the global environment (indirect eval).
+/// Handles strict mode isolation and var leaking per ES spec.
+///
+/// Per ES spec (18.2.1.1 PerformEval):
+/// - Strict eval: all declarations (var, let, const, function) are isolated in a new scope
+/// - Non-strict direct eval: var/function declarations leak to caller's variable environment,
+///   but let/const are isolated in a new eval lexical scope
+/// - Non-strict indirect eval: var/function declarations leak to global scope,
+///   but let/const are isolated in a new eval lexical scope
+fn Interpreter::perform_eval(
+  self : Interpreter,
+  code : String,
+  caller_env : Environment,
+  direct : Bool,
+) -> Value raise Error {
+  // Parse the code — syntax errors propagate as SyntaxError
+  let prog = try {
+    @parser.parse(code)
+  } catch {
+    e => raise e
+  }
+  let stmts = prog.stmts
+  if stmts.length() == 0 {
+    return Undefined
+  }
+  // Determine if eval code is strict
+  let eval_strict = self.strict || has_use_strict(stmts)
+  // Determine the variable environment (where var/function declarations leak to)
+  let var_env : Environment = if direct {
+    caller_env
+  } else {
+    self.global
+  }
+  // Always create a new scope for eval execution.
+  // This isolates let/const declarations from the caller.
+  // For strict eval, it also isolates var/function declarations.
+  let exec_env : Environment = if eval_strict {
+    Environment::new(parent=Some(var_env))
+  } else {
+    Environment::new(parent=Some(var_env))
+  }
+  // Save and set strict mode
+  let saved_strict = self.strict
+  if eval_strict {
+    self.strict = true
+  }
+  let result = try {
+    if eval_strict {
+      // Strict eval: all declarations stay in the eval scope (isolated)
+      self.hoist_declarations(stmts, exec_env)
+    } else {
+      // Non-strict eval: hoist var/function to the variable environment (leak),
+      // then hoist let/const TDZ markers to the eval scope (isolated)
+      self.hoist_declarations(stmts, var_env)
+      hoist_block_tdz(stmts, exec_env)
+    }
+    // Execute statements and collect result
+    let mut last : Value = Undefined
+    for stmt in stmts {
+      match self.exec_stmt(stmt, exec_env) {
+        Normal(v) => last = v
+        ReturnSignal(_) =>
+          raise @errors.SyntaxError(
+            message="return statement outside of function",
+          )
+        BreakSignal(_) =>
+          raise @errors.SyntaxError(message="break statement outside of loop")
+        ContinueSignal(_) =>
+          raise @errors.SyntaxError(
+            message="continue statement outside of loop",
+          )
+      }
+    }
+    last
+  } catch {
+    e => {
+      self.strict = saved_strict
+      raise e
+    }
+  }
+  self.strict = saved_strict
+  result
+}
+
+///|
 fn Interpreter::eval_call(
   self : Interpreter,
   callee_expr : @ast.Expr,
@@ -3245,29 +3356,59 @@ fn Interpreter::eval_call(
   env : Environment,
   loc : @token.Loc,
 ) -> Value raise Error {
-  let args : Array[Value] = self.eval_args_with_spread(arg_exprs, env)
+  // Detect direct eval: eval(...) where eval resolves to the global eval function
   match callee_expr {
-    Member(obj_expr, prop, mloc) =>
-      match obj_expr {
-        Ident("console", _) => {
-          let callee = self.eval_member(obj_expr, prop, env, mloc)
-          self.call_value(callee, Undefined, args, loc)
-        }
+    Ident("eval", _) => {
+      // Check if this identifier actually resolves to the global eval function
+      let callee = try {
+        env.get("eval")
+      } catch {
         _ => {
-          let obj = self.eval_expr(obj_expr, env)
-          let func_val = self.get_property(obj, prop, mloc)
-          self.call_value(func_val, obj, args, loc)
+          // eval is not defined - throw ReferenceError
+          raise @errors.ReferenceError(message="eval is not defined")
         }
       }
-    ComputedMember(obj_expr, key_expr, mloc) => {
-      let obj = self.eval_expr(obj_expr, env)
-      let key = self.eval_expr(key_expr, env)
-      let func_val = self.get_computed_property(obj, key, mloc)
-      self.call_value(func_val, obj, args, loc)
+      if is_eval_function(callee) {
+        // Direct eval: parse and execute in caller's environment
+        let args = self.eval_args_with_spread(arg_exprs, env)
+        if args.length() == 0 {
+          return Undefined
+        }
+        match args[0] {
+          String_(code) => return self.perform_eval(code, env, true)
+          other => return other // non-string argument returns as-is
+        }
+      }
+      // eval has been shadowed by a non-eval binding — call normally
+      let args = self.eval_args_with_spread(arg_exprs, env)
+      self.call_value(callee, Undefined, args, loc)
     }
     _ => {
-      let callee = self.eval_expr(callee_expr, env)
-      self.call_value(callee, Undefined, args, loc)
+      let args : Array[Value] = self.eval_args_with_spread(arg_exprs, env)
+      match callee_expr {
+        Member(obj_expr, prop, mloc) =>
+          match obj_expr {
+            Ident("console", _) => {
+              let callee = self.eval_member(obj_expr, prop, env, mloc)
+              self.call_value(callee, Undefined, args, loc)
+            }
+            _ => {
+              let obj = self.eval_expr(obj_expr, env)
+              let func_val = self.get_property(obj, prop, mloc)
+              self.call_value(func_val, obj, args, loc)
+            }
+          }
+        ComputedMember(obj_expr, key_expr, mloc) => {
+          let obj = self.eval_expr(obj_expr, env)
+          let key = self.eval_expr(key_expr, env)
+          let func_val = self.get_computed_property(obj, key, mloc)
+          self.call_value(func_val, obj, args, loc)
+        }
+        _ => {
+          let callee = self.eval_expr(callee_expr, env)
+          self.call_value(callee, Undefined, args, loc)
+        }
+      }
     }
   }
 }
