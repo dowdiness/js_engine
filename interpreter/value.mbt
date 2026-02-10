@@ -275,7 +275,15 @@ pub fn make_func(data : FuncData) -> Value {
     prototype: Null,
     callable: Some(UserFunc(data)),
     class_name: "Function",
-    descriptors: {},
+    descriptors: {
+      "prototype": {
+        writable: true,
+        enumerable: false,
+        configurable: false,
+        getter: None,
+        setter: None,
+      },
+    },
     symbol_descriptors: {},
     extensible: true,
   })
@@ -300,7 +308,15 @@ pub fn make_func_ext(data : FuncDataExt) -> Value {
     prototype: Null,
     callable: Some(UserFuncExt(data)),
     class_name: "Function",
-    descriptors: {},
+    descriptors: {
+      "prototype": {
+        writable: true,
+        enumerable: false,
+        configurable: false,
+        getter: None,
+        setter: None,
+      },
+    },
     symbol_descriptors: {},
     extensible: true,
   })

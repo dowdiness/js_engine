@@ -23,6 +23,7 @@
 | 8C | +345 | 11,678 | Date object (constructor, prototype methods, static methods) |
 | JS Target | — | — | JS backend support, Error toString fix, backend-specific argv handling |
 | 9 | +7,439 | 19,117 | P0-P3: error diagnostics, generator methods, destructuring defaults, parser cleanup |
+| 10 | — | — | P4: Object descriptor compliance — Symbol keys, function props, Array targets |
 
 For detailed implementation notes on Phases 1-6, see [docs/PHASE_HISTORY.md](docs/PHASE_HISTORY.md).
 
@@ -39,7 +40,7 @@ Top failing categories from the latest CI run:
 | language/expressions | 4,637 | 1,062 | 81.4% | Medium |
 | language/statements | 3,130 | 1,187 | 72.5% | Medium |
 | built-ins/Array | 2,182 | 701 | 75.7% | Medium |
-| built-ins/Object | 2,834 | 466 | 85.9% | Medium |
+| built-ins/Object | 2,547 | 321 | 88.8% | Low (P4 done) |
 | annexB/language | 254 | 565 | 31.0% | Low |
 | built-ins/Promise | 206 | 382 | 35.0% | Medium |
 | built-ins/DataView | 7 | 304 | 2.3% | Hard (needs TypedArray) |
@@ -246,6 +247,21 @@ Massive compliance push addressing four priority areas identified in failure ana
 - **PR review fixes** — Rest-element-must-be-last validation in destructuring patterns. `Yield` keyword accepted as method/property name in all keyword-to-name mappings.
 
 **Test262**: 11,678 → 19,117 passing (45.27% → 74.17%)
+
+### 10: P4 Object Descriptor Compliance — DONE
+
+Comprehensive object descriptor compliance (P4 from IMPLEMENTATION_PRIORITY.md):
+
+- **Symbol key support**: `defineProperty` and `getOwnPropertyDescriptor` now handle Symbol-keyed properties, using `symbol_properties`/`symbol_descriptors` storage
+- **Function property descriptors**: `getOwnPropertyDescriptor` returns correct descriptors for function `length`, `name`, and `prototype`. `make_func`/`make_func_ext` now initialize `prototype` with `{writable: true, enumerable: false, configurable: false}`
+- **Array/Map/Set/Promise targets**: `defineProperty` and `defineProperties` accept all JS object types as targets and descriptors. Array targets handle index and length property definition
+- **TypeError enforcement**: Non-object descriptors throw TypeError. Non-object targets throw TypeError
+- **Shared validation**: Extracted `validate_non_configurable` helper (~95 lines) used by both `defineProperty` and `defineProperties`, eliminating ~150 lines of duplicated validation logic
+- **defineProperties fixes**: Throws TypeError on non-object, validates non-configurable transitions, getter/setter identity checks, only iterates enumerable own properties
+
+**Test262**: built-ins/Object 2,547/2,868 passing (88.8%)
+
+---
 
 ### async/await (~500 tests)
 

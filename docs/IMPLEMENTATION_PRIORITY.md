@@ -72,24 +72,22 @@ Error: dowdiness/js_engine/interpreter.JsException.JsException
 
 ---
 
-### P4: Object Descriptor Compliance + Harness Cascade (split milestones)
+### P4: Object Descriptor Compliance + Harness Cascade ✅ DONE
 
-Large single-shot rewrite is risky; split into incremental milestones:
+**Resolution**: Comprehensive descriptor compliance rewrite across `defineProperty`, `getOwnPropertyDescriptor`, `defineProperties`, and related helpers.
 
-1. **P4a**: strict invariants for non-configurable/non-writable transitions
-2. **P4b**: descriptor completeness for string + symbol keys in `getOwnPropertyDescriptor(s)`
-3. **P4c**: `defineProperties` + `create` interactions and harness verification tests
+Key changes:
+1. **P4a**: `defineProperty` now supports Symbol keys (was string-only). Strict invariant validation for non-configurable/non-writable property transitions preserved and extended to Symbol-keyed properties.
+2. **P4b**: `getOwnPropertyDescriptor` now supports Symbol keys and returns correct descriptors for function built-in properties (`length`, `name`, `prototype`). Function `prototype` property now has correct descriptor flags (`writable: true, enumerable: false, configurable: false`).
+3. **P4c**: `defineProperties` now throws TypeError on non-object target, validates non-configurable transitions, and only iterates enumerable own properties of the descriptors object. `defineProperty` now throws TypeError on non-object descriptors and accepts Array/Map/Set/Promise as valid JS object types for both target and descriptor arguments. Array targets support basic index and length property definition.
 
-**Targeted areas**:
-- `interpreter/builtins_object.mbt`
-- any shared property descriptor helpers
+**PR review fixes** (PR #30):
+1. `defineProperties` now accepts Array/Map/Set/Promise targets (was Object-only)
+2. Fixed dead code in non-configurable generic descriptor check (`not(is_accessor) == false` → correct logic)
+3. Added getter/setter identity validation in `defineProperties` for non-configurable accessor properties
+4. Extracted shared `validate_non_configurable` helper (~95 lines), eliminating ~150 lines of duplicated validation
 
-**Why split**:
-- Existing implementation already covers many descriptor rules.
-- Remaining failures are likely edge-case clusters, not one missing primitive.
-
-**Expected impact**:
-- Direct Object gains plus broad harness cascade across built-ins.
+**Object test results**: 88.8% pass rate (2547/2868 executed) on `built-ins/Object`.
 
 ---
 
@@ -173,22 +171,22 @@ Focus:
 | P2 | Destructuring defaults | +500–644 | — | — |
 | P3 | Remaining parser gaps | +200–285 | — | — |
 | **P0–P3 combined** | **All four phases** | **+1,500–2,025** | **+7,439** | **74.2%** |
+| P4 | Object descriptors + harness cascade | +500–1,500 | — | — |
 
-The actual gain (+7,439) far exceeded the projected range (+1,500–2,025) because:
+The actual gain from P0–P3 (+7,439) far exceeded the projected range (+1,500–2,025) because:
 1. Error message propagation (P0) unlocked many tests that were failing due to assertion format mismatches
 2. Generator method fixes (P1) cascaded through class and object expression tests
 3. Destructuring defaults (P2) fixed patterns used pervasively in test262 harness code
 4. Parser cleanup (P3) fixed arrow function parameters that gated large test suites
 
-### Remaining Phases (Projected from 74.2% baseline)
+### Remaining Phases (Projected from P4 baseline)
 
 | Phase | Content | Est. New Tests | Cumulative Rate |
 |-------|---------|---------------|-----------------|
-| P4 | Object descriptors + harness cascade | +500–1,500 | ~76–80% |
-| P5 | eval() semantics | +200–400 | ~77–81% |
-| P6 | Strict subset prerequisites | +200–500 | ~78–83% |
-| P7 | with statement | +100–151 | ~78–83% |
-| P8 | Promise improvements | +200–382 | ~79–85% |
+| P5 | eval() semantics | +200–400 | TBD |
+| P6 | Strict subset prerequisites | +200–500 | TBD |
+| P7 | with statement | +100–151 | TBD |
+| P8 | Promise improvements | +200–382 | TBD |
 
 ## Skipped Features Needed for ES2015 (future)
 
