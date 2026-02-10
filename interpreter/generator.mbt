@@ -515,6 +515,7 @@ fn generator_start(
 ) -> Value raise Error {
   // Create execution environment
   let func_env = Environment::new(parent=Some(gen.closure))
+  func_env.is_var_scope = true
   func_env.def("this", gen.this_val, LetBinding)
   func_env.def("<new.target>", Undefined, LetBinding)
   // Bind parameters

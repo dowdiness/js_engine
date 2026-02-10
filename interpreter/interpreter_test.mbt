@@ -6393,3 +6393,49 @@ test "eval: strict function eval isolates var" {
   )
   inspect(output, content="[\"isolated\"]")
 }
+
+///|
+test "eval: indirect eval does not inherit caller strict mode" {
+  // (0, eval)("var x = 1") from strict caller should NOT be strict —
+  // indirect eval only respects its own "use strict" directive
+  let output = run_output(
+    (
+      #|"use strict";
+      #|(0, eval)("var x = 1;");
+      #|console.log(x);
+    ),
+  )
+  inspect(output, content="[\"1\"]")
+}
+
+///|
+test "eval: eval in block hoists var to function scope" {
+  // Direct eval inside a block should hoist var to the enclosing
+  // function scope, not the block scope
+  let output = run_output(
+    (
+      #|function f() {
+      #|  { eval("var x = 1"); }
+      #|  return x;
+      #|}
+      #|console.log(f());
+    ),
+  )
+  inspect(output, content="[\"1\"]")
+}
+
+///|
+test "eval: parenthesized eval is direct eval" {
+  // (eval)("x") is still a direct eval per ES spec
+  let output = run_output(
+    (
+      #|var x = "global";
+      #|function f() {
+      #|  var x = "local";
+      #|  return (eval)("x");
+      #|}
+      #|console.log(f());
+    ),
+  )
+  inspect(output, content="[\"local\"]")
+}

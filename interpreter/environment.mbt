@@ -16,11 +16,25 @@ struct Binding {
 pub(all) struct Environment {
   bindings : Map[String, Binding]
   parent : Environment?
+  mut is_var_scope : Bool // true for function/global scopes (where var is hoisted to)
 }
 
 ///|
 pub fn Environment::new(parent? : Environment? = None) -> Environment {
-  { bindings: {}, parent }
+  { bindings: {}, parent, is_var_scope: false }
+}
+
+///|
+/// Walk up the scope chain to find the nearest variable environment
+/// (function or global scope where var declarations are hoisted to).
+pub fn Environment::find_var_env(self : Environment) -> Environment {
+  if self.is_var_scope {
+    return self
+  }
+  match self.parent {
+    Some(parent) => parent.find_var_env()
+    None => self // Global scope (no parent) is always a variable scope
+  }
 }
 
 ///|

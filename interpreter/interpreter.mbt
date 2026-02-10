@@ -48,6 +48,7 @@ pub(all) struct Interpreter {
 ///|
 pub fn Interpreter::new() -> Interpreter {
   let global = Environment::new()
+  global.is_var_scope = true
   let output : Array[String] = []
   // Create global object for 'this' in global context
   let global_this : Value = Object({
@@ -3289,11 +3290,21 @@ fn Interpreter::perform_eval(
   if stmts.length() == 0 {
     return Undefined
   }
-  // Determine if eval code is strict
-  let eval_strict = self.strict || has_use_strict(stmts)
-  // Determine the variable environment (where var/function declarations leak to)
+  // Determine if eval code is strict.
+  // Direct eval inherits strictness from the caller OR its own "use strict" directive.
+  // Indirect eval is strict ONLY if the eval code itself has "use strict" — it does
+  // NOT inherit the caller's strict mode (it runs as a fresh global script).
+  let eval_strict = if direct {
+    self.strict || has_use_strict(stmts)
+  } else {
+    has_use_strict(stmts)
+  }
+  // Determine the variable environment (where var/function declarations leak to).
+  // For direct eval, walk up from the caller's env to find the function/global scope
+  // (the nearest is_var_scope environment). This ensures that eval("var x = 1")
+  // inside a block correctly hoists to the enclosing function scope, not the block.
   let var_env : Environment = if direct {
-    caller_env
+    caller_env.find_var_env()
   } else {
     self.global
   }
@@ -3356,9 +3367,11 @@ fn Interpreter::eval_call(
   env : Environment,
   loc : @token.Loc,
 ) -> Value raise Error {
-  // Detect direct eval: eval(...) where eval resolves to the global eval function
+  // Detect direct eval: eval(...) or (eval)(...) where eval resolves to the
+  // global eval function. Per ES spec, grouping parentheses do not change the
+  // Reference, so (eval)("code") is still a direct eval call.
   match callee_expr {
-    Ident("eval", _) => {
+    Ident("eval", _) | Grouping(Ident("eval", _), _) => {
       // Check if this identifier actually resolves to the global eval function
       let callee = try {
         env.get("eval")
@@ -3428,6 +3441,7 @@ fn Interpreter::call_value(
           let saved_strict = self.strict
           let result = try {
             let func_env = Environment::new(parent=Some(data.closure))
+            func_env.is_var_scope = true
             let func_strict = self.strict || has_use_strict(data.body)
             if func_strict {
               self.strict = true
@@ -3497,6 +3511,7 @@ fn Interpreter::call_value(
         }
         Some(ArrowFunc(data)) => {
           let func_env = Environment::new(parent=Some(data.closure))
+          func_env.is_var_scope = true
           // Arrow functions do NOT rebind this — use closure's this
           for i = 0; i < data.params.length(); i = i + 1 {
             let val : Value = if i < args.length() {
@@ -3524,6 +3539,7 @@ fn Interpreter::call_value(
           let saved_strict = self.strict
           let result = try {
             let func_env = Environment::new(parent=Some(data.closure))
+            func_env.is_var_scope = true
             let func_strict = self.strict || has_use_strict(data.body)
             if func_strict {
               self.strict = true
@@ -3637,6 +3653,7 @@ fn Interpreter::call_value(
         }
         Some(ArrowFuncExt(data)) => {
           let func_env = Environment::new(parent=Some(data.closure))
+          func_env.is_var_scope = true
           // Arrow functions do NOT rebind this
           let mut effective_param_count = 0
           for i = 0; i < data.params.length(); i = i + 1 {
@@ -4992,6 +5009,7 @@ fn Interpreter::eval_new(
               extensible: true,
             })
             let func_env = Environment::new(parent=Some(data.closure))
+            func_env.is_var_scope = true
             func_env.def("this", new_obj, LetBinding)
             func_env.def("<new.target>", ctor, LetBinding)
             for i = 0; i < data.params.length(); i = i + 1 {
@@ -5082,6 +5100,7 @@ fn Interpreter::eval_new(
               extensible: true,
             })
             let func_env = Environment::new(parent=Some(data.closure))
+            func_env.is_var_scope = true
             func_env.def("this", new_obj, LetBinding)
             func_env.def("<new.target>", ctor, LetBinding)
             let mut effective_param_count = 0
@@ -5242,6 +5261,7 @@ fn Interpreter::eval_new(
           })
           // Set up the constructor environment
           let ctor_env = Environment::new(parent=Some(closure))
+          ctor_env.is_var_scope = true
           ctor_env.def_builtin("this", new_obj)
           ctor_env.def("<new.target>", ctor, LetBinding)
           // Set up [[SuperConstructor]] and [[SuperPrototype]] for super() calls
