@@ -170,9 +170,13 @@ fn Interpreter::exec_stmt(
       // For var declarations that were hoisted, use assign instead of def.
       // Check parent scope too — var may have been hoisted to a parent env
       // (e.g., eval hoists var to caller scope, block-scoped var goes to function scope).
-      if bk == VarBinding && (env.bindings.contains(name) || env.has(name)) {
+      // Use has_var to only match VarBinding, not let/const in parent scopes.
+      if bk == VarBinding && (env.bindings.contains(name) || env.has_var(name)) {
         if init is Some(_) {
-          env.assign(name, value)
+          // Use assign_var to skip any intervening let/const that shadow the name.
+          // This ensures eval("var x = 1") targets the function scope's var x,
+          // not a block-scoped let x in between.
+          env.assign_var(name, value)
         }
       } else if (bk == LetBinding || bk == ConstBinding) &&
         env.bindings.contains(name) {
@@ -3281,11 +3285,7 @@ fn Interpreter::perform_eval(
   direct : Bool,
 ) -> Value raise Error {
   // Parse the code — syntax errors propagate as SyntaxError
-  let prog = try {
-    @parser.parse(code)
-  } catch {
-    e => raise e
-  }
+  let prog = @parser.parse(code)
   let stmts = prog.stmts
   if stmts.length() == 0 {
     return Undefined
@@ -3311,11 +3311,11 @@ fn Interpreter::perform_eval(
   // Always create a new scope for eval execution.
   // This isolates let/const declarations from the caller.
   // For strict eval, it also isolates var/function declarations.
-  let exec_env : Environment = if eval_strict {
-    Environment::new(parent=Some(var_env))
-  } else {
-    Environment::new(parent=Some(var_env))
-  }
+  // For direct eval, parent to caller_env so block-scoped bindings are visible:
+  //   { let x = 1; eval("x") } must see x.
+  // For indirect eval, parent to global scope since it runs as a fresh script.
+  let exec_parent = if direct { caller_env } else { self.global }
+  let exec_env = Environment::new(parent=Some(exec_parent))
   // Save and set strict mode
   let saved_strict = self.strict
   if eval_strict {
@@ -3325,6 +3325,7 @@ fn Interpreter::perform_eval(
     if eval_strict {
       // Strict eval: all declarations stay in the eval scope (isolated)
       self.hoist_declarations(stmts, exec_env)
+      hoist_block_tdz(stmts, exec_env)
     } else {
       // Non-strict eval: hoist var/function to the variable environment (leak),
       // then hoist let/const TDZ markers to the eval scope (isolated)
@@ -5224,12 +5225,14 @@ fn Interpreter::eval_new(
         }
         Some(NonConstructableCallable(name, _)) =>
           raise @errors.TypeError(message=name + " is not a constructor")
-        Some(InterpreterCallable(_, func)) =>
+        Some(InterpreterCallable(name, func)) =>
           // Generator functions are not constructible
           if obj_data.class_name == "GeneratorFunction" {
             raise @errors.TypeError(
               message="cannot use 'new' with a generator function",
             )
+          } else if name == "eval" {
+            raise @errors.TypeError(message="eval is not a constructor")
           } else {
             func(self, Undefined, args)
           }

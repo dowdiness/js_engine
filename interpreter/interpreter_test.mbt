@@ -6439,3 +6439,86 @@ test "eval: parenthesized eval is direct eval" {
   )
   inspect(output, content="[\"local\"]")
 }
+
+///|
+test "eval: new eval() throws TypeError" {
+  // eval is not a constructor — new eval() should throw TypeError
+  let output = run_output(
+    (
+      #|try {
+      #|  new eval("1 + 2");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|  console.log(e.message);
+      #|}
+    ),
+  )
+  inspect(output, content="[\"true\", \"eval is not a constructor\"]")
+}
+
+///|
+test "eval: direct eval sees block-scoped let" {
+  // Direct eval inside a block should see block-scoped let bindings
+  let output = run_output(
+    (
+      #|function f() {
+      #|  let x = 42;
+      #|  return eval("x");
+      #|}
+      #|console.log(f());
+    ),
+  )
+  inspect(output, content="[\"42\"]")
+}
+
+///|
+test "eval: direct eval sees block-scoped let in nested block" {
+  // { let x = 1; eval("x") } must see the block's let binding
+  let output = run_output(
+    (
+      #|var result;
+      #|{
+      #|  let x = "block_let";
+      #|  result = eval("x");
+      #|}
+      #|console.log(result);
+    ),
+  )
+  inspect(output, content="[\"block_let\"]")
+}
+
+///|
+test "eval: strict eval let/const with TDZ" {
+  // Strict eval should properly handle let/const with TDZ
+  let output = run_output(
+    (
+      #|function f() {
+      #|  "use strict";
+      #|  return eval("let x = 10; x + 5;");
+      #|}
+      #|console.log(f());
+    ),
+  )
+  inspect(output, content="[\"15\"]")
+}
+
+///|
+test "eval: var in eval does not shadow parent let" {
+  // eval("var x = 2") when parent has let x should create var in var_env,
+  // not accidentally assign to the let binding
+  let output = run_output(
+    (
+      #|function f() {
+      #|  var x = "var_x";
+      #|  {
+      #|    let x = "let_x";
+      #|    eval("var x = 'eval_x'");
+      #|    console.log(x);  // let x is still "let_x"
+      #|  }
+      #|  console.log(x);    // var x was reassigned by eval
+      #|}
+      #|f();
+    ),
+  )
+  inspect(output, content="[\"let_x\", \"eval_x\"]")
+}
