@@ -6539,3 +6539,18 @@ test "eval: var in eval does not shadow parent let" {
   )
   inspect(output, content="[\"let_x\", \"eval_x\"]")
 }
+
+///|
+test "eval: function decl reassignment propagates to var_env" {
+  // eval("function foo(){} foo = 42") should update var_env, not just exec_env
+  let output = run_output(
+    (
+      #|function test() {
+      #|  eval("function foo() { return 'original'; } foo = 42;");
+      #|  return foo;
+      #|}
+      #|console.log(test());
+    ),
+  )
+  inspect(output, content="[\"42\"]")
+}

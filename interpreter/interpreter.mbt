@@ -355,11 +355,16 @@ fn Interpreter::exec_stmt(
         body,
         closure: env,
       }
-      // If already hoisted, just assign; otherwise define
+      let func_val = make_func(func_data)
+      // If already hoisted (in this env or a parent var scope), assign there;
+      // otherwise define locally. Uses has_var/assign_var so that eval'd
+      // function declarations target the caller's var_env, not exec_env.
       if env.bindings.contains(name) {
-        env.assign(name, make_func(func_data))
+        env.assign(name, func_val)
+      } else if env.has_var(name) {
+        env.assign_var(name, func_val)
       } else {
-        env.def(name, make_func(func_data), VarBinding)
+        env.def(name, func_val, VarBinding)
       }
       Normal(Undefined)
     }
@@ -1054,10 +1059,13 @@ fn Interpreter::exec_stmt(
         body,
         closure: env,
       }
+      let func_val = make_func_ext(func_data)
       if env.bindings.contains(name) {
-        env.assign(name, make_func_ext(func_data))
+        env.assign(name, func_val)
+      } else if env.has_var(name) {
+        env.assign_var(name, func_val)
       } else {
-        env.def(name, make_func_ext(func_data), VarBinding)
+        env.def(name, func_val, VarBinding)
       }
       Normal(Undefined)
     }
@@ -1071,6 +1079,8 @@ fn Interpreter::exec_stmt(
       )
       if env.bindings.contains(name) {
         env.assign(name, gen_func)
+      } else if env.has_var(name) {
+        env.assign_var(name, gen_func)
       } else {
         env.def(name, gen_func, VarBinding)
       }
@@ -1086,6 +1096,8 @@ fn Interpreter::exec_stmt(
       )
       if env.bindings.contains(name) {
         env.assign(name, gen_func)
+      } else if env.has_var(name) {
+        env.assign_var(name, gen_func)
       } else {
         env.def(name, gen_func, VarBinding)
       }
