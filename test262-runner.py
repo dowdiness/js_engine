@@ -38,18 +38,12 @@ import re
 import subprocess
 import sys
 import time
-import yaml
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
 
-
-# ---------------------------------------------------------------------------
-# Metadata parsing
-# ---------------------------------------------------------------------------
-
-YAML_PATTERN = re.compile(r'/\*---(.*?)---\*/', re.DOTALL)
+from test262_utils import parse_yaml_frontmatter, as_list
 
 SKIP_FEATURES = {
     # Features this engine definitely doesn't support yet
@@ -168,25 +162,26 @@ class TestMetadata:
 
 def parse_metadata(source: str) -> TestMetadata:
     """Parse the YAML frontmatter from a test262 test file."""
-    match = YAML_PATTERN.search(source)
-    if not match:
+    data = parse_yaml_frontmatter(source)
+    if data is None:
         return TestMetadata()
-    try:
-        data = yaml.safe_load(match.group(1))
-    except yaml.YAMLError:
-        return TestMetadata()
-    if not isinstance(data, dict):
-        return TestMetadata()
+
     meta = TestMetadata()
-    meta.description = data.get("description", "")
-    meta.info = data.get("info", "")
-    meta.features = data.get("features", []) or []
-    meta.flags = data.get("flags", []) or []
-    meta.includes = data.get("includes", []) or []
-    meta.negative = data.get("negative", None)
-    meta.es5id = data.get("es5id", "")
-    meta.es6id = data.get("es6id", "")
-    meta.esid = data.get("esid", "")
+    description = data.get("description", "")
+    meta.description = description if isinstance(description, str) else str(description) if description else ""
+    info = data.get("info", "")
+    meta.info = info if isinstance(info, str) else str(info) if info else ""
+    meta.features = as_list(data.get("features", []))
+    meta.flags = as_list(data.get("flags", []))
+    meta.includes = as_list(data.get("includes", []))
+    negative = data.get("negative", None)
+    meta.negative = negative if isinstance(negative, dict) else None
+    es5id = data.get("es5id", "")
+    meta.es5id = es5id if isinstance(es5id, str) else str(es5id) if es5id else ""
+    es6id = data.get("es6id", "")
+    meta.es6id = es6id if isinstance(es6id, str) else str(es6id) if es6id else ""
+    esid = data.get("esid", "")
+    meta.esid = esid if isinstance(esid, str) else str(esid) if esid else ""
     meta.raw = "raw" in meta.flags
     return meta
 

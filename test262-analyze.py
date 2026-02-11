@@ -20,12 +20,12 @@ import os
 import re
 import sys
 import time
-import yaml
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
-YAML_PATTERN = re.compile(r'/\*---(.*?)---\*/', re.DOTALL)
+from test262_utils import parse_yaml_frontmatter, as_list
 
 # ===========================================================================
 # Engine capability model
@@ -326,14 +326,14 @@ CATEGORY_ANALYSIS = {
 # ===========================================================================
 
 def parse_metadata(source):
-    match = YAML_PATTERN.search(source)
-    if not match:
+    data = parse_yaml_frontmatter(source)
+    if data is None:
         return {}
-    try:
-        data = yaml.safe_load(match.group(1))
-    except yaml.YAMLError:
-        return {}
-    return data if isinstance(data, dict) else {}
+
+    data["features"] = as_list(data.get("features", []))
+    data["flags"] = as_list(data.get("flags", []))
+    data["includes"] = as_list(data.get("includes", []))
+    return data
 
 
 def classify_test(filepath, metadata):
@@ -486,6 +486,7 @@ def generate_report(analyses, output_file):
     skipped_feature = by_classification["skip_feature"]
     skipped_flag = by_classification["skip_flag"]
     skipped_fixture = by_classification["skip_fixture"]
+    total_safe = total if total > 0 else 1
 
     print("\n" + "=" * 76)
     print("  Test262 ECMAScript Conformance Analysis")
@@ -494,9 +495,9 @@ def generate_report(analyses, output_file):
     print("=" * 76)
 
     print(f"\n  Total test files analyzed:  {total:>6}")
-    print(f"  Applicable (could run):    {applicable:>6} ({applicable/total*100:.1f}%)")
-    print(f"  Skipped (unsupported feat):{skipped_feature:>6} ({skipped_feature/total*100:.1f}%)")
-    print(f"  Skipped (unsupported flag):{skipped_flag:>6} ({skipped_flag/total*100:.1f}%)")
+    print(f"  Applicable (could run):    {applicable:>6} ({applicable/total_safe*100:.1f}%)")
+    print(f"  Skipped (unsupported feat):{skipped_feature:>6} ({skipped_feature/total_safe*100:.1f}%)")
+    print(f"  Skipped (unsupported flag):{skipped_flag:>6} ({skipped_flag/total_safe*100:.1f}%)")
     print(f"  Skipped (fixture files):   {skipped_fixture:>6}")
 
     print(f"\n  Applicable test complexity breakdown:")
@@ -551,7 +552,7 @@ def generate_report(analyses, output_file):
     print(f"  SUMMARY")
     print(f"{'=' * 76}")
     print(f"  The MoonBit JS engine could potentially execute {applicable} out of")
-    print(f"  {total} Test262 tests ({applicable/total*100:.1f}% of the suite).")
+    print(f"  {total} Test262 tests ({applicable/total_safe*100:.1f}% of the suite).")
     print(f"")
     simple = by_complexity["simple"]
     print(f"  Of the applicable tests:")

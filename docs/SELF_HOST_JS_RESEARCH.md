@@ -125,6 +125,10 @@ test262-js: build-js test262-download
 
 Compare results between WASM and JS targets. Discrepancies indicate behavioral differences in the MoonBit JS backend.
 
+Tooling note: `test262-runner.py` and `test262-analyze.py` now share
+`test262_utils.py` for Test262 frontmatter parsing and work even when PyYAML is
+not installed.
+
 ### Step 4: Package as a Distributable Module
 
 Configure `moon.pkg.json` for JS module output:
@@ -245,14 +249,15 @@ This is a long-term goal that would improve naturally as Test262 compliance incr
 ### Phase A: Validate JS Compilation — DONE
 
 1. ~~Run `moon build --target js`~~ — builds with zero errors
-2. ~~Run `moon test --target js`~~ — all 639 tests pass
+2. ~~Run `moon test --target js`~~ — all 735 tests pass
 3. ~~Manually test~~ — `node ./target/js/release/build/cmd/main/main.js 'console.log(1 + 2)'` outputs `3`
 4. ~~Fix `@env.args()` index offset~~ — solved with backend-specific `args.js.mbt`
 
 ### Phase B: Test262 on JS Target — DONE
 
 1. ~~Add CI workflow for JS-compiled engine~~ — `.github/workflows/test262.yml` builds with `moon build --target js` and runs via `node`
-2. ~~Run full Test262 suite against JS-compiled engine~~ — 11,316/25,801 passed (43.86%)
+2. ~~Run full Test262 suite against JS-compiled engine~~ — see
+   [ROADMAP.md](../ROADMAP.md) for the latest pass/skip/fail snapshot
 3. CI uses `node target/js/release/build/cmd/main/main.js` directly (faster than `moon run`), 4 threads, 90-minute timeout
 
 ### Phase C: Distributable Package (Medium Effort)
@@ -276,11 +281,11 @@ This is a long-term goal that would improve naturally as Test262 compliance incr
 | Aspect | Status |
 |---|---|
 | JS target compilation | **Working** |
-| Unit tests (639) | **All passing** on both WASM-GC and JS targets |
+| Unit tests (735) | **All passing** on both WASM-GC and JS targets |
 | FFI calls ported | **0** (none needed) |
 | Code changes required | **3 new files** (backend-specific argv), **1 edit** (Error toString) |
 | Build command | `moon build --target js` |
 | Run command | `node ./target/js/release/build/cmd/main/main.js '<code>'` |
-| Test262 pass rate | **43.86%** (11,316/25,801) on JS target |
+| Test262 pass rate | See [ROADMAP.md](../ROADMAP.md) for latest totals |
 
 The codebase's pure-MoonBit, zero-FFI architecture made JS-target compilation straightforward. The only issues encountered were the `process.argv` offset difference (solved with backend-specific files) and Error object toString formatting (solved by checking `class_name`).

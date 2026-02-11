@@ -7,3 +7,10 @@ target
 test262/
 test262-results.json
 test262-analysis.json
+__pycache__/
+
+# Test262 local outputs
+test262-*.json
+*-test262*.json
+promise.json
+!test262-results.json

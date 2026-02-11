@@ -67,7 +67,12 @@ moon info         # Update .mbti interface files
 moon test         # Run tests
 moon test --update # Update snapshot tests
 moon build        # Build
+python3 test262-runner.py --summary               # Run Test262 with concise output
+python3 test262-analyze.py --output /tmp/a.json   # Static Test262 analysis (no engine build)
 ```
+
+Test262 tooling note: `test262-runner.py` and `test262-analyze.py` work without
+PyYAML; they fall back to a built-in frontmatter parser in `test262_utils.py`.
 
 ## Documentation
 
