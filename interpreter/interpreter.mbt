@@ -117,10 +117,12 @@ fn is_strict_reserved_word(name : String) -> Bool {
   match name {
     "implements"
     | "interface"
+    | "let"
     | "package"
     | "private"
     | "protected"
     | "public"
+    | "static"
     | "yield" => true
     _ => false
   }
@@ -1155,6 +1157,9 @@ fn Interpreter::exec_stmt(
       Normal(Undefined)
     }
     GeneratorDecl(name, params, body, _) => {
+      if self.strict {
+        validate_strict_binding_name(name)
+      }
       let gen_func = self.make_generator_function(
         Some(name),
         params,
@@ -1172,6 +1177,9 @@ fn Interpreter::exec_stmt(
       Normal(Undefined)
     }
     GeneratorDeclExt(name, params, rest_param, body, _) => {
+      if self.strict {
+        validate_strict_binding_name(name)
+      }
       let gen_func = self.make_generator_function_ext(
         Some(name),
         params,

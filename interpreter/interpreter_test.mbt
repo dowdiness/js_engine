@@ -7089,3 +7089,37 @@ test "class constructor strict: does not leak strict mode" {
   let output = run_output(src)
   inspect(output, content="[\"1\", \"undefined\"]")
 }
+
+///|
+test "strict: generator declaration named eval throws SyntaxError" {
+  let src =
+    #|"use strict";
+    #|try {
+    #|  function* eval() { yield 1; }
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"SyntaxError: Unexpected eval or arguments in strict mode\"]",
+  )
+}
+
+///|
+test "strict: generator declaration named arguments throws SyntaxError" {
+  let src =
+    #|"use strict";
+    #|try {
+    #|  function* arguments() { yield 1; }
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"SyntaxError: Unexpected eval or arguments in strict mode\"]",
+  )
+}
