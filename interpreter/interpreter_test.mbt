@@ -6499,7 +6499,10 @@ test "eval: new eval() throws TypeError" {
       #|}
     ),
   )
-  inspect(output, content="[\"true\", \"eval is not a constructor at line 2, col 3\"]")
+  inspect(
+    output,
+    content="[\"true\", \"eval is not a constructor at line 2, col 3\"]",
+  )
 }
 
 ///|

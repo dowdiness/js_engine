@@ -1462,7 +1462,7 @@ pub fn setup_promise(env : Environment) -> Unit {
                   remaining.val = remaining.val - 1
                   if remaining.val == 0 {
                     let agg_error = make_aggregate_error(
-                      "All promises were rejected", errors,
+                      interp, "All promises were rejected", errors,
                     )
                     let _ = i2.call_value(reject, Undefined, [agg_error], loc)
                   }
@@ -1497,7 +1497,7 @@ pub fn setup_promise(env : Environment) -> Unit {
         remaining.val = remaining.val - 1
         if remaining.val == 0 {
           let agg_error = make_aggregate_error(
-            "All promises were rejected", errors,
+            interp, "All promises were rejected", errors,
           )
           let _ = interp.call_value(reject, Undefined, [agg_error], loc)
         }
@@ -1926,11 +1926,33 @@ fn promise_resolve_value(
 
 ///|
 /// Helper to create an AggregateError value
-fn make_aggregate_error(message : String, errors : Array[Value]) -> Value {
+fn make_aggregate_error(
+  interp : Interpreter,
+  message : String,
+  errors : Array[Value],
+) -> Value raise Error {
+  let loc = @token.Loc::default()
+  let errors_value = Array({ elements: errors })
+  let aggregate_ctor = interp.global.get("AggregateError") catch {
+    _ => Undefined
+  }
+  match aggregate_ctor {
+    Object(data) =>
+      match data.callable {
+        Some(_) =>
+          return interp.construct_value(
+            aggregate_ctor,
+            [errors_value, String_(message)],
+            loc,
+          )
+        None => ()
+      }
+    _ => ()
+  }
   let props : Map[String, Value] = {}
   props["name"] = String_("AggregateError")
   props["message"] = String_(message)
-  props["errors"] = Array({ elements: errors })
+  props["errors"] = errors_value
   Object({
     properties: props,
     symbol_properties: {},

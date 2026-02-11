@@ -274,6 +274,32 @@ test "Promise.any rejects when all reject" {
 }
 
 ///|
+test "Promise.any rejection is AggregateError instance with errors list" {
+  let src =
+    #|Promise.any([
+    #|  Promise.reject("fail-1"),
+    #|  Promise.reject("fail-2")
+    #|]).then(
+    #|  () => console.log("resolved"),
+    #|  err => {
+    #|    console.log(typeof AggregateError);
+    #|    console.log(err instanceof AggregateError);
+    #|    console.log(Array.isArray(err.errors));
+    #|    console.log(err.errors.length);
+    #|    console.log(err.errors[0]);
+    #|    console.log(err.errors[1]);
+    #|    console.log(err.message);
+    #|    console.log(err.stack.indexOf("AggregateError:") === 0);
+    #|  }
+    #|);
+  let (output, _) = @js_engine.run(src)
+  inspect(
+    output,
+    content="[\"function\", \"true\", \"true\", \"2\", \"fail-1\", \"fail-2\", \"All promises were rejected\", \"true\"]",
+  )
+}
+
+///|
 test "setTimeout basic" {
   let src =
     #|console.log("before");

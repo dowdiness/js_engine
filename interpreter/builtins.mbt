@@ -536,6 +536,7 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
   register_error_ctor(env, "RangeError", error_proto) |> ignore
   register_error_ctor(env, "URIError", error_proto) |> ignore
   register_error_ctor(env, "EvalError", error_proto) |> ignore
+  register_aggregate_error_ctor(env, error_proto) |> ignore
 
   // Object, Array constructors and built-in methods
   setup_object_builtins(env)
@@ -1517,6 +1518,90 @@ fn register_error_ctor(
     }),
   )
   // Set ErrorType.prototype.constructor = ErrorType
+  match proto_obj {
+    Object(data) => {
+      let ctor = env.get(name) catch { _ => Undefined }
+      data.properties["constructor"] = ctor
+      data.descriptors["constructor"] = {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
+    }
+    _ => ()
+  }
+  proto_obj
+}
+
+///|
+fn register_aggregate_error_ctor(
+  env : Environment,
+  parent_proto : Value,
+) -> Value {
+  let name = "AggregateError"
+  let proto_props : Map[String, Value] = {}
+  proto_props["name"] = String_(name)
+  proto_props["message"] = String_("")
+  proto_props["toString"] = make_native_func("toString", fn(_args) {
+    String_(name)
+  })
+  let proto_obj : Value = Object({
+    properties: proto_props,
+    symbol_properties: {},
+    prototype: parent_proto,
+    callable: None,
+    class_name: name,
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+  env.def_builtin(
+    name,
+    Object({
+      properties: { "prototype": proto_obj, "length": Number(2.0) },
+      symbol_properties: {},
+      prototype: Null,
+      callable: Some(
+        NativeCallable(name, fn(args) {
+          let errors_value : Value = if args.length() > 0 {
+            args[0]
+          } else {
+            Array({ elements: [] })
+          }
+          let message = if args.length() > 1 {
+            match args[1] {
+              String_(s) => s
+              Undefined => ""
+              other => other.to_string()
+            }
+          } else {
+            ""
+          }
+          let err_props : Map[String, Value] = {}
+          err_props["errors"] = errors_value
+          err_props["message"] = String_(message)
+          err_props["name"] = String_(name)
+          err_props["stack"] = String_(name + ": " + message)
+          Object({
+            properties: err_props,
+            symbol_properties: {},
+            prototype: proto_obj,
+            callable: None,
+            class_name: name,
+            descriptors: {},
+            symbol_descriptors: {},
+            extensible: true,
+          })
+        }),
+      ),
+      class_name: "Function",
+      descriptors: {},
+      symbol_descriptors: {},
+      extensible: true,
+    }),
+  )
   match proto_obj {
     Object(data) => {
       let ctor = env.get(name) catch { _ => Undefined }
