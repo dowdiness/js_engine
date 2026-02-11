@@ -171,7 +171,7 @@ The actual gain from P0â€“P3 (+7,439) far exceeded the projected range (+1,500â€
 | **P5** | **eval() semantics** | **+603** | **78.2%** |
 | **P6** | **Strict-mode prerequisites** | **+3** | **78.2%** |
 | P7 | Promise improvements | +200â€“382 | TBD |
-| Annex B | `--annex-b` gated features | +650+ | TBD |
+| Annex B | `--annex-b` gated features | +857 | TBD |
 
 ---
 
@@ -195,7 +195,7 @@ The actual gain from P0â€“P3 (+7,439) far exceeded the projected range (+1,500â€
 | HTML comment syntax (`<!--`) | ~10 | HTML-style comments in script code |
 | `RegExp.prototype.compile` | ~10 | Legacy RegExp recompilation |
 
-**Estimated total**: ~650+ tests currently failing
+**Estimated total**: ~857 tests currently failing
 
 ### Implementation plan
 

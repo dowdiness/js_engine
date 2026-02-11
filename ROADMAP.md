@@ -364,7 +364,7 @@ node engine.js --annex-b 'with ({x: 1}) { print(x) }'
 | `escape()`/`unescape()` | ~20 | Legacy encoding functions |
 | Block-level function declarations (sloppy) | ~503 fail | `annexB/language` — FunctionDeclaration in blocks under sloppy mode (Annex B.3.3) |
 
-**Estimated total**: ~650+ tests currently failing due to missing Annex B features
+**Estimated total**: ~857 tests currently failing due to missing Annex B features
 
 ### Priority
 
