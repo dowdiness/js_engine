@@ -127,24 +127,7 @@ Key changes:
 
 ---
 
-### P7: with Statement (~151 tests)
-
-**CI data**: `language/statements/with: 151 fail`
-
-**Scope correction**:
-- Lexer currently has no `With` keyword token; add this first.
-
-**Required**:
-1. Add `With` token in `token/token.mbt`, keyword mapping in `lexer/lexer.mbt`
-2. Add `WithStmt(expr, body)` in `ast/ast.mbt`
-3. Parse `with (expr) stmt` in parser
-4. Interpreter object-environment chain behavior
-5. Reject in strict mode (SyntaxError)
-6. `Symbol.unscopables` may be deferred
-
----
-
-### P8: Promise Improvements (~451 tests)
+### P7: Promise Improvements (~451 tests)
 
 **CI data**:
 ```
@@ -181,19 +164,52 @@ The actual gain from P0–P3 (+7,439) far exceeded the projected range (+1,500�
 3. Destructuring defaults (P2) fixed patterns used pervasively in test262 harness code
 4. Parser cleanup (P3) fixed arrow function parameters that gated large test suites
 
-### Remaining Phases (Projected from P5 baseline)
+### Remaining Phases (Projected from P6 baseline)
 
 | Phase | Content | Est. New Tests | Cumulative Rate |
 |-------|---------|---------------|-----------------|
 | **P5** | **eval() semantics** | **+603** | **78.2%** |
 | **P6** | **Strict-mode prerequisites** | **+3** | **78.2%** |
-| P7 | with statement | +100–151 | TBD |
-| P8 | Promise improvements | +200–382 | TBD |
+| P7 | Promise improvements | +200–382 | TBD |
+| Annex B | `--annex-b` gated features | +650+ | TBD |
+
+---
+
+## Annex B / Legacy Features (`--annex-b` flag)
+
+**Status**: Planned. All deprecated and legacy ECMAScript Annex B features will be gated behind an `--annex-b` CLI flag, suppressed by default.
+
+**Rationale**: Annex B features are deprecated, banned in strict mode, and irrelevant to modern JavaScript. The `with` statement (previously P7, ~151 tests) is the most complex Annex B feature — it requires a new object environment record type that adds complexity to the scope chain. Gating all Annex B features behind a flag keeps the core engine clean.
+
+### Features to gate behind `--annex-b`
+
+| Feature | Failing Tests | Notes |
+|---------|---------------|-------|
+| Block-level function decls (sloppy) | ~503 | `annexB/language` — FunctionDeclaration in blocks under sloppy mode (B.3.3) |
+| `with` statement | ~151 | Object environment record, dynamic scope injection |
+| `String.prototype.{anchor,big,...}` | ~73 | HTML wrapper methods |
+| `__proto__` property | ~40 | `Object.prototype.__proto__` getter/setter |
+| Legacy octal literals (`0777`) | ~30 | `0`-prefixed octals in sloppy mode |
+| Legacy octal escapes (`\077`) | ~20 | Octal escape sequences in strings |
+| `escape()`/`unescape()` | ~20 | Legacy encoding functions |
+| HTML comment syntax (`<!--`) | ~10 | HTML-style comments in script code |
+| `RegExp.prototype.compile` | ~10 | Legacy RegExp recompilation |
+
+**Estimated total**: ~650+ tests currently failing
+
+### Implementation plan
+
+1. Add `--annex-b` CLI flag in `cmd/main/main.mbt`, pass as `self.annex_b : Bool` to interpreter
+2. Update `test262-runner.py` to pass `--annex-b` for `annexB/` tests and tests with Annex B metadata
+3. Implement features incrementally, each gated behind `self.annex_b` check
+4. Priority: low — implement after core ES2015+ compliance targets are met (>85% non-Annex B pass rate)
+
+---
 
 ## Skipped Features Needed for ES2015 (future)
 
 These are feature-flagged as skipped but required for ES2015 compliance:
 - WeakMap/WeakSet (~147 executable tests)
-- Proxy/Reflect (~311+ tests) 
+- Proxy/Reflect (~311+ tests)
 - TypedArray/ArrayBuffer/DataView (~1,568+ tests)
 - Tail call optimization (impractical for tree-walking interpreter)

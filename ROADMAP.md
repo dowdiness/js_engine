@@ -43,7 +43,7 @@ Top failing categories from the latest CI run:
 | language/statements | 3,213 | 959 | 77.0% | Medium |
 | built-ins/Array | 2,392 | 482 | 83.2% | Medium |
 | built-ins/Object | 3,020 | 271 | 91.8% | Low (P4 done) |
-| annexB/language | 314 | 503 | 38.4% | Low |
+| annexB/language | 314 | 503 | 38.4% | Low (--annex-b) |
 | built-ins/Promise | 206 | 362 | 36.3% | Medium |
 | built-ins/DataView | 7 | 304 | 2.3% | Hard (needs TypedArray) |
 | built-ins/RegExp | 601 | 225 | 72.8% | Hard |
@@ -320,12 +320,55 @@ Syntactic sugar over Promises + generator-like suspension. Now unblocked by gene
 | Feature | Impact | Notes |
 |---------|--------|-------|
 | RegExp improvements | ~225 fail | Capture groups, backreferences, unicode/sticky flags |
-| `with` statement | ~150 | Dynamic scope injection |
 | Date object | — | ✅ Done (8C+9) — 511/534 pass (95.7%) |
 | eval() | — | ✅ Done (P5) — 224/330 pass (67.9%) |
 | WeakMap/WeakSet | ~59 fail | Reference-based collections |
 | Proxy/Reflect | ~500 | Meta-programming |
 | Promise improvements | ~362 fail | Iterator protocol, thenable assimilation, microtask ordering |
+
+---
+
+## Annex B / Legacy Features (`--annex-b` flag)
+
+**Status**: Planned. Deprecated and legacy ECMAScript features will be gated behind an `--annex-b` CLI flag, suppressed by default.
+
+**Rationale**: Annex B features are deprecated, banned in strict mode, and irrelevant to modern JavaScript. Implementing them unconditionally adds complexity and pollutes the core engine. Gating them behind a flag keeps the default engine clean while allowing opt-in for legacy compatibility testing.
+
+### Design
+
+```bash
+# Default: strict-modern behavior, no Annex B
+node engine.js 'with ({x: 1}) { print(x) }'
+# => SyntaxError: 'with' statement is not supported
+
+# Opt-in: enable Annex B legacy features
+node engine.js --annex-b 'with ({x: 1}) { print(x) }'
+# => 1
+```
+
+- **CLI**: `--annex-b` flag parsed in `cmd/main/main.mbt`, passed to interpreter as `self.annex_b : Bool`
+- **Test262 runner**: `test262-runner.py` passes `--annex-b` for tests in `annexB/` directories or tests with `includes: [annexB]` metadata
+- **Feature gating**: Each Annex B feature checks `self.annex_b` before enabling legacy behavior
+
+### Features to gate behind `--annex-b`
+
+| Feature | Tests | Notes |
+|---------|-------|-------|
+| `with` statement | ~151 fail | Object environment record, dynamic scope injection. SyntaxError in strict mode regardless of flag |
+| Legacy octal literals (`0777`) | ~30 | `0`-prefixed octals in sloppy mode |
+| Legacy octal escapes (`\077`) | ~20 | Octal escape sequences in strings |
+| `__proto__` property | ~40 | `Object.prototype.__proto__` getter/setter |
+| HTML comment syntax (`<!--`, `-->`) | ~10 | HTML-style comments in script code |
+| `String.prototype.{anchor,big,blink,...}` | ~73 fail | HTML wrapper methods (`"str".bold()` → `"<b>str</b>"`) |
+| `RegExp.prototype.compile` | ~10 | Legacy RegExp recompilation |
+| `escape()`/`unescape()` | ~20 | Legacy encoding functions |
+| Block-level function declarations (sloppy) | ~503 fail | `annexB/language` — FunctionDeclaration in blocks under sloppy mode (Annex B.3.3) |
+
+**Estimated total**: ~650+ tests currently failing due to missing Annex B features
+
+### Priority
+
+Low. These features are not required for modern JavaScript usage. Implement only after core ES2015+ compliance targets are met (>85% pass rate on non-Annex B tests).
 
 ---
 
