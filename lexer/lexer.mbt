@@ -58,6 +58,21 @@ fn is_alnum(c : Char) -> Bool {
 }
 
 ///|
+fn is_js_whitespace(c : Char) -> Bool {
+  // NOTE: This covers the high-impact ECMAScript whitespace code points used by
+  // our current conformance set (including NBSP and BOM), but not every Unicode
+  // Space_Separator (Zs) character yet.
+  let cp = c.to_int()
+  cp == 0x20 || // Space
+  cp == 0x09 || // Tab
+  cp == 0x0B || // Vertical Tab
+  cp == 0x0C || // Form Feed
+  cp == 0x0D || // Carriage Return
+  cp == 0x00A0 || // No-Break Space
+  cp == 0xFEFF // Zero Width No-Break Space (BOM)
+}
+
+///|
 fn is_id_start_cp(cp : Int) -> Bool {
   // For ASCII range, validate strictly; for non-ASCII, accept (Unicode letters)
   if cp < 128 {
@@ -274,7 +289,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
   while offset < len {
     let c = char_at(offset)
     // Skip whitespace
-    if c == ' ' || c == '\t' || c == '\r' {
+    if is_js_whitespace(c) {
       offset += 1
       col += 1
       continue
