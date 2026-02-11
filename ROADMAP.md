@@ -7,6 +7,7 @@
 **Unit tests**: 746 total, 746 passed, 0 failed
 
 **Targeted verification (2026-02-11)**: `language/block-scope` slice is 106/106 passing (39 skipped).
+**Targeted verification (2026-02-11)**: `built-ins/Promise` slice is 580/599 passing (40 skipped, 19 failed). `built-ins/Promise/prototype` is 114/115 passing (only `Proxy`-dependent test failing).
 
 ## Phase History
 
@@ -327,6 +328,34 @@ Syntactic sugar over Promises + generator-like suspension. Now unblocked by gene
 | WeakMap/WeakSet | ~59 fail | Reference-based collections |
 | Proxy/Reflect | ~500 | Meta-programming |
 | Promise improvements | ~362 fail | Iterator protocol, thenable assimilation, microtask ordering |
+
+### Next Fix Batch (Pre-Implementation): Promise Combinator Abrupt/IteratorClose
+
+**Status (2026-02-11)**: Planned, not implemented yet. This batch focuses on `Promise.all`, `Promise.allSettled`, `Promise.any`, and `Promise.race` abrupt-completion and iterator-close behavior.
+
+**Current focused failures (19 in `built-ins/Promise`)**:
+- `capability-resolve-throws-reject.js` failures in `all` and `allSettled`
+- iterator-close forwarding tests (`resolve-throws-iterator-return-is-not-callable.js`) in `all`, `allSettled`, `any`, `race`
+- thenable/poisoned-then cases for empty-input finalize paths (`all` / `allSettled`)
+- several `Promise.any` abrupt-rejection path tests (`invoke-resolve-error-close`, `iter-arg-is-poisoned`, `invoke-then`, capability no-close variants)
+
+**Implementation plan**:
+1. Switch combinators to `NewPromiseCapability(C)` style result capability (constructor-respecting), replacing direct `new_promise_data()` result promise allocation.
+2. Extract shared abrupt-completion handler:
+   `IfAbrupt -> (if iterator not done then IteratorClose) -> RejectCapability -> Return capability.[[Promise]]`.
+3. Align iterator-close semantics for throw completions:
+   preserve original throw reason when required, while still attempting `return()` for cleanup.
+4. Route terminal `Call(resultCapability.[[Resolve]], valuesArray)` and other finalization calls through the same abrupt pipeline (no synchronous escape).
+5. Keep close behavior gated by `iteratorRecord.[[Done]]` only; do not close after normal completion.
+
+**Validation sequence**:
+1. Run targeted failing files for combinators first (all/allSettled/any/race abrupt-close tests).
+2. Run `python3 test262-runner.py --filter "built-ins/Promise" --summary`.
+3. Keep `Proxy`-dependent prototype test as known unsupported feature until Proxy support lands.
+
+**Known blockers**:
+- `Proxy` unsupported (`Promise/prototype/finally/this-value-proxy.js`)
+- 2025 close-path tests include `0n` in one matrix; BigInt syntax support is still missing, so those cases may stay blocked or must remain skipped until BigInt parsing is added.
 
 ---
 
