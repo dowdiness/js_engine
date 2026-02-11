@@ -809,8 +809,27 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }),
         "getPrototypeOf": make_native_func("getPrototypeOf", fn(args) {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
+          fn get_ctor_proto(name : String) -> Value {
+            let ctor = env.get(name) catch { _ => return Null }
+            match ctor {
+              Object(ctor_data) =>
+                match ctor_data.properties.get("prototype") {
+                  Some(proto) => proto
+                  None => Null
+                }
+              _ => Null
+            }
+          }
           match obj {
             Object(data) => data.prototype
+            Array(_) => get_ctor_proto("Array")
+            String_(_) => get_ctor_proto("String")
+            Number(_) => get_ctor_proto("Number")
+            Bool(_) => get_ctor_proto("Boolean")
+            Symbol(_) => get_ctor_proto("Symbol")
+            Map(_) => get_ctor_proto("Map")
+            Set(_) => get_ctor_proto("Set")
+            Promise(_) => get_ctor_proto("Promise")
             _ => Null
           }
         }),
@@ -1339,45 +1358,69 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             }
             Array(arr_data) => {
               // Handle defineProperty on Array targets
-              let prop_name = prop_val.to_string()
-              if prop_name == "length" {
-                // Handle length property changes
-                match desc_props.get("value") {
-                  Some(Number(n)) => {
-                    let new_len = n.to_int()
-                    if new_len < 0 || new_len.to_double() != n {
-                      raise @errors.RangeError(message="Invalid array length")
-                    }
-                    // Truncate or extend the array
-                    while arr_data.elements.length() > new_len {
-                      let _removed = arr_data.elements.pop()
-                    }
-                    while arr_data.elements.length() < new_len {
-                      arr_data.elements.push(Undefined)
-                    }
+              let handles_iterator_override = match prop_val {
+                Symbol(sym) => sym.id == get_iterator_symbol().id
+                _ => false
+              }
+              if handles_iterator_override {
+                if is_accessor {
+                  let getter = match new_getter {
+                    Some(v) =>
+                      match v {
+                        Undefined => None
+                        _ => Some(v)
+                      }
+                    None => None
                   }
-                  Some(_) =>
-                    raise @errors.RangeError(message="Invalid array length")
-                  None => ()
+                  set_array_iterator_override(arr_data, getter, None)
+                } else {
+                  let value = match desc_props.get("value") {
+                    Some(v) => v
+                    None => Undefined
+                  }
+                  set_array_iterator_override(arr_data, None, Some(value))
                 }
               } else {
-                // Check if prop_name is a valid array index
-                let idx = @strconv.parse_int(prop_name) catch { _ => -1 }
-                if idx >= 0 && idx.to_string() == prop_name {
-                  // Only write value if descriptor specifies one
+                let prop_name = prop_val.to_string()
+                if prop_name == "length" {
+                  // Handle length property changes
                   match desc_props.get("value") {
-                    Some(v) => {
-                      // Extend array if needed
-                      while arr_data.elements.length() <= idx {
+                    Some(Number(n)) => {
+                      let new_len = n.to_int()
+                      if new_len < 0 || new_len.to_double() != n {
+                        raise @errors.RangeError(message="Invalid array length")
+                      }
+                      // Truncate or extend the array
+                      while arr_data.elements.length() > new_len {
+                        let _removed = arr_data.elements.pop()
+                      }
+                      while arr_data.elements.length() < new_len {
                         arr_data.elements.push(Undefined)
                       }
-                      arr_data.elements[idx] = v
                     }
+                    Some(_) =>
+                      raise @errors.RangeError(message="Invalid array length")
                     None => ()
                   }
+                } else {
+                  // Check if prop_name is a valid array index
+                  let idx = @strconv.parse_int(prop_name) catch { _ => -1 }
+                  if idx >= 0 && idx.to_string() == prop_name {
+                    // Only write value if descriptor specifies one
+                    match desc_props.get("value") {
+                      Some(v) => {
+                        // Extend array if needed
+                        while arr_data.elements.length() <= idx {
+                          arr_data.elements.push(Undefined)
+                        }
+                        arr_data.elements[idx] = v
+                      }
+                      None => ()
+                    }
+                  }
+                  // Non-index properties on arrays: silently succeed
+                  // (our Array representation doesn't support named props)
                 }
-                // Non-index properties on arrays: silently succeed
-                // (our Array representation doesn't support named props)
               }
             }
             Promise(data) => {

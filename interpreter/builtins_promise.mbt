@@ -72,6 +72,44 @@ pub fn Interpreter::run_microtasks(self : Interpreter) -> Unit raise Error {
 }
 
 ///|
+/// ES object-like values that participate in thenable assimilation.
+fn is_thenable_object_candidate(value : Value) -> Bool {
+  match value {
+    Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) => true
+    _ => false
+  }
+}
+
+///|
+/// Create an InterpreterCallable function object with explicit `length`.
+fn make_interpreter_callable_with_length(
+  name : String,
+  length : Int,
+  body : (Interpreter, Value, Array[Value]) -> Value raise Error,
+) -> Value {
+  let props : Map[String, Value] = {}
+  props["length"] = Number(length.to_double())
+  let descriptors : Map[String, PropDescriptor] = {}
+  descriptors["length"] = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
+  Object({
+    properties: props,
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(InterpreterCallable(name, body)),
+    class_name: "Function",
+    descriptors,
+    symbol_descriptors: {},
+    extensible: true,
+  })
+}
+
+///|
 /// Create resolve and reject capability functions for a promise
 /// Returns (resolve_func, reject_func)
 fn create_resolving_functions(
@@ -82,129 +120,111 @@ fn create_resolving_functions(
   let already_resolved : Ref[Bool] = { val: false }
 
   // Create resolve function
-  let resolve_func = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("resolve", fn(i, _this, args) {
-        if already_resolved.val {
+  let resolve_func = make_interpreter_callable_with_length("resolve", 1, fn(
+    i,
+    _this,
+    args,
+  ) {
+    if already_resolved.val {
+      return Undefined
+    }
+    already_resolved.val = true
+    let resolution = if args.length() > 0 { args[0] } else { Undefined }
+
+    // Check for self-resolution (ECMAScript spec requirement)
+    match resolution {
+      Promise(pd) =>
+        if physical_equal(pd, promise_data) {
+          // Self-resolution: reject with TypeError
+          let error = js_error_to_value_with_env(
+            @errors.TypeError(message="Chaining cycle detected for promise"),
+            Some(i.global),
+          )
+          reject_promise(i, promise_data, error)
           return Undefined
         }
-        already_resolved.val = true
-        let resolution = if args.length() > 0 { args[0] } else { Undefined }
+      _ => ()
+    }
 
-        // Check for self-resolution (ECMAScript spec requirement)
-        match resolution {
-          Promise(pd) =>
-            if physical_equal(pd, promise_data) {
-              // Self-resolution: reject with TypeError
-              let error = js_error_to_value_with_env(
-                @errors.TypeError(message="Chaining cycle detected for promise"),
-                Some(i.global),
-              )
-              reject_promise(i, promise_data, error)
-              return Undefined
-            }
-          _ => ()
+    // Thenable assimilation (ECMAScript §25.6.1.3.2 steps 8-13)
+    // If resolution is not an object, fulfill directly.
+    // Otherwise, perform Get(resolution, "then") and check if callable.
+    // This applies uniformly to both native Promises and plain objects
+    // — the spec has no fast-path for native promises.
+    if is_thenable_object_candidate(resolution) {
+      // Get(resolution, "then") walks the prototype chain and
+      // invokes accessors per ECMAScript spec
+      let loc = @token.Loc::default()
+      let then_val = i.get_property(resolution, "then", loc) catch {
+        e => {
+          // If Get throws, reject the promise with the error
+          let err = js_error_to_value_with_env(e, Some(i.global))
+          reject_promise(i, promise_data, err)
+          return Undefined
         }
-
-        // Thenable assimilation (ECMAScript §25.6.1.3.2 steps 8-13)
-        // If resolution is not an object, fulfill directly.
-        // Otherwise, perform Get(resolution, "then") and check if callable.
-        // This applies uniformly to both native Promises and plain objects
-        // — the spec has no fast-path for native promises.
-        match resolution {
-          Promise(_) | Object(_) => {
-            // Get(resolution, "then") walks the prototype chain and
-            // invokes accessors per ECMAScript spec
-            let loc = @token.Loc::default()
-            let then_val = i.get_property(resolution, "then", loc) catch {
-              e => {
-                // If Get throws, reject the promise with the error
-                let err = js_error_to_value_with_env(e, Some(i.global))
-                reject_promise(i, promise_data, err)
-                return Undefined
-              }
+      }
+      match then_val {
+        Object(then_od) =>
+          match then_od.callable {
+            Some(_) => {
+              // Thenable: enqueue PromiseResolveThenableJob
+              let (res, rej) = create_resolving_functions(i, promise_data)
+              let job = Object({
+                properties: {},
+                symbol_properties: {},
+                prototype: Null,
+                callable: Some(
+                  InterpreterCallable("PromiseResolveThenableJob", fn(
+                    i2,
+                    _t,
+                    _a,
+                  ) raise {
+                    try {
+                      let _ = i2.call_value(
+                        then_val,
+                        resolution,
+                        [res, rej],
+                        loc,
+                      )
+                    } catch {
+                      e => {
+                        let err = js_error_to_value_with_env(e, Some(i2.global))
+                        let _ = i2.call_value(rej, Undefined, [err], loc)
+                      }
+                    }
+                    Undefined
+                  }),
+                ),
+                class_name: "Function",
+                descriptors: {},
+                symbol_descriptors: {},
+                extensible: true,
+              })
+              i.enqueue_microtask(job, [])
             }
-            match then_val {
-              Object(then_od) =>
-                match then_od.callable {
-                  Some(_) => {
-                    // Thenable: enqueue PromiseResolveThenableJob
-                    let (res, rej) = create_resolving_functions(i, promise_data)
-                    let job = Object({
-                      properties: {},
-                      symbol_properties: {},
-                      prototype: Null,
-                      callable: Some(
-                        InterpreterCallable("PromiseResolveThenableJob", fn(
-                          i2,
-                          _t,
-                          _a,
-                        ) raise {
-                          try {
-                            let _ = i2.call_value(
-                              then_val,
-                              resolution,
-                              [res, rej],
-                              loc,
-                            )
-                          } catch {
-                            e => {
-                              let err = js_error_to_value_with_env(
-                                e,
-                                Some(i2.global),
-                              )
-                              let _ = i2.call_value(rej, Undefined, [err], loc)
-                            }
-                          }
-                          Undefined
-                        }),
-                      ),
-                      class_name: "Function",
-                      descriptors: {},
-                      symbol_descriptors: {},
-                      extensible: true,
-                    })
-                    i.enqueue_microtask(job, [])
-                  }
-                  None => fulfill_promise(i, promise_data, resolution)
-                }
-              _ => fulfill_promise(i, promise_data, resolution)
-            }
+            None => fulfill_promise(i, promise_data, resolution)
           }
-          _ => fulfill_promise(i, promise_data, resolution)
-        }
-        Undefined
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
+        _ => fulfill_promise(i, promise_data, resolution)
+      }
+    } else {
+      fulfill_promise(i, promise_data, resolution)
+    }
+    Undefined
   })
 
   // Create reject function
-  let reject_func = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("reject", fn(i, _this, args) {
-        if already_resolved.val {
-          return Undefined
-        }
-        already_resolved.val = true
-        let reason = if args.length() > 0 { args[0] } else { Undefined }
-        reject_promise(i, promise_data, reason)
-        Undefined
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
+  let reject_func = make_interpreter_callable_with_length("reject", 1, fn(
+    i,
+    _this,
+    args,
+  ) {
+    if already_resolved.val {
+      return Undefined
+    }
+    already_resolved.val = true
+    let reason = if args.length() > 0 { args[0] } else { Undefined }
+    reject_promise(i, promise_data, reason)
+    Undefined
   })
   (resolve_func, reject_func)
 }
@@ -389,6 +409,51 @@ fn promise_iterator_close(
           raise @errors.TypeError(message="iterator.return is not a function")
       }
     _ => raise @errors.TypeError(message="iterator.return is not a function")
+  }
+}
+
+///|
+/// Handle abrupt completion in Promise combinators:
+/// - If iteration is not done, attempt IteratorClose.
+/// - For throw completions, preserve the original abrupt reason even if close throws.
+/// - Reject the result capability and return its promise.
+fn reject_combinator_abrupt(
+  interp : Interpreter,
+  result_promise : Value,
+  reject : Value,
+  iterator : Value,
+  has_iterator : Bool,
+  iterator_done : Bool,
+  err : Error,
+  loc : @token.Loc,
+) -> Value raise Error {
+  let reason = js_error_to_value_with_env(err, Some(interp.global))
+  if has_iterator && not(iterator_done) {
+    // For throw completions, IteratorClose errors do not replace the original
+    // abrupt reason.
+    promise_iterator_close(interp, iterator, loc) catch {
+      _ => ()
+    }
+  }
+  let _ = interp.call_value(reject, Undefined, [reason], loc)
+  result_promise
+}
+
+///|
+/// Resolve combinator result and convert abrupt resolve completion into reject.
+fn resolve_combinator_result(
+  interp : Interpreter,
+  resolve : Value,
+  reject : Value,
+  resolution : Value,
+  loc : @token.Loc,
+) -> Unit raise Error {
+  let _ = interp.call_value(resolve, Undefined, [resolution], loc) catch {
+    e => {
+      let reason = js_error_to_value_with_env(e, Some(interp.global))
+      let _ = interp.call_value(reject, Undefined, [reason], loc)
+      Undefined
+    }
   }
 }
 
@@ -896,16 +961,10 @@ pub fn setup_promise(env : Environment) -> Unit {
           _ => ()
         }
 
-        let (promise, resolve, reject) = create_promise_capability_from_constructor(
+        let (promise, resolve, _reject) = create_promise_capability_from_constructor(
           interp, this_val, loc,
         )
-        let _ = interp.call_value(resolve, Undefined, [value], loc) catch {
-          e => {
-            let reason = js_error_to_value_with_env(e, Some(interp.global))
-            let _ = interp.call_value(reject, Undefined, [reason], loc)
-            Undefined
-          }
-        }
+        let _ = interp.call_value(resolve, Undefined, [value], loc)
         promise
       }),
     ),
@@ -1006,69 +1065,51 @@ pub fn setup_promise(env : Environment) -> Unit {
               interp, promise_resolve, _this, next_value, loc,
             )
             let already_called : Ref[Bool] = { val: false }
-            let resolve_element = Object({
-              properties: {},
-              symbol_properties: {},
-              prototype: Null,
-              callable: Some(
-                InterpreterCallable("allResolveElement", fn(
-                  i2,
-                  _t2,
-                  args2,
-                ) raise {
-                  if already_called.val {
-                    return Undefined
-                  }
-                  already_called.val = true
-                  let value = if args2.length() > 0 {
-                    args2[0]
-                  } else {
-                    Undefined
-                  }
-                  results[index] = value
-                  remaining.val = remaining.val - 1
-                  if remaining.val == 0 {
-                    let _ = i2.call_value(
-                      resolve,
-                      Undefined,
-                      [Array({ elements: results })],
-                      loc,
-                    )
-                  }
+            let resolve_element = make_interpreter_callable_with_length(
+              "allResolveElement",
+              1,
+              fn(i2, _t2, args2) raise {
+                if already_called.val {
+                  return Undefined
+                }
+                already_called.val = true
+                let value = if args2.length() > 0 {
+                  args2[0]
+                } else {
                   Undefined
-                }),
-              ),
-              class_name: "Function",
-              descriptors: {},
-              symbol_descriptors: {},
-              extensible: true,
-            })
+                }
+                results[index] = value
+                remaining.val = remaining.val - 1
+                if remaining.val == 0 {
+                  resolve_combinator_result(
+                    i2,
+                    resolve,
+                    reject,
+                    Array({ elements: results }),
+                    loc,
+                  )
+                }
+                Undefined
+              },
+            )
             invoke_then_method(
               interp, next_promise, resolve_element, reject, loc,
             )
           }
         } catch {
-          e => {
-            let mut reason = js_error_to_value_with_env(e, Some(interp.global))
-            if has_iterator && not(iterator_done) {
-              promise_iterator_close(interp, iterator, loc) catch {
-                close_error =>
-                  reason = js_error_to_value_with_env(
-                    close_error,
-                    Some(interp.global),
-                  )
-              }
-            }
-            let _ = interp.call_value(reject, Undefined, [reason], loc)
-            return result_promise
-          }
+          e =>
+            return reject_combinator_abrupt(
+              interp, result_promise, reject, iterator, has_iterator, iterator_done,
+              e, loc,
+            )
         }
         remaining.val = remaining.val - 1
         if remaining.val == 0 {
-          let _ = interp.call_value(
+          resolve_combinator_result(
+            interp,
             resolve,
-            Undefined,
-            [Array({ elements: results })],
+            reject,
+            Array({ elements: results }),
             loc,
           )
         }
@@ -1150,20 +1191,11 @@ pub fn setup_promise(env : Environment) -> Unit {
             invoke_then_method(interp, next_promise, resolve, reject, loc)
           }
         } catch {
-          e => {
-            let mut reason = js_error_to_value_with_env(e, Some(interp.global))
-            if has_iterator && not(iterator_done) {
-              promise_iterator_close(interp, iterator, loc) catch {
-                close_error =>
-                  reason = js_error_to_value_with_env(
-                    close_error,
-                    Some(interp.global),
-                  )
-              }
-            }
-            let _ = interp.call_value(reject, Undefined, [reason], loc)
-            return result_promise
-          }
+          e =>
+            return reject_combinator_abrupt(
+              interp, result_promise, reject, iterator, has_iterator, iterator_done,
+              e, loc,
+            )
         }
         result_promise
       }),
@@ -1243,130 +1275,102 @@ pub fn setup_promise(env : Environment) -> Unit {
               interp, promise_resolve, _this, next_value, loc,
             )
             let already_called : Ref[Bool] = { val: false }
-            let on_fulfilled = Object({
-              properties: {},
-              symbol_properties: {},
-              prototype: Null,
-              callable: Some(
-                InterpreterCallable("allSettledOnFulfilled", fn(
-                  i2,
-                  _t2,
-                  args2,
-                ) raise {
-                  if already_called.val {
-                    return Undefined
-                  }
-                  already_called.val = true
-                  let value = if args2.length() > 0 {
-                    args2[0]
-                  } else {
-                    Undefined
-                  }
-                  let result_props : Map[String, Value] = {}
-                  result_props["status"] = String_("fulfilled")
-                  result_props["value"] = value
-                  results[index] = Object({
-                    properties: result_props,
-                    symbol_properties: {},
-                    prototype: Null,
-                    callable: None,
-                    class_name: "Object",
-                    descriptors: {},
-                    symbol_descriptors: {},
-                    extensible: true,
-                  })
-                  remaining.val = remaining.val - 1
-                  if remaining.val == 0 {
-                    let _ = i2.call_value(
-                      resolve,
-                      Undefined,
-                      [Array({ elements: results })],
-                      loc,
-                    )
-                  }
+            let on_fulfilled = make_interpreter_callable_with_length(
+              "allSettledOnFulfilled",
+              1,
+              fn(i2, _t2, args2) raise {
+                if already_called.val {
+                  return Undefined
+                }
+                already_called.val = true
+                let value = if args2.length() > 0 {
+                  args2[0]
+                } else {
                   Undefined
-                }),
-              ),
-              class_name: "Function",
-              descriptors: {},
-              symbol_descriptors: {},
-              extensible: true,
-            })
-            let on_rejected = Object({
-              properties: {},
-              symbol_properties: {},
-              prototype: Null,
-              callable: Some(
-                InterpreterCallable("allSettledOnRejected", fn(
-                  i2,
-                  _t2,
-                  args2,
-                ) raise {
-                  if already_called.val {
-                    return Undefined
-                  }
-                  already_called.val = true
-                  let reason = if args2.length() > 0 {
-                    args2[0]
-                  } else {
-                    Undefined
-                  }
-                  let result_props : Map[String, Value] = {}
-                  result_props["status"] = String_("rejected")
-                  result_props["reason"] = reason
-                  results[index] = Object({
-                    properties: result_props,
-                    symbol_properties: {},
-                    prototype: Null,
-                    callable: None,
-                    class_name: "Object",
-                    descriptors: {},
-                    symbol_descriptors: {},
-                    extensible: true,
-                  })
-                  remaining.val = remaining.val - 1
-                  if remaining.val == 0 {
-                    let _ = i2.call_value(
-                      resolve,
-                      Undefined,
-                      [Array({ elements: results })],
-                      loc,
-                    )
-                  }
+                }
+                let result_props : Map[String, Value] = {}
+                result_props["status"] = String_("fulfilled")
+                result_props["value"] = value
+                results[index] = Object({
+                  properties: result_props,
+                  symbol_properties: {},
+                  prototype: Null,
+                  callable: None,
+                  class_name: "Object",
+                  descriptors: {},
+                  symbol_descriptors: {},
+                  extensible: true,
+                })
+                remaining.val = remaining.val - 1
+                if remaining.val == 0 {
+                  resolve_combinator_result(
+                    i2,
+                    resolve,
+                    reject,
+                    Array({ elements: results }),
+                    loc,
+                  )
+                }
+                Undefined
+              },
+            )
+            let on_rejected = make_interpreter_callable_with_length(
+              "allSettledOnRejected",
+              1,
+              fn(i2, _t2, args2) raise {
+                if already_called.val {
+                  return Undefined
+                }
+                already_called.val = true
+                let reason = if args2.length() > 0 {
+                  args2[0]
+                } else {
                   Undefined
-                }),
-              ),
-              class_name: "Function",
-              descriptors: {},
-              symbol_descriptors: {},
-              extensible: true,
-            })
+                }
+                let result_props : Map[String, Value] = {}
+                result_props["status"] = String_("rejected")
+                result_props["reason"] = reason
+                results[index] = Object({
+                  properties: result_props,
+                  symbol_properties: {},
+                  prototype: Null,
+                  callable: None,
+                  class_name: "Object",
+                  descriptors: {},
+                  symbol_descriptors: {},
+                  extensible: true,
+                })
+                remaining.val = remaining.val - 1
+                if remaining.val == 0 {
+                  resolve_combinator_result(
+                    i2,
+                    resolve,
+                    reject,
+                    Array({ elements: results }),
+                    loc,
+                  )
+                }
+                Undefined
+              },
+            )
             invoke_then_method(
               interp, next_promise, on_fulfilled, on_rejected, loc,
             )
           }
         } catch {
-          e => {
-            let mut reason = js_error_to_value_with_env(e, Some(interp.global))
-            if has_iterator && not(iterator_done) {
-              promise_iterator_close(interp, iterator, loc) catch {
-                close_error =>
-                  reason = js_error_to_value_with_env(
-                    close_error,
-                    Some(interp.global),
-                  )
-              }
-            }
-            let _ = interp.call_value(reject, Undefined, [reason], loc)
-            return result_promise
-          }
+          e =>
+            return reject_combinator_abrupt(
+              interp, result_promise, reject, iterator, has_iterator, iterator_done,
+              e, loc,
+            )
         }
         remaining.val = remaining.val - 1
         if remaining.val == 0 {
-          let _ = interp.call_value(
+          resolve_combinator_result(
+            interp,
             resolve,
-            Undefined,
-            [Array({ elements: results })],
+            reject,
+            Array({ elements: results }),
             loc,
           )
         }
@@ -1450,80 +1454,57 @@ pub fn setup_promise(env : Environment) -> Unit {
               interp, promise_resolve, _this, next_value, loc,
             )
             let already_called : Ref[Bool] = { val: false }
-            let on_fulfilled = Object({
-              properties: {},
-              symbol_properties: {},
-              prototype: Null,
-              callable: Some(
-                InterpreterCallable("anyOnFulfilled", fn(i2, _t2, args2) raise {
-                  if already_called.val {
-                    return Undefined
-                  }
-                  already_called.val = true
-                  let value = if args2.length() > 0 {
-                    args2[0]
-                  } else {
-                    Undefined
-                  }
-                  let _ = i2.call_value(resolve, Undefined, [value], loc)
+            let on_fulfilled = make_interpreter_callable_with_length(
+              "anyOnFulfilled",
+              1,
+              fn(i2, _t2, args2) raise {
+                if already_called.val {
+                  return Undefined
+                }
+                already_called.val = true
+                let value = if args2.length() > 0 {
+                  args2[0]
+                } else {
                   Undefined
-                }),
-              ),
-              class_name: "Function",
-              descriptors: {},
-              symbol_descriptors: {},
-              extensible: true,
-            })
-            let on_rejected = Object({
-              properties: {},
-              symbol_properties: {},
-              prototype: Null,
-              callable: Some(
-                InterpreterCallable("anyOnRejected", fn(i2, _t2, args2) raise {
-                  if already_called.val {
-                    return Undefined
-                  }
-                  already_called.val = true
-                  let reason = if args2.length() > 0 {
-                    args2[0]
-                  } else {
-                    Undefined
-                  }
-                  errors[index] = reason
-                  remaining.val = remaining.val - 1
-                  if remaining.val == 0 {
-                    let agg_error = make_aggregate_error(
-                      interp, "All promises were rejected", errors,
-                    )
-                    let _ = i2.call_value(reject, Undefined, [agg_error], loc)
-                  }
+                }
+                let _ = i2.call_value(resolve, Undefined, [value], loc)
+                Undefined
+              },
+            )
+            let on_rejected = make_interpreter_callable_with_length(
+              "anyOnRejected",
+              1,
+              fn(i2, _t2, args2) raise {
+                if already_called.val {
+                  return Undefined
+                }
+                already_called.val = true
+                let reason = if args2.length() > 0 {
+                  args2[0]
+                } else {
                   Undefined
-                }),
-              ),
-              class_name: "Function",
-              descriptors: {},
-              symbol_descriptors: {},
-              extensible: true,
-            })
+                }
+                errors[index] = reason
+                remaining.val = remaining.val - 1
+                if remaining.val == 0 {
+                  let agg_error = make_aggregate_error(
+                    interp, "All promises were rejected", errors,
+                  )
+                  let _ = i2.call_value(reject, Undefined, [agg_error], loc)
+                }
+                Undefined
+              },
+            )
             invoke_then_method(
               interp, next_promise, on_fulfilled, on_rejected, loc,
             )
           }
         } catch {
-          e => {
-            let mut reason = js_error_to_value_with_env(e, Some(interp.global))
-            if has_iterator && not(iterator_done) {
-              promise_iterator_close(interp, iterator, loc) catch {
-                close_error =>
-                  reason = js_error_to_value_with_env(
-                    close_error,
-                    Some(interp.global),
-                  )
-              }
-            }
-            let _ = interp.call_value(reject, Undefined, [reason], loc)
-            return result_promise
-          }
+          e =>
+            return reject_combinator_abrupt(
+              interp, result_promise, reject, iterator, has_iterator, iterator_done,
+              e, loc,
+            )
         }
         remaining.val = remaining.val - 1
         if remaining.val == 0 {

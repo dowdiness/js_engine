@@ -5461,7 +5461,7 @@ fn Interpreter::get_property(
       } else {
         let result = get_array_method_with_interp(data, prop)
         match result {
-          Undefined => lookup_builtin_proto(self.global, "Array", prop)
+          Undefined => lookup_builtin_proto(self, obj, "Array", prop, loc)
           _ => result
         }
       }
@@ -5471,18 +5471,18 @@ fn Interpreter::get_property(
       } else {
         let result = get_string_method(s, prop)
         match result {
-          Undefined => lookup_builtin_proto(self.global, "String", prop)
+          Undefined => lookup_builtin_proto(self, obj, "String", prop, loc)
           _ => result
         }
       }
     Number(_) => {
       let result = get_number_method(obj, prop)
       match result {
-        Undefined => lookup_builtin_proto(self.global, "Number", prop)
+        Undefined => lookup_builtin_proto(self, obj, "Number", prop, loc)
         _ => result
       }
     }
-    Bool(_) => lookup_builtin_proto(self.global, "Boolean", prop)
+    Bool(_) => lookup_builtin_proto(self, obj, "Boolean", prop, loc)
     Symbol(sym) =>
       // Symbol properties: description, toString
       if prop == "description" {
@@ -5498,7 +5498,7 @@ fn Interpreter::get_property(
           }
         })
       } else {
-        lookup_builtin_proto(self.global, "Symbol", prop)
+        lookup_builtin_proto(self, obj, "Symbol", prop, loc)
       }
     Map(data) =>
       if prop == "size" {
@@ -5540,33 +5540,46 @@ fn Interpreter::get_property(
 ///|
 /// Look up a property on a built-in constructor's prototype (e.g. Array.prototype.constructor)
 fn lookup_builtin_proto(
-  env : Environment,
+  interp : Interpreter,
+  receiver : Value,
   ctor_name : String,
   prop : String,
-) -> Value {
-  let ctor = env.get(ctor_name) catch { _ => return Undefined }
+  loc : @token.Loc,
+) -> Value raise Error {
+  let ctor = interp.global.get(ctor_name) catch { _ => return Undefined }
   match ctor {
     Object(ctor_data) =>
       match ctor_data.properties.get("prototype") {
-        Some(Object(proto_data)) =>
-          match proto_data.properties.get(prop) {
-            Some(v) => v
-            None => {
-              // Walk up prototype chain from the prototype
-              let mut current = proto_data.prototype
-              while true {
-                match current {
-                  Object(pdata) =>
+        Some(Object(proto_data)) => {
+          // Walk up prototype chain and honor accessor getters with `receiver`.
+          let mut current : Value = Object(proto_data)
+          while true {
+            match current {
+              Object(pdata) => {
+                match pdata.descriptors.get(prop) {
+                  Some(desc) =>
+                    match desc.getter {
+                      Some(getter) =>
+                        return interp.call_value(getter, receiver, [], loc)
+                      None =>
+                        match pdata.properties.get(prop) {
+                          Some(v) => return v
+                          None => ()
+                        }
+                    }
+                  None =>
                     match pdata.properties.get(prop) {
                       Some(v) => return v
-                      None => current = pdata.prototype
+                      None => ()
                     }
-                  _ => break
                 }
+                current = pdata.prototype
               }
-              Undefined
+              _ => break
             }
           }
+          Undefined
+        }
         _ => Undefined
       }
     _ => Undefined
@@ -5651,6 +5664,17 @@ fn Interpreter::get_computed_property(
           // Handle Symbol.iterator for arrays
           let iterator_sym = get_iterator_symbol()
           if sym.id == iterator_sym.id {
+            let (override_getter, override_value) = get_array_iterator_override(
+              arr,
+            )
+            match override_getter {
+              Some(getter) => return self.call_value(getter, obj, [], loc)
+              None => ()
+            }
+            match override_value {
+              Some(v) => return v
+              None => ()
+            }
             // Return a function that creates an array iterator
             return Object({
               properties: {},

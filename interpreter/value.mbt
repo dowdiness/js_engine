@@ -153,6 +153,39 @@ pub fn new_promise_data() -> PromiseData {
 }
 
 ///|
+/// Per-array override for Symbol.iterator defined via Object.defineProperty on
+/// Array instances. Stored out-of-line because ArrayData currently models only
+/// indexed elements.
+let array_iterator_overrides : Array[(ArrayData, Value?, Value?)] = []
+
+///|
+pub fn set_array_iterator_override(
+  arr : ArrayData,
+  getter : Value?,
+  value : Value?,
+) -> Unit {
+  for i = 0; i < array_iterator_overrides.length(); i = i + 1 {
+    let (existing, _g, _v) = array_iterator_overrides[i]
+    if physical_equal(existing, arr) {
+      array_iterator_overrides[i] = (arr, getter, value)
+      return
+    }
+  }
+  array_iterator_overrides.push((arr, getter, value))
+}
+
+///|
+pub fn get_array_iterator_override(arr : ArrayData) -> (Value?, Value?) {
+  for i = 0; i < array_iterator_overrides.length(); i = i + 1 {
+    let (existing, getter, value) = array_iterator_overrides[i]
+    if physical_equal(existing, arr) {
+      return (getter, value)
+    }
+  }
+  (None, None)
+}
+
+///|
 /// Flag set by eval_new before calling a NativeCallable so the callee can
 /// distinguish `new Foo()` from `Foo()`.  Safe because NativeCallable has
 /// no Interpreter access and therefore cannot re-enter eval_new.

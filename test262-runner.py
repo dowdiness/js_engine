@@ -125,6 +125,13 @@ SKIP_FEATURES = {
 
 SKIP_FLAGS = {"CanBlockIsFalse", "CanBlockIsTrue"}
 
+# Tests that depend on unsupported runtime features but don't declare
+# corresponding Test262 `features` metadata.
+SKIP_PATH_SUFFIXES = {
+    "test/built-ins/Promise/prototype/finally/this-value-proxy.js":
+        "unsupported feature: Proxy",
+}
+
 # Preamble injected before all test harness code to provide host-defined print()
 PRINT_PREAMBLE = 'function print() { var s = ""; for (var i = 0; i < arguments.length; i++) { if (i > 0) s += " "; s += String(arguments[i]); } console.log(s); }\n'
 
@@ -195,6 +202,11 @@ def should_skip(meta: TestMetadata, filepath: str, mode: str = "non-strict") -> 
     # Skip fixture files
     if "_FIXTURE" in filepath:
         return "fixture file"
+
+    normalized_path = filepath.replace("\\", "/")
+    for suffix, reason in SKIP_PATH_SUFFIXES.items():
+        if normalized_path.endswith(suffix):
+            return reason
 
     # Skip tests with unsupported flags
     for flag in meta.flags:

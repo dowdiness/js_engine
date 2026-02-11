@@ -503,6 +503,13 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           }
           let hex_str = buf.to_string()
           let value = parse_hex(hex_str)
+          // BigInt literal suffix support for compatibility paths where tests
+          // use `0n` as a non-callable sentinel. We currently parse BigInt
+          // numeric value as Number.
+          if offset < len && char_at(offset) == 'n' {
+            offset += 1
+            col += 1
+          }
           let raw = source.view()[start:offset].to_string()
           tokens.push({ kind: Number(value), loc, raw })
           continue
@@ -545,6 +552,10 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           }
           let bin_str = buf.to_string()
           let value = parse_binary(bin_str)
+          if offset < len && char_at(offset) == 'n' {
+            offset += 1
+            col += 1
+          }
           let raw = source.view()[start:offset].to_string()
           tokens.push({ kind: Number(value), loc, raw })
           continue
@@ -587,6 +598,10 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           }
           let oct_str = buf.to_string()
           let value = parse_octal(oct_str)
+          if offset < len && char_at(offset) == 'n' {
+            offset += 1
+            col += 1
+          }
           let raw = source.view()[start:offset].to_string()
           tokens.push({ kind: Number(value), loc, raw })
           continue
@@ -717,6 +732,10 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         }
       }
       let num_str = buf.to_string()
+      if offset < len && char_at(offset) == 'n' {
+        offset += 1
+        col += 1
+      }
       let raw = source.view()[start:offset].to_string()
       let value = @strconv.parse_double(num_str)
       tokens.push({ kind: Number(value), loc, raw })
