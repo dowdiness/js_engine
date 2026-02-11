@@ -449,3 +449,79 @@ Addressed 4 review issues:
 - `docs/IMPLEMENTATION_PRIORITY.md` — P4 marked as done
 
 **Unit tests**: 658 total, 658 passed, 0 failed (no regressions)
+
+---
+
+## Phase 11: P5 eval() Semantics (78.22% pass rate)
+
+Full direct/indirect eval implementation per ES spec EvalDeclarationInstantiation. Jumped from 19,117 to 19,720 passing tests (+603).
+
+### eval() Architecture
+
+- **Direct eval detection**: `unwrap_grouping()` helper recursively strips `Grouping` nodes so `eval(...)`, `(eval)(...)`, `((eval))(...)` are all detected as direct eval in `eval_call`
+- **Callable type**: `NonConstructableCallable("eval", fn)` — prevents `new eval()` (TypeError). Indirect eval calls intercepted in `call_value` where the Interpreter is available for `perform_eval()`
+- **`perform_eval(code, caller_env, direct)`**: Core eval function handling both direct and indirect eval
+- **Variable environment**: `Environment::find_var_env()` walks up the scope chain to the nearest `is_var_scope` environment (function or global), ensuring `eval("var x = 1")` inside a block hoists to the function scope, not the block
+
+### Direct vs Indirect Eval
+
+| Aspect | Direct eval | Indirect eval |
+|--------|------------|---------------|
+| Detection | `Ident("eval")` after unwrap_grouping | All other call paths |
+| Scope | Caller's lexical environment | Global environment |
+| var/function | Leaks to caller's variable environment | Leaks to global |
+| Strict mode | Inherits caller's strict mode | Only own "use strict" |
+| Example | `eval("...")` | `(0, eval)("...")`, `var e = eval; e("...")` |
+
+### Non-strict eval: var leaking
+
+1. `var_env = caller_env.find_var_env()` — walk up to enclosing function/global
+2. `hoist_declarations(stmts, var_env)` — hoist var/function declarations to var_env
+3. `exec_env = Environment::new(parent=caller_env)` — eval code runs in new scope
+4. `hoist_block_tdz(stmts, exec_env)` — let/const TDZ markers stay in eval scope
+
+### EvalDeclarationInstantiation Conflict Checks
+
+**Step 5.a** — Global lexical conflict: If `var_env` is the global scope, check that eval's var names don't conflict with global `let`/`const` declarations. Example: `let x; eval("var x")` → SyntaxError.
+
+**Step 5.d** — Intermediate scope conflict: Walk from `caller_env` up to `var_env`, checking each intermediate scope for binding conflicts. Example: `{ let x; { eval("var x"); } }` → SyntaxError (var can't hoist past the let x).
+
+Helper: `collect_eval_var_names(stmts)` gathers all var/function declaration names from eval code for conflict checking, including destructuring patterns via `collect_pattern_var_names()`.
+
+### FuncDecl var hoisting fix
+
+FuncDecl handler in `exec_stmt` now uses `has_var`/`assign_var` fallback (matching the VarDecl pattern) so function declarations in eval target the correct variable environment rather than creating shadowing bindings in the exec scope.
+
+### ES spec evaluation order fix
+
+All branches of `eval_call` now resolve callee/receiver before evaluating arguments, per ES spec section 13.3.6.1 CallExpression evaluation.
+
+### CI/Build fixes
+
+- CI workflow: `moon build --target js --release` (was missing `--release`)
+- CI workflow: Removed hardcoded `--engine` path; test262-runner.py auto-detects JS bundle
+- test262-runner.py: `should_skip()` now respects `onlyStrict`/`noStrict` flags
+- Fixed deprecated MoonBit syntax: `raise` annotations on closures, `nobreak` for `else` in for loops
+- All 254 `deprecated_syntax` warnings resolved
+
+### Test262 Results
+
+| Category | Passed | Failed | Skip | Rate |
+|----------|--------|--------|------|------|
+| language/eval-code | 224 | 106 | 17 | 67.9% |
+| language/eval-code/direct/var-env-* | 20 | 0 | 7 | 100.0% |
+
+Overall: 19,117 → 19,720 passing (+603), 74.17% → 78.22%
+
+### Files Changed
+
+- `interpreter/interpreter.mbt` — `unwrap_grouping`, `perform_eval`, `eval_call` direct eval detection, `find_var_env` usage, `collect_eval_var_names`/`collect_pattern_var_names`, FuncDecl `has_var`/`assign_var` fix, evaluation order fix
+- `interpreter/environment.mbt` — `find_var_env()`, `has_var()`, `assign_var()` methods, `is_var_scope` field
+- `interpreter/builtins.mbt` — eval as `NonConstructableCallable`
+- `interpreter/interpreter_test.mbt` — eval-specific tests (+37 tests, 658 → 695)
+- `interpreter/builtins_array.mbt`, `builtins_date.mbt`, `builtins_map_set.mbt`, `builtins_object.mbt`, `builtins_promise.mbt`, `builtins_string.mbt`, `generator.mbt` — deprecated fn syntax fixes
+- `js_engine.mbt` — `nobreak` keyword fix
+- `.github/workflows/test262.yml` — release build, auto-detect engine path
+- `test262-runner.py` — auto-detect JS bundle, `onlyStrict`/`noStrict` skip logic
+
+**Unit tests**: 695 total, 695 passed, 0 failed

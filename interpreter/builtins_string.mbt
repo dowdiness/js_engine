@@ -3,7 +3,7 @@ pub fn get_string_method(s : String, prop : String) -> Value {
   let chars = s.to_array()
   match prop {
     "charAt" =>
-      make_native_func("charAt", fn(args) {
+      make_native_func("charAt", fn(args) raise {
         let idx = if args.length() > 0 {
           to_number(args[0]).to_int()
         } else {
@@ -18,7 +18,7 @@ pub fn get_string_method(s : String, prop : String) -> Value {
         }
       })
     "charCodeAt" =>
-      make_native_func("charCodeAt", fn(args) {
+      make_native_func("charCodeAt", fn(args) raise {
         let idx = if args.length() > 0 {
           to_number(args[0]).to_int()
         } else {
@@ -31,7 +31,7 @@ pub fn get_string_method(s : String, prop : String) -> Value {
         }
       })
     "at" =>
-      make_native_func("at", fn(args) {
+      make_native_func("at", fn(args) raise {
         // String.prototype.at() - access character at index (supports negative)
         let idx = if args.length() > 0 {
           to_number(args[0]).to_int()
@@ -49,7 +49,7 @@ pub fn get_string_method(s : String, prop : String) -> Value {
         }
       })
     "codePointAt" =>
-      make_native_func("codePointAt", fn(args) {
+      make_native_func("codePointAt", fn(args) raise {
         // String.prototype.codePointAt() - get code point at index
         let idx = if args.length() > 0 {
           to_number(args[0]).to_int()
@@ -86,7 +86,7 @@ pub fn get_string_method(s : String, prop : String) -> Value {
     }
     "indexOf" => {
       let str = s
-      make_native_func("indexOf", fn(args) {
+      make_native_func("indexOf", fn(args) raise {
         let search = if args.length() > 0 {
           args[0].to_string()
         } else {
@@ -123,7 +123,7 @@ pub fn get_string_method(s : String, prop : String) -> Value {
     }
     "lastIndexOf" => {
       let str = s
-      make_native_func("lastIndexOf", fn(args) {
+      make_native_func("lastIndexOf", fn(args) raise {
         let search = if args.length() > 0 {
           args[0].to_string()
         } else {
@@ -170,7 +170,7 @@ pub fn get_string_method(s : String, prop : String) -> Value {
     }
     "includes" => {
       let str = s
-      make_native_func("includes", fn(args) {
+      make_native_func("includes", fn(args) raise {
         let search = if args.length() > 0 {
           args[0].to_string()
         } else {
@@ -206,7 +206,7 @@ pub fn get_string_method(s : String, prop : String) -> Value {
     }
     "slice" => {
       let str = s
-      make_native_func("slice", fn(args) {
+      make_native_func("slice", fn(args) raise {
         let slen = str.length()
         let mut start = if args.length() > 0 {
           to_number(args[0]).to_int()
@@ -249,7 +249,7 @@ pub fn get_string_method(s : String, prop : String) -> Value {
     }
     "substring" => {
       let str = s
-      make_native_func("substring", fn(args) {
+      make_native_func("substring", fn(args) raise {
         let slen = str.length()
         let mut start = if args.length() > 0 {
           to_number(args[0]).to_int()
@@ -357,7 +357,7 @@ pub fn get_string_method(s : String, prop : String) -> Value {
     }
     "split" => {
       let str = s
-      make_native_func("split", fn(args) {
+      make_native_func("split", fn(args) raise {
         // Handle undefined separator - return array with whole string
         if args.length() == 0 {
           return Array({ elements: [String_(str)] })
@@ -563,7 +563,7 @@ pub fn get_string_method(s : String, prop : String) -> Value {
     }
     "startsWith" => {
       let str = s
-      make_native_func("startsWith", fn(args) {
+      make_native_func("startsWith", fn(args) raise {
         let search = if args.length() > 0 {
           args[0].to_string()
         } else {
@@ -597,7 +597,7 @@ pub fn get_string_method(s : String, prop : String) -> Value {
     }
     "endsWith" => {
       let str = s
-      make_native_func("endsWith", fn(args) {
+      make_native_func("endsWith", fn(args) raise {
         let search = if args.length() > 0 {
           args[0].to_string()
         } else {
@@ -633,7 +633,7 @@ pub fn get_string_method(s : String, prop : String) -> Value {
     }
     "repeat" => {
       let str = s
-      make_native_func("repeat", fn(args) {
+      make_native_func("repeat", fn(args) raise {
         let count_num = if args.length() > 0 { to_number(args[0]) } else { 0.0 }
         // Check for negative or infinite count
         if count_num < 0.0 || count_num.is_inf() {
@@ -652,7 +652,7 @@ pub fn get_string_method(s : String, prop : String) -> Value {
     }
     "padStart" => {
       let str = s
-      make_native_func("padStart", fn(args) {
+      make_native_func("padStart", fn(args) raise {
         let target_len = if args.length() > 0 {
           to_number(args[0]).to_int()
         } else {
@@ -677,7 +677,7 @@ pub fn get_string_method(s : String, prop : String) -> Value {
     }
     "padEnd" => {
       let str = s
-      make_native_func("padEnd", fn(args) {
+      make_native_func("padEnd", fn(args) raise {
         let target_len = if args.length() > 0 {
           to_number(args[0]).to_int()
         } else {
@@ -706,7 +706,7 @@ pub fn get_string_method(s : String, prop : String) -> Value {
     }
     "replaceAll" => {
       let str = s
-      make_native_func("replaceAll", fn(args) {
+      make_native_func("replaceAll", fn(args) raise {
         if args.length() == 0 {
           return String_(str)
         }
@@ -1065,7 +1065,7 @@ pub fn setup_string_prototype(string_proto : Value) -> Unit {
           symbol_properties: {},
           prototype: Null,
           callable: Some(
-            MethodCallable(mname, fn(this_val, args) {
+            MethodCallable(mname, fn(this_val, args) raise {
               let s = this_to_string(this_val)
               let meth_val = get_string_method(s, mname)
               match meth_val {

@@ -6,7 +6,7 @@ Usage:
     python3 test262-runner.py [options]
 
 Options:
-    --engine CMD        Command to run the JS engine (default: "moon run cmd/main --")
+    --engine CMD        Command to run the JS engine (default: auto-detect built JS bundle)
     --test262 DIR       Path to test262 directory (default: ./test262)
     --filter PATTERN    Only run tests matching this pattern (e.g. "language/expressions")
     --timeout SECS      Timeout per test in seconds (default: 5)
@@ -21,10 +21,12 @@ Performance Optimizations:
     - Moderate timeout (5s) balancing speed and test completion
     - Optimized progress reporting with ETA
 
+Prerequisites:
+    Run `moon build --target js` first to produce the JS bundle.
+
 Known Bottleneck:
-    The main bottleneck is `moon run` startup overhead per test (~50-100ms).
+    The main bottleneck is per-test Node.js startup overhead (~30-50ms).
     Future improvements could include:
-    - Building a standalone binary (if MoonBit supports it)
     - Server mode: persistent process that reads tests from stdin
     - Batch mode: multiple tests per engine invocation
 """
@@ -193,7 +195,7 @@ def parse_metadata(source: str) -> TestMetadata:
 # Test filtering
 # ---------------------------------------------------------------------------
 
-def should_skip(meta: TestMetadata, filepath: str) -> Optional[str]:
+def should_skip(meta: TestMetadata, filepath: str, mode: str = "non-strict") -> Optional[str]:
     """Return a reason to skip the test, or None if it should run."""
     # Skip fixture files
     if "_FIXTURE" in filepath:
@@ -203,6 +205,12 @@ def should_skip(meta: TestMetadata, filepath: str) -> Optional[str]:
     for flag in meta.flags:
         if flag in SKIP_FLAGS:
             return f"unsupported flag: {flag}"
+
+    # Respect onlyStrict/noStrict flags
+    if mode == "non-strict" and "onlyStrict" in meta.flags:
+        return "requires strict mode"
+    if mode == "strict" and "noStrict" in meta.flags:
+        return "cannot run in strict mode"
 
     # Skip tests that require features we don't support
     for feature in meta.features:
@@ -300,7 +308,7 @@ def run_single_test(
     meta = parse_metadata(source)
 
     # Check if we should skip
-    skip_reason = should_skip(meta, test_path)
+    skip_reason = should_skip(meta, test_path, mode)
     if skip_reason:
         return TestResult(path=test_path, status="skip", reason=skip_reason, mode=mode)
 
@@ -637,8 +645,8 @@ def save_results(results: list, agg: dict, output_file: str):
 
 def main():
     parser = argparse.ArgumentParser(description="Test262 conformance runner for MoonBit JS Engine")
-    parser.add_argument("--engine", default="moon run cmd/main --",
-                        help="Command to invoke the JS engine (default: 'moon run cmd/main --')")
+    parser.add_argument("--engine", default=None,
+                        help="Command to invoke the JS engine (default: auto-detect built JS bundle)")
     parser.add_argument("--test262", default="./test262",
                         help="Path to test262 directory")
     parser.add_argument("--filter", default="",
@@ -655,6 +663,24 @@ def main():
                         help="Print each test result as it runs")
 
     args = parser.parse_args()
+
+    # Auto-detect engine JS bundle if not specified
+    if args.engine is None:
+        # Probe known build output paths (CI uses target/, local uses _build/)
+        candidates = [
+            "target/js/release/build/cmd/main/main.js",
+            "_build/js/release/build/cmd/main/main.js",
+            "_build/js/debug/build/cmd/main/main.js",
+        ]
+        for path in candidates:
+            if os.path.isfile(path):
+                args.engine = f"node {path}"
+                break
+        if args.engine is None:
+            print("Error: No built JS bundle found. Run `moon build --target js` first.", file=sys.stderr)
+            print(f"  Searched: {', '.join(candidates)}", file=sys.stderr)
+            sys.exit(1)
+        print(f"Using engine: {args.engine}")
 
     # Auto-detect thread count if not specified
     if args.threads is None:

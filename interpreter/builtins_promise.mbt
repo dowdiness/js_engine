@@ -140,7 +140,7 @@ fn create_resolving_functions(
                           i2,
                           _t,
                           _a,
-                        ) {
+                        ) raise {
                           try {
                             let _ = i2.call_value(
                               then_val,
@@ -266,7 +266,7 @@ fn enqueue_promise_reaction_job(
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("PromiseReactionJob", fn(i, _this, args) {
+      InterpreterCallable("PromiseReactionJob", fn(i, _this, args) raise {
         let value = if args.length() > 0 { args[0] } else { Undefined }
         let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
 
@@ -326,7 +326,7 @@ pub fn setup_promise(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("then", fn(interp, this_val, args) {
+      InterpreterCallable("then", fn(interp, this_val, args) raise {
         match this_val {
           Promise(promise_data) => {
             let on_fulfilled = if args.length() > 0 {
@@ -426,7 +426,7 @@ pub fn setup_promise(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("catch", fn(interp, this_val, args) {
+      InterpreterCallable("catch", fn(interp, this_val, args) raise {
         // catch(onRejected) is just then(undefined, onRejected)
         let then_method = match this_val {
           Promise(pd) => get_promise_method(pd, "then")
@@ -452,7 +452,7 @@ pub fn setup_promise(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("finally", fn(interp, this_val, args) {
+      InterpreterCallable("finally", fn(interp, this_val, args) raise {
         // Ensure this_val is a Promise
         let promise_data = match this_val {
           Promise(pd) => pd
@@ -486,7 +486,7 @@ pub fn setup_promise(env : Environment) -> Unit {
           symbol_properties: {},
           prototype: Null,
           callable: Some(
-            InterpreterCallable("finallyValueThunk", fn(i, _this, inner_args) {
+            InterpreterCallable("finallyValueThunk", fn(i, _this, inner_args) raise {
               let value = if inner_args.length() > 0 {
                 inner_args[0]
               } else {
@@ -537,7 +537,7 @@ pub fn setup_promise(env : Environment) -> Unit {
               i,
               _this,
               inner_args,
-            ) {
+            ) raise {
               let reason = if inner_args.length() > 0 {
                 inner_args[0]
               } else {
@@ -554,7 +554,7 @@ pub fn setup_promise(env : Environment) -> Unit {
                 symbol_properties: {},
                 prototype: Null,
                 callable: Some(
-                  InterpreterCallable("throwReason", fn(_i2, _t, _a) {
+                  InterpreterCallable("throwReason", fn(_i2, _t, _a) raise {
                     raise JsException(reason)
                   }),
                 ),
@@ -619,7 +619,7 @@ pub fn setup_promise(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("resolve", fn(interp, _this, args) {
+      InterpreterCallable("resolve", fn(interp, _this, args) raise {
         let value = if args.length() > 0 { args[0] } else { Undefined }
         promise_resolve_value(interp, value)
       }),
@@ -662,7 +662,7 @@ pub fn setup_promise(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("all", fn(interp, _this, args) {
+      InterpreterCallable("all", fn(interp, _this, args) raise {
         let iterable = if args.length() > 0 { args[0] } else { Undefined }
 
         // Get array of promises
@@ -729,7 +729,7 @@ pub fn setup_promise(env : Environment) -> Unit {
             symbol_properties: {},
             prototype: Null,
             callable: Some(
-              InterpreterCallable("allOnFulfilled", fn(i2, _this2, args2) {
+              InterpreterCallable("allOnFulfilled", fn(i2, _this2, args2) raise {
                 let value = if args2.length() > 0 {
                   args2[0]
                 } else {
@@ -814,7 +814,7 @@ pub fn setup_promise(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("race", fn(interp, _this, args) {
+      InterpreterCallable("race", fn(interp, _this, args) raise {
         let iterable = if args.length() > 0 { args[0] } else { Undefined }
         let promises = get_promise_array(interp, iterable)
 
@@ -891,7 +891,7 @@ pub fn setup_promise(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("allSettled", fn(interp, _this, args) {
+      InterpreterCallable("allSettled", fn(interp, _this, args) raise {
         let iterable = if args.length() > 0 { args[0] } else { Undefined }
         let promises = get_promise_array(interp, iterable)
         let count = promises.length()
@@ -953,7 +953,7 @@ pub fn setup_promise(env : Environment) -> Unit {
                 i2,
                 _this2,
                 args2,
-              ) {
+              ) raise {
                 let value = if args2.length() > 0 {
                   args2[0]
                 } else {
@@ -1000,7 +1000,7 @@ pub fn setup_promise(env : Environment) -> Unit {
                 i2,
                 _this2,
                 args2,
-              ) {
+              ) raise {
                 let reason = if args2.length() > 0 {
                   args2[0]
                 } else {
@@ -1112,7 +1112,7 @@ pub fn setup_promise(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("any", fn(interp, _this, args) {
+      InterpreterCallable("any", fn(interp, _this, args) raise {
         let iterable = if args.length() > 0 { args[0] } else { Undefined }
         let promises = get_promise_array(interp, iterable)
         let count = promises.length()
@@ -1169,7 +1169,7 @@ pub fn setup_promise(env : Environment) -> Unit {
             symbol_properties: {},
             prototype: Null,
             callable: Some(
-              InterpreterCallable("anyOnRejected", fn(i2, _this2, args2) {
+              InterpreterCallable("anyOnRejected", fn(i2, _this2, args2) raise {
                 let reason = if args2.length() > 0 {
                   args2[0]
                 } else {
@@ -1248,7 +1248,7 @@ pub fn setup_promise(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      ConstructorOnlyCallable("Promise", fn(interp, args) {
+      ConstructorOnlyCallable("Promise", fn(interp, args) raise {
         let executor = if args.length() > 0 { args[0] } else { Undefined }
 
         // Validate executor is callable
@@ -1326,7 +1326,7 @@ pub fn setup_promise(env : Environment) -> Unit {
       symbol_properties: {},
       prototype: Null,
       callable: Some(
-        InterpreterCallable("queueMicrotask", fn(interp, _this, args) {
+        InterpreterCallable("queueMicrotask", fn(interp, _this, args) raise {
           let callback = if args.length() > 0 { args[0] } else { Undefined }
 
           // Validate callback is callable
@@ -1368,7 +1368,7 @@ pub fn setup_timers(env : Environment) -> Unit {
       symbol_properties: {},
       prototype: Null,
       callable: Some(
-        InterpreterCallable("setTimeout", fn(interp, _this, args) {
+        InterpreterCallable("setTimeout", fn(interp, _this, args) raise {
           let callback = if args.length() > 0 { args[0] } else { Undefined }
           // Validate callback is callable
           match callback {
@@ -1474,7 +1474,7 @@ pub fn setup_timers(env : Environment) -> Unit {
       symbol_properties: {},
       prototype: Null,
       callable: Some(
-        InterpreterCallable("setInterval", fn(interp, _this, args) {
+        InterpreterCallable("setInterval", fn(interp, _this, args) raise {
           let callback = if args.length() > 0 { args[0] } else { Undefined }
           match callback {
             Object(od) =>

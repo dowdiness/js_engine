@@ -86,6 +86,24 @@ Domain-specific terms used in this JavaScript engine, organized by specification
 
 ---
 
+## eval() Semantics
+
+| Term | Aliases / Related | Definition |
+|------|-------------------|------------|
+| **direct eval** | — | A call to `eval(...)` where the callee expression is syntactically `eval` (or parenthesized: `(eval)(...)`). Executes in the caller's lexical environment. |
+| **indirect eval** | — | Any other invocation of the eval function, e.g., `(0, eval)(...)`, `var e = eval; e(...)`. Executes in the global environment. |
+| **variable environment** | var_env | The nearest function or global scope where `var` declarations are hoisted. Found by `Environment::find_var_env()`. |
+| **is_var_scope** | — | Boolean flag on `Environment`. True for function and global scopes. Used by `find_var_env()` to walk past block scopes. |
+| **EvalDeclarationInstantiation** | — | ES spec algorithm (§19.2.1.3) that processes declarations in eval code. Steps 5.a and 5.d check for var/lexical conflicts before hoisting. |
+| **var/lex conflict** | — | When eval's `var` declaration name collides with a `let`/`const` in an intermediate scope or global lexical binding. Throws SyntaxError per spec. |
+| **unwrap_grouping** | — | Helper function that recursively strips `Grouping` AST nodes, so `((eval))` is still detected as direct eval. Per spec, parentheses don't change Reference type. |
+| **NonConstructableCallable** | — | Callable variant that throws TypeError on `new`. Used for eval (and arrow-like builtins) to prevent construction. |
+| **perform_eval** | — | Internal method `Interpreter::perform_eval(code, caller_env, direct)` implementing eval execution: parsing, scope setup, var hoisting, and statement execution. |
+
+**Spec reference:** <https://tc39.es/ecma262/#sec-eval-x>
+
+---
+
 ## Property Model
 
 | Term | Aliases / Related | Definition |

@@ -751,7 +751,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("getTime", fn(this_val, _args) {
+      MethodCallable("getTime", fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         Number(t)
       }),
@@ -768,7 +768,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("getFullYear", fn(this_val, _args) {
+      MethodCallable("getFullYear", fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         if t.is_nan() {
           return Number(0.0 / 0.0)
@@ -788,7 +788,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("getUTCFullYear", fn(this_val, _args) {
+      MethodCallable("getUTCFullYear", fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         if t.is_nan() {
           return Number(0.0 / 0.0)
@@ -808,7 +808,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("getMonth", fn(this_val, _args) {
+      MethodCallable("getMonth", fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         if t.is_nan() {
           return Number(0.0 / 0.0)
@@ -828,7 +828,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("getUTCMonth", fn(this_val, _args) {
+      MethodCallable("getUTCMonth", fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         if t.is_nan() {
           return Number(0.0 / 0.0)
@@ -848,7 +848,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("getDate", fn(this_val, _args) {
+      MethodCallable("getDate", fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         if t.is_nan() {
           return Number(0.0 / 0.0)
@@ -868,7 +868,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("getUTCDate", fn(this_val, _args) {
+      MethodCallable("getUTCDate", fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         if t.is_nan() {
           return Number(0.0 / 0.0)
@@ -888,7 +888,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("getDay", fn(this_val, _args) {
+      MethodCallable("getDay", fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         if t.is_nan() {
           return Number(0.0 / 0.0)
@@ -908,7 +908,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("getUTCDay", fn(this_val, _args) {
+      MethodCallable("getUTCDay", fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         if t.is_nan() {
           return Number(0.0 / 0.0)
@@ -928,7 +928,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("getHours", fn(this_val, _args) {
+      MethodCallable("getHours", fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         if t.is_nan() {
           return Number(0.0 / 0.0)
@@ -948,7 +948,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("getUTCHours", fn(this_val, _args) {
+      MethodCallable("getUTCHours", fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         if t.is_nan() {
           return Number(0.0 / 0.0)
@@ -968,7 +968,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("getMinutes", fn(this_val, _args) {
+      MethodCallable("getMinutes", fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         if t.is_nan() {
           return Number(0.0 / 0.0)
@@ -988,7 +988,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("getUTCMinutes", fn(this_val, _args) {
+      MethodCallable("getUTCMinutes", fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         if t.is_nan() {
           return Number(0.0 / 0.0)
@@ -1008,7 +1008,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("getSeconds", fn(this_val, _args) {
+      MethodCallable("getSeconds", fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         if t.is_nan() {
           return Number(0.0 / 0.0)
@@ -1028,7 +1028,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("getUTCSeconds", fn(this_val, _args) {
+      MethodCallable("getUTCSeconds", fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         if t.is_nan() {
           return Number(0.0 / 0.0)
@@ -1048,7 +1048,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("getMilliseconds", fn(this_val, _args) {
+      MethodCallable("getMilliseconds", fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         if t.is_nan() {
           return Number(0.0 / 0.0)
@@ -1068,7 +1068,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("getUTCMilliseconds", fn(this_val, _args) {
+      MethodCallable("getUTCMilliseconds", fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         if t.is_nan() {
           return Number(0.0 / 0.0)
@@ -1088,7 +1088,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("getTimezoneOffset", fn(this_val, _args) {
+      MethodCallable("getTimezoneOffset", fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         if t.is_nan() {
           return Number(0.0 / 0.0)
@@ -1108,7 +1108,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("getYear", fn(this_val, _args) {
+      MethodCallable("getYear", fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         if t.is_nan() {
           return Number(0.0 / 0.0)
@@ -1128,7 +1128,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("setTime", fn(this_val, args) {
+      MethodCallable("setTime", fn(this_val, args) raise {
         let _ = get_date_value(this_val) // validate this is Date
         let v = if args.length() > 0 {
           time_clip(to_number(args[0]))
@@ -1151,7 +1151,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("setMilliseconds", fn(this_val, args) {
+      MethodCallable("setMilliseconds", fn(this_val, args) raise {
         let t = get_date_value(this_val)
         let ms = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
         let new_time = make_time(
@@ -1180,7 +1180,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("setSeconds", fn(this_val, args) {
+      MethodCallable("setSeconds", fn(this_val, args) raise {
         let t = get_date_value(this_val)
         let sec = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
         let ms = if args.length() > 1 {
@@ -1214,7 +1214,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("setMinutes", fn(this_val, args) {
+      MethodCallable("setMinutes", fn(this_val, args) raise {
         let t = get_date_value(this_val)
         let min = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
         let sec = if args.length() > 1 {
@@ -1253,7 +1253,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("setHours", fn(this_val, args) {
+      MethodCallable("setHours", fn(this_val, args) raise {
         let t = get_date_value(this_val)
         let hour = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
         let min = if args.length() > 1 {
@@ -1292,7 +1292,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("setDate", fn(this_val, args) {
+      MethodCallable("setDate", fn(this_val, args) raise {
         let t = get_date_value(this_val)
         let dt = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
         let new_day = make_day(
@@ -1320,7 +1320,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("setMonth", fn(this_val, args) {
+      MethodCallable("setMonth", fn(this_val, args) raise {
         let t = get_date_value(this_val)
         let month = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
         let dt = if args.length() > 1 {
@@ -1353,7 +1353,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("setFullYear", fn(this_val, args) {
+      MethodCallable("setFullYear", fn(this_val, args) raise {
         let mut t = get_date_value(this_val)
         if t.is_nan() {
           t = 0.0 // Use +0 if current value is NaN per spec
@@ -1390,7 +1390,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("setYear", fn(this_val, args) {
+      MethodCallable("setYear", fn(this_val, args) raise {
         let mut t = get_date_value(this_val)
         if t.is_nan() {
           t = 0.0
@@ -1432,7 +1432,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("toString", fn(this_val, _args) {
+      MethodCallable("toString", fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         String_(date_to_string(t))
       }),
@@ -1449,7 +1449,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("toDateString", fn(this_val, _args) {
+      MethodCallable("toDateString", fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         String_(date_to_date_string(t))
       }),
@@ -1466,7 +1466,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("toTimeString", fn(this_val, _args) {
+      MethodCallable("toTimeString", fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         String_(date_to_time_string(t))
       }),
@@ -1483,7 +1483,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("toISOString", fn(this_val, _args) {
+      MethodCallable("toISOString", fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         String_(date_to_iso_string(t))
       }),
@@ -1500,7 +1500,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("toUTCString", fn(this_val, _args) {
+      MethodCallable("toUTCString", fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         String_(date_to_utc_string(t))
       }),
@@ -1520,7 +1520,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("toJSON", fn(this_val, _args) {
+      MethodCallable("toJSON", fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         if t.is_nan() || t.is_inf() {
           Null
@@ -1541,7 +1541,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("valueOf", fn(this_val, _args) {
+      MethodCallable("valueOf", fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         Number(t)
       }),
@@ -1558,7 +1558,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("toLocaleDateString", fn(this_val, _args) {
+      MethodCallable("toLocaleDateString", fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         String_(date_to_date_string(t))
       }),
@@ -1575,7 +1575,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("toLocaleTimeString", fn(this_val, _args) {
+      MethodCallable("toLocaleTimeString", fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         String_(date_to_time_string(t))
       }),
@@ -1592,7 +1592,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("toLocaleString", fn(this_val, _args) {
+      MethodCallable("toLocaleString", fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         String_(date_to_string(t))
       }),
@@ -1609,7 +1609,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("[Symbol.toPrimitive]", fn(this_val, args) {
+      MethodCallable("[Symbol.toPrimitive]", fn(this_val, args) raise {
         let hint = if args.length() > 0 {
           args[0].to_string()
         } else {
@@ -1671,7 +1671,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
   })
 
   // Date.UTC(year, month [, date [, hours [, minutes [, seconds [, ms]]]]])
-  date_props["UTC"] = make_native_func_with_length("UTC", 7, fn(args) {
+  date_props["UTC"] = make_native_func_with_length("UTC", 7, fn(args) raise {
     let year_arg = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     if year_arg.is_nan() {
       return Number(0.0 / 0.0)
@@ -1704,7 +1704,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
       symbol_properties: {},
       prototype: Null,
       callable: Some(
-        NativeCallable("Date", fn(args) {
+        NativeCallable("Date", fn(args) raise {
           // Date() without new returns a string of the current date/time
           // new Date(...) returns a Date object
           if not(is_constructing.val) {

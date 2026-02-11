@@ -6082,3 +6082,516 @@ test "harness: fnGlobalObject pattern" {
     ),
   )
 }
+
+///|
+test "eval: basic expression evaluation" {
+  let output = run_output(
+    (
+      #|console.log(eval("1 + 2"));
+    ),
+  )
+  inspect(output, content="[\"3\"]")
+}
+
+///|
+test "eval: no arguments returns undefined" {
+  let output = run_output(
+    (
+      #|console.log(eval());
+    ),
+  )
+  inspect(output, content="[\"undefined\"]")
+}
+
+///|
+test "eval: non-string argument returns as-is" {
+  let output = run_output(
+    (
+      #|console.log(eval(42));
+      #|console.log(eval(true));
+      #|console.log(eval(null));
+    ),
+  )
+  inspect(output, content="[\"42\", \"true\", \"null\"]")
+}
+
+///|
+test "eval: typeof eval is function" {
+  let output = run_output(
+    (
+      #|console.log(typeof eval);
+    ),
+  )
+  inspect(output, content="[\"function\"]")
+}
+
+///|
+test "eval: direct eval accesses caller scope" {
+  let output = run_output(
+    (
+      #|function f() {
+      #|  var x = 42;
+      #|  return eval("x");
+      #|}
+      #|console.log(f());
+    ),
+  )
+  inspect(output, content="[\"42\"]")
+}
+
+///|
+test "eval: direct eval var leaks to caller scope" {
+  let output = run_output(
+    (
+      #|function f() {
+      #|  eval("var x = 42;");
+      #|  return x;
+      #|}
+      #|console.log(f());
+    ),
+  )
+  inspect(output, content="[\"42\"]")
+}
+
+///|
+test "eval: direct eval var leaks to global scope" {
+  let output = run_output(
+    (
+      #|eval("var x = 99;");
+      #|console.log(x);
+    ),
+  )
+  inspect(output, content="[\"99\"]")
+}
+
+///|
+test "eval: indirect eval via comma operator" {
+  let output = run_output(
+    (
+      #|var x = "global";
+      #|function f() {
+      #|  var x = "local";
+      #|  return (0, eval)("x");
+      #|}
+      #|console.log(f());
+    ),
+  )
+  inspect(output, content="[\"global\"]")
+}
+
+///|
+test "eval: indirect eval via variable" {
+  let output = run_output(
+    (
+      #|var x = "global";
+      #|var e = eval;
+      #|function f() {
+      #|  var x = "local";
+      #|  return e("x");
+      #|}
+      #|console.log(f());
+    ),
+  )
+  inspect(output, content="[\"global\"]")
+}
+
+///|
+test "eval: strict mode isolates var declarations" {
+  let output = run_output(
+    (
+      #|"use strict";
+      #|eval("var x = 42;");
+      #|try { console.log(x); } catch(e) { console.log("not defined"); }
+    ),
+  )
+  inspect(output, content="[\"not defined\"]")
+}
+
+///|
+test "eval: function declaration in direct eval" {
+  let output = run_output(
+    (
+      #|function f() {
+      #|  eval("function g() { return 42; }");
+      #|  return g();
+      #|}
+      #|console.log(f());
+    ),
+  )
+  inspect(output, content="[\"42\"]")
+}
+
+///|
+test "eval: syntax error throws SyntaxError" {
+  let output = run_output(
+    (
+      #|try {
+      #|  eval("var x = ;");
+      #|} catch(e) {
+      #|  console.log(e instanceof SyntaxError);
+      #|}
+    ),
+  )
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "eval: runtime error propagates" {
+  let output = run_output(
+    (
+      #|try {
+      #|  eval("throw new TypeError('boom');");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|  console.log(e.message);
+      #|}
+    ),
+  )
+  inspect(output, content="[\"true\", \"boom\"]")
+}
+
+///|
+test "eval: globalThis.eval is same as eval" {
+  let output = run_output(
+    (
+      #|console.log(globalThis.eval === eval);
+    ),
+  )
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "eval: eval modifies caller scope variables" {
+  let output = run_output(
+    (
+      #|var x = 1;
+      #|eval("x = 2");
+      #|console.log(x);
+    ),
+  )
+  inspect(output, content="[\"2\"]")
+}
+
+///|
+test "eval: eval returns last expression value" {
+  let output = run_output(
+    (
+      #|console.log(eval("1; 2; 3"));
+    ),
+  )
+  inspect(output, content="[\"3\"]")
+}
+
+///|
+test "eval: eval with empty string returns undefined" {
+  let output = run_output(
+    (
+      #|console.log(eval(""));
+    ),
+  )
+  inspect(output, content="[\"undefined\"]")
+}
+
+///|
+test "eval: direct eval this refers to caller this" {
+  let output = run_output(
+    (
+      #|var obj = {
+      #|  x: 42,
+      #|  getX: function() { return eval("this.x"); }
+      #|};
+      #|console.log(obj.getX());
+    ),
+  )
+  inspect(output, content="[\"42\"]")
+}
+
+///|
+test "eval: indirect eval var leaks to global" {
+  let output = run_output(
+    (
+      #|(0, eval)("var indirectVar = 123;");
+      #|console.log(indirectVar);
+    ),
+  )
+  inspect(output, content="[\"123\"]")
+}
+
+///|
+test "eval: strict eval code with use strict in eval" {
+  let output = run_output(
+    (
+      #|eval("'use strict'; var x = 42;");
+      #|try { console.log(x); } catch(e) { console.log("not defined"); }
+    ),
+  )
+  inspect(output, content="[\"not defined\"]")
+}
+
+///|
+test "eval: eval in nested function scope" {
+  let output = run_output(
+    (
+      #|function outer() {
+      #|  var a = 1;
+      #|  function inner() {
+      #|    var b = 2;
+      #|    return eval("a + b");
+      #|  }
+      #|  return inner();
+      #|}
+      #|console.log(outer());
+    ),
+  )
+  inspect(output, content="[\"3\"]")
+}
+
+///|
+test "eval: let in non-strict eval is isolated" {
+  let output = run_output(
+    (
+      #|eval("let y = 2;");
+      #|try { console.log(y); } catch(e) { console.log("not visible"); }
+    ),
+  )
+  inspect(output, content="[\"not visible\"]")
+}
+
+///|
+test "eval: const in non-strict eval is isolated" {
+  let output = run_output(
+    (
+      #|eval("const c = 1;");
+      #|try { console.log(c); } catch(e) { console.log("not visible"); }
+    ),
+  )
+  inspect(output, content="[\"not visible\"]")
+}
+
+///|
+test "eval: function declaration leaks from non-strict eval" {
+  let output = run_output(
+    (
+      #|eval("function g() { return 99; }");
+      #|console.log(g());
+    ),
+  )
+  inspect(output, content="[\"99\"]")
+}
+
+///|
+test "eval: strict function eval isolates var" {
+  let output = run_output(
+    (
+      #|function f() {
+      #|  "use strict";
+      #|  eval("var x = 42;");
+      #|  try { return x; } catch(e) { return "isolated"; }
+      #|}
+      #|console.log(f());
+    ),
+  )
+  inspect(output, content="[\"isolated\"]")
+}
+
+///|
+test "eval: indirect eval does not inherit caller strict mode" {
+  // (0, eval)("var x = 1") from strict caller should NOT be strict —
+  // indirect eval only respects its own "use strict" directive
+  let output = run_output(
+    (
+      #|"use strict";
+      #|(0, eval)("var x = 1;");
+      #|console.log(x);
+    ),
+  )
+  inspect(output, content="[\"1\"]")
+}
+
+///|
+test "eval: eval in block hoists var to function scope" {
+  // Direct eval inside a block should hoist var to the enclosing
+  // function scope, not the block scope
+  let output = run_output(
+    (
+      #|function f() {
+      #|  { eval("var x = 1"); }
+      #|  return x;
+      #|}
+      #|console.log(f());
+    ),
+  )
+  inspect(output, content="[\"1\"]")
+}
+
+///|
+test "eval: parenthesized eval is direct eval" {
+  // (eval)("x") is still a direct eval per ES spec
+  let output = run_output(
+    (
+      #|var x = "global";
+      #|function f() {
+      #|  var x = "local";
+      #|  return (eval)("x");
+      #|}
+      #|console.log(f());
+    ),
+  )
+  inspect(output, content="[\"local\"]")
+}
+
+///|
+test "eval: nested grouping ((eval)) is direct eval" {
+  // ((eval))("x") should also be direct eval — grouping does not
+  // change the Reference type regardless of nesting depth
+  let output = run_output(
+    (
+      #|var x = "global";
+      #|function f() {
+      #|  var x = "local";
+      #|  return ((eval))("x");
+      #|}
+      #|console.log(f());
+    ),
+  )
+  inspect(output, content="[\"local\"]")
+}
+
+///|
+test "eval: new eval() throws TypeError" {
+  // eval is not a constructor — new eval() should throw TypeError
+  let output = run_output(
+    (
+      #|try {
+      #|  new eval("1 + 2");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|  console.log(e.message);
+      #|}
+    ),
+  )
+  inspect(output, content="[\"true\", \"eval is not a constructor\"]")
+}
+
+///|
+test "eval: direct eval sees block-scoped let" {
+  // Direct eval inside a block should see block-scoped let bindings
+  let output = run_output(
+    (
+      #|function f() {
+      #|  let x = 42;
+      #|  return eval("x");
+      #|}
+      #|console.log(f());
+    ),
+  )
+  inspect(output, content="[\"42\"]")
+}
+
+///|
+test "eval: direct eval sees block-scoped let in nested block" {
+  // { let x = 1; eval("x") } must see the block's let binding
+  let output = run_output(
+    (
+      #|var result;
+      #|{
+      #|  let x = "block_let";
+      #|  result = eval("x");
+      #|}
+      #|console.log(result);
+    ),
+  )
+  inspect(output, content="[\"block_let\"]")
+}
+
+///|
+test "eval: strict eval let/const with TDZ" {
+  // Strict eval should properly handle let/const with TDZ
+  let output = run_output(
+    (
+      #|function f() {
+      #|  "use strict";
+      #|  return eval("let x = 10; x + 5;");
+      #|}
+      #|console.log(f());
+    ),
+  )
+  inspect(output, content="[\"15\"]")
+}
+
+///|
+test "eval: var in eval conflicts with block let throws SyntaxError" {
+  // Per EvalDeclarationInstantiation step 5.d, eval("var x") must throw
+  // SyntaxError when a let/const x exists in an intermediate scope between
+  // the eval scope and the variable environment.
+  let output = run_output(
+    (
+      #|function f() {
+      #|  var x = "var_x";
+      #|  {
+      #|    let x = "let_x";
+      #|    try {
+      #|      eval("var x = 'eval_x'");
+      #|      console.log("BUG");
+      #|    } catch (e) {
+      #|      console.log(e.constructor.name);
+      #|    }
+      #|    console.log(x);
+      #|  }
+      #|  console.log(x);
+      #|}
+      #|f();
+    ),
+  )
+  inspect(output, content="[\"SyntaxError\", \"let_x\", \"var_x\"]")
+}
+
+///|
+test "eval: global var conflicts with global let throws SyntaxError" {
+  // Per EvalDeclarationInstantiation step 5.a, eval("var x") at global scope
+  // must throw SyntaxError when a let/const x exists in the global env.
+  let output = run_output(
+    (
+      #|let x = "let";
+      #|try {
+      #|  eval("var x;");
+      #|  console.log("BUG");
+      #|} catch (e) {
+      #|  console.log(e.constructor.name);
+      #|}
+      #|console.log(x);
+    ),
+  )
+  inspect(output, content="[\"SyntaxError\", \"let\"]")
+}
+
+///|
+test "eval: var hoists to function scope past non-conflicting block" {
+  // eval("var x = 42") in a block with no conflicting lex binding
+  // should hoist x to the enclosing function scope.
+  let output = run_output(
+    (
+      #|function test() {
+      #|  { eval("var x = 42"); }
+      #|  console.log(x);
+      #|}
+      #|test();
+    ),
+  )
+  inspect(output, content="[\"42\"]")
+}
+
+///|
+test "eval: function decl reassignment propagates to var_env" {
+  // eval("function foo(){} foo = 42") should update var_env, not just exec_env
+  let output = run_output(
+    (
+      #|function test() {
+      #|  eval("function foo() { return 'original'; } foo = 42;");
+      #|  return foo;
+      #|}
+      #|console.log(test());
+    ),
+  )
+  inspect(output, content="[\"42\"]")
+}

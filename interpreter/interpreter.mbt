@@ -48,6 +48,7 @@ pub(all) struct Interpreter {
 ///|
 pub fn Interpreter::new() -> Interpreter {
   let global = Environment::new()
+  global.is_var_scope = true
   let output : Array[String] = []
   // Create global object for 'this' in global context
   let global_this : Value = Object({
@@ -64,6 +65,15 @@ pub fn Interpreter::new() -> Interpreter {
   // Bind 'this' and 'globalThis' in global scope
   global.def_builtin("this", global_this)
   global.def_builtin("globalThis", global_this)
+  // Mirror eval onto the global object (globalThis.eval)
+  match global.bindings.get("eval") {
+    Some(binding) =>
+      match global_this {
+        Object(data) => data.properties["eval"] = binding.value
+        _ => ()
+      }
+    None => ()
+  }
   // Set up test262 harness host functions (print, $262)
   setup_harness_builtins(global, output, global_this)
   let microtask_queue : Array[Microtask] = []
@@ -157,10 +167,16 @@ fn Interpreter::exec_stmt(
         Some(expr) => self.eval_expr(expr, env)
         None => Undefined
       }
-      // For var declarations that were hoisted, use assign instead of def
-      if bk == VarBinding && env.bindings.contains(name) {
+      // For var declarations that were hoisted, use assign instead of def.
+      // Check parent scope too — var may have been hoisted to a parent env
+      // (e.g., eval hoists var to caller scope, block-scoped var goes to function scope).
+      // Use has_var to only match VarBinding, not let/const in parent scopes.
+      if bk == VarBinding && (env.bindings.contains(name) || env.has_var(name)) {
         if init is Some(_) {
-          env.assign(name, value)
+          // Use assign_var to skip any intervening let/const that shadow the name.
+          // This ensures eval("var x = 1") targets the function scope's var x,
+          // not a block-scoped let x in between.
+          env.assign_var(name, value)
         }
       } else if (bk == LetBinding || bk == ConstBinding) &&
         env.bindings.contains(name) {
@@ -339,11 +355,16 @@ fn Interpreter::exec_stmt(
         body,
         closure: env,
       }
-      // If already hoisted, just assign; otherwise define
+      let func_val = make_func(func_data)
+      // If already hoisted (in this env or a parent var scope), assign there;
+      // otherwise define locally. Uses has_var/assign_var so that eval'd
+      // function declarations target the caller's var_env, not exec_env.
       if env.bindings.contains(name) {
-        env.assign(name, make_func(func_data))
+        env.assign(name, func_val)
+      } else if env.has_var(name) {
+        env.assign_var(name, func_val)
       } else {
-        env.def(name, make_func(func_data), VarBinding)
+        env.def(name, func_val, VarBinding)
       }
       Normal(Undefined)
     }
@@ -1038,10 +1059,13 @@ fn Interpreter::exec_stmt(
         body,
         closure: env,
       }
+      let func_val = make_func_ext(func_data)
       if env.bindings.contains(name) {
-        env.assign(name, make_func_ext(func_data))
+        env.assign(name, func_val)
+      } else if env.has_var(name) {
+        env.assign_var(name, func_val)
       } else {
-        env.def(name, make_func_ext(func_data), VarBinding)
+        env.def(name, func_val, VarBinding)
       }
       Normal(Undefined)
     }
@@ -1055,6 +1079,8 @@ fn Interpreter::exec_stmt(
       )
       if env.bindings.contains(name) {
         env.assign(name, gen_func)
+      } else if env.has_var(name) {
+        env.assign_var(name, gen_func)
       } else {
         env.def(name, gen_func, VarBinding)
       }
@@ -1070,6 +1096,8 @@ fn Interpreter::exec_stmt(
       )
       if env.bindings.contains(name) {
         env.assign(name, gen_func)
+      } else if env.has_var(name) {
+        env.assign_var(name, gen_func)
       } else {
         env.def(name, gen_func, VarBinding)
       }
@@ -1181,6 +1209,69 @@ fn Interpreter::exec_stmts(
     }
   }
   Normal(last)
+}
+
+///|
+/// Collect names from a destructuring pattern (for eval var name collection).
+fn collect_pattern_var_names(
+  pattern : @ast.Pattern,
+  names : Array[String],
+) -> Unit {
+  match pattern {
+    IdentPat(name) => names.push(name)
+    DefaultPat(inner_pat, _) => collect_pattern_var_names(inner_pat, names)
+    AssignTarget(_) => ()
+    ArrayPat(elements, rest) => {
+      for elem in elements {
+        match elem {
+          Some(p) => collect_pattern_var_names(p, names)
+          None => ()
+        }
+      }
+      match rest {
+        Some(p) => collect_pattern_var_names(p, names)
+        None => ()
+      }
+    }
+    ObjectPat(props, rest) => {
+      for prop in props {
+        collect_pattern_var_names(prop.value, names)
+      }
+      match rest {
+        Some(p) => collect_pattern_var_names(p, names)
+        None => ()
+      }
+    }
+  }
+}
+
+///|
+/// Collect all var-scoped declaration names from eval code.
+/// Used by EvalDeclarationInstantiation to check for var/lex conflicts.
+fn collect_eval_var_names(stmts : Array[@ast.Stmt]) -> Array[String] {
+  let names : Array[String] = []
+  for stmt in stmts {
+    match stmt {
+      VarDecl(VarKind, name, _, _) => names.push(name)
+      FuncDecl(name, _, _, _) => names.push(name)
+      FuncDeclExt(name, _, _, _, _) => names.push(name)
+      GeneratorDecl(name, _, _, _) => names.push(name)
+      GeneratorDeclExt(name, _, _, _, _) => names.push(name)
+      DestructureDecl(VarKind, pattern, _, _) =>
+        collect_pattern_var_names(pattern, names)
+      StmtList(inner_stmts, _) =>
+        for inner in inner_stmts {
+          match inner {
+            VarDecl(VarKind, name, _, _) => names.push(name)
+            DestructureDecl(VarKind, pattern, _, _) =>
+              collect_pattern_var_names(pattern, names)
+            _ => ()
+          }
+        }
+      _ => ()
+    }
+  }
+  names
 }
 
 ///|
@@ -3238,6 +3329,161 @@ fn Interpreter::eval_args_with_spread(
 }
 
 ///|
+/// Check if a value is the global eval function
+fn is_eval_function(val : Value) -> Bool {
+  match val {
+    Object(obj_data) =>
+      match obj_data.callable {
+        Some(NonConstructableCallable("eval", _)) => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+///|
+/// Recursively strip Grouping nodes from an expression.
+/// Per ES spec, grouping parentheses do not change the Reference type,
+/// so ((eval))("code") is still a direct eval call.
+fn unwrap_grouping(expr : @ast.Expr) -> @ast.Expr {
+  match expr {
+    Grouping(inner, _) => unwrap_grouping(inner)
+    _ => expr
+  }
+}
+
+///|
+/// Execute eval code in a given environment.
+/// If `direct` is true, executes in the caller's environment (direct eval).
+/// If `direct` is false, executes in the global environment (indirect eval).
+/// Handles strict mode isolation and var leaking per ES spec.
+///
+/// Per ES spec (18.2.1.1 PerformEval):
+/// - Strict eval: all declarations (var, let, const, function) are isolated in a new scope
+/// - Non-strict direct eval: var/function declarations leak to caller's variable environment,
+///   but let/const are isolated in a new eval lexical scope
+/// - Non-strict indirect eval: var/function declarations leak to global scope,
+///   but let/const are isolated in a new eval lexical scope
+fn Interpreter::perform_eval(
+  self : Interpreter,
+  code : String,
+  caller_env : Environment,
+  direct : Bool,
+) -> Value raise Error {
+  // Parse the code — syntax errors propagate as SyntaxError
+  let prog = @parser.parse(code)
+  let stmts = prog.stmts
+  if stmts.length() == 0 {
+    return Undefined
+  }
+  // Determine if eval code is strict.
+  // Direct eval inherits strictness from the caller OR its own "use strict" directive.
+  // Indirect eval is strict ONLY if the eval code itself has "use strict" — it does
+  // NOT inherit the caller's strict mode (it runs as a fresh global script).
+  let eval_strict = if direct {
+    self.strict || has_use_strict(stmts)
+  } else {
+    has_use_strict(stmts)
+  }
+  // Determine the variable environment (where var/function declarations leak to).
+  // For direct eval, walk up from the caller's env to find the function/global scope
+  // (the nearest is_var_scope environment). This ensures that eval("var x = 1")
+  // inside a block correctly hoists to the enclosing function scope, not the block.
+  let var_env : Environment = if direct {
+    caller_env.find_var_env()
+  } else {
+    self.global
+  }
+  // Always create a new scope for eval execution.
+  // This isolates let/const declarations from the caller.
+  // For strict eval, it also isolates var/function declarations.
+  // For direct eval, parent to caller_env so block-scoped bindings are visible:
+  //   { let x = 1; eval("x") } must see x.
+  // For indirect eval, parent to global scope since it runs as a fresh script.
+  let exec_parent = if direct { caller_env } else { self.global }
+  let exec_env = Environment::new(parent=Some(exec_parent))
+  // Save and set strict mode
+  let saved_strict = self.strict
+  if eval_strict {
+    self.strict = true
+  }
+  let result = try {
+    if eval_strict {
+      // Strict eval: all declarations stay in the eval scope (isolated)
+      self.hoist_declarations(stmts, exec_env)
+      hoist_block_tdz(stmts, exec_env)
+    } else {
+      // EvalDeclarationInstantiation steps 5.a and 5.d:
+      // Check for var/lexical conflicts before hoisting.
+      let var_names = collect_eval_var_names(stmts)
+      // Step 5.a: If var_env is the global Environment Record, check that
+      // var names don't conflict with global lexical (let/const) declarations.
+      if var_env.parent is None {
+        for name in var_names {
+          match var_env.bindings.get(name) {
+            Some(b) =>
+              if b.kind == LetBinding || b.kind == ConstBinding {
+                raise @errors.SyntaxError(
+                  message="Identifier '\{name}' has already been declared",
+                )
+              }
+            _ => ()
+          }
+        }
+      }
+      // Step 5.d: Walk from caller_env up to var_env (exclusive), checking
+      // that no intermediate scope has a binding that conflicts with a var name.
+      // This prevents eval("var x") from hoisting past a block-scoped let/const x.
+      {
+        let mut this_lex = caller_env
+        while not(this_lex.is_var_scope) {
+          for name in var_names {
+            if this_lex.bindings.contains(name) {
+              raise @errors.SyntaxError(
+                message="Identifier '\{name}' has already been declared",
+              )
+            }
+          }
+          match this_lex.parent {
+            Some(parent) => this_lex = parent
+            None => break
+          }
+        }
+      }
+      // Non-strict eval: hoist var/function to the variable environment (leak),
+      // then hoist let/const TDZ markers to the eval scope (isolated)
+      self.hoist_declarations(stmts, var_env)
+      hoist_block_tdz(stmts, exec_env)
+    }
+    // Execute statements and collect result
+    let mut last : Value = Undefined
+    for stmt in stmts {
+      match self.exec_stmt(stmt, exec_env) {
+        Normal(v) => last = v
+        ReturnSignal(_) =>
+          raise @errors.SyntaxError(
+            message="return statement outside of function",
+          )
+        BreakSignal(_) =>
+          raise @errors.SyntaxError(message="break statement outside of loop")
+        ContinueSignal(_) =>
+          raise @errors.SyntaxError(
+            message="continue statement outside of loop",
+          )
+      }
+    }
+    last
+  } catch {
+    e => {
+      self.strict = saved_strict
+      raise e
+    }
+  }
+  self.strict = saved_strict
+  result
+}
+
+///|
 fn Interpreter::eval_call(
   self : Interpreter,
   callee_expr : @ast.Expr,
@@ -3245,30 +3491,65 @@ fn Interpreter::eval_call(
   env : Environment,
   loc : @token.Loc,
 ) -> Value raise Error {
-  let args : Array[Value] = self.eval_args_with_spread(arg_exprs, env)
-  match callee_expr {
-    Member(obj_expr, prop, mloc) =>
-      match obj_expr {
-        Ident("console", _) => {
-          let callee = self.eval_member(obj_expr, prop, env, mloc)
-          self.call_value(callee, Undefined, args, loc)
-        }
+  // Detect direct eval: eval(...), (eval)(...), ((eval))(...) etc.
+  // Per ES spec, grouping parentheses do not change the Reference type,
+  // so any nesting of parens around eval is still a direct eval call.
+  match unwrap_grouping(callee_expr) {
+    Ident("eval", _) => {
+      // Check if this identifier actually resolves to the global eval function
+      let callee = try {
+        env.get("eval")
+      } catch {
         _ => {
-          let obj = self.eval_expr(obj_expr, env)
-          let func_val = self.get_property(obj, prop, mloc)
-          self.call_value(func_val, obj, args, loc)
+          // eval is not defined - throw ReferenceError
+          raise @errors.ReferenceError(message="eval is not defined")
         }
       }
-    ComputedMember(obj_expr, key_expr, mloc) => {
-      let obj = self.eval_expr(obj_expr, env)
-      let key = self.eval_expr(key_expr, env)
-      let func_val = self.get_computed_property(obj, key, mloc)
-      self.call_value(func_val, obj, args, loc)
-    }
-    _ => {
-      let callee = self.eval_expr(callee_expr, env)
+      if is_eval_function(callee) {
+        // Direct eval: parse and execute in caller's environment
+        let args = self.eval_args_with_spread(arg_exprs, env)
+        if args.length() == 0 {
+          return Undefined
+        }
+        match args[0] {
+          String_(code) => return self.perform_eval(code, env, true)
+          other => return other // non-string argument returns as-is
+        }
+      }
+      // eval has been shadowed by a non-eval binding — call normally
+      let args = self.eval_args_with_spread(arg_exprs, env)
       self.call_value(callee, Undefined, args, loc)
     }
+    _ =>
+      // Per ES spec (13.3.6.1), evaluate callee/receiver first, then arguments.
+      match callee_expr {
+        Member(obj_expr, prop, mloc) =>
+          match obj_expr {
+            Ident("console", _) => {
+              let callee = self.eval_member(obj_expr, prop, env, mloc)
+              let args = self.eval_args_with_spread(arg_exprs, env)
+              self.call_value(callee, Undefined, args, loc)
+            }
+            _ => {
+              let obj = self.eval_expr(obj_expr, env)
+              let func_val = self.get_property(obj, prop, mloc)
+              let args = self.eval_args_with_spread(arg_exprs, env)
+              self.call_value(func_val, obj, args, loc)
+            }
+          }
+        ComputedMember(obj_expr, key_expr, mloc) => {
+          let obj = self.eval_expr(obj_expr, env)
+          let key = self.eval_expr(key_expr, env)
+          let func_val = self.get_computed_property(obj, key, mloc)
+          let args = self.eval_args_with_spread(arg_exprs, env)
+          self.call_value(func_val, obj, args, loc)
+        }
+        _ => {
+          let callee = self.eval_expr(callee_expr, env)
+          let args = self.eval_args_with_spread(arg_exprs, env)
+          self.call_value(callee, Undefined, args, loc)
+        }
+      }
   }
 }
 
@@ -3287,6 +3568,7 @@ fn Interpreter::call_value(
           let saved_strict = self.strict
           let result = try {
             let func_env = Environment::new(parent=Some(data.closure))
+            func_env.is_var_scope = true
             let func_strict = self.strict || has_use_strict(data.body)
             if func_strict {
               self.strict = true
@@ -3356,6 +3638,7 @@ fn Interpreter::call_value(
         }
         Some(ArrowFunc(data)) => {
           let func_env = Environment::new(parent=Some(data.closure))
+          func_env.is_var_scope = true
           // Arrow functions do NOT rebind this — use closure's this
           for i = 0; i < data.params.length(); i = i + 1 {
             let val : Value = if i < args.length() {
@@ -3383,6 +3666,7 @@ fn Interpreter::call_value(
           let saved_strict = self.strict
           let result = try {
             let func_env = Environment::new(parent=Some(data.closure))
+            func_env.is_var_scope = true
             let func_strict = self.strict || has_use_strict(data.body)
             if func_strict {
               self.strict = true
@@ -3496,6 +3780,7 @@ fn Interpreter::call_value(
         }
         Some(ArrowFuncExt(data)) => {
           let func_env = Environment::new(parent=Some(data.closure))
+          func_env.is_var_scope = true
           // Arrow functions do NOT rebind this
           let mut effective_param_count = 0
           for i = 0; i < data.params.length(); i = i + 1 {
@@ -3601,7 +3886,20 @@ fn Interpreter::call_value(
         }
         Some(MethodCallable(_, func)) => func(this_val, args)
         Some(NativeCallable(_, func)) => func(args)
-        Some(NonConstructableCallable(_, func)) => func(args)
+        Some(NonConstructableCallable(name, func)) =>
+          if name == "eval" {
+            // Indirect eval: route through perform_eval for interpreter access
+            if args.length() == 0 {
+              Undefined
+            } else {
+              match args[0] {
+                String_(code) => self.perform_eval(code, self.global, false)
+                other => other
+              }
+            }
+          } else {
+            func(args)
+          }
         Some(InterpreterCallable(_, func)) => func(self, this_val, args)
         Some(ConstructorOnlyCallable(name, _)) =>
           raise @errors.TypeError(
@@ -4851,6 +5149,7 @@ fn Interpreter::eval_new(
               extensible: true,
             })
             let func_env = Environment::new(parent=Some(data.closure))
+            func_env.is_var_scope = true
             func_env.def("this", new_obj, LetBinding)
             func_env.def("<new.target>", ctor, LetBinding)
             for i = 0; i < data.params.length(); i = i + 1 {
@@ -4941,6 +5240,7 @@ fn Interpreter::eval_new(
               extensible: true,
             })
             let func_env = Environment::new(parent=Some(data.closure))
+            func_env.is_var_scope = true
             func_env.def("this", new_obj, LetBinding)
             func_env.def("<new.target>", ctor, LetBinding)
             let mut effective_param_count = 0
@@ -5101,6 +5401,7 @@ fn Interpreter::eval_new(
           })
           // Set up the constructor environment
           let ctor_env = Environment::new(parent=Some(closure))
+          ctor_env.is_var_scope = true
           ctor_env.def_builtin("this", new_obj)
           ctor_env.def("<new.target>", ctor, LetBinding)
           // Set up [[SuperConstructor]] and [[SuperPrototype]] for super() calls
