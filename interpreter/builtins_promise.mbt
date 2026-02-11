@@ -947,10 +947,10 @@ pub fn setup_promise(env : Environment) -> Unit {
     callable: Some(
       InterpreterCallable("all", fn(interp, _this, args) raise {
         let iterable = if args.length() > 0 { args[0] } else { Undefined }
-        let result_data = new_promise_data()
-        let result_promise = Promise(result_data)
-        let (resolve, reject) = create_resolving_functions(interp, result_data)
         let loc = @token.Loc::default()
+        let (result_promise, resolve, reject) = create_promise_capability_from_constructor(
+          interp, _this, loc,
+        )
         let results : Array[Value] = []
         let remaining : Ref[Int] = { val: 1 }
         let mut iterator : Value = Undefined
@@ -1092,10 +1092,10 @@ pub fn setup_promise(env : Environment) -> Unit {
     callable: Some(
       InterpreterCallable("race", fn(interp, _this, args) raise {
         let iterable = if args.length() > 0 { args[0] } else { Undefined }
-        let result_data = new_promise_data()
-        let result_promise = Promise(result_data)
-        let (resolve, reject) = create_resolving_functions(interp, result_data)
         let loc = @token.Loc::default()
+        let (result_promise, resolve, reject) = create_promise_capability_from_constructor(
+          interp, _this, loc,
+        )
         let mut iterator : Value = Undefined
         let mut has_iterator = false
         let mut iterator_done = false
@@ -1184,10 +1184,10 @@ pub fn setup_promise(env : Environment) -> Unit {
     callable: Some(
       InterpreterCallable("allSettled", fn(interp, _this, args) raise {
         let iterable = if args.length() > 0 { args[0] } else { Undefined }
-        let result_data = new_promise_data()
-        let result_promise = Promise(result_data)
-        let (resolve, reject) = create_resolving_functions(interp, result_data)
         let loc = @token.Loc::default()
+        let (result_promise, resolve, reject) = create_promise_capability_from_constructor(
+          interp, _this, loc,
+        )
         let results : Array[Value] = []
         let remaining : Ref[Int] = { val: 1 }
         let mut iterator : Value = Undefined
@@ -1389,10 +1389,10 @@ pub fn setup_promise(env : Environment) -> Unit {
     callable: Some(
       InterpreterCallable("any", fn(interp, _this, args) raise {
         let iterable = if args.length() > 0 { args[0] } else { Undefined }
-        let result_data = new_promise_data()
-        let result_promise = Promise(result_data)
-        let (resolve, reject) = create_resolving_functions(interp, result_data)
         let loc = @token.Loc::default()
+        let (result_promise, resolve, reject) = create_promise_capability_from_constructor(
+          interp, _this, loc,
+        )
         let errors : Array[Value] = []
         let remaining : Ref[Int] = { val: 1 }
         let mut iterator : Value = Undefined
