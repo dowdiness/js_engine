@@ -4,6 +4,7 @@ pub(all) struct FuncData {
   params : Array[String]
   body : Array[@ast.Stmt]
   closure : Environment
+  strict : Bool
 }
 
 ///|
@@ -13,6 +14,7 @@ pub(all) struct FuncDataExt {
   rest_param : String?
   body : Array[@ast.Stmt]
   closure : Environment
+  strict : Bool
 }
 
 ///|

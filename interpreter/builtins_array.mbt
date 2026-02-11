@@ -835,7 +835,11 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
         symbol_properties: {},
         prototype: Null,
         callable: Some(
-          InterpreterCallable("findLastIndex", fn(interp, this_val, args) raise {
+          InterpreterCallable("findLastIndex", fn(
+            interp,
+            this_val,
+            args,
+          ) raise {
             let _ = this_val
             let callback = if args.length() > 0 { args[0] } else { Undefined }
             let this_arg = if args.length() > 1 { args[1] } else { Undefined }

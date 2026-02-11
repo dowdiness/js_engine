@@ -486,7 +486,11 @@ pub fn setup_promise(env : Environment) -> Unit {
           symbol_properties: {},
           prototype: Null,
           callable: Some(
-            InterpreterCallable("finallyValueThunk", fn(i, _this, inner_args) raise {
+            InterpreterCallable("finallyValueThunk", fn(
+              i,
+              _this,
+              inner_args,
+            ) raise {
               let value = if inner_args.length() > 0 {
                 inner_args[0]
               } else {
@@ -729,7 +733,11 @@ pub fn setup_promise(env : Environment) -> Unit {
             symbol_properties: {},
             prototype: Null,
             callable: Some(
-              InterpreterCallable("allOnFulfilled", fn(i2, _this2, args2) raise {
+              InterpreterCallable("allOnFulfilled", fn(
+                i2,
+                _this2,
+                args2,
+              ) raise {
                 let value = if args2.length() > 0 {
                   args2[0]
                 } else {

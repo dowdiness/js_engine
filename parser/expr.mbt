@@ -856,11 +856,8 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
     if self.at(Star) {
       let _ = self.advance() // consume '*'
       // Parse the method name
-      let (gen_key_expr, gen_key_name, gen_computed) : (
-        @ast.Expr,
-        String,
-        Bool,
-      ) = match self.peek_kind() {
+      let (gen_key_expr, gen_key_name, gen_computed) : (@ast.Expr, String, Bool) = match
+        self.peek_kind() {
         Ident(name) => {
           let kloc = self.advance().loc
           (StringLit(name, kloc), name, false)
@@ -998,6 +995,7 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
       if not(self.at(RBrace)) {
         if self.at(Comma) {
           let _ = self.advance()
+
         }
       }
       continue
@@ -1480,8 +1478,7 @@ fn expr_to_ext_arrow_params(
   let mut synth_idx = 0
   fn collect(e : @ast.Expr) -> Unit raise Error {
     match e {
-      Ident(name, _) =>
-        params.push({ name, default_val: None, pattern: None })
+      Ident(name, _) => params.push({ name, default_val: None, pattern: None })
       Assign(name, default_expr, _) =>
         params.push({ name, default_val: Some(default_expr), pattern: None })
       Grouping(inner, _) => collect(inner)
@@ -1882,21 +1879,9 @@ fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
         let body = self.parse_block_body()
         self.pop_generator_context()
         let func_val : @ast.Expr = if is_generator {
-          GeneratorExprExt(
-            None,
-            ext_params,
-            rest_param,
-            body,
-            mloc,
-          )
+          GeneratorExprExt(None, ext_params, rest_param, body, mloc)
         } else {
-          FuncExprExt(
-            None,
-            ext_params,
-            rest_param,
-            body,
-            mloc,
-          )
+          FuncExprExt(None, ext_params, rest_param, body, mloc)
         }
         return {
           key: key_expr,

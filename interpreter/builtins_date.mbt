@@ -8,6 +8,7 @@
 // Date utility constants and helpers
 // ============================================================
 
+///|
 /// Milliseconds per time unit
 let ms_per_second : Double = 1000.0
 
@@ -167,14 +168,14 @@ fn hours_from_time(t : Double) -> Int {
 ///|
 /// Minutes from time
 fn minutes_from_time(t : Double) -> Int {
-  let r = ((time_within_day(t) / ms_per_minute).floor()) % 60.0
+  let r = (time_within_day(t) / ms_per_minute).floor() % 60.0
   r.to_int()
 }
 
 ///|
 /// Seconds from time
 fn seconds_from_time(t : Double) -> Int {
-  let r = ((time_within_day(t) / ms_per_second).floor()) % 60.0
+  let r = (time_within_day(t) / ms_per_second).floor() % 60.0
   r.to_int()
 }
 
@@ -631,9 +632,18 @@ fn parse_iso_date(chars : Array[Char], len : Int) -> Double {
   }
 
   // Validate ranges
-  if month < 1 || month > 12 || day_val < 1 || day_val > 31 || hour < 0 ||
-    hour > 24 || minute < 0 || minute > 59 || second < 0 || second > 59 ||
-    ms < 0 || ms > 999 {
+  if month < 1 ||
+    month > 12 ||
+    day_val < 1 ||
+    day_val > 31 ||
+    hour < 0 ||
+    hour > 24 ||
+    minute < 0 ||
+    minute > 59 ||
+    second < 0 ||
+    second > 59 ||
+    ms < 0 ||
+    ms > 999 {
     return 0.0 / 0.0
   }
 
@@ -676,14 +686,9 @@ fn get_date_value(this_val : Value) -> Double raise Error {
           _ => 0.0 / 0.0
         }
       } else {
-        raise @errors.TypeError(
-          message="this is not a Date object",
-        )
+        raise @errors.TypeError(message="this is not a Date object")
       }
-    _ =>
-      raise @errors.TypeError(
-        message="this is not a Date object",
-      )
+    _ => raise @errors.TypeError(message="this is not a Date object")
   }
 }
 
@@ -695,14 +700,9 @@ fn set_date_value(this_val : Value, v : Double) -> Unit raise Error {
       if data.class_name == "Date" {
         data.properties["[[DateValue]]"] = Number(v)
       } else {
-        raise @errors.TypeError(
-          message="this is not a Date object",
-        )
+        raise @errors.TypeError(message="this is not a Date object")
       }
-    _ =>
-      raise @errors.TypeError(
-        message="this is not a Date object",
-      )
+    _ => raise @errors.TypeError(message="this is not a Date object")
   }
 }
 
@@ -1227,12 +1227,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
         } else {
           millis_from_time(t).to_double()
         }
-        let new_time = make_time(
-          hours_from_time(t).to_double(),
-          min,
-          sec,
-          ms,
-        )
+        let new_time = make_time(hours_from_time(t).to_double(), min, sec, ms)
         let v = time_clip(make_date_value(day(t), new_time))
         set_date_value(this_val, v)
         Number(v)
@@ -1255,7 +1250,11 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     callable: Some(
       MethodCallable("setHours", fn(this_val, args) raise {
         let t = get_date_value(this_val)
-        let hour = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+        let hour = if args.length() > 0 {
+          to_number(args[0])
+        } else {
+          0.0 / 0.0
+        }
         let min = if args.length() > 1 {
           to_number(args[1])
         } else {
@@ -1322,17 +1321,17 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     callable: Some(
       MethodCallable("setMonth", fn(this_val, args) raise {
         let t = get_date_value(this_val)
-        let month = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+        let month = if args.length() > 0 {
+          to_number(args[0])
+        } else {
+          0.0 / 0.0
+        }
         let dt = if args.length() > 1 {
           to_number(args[1])
         } else {
           date_from_time(t).to_double()
         }
-        let new_day = make_day(
-          year_from_time(t).to_double(),
-          month,
-          dt,
-        )
+        let new_day = make_day(year_from_time(t).to_double(), month, dt)
         let v = time_clip(make_date_value(new_day, time_within_day(t)))
         set_date_value(this_val, v)
         Number(v)
@@ -1358,7 +1357,11 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
         if t.is_nan() {
           t = 0.0 // Use +0 if current value is NaN per spec
         }
-        let year = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+        let year = if args.length() > 0 {
+          to_number(args[0])
+        } else {
+          0.0 / 0.0
+        }
         let month = if args.length() > 1 {
           to_number(args[1])
         } else {
@@ -1619,10 +1622,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
         match hint {
           "number" => Number(t)
           "string" | "default" => String_(date_to_string(t))
-          _ =>
-            raise @errors.TypeError(
-              message="Invalid hint: " + hint,
-            )
+          _ => raise @errors.TypeError(message="Invalid hint: " + hint)
         }
       }),
     ),
@@ -1672,7 +1672,11 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
 
   // Date.UTC(year, month [, date [, hours [, minutes [, seconds [, ms]]]]])
   date_props["UTC"] = make_native_func_with_length("UTC", 7, fn(args) raise {
-    let year_arg = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+    let year_arg = if args.length() > 0 {
+      to_number(args[0])
+    } else {
+      0.0 / 0.0
+    }
     if year_arg.is_nan() {
       return Number(0.0 / 0.0)
     }
@@ -1750,21 +1754,9 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
               } else {
                 0.0
               }
-              let min = if args.length() > 4 {
-                to_number(args[4])
-              } else {
-                0.0
-              }
-              let sec = if args.length() > 5 {
-                to_number(args[5])
-              } else {
-                0.0
-              }
-              let ms = if args.length() > 6 {
-                to_number(args[6])
-              } else {
-                0.0
-              }
+              let min = if args.length() > 4 { to_number(args[4]) } else { 0.0 }
+              let sec = if args.length() > 5 { to_number(args[5]) } else { 0.0 }
+              let ms = if args.length() > 6 { to_number(args[6]) } else { 0.0 }
               let d = make_day(year, month, date_arg)
               let time = make_time(hour, min, sec, ms)
               time_clip(make_date_value(d, time))

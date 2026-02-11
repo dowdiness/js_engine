@@ -1089,7 +1089,6 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               message="Invalid property descriptor. Cannot both specify accessors and a value or writable attribute, #<Object>",
             )
           }
-
           let new_writable = match desc_props.get("writable") {
             Some(v) => Some(is_truthy(v))
             None => None
@@ -1150,7 +1149,6 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 message="Setter must be a function: \{new_setter.unwrap().to_string()}",
               )
           }
-
           match obj {
             Object(data) => {
               // Determine if key is a Symbol or string
@@ -1226,10 +1224,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                   if not(data.symbol_properties.contains(sym_id)) {
                     data.symbol_properties[sym_id] = Undefined
                   }
-                } else {
-                  if not(data.properties.contains(prop_name)) {
-                    data.properties[prop_name] = Undefined
-                  }
+                } else if not(data.properties.contains(prop_name)) {
+                  data.properties[prop_name] = Undefined
                 }
                 let enumerable = match new_enumerable {
                   Some(e) => e
@@ -1298,10 +1294,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                       if not(data.symbol_properties.contains(sym_id)) {
                         data.symbol_properties[sym_id] = Undefined
                       }
-                    } else {
-                      if not(data.properties.contains(prop_name)) {
-                        data.properties[prop_name] = Undefined
-                      }
+                    } else if not(data.properties.contains(prop_name)) {
+                      data.properties[prop_name] = Undefined
                     }
                 }
                 // Build final descriptor using new values or existing defaults
@@ -1352,13 +1346,12 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                   Some(Number(n)) => {
                     let new_len = n.to_int()
                     if new_len < 0 || new_len.to_double() != n {
-                      raise @errors.RangeError(
-                        message="Invalid array length",
-                      )
+                      raise @errors.RangeError(message="Invalid array length")
                     }
                     // Truncate or extend the array
                     while arr_data.elements.length() > new_len {
                       let _removed = arr_data.elements.pop()
+
                     }
                     while arr_data.elements.length() < new_len {
                       arr_data.elements.push(Undefined)
@@ -1450,7 +1443,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             }
 
             match obj {
-              Object(data) => {
+              Object(data) =>
                 // Handle Symbol keys
                 if is_symbol_key {
                   if data.symbol_properties.contains(sym_id) {
@@ -1571,11 +1564,9 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                       if prop_name == "length" {
                         let len : Double = match callable {
                           UserFunc(f) => f.params.length().to_double()
-                          UserFuncExt(f) =>
-                            f.params.length().to_double()
+                          UserFuncExt(f) => f.params.length().to_double()
                           ArrowFunc(f) => f.params.length().to_double()
-                          ArrowFuncExt(f) =>
-                            f.params.length().to_double()
+                          ArrowFuncExt(f) => f.params.length().to_double()
                           NativeCallable(_, _) => 0.0
                           NonConstructableCallable(_, _) => 0.0
                           MethodCallable(_, _) => 0.0
@@ -1586,9 +1577,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                           FuncApplyMethod(_) => 0.0
                           ClassConstructor(_, _, _, _, _, _) => 0.0
                         }
-                        make_desc(
-                          Number(len), false, false, true,
-                        )
+                        make_desc(Number(len), false, false, true)
                       } else if prop_name == "name" {
                         let name : String = match callable {
                           UserFunc(f) =>
@@ -1621,16 +1610,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                           FuncApplyMethod(_) => "apply"
                           ClassConstructor(n, _, _, _, _, _) => n
                         }
-                        make_desc(
-                          String_(name), false, false, true,
-                        )
+                        make_desc(String_(name), false, false, true)
                       } else {
                         Undefined
                       }
                     None => Undefined
                   }
                 }
-              }
               Array(data) =>
                 if prop_name == "length" {
                   make_desc(
@@ -1960,7 +1946,9 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           obj
         }),
-        "defineProperties": make_native_func("defineProperties", fn(args) raise {
+        "defineProperties": make_native_func("defineProperties", fn(
+          args,
+        ) raise {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           let descs = if args.length() > 1 { args[1] } else { Undefined }
           // Per ES spec, Object.defineProperties on non-object throws TypeError
@@ -2045,7 +2033,6 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                           message="Setter must be a function: \{new_setter.unwrap().to_string()}",
                         )
                     }
-
                     let new_writable = match desc.properties.get("writable") {
                       Some(v) => Some(is_truthy(v))
                       None => None
@@ -2090,7 +2077,6 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                           )
                         }
                     }
-
                     if is_accessor {
                       if not(data.properties.contains(prop_name)) {
                         data.properties[prop_name] = Undefined
@@ -2198,7 +2184,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                   return
                 }
                 match desc_val {
-                  Object(desc) => {
+                  Object(desc) =>
                     if prop_name == "length" {
                       match desc.properties.get("value") {
                         Some(Number(n)) => {
@@ -2210,6 +2196,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                           }
                           while arr_data.elements.length() > new_len {
                             let _removed = arr_data.elements.pop()
+
                           }
                           while arr_data.elements.length() < new_len {
                             arr_data.elements.push(Undefined)
@@ -2222,9 +2209,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                         None => ()
                       }
                     } else {
-                      let idx = @strconv.parse_int(prop_name) catch {
-                        _ => -1
-                      }
+                      let idx = @strconv.parse_int(prop_name) catch { _ => -1 }
                       if idx >= 0 && idx.to_string() == prop_name {
                         // Only write value if descriptor specifies one
                         match desc.properties.get("value") {
@@ -2238,7 +2223,6 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                         }
                       }
                     }
-                  }
                   _ => ()
                 }
               })
@@ -3896,7 +3880,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
   }
 }
 
-///| Validate non-configurable property constraints.
+///|
+/// Validate non-configurable property constraints.
 /// Throws TypeError if the proposed descriptor change violates invariants.
 fn validate_non_configurable(
   existing : PropDescriptor,
@@ -3963,12 +3948,7 @@ fn validate_non_configurable(
   // Non-configurable data: validate writable/value
   if not(existing_is_accessor) && not(is_accessor) {
     let writable_ok = match new_writable {
-      Some(w) =>
-        if not(existing.writable) && w {
-          false
-        } else {
-          true
-        }
+      Some(w) => if not(existing.writable) && w { false } else { true }
       None => true
     }
     let value_ok = if not(existing.writable) && has_value {

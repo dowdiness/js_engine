@@ -156,15 +156,13 @@ pub fn Environment::assign_var(
         // Skip non-var binding, look in parent
         match self.parent {
           Some(parent) => parent.assign_var(name, value)
-          None =>
-            raise @errors.ReferenceError(message="\{name} is not defined")
+          None => raise @errors.ReferenceError(message="\{name} is not defined")
         }
       }
     None =>
       match self.parent {
         Some(parent) => parent.assign_var(name, value)
-        None =>
-          raise @errors.ReferenceError(message="\{name} is not defined")
+        None => raise @errors.ReferenceError(message="\{name} is not defined")
       }
   }
 }

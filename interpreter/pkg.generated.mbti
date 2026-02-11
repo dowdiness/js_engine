@@ -28,9 +28,13 @@ pub fn get_string_method(String, String) -> Value
 
 pub fn get_symbol_by_id(Int) -> SymbolData?
 
+pub fn get_toprimitive_symbol() -> SymbolData
+
 pub fn get_tostringtag_symbol() -> SymbolData
 
 pub fn has_array_like_element(Value, Int) -> Bool
+
+pub let is_constructing : Ref[Bool]
 
 pub fn is_js_catchable_error(Error) -> Bool
 
@@ -76,6 +80,8 @@ pub fn same_value_zero(Value, Value) -> Bool
 
 pub fn setup_builtins(Environment, Array[String]) -> Unit
 
+pub fn setup_date_builtins(Environment) -> Unit
+
 pub fn setup_harness_builtins(Environment, Array[String], Value) -> Unit
 
 pub fn setup_map_set_builtins(Environment) -> Unit
@@ -109,6 +115,8 @@ pub fn type_of(Value) -> String
 pub let well_known_hasinstance_sym : Ref[SymbolData?]
 
 pub let well_known_iterator_sym : Ref[SymbolData?]
+
+pub let well_known_toprimitive_sym : Ref[SymbolData?]
 
 pub let well_known_tostringtag_sym : Ref[SymbolData?]
 
@@ -159,13 +167,17 @@ pub(all) enum Callable {
 pub(all) struct Environment {
   bindings : Map[String, Binding]
   parent : Environment?
+  mut is_var_scope : Bool
 }
 pub fn Environment::assign(Self, String, Value) -> Unit raise
+pub fn Environment::assign_var(Self, String, Value) -> Unit raise
 pub fn Environment::def(Self, String, Value, BindingKind) -> Unit raise
 pub fn Environment::def_builtin(Self, String, Value) -> Unit
 pub fn Environment::def_tdz(Self, String, BindingKind) -> Unit raise
+pub fn Environment::find_var_env(Self) -> Self
 pub fn Environment::get(Self, String) -> Value raise
 pub fn Environment::has(Self, String) -> Bool
+pub fn Environment::has_var(Self, String) -> Bool
 pub fn Environment::initialize(Self, String, Value) -> Unit raise
 pub fn Environment::new(parent? : Self?) -> Self
 
@@ -174,6 +186,7 @@ pub(all) struct FuncData {
   params : Array[String]
   body : Array[@ast.Stmt]
   closure : Environment
+  strict : Bool
 }
 
 pub(all) struct FuncDataExt {
@@ -182,6 +195,7 @@ pub(all) struct FuncDataExt {
   rest_param : String?
   body : Array[@ast.Stmt]
   closure : Environment
+  strict : Bool
 }
 
 pub(all) enum GenState {

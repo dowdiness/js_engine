@@ -6596,6 +6596,21 @@ test "eval: function decl reassignment propagates to var_env" {
   inspect(output, content="[\"42\"]")
 }
 
+///|
+test "strict: block function does not overwrite outer var" {
+  let output = run_output(
+    (
+      #|"use strict";
+      #|var f = 1;
+      #|{
+      #|  function f() {}
+      #|}
+      #|console.log(f);
+    ),
+  )
+  inspect(output, content="[\"1\"]")
+}
+
 // ============================================================
 // P6: Strict-Mode Prerequisite Bundle tests
 // ============================================================
@@ -6796,6 +6811,68 @@ test "strict: duplicate parameters throw SyntaxError" {
     output,
     content="[\"SyntaxError: Duplicate parameter name not allowed in this context\"]",
   )
+}
+
+///|
+test "strict caller does not make sloppy callee strict" {
+  let src =
+    #|function f(a, a) { return a; }
+    #|function g() {
+    #|  "use strict";
+    #|  return f(1, 2);
+    #|}
+    #|console.log(g());
+  let output = run_output(src)
+  inspect(output, content="[\"2\"]")
+}
+
+///|
+test "strict: duplicate parameters fail at declaration time" {
+  let src =
+    #|"use strict";
+    #|try {
+    #|  function dup(a, a) {}
+    #|  console.log("defined");
+    #|} catch (e) {
+    #|  console.log(e.constructor.name);
+    #|}
+  let output = run_output(src)
+  inspect(output, content="[\"SyntaxError\"]")
+}
+
+///|
+test "strict: duplicate parameters abort script before later statements" {
+  let src =
+    #|"use strict";
+    #|function dup(a, a) {}
+    #|console.log("defined");
+  let mut err_msg = ""
+  try {
+    let _ = run_output(src)
+
+  } catch {
+    @interpreter.JsException(val) => err_msg = error_display(val)
+    _ => err_msg = "unexpected"
+  }
+  inspect(
+    err_msg,
+    content="SyntaxError: Duplicate parameter name not allowed in this context",
+  )
+}
+
+///|
+test "class constructor duplicate params fail at declaration time" {
+  let src =
+    #|let done = "no";
+    #|try {
+    #|  class C { constructor(a, a) {} }
+    #|  done = "yes";
+    #|} catch (e) {
+    #|  console.log(e.constructor.name);
+    #|}
+    #|console.log(done);
+  let output = run_output(src)
+  inspect(output, content="[\"SyntaxError\", \"no\"]")
 }
 
 ///|

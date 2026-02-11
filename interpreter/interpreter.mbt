@@ -138,9 +138,7 @@ fn validate_strict_binding_name(name : String) -> Unit raise Error {
     )
   }
   if is_strict_reserved_word(name) {
-    raise @errors.SyntaxError(
-      message="Unexpected strict mode reserved word",
-    )
+    raise @errors.SyntaxError(message="Unexpected strict mode reserved word")
   }
 }
 
@@ -182,6 +180,65 @@ fn check_duplicate_params_ext(
       }
     None => ()
   }
+}
+
+///|
+let eval_function_reconcile_marker = "[[EvalFunctionReconcile]]"
+
+///|
+fn is_function_strict(enclosing_strict : Bool, body : Array[@ast.Stmt]) -> Bool {
+  enclosing_strict || has_use_strict(body)
+}
+
+///|
+fn validate_function_signature(
+  enclosing_strict : Bool,
+  name : String?,
+  params : Array[String],
+  body : Array[@ast.Stmt],
+) -> Unit raise Error {
+  if is_function_strict(enclosing_strict, body) {
+    match name {
+      Some(n) => validate_strict_binding_name(n)
+      None => ()
+    }
+    check_duplicate_params(params)
+    for p in params {
+      validate_strict_binding_name(p)
+    }
+  }
+}
+
+///|
+fn validate_function_signature_ext(
+  enclosing_strict : Bool,
+  name : String?,
+  params : Array[@ast.Param],
+  rest_param : String?,
+  body : Array[@ast.Stmt],
+) -> Unit raise Error {
+  if is_function_strict(enclosing_strict, body) {
+    match name {
+      Some(n) => validate_strict_binding_name(n)
+      None => ()
+    }
+    check_duplicate_params_ext(params, rest_param)
+    for p in params {
+      validate_strict_binding_name(p.name)
+    }
+    match rest_param {
+      Some(rn) => validate_strict_binding_name(rn)
+      None => ()
+    }
+  }
+}
+
+///|
+fn should_reconcile_eval_function_decl(
+  env : Environment,
+  name : String,
+) -> Bool {
+  env.bindings.contains(eval_function_reconcile_marker) && env.has_var(name)
 }
 
 ///|
@@ -428,23 +485,20 @@ fn Interpreter::exec_stmt(
       Normal(Undefined)
     }
     FuncDecl(name, params, body, _) => {
-      // Strict mode: cannot use eval/arguments/reserved words as function name
-      if self.strict {
-        validate_strict_binding_name(name)
-      }
+      validate_function_signature(self.strict, Some(name), params, body)
       let func_data : FuncData = {
         name: Some(name),
         params,
         body,
         closure: env,
+        strict: is_function_strict(self.strict, body),
       }
       let func_val = make_func(func_data)
-      // If already hoisted (in this env or a parent var scope), assign there;
-      // otherwise define locally. Uses has_var/assign_var so that eval'd
-      // function declarations target the caller's var_env, not exec_env.
+      // For non-strict eval execution, function declarations are hoisted into
+      // var_env but executed in exec_env. Reconcile assignment back to var_env.
       if env.bindings.contains(name) {
         env.assign(name, func_val)
-      } else if env.has_var(name) {
+      } else if should_reconcile_eval_function_decl(env, name) {
         env.assign_var(name, func_val)
       } else {
         env.def(name, func_val, VarBinding)
@@ -1135,21 +1189,25 @@ fn Interpreter::exec_stmt(
       Normal(Undefined)
     }
     FuncDeclExt(name, params, rest_param, body, _) => {
-      // Strict mode: cannot use eval/arguments/reserved words as function name
-      if self.strict {
-        validate_strict_binding_name(name)
-      }
+      validate_function_signature_ext(
+        self.strict,
+        Some(name),
+        params,
+        rest_param,
+        body,
+      )
       let func_data : FuncDataExt = {
         name: Some(name),
         params,
         rest_param,
         body,
         closure: env,
+        strict: is_function_strict(self.strict, body),
       }
       let func_val = make_func_ext(func_data)
       if env.bindings.contains(name) {
         env.assign(name, func_val)
-      } else if env.has_var(name) {
+      } else if should_reconcile_eval_function_decl(env, name) {
         env.assign_var(name, func_val)
       } else {
         env.def(name, func_val, VarBinding)
@@ -1157,9 +1215,7 @@ fn Interpreter::exec_stmt(
       Normal(Undefined)
     }
     GeneratorDecl(name, params, body, _) => {
-      if self.strict {
-        validate_strict_binding_name(name)
-      }
+      validate_function_signature(self.strict, Some(name), params, body)
       let gen_func = self.make_generator_function(
         Some(name),
         params,
@@ -1169,7 +1225,7 @@ fn Interpreter::exec_stmt(
       )
       if env.bindings.contains(name) {
         env.assign(name, gen_func)
-      } else if env.has_var(name) {
+      } else if should_reconcile_eval_function_decl(env, name) {
         env.assign_var(name, gen_func)
       } else {
         env.def(name, gen_func, VarBinding)
@@ -1177,9 +1233,13 @@ fn Interpreter::exec_stmt(
       Normal(Undefined)
     }
     GeneratorDeclExt(name, params, rest_param, body, _) => {
-      if self.strict {
-        validate_strict_binding_name(name)
-      }
+      validate_function_signature_ext(
+        self.strict,
+        Some(name),
+        params,
+        rest_param,
+        body,
+      )
       let gen_func = self.make_generator_function_ext(
         Some(name),
         params,
@@ -1189,7 +1249,7 @@ fn Interpreter::exec_stmt(
       )
       if env.bindings.contains(name) {
         env.assign(name, gen_func)
-      } else if env.has_var(name) {
+      } else if should_reconcile_eval_function_decl(env, name) {
         env.assign_var(name, gen_func)
       } else {
         env.def(name, gen_func, VarBinding)
@@ -1413,11 +1473,13 @@ fn Interpreter::hoist_declarations(
           env.def(name, Undefined, VarBinding)
         }
       FuncDecl(name, params, body, _) => {
+        validate_function_signature(_self.strict, Some(name), params, body)
         let func_data : FuncData = {
           name: Some(name),
           params,
           body,
           closure: env,
+          strict: is_function_strict(_self.strict, body),
         }
         if env.bindings.contains(name) {
           env.assign(name, make_func(func_data))
@@ -1426,12 +1488,20 @@ fn Interpreter::hoist_declarations(
         }
       }
       FuncDeclExt(name, params, rest_param, body, _) => {
+        validate_function_signature_ext(
+          _self.strict,
+          Some(name),
+          params,
+          rest_param,
+          body,
+        )
         let func_data : FuncDataExt = {
           name: Some(name),
           params,
           rest_param,
           body,
           closure: env,
+          strict: is_function_strict(_self.strict, body),
         }
         if env.bindings.contains(name) {
           env.assign(name, make_func_ext(func_data))
@@ -1440,6 +1510,7 @@ fn Interpreter::hoist_declarations(
         }
       }
       GeneratorDecl(name, params, body, _) => {
+        validate_function_signature(_self.strict, Some(name), params, body)
         let gen_func = _self.make_generator_function(
           Some(name),
           params,
@@ -1454,6 +1525,13 @@ fn Interpreter::hoist_declarations(
         }
       }
       GeneratorDeclExt(name, params, rest_param, body, _) => {
+        validate_function_signature_ext(
+          _self.strict,
+          Some(name),
+          params,
+          rest_param,
+          body,
+        )
         let gen_func = _self.make_generator_function_ext(
           Some(name),
           params,
@@ -1488,11 +1566,13 @@ fn Interpreter::hoist_declarations(
       }
       // export default function name() {} - hoist the named function
       ExportDefaultDecl(FuncExpr(Some(name), params, body, _), _) => {
+        validate_function_signature(_self.strict, Some(name), params, body)
         let func_data : FuncData = {
           name: Some(name),
           params,
           body,
           closure: env,
+          strict: is_function_strict(_self.strict, body),
         }
         if env.bindings.contains(name) {
           env.assign(name, make_func(func_data))
@@ -1501,12 +1581,20 @@ fn Interpreter::hoist_declarations(
         }
       }
       ExportDefaultDecl(FuncExprExt(Some(name), params, rest_param, body, _), _) => {
+        validate_function_signature_ext(
+          _self.strict,
+          Some(name),
+          params,
+          rest_param,
+          body,
+        )
         let func_data : FuncDataExt = {
           name: Some(name),
           params,
           rest_param,
           body,
           closure: env,
+          strict: is_function_strict(_self.strict, body),
         }
         if env.bindings.contains(name) {
           env.assign(name, make_func_ext(func_data))
@@ -2255,13 +2343,30 @@ fn Interpreter::eval_expr(
     Call(callee, args, loc) => self.eval_call(callee, args, env, loc)
     Member(obj_expr, prop, loc) => self.eval_member(obj_expr, prop, env, loc)
     FuncExpr(name, params, body, _) => {
-      let func_data : FuncData = { name, params, body, closure: env }
+      validate_function_signature(self.strict, name, params, body)
+      let func_data : FuncData = {
+        name,
+        params,
+        body,
+        closure: env,
+        strict: is_function_strict(self.strict, body),
+      }
       make_func(func_data)
     }
-    GeneratorExpr(name, params, body, _) =>
+    GeneratorExpr(name, params, body, _) => {
+      validate_function_signature(self.strict, name, params, body)
       self.make_generator_function(name, params, None, body, env)
-    GeneratorExprExt(name, params, rest_param, body, _) =>
+    }
+    GeneratorExprExt(name, params, rest_param, body, _) => {
+      validate_function_signature_ext(
+        self.strict,
+        name,
+        params,
+        rest_param,
+        body,
+      )
       self.make_generator_function_ext(name, params, rest_param, body, env)
+    }
     YieldExpr(argument, delegate, _) => self.eval_yield(argument, delegate, env)
     ObjectLit(props, obj_loc) => {
       let properties : Map[String, Value] = {}
@@ -2582,7 +2687,14 @@ fn Interpreter::eval_expr(
       self.call_value(tag, this_val, args, loc)
     }
     ArrowFunc(params, body, _) => {
-      let func_data : FuncData = { name: None, params, body, closure: env }
+      validate_function_signature(self.strict, None, params, body)
+      let func_data : FuncData = {
+        name: None,
+        params,
+        body,
+        closure: env,
+        strict: is_function_strict(self.strict, body),
+      }
       Object({
         properties: {},
         symbol_properties: {},
@@ -2595,12 +2707,20 @@ fn Interpreter::eval_expr(
       })
     }
     ArrowFuncExt(params, rest_param, body, _) => {
+      validate_function_signature_ext(
+        self.strict,
+        None,
+        params,
+        rest_param,
+        body,
+      )
       let func_data : FuncDataExt = {
         name: None,
         params,
         rest_param,
         body,
         closure: env,
+        strict: is_function_strict(self.strict, body),
       }
       Object({
         properties: {},
@@ -2614,12 +2734,20 @@ fn Interpreter::eval_expr(
       })
     }
     FuncExprExt(name, params, rest_param, body, _) => {
+      validate_function_signature_ext(
+        self.strict,
+        name,
+        params,
+        rest_param,
+        body,
+      )
       let func_data : FuncDataExt = {
         name,
         params,
         rest_param,
         body,
         closure: env,
+        strict: is_function_strict(self.strict, body),
       }
       make_func_ext(func_data)
     }
@@ -3560,6 +3688,7 @@ fn Interpreter::perform_eval(
       }
       // Non-strict eval: hoist var/function to the variable environment (leak),
       // then hoist let/const TDZ markers to the eval scope (isolated)
+      exec_env.def(eval_function_reconcile_marker, Bool(true), LetBinding)
       self.hoist_declarations(stmts, var_env)
       hoist_block_tdz(stmts, exec_env)
     }
@@ -3605,13 +3734,10 @@ fn Interpreter::eval_call(
   match unwrap_grouping(callee_expr) {
     Ident("eval", _) => {
       // Check if this identifier actually resolves to the global eval function
-      let callee = try {
-        env.get("eval")
-      } catch {
-        _ => {
+      let callee = env.get("eval") catch {
+        _ =>
           // eval is not defined - throw ReferenceError
           raise @errors.ReferenceError(message="eval is not defined")
-        }
       }
       if is_eval_function(callee) {
         // Direct eval: parse and execute in caller's environment
@@ -3677,9 +3803,9 @@ fn Interpreter::call_value(
           let result = try {
             let func_env = Environment::new(parent=Some(data.closure))
             func_env.is_var_scope = true
-            let func_strict = self.strict || has_use_strict(data.body)
+            let func_strict = data.strict
+            self.strict = func_strict
             if func_strict {
-              self.strict = true
               // Strict mode: check for duplicate parameters
               check_duplicate_params(data.params)
               // Strict mode: validate parameter names
@@ -3756,39 +3882,50 @@ fn Interpreter::call_value(
           result
         }
         Some(ArrowFunc(data)) => {
-          let func_env = Environment::new(parent=Some(data.closure))
-          func_env.is_var_scope = true
-          // Arrow functions do NOT rebind this — use closure's this
-          for i = 0; i < data.params.length(); i = i + 1 {
-            let val : Value = if i < args.length() {
-              args[i]
-            } else {
-              Undefined
+          let saved_strict = self.strict
+          let result = try {
+            self.strict = data.strict
+            let func_env = Environment::new(parent=Some(data.closure))
+            func_env.is_var_scope = true
+            // Arrow functions do NOT rebind this — use closure's this
+            for i = 0; i < data.params.length(); i = i + 1 {
+              let val : Value = if i < args.length() {
+                args[i]
+              } else {
+                Undefined
+              }
+              func_env.def(data.params[i], val, LetBinding)
             }
-            func_env.def(data.params[i], val, LetBinding)
+            self.hoist_declarations(data.body, func_env)
+            match self.exec_stmts(data.body, func_env) {
+              Normal(v) => v
+              ReturnSignal(v) => v
+              BreakSignal(_) =>
+                raise @errors.SyntaxError(
+                  message="break statement outside of loop",
+                )
+              ContinueSignal(_) =>
+                raise @errors.SyntaxError(
+                  message="continue statement outside of loop",
+                )
+            }
+          } catch {
+            e => {
+              self.strict = saved_strict
+              raise e
+            }
           }
-          self.hoist_declarations(data.body, func_env)
-          match self.exec_stmts(data.body, func_env) {
-            Normal(v) => v
-            ReturnSignal(v) => v
-            BreakSignal(_) =>
-              raise @errors.SyntaxError(
-                message="break statement outside of loop",
-              )
-            ContinueSignal(_) =>
-              raise @errors.SyntaxError(
-                message="continue statement outside of loop",
-              )
-          }
+          self.strict = saved_strict
+          result
         }
         Some(UserFuncExt(data)) => {
           let saved_strict = self.strict
           let result = try {
             let func_env = Environment::new(parent=Some(data.closure))
             func_env.is_var_scope = true
-            let func_strict = self.strict || has_use_strict(data.body)
+            let func_strict = data.strict
+            self.strict = func_strict
             if func_strict {
-              self.strict = true
               // Strict mode: check for duplicate parameters and reserved names
               check_duplicate_params_ext(data.params, data.rest_param)
               for p in data.params {
@@ -3907,74 +4044,85 @@ fn Interpreter::call_value(
           result
         }
         Some(ArrowFuncExt(data)) => {
-          let func_env = Environment::new(parent=Some(data.closure))
-          func_env.is_var_scope = true
-          // Arrow functions do NOT rebind this
-          let mut effective_param_count = 0
-          for i = 0; i < data.params.length(); i = i + 1 {
-            let param = data.params[i]
-            // Skip rest destructuring params
-            if data.rest_param is Some(rn) && param.name == rn {
-              continue
-            }
-            let val : Value = if effective_param_count < args.length() &&
-              not(args[effective_param_count] is Undefined) {
-              args[effective_param_count]
-            } else {
-              match param.default_val {
-                Some(default_expr) => self.eval_expr(default_expr, func_env)
-                None =>
-                  if effective_param_count < args.length() {
-                    args[effective_param_count]
-                  } else {
-                    Undefined
-                  }
+          let saved_strict = self.strict
+          let result = try {
+            self.strict = data.strict
+            let func_env = Environment::new(parent=Some(data.closure))
+            func_env.is_var_scope = true
+            // Arrow functions do NOT rebind this
+            let mut effective_param_count = 0
+            for i = 0; i < data.params.length(); i = i + 1 {
+              let param = data.params[i]
+              // Skip rest destructuring params
+              if data.rest_param is Some(rn) && param.name == rn {
+                continue
               }
-            }
-            func_env.def(param.name, val, LetBinding)
-            // Destructure if pattern param
-            match param.pattern {
-              Some(pat) => self.bind_pattern(pat, val, func_env, LetBinding)
-              None => ()
-            }
-            effective_param_count = effective_param_count + 1
-          }
-          // Rest param
-          match data.rest_param {
-            Some(rest_name) => {
-              let rest_elements : Array[Value] = []
-              for i = effective_param_count; i < args.length(); i = i + 1 {
-                rest_elements.push(args[i])
-              }
-              let rest_val = Array({ elements: rest_elements })
-              func_env.def(rest_name, rest_val, LetBinding)
-              // Apply destructuring pattern if present
-              for p in data.params {
-                if p.name == rest_name {
-                  match p.pattern {
-                    Some(pat) =>
-                      self.bind_pattern(pat, rest_val, func_env, LetBinding)
-                    None => ()
-                  }
-                  break
+              let val : Value = if effective_param_count < args.length() &&
+                not(args[effective_param_count] is Undefined) {
+                args[effective_param_count]
+              } else {
+                match param.default_val {
+                  Some(default_expr) => self.eval_expr(default_expr, func_env)
+                  None =>
+                    if effective_param_count < args.length() {
+                      args[effective_param_count]
+                    } else {
+                      Undefined
+                    }
                 }
               }
+              func_env.def(param.name, val, LetBinding)
+              // Destructure if pattern param
+              match param.pattern {
+                Some(pat) => self.bind_pattern(pat, val, func_env, LetBinding)
+                None => ()
+              }
+              effective_param_count = effective_param_count + 1
             }
-            None => ()
+            // Rest param
+            match data.rest_param {
+              Some(rest_name) => {
+                let rest_elements : Array[Value] = []
+                for i = effective_param_count; i < args.length(); i = i + 1 {
+                  rest_elements.push(args[i])
+                }
+                let rest_val = Array({ elements: rest_elements })
+                func_env.def(rest_name, rest_val, LetBinding)
+                // Apply destructuring pattern if present
+                for p in data.params {
+                  if p.name == rest_name {
+                    match p.pattern {
+                      Some(pat) =>
+                        self.bind_pattern(pat, rest_val, func_env, LetBinding)
+                      None => ()
+                    }
+                    break
+                  }
+                }
+              }
+              None => ()
+            }
+            self.hoist_declarations(data.body, func_env)
+            match self.exec_stmts(data.body, func_env) {
+              Normal(v) => v
+              ReturnSignal(v) => v
+              BreakSignal(_) =>
+                raise @errors.SyntaxError(
+                  message="break statement outside of loop",
+                )
+              ContinueSignal(_) =>
+                raise @errors.SyntaxError(
+                  message="continue statement outside of loop",
+                )
+            }
+          } catch {
+            e => {
+              self.strict = saved_strict
+              raise e
+            }
           }
-          self.hoist_declarations(data.body, func_env)
-          match self.exec_stmts(data.body, func_env) {
-            Normal(v) => v
-            ReturnSignal(v) => v
-            BreakSignal(_) =>
-              raise @errors.SyntaxError(
-                message="break statement outside of loop",
-              )
-            ContinueSignal(_) =>
-              raise @errors.SyntaxError(
-                message="continue statement outside of loop",
-              )
-          }
+          self.strict = saved_strict
+          result
         }
         Some(BoundFunc(target, bound_this, bound_args)) => {
           let all_args : Array[Value] = []
@@ -5258,9 +5406,9 @@ fn Interpreter::eval_new(
         Some(UserFunc(data)) => {
           let saved_strict = self.strict
           let result = try {
-            let func_strict = self.strict || has_use_strict(data.body)
+            let func_strict = data.strict
+            self.strict = func_strict
             if func_strict {
-              self.strict = true
               // Strict mode: check for duplicate parameters and reserved names
               check_duplicate_params(data.params)
               for p in data.params {
@@ -5359,9 +5507,9 @@ fn Interpreter::eval_new(
         Some(UserFuncExt(data)) => {
           let saved_strict = self.strict
           let result = try {
-            let func_strict = self.strict || has_use_strict(data.body)
+            let func_strict = data.strict
+            self.strict = func_strict
             if func_strict {
-              self.strict = true
               // Strict mode: check for duplicate parameters and reserved names
               check_duplicate_params_ext(data.params, data.rest_param)
               for p in data.params {
@@ -5498,9 +5646,7 @@ fn Interpreter::eval_new(
         }
         Some(NativeCallable(_, func)) => {
           is_constructing.val = true
-          let result = try {
-            func(args)
-          } catch {
+          let result = func(args) catch {
             e => {
               is_constructing.val = false
               raise e
@@ -5539,142 +5685,146 @@ fn Interpreter::eval_new(
           let saved_strict = self.strict
           self.strict = true
           let result = try {
-          // Create the new instance with the class prototype
-          let new_obj = Object({
-            properties: {},
-            symbol_properties: {},
-            prototype: proto,
-            callable: None,
-            class_name,
-            descriptors: {},
-            symbol_descriptors: {},
-            extensible: true,
-          })
-          // Set up the constructor environment
-          let ctor_env = Environment::new(parent=Some(closure))
-          ctor_env.is_var_scope = true
-          ctor_env.def_builtin("this", new_obj)
-          ctor_env.def("<new.target>", ctor, LetBinding)
-          // Set up [[SuperConstructor]] and [[SuperPrototype]] for super() calls
-          match super_ctor {
-            Some(sc) => {
-              ctor_env.def_builtin("[[SuperConstructor]]", sc)
-              ctor_env.def_builtin("[[SuperPrototype]]", super_proto)
-            }
-            None => ()
-          }
-          // Execute the constructor if one was defined
-          match ctor_fn {
-            Some((params, body)) => {
-              // Class constructors are always strict — validate params
-              check_duplicate_params(params)
-              for p in params {
-                validate_strict_binding_name(p)
+            // Create the new instance with the class prototype
+            let new_obj = Object({
+              properties: {},
+              symbol_properties: {},
+              prototype: proto,
+              callable: None,
+              class_name,
+              descriptors: {},
+              symbol_descriptors: {},
+              extensible: true,
+            })
+            // Set up the constructor environment
+            let ctor_env = Environment::new(parent=Some(closure))
+            ctor_env.is_var_scope = true
+            ctor_env.def_builtin("this", new_obj)
+            ctor_env.def("<new.target>", ctor, LetBinding)
+            // Set up [[SuperConstructor]] and [[SuperPrototype]] for super() calls
+            match super_ctor {
+              Some(sc) => {
+                ctor_env.def_builtin("[[SuperConstructor]]", sc)
+                ctor_env.def_builtin("[[SuperPrototype]]", super_proto)
               }
-              // Bind parameters
-              for i = 0; i < params.length(); i = i + 1 {
-                let val : Value = if i < args.length() {
-                  args[i]
-                } else {
-                  Undefined
+              None => ()
+            }
+            // Execute the constructor if one was defined
+            match ctor_fn {
+              Some((params, body)) => {
+                // Class constructors are always strict — validate params
+                check_duplicate_params(params)
+                for p in params {
+                  validate_strict_binding_name(p)
                 }
-                ctor_env.def(params[i], val, LetBinding)
-              }
-              // Hoist declarations and execute body
-              self.hoist_declarations(body, ctor_env)
-              let exec_result = self.exec_stmts(body, ctor_env)
-              match exec_result {
-                Normal(_) => new_obj
-                ReturnSignal(v) =>
-                  match v {
-                    Object(_) => v
-                    _ => new_obj
+                // Bind parameters
+                for i = 0; i < params.length(); i = i + 1 {
+                  let val : Value = if i < args.length() {
+                    args[i]
+                  } else {
+                    Undefined
                   }
-                BreakSignal(_) =>
-                  raise @errors.SyntaxError(
-                    message="break statement outside of loop",
-                  )
-                ContinueSignal(_) =>
-                  raise @errors.SyntaxError(
-                    message="continue statement outside of loop",
-                  )
+                  ctor_env.def(params[i], val, LetBinding)
+                }
+                // Hoist declarations and execute body
+                self.hoist_declarations(body, ctor_env)
+                let exec_result = self.exec_stmts(body, ctor_env)
+                match exec_result {
+                  Normal(_) => new_obj
+                  ReturnSignal(v) =>
+                    match v {
+                      Object(_) => v
+                      _ => new_obj
+                    }
+                  BreakSignal(_) =>
+                    raise @errors.SyntaxError(
+                      message="break statement outside of loop",
+                    )
+                  ContinueSignal(_) =>
+                    raise @errors.SyntaxError(
+                      message="continue statement outside of loop",
+                    )
+                }
               }
-            }
-            None => {
-              // No explicit constructor - if there's a super class, call super()
-              // Save the derived class constructor for new.target propagation
-              let derived_ctor = ctor
-              match super_ctor {
-                Some(sc) =>
-                  match sc {
-                    Object(super_data) =>
-                      match super_data.callable {
-                        Some(
-                          ClassConstructor(
-                            _,
-                            _,
-                            grand_super,
-                            ctor,
-                            senv,
-                            sproto
-                          )
-                        ) => {
-                          let super_env = Environment::new(parent=Some(senv))
-                          super_env.def_builtin("this", new_obj)
-                          super_env.def(
-                            "<new.target>",
-                            derived_ctor,
-                            LetBinding,
-                          )
-                          match grand_super {
-                            Some(gs) => {
-                              super_env.def_builtin("[[SuperConstructor]]", gs)
-                              super_env.def_builtin(
-                                "[[SuperPrototype]]", sproto,
-                              )
-                            }
-                            None => ()
-                          }
-                          match ctor {
-                            Some((params, body)) => {
-                              for i = 0; i < params.length(); i = i + 1 {
-                                let val : Value = if i < args.length() {
-                                  args[i]
-                                } else {
-                                  Undefined
-                                }
-                                super_env.def(params[i], val, LetBinding)
+              None => {
+                // No explicit constructor - if there's a super class, call super()
+                // Save the derived class constructor for new.target propagation
+                let derived_ctor = ctor
+                match super_ctor {
+                  Some(sc) =>
+                    match sc {
+                      Object(super_data) =>
+                        match super_data.callable {
+                          Some(
+                            ClassConstructor(
+                              _,
+                              _,
+                              grand_super,
+                              ctor,
+                              senv,
+                              sproto
+                            )
+                          ) => {
+                            let super_env = Environment::new(parent=Some(senv))
+                            super_env.def_builtin("this", new_obj)
+                            super_env.def(
+                              "<new.target>",
+                              derived_ctor,
+                              LetBinding,
+                            )
+                            match grand_super {
+                              Some(gs) => {
+                                super_env.def_builtin(
+                                  "[[SuperConstructor]]", gs,
+                                )
+                                super_env.def_builtin(
+                                  "[[SuperPrototype]]", sproto,
+                                )
                               }
-                              self.hoist_declarations(body, super_env)
-                              let exec_result = self.exec_stmts(body, super_env)
-                              // If super constructor returns an object, use it
-                              match exec_result {
-                                ReturnSignal(v) =>
-                                  match v {
-                                    Object(_) => {
-                                      // Must restore strict before early return —
-                                      // `return` exits eval_new entirely, bypassing
-                                      // the normal restore at the end of the try block.
-                                      self.strict = saved_strict
-                                      return v
-                                    }
-                                    _ => ()
+                              None => ()
+                            }
+                            match ctor {
+                              Some((params, body)) => {
+                                for i = 0; i < params.length(); i = i + 1 {
+                                  let val : Value = if i < args.length() {
+                                    args[i]
+                                  } else {
+                                    Undefined
                                   }
-                                _ => ()
+                                  super_env.def(params[i], val, LetBinding)
+                                }
+                                self.hoist_declarations(body, super_env)
+                                let exec_result = self.exec_stmts(
+                                  body, super_env,
+                                )
+                                // If super constructor returns an object, use it
+                                match exec_result {
+                                  ReturnSignal(v) =>
+                                    match v {
+                                      Object(_) => {
+                                        // Must restore strict before early return —
+                                        // `return` exits eval_new entirely, bypassing
+                                        // the normal restore at the end of the try block.
+                                        self.strict = saved_strict
+                                        return v
+                                      }
+                                      _ => ()
+                                    }
+                                  _ => ()
+                                }
                               }
+                              None => ()
                             }
-                            None => ()
                           }
+                          _ => ()
                         }
-                        _ => ()
-                      }
-                    _ => ()
-                  }
-                None => ()
+                      _ => ()
+                    }
+                  None => ()
+                }
+                new_obj
               }
-              new_obj
             }
-          }
           } catch {
             e => {
               self.strict = saved_strict
@@ -5698,7 +5848,10 @@ fn ensure_strict_body(body : Array[@ast.Stmt]) -> Array[@ast.Stmt] {
     body
   } else {
     let strict_body : Array[@ast.Stmt] = [
-      ExprStmt(StringLit("use strict", @token.Loc::default()), @token.Loc::default()),
+      ExprStmt(
+        StringLit("use strict", @token.Loc::default()),
+        @token.Loc::default(),
+      ),
     ]
     for s in body {
       strict_body.push(s)
@@ -5758,12 +5911,17 @@ fn Interpreter::create_class(
       // Extract constructor params and body
       // Class bodies are always strict, so ensure constructor body has "use strict"
       match m.value {
-        FuncExpr(_, params, body, _) =>
-          ctor_fn = Some((params, ensure_strict_body(body)))
-        FuncExprExt(_, params, _, body, _) => {
+        FuncExpr(_, params, body, _) => {
+          let strict_body = ensure_strict_body(body)
+          validate_function_signature(true, None, params, strict_body)
+          ctor_fn = Some((params, strict_body))
+        }
+        FuncExprExt(_, params, rest, body, _) => {
+          let strict_body = ensure_strict_body(body)
+          validate_function_signature_ext(true, None, params, rest, strict_body)
           // Convert Param array to String array (ignoring defaults for now)
           let param_names = params.map(fn(p) { p.name })
-          ctor_fn = Some((param_names, ensure_strict_body(body)))
+          ctor_fn = Some((param_names, strict_body))
         }
         _ => ()
       }
@@ -5773,21 +5931,29 @@ fn Interpreter::create_class(
     // Class methods are always strict — ensure body has "use strict"
     let method_val : Value = match m.value {
       FuncExpr(fn_name, params, body, _) => {
+        let strict_body = ensure_strict_body(body)
+        validate_function_signature(true, fn_name, params, strict_body)
         let func_data : FuncData = {
           name: fn_name,
           params,
-          body: ensure_strict_body(body),
+          body: strict_body,
           closure: env,
+          strict: true,
         }
         make_func(func_data)
       }
       FuncExprExt(fn_name, params, rest, body, _) => {
+        let strict_body = ensure_strict_body(body)
+        validate_function_signature_ext(
+          true, fn_name, params, rest, strict_body,
+        )
         let func_data : FuncDataExt = {
           name: fn_name,
           params,
           rest_param: rest,
-          body: ensure_strict_body(body),
+          body: strict_body,
           closure: env,
+          strict: true,
         }
         make_func_ext(func_data)
       }

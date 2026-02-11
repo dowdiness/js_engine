@@ -1,4 +1,16 @@
 ///|
+fn func_body_has_use_strict(body : Array[@ast.Stmt]) -> Bool {
+  if body.length() > 0 {
+    match body[0] {
+      ExprStmt(StringLit("use strict", _), _) => true
+      _ => false
+    }
+  } else {
+    false
+  }
+}
+
+///|
 pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
   let _ = output
   // Global constants
@@ -11,9 +23,7 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
   // Indirect eval (0,eval)("code") is intercepted in call_value where the
   // interpreter is available for perform_eval.
   let eval_func : Value = Object({
-    properties: {
-      "length": Number(1.0),
-    },
+    properties: { "length": Number(1.0) },
     symbol_properties: {},
     prototype: Null,
     callable: Some(
@@ -1155,7 +1165,9 @@ fn setup_math_builtins(env : Environment) -> Unit {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(n.abs())
   })
-  math_props["floor"] = make_native_func_with_length("floor", 1, fn(args) raise {
+  math_props["floor"] = make_native_func_with_length("floor", 1, fn(
+    args,
+  ) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(n.floor())
   })
@@ -1163,7 +1175,9 @@ fn setup_math_builtins(env : Environment) -> Unit {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(n.ceil())
   })
-  math_props["round"] = make_native_func_with_length("round", 1, fn(args) raise {
+  math_props["round"] = make_native_func_with_length("round", 1, fn(
+    args,
+  ) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     if n.is_nan() || n.is_inf() || n == 0.0 {
       Number(n)
@@ -1176,7 +1190,9 @@ fn setup_math_builtins(env : Environment) -> Unit {
       }
     }
   })
-  math_props["trunc"] = make_native_func_with_length("trunc", 1, fn(args) raise {
+  math_props["trunc"] = make_native_func_with_length("trunc", 1, fn(
+    args,
+  ) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     if n >= 0.0 {
       Number(n.floor())
@@ -1255,7 +1271,9 @@ fn setup_math_builtins(env : Environment) -> Unit {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.log2(n))
   })
-  math_props["log10"] = make_native_func_with_length("log10", 1, fn(args) raise {
+  math_props["log10"] = make_native_func_with_length("log10", 1, fn(
+    args,
+  ) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.log10(n))
   })
@@ -1283,7 +1301,9 @@ fn setup_math_builtins(env : Environment) -> Unit {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.atan(n))
   })
-  math_props["atan2"] = make_native_func_with_length("atan2", 2, fn(args) raise {
+  math_props["atan2"] = make_native_func_with_length("atan2", 2, fn(
+    args,
+  ) raise {
     let y = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     let x = if args.length() > 1 { to_number(args[1]) } else { 0.0 / 0.0 }
     Number(@math.atan2(y, x))
@@ -1300,15 +1320,21 @@ fn setup_math_builtins(env : Environment) -> Unit {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.tanh(n))
   })
-  math_props["asinh"] = make_native_func_with_length("asinh", 1, fn(args) raise {
+  math_props["asinh"] = make_native_func_with_length("asinh", 1, fn(
+    args,
+  ) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.asinh(n))
   })
-  math_props["acosh"] = make_native_func_with_length("acosh", 1, fn(args) raise {
+  math_props["acosh"] = make_native_func_with_length("acosh", 1, fn(
+    args,
+  ) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.acosh(n))
   })
-  math_props["atanh"] = make_native_func_with_length("atanh", 1, fn(args) raise {
+  math_props["atanh"] = make_native_func_with_length("atanh", 1, fn(
+    args,
+  ) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.atanh(n))
   })
@@ -1316,11 +1342,15 @@ fn setup_math_builtins(env : Environment) -> Unit {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.exp(n))
   })
-  math_props["expm1"] = make_native_func_with_length("expm1", 1, fn(args) raise {
+  math_props["expm1"] = make_native_func_with_length("expm1", 1, fn(
+    args,
+  ) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.expm1(n))
   })
-  math_props["log1p"] = make_native_func_with_length("log1p", 1, fn(args) raise {
+  math_props["log1p"] = make_native_func_with_length("log1p", 1, fn(
+    args,
+  ) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     // log1p(x) = ln(1 + x), more accurate for small x
     if n.is_nan() || n < -1.0 {
@@ -1333,7 +1363,9 @@ fn setup_math_builtins(env : Environment) -> Unit {
       Number(@math.ln(1.0 + n))
     }
   })
-  math_props["hypot"] = make_native_func_with_length("hypot", 2, fn(args) raise {
+  math_props["hypot"] = make_native_func_with_length("hypot", 2, fn(
+    args,
+  ) raise {
     if args.length() == 0 {
       return Number(0.0)
     }
@@ -1359,7 +1391,9 @@ fn setup_math_builtins(env : Environment) -> Unit {
       Number(sign * @math.pow(n.abs(), 1.0 / 3.0))
     }
   })
-  math_props["clz32"] = make_native_func_with_length("clz32", 1, fn(args) raise {
+  math_props["clz32"] = make_native_func_with_length("clz32", 1, fn(
+    args,
+  ) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 }
     let int_val = to_int32(n)
     if int_val == 0 {
@@ -1390,7 +1424,9 @@ fn setup_math_builtins(env : Environment) -> Unit {
     }
     Number(result.to_double())
   })
-  math_props["fround"] = make_native_func_with_length("fround", 1, fn(args) raise {
+  math_props["fround"] = make_native_func_with_length("fround", 1, fn(
+    args,
+  ) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     // Round to nearest float32 (basic approximation)
     if n.is_nan() || n.is_inf() || n == 0.0 {
@@ -2502,7 +2538,10 @@ fn json_stringify_value(
                     Some(ip) =>
                       Some(
                         ip.call_value(
-                          to_json_obj, val, [], @token.Loc::default(),
+                          to_json_obj,
+                          val,
+                          [],
+                          @token.Loc::default(),
                         ),
                       )
                     None =>
@@ -3226,6 +3265,7 @@ fn setup_function_builtins(env : Environment) -> Unit {
                     params,
                     body,
                     closure: env,
+                    strict: func_body_has_use_strict(body),
                   }),
                 ),
                 class_name: "Function",
@@ -3248,6 +3288,7 @@ fn setup_function_builtins(env : Environment) -> Unit {
                     rest_param,
                     body,
                     closure: env,
+                    strict: func_body_has_use_strict(body),
                   }),
                 ),
                 class_name: "Function",
@@ -3567,7 +3608,9 @@ pub fn setup_harness_builtins(
   agent_props["sleep"] = make_native_func("sleep", fn(_args) raise {
     raise @errors.TypeError(message="$262.agent.sleep is not supported")
   })
-  agent_props["monotonicNow"] = make_native_func("monotonicNow", fn(_args) raise {
+  agent_props["monotonicNow"] = make_native_func("monotonicNow", fn(
+    _args,
+  ) raise {
     raise @errors.TypeError(message="$262.agent.monotonicNow is not supported")
   })
   let agent : Value = Object({
@@ -3604,7 +3647,9 @@ pub fn setup_harness_builtins(
         let realm_props : Map[String, Value] = {}
         realm_props["global"] = new_interp.global_this
         realm_props["gc"] = make_native_func("gc", fn(_a) { Undefined })
-        realm_props["evalScript"] = make_native_func("evalScript", fn(es_args) raise {
+        realm_props["evalScript"] = make_native_func("evalScript", fn(
+          es_args,
+        ) raise {
           let code = if es_args.length() > 0 {
             match es_args[0] {
               String_(s) => s
