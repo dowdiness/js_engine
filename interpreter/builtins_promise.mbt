@@ -61,7 +61,6 @@ pub fn Interpreter::run_microtasks(self : Interpreter) -> Unit raise Error {
           Some(_) => {
             let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
             let _ = self.call_value(task.callback, Undefined, task.args, loc)
-
           }
           None => ()
         }
@@ -120,7 +119,7 @@ fn create_resolving_functions(
             let then_val = i.get_property(resolution, "then", loc) catch {
               e => {
                 // If Get throws, reject the promise with the error
-                let err = js_error_to_value(e)
+                let err = js_error_to_value_with_env(e, Some(i.global))
                 reject_promise(i, promise_data, err)
                 return Undefined
               }
@@ -148,12 +147,13 @@ fn create_resolving_functions(
                               [res, rej],
                               loc,
                             )
-
                           } catch {
                             e => {
-                              let err = js_error_to_value(e)
+                              let err = js_error_to_value_with_env(
+                                e,
+                                Some(i2.global),
+                              )
                               let _ = i2.call_value(rej, Undefined, [err], loc)
-
                             }
                           }
                           Undefined
@@ -277,7 +277,7 @@ fn enqueue_promise_reaction_job(
             let result = i.call_value(handler, Undefined, [value], loc) catch {
               e => {
                 // Handler threw - reject the dependent promise
-                let error_value = js_error_to_value(e)
+                let error_value = js_error_to_value_with_env(e, Some(i.global))
                 let _ = i.call_value(
                   reaction.reject,
                   Undefined,
@@ -312,6 +312,126 @@ fn enqueue_promise_reaction_job(
     extensible: true,
   })
   interp.enqueue_microtask(job_callback, [argument])
+}
+
+///|
+/// Get iterator and next method for Promise combinators
+fn get_promise_iterator_record(
+  interp : Interpreter,
+  iterable : Value,
+  loc : @token.Loc,
+) -> (Value, Value) raise Error {
+  let iterator_sym = get_iterator_symbol()
+  let iterator_method = interp.get_computed_property(
+    iterable,
+    Symbol(iterator_sym),
+    loc,
+  )
+  let iterator = match iterator_method {
+    Object(data) =>
+      match data.callable {
+        Some(_) => interp.call_value(iterator_method, iterable, [], loc)
+        None =>
+          raise @errors.TypeError(
+            message=type_of(iterable) +
+              " is not iterable (Symbol.iterator is not a function)",
+          )
+      }
+    Undefined =>
+      raise @errors.TypeError(message=type_of(iterable) + " is not iterable")
+    _ => raise @errors.TypeError(message=type_of(iterable) + " is not iterable")
+  }
+  let next_method = interp.get_property(iterator, "next", loc)
+  match next_method {
+    Object(next_data) =>
+      match next_data.callable {
+        Some(_) => (iterator, next_method)
+        None =>
+          raise @errors.TypeError(message="iterator.next is not a function")
+      }
+    _ => raise @errors.TypeError(message="iterator.next is not a function")
+  }
+}
+
+///|
+/// IteratorClose used by Promise combinators on abrupt completion
+fn promise_iterator_close(
+  interp : Interpreter,
+  iterator : Value,
+  loc : @token.Loc,
+) -> Unit raise Error {
+  let return_method = interp.get_property(iterator, "return", loc)
+  match return_method {
+    Undefined | Null => ()
+    Object(return_data) =>
+      match return_data.callable {
+        Some(_) => {
+          let return_result = interp.call_value(
+            return_method,
+            iterator,
+            [],
+            loc,
+          )
+          match return_result {
+            Object(_) => ()
+            _ =>
+              raise @errors.TypeError(
+                message="Iterator result is not an object",
+              )
+          }
+        }
+        None =>
+          raise @errors.TypeError(message="iterator.return is not a function")
+      }
+    _ => raise @errors.TypeError(message="iterator.return is not a function")
+  }
+}
+
+///|
+/// Resolve next iterable value using constructor.resolve for Promise combinators
+fn promise_resolve_with_constructor(
+  interp : Interpreter,
+  ctor : Value,
+  value : Value,
+  loc : @token.Loc,
+) -> Value raise Error {
+  let resolve_method = interp.get_property(ctor, "resolve", loc)
+  match resolve_method {
+    Object(resolve_data) =>
+      match resolve_data.callable {
+        Some(_) => interp.call_value(resolve_method, ctor, [value], loc)
+        None => raise @errors.TypeError(message="resolve is not a function")
+      }
+    _ => raise @errors.TypeError(message="resolve is not a function")
+  }
+}
+
+///|
+/// Invoke promiseLike.then(onFulfilled, onRejected)
+fn invoke_then_method(
+  interp : Interpreter,
+  promise_like : Value,
+  on_fulfilled : Value,
+  on_rejected : Value,
+  loc : @token.Loc,
+) -> Unit raise Error {
+  let then_method = interp.get_property(promise_like, "then", loc)
+  match then_method {
+    Object(then_data) =>
+      match then_data.callable {
+        Some(_) => {
+          let _ = interp.call_value(
+            then_method,
+            promise_like,
+            [on_fulfilled, on_rejected],
+            loc,
+          )
+          ()
+        }
+        None => raise @errors.TypeError(message="then is not a function")
+      }
+    _ => raise @errors.TypeError(message="then is not a function")
+  }
 }
 
 ///|
@@ -650,6 +770,8 @@ pub fn setup_promise(env : Environment) -> Unit {
           is_handled: false,
           properties: {},
           symbol_properties: {},
+          descriptors: {},
+          symbol_descriptors: {},
         }
         Promise(promise_data)
       }),
@@ -668,144 +790,129 @@ pub fn setup_promise(env : Environment) -> Unit {
     callable: Some(
       InterpreterCallable("all", fn(interp, _this, args) raise {
         let iterable = if args.length() > 0 { args[0] } else { Undefined }
-
-        // Get array of promises
-        let promises = get_promise_array(interp, iterable)
-        let count = promises.length()
-        if count == 0 {
-          // Empty array - return resolved promise with empty array
-          let promise_data : PromiseData = {
-            state: Fulfilled,
-            result: Array({ elements: [] }),
-            fulfill_reactions: [],
-            reject_reactions: [],
-            is_handled: false,
-            properties: {},
-            symbol_properties: {},
-          }
-          return Promise(promise_data)
-        }
-
-        // Create result promise
         let result_data = new_promise_data()
         let result_promise = Promise(result_data)
         let (resolve, reject) = create_resolving_functions(interp, result_data)
-        let bookkeeping_resolve = Object({
-          properties: {},
-          symbol_properties: {},
-          prototype: Null,
-          callable: Some(
-            NativeCallable("allBookkeepingResolve", fn(_args) { Undefined }),
-          ),
-          class_name: "Function",
-          descriptors: {},
-          symbol_descriptors: {},
-          extensible: true,
-        })
+        let loc = @token.Loc::default()
+        let results : Array[Value] = []
+        let remaining : Ref[Int] = { val: 1 }
+        let mut iterator : Value = Undefined
+        let mut has_iterator = false
+        let mut iterator_done = false
 
-        // Track results
-        let results : Array[Value] = Array::make(count, Undefined)
-        let remaining : Ref[Int] = { val: count }
-        for i = 0; i < count; i = i + 1 {
-          let promise = promises[i]
-          let index = i
-
-          // Ensure it's a promise (wrap if not)
-          let p = match promise {
-            Promise(_) => promise
-            _ => {
-              let pd : PromiseData = {
-                state: Fulfilled,
-                result: promise,
-                fulfill_reactions: [],
-                reject_reactions: [],
-                is_handled: false,
-                properties: {},
-                symbol_properties: {},
+        try {
+          let (iter, next_method) = get_promise_iterator_record(
+            interp, iterable, loc,
+          )
+          iterator = iter
+          has_iterator = true
+          while true {
+            let next_result = interp.call_value(next_method, iterator, [], loc) catch {
+              e => {
+                iterator_done = true
+                raise e
               }
-              Promise(pd)
             }
-          }
+            let done = match next_result {
+              Object(_) => {
+                let done_value = interp.get_property(next_result, "done", loc) catch {
+                  e => {
+                    iterator_done = true
+                    raise e
+                  }
+                }
+                is_truthy(done_value)
+              }
+              _ => {
+                iterator_done = true
+                raise @errors.TypeError(
+                  message="Iterator result is not an object",
+                )
+              }
+            }
+            if done {
+              iterator_done = true
+              break
+            }
+            let next_value = interp.get_property(next_result, "value", loc) catch {
+              e => {
+                iterator_done = true
+                raise e
+              }
+            }
+            let index = results.length()
+            results.push(Undefined)
+            remaining.val = remaining.val + 1
 
-          // Create handlers for this promise
-          let on_fulfilled = Object({
-            properties: {},
-            symbol_properties: {},
-            prototype: Null,
-            callable: Some(
-              InterpreterCallable("allOnFulfilled", fn(
-                i2,
-                _this2,
-                args2,
-              ) raise {
-                let value = if args2.length() > 0 {
-                  args2[0]
-                } else {
+            let next_promise = promise_resolve_with_constructor(
+              interp, _this, next_value, loc,
+            )
+            let already_called : Ref[Bool] = { val: false }
+            let resolve_element = Object({
+              properties: {},
+              symbol_properties: {},
+              prototype: Null,
+              callable: Some(
+                InterpreterCallable("allResolveElement", fn(
+                  i2,
+                  _t2,
+                  args2,
+                ) raise {
+                  if already_called.val {
+                    return Undefined
+                  }
+                  already_called.val = true
+                  let value = if args2.length() > 0 {
+                    args2[0]
+                  } else {
+                    Undefined
+                  }
+                  results[index] = value
+                  remaining.val = remaining.val - 1
+                  if remaining.val == 0 {
+                    let _ = i2.call_value(
+                      resolve,
+                      Undefined,
+                      [Array({ elements: results })],
+                      loc,
+                    )
+                  }
                   Undefined
-                }
-                results[index] = value
-                remaining.val = remaining.val - 1
-                if remaining.val == 0 {
-                  let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
-                  let _ = i2.call_value(
-                    resolve,
-                    Undefined,
-                    [Array({ elements: results })],
-                    loc,
-                  )
-
-                }
-                Undefined
-              }),
-            ),
-            class_name: "Function",
-            descriptors: {},
-            symbol_descriptors: {},
-            extensible: true,
-          })
-
-          // Attach handlers
-          match p {
-            Promise(pd) => {
-              pd.is_handled = true
-              match pd.state {
-                Pending => {
-                  let fulfill_reaction : PromiseReaction = {
-                    handler: Some(on_fulfilled),
-                    resolve: bookkeeping_resolve,
-                    reject,
-                    reaction_type: Fulfill,
-                  }
-                  let reject_reaction : PromiseReaction = {
-                    handler: None,
-                    resolve: bookkeeping_resolve,
-                    reject,
-                    reaction_type: Reject,
-                  }
-                  pd.fulfill_reactions.push(fulfill_reaction)
-                  pd.reject_reactions.push(reject_reaction)
-                }
-                Fulfilled =>
-                  enqueue_promise_reaction_job(
-                    interp,
-                    {
-                      handler: Some(on_fulfilled),
-                      resolve: bookkeeping_resolve,
-                      reject,
-                      reaction_type: Fulfill,
-                    },
-                    pd.result,
-                  )
-                Rejected =>
-                  enqueue_promise_reaction_job(
-                    interp,
-                    { handler: None, resolve, reject, reaction_type: Reject },
-                    pd.result,
+                }),
+              ),
+              class_name: "Function",
+              descriptors: {},
+              symbol_descriptors: {},
+              extensible: true,
+            })
+            invoke_then_method(
+              interp, next_promise, resolve_element, reject, loc,
+            )
+          }
+        } catch {
+          e => {
+            let mut reason = js_error_to_value_with_env(e, Some(interp.global))
+            if has_iterator && not(iterator_done) {
+              promise_iterator_close(interp, iterator, loc) catch {
+                close_error =>
+                  reason = js_error_to_value_with_env(
+                    close_error,
+                    Some(interp.global),
                   )
               }
             }
-            _ => ()
+            let _ = interp.call_value(reject, Undefined, [reason], loc)
+            return result_promise
           }
+        }
+        remaining.val = remaining.val - 1
+        if remaining.val == 0 {
+          let _ = interp.call_value(
+            resolve,
+            Undefined,
+            [Array({ elements: results })],
+            loc,
+          )
         }
         result_promise
       }),
@@ -824,64 +931,73 @@ pub fn setup_promise(env : Environment) -> Unit {
     callable: Some(
       InterpreterCallable("race", fn(interp, _this, args) raise {
         let iterable = if args.length() > 0 { args[0] } else { Undefined }
-        let promises = get_promise_array(interp, iterable)
-
-        // Create result promise
         let result_data = new_promise_data()
         let result_promise = Promise(result_data)
         let (resolve, reject) = create_resolving_functions(interp, result_data)
-        for promise in promises {
-          // Ensure it's a promise
-          let p = match promise {
-            Promise(_) => promise
-            _ => {
-              let pd : PromiseData = {
-                state: Fulfilled,
-                result: promise,
-                fulfill_reactions: [],
-                reject_reactions: [],
-                is_handled: false,
-                properties: {},
-                symbol_properties: {},
+        let loc = @token.Loc::default()
+        let mut iterator : Value = Undefined
+        let mut has_iterator = false
+        let mut iterator_done = false
+
+        try {
+          let (iter, next_method) = get_promise_iterator_record(
+            interp, iterable, loc,
+          )
+          iterator = iter
+          has_iterator = true
+          while true {
+            let next_result = interp.call_value(next_method, iterator, [], loc) catch {
+              e => {
+                iterator_done = true
+                raise e
               }
-              Promise(pd)
             }
-          }
-          match p {
-            Promise(pd) => {
-              pd.is_handled = true
-              match pd.state {
-                Pending => {
-                  let fulfill_reaction : PromiseReaction = {
-                    handler: None,
-                    resolve,
-                    reject,
-                    reaction_type: Fulfill,
+            let done = match next_result {
+              Object(_) => {
+                let done_value = interp.get_property(next_result, "done", loc) catch {
+                  e => {
+                    iterator_done = true
+                    raise e
                   }
-                  let reject_reaction : PromiseReaction = {
-                    handler: None,
-                    resolve,
-                    reject,
-                    reaction_type: Reject,
-                  }
-                  pd.fulfill_reactions.push(fulfill_reaction)
-                  pd.reject_reactions.push(reject_reaction)
                 }
-                Fulfilled =>
-                  enqueue_promise_reaction_job(
-                    interp,
-                    { handler: None, resolve, reject, reaction_type: Fulfill },
-                    pd.result,
-                  )
-                Rejected =>
-                  enqueue_promise_reaction_job(
-                    interp,
-                    { handler: None, resolve, reject, reaction_type: Reject },
-                    pd.result,
+                is_truthy(done_value)
+              }
+              _ => {
+                iterator_done = true
+                raise @errors.TypeError(
+                  message="Iterator result is not an object",
+                )
+              }
+            }
+            if done {
+              iterator_done = true
+              break
+            }
+            let next_value = interp.get_property(next_result, "value", loc) catch {
+              e => {
+                iterator_done = true
+                raise e
+              }
+            }
+            let next_promise = promise_resolve_with_constructor(
+              interp, _this, next_value, loc,
+            )
+            invoke_then_method(interp, next_promise, resolve, reject, loc)
+          }
+        } catch {
+          e => {
+            let mut reason = js_error_to_value_with_env(e, Some(interp.global))
+            if has_iterator && not(iterator_done) {
+              promise_iterator_close(interp, iterator, loc) catch {
+                close_error =>
+                  reason = js_error_to_value_with_env(
+                    close_error,
+                    Some(interp.global),
                   )
               }
             }
-            _ => ()
+            let _ = interp.call_value(reject, Undefined, [reason], loc)
+            return result_promise
           }
         }
         result_promise
@@ -901,209 +1017,190 @@ pub fn setup_promise(env : Environment) -> Unit {
     callable: Some(
       InterpreterCallable("allSettled", fn(interp, _this, args) raise {
         let iterable = if args.length() > 0 { args[0] } else { Undefined }
-        let promises = get_promise_array(interp, iterable)
-        let count = promises.length()
-        if count == 0 {
-          let promise_data : PromiseData = {
-            state: Fulfilled,
-            result: Array({ elements: [] }),
-            fulfill_reactions: [],
-            reject_reactions: [],
-            is_handled: false,
-            properties: {},
-            symbol_properties: {},
-          }
-          return Promise(promise_data)
-        }
         let result_data = new_promise_data()
         let result_promise = Promise(result_data)
-        let (resolve, _reject) = create_resolving_functions(interp, result_data)
-        let bookkeeping_resolve = Object({
-          properties: {},
-          symbol_properties: {},
-          prototype: Null,
-          callable: Some(
-            NativeCallable("allSettledBookkeepingResolve", fn(_args) {
-              Undefined
-            }),
-          ),
-          class_name: "Function",
-          descriptors: {},
-          symbol_descriptors: {},
-          extensible: true,
-        })
-        let results : Array[Value] = Array::make(count, Undefined)
-        let remaining : Ref[Int] = { val: count }
-        for i = 0; i < count; i = i + 1 {
-          let promise = promises[i]
-          let index = i
-          let p = match promise {
-            Promise(_) => promise
-            _ => {
-              let pd : PromiseData = {
-                state: Fulfilled,
-                result: promise,
-                fulfill_reactions: [],
-                reject_reactions: [],
-                is_handled: false,
-                properties: {},
-                symbol_properties: {},
+        let (resolve, reject) = create_resolving_functions(interp, result_data)
+        let loc = @token.Loc::default()
+        let results : Array[Value] = []
+        let remaining : Ref[Int] = { val: 1 }
+        let mut iterator : Value = Undefined
+        let mut has_iterator = false
+        let mut iterator_done = false
+
+        try {
+          let (iter, next_method) = get_promise_iterator_record(
+            interp, iterable, loc,
+          )
+          iterator = iter
+          has_iterator = true
+          while true {
+            let next_result = interp.call_value(next_method, iterator, [], loc) catch {
+              e => {
+                iterator_done = true
+                raise e
               }
-              Promise(pd)
             }
+            let done = match next_result {
+              Object(_) => {
+                let done_value = interp.get_property(next_result, "done", loc) catch {
+                  e => {
+                    iterator_done = true
+                    raise e
+                  }
+                }
+                is_truthy(done_value)
+              }
+              _ => {
+                iterator_done = true
+                raise @errors.TypeError(
+                  message="Iterator result is not an object",
+                )
+              }
+            }
+            if done {
+              iterator_done = true
+              break
+            }
+            let next_value = interp.get_property(next_result, "value", loc) catch {
+              e => {
+                iterator_done = true
+                raise e
+              }
+            }
+            let index = results.length()
+            results.push(Undefined)
+            remaining.val = remaining.val + 1
+
+            let next_promise = promise_resolve_with_constructor(
+              interp, _this, next_value, loc,
+            )
+            let already_called : Ref[Bool] = { val: false }
+            let on_fulfilled = Object({
+              properties: {},
+              symbol_properties: {},
+              prototype: Null,
+              callable: Some(
+                InterpreterCallable("allSettledOnFulfilled", fn(
+                  i2,
+                  _t2,
+                  args2,
+                ) raise {
+                  if already_called.val {
+                    return Undefined
+                  }
+                  already_called.val = true
+                  let value = if args2.length() > 0 {
+                    args2[0]
+                  } else {
+                    Undefined
+                  }
+                  let result_props : Map[String, Value] = {}
+                  result_props["status"] = String_("fulfilled")
+                  result_props["value"] = value
+                  results[index] = Object({
+                    properties: result_props,
+                    symbol_properties: {},
+                    prototype: Null,
+                    callable: None,
+                    class_name: "Object",
+                    descriptors: {},
+                    symbol_descriptors: {},
+                    extensible: true,
+                  })
+                  remaining.val = remaining.val - 1
+                  if remaining.val == 0 {
+                    let _ = i2.call_value(
+                      resolve,
+                      Undefined,
+                      [Array({ elements: results })],
+                      loc,
+                    )
+                  }
+                  Undefined
+                }),
+              ),
+              class_name: "Function",
+              descriptors: {},
+              symbol_descriptors: {},
+              extensible: true,
+            })
+            let on_rejected = Object({
+              properties: {},
+              symbol_properties: {},
+              prototype: Null,
+              callable: Some(
+                InterpreterCallable("allSettledOnRejected", fn(
+                  i2,
+                  _t2,
+                  args2,
+                ) raise {
+                  if already_called.val {
+                    return Undefined
+                  }
+                  already_called.val = true
+                  let reason = if args2.length() > 0 {
+                    args2[0]
+                  } else {
+                    Undefined
+                  }
+                  let result_props : Map[String, Value] = {}
+                  result_props["status"] = String_("rejected")
+                  result_props["reason"] = reason
+                  results[index] = Object({
+                    properties: result_props,
+                    symbol_properties: {},
+                    prototype: Null,
+                    callable: None,
+                    class_name: "Object",
+                    descriptors: {},
+                    symbol_descriptors: {},
+                    extensible: true,
+                  })
+                  remaining.val = remaining.val - 1
+                  if remaining.val == 0 {
+                    let _ = i2.call_value(
+                      resolve,
+                      Undefined,
+                      [Array({ elements: results })],
+                      loc,
+                    )
+                  }
+                  Undefined
+                }),
+              ),
+              class_name: "Function",
+              descriptors: {},
+              symbol_descriptors: {},
+              extensible: true,
+            })
+            invoke_then_method(
+              interp, next_promise, on_fulfilled, on_rejected, loc,
+            )
           }
-          let on_fulfilled = Object({
-            properties: {},
-            symbol_properties: {},
-            prototype: Null,
-            callable: Some(
-              InterpreterCallable("allSettledOnFulfilled", fn(
-                i2,
-                _this2,
-                args2,
-              ) raise {
-                let value = if args2.length() > 0 {
-                  args2[0]
-                } else {
-                  Undefined
-                }
-                let result_props : Map[String, Value] = {}
-                result_props["status"] = String_("fulfilled")
-                result_props["value"] = value
-                results[index] = Object({
-                  properties: result_props,
-                  symbol_properties: {},
-                  prototype: Null,
-                  callable: None,
-                  class_name: "Object",
-                  descriptors: {},
-                  symbol_descriptors: {},
-                  extensible: true,
-                })
-                remaining.val = remaining.val - 1
-                if remaining.val == 0 {
-                  let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
-                  let _ = i2.call_value(
-                    resolve,
-                    Undefined,
-                    [Array({ elements: results })],
-                    loc,
-                  )
-
-                }
-                Undefined
-              }),
-            ),
-            class_name: "Function",
-            descriptors: {},
-            symbol_descriptors: {},
-            extensible: true,
-          })
-          let on_rejected = Object({
-            properties: {},
-            symbol_properties: {},
-            prototype: Null,
-            callable: Some(
-              InterpreterCallable("allSettledOnRejected", fn(
-                i2,
-                _this2,
-                args2,
-              ) raise {
-                let reason = if args2.length() > 0 {
-                  args2[0]
-                } else {
-                  Undefined
-                }
-                let result_props : Map[String, Value] = {}
-                result_props["status"] = String_("rejected")
-                result_props["reason"] = reason
-                results[index] = Object({
-                  properties: result_props,
-                  symbol_properties: {},
-                  prototype: Null,
-                  callable: None,
-                  class_name: "Object",
-                  descriptors: {},
-                  symbol_descriptors: {},
-                  extensible: true,
-                })
-                remaining.val = remaining.val - 1
-                if remaining.val == 0 {
-                  let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
-                  let _ = i2.call_value(
-                    resolve,
-                    Undefined,
-                    [Array({ elements: results })],
-                    loc,
-                  )
-
-                }
-                Undefined
-              }),
-            ),
-            class_name: "Function",
-            descriptors: {},
-            symbol_descriptors: {},
-            extensible: true,
-          })
-
-          // Create a dummy resolve that won't be used (allSettled never rejects)
-          let dummy_reject = Object({
-            properties: {},
-            symbol_properties: {},
-            prototype: Null,
-            callable: Some(
-              NativeCallable("dummyReject", fn(_args) { Undefined }),
-            ),
-            class_name: "Function",
-            descriptors: {},
-            symbol_descriptors: {},
-            extensible: true,
-          })
-          match p {
-            Promise(pd) => {
-              pd.is_handled = true
-              match pd.state {
-                Pending => {
-                  pd.fulfill_reactions.push({
-                    handler: Some(on_fulfilled),
-                    resolve: bookkeeping_resolve,
-                    reject: dummy_reject,
-                    reaction_type: Fulfill,
-                  })
-                  pd.reject_reactions.push({
-                    handler: Some(on_rejected),
-                    resolve: bookkeeping_resolve,
-                    reject: dummy_reject,
-                    reaction_type: Reject,
-                  })
-                }
-                Fulfilled =>
-                  enqueue_promise_reaction_job(
-                    interp,
-                    {
-                      handler: Some(on_fulfilled),
-                      resolve: bookkeeping_resolve,
-                      reject: dummy_reject,
-                      reaction_type: Fulfill,
-                    },
-                    pd.result,
-                  )
-                Rejected =>
-                  enqueue_promise_reaction_job(
-                    interp,
-                    {
-                      handler: Some(on_rejected),
-                      resolve: bookkeeping_resolve,
-                      reject: dummy_reject,
-                      reaction_type: Reject,
-                    },
-                    pd.result,
+        } catch {
+          e => {
+            let mut reason = js_error_to_value_with_env(e, Some(interp.global))
+            if has_iterator && not(iterator_done) {
+              promise_iterator_close(interp, iterator, loc) catch {
+                close_error =>
+                  reason = js_error_to_value_with_env(
+                    close_error,
+                    Some(interp.global),
                   )
               }
             }
-            _ => ()
+            let _ = interp.call_value(reject, Undefined, [reason], loc)
+            return result_promise
           }
+        }
+        remaining.val = remaining.val - 1
+        if remaining.val == 0 {
+          let _ = interp.call_value(
+            resolve,
+            Undefined,
+            [Array({ elements: results })],
+            loc,
+          )
         }
         result_promise
       }),
@@ -1122,124 +1219,145 @@ pub fn setup_promise(env : Environment) -> Unit {
     callable: Some(
       InterpreterCallable("any", fn(interp, _this, args) raise {
         let iterable = if args.length() > 0 { args[0] } else { Undefined }
-        let promises = get_promise_array(interp, iterable)
-        let count = promises.length()
-        if count == 0 {
-          // Empty array - reject with AggregateError
-          let promise_data : PromiseData = {
-            state: Rejected,
-            result: make_aggregate_error("All promises were rejected", []),
-            fulfill_reactions: [],
-            reject_reactions: [],
-            is_handled: false,
-            properties: {},
-            symbol_properties: {},
-          }
-          return Promise(promise_data)
-        }
         let result_data = new_promise_data()
         let result_promise = Promise(result_data)
         let (resolve, reject) = create_resolving_functions(interp, result_data)
-        let bookkeeping_resolve = Object({
-          properties: {},
-          symbol_properties: {},
-          prototype: Null,
-          callable: Some(
-            NativeCallable("anyBookkeepingResolve", fn(_args) { Undefined }),
-          ),
-          class_name: "Function",
-          descriptors: {},
-          symbol_descriptors: {},
-          extensible: true,
-        })
-        let errors : Array[Value] = Array::make(count, Undefined)
-        let remaining : Ref[Int] = { val: count }
-        for i = 0; i < count; i = i + 1 {
-          let promise = promises[i]
-          let index = i
-          let p = match promise {
-            Promise(_) => promise
-            _ => {
-              let pd : PromiseData = {
-                state: Fulfilled,
-                result: promise,
-                fulfill_reactions: [],
-                reject_reactions: [],
-                is_handled: false,
-                properties: {},
-                symbol_properties: {},
-              }
-              Promise(pd)
-            }
-          }
-          let on_rejected = Object({
-            properties: {},
-            symbol_properties: {},
-            prototype: Null,
-            callable: Some(
-              InterpreterCallable("anyOnRejected", fn(i2, _this2, args2) raise {
-                let reason = if args2.length() > 0 {
-                  args2[0]
-                } else {
-                  Undefined
-                }
-                errors[index] = reason
-                remaining.val = remaining.val - 1
-                if remaining.val == 0 {
-                  let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
-                  let agg_error = make_aggregate_error(
-                    "All promises were rejected", errors,
-                  )
-                  let _ = i2.call_value(reject, Undefined, [agg_error], loc)
+        let loc = @token.Loc::default()
+        let errors : Array[Value] = []
+        let remaining : Ref[Int] = { val: 1 }
+        let mut iterator : Value = Undefined
+        let mut has_iterator = false
+        let mut iterator_done = false
 
+        try {
+          let (iter, next_method) = get_promise_iterator_record(
+            interp, iterable, loc,
+          )
+          iterator = iter
+          has_iterator = true
+          while true {
+            let next_result = interp.call_value(next_method, iterator, [], loc) catch {
+              e => {
+                iterator_done = true
+                raise e
+              }
+            }
+            let done = match next_result {
+              Object(_) => {
+                let done_value = interp.get_property(next_result, "done", loc) catch {
+                  e => {
+                    iterator_done = true
+                    raise e
+                  }
                 }
-                Undefined
-              }),
-            ),
-            class_name: "Function",
-            descriptors: {},
-            symbol_descriptors: {},
-            extensible: true,
-          })
-          match p {
-            Promise(pd) => {
-              pd.is_handled = true
-              match pd.state {
-                Pending => {
-                  pd.fulfill_reactions.push({
-                    handler: None,
-                    resolve,
-                    reject,
-                    reaction_type: Fulfill,
-                  })
-                  pd.reject_reactions.push({
-                    handler: Some(on_rejected),
-                    resolve: bookkeeping_resolve,
-                    reject,
-                    reaction_type: Reject,
-                  })
-                }
-                Fulfilled =>
-                  enqueue_promise_reaction_job(
-                    interp,
-                    { handler: None, resolve, reject, reaction_type: Fulfill },
-                    pd.result,
-                  )
-                Rejected =>
-                  enqueue_promise_reaction_job(
-                    interp,
-                    {
-                      handler: Some(on_rejected),
-                      resolve: bookkeeping_resolve,
-                      reject,
-                      reaction_type: Reject,
-                    },
-                    pd.result,
+                is_truthy(done_value)
+              }
+              _ => {
+                iterator_done = true
+                raise @errors.TypeError(
+                  message="Iterator result is not an object",
+                )
+              }
+            }
+            if done {
+              iterator_done = true
+              break
+            }
+            let next_value = interp.get_property(next_result, "value", loc) catch {
+              e => {
+                iterator_done = true
+                raise e
+              }
+            }
+            let index = errors.length()
+            errors.push(Undefined)
+            remaining.val = remaining.val + 1
+
+            let next_promise = promise_resolve_with_constructor(
+              interp, _this, next_value, loc,
+            )
+            let already_called : Ref[Bool] = { val: false }
+            let on_fulfilled = Object({
+              properties: {},
+              symbol_properties: {},
+              prototype: Null,
+              callable: Some(
+                InterpreterCallable("anyOnFulfilled", fn(i2, _t2, args2) raise {
+                  if already_called.val {
+                    return Undefined
+                  }
+                  already_called.val = true
+                  let value = if args2.length() > 0 {
+                    args2[0]
+                  } else {
+                    Undefined
+                  }
+                  let _ = i2.call_value(resolve, Undefined, [value], loc)
+                  Undefined
+                }),
+              ),
+              class_name: "Function",
+              descriptors: {},
+              symbol_descriptors: {},
+              extensible: true,
+            })
+            let on_rejected = Object({
+              properties: {},
+              symbol_properties: {},
+              prototype: Null,
+              callable: Some(
+                InterpreterCallable("anyOnRejected", fn(i2, _t2, args2) raise {
+                  if already_called.val {
+                    return Undefined
+                  }
+                  already_called.val = true
+                  let reason = if args2.length() > 0 {
+                    args2[0]
+                  } else {
+                    Undefined
+                  }
+                  errors[index] = reason
+                  remaining.val = remaining.val - 1
+                  if remaining.val == 0 {
+                    let agg_error = make_aggregate_error(
+                      "All promises were rejected", errors,
+                    )
+                    let _ = i2.call_value(reject, Undefined, [agg_error], loc)
+                  }
+                  Undefined
+                }),
+              ),
+              class_name: "Function",
+              descriptors: {},
+              symbol_descriptors: {},
+              extensible: true,
+            })
+            invoke_then_method(
+              interp, next_promise, on_fulfilled, on_rejected, loc,
+            )
+          }
+        } catch {
+          e => {
+            let mut reason = js_error_to_value_with_env(e, Some(interp.global))
+            if has_iterator && not(iterator_done) {
+              promise_iterator_close(interp, iterator, loc) catch {
+                close_error =>
+                  reason = js_error_to_value_with_env(
+                    close_error,
+                    Some(interp.global),
                   )
               }
             }
-            _ => ()
+            let _ = interp.call_value(reject, Undefined, [reason], loc)
+            return result_promise
           }
+        }
+        remaining.val = remaining.val - 1
+        if remaining.val == 0 {
+          let agg_error = make_aggregate_error(
+            "All promises were rejected", errors,
+          )
+          let _ = interp.call_value(reject, Undefined, [agg_error], loc)
         }
         result_promise
       }),
@@ -1286,13 +1404,11 @@ pub fn setup_promise(env : Environment) -> Unit {
         let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
         try {
           let _ = interp.call_value(executor, Undefined, [resolve, reject], loc)
-
         } catch {
           e => {
             // If executor throws, reject the promise
-            let error_value = js_error_to_value(e)
+            let error_value = js_error_to_value_with_env(e, Some(interp.global))
             let _ = interp.call_value(reject, Undefined, [error_value], loc)
-
           }
         }
         promise
@@ -1637,26 +1753,6 @@ pub fn Interpreter::run_timers(self : Interpreter) -> Unit raise Error {
 }
 
 ///|
-/// Helper to extract array of values from iterable using iterator protocol
-fn get_promise_array(
-  interp : Interpreter,
-  iterable : Value,
-) -> Array[Value] raise Error {
-  match iterable {
-    Undefined | Null =>
-      raise @errors.TypeError(
-        message="Cannot read properties of " +
-          type_of(iterable) +
-          " (reading 'Symbol(Symbol.iterator)')",
-      )
-    _ => {
-      let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
-      interp.spread_iterable(iterable, loc)
-    }
-  }
-}
-
-///|
 /// PromiseResolve algorithm (ECMAScript §27.2.4.7)
 /// If value is already a Promise, return it; otherwise resolve a new Promise with it
 fn promise_resolve_value(
@@ -1674,6 +1770,8 @@ fn promise_resolve_value(
         is_handled: false,
         properties: {},
         symbol_properties: {},
+        descriptors: {},
+        symbol_descriptors: {},
       }
       let promise = Promise(pd)
       let (resolve, _reject) = create_resolving_functions(interp, pd)

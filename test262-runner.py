@@ -131,7 +131,7 @@ PRINT_PREAMBLE = 'function print() { var s = ""; for (var i = 0; i < arguments.l
 # Fallback $DONE for async tests that don't include donePrintHandle.js
 DONE_FALLBACK = """
 if (typeof $DONE === "undefined") {
-  function $DONE(error) {
+  var $DONE = function(error) {
     if (error) {
       if (typeof error === "object" && error !== null && "stack" in error) {
         print("Test262:AsyncTestFailure:" + error.stack);
@@ -141,7 +141,7 @@ if (typeof $DONE === "undefined") {
     } else {
       print("Test262:AsyncTestComplete");
     }
-  }
+  };
 }
 """
 

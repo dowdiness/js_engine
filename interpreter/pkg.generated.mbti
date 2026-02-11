@@ -285,6 +285,8 @@ pub(all) struct PromiseData {
   mut is_handled : Bool
   properties : Map[String, Value]
   symbol_properties : Map[Int, Value]
+  descriptors : Map[String, PropDescriptor]
+  symbol_descriptors : Map[Int, PropDescriptor]
 }
 
 pub(all) struct PromiseReaction {

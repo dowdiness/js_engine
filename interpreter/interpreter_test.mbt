@@ -2639,6 +2639,26 @@ test "function expression with rest" {
 }
 
 ///|
+test "function without return yields undefined" {
+  let src =
+    #|function f() {
+    #|  1 + 2;
+    #|}
+    #|console.log(f());
+  let output = run_output(src)
+  inspect(output, content="[\"undefined\"]")
+}
+
+///|
+test "array map callback without return yields undefined" {
+  let src =
+    #|var result = [1].map(function(x) { x + 1; });
+    #|console.log(result[0]);
+  let output = run_output(src)
+  inspect(output, content="[\"undefined\"]")
+}
+
+///|
 test "spread in new expression" {
   let src =
     #|function Point(x, y) {
@@ -4020,6 +4040,18 @@ test "instanceof falls back to prototype chain when no Symbol.hasInstance" {
     #|const dog = new Dog();
     #|dog instanceof Animal;
   let (_, result) = run_js(src)
+  inspect(result, content="true")
+}
+
+///|
+test "instanceof Array works for array values" {
+  let (_, result) = run_js("[1, 2, 3] instanceof Array")
+  inspect(result, content="true")
+}
+
+///|
+test "instanceof Object works for array values" {
+  let (_, result) = run_js("[1, 2, 3] instanceof Object")
   inspect(result, content="true")
 }
 

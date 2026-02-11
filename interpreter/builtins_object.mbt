@@ -1351,7 +1351,6 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                     // Truncate or extend the array
                     while arr_data.elements.length() > new_len {
                       let _removed = arr_data.elements.pop()
-
                     }
                     while arr_data.elements.length() < new_len {
                       arr_data.elements.push(Undefined)
@@ -1379,6 +1378,101 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 }
                 // Non-index properties on arrays: silently succeed
                 // (our Array representation doesn't support named props)
+              }
+            }
+            Promise(data) => {
+              let prop_name = prop_val.to_string()
+              let existing_desc = data.descriptors.get(prop_name)
+              if is_accessor {
+                if not(data.properties.contains(prop_name)) {
+                  data.properties[prop_name] = Undefined
+                }
+                let enumerable = match new_enumerable {
+                  Some(e) => e
+                  None =>
+                    match existing_desc {
+                      Some(d) => d.enumerable
+                      None => false
+                    }
+                }
+                let configurable = match new_configurable {
+                  Some(c) => c
+                  None =>
+                    match existing_desc {
+                      Some(d) => d.configurable
+                      None => false
+                    }
+                }
+                let getter = match new_getter {
+                  Some(v) =>
+                    match v {
+                      Undefined => None
+                      _ => Some(v)
+                    }
+                  None =>
+                    match existing_desc {
+                      Some(d) => d.getter
+                      None => None
+                    }
+                }
+                let setter = match new_setter {
+                  Some(v) =>
+                    match v {
+                      Undefined => None
+                      _ => Some(v)
+                    }
+                  None =>
+                    match existing_desc {
+                      Some(d) => d.setter
+                      None => None
+                    }
+                }
+                data.descriptors[prop_name] = {
+                  writable: false,
+                  enumerable,
+                  configurable,
+                  getter,
+                  setter,
+                }
+              } else {
+                match desc_props.get("value") {
+                  Some(v) => data.properties[prop_name] = v
+                  None =>
+                    if not(data.properties.contains(prop_name)) {
+                      data.properties[prop_name] = Undefined
+                    }
+                }
+                let writable = match new_writable {
+                  Some(w) => w
+                  None =>
+                    match existing_desc {
+                      Some(d) => d.writable
+                      None => false
+                    }
+                }
+                let enumerable = match new_enumerable {
+                  Some(e) => e
+                  None =>
+                    match existing_desc {
+                      Some(d) => d.enumerable
+                      None => false
+                    }
+                }
+                let configurable = match new_configurable {
+                  Some(c) => c
+                  None =>
+                    match existing_desc {
+                      Some(d) => d.configurable
+                      None => false
+                    }
+                }
+                data.descriptors[prop_name] = {
+                  writable,
+                  enumerable,
+                  configurable,
+                  getter: None,
+                  setter: None,
+                }
               }
             }
             _ => ()
@@ -2196,7 +2290,6 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                           }
                           while arr_data.elements.length() > new_len {
                             let _removed = arr_data.elements.pop()
-
                           }
                           while arr_data.elements.length() < new_len {
                             arr_data.elements.push(Undefined)
@@ -2342,7 +2435,6 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             }
             while arr.elements.length() > 0 {
               let _ = arr.elements.pop()
-
             }
             for el in new_elems {
               arr.elements.push(el)
@@ -2372,7 +2464,6 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             }
             while arr.elements.length() > 0 {
               let _ = arr.elements.pop()
-
             }
             for arg in args {
               arr.elements.push(arg)
@@ -2771,7 +2862,6 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               ],
               loc,
             )
-
           }
         }
         Undefined
@@ -3333,7 +3423,6 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             }
             while arr.elements.length() > start {
               let _ = arr.elements.pop()
-
             }
             for item in new_items {
               arr.elements.push(item)

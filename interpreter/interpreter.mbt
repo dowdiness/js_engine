@@ -3904,7 +3904,8 @@ fn Interpreter::eval_binary(
                   match r_data.properties.get("prototype") {
                     Some(proto) =>
                       match proto {
-                        Object(_) => instanceof_prototype_chain(l, proto)
+                        Object(_) =>
+                          instanceof_prototype_chain(l, proto, self.global)
                         // Non-object prototype: return false per spec
                         _ => Bool(false)
                       }
@@ -4102,30 +4103,49 @@ fn get_symbol_method(obj : Value, symbol_id : Int) -> Value? {
 
 ///|
 /// Helper for instanceof: walk prototype chain to check if l's prototype chain includes target_proto
-fn instanceof_prototype_chain(l : Value, target_proto : Value) -> Value {
-  match l {
-    Object(l_data) => {
-      let mut current = l_data.prototype
-      let mut found = false
-      while true {
-        match current {
-          Null | Undefined => break
-          _ =>
-            if strict_equal(current, target_proto) {
-              found = true
-              break
-            } else {
-              match current {
-                Object(data) => current = data.prototype
-                _ => break
-              }
-            }
+fn instanceof_prototype_chain(
+  l : Value,
+  target_proto : Value,
+  env : Environment,
+) -> Value {
+  let mut current = match l {
+    Object(l_data) => l_data.prototype
+    Array(_) => get_constructor_prototype(env, "Array")
+    Map(_) => get_constructor_prototype(env, "Map")
+    Set(_) => get_constructor_prototype(env, "Set")
+    Promise(_) => get_constructor_prototype(env, "Promise")
+    // Primitive values are never instances
+    _ => return Bool(false)
+  }
+  let mut found = false
+  while true {
+    match current {
+      Null | Undefined => break
+      _ =>
+        if strict_equal(current, target_proto) {
+          found = true
+          break
+        } else {
+          match current {
+            Object(data) => current = data.prototype
+            _ => break
+          }
         }
-      }
-      Bool(found)
     }
-    // Arrays and primitives don't have prototype chains in this representation
-    _ => Bool(false)
+  }
+  Bool(found)
+}
+
+///|
+fn get_constructor_prototype(env : Environment, ctor_name : String) -> Value {
+  let ctor = env.get(ctor_name) catch { _ => return Null }
+  match ctor {
+    Object(data) =>
+      match data.properties.get("prototype") {
+        Some(proto) => proto
+        None => Null
+      }
+    _ => Null
   }
 }
 
@@ -4730,7 +4750,7 @@ fn Interpreter::call_value(
               None => ()
             }
             match self.exec_stmts(data.body, func_env) {
-              Normal(v) => v
+              Normal(_) => Undefined
               ReturnSignal(v) => v
               BreakSignal(_) =>
                 raise @errors.SyntaxError(
@@ -4767,7 +4787,7 @@ fn Interpreter::call_value(
             }
             self.hoist_declarations(data.body, func_env)
             match self.exec_stmts(data.body, func_env) {
-              Normal(v) => v
+              Normal(_) => Undefined
               ReturnSignal(v) => v
               BreakSignal(_) =>
                 raise @errors.SyntaxError(
@@ -4892,7 +4912,7 @@ fn Interpreter::call_value(
               None => ()
             }
             match self.exec_stmts(data.body, func_env) {
-              Normal(v) => v
+              Normal(_) => Undefined
               ReturnSignal(v) => v
               BreakSignal(_) =>
                 raise @errors.SyntaxError(
@@ -4973,7 +4993,7 @@ fn Interpreter::call_value(
             }
             self.hoist_declarations(data.body, func_env)
             match self.exec_stmts(data.body, func_env) {
-              Normal(v) => v
+              Normal(_) => Undefined
               ReturnSignal(v) => v
               BreakSignal(_) =>
                 raise @errors.SyntaxError(
@@ -5451,9 +5471,21 @@ fn Interpreter::get_property(
       }
     Promise(data) =>
       // Check user-defined properties first, then prototype methods
-      match data.properties.get(prop) {
-        Some(v) => v
-        None => get_promise_method(data, prop)
+      match data.descriptors.get(prop) {
+        Some(desc) =>
+          match desc.getter {
+            Some(getter) => self.call_value(getter, obj, [], loc)
+            None =>
+              match data.properties.get(prop) {
+                Some(v) => v
+                None => get_promise_method(data, prop)
+              }
+          }
+        None =>
+          match data.properties.get(prop) {
+            Some(v) => v
+            None => get_promise_method(data, prop)
+          }
       }
     Null | Undefined =>
       raise @errors.TypeError(
@@ -6042,6 +6074,32 @@ fn Interpreter::set_property(
       value
     }
     Promise(data) => {
+      match data.descriptors.get(prop) {
+        Some(desc) =>
+          match desc.setter {
+            Some(setter) => {
+              let _ = self.call_value(setter, obj, [value], loc)
+              return value
+            }
+            None =>
+              if desc.getter is Some(_) {
+                if self.strict {
+                  raise @errors.TypeError(
+                    message="Cannot set property \{prop} which has only a getter",
+                  )
+                }
+                return value
+              } else if not(desc.writable) {
+                if self.strict {
+                  raise @errors.TypeError(
+                    message="Cannot assign to read only property '\{prop}'",
+                  )
+                }
+                return value
+              }
+          }
+        None => ()
+      }
       data.properties[prop] = value
       value
     }

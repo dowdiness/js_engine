@@ -132,6 +132,8 @@ pub(all) struct PromiseData {
   mut is_handled : Bool // Whether .catch or second arg to .then was provided
   properties : Map[String, Value] // User-defined properties (p.foo = 1)
   symbol_properties : Map[Int, Value] // Symbol-keyed properties (p[Symbol()] = 1)
+  descriptors : Map[String, PropDescriptor]
+  symbol_descriptors : Map[Int, PropDescriptor]
 }
 
 ///|
@@ -145,6 +147,8 @@ pub fn new_promise_data() -> PromiseData {
     is_handled: false,
     properties: {},
     symbol_properties: {},
+    descriptors: {},
+    symbol_descriptors: {},
   }
 }
 
