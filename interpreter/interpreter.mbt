@@ -5566,6 +5566,11 @@ fn Interpreter::eval_new(
           // Execute the constructor if one was defined
           match ctor_fn {
             Some((params, body)) => {
+              // Class constructors are always strict — validate params
+              check_duplicate_params(params)
+              for p in params {
+                validate_strict_binding_name(p)
+              }
               // Bind parameters
               for i = 0; i < params.length(); i = i + 1 {
                 let val : Value = if i < args.length() {
@@ -5647,6 +5652,9 @@ fn Interpreter::eval_new(
                                 ReturnSignal(v) =>
                                   match v {
                                     Object(_) => {
+                                      // Must restore strict before early return —
+                                      // `return` exits eval_new entirely, bypassing
+                                      // the normal restore at the end of the try block.
                                       self.strict = saved_strict
                                       return v
                                     }

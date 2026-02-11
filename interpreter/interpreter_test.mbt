@@ -7073,6 +7073,9 @@ test "sloppy: yield as identifier outside generator is allowed" {
 }
 
 ///|
+// TODO: sloppy() returns "undefined" because sloppy-mode `this` binding to
+// globalThis is not yet implemented. Once globalThis is wired up, the expected
+// result for sloppy() should change from "undefined" to "object".
 test "class constructor strict: does not leak strict mode" {
   let src =
     #|class Base {
@@ -7121,5 +7124,56 @@ test "strict: generator declaration named arguments throws SyntaxError" {
   inspect(
     output,
     content="[\"SyntaxError: Unexpected eval or arguments in strict mode\"]",
+  )
+}
+
+///|
+test "strict: class constructor with eval param throws SyntaxError" {
+  let src =
+    #|try {
+    #|  class Foo { constructor(eval) {} }
+    #|  new Foo();
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"SyntaxError: Unexpected eval or arguments in strict mode\"]",
+  )
+}
+
+///|
+test "strict: class constructor with arguments param throws SyntaxError" {
+  let src =
+    #|try {
+    #|  class Bar { constructor(arguments) {} }
+    #|  new Bar();
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"SyntaxError: Unexpected eval or arguments in strict mode\"]",
+  )
+}
+
+///|
+test "strict: class constructor with duplicate params throws SyntaxError" {
+  let src =
+    #|try {
+    #|  class Baz { constructor(a, a) {} }
+    #|  new Baz();
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"SyntaxError: Duplicate parameter name not allowed in this context\"]",
   )
 }
