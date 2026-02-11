@@ -7045,3 +7045,47 @@ test "strict: function-level strict mode with eval assignment" {
     content="[\"SyntaxError: Unexpected eval or arguments in strict mode\"]",
   )
 }
+
+///|
+test "strict: yield as binding name throws SyntaxError" {
+  let src =
+    #|"use strict";
+    #|try {
+    #|  var yield = 1;
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"SyntaxError: Unexpected strict mode reserved word\"]",
+  )
+}
+
+///|
+test "sloppy: yield as identifier outside generator is allowed" {
+  let src =
+    #|var yield = 42;
+    #|console.log(yield);
+  let output = run_output(src)
+  inspect(output, content="[\"42\"]")
+}
+
+///|
+test "class constructor strict: does not leak strict mode" {
+  let src =
+    #|class Base {
+    #|  constructor() {
+    #|    this.x = 1;
+    #|  }
+    #|}
+    #|class Derived extends Base {}
+    #|var d = new Derived();
+    #|// After class construction, strict mode should not leak
+    #|function sloppy() { return typeof this; }
+    #|console.log(d.x);
+    #|console.log(sloppy());
+  let output = run_output(src)
+  inspect(output, content="[\"1\", \"undefined\"]")
+}

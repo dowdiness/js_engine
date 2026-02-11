@@ -120,7 +120,8 @@ fn is_strict_reserved_word(name : String) -> Bool {
     | "package"
     | "private"
     | "protected"
-    | "public" => true
+    | "public"
+    | "yield" => true
     _ => false
   }
 }
@@ -5637,7 +5638,10 @@ fn Interpreter::eval_new(
                               match exec_result {
                                 ReturnSignal(v) =>
                                   match v {
-                                    Object(_) => return v
+                                    Object(_) => {
+                                      self.strict = saved_strict
+                                      return v
+                                    }
                                     _ => ()
                                   }
                                 _ => ()
