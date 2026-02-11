@@ -6,6 +6,8 @@ import {
 }
 
 // Values
+pub fn get_array_iterator_override(ArrayData) -> (Value?, Value?)
+
 pub fn get_array_like_element(Value, Int) -> Value
 
 pub fn get_array_method(ArrayData, String) -> Value
@@ -77,6 +79,8 @@ pub fn regex_search_all(String, String, String) -> Array[RegexMatch] raise
 pub fn same_value(Value, Value) -> Bool
 
 pub fn same_value_zero(Value, Value) -> Bool
+
+pub fn set_array_iterator_override(ArrayData, Value?, Value?) -> Unit
 
 pub fn setup_builtins(Environment, Array[String]) -> Unit
 
