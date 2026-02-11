@@ -2,10 +2,10 @@
 
 ## Current Status
 
-- **Pass rate**: 78.22% (19,723 / 25,215 executed)
-- **Skipped**: 22,748 (feature-flagged)
-- **Failed**: 5,492
-- **Timeouts**: 181
+- **Pass rate**: 82.41% (20,803 / 25,243 executed)
+- **Skipped**: 22,749 (feature-flagged)
+- **Failed**: 4,440
+- **Timeouts**: 152
 
 Note: This document is a phase-planning snapshot. For latest live totals and targeted slices, see [ROADMAP.md](../ROADMAP.md).
 
@@ -129,17 +129,27 @@ Key changes:
 
 ---
 
-### P7: Promise Improvements ✅ DONE (targeted Promise slice)
+### P7: Promise Species Constructor and Complete Compliance ✅ DONE
 
 **Implemented outcomes**:
-- constructor-aware capability paths across Promise combinators
-- combinator abrupt/iterator-close handling alignment
-- thenable/poisoned-iterable edge-case fixes in Promise resolve/combinator flows
-- targeted runtime/parser support for Promise close-path matrices
+- **Promise species constructor**: `get_promise_species_constructor()` implements SpeciesConstructor algorithm, consulted by `then/catch/finally`. `Promise[Symbol.species]` getter enables subclass override
+- **Constructor-aware capability**: All combinators (`all/race/any/allSettled`) and `Promise.reject` refactored to use `create_promise_capability_from_constructor(interp, _this, loc)`
+- **Critical interpreter fixes with broad impact**:
+  - Sloppy mode `this` normalization (undefined/null → globalThis)
+  - `Function.prototype.apply` array-like support (handles `arguments` object forwarding)
+  - Arguments object in class constructors
+  - Function `prototype.constructor` bidirectional link
+- **Combinator abrupt/iterator-close**: Proper handling across all Promise combinators
+- **Thenable/poisoned-iterable**: Edge-case fixes in Promise resolve/combinator flows
 
-**Targeted verification (2026-02-12)**:
-- `built-ins/Promise`: **598/598 passing**, 41 skipped, 0 failed
-- remaining skipped Promise blocker is Proxy-dependent and deferred
+**Results (2026-02-12)**:
+- `built-ins/Promise`: **599/599 passing (100%)**, 41 skipped, 0 failed
+- **Global impact**: 19,723 → 20,803 passing (**+1,080 tests**, 78.22% → 82.41%)
+- `language/block-scope`: 106/106 passing (100%)
+- `language/expressions`: 4,849 passing (88.4%, was 84.0%)
+- `language/statements`: 3,449 passing (82.7%, was 77.0%)
+
+**Note**: One skipped Promise test is Proxy-dependent and deferred until Proxy implementation.
 
 ---
 
@@ -167,7 +177,7 @@ The actual gain from P0–P3 (+7,439) far exceeded the projected range (+1,500�
 |-------|---------|---------------|-----------------|
 | **P5** | **eval() semantics** | **+603** | **78.2%** |
 | **P6** | **Strict-mode prerequisites** | **+3** | **78.2%** |
-| P7 | Promise improvements | — | ✅ targeted slice 598/598 passing (41 skipped) |
+| **P7** | **Promise species + interpreter fixes** | **+1,080** | **82.4%** |
 | Annex B | `--annex-b` gated features | +857 | TBD |
 
 ---
