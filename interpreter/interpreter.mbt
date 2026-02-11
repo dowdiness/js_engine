@@ -6408,7 +6408,7 @@ fn Interpreter::eval_new(
               Normal(_) => new_obj
               ReturnSignal(v) =>
                 match v {
-                  Object(_) => v
+                  Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) => v
                   _ => new_obj
                 }
               BreakSignal(_) =>
@@ -6548,7 +6548,7 @@ fn Interpreter::eval_new(
               Normal(_) => new_obj
               ReturnSignal(v) =>
                 match v {
-                  Object(_) => v
+                  Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) => v
                   _ => new_obj
                 }
               BreakSignal(_) =>
@@ -6658,7 +6658,7 @@ fn Interpreter::eval_new(
                   Normal(_) => new_obj
                   ReturnSignal(v) =>
                     match v {
-                      Object(_) => v
+                      Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) => v
                       _ => new_obj
                     }
                   BreakSignal(_) =>
@@ -6739,6 +6739,20 @@ fn Interpreter::eval_new(
                                 }
                               }
                               None => ()
+                            }
+                          }
+                          Some(ConstructorOnlyCallable(_, super_func)) => {
+                            let super_result = super_func(self, args)
+                            match super_result {
+                              Object(_)
+                              | Array(_)
+                              | Map(_)
+                              | Set(_)
+                              | Promise(_) => {
+                                self.strict = saved_strict
+                                return super_result
+                              }
+                              _ => ()
                             }
                           }
                           _ => ()
@@ -7029,11 +7043,15 @@ fn Interpreter::create_class(
   })
   // Add constructor back-reference to prototype
   // (will be set after class object is created)
+  let class_proto = match super_ctor {
+    Some(super_class) => super_class
+    None => self.global.get("[[FunctionPrototype]]") catch { _ => Null }
+  }
   // Create the class constructor function
   let class_obj = Object({
     properties: static_props,
     symbol_properties: static_symbol_props,
-    prototype: Null,
+    prototype: class_proto,
     callable: Some(
       ClassConstructor(name, proto, super_ctor, ctor_fn, env, super_proto),
     ),

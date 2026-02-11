@@ -52,6 +52,90 @@ test "Promise.resolve assimilates thenables" {
 }
 
 ///|
+test "Promise.resolve honors receiver constructor" {
+  let src =
+    #|function P(executor) {
+    #|  executor(function(){}, function(){});
+    #|  return { marker: "custom" };
+    #|}
+    #|P.resolve = Promise.resolve;
+    #|var out = P.resolve(1);
+    #|console.log(out.marker);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"custom\"]")
+}
+
+///|
+test "Promise.all gets resolve before iterator" {
+  let src =
+    #|var iter = {
+    #|  get [Symbol.iterator]() {
+    #|    throw { name: "IterError" };
+    #|  }
+    #|};
+    #|Object.defineProperty(Promise, "resolve", {
+    #|  get: function() {
+    #|    throw { name: "ResolveError" };
+    #|  }
+    #|});
+    #|Promise.all(iter).then(
+    #|  function() { console.log("resolved"); },
+    #|  function(reason) { console.log(reason.name); }
+    #|);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"ResolveError\"]")
+}
+
+///|
+test "Promise.all resolves with single resolve getter lookup" {
+  let src =
+    #|var getCount = 0;
+    #|var callCount = 0;
+    #|var baseResolve = Promise.resolve.bind(Promise);
+    #|Object.defineProperty(Promise, "resolve", {
+    #|  configurable: true,
+    #|  get: function() {
+    #|    getCount += 1;
+    #|    return function(x) {
+    #|      callCount += 1;
+    #|      return baseResolve(x);
+    #|    };
+    #|  }
+    #|});
+    #|Promise.all([1, 2, 3]).then(function() {
+    #|  console.log(getCount);
+    #|  console.log(callCount);
+    #|});
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"1\", \"3\"]")
+}
+
+///|
+test "Promise.all uses receiver resolve on Promise subclasses" {
+  let src =
+    #|class Custom extends Promise {}
+    #|let values = [1, 1, 1];
+    #|let cresolveCallCount = 0;
+    #|let presolveCallCount = 0;
+    #|let boundCustomResolve = Custom.resolve.bind(Custom);
+    #|let boundPromiseResolve = Promise.resolve.bind(Promise);
+    #|Custom.resolve = function(...args) {
+    #|  cresolveCallCount += 1;
+    #|  return boundCustomResolve(...args);
+    #|};
+    #|Promise.resolve = function(...args) {
+    #|  presolveCallCount += 1;
+    #|  return boundPromiseResolve(...args);
+    #|};
+    #|Promise.all.call(Custom, values).then(function() {
+    #|  console.log(presolveCallCount);
+    #|  console.log(cresolveCallCount);
+    #|});
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"0\", \"3\"]")
+}
+
+///|
 test "Promise constructor with resolve" {
   let src =
     #|const p = new Promise((resolve, reject) => {

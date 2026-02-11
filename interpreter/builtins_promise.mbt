@@ -99,7 +99,10 @@ fn create_resolving_functions(
           Promise(pd) =>
             if physical_equal(pd, promise_data) {
               // Self-resolution: reject with TypeError
-              let error = make_type_error("Chaining cycle detected for promise")
+              let error = js_error_to_value_with_env(
+                @errors.TypeError(message="Chaining cycle detected for promise"),
+                Some(i.global),
+              )
               reject_promise(i, promise_data, error)
               return Undefined
             }
@@ -354,7 +357,9 @@ fn get_promise_iterator_record(
 }
 
 ///|
-/// IteratorClose used by Promise combinators on abrupt completion
+/// IteratorClose used by Promise combinators on abrupt completion during
+/// iteration (e.g., next() throws, accessing .done or .value throws).
+/// This is NOT invoked when a promise settles first - only for iteration errors.
 fn promise_iterator_close(
   interp : Interpreter,
   iterator : Value,
@@ -388,22 +393,128 @@ fn promise_iterator_close(
 }
 
 ///|
-/// Resolve next iterable value using constructor.resolve for Promise combinators
-fn promise_resolve_with_constructor(
+/// Get constructor.resolve for Promise combinators (single lookup per call)
+fn get_promise_resolve_method(
   interp : Interpreter,
   ctor : Value,
-  value : Value,
   loc : @token.Loc,
 ) -> Value raise Error {
   let resolve_method = interp.get_property(ctor, "resolve", loc)
   match resolve_method {
     Object(resolve_data) =>
       match resolve_data.callable {
-        Some(_) => interp.call_value(resolve_method, ctor, [value], loc)
+        Some(_) => resolve_method
         None => raise @errors.TypeError(message="resolve is not a function")
       }
     _ => raise @errors.TypeError(message="resolve is not a function")
   }
+}
+
+///|
+/// Call cached constructor.resolve for Promise combinators
+fn call_promise_resolve_method(
+  interp : Interpreter,
+  resolve_method : Value,
+  ctor : Value,
+  value : Value,
+  loc : @token.Loc,
+) -> Value raise Error {
+  interp.call_value(resolve_method, ctor, [value], loc)
+}
+
+///|
+/// Construct a value with `new` from an already-evaluated constructor and args
+fn construct_with_value(
+  interp : Interpreter,
+  ctor : Value,
+  args : Array[Value],
+  loc : @token.Loc,
+) -> Value raise Error {
+  let call_env = Environment::new(parent=Some(interp.global))
+  call_env.is_var_scope = true
+  let ctor_name = "__promise_ctor__"
+  call_env.def(ctor_name, ctor, LetBinding)
+  let arg_exprs : Array[@ast.Expr] = []
+  for i = 0; i < args.length(); i = i + 1 {
+    let arg_name = "__promise_arg_\{i.to_string()}"
+    call_env.def(arg_name, args[i], LetBinding)
+    arg_exprs.push(@ast.Ident(arg_name, loc))
+  }
+  interp.eval_new(@ast.Ident(ctor_name, loc), arg_exprs, call_env, loc)
+}
+
+///|
+/// Minimal NewPromiseCapability(C) used by Promise.resolve
+fn create_promise_capability_from_constructor(
+  interp : Interpreter,
+  ctor : Value,
+  loc : @token.Loc,
+) -> (Value, Value, Value) raise Error {
+  let resolve_ref : Ref[Value?] = { val: None }
+  let reject_ref : Ref[Value?] = { val: None }
+  let executor = Object({
+    properties: {},
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      InterpreterCallable("promiseCapabilityExecutor", fn(
+        _i,
+        _this,
+        args,
+      ) raise {
+        let resolve_fn = if args.length() > 0 { args[0] } else { Undefined }
+        let reject_fn = if args.length() > 1 { args[1] } else { Undefined }
+        if resolve_ref.val is Some(_) || reject_ref.val is Some(_) {
+          raise @errors.TypeError(
+            message="Promise capability executor called multiple times",
+          )
+        }
+        resolve_ref.val = Some(resolve_fn)
+        reject_ref.val = Some(reject_fn)
+        Undefined
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+  let promise = construct_with_value(interp, ctor, [executor], loc)
+  let resolve = match resolve_ref.val {
+    Some(v) => v
+    None =>
+      raise @errors.TypeError(
+        message="Promise resolve function is not callable",
+      )
+  }
+  let reject = match reject_ref.val {
+    Some(v) => v
+    None =>
+      raise @errors.TypeError(message="Promise reject function is not callable")
+  }
+  match resolve {
+    Object(data) =>
+      if data.callable is None {
+        raise @errors.TypeError(
+          message="Promise resolve function is not callable",
+        )
+      }
+    _ =>
+      raise @errors.TypeError(
+        message="Promise resolve function is not callable",
+      )
+  }
+  match reject {
+    Object(data) =>
+      if data.callable is None {
+        raise @errors.TypeError(
+          message="Promise reject function is not callable",
+        )
+      }
+    _ =>
+      raise @errors.TypeError(message="Promise reject function is not callable")
+  }
+  (promise, resolve, reject)
 }
 
 ///|
@@ -743,9 +854,32 @@ pub fn setup_promise(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("resolve", fn(interp, _this, args) raise {
+      InterpreterCallable("resolve", fn(interp, this_val, args) raise {
         let value = if args.length() > 0 { args[0] } else { Undefined }
-        promise_resolve_value(interp, value)
+        let loc = @token.Loc::default()
+
+        // Fast path: if x is a Promise already constructed by C, return x
+        match value {
+          Promise(_) => {
+            let x_ctor = interp.get_property(value, "constructor", loc)
+            if strict_equal(x_ctor, this_val) {
+              return value
+            }
+          }
+          _ => ()
+        }
+
+        let (promise, resolve, reject) = create_promise_capability_from_constructor(
+          interp, this_val, loc,
+        )
+        let _ = interp.call_value(resolve, Undefined, [value], loc) catch {
+          e => {
+            let reason = js_error_to_value_with_env(e, Some(interp.global))
+            let _ = interp.call_value(reject, Undefined, [reason], loc)
+            Undefined
+          }
+        }
+        promise
       }),
     ),
     class_name: "Function",
@@ -783,6 +917,8 @@ pub fn setup_promise(env : Environment) -> Unit {
   })
 
   // Promise.all(iterable)
+  // NOTE: PerformPromiseAll synchronously consumes the entire input iterator
+  // before any promise settles. Iterator consumption is NOT lazy.
   promise_ctor_props["all"] = Object({
     properties: {},
     symbol_properties: {},
@@ -801,6 +937,7 @@ pub fn setup_promise(env : Environment) -> Unit {
         let mut iterator_done = false
 
         try {
+          let promise_resolve = get_promise_resolve_method(interp, _this, loc)
           let (iter, next_method) = get_promise_iterator_record(
             interp, iterable, loc,
           )
@@ -844,8 +981,8 @@ pub fn setup_promise(env : Environment) -> Unit {
             results.push(Undefined)
             remaining.val = remaining.val + 1
 
-            let next_promise = promise_resolve_with_constructor(
-              interp, _this, next_value, loc,
+            let next_promise = call_promise_resolve_method(
+              interp, promise_resolve, _this, next_value, loc,
             )
             let already_called : Ref[Bool] = { val: false }
             let resolve_element = Object({
@@ -924,6 +1061,9 @@ pub fn setup_promise(env : Environment) -> Unit {
   })
 
   // Promise.race(iterable)
+  // NOTE: PerformPromiseRace synchronously consumes the ENTIRE iterator before
+  // any promise settles. IteratorClose is only invoked for abrupt completion
+  // during iteration (e.g., next() throws), NOT when a promise settles first.
   promise_ctor_props["race"] = Object({
     properties: {},
     symbol_properties: {},
@@ -940,11 +1080,15 @@ pub fn setup_promise(env : Environment) -> Unit {
         let mut iterator_done = false
 
         try {
+          let promise_resolve = get_promise_resolve_method(interp, _this, loc)
           let (iter, next_method) = get_promise_iterator_record(
             interp, iterable, loc,
           )
           iterator = iter
           has_iterator = true
+          // Per PerformPromiseRace, iteration is synchronous and continues until
+          // iterator completion or abrupt completion. We do not stop consuming
+          // the iterator when one already-enqueued promise settles.
           while true {
             let next_result = interp.call_value(next_method, iterator, [], loc) catch {
               e => {
@@ -979,8 +1123,8 @@ pub fn setup_promise(env : Environment) -> Unit {
                 raise e
               }
             }
-            let next_promise = promise_resolve_with_constructor(
-              interp, _this, next_value, loc,
+            let next_promise = call_promise_resolve_method(
+              interp, promise_resolve, _this, next_value, loc,
             )
             invoke_then_method(interp, next_promise, resolve, reject, loc)
           }
@@ -1010,6 +1154,8 @@ pub fn setup_promise(env : Environment) -> Unit {
   })
 
   // Promise.allSettled(iterable)
+  // NOTE: PerformPromiseAllSettled synchronously consumes the entire input
+  // iterator. Never rejects - waits for all promises to settle.
   promise_ctor_props["allSettled"] = Object({
     properties: {},
     symbol_properties: {},
@@ -1028,6 +1174,7 @@ pub fn setup_promise(env : Environment) -> Unit {
         let mut iterator_done = false
 
         try {
+          let promise_resolve = get_promise_resolve_method(interp, _this, loc)
           let (iter, next_method) = get_promise_iterator_record(
             interp, iterable, loc,
           )
@@ -1071,8 +1218,8 @@ pub fn setup_promise(env : Environment) -> Unit {
             results.push(Undefined)
             remaining.val = remaining.val + 1
 
-            let next_promise = promise_resolve_with_constructor(
-              interp, _this, next_value, loc,
+            let next_promise = call_promise_resolve_method(
+              interp, promise_resolve, _this, next_value, loc,
             )
             let already_called : Ref[Bool] = { val: false }
             let on_fulfilled = Object({
@@ -1212,6 +1359,8 @@ pub fn setup_promise(env : Environment) -> Unit {
   })
 
   // Promise.any(iterable)
+  // NOTE: PerformPromiseAny synchronously consumes the entire input iterator.
+  // Rejects with AggregateError only if ALL promises reject.
   promise_ctor_props["any"] = Object({
     properties: {},
     symbol_properties: {},
@@ -1230,11 +1379,14 @@ pub fn setup_promise(env : Environment) -> Unit {
         let mut iterator_done = false
 
         try {
+          let promise_resolve = get_promise_resolve_method(interp, _this, loc)
           let (iter, next_method) = get_promise_iterator_record(
             interp, iterable, loc,
           )
           iterator = iter
           has_iterator = true
+          // As in the spec algorithm, this loop consumes the iterator
+          // synchronously; resolving early does not short-circuit iteration.
           while true {
             let next_result = interp.call_value(next_method, iterator, [], loc) catch {
               e => {
@@ -1273,8 +1425,8 @@ pub fn setup_promise(env : Environment) -> Unit {
             errors.push(Undefined)
             remaining.val = remaining.val + 1
 
-            let next_promise = promise_resolve_with_constructor(
-              interp, _this, next_value, loc,
+            let next_promise = call_promise_resolve_method(
+              interp, promise_resolve, _this, next_value, loc,
             )
             let already_called : Ref[Bool] = { val: false }
             let on_fulfilled = Object({
@@ -1780,24 +1932,6 @@ fn promise_resolve_value(
       promise
     }
   }
-}
-
-///|
-/// Helper to create a TypeError value (for promise rejection)
-fn make_type_error(message : String) -> Value {
-  let props : Map[String, Value] = {}
-  props["name"] = String_("TypeError")
-  props["message"] = String_(message)
-  Object({
-    properties: props,
-    symbol_properties: {},
-    prototype: Null,
-    callable: None,
-    class_name: "TypeError",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
 }
 
 ///|

@@ -42,6 +42,21 @@ Domain-specific terms used in this JavaScript engine, organized by specification
 | **is_handled** | — | Flag on PromiseData. Set to `true` when an `onRejected` handler is attached. Used for unhandled rejection tracking. |
 | **thunk** | finallyValueThunk, finallyThrowerThunk | Internal wrapper functions used by `.finally()` to await the onFinally result and then pass through the original value or re-throw the original reason. |
 
+### Promise Combinators
+
+| Term | Aliases / Related | Definition |
+|------|-------------------|------------|
+| **Promise.all** | PerformPromiseAll | Static method that **synchronously consumes the entire input iterator**, wraps each element with `constructor.resolve()`, attaches handlers, then returns a promise that fulfills when all fulfill (or rejects when any rejects). The iterator is consumed upfront, not lazily. |
+| **Promise.race** | PerformPromiseRace | Static method that **synchronously consumes the entire input iterator**, wraps each element, attaches handlers, then returns a promise that settles when the first promise settles. Common misconception: race does NOT stop consuming the iterator early—it processes all elements before any async settlement. |
+| **Promise.allSettled** | PerformPromiseAllSettled | Static method that **synchronously consumes the entire input iterator** and returns a promise that fulfills when all promises settle, with an array of `{status, value/reason}` objects. Never rejects. |
+| **Promise.any** | PerformPromiseAny | Static method that **synchronously consumes the entire input iterator** and returns a promise that fulfills when any promise fulfills (or rejects with AggregateError if all reject). |
+| **IteratorClose** | — | Cleanup operation invoked during **abrupt completion while iterating** (e.g., `next()` throws, accessing `.done` or `.value` throws). Calls `iterator.return()` if present. NOT invoked when a promise settles first; only for iteration errors. |
+| **constructor.resolve** | Promise.resolve lookup | For subclassing support, combinators look up `constructor.resolve` once at the start, then call it for each iterator element. If `constructor === Promise` and value is already a Promise with the same constructor, returns the value unwrapped (optimization). |
+| **already_called guard** | — | Per-element boolean flag (captured in closure) preventing multiple invocations of the same resolve/reject function. Required by spec because malicious code could call settlement functions multiple times. |
+| **remaining counter** | — | Shared mutable counter tracking how many promises are still pending. Starts at 1 (not 0), incremented for each element, decremented after iteration completes. When it reaches 0, the result promise settles. The +1 offset handles empty iterables correctly. |
+
+**Key clarification:** All Promise combinators (`all`, `race`, `allSettled`, `any`) **synchronously and completely consume their input iterators** during the initial call, before any promise settles. Iterator consumption is NOT lazy. The "race" or conditional behavior happens after iteration, during async settlement.
+
 **Spec reference:** <https://tc39.es/ecma262/#sec-promise-objects>
 
 ---
