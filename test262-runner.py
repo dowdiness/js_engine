@@ -195,7 +195,7 @@ def parse_metadata(source: str) -> TestMetadata:
 # Test filtering
 # ---------------------------------------------------------------------------
 
-def should_skip(meta: TestMetadata, filepath: str) -> Optional[str]:
+def should_skip(meta: TestMetadata, filepath: str, mode: str = "non-strict") -> Optional[str]:
     """Return a reason to skip the test, or None if it should run."""
     # Skip fixture files
     if "_FIXTURE" in filepath:
@@ -205,6 +205,12 @@ def should_skip(meta: TestMetadata, filepath: str) -> Optional[str]:
     for flag in meta.flags:
         if flag in SKIP_FLAGS:
             return f"unsupported flag: {flag}"
+
+    # Respect onlyStrict/noStrict flags
+    if mode == "non-strict" and "onlyStrict" in meta.flags:
+        return "requires strict mode"
+    if mode == "strict" and "noStrict" in meta.flags:
+        return "cannot run in strict mode"
 
     # Skip tests that require features we don't support
     for feature in meta.features:
@@ -302,7 +308,7 @@ def run_single_test(
     meta = parse_metadata(source)
 
     # Check if we should skip
-    skip_reason = should_skip(meta, test_path)
+    skip_reason = should_skip(meta, test_path, mode)
     if skip_reason:
         return TestResult(path=test_path, status="skip", reason=skip_reason, mode=mode)
 

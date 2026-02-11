@@ -6520,24 +6520,65 @@ test "eval: strict eval let/const with TDZ" {
 }
 
 ///|
-test "eval: var in eval does not shadow parent let" {
-  // eval("var x = 2") when parent has let x should create var in var_env,
-  // not accidentally assign to the let binding
+test "eval: var in eval conflicts with block let throws SyntaxError" {
+  // Per EvalDeclarationInstantiation step 5.d, eval("var x") must throw
+  // SyntaxError when a let/const x exists in an intermediate scope between
+  // the eval scope and the variable environment.
   let output = run_output(
     (
       #|function f() {
       #|  var x = "var_x";
       #|  {
       #|    let x = "let_x";
-      #|    eval("var x = 'eval_x'");
-      #|    console.log(x);  // let x is still "let_x"
+      #|    try {
+      #|      eval("var x = 'eval_x'");
+      #|      console.log("BUG");
+      #|    } catch (e) {
+      #|      console.log(e.constructor.name);
+      #|    }
+      #|    console.log(x);
       #|  }
-      #|  console.log(x);    // var x was reassigned by eval
+      #|  console.log(x);
       #|}
       #|f();
     ),
   )
-  inspect(output, content="[\"let_x\", \"eval_x\"]")
+  inspect(output, content="[\"SyntaxError\", \"let_x\", \"var_x\"]")
+}
+
+///|
+test "eval: global var conflicts with global let throws SyntaxError" {
+  // Per EvalDeclarationInstantiation step 5.a, eval("var x") at global scope
+  // must throw SyntaxError when a let/const x exists in the global env.
+  let output = run_output(
+    (
+      #|let x = "let";
+      #|try {
+      #|  eval("var x;");
+      #|  console.log("BUG");
+      #|} catch (e) {
+      #|  console.log(e.constructor.name);
+      #|}
+      #|console.log(x);
+    ),
+  )
+  inspect(output, content="[\"SyntaxError\", \"let\"]")
+}
+
+///|
+test "eval: var hoists to function scope past non-conflicting block" {
+  // eval("var x = 42") in a block with no conflicting lex binding
+  // should hoist x to the enclosing function scope.
+  let output = run_output(
+    (
+      #|function test() {
+      #|  { eval("var x = 42"); }
+      #|  console.log(x);
+      #|}
+      #|test();
+    ),
+  )
+  inspect(output, content="[\"42\"]")
 }
 
 ///|

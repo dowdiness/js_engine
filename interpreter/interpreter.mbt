@@ -1212,6 +1212,69 @@ fn Interpreter::exec_stmts(
 }
 
 ///|
+/// Collect names from a destructuring pattern (for eval var name collection).
+fn collect_pattern_var_names(
+  pattern : @ast.Pattern,
+  names : Array[String],
+) -> Unit {
+  match pattern {
+    IdentPat(name) => names.push(name)
+    DefaultPat(inner_pat, _) => collect_pattern_var_names(inner_pat, names)
+    AssignTarget(_) => ()
+    ArrayPat(elements, rest) => {
+      for elem in elements {
+        match elem {
+          Some(p) => collect_pattern_var_names(p, names)
+          None => ()
+        }
+      }
+      match rest {
+        Some(p) => collect_pattern_var_names(p, names)
+        None => ()
+      }
+    }
+    ObjectPat(props, rest) => {
+      for prop in props {
+        collect_pattern_var_names(prop.value, names)
+      }
+      match rest {
+        Some(p) => collect_pattern_var_names(p, names)
+        None => ()
+      }
+    }
+  }
+}
+
+///|
+/// Collect all var-scoped declaration names from eval code.
+/// Used by EvalDeclarationInstantiation to check for var/lex conflicts.
+fn collect_eval_var_names(stmts : Array[@ast.Stmt]) -> Array[String] {
+  let names : Array[String] = []
+  for stmt in stmts {
+    match stmt {
+      VarDecl(VarKind, name, _, _) => names.push(name)
+      FuncDecl(name, _, _, _) => names.push(name)
+      FuncDeclExt(name, _, _, _, _) => names.push(name)
+      GeneratorDecl(name, _, _, _) => names.push(name)
+      GeneratorDeclExt(name, _, _, _, _) => names.push(name)
+      DestructureDecl(VarKind, pattern, _, _) =>
+        collect_pattern_var_names(pattern, names)
+      StmtList(inner_stmts, _) =>
+        for inner in inner_stmts {
+          match inner {
+            VarDecl(VarKind, name, _, _) => names.push(name)
+            DestructureDecl(VarKind, pattern, _, _) =>
+              collect_pattern_var_names(pattern, names)
+            _ => ()
+          }
+        }
+      _ => ()
+    }
+  }
+  names
+}
+
+///|
 fn hoist_pattern(pattern : @ast.Pattern, env : Environment) -> Unit raise Error {
   match pattern {
     IdentPat(name) =>
@@ -3350,6 +3413,43 @@ fn Interpreter::perform_eval(
       self.hoist_declarations(stmts, exec_env)
       hoist_block_tdz(stmts, exec_env)
     } else {
+      // EvalDeclarationInstantiation steps 5.a and 5.d:
+      // Check for var/lexical conflicts before hoisting.
+      let var_names = collect_eval_var_names(stmts)
+      // Step 5.a: If var_env is the global Environment Record, check that
+      // var names don't conflict with global lexical (let/const) declarations.
+      if var_env.parent is None {
+        for name in var_names {
+          match var_env.bindings.get(name) {
+            Some(b) =>
+              if b.kind == LetBinding || b.kind == ConstBinding {
+                raise @errors.SyntaxError(
+                  message="Identifier '\{name}' has already been declared",
+                )
+              }
+            _ => ()
+          }
+        }
+      }
+      // Step 5.d: Walk from caller_env up to var_env (exclusive), checking
+      // that no intermediate scope has a binding that conflicts with a var name.
+      // This prevents eval("var x") from hoisting past a block-scoped let/const x.
+      {
+        let mut this_lex = caller_env
+        while not(this_lex.is_var_scope) {
+          for name in var_names {
+            if this_lex.bindings.contains(name) {
+              raise @errors.SyntaxError(
+                message="Identifier '\{name}' has already been declared",
+              )
+            }
+          }
+          match this_lex.parent {
+            Some(parent) => this_lex = parent
+            None => break
+          }
+        }
+      }
       // Non-strict eval: hoist var/function to the variable environment (leak),
       // then hoist let/const TDZ markers to the eval scope (isolated)
       self.hoist_declarations(stmts, var_env)
