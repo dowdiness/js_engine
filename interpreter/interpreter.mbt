@@ -3769,7 +3769,7 @@ fn Interpreter::eval_expr(
                   match exec_result {
                     ReturnSignal(v) =>
                       match v {
-                        Object(_) => {
+                        Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) => {
                           // Update 'this' in the current environment
                           env.assign("this", v)
                           return v
@@ -3781,7 +3781,19 @@ fn Interpreter::eval_expr(
                 }
                 None => ()
               }
-              this_val
+              env.get("this")
+            }
+            Some(_) => {
+              // Support non-class constructible supers (e.g. Promise constructor).
+              // Use constructor semantics (`new`) instead of plain call.
+              let super_result = self.construct_value(super_ctor, args, loc)
+              match super_result {
+                Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) => {
+                  env.assign("this", super_result)
+                  super_result
+                }
+                _ => env.get("this")
+              }
             }
             _ =>
               raise @errors.ReferenceError(
@@ -6325,6 +6337,16 @@ fn Interpreter::eval_new(
 ) -> Value raise Error {
   let ctor = self.eval_expr(callee_expr, env)
   let args : Array[Value] = self.eval_args_with_spread(arg_exprs, env)
+  self.construct_value(ctor, args, _loc)
+}
+
+///|
+fn Interpreter::construct_value(
+  self : Interpreter,
+  ctor : Value,
+  args : Array[Value],
+  _loc : @token.Loc,
+) -> Value raise Error {
   match ctor {
     Object(obj_data) =>
       match obj_data.callable {
@@ -6654,12 +6676,13 @@ fn Interpreter::eval_new(
                 // Hoist declarations and execute body
                 self.hoist_declarations(body, ctor_env)
                 let exec_result = self.exec_stmts(body, ctor_env)
+                let current_this = ctor_env.get("this")
                 match exec_result {
-                  Normal(_) => new_obj
+                  Normal(_) => current_this
                   ReturnSignal(v) =>
                     match v {
                       Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) => v
-                      _ => new_obj
+                      _ => current_this
                     }
                   BreakSignal(_) =>
                     raise @errors.SyntaxError(

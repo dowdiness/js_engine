@@ -430,17 +430,7 @@ fn construct_with_value(
   args : Array[Value],
   loc : @token.Loc,
 ) -> Value raise Error {
-  let call_env = Environment::new(parent=Some(interp.global))
-  call_env.is_var_scope = true
-  let ctor_name = "__promise_ctor__"
-  call_env.def(ctor_name, ctor, LetBinding)
-  let arg_exprs : Array[@ast.Expr] = []
-  for i = 0; i < args.length(); i = i + 1 {
-    let arg_name = "__promise_arg_\{i.to_string()}"
-    call_env.def(arg_name, args[i], LetBinding)
-    arg_exprs.push(@ast.Ident(arg_name, loc))
-  }
-  interp.eval_new(@ast.Ident(ctor_name, loc), arg_exprs, call_env, loc)
+  interp.construct_value(ctor, args, loc)
 }
 
 ///|
