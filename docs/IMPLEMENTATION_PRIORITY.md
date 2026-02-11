@@ -2,10 +2,10 @@
 
 ## Current Status
 
-- **Pass rate**: 78.22% (19,720 / 25,211 executed)
+- **Pass rate**: 78.22% (19,723 / 25,215 executed)
 - **Skipped**: 22,748 (feature-flagged)
-- **Failed**: 5,491
-- **Timeouts**: 185
+- **Failed**: 5,492
+- **Timeouts**: 181
 
 ### Previous Baseline (Phase 8C)
 
@@ -119,9 +119,11 @@ Key changes:
 3. **`delete` unqualified identifier** (SyntaxError): Added `Ident` case in the `Delete` unary operator handler — raises SyntaxError when `self.strict` is true.
 4. **Strict-only reserved words**: `is_strict_reserved_word()` checks `implements`, `interface`, `package`, `private`, `protected`, `public`. Enforced via `validate_strict_binding_name()` at all binding sites.
 5. **Class body implicit strict mode**: `ensure_strict_body()` prepends `"use strict"` directive to class method bodies and constructor bodies in `create_class()`. `ClassConstructor` execution in `eval_new` saves/restores `self.strict = true`.
-6. **Sloppy duplicate params**: Fixed `call_value` and `eval_new` to allow duplicate parameter names in sloppy mode (last value wins) instead of throwing.
+6. **Class constructor parameter validation**: `check_duplicate_params()` and `validate_strict_binding_name()` applied to class constructor parameters — `constructor(eval)`, `constructor(a, a)`, `constructor(arguments)` now throw SyntaxError.
+7. **Sloppy duplicate params**: Fixed `call_value` and `eval_new` to allow duplicate parameter names in sloppy mode (last value wins) instead of throwing.
 
-**Unit tests**: 27 new P6-specific tests (722 total, all passing).
+**Test262**: 19,720 → 19,723 passing (+3), language/function-code 166/173 (96.0%).
+**Unit tests**: 30 new P6-specific tests (730 total, all passing).
 
 ---
 
@@ -184,7 +186,7 @@ The actual gain from P0–P3 (+7,439) far exceeded the projected range (+1,500�
 | Phase | Content | Est. New Tests | Cumulative Rate |
 |-------|---------|---------------|-----------------|
 | **P5** | **eval() semantics** | **+603** | **78.2%** |
-| **P6** | **Strict-mode prerequisites** | **TBD (CI)** | **TBD** |
+| **P6** | **Strict-mode prerequisites** | **+3** | **78.2%** |
 | P7 | with statement | +100–151 | TBD |
 | P8 | Promise improvements | +200–382 | TBD |
 
