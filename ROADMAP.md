@@ -4,7 +4,7 @@
 
 **Test262**: 19,720 / 25,211 passed (78.22%) | 22,748 skipped | 5,491 failed | 185 timeouts
 
-**Unit tests**: 695 total, 695 passed, 0 failed
+**Unit tests**: 722 total, 722 passed, 0 failed
 
 ## Phase History
 
@@ -25,6 +25,7 @@
 | 9 | +7,439 | 19,117 | P0-P3: error diagnostics, generator methods, destructuring defaults, parser cleanup |
 | 10 | — | — | P4: Object descriptor compliance — Symbol keys, function props, Array targets |
 | 11 | +603 | 19,720 | P5: eval() semantics — direct/indirect eval, var hoisting, lex conflict checks |
+| 12 | — | — | P6: Strict-mode prerequisite bundle — duplicate params, eval/arguments binding, delete identifier, reserved words, class body strict |
 
 For detailed implementation notes on Phases 1-6, see [docs/PHASE_HISTORY.md](docs/PHASE_HISTORY.md).
 
@@ -285,7 +286,22 @@ Full direct/indirect eval implementation per ES spec (EvalDeclarationInstantiati
 
 ---
 
-## Phase 11+ Targets
+### 12: P6 Strict-Mode Prerequisite Bundle — DONE
+
+Narrow, high-ROI strict-mode checks that gate many test262 syntax/runtime tests:
+
+- **Duplicate parameters in strict functions**: `check_duplicate_params()` / `check_duplicate_params_ext()` raise SyntaxError when a function with `"use strict"` (or in a strict context) has duplicate parameter names
+- **Assignment to `eval`/`arguments` in strict contexts**: `validate_strict_binding_name()` raises SyntaxError for assignments (=, +=, ++, etc.), variable declarations, function declarations, and parameter names
+- **`delete` unqualified identifier**: `delete x` (where x is an identifier) raises SyntaxError in strict mode
+- **Strict-only reserved words**: `implements`, `interface`, `package`, `private`, `protected`, `public` cannot be used as binding names in strict mode
+- **Class body implicit strict mode**: `ensure_strict_body()` prepends `"use strict"` directive to class method and constructor bodies. `ClassConstructor` execution sets `self.strict = true`
+- **Sloppy duplicate params fix**: `call_value` and `eval_new` now allow duplicate parameter names in sloppy mode (last value wins)
+
+**Unit tests**: 27 new P6-specific tests (722 total, all passing)
+
+---
+
+## Phase 12+ Targets
 
 ### async/await (~500 tests)
 

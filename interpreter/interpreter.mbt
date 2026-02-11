@@ -110,6 +110,78 @@ fn has_use_strict(stmts : Array[@ast.Stmt]) -> Bool {
 }
 
 ///|
+/// Check if a name is a strict-mode reserved word (ES5 §7.6.1.2).
+/// These identifiers cannot be used as variable names, function names,
+/// or parameter names in strict mode code.
+fn is_strict_reserved_word(name : String) -> Bool {
+  match name {
+    "implements"
+    | "interface"
+    | "package"
+    | "private"
+    | "protected"
+    | "public" => true
+    _ => false
+  }
+}
+
+///|
+/// Validate that a binding name is legal in strict mode.
+/// Raises SyntaxError if name is "eval", "arguments", or a strict reserved word.
+fn validate_strict_binding_name(name : String) -> Unit raise Error {
+  if name == "eval" || name == "arguments" {
+    raise @errors.SyntaxError(
+      message="Unexpected eval or arguments in strict mode",
+    )
+  }
+  if is_strict_reserved_word(name) {
+    raise @errors.SyntaxError(
+      message="Unexpected strict mode reserved word",
+    )
+  }
+}
+
+///|
+/// Check for duplicate parameter names. Raises SyntaxError in strict mode.
+fn check_duplicate_params(params : Array[String]) -> Unit raise Error {
+  let seen : Map[String, Bool] = {}
+  for p in params {
+    if seen.contains(p) {
+      raise @errors.SyntaxError(
+        message="Duplicate parameter name not allowed in this context",
+      )
+    }
+    seen[p] = true
+  }
+}
+
+///|
+/// Check for duplicate parameter names from Param array (extended params).
+fn check_duplicate_params_ext(
+  params : Array[@ast.Param],
+  rest_param : String?,
+) -> Unit raise Error {
+  let seen : Map[String, Bool] = {}
+  for p in params {
+    if seen.contains(p.name) {
+      raise @errors.SyntaxError(
+        message="Duplicate parameter name not allowed in this context",
+      )
+    }
+    seen[p.name] = true
+  }
+  match rest_param {
+    Some(rn) =>
+      if seen.contains(rn) {
+        raise @errors.SyntaxError(
+          message="Duplicate parameter name not allowed in this context",
+        )
+      }
+    None => ()
+  }
+}
+
+///|
 pub fn Interpreter::run(
   self : Interpreter,
   stmts : Array[@ast.Stmt],
@@ -158,6 +230,10 @@ fn Interpreter::exec_stmt(
   match stmt {
     ExprStmt(expr, _) => Normal(self.eval_expr(expr, env))
     VarDecl(kind, name, init, _) => {
+      // Strict mode: cannot use eval/arguments as variable name
+      if self.strict {
+        validate_strict_binding_name(name)
+      }
       let bk : BindingKind = match kind {
         LetKind => LetBinding
         ConstKind => ConstBinding
@@ -349,6 +425,10 @@ fn Interpreter::exec_stmt(
       Normal(Undefined)
     }
     FuncDecl(name, params, body, _) => {
+      // Strict mode: cannot use eval/arguments/reserved words as function name
+      if self.strict {
+        validate_strict_binding_name(name)
+      }
       let func_data : FuncData = {
         name: Some(name),
         params,
@@ -1052,6 +1132,10 @@ fn Interpreter::exec_stmt(
       Normal(Undefined)
     }
     FuncDeclExt(name, params, rest_param, body, _) => {
+      // Strict mode: cannot use eval/arguments/reserved words as function name
+      if self.strict {
+        validate_strict_binding_name(name)
+      }
       let func_data : FuncDataExt = {
         name: Some(name),
         params,
@@ -2143,6 +2227,12 @@ fn Interpreter::eval_expr(
     Binary(op, left, right, loc) => self.eval_binary(op, left, right, env, loc)
     Unary(op, operand, loc) => self.eval_unary(op, operand, env, loc)
     Assign(name, value_expr, _) => {
+      // Strict mode: assignment to eval/arguments is a SyntaxError
+      if self.strict && (name == "eval" || name == "arguments") {
+        raise @errors.SyntaxError(
+          message="Unexpected eval or arguments in strict mode",
+        )
+      }
       let value = self.eval_expr(value_expr, env)
       env.assign(name, value)
       value
@@ -3178,6 +3268,15 @@ fn Interpreter::eval_unary(
             _ => Bool(true)
           }
         }
+        Ident(_, _) =>
+          // delete of an unqualified identifier is a SyntaxError in strict mode
+          if self.strict {
+            raise @errors.SyntaxError(
+              message="Delete of an unqualified identifier in strict mode.",
+            )
+          } else {
+            Bool(true)
+          }
         _ => Bool(true)
       }
     _ => {
@@ -3572,6 +3671,12 @@ fn Interpreter::call_value(
             let func_strict = self.strict || has_use_strict(data.body)
             if func_strict {
               self.strict = true
+              // Strict mode: check for duplicate parameters
+              check_duplicate_params(data.params)
+              // Strict mode: validate parameter names
+              for p in data.params {
+                validate_strict_binding_name(p)
+              }
             }
             func_env.def("this", this_val, LetBinding)
             func_env.def("<new.target>", Undefined, LetBinding)
@@ -3581,7 +3686,12 @@ fn Interpreter::call_value(
               } else {
                 Undefined
               }
-              func_env.def(data.params[i], val, LetBinding)
+              // In sloppy mode, duplicate params are allowed; last value wins
+              if func_env.bindings.contains(data.params[i]) {
+                func_env.assign(data.params[i], val)
+              } else {
+                func_env.def(data.params[i], val, LetBinding)
+              }
             }
             // Create arguments object
             let args_props : Map[String, Value] = {}
@@ -3670,6 +3780,15 @@ fn Interpreter::call_value(
             let func_strict = self.strict || has_use_strict(data.body)
             if func_strict {
               self.strict = true
+              // Strict mode: check for duplicate parameters and reserved names
+              check_duplicate_params_ext(data.params, data.rest_param)
+              for p in data.params {
+                validate_strict_binding_name(p.name)
+              }
+              match data.rest_param {
+                Some(rn) => validate_strict_binding_name(rn)
+                None => ()
+              }
             }
             func_env.def("this", this_val, LetBinding)
             func_env.def("<new.target>", Undefined, LetBinding)
@@ -5133,6 +5252,11 @@ fn Interpreter::eval_new(
             let func_strict = self.strict || has_use_strict(data.body)
             if func_strict {
               self.strict = true
+              // Strict mode: check for duplicate parameters and reserved names
+              check_duplicate_params(data.params)
+              for p in data.params {
+                validate_strict_binding_name(p)
+              }
             }
             let proto = match obj_data.properties.get("prototype") {
               Some(v) => v
@@ -5158,7 +5282,12 @@ fn Interpreter::eval_new(
               } else {
                 Undefined
               }
-              func_env.def(data.params[i], val, LetBinding)
+              // In sloppy mode, duplicate params are allowed; last value wins
+              if func_env.bindings.contains(data.params[i]) {
+                func_env.assign(data.params[i], val)
+              } else {
+                func_env.def(data.params[i], val, LetBinding)
+              }
             }
             // Create arguments object
             let new_args_props : Map[String, Value] = {}
@@ -5224,6 +5353,15 @@ fn Interpreter::eval_new(
             let func_strict = self.strict || has_use_strict(data.body)
             if func_strict {
               self.strict = true
+              // Strict mode: check for duplicate parameters and reserved names
+              check_duplicate_params_ext(data.params, data.rest_param)
+              for p in data.params {
+                validate_strict_binding_name(p.name)
+              }
+              match data.rest_param {
+                Some(rn) => validate_strict_binding_name(rn)
+                None => ()
+              }
             }
             let proto = match obj_data.properties.get("prototype") {
               Some(v) => v
@@ -5388,6 +5526,10 @@ fn Interpreter::eval_new(
             super_proto
           )
         ) => {
+          // Class bodies are always strict mode
+          let saved_strict = self.strict
+          self.strict = true
+          let result = try {
           // Create the new instance with the class prototype
           let new_obj = Object({
             properties: {},
@@ -5513,10 +5655,35 @@ fn Interpreter::eval_new(
               new_obj
             }
           }
+          } catch {
+            e => {
+              self.strict = saved_strict
+              raise e
+            }
+          }
+          self.strict = saved_strict
+          result
         }
         _ => raise @errors.TypeError(message="is not a constructor")
       }
     _ => raise @errors.TypeError(message="is not a constructor")
+  }
+}
+
+///|
+/// Ensure a function body starts with "use strict" directive.
+/// Returns the body unchanged if it already has one, or prepends the directive.
+fn ensure_strict_body(body : Array[@ast.Stmt]) -> Array[@ast.Stmt] {
+  if has_use_strict(body) {
+    body
+  } else {
+    let strict_body : Array[@ast.Stmt] = [
+      ExprStmt(StringLit("use strict", @token.Loc::default()), @token.Loc::default()),
+    ]
+    for s in body {
+      strict_body.push(s)
+    }
+    strict_body
   }
 }
 
@@ -5569,21 +5736,29 @@ fn Interpreter::create_class(
     // Check if this is the constructor
     if method_key_str == "constructor" && not(m.is_static) {
       // Extract constructor params and body
+      // Class bodies are always strict, so ensure constructor body has "use strict"
       match m.value {
-        FuncExpr(_, params, body, _) => ctor_fn = Some((params, body))
+        FuncExpr(_, params, body, _) =>
+          ctor_fn = Some((params, ensure_strict_body(body)))
         FuncExprExt(_, params, _, body, _) => {
           // Convert Param array to String array (ignoring defaults for now)
           let param_names = params.map(fn(p) { p.name })
-          ctor_fn = Some((param_names, body))
+          ctor_fn = Some((param_names, ensure_strict_body(body)))
         }
         _ => ()
       }
       continue
     }
     // Create the method function value
+    // Class methods are always strict — ensure body has "use strict"
     let method_val : Value = match m.value {
       FuncExpr(fn_name, params, body, _) => {
-        let func_data : FuncData = { name: fn_name, params, body, closure: env }
+        let func_data : FuncData = {
+          name: fn_name,
+          params,
+          body: ensure_strict_body(body),
+          closure: env,
+        }
         make_func(func_data)
       }
       FuncExprExt(fn_name, params, rest, body, _) => {
@@ -5591,7 +5766,7 @@ fn Interpreter::create_class(
           name: fn_name,
           params,
           rest_param: rest,
-          body,
+          body: ensure_strict_body(body),
           closure: env,
         }
         make_func_ext(func_data)
@@ -5789,6 +5964,12 @@ fn Interpreter::eval_update(
 ) -> Value raise Error {
   match operand {
     Ident(name, _) => {
+      // Strict mode: update of eval/arguments is a SyntaxError
+      if self.strict && (name == "eval" || name == "arguments") {
+        raise @errors.SyntaxError(
+          message="Unexpected eval or arguments in strict mode",
+        )
+      }
       let current = env.get(name)
       let num = to_number(current)
       let new_val : Value = match op {
@@ -5876,6 +6057,12 @@ fn Interpreter::eval_compound_assign(
   }
   match target {
     Ident(name, _) => {
+      // Strict mode: compound assignment to eval/arguments is a SyntaxError
+      if self.strict && (name == "eval" || name == "arguments") {
+        raise @errors.SyntaxError(
+          message="Unexpected eval or arguments in strict mode",
+        )
+      }
       let current = env.get(name)
       let rhs = self.eval_expr(value_expr, env)
       let result = eval_binary_op(bin_op, current, rhs, loc)
@@ -5917,6 +6104,11 @@ fn Interpreter::eval_logical_assign_and(
   // x &&= y: if x is truthy, assign y to x; return final value
   match target {
     Ident(name, _) => {
+      if self.strict && (name == "eval" || name == "arguments") {
+        raise @errors.SyntaxError(
+          message="Unexpected eval or arguments in strict mode",
+        )
+      }
       let current = env.get(name)
       if is_truthy(current) {
         let rhs = self.eval_expr(value_expr, env)
@@ -5965,6 +6157,11 @@ fn Interpreter::eval_logical_assign_or(
   // x ||= y: if x is falsy, assign y to x; return final value
   match target {
     Ident(name, _) => {
+      if self.strict && (name == "eval" || name == "arguments") {
+        raise @errors.SyntaxError(
+          message="Unexpected eval or arguments in strict mode",
+        )
+      }
       let current = env.get(name)
       if not(is_truthy(current)) {
         let rhs = self.eval_expr(value_expr, env)
@@ -6013,6 +6210,11 @@ fn Interpreter::eval_nullish_assign(
   // x ??= y: if x is null or undefined, assign y to x; return final value
   match target {
     Ident(name, _) => {
+      if self.strict && (name == "eval" || name == "arguments") {
+        raise @errors.SyntaxError(
+          message="Unexpected eval or arguments in strict mode",
+        )
+      }
       let current = env.get(name)
       match current {
         Null | Undefined => {

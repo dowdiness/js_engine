@@ -109,16 +109,19 @@ Key changes:
 
 ---
 
-### P6: Strict-Mode Prerequisite Bundle (narrow, high-ROI subset)
+### P6: Strict-Mode Prerequisite Bundle (narrow, high-ROI subset) ✅ DONE
 
-Before `with`, implement strict checks that gate many syntax/runtime tests:
+**Resolution**: Implemented the narrow strict-mode checks that gate many test262 syntax/runtime tests.
 
-- duplicate parameters in strict functions
-- assignment to `eval` / `arguments` in strict contexts
-- `delete` unqualified identifier syntax error in strict mode
-- strict-only reserved words
+Key changes:
+1. **Duplicate parameters in strict functions** (SyntaxError): `check_duplicate_params()` / `check_duplicate_params_ext()` validate parameter uniqueness when entering strict function bodies. Applied in `call_value` and `eval_new` for both `UserFunc` and `UserFuncExt`.
+2. **Assignment to `eval`/`arguments` in strict contexts** (SyntaxError): `validate_strict_binding_name()` checks applied in `Assign`, `eval_update` (++/--), `eval_compound_assign` (+=, etc.), all three logical assignment operators (&&=, ||=, ??=), `VarDecl`, `FuncDecl`/`FuncDeclExt`, and function parameter binding.
+3. **`delete` unqualified identifier** (SyntaxError): Added `Ident` case in the `Delete` unary operator handler — raises SyntaxError when `self.strict` is true.
+4. **Strict-only reserved words**: `is_strict_reserved_word()` checks `implements`, `interface`, `package`, `private`, `protected`, `public`. Enforced via `validate_strict_binding_name()` at all binding sites.
+5. **Class body implicit strict mode**: `ensure_strict_body()` prepends `"use strict"` directive to class method bodies and constructor bodies in `create_class()`. `ClassConstructor` execution in `eval_new` saves/restores `self.strict = true`.
+6. **Sloppy duplicate params**: Fixed `call_value` and `eval_new` to allow duplicate parameter names in sloppy mode (last value wins) instead of throwing.
 
-This phase should be intentionally narrow; broad strict-mode parity remains later.
+**Unit tests**: 27 new P6-specific tests (722 total, all passing).
 
 ---
 
@@ -181,7 +184,7 @@ The actual gain from P0–P3 (+7,439) far exceeded the projected range (+1,500�
 | Phase | Content | Est. New Tests | Cumulative Rate |
 |-------|---------|---------------|-----------------|
 | **P5** | **eval() semantics** | **+603** | **78.2%** |
-| P6 | Strict subset prerequisites | +200–500 | TBD |
+| **P6** | **Strict-mode prerequisites** | **TBD (CI)** | **TBD** |
 | P7 | with statement | +100–151 | TBD |
 | P8 | Promise improvements | +200–382 | TBD |
 
