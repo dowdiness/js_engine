@@ -32,7 +32,7 @@ jobs:
         run: moon install
 
       - name: Build JS engine
-        run: moon build --target js
+        run: moon build --target js --release
 
       - name: Download Test262
         run: |
@@ -48,7 +48,6 @@ jobs:
       - name: Run Test262 conformance tests
         run: |
           python3 test262-runner.py \
-            --engine "node target/js/release/build/cmd/main/main.js" \
             --test262 ./test262 \
             --threads 4 \
             --timeout 5 \
