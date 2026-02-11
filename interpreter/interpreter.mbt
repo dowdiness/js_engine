@@ -3797,12 +3797,17 @@ fn Interpreter::eval_expr(
             }
             _ =>
               raise @errors.ReferenceError(
-                message="super() called but [[SuperConstructor]] is not a class at line \{loc.line}",
+                message=format_loc_context(
+                  "super() called but [[SuperConstructor]] is not a constructor",
+                  loc,
+                ),
               )
           }
         _ =>
           raise @errors.ReferenceError(
-            message="super() called but no [[SuperConstructor]] in scope at line \{loc.line}",
+            message=format_loc_context(
+              "super() called but no [[SuperConstructor]] in scope", loc,
+            ),
           )
       }
     }
@@ -6341,11 +6346,64 @@ fn Interpreter::eval_new(
 }
 
 ///|
+fn is_object_like_for_constructor_return(value : Value) -> Bool {
+  match value {
+    Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) => true
+    _ => false
+  }
+}
+
+///|
+fn make_constructor_instance(proto : Value, class_name : String) -> Value {
+  Object({
+    properties: {},
+    symbol_properties: {},
+    prototype: proto,
+    callable: None,
+    class_name,
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+}
+
+///|
+fn make_arguments_object(
+  args : Array[Value],
+  ctor : Value,
+  strict : Bool,
+) -> Value {
+  let new_args_props : Map[String, Value] = {}
+  for i = 0; i < args.length(); i = i + 1 {
+    new_args_props[i.to_string()] = args[i]
+  }
+  new_args_props["length"] = Number(args.length().to_double())
+  if not(strict) {
+    new_args_props["callee"] = ctor
+  }
+  Object({
+    properties: new_args_props,
+    symbol_properties: {},
+    prototype: Null,
+    callable: None,
+    class_name: "Arguments",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+}
+
+///|
+fn format_loc_context(message : String, loc : @token.Loc) -> String {
+  message + " at line \{loc.line}, col \{loc.col}"
+}
+
+///|
 fn Interpreter::construct_value(
   self : Interpreter,
   ctor : Value,
   args : Array[Value],
-  _loc : @token.Loc,
+  loc : @token.Loc,
 ) -> Value raise Error {
   match ctor {
     Object(obj_data) =>
@@ -6366,16 +6424,7 @@ fn Interpreter::construct_value(
               Some(v) => v
               None => Null
             }
-            let new_obj = Object({
-              properties: {},
-              symbol_properties: {},
-              prototype: proto,
-              callable: None,
-              class_name: "Object",
-              descriptors: {},
-              symbol_descriptors: {},
-              extensible: true,
-            })
+            let new_obj = make_constructor_instance(proto, "Object")
             let func_env = Environment::new(parent=Some(data.closure))
             func_env.is_var_scope = true
             func_env.def("this", new_obj, LetBinding)
@@ -6393,27 +6442,9 @@ fn Interpreter::construct_value(
                 func_env.def(data.params[i], val, LetBinding)
               }
             }
-            // Create arguments object
-            let new_args_props : Map[String, Value] = {}
-            for i = 0; i < args.length(); i = i + 1 {
-              new_args_props[i.to_string()] = args[i]
-            }
-            new_args_props["length"] = Number(args.length().to_double())
-            if not(func_strict) {
-              new_args_props["callee"] = ctor
-            }
             func_env.def(
               "arguments",
-              Object({
-                properties: new_args_props,
-                symbol_properties: {},
-                prototype: Null,
-                callable: None,
-                class_name: "Arguments",
-                descriptors: {},
-                symbol_descriptors: {},
-                extensible: true,
-              }),
+              make_arguments_object(args, ctor, func_strict),
               VarBinding,
             )
             // Hoist var declarations and function declarations
@@ -6429,9 +6460,10 @@ fn Interpreter::construct_value(
             match exec_result {
               Normal(_) => new_obj
               ReturnSignal(v) =>
-                match v {
-                  Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) => v
-                  _ => new_obj
+                if is_object_like_for_constructor_return(v) {
+                  v
+                } else {
+                  new_obj
                 }
               BreakSignal(_) =>
                 raise @errors.SyntaxError(
@@ -6471,16 +6503,7 @@ fn Interpreter::construct_value(
               Some(v) => v
               None => Null
             }
-            let new_obj = Object({
-              properties: {},
-              symbol_properties: {},
-              prototype: proto,
-              callable: None,
-              class_name: "Object",
-              descriptors: {},
-              symbol_descriptors: {},
-              extensible: true,
-            })
+            let new_obj = make_constructor_instance(proto, "Object")
             let func_env = Environment::new(parent=Some(data.closure))
             func_env.is_var_scope = true
             func_env.def("this", new_obj, LetBinding)
@@ -6535,26 +6558,9 @@ fn Interpreter::construct_value(
               }
               None => ()
             }
-            let new_args_props : Map[String, Value] = {}
-            for i = 0; i < args.length(); i = i + 1 {
-              new_args_props[i.to_string()] = args[i]
-            }
-            new_args_props["length"] = Number(args.length().to_double())
-            if not(func_strict) {
-              new_args_props["callee"] = ctor
-            }
             func_env.def(
               "arguments",
-              Object({
-                properties: new_args_props,
-                symbol_properties: {},
-                prototype: Null,
-                callable: None,
-                class_name: "Arguments",
-                descriptors: {},
-                symbol_descriptors: {},
-                extensible: true,
-              }),
+              make_arguments_object(args, ctor, func_strict),
               VarBinding,
             )
             self.hoist_declarations(data.body, func_env)
@@ -6569,9 +6575,10 @@ fn Interpreter::construct_value(
             match exec_result {
               Normal(_) => new_obj
               ReturnSignal(v) =>
-                match v {
-                  Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) => v
-                  _ => new_obj
+                if is_object_like_for_constructor_return(v) {
+                  v
+                } else {
+                  new_obj
                 }
               BreakSignal(_) =>
                 raise @errors.SyntaxError(
@@ -6603,12 +6610,16 @@ fn Interpreter::construct_value(
           result
         }
         Some(NonConstructableCallable(name, _)) =>
-          raise @errors.TypeError(message=name + " is not a constructor")
+          raise @errors.TypeError(
+            message=format_loc_context(name + " is not a constructor", loc),
+          )
         Some(InterpreterCallable(_, func)) =>
           // Generator functions are not constructible
           if obj_data.class_name == "GeneratorFunction" {
             raise @errors.TypeError(
-              message="cannot use 'new' with a generator function",
+              message=format_loc_context(
+                "cannot use 'new' with a generator function", loc,
+              ),
             )
           } else {
             func(self, Undefined, args)
@@ -6616,7 +6627,9 @@ fn Interpreter::construct_value(
         Some(ConstructorOnlyCallable(_, func)) => func(self, args)
         Some(ArrowFunc(_)) | Some(ArrowFuncExt(_)) =>
           raise @errors.TypeError(
-            message="arrow functions cannot be used as constructors",
+            message=format_loc_context(
+              "arrow functions cannot be used as constructors", loc,
+            ),
           )
         Some(
           ClassConstructor(
@@ -6633,16 +6646,7 @@ fn Interpreter::construct_value(
           self.strict = true
           let result = try {
             // Create the new instance with the class prototype
-            let new_obj = Object({
-              properties: {},
-              symbol_properties: {},
-              prototype: proto,
-              callable: None,
-              class_name,
-              descriptors: {},
-              symbol_descriptors: {},
-              extensible: true,
-            })
+            let new_obj = make_constructor_instance(proto, class_name)
             // Set up the constructor environment
             let ctor_env = Environment::new(parent=Some(closure))
             ctor_env.is_var_scope = true
@@ -6680,9 +6684,10 @@ fn Interpreter::construct_value(
                 match exec_result {
                   Normal(_) => current_this
                   ReturnSignal(v) =>
-                    match v {
-                      Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) => v
-                      _ => current_this
+                    if is_object_like_for_constructor_return(v) {
+                      v
+                    } else {
+                      current_this
                     }
                   BreakSignal(_) =>
                     raise @errors.SyntaxError(
@@ -6748,15 +6753,12 @@ fn Interpreter::construct_value(
                                 // If super constructor returns an object, use it
                                 match exec_result {
                                   ReturnSignal(v) =>
-                                    match v {
-                                      Object(_) => {
-                                        // Must restore strict before early return —
-                                        // `return` exits eval_new entirely, bypassing
-                                        // the normal restore at the end of the try block.
-                                        self.strict = saved_strict
-                                        return v
-                                      }
-                                      _ => ()
+                                    if is_object_like_for_constructor_return(v) {
+                                      // Must restore strict before early return —
+                                      // `return` exits eval_new entirely, bypassing
+                                      // the normal restore at the end of the try block.
+                                      self.strict = saved_strict
+                                      return v
                                     }
                                   _ => ()
                                 }
@@ -6766,16 +6768,11 @@ fn Interpreter::construct_value(
                           }
                           Some(ConstructorOnlyCallable(_, super_func)) => {
                             let super_result = super_func(self, args)
-                            match super_result {
-                              Object(_)
-                              | Array(_)
-                              | Map(_)
-                              | Set(_)
-                              | Promise(_) => {
-                                self.strict = saved_strict
-                                return super_result
-                              }
-                              _ => ()
+                            if is_object_like_for_constructor_return(
+                                super_result,
+                              ) {
+                              self.strict = saved_strict
+                              return super_result
                             }
                           }
                           _ => ()
@@ -6796,9 +6793,15 @@ fn Interpreter::construct_value(
           self.strict = saved_strict
           result
         }
-        _ => raise @errors.TypeError(message="is not a constructor")
+        _ =>
+          raise @errors.TypeError(
+            message=format_loc_context("is not a constructor", loc),
+          )
       }
-    _ => raise @errors.TypeError(message="is not a constructor")
+    _ =>
+      raise @errors.TypeError(
+        message=format_loc_context("is not a constructor", loc),
+      )
   }
 }
 
