@@ -1,0 +1,10 @@
+import {
+  "dowdiness/js_engine" @lib,
+  "moonbitlang/core/env",
+  "dowdiness/js_engine/interpreter",
+  "dowdiness/js_engine/errors",
+}
+
+options(
+  "is-main": true,
+)

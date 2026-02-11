@@ -171,7 +171,6 @@ test "const assignment error" {
   let mut err_msg = ""
   try {
     let _ = run_js("const x = 5; x = 10")
-
   } catch {
     @interpreter.JsException(val) => err_msg = error_display(val)
     _ => err_msg = "unexpected error"
@@ -397,7 +396,6 @@ test "uncaught throw is error" {
   let mut err_msg = ""
   try {
     let _ = run_js("throw \"uncaught\"")
-
   } catch {
     @interpreter.JsException(val) => err_msg = error_display(val)
     _ => err_msg = "unexpected"
@@ -1790,7 +1788,6 @@ test "bound function propagates runtime error" {
     let _ = run_js(
       "function bad() { return null.x; } var b = bad.bind(null); b();",
     )
-
   } catch {
     @interpreter.JsException(val) => err_msg = error_display(val)
     _ => err_msg = "other error"
@@ -6547,6 +6544,72 @@ test "eval: var in eval conflicts with block let throws SyntaxError" {
 }
 
 ///|
+test "eval: nested block var conflict throws SyntaxError" {
+  let output = run_output(
+    (
+      #|function f() {
+      #|  {
+      #|    let x = "let_x";
+      #|    try {
+      #|      eval("{ var x = 'eval_x'; }");
+      #|      console.log("BUG");
+      #|    } catch (e) {
+      #|      console.log(e.constructor.name);
+      #|    }
+      #|    console.log(x);
+      #|  }
+      #|}
+      #|f();
+    ),
+  )
+  inspect(output, content="[\"SyntaxError\", \"let_x\"]")
+}
+
+///|
+test "eval: block function does not trigger var conflict with outer let" {
+  let output = run_output(
+    (
+      #|function f() {
+      #|  {
+      #|    let x = "let_x";
+      #|    try {
+      #|      eval("{ function x() {} }");
+      #|      console.log("ok");
+      #|    } catch (e) {
+      #|      console.log(e.constructor.name);
+      #|    }
+      #|    console.log(x);
+      #|  }
+      #|}
+      #|f();
+    ),
+  )
+  inspect(output, content="[\"ok\", \"let_x\"]")
+}
+
+///|
+test "eval: if-branch function does not trigger var conflict with outer let" {
+  let output = run_output(
+    (
+      #|function f() {
+      #|  {
+      #|    let x = "let_x";
+      #|    try {
+      #|      eval("if (true) function x() {}");
+      #|      console.log("ok");
+      #|    } catch (e) {
+      #|      console.log(e.constructor.name);
+      #|    }
+      #|    console.log(x);
+      #|  }
+      #|}
+      #|f();
+    ),
+  )
+  inspect(output, content="[\"ok\", \"let_x\"]")
+}
+
+///|
 test "eval: global var conflicts with global let throws SyntaxError" {
   // Per EvalDeclarationInstantiation step 5.a, eval("var x") at global scope
   // must throw SyntaxError when a let/const x exists in the global env.
@@ -6609,6 +6672,140 @@ test "strict: block function does not overwrite outer var" {
     ),
   )
   inspect(output, content="[\"1\"]")
+}
+
+///|
+test "sloppy: duplicate block function declarations are allowed" {
+  let output = run_output(
+    (
+      #|try {
+      #|  { function f() {} function f() {} }
+      #|  console.log("ok");
+      #|} catch (e) {
+      #|  console.log(e.constructor.name);
+      #|}
+    ),
+  )
+  inspect(output, content="[\"ok\"]")
+}
+
+///|
+test "block: lexical and var redeclaration throws SyntaxError" {
+  let mut err_msg = ""
+  try {
+    let _ = run_js("{ const f = 0; var f; }")
+  } catch {
+    @interpreter.JsException(val) => err_msg = error_display(val)
+    _ => err_msg = "unexpected"
+  }
+  inspect(
+    err_msg,
+    content="SyntaxError: Identifier 'f' has already been declared",
+  )
+}
+
+///|
+test "script: let and function redeclaration throws SyntaxError" {
+  let mut err_msg = ""
+  try {
+    let _ = run_js("let f = 0; function f() {}")
+  } catch {
+    @interpreter.JsException(val) => err_msg = error_display(val)
+    _ => err_msg = "unexpected"
+  }
+  inspect(
+    err_msg,
+    content="SyntaxError: Identifier 'f' has already been declared",
+  )
+}
+
+///|
+test "block: function body lexical and nested var redeclaration throws SyntaxError" {
+  let mut err_msg = ""
+  try {
+    let _ = run_js(
+      (
+        #|function f() {
+        #|  let x = 0;
+        #|  { var x = 1; }
+        #|}
+        #|f();
+      ),
+    )
+  } catch {
+    @interpreter.JsException(val) => err_msg = error_display(val)
+    _ => err_msg = "unexpected"
+  }
+  inspect(
+    err_msg,
+    content="SyntaxError: Identifier 'x' has already been declared",
+  )
+}
+
+///|
+test "block: var declarations hoist out of nested block in function scope" {
+  let output = run_output(
+    (
+      #|function fn() {
+      #|  {
+      #|    var x = 1;
+      #|    var y;
+      #|  }
+      #|  console.log(x);
+      #|  console.log(y);
+      #|}
+      #|fn();
+    ),
+  )
+  inspect(output, content="[\"1\", \"undefined\"]")
+}
+
+///|
+test "syntax: function declaration as while body throws SyntaxError" {
+  let mut err_msg = ""
+  try {
+    let _ = run_js("while (false) function f() {}")
+  } catch {
+    @errors.SyntaxError(message=msg) => err_msg = "SyntaxError: " + msg
+    @interpreter.JsException(val) => err_msg = error_display(val)
+    _ => err_msg = "unexpected"
+  }
+  inspect(
+    err_msg,
+    content="SyntaxError: Function declaration in statement position is not allowed",
+  )
+}
+
+///|
+test "syntax: function declaration as for body throws SyntaxError" {
+  let mut err_msg = ""
+  try {
+    let _ = run_js("for (; false; ) function f() {}")
+  } catch {
+    @errors.SyntaxError(message=msg) => err_msg = "SyntaxError: " + msg
+    @interpreter.JsException(val) => err_msg = error_display(val)
+    _ => err_msg = "unexpected"
+  }
+  inspect(
+    err_msg,
+    content="SyntaxError: Function declaration in statement position is not allowed",
+  )
+}
+
+///|
+test "syntax: function declaration as do-while body throws SyntaxError" {
+  let mut err_msg = ""
+  try {
+    let _ = run_js("do function f() {} while (false)")
+  } catch {
+    @errors.SyntaxError(message=msg) => err_msg = "SyntaxError: " + msg
+    @interpreter.JsException(val) => err_msg = error_display(val)
+    _ => err_msg = "unexpected"
+  }
+  inspect(
+    err_msg,
+    content="SyntaxError: Function declaration in statement position is not allowed",
+  )
 }
 
 // ============================================================
@@ -6849,7 +7046,6 @@ test "strict: duplicate parameters abort script before later statements" {
   let mut err_msg = ""
   try {
     let _ = run_output(src)
-
   } catch {
     @interpreter.JsException(val) => err_msg = error_display(val)
     _ => err_msg = "unexpected"

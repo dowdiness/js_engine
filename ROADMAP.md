@@ -4,7 +4,9 @@
 
 **Test262**: 19,723 / 25,215 passed (78.22%) | 22,748 skipped | 5,492 failed | 181 timeouts
 
-**Unit tests**: 735 total, 735 passed, 0 failed
+**Unit tests**: 746 total, 746 passed, 0 failed
+
+**Targeted verification (2026-02-11)**: `language/block-scope` slice is 106/106 passing (39 skipped).
 
 ## Phase History
 
@@ -100,7 +102,7 @@ node ./_build/js/debug/build/cmd/main/main.js 'console.log(1 + 2)'
 # => 3
 ```
 
-All 735 unit tests pass on both WASM-GC and JS targets. See [docs/SELF_HOST_JS_RESEARCH.md](docs/SELF_HOST_JS_RESEARCH.md) for full analysis.
+All 746 unit tests pass on both WASM-GC and JS targets. See [docs/SELF_HOST_JS_RESEARCH.md](docs/SELF_HOST_JS_RESEARCH.md) for full analysis.
 
 ### What was needed
 - **Backend-specific argv handling**: `process.argv` on JS includes `["node", "script.js", ...]`, so user args start at index 2 (vs index 1 on WASM). Solved with `.js.mbt` / `.wasm.mbt` / `.wasm-gc.mbt` files.

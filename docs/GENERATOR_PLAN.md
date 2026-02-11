@@ -2,7 +2,7 @@
 
 ## Implementation Status: COMPLETE
 
-All phases (0-8) are implemented. 735 unit tests are currently passing; see
+All phases (0-8) are implemented. 746 unit tests are currently passing; see
 [ROADMAP.md](../ROADMAP.md) for the latest Test262 totals. GeneratorPrototype:
 26/58 (44.8%).
 

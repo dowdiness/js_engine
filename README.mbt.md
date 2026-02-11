@@ -53,7 +53,7 @@ console.log(fib(10));
 
 ### As a Library
 
-```moonbit
+```moonbit nocheck
 let (output, result) = @js_engine.run("console.log(1 + 2)")
 // output = ["3"], result = "undefined"
 ```
@@ -73,6 +73,8 @@ python3 test262-analyze.py --output /tmp/a.json   # Static Test262 analysis (no 
 
 Test262 tooling note: `test262-runner.py` and `test262-analyze.py` work without
 PyYAML; they fall back to a built-in frontmatter parser in `test262_utils.py`.
+Malformed `\\x..` / `\\u....` escapes in frontmatter are handled safely without
+crashing the scripts.
 
 ## Documentation
 

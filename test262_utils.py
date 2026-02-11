@@ -16,13 +16,68 @@ except ModuleNotFoundError:
 YAML_PATTERN = re.compile(r'/\*---(.*?)---\*/', re.DOTALL)
 
 
+_DOUBLE_QUOTE_ESCAPES = {
+    "\\": "\\",
+    '"': '"',
+    "'": "'",
+    "n": "\n",
+    "t": "\t",
+    "r": "\r",
+    "0": "\0",
+    "a": "\a",
+    "b": "\b",
+    "v": "\v",
+    "e": "\x1b",
+    "/": "/",
+    " ": " ",
+}
+
+
+def _unescape_double_quoted(s: str) -> str:
+    out: list[str] = []
+    i = 0
+    while i < len(s):
+        if s[i] == "\\" and i + 1 < len(s):
+            nxt = s[i + 1]
+            if nxt in _DOUBLE_QUOTE_ESCAPES:
+                out.append(_DOUBLE_QUOTE_ESCAPES[nxt])
+                i += 2
+            elif nxt == "x" and i + 3 < len(s):
+                hex_bytes = s[i + 2 : i + 4]
+                try:
+                    out.append(chr(int(hex_bytes, 16)))
+                    i += 4
+                except ValueError:
+                    # Keep malformed escapes as literal text.
+                    out.append(s[i])
+                    i += 1
+            elif nxt == "u" and i + 5 < len(s):
+                hex_bytes = s[i + 2 : i + 6]
+                try:
+                    out.append(chr(int(hex_bytes, 16)))
+                    i += 6
+                except ValueError:
+                    # Keep malformed escapes as literal text.
+                    out.append(s[i])
+                    i += 1
+            else:
+                out.append(s[i])
+                i += 1
+        else:
+            out.append(s[i])
+            i += 1
+    return "".join(out)
+
+
 def _parse_yaml_scalar(value: str) -> Any:
     value = value.strip()
     if not value:
         return ""
     if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
         inner = value[1:-1]
-        return inner.replace('\\"', '"').replace("\\'", "'")
+        if value[0] == '"':
+            return _unescape_double_quoted(inner)
+        return inner.replace("''", "'")
     lower = value.lower()
     if lower == "true":
         return True
@@ -75,6 +130,40 @@ def _split_top_level_csv(text: str) -> list[str]:
     return [p for p in parts if p]
 
 
+def _strip_inline_comment(text: str) -> str:
+    quote = None
+    depth = 0
+    escaped = False
+    prev_is_space = True
+    for idx, ch in enumerate(text):
+        if escaped:
+            escaped = False
+            continue
+        if ch == "\\" and quote == '"':
+            escaped = True
+            continue
+        if quote:
+            if ch == quote:
+                quote = None
+            continue
+        if ch in ("'", '"'):
+            quote = ch
+            prev_is_space = False
+            continue
+        if ch in "[{(":
+            depth += 1
+            prev_is_space = False
+            continue
+        if ch in "]})":
+            depth = max(0, depth - 1)
+            prev_is_space = False
+            continue
+        if ch == "#" and depth == 0 and prev_is_space:
+            return text[:idx]
+        prev_is_space = ch in (" ", "\t")
+    return text
+
+
 def _parse_inline_list(value: str) -> list[Any] | None:
     value = value.strip()
     if not (value.startswith("[") and value.endswith("]")):
@@ -118,7 +207,7 @@ def _parse_frontmatter_fallback(frontmatter: str) -> dict[str, Any]:
             continue
         key, remainder = stripped.split(":", 1)
         key = key.strip()
-        remainder = remainder.strip()
+        remainder = _strip_inline_comment(remainder).strip()
 
         if remainder:
             maybe_list = _parse_inline_list(remainder)
@@ -129,7 +218,9 @@ def _parse_frontmatter_fallback(frontmatter: str) -> dict[str, Any]:
                 if maybe_dict is not None:
                     data[key] = maybe_dict
                 elif remainder in ("|", ">"):
+                    folded = remainder == ">"
                     block_lines = []
+                    block_indent = -1
                     j = i + 1
                     while j < len(lines):
                         next_line = lines[j]
@@ -140,9 +231,26 @@ def _parse_frontmatter_fallback(frontmatter: str) -> dict[str, Any]:
                         next_indent = len(next_line) - len(next_line.lstrip(" "))
                         if next_indent <= indent:
                             break
-                        block_lines.append(next_line.lstrip())
+                        if block_indent < 0:
+                            block_indent = next_indent
+                        block_lines.append(next_line[block_indent:])
                         j += 1
-                    data[key] = "\n".join(block_lines).strip()
+                    if folded:
+                        paragraphs = []
+                        current_para: list[str] = []
+                        for bl in block_lines:
+                            if bl == "":
+                                if current_para:
+                                    paragraphs.append(" ".join(current_para))
+                                    current_para = []
+                                paragraphs.append("")
+                            else:
+                                current_para.append(bl)
+                        if current_para:
+                            paragraphs.append(" ".join(current_para))
+                        data[key] = "\n".join(paragraphs).rstrip("\n")
+                    else:
+                        data[key] = "\n".join(block_lines).rstrip("\n")
                     i = j
                     continue
                 else:

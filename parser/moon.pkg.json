@@ -1,8 +1,0 @@
-{
-  "import": [
-    "dowdiness/js_engine/token",
-    "dowdiness/js_engine/ast",
-    "dowdiness/js_engine/lexer",
-    "dowdiness/js_engine/errors"
-  ]
-}

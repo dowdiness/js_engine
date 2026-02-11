@@ -326,12 +326,27 @@ fn Parser::parse_if_stmt(self : Parser) -> @ast.Stmt raise Error {
 }
 
 ///|
+fn reject_function_decl_in_stmt_position(stmt : @ast.Stmt) -> Unit raise Error {
+  match stmt {
+    FuncDecl(_, _, _, _)
+    | FuncDeclExt(_, _, _, _, _)
+    | GeneratorDecl(_, _, _, _)
+    | GeneratorDeclExt(_, _, _, _, _) =>
+      raise @errors.SyntaxError(
+        message="Function declaration in statement position is not allowed",
+      )
+    _ => ()
+  }
+}
+
+///|
 fn Parser::parse_while_stmt(self : Parser) -> @ast.Stmt raise Error {
   let tok = self.expect(While)
   let _ = self.expect(LParen)
   let cond = self.parse_expr()
   let _ = self.expect(RParen)
   let body = self.parse_stmt()
+  reject_function_decl_in_stmt_position(body)
   WhileStmt(cond, body, tok.loc)
 }
 
@@ -354,12 +369,14 @@ fn Parser::parse_for_stmt(self : Parser) -> @ast.Stmt raise Error {
         let obj = self.parse_assignment()
         let _ = self.expect(RParen)
         let body = self.parse_stmt()
+        reject_function_decl_in_stmt_position(body)
         return ForOfStmtPat(Some(var_kind), pat, obj, body, tok.loc)
       }
       if self.eat(In) {
         let obj = self.parse_expr()
         let _ = self.expect(RParen)
         let body = self.parse_stmt()
+        reject_function_decl_in_stmt_position(body)
         return ForInStmtPat(Some(var_kind), pat, obj, body, tok.loc)
       }
       // Destructuring in regular for: for (let [a,b] = ...; ...; ...)
@@ -377,6 +394,7 @@ fn Parser::parse_for_stmt(self : Parser) -> @ast.Stmt raise Error {
       let obj = self.parse_expr()
       let _ = self.expect(RParen)
       let body = self.parse_stmt()
+      reject_function_decl_in_stmt_position(body)
       return ForInStmt(Some(var_kind), name, obj, body, tok.loc)
     }
     if self.eat(Of) {
@@ -384,6 +402,7 @@ fn Parser::parse_for_stmt(self : Parser) -> @ast.Stmt raise Error {
       let obj = self.parse_expr()
       let _ = self.expect(RParen)
       let body = self.parse_stmt()
+      reject_function_decl_in_stmt_position(body)
       return ForOfStmt(Some(var_kind), name, obj, body, tok.loc)
     }
     // Regular for — finish parsing the var decl init (may have multiple comma-separated decls)
@@ -432,6 +451,7 @@ fn Parser::parse_for_stmt(self : Parser) -> @ast.Stmt raise Error {
           let iterable = self.parse_assignment()
           let _ = self.expect(RParen)
           let body = self.parse_stmt()
+          reject_function_decl_in_stmt_position(body)
           match expr {
             Ident(name, _) =>
               return ForOfStmt(None, name, iterable, body, tok.loc)
@@ -452,6 +472,7 @@ fn Parser::parse_for_stmt(self : Parser) -> @ast.Stmt raise Error {
           let obj = self.parse_expr()
           let _ = self.expect(RParen)
           let body = self.parse_stmt()
+          reject_function_decl_in_stmt_position(body)
           match expr {
             Ident(name, _) => return ForInStmt(None, name, obj, body, tok.loc)
             ArrayLit(_, _) | ObjectLit(_, _) => {
@@ -482,7 +503,6 @@ fn Parser::parse_for_stmt(self : Parser) -> @ast.Stmt raise Error {
   }
   if init is None {
     let _ = self.expect(Semicolon)
-
   }
   self.parse_for_rest(init, tok.loc)
 }
@@ -508,6 +528,7 @@ fn Parser::parse_for_rest(
   }
   let _ = self.expect(RParen)
   let body = self.parse_stmt()
+  reject_function_decl_in_stmt_position(body)
   ForStmt(init, cond, update, body, loc)
 }
 
@@ -636,6 +657,7 @@ fn Parser::parse_switch_stmt(self : Parser) -> @ast.Stmt raise Error {
 fn Parser::parse_do_while_stmt(self : Parser) -> @ast.Stmt raise Error {
   let tok = self.expect(Do)
   let body = self.parse_stmt()
+  reject_function_decl_in_stmt_position(body)
   let _ = self.expect(While)
   let _ = self.expect(LParen)
   let cond = self.parse_expr()
@@ -702,7 +724,6 @@ fn Parser::parse_array_pattern(self : Parser) -> @ast.Pattern raise Error {
     }
     if not(self.at(RBracket)) && not(self.at(DotDotDot)) {
       let _ = self.expect(Comma)
-
     }
   }
   let _ = self.expect(RBracket)
@@ -742,7 +763,6 @@ fn Parser::parse_object_pattern(self : Parser) -> @ast.Pattern raise Error {
     props.push({ key, value, default_val })
     if not(self.at(RBrace)) {
       let _ = self.expect(Comma)
-
     }
   }
   let _ = self.expect(RBrace)
@@ -991,7 +1011,6 @@ fn Parser::parse_import_specifiers(
     specs.push({ local_name, imported })
     if not(self.at(RBrace)) {
       let _ = self.expect(Comma)
-
     }
   }
   let _ = self.expect(RBrace)
@@ -1118,7 +1137,6 @@ fn Parser::parse_export_specifiers(
     specs.push({ local_name, exported })
     if not(self.at(RBrace)) {
       let _ = self.expect(Comma)
-
     }
   }
   let _ = self.expect(RBrace)

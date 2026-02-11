@@ -1,7 +1,0 @@
-{
-  "import": [
-    "dowdiness/js_engine/token",
-    "dowdiness/js_engine/errors",
-    "moonbitlang/core/strconv"
-  ]
-}

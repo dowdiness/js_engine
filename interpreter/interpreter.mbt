@@ -251,6 +251,8 @@ pub fn Interpreter::run(
     if has_use_strict(stmts) {
       self.strict = true
     }
+    // Static block-scoped redeclaration checks (block lexical-vs-var conflicts).
+    self.validate_block_early_errors(stmts, self.strict)
     // Hoist var declarations and function declarations at global level
     self.hoist_declarations(stmts, self.global)
     let mut last : Value = Undefined
@@ -356,7 +358,6 @@ fn Interpreter::exec_stmt(
         match gen_opt {
           Some(g) => {
             let _ = g.loop_env_stack.pop()
-
           }
           _ => ()
         }
@@ -417,7 +418,6 @@ fn Interpreter::exec_stmt(
         match init {
           Some(init_stmt) => {
             let _ = self.exec_stmt(init_stmt, e)
-
           }
           None => ()
         }
@@ -468,7 +468,6 @@ fn Interpreter::exec_stmt(
           match update {
             Some(u) => {
               let _ = self.eval_expr(u, for_env)
-
             }
             None => ()
           }
@@ -477,7 +476,6 @@ fn Interpreter::exec_stmt(
         match update {
           Some(u) => {
             let _ = self.eval_expr(u, for_env)
-
           }
           None => ()
         }
@@ -564,7 +562,6 @@ fn Interpreter::exec_stmt(
         match gen_opt {
           Some(g) => {
             let _ = g.loop_env_stack.pop()
-
           }
           _ => ()
         }
@@ -1399,30 +1396,803 @@ fn collect_pattern_var_names(
 }
 
 ///|
+fn add_lexical_decl_name(
+  lexical_names : Map[String, Bool],
+  name : String,
+) -> Unit raise Error {
+  if lexical_names.contains(name) {
+    raise @errors.SyntaxError(
+      message="Identifier '\{name}' has already been declared",
+    )
+  }
+  lexical_names[name] = true
+}
+
+///|
+fn collect_pattern_decl_names(
+  pattern : @ast.Pattern,
+  names : Map[String, Bool],
+  lexical? : Bool = false,
+) -> Unit raise Error {
+  match pattern {
+    IdentPat(name) =>
+      if lexical {
+        add_lexical_decl_name(names, name)
+      } else {
+        names[name] = true
+      }
+    DefaultPat(inner_pat, _) =>
+      collect_pattern_decl_names(inner_pat, names, lexical~)
+    AssignTarget(_) => ()
+    ArrayPat(elements, rest) => {
+      for elem in elements {
+        match elem {
+          Some(p) => collect_pattern_decl_names(p, names, lexical~)
+          None => ()
+        }
+      }
+      match rest {
+        Some(p) => collect_pattern_decl_names(p, names, lexical~)
+        None => ()
+      }
+    }
+    ObjectPat(props, rest) => {
+      for prop in props {
+        collect_pattern_decl_names(prop.value, names, lexical~)
+      }
+      match rest {
+        Some(p) => collect_pattern_decl_names(p, names, lexical~)
+        None => ()
+      }
+    }
+  }
+}
+
+///|
+fn collect_block_lexical_decl_names_from_stmt(
+  stmt : @ast.Stmt,
+  lexical_names : Map[String, Bool],
+  block_function_kinds : Map[String, Int],
+  include_block_functions? : Bool = false,
+  allow_duplicate_block_functions? : Bool = false,
+) -> Unit raise Error {
+  match stmt {
+    VarDecl(LetKind, name, _, _) => add_lexical_decl_name(lexical_names, name)
+    VarDecl(ConstKind, name, _, _) => add_lexical_decl_name(lexical_names, name)
+    DestructureDecl(LetKind, pattern, _, _) =>
+      collect_pattern_decl_names(pattern, lexical_names, lexical=true)
+    DestructureDecl(ConstKind, pattern, _, _) =>
+      collect_pattern_decl_names(pattern, lexical_names, lexical=true)
+    ClassDecl(name, _, _, _) => add_lexical_decl_name(lexical_names, name)
+    // Function declarations are lexical only in block statement lists.
+    FuncDecl(name, _, _, _) =>
+      if include_block_functions {
+        if lexical_names.contains(name) {
+          if not(
+              allow_duplicate_block_functions &&
+              block_function_kinds.get(name) == Some(1),
+            ) {
+            raise @errors.SyntaxError(
+              message="Identifier '\{name}' has already been declared",
+            )
+          }
+        } else {
+          lexical_names[name] = true
+        }
+        block_function_kinds[name] = 1
+      }
+    FuncDeclExt(name, _, _, _, _) =>
+      if include_block_functions {
+        if lexical_names.contains(name) {
+          if not(
+              allow_duplicate_block_functions &&
+              block_function_kinds.get(name) == Some(1),
+            ) {
+            raise @errors.SyntaxError(
+              message="Identifier '\{name}' has already been declared",
+            )
+          }
+        } else {
+          lexical_names[name] = true
+        }
+        block_function_kinds[name] = 1
+      }
+    GeneratorDecl(name, _, _, _) =>
+      if include_block_functions {
+        if lexical_names.contains(name) {
+          raise @errors.SyntaxError(
+            message="Identifier '\{name}' has already been declared",
+          )
+        } else {
+          lexical_names[name] = true
+        }
+        block_function_kinds[name] = 2
+      }
+    GeneratorDeclExt(name, _, _, _, _) =>
+      if include_block_functions {
+        if lexical_names.contains(name) {
+          raise @errors.SyntaxError(
+            message="Identifier '\{name}' has already been declared",
+          )
+        } else {
+          lexical_names[name] = true
+        }
+        block_function_kinds[name] = 2
+      }
+    StmtList(inner_stmts, _) =>
+      for inner in inner_stmts {
+        collect_block_lexical_decl_names_from_stmt(
+          inner,
+          lexical_names,
+          block_function_kinds,
+          include_block_functions~,
+          allow_duplicate_block_functions~,
+        )
+      }
+    ExportNamedDecl(Some(decl), _, _, _) =>
+      collect_block_lexical_decl_names_from_stmt(
+        decl,
+        lexical_names,
+        block_function_kinds,
+        include_block_functions~,
+        allow_duplicate_block_functions~,
+      )
+    _ => ()
+  }
+}
+
+///|
+fn collect_block_var_decl_names_from_stmt(
+  stmt : @ast.Stmt,
+  var_names : Map[String, Bool],
+  include_function_decls? : Bool = false,
+) -> Unit raise Error {
+  match stmt {
+    VarDecl(VarKind, name, _, _) => var_names[name] = true
+    FuncDecl(name, _, _, _) =>
+      if include_function_decls {
+        var_names[name] = true
+      }
+    FuncDeclExt(name, _, _, _, _) =>
+      if include_function_decls {
+        var_names[name] = true
+      }
+    GeneratorDecl(name, _, _, _) =>
+      if include_function_decls {
+        var_names[name] = true
+      }
+    GeneratorDeclExt(name, _, _, _, _) =>
+      if include_function_decls {
+        var_names[name] = true
+      }
+    DestructureDecl(VarKind, pattern, _, _) =>
+      collect_pattern_decl_names(pattern, var_names)
+    Block(inner_stmts, _) =>
+      for inner in inner_stmts {
+        collect_block_var_decl_names_from_stmt(
+          inner,
+          var_names,
+          include_function_decls~,
+        )
+      }
+    StmtList(inner_stmts, _) =>
+      for inner in inner_stmts {
+        collect_block_var_decl_names_from_stmt(
+          inner,
+          var_names,
+          include_function_decls~,
+        )
+      }
+    IfStmt(_, then_branch, else_branch, _) => {
+      collect_block_var_decl_names_from_stmt(
+        then_branch,
+        var_names,
+        include_function_decls~,
+      )
+      match else_branch {
+        Some(eb) =>
+          collect_block_var_decl_names_from_stmt(
+            eb,
+            var_names,
+            include_function_decls~,
+          )
+        None => ()
+      }
+    }
+    WhileStmt(_, body, _) =>
+      collect_block_var_decl_names_from_stmt(
+        body,
+        var_names,
+        include_function_decls~,
+      )
+    DoWhileStmt(body, _, _) =>
+      collect_block_var_decl_names_from_stmt(
+        body,
+        var_names,
+        include_function_decls~,
+      )
+    ForStmt(init, _, _, body, _) => {
+      match init {
+        Some(init_stmt) =>
+          collect_block_var_decl_names_from_stmt(
+            init_stmt,
+            var_names,
+            include_function_decls~,
+          )
+        None => ()
+      }
+      collect_block_var_decl_names_from_stmt(
+        body,
+        var_names,
+        include_function_decls~,
+      )
+    }
+    ForInStmt(kind, name, _, body, _) => {
+      if kind == Some(VarKind) {
+        var_names[name] = true
+      }
+      collect_block_var_decl_names_from_stmt(
+        body,
+        var_names,
+        include_function_decls~,
+      )
+    }
+    ForOfStmt(kind, name, _, body, _) => {
+      if kind == Some(VarKind) {
+        var_names[name] = true
+      }
+      collect_block_var_decl_names_from_stmt(
+        body,
+        var_names,
+        include_function_decls~,
+      )
+    }
+    ForInStmtPat(kind, pattern, _, body, _) => {
+      if kind == Some(VarKind) {
+        collect_pattern_decl_names(pattern, var_names)
+      }
+      collect_block_var_decl_names_from_stmt(
+        body,
+        var_names,
+        include_function_decls~,
+      )
+    }
+    ForOfStmtPat(kind, pattern, _, body, _) => {
+      if kind == Some(VarKind) {
+        collect_pattern_decl_names(pattern, var_names)
+      }
+      collect_block_var_decl_names_from_stmt(
+        body,
+        var_names,
+        include_function_decls~,
+      )
+    }
+    ForInExpr(_, _, body, _) =>
+      collect_block_var_decl_names_from_stmt(
+        body,
+        var_names,
+        include_function_decls~,
+      )
+    ForOfExpr(_, _, body, _) =>
+      collect_block_var_decl_names_from_stmt(
+        body,
+        var_names,
+        include_function_decls~,
+      )
+    LabeledStmt(_, inner, _) =>
+      collect_block_var_decl_names_from_stmt(
+        inner,
+        var_names,
+        include_function_decls~,
+      )
+    SwitchStmt(_, cases, _) =>
+      for case_ in cases {
+        for inner in case_.body {
+          collect_block_var_decl_names_from_stmt(
+            inner,
+            var_names,
+            include_function_decls~,
+          )
+        }
+      }
+    TryCatchStmt(try_body, _, catch_body, finally_body, _) => {
+      for inner in try_body {
+        collect_block_var_decl_names_from_stmt(
+          inner,
+          var_names,
+          include_function_decls~,
+        )
+      }
+      match catch_body {
+        Some(cb) =>
+          for inner in cb {
+            collect_block_var_decl_names_from_stmt(
+              inner,
+              var_names,
+              include_function_decls~,
+            )
+          }
+        None => ()
+      }
+      match finally_body {
+        Some(fb) =>
+          for inner in fb {
+            collect_block_var_decl_names_from_stmt(
+              inner,
+              var_names,
+              include_function_decls~,
+            )
+          }
+        None => ()
+      }
+    }
+    ExportNamedDecl(Some(decl), _, _, _) =>
+      collect_block_var_decl_names_from_stmt(
+        decl,
+        var_names,
+        include_function_decls~,
+      )
+    // Do not recurse into function/class bodies when collecting VarDeclaredNames
+    // for the surrounding block.
+    _ => ()
+  }
+}
+
+///|
+fn validate_block_statement_list_early_errors(
+  stmts : Array[@ast.Stmt],
+  include_block_functions? : Bool = false,
+  allow_duplicate_block_functions? : Bool = false,
+  include_function_decls_in_var_names? : Bool = false,
+) -> Unit raise Error {
+  let lexical_names : Map[String, Bool] = {}
+  let block_function_kinds : Map[String, Int] = {}
+  for stmt in stmts {
+    collect_block_lexical_decl_names_from_stmt(
+      stmt,
+      lexical_names,
+      block_function_kinds,
+      include_block_functions~,
+      allow_duplicate_block_functions~,
+    )
+  }
+  let var_names : Map[String, Bool] = {}
+  for stmt in stmts {
+    collect_block_var_decl_names_from_stmt(
+      stmt,
+      var_names,
+      include_function_decls=include_function_decls_in_var_names,
+    )
+  }
+  for name, _ in lexical_names {
+    if var_names.contains(name) {
+      raise @errors.SyntaxError(
+        message="Identifier '\{name}' has already been declared",
+      )
+    }
+  }
+}
+
+///|
+fn validate_block_early_errors_expr(
+  expr : @ast.Expr,
+  strict_context : Bool,
+) -> Unit raise Error {
+  match expr {
+    FuncExpr(_, _, body, _) => {
+      validate_block_statement_list_early_errors(
+        body,
+        include_function_decls_in_var_names=true,
+      )
+      let child_strict = is_function_strict(strict_context, body)
+      for stmt in body {
+        validate_block_early_errors_stmt(stmt, child_strict)
+      }
+    }
+    FuncExprExt(_, _, _, body, _) => {
+      validate_block_statement_list_early_errors(
+        body,
+        include_function_decls_in_var_names=true,
+      )
+      let child_strict = is_function_strict(strict_context, body)
+      for stmt in body {
+        validate_block_early_errors_stmt(stmt, child_strict)
+      }
+    }
+    ArrowFunc(_, body, _) => {
+      validate_block_statement_list_early_errors(
+        body,
+        include_function_decls_in_var_names=true,
+      )
+      let child_strict = is_function_strict(strict_context, body)
+      for stmt in body {
+        validate_block_early_errors_stmt(stmt, child_strict)
+      }
+    }
+    ArrowFuncExt(_, _, body, _) => {
+      validate_block_statement_list_early_errors(
+        body,
+        include_function_decls_in_var_names=true,
+      )
+      let child_strict = is_function_strict(strict_context, body)
+      for stmt in body {
+        validate_block_early_errors_stmt(stmt, child_strict)
+      }
+    }
+    GeneratorExpr(_, _, body, _) => {
+      validate_block_statement_list_early_errors(
+        body,
+        include_function_decls_in_var_names=true,
+      )
+      let child_strict = is_function_strict(strict_context, body)
+      for stmt in body {
+        validate_block_early_errors_stmt(stmt, child_strict)
+      }
+    }
+    GeneratorExprExt(_, _, _, body, _) => {
+      validate_block_statement_list_early_errors(
+        body,
+        include_function_decls_in_var_names=true,
+      )
+      let child_strict = is_function_strict(strict_context, body)
+      for stmt in body {
+        validate_block_early_errors_stmt(stmt, child_strict)
+      }
+    }
+    ClassExpr(_, _, methods, _) =>
+      for m in methods {
+        // Class bodies are always strict.
+        validate_block_early_errors_expr(m.value, true)
+      }
+    Binary(_, l, r, _) => {
+      validate_block_early_errors_expr(l, strict_context)
+      validate_block_early_errors_expr(r, strict_context)
+    }
+    Unary(_, e, _) => validate_block_early_errors_expr(e, strict_context)
+    Assign(_, e, _) => validate_block_early_errors_expr(e, strict_context)
+    Call(callee, args, _) => {
+      validate_block_early_errors_expr(callee, strict_context)
+      for a in args {
+        validate_block_early_errors_expr(a, strict_context)
+      }
+    }
+    Member(obj, _, _) => validate_block_early_errors_expr(obj, strict_context)
+    Ternary(c, t, f, _) => {
+      validate_block_early_errors_expr(c, strict_context)
+      validate_block_early_errors_expr(t, strict_context)
+      validate_block_early_errors_expr(f, strict_context)
+    }
+    Grouping(inner, _) =>
+      validate_block_early_errors_expr(inner, strict_context)
+    ObjectLit(props, _) =>
+      for prop in props {
+        validate_block_early_errors_expr(prop.key, strict_context)
+        validate_block_early_errors_expr(prop.value, strict_context)
+      }
+    ArrayLit(elements, _) =>
+      for e in elements {
+        validate_block_early_errors_expr(e, strict_context)
+      }
+    ComputedMember(obj, key, _) => {
+      validate_block_early_errors_expr(obj, strict_context)
+      validate_block_early_errors_expr(key, strict_context)
+    }
+    MemberAssign(obj, _, rhs, _) => {
+      validate_block_early_errors_expr(obj, strict_context)
+      validate_block_early_errors_expr(rhs, strict_context)
+    }
+    ComputedAssign(obj, key, rhs, _) => {
+      validate_block_early_errors_expr(obj, strict_context)
+      validate_block_early_errors_expr(key, strict_context)
+      validate_block_early_errors_expr(rhs, strict_context)
+    }
+    NewExpr(callee, args, _) => {
+      validate_block_early_errors_expr(callee, strict_context)
+      for a in args {
+        validate_block_early_errors_expr(a, strict_context)
+      }
+    }
+    UpdateExpr(_, target, _, _) =>
+      validate_block_early_errors_expr(target, strict_context)
+    CompoundAssign(_, lhs, rhs, _) => {
+      validate_block_early_errors_expr(lhs, strict_context)
+      validate_block_early_errors_expr(rhs, strict_context)
+    }
+    Comma(l, r, _) => {
+      validate_block_early_errors_expr(l, strict_context)
+      validate_block_early_errors_expr(r, strict_context)
+    }
+    TemplateLit(_, exprs, _) =>
+      for e in exprs {
+        validate_block_early_errors_expr(e, strict_context)
+      }
+    SpreadExpr(e, _) => validate_block_early_errors_expr(e, strict_context)
+    DestructureAssign(_, rhs, _) =>
+      validate_block_early_errors_expr(rhs, strict_context)
+    OptionalMember(obj, _, _) =>
+      validate_block_early_errors_expr(obj, strict_context)
+    OptionalComputedMember(obj, key, _) => {
+      validate_block_early_errors_expr(obj, strict_context)
+      validate_block_early_errors_expr(key, strict_context)
+    }
+    OptionalCall(callee, args, _) => {
+      validate_block_early_errors_expr(callee, strict_context)
+      for a in args {
+        validate_block_early_errors_expr(a, strict_context)
+      }
+    }
+    SuperComputedMember(e, _) =>
+      validate_block_early_errors_expr(e, strict_context)
+    TaggedTemplate(tag, _, exprs, _) => {
+      validate_block_early_errors_expr(tag, strict_context)
+      for e in exprs {
+        validate_block_early_errors_expr(e, strict_context)
+      }
+    }
+    _ => ()
+  }
+}
+
+///|
+fn validate_block_early_errors_stmt(
+  stmt : @ast.Stmt,
+  strict_context : Bool,
+) -> Unit raise Error {
+  match stmt {
+    Block(stmts, _) => {
+      validate_block_statement_list_early_errors(
+        stmts,
+        include_block_functions=true,
+        allow_duplicate_block_functions=not(strict_context),
+      )
+      for inner in stmts {
+        validate_block_early_errors_stmt(inner, strict_context)
+      }
+    }
+    StmtList(stmts, _) =>
+      for inner in stmts {
+        validate_block_early_errors_stmt(inner, strict_context)
+      }
+    ExprStmt(expr, _) => validate_block_early_errors_expr(expr, strict_context)
+    IfStmt(_, then_branch, else_branch, _) => {
+      validate_block_early_errors_stmt(then_branch, strict_context)
+      match else_branch {
+        Some(eb) => validate_block_early_errors_stmt(eb, strict_context)
+        None => ()
+      }
+    }
+    WhileStmt(_, body, _) =>
+      validate_block_early_errors_stmt(body, strict_context)
+    DoWhileStmt(body, _, _) =>
+      validate_block_early_errors_stmt(body, strict_context)
+    ForStmt(init, _, _, body, _) => {
+      match init {
+        Some(init_stmt) =>
+          validate_block_early_errors_stmt(init_stmt, strict_context)
+        None => ()
+      }
+      validate_block_early_errors_stmt(body, strict_context)
+    }
+    ForInStmt(_, _, _, body, _) =>
+      validate_block_early_errors_stmt(body, strict_context)
+    ForOfStmt(_, _, _, body, _) =>
+      validate_block_early_errors_stmt(body, strict_context)
+    ForInStmtPat(_, _, _, body, _) =>
+      validate_block_early_errors_stmt(body, strict_context)
+    ForOfStmtPat(_, _, _, body, _) =>
+      validate_block_early_errors_stmt(body, strict_context)
+    ForInExpr(_, _, body, _) =>
+      validate_block_early_errors_stmt(body, strict_context)
+    ForOfExpr(_, _, body, _) =>
+      validate_block_early_errors_stmt(body, strict_context)
+    LabeledStmt(_, inner, _) =>
+      validate_block_early_errors_stmt(inner, strict_context)
+    SwitchStmt(_, cases, _) =>
+      for case_ in cases {
+        for inner in case_.body {
+          validate_block_early_errors_stmt(inner, strict_context)
+        }
+      }
+    TryCatchStmt(try_body, _, catch_body, finally_body, _) => {
+      for inner in try_body {
+        validate_block_early_errors_stmt(inner, strict_context)
+      }
+      match catch_body {
+        Some(cb) =>
+          for inner in cb {
+            validate_block_early_errors_stmt(inner, strict_context)
+          }
+        None => ()
+      }
+      match finally_body {
+        Some(fb) =>
+          for inner in fb {
+            validate_block_early_errors_stmt(inner, strict_context)
+          }
+        None => ()
+      }
+    }
+    FuncDecl(_, _, body, _) => {
+      validate_block_statement_list_early_errors(
+        body,
+        include_function_decls_in_var_names=true,
+      )
+      let child_strict = is_function_strict(strict_context, body)
+      for inner in body {
+        validate_block_early_errors_stmt(inner, child_strict)
+      }
+    }
+    FuncDeclExt(_, _, _, body, _) => {
+      validate_block_statement_list_early_errors(
+        body,
+        include_function_decls_in_var_names=true,
+      )
+      let child_strict = is_function_strict(strict_context, body)
+      for inner in body {
+        validate_block_early_errors_stmt(inner, child_strict)
+      }
+    }
+    GeneratorDecl(_, _, body, _) => {
+      validate_block_statement_list_early_errors(
+        body,
+        include_function_decls_in_var_names=true,
+      )
+      let child_strict = is_function_strict(strict_context, body)
+      for inner in body {
+        validate_block_early_errors_stmt(inner, child_strict)
+      }
+    }
+    GeneratorDeclExt(_, _, _, body, _) => {
+      validate_block_statement_list_early_errors(
+        body,
+        include_function_decls_in_var_names=true,
+      )
+      let child_strict = is_function_strict(strict_context, body)
+      for inner in body {
+        validate_block_early_errors_stmt(inner, child_strict)
+      }
+    }
+    ClassDecl(_, _, methods, _) =>
+      for m in methods {
+        // Class bodies are always strict.
+        validate_block_early_errors_expr(m.value, true)
+      }
+    ExportNamedDecl(Some(decl), _, _, _) =>
+      validate_block_early_errors_stmt(decl, strict_context)
+    ExportDefaultDecl(expr, _) =>
+      validate_block_early_errors_expr(expr, strict_context)
+    _ => ()
+  }
+}
+
+///|
+fn Interpreter::validate_block_early_errors(
+  _self : Interpreter,
+  stmts : Array[@ast.Stmt],
+  strict_context : Bool,
+) -> Unit raise Error {
+  // Validate lexical-vs-var conflicts for the current statement list itself.
+  // This is required for script/function/eval bodies, not just nested Block nodes.
+  validate_block_statement_list_early_errors(
+    stmts,
+    include_function_decls_in_var_names=true,
+  )
+  for stmt in stmts {
+    validate_block_early_errors_stmt(stmt, strict_context)
+  }
+}
+
+///|
 /// Collect all var-scoped declaration names from eval code.
 /// Used by EvalDeclarationInstantiation to check for var/lex conflicts.
+fn collect_eval_var_names_from_stmt(
+  stmt : @ast.Stmt,
+  names : Array[String],
+  in_block? : Bool = false,
+) -> Unit {
+  match stmt {
+    VarDecl(VarKind, name, _, _) => names.push(name)
+    FuncDecl(name, _, _, _) => if not(in_block) { names.push(name) }
+    FuncDeclExt(name, _, _, _, _) => if not(in_block) { names.push(name) }
+    GeneratorDecl(name, _, _, _) => if not(in_block) { names.push(name) }
+    GeneratorDeclExt(name, _, _, _, _) => if not(in_block) { names.push(name) }
+    DestructureDecl(VarKind, pattern, _, _) =>
+      collect_pattern_var_names(pattern, names)
+    StmtList(inner_stmts, _) =>
+      for inner in inner_stmts {
+        collect_eval_var_names_from_stmt(inner, names, in_block~)
+      }
+    Block(inner_stmts, _) =>
+      for inner in inner_stmts {
+        collect_eval_var_names_from_stmt(inner, names, in_block=true)
+      }
+    IfStmt(_, then_branch, else_branch, _) => {
+      // Statement-position function declarations in if branches should not be
+      // treated as leaked var names for eval conflict checks.
+      collect_eval_var_names_from_stmt(then_branch, names, in_block=true)
+      match else_branch {
+        Some(eb) => collect_eval_var_names_from_stmt(eb, names, in_block=true)
+        None => ()
+      }
+    }
+    WhileStmt(_, body, _) =>
+      collect_eval_var_names_from_stmt(body, names, in_block~)
+    DoWhileStmt(body, _, _) =>
+      collect_eval_var_names_from_stmt(body, names, in_block~)
+    ForStmt(init, _, _, body, _) => {
+      match init {
+        Some(init_stmt) =>
+          collect_eval_var_names_from_stmt(init_stmt, names, in_block~)
+        None => ()
+      }
+      collect_eval_var_names_from_stmt(body, names, in_block~)
+    }
+    ForInStmt(kind, name, _, body, _) => {
+      if kind == Some(VarKind) {
+        names.push(name)
+      }
+      collect_eval_var_names_from_stmt(body, names, in_block~)
+    }
+    ForOfStmt(kind, name, _, body, _) => {
+      if kind == Some(VarKind) {
+        names.push(name)
+      }
+      collect_eval_var_names_from_stmt(body, names, in_block~)
+    }
+    ForInStmtPat(kind, pattern, _, body, _) => {
+      if kind == Some(VarKind) {
+        collect_pattern_var_names(pattern, names)
+      }
+      collect_eval_var_names_from_stmt(body, names, in_block~)
+    }
+    ForOfStmtPat(kind, pattern, _, body, _) => {
+      if kind == Some(VarKind) {
+        collect_pattern_var_names(pattern, names)
+      }
+      collect_eval_var_names_from_stmt(body, names, in_block~)
+    }
+    ForInExpr(_, _, body, _) =>
+      collect_eval_var_names_from_stmt(body, names, in_block~)
+    ForOfExpr(_, _, body, _) =>
+      collect_eval_var_names_from_stmt(body, names, in_block~)
+    LabeledStmt(_, inner, _) =>
+      collect_eval_var_names_from_stmt(inner, names, in_block=true)
+    SwitchStmt(_, cases, _) =>
+      for case_ in cases {
+        for inner in case_.body {
+          collect_eval_var_names_from_stmt(inner, names, in_block~)
+        }
+      }
+    TryCatchStmt(try_body, _, catch_body, finally_body, _) => {
+      for inner in try_body {
+        collect_eval_var_names_from_stmt(inner, names, in_block~)
+      }
+      match catch_body {
+        Some(cb) =>
+          for inner in cb {
+            collect_eval_var_names_from_stmt(inner, names, in_block~)
+          }
+        None => ()
+      }
+      match finally_body {
+        Some(fb) =>
+          for inner in fb {
+            collect_eval_var_names_from_stmt(inner, names, in_block~)
+          }
+        None => ()
+      }
+    }
+    ExportNamedDecl(Some(decl), _, _, _) =>
+      collect_eval_var_names_from_stmt(decl, names, in_block~)
+    _ => ()
+  }
+}
+
+///|
 fn collect_eval_var_names(stmts : Array[@ast.Stmt]) -> Array[String] {
   let names : Array[String] = []
   for stmt in stmts {
-    match stmt {
-      VarDecl(VarKind, name, _, _) => names.push(name)
-      FuncDecl(name, _, _, _) => names.push(name)
-      FuncDeclExt(name, _, _, _, _) => names.push(name)
-      GeneratorDecl(name, _, _, _) => names.push(name)
-      GeneratorDeclExt(name, _, _, _, _) => names.push(name)
-      DestructureDecl(VarKind, pattern, _, _) =>
-        collect_pattern_var_names(pattern, names)
-      StmtList(inner_stmts, _) =>
-        for inner in inner_stmts {
-          match inner {
-            VarDecl(VarKind, name, _, _) => names.push(name)
-            DestructureDecl(VarKind, pattern, _, _) =>
-              collect_pattern_var_names(pattern, names)
-            _ => ()
-          }
-        }
-      _ => ()
-    }
+    collect_eval_var_names_from_stmt(stmt, names)
   }
   names
 }
@@ -1457,6 +2227,102 @@ fn hoist_pattern(pattern : @ast.Pattern, env : Environment) -> Unit raise Error 
         None => ()
       }
     }
+  }
+}
+
+///|
+fn hoist_var_declarations_from_stmt(
+  stmt : @ast.Stmt,
+  env : Environment,
+) -> Unit raise Error {
+  match stmt {
+    VarDecl(VarKind, name, _, _) =>
+      if not(env.bindings.contains(name)) {
+        env.def(name, Undefined, VarBinding)
+      }
+    DestructureDecl(VarKind, pattern, _, _) => hoist_pattern(pattern, env)
+    StmtList(inner_stmts, _) =>
+      for inner in inner_stmts {
+        hoist_var_declarations_from_stmt(inner, env)
+      }
+    Block(inner_stmts, _) =>
+      for inner in inner_stmts {
+        hoist_var_declarations_from_stmt(inner, env)
+      }
+    IfStmt(_, then_branch, else_branch, _) => {
+      hoist_var_declarations_from_stmt(then_branch, env)
+      match else_branch {
+        Some(eb) => hoist_var_declarations_from_stmt(eb, env)
+        None => ()
+      }
+    }
+    WhileStmt(_, body, _) => hoist_var_declarations_from_stmt(body, env)
+    DoWhileStmt(body, _, _) => hoist_var_declarations_from_stmt(body, env)
+    ForStmt(init, _, _, body, _) => {
+      match init {
+        Some(init_stmt) => hoist_var_declarations_from_stmt(init_stmt, env)
+        None => ()
+      }
+      hoist_var_declarations_from_stmt(body, env)
+    }
+    ForInStmt(kind, name, _, body, _) => {
+      if kind == Some(VarKind) && not(env.bindings.contains(name)) {
+        env.def(name, Undefined, VarBinding)
+      }
+      hoist_var_declarations_from_stmt(body, env)
+    }
+    ForOfStmt(kind, name, _, body, _) => {
+      if kind == Some(VarKind) && not(env.bindings.contains(name)) {
+        env.def(name, Undefined, VarBinding)
+      }
+      hoist_var_declarations_from_stmt(body, env)
+    }
+    ForInStmtPat(kind, pattern, _, body, _) => {
+      if kind == Some(VarKind) {
+        hoist_pattern(pattern, env)
+      }
+      hoist_var_declarations_from_stmt(body, env)
+    }
+    ForOfStmtPat(kind, pattern, _, body, _) => {
+      if kind == Some(VarKind) {
+        hoist_pattern(pattern, env)
+      }
+      hoist_var_declarations_from_stmt(body, env)
+    }
+    ForInExpr(_, _, body, _) => hoist_var_declarations_from_stmt(body, env)
+    ForOfExpr(_, _, body, _) => hoist_var_declarations_from_stmt(body, env)
+    LabeledStmt(_, inner, _) => hoist_var_declarations_from_stmt(inner, env)
+    SwitchStmt(_, cases, _) =>
+      for case_ in cases {
+        for inner in case_.body {
+          hoist_var_declarations_from_stmt(inner, env)
+        }
+      }
+    TryCatchStmt(try_body, _, catch_body, finally_body, _) => {
+      for inner in try_body {
+        hoist_var_declarations_from_stmt(inner, env)
+      }
+      match catch_body {
+        Some(cb) =>
+          for inner in cb {
+            hoist_var_declarations_from_stmt(inner, env)
+          }
+        None => ()
+      }
+      match finally_body {
+        Some(fb) =>
+          for inner in fb {
+            hoist_var_declarations_from_stmt(inner, env)
+          }
+        None => ()
+      }
+    }
+    // Export with declaration: hoist declarations from the inner declaration.
+    ExportNamedDecl(Some(decl), _, _, _) =>
+      hoist_var_declarations_from_stmt(decl, env)
+    // Do not recurse into function/class declarations: their bodies create
+    // separate var scopes.
+    _ => ()
   }
 }
 
@@ -1604,6 +2470,9 @@ fn Interpreter::hoist_declarations(
       }
       _ => ()
     }
+    // Hoist var declarations recursively through nested statements
+    // (e.g. var inside blocks still hoists to function/global var scope).
+    hoist_var_declarations_from_stmt(stmt, env)
   }
 }
 
@@ -2128,13 +2997,11 @@ fn Interpreter::assign_to_expr(
     Member(obj_expr, prop, loc) => {
       let obj = self.eval_expr(obj_expr, env)
       let _ = self.set_property(obj, prop, value, loc)
-
     }
     ComputedMember(obj_expr, key_expr, loc) => {
       let obj = self.eval_expr(obj_expr, env)
       let key = self.eval_expr(key_expr, env)
       let _ = self.set_computed_property(obj, key, value, loc)
-
     }
     _ =>
       raise @errors.ReferenceError(
@@ -3621,6 +4488,8 @@ fn Interpreter::perform_eval(
   } else {
     has_use_strict(stmts)
   }
+  // Apply static block-scoped redeclaration checks before declaration instantiation.
+  self.validate_block_early_errors(stmts, eval_strict)
   // Determine the variable environment (where var/function declarations leak to).
   // For direct eval, walk up from the caller's env to find the function/global scope
   // (the nearest is_var_scope environment). This ensures that eval("var x = 1")
@@ -5155,7 +6024,6 @@ fn Interpreter::set_property(
         let n = to_number(value).to_int()
         while data.elements.length() > n {
           let _ = data.elements.pop()
-
         }
       } else {
         // try numeric index
@@ -5368,7 +6236,6 @@ fn Interpreter::set_computed_property(
             let n = to_number(value).to_int()
             while data.elements.length() > n {
               let _ = data.elements.pop()
-
             }
           }
           value
@@ -6709,6 +7576,8 @@ pub fn Interpreter::run_module(
   try {
     // Modules are always strict mode
     self.strict = true
+    // Static block-scoped redeclaration checks (applies to module code too).
+    self.validate_block_early_errors(stmts, true)
     // Hoist var declarations and function declarations
     self.hoist_declarations(stmts, module_env)
     // Also hoist block-scoped (let/const/class) with TDZ
