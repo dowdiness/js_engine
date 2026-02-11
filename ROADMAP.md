@@ -2,9 +2,9 @@
 
 ## Current Status
 
-**Test262**: 19,117 / 25,775 passed (74.17%) | 22,200 skipped | 6,658 failed | 164 timeouts
+**Test262**: 19,720 / 25,211 passed (78.22%) | 22,748 skipped | 5,491 failed | 185 timeouts
 
-**Unit tests**: 658 total, 658 passed, 0 failed
+**Unit tests**: 695 total, 695 passed, 0 failed
 
 ## Phase History
 
@@ -24,6 +24,7 @@
 | JS Target | — | — | JS backend support, Error toString fix, backend-specific argv handling |
 | 9 | +7,439 | 19,117 | P0-P3: error diagnostics, generator methods, destructuring defaults, parser cleanup |
 | 10 | — | — | P4: Object descriptor compliance — Symbol keys, function props, Array targets |
+| 11 | +603 | 19,720 | P5: eval() semantics — direct/indirect eval, var hoisting, lex conflict checks |
 
 For detailed implementation notes on Phases 1-6, see [docs/PHASE_HISTORY.md](docs/PHASE_HISTORY.md).
 
@@ -31,51 +32,53 @@ For detailed implementation notes on Phases 1-6, see [docs/PHASE_HISTORY.md](doc
 
 ## Failure Breakdown
 
-### Failure Breakdown by Category (6,658 remaining failures)
+### Failure Breakdown by Category (5,491 remaining failures)
 
 Top failing categories from the latest CI run:
 
 | Category | Pass | Fail | Rate | Priority |
 |----------|------|------|------|----------|
-| language/expressions | 4,637 | 1,062 | 81.4% | Medium |
-| language/statements | 3,130 | 1,187 | 72.5% | Medium |
-| built-ins/Array | 2,182 | 701 | 75.7% | Medium |
-| built-ins/Object | 2,547 | 321 | 88.8% | Low (P4 done) |
-| annexB/language | 254 | 565 | 31.0% | Low |
-| built-ins/Promise | 206 | 382 | 35.0% | Medium |
+| language/expressions | 4,613 | 876 | 84.0% | Medium |
+| language/statements | 3,214 | 958 | 77.0% | Medium |
+| built-ins/Array | 2,390 | 480 | 83.3% | Medium |
+| built-ins/Object | 3,020 | 271 | 91.8% | Low (P4 done) |
+| annexB/language | 314 | 503 | 38.4% | Low |
+| built-ins/Promise | 206 | 362 | 36.3% | Medium |
 | built-ins/DataView | 7 | 304 | 2.3% | Hard (needs TypedArray) |
-| built-ins/RegExp | 598 | 229 | 72.3% | Hard |
-| language/eval-code | 141 | 205 | 40.8% | Hard |
+| built-ins/RegExp | 601 | 225 | 72.8% | Hard |
 | language/module-code | 108 | 190 | 36.2% | Medium |
-| language/literals | 225 | 111 | 67.0% | Medium |
-| built-ins/String | 1,050 | 108 | 90.7% | Low |
-| built-ins/Function | 327 | 103 | 76.0% | Medium |
-| built-ins/Number | 265 | 55 | 82.8% | Easy |
-| language/identifiers | 154 | 54 | 74.0% | Medium |
-| language/block-scope | 47 | 62 | 43.1% | Medium |
+| language/eval-code | 224 | 106 | 67.9% | Low (P5 done) |
+| built-ins/String | 1,061 | 97 | 91.6% | Low |
+| built-ins/Function | 294 | 99 | 74.8% | Medium |
+| language/literals | 229 | 90 | 71.8% | Medium |
+| built-ins/Number | 267 | 55 | 82.9% | Easy |
+| language/identifiers | 154 | 53 | 74.4% | Medium |
+| language/block-scope | 47 | 59 | 44.3% | Medium |
 | built-ins/ArrayBuffer | 10 | 51 | 16.4% | Hard (needs TypedArray) |
-| language/statementList | 32 | 48 | 40.0% | Medium |
-| language/white-space | 27 | 40 | 40.3% | Easy |
-| built-ins/Map | 136 | 36 | 79.1% | Medium |
+| built-ins/Map | 135 | 33 | 80.4% | Medium |
+| language/white-space | 42 | 25 | 62.7% | Easy |
 
 ### High-Performing Categories (>90% pass rate)
 
 | Category | Pass | Fail | Rate |
 |----------|------|------|------|
 | built-ins/NativeErrors | 82 | 0 | 100.0% |
+| built-ins/global | 27 | 0 | 100.0% |
 | language/punctuators | 11 | 0 | 100.0% |
 | language/source-text | 1 | 0 | 100.0% |
 | built-ins/parseFloat | 52 | 1 | 98.1% |
 | built-ins/parseInt | 53 | 1 | 98.1% |
 | built-ins/Math | 280 | 6 | 97.9% |
-| built-ins/Set | 171 | 6 | 96.6% |
+| built-ins/Set | 170 | 6 | 96.6% |
 | language/keywords | 24 | 1 | 96.0% |
 | built-ins/Date | 511 | 23 | 95.7% |
-| language/arguments-object | 153 | 8 | 95.0% |
+| language/arguments-object | 145 | 7 | 95.4% |
+| language/function-code | 164 | 9 | 94.8% |
 | language/computed-property-names | 45 | 3 | 93.8% |
 | language/asi | 95 | 7 | 93.1% |
 | built-ins/JSON | 105 | 8 | 92.9% |
-| built-ins/String | 1,050 | 108 | 90.7% |
+| built-ins/Object | 3,020 | 271 | 91.8% |
+| built-ins/String | 1,061 | 97 | 91.6% |
 | language/rest-parameters | 10 | 1 | 90.9% |
 
 ---
@@ -86,11 +89,11 @@ Top failing categories from the latest CI run:
 
 ```bash
 moon build --target js
-node ./target/js/release/build/cmd/main/main.js 'console.log(1 + 2)'
+node ./_build/js/debug/build/cmd/main/main.js 'console.log(1 + 2)'
 # => 3
 ```
 
-All 658 unit tests pass on both WASM-GC and JS targets. See [docs/SELF_HOST_JS_RESEARCH.md](docs/SELF_HOST_JS_RESEARCH.md) for full analysis.
+All 695 unit tests pass on both WASM-GC and JS targets. See [docs/SELF_HOST_JS_RESEARCH.md](docs/SELF_HOST_JS_RESEARCH.md) for full analysis.
 
 ### What was needed
 - **Backend-specific argv handling**: `process.argv` on JS includes `["node", "script.js", ...]`, so user args start at index 2 (vs index 1 on WASM). Solved with `.js.mbt` / `.wasm.mbt` / `.wasm-gc.mbt` files.
@@ -195,7 +198,7 @@ For the original implementation plan, see [docs/GENERATOR_PLAN.md](docs/GENERATO
 
 ### Generators — DONE
 
-See Phase 8 section above. `function*`, `yield`, `yield*` fully implemented with 658 unit tests and +452 test262 tests gained. Unblocks async-iteration as a next target.
+See Phase 8 section above. `function*`, `yield`, `yield*` fully implemented with 695 unit tests and +452 test262 tests gained. Unblocks async-iteration as a next target.
 
 ### 8B: Test262 Harness Functions (+17 tests) — DONE
 
@@ -263,6 +266,27 @@ Comprehensive object descriptor compliance (P4 from IMPLEMENTATION_PRIORITY.md):
 
 ---
 
+### 11: P5 eval() Semantics (+603 tests) — DONE
+
+Full direct/indirect eval implementation per ES spec (EvalDeclarationInstantiation):
+
+- **Direct eval detection**: `eval(...)`, `(eval)(...)`, `((eval))(...)` via `unwrap_grouping` helper. Per ES spec, grouping parentheses do not change the Reference type
+- **Direct vs indirect**: Direct eval runs in caller's lexical environment; indirect eval (e.g., `(0, eval)(...)`) runs in global scope
+- **NonConstructableCallable**: eval uses `NonConstructableCallable` to prevent `new eval()` (throws TypeError)
+- **Variable environment**: `find_var_env()` walks the scope chain to find the enclosing function/global scope for var hoisting. eval inside a block correctly hoists to the function scope, not the block
+- **Non-strict var leaking**: `hoist_declarations` on `var_env` lets var/function declarations escape the eval scope into the calling function
+- **Strict mode isolation**: All declarations stay in the eval scope when eval is strict
+- **EvalDeclarationInstantiation step 5.a**: `eval("var x")` at global scope throws SyntaxError if a global `let`/`const` x exists
+- **EvalDeclarationInstantiation step 5.d**: `eval("var x")` in a block throws SyntaxError if any intermediate scope between the eval scope and the variable environment has a `let`/`const` x
+- **FuncDecl var hoisting**: FuncDecl handler uses `has_var`/`assign_var` fallback (matching VarDecl) so function declarations in eval target the correct variable environment
+- **ES spec evaluation order**: Callee/receiver resolved before arguments in all `eval_call` branches per spec section 13.3.6.1
+
+**Test262**: language/eval-code 224/330 passing (67.9%), 17 skipped
+
+---
+
+## Phase 11+ Targets
+
 ### async/await (~500 tests)
 
 Syntactic sugar over Promises + generator-like suspension. Now unblocked by generator implementation.
@@ -271,17 +295,17 @@ Syntactic sugar over Promises + generator-like suspension. Now unblocked by gene
 
 | Feature | Impact | Notes |
 |---------|--------|-------|
-| RegExp improvements | ~229 fail | Capture groups, backreferences, unicode/sticky flags |
+| RegExp improvements | ~225 fail | Capture groups, backreferences, unicode/sticky flags |
 | `with` statement | ~150 | Dynamic scope injection |
-| eval() improvements | ~205 fail | Direct vs indirect eval semantics |
 | Date object | — | ✅ Done (8C+9) — 511/534 pass (95.7%) |
+| eval() | — | ✅ Done (P5) — 224/330 pass (67.9%) |
 | WeakMap/WeakSet | ~59 fail | Reference-based collections |
 | Proxy/Reflect | ~500 | Meta-programming |
-| Promise improvements | ~382 fail | Iterator protocol, thenable assimilation, microtask ordering |
+| Promise improvements | ~362 fail | Iterator protocol, thenable assimilation, microtask ordering |
 
 ---
 
-## Skipped Features (22,200 tests)
+## Skipped Features (22,748 tests)
 
 | Feature | Skipped | Notes |
 |---------|---------|-------|

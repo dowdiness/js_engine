@@ -2,10 +2,10 @@
 
 ## Current Status
 
-- **Pass rate**: 74.17% (19,117 / 25,775 executed)
-- **Skipped**: 22,200 (feature-flagged)
-- **Failed**: 6,658
-- **Timeouts**: 164
+- **Pass rate**: 78.22% (19,720 / 25,211 executed)
+- **Skipped**: 22,748 (feature-flagged)
+- **Failed**: 5,491
+- **Timeouts**: 185
 
 ### Previous Baseline (Phase 8C)
 
@@ -91,24 +91,21 @@ Key changes:
 
 ---
 
-### P5: eval() Semantics (~740 tests)
+### P5: eval() Semantics ✅ DONE
 
-**CI data**:
-```
-language/eval-code/direct:      217 fail
-language/eval-code/indirect:     54 fail
-annexB/language/eval-code:      469 fail
-```
+**Resolution**: Full direct/indirect eval implementation per ES spec EvalDeclarationInstantiation.
 
-**Scope correction**:
-- Implementing `eval` is not only adding a global builtin.
-- Direct vs indirect behavior depends on **call-site semantics** in `eval_call` path.
+Key changes:
+1. **Direct eval detection**: `unwrap_grouping()` strips parentheses so `eval(...)`, `(eval)(...)`, `((eval))(...)` are all detected as direct eval
+2. **NonConstructableCallable**: eval can't be called with `new` (TypeError)
+3. **Variable environment**: `find_var_env()` walks scope chain to function/global scope for correct var hoisting
+4. **Non-strict var leaking**: `hoist_declarations` on `var_env` lets declarations escape eval scope
+5. **Strict mode isolation**: All declarations stay in eval scope when eval is strict
+6. **Lex conflict checks**: Steps 5.a (global lex) and 5.d (intermediate lex) throw SyntaxError when eval's var declarations would hoist past let/const
+7. **FuncDecl fix**: Function declarations in eval use `has_var`/`assign_var` to target correct variable environment
+8. **Evaluation order**: Callee/receiver resolved before arguments per spec section 13.3.6.1
 
-**Required behavior**:
-1. Direct eval in caller lexical environment
-2. Indirect eval in global environment
-3. Strict-eval environment isolation rules
-4. Correct var leakage in non-strict direct eval
+**eval-code test results**: 224/330 passing (67.9%), 17 skipped. var-env-* tests: 20/20 (100%).
 
 ---
 
@@ -179,11 +176,11 @@ The actual gain from P0–P3 (+7,439) far exceeded the projected range (+1,500�
 3. Destructuring defaults (P2) fixed patterns used pervasively in test262 harness code
 4. Parser cleanup (P3) fixed arrow function parameters that gated large test suites
 
-### Remaining Phases (Projected from P4 baseline)
+### Remaining Phases (Projected from P5 baseline)
 
 | Phase | Content | Est. New Tests | Cumulative Rate |
 |-------|---------|---------------|-----------------|
-| P5 | eval() semantics | +200–400 | TBD |
+| **P5** | **eval() semantics** | **+603** | **78.2%** |
 | P6 | Strict subset prerequisites | +200–500 | TBD |
 | P7 | with statement | +100–151 | TBD |
 | P8 | Promise improvements | +200–382 | TBD |
