@@ -13,4 +13,3 @@ __pycache__/
 test262-*.json
 *-test262*.json
 promise.json
-!test262-results.json
