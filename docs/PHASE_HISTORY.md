@@ -525,3 +525,44 @@ Overall: 19,117 → 19,720 passing (+603), 74.17% → 78.22%
 - `test262-runner.py` — auto-detect JS bundle, `onlyStrict`/`noStrict` skip logic
 
 **Unit tests**: 695 total, 695 passed, 0 failed
+
+---
+
+## Phase 12: P6 Strict-Mode Prerequisite Bundle (78.22% pass rate)
+
+Narrow, high-ROI strict-mode checks that gate many test262 syntax/runtime tests. Gained +3 test262 tests (19,720 → 19,723).
+
+### Key Implementations
+
+- **Duplicate parameters in strict functions**: `check_duplicate_params()` / `check_duplicate_params_ext()` raise SyntaxError when a function with `"use strict"` (or in a strict context) has duplicate parameter names. Applied in `call_value` and `eval_new` for both `UserFunc` and `UserFuncExt`.
+- **Assignment to `eval`/`arguments` in strict contexts**: `validate_strict_binding_name()` checks applied at all binding sites: `Assign`, `eval_update` (++/--), `eval_compound_assign` (+=, etc.), logical assignment operators (&&=, ||=, ??=), `VarDecl`, `FuncDecl`/`FuncDeclExt`, and function parameter binding.
+- **`delete` unqualified identifier**: Added `Ident` case in the `Delete` unary operator handler — raises SyntaxError when `self.strict` is true.
+- **Strict-only reserved words**: `is_strict_reserved_word()` checks `implements`, `interface`, `package`, `private`, `protected`, `public`. Enforced via `validate_strict_binding_name()` at all binding sites.
+- **Class body implicit strict mode**: `ensure_strict_body()` prepends `"use strict"` directive to class method bodies and constructor bodies in `create_class()`. `ClassConstructor` execution in `eval_new` saves/restores `self.strict = true`.
+- **Class constructor parameter validation**: `check_duplicate_params()` and `validate_strict_binding_name()` applied to class constructor parameters — `constructor(eval)`, `constructor(a, a)`, `constructor(arguments)` now correctly throw SyntaxError.
+- **Sloppy duplicate params fix**: `call_value` and `eval_new` now allow duplicate parameter names in sloppy mode (last value wins) instead of throwing.
+
+### PR Review Fixes (PR #32)
+
+3 rounds of code review addressed:
+1. Generator function name validation — strict-mode reserved words checked via `validate_strict_binding_name()` for `function* eval()` and `function* arguments()`
+2. Class constructor parameter validation — `check_duplicate_params()` and `validate_strict_binding_name()` applied to class constructor params
+3. Early-return strict-state restore comment — explanatory comment on `self.strict = saved_strict` before `return v` in eval_new
+4. Test TODO comment — added note explaining sloppy `this` returning "undefined" due to missing globalThis binding
+
+### Test262 Results
+
+| Category | Passed | Failed | Rate |
+|----------|--------|--------|------|
+| language/function-code | 166 | 7 | 96.0% |
+| language/arguments-object | 145 | 7 | 95.4% |
+
+Overall: 19,720 → 19,723 passing (+3), 78.22%
+
+### Files Changed
+
+- `interpreter/interpreter.mbt` — `check_duplicate_params`, `validate_strict_binding_name`, `is_strict_reserved_word`, `ensure_strict_body`, class constructor param validation, early-return comment
+- `interpreter/interpreter_test.mbt` — P6-specific tests (+30 tests, 695 → 730)
+- `interpreter/builtins.mbt` — strict-mode validation in generator function declarations
+
+**Unit tests**: 730 total, 730 passed, 0 failed

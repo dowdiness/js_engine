@@ -6595,3 +6595,585 @@ test "eval: function decl reassignment propagates to var_env" {
   )
   inspect(output, content="[\"42\"]")
 }
+
+// ============================================================
+// P6: Strict-Mode Prerequisite Bundle tests
+// ============================================================
+
+///|
+test "strict: delete unqualified identifier throws SyntaxError" {
+  let src =
+    #|"use strict";
+    #|var x = 1;
+    #|try {
+    #|  delete x;
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"SyntaxError: Delete of an unqualified identifier in strict mode.\"]",
+  )
+}
+
+///|
+test "strict: delete unqualified identifier in strict function" {
+  let src =
+    #|function f() {
+    #|  "use strict";
+    #|  var x = 1;
+    #|  delete x;
+    #|}
+    #|try {
+    #|  f();
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"SyntaxError: Delete of an unqualified identifier in strict mode.\"]",
+  )
+}
+
+///|
+test "sloppy: delete unqualified identifier is allowed" {
+  let src =
+    #|var x = 1;
+    #|var result = delete x;
+    #|console.log(result);
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "strict: assignment to eval throws SyntaxError" {
+  let src =
+    #|"use strict";
+    #|try {
+    #|  eval = 42;
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"SyntaxError: Unexpected eval or arguments in strict mode\"]",
+  )
+}
+
+///|
+test "strict: assignment to arguments throws SyntaxError" {
+  let src =
+    #|"use strict";
+    #|function f() {
+    #|  try {
+    #|    arguments = [1, 2];
+    #|    console.log("no error");
+    #|  } catch(e) {
+    #|    console.log(e);
+    #|  }
+    #|}
+    #|f();
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"SyntaxError: Unexpected eval or arguments in strict mode\"]",
+  )
+}
+
+///|
+test "strict: ++eval throws SyntaxError" {
+  let src =
+    #|"use strict";
+    #|try {
+    #|  ++eval;
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"SyntaxError: Unexpected eval or arguments in strict mode\"]",
+  )
+}
+
+///|
+test "strict: eval += 1 throws SyntaxError" {
+  let src =
+    #|"use strict";
+    #|try {
+    #|  eval += 1;
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"SyntaxError: Unexpected eval or arguments in strict mode\"]",
+  )
+}
+
+///|
+test "sloppy: assignment to eval is allowed" {
+  let src =
+    #|eval = 42;
+    #|console.log(typeof eval);
+  let output = run_output(src)
+  inspect(output, content="[\"number\"]")
+}
+
+///|
+test "strict: var eval declaration throws SyntaxError" {
+  let src =
+    #|"use strict";
+    #|try {
+    #|  var eval = 1;
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"SyntaxError: Unexpected eval or arguments in strict mode\"]",
+  )
+}
+
+///|
+test "strict: var arguments declaration throws SyntaxError" {
+  let src =
+    #|"use strict";
+    #|try {
+    #|  var arguments = 1;
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"SyntaxError: Unexpected eval or arguments in strict mode\"]",
+  )
+}
+
+///|
+test "strict: function named eval throws SyntaxError" {
+  let src =
+    #|"use strict";
+    #|try {
+    #|  function eval() {}
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"SyntaxError: Unexpected eval or arguments in strict mode\"]",
+  )
+}
+
+///|
+test "strict: duplicate parameters throw SyntaxError" {
+  let src =
+    #|"use strict";
+    #|try {
+    #|  function f(a, a) { return a; }
+    #|  f(1, 2);
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"SyntaxError: Duplicate parameter name not allowed in this context\"]",
+  )
+}
+
+///|
+test "strict: duplicate parameters with use strict in function body" {
+  let src =
+    #|try {
+    #|  function f(a, b, a) {
+    #|    "use strict";
+    #|    return a;
+    #|  }
+    #|  f(1, 2, 3);
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"SyntaxError: Duplicate parameter name not allowed in this context\"]",
+  )
+}
+
+///|
+test "sloppy: duplicate parameters are allowed" {
+  let src =
+    #|function f(a, a) { return a; }
+    #|console.log(f(1, 2));
+  let output = run_output(src)
+  inspect(output, content="[\"2\"]")
+}
+
+///|
+test "strict: parameter named eval throws SyntaxError" {
+  let src =
+    #|"use strict";
+    #|try {
+    #|  function f(eval) { return eval; }
+    #|  f(1);
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"SyntaxError: Unexpected eval or arguments in strict mode\"]",
+  )
+}
+
+///|
+test "strict: parameter named arguments throws SyntaxError" {
+  let src =
+    #|"use strict";
+    #|try {
+    #|  function f(arguments) { return arguments; }
+    #|  f(1);
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"SyntaxError: Unexpected eval or arguments in strict mode\"]",
+  )
+}
+
+///|
+test "strict: reserved word 'implements' as var name throws SyntaxError" {
+  let src =
+    #|"use strict";
+    #|try {
+    #|  var implements = 1;
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"SyntaxError: Unexpected strict mode reserved word\"]",
+  )
+}
+
+///|
+test "strict: reserved word 'interface' as var name throws SyntaxError" {
+  let src =
+    #|"use strict";
+    #|try {
+    #|  var interface = 1;
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"SyntaxError: Unexpected strict mode reserved word\"]",
+  )
+}
+
+///|
+test "strict: reserved word 'private' as var name throws SyntaxError" {
+  let src =
+    #|"use strict";
+    #|try {
+    #|  var private = 1;
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"SyntaxError: Unexpected strict mode reserved word\"]",
+  )
+}
+
+///|
+test "strict: reserved word 'protected' as function name throws SyntaxError" {
+  let src =
+    #|"use strict";
+    #|try {
+    #|  function protected() {}
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"SyntaxError: Unexpected strict mode reserved word\"]",
+  )
+}
+
+///|
+test "strict: reserved word 'public' as parameter name throws SyntaxError" {
+  let src =
+    #|"use strict";
+    #|try {
+    #|  function f(public) { return public; }
+    #|  f(1);
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"SyntaxError: Unexpected strict mode reserved word\"]",
+  )
+}
+
+///|
+test "strict: reserved word 'package' as var name throws SyntaxError" {
+  let src =
+    #|"use strict";
+    #|try {
+    #|  var package = 1;
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"SyntaxError: Unexpected strict mode reserved word\"]",
+  )
+}
+
+///|
+test "sloppy: reserved words are valid identifiers" {
+  let src =
+    #|var implements = 1;
+    #|var interface = 2;
+    #|var private = 3;
+    #|console.log(implements + interface + private);
+  let output = run_output(src)
+  inspect(output, content="[\"6\"]")
+}
+
+///|
+test "class body is implicitly strict: delete unqualified identifier" {
+  let src =
+    #|class C {
+    #|  method() {
+    #|    var x = 1;
+    #|    return delete x;
+    #|  }
+    #|}
+    #|try {
+    #|  new C().method();
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"SyntaxError: Delete of an unqualified identifier in strict mode.\"]",
+  )
+}
+
+///|
+test "class body is implicitly strict: no arguments.callee" {
+  let src =
+    #|class C {
+    #|  method() {
+    #|    return typeof arguments.callee;
+    #|  }
+    #|}
+    #|console.log(new C().method());
+  let output = run_output(src)
+  inspect(output, content="[\"undefined\"]")
+}
+
+///|
+test "class constructor is implicitly strict" {
+  let src =
+    #|class C {
+    #|  constructor() {
+    #|    this.strict = (function() { return this === undefined; })();
+    #|  }
+    #|}
+    #|var obj = new C();
+    #|console.log(obj.strict);
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "strict: function-level strict mode with eval assignment" {
+  let src =
+    #|function f() {
+    #|  "use strict";
+    #|  eval = 1;
+    #|}
+    #|try {
+    #|  f();
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"SyntaxError: Unexpected eval or arguments in strict mode\"]",
+  )
+}
+
+///|
+test "strict: yield as binding name throws SyntaxError" {
+  let src =
+    #|"use strict";
+    #|try {
+    #|  var yield = 1;
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"SyntaxError: Unexpected strict mode reserved word\"]",
+  )
+}
+
+///|
+test "sloppy: yield as identifier outside generator is allowed" {
+  let src =
+    #|var yield = 42;
+    #|console.log(yield);
+  let output = run_output(src)
+  inspect(output, content="[\"42\"]")
+}
+
+///|
+// TODO: sloppy() returns "undefined" because sloppy-mode `this` binding to
+// globalThis is not yet implemented. Once globalThis is wired up, the expected
+// result for sloppy() should change from "undefined" to "object".
+test "class constructor strict: does not leak strict mode" {
+  let src =
+    #|class Base {
+    #|  constructor() {
+    #|    this.x = 1;
+    #|  }
+    #|}
+    #|class Derived extends Base {}
+    #|var d = new Derived();
+    #|// After class construction, strict mode should not leak
+    #|function sloppy() { return typeof this; }
+    #|console.log(d.x);
+    #|console.log(sloppy());
+  let output = run_output(src)
+  inspect(output, content="[\"1\", \"undefined\"]")
+}
+
+///|
+test "strict: generator declaration named eval throws SyntaxError" {
+  let src =
+    #|"use strict";
+    #|try {
+    #|  function* eval() { yield 1; }
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"SyntaxError: Unexpected eval or arguments in strict mode\"]",
+  )
+}
+
+///|
+test "strict: generator declaration named arguments throws SyntaxError" {
+  let src =
+    #|"use strict";
+    #|try {
+    #|  function* arguments() { yield 1; }
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"SyntaxError: Unexpected eval or arguments in strict mode\"]",
+  )
+}
+
+///|
+test "strict: class constructor with eval param throws SyntaxError" {
+  let src =
+    #|try {
+    #|  class Foo { constructor(eval) {} }
+    #|  new Foo();
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"SyntaxError: Unexpected eval or arguments in strict mode\"]",
+  )
+}
+
+///|
+test "strict: class constructor with arguments param throws SyntaxError" {
+  let src =
+    #|try {
+    #|  class Bar { constructor(arguments) {} }
+    #|  new Bar();
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"SyntaxError: Unexpected eval or arguments in strict mode\"]",
+  )
+}
+
+///|
+test "strict: class constructor with duplicate params throws SyntaxError" {
+  let src =
+    #|try {
+    #|  class Baz { constructor(a, a) {} }
+    #|  new Baz();
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"SyntaxError: Duplicate parameter name not allowed in this context\"]",
+  )
+}

@@ -2,9 +2,9 @@
 
 ## Current Status
 
-**Test262**: 19,720 / 25,211 passed (78.22%) | 22,748 skipped | 5,491 failed | 185 timeouts
+**Test262**: 19,723 / 25,215 passed (78.22%) | 22,748 skipped | 5,492 failed | 181 timeouts
 
-**Unit tests**: 695 total, 695 passed, 0 failed
+**Unit tests**: 730 total, 730 passed, 0 failed
 
 ## Phase History
 
@@ -25,6 +25,7 @@
 | 9 | +7,439 | 19,117 | P0-P3: error diagnostics, generator methods, destructuring defaults, parser cleanup |
 | 10 | — | — | P4: Object descriptor compliance — Symbol keys, function props, Array targets |
 | 11 | +603 | 19,720 | P5: eval() semantics — direct/indirect eval, var hoisting, lex conflict checks |
+| 12 | +3 | 19,723 | P6: Strict-mode prerequisite bundle — duplicate params, eval/arguments binding, delete identifier, reserved words, class body strict |
 
 For detailed implementation notes on Phases 1-6, see [docs/PHASE_HISTORY.md](docs/PHASE_HISTORY.md).
 
@@ -32,17 +33,17 @@ For detailed implementation notes on Phases 1-6, see [docs/PHASE_HISTORY.md](doc
 
 ## Failure Breakdown
 
-### Failure Breakdown by Category (5,491 remaining failures)
+### Failure Breakdown by Category (5,492 remaining failures)
 
 Top failing categories from the latest CI run:
 
 | Category | Pass | Fail | Rate | Priority |
 |----------|------|------|------|----------|
 | language/expressions | 4,613 | 876 | 84.0% | Medium |
-| language/statements | 3,214 | 958 | 77.0% | Medium |
-| built-ins/Array | 2,390 | 480 | 83.3% | Medium |
+| language/statements | 3,213 | 959 | 77.0% | Medium |
+| built-ins/Array | 2,392 | 482 | 83.2% | Medium |
 | built-ins/Object | 3,020 | 271 | 91.8% | Low (P4 done) |
-| annexB/language | 314 | 503 | 38.4% | Low |
+| annexB/language | 314 | 503 | 38.4% | Low (--annex-b) |
 | built-ins/Promise | 206 | 362 | 36.3% | Medium |
 | built-ins/DataView | 7 | 304 | 2.3% | Hard (needs TypedArray) |
 | built-ins/RegExp | 601 | 225 | 72.8% | Hard |
@@ -70,16 +71,22 @@ Top failing categories from the latest CI run:
 | built-ins/parseInt | 53 | 1 | 98.1% |
 | built-ins/Math | 280 | 6 | 97.9% |
 | built-ins/Set | 170 | 6 | 96.6% |
+| language/function-code | 166 | 7 | 96.0% |
 | language/keywords | 24 | 1 | 96.0% |
 | built-ins/Date | 511 | 23 | 95.7% |
 | language/arguments-object | 145 | 7 | 95.4% |
-| language/function-code | 164 | 9 | 94.8% |
+| built-ins/decodeURIComponent | 51 | 3 | 94.4% |
+| built-ins/decodeURI | 50 | 3 | 94.3% |
 | language/computed-property-names | 45 | 3 | 93.8% |
+| built-ins/encodeURIComponent | 28 | 2 | 93.3% |
 | language/asi | 95 | 7 | 93.1% |
 | built-ins/JSON | 105 | 8 | 92.9% |
+| language/reserved-words | 25 | 2 | 92.6% |
+| language/future-reserved-words | 34 | 3 | 91.9% |
 | built-ins/Object | 3,020 | 271 | 91.8% |
 | built-ins/String | 1,061 | 97 | 91.6% |
 | language/rest-parameters | 10 | 1 | 90.9% |
+| built-ins/encodeURI | 27 | 3 | 90.0% |
 
 ---
 
@@ -93,7 +100,7 @@ node ./_build/js/debug/build/cmd/main/main.js 'console.log(1 + 2)'
 # => 3
 ```
 
-All 695 unit tests pass on both WASM-GC and JS targets. See [docs/SELF_HOST_JS_RESEARCH.md](docs/SELF_HOST_JS_RESEARCH.md) for full analysis.
+All 730 unit tests pass on both WASM-GC and JS targets. See [docs/SELF_HOST_JS_RESEARCH.md](docs/SELF_HOST_JS_RESEARCH.md) for full analysis.
 
 ### What was needed
 - **Backend-specific argv handling**: `process.argv` on JS includes `["node", "script.js", ...]`, so user args start at index 2 (vs index 1 on WASM). Solved with `.js.mbt` / `.wasm.mbt` / `.wasm-gc.mbt` files.
@@ -285,7 +292,24 @@ Full direct/indirect eval implementation per ES spec (EvalDeclarationInstantiati
 
 ---
 
-## Phase 11+ Targets
+### 12: P6 Strict-Mode Prerequisite Bundle (+3 tests) — DONE
+
+Narrow, high-ROI strict-mode checks that gate many test262 syntax/runtime tests:
+
+- **Duplicate parameters in strict functions**: `check_duplicate_params()` / `check_duplicate_params_ext()` raise SyntaxError when a function with `"use strict"` (or in a strict context) has duplicate parameter names
+- **Assignment to `eval`/`arguments` in strict contexts**: `validate_strict_binding_name()` raises SyntaxError for assignments (=, +=, ++, etc.), variable declarations, function declarations, and parameter names
+- **`delete` unqualified identifier**: `delete x` (where x is an identifier) raises SyntaxError in strict mode
+- **Strict-only reserved words**: `implements`, `interface`, `package`, `private`, `protected`, `public` cannot be used as binding names in strict mode
+- **Class body implicit strict mode**: `ensure_strict_body()` prepends `"use strict"` directive to class method and constructor bodies. `ClassConstructor` execution sets `self.strict = true`
+- **Class constructor parameter validation**: `check_duplicate_params()` and `validate_strict_binding_name()` applied to class constructor parameters (class bodies are always strict)
+- **Sloppy duplicate params fix**: `call_value` and `eval_new` now allow duplicate parameter names in sloppy mode (last value wins)
+
+**Test262**: 19,720 → 19,723 passing (+3), language/function-code 166/173 (96.0%)
+**Unit tests**: 30 new P6-specific tests (730 total, all passing)
+
+---
+
+## Phase 12+ Targets
 
 ### async/await (~500 tests)
 
@@ -296,12 +320,55 @@ Syntactic sugar over Promises + generator-like suspension. Now unblocked by gene
 | Feature | Impact | Notes |
 |---------|--------|-------|
 | RegExp improvements | ~225 fail | Capture groups, backreferences, unicode/sticky flags |
-| `with` statement | ~150 | Dynamic scope injection |
 | Date object | — | ✅ Done (8C+9) — 511/534 pass (95.7%) |
 | eval() | — | ✅ Done (P5) — 224/330 pass (67.9%) |
 | WeakMap/WeakSet | ~59 fail | Reference-based collections |
 | Proxy/Reflect | ~500 | Meta-programming |
 | Promise improvements | ~362 fail | Iterator protocol, thenable assimilation, microtask ordering |
+
+---
+
+## Annex B / Legacy Features (`--annex-b` flag)
+
+**Status**: Planned. Deprecated and legacy ECMAScript features will be gated behind an `--annex-b` CLI flag, suppressed by default.
+
+**Rationale**: Annex B features are deprecated, banned in strict mode, and irrelevant to modern JavaScript. Implementing them unconditionally adds complexity and pollutes the core engine. Gating them behind a flag keeps the default engine clean while allowing opt-in for legacy compatibility testing.
+
+### Design
+
+```bash
+# Default: strict-modern behavior, no Annex B
+node engine.js 'with ({x: 1}) { print(x) }'
+# => SyntaxError: 'with' statement is not supported
+
+# Opt-in: enable Annex B legacy features
+node engine.js --annex-b 'with ({x: 1}) { print(x) }'
+# => 1
+```
+
+- **CLI**: `--annex-b` flag parsed in `cmd/main/main.mbt`, passed to interpreter as `self.annex_b : Bool`
+- **Test262 runner**: `test262-runner.py` passes `--annex-b` for tests in `annexB/` directories or tests with `includes: [annexB]` metadata
+- **Feature gating**: Each Annex B feature checks `self.annex_b` before enabling legacy behavior
+
+### Features to gate behind `--annex-b`
+
+| Feature | Tests | Notes |
+|---------|-------|-------|
+| `with` statement | ~151 fail | Object environment record, dynamic scope injection. SyntaxError in strict mode regardless of flag |
+| Legacy octal literals (`0777`) | ~30 | `0`-prefixed octals in sloppy mode |
+| Legacy octal escapes (`\077`) | ~20 | Octal escape sequences in strings |
+| `__proto__` property | ~40 | `Object.prototype.__proto__` getter/setter |
+| HTML comment syntax (`<!--`, `-->`) | ~10 | HTML-style comments in script code |
+| `String.prototype.{anchor,big,blink,...}` | ~73 fail | HTML wrapper methods (`"str".bold()` → `"<b>str</b>"`) |
+| `RegExp.prototype.compile` | ~10 | Legacy RegExp recompilation |
+| `escape()`/`unescape()` | ~20 | Legacy encoding functions |
+| Block-level function declarations (sloppy) | ~503 fail | `annexB/language` — FunctionDeclaration in blocks under sloppy mode (Annex B.3.3) |
+
+**Estimated total**: ~857 tests currently failing due to missing Annex B features
+
+### Priority
+
+Low. These features are not required for modern JavaScript usage. Implement only after core ES2015+ compliance targets are met (>85% pass rate on non-Annex B tests).
 
 ---
 
