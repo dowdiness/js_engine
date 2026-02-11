@@ -59,7 +59,7 @@ pub fn Interpreter::run_microtasks(self : Interpreter) -> Unit raise Error {
       Object(obj_data) =>
         match obj_data.callable {
           Some(_) => {
-            let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
+            let loc = @token.Loc::default()
             let _ = self.call_value(task.callback, Undefined, task.args, loc)
           }
           None => ()
@@ -118,7 +118,7 @@ fn create_resolving_functions(
           Promise(_) | Object(_) => {
             // Get(resolution, "then") walks the prototype chain and
             // invokes accessors per ECMAScript spec
-            let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
+            let loc = @token.Loc::default()
             let then_val = i.get_property(resolution, "then", loc) catch {
               e => {
                 // If Get throws, reject the promise with the error
@@ -271,7 +271,7 @@ fn enqueue_promise_reaction_job(
     callable: Some(
       InterpreterCallable("PromiseReactionJob", fn(i, _this, args) raise {
         let value = if args.length() > 0 { args[0] } else { Undefined }
-        let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
+        let loc = @token.Loc::default()
 
         // If handler is None, use identity (fulfill) or thrower (reject)
         match reaction.handler {
@@ -423,6 +423,52 @@ fn call_promise_resolve_method(
 }
 
 ///|
+/// SpeciesConstructor(promise, %Promise%) for Promise.prototype methods
+fn get_promise_species_constructor(
+  interp : Interpreter,
+  promise : Value,
+  loc : @token.Loc,
+) -> Value raise Error {
+  let default_ctor = interp.global.get("Promise") catch { _ => Undefined }
+  let ctor = interp.get_property(promise, "constructor", loc)
+  match ctor {
+    Undefined => default_ctor
+    Object(_) => {
+      let symbol_ctor = interp.global.get("Symbol") catch { _ => Undefined }
+      let species_key = match symbol_ctor {
+        Object(_) =>
+          interp.get_property(symbol_ctor, "species", loc) catch {
+            _ => Undefined
+          }
+        _ => Undefined
+      }
+      match species_key {
+        Symbol(_) => {
+          let species = interp.get_computed_property(ctor, species_key, loc)
+          match species {
+            Undefined | Null => default_ctor
+            Object(species_data) =>
+              match species_data.callable {
+                Some(_) => species
+                None =>
+                  raise @errors.TypeError(
+                    message="Promise species is not a constructor",
+                  )
+              }
+            _ =>
+              raise @errors.TypeError(
+                message="Promise species is not a constructor",
+              )
+          }
+        }
+        _ => default_ctor
+      }
+    }
+    _ => raise @errors.TypeError(message="Promise constructor is not an object")
+  }
+}
+
+///|
 /// Construct a value with `new` from an already-evaluated constructor and args
 fn construct_with_value(
   interp : Interpreter,
@@ -440,8 +486,8 @@ fn create_promise_capability_from_constructor(
   ctor : Value,
   loc : @token.Loc,
 ) -> (Value, Value, Value) raise Error {
-  let resolve_ref : Ref[Value?] = { val: None }
-  let reject_ref : Ref[Value?] = { val: None }
+  let resolve_ref : Ref[Value] = { val: Undefined }
+  let reject_ref : Ref[Value] = { val: Undefined }
   let executor = Object({
     properties: {},
     symbol_properties: {},
@@ -454,13 +500,16 @@ fn create_promise_capability_from_constructor(
       ) raise {
         let resolve_fn = if args.length() > 0 { args[0] } else { Undefined }
         let reject_fn = if args.length() > 1 { args[1] } else { Undefined }
-        if resolve_ref.val is Some(_) || reject_ref.val is Some(_) {
+        // Per GetCapabilitiesExecutor, only throw once either slot is set to
+        // a non-undefined value. A prior call with (undefined, undefined) is
+        // allowed and should not trigger this TypeError on a later call.
+        if not(resolve_ref.val is Undefined) || not(reject_ref.val is Undefined) {
           raise @errors.TypeError(
             message="Promise capability executor called multiple times",
           )
         }
-        resolve_ref.val = Some(resolve_fn)
-        reject_ref.val = Some(reject_fn)
+        resolve_ref.val = resolve_fn
+        reject_ref.val = reject_fn
         Undefined
       }),
     ),
@@ -470,18 +519,24 @@ fn create_promise_capability_from_constructor(
     extensible: true,
   })
   let promise = construct_with_value(interp, ctor, [executor], loc)
-  let resolve = match resolve_ref.val {
-    Some(v) => v
-    None =>
-      raise @errors.TypeError(
-        message="Promise resolve function is not callable",
-      )
+  // Promise subclass instances are represented as Promise values in this engine.
+  // Preserve the construction target so SpeciesConstructor-based lookups can
+  // observe the right constructor on subsequent then/catch/finally calls.
+  match promise {
+    Promise(promise_data) => {
+      promise_data.properties["constructor"] = ctor
+      promise_data.descriptors["constructor"] = {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
+    }
+    _ => ()
   }
-  let reject = match reject_ref.val {
-    Some(v) => v
-    None =>
-      raise @errors.TypeError(message="Promise reject function is not callable")
-  }
+  let resolve = resolve_ref.val
+  let reject = reject_ref.val
   match resolve {
     Object(data) =>
       if data.callable is None {
@@ -550,6 +605,11 @@ pub fn setup_promise(env : Environment) -> Unit {
       InterpreterCallable("then", fn(interp, this_val, args) raise {
         match this_val {
           Promise(promise_data) => {
+            let loc = @token.Loc::default()
+            let ctor = get_promise_species_constructor(interp, this_val, loc)
+            let (result_promise, resolve, reject) = create_promise_capability_from_constructor(
+              interp, ctor, loc,
+            )
             let on_fulfilled = if args.length() > 0 {
               match args[0] {
                 Object(od) =>
@@ -579,15 +639,6 @@ pub fn setup_promise(env : Environment) -> Unit {
             if on_rejected is Some(_) {
               promise_data.is_handled = true
             }
-
-            // Create new promise for the result
-            let result_promise_data = new_promise_data()
-            let result_promise : Value = Promise(result_promise_data)
-
-            // Create resolving functions for the result promise
-            let (resolve, reject) = create_resolving_functions(
-              interp, result_promise_data,
-            )
 
             // Create reactions
             let fulfill_reaction : PromiseReaction = {
@@ -649,14 +700,12 @@ pub fn setup_promise(env : Environment) -> Unit {
     callable: Some(
       InterpreterCallable("catch", fn(interp, this_val, args) raise {
         // catch(onRejected) is just then(undefined, onRejected)
-        let then_method = match this_val {
-          Promise(pd) => get_promise_method(pd, "then")
-          _ =>
-            raise @errors.TypeError(
-              message="Promise.prototype.catch requires a Promise",
-            )
-        }
-        let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
+        let then_method = interp.get_property(
+          this_val,
+          "then",
+          @token.Loc::default(),
+        )
+        let loc = @token.Loc::default()
         let on_rejected = if args.length() > 0 { args[0] } else { Undefined }
         interp.call_value(then_method, this_val, [Undefined, on_rejected], loc)
       }),
@@ -674,14 +723,8 @@ pub fn setup_promise(env : Environment) -> Unit {
     prototype: Null,
     callable: Some(
       InterpreterCallable("finally", fn(interp, this_val, args) raise {
-        // Ensure this_val is a Promise
-        let promise_data = match this_val {
-          Promise(pd) => pd
-          _ =>
-            raise @errors.TypeError(
-              message="Promise.prototype.finally requires a Promise",
-            )
-        }
+        let loc = @token.Loc::default()
+        let ctor = get_promise_species_constructor(interp, this_val, loc)
         let on_finally = if args.length() > 0 { args[0] } else { Undefined }
         let is_callable = match on_finally {
           Object(od) => od.callable is Some(_)
@@ -689,8 +732,7 @@ pub fn setup_promise(env : Environment) -> Unit {
         }
         if not(is_callable) {
           // If onFinally is not callable, pass through
-          let then_method = get_promise_method(promise_data, "then")
-          let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
+          let then_method = interp.get_property(this_val, "then", loc)
           return interp.call_value(
             then_method,
             this_val,
@@ -717,11 +759,12 @@ pub fn setup_promise(env : Environment) -> Unit {
               } else {
                 Undefined
               }
-              let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
               // Call onFinally
               let finally_result = i.call_value(on_finally, Undefined, [], loc)
-              // Wrap result via PromiseResolve algorithm
-              let result_promise = promise_resolve_value(i, finally_result)
+              let promise_resolve = get_promise_resolve_method(i, ctor, loc)
+              let result_promise = call_promise_resolve_method(
+                i, promise_resolve, ctor, finally_result, loc,
+              )
               // Create a thunk that returns the original value
               let return_value_thunk = Object({
                 properties: {},
@@ -736,10 +779,7 @@ pub fn setup_promise(env : Environment) -> Unit {
                 extensible: true,
               })
               // Chain: Promise.resolve(finally_result).then(() => value)
-              let then_method = match result_promise {
-                Promise(pd) => get_promise_method(pd, "then")
-                _ => Undefined
-              }
+              let then_method = i.get_property(result_promise, "then", loc)
               i.call_value(
                 then_method,
                 result_promise,
@@ -768,11 +808,12 @@ pub fn setup_promise(env : Environment) -> Unit {
               } else {
                 Undefined
               }
-              let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
               // Call onFinally
               let finally_result = i.call_value(on_finally, Undefined, [], loc)
-              // Wrap result via PromiseResolve algorithm
-              let result_promise = promise_resolve_value(i, finally_result)
+              let promise_resolve = get_promise_resolve_method(i, ctor, loc)
+              let result_promise = call_promise_resolve_method(
+                i, promise_resolve, ctor, finally_result, loc,
+              )
               // Create a thunk that re-throws the original reason
               let throw_reason_thunk = Object({
                 properties: {},
@@ -789,10 +830,7 @@ pub fn setup_promise(env : Environment) -> Unit {
                 extensible: true,
               })
               // Chain: Promise.resolve(finally_result).then(() => { throw reason })
-              let then_method = match result_promise {
-                Promise(pd) => get_promise_method(pd, "then")
-                _ => Undefined
-              }
+              let then_method = i.get_property(result_promise, "then", loc)
               i.call_value(
                 then_method,
                 result_promise,
@@ -806,8 +844,7 @@ pub fn setup_promise(env : Environment) -> Unit {
           symbol_descriptors: {},
           extensible: true,
         })
-        let then_method = get_promise_method(promise_data, "then")
-        let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
+        let then_method = interp.get_property(this_val, "then", loc)
         interp.call_value(
           then_method,
           this_val,
@@ -884,20 +921,14 @@ pub fn setup_promise(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("reject", fn(_interp, _this, args) {
+      InterpreterCallable("reject", fn(interp, this_val, args) raise {
         let reason = if args.length() > 0 { args[0] } else { Undefined }
-        let promise_data : PromiseData = {
-          state: Rejected,
-          result: reason,
-          fulfill_reactions: [],
-          reject_reactions: [],
-          is_handled: false,
-          properties: {},
-          symbol_properties: {},
-          descriptors: {},
-          symbol_descriptors: {},
-        }
-        Promise(promise_data)
+        let loc = @token.Loc::default()
+        let (promise, _resolve, reject) = create_promise_capability_from_constructor(
+          interp, this_val, loc,
+        )
+        let _ = interp.call_value(reject, Undefined, [reason], loc)
+        promise
       }),
     ),
     class_name: "Function",
@@ -1543,7 +1574,7 @@ pub fn setup_promise(env : Environment) -> Unit {
         let (resolve, reject) = create_resolving_functions(interp, promise_data)
 
         // Call executor synchronously
-        let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
+        let loc = @token.Loc::default()
         try {
           let _ = interp.call_value(executor, Undefined, [resolve, reject], loc)
         } catch {
@@ -1561,6 +1592,42 @@ pub fn setup_promise(env : Environment) -> Unit {
     symbol_descriptors: {},
     extensible: true,
   })
+
+  // Promise[Symbol.species] getter returns `this` (used by SpeciesConstructor).
+  let species_getter = Object({
+    properties: {},
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      MethodCallable("get [Symbol.species]", fn(this_val, _args) { this_val }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+  let species_symbol_val = env.get("Symbol") catch { _ => Undefined }
+  match species_symbol_val {
+    Object(symbol_data) =>
+      match symbol_data.properties.get("species") {
+        Some(Symbol(species_sym)) =>
+          match promise_ctor {
+            Object(ctor_data) => {
+              ctor_data.symbol_properties[species_sym.id] = Undefined
+              ctor_data.symbol_descriptors[species_sym.id] = {
+                writable: false,
+                enumerable: false,
+                configurable: true,
+                getter: Some(species_getter),
+                setter: None,
+              }
+            }
+            _ => ()
+          }
+        _ => ()
+      }
+    _ => ()
+  }
 
   // Set prototype property on constructor
   match promise_ctor {
@@ -1865,7 +1932,7 @@ pub fn Interpreter::run_timers(self : Interpreter) -> Unit raise Error {
       continue
     }
     // Execute the timer callback
-    let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
+    let loc = @token.Loc::default()
     let _ = self.call_value(timer.callback, Undefined, timer.args, loc)
     // Microtask checkpoint after each task (per WHATWG event loop spec)
     self.run_microtasks()
@@ -1892,36 +1959,6 @@ pub fn Interpreter::run_timers(self : Interpreter) -> Unit raise Error {
   }
   // Clear the cancelled set for this run
   self.cancelled_timer_ids.clear()
-}
-
-///|
-/// PromiseResolve algorithm (ECMAScript §27.2.4.7)
-/// If value is already a Promise, return it; otherwise resolve a new Promise with it
-fn promise_resolve_value(
-  interp : Interpreter,
-  value : Value,
-) -> Value raise Error {
-  match value {
-    Promise(_) => value
-    _ => {
-      let pd : PromiseData = {
-        state: Pending,
-        result: Undefined,
-        fulfill_reactions: [],
-        reject_reactions: [],
-        is_handled: false,
-        properties: {},
-        symbol_properties: {},
-        descriptors: {},
-        symbol_descriptors: {},
-      }
-      let promise = Promise(pd)
-      let (resolve, _reject) = create_resolving_functions(interp, pd)
-      let loc : @token.Loc = { line: 0, col: 0, offset: 0 }
-      let _ = interp.call_value(resolve, Undefined, [value], loc)
-      promise
-    }
-  }
 }
 
 ///|

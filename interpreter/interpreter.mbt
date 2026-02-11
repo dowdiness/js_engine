@@ -3763,6 +3763,11 @@ fn Interpreter::eval_expr(
                     }
                     call_env.def(ctor_params[i], val, LetBinding)
                   }
+                  call_env.def(
+                    "arguments",
+                    make_arguments_object(args, super_ctor, true),
+                    VarBinding,
+                  )
                   self.hoist_declarations(ctor_body, call_env)
                   let exec_result = self.exec_stmts(ctor_body, call_env)
                   // If super constructor returns an object, use it as the new 'this'
@@ -4701,6 +4706,12 @@ fn Interpreter::call_value(
   args : Array[Value],
   loc : @token.Loc,
 ) -> Value raise Error {
+  let normalize_sloppy_this = fn(tv : Value) {
+    match tv {
+      Undefined | Null => self.global_this
+      _ => tv
+    }
+  }
   match callee {
     Object(obj_data) =>
       match obj_data.callable {
@@ -4719,7 +4730,12 @@ fn Interpreter::call_value(
                 validate_strict_binding_name(p)
               }
             }
-            func_env.def("this", this_val, LetBinding)
+            let effective_this = if func_strict {
+              this_val
+            } else {
+              normalize_sloppy_this(this_val)
+            }
+            func_env.def("this", effective_this, LetBinding)
             func_env.def("<new.target>", Undefined, LetBinding)
             for i = 0; i < data.params.length(); i = i + 1 {
               let val : Value = if i < args.length() {
@@ -4842,7 +4858,12 @@ fn Interpreter::call_value(
                 None => ()
               }
             }
-            func_env.def("this", this_val, LetBinding)
+            let effective_this = if func_strict {
+              this_val
+            } else {
+              normalize_sloppy_this(this_val)
+            }
+            func_env.def("this", effective_this, LetBinding)
             func_env.def("<new.target>", Undefined, LetBinding)
             // Bind params with defaults
             let mut effective_param_count = 0
@@ -5050,19 +5071,24 @@ fn Interpreter::call_value(
         }
         Some(FuncApplyMethod(target)) => {
           let call_this = if args.length() > 0 { args[0] } else { Undefined }
-          let call_args : Array[Value] = if args.length() > 1 {
-            match args[1] {
-              Array(data) => {
-                let a : Array[Value] = []
-                for el in data.elements {
-                  a.push(el)
+          let call_args : Array[Value] = []
+          if args.length() > 1 {
+            let arg_array = args[1]
+            match arg_array {
+              Undefined | Null => ()
+              _ => {
+                // apply accepts any array-like object (including `arguments`).
+                let arg_len = to_array_like_length(arg_array)
+                for i = 0; i < arg_len; i = i + 1 {
+                  let element = self.get_computed_property(
+                    arg_array,
+                    Number(i.to_double()),
+                    loc,
+                  )
+                  call_args.push(element)
                 }
-                a
               }
-              _ => []
             }
-          } else {
-            []
           }
           self.call_value(target, call_this, call_args, loc)
         }
@@ -6399,6 +6425,24 @@ fn format_loc_context(message : String, loc : @token.Loc) -> String {
 }
 
 ///|
+fn maybe_set_promise_constructor(value : Value, ctor : Value) -> Value {
+  match value {
+    Promise(data) => {
+      data.properties["constructor"] = ctor
+      data.descriptors["constructor"] = {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
+      value
+    }
+    _ => value
+  }
+}
+
+///|
 fn Interpreter::construct_value(
   self : Interpreter,
   ctor : Value,
@@ -6677,6 +6721,11 @@ fn Interpreter::construct_value(
                   }
                   ctor_env.def(params[i], val, LetBinding)
                 }
+                ctor_env.def(
+                  "arguments",
+                  make_arguments_object(args, ctor, true),
+                  VarBinding,
+                )
                 // Hoist declarations and execute body
                 self.hoist_declarations(body, ctor_env)
                 let exec_result = self.exec_stmts(body, ctor_env)
@@ -6746,6 +6795,11 @@ fn Interpreter::construct_value(
                                   }
                                   super_env.def(params[i], val, LetBinding)
                                 }
+                                super_env.def(
+                                  "arguments",
+                                  make_arguments_object(args, sc, true),
+                                  VarBinding,
+                                )
                                 self.hoist_declarations(body, super_env)
                                 let exec_result = self.exec_stmts(
                                   body, super_env,
@@ -6758,7 +6812,9 @@ fn Interpreter::construct_value(
                                       // `return` exits eval_new entirely, bypassing
                                       // the normal restore at the end of the try block.
                                       self.strict = saved_strict
-                                      return v
+                                      return maybe_set_promise_constructor(
+                                        v, derived_ctor,
+                                      )
                                     }
                                   _ => ()
                                 }
@@ -6772,7 +6828,9 @@ fn Interpreter::construct_value(
                                 super_result,
                               ) {
                               self.strict = saved_strict
-                              return super_result
+                              return maybe_set_promise_constructor(
+                                super_result, derived_ctor,
+                              )
                             }
                           }
                           _ => ()
@@ -6791,7 +6849,7 @@ fn Interpreter::construct_value(
             }
           }
           self.strict = saved_strict
-          result
+          maybe_set_promise_constructor(result, ctor)
         }
         _ =>
           raise @errors.TypeError(

@@ -264,19 +264,18 @@ pub suberror JsException {
 
 ///|
 pub fn make_func(data : FuncData) -> Value {
-  Object({
-    properties: {
-      "prototype": Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: None,
-        class_name: "Object",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      }),
-    },
+  let proto = Object({
+    properties: {},
+    symbol_properties: {},
+    prototype: Null,
+    callable: None,
+    class_name: "Object",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+  let func_obj = Object({
+    properties: { "prototype": proto },
     symbol_properties: {},
     prototype: Null,
     callable: Some(UserFunc(data)),
@@ -293,23 +292,36 @@ pub fn make_func(data : FuncData) -> Value {
     symbol_descriptors: {},
     extensible: true,
   })
+  match proto {
+    Object(proto_data) => {
+      proto_data.properties["constructor"] = func_obj
+      proto_data.descriptors["constructor"] = {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
+    }
+    _ => ()
+  }
+  func_obj
 }
 
 ///|
 pub fn make_func_ext(data : FuncDataExt) -> Value {
-  Object({
-    properties: {
-      "prototype": Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: None,
-        class_name: "Object",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      }),
-    },
+  let proto = Object({
+    properties: {},
+    symbol_properties: {},
+    prototype: Null,
+    callable: None,
+    class_name: "Object",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+  let func_obj = Object({
+    properties: { "prototype": proto },
     symbol_properties: {},
     prototype: Null,
     callable: Some(UserFuncExt(data)),
@@ -326,6 +338,20 @@ pub fn make_func_ext(data : FuncDataExt) -> Value {
     symbol_descriptors: {},
     extensible: true,
   })
+  match proto {
+    Object(proto_data) => {
+      proto_data.properties["constructor"] = func_obj
+      proto_data.descriptors["constructor"] = {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
+    }
+    _ => ()
+  }
+  func_obj
 }
 
 ///|

@@ -1382,6 +1382,47 @@ test "function apply method" {
 }
 
 ///|
+test "function apply method with array-like object" {
+  let src =
+    #|function join3(a, b, c) { return a + ":" + b + ":" + c; }
+    #|var arrayLike = {0: "x", 1: "y", 2: "z", length: 3};
+    #|join3.apply(null, arrayLike);
+  let (_, result) = run_js(src)
+  inspect(result, content="x:y:z")
+}
+
+///|
+test "function apply method with arguments object" {
+  let src =
+    #|function add2(a, b) { return a + b; }
+    #|function forward() { return add2.apply(null, arguments); }
+    #|forward(40, 2);
+  let (_, result) = run_js(src)
+  inspect(result, content="42")
+}
+
+///|
+test "function apply method with array-like length 0" {
+  let src =
+    #|function count() { return arguments.length; }
+    #|count.apply(null, {0: 99, length: 0});
+  let (_, result) = run_js(src)
+  inspect(result, content="0")
+}
+
+///|
+test "function apply method with non-numeric length" {
+  let src =
+    #|function firstOrNone() {
+    #|  if (arguments.length === 0) return "none";
+    #|  return String(arguments[0]);
+    #|}
+    #|firstOrNone.apply(null, {0: "x", length: "foo"});
+  let (_, result) = run_js(src)
+  inspect(result, content="none")
+}
+
+///|
 test "function bind method" {
   let src =
     #|function greet() { return "Hi " + this.name; }
@@ -1390,6 +1431,84 @@ test "function bind method" {
     #|bound();
   let (_, result) = run_js(src)
   inspect(result, content="Hi Bob")
+}
+
+// ====== Promise Constructor/Species Regression Tests ======
+
+///|
+test "Promise then/finally/reject honor species and receiver constructor" {
+  let output = run_output(
+    (
+      #|class SubPromise extends Promise {}
+      #|const p1 = SubPromise.resolve(1).then(function(v) { return v + 1; });
+      #|console.log(p1.constructor === SubPromise);
+      #|
+      #|class ForceBasePromise extends Promise {
+      #|  static get [Symbol.species]() { return Promise; }
+      #|}
+      #|const p2 = ForceBasePromise.resolve(1).then(function(v) { return v; });
+      #|console.log(p2.constructor === Promise);
+      #|
+      #|const p3 = SubPromise.resolve(1).finally(function() {});
+      #|console.log(p3.constructor === SubPromise);
+      #|
+      #|const p4 = SubPromise.reject(1);
+      #|p4.catch(function() {});
+      #|console.log(p4.constructor === SubPromise);
+    ),
+  )
+  inspect(output, content="[\"true\", \"true\", \"true\", \"true\"]")
+}
+
+///|
+test "Promise species invalid constructor throws TypeError" {
+  let output = run_output(
+    (
+      #|class BadSpeciesPromise extends Promise {
+      #|  static get [Symbol.species]() { return {}; }
+      #|}
+      #|const p = BadSpeciesPromise.resolve(1);
+      #|try {
+      #|  p.then(function(v) { return v; });
+      #|  console.log("no throw then");
+      #|} catch (e) {
+      #|  console.log(e instanceof TypeError);
+      #|  console.log(e.message);
+      #|}
+      #|try {
+      #|  p.finally(function() {});
+      #|  console.log("no throw finally");
+      #|} catch (e) {
+      #|  console.log(e instanceof TypeError);
+      #|  console.log(e.message);
+      #|}
+    ),
+  )
+  inspect(
+    output,
+    content="[\"true\", \"Promise species is not a constructor\", \"true\", \"Promise species is not a constructor\"]",
+  )
+}
+
+///|
+test "Promise then throws when constructor is not object" {
+  let output = run_output(
+    (
+      #|const p = Promise.resolve(1);
+      #|p.constructor = 1;
+      #|try {
+      #|  p.then();
+      #|  console.log("no throw");
+      #|} catch (e) {
+      #|  console.log(e instanceof TypeError);
+      #|  console.log(e.message);
+      #|}
+    ),
+  )
+  inspect(
+    output,
+    content="[\"true\", \"Promise constructor is not an object\"]",
+  )
 }
 
 // ====== Phase 2: Array Methods ======
@@ -3287,7 +3406,7 @@ test "non-strict mode: this is not undefined" {
     #|function getThis() { return typeof this; }
     #|console.log(getThis());
   let output = run_output(src)
-  inspect(output, content="[\"undefined\"]")
+  inspect(output, content="[\"object\"]")
 }
 
 ///|
@@ -4376,6 +4495,27 @@ test "class getter and setter" {
     ),
   )
   inspect(output, content="[\"212\", \"0\"]")
+}
+
+///|
+test "class constructor has arguments object through super call" {
+  let output = run_output(
+    (
+      #|class Base {
+      #|  constructor(a, b) {
+      #|    console.log(arguments.length);
+      #|    console.log(arguments[0] + arguments[1]);
+      #|  }
+      #|}
+      #|class Derived extends Base {
+      #|  constructor() {
+      #|    super(3, 4);
+      #|  }
+      #|}
+      #|new Derived();
+    ),
+  )
+  inspect(output, content="[\"2\", \"7\"]")
 }
 
 ///|
@@ -6107,7 +6247,7 @@ test "harness: fnGlobalObject pattern" {
   inspect(
     output,
     content=(
-      #|["undefined", "false"]
+      #|["object", "true"]
     ),
   )
 }
@@ -7381,9 +7521,6 @@ test "sloppy: yield as identifier outside generator is allowed" {
 }
 
 ///|
-// TODO: sloppy() returns "undefined" because sloppy-mode `this` binding to
-// globalThis is not yet implemented. Once globalThis is wired up, the expected
-// result for sloppy() should change from "undefined" to "object".
 test "class constructor strict: does not leak strict mode" {
   let src =
     #|class Base {
@@ -7398,7 +7535,7 @@ test "class constructor strict: does not leak strict mode" {
     #|console.log(d.x);
     #|console.log(sloppy());
   let output = run_output(src)
-  inspect(output, content="[\"1\", \"undefined\"]")
+  inspect(output, content="[\"1\", \"object\"]")
 }
 
 ///|
