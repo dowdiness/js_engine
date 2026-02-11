@@ -238,7 +238,7 @@ True self-interpretation (running the compiled JS through itself) would require 
 - Classes and prototypes
 - Closures and higher-order functions
 - Map, Set, and other built-in types
-- The engine currently passes ~44% of Test262
+- Test262 pass rate changes over time; see [ROADMAP.md](../ROADMAP.md) for the latest totals
 
 This is a long-term goal that would improve naturally as Test262 compliance increases.
 
@@ -249,7 +249,7 @@ This is a long-term goal that would improve naturally as Test262 compliance incr
 ### Phase A: Validate JS Compilation — DONE
 
 1. ~~Run `moon build --target js`~~ — builds with zero errors
-2. ~~Run `moon test --target js`~~ — all 746 tests pass
+2. ~~Run `moon test --target js`~~ — all 763 tests pass
 3. ~~Manually test~~ — `node ./target/js/release/build/cmd/main/main.js 'console.log(1 + 2)'` outputs `3`
 4. ~~Fix `@env.args()` index offset~~ — solved with backend-specific `args.js.mbt`
 
@@ -281,7 +281,7 @@ This is a long-term goal that would improve naturally as Test262 compliance incr
 | Aspect | Status |
 |---|---|
 | JS target compilation | **Working** |
-| Unit tests (746) | **All passing** on both WASM-GC and JS targets |
+| Unit tests (763) | **All passing** on both WASM-GC and JS targets |
 | FFI calls ported | **0** (none needed) |
 | Code changes required | **3 new files** (backend-specific argv), **1 edit** (Error toString) |
 | Build command | `moon build --target js` |

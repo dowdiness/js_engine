@@ -7,6 +7,8 @@
 - **Failed**: 5,492
 - **Timeouts**: 181
 
+Note: This document is a phase-planning snapshot. For latest live totals and targeted slices, see [ROADMAP.md](../ROADMAP.md).
+
 ### Previous Baseline (Phase 8C)
 
 - **Pass rate**: 45.27% (11,678 / 25,794 executed)
@@ -127,22 +129,17 @@ Key changes:
 
 ---
 
-### P7: Promise Improvements (~451 tests)
+### P7: Promise Improvements ✅ DONE (targeted Promise slice)
 
-**CI data**:
-```
-built-ins/Promise/allSettled:   90 fail
-built-ins/Promise/any:          85 fail
-built-ins/Promise/all:          80 fail
-built-ins/Promise/race:         75 fail
-built-ins/Promise/prototype:    59 fail
-```
+**Implemented outcomes**:
+- constructor-aware capability paths across Promise combinators
+- combinator abrupt/iterator-close handling alignment
+- thenable/poisoned-iterable edge-case fixes in Promise resolve/combinator flows
+- targeted runtime/parser support for Promise close-path matrices
 
-Focus:
-- iterator protocol edge cases
-- thenable assimilation correctness
-- job/microtask ordering
-- resolve/reject race and abrupt completion handling
+**Targeted verification (2026-02-12)**:
+- `built-ins/Promise`: **598/598 passing**, 41 skipped, 0 failed
+- remaining skipped Promise blocker is Proxy-dependent and deferred
 
 ---
 
@@ -170,7 +167,7 @@ The actual gain from P0–P3 (+7,439) far exceeded the projected range (+1,500�
 |-------|---------|---------------|-----------------|
 | **P5** | **eval() semantics** | **+603** | **78.2%** |
 | **P6** | **Strict-mode prerequisites** | **+3** | **78.2%** |
-| P7 | Promise improvements | +200–382 | TBD |
+| P7 | Promise improvements | — | ✅ targeted slice 598/598 passing (41 skipped) |
 | Annex B | `--annex-b` gated features | +857 | TBD |
 
 ---
