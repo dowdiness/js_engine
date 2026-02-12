@@ -59,9 +59,7 @@ fn is_alnum(c : Char) -> Bool {
 
 ///|
 fn is_js_whitespace(c : Char) -> Bool {
-  // NOTE: This covers the high-impact ECMAScript whitespace code points used by
-  // our current conformance set (including NBSP and BOM), but not every Unicode
-  // Space_Separator (Zs) character yet.
+  // ECMAScript-compliant whitespace including all Unicode Space_Separator (Zs) characters
   let cp = c.to_int()
   cp == 0x20 || // Space
   cp == 0x09 || // Tab
@@ -69,7 +67,13 @@ fn is_js_whitespace(c : Char) -> Bool {
   cp == 0x0C || // Form Feed
   cp == 0x0D || // Carriage Return
   cp == 0x00A0 || // No-Break Space
-  cp == 0xFEFF // Zero Width No-Break Space (BOM)
+  cp == 0xFEFF || // Zero Width No-Break Space (BOM)
+  // Unicode Space Separators (Category Zs) - ES spec compliant
+  cp == 0x1680 || // OGHAM SPACE MARK
+  (cp >= 0x2000 && cp <= 0x200A) || // EN QUAD through HAIR SPACE
+  cp == 0x202F || // NARROW NO-BREAK SPACE
+  cp == 0x205F || // MEDIUM MATHEMATICAL SPACE
+  cp == 0x3000 // IDEOGRAPHIC SPACE
 }
 
 ///|
@@ -295,6 +299,14 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       continue
     }
     if c == '\n' {
+      offset += 1
+      line += 1
+      col = 1
+      continue
+    }
+    // ECMAScript line terminators U+2028 (LINE SEPARATOR) and U+2029 (PARAGRAPH SEPARATOR)
+    let cp = c.to_int()
+    if cp == 0x2028 || cp == 0x2029 {
       offset += 1
       line += 1
       col = 1

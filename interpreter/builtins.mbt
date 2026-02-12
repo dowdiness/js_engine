@@ -2074,6 +2074,44 @@ fn setup_number_builtins(env : Environment) -> Unit {
     symbol_descriptors: {},
     extensible: true,
   })
+  number_proto_props["toLocaleString"] = Object({
+    properties: {},
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      MethodCallable("toLocaleString", fn(this_val, _args) raise {
+        // Extract numeric value (same pattern as toFixed/toString)
+        let n : Double = match this_val {
+          Number(v) => v
+          Object(data) =>
+            if data.class_name == "Number" {
+              match data.properties.get("[[NumberData]]") {
+                Some(Number(v)) => v
+                _ =>
+                  raise @errors.TypeError(
+                    message="Number.prototype.toLocaleString requires that 'this' be a Number",
+                  )
+              }
+            } else {
+              raise @errors.TypeError(
+                message="Number.prototype.toLocaleString requires that 'this' be a Number",
+              )
+            }
+          _ =>
+            raise @errors.TypeError(
+              message="Number.prototype.toLocaleString requires that 'this' be a Number",
+            )
+        }
+        // Simple implementation: delegate to toString()
+        // Full locale support would require Intl.NumberFormat (out of scope)
+        String_(n.to_string())
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
   let number_proto : Value = Object({
     properties: number_proto_props,
     symbol_properties: {},

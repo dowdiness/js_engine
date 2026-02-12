@@ -355,6 +355,18 @@ pub fn get_string_method(s : String, prop : String) -> Value {
       let str = s
       make_native_func("trimEnd", fn(_args) { String_(string_trim_end(str)) })
     }
+    "trimLeft" => {
+      let str = s
+      make_native_func("trimLeft", fn(_args) { String_(trim_start(str)) })
+    }
+    "trimRight" => {
+      let str = s
+      make_native_func("trimRight", fn(_args) { String_(string_trim_end(str)) })
+    }
+    "toLocaleString" => {
+      let str = s
+      make_native_func("toLocaleString", fn(_args) { String_(str) })
+    }
     "split" => {
       let str = s
       make_native_func("split", fn(args) raise {
@@ -534,6 +546,112 @@ pub fn get_string_method(s : String, prop : String) -> Value {
         // If not a RegExp, treat as string pattern
         let pattern = args[0].to_string()
         string_match_regex(str, pattern, "")
+      })
+    }
+    "matchAll" => {
+      let str = s
+      make_native_func("matchAll", fn(args) raise {
+        if args.length() == 0 {
+          raise @errors.TypeError(message="matchAll requires a RegExp argument")
+        }
+        match args[0] {
+          Object(data) =>
+            if data.class_name == "RegExp" {
+              let pattern = match data.properties.get("source") {
+                Some(String_(s)) => s
+                _ => ""
+              }
+              let flags = match data.properties.get("flags") {
+                Some(String_(s)) => s
+                _ => ""
+              }
+              // matchAll requires global flag
+              if not(flags.contains("g")) {
+                raise @errors.TypeError(
+                  message="matchAll requires a RegExp with global flag",
+                )
+              }
+              // Get all matches
+              let matches = regex_search_all(pattern, flags, str) catch { _ => [] }
+              let input_chars = str.to_array()
+              let index_ref : Ref[Int] = { val: 0 }
+              // Create iterator with next() method
+              let next_method = Object({
+                properties: {},
+                symbol_properties: {},
+                prototype: Null,
+                callable: Some(
+                  NativeCallable("next", fn(_args) {
+                    let idx = index_ref.val
+                    if idx < matches.length() {
+                      let m = matches[idx]
+                      index_ref.val = idx + 1
+                      // Create match array with captures (like non-global match())
+                      let elements : Array[Value] = []
+                      elements.push(String_(substring(input_chars, m.start, m.end_)))
+                      for cap in m.captures {
+                        match cap {
+                          Some(c) => elements.push(String_(c))
+                          None => elements.push(Undefined)
+                        }
+                      }
+                      // TODO: Add index and input properties when ArrayData supports it
+                      let match_array = Array({ elements, })
+                      // Return {value: match_array, done: false}
+                      let result_props : Map[String, Value] = {}
+                      result_props["value"] = match_array
+                      result_props["done"] = Bool(false)
+                      Object({
+                        properties: result_props,
+                        symbol_properties: {},
+                        prototype: Null,
+                        callable: None,
+                        class_name: "Object",
+                        descriptors: {},
+                        symbol_descriptors: {},
+                        extensible: true,
+                      })
+                    } else {
+                      // Return {value: undefined, done: true}
+                      let result_props : Map[String, Value] = {}
+                      result_props["value"] = Undefined
+                      result_props["done"] = Bool(true)
+                      Object({
+                        properties: result_props,
+                        symbol_properties: {},
+                        prototype: Null,
+                        callable: None,
+                        class_name: "Object",
+                        descriptors: {},
+                        symbol_descriptors: {},
+                        extensible: true,
+                      })
+                    }
+                  }),
+                ),
+                class_name: "Function",
+                descriptors: {},
+                symbol_descriptors: {},
+                extensible: true,
+              })
+              // Create iterator object
+              let iter_props : Map[String, Value] = {}
+              iter_props["next"] = next_method
+              Object({
+                properties: iter_props,
+                symbol_properties: {},
+                prototype: Null,
+                callable: None,
+                class_name: "RegExp String Iterator",
+                descriptors: {},
+                symbol_descriptors: {},
+                extensible: true,
+              })
+            } else {
+              raise @errors.TypeError(message="matchAll requires a RegExp argument")
+            }
+          _ => raise @errors.TypeError(message="matchAll requires a RegExp argument")
+        }
       })
     }
     "search" => {
@@ -1054,9 +1172,9 @@ pub fn setup_string_prototype(string_proto : Value) -> Unit {
       let methods = [
         "charAt", "charCodeAt", "at", "codePointAt", "indexOf", "lastIndexOf", "includes",
         "startsWith", "endsWith", "slice", "substring", "toUpperCase", "toLowerCase",
-        "trim", "trimStart", "trimEnd", "padStart", "padEnd", "repeat", "replace",
-        "replaceAll", "split", "search", "match", "concat", "normalize", "isWellFormed",
-        "toWellFormed", "localeCompare", "toString", "valueOf",
+        "trim", "trimStart", "trimEnd", "trimLeft", "trimRight", "padStart", "padEnd", "repeat", "replace",
+        "replaceAll", "split", "search", "match", "matchAll", "concat", "normalize", "isWellFormed",
+        "toWellFormed", "localeCompare", "toLocaleString", "toString", "valueOf",
       ]
       for method_name in methods {
         let mname = method_name
