@@ -676,6 +676,7 @@ def main():
         # Probe known build output paths (CI uses target/, local uses _build/)
         candidates = [
             "target/js/release/build/cmd/main/main.js",
+            "target/js/debug/build/cmd/main/main.js",
             "_build/js/release/build/cmd/main/main.js",
             "_build/js/debug/build/cmd/main/main.js",
         ]
