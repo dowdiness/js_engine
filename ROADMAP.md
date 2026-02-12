@@ -2,12 +2,13 @@
 
 ## Current Status
 
-**Test262**: 20,803 / 25,243 passed (82.41%) | 22,749 skipped | 4,440 failed | 152 timeouts
+**Test262**: 20,870 / 25,222 passed (82.7%) | 22,741 skipped | 4,352 failed | 157 timeouts
 
 **Unit tests**: 763 total, 763 passed, 0 failed
 
 **Targeted verification (2026-02-11)**: `language/block-scope` slice is 106/106 passing (39 skipped).
 **Targeted verification (2026-02-12)**: `built-ins/Promise` slice is 599/599 passing (100%, 41 skipped). `language/block-scope` is 106/106 passing (100%, 39 skipped).
+**Targeted verification (2026-02-13)**: `language/white-space` slice is 66/67 passing (98.5%, was 73.1%). Small compliance sweep completed.
 
 ## Phase History
 
@@ -30,6 +31,7 @@
 | 11 | +603 | 19,720 | P5: eval() semantics — direct/indirect eval, var hoisting, lex conflict checks |
 | 12 | +3 | 19,723 | P6: Strict-mode prerequisite bundle — duplicate params, eval/arguments binding, delete identifier, reserved words, class body strict |
 | 13 | +1,080 | 20,803 | P7: Promise species constructor, sloppy mode this, apply/arguments fixes — 100% Promise compliance, constructor subclassing, test harness improvements |
+| 14 | +67 | 20,870 | Small compliance sweep — Unicode whitespace (98.5%), Number/String.prototype.toLocaleString, String trim aliases, String.prototype.matchAll |
 
 For detailed implementation notes on Phases 1-6, see [docs/PHASE_HISTORY.md](docs/PHASE_HISTORY.md).
 
@@ -37,62 +39,67 @@ For detailed implementation notes on Phases 1-6, see [docs/PHASE_HISTORY.md](doc
 
 ## Failure Breakdown
 
-### Failure Breakdown by Category (4,440 remaining failures)
+### Failure Breakdown by Category (4,352 remaining failures)
 
-Top failing categories from the latest CI run:
+Top failing categories from the latest CI run (2026-02-13):
 
 | Category | Pass | Fail | Rate | Priority |
 |----------|------|------|------|----------|
-| language/expressions | 4,849 | 638 | 88.4% | Medium |
-| language/statements | 3,449 | 723 | 82.7% | Medium |
-| built-ins/Array | 2,412 | 461 | 84.0% | Medium |
-| built-ins/Object | 3,024 | 267 | 91.9% | Low (P4 done) |
+| language/expressions | 4,897 | 590 | 89.2% | Medium |
+| language/statements | 3,454 | 720 | 82.8% | Medium |
+| built-ins/Array | 2,414 | 454 | 84.2% | Medium |
+| built-ins/Object | 3,025 | 266 | 91.9% | Low (P4 done) |
 | annexB/language | 312 | 505 | 38.2% | Low (--annex-b) |
-| built-ins/Promise | 599 | 0 | 100.0% | ✅ Done (P7) |
+| built-ins/Promise | 598 | 0 | 100.0% | ✅ Done (P7) |
 | built-ins/DataView | 7 | 304 | 2.3% | Hard (needs TypedArray) |
-| built-ins/RegExp | 603 | 223 | 73.0% | Hard |
+| built-ins/RegExp | 604 | 222 | 73.1% | Hard |
 | language/module-code | 114 | 184 | 38.3% | Medium |
 | language/eval-code | 224 | 106 | 67.9% | Low (P5 done) |
-| built-ins/String | 1,061 | 97 | 91.6% | Low |
+| built-ins/String | 1,054 | 96 | 91.7% | Low |
 | built-ins/Function | 325 | 68 | 82.7% | Medium |
 | language/literals | 231 | 88 | 72.4% | Medium |
-| built-ins/Number | 267 | 55 | 82.9% | Easy |
+| built-ins/Number | 265 | 55 | 82.8% | Easy |
 | language/identifiers | 154 | 53 | 74.4% | Medium |
 | language/block-scope | 106 | 0 | 100.0% | ✅ Done |
 | built-ins/ArrayBuffer | 10 | 51 | 16.4% | Hard (needs TypedArray) |
 | built-ins/Map | 139 | 29 | 82.7% | Medium |
-| language/white-space | 49 | 18 | 73.1% | Easy |
+| language/white-space | 66 | 1 | 98.5% | ✅ Done (P14) |
 
 ### High-Performing Categories (>90% pass rate)
 
 | Category | Pass | Fail | Rate |
 |----------|------|------|------|
-| built-ins/Promise | 599 | 0 | 100.0% |
+| built-ins/Promise | 598 | 0 | 100.0% |
 | language/block-scope | 106 | 0 | 100.0% |
-| built-ins/NativeErrors | 82 | 0 | 100.0% |
+| built-ins/NativeErrors | 80 | 0 | 100.0% |
 | built-ins/global | 27 | 0 | 100.0% |
+| built-ins/isFinite | 14 | 0 | 100.0% |
+| built-ins/isNaN | 14 | 0 | 100.0% |
 | language/punctuators | 11 | 0 | 100.0% |
 | language/source-text | 1 | 0 | 100.0% |
+| language/white-space | 66 | 1 | 98.5% |
+| built-ins/Math | 281 | 5 | 98.3% |
 | built-ins/parseFloat | 52 | 1 | 98.1% |
 | built-ins/parseInt | 53 | 1 | 98.1% |
-| built-ins/Math | 280 | 6 | 97.9% |
-| built-ins/Set | 170 | 6 | 96.6% |
+| built-ins/Set | 172 | 4 | 97.7% |
+| built-ins/decodeURIComponent | 52 | 2 | 96.3% |
+| built-ins/decodeURI | 51 | 2 | 96.2% |
+| language/arguments-object | 146 | 6 | 96.1% |
 | language/function-code | 166 | 7 | 96.0% |
 | language/keywords | 24 | 1 | 96.0% |
 | built-ins/Date | 511 | 23 | 95.7% |
-| language/arguments-object | 145 | 7 | 95.4% |
-| built-ins/decodeURIComponent | 51 | 3 | 94.4% |
-| built-ins/decodeURI | 50 | 3 | 94.3% |
+| built-ins/AggregateError | 21 | 1 | 95.5% |
+| language/comments | 22 | 1 | 95.7% |
 | language/computed-property-names | 45 | 3 | 93.8% |
 | built-ins/encodeURIComponent | 28 | 2 | 93.3% |
+| built-ins/encodeURI | 28 | 2 | 93.3% |
 | language/asi | 95 | 7 | 93.1% |
 | built-ins/JSON | 105 | 8 | 92.9% |
 | language/reserved-words | 25 | 2 | 92.6% |
 | language/future-reserved-words | 34 | 3 | 91.9% |
-| built-ins/Object | 3,020 | 271 | 91.8% |
-| built-ins/String | 1,061 | 97 | 91.6% |
+| built-ins/Object | 3,025 | 266 | 91.9% |
+| built-ins/String | 1,054 | 96 | 91.7% |
 | language/rest-parameters | 10 | 1 | 90.9% |
-| built-ins/encodeURI | 27 | 3 | 90.0% |
 
 ---
 
@@ -347,6 +354,41 @@ python3 test262-runner.py --filter "built-ins/Promise" --summary
 ```
 
 **Note**: One skipped Promise test (`built-ins/Promise/prototype/finally/this-value-proxy.js`) is Proxy-dependent and deferred until Proxy support is implemented.
+
+---
+
+### 14: Small Compliance Sweep (+67 tests) — DONE
+
+Targeted quick wins across Unicode whitespace, Number, and String built-ins:
+
+**Lexer Enhancements**:
+- **Unicode whitespace recognition**: Extended `is_js_whitespace()` to include all ECMAScript Unicode Space_Separator (Zs) characters: U+1680 (OGHAM SPACE MARK), U+2000-200A (EN QUAD through HAIR SPACE), U+202F (NARROW NO-BREAK SPACE), U+205F (MEDIUM MATHEMATICAL SPACE), U+3000 (IDEOGRAPHIC SPACE)
+- **Line terminator handling**: Added U+2028 (LINE SEPARATOR) and U+2029 (PARAGRAPH SEPARATOR) recognition for proper line counting in tokenization
+- **UTF-8 validation**: Confirmed MoonBit's `String::to_array()` correctly decodes UTF-8 multi-byte sequences into Unicode code points
+
+**Number.prototype Additions**:
+- **`toLocaleString()`**: Implemented with proper primitive/object wrapper handling, delegates to `toString()` for baseline compliance (full Intl.NumberFormat support deferred)
+
+**String.prototype Additions**:
+- **Trim aliases**: Added `trimLeft`/`trimRight` as deprecated aliases for `trimStart`/`trimEnd` per Annex B
+- **`toLocaleString()`**: Simple delegation implementation for baseline compliance
+- **`matchAll()`**: Iterator-based method with global flag validation, uses `regex_search_all()` for match collection, returns proper iterator with `next()` yielding `{value, done}` objects (44.4% pass rate - basic functionality working, advanced Symbol.matchAll cases deferred)
+
+**Test262 Results**:
+- **Overall**: 20,803 → 20,870 passing (+67), **82.7%** pass rate (was 82.41%)
+- **language/white-space**: 49/67 (73.1%) → 66/67 (**98.5%**, +17 tests)
+- **Number.prototype.toLocaleString**: 3/3 passing (100%)
+- **String.prototype.trimLeft/trimRight**: 8/8 passing (100%)
+- **String.prototype.matchAll**: 4/9 passing (44.4%, basic iterator protocol working)
+- **built-ins/Number**: 265/320 passing (82.8%)
+- **built-ins/String**: 1,054/1,150 passing (91.7%)
+
+**Test Runner Fix**:
+- Added `target/js/debug/build/cmd/main/main.js` to test runner's build path detection candidates for proper engine discovery
+
+**Remaining Work**:
+- One whitespace test failure (`S7.2_A5_T5.js`) requires rejecting Unicode escape sequences representing whitespace in identifier positions (e.g., `var\u00A0x;` should throw SyntaxError)
+- `matchAll` Symbol.matchAll integration for full spec compliance (5/9 remaining tests)
 
 ---
 
