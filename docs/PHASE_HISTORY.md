@@ -647,9 +647,9 @@ Overall: 20,803 → 20,870 passing (+67), 82.41% → 82.7%
 
 ---
 
-## Phase 15: Proxy and Reflect (83.2% pass rate)
+## Phase 15: Proxy and Reflect (83.16% pass rate)
 
-Full ES6 Proxy and Reflect implementation with 13 proxy traps and 13 Reflect methods. Gained +880 test262 tests (20,870 → 21,750).
+Full ES6 Proxy and Reflect implementation with 13 proxy traps and 13 Reflect methods. Gained +877 test262 tests (20,870 → 21,747).
 
 ### Proxy Architecture
 
@@ -727,7 +727,7 @@ All traps are handled via a consistent pattern: check for trap in handler, call 
 | built-ins/Proxy | 257 | 15 | 39 | 94.5% |
 | built-ins/Reflect | 152 | 1 | 0 | 99.3% |
 
-Overall: 20,870 → 21,750 passing (+880), 82.7% → **83.2%**, no regressions
+Overall: 20,870 → 21,747 passing (+877), 82.7% → **83.16%**, no regressions
 
 ### Remaining Failures (16 tests)
 

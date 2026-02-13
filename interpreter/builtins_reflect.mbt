@@ -58,7 +58,7 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("apply", fn(interp, _this_val, args) {
+      InterpreterCallable("apply", fn(interp, _this_val, args) raise {
         if args.length() < 1 {
           raise @errors.TypeError(
             message="Reflect.apply requires a target function",
@@ -87,7 +87,7 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("construct", fn(interp, _this_val, args) {
+      InterpreterCallable("construct", fn(interp, _this_val, args) raise {
         if args.length() < 2 {
           raise @errors.TypeError(
             message="Reflect.construct requires at least 2 arguments",
@@ -129,7 +129,7 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      NativeCallable("defineProperty", fn(args) {
+      NativeCallable("defineProperty", fn(args) raise {
         if args.length() < 3 {
           raise @errors.TypeError(
             message="Reflect.defineProperty requires 3 arguments",
@@ -160,24 +160,128 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
             let has_value = attr_data.properties.contains("value")
             let has_get = attr_data.properties.contains("get")
             let has_set = attr_data.properties.contains("set")
+            let has_writable = attr_data.properties.contains("writable")
             if has_value && (has_get || has_set) {
               raise @errors.TypeError(
                 message="Invalid property descriptor. Cannot both specify accessors and a value or writable attribute",
               )
             }
-            if has_get || has_set {
+            if has_writable && (has_get || has_set) {
+              raise @errors.TypeError(
+                message="Invalid property descriptor. Cannot both specify accessors and a value or writable attribute",
+              )
+            }
+            let is_accessor = has_get || has_set
+            let prop_exists = data.properties.contains(prop) ||
+              data.descriptors.contains(prop)
+            // Extensibility check: cannot add new property to non-extensible object
+            if not(prop_exists) && not(data.extensible) {
+              return Bool(false)
+            }
+            // Non-configurable validation
+            if prop_exists {
+              match data.descriptors.get(prop) {
+                Some(existing) =>
+                  if not(existing.configurable) {
+                    let existing_is_accessor = existing.getter is Some(_) ||
+                      existing.setter is Some(_)
+                    // Cannot change between accessor and data descriptor types
+                    if existing_is_accessor && not(is_accessor) && (has_value || has_writable) {
+                      return Bool(false)
+                    }
+                    if not(existing_is_accessor) && is_accessor {
+                      return Bool(false)
+                    }
+                    // Cannot change configurable from false to true
+                    match attr_data.properties.get("configurable") {
+                      Some(v) => if is_truthy(v) { return Bool(false) }
+                      None => ()
+                    }
+                    // Cannot change enumerable on non-configurable
+                    match attr_data.properties.get("enumerable") {
+                      Some(v) =>
+                        if is_truthy(v) != existing.enumerable {
+                          return Bool(false)
+                        }
+                      None => ()
+                    }
+                    // Non-configurable accessor: getter/setter identity must match
+                    if existing_is_accessor && is_accessor {
+                      match attr_data.properties.get("get") {
+                        Some(g) =>
+                          match existing.getter {
+                            Some(eg) =>
+                              if not(strict_equal_val(g, eg)) {
+                                return Bool(false)
+                              }
+                            None =>
+                              if not(g is Undefined) { return Bool(false) }
+                          }
+                        None => ()
+                      }
+                      match attr_data.properties.get("set") {
+                        Some(s) =>
+                          match existing.setter {
+                            Some(es) =>
+                              if not(strict_equal_val(s, es)) {
+                                return Bool(false)
+                              }
+                            None =>
+                              if not(s is Undefined) { return Bool(false) }
+                          }
+                        None => ()
+                      }
+                    }
+                    // Non-configurable data: writable false->true forbidden, value change on non-writable forbidden
+                    if not(existing_is_accessor) && not(is_accessor) {
+                      if not(existing.writable) {
+                        match attr_data.properties.get("writable") {
+                          Some(v) =>
+                            if is_truthy(v) { return Bool(false) }
+                          None => ()
+                        }
+                        if has_value {
+                          let new_val = match attr_data.properties.get(
+                            "value",
+                          ) {
+                            Some(v) => v
+                            None => Undefined
+                          }
+                          let old_val = match data.properties.get(prop) {
+                            Some(v) => v
+                            None => Undefined
+                          }
+                          if not(strict_equal_val(new_val, old_val)) {
+                            return Bool(false)
+                          }
+                        }
+                      }
+                    }
+                  }
+                None => ()
+              }
+            }
+            if is_accessor {
               // Accessor descriptor
               let getter = attr_data.properties.get("get")
               let setter = attr_data.properties.get("set")
               let enumerable = match attr_data.properties.get("enumerable") {
                 Some(v) => is_truthy(v)
-                None => false
+                None =>
+                  match data.descriptors.get(prop) {
+                    Some(d) => d.enumerable
+                    None => false
+                  }
               }
               let configurable = match attr_data.properties.get(
                 "configurable",
               ) {
                 Some(v) => is_truthy(v)
-                None => false
+                None =>
+                  match data.descriptors.get(prop) {
+                    Some(d) => d.configurable
+                    None => false
+                  }
               }
               data.descriptors[prop] = {
                 writable: false,
@@ -192,17 +296,29 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
               // Data descriptor
               let writable = match attr_data.properties.get("writable") {
                 Some(v) => is_truthy(v)
-                None => false
+                None =>
+                  match data.descriptors.get(prop) {
+                    Some(d) => d.writable
+                    None => false
+                  }
               }
               let enumerable = match attr_data.properties.get("enumerable") {
                 Some(v) => is_truthy(v)
-                None => false
+                None =>
+                  match data.descriptors.get(prop) {
+                    Some(d) => d.enumerable
+                    None => false
+                  }
               }
               let configurable = match attr_data.properties.get(
                 "configurable",
               ) {
                 Some(v) => is_truthy(v)
-                None => false
+                None =>
+                  match data.descriptors.get(prop) {
+                    Some(d) => d.configurable
+                    None => false
+                  }
               }
               if has_value {
                 data.properties[prop] = match attr_data.properties.get(
@@ -241,7 +357,7 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      NativeCallable("deleteProperty", fn(args) {
+      NativeCallable("deleteProperty", fn(args) raise {
         if args.length() < 2 {
           raise @errors.TypeError(
             message="Reflect.deleteProperty requires 2 arguments",
@@ -288,7 +404,7 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("get", fn(interp, _this_val, args) {
+      InterpreterCallable("get", fn(interp, _this_val, args) raise {
         if args.length() < 2 {
           raise @errors.TypeError(
             message="Reflect.get requires at least 2 arguments",
@@ -316,7 +432,7 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      NativeCallable("getOwnPropertyDescriptor", fn(args) {
+      NativeCallable("getOwnPropertyDescriptor", fn(args) raise {
         if args.length() < 2 {
           raise @errors.TypeError(
             message="Reflect.getOwnPropertyDescriptor requires 2 arguments",
@@ -403,7 +519,7 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      NativeCallable("getPrototypeOf", fn(args) {
+      NativeCallable("getPrototypeOf", fn(args) raise {
         if args.length() < 1 {
           raise @errors.TypeError(
             message="Reflect.getPrototypeOf requires 1 argument",
@@ -435,7 +551,7 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      NativeCallable("has", fn(args) {
+      NativeCallable("has", fn(args) raise {
         if args.length() < 2 {
           raise @errors.TypeError(
             message="Reflect.has requires 2 arguments",
@@ -445,7 +561,8 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
         let prop = args[1].to_string()
         match target {
           Object(data) => {
-            if data.properties.contains(prop) {
+            if data.properties.contains(prop) ||
+              data.descriptors.contains(prop) {
               return Bool(true)
             }
             // Walk prototype chain
@@ -453,7 +570,8 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
             while true {
               match current {
                 Object(proto_data) =>
-                  if proto_data.properties.contains(prop) {
+                  if proto_data.properties.contains(prop) ||
+                    proto_data.descriptors.contains(prop) {
                     return Bool(true)
                   } else {
                     current = proto_data.prototype
@@ -483,14 +601,16 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
             // Unwrap proxy and check the target
             match unwrap_proxy_target(target) {
               Some(data) => {
-                if data.properties.contains(prop) {
+                if data.properties.contains(prop) ||
+                  data.descriptors.contains(prop) {
                   return Bool(true)
                 }
                 let mut current = data.prototype
                 while true {
                   match current {
                     Object(proto_data) =>
-                      if proto_data.properties.contains(prop) {
+                      if proto_data.properties.contains(prop) ||
+                        proto_data.descriptors.contains(prop) {
                         return Bool(true)
                       } else {
                         current = proto_data.prototype
@@ -521,7 +641,7 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      NativeCallable("isExtensible", fn(args) {
+      NativeCallable("isExtensible", fn(args) raise {
         if args.length() < 1 {
           raise @errors.TypeError(
             message="Reflect.isExtensible requires 1 argument",
@@ -553,7 +673,7 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("ownKeys", fn(interp, _this_val, args) {
+      InterpreterCallable("ownKeys", fn(interp, _this_val, args) raise {
         if args.length() < 1 {
           raise @errors.TypeError(
             message="Reflect.ownKeys requires 1 argument",
@@ -595,7 +715,7 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
                         inner_interp,
                         _tv,
                         inner_args,
-                      ) {
+                      ) raise {
                         // Recursively call Reflect.ownKeys on the proxy target
                         let reflect_obj = inner_interp.global.get("Reflect") catch {
                           _ => Undefined
@@ -669,7 +789,7 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      NativeCallable("preventExtensions", fn(args) {
+      NativeCallable("preventExtensions", fn(args) raise {
         if args.length() < 1 {
           raise @errors.TypeError(
             message="Reflect.preventExtensions requires 1 argument",
@@ -707,7 +827,7 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("set", fn(interp, _this_val, args) {
+      InterpreterCallable("set", fn(interp, _this_val, args) raise {
         if args.length() < 3 {
           raise @errors.TypeError(
             message="Reflect.set requires at least 3 arguments",
@@ -733,7 +853,8 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
               None => ()
             }
             // Non-extensible and property doesn't exist: write fails
-            if not(data.extensible) && not(data.properties.contains(prop)) {
+            if not(data.extensible) && not(data.properties.contains(prop)) &&
+              not(data.descriptors.contains(prop)) {
               return Bool(false)
             }
           }
@@ -761,7 +882,7 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      NativeCallable("setPrototypeOf", fn(args) {
+      NativeCallable("setPrototypeOf", fn(args) raise {
         if args.length() < 2 {
           raise @errors.TypeError(
             message="Reflect.setPrototypeOf requires 2 arguments",
@@ -786,6 +907,11 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
         }
         match proto {
           Object(_) | Null => {
+            // Non-extensible objects cannot change prototype
+            if not(data.extensible) &&
+              not(strict_equal_val(proto, data.prototype)) {
+              return Bool(false)
+            }
             data.prototype = proto
             Bool(true)
           }

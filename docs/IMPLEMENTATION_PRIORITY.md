@@ -2,9 +2,9 @@
 
 ## Current Status
 
-- **Pass rate**: 83.2% (21,750 / 26,150 executed)
+- **Pass rate**: 83.16% (21,747 / 26,150 executed)
 - **Skipped**: 21,837 (feature-flagged)
-- **Failed**: 4,400
+- **Failed**: 4,403
 - **Timeouts**: 157
 
 Note: This document is a phase-planning snapshot. For latest live totals and targeted slices, see [ROADMAP.md](../ROADMAP.md).
@@ -179,7 +179,7 @@ The actual gain from P0â€“P3 (+7,439) far exceeded the projected range (+1,500â€
 | **P6** | **Strict-mode prerequisites** | **+3** | **78.2%** |
 | **P7** | **Promise species + interpreter fixes** | **+1,080** | **82.4%** |
 | **P8** | **Small compliance sweep** | **+67** | **82.7%** |
-| **P9** | **Proxy/Reflect** | **+880** | **83.2%** |
+| **P9** | **Proxy/Reflect** | **+877** | **83.16%** |
 | Annex B | `--annex-b` gated features | +857 | TBD |
 
 ---

@@ -19,30 +19,39 @@ fn get_proxy_trap(
         message="Cannot perform '\{trap_name}' on a proxy that has been revoked",
       )
   }
-  match handler {
-    Object(data) =>
-      match data.properties.get(trap_name) {
-        Some(trap) =>
-          match trap {
-            Undefined => None
-            Null => None
-            Object(td) =>
-              match td.callable {
-                Some(_) => Some(trap)
-                None =>
-                  raise @errors.TypeError(
-                    message="'\{trap_name}' on proxy: trap is not a function",
-                  )
-              }
-            _ =>
-              raise @errors.TypeError(
-                message="'\{trap_name}' on proxy: trap is not a function",
-              )
-          }
-        None => None
-      }
-    _ => None
+  // Walk handler's prototype chain to find trap (per spec GetMethod)
+  fn find_trap(obj : Value, name : String) -> Value? raise Error {
+    match obj {
+      Object(data) =>
+        match data.properties.get(name) {
+          Some(trap) =>
+            match trap {
+              Undefined => None
+              Null => None
+              Object(td) =>
+                match td.callable {
+                  Some(_) => Some(trap)
+                  None =>
+                    raise @errors.TypeError(
+                      message="'\{name}' on proxy: trap is not a function",
+                    )
+                }
+              _ =>
+                raise @errors.TypeError(
+                  message="'\{name}' on proxy: trap is not a function",
+                )
+            }
+          None =>
+            // Walk prototype chain
+            match data.prototype {
+              Object(_) => find_trap(data.prototype, name)
+              _ => None
+            }
+        }
+      _ => None
+    }
   }
+  find_trap(handler, trap_name)
 }
 
 ///|
@@ -77,7 +86,7 @@ fn setup_proxy_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      ConstructorOnlyCallable("Proxy", fn(_interp, args) {
+      ConstructorOnlyCallable("Proxy", fn(_interp, args) raise {
         if args.length() < 2 {
           raise @errors.TypeError(
             message="Cannot create proxy with a non-object as target or handler",
@@ -116,7 +125,7 @@ fn setup_proxy_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      NativeCallable("revocable", fn(args) {
+      NativeCallable("revocable", fn(args) raise {
         if args.length() < 2 {
           raise @errors.TypeError(
             message="Cannot create proxy with a non-object as target or handler",

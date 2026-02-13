@@ -2,7 +2,7 @@
 
 ## Current Status
 
-**Test262**: 21,750 / 26,150 passed (83.2%) | 21,837 skipped | 4,400 failed | 157 timeouts
+**Test262**: 21,747 / 26,150 passed (83.16%) | 21,837 skipped | 4,403 failed | 157 timeouts
 
 **Unit tests**: 799 total, 799 passed, 0 failed
 
@@ -32,7 +32,7 @@
 | 12 | +3 | 19,723 | P6: Strict-mode prerequisite bundle — duplicate params, eval/arguments binding, delete identifier, reserved words, class body strict |
 | 13 | +1,080 | 20,803 | P7: Promise species constructor, sloppy mode this, apply/arguments fixes — 100% Promise compliance, constructor subclassing, test harness improvements |
 | 14 | +67 | 20,870 | Small compliance sweep — Unicode whitespace (98.5%), Number/String.prototype.toLocaleString, String trim aliases, String.prototype.matchAll |
-| 15 | +880 | 21,750 | Proxy/Reflect — full Proxy trap support (13 traps), Reflect API (13 methods), PR review fixes, test262 conformance |
+| 15 | +877 | 21,747 | Proxy/Reflect — full Proxy trap support (13 traps), Reflect API (13 methods), PR review fixes, test262 conformance |
 
 For detailed implementation notes on Phases 1-6, see [docs/PHASE_HISTORY.md](docs/PHASE_HISTORY.md).
 
@@ -447,7 +447,7 @@ Full ES6 Proxy and Reflect implementation with 13 proxy traps and 13 Reflect met
 | built-ins/Proxy | 257 | 15 | 39 | 94.5% |
 | built-ins/Reflect | 152 | 1 | 0 | 99.3% |
 
-**Overall**: 20,870 → 21,750 passing (+880), **83.2%** pass rate (was 82.7%), no regressions
+**Overall**: 20,870 → 21,747 passing (+877), **83.16%** pass rate (was 82.7%), no regressions
 
 **Remaining 16 failures** are pre-existing engine limitations:
 - `with` statement not supported (4 Proxy tests)

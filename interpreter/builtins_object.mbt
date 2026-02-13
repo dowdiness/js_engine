@@ -492,15 +492,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                       message="Property descriptors must be an object",
                     )
                 }
-              Null
-              | String_(_)
-              | Number(_)
-              | Bool(_)
-              | Symbol(_)
-              | Array(_)
-              | Map(_)
-              | Set(_)
-              | Promise(_) =>
+              Null | String_(_) | Number(_) | Bool(_) | Symbol(_) | Array(_) |
+              Map(_) | Set(_) =>
                 raise @errors.TypeError(
                   message="Property descriptors must be an object",
                 )
@@ -937,7 +930,10 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                           }
                           _ => ()
                         }
-                      None => ()
+                      None =>
+                        raise @errors.TypeError(
+                          message="Cannot perform 'ownKeys' on a proxy that has been revoked",
+                        )
                     }
                   // ToObject conversion: Map, Set, Number, Bool, Symbol have no enumerable own string properties
                   Map(_) | Set(_) | Number(_) | Bool(_) | Symbol(_) => ()
@@ -948,7 +944,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => target
           }
         }),
-        "getPrototypeOf": make_native_func("getPrototypeOf", fn(args) {
+        "getPrototypeOf": make_native_func("getPrototypeOf", fn(args) raise {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           fn get_ctor_proto(name : String) -> Value {
             let ctor = env.get(name) catch { _ => return Null }
@@ -1698,7 +1694,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                   } else {
                     data.descriptors.get(prop_name)
                   }
-                  if not(prop_exists) && not(data.extensible) {
+                  let prop_also_in_desc = if is_symbol_key {
+                    data.symbol_descriptors.contains(sym_id)
+                  } else {
+                    data.descriptors.contains(prop_name)
+                  }
+                  if not(prop_exists) && not(prop_also_in_desc) &&
+                    not(data.extensible) {
                     let prop_display = if is_symbol_key {
                       prop_val.to_string()
                     } else {
@@ -1707,6 +1709,48 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                     raise @errors.TypeError(
                       message="Cannot add property \{prop_display}, object is not extensible",
                     )
+                  }
+                  // Validate non-configurable constraints
+                  match existing_desc {
+                    Some(existing) => {
+                      let prop_display = if is_symbol_key {
+                        prop_val.to_string()
+                      } else {
+                        prop_name
+                      }
+                      validate_non_configurable(
+                        existing,
+                        prop_display,
+                        is_accessor,
+                        is_data,
+                        has_value,
+                        new_writable,
+                        new_enumerable,
+                        new_configurable,
+                        new_getter,
+                        new_setter,
+                        fn() {
+                          if is_symbol_key {
+                            match data.symbol_properties.get(sym_id) {
+                              Some(v) => v
+                              None => Undefined
+                            }
+                          } else {
+                            match data.properties.get(prop_name) {
+                              Some(v) => v
+                              None => Undefined
+                            }
+                          }
+                        },
+                        fn() {
+                          match desc_props.get("value") {
+                            Some(v) => Some(v)
+                            None => None
+                          }
+                        },
+                      )
+                    }
+                    None => ()
                   }
                   if is_accessor {
                     if is_symbol_key {
@@ -1832,7 +1876,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }),
         "getOwnPropertyDescriptor": make_native_func(
           "getOwnPropertyDescriptor",
-          fn(args) {
+          fn(args) raise {
             let obj = if args.length() > 0 { args[0] } else { Undefined }
             let prop_key = if args.length() > 1 { args[1] } else { Undefined }
             let is_symbol_key = prop_key is Symbol(_)
@@ -2765,7 +2809,67 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                         let has_get = desc.properties.contains("get")
                         let has_set = desc.properties.contains("set")
                         let has_value = desc.properties.contains("value")
-                        if has_get || has_set {
+                        let has_writable = desc.properties.contains("writable")
+                        let is_accessor = has_get || has_set
+                        let is_data = has_value || has_writable
+                        if is_accessor && is_data {
+                          raise @errors.TypeError(
+                            message="Invalid property descriptor. Cannot both specify accessors and a value or writable attribute, #<Object>",
+                          )
+                        }
+                        // Extensibility check
+                        let prop_exists = data.properties.contains(prop_name) ||
+                          data.descriptors.contains(prop_name)
+                        if not(prop_exists) && not(data.extensible) {
+                          raise @errors.TypeError(
+                            message="Cannot add property \{prop_name}, object is not extensible",
+                          )
+                        }
+                        // Non-configurable validation
+                        match data.descriptors.get(prop_name) {
+                          Some(existing) =>
+                            validate_non_configurable(
+                              existing,
+                              prop_name,
+                              is_accessor,
+                              is_data,
+                              has_value,
+                              match desc.properties.get("writable") {
+                                Some(v) => Some(is_truthy(v))
+                                None => None
+                              },
+                              match desc.properties.get("enumerable") {
+                                Some(v) => Some(is_truthy(v))
+                                None => None
+                              },
+                              match desc.properties.get("configurable") {
+                                Some(v) => Some(is_truthy(v))
+                                None => None
+                              },
+                              match desc.properties.get("get") {
+                                Some(v) => Some(v)
+                                None => None
+                              },
+                              match desc.properties.get("set") {
+                                Some(v) => Some(v)
+                                None => None
+                              },
+                              fn() {
+                                match data.properties.get(prop_name) {
+                                  Some(v) => v
+                                  None => Undefined
+                                }
+                              },
+                              fn() {
+                                match desc.properties.get("value") {
+                                  Some(v) => Some(v)
+                                  None => None
+                                }
+                              },
+                            )
+                          None => ()
+                        }
+                        if is_accessor {
                           // Accessor descriptor
                           if not(data.properties.contains(prop_name)) {
                             data.properties[prop_name] = Undefined
@@ -2787,6 +2891,33 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                                 _ => Some(v)
                               }
                             None => None
+                          }
+                          // Validate getter/setter are callable
+                          match getter {
+                            Some(Object(g)) =>
+                              if g.callable is None {
+                                raise @errors.TypeError(
+                                  message="Getter must be a function: [object Object]",
+                                )
+                              }
+                            Some(Undefined) | None => ()
+                            Some(_) =>
+                              raise @errors.TypeError(
+                                message="Getter must be a function: \{getter.unwrap().to_string()}",
+                              )
+                          }
+                          match setter {
+                            Some(Object(s)) =>
+                              if s.callable is None {
+                                raise @errors.TypeError(
+                                  message="Setter must be a function: [object Object]",
+                                )
+                              }
+                            Some(Undefined) | None => ()
+                            Some(_) =>
+                              raise @errors.TypeError(
+                                message="Setter must be a function: \{setter.unwrap().to_string()}",
+                              )
                           }
                           let enumerable = match
                             desc.properties.get("enumerable") {
