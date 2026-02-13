@@ -4110,11 +4110,11 @@ fn eval_binary_op(
     (GtEq, l, r) => Bool(to_number(l) >= to_number(r))
     // Bitwise operations
     (BitAnd, l, r) =>
-      Number(to_int32(to_number(l)).land(to_int32(to_number(r))).to_double())
+      Number((to_int32(to_number(l)) & to_int32(to_number(r))).to_double())
     (BitOr, l, r) =>
-      Number(to_int32(to_number(l)).lor(to_int32(to_number(r))).to_double())
+      Number((to_int32(to_number(l)) | to_int32(to_number(r))).to_double())
     (BitXor, l, r) =>
-      Number(to_int32(to_number(l)).lxor(to_int32(to_number(r))).to_double())
+      Number((to_int32(to_number(l)) ^ to_int32(to_number(r))).to_double())
     // Shift operations
     (LShift, l, r) => {
       let a = to_int32(to_number(l))
@@ -4139,7 +4139,7 @@ fn eval_binary_op(
         let shifted = a >> shift
         let all_bits : Int = 0x7FFFFFFF
         let mask = all_bits >> (shift - 1)
-        Number(shifted.land(mask).to_double())
+        Number((shifted & mask).to_double())
       }
     }
     // in operator - walks prototype chain

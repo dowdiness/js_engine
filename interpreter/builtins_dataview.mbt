@@ -94,11 +94,11 @@ fn dataview_get_float64(
   let mut bits = 0L
   if little_endian {
     for i = 0; i < 8; i = i + 1 {
-      bits = bits + bytes[offset + i].to_int64().lsl(i * 8)
+      bits = bits + (bytes[offset + i].to_int64() << (i * 8))
     }
   } else {
     for i = 0; i < 8; i = i + 1 {
-      bits = bits + bytes[offset + i].to_int64().lsl((7 - i) * 8)
+      bits = bits + (bytes[offset + i].to_int64() << ((7 - i) * 8))
     }
   }
   Number(bits.reinterpret_as_double())
@@ -107,7 +107,7 @@ fn dataview_get_float64(
 ///|
 /// Set bytes in an ArrayBuffer for DataView operations.
 fn dataview_set_int8(bytes : Array[Int], offset : Int, value : Double) -> Unit {
-  let v = to_int32(value).land(0xFF)
+  let v = to_int32(value) & 0xFF
   bytes[offset] = v
 }
 
@@ -117,7 +117,7 @@ fn dataview_set_uint8(
   offset : Int,
   value : Double,
 ) -> Unit {
-  let v = to_int32(value).land(0xFF)
+  let v = to_int32(value) & 0xFF
   bytes[offset] = v
 }
 
@@ -128,13 +128,13 @@ fn dataview_set_int16(
   value : Double,
   little_endian : Bool,
 ) -> Unit {
-  let v = to_int32(value).land(0xFFFF)
+  let v = to_int32(value) & 0xFFFF
   if little_endian {
-    bytes[offset] = v.land(0xFF)
-    bytes[offset + 1] = v.lsr(8).land(0xFF)
+    bytes[offset] = v & 0xFF
+    bytes[offset + 1] = (v >> 8) & 0xFF
   } else {
-    bytes[offset] = v.lsr(8).land(0xFF)
-    bytes[offset + 1] = v.land(0xFF)
+    bytes[offset] = (v >> 8) & 0xFF
+    bytes[offset + 1] = v & 0xFF
   }
 }
 
@@ -145,13 +145,13 @@ fn dataview_set_uint16(
   value : Double,
   little_endian : Bool,
 ) -> Unit {
-  let v = to_int32(value).land(0xFFFF)
+  let v = to_int32(value) & 0xFFFF
   if little_endian {
-    bytes[offset] = v.land(0xFF)
-    bytes[offset + 1] = v.lsr(8).land(0xFF)
+    bytes[offset] = v & 0xFF
+    bytes[offset + 1] = (v >> 8) & 0xFF
   } else {
-    bytes[offset] = v.lsr(8).land(0xFF)
-    bytes[offset + 1] = v.land(0xFF)
+    bytes[offset] = (v >> 8) & 0xFF
+    bytes[offset + 1] = v & 0xFF
   }
 }
 
@@ -164,15 +164,15 @@ fn dataview_set_int32(
 ) -> Unit {
   let v = to_int32(value)
   if little_endian {
-    bytes[offset] = v.land(0xFF)
-    bytes[offset + 1] = v.lsr(8).land(0xFF)
-    bytes[offset + 2] = v.lsr(16).land(0xFF)
-    bytes[offset + 3] = v.lsr(24).land(0xFF)
+    bytes[offset] = v & 0xFF
+    bytes[offset + 1] = (v >> 8) & 0xFF
+    bytes[offset + 2] = (v >> 16) & 0xFF
+    bytes[offset + 3] = (v >> 24) & 0xFF
   } else {
-    bytes[offset] = v.lsr(24).land(0xFF)
-    bytes[offset + 1] = v.lsr(16).land(0xFF)
-    bytes[offset + 2] = v.lsr(8).land(0xFF)
-    bytes[offset + 3] = v.land(0xFF)
+    bytes[offset] = (v >> 24) & 0xFF
+    bytes[offset + 1] = (v >> 16) & 0xFF
+    bytes[offset + 2] = (v >> 8) & 0xFF
+    bytes[offset + 3] = v & 0xFF
   }
 }
 
@@ -185,15 +185,15 @@ fn dataview_set_uint32(
 ) -> Unit {
   let v = to_int32(value)
   if little_endian {
-    bytes[offset] = v.land(0xFF)
-    bytes[offset + 1] = v.lsr(8).land(0xFF)
-    bytes[offset + 2] = v.lsr(16).land(0xFF)
-    bytes[offset + 3] = v.lsr(24).land(0xFF)
+    bytes[offset] = v & 0xFF
+    bytes[offset + 1] = (v >> 8) & 0xFF
+    bytes[offset + 2] = (v >> 16) & 0xFF
+    bytes[offset + 3] = (v >> 24) & 0xFF
   } else {
-    bytes[offset] = v.lsr(24).land(0xFF)
-    bytes[offset + 1] = v.lsr(16).land(0xFF)
-    bytes[offset + 2] = v.lsr(8).land(0xFF)
-    bytes[offset + 3] = v.land(0xFF)
+    bytes[offset] = (v >> 24) & 0xFF
+    bytes[offset + 1] = (v >> 16) & 0xFF
+    bytes[offset + 2] = (v >> 8) & 0xFF
+    bytes[offset + 3] = v & 0xFF
   }
 }
 
@@ -206,15 +206,15 @@ fn dataview_set_float32(
 ) -> Unit {
   let bits = double_to_float32_bits(value)
   if little_endian {
-    bytes[offset] = bits.land(0xFF)
-    bytes[offset + 1] = bits.lsr(8).land(0xFF)
-    bytes[offset + 2] = bits.lsr(16).land(0xFF)
-    bytes[offset + 3] = bits.lsr(24).land(0xFF)
+    bytes[offset] = bits & 0xFF
+    bytes[offset + 1] = (bits >> 8) & 0xFF
+    bytes[offset + 2] = (bits >> 16) & 0xFF
+    bytes[offset + 3] = (bits >> 24) & 0xFF
   } else {
-    bytes[offset] = bits.lsr(24).land(0xFF)
-    bytes[offset + 1] = bits.lsr(16).land(0xFF)
-    bytes[offset + 2] = bits.lsr(8).land(0xFF)
-    bytes[offset + 3] = bits.land(0xFF)
+    bytes[offset] = (bits >> 24) & 0xFF
+    bytes[offset + 1] = (bits >> 16) & 0xFF
+    bytes[offset + 2] = (bits >> 8) & 0xFF
+    bytes[offset + 3] = bits & 0xFF
   }
 }
 
@@ -228,11 +228,11 @@ fn dataview_set_float64(
   let bits = value.reinterpret_as_uint64()
   if little_endian {
     for i = 0; i < 8; i = i + 1 {
-      bytes[offset + i] = bits.lsr(i * 8).to_int().land(0xFF)
+      bytes[offset + i] = (bits >> (i * 8)).to_int() & 0xFF
     }
   } else {
     for i = 0; i < 8; i = i + 1 {
-      bytes[offset + i] = bits.lsr((7 - i) * 8).to_int().land(0xFF)
+      bytes[offset + i] = (bits >> ((7 - i) * 8)).to_int() & 0xFF
     }
   }
 }

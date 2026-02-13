@@ -59,7 +59,7 @@ fn typed_array_get_element(
     "Float64Array" => {
       let mut bits = 0L
       for i = 0; i < 8; i = i + 1 {
-        bits = bits + bytes[byte_offset + i].to_int64().lsl(i * 8)
+        bits = bits + (bytes[byte_offset + i].to_int64() << (i * 8))
       }
       Number(bits.reinterpret_as_double())
     }
@@ -78,12 +78,12 @@ fn typed_array_set_element(
   match type_name {
     "Int8Array" => {
       let v = to_int32(value)
-      let byte_val = v.land(0xFF)
+      let byte_val = v & 0xFF
       bytes[byte_offset] = byte_val
     }
     "Uint8Array" => {
       let v = to_int32(value)
-      let byte_val = v.land(0xFF)
+      let byte_val = v & 0xFF
       bytes[byte_offset] = byte_val
     }
     "Uint8ClampedArray" => {
@@ -103,33 +103,33 @@ fn typed_array_set_element(
       bytes[byte_offset] = v
     }
     "Int16Array" => {
-      let v = to_int32(value).land(0xFFFF)
-      bytes[byte_offset] = v.land(0xFF)
-      bytes[byte_offset + 1] = v.lsr(8).land(0xFF)
+      let v = to_int32(value) & 0xFFFF
+      bytes[byte_offset] = v & 0xFF
+      bytes[byte_offset + 1] = (v >> 8) & 0xFF
     }
     "Uint16Array" => {
-      let v = to_int32(value).land(0xFFFF)
-      bytes[byte_offset] = v.land(0xFF)
-      bytes[byte_offset + 1] = v.lsr(8).land(0xFF)
+      let v = to_int32(value) & 0xFFFF
+      bytes[byte_offset] = v & 0xFF
+      bytes[byte_offset + 1] = (v >> 8) & 0xFF
     }
     "Int32Array" | "Uint32Array" => {
       let v = to_int32(value)
-      bytes[byte_offset] = v.land(0xFF)
-      bytes[byte_offset + 1] = v.lsr(8).land(0xFF)
-      bytes[byte_offset + 2] = v.lsr(16).land(0xFF)
-      bytes[byte_offset + 3] = v.lsr(24).land(0xFF)
+      bytes[byte_offset] = v & 0xFF
+      bytes[byte_offset + 1] = (v >> 8) & 0xFF
+      bytes[byte_offset + 2] = (v >> 16) & 0xFF
+      bytes[byte_offset + 3] = (v >> 24) & 0xFF
     }
     "Float32Array" => {
       let bits = double_to_float32_bits(value)
-      bytes[byte_offset] = bits.land(0xFF)
-      bytes[byte_offset + 1] = bits.lsr(8).land(0xFF)
-      bytes[byte_offset + 2] = bits.lsr(16).land(0xFF)
-      bytes[byte_offset + 3] = bits.lsr(24).land(0xFF)
+      bytes[byte_offset] = bits & 0xFF
+      bytes[byte_offset + 1] = (bits >> 8) & 0xFF
+      bytes[byte_offset + 2] = (bits >> 16) & 0xFF
+      bytes[byte_offset + 3] = (bits >> 24) & 0xFF
     }
     "Float64Array" => {
       let bits = value.reinterpret_as_uint64()
       for i = 0; i < 8; i = i + 1 {
-        bytes[byte_offset + i] = bits.lsr(i * 8).to_int().land(0xFF)
+        bytes[byte_offset + i] = (bits >> (i * 8)).to_int() & 0xFF
       }
     }
     _ => ()
@@ -139,9 +139,9 @@ fn typed_array_set_element(
 ///|
 /// Convert IEEE 754 single-precision bits (as int) to double.
 fn float32_bits_to_double(bits : Int) -> Double {
-  let sign = if bits.lsr(31).land(1) == 1 { -1.0 } else { 1.0 }
-  let exponent = bits.lsr(23).land(0xFF)
-  let mantissa = bits.land(0x7FFFFF)
+  let sign = if ((bits >> 31) & 1) == 1 { -1.0 } else { 1.0 }
+  let exponent = (bits >> 23) & 0xFF
+  let mantissa = bits & 0x7FFFFF
   if exponent == 0xFF {
     if mantissa != 0 {
       return 0.0 / 0.0 // NaN
@@ -197,19 +197,19 @@ fn double_to_float32_bits(value : Double) -> Int {
   }
   if exp > 127 {
     // Overflow to infinity
-    return sign_bit.lsl(31).lor(0x7F800000)
+    return (sign_bit << 31) | 0x7F800000
   }
   if exp < -126 {
     // Denormalized
     let shift = -126 - exp
     frac = frac / ldexp(1.0, shift)
-    let mantissa = (frac * 8388608.0).to_int().land(0x7FFFFF)
-    return sign_bit.lsl(31).lor(mantissa)
+    let mantissa = (frac * 8388608.0).to_int() & 0x7FFFFF
+    return (sign_bit << 31) | mantissa
   }
   // Normalized: frac is in [1.0, 2.0)
-  let mantissa = ((frac - 1.0) * 8388608.0 + 0.5).to_int().land(0x7FFFFF)
-  let biased_exp = (exp + 127).land(0xFF)
-  sign_bit.lsl(31).lor(biased_exp.lsl(23)).lor(mantissa)
+  let mantissa = ((frac - 1.0) * 8388608.0 + 0.5).to_int() & 0x7FFFFF
+  let biased_exp = (exp + 127) & 0xFF
+  (sign_bit << 31) | (biased_exp << 23) | mantissa
 }
 
 ///|
@@ -1035,7 +1035,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("join", fn(this_val, args) raise {
+      MethodCallable("join", fn(this_val, args) {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
@@ -1079,7 +1079,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("toString", fn(this_val, _args) raise {
+      MethodCallable("toString", fn(this_val, _args) {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
@@ -1115,7 +1115,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("reverse", fn(this_val, _args) raise {
+      MethodCallable("reverse", fn(this_val, _args) {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
@@ -1307,7 +1307,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("entries", fn(this_val, _args) raise {
+      MethodCallable("entries", fn(this_val, _args) {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
@@ -1395,7 +1395,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("keys", fn(this_val, _args) raise {
+      MethodCallable("keys", fn(this_val, _args) {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
@@ -1481,7 +1481,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("values", fn(this_val, _args) raise {
+      MethodCallable("values", fn(this_val, _args) {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {

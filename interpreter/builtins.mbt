@@ -1261,7 +1261,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     s = s ^ (s.reinterpret_as_uint() >> 17).reinterpret_as_int()
     s = s ^ (s << 5)
     rng_state[0] = s
-    let normalized = s.land(0x7FFFFFFF).to_double() / 2147483648.0
+    let normalized = (s & 0x7FFFFFFF).to_double() / 2147483648.0
     Number(normalized)
   })
   math_props["sign"] = make_native_func_with_length("sign", 1, fn(args) raise {
