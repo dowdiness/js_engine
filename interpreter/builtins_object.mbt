@@ -53,7 +53,12 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 } else if data.class_name == "Boolean" {
                   String_("[object Boolean]")
                 } else {
-                  String_("[object Object]")
+                  // Check Symbol.toStringTag on object and prototype chain
+                  let tag = get_tostringtag_value(data)
+                  match tag {
+                    Some(t) => String_("[object \{t}]")
+                    None => String_("[object Object]")
+                  }
                 }
             }
           }),

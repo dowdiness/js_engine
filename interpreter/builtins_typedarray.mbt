@@ -1566,6 +1566,22 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
   // forEach, every, some, find, findIndex, map, filter, reduce, reduceRight
   // These need InterpreterCallable for callbacks - registered separately below.
 
+  // Mark all prototype methods as non-enumerable (per spec)
+  let method_names = [
+    "set", "subarray", "slice", "copyWithin", "fill",
+    "indexOf", "lastIndexOf", "includes", "join", "toString",
+    "reverse", "sort", "at", "entries", "keys", "values",
+  ]
+  for name in method_names {
+    ta_proto_descs[name] = {
+      writable: true,
+      enumerable: false,
+      configurable: true,
+      getter: None,
+      setter: None,
+    }
+  }
+
   // Create the shared %TypedArray%.prototype
   let ta_proto_sym_props : Map[Int, Value] = {}
   ta_proto_sym_props[iterator_sym.id] = values_fn // [Symbol.iterator] = values
