@@ -27,6 +27,28 @@ fn create_list_from_array_like(val : Value) -> Array[Value] raise Error {
 }
 
 ///|
+/// Unwrap a Proxy to get its target ObjectData, throwing TypeError if revoked.
+/// Returns None if the value is not a Proxy (caller should handle Object etc directly).
+fn unwrap_proxy_target(val : Value) -> ObjectData? raise Error {
+  match val {
+    Proxy(proxy_data) =>
+      match proxy_data.target {
+        Some(target) =>
+          match target {
+            Object(data) => Some(data)
+            Proxy(_) => unwrap_proxy_target(target)
+            _ => None
+          }
+        None =>
+          raise @errors.TypeError(
+            message="Cannot perform operation on a proxy that has been revoked",
+          )
+      }
+    _ => None
+  }
+}
+
+///|
 fn setup_reflect_builtins(env : Environment) -> Unit {
   let reflect_props : Map[String, Value] = {}
 
@@ -116,85 +138,93 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
         let target = args[0]
         let prop = args[1].to_string()
         let attrs = args[2]
-        match target {
-          Object(data) => {
-            // Extract descriptor attributes
-            match attrs {
-              Object(attr_data) => {
-                let has_value = attr_data.properties.contains("value")
-                let has_get = attr_data.properties.contains("get")
-                let has_set = attr_data.properties.contains("set")
-                if has_value && (has_get || has_set) {
-                  raise @errors.TypeError(
-                    message="Invalid property descriptor. Cannot both specify accessors and a value or writable attribute",
-                  )
-                }
-                if has_get || has_set {
-                  // Accessor descriptor
-                  let getter = attr_data.properties.get("get")
-                  let setter = attr_data.properties.get("set")
-                  let enumerable = match attr_data.properties.get("enumerable") {
-                    Some(v) => is_truthy(v)
-                    None => false
-                  }
-                  let configurable = match attr_data.properties.get(
-                    "configurable",
-                  ) {
-                    Some(v) => is_truthy(v)
-                    None => false
-                  }
-                  data.descriptors[prop] = {
-                    writable: false,
-                    enumerable,
-                    configurable,
-                    getter,
-                    setter,
-                  }
-                  // Remove any data value
-                  let _ = data.properties.remove(prop)
-                } else {
-                  // Data descriptor
-                  let writable = match attr_data.properties.get("writable") {
-                    Some(v) => is_truthy(v)
-                    None => false
-                  }
-                  let enumerable = match attr_data.properties.get("enumerable") {
-                    Some(v) => is_truthy(v)
-                    None => false
-                  }
-                  let configurable = match attr_data.properties.get(
-                    "configurable",
-                  ) {
-                    Some(v) => is_truthy(v)
-                    None => false
-                  }
-                  if has_value {
-                    data.properties[prop] = match attr_data.properties.get(
-                      "value",
-                    ) {
-                      Some(v) => v
-                      None => Undefined
-                    }
-                  }
-                  data.descriptors[prop] = {
-                    writable,
-                    enumerable,
-                    configurable,
-                    getter: None,
-                    setter: None,
-                  }
-                }
-                Bool(true)
-              }
-              _ =>
+        // Unwrap Proxy to get ObjectData
+        let data : ObjectData = match target {
+          Object(data) => data
+          Proxy(_) =>
+            match unwrap_proxy_target(target) {
+              Some(data) => data
+              None =>
                 raise @errors.TypeError(
-                  message="Property description must be an object",
+                  message="Reflect.defineProperty called on non-object",
                 )
             }
-          }
           _ =>
             raise @errors.TypeError(
               message="Reflect.defineProperty called on non-object",
+            )
+        }
+        // Extract descriptor attributes
+        match attrs {
+          Object(attr_data) => {
+            let has_value = attr_data.properties.contains("value")
+            let has_get = attr_data.properties.contains("get")
+            let has_set = attr_data.properties.contains("set")
+            if has_value && (has_get || has_set) {
+              raise @errors.TypeError(
+                message="Invalid property descriptor. Cannot both specify accessors and a value or writable attribute",
+              )
+            }
+            if has_get || has_set {
+              // Accessor descriptor
+              let getter = attr_data.properties.get("get")
+              let setter = attr_data.properties.get("set")
+              let enumerable = match attr_data.properties.get("enumerable") {
+                Some(v) => is_truthy(v)
+                None => false
+              }
+              let configurable = match attr_data.properties.get(
+                "configurable",
+              ) {
+                Some(v) => is_truthy(v)
+                None => false
+              }
+              data.descriptors[prop] = {
+                writable: false,
+                enumerable,
+                configurable,
+                getter,
+                setter,
+              }
+              // Remove any data value
+              let _ = data.properties.remove(prop)
+            } else {
+              // Data descriptor
+              let writable = match attr_data.properties.get("writable") {
+                Some(v) => is_truthy(v)
+                None => false
+              }
+              let enumerable = match attr_data.properties.get("enumerable") {
+                Some(v) => is_truthy(v)
+                None => false
+              }
+              let configurable = match attr_data.properties.get(
+                "configurable",
+              ) {
+                Some(v) => is_truthy(v)
+                None => false
+              }
+              if has_value {
+                data.properties[prop] = match attr_data.properties.get(
+                  "value",
+                ) {
+                  Some(v) => v
+                  None => Undefined
+                }
+              }
+              data.descriptors[prop] = {
+                writable,
+                enumerable,
+                configurable,
+                getter: None,
+                setter: None,
+              }
+            }
+            Bool(true)
+          }
+          _ =>
+            raise @errors.TypeError(
+              message="Property description must be an object",
             )
         }
       }),
@@ -219,24 +249,31 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
         }
         let target = args[0]
         let prop = args[1].to_string()
-        match target {
-          Object(data) => {
-            match data.descriptors.get(prop) {
-              Some(desc) =>
-                if not(desc.configurable) {
-                  return Bool(false)
-                }
-              None => ()
+        let data : ObjectData = match target {
+          Object(data) => data
+          Proxy(_) =>
+            match unwrap_proxy_target(target) {
+              Some(data) => data
+              None =>
+                raise @errors.TypeError(
+                  message="Reflect.deleteProperty called on non-object",
+                )
             }
-            let _ = data.properties.remove(prop)
-            let _ = data.descriptors.remove(prop)
-            Bool(true)
-          }
           _ =>
             raise @errors.TypeError(
               message="Reflect.deleteProperty called on non-object",
             )
         }
+        match data.descriptors.get(prop) {
+          Some(desc) =>
+            if not(desc.configurable) {
+              return Bool(false)
+            }
+          None => ()
+        }
+        let _ = data.properties.remove(prop)
+        let _ = data.descriptors.remove(prop)
+        Bool(true)
       }),
     ),
     class_name: "Function",
@@ -287,64 +324,71 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
         }
         let target = args[0]
         let prop = args[1].to_string()
-        match target {
-          Object(data) => {
-            let has_own_data = data.properties.contains(prop)
-            let has_own_desc = data.descriptors.contains(prop)
-            // Property must exist in either data or descriptors
-            if not(has_own_data) && not(has_own_desc) {
-              return Undefined
+        let data : ObjectData = match target {
+          Object(data) => data
+          Proxy(_) =>
+            match unwrap_proxy_target(target) {
+              Some(data) => data
+              None =>
+                raise @errors.TypeError(
+                  message="Reflect.getOwnPropertyDescriptor called on non-object",
+                )
             }
-            let result_props : Map[String, Value] = {}
-            match data.descriptors.get(prop) {
-              Some(desc) => {
-                match desc.getter {
-                  Some(g) => {
-                    // Accessor descriptor
-                    result_props["get"] = g
-                    result_props["set"] = match desc.setter {
-                      Some(s) => s
-                      None => Undefined
-                    }
-                  }
-                  None => {
-                    // Data descriptor
-                    result_props["value"] = match data.properties.get(prop) {
-                      Some(v) => v
-                      None => Undefined
-                    }
-                    result_props["writable"] = Bool(desc.writable)
-                  }
-                }
-                result_props["enumerable"] = Bool(desc.enumerable)
-                result_props["configurable"] = Bool(desc.configurable)
-              }
-              None => {
-                result_props["value"] = match data.properties.get(prop) {
-                  Some(v) => v
-                  None => Undefined
-                }
-                result_props["writable"] = Bool(true)
-                result_props["enumerable"] = Bool(true)
-                result_props["configurable"] = Bool(true)
-              }
-            }
-            Object({
-              properties: result_props,
-              symbol_properties: {},
-              prototype: Null,
-              callable: None,
-              class_name: "Object",
-              descriptors: {},
-              symbol_descriptors: {},
-              extensible: true,
-            })
-          }
           _ =>
             raise @errors.TypeError(
               message="Reflect.getOwnPropertyDescriptor called on non-object",
             )
         }
+        let has_own_data = data.properties.contains(prop)
+        let has_own_desc = data.descriptors.contains(prop)
+        // Property must exist in either data or descriptors
+        if not(has_own_data) && not(has_own_desc) {
+          return Undefined
+        }
+        let result_props : Map[String, Value] = {}
+        match data.descriptors.get(prop) {
+          Some(desc) => {
+            match desc.getter {
+              Some(g) => {
+                // Accessor descriptor
+                result_props["get"] = g
+                result_props["set"] = match desc.setter {
+                  Some(s) => s
+                  None => Undefined
+                }
+              }
+              None => {
+                // Data descriptor
+                result_props["value"] = match data.properties.get(prop) {
+                  Some(v) => v
+                  None => Undefined
+                }
+                result_props["writable"] = Bool(desc.writable)
+              }
+            }
+            result_props["enumerable"] = Bool(desc.enumerable)
+            result_props["configurable"] = Bool(desc.configurable)
+          }
+          None => {
+            result_props["value"] = match data.properties.get(prop) {
+              Some(v) => v
+              None => Undefined
+            }
+            result_props["writable"] = Bool(true)
+            result_props["enumerable"] = Bool(true)
+            result_props["configurable"] = Bool(true)
+          }
+        }
+        Object({
+          properties: result_props,
+          symbol_properties: {},
+          prototype: Null,
+          callable: None,
+          class_name: "Object",
+          descriptors: {},
+          symbol_descriptors: {},
+          extensible: true,
+        })
       }),
     ),
     class_name: "Function",
@@ -367,6 +411,11 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
         }
         match args[0] {
           Object(data) => data.prototype
+          Proxy(_) =>
+            match unwrap_proxy_target(args[0]) {
+              Some(data) => data.prototype
+              None => Null
+            }
           _ =>
             raise @errors.TypeError(
               message="Reflect.getPrototypeOf called on non-object",
@@ -430,6 +479,29 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
             }
             Bool(false)
           }
+          Proxy(_) =>
+            // Unwrap proxy and check the target
+            match unwrap_proxy_target(target) {
+              Some(data) => {
+                if data.properties.contains(prop) {
+                  return Bool(true)
+                }
+                let mut current = data.prototype
+                while true {
+                  match current {
+                    Object(proto_data) =>
+                      if proto_data.properties.contains(prop) {
+                        return Bool(true)
+                      } else {
+                        current = proto_data.prototype
+                      }
+                    _ => break
+                  }
+                }
+                Bool(false)
+              }
+              None => Bool(false)
+            }
           _ =>
             raise @errors.TypeError(
               message="Reflect.has called on non-object",
@@ -457,6 +529,11 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
         }
         match args[0] {
           Object(data) => Bool(data.extensible)
+          Proxy(_) =>
+            match unwrap_proxy_target(args[0]) {
+              Some(data) => Bool(data.extensible)
+              None => Bool(false)
+            }
           _ =>
             raise @errors.TypeError(
               message="Reflect.isExtensible called on non-object",
@@ -476,28 +553,107 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      NativeCallable("ownKeys", fn(args) {
+      InterpreterCallable("ownKeys", fn(interp, _this_val, args) {
         if args.length() < 1 {
           raise @errors.TypeError(
             message="Reflect.ownKeys requires 1 argument",
           )
         }
-        match args[0] {
-          Object(data) => {
-            let keys : Array[Value] = []
-            data.properties.each(fn(k, _v) { keys.push(String_(k)) })
-            data.symbol_properties.each(fn(id, _v) {
-              match get_symbol_by_id(id) {
-                Some(sym) => keys.push(Symbol(sym))
-                None => ()
+        let target = args[0]
+        match target {
+          Proxy(proxy_data) => {
+            // Check for ownKeys trap
+            let trap = get_proxy_trap(proxy_data, "ownKeys")
+            match trap {
+              Some(trap_fn) => {
+                let proxy_target = get_proxy_target(proxy_data)
+                let handler = get_proxy_handler(proxy_data)
+                let loc = @token.Loc::default()
+                let result = interp.call_value(
+                  trap_fn, handler, [proxy_target], loc,
+                )
+                // Convert result array to Array[Value]
+                match result {
+                  Array(data) => Array({ elements: data.elements.copy() })
+                  _ =>
+                    raise @errors.TypeError(
+                      message="'ownKeys' on proxy: trap result is not an Array",
+                    )
+                }
               }
-            })
-            Array({ elements: keys })
+              None => {
+                // No trap, delegate to target
+                let proxy_target = get_proxy_target(proxy_data)
+                let loc = @token.Loc::default()
+                interp.call_value(
+                  Object({
+                    properties: {},
+                    symbol_properties: {},
+                    prototype: Null,
+                    callable: Some(
+                      InterpreterCallable("ownKeys_inner", fn(
+                        inner_interp,
+                        _tv,
+                        inner_args,
+                      ) {
+                        // Recursively call Reflect.ownKeys on the proxy target
+                        let reflect_obj = inner_interp.global.get("Reflect") catch {
+                          _ => Undefined
+                        }
+                        let own_keys_fn = inner_interp.get_property(
+                          reflect_obj, "ownKeys", loc,
+                        )
+                        inner_interp.call_value(
+                          own_keys_fn, Undefined, inner_args, loc,
+                        )
+                      }),
+                    ),
+                    class_name: "Function",
+                    descriptors: {},
+                    symbol_descriptors: {},
+                    extensible: true,
+                  }),
+                  Undefined,
+                  [proxy_target],
+                  loc,
+                )
+              }
+            }
           }
-          _ =>
-            raise @errors.TypeError(
-              message="Reflect.ownKeys called on non-object",
-            )
+          _ => {
+            fn collect_own_keys(data : ObjectData) -> Value {
+              let keys : Array[Value] = []
+              data.properties.each(fn(k, _v) { keys.push(String_(k)) })
+              data.symbol_properties.each(fn(id, _v) {
+                match get_symbol_by_id(id) {
+                  Some(sym) => keys.push(Symbol(sym))
+                  None => ()
+                }
+              })
+              // Also include keys from descriptors not in properties
+              data.descriptors.each(fn(k, _v) {
+                if not(data.properties.contains(k)) {
+                  keys.push(String_(k))
+                }
+              })
+              Array({ elements: keys })
+            }
+            match target {
+              Object(data) => collect_own_keys(data)
+              Array(data) => {
+                let keys : Array[Value] = []
+                for i = 0; i < data.elements.length(); i = i + 1 {
+                  keys.push(String_(i.to_string()))
+                }
+                keys.push(String_("length"))
+                Array({ elements: keys })
+              }
+              _ =>
+                raise @errors.TypeError(
+                  message="Reflect.ownKeys called on non-object",
+                )
+            }
+          }
         }
       }),
     ),
@@ -524,6 +680,14 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
             data.extensible = false
             Bool(true)
           }
+          Proxy(_) =>
+            match unwrap_proxy_target(args[0]) {
+              Some(data) => {
+                data.extensible = false
+                Bool(true)
+              }
+              None => Bool(false)
+            }
           _ =>
             raise @errors.TypeError(
               message="Reflect.preventExtensions called on non-object",
@@ -605,22 +769,29 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
         }
         let target = args[0]
         let proto = args[1]
-        match target {
-          Object(data) => {
-            match proto {
-              Object(_) | Null => {
-                data.prototype = proto
-                Bool(true)
-              }
-              _ =>
+        let data : ObjectData = match target {
+          Object(data) => data
+          Proxy(_) =>
+            match unwrap_proxy_target(target) {
+              Some(data) => data
+              None =>
                 raise @errors.TypeError(
-                  message="Object prototype may only be an Object or null",
+                  message="Reflect.setPrototypeOf called on non-object",
                 )
             }
-          }
           _ =>
             raise @errors.TypeError(
               message="Reflect.setPrototypeOf called on non-object",
+            )
+        }
+        match proto {
+          Object(_) | Null => {
+            data.prototype = proto
+            Bool(true)
+          }
+          _ =>
+            raise @errors.TypeError(
+              message="Object prototype may only be an Object or null",
             )
         }
       }),

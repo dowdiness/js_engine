@@ -4899,17 +4899,21 @@ fn Interpreter::call_value(
   }
   match callee {
     Proxy(proxy_data) => {
-      // Verify target is callable before invoking apply trap
+      // Verify target chain is callable (recursively unwrap nested proxies)
       let target = get_proxy_target(proxy_data)
-      match target {
-        Object(t_data) =>
-          match t_data.callable {
-            Some(_) => ()
-            None =>
-              raise @errors.TypeError(message="proxy target is not a function")
-          }
-        _ =>
-          raise @errors.TypeError(message="proxy target is not a function")
+      fn check_callable(v : Value) -> Bool {
+        match v {
+          Object(t_data) => t_data.callable is Some(_)
+          Proxy(pd) =>
+            match pd.target {
+              Some(inner) => check_callable(inner)
+              None => false
+            }
+          _ => false
+        }
+      }
+      if not(check_callable(target)) {
+        raise @errors.TypeError(message="proxy target is not a function")
       }
       let trap = get_proxy_trap(proxy_data, "apply")
       match trap {

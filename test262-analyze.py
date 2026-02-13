@@ -108,9 +108,6 @@ UNSUPPORTED_TEST262_FEATURES = {
     # Collections
     "WeakMap", "WeakSet", "WeakRef",
 
-    # Proxy / Reflect
-    "Proxy", "Reflect", "Reflect.construct",
-
     # Typed arrays and buffers
     "ArrayBuffer", "SharedArrayBuffer", "DataView",
     "DataView.prototype.setUint8",
