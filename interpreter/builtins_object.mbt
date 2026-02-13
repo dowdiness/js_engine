@@ -21,6 +21,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               Map(_) => String_("[object Map]")
               Set(_) => String_("[object Set]")
               Promise(_) => String_("[object Promise]")
+              Proxy(_) => String_("[object Object]")
               Object(data) =>
                 if data.class_name == "Function" {
                   String_("[object Function]")
@@ -387,14 +388,112 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               Undefined => ()
               // Per ECMAScript spec, only Object with properties field accepted
               // Arrays, Maps, Sets don't have properties field in our implementation
-              Null
-              | String_(_)
-              | Number(_)
-              | Bool(_)
-              | Symbol(_)
-              | Array(_)
-              | Map(_)
-              | Set(_) =>
+              Proxy(proxy_data) =>
+                // Unwrap Proxy and use target's properties as descriptors
+                match proxy_data.target {
+                  Some(Object(desc_obj)) =>
+                    match obj {
+                      Object(data) =>
+                        desc_obj.properties.each(fn(prop_name, desc_val) raise {
+                          match desc_val {
+                            Object(desc) => {
+                              let has_get = desc.properties.contains("get")
+                              let has_set = desc.properties.contains("set")
+                              let has_value = desc.properties.contains("value")
+                              let has_writable = desc.properties.contains(
+                                "writable",
+                              )
+                              let is_accessor = has_get || has_set
+                              let is_data = has_value || has_writable
+                              if is_accessor && is_data {
+                                raise @errors.TypeError(
+                                  message="Invalid property descriptor. Cannot both specify accessors and a value or writable attribute, #<Object>",
+                                )
+                              }
+                              if is_accessor {
+                                if not(data.properties.contains(prop_name)) {
+                                  data.properties[prop_name] = Undefined
+                                }
+                                let getter : Value? = match
+                                  desc.properties.get("get") {
+                                  Some(v) =>
+                                    match v {
+                                      Undefined => None
+                                      _ => Some(v)
+                                    }
+                                  None => None
+                                }
+                                let setter : Value? = match
+                                  desc.properties.get("set") {
+                                  Some(v) =>
+                                    match v {
+                                      Undefined => None
+                                      _ => Some(v)
+                                    }
+                                  None => None
+                                }
+                                let enumerable = match
+                                  desc.properties.get("enumerable") {
+                                  Some(v) => is_truthy(v)
+                                  None => false
+                                }
+                                let configurable = match
+                                  desc.properties.get("configurable") {
+                                  Some(v) => is_truthy(v)
+                                  None => false
+                                }
+                                data.descriptors[prop_name] = {
+                                  writable: false,
+                                  enumerable,
+                                  configurable,
+                                  getter,
+                                  setter,
+                                }
+                              } else {
+                                let value = match desc.properties.get("value") {
+                                  Some(v) => v
+                                  None => Undefined
+                                }
+                                data.properties[prop_name] = value
+                                let writable = match
+                                  desc.properties.get("writable") {
+                                  Some(v) => is_truthy(v)
+                                  None => false
+                                }
+                                let enumerable = match
+                                  desc.properties.get("enumerable") {
+                                  Some(v) => is_truthy(v)
+                                  None => false
+                                }
+                                let configurable = match
+                                  desc.properties.get("configurable") {
+                                  Some(v) => is_truthy(v)
+                                  None => false
+                                }
+                                data.descriptors[prop_name] = {
+                                  writable,
+                                  enumerable,
+                                  configurable,
+                                  getter: None,
+                                  setter: None,
+                                }
+                              }
+                            }
+                            _ =>
+                              raise @errors.TypeError(
+                                message="Property description must be an object",
+                              )
+                          }
+                        })
+                      _ => ()
+                    }
+                  _ =>
+                    raise @errors.TypeError(
+                      message="Property descriptors must be an object",
+                    )
+                }
+              Null | String_(_) | Number(_) | Bool(_) | Symbol(_) | Array(_) |
+              Map(_) | Set(_) =>
                 raise @errors.TypeError(
                   message="Property descriptors must be an object",
                 )
@@ -798,7 +897,45 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                       data.symbol_properties[sym_id] = v
                     })
                   }
-                  // ToObject conversion: Map, Set, Number, Bool, Symbol have no enumerable properties
+                  // Proxy sources: unwrap to target and copy enumerable properties
+                  Proxy(proxy_data) =>
+                    match proxy_data.target {
+                      Some(target) =>
+                        match target {
+                          Object(src) => {
+                            src.properties.each(fn(k, v) raise {
+                              let enumerable = match src.descriptors.get(k) {
+                                Some(d) => d.enumerable
+                                None => true
+                              }
+                              if enumerable {
+                                let can_write = match data.descriptors.get(k) {
+                                  Some(d) => d.writable
+                                  None => true
+                                }
+                                let exists = data.properties.contains(k)
+                                if not(can_write) {
+                                  raise @errors.TypeError(
+                                    message="Cannot assign to read-only property '\{k}'",
+                                  )
+                                }
+                                if not(exists) && not(data.extensible) {
+                                  raise @errors.TypeError(
+                                    message="Cannot add property '\{k}' to non-extensible object",
+                                  )
+                                }
+                                data.properties[k] = v
+                              }
+                            })
+                          }
+                          _ => ()
+                        }
+                      None =>
+                        raise @errors.TypeError(
+                          message="Cannot perform 'ownKeys' on a proxy that has been revoked",
+                        )
+                    }
+                  // ToObject conversion: Map, Set, Number, Bool, Symbol have no enumerable own string properties
                   Map(_) | Set(_) | Number(_) | Bool(_) | Symbol(_) => ()
                 }
               }
@@ -807,7 +944,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => target
           }
         }),
-        "getPrototypeOf": make_native_func("getPrototypeOf", fn(args) {
+        "getPrototypeOf": make_native_func("getPrototypeOf", fn(args) raise {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           fn get_ctor_proto(name : String) -> Value {
             let ctor = env.get(name) catch { _ => return Null }
@@ -830,6 +967,18 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             Map(_) => get_ctor_proto("Map")
             Set(_) => get_ctor_proto("Set")
             Promise(_) => get_ctor_proto("Promise")
+            Proxy(proxy_data) =>
+              match proxy_data.target {
+                Some(target) =>
+                  match target {
+                    Object(data) => data.prototype
+                    _ => Null
+                  }
+                None =>
+                  raise @errors.TypeError(
+                    message="Cannot perform 'getPrototypeOf' on a proxy that has been revoked",
+                  )
+              }
             _ => Null
           }
         }),
@@ -1074,7 +1223,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           // Per ES spec, Object.defineProperty on non-object throws TypeError
           // Array, Map, Set, Promise are JS objects
           match obj {
-            Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) => ()
+            Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => ()
             _ =>
               raise @errors.TypeError(
                 message="Object.defineProperty called on non-object",
@@ -1083,7 +1232,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           // Per ES spec, descriptor must be an object
           // Array, Map, Set, Promise are JS objects
           match descriptor {
-            Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) => ()
+            Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => ()
             _ =>
               raise @errors.TypeError(
                 message="Property description must be an object: \{descriptor.to_string()}",
@@ -1518,13 +1667,216 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 }
               }
             }
+            Proxy(proxy_data) => {
+              // Delegate defineProperty to the target through the proxy
+              let target = match proxy_data.target {
+                Some(t) => t
+                None =>
+                  raise @errors.TypeError(
+                    message="Cannot perform 'defineProperty' on a proxy that has been revoked",
+                  )
+              }
+              match target {
+                Object(data) => {
+                  let is_symbol_key = prop_val is Symbol(_)
+                  let sym_id = match prop_val {
+                    Symbol(s) => s.id
+                    _ => 0
+                  }
+                  let prop_name = prop_val.to_string()
+                  let prop_exists = if is_symbol_key {
+                    data.symbol_properties.contains(sym_id)
+                  } else {
+                    data.properties.contains(prop_name)
+                  }
+                  let existing_desc : PropDescriptor? = if is_symbol_key {
+                    data.symbol_descriptors.get(sym_id)
+                  } else {
+                    data.descriptors.get(prop_name)
+                  }
+                  let prop_also_in_desc = if is_symbol_key {
+                    data.symbol_descriptors.contains(sym_id)
+                  } else {
+                    data.descriptors.contains(prop_name)
+                  }
+                  if not(prop_exists) && not(prop_also_in_desc) &&
+                    not(data.extensible) {
+                    let prop_display = if is_symbol_key {
+                      prop_val.to_string()
+                    } else {
+                      prop_name
+                    }
+                    raise @errors.TypeError(
+                      message="Cannot add property \{prop_display}, object is not extensible",
+                    )
+                  }
+                  // Validate non-configurable constraints
+                  match existing_desc {
+                    Some(existing) => {
+                      let prop_display = if is_symbol_key {
+                        prop_val.to_string()
+                      } else {
+                        prop_name
+                      }
+                      validate_non_configurable(
+                        existing,
+                        prop_display,
+                        is_accessor,
+                        is_data,
+                        has_value,
+                        new_writable,
+                        new_enumerable,
+                        new_configurable,
+                        new_getter,
+                        new_setter,
+                        fn() {
+                          if is_symbol_key {
+                            match data.symbol_properties.get(sym_id) {
+                              Some(v) => v
+                              None => Undefined
+                            }
+                          } else {
+                            match data.properties.get(prop_name) {
+                              Some(v) => v
+                              None => Undefined
+                            }
+                          }
+                        },
+                        fn() {
+                          match desc_props.get("value") {
+                            Some(v) => Some(v)
+                            None => None
+                          }
+                        },
+                      )
+                    }
+                    None => ()
+                  }
+                  if is_accessor {
+                    if is_symbol_key {
+                      if not(data.symbol_properties.contains(sym_id)) {
+                        data.symbol_properties[sym_id] = Undefined
+                      }
+                    } else if not(data.properties.contains(prop_name)) {
+                      data.properties[prop_name] = Undefined
+                    }
+                    let enumerable = match new_enumerable {
+                      Some(e) => e
+                      None =>
+                        match existing_desc {
+                          Some(d) => d.enumerable
+                          None => false
+                        }
+                    }
+                    let configurable = match new_configurable {
+                      Some(c) => c
+                      None =>
+                        match existing_desc {
+                          Some(d) => d.configurable
+                          None => false
+                        }
+                    }
+                    let getter = match new_getter {
+                      Some(v) =>
+                        match v {
+                          Undefined => None
+                          _ => Some(v)
+                        }
+                      None =>
+                        match existing_desc {
+                          Some(d) => d.getter
+                          None => None
+                        }
+                    }
+                    let setter = match new_setter {
+                      Some(v) =>
+                        match v {
+                          Undefined => None
+                          _ => Some(v)
+                        }
+                      None =>
+                        match existing_desc {
+                          Some(d) => d.setter
+                          None => None
+                        }
+                    }
+                    let final_desc : PropDescriptor = {
+                      writable: false,
+                      enumerable,
+                      configurable,
+                      getter,
+                      setter,
+                    }
+                    if is_symbol_key {
+                      data.symbol_descriptors[sym_id] = final_desc
+                    } else {
+                      data.descriptors[prop_name] = final_desc
+                    }
+                  } else {
+                    match desc_props.get("value") {
+                      Some(v) =>
+                        if is_symbol_key {
+                          data.symbol_properties[sym_id] = v
+                        } else {
+                          data.properties[prop_name] = v
+                        }
+                      None =>
+                        if is_symbol_key {
+                          if not(data.symbol_properties.contains(sym_id)) {
+                            data.symbol_properties[sym_id] = Undefined
+                          }
+                        } else if not(data.properties.contains(prop_name)) {
+                          data.properties[prop_name] = Undefined
+                        }
+                    }
+                    let writable = match new_writable {
+                      Some(w) => w
+                      None =>
+                        match existing_desc {
+                          Some(d) => d.writable
+                          None => false
+                        }
+                    }
+                    let enumerable = match new_enumerable {
+                      Some(e) => e
+                      None =>
+                        match existing_desc {
+                          Some(d) => d.enumerable
+                          None => false
+                        }
+                    }
+                    let configurable = match new_configurable {
+                      Some(c) => c
+                      None =>
+                        match existing_desc {
+                          Some(d) => d.configurable
+                          None => false
+                        }
+                    }
+                    let final_desc : PropDescriptor = {
+                      writable,
+                      enumerable,
+                      configurable,
+                      getter: None,
+                      setter: None,
+                    }
+                    if is_symbol_key {
+                      data.symbol_descriptors[sym_id] = final_desc
+                    } else {
+                      data.descriptors[prop_name] = final_desc
+                    }
+                  }
+                }
+                _ => ()
+              }
+            }
             _ => ()
           }
           obj
         }),
         "getOwnPropertyDescriptor": make_native_func(
           "getOwnPropertyDescriptor",
-          fn(args) {
+          fn(args) raise {
             let obj = if args.length() > 0 { args[0] } else { Undefined }
             let prop_key = if args.length() > 1 { args[1] } else { Undefined }
             let is_symbol_key = prop_key is Symbol(_)
@@ -1788,6 +2140,136 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                   } else {
                     Undefined
                   }
+                }
+              Proxy(proxy_data) =>
+                // Unwrap proxy and get descriptor from target
+                match proxy_data.target {
+                  Some(target) =>
+                    match target {
+                      Object(data) =>
+                        if is_symbol_key {
+                          if data.symbol_properties.contains(sym_id) ||
+                            data.symbol_descriptors.contains(sym_id) {
+                            let val = match data.symbol_properties.get(sym_id) {
+                              Some(v) => v
+                              None => Undefined
+                            }
+                            let desc = data.symbol_descriptors.get(sym_id)
+                            let is_acc = match desc {
+                              Some(d) =>
+                                d.getter is Some(_) || d.setter is Some(_)
+                              None => false
+                            }
+                            if is_acc {
+                              let getter_val : Value = match desc {
+                                Some(d) =>
+                                  match d.getter {
+                                    Some(g) => g
+                                    None => Undefined
+                                  }
+                                None => Undefined
+                              }
+                              let setter_val : Value = match desc {
+                                Some(d) =>
+                                  match d.setter {
+                                    Some(s) => s
+                                    None => Undefined
+                                  }
+                                None => Undefined
+                              }
+                              let enumerable = match desc {
+                                Some(d) => d.enumerable
+                                None => true
+                              }
+                              let configurable = match desc {
+                                Some(d) => d.configurable
+                                None => true
+                              }
+                              make_accessor_desc(
+                                getter_val, setter_val, enumerable, configurable,
+                              )
+                            } else {
+                              let writable = match desc {
+                                Some(d) => d.writable
+                                None => true
+                              }
+                              let enumerable = match desc {
+                                Some(d) => d.enumerable
+                                None => true
+                              }
+                              let configurable = match desc {
+                                Some(d) => d.configurable
+                                None => true
+                              }
+                              make_desc(val, writable, enumerable, configurable)
+                            }
+                          } else {
+                            Undefined
+                          }
+                        } else if data.properties.contains(prop_name) ||
+                          data.descriptors.contains(prop_name) {
+                          let val = match data.properties.get(prop_name) {
+                            Some(v) => v
+                            None => Undefined
+                          }
+                          let desc = data.descriptors.get(prop_name)
+                          let is_acc = match desc {
+                            Some(d) =>
+                              d.getter is Some(_) || d.setter is Some(_)
+                            None => false
+                          }
+                          if is_acc {
+                            let getter_val : Value = match desc {
+                              Some(d) =>
+                                match d.getter {
+                                  Some(g) => g
+                                  None => Undefined
+                                }
+                              None => Undefined
+                            }
+                            let setter_val : Value = match desc {
+                              Some(d) =>
+                                match d.setter {
+                                  Some(s) => s
+                                  None => Undefined
+                                }
+                              None => Undefined
+                            }
+                            let enumerable = match desc {
+                              Some(d) => d.enumerable
+                              None => true
+                            }
+                            let configurable = match desc {
+                              Some(d) => d.configurable
+                              None => true
+                            }
+                            make_accessor_desc(
+                              getter_val, setter_val, enumerable, configurable,
+                            )
+                          } else {
+                            let writable = match desc {
+                              Some(d) => d.writable
+                              None => true
+                            }
+                            let enumerable = match desc {
+                              Some(d) => d.enumerable
+                              None => true
+                            }
+                            let configurable = match desc {
+                              Some(d) => d.configurable
+                              None => true
+                            }
+                            make_desc(val, writable, enumerable, configurable)
+                          }
+                        } else {
+                          Undefined
+                        }
+                      _ => Undefined
+                    }
+                  None =>
+                    raise @errors.TypeError(
+                      message="Cannot perform 'getOwnPropertyDescriptor' on a proxy that has been revoked",
+                    )
                 }
               _ => Undefined
             }
@@ -2091,7 +2573,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           // Per ES spec, Object.defineProperties on non-object throws TypeError
           // Array, Map, Set, Promise are JS objects
           match obj {
-            Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) => ()
+            Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => ()
             _ =>
               raise @errors.TypeError(
                 message="Object.defineProperties called on non-object",
@@ -2309,6 +2791,195 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                   _ => ()
                 }
               })
+            (Proxy(proxy_data), Object(desc_obj)) =>
+              // Handle defineProperties on Proxy targets by delegating to target
+              match proxy_data.target {
+                Some(Object(data)) =>
+                  desc_obj.properties.each(fn(prop_name, desc_val) raise {
+                    let desc_enumerable = match
+                      desc_obj.descriptors.get(prop_name) {
+                      Some(d) => d.enumerable
+                      None => true
+                    }
+                    if not(desc_enumerable) {
+                      return
+                    }
+                    match desc_val {
+                      Object(desc) => {
+                        let has_get = desc.properties.contains("get")
+                        let has_set = desc.properties.contains("set")
+                        let has_value = desc.properties.contains("value")
+                        let has_writable = desc.properties.contains("writable")
+                        let is_accessor = has_get || has_set
+                        let is_data = has_value || has_writable
+                        if is_accessor && is_data {
+                          raise @errors.TypeError(
+                            message="Invalid property descriptor. Cannot both specify accessors and a value or writable attribute, #<Object>",
+                          )
+                        }
+                        // Extensibility check
+                        let prop_exists = data.properties.contains(prop_name) ||
+                          data.descriptors.contains(prop_name)
+                        if not(prop_exists) && not(data.extensible) {
+                          raise @errors.TypeError(
+                            message="Cannot add property \{prop_name}, object is not extensible",
+                          )
+                        }
+                        // Non-configurable validation
+                        match data.descriptors.get(prop_name) {
+                          Some(existing) =>
+                            validate_non_configurable(
+                              existing,
+                              prop_name,
+                              is_accessor,
+                              is_data,
+                              has_value,
+                              match desc.properties.get("writable") {
+                                Some(v) => Some(is_truthy(v))
+                                None => None
+                              },
+                              match desc.properties.get("enumerable") {
+                                Some(v) => Some(is_truthy(v))
+                                None => None
+                              },
+                              match desc.properties.get("configurable") {
+                                Some(v) => Some(is_truthy(v))
+                                None => None
+                              },
+                              match desc.properties.get("get") {
+                                Some(v) => Some(v)
+                                None => None
+                              },
+                              match desc.properties.get("set") {
+                                Some(v) => Some(v)
+                                None => None
+                              },
+                              fn() {
+                                match data.properties.get(prop_name) {
+                                  Some(v) => v
+                                  None => Undefined
+                                }
+                              },
+                              fn() {
+                                match desc.properties.get("value") {
+                                  Some(v) => Some(v)
+                                  None => None
+                                }
+                              },
+                            )
+                          None => ()
+                        }
+                        if is_accessor {
+                          // Accessor descriptor
+                          if not(data.properties.contains(prop_name)) {
+                            data.properties[prop_name] = Undefined
+                          }
+                          let getter : Value? = match
+                            desc.properties.get("get") {
+                            Some(v) =>
+                              match v {
+                                Undefined => None
+                                _ => Some(v)
+                              }
+                            None => None
+                          }
+                          let setter : Value? = match
+                            desc.properties.get("set") {
+                            Some(v) =>
+                              match v {
+                                Undefined => None
+                                _ => Some(v)
+                              }
+                            None => None
+                          }
+                          // Validate getter/setter are callable
+                          match getter {
+                            Some(Object(g)) =>
+                              if g.callable is None {
+                                raise @errors.TypeError(
+                                  message="Getter must be a function: [object Object]",
+                                )
+                              }
+                            Some(Undefined) | None => ()
+                            Some(_) =>
+                              raise @errors.TypeError(
+                                message="Getter must be a function: \{getter.unwrap().to_string()}",
+                              )
+                          }
+                          match setter {
+                            Some(Object(s)) =>
+                              if s.callable is None {
+                                raise @errors.TypeError(
+                                  message="Setter must be a function: [object Object]",
+                                )
+                              }
+                            Some(Undefined) | None => ()
+                            Some(_) =>
+                              raise @errors.TypeError(
+                                message="Setter must be a function: \{setter.unwrap().to_string()}",
+                              )
+                          }
+                          let enumerable = match
+                            desc.properties.get("enumerable") {
+                            Some(v) => is_truthy(v)
+                            None => false
+                          }
+                          let configurable = match
+                            desc.properties.get("configurable") {
+                            Some(v) => is_truthy(v)
+                            None => false
+                          }
+                          data.descriptors[prop_name] = {
+                            writable: false,
+                            enumerable,
+                            configurable,
+                            getter,
+                            setter,
+                          }
+                        } else {
+                          // Data descriptor
+                          if has_value {
+                            data.properties[prop_name] = match
+                              desc.properties.get("value") {
+                              Some(v) => v
+                              None => Undefined
+                            }
+                          } else if not(data.properties.contains(prop_name)) {
+                            data.properties[prop_name] = Undefined
+                          }
+                          let writable = match
+                            desc.properties.get("writable") {
+                            Some(v) => is_truthy(v)
+                            None => false
+                          }
+                          let enumerable = match
+                            desc.properties.get("enumerable") {
+                            Some(v) => is_truthy(v)
+                            None => false
+                          }
+                          let configurable = match
+                            desc.properties.get("configurable") {
+                            Some(v) => is_truthy(v)
+                            None => false
+                          }
+                          data.descriptors[prop_name] = {
+                            writable,
+                            enumerable,
+                            configurable,
+                            getter: None,
+                            setter: None,
+                          }
+                        }
+                      }
+                      _ => ()
+                    }
+                  })
+                Some(_) => ()
+                None =>
+                  raise @errors.TypeError(
+                    message="Cannot perform 'defineProperty' on a proxy that has been revoked",
+                  )
+              }
             (Array(arr_data), Object(desc_obj)) =>
               // Handle defineProperties on Array targets
               desc_obj.properties.each(fn(prop_name, desc_val) raise {

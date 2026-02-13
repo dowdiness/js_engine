@@ -19,6 +19,7 @@ Self-hosting is already achieved: the engine compiles to JavaScript via MoonBit'
 - `console.log()` output
 - String concatenation (including mixed types)
 - Single-line (`//`) and multi-line (`/* */`) comments
+- ES6 Proxy (13 traps) and Reflect API (13 methods)
 
 ## Package Structure
 
@@ -79,7 +80,7 @@ crashing the scripts.
 ## Documentation
 
 - [ROADMAP.md](ROADMAP.md) — Current test262 status, failure breakdown, future targets, architecture overview
-- [docs/PHASE_HISTORY.md](docs/PHASE_HISTORY.md) — Archived implementation notes for completed phases (1-13)
+- [docs/PHASE_HISTORY.md](docs/PHASE_HISTORY.md) — Archived implementation notes for completed phases (1-15)
 - [AGENTS.md](AGENTS.md) — MoonBit coding conventions and tooling guide for AI agents
 
 ## License

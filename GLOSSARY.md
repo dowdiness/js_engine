@@ -82,7 +82,7 @@ Domain-specific terms used in this JavaScript engine, organized by specification
 |------|-------------------|------------|
 | **tree-walking interpreter** | — | An interpreter that directly traverses the AST and evaluates nodes recursively, without compiling to bytecode. |
 | **Interpreter** | — | The main struct holding execution state: output buffer, global environment, `global_this`, strict mode flag, microtask queue, and timer queue. |
-| **Value** | — | Enum representing all JS value types: `Number`, `String_`, `Bool`, `Null`, `Undefined`, `Object`, `Array`, `Symbol`, `Map`, `Set`, `Promise`. |
+| **Value** | — | Enum representing all JS value types: `Number`, `String_`, `Bool`, `Null`, `Undefined`, `Object`, `Array`, `Symbol`, `Map`, `Set`, `Promise`, `Proxy`. |
 | **ObjectData** | — | Struct for JS objects. Contains `properties`, `symbol_properties`, `prototype`, optional `callable`, `class_name`, `descriptors`, `extensible`. |
 | **PromiseData** | — | Struct for Promise internals: `state`, `result`, `fulfill_reactions`, `reject_reactions`, `is_handled`, `properties` (for user-defined props). |
 | **ArrayData** | — | Struct wrapping an `elements: Array[Value]` for JS arrays. |
@@ -139,6 +139,26 @@ Domain-specific terms used in this JavaScript engine, organized by specification
 | **Symbol.iterator** | well-known symbol | The symbol key used to access an object's default iterator factory. |
 | **next()** | — | Method on iterators returning `{ value, done }` objects. |
 | **spread_iterable** | — | Internal function using the iterator protocol to expand an iterable into an `Array[Value]`. |
+
+---
+
+## Proxy & Reflect (ECMAScript)
+
+| Term | Aliases / Related | Definition |
+|------|-------------------|------------|
+| **Proxy** | — | A meta-programming wrapper around a target object. Intercepts fundamental operations (property access, assignment, function call, etc.) via handler traps. |
+| **ProxyData** | — | Struct with mutable `target: Value?` and `handler: Value?` fields. Both set to `None` when the proxy is revoked. |
+| **handler** | proxy handler | An object whose properties are trap functions. Each trap intercepts a specific operation on the proxy. |
+| **trap** | — | A method on the handler object that intercepts a fundamental operation. Named after the internal method it intercepts (e.g., `get`, `set`, `has`). |
+| **target** | proxy target | The underlying object that the proxy wraps. Operations fall through to the target when no trap is defined. |
+| **revocable proxy** | Proxy.revocable | A proxy created with `Proxy.revocable(target, handler)` that returns `{proxy, revoke}`. Calling `revoke()` sets target/handler to `None`, making all subsequent operations throw TypeError. |
+| **get_proxy_trap** | GetMethod | Helper function that looks up a trap by name on the handler object, walking the prototype chain per spec `GetMethod`. Validates the trap is callable and returns `None` for absent traps. Throws TypeError for revoked proxies or non-callable traps. |
+| **get_proxy_target** | — | Helper function that returns the proxy's target, throwing TypeError if the proxy has been revoked. |
+| **unwrap_proxy_target** | — | Recursive helper that unwraps nested `Proxy(Proxy(Object))` chains to get the underlying `ObjectData`. Used by Reflect methods to accept Proxy arguments. |
+| **Reflect** | — | Built-in object providing static methods for interceptable JavaScript operations. Each method corresponds to a proxy trap and provides the default behavior. |
+| **create_list_from_array_like** | CreateListFromArrayLike | Spec algorithm that converts an Array or array-like Object (with `length` property) to an `Array[Value]`. Used by `Reflect.apply` and `Reflect.construct`. |
+
+**Spec reference:** <https://tc39.es/ecma262/#sec-proxy-objects>, <https://tc39.es/ecma262/#sec-reflect-object>
 
 ---
 

@@ -2,13 +2,13 @@
 
 ## Current Status
 
-**Test262**: 20,870 / 25,222 passed (82.7%) | 22,741 skipped | 4,352 failed | 157 timeouts
+**Test262**: 21,747 / 26,150 passed (83.16%) | 21,837 skipped | 4,403 failed | 157 timeouts
 
-**Unit tests**: 763 total, 763 passed, 0 failed
+**Unit tests**: 799 total, 799 passed, 0 failed
 
 **Targeted verification (2026-02-11)**: `language/block-scope` slice is 106/106 passing (39 skipped).
 **Targeted verification (2026-02-12)**: `built-ins/Promise` slice is 599/599 passing (100%, 41 skipped). `language/block-scope` is 106/106 passing (100%, 39 skipped).
-**Targeted verification (2026-02-13)**: `language/white-space` slice is 66/67 passing (98.5%, was 73.1%). Small compliance sweep completed.
+**Targeted verification (2026-02-13)**: `language/white-space` slice is 66/67 passing (98.5%, was 73.1%). Small compliance sweep completed. Proxy/Reflect implemented: Proxy 94.5% (257/272), Reflect 99.3% (152/153).
 
 ## Phase History
 
@@ -32,6 +32,7 @@
 | 12 | +3 | 19,723 | P6: Strict-mode prerequisite bundle — duplicate params, eval/arguments binding, delete identifier, reserved words, class body strict |
 | 13 | +1,080 | 20,803 | P7: Promise species constructor, sloppy mode this, apply/arguments fixes — 100% Promise compliance, constructor subclassing, test harness improvements |
 | 14 | +67 | 20,870 | Small compliance sweep — Unicode whitespace (98.5%), Number/String.prototype.toLocaleString, String trim aliases, String.prototype.matchAll |
+| 15 | +877 | 21,747 | Proxy/Reflect — full Proxy trap support (13 traps), Reflect API (13 methods), PR review fixes, test262 conformance |
 
 For detailed implementation notes on Phases 1-6, see [docs/PHASE_HISTORY.md](docs/PHASE_HISTORY.md).
 
@@ -39,66 +40,69 @@ For detailed implementation notes on Phases 1-6, see [docs/PHASE_HISTORY.md](doc
 
 ## Failure Breakdown
 
-### Failure Breakdown by Category (4,352 remaining failures)
+### Failure Breakdown by Category (4,400 remaining failures)
 
 Top failing categories from the latest CI run (2026-02-13):
 
 | Category | Pass | Fail | Rate | Priority |
 |----------|------|------|------|----------|
-| language/expressions | 4,897 | 590 | 89.2% | Medium |
-| language/statements | 3,454 | 720 | 82.8% | Medium |
-| built-ins/Array | 2,414 | 454 | 84.2% | Medium |
-| built-ins/Object | 3,025 | 266 | 91.9% | Low (P4 done) |
+| language/expressions | 4,908 | 591 | 89.3% | Medium |
+| language/statements | 3,455 | 727 | 82.6% | Medium |
+| built-ins/Array | 2,491 | 454 | 84.6% | Medium |
+| built-ins/Object | 3,115 | 258 | 92.4% | Low (P4 done) |
 | annexB/language | 312 | 505 | 38.2% | Low (--annex-b) |
-| built-ins/Promise | 598 | 0 | 100.0% | ✅ Done (P7) |
-| built-ins/DataView | 7 | 304 | 2.3% | Hard (needs TypedArray) |
-| built-ins/RegExp | 604 | 222 | 73.1% | Hard |
-| language/module-code | 114 | 184 | 38.3% | Medium |
+| built-ins/Promise | 614 | 4 | 99.4% | ✅ Done (P7) |
+| built-ins/DataView | 7 | 309 | 2.2% | Hard (needs TypedArray) |
+| built-ins/RegExp | 615 | 222 | 73.5% | Hard |
+| language/module-code | 114 | 198 | 36.5% | Medium |
 | language/eval-code | 224 | 106 | 67.9% | Low (P5 done) |
-| built-ins/String | 1,054 | 96 | 91.7% | Low |
-| built-ins/Function | 325 | 68 | 82.7% | Medium |
+| built-ins/String | 1,099 | 96 | 92.0% | Low |
+| built-ins/Function | 340 | 71 | 82.7% | Medium |
 | language/literals | 231 | 88 | 72.4% | Medium |
-| built-ins/Number | 265 | 55 | 82.8% | Easy |
+| built-ins/Number | 280 | 55 | 83.6% | Easy |
 | language/identifiers | 154 | 53 | 74.4% | Medium |
 | language/block-scope | 106 | 0 | 100.0% | ✅ Done |
-| built-ins/ArrayBuffer | 10 | 51 | 16.4% | Hard (needs TypedArray) |
-| built-ins/Map | 139 | 29 | 82.7% | Medium |
+| built-ins/ArrayBuffer | 11 | 54 | 16.9% | Hard (needs TypedArray) |
+| built-ins/Proxy | 257 | 15 | 94.5% | ✅ Done (P15) |
+| built-ins/Reflect | 152 | 1 | 99.3% | ✅ Done (P15) |
+| built-ins/Map | 152 | 29 | 84.0% | Medium |
 | language/white-space | 66 | 1 | 98.5% | ✅ Done (P14) |
 
 ### High-Performing Categories (>90% pass rate)
 
 | Category | Pass | Fail | Rate |
 |----------|------|------|------|
-| built-ins/Promise | 598 | 0 | 100.0% |
-| language/block-scope | 106 | 0 | 100.0% |
-| built-ins/NativeErrors | 80 | 0 | 100.0% |
+| built-ins/AggregateError | 24 | 0 | 100.0% |
+| built-ins/NativeErrors | 88 | 0 | 100.0% |
 | built-ins/global | 27 | 0 | 100.0% |
-| built-ins/isFinite | 14 | 0 | 100.0% |
-| built-ins/isNaN | 14 | 0 | 100.0% |
+| built-ins/isFinite | 15 | 0 | 100.0% |
+| built-ins/isNaN | 15 | 0 | 100.0% |
+| language/block-scope | 106 | 0 | 100.0% |
 | language/punctuators | 11 | 0 | 100.0% |
 | language/source-text | 1 | 0 | 100.0% |
+| built-ins/Promise | 614 | 4 | 99.4% |
+| built-ins/Reflect | 152 | 1 | 99.3% |
 | language/white-space | 66 | 1 | 98.5% |
-| built-ins/Math | 281 | 5 | 98.3% |
-| built-ins/parseFloat | 52 | 1 | 98.1% |
-| built-ins/parseInt | 53 | 1 | 98.1% |
-| built-ins/Set | 172 | 4 | 97.7% |
-| built-ins/decodeURIComponent | 52 | 2 | 96.3% |
-| built-ins/decodeURI | 51 | 2 | 96.2% |
+| built-ins/Math | 317 | 5 | 98.4% |
+| built-ins/parseFloat | 53 | 1 | 98.1% |
+| built-ins/parseInt | 54 | 1 | 98.2% |
+| built-ins/Set | 181 | 4 | 97.8% |
+| built-ins/decodeURIComponent | 53 | 2 | 96.4% |
+| built-ins/decodeURI | 52 | 2 | 96.3% |
+| built-ins/Date | 560 | 23 | 96.1% |
 | language/arguments-object | 146 | 6 | 96.1% |
 | language/function-code | 166 | 7 | 96.0% |
 | language/keywords | 24 | 1 | 96.0% |
-| built-ins/Date | 511 | 23 | 95.7% |
-| built-ins/AggregateError | 21 | 1 | 95.5% |
 | language/comments | 22 | 1 | 95.7% |
+| built-ins/Proxy | 257 | 15 | 94.5% |
+| built-ins/JSON | 127 | 8 | 94.1% |
 | language/computed-property-names | 45 | 3 | 93.8% |
-| built-ins/encodeURIComponent | 28 | 2 | 93.3% |
-| built-ins/encodeURI | 28 | 2 | 93.3% |
+| built-ins/encodeURIComponent | 29 | 2 | 93.5% |
+| built-ins/encodeURI | 29 | 2 | 93.5% |
 | language/asi | 95 | 7 | 93.1% |
-| built-ins/JSON | 105 | 8 | 92.9% |
 | language/reserved-words | 25 | 2 | 92.6% |
-| language/future-reserved-words | 34 | 3 | 91.9% |
-| built-ins/Object | 3,025 | 266 | 91.9% |
-| built-ins/String | 1,054 | 96 | 91.7% |
+| built-ins/Object | 3,115 | 258 | 92.4% |
+| built-ins/String | 1,099 | 96 | 92.0% |
 | language/rest-parameters | 10 | 1 | 90.9% |
 
 ---
@@ -113,7 +117,7 @@ node ./_build/js/debug/build/cmd/main/main.js 'console.log(1 + 2)'
 # => 3
 ```
 
-All 746 unit tests pass on both WASM-GC and JS targets. See [docs/SELF_HOST_JS_RESEARCH.md](docs/SELF_HOST_JS_RESEARCH.md) for full analysis.
+All 799 unit tests pass on both WASM-GC and JS targets. See [docs/SELF_HOST_JS_RESEARCH.md](docs/SELF_HOST_JS_RESEARCH.md) for full analysis.
 
 ### What was needed
 - **Backend-specific argv handling**: `process.argv` on JS includes `["node", "script.js", ...]`, so user args start at index 2 (vs index 1 on WASM). Solved with `.js.mbt` / `.wasm.mbt` / `.wasm-gc.mbt` files.
@@ -353,7 +357,7 @@ python3 test262-runner.py --filter "built-ins/Promise" --summary
 # Result: 599/599 passing (100.0%), 41 skipped, 0 failed
 ```
 
-**Note**: One skipped Promise test (`built-ins/Promise/prototype/finally/this-value-proxy.js`) is Proxy-dependent and deferred until Proxy support is implemented.
+**Note**: Proxy support was added in Phase 15, resolving the previously deferred `this-value-proxy.js` test.
 
 ---
 
@@ -392,6 +396,84 @@ Targeted quick wins across Unicode whitespace, Number, and String built-ins:
 
 ---
 
+### 15: Proxy and Reflect (+877 tests) — DONE
+
+Full ES6 Proxy and Reflect implementation with 13 proxy traps and 13 Reflect methods:
+
+**Proxy Implementation** (builtins_proxy.mbt):
+- **`Proxy(target, handler)` constructor**: Creates proxy with `ProxyData` struct containing mutable `target`/`handler` fields
+- **`Proxy.revocable(target, handler)`**: Returns `{proxy, revoke}` object; `revoke()` sets target/handler to `None`
+- **13 traps**: `get`, `set`, `has`, `apply`, `construct`, `deleteProperty`, `defineProperty`, `ownKeys`, `preventExtensions`, `isExtensible`, `getPrototypeOf`, `setPrototypeOf`, `getOwnPropertyDescriptor`
+- **ProxyData struct**: Mutable `target` and `handler` fields (None = revoked)
+- **Helper functions**: `get_proxy_trap()` (with prototype chain walk), `get_proxy_target()`, `get_proxy_handler()` with TypeError on revoked proxy
+
+**Reflect API** (builtins_reflect.mbt, ~820 lines):
+- **13 methods**: `apply`, `construct`, `defineProperty`, `deleteProperty`, `get`, `getOwnPropertyDescriptor`, `getPrototypeOf`, `has`, `isExtensible`, `ownKeys`, `preventExtensions`, `set`, `setPrototypeOf`
+- **`Reflect.defineProperty`**: Full non-configurable validation (extensibility check, accessor/data conflict, enumerable/configurable immutability, getter/setter identity, writable/value constraints) — returns `Bool(false)` on rejection per spec
+- **`Reflect.setPrototypeOf`**: Returns `Bool(false)` for non-extensible objects
+- **`Reflect.has`**: Checks both `data.properties` and `data.descriptors` for accessor-only properties
+- **`Reflect.set`**: Pre-validates write constraints (accessor getter-only, non-writable, non-extensible+descriptor-only) and returns `Bool(false)` on failure
+- **`create_list_from_array_like()`**: Shared helper for array-like argument conversion (used by `apply` and `construct`)
+- **`unwrap_proxy_target()`**: Recursively unwraps nested Proxy chains to get underlying ObjectData
+- **`Reflect.ownKeys`**: `InterpreterCallable` (not `NativeCallable`) to support invoking ownKeys trap; handles Object, Array, and Proxy targets
+
+**Interpreter Integration**:
+- **`for-in` with Proxy**: `collect_for_in_keys` throws TypeError for revoked proxies
+- **`instanceof` with Proxy**: Checks `Symbol.hasInstance` on proxy before falling back to prototype chain
+- **`deleteProperty` strict mode**: Throws TypeError when proxy's deleteProperty trap returns `false` in strict mode
+- **`apply` trap**: Recursive callability check for nested `Proxy(Proxy(Function))` chains
+- **`construct` trap**: Verifies target is constructible before executing construct trap
+- **JSON.stringify**: Unwraps Proxy to target for serialization
+- **Object.assign**: Extended with Proxy support; throws TypeError for revoked Proxy sources
+- **Object.defineProperty/defineProperties Proxy paths**: Full `validate_non_configurable` call, accessor/data conflict validation, extensibility check, getter/setter callability validation
+- **Object.getOwnPropertyDescriptor/getPrototypeOf/create**: All extended with Proxy support
+
+**PR Review Fixes** (30 comments, 24 resolved across 4 commits):
+
+*Commit 1* (4 issues): Reflect.construct newTarget, getOwnPropertyDescriptor accessor, Reflect.set non-writable, Reflect.get Symbol keys
+
+*Commit 2* (12 issues): JSON.stringify Proxy, Object.assign Proxy, Object.defineProperty Proxy, Object.getOwnPropertyDescriptor Proxy, for-in ownKeys, instanceof Symbol.hasInstance, deleteProperty strict mode, apply callability, Object.getPrototypeOf revoked Proxy, Object.create Proxy, Object.defineProperties Proxy, deduplicated array-like conversion
+
+*Commit 3*: Enabled Proxy/Reflect test262 tests, fixed all Reflect methods to accept Proxy arguments
+
+*Commit 4* (10 issues): Reflect.defineProperty validation, Reflect.setPrototypeOf extensibility, Reflect.has descriptors, Reflect.set descriptor-aware extensibility, Object.assign revoked Proxy TypeError, Object.defineProperty Proxy validate_non_configurable, Object.defineProperties Proxy full validation, Object.create unreachable code fix, get_proxy_trap prototype chain walk, construct_value target constructability check. Also eliminated all 20 compiler warnings (deprecated_syntax `fn` → `fn raise`).
+
+**Test262 Results**:
+
+| Category | Passed | Failed | Skipped | Rate |
+|----------|--------|--------|---------|------|
+| built-ins/Proxy | 257 | 15 | 39 | 94.5% |
+| built-ins/Reflect | 152 | 1 | 0 | 99.3% |
+
+**Overall**: 20,870 → 21,747 passing (+877), **83.16%** pass rate (was 82.7%), no regressions
+
+**Remaining 16 test failures** are pre-existing engine limitations:
+- `with` statement not supported (4 Proxy tests)
+- Boxed primitives `new String()`, `new Number()` not properly represented as Object (10 tests)
+- Module import issue (1 test)
+- Array length edge case (1 test)
+
+**Known limitations** (6 unresolved PR review items, deferred — require larger refactoring):
+- `Object.getPrototypeOf` does not invoke the `getPrototypeOf` trap (reads target prototype directly; needs `NativeCallable` → `InterpreterCallable` conversion)
+- `for-in` does not invoke the `ownKeys` trap (delegates to target directly; `collect_for_in_keys` needs interpreter parameter)
+- `instanceof` revoked Proxy does not invoke `getPrototypeOf` trap for prototype chain walk
+- `create_list_from_array_like` bypasses Proxy traps (reads `.properties` directly; needs interpreter parameter)
+- `Reflect.construct` rewires `newTarget` prototype after construction instead of before (spec requires creating object with `newTarget.prototype` before constructor runs)
+- `unwrap_proxy_target` returns `None` for non-Object targets (Array, Map, Set, Promise); Reflect methods that use it may throw incorrect TypeError for Proxies wrapping non-Object types
+
+**Files Changed**:
+- `interpreter/builtins_proxy.mbt` (~240 lines) — Proxy constructor, revocable, trap helpers with prototype chain walk
+- `interpreter/builtins_reflect.mbt` (~820 lines) — All 13 Reflect methods with Proxy support and full validation
+- `interpreter/interpreter.mbt` — for-in, instanceof, deleteProperty, apply, construct trap fixes
+- `interpreter/builtins.mbt` — JSON.stringify Proxy fix, Proxy/Reflect registration
+- `interpreter/builtins_object.mbt` — Object.assign/defineProperty/getOwnPropertyDescriptor/getPrototypeOf/create/defineProperties Proxy integration with full validation
+- `test262-runner.py` — Removed Proxy/Reflect from skip lists
+- `test262-analyze.py` — Removed Proxy/Reflect from skip lists
+
+**Unit tests**: 799 total (+36), 799 passed, 0 failed
+
+---
+
 ## Phase 12+ Targets
 
 ### async/await (~500 tests)
@@ -402,12 +484,12 @@ Syntactic sugar over Promises + generator-like suspension. Now unblocked by gene
 
 | Feature | Impact | Notes |
 |---------|--------|-------|
-| RegExp improvements | ~225 fail | Capture groups, backreferences, unicode/sticky flags |
-| Date object | — | ✅ Done (8C+9) — 511/534 pass (95.7%) |
+| RegExp improvements | ~222 fail | Capture groups, backreferences, unicode/sticky flags |
+| Date object | — | ✅ Done (8C+9) — 560/583 pass (96.1%) |
 | eval() | — | ✅ Done (P5) — 224/330 pass (67.9%) |
-| WeakMap/WeakSet | ~59 fail | Reference-based collections |
-| Proxy/Reflect | ~500 | Meta-programming |
-| Promise improvements | — | ✅ Done (Phase 13) — 599/599 pass (100%, 41 skipped) |
+| WeakMap/WeakSet | ~57 fail | Reference-based collections |
+| Proxy/Reflect | — | ✅ Done (Phase 15) — Proxy 257/272 (94.5%), Reflect 152/153 (99.3%) |
+| Promise improvements | — | ✅ Done (Phase 13) — 614/618 pass (99.4%) |
 
 ### Promise Conformance Batch (Implemented)
 
@@ -424,9 +506,7 @@ Completed work for `Promise.all`, `Promise.allSettled`, `Promise.any`, and `Prom
 - `python3 test262-runner.py --filter "built-ins/Promise" --summary --output test262-promise-results.json`
 - Result: 599/599 passing (100%), 41 skipped, 0 failed.
 
-**Deferred**:
-- `Proxy` remains unsupported; dependent test is intentionally skipped:
-  `built-ins/Promise/prototype/finally/this-value-proxy.js`.
+**Note**: Proxy support was added in Phase 15, un-skipping the previously deferred `this-value-proxy.js` test.
 
 ---
 
@@ -475,11 +555,11 @@ Low. These features are not required for modern JavaScript usage. Implement only
 
 ---
 
-## Skipped Features (22,748 tests)
+## Skipped Features (21,837 tests)
 
 | Feature | Skipped | Notes |
 |---------|---------|-------|
-| Temporal | 4,228 | TC39 Stage 3 date/time API |
+| Temporal | 4,482 | TC39 Stage 3 date/time API |
 | async-iteration | 3,731 | Requires async generators |
 | class-methods-private | 1,304 | #privateMethod |
 | TypedArray | 1,257 | Int8Array, Uint8Array, etc. |
@@ -489,6 +569,7 @@ Low. These features are not required for modern JavaScript usage. Implement only
 | regexp-unicode-property | 679 | Unicode property escapes |
 | module | 422 | import/export implemented; 338 in module dirs + 84 module-flagged tests in other dirs |
 | generators | — | ✅ No longer skipped (implemented in Phase 8) |
+| Proxy/Reflect | — | ✅ No longer skipped (implemented in Phase 15) |
 
 ---
 
@@ -504,7 +585,7 @@ Low. These features are not required for modern JavaScript usage. Implement only
 
 ### Value Variants
 
-`Number`, `String_`, `Bool`, `Null`, `Undefined`, `Object`, `Array`, `Symbol`, `Map`, `Set`, `Promise`
+`Number`, `String_`, `Bool`, `Null`, `Undefined`, `Object`, `Array`, `Symbol`, `Map`, `Set`, `Promise`, `Proxy`
 
 ### Signal Types
 

@@ -67,9 +67,6 @@ SKIP_FEATURES = {
     # Collections
     "WeakMap", "WeakSet", "WeakRef",
 
-    # Proxy / Reflect
-    "Proxy", "Reflect", "Reflect.construct",
-
     # Typed arrays and buffers
     "ArrayBuffer", "SharedArrayBuffer", "DataView",
     "DataView.prototype.setUint8",
@@ -128,8 +125,6 @@ SKIP_FLAGS = {"CanBlockIsFalse", "CanBlockIsTrue"}
 # Tests that depend on unsupported runtime features but don't declare
 # corresponding Test262 `features` metadata.
 SKIP_PATH_SUFFIXES = {
-    "test/built-ins/Promise/prototype/finally/this-value-proxy.js":
-        "unsupported feature: Proxy",
 }
 
 # Preamble injected before all test harness code to provide host-defined print()
