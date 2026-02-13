@@ -6782,6 +6782,7 @@ fn Interpreter::construct_value(
   ctor : Value,
   args : Array[Value],
   loc : @token.Loc,
+  proto_override~ : Value? = None,
 ) -> Value raise Error {
   match ctor {
     Proxy(proxy_data) => {
@@ -6837,9 +6838,13 @@ fn Interpreter::construct_value(
                 validate_strict_binding_name(p)
               }
             }
-            let proto = match obj_data.properties.get("prototype") {
-              Some(v) => v
-              None => Null
+            let proto = match proto_override {
+              Some(p) => p
+              None =>
+                match obj_data.properties.get("prototype") {
+                  Some(v) => v
+                  None => Null
+                }
             }
             let new_obj = make_constructor_instance(proto, "Object")
             let func_env = Environment::new(parent=Some(data.closure))
@@ -6916,9 +6921,13 @@ fn Interpreter::construct_value(
                 None => ()
               }
             }
-            let proto = match obj_data.properties.get("prototype") {
-              Some(v) => v
-              None => Null
+            let proto = match proto_override {
+              Some(p) => p
+              None =>
+                match obj_data.properties.get("prototype") {
+                  Some(v) => v
+                  None => Null
+                }
             }
             let new_obj = make_constructor_instance(proto, "Object")
             let func_env = Environment::new(parent=Some(data.closure))

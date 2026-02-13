@@ -96,25 +96,23 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
         let target = args[0]
         let arg_list = create_list_from_array_like(args[1])
         let loc = @token.Loc::default()
-        let result = interp.construct_value(target, arg_list, loc)
-        // If newTarget is provided and differs from target, re-wire the prototype
-        if args.length() > 2 {
+        // Per spec, when newTarget differs from target, create instance with newTarget.prototype
+        let proto_override : Value? = if args.length() > 2 {
           let new_target = args[2]
           match new_target {
-            Object(nt_data) => {
-              let proto = match nt_data.properties.get("prototype") {
-                Some(p) => p
-                None => Null
-              }
-              match result {
-                Object(res_data) => res_data.prototype = proto
-                _ => ()
-              }
-            }
-            _ => ()
+            Object(nt_data) =>
+              Some(
+                match nt_data.properties.get("prototype") {
+                  Some(p) => p
+                  None => Null
+                },
+              )
+            _ => None
           }
+        } else {
+          None
         }
-        result
+        interp.construct_value(target, arg_list, loc, proto_override~)
       }),
     ),
     class_name: "Function",
