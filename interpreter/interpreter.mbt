@@ -1328,8 +1328,26 @@ fn collect_for_in_keys(obj : Value) -> Array[String] raise Error {
         continue
       }
       Object(data) => {
+        // TypedArray: enumerate numeric indices as keys
+        if is_typedarray_class(data.class_name) {
+          let ta_len = match data.properties.get("[[ArrayLength]]") {
+            Some(Number(n)) => n.to_int()
+            _ => 0
+          }
+          for i = 0; i < ta_len; i = i + 1 {
+            let k = i.to_string()
+            if not(seen.contains(k)) {
+              seen[k] = true
+              keys.push(k)
+            }
+          }
+        }
         data.properties.each(fn(k, _v) {
           if not(seen.contains(k)) {
+            // Skip internal slots for TypedArray/ArrayBuffer/DataView
+            if k.has_prefix("[[") && k.has_suffix("]]") {
+              return
+            }
             seen[k] = true
             let enumerable = match data.descriptors.get(k) {
               Some(d) => d.enumerable
@@ -5956,6 +5974,34 @@ fn Interpreter::get_computed_property(
   }
   match obj {
     Object(data) => {
+      // TypedArray indexed access: intercept numeric keys before regular property lookup
+      if is_typedarray_class(data.class_name) {
+        match key {
+          Number(n) => {
+            let idx = n.to_int()
+            if idx.to_double() == n && idx >= 0 {
+              return typedarray_get_index(data, idx)
+            }
+          }
+          String_(s) => {
+            try {
+              let idx = @strconv.parse_int(s)
+              if idx >= 0 {
+                let ta_len = match data.properties.get("[[ArrayLength]]") {
+                  Some(Number(ln)) => ln.to_int()
+                  _ => 0
+                }
+                if idx < ta_len {
+                  return typedarray_get_index(data, idx)
+                }
+              }
+            } catch {
+              _ => ()
+            }
+          }
+          _ => ()
+        }
+      }
       let prop = key.to_string()
       // Check for accessor descriptor (getter) on own property
       match data.descriptors.get(prop) {
@@ -6320,6 +6366,19 @@ fn Interpreter::set_property(
       }
     }
     Object(data) => {
+      // TypedArray indexed write via dot notation (numeric string prop)
+      if is_typedarray_class(data.class_name) {
+        try {
+          let idx = @strconv.parse_int(prop)
+          if idx >= 0 {
+            let num = to_number(value)
+            typedarray_set_index(data, idx, num)
+            return value
+          }
+        } catch {
+          _ => ()
+        }
+      }
       // Check for accessor descriptor (setter)
       match data.descriptors.get(prop) {
         Some(desc) =>
@@ -6576,6 +6635,32 @@ fn Interpreter::set_computed_property(
           value
         }
         _ => {
+          // TypedArray indexed write: intercept numeric keys
+          if is_typedarray_class(data.class_name) {
+            match key {
+              Number(n) => {
+                let idx = n.to_int()
+                if idx.to_double() == n && idx >= 0 {
+                  let num = to_number(value)
+                  typedarray_set_index(data, idx, num)
+                  return value
+                }
+              }
+              String_(s) => {
+                try {
+                  let idx = @strconv.parse_int(s)
+                  if idx >= 0 {
+                    let num = to_number(value)
+                    typedarray_set_index(data, idx, num)
+                    return value
+                  }
+                } catch {
+                  _ => ()
+                }
+              }
+              _ => ()
+            }
+          }
           let prop = key.to_string()
           // Check for accessor descriptor (setter) on string key
           match data.descriptors.get(prop) {

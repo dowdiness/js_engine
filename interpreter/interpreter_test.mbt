@@ -6135,7 +6135,7 @@ test "harness: $262.detachArrayBuffer throws TypeError" {
   )
   inspect(
     output,
-    content="[\"true\", \"$262.detachArrayBuffer is not supported\"]",
+    content="[\"true\", \"$262.detachArrayBuffer requires an ArrayBuffer argument\"]",
   )
 }
 
