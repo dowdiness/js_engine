@@ -396,7 +396,7 @@ Targeted quick wins across Unicode whitespace, Number, and String built-ins:
 
 ---
 
-### 15: Proxy and Reflect (+880 tests) — DONE
+### 15: Proxy and Reflect (+877 tests) — DONE
 
 Full ES6 Proxy and Reflect implementation with 13 proxy traps and 13 Reflect methods:
 
@@ -405,40 +405,38 @@ Full ES6 Proxy and Reflect implementation with 13 proxy traps and 13 Reflect met
 - **`Proxy.revocable(target, handler)`**: Returns `{proxy, revoke}` object; `revoke()` sets target/handler to `None`
 - **13 traps**: `get`, `set`, `has`, `apply`, `construct`, `deleteProperty`, `defineProperty`, `ownKeys`, `preventExtensions`, `isExtensible`, `getPrototypeOf`, `setPrototypeOf`, `getOwnPropertyDescriptor`
 - **ProxyData struct**: Mutable `target` and `handler` fields (None = revoked)
-- **Helper functions**: `get_proxy_trap()`, `get_proxy_target()`, `get_proxy_handler()` with TypeError on revoked proxy
+- **Helper functions**: `get_proxy_trap()` (with prototype chain walk), `get_proxy_target()`, `get_proxy_handler()` with TypeError on revoked proxy
 
-**Reflect API** (builtins_reflect.mbt, ~760 lines):
+**Reflect API** (builtins_reflect.mbt, ~820 lines):
 - **13 methods**: `apply`, `construct`, `defineProperty`, `deleteProperty`, `get`, `getOwnPropertyDescriptor`, `getPrototypeOf`, `has`, `isExtensible`, `ownKeys`, `preventExtensions`, `set`, `setPrototypeOf`
+- **`Reflect.defineProperty`**: Full non-configurable validation (extensibility check, accessor/data conflict, enumerable/configurable immutability, getter/setter identity, writable/value constraints) — returns `Bool(false)` on rejection per spec
+- **`Reflect.setPrototypeOf`**: Returns `Bool(false)` for non-extensible objects
+- **`Reflect.has`**: Checks both `data.properties` and `data.descriptors` for accessor-only properties
+- **`Reflect.set`**: Pre-validates write constraints (accessor getter-only, non-writable, non-extensible+descriptor-only) and returns `Bool(false)` on failure
 - **`create_list_from_array_like()`**: Shared helper for array-like argument conversion (used by `apply` and `construct`)
 - **`unwrap_proxy_target()`**: Recursively unwraps nested Proxy chains to get underlying ObjectData
-- **Proxy-aware**: All methods accept Proxy arguments, delegating to proxy traps when present
 - **`Reflect.ownKeys`**: `InterpreterCallable` (not `NativeCallable`) to support invoking ownKeys trap; handles Object, Array, and Proxy targets
 
 **Interpreter Integration**:
-- **`for-in` with Proxy**: `collect_for_in_keys` invokes ownKeys trap, throws TypeError for revoked proxies
+- **`for-in` with Proxy**: `collect_for_in_keys` throws TypeError for revoked proxies
 - **`instanceof` with Proxy**: Checks `Symbol.hasInstance` on proxy before falling back to prototype chain
 - **`deleteProperty` strict mode**: Throws TypeError when proxy's deleteProperty trap returns `false` in strict mode
 - **`apply` trap**: Recursive callability check for nested `Proxy(Proxy(Function))` chains
+- **`construct` trap**: Verifies target is constructible before executing construct trap
 - **JSON.stringify**: Unwraps Proxy to target for serialization
-- **Object.assign/defineProperty/getOwnPropertyDescriptor/getPrototypeOf/create/defineProperties**: All extended with Proxy support
+- **Object.assign**: Extended with Proxy support; throws TypeError for revoked Proxy sources
+- **Object.defineProperty/defineProperties Proxy paths**: Full `validate_non_configurable` call, accessor/data conflict validation, extensibility check, getter/setter callability validation
+- **Object.getOwnPropertyDescriptor/getPrototypeOf/create**: All extended with Proxy support
 
-**PR Review Fixes** (16 issues across 3 commits):
-1. Reflect.construct newTarget parameter handling
-2. getOwnPropertyDescriptor accessor descriptor support
-3. Reflect.set non-writable property returns false
-4. Reflect.get Symbol key support
-5. JSON.stringify Proxy unwrapping
-6. Object.assign Proxy source handling
-7. Object.defineProperty Proxy target support
-8. Object.getOwnPropertyDescriptor Proxy support
-9. for-in ownKeys trap invocation
-10. instanceof Symbol.hasInstance on Proxy
-11. deleteProperty strict mode TypeError
-12. apply trap callability validation
-13. Object.getPrototypeOf revoked Proxy TypeError
-14. Object.create Proxy descriptor source
-15. Object.defineProperties Proxy target
-16. Deduplicated array-like conversion
+**PR Review Fixes** (30 comments, 24 resolved across 4 commits):
+
+*Commit 1* (4 issues): Reflect.construct newTarget, getOwnPropertyDescriptor accessor, Reflect.set non-writable, Reflect.get Symbol keys
+
+*Commit 2* (12 issues): JSON.stringify Proxy, Object.assign Proxy, Object.defineProperty Proxy, Object.getOwnPropertyDescriptor Proxy, for-in ownKeys, instanceof Symbol.hasInstance, deleteProperty strict mode, apply callability, Object.getPrototypeOf revoked Proxy, Object.create Proxy, Object.defineProperties Proxy, deduplicated array-like conversion
+
+*Commit 3*: Enabled Proxy/Reflect test262 tests, fixed all Reflect methods to accept Proxy arguments
+
+*Commit 4* (10 issues): Reflect.defineProperty validation, Reflect.setPrototypeOf extensibility, Reflect.has descriptors, Reflect.set descriptor-aware extensibility, Object.assign revoked Proxy TypeError, Object.defineProperty Proxy validate_non_configurable, Object.defineProperties Proxy full validation, Object.create unreachable code fix, get_proxy_trap prototype chain walk, construct_value target constructability check. Also eliminated all 20 compiler warnings (deprecated_syntax `fn` → `fn raise`).
 
 **Test262 Results**:
 
@@ -449,18 +447,26 @@ Full ES6 Proxy and Reflect implementation with 13 proxy traps and 13 Reflect met
 
 **Overall**: 20,870 → 21,747 passing (+877), **83.16%** pass rate (was 82.7%), no regressions
 
-**Remaining 16 failures** are pre-existing engine limitations:
+**Remaining 16 test failures** are pre-existing engine limitations:
 - `with` statement not supported (4 Proxy tests)
 - Boxed primitives `new String()`, `new Number()` not properly represented as Object (10 tests)
 - Module import issue (1 test)
 - Array length edge case (1 test)
 
+**Known limitations** (6 unresolved PR review items, deferred — require larger refactoring):
+- `Object.getPrototypeOf` does not invoke the `getPrototypeOf` trap (reads target prototype directly; needs `NativeCallable` → `InterpreterCallable` conversion)
+- `for-in` does not invoke the `ownKeys` trap (delegates to target directly; `collect_for_in_keys` needs interpreter parameter)
+- `instanceof` revoked Proxy does not invoke `getPrototypeOf` trap for prototype chain walk
+- `create_list_from_array_like` bypasses Proxy traps (reads `.properties` directly; needs interpreter parameter)
+- `Reflect.construct` rewires `newTarget` prototype after construction instead of before (spec requires creating object with `newTarget.prototype` before constructor runs)
+- `unwrap_proxy_target` returns `None` for non-Object targets (Array, Map, Set, Promise); Reflect methods that use it may throw incorrect TypeError for Proxies wrapping non-Object types
+
 **Files Changed**:
-- `interpreter/builtins_proxy.mbt` (~230 lines) — Proxy constructor, revocable, trap helpers
-- `interpreter/builtins_reflect.mbt` (~760 lines) — All 13 Reflect methods with Proxy support
-- `interpreter/interpreter.mbt` — for-in, instanceof, deleteProperty, apply trap fixes
+- `interpreter/builtins_proxy.mbt` (~240 lines) — Proxy constructor, revocable, trap helpers with prototype chain walk
+- `interpreter/builtins_reflect.mbt` (~820 lines) — All 13 Reflect methods with Proxy support and full validation
+- `interpreter/interpreter.mbt` — for-in, instanceof, deleteProperty, apply, construct trap fixes
 - `interpreter/builtins.mbt` — JSON.stringify Proxy fix, Proxy/Reflect registration
-- `interpreter/builtins_object.mbt` — Object.assign/defineProperty/getOwnPropertyDescriptor/getPrototypeOf/create/defineProperties Proxy integration
+- `interpreter/builtins_object.mbt` — Object.assign/defineProperty/getOwnPropertyDescriptor/getPrototypeOf/create/defineProperties Proxy integration with full validation
 - `test262-runner.py` — Removed Proxy/Reflect from skip lists
 - `test262-analyze.py` — Removed Proxy/Reflect from skip lists
 

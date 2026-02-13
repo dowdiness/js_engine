@@ -152,7 +152,7 @@ Domain-specific terms used in this JavaScript engine, organized by specification
 | **trap** | — | A method on the handler object that intercepts a fundamental operation. Named after the internal method it intercepts (e.g., `get`, `set`, `has`). |
 | **target** | proxy target | The underlying object that the proxy wraps. Operations fall through to the target when no trap is defined. |
 | **revocable proxy** | Proxy.revocable | A proxy created with `Proxy.revocable(target, handler)` that returns `{proxy, revoke}`. Calling `revoke()` sets target/handler to `None`, making all subsequent operations throw TypeError. |
-| **get_proxy_trap** | — | Helper function that looks up a trap by name on the handler object, validates it is callable, and returns `None` for absent traps. Throws TypeError for revoked proxies. |
+| **get_proxy_trap** | GetMethod | Helper function that looks up a trap by name on the handler object, walking the prototype chain per spec `GetMethod`. Validates the trap is callable and returns `None` for absent traps. Throws TypeError for revoked proxies or non-callable traps. |
 | **get_proxy_target** | — | Helper function that returns the proxy's target, throwing TypeError if the proxy has been revoked. |
 | **unwrap_proxy_target** | — | Recursive helper that unwraps nested `Proxy(Proxy(Object))` chains to get the underlying `ObjectData`. Used by Reflect methods to accept Proxy arguments. |
 | **Reflect** | — | Built-in object providing static methods for interceptable JavaScript operations. Each method corresponds to a proxy trap and provides the default behavior. |

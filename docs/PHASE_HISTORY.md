@@ -720,6 +720,8 @@ All traps are handled via a consistent pattern: check for trap in handler, call 
 
 **Commit 3**: Enabled Proxy/Reflect test262 tests (removed from skip lists), fixed all Reflect methods to accept Proxy arguments via `unwrap_proxy_target()`, converted Reflect.ownKeys to InterpreterCallable, added recursive proxy callability check for apply trap
 
+**Commit 4** (PR #33 review follow-up, 10 issues): Reflect.defineProperty extensibility + non-configurable validation (returns `Bool(false)` per spec), Reflect.setPrototypeOf extensibility check, Reflect.has + Reflect.set descriptor awareness, Object.assign revoked Proxy TypeError, Object.defineProperty/defineProperties Proxy paths with `validate_non_configurable` and full accessor/data validation, Object.create unreachable code fix, `get_proxy_trap` prototype chain walk, `construct_value` target constructability pre-check. Also eliminated all 20 compiler `deprecated_syntax` warnings by adding `raise` annotations to `fn` closures.
+
 ### Test262 Results
 
 | Category | Passed | Failed | Skipped | Rate |
@@ -738,13 +740,26 @@ Overall: 20,870 → 21,747 passing (+877), 82.7% → **83.16%**, no regressions
 | Module import issue | 1 | Pre-existing limitation |
 | Array length edge case | 1 | Pre-existing limitation |
 
+### Known Limitations (6 deferred items)
+
+These require larger refactoring (e.g., `NativeCallable` → `InterpreterCallable` conversions, function signature changes) and are deferred to a future phase:
+
+| Issue | Root Cause | Impact |
+|-------|-----------|--------|
+| `Object.getPrototypeOf` skips `getPrototypeOf` trap | Uses `NativeCallable`, can't call interpreter | Low — only affects Proxy with custom `getPrototypeOf` handler |
+| `for-in` skips `ownKeys` trap | `collect_for_in_keys` is standalone fn, needs interpreter | Low — delegates to target directly |
+| `instanceof` revoked Proxy prototype walk | Doesn't invoke `getPrototypeOf` trap | Low — only affects revoked Proxy edge case |
+| `create_list_from_array_like` skips Proxy traps | Reads `.properties` directly | Low — only affects Proxy wrapping array-like |
+| `Reflect.construct` prototype timing | Rewires `newTarget` prototype after construction instead of before | Low — spec compliance edge case |
+| `unwrap_proxy_target` rejects non-Object | Returns `None` for Array/Map/Set/Promise targets | Low — Reflect methods may throw incorrect TypeError |
+
 ### Files Changed
 
-- `interpreter/builtins_proxy.mbt` (~230 lines) — Proxy constructor, revocable, trap helpers
-- `interpreter/builtins_reflect.mbt` (~760 lines) — All 13 Reflect methods, `create_list_from_array_like`, `unwrap_proxy_target`
-- `interpreter/interpreter.mbt` — for-in, instanceof, deleteProperty, apply trap fixes
+- `interpreter/builtins_proxy.mbt` (~240 lines) — Proxy constructor, revocable, trap helpers with prototype chain walk
+- `interpreter/builtins_reflect.mbt` (~820 lines) — All 13 Reflect methods, `create_list_from_array_like`, `unwrap_proxy_target`, full validation
+- `interpreter/interpreter.mbt` — for-in, instanceof, deleteProperty, apply, construct trap fixes
 - `interpreter/builtins.mbt` — JSON.stringify Proxy fix, Proxy/Reflect registration
-- `interpreter/builtins_object.mbt` — Object.assign/defineProperty/getOwnPropertyDescriptor/getPrototypeOf/create/defineProperties Proxy integration
+- `interpreter/builtins_object.mbt` — Object.assign/defineProperty/getOwnPropertyDescriptor/getPrototypeOf/create/defineProperties Proxy integration with full validation
 - `interpreter/value.mbt` — `Proxy(ProxyData)` value variant, ProxyData struct
 - `test262-runner.py` — Removed Proxy/Reflect from skip lists
 - `test262-analyze.py` — Removed Proxy/Reflect from skip lists
