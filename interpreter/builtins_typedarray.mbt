@@ -571,13 +571,17 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
                   if target_offset + src_len > ta_length {
                     raise @errors.RangeError(message="Source is too large")
                   }
+                  // Buffer all source elements first to handle overlapping ArrayBuffers
+                  let temp : Array[Double] = []
                   for i = 0; i < src_len; i = i + 1 {
                     let val = typedarray_get_index(src_data, i)
-                    let num = match val {
-                      Number(n) => n
-                      _ => 0.0
+                    match val {
+                      Number(n) => temp.push(n)
+                      _ => temp.push(0.0)
                     }
-                    typedarray_set_index(data, target_offset + i, num)
+                  }
+                  for i = 0; i < src_len; i = i + 1 {
+                    typedarray_set_index(data, target_offset + i, temp[i])
                   }
                   Undefined
                 }
@@ -1145,14 +1149,13 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     extensible: true,
   })
 
-  // sort([comparefn]) - implemented with InterpreterCallable would be needed
-  // For now, provide a basic sort that works without comparator
+  // sort([comparefn]) - uses InterpreterCallable for custom comparator support
   ta_proto_props["sort"] = Object({
     properties: { "length": Number(1.0) },
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      MethodCallable("sort", fn(this_val, _args) raise {
+      InterpreterCallable("sort", fn(interp, this_val, args) raise {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
@@ -1160,22 +1163,91 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
                 Some(Number(n)) => n.to_int()
                 _ => 0
               }
-              // Simple insertion sort with default numeric comparison
-              for i = 1; i < len; i = i + 1 {
-                let key_val = typedarray_get_index(data, i)
-                let key_num = match key_val { Number(n) => n; _ => 0.0 }
-                let mut j = i - 1
-                while j >= 0 {
-                  let j_val = typedarray_get_index(data, j)
-                  let j_num = match j_val { Number(n) => n; _ => 0.0 }
-                  if j_num > key_num {
-                    typedarray_set_index(data, j + 1, j_num)
-                    j = j - 1
-                  } else {
-                    break
-                  }
+              // Read all elements into temp array
+              let temp : Array[Double] = []
+              for i = 0; i < len; i = i + 1 {
+                let val = typedarray_get_index(data, i)
+                match val {
+                  Number(n) => temp.push(n)
+                  _ => temp.push(0.0)
                 }
-                typedarray_set_index(data, j + 1, key_num)
+              }
+              let has_comparefn = args.length() > 0 && not(args[0] is Undefined)
+              let mut caught_error : Error? = None
+              if has_comparefn {
+                let comparefn = args[0]
+                let loc = @token.Loc::default()
+                temp.sort_by(fn(a, b) {
+                  if caught_error is Some(_) {
+                    return 0
+                  }
+                  let result = interp.call_value(
+                    comparefn,
+                    Undefined,
+                    [Number(a), Number(b)],
+                    loc,
+                  ) catch {
+                    e => {
+                      caught_error = Some(e)
+                      return 0
+                    }
+                  }
+                  let cmp = to_number(result) catch {
+                    e => {
+                      caught_error = Some(e)
+                      return 0
+                    }
+                  }
+                  if cmp.is_nan() {
+                    0
+                  } else if cmp < 0.0 {
+                    -1
+                  } else if cmp > 0.0 {
+                    1
+                  } else {
+                    0
+                  }
+                })
+              } else {
+                // Default numeric sort per spec: NaN sorts last, -0 < +0
+                temp.sort_by(fn(a, b) {
+                  if a.is_nan() && b.is_nan() {
+                    return 0
+                  }
+                  if a.is_nan() {
+                    return 1
+                  }
+                  if b.is_nan() {
+                    return -1
+                  }
+                  if a == 0.0 && b == 0.0 {
+                    // Distinguish -0 and +0: -0 < +0
+                    let a_neg = 1.0 / a < 0.0
+                    let b_neg = 1.0 / b < 0.0
+                    if a_neg && not(b_neg) {
+                      return -1
+                    }
+                    if not(a_neg) && b_neg {
+                      return 1
+                    }
+                    return 0
+                  }
+                  if a < b {
+                    -1
+                  } else if a > b {
+                    1
+                  } else {
+                    0
+                  }
+                })
+              }
+              match caught_error {
+                Some(e) => raise e
+                None => ()
+              }
+              // Write sorted elements back
+              for i = 0; i < len; i = i + 1 {
+                typedarray_set_index(data, i, temp[i])
               }
               this_val
             } else {
@@ -1595,17 +1667,20 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
       symbol_properties: {},
       prototype: Null,
       callable: Some(
-        NativeCallable("from", fn(args) raise {
+        InterpreterCallable("from", fn(interp, _this_val, args) raise {
           if args.length() == 0 {
             raise @errors.TypeError(message="TypedArray.from requires at least 1 argument")
           }
           let source = args[0]
-          // Collect elements
-          let elements : Array[Double] = []
+          let has_map_fn = args.length() > 1 && not(args[1] is Undefined)
+          let map_fn = if has_map_fn { args[1] } else { Undefined }
+          let this_arg = if args.length() > 2 { args[2] } else { Undefined }
+          // Collect source values first
+          let source_values : Array[Value] = []
           match source {
             Array(arr_data) =>
               for elem in arr_data.elements {
-                elements.push(to_number(elem))
+                source_values.push(elem)
               }
             Object(src_data) =>
               if is_typedarray_class(src_data.class_name) {
@@ -1614,11 +1689,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
                   _ => 0
                 }
                 for i = 0; i < src_len; i = i + 1 {
-                  let val = typedarray_get_index(src_data, i)
-                  match val {
-                    Number(n) => elements.push(n)
-                    _ => elements.push(0.0)
-                  }
+                  source_values.push(typedarray_get_index(src_data, i))
                 }
               } else {
                 // Try length property
@@ -1627,8 +1698,8 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
                     let len = len_n.to_int()
                     for i = 0; i < len; i = i + 1 {
                       match src_data.properties.get(i.to_string()) {
-                        Some(v) => elements.push(to_number(v))
-                        None => elements.push(0.0)
+                        Some(v) => source_values.push(v)
+                        None => source_values.push(Undefined)
                       }
                     }
                   }
@@ -1636,6 +1707,23 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
                 }
               }
             _ => ()
+          }
+          // Apply mapFn if provided, then convert to numbers
+          let elements : Array[Double] = []
+          let loc = @token.Loc::default()
+          for i = 0; i < source_values.length(); i = i + 1 {
+            let val = source_values[i]
+            let mapped = if has_map_fn {
+              interp.call_value(
+                map_fn,
+                this_arg,
+                [val, Number(i.to_double())],
+                loc,
+              )
+            } else {
+              val
+            }
+            elements.push(to_number(mapped))
           }
           let result = make_typedarray_object(type_name, elements.length(), per_proto, env)
           match result {
@@ -1741,6 +1829,16 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
             }
             // From ArrayBuffer
             Object(buf_data) if buf_data.class_name == "ArrayBuffer" => {
+              // Check for detached buffer
+              let check_buf_id = match buf_data.properties.get("[[ArrayBufferID]]") {
+                Some(Number(n)) => n.to_int()
+                _ => -1
+              }
+              if check_buf_id >= 0 && is_arraybuffer_detached(check_buf_id) {
+                raise @errors.TypeError(
+                  message="Cannot construct a TypedArray with a detached ArrayBuffer",
+                )
+              }
               let buf_byte_length = match buf_data.properties.get(
                 "[[ArrayBufferByteLength]]",
               ) {
@@ -1750,7 +1848,15 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
               let byte_offset = if args.length() > 1 {
                 match args[1] {
                   Undefined => 0
-                  _ => to_number(args[1]).to_int()
+                  _ => {
+                    let n = to_number(args[1]).to_int()
+                    if n < 0 {
+                      raise @errors.RangeError(
+                        message="Start offset \{n} is outside the bounds of the buffer",
+                      )
+                    }
+                    n
+                  }
                 }
               } else {
                 0

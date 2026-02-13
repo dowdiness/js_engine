@@ -5982,21 +5982,27 @@ fn Interpreter::get_computed_property(
             if idx.to_double() == n && idx >= 0 {
               return typedarray_get_index(data, idx)
             }
+            // Non-integer or negative Number key: return undefined per spec
+            return Undefined
           }
           String_(s) => {
+            // Canonical numeric index string check per spec
+            if s == "-0" {
+              return Undefined
+            }
             try {
-              let idx = @strconv.parse_int(s)
-              if idx >= 0 {
-                let ta_len = match data.properties.get("[[ArrayLength]]") {
-                  Some(Number(ln)) => ln.to_int()
-                  _ => 0
-                }
-                if idx < ta_len {
+              let n = @strconv.parse_double(s)
+              // If string converts to a number and back to same string, it's a canonical numeric index
+              if n.to_string() == s {
+                let idx = n.to_int()
+                if idx.to_double() == n && idx >= 0 {
                   return typedarray_get_index(data, idx)
                 }
+                // Canonical numeric index but not a valid integer index
+                return Undefined
               }
             } catch {
-              _ => ()
+              _ => () // Not a numeric string, fall through to normal property lookup
             }
           }
           _ => ()
@@ -6368,15 +6374,23 @@ fn Interpreter::set_property(
     Object(data) => {
       // TypedArray indexed write via dot notation (numeric string prop)
       if is_typedarray_class(data.class_name) {
+        // Canonical numeric index string check per spec
+        if prop == "-0" {
+          return value // -0 is a valid canonical numeric index but not a valid integer index
+        }
         try {
-          let idx = @strconv.parse_int(prop)
-          if idx >= 0 {
-            let num = to_number(value)
-            typedarray_set_index(data, idx, num)
+          let n = @strconv.parse_double(prop)
+          if n.to_string() == prop {
+            let idx = n.to_int()
+            if idx.to_double() == n && idx >= 0 {
+              let num = to_number(value)
+              typedarray_set_index(data, idx, num)
+            }
+            // Canonical numeric index: don't fall through to regular property set
             return value
           }
         } catch {
-          _ => ()
+          _ => () // Not a numeric string, fall through to normal property set
         }
       }
       // Check for accessor descriptor (setter)
@@ -6643,19 +6657,27 @@ fn Interpreter::set_computed_property(
                 if idx.to_double() == n && idx >= 0 {
                   let num = to_number(value)
                   typedarray_set_index(data, idx, num)
-                  return value
                 }
+                // Numeric key always intercepted for TypedArrays
+                return value
               }
               String_(s) => {
+                // Canonical numeric index string check per spec
+                if s == "-0" {
+                  return value
+                }
                 try {
-                  let idx = @strconv.parse_int(s)
-                  if idx >= 0 {
-                    let num = to_number(value)
-                    typedarray_set_index(data, idx, num)
+                  let n = @strconv.parse_double(s)
+                  if n.to_string() == s {
+                    let idx = n.to_int()
+                    if idx.to_double() == n && idx >= 0 {
+                      let num = to_number(value)
+                      typedarray_set_index(data, idx, num)
+                    }
                     return value
                   }
                 } catch {
-                  _ => ()
+                  _ => () // Not numeric, fall through
                 }
               }
               _ => ()

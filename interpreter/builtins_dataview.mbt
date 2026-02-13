@@ -254,6 +254,11 @@ fn validate_dataview_access(
   byte_offset : Int,
   element_size : Int,
 ) -> (Array[Int], Int) raise Error {
+  if data.class_name != "DataView" {
+    raise @errors.TypeError(
+      message="Method called on incompatible receiver: not a DataView",
+    )
+  }
   let buf_id = match data.properties.get("[[ArrayBufferID]]") {
     Some(Number(n)) => n.to_int()
     _ =>
