@@ -1321,3 +1321,55 @@ test "Reflect.getOwnPropertyDescriptor" {
     output, content="[\"42\", \"false\", \"true\", \"false\"]",
   )
 }
+
+///|
+test "Reflect.construct with newTarget" {
+  let src =
+    #|function Base(x) { this.x = x; }
+    #|function Other() {}
+    #|Other.prototype.tag = "other";
+    #|const obj = Reflect.construct(Base, [42], Other);
+    #|console.log(obj.x);
+    #|console.log(obj.tag);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"42\", \"other\"]")
+}
+
+///|
+test "Reflect.getOwnPropertyDescriptor accessor" {
+  let src =
+    #|const obj = {};
+    #|Object.defineProperty(obj, "x", {
+    #|  get() { return 42; },
+    #|  enumerable: true,
+    #|  configurable: true
+    #|});
+    #|const desc = Reflect.getOwnPropertyDescriptor(obj, "x");
+    #|console.log(typeof desc.get);
+    #|console.log(desc.enumerable);
+    #|console.log(desc.configurable);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"function\", \"true\", \"true\"]")
+}
+
+///|
+test "Reflect.set returns false for non-writable" {
+  let src =
+    #|const obj = {};
+    #|Object.defineProperty(obj, "x", { value: 1, writable: false, configurable: false });
+    #|console.log(Reflect.set(obj, "x", 2));
+    #|console.log(obj.x);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"false\", \"1\"]")
+}
+
+///|
+test "Reflect.get with Symbol key" {
+  let src =
+    #|const sym = Symbol("test");
+    #|const obj = {};
+    #|obj[sym] = "hello";
+    #|console.log(Reflect.get(obj, sym));
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"hello\"]")
+}

@@ -90,7 +90,25 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
             )
         }
         let loc = @token.Loc::default()
-        interp.construct_value(target, arg_list, loc)
+        let result = interp.construct_value(target, arg_list, loc)
+        // If newTarget is provided and differs from target, re-wire the prototype
+        if args.length() > 2 {
+          let new_target = args[2]
+          match new_target {
+            Object(nt_data) => {
+              let proto = match nt_data.properties.get("prototype") {
+                Some(p) => p
+                None => Null
+              }
+              match result {
+                Object(res_data) => res_data.prototype = proto
+                _ => ()
+              }
+            }
+            _ => ()
+          }
+        }
+        result
       }),
     ),
     class_name: "Function",
@@ -256,9 +274,13 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
           )
         }
         let target = args[0]
-        let prop = args[1].to_string()
+        let key = args[1]
         let loc = @token.Loc::default()
-        interp.get_property(target, prop, loc)
+        // Use computed property access to handle both string and Symbol keys
+        match key {
+          Symbol(_) => interp.get_computed_property(target, key, loc)
+          _ => interp.get_property(target, key.to_string(), loc)
+        }
       }),
     ),
     class_name: "Function",
@@ -283,7 +305,10 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
         let prop = args[1].to_string()
         match target {
           Object(data) => {
-            if not(data.properties.contains(prop)) {
+            let has_own_data = data.properties.contains(prop)
+            let has_own_desc = data.descriptors.contains(prop)
+            // Property must exist in either data or descriptors
+            if not(has_own_data) && not(has_own_desc) {
               return Undefined
             }
             let result_props : Map[String, Value] = {}
@@ -291,6 +316,7 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
               Some(desc) => {
                 match desc.getter {
                   Some(g) => {
+                    // Accessor descriptor
                     result_props["get"] = g
                     result_props["set"] = match desc.setter {
                       Some(s) => s
@@ -298,6 +324,7 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
                     }
                   }
                   None => {
+                    // Data descriptor
                     result_props["value"] = match data.properties.get(prop) {
                       Some(v) => v
                       None => Undefined
@@ -541,9 +568,37 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
         let target = args[0]
         let prop = args[1].to_string()
         let value = args[2]
+        // Check for write failures before attempting set
+        match target {
+          Object(data) => {
+            match data.descriptors.get(prop) {
+              Some(desc) => {
+                // Accessor with getter-only: write fails
+                if desc.getter is Some(_) && desc.setter is None {
+                  return Bool(false)
+                }
+                // Non-writable data property: write fails
+                if desc.getter is None && not(desc.writable) {
+                  return Bool(false)
+                }
+              }
+              None => ()
+            }
+            // Non-extensible and property doesn't exist: write fails
+            if not(data.extensible) && not(data.properties.contains(prop)) {
+              return Bool(false)
+            }
+          }
+          _ => ()
+        }
         let loc = @token.Loc::default()
-        let _ = interp.set_property(target, prop, value, loc)
-        Bool(true)
+        try {
+          let _ = interp.set_property(target, prop, value, loc)
+          Bool(true)
+        } catch {
+          @errors.TypeError(_) => Bool(false)
+          e => raise e
+        }
       }),
     ),
     class_name: "Function",
