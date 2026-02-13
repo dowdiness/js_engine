@@ -1,6 +1,6 @@
 # Phase Implementation History (Archive)
 
-Detailed implementation notes for completed phases (1-13). For current status and future plans, see [ROADMAP.md](../ROADMAP.md).
+Detailed implementation notes for completed phases (1-15). For current status and future plans, see [ROADMAP.md](../ROADMAP.md).
 
 ---
 
@@ -616,3 +616,138 @@ The 41 skipped Promise tests include one deferred `Proxy`-dependent case:
 - `interpreter/interpreter_test.mbt` — 3 new tests: Promise species, apply array-like, constructor arguments; updated sloppy mode test expectations
 
 **Unit tests**: 763 total (+3), 763 passed, 0 failed
+
+---
+
+## Phase 14: Small Compliance Sweep (82.7% pass rate)
+
+Targeted quick wins across Unicode whitespace, Number, and String built-ins. Gained +67 test262 tests (20,803 → 20,870).
+
+### Key Implementations
+
+- **Unicode whitespace**: Extended `is_js_whitespace()` to include all ECMAScript Unicode Space_Separator (Zs) characters: U+1680, U+2000-200A, U+202F, U+205F, U+3000. Added U+2028/U+2029 line terminator recognition.
+- **Number.prototype.toLocaleString()**: Implemented with proper primitive/object wrapper handling, delegates to `toString()`.
+- **String.prototype.trimLeft/trimRight**: Deprecated aliases for `trimStart`/`trimEnd` per Annex B.
+- **String.prototype.toLocaleString()**: Simple delegation implementation.
+- **String.prototype.matchAll()**: Iterator-based method with global flag validation, returns proper iterator with `next()` yielding `{value, done}` objects.
+
+### Test262 Results
+
+| Category | Passed | Failed | Rate |
+|----------|--------|--------|------|
+| language/white-space | 66 | 1 | 98.5% |
+
+Overall: 20,803 → 20,870 passing (+67), 82.41% → 82.7%
+
+### Files Changed
+
+- `lexer/lexer.mbt` — `is_js_whitespace()` Unicode extension, line terminator recognition
+- `interpreter/builtins_string.mbt` — matchAll, trimLeft/trimRight, toLocaleString
+- `interpreter/builtins.mbt` — Number.prototype.toLocaleString registration
+
+---
+
+## Phase 15: Proxy and Reflect (83.2% pass rate)
+
+Full ES6 Proxy and Reflect implementation with 13 proxy traps and 13 Reflect methods. Gained +880 test262 tests (20,870 → 21,750).
+
+### Proxy Architecture
+
+- **`Proxy` Value variant**: New `Proxy(ProxyData)` variant in the `Value` enum. `ProxyData` struct has mutable `target: Value?` and `handler: Value?` fields (None = revoked).
+- **`Proxy(target, handler)` constructor**: Validates target/handler are objects, creates ProxyData.
+- **`Proxy.revocable(target, handler)`**: Returns `{proxy, revoke}` object; `revoke()` sets target/handler to `None`.
+- **Trap resolution**: `get_proxy_trap(proxy_data, trap_name)` looks up handler property, validates callable, returns `None` for absent traps. TypeError on revoked proxy.
+- **Target/handler access**: `get_proxy_target(proxy_data)` and `get_proxy_handler(proxy_data)` with revocation checks.
+
+### 13 Proxy Traps
+
+All traps are handled via a consistent pattern: check for trap in handler, call trap if present, fall through to target operation if absent.
+
+| Trap | Intercepted Operations |
+|------|----------------------|
+| `get` | Property access (`obj.prop`, `obj[expr]`) |
+| `set` | Property assignment (`obj.prop = val`, `obj[expr] = val`) |
+| `has` | `in` operator |
+| `apply` | Function calls (`proxy(args)`, `Reflect.apply`) |
+| `construct` | `new proxy(args)`, `Reflect.construct` |
+| `deleteProperty` | `delete proxy.prop` |
+| `defineProperty` | `Object.defineProperty(proxy, ...)` |
+| `ownKeys` | `Object.keys()`, `Reflect.ownKeys()`, `for-in` |
+| `getPrototypeOf` | `Object.getPrototypeOf()` |
+| `setPrototypeOf` | `Object.setPrototypeOf()` |
+| `isExtensible` | `Object.isExtensible()` |
+| `preventExtensions` | `Object.preventExtensions()` |
+| `getOwnPropertyDescriptor` | `Object.getOwnPropertyDescriptor()` |
+
+### Reflect API
+
+13 static methods on the `Reflect` object, each corresponding to a proxy trap:
+
+- **`Reflect.apply(target, thisArg, args)`**: Calls target with specified `this` and arguments via `create_list_from_array_like()`
+- **`Reflect.construct(target, args, newTarget?)`**: Invokes constructor, supports optional `newTarget` for prototype selection
+- **`Reflect.defineProperty(target, key, desc)`**: Returns boolean (vs Object.defineProperty which returns the object)
+- **`Reflect.deleteProperty(target, key)`**: Returns boolean success
+- **`Reflect.get(target, key, receiver?)`**: Property access with optional receiver for getter `this` binding; supports Symbol keys
+- **`Reflect.getOwnPropertyDescriptor(target, key)`**: Returns property descriptor or undefined
+- **`Reflect.getPrototypeOf(target)`**: Returns prototype
+- **`Reflect.has(target, key)`**: `in` operator as a function
+- **`Reflect.isExtensible(target)`**: Returns extensibility flag
+- **`Reflect.ownKeys(target)`**: Returns all own keys (string + symbol); `InterpreterCallable` for Proxy ownKeys trap support
+- **`Reflect.preventExtensions(target)`**: Sets extensible to false
+- **`Reflect.set(target, key, value, receiver?)`**: Property assignment returning boolean; respects non-writable descriptors
+- **`Reflect.setPrototypeOf(target, proto)`**: Returns boolean success
+
+**Key helper functions**:
+- `create_list_from_array_like(val)`: Converts Array or array-like Object to `Array[Value]` per spec's CreateListFromArrayLike
+- `unwrap_proxy_target(val)`: Recursively unwraps `Proxy(Proxy(Object))` chains to get underlying `ObjectData`
+
+### Interpreter Integration
+
+- **`for-in`**: `collect_for_in_keys` signature changed to `raise Error`, invokes ownKeys trap for Proxy targets, throws TypeError for revoked proxies
+- **`instanceof`**: Checks `Symbol.hasInstance` on Proxy before falling back to prototype chain walk
+- **`delete`**: Strict mode throws TypeError when proxy's deleteProperty trap returns `false` (both member and computed member)
+- **`apply`**: Recursive `check_callable` for nested proxy chains (`Proxy(Proxy(Function))`)
+- **JSON.stringify**: Unwraps Proxy to target for serialization instead of hardcoded `{}`
+- **Object built-ins**: `Object.assign`, `Object.defineProperty`, `Object.getOwnPropertyDescriptor`, `Object.getPrototypeOf`, `Object.create`, `Object.defineProperties` all extended with Proxy support
+
+### PR Review Fixes
+
+3 commits addressing 16 total review issues:
+
+**Commit 1** (4 issues): Reflect.construct newTarget, getOwnPropertyDescriptor accessor, Reflect.set non-writable, Reflect.get Symbol keys
+
+**Commit 2** (12 issues): JSON.stringify Proxy, Object.assign Proxy, Object.defineProperty Proxy, Object.getOwnPropertyDescriptor Proxy, for-in ownKeys trap, instanceof Symbol.hasInstance, deleteProperty strict mode, apply trap callability, Object.getPrototypeOf Proxy, Object.create Proxy, Object.defineProperties Proxy, deduplicated array-like conversion
+
+**Commit 3**: Enabled Proxy/Reflect test262 tests (removed from skip lists), fixed all Reflect methods to accept Proxy arguments via `unwrap_proxy_target()`, converted Reflect.ownKeys to InterpreterCallable, added recursive proxy callability check for apply trap
+
+### Test262 Results
+
+| Category | Passed | Failed | Skipped | Rate |
+|----------|--------|--------|---------|------|
+| built-ins/Proxy | 257 | 15 | 39 | 94.5% |
+| built-ins/Reflect | 152 | 1 | 0 | 99.3% |
+
+Overall: 20,870 → 21,750 passing (+880), 82.7% → **83.2%**, no regressions
+
+### Remaining Failures (16 tests)
+
+| Root Cause | Count | Notes |
+|------------|-------|-------|
+| `with` statement not supported | 4 | Proxy tests requiring `with(proxy)` |
+| Boxed primitives (`new String()`, `new Number()`) | 10 | Not represented as Object internally |
+| Module import issue | 1 | Pre-existing limitation |
+| Array length edge case | 1 | Pre-existing limitation |
+
+### Files Changed
+
+- `interpreter/builtins_proxy.mbt` (~230 lines) — Proxy constructor, revocable, trap helpers
+- `interpreter/builtins_reflect.mbt` (~760 lines) — All 13 Reflect methods, `create_list_from_array_like`, `unwrap_proxy_target`
+- `interpreter/interpreter.mbt` — for-in, instanceof, deleteProperty, apply trap fixes
+- `interpreter/builtins.mbt` — JSON.stringify Proxy fix, Proxy/Reflect registration
+- `interpreter/builtins_object.mbt` — Object.assign/defineProperty/getOwnPropertyDescriptor/getPrototypeOf/create/defineProperties Proxy integration
+- `interpreter/value.mbt` — `Proxy(ProxyData)` value variant, ProxyData struct
+- `test262-runner.py` — Removed Proxy/Reflect from skip lists
+- `test262-analyze.py` — Removed Proxy/Reflect from skip lists
+- `js_engine_test.mbt` — Proxy/Reflect regression tests
+
+**Unit tests**: 799 total (+36), 799 passed, 0 failed

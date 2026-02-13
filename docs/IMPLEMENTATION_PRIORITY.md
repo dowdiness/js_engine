@@ -2,10 +2,10 @@
 
 ## Current Status
 
-- **Pass rate**: 82.41% (20,803 / 25,243 executed)
-- **Skipped**: 22,749 (feature-flagged)
-- **Failed**: 4,440
-- **Timeouts**: 152
+- **Pass rate**: 83.2% (21,750 / 26,150 executed)
+- **Skipped**: 21,837 (feature-flagged)
+- **Failed**: 4,400
+- **Timeouts**: 157
 
 Note: This document is a phase-planning snapshot. For latest live totals and targeted slices, see [ROADMAP.md](../ROADMAP.md).
 
@@ -178,6 +178,8 @@ The actual gain from P0–P3 (+7,439) far exceeded the projected range (+1,500�
 | **P5** | **eval() semantics** | **+603** | **78.2%** |
 | **P6** | **Strict-mode prerequisites** | **+3** | **78.2%** |
 | **P7** | **Promise species + interpreter fixes** | **+1,080** | **82.4%** |
+| **P8** | **Small compliance sweep** | **+67** | **82.7%** |
+| **P9** | **Proxy/Reflect** | **+880** | **83.2%** |
 | Annex B | `--annex-b` gated features | +857 | TBD |
 
 ---
@@ -217,6 +219,6 @@ The actual gain from P0–P3 (+7,439) far exceeded the projected range (+1,500�
 
 These are feature-flagged as skipped but required for ES2015 compliance:
 - WeakMap/WeakSet (~147 executable tests)
-- Proxy/Reflect (~311+ tests)
+- Proxy/Reflect — ✅ Done (Phase 15): Proxy 94.5% (257/272), Reflect 99.3% (152/153)
 - TypedArray/ArrayBuffer/DataView (~1,568+ tests)
 - Tail call optimization (impractical for tree-walking interpreter)
