@@ -464,23 +464,24 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
         let result_props : Map[String, Value] = {}
         match data.descriptors.get(prop) {
           Some(desc) => {
-            match desc.getter {
-              Some(g) => {
-                // Accessor descriptor
-                result_props["get"] = g
-                result_props["set"] = match desc.setter {
-                  Some(s) => s
-                  None => Undefined
-                }
+            let is_accessor = desc.getter is Some(_) || desc.setter is Some(_)
+            if is_accessor {
+              // Accessor descriptor
+              result_props["get"] = match desc.getter {
+                Some(g) => g
+                None => Undefined
               }
-              None => {
-                // Data descriptor
-                result_props["value"] = match data.properties.get(prop) {
-                  Some(v) => v
-                  None => Undefined
-                }
-                result_props["writable"] = Bool(desc.writable)
+              result_props["set"] = match desc.setter {
+                Some(s) => s
+                None => Undefined
               }
+            } else {
+              // Data descriptor
+              result_props["value"] = match data.properties.get(prop) {
+                Some(v) => v
+                None => Undefined
+              }
+              result_props["writable"] = Bool(desc.writable)
             }
             result_props["enumerable"] = Bool(desc.enumerable)
             result_props["configurable"] = Bool(desc.configurable)
