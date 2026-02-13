@@ -276,6 +276,13 @@ pub fn get_tostringtag_symbol() -> SymbolData {
 }
 
 ///|
+///|
+/// Proxy data structure - wraps a target and handler for meta-programming
+pub(all) struct ProxyData {
+  mut target : Value? // None when revoked
+  mut handler : Value? // None when revoked
+}
+
 pub(all) enum Value {
   Number(Double)
   String_(String)
@@ -288,6 +295,7 @@ pub(all) enum Value {
   Map(MapData)
   Set(SetData)
   Promise(PromiseData)
+  Proxy(ProxyData)
 }
 
 ///|
@@ -540,6 +548,7 @@ pub impl Show for Value with output(self, logger) {
     Map(_) => logger.write_string("[object Map]")
     Set(_) => logger.write_string("[object Set]")
     Promise(_) => logger.write_string("[object Promise]")
+    Proxy(_) => logger.write_string("[object Object]")
   }
 }
 
@@ -557,6 +566,7 @@ pub fn is_truthy(val : Value) -> Bool {
     Map(_) => true // Maps are always truthy
     Set(_) => true // Sets are always truthy
     Promise(_) => true // Promises are always truthy
+    Proxy(_) => true // Proxies are always truthy
   }
 }
 
@@ -583,7 +593,7 @@ pub fn to_number(val : Value) -> Double raise Error {
       } else {
         0.0 / 0.0
       }
-    Undefined | Array(_) | Map(_) | Set(_) | Promise(_) => 0.0 / 0.0
+    Undefined | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => 0.0 / 0.0
     Symbol(_) =>
       raise @errors.TypeError(
         message="Cannot convert a Symbol value to a number",
@@ -631,6 +641,7 @@ pub fn type_of(val : Value) -> String {
     Map(_) => "object"
     Set(_) => "object"
     Promise(_) => "object"
+    Proxy(_) => "object"
   }
 }
 

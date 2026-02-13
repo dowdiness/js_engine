@@ -151,7 +151,8 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
         | Array(_)
         | Map(_)
         | Set(_)
-        | Promise(_) => return Number(0.0 / 0.0)
+        | Promise(_)
+        | Proxy(_) => return Number(0.0 / 0.0)
       }
       let trimmed = trim_start(s)
       if trimmed.length() == 0 {
@@ -611,6 +612,12 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
 
   // Set up timer APIs (setTimeout, clearTimeout, setInterval, clearInterval)
   setup_timers(env)
+
+  // Set up Proxy constructor and Proxy.revocable
+  setup_proxy_builtins(env)
+
+  // Set up Reflect global object
+  setup_reflect_builtins(env)
 }
 
 ///|
@@ -2559,6 +2566,7 @@ fn json_stringify_value(
     Map(_) => String_("{}") // Maps serialize as empty objects
     Set(_) => String_("{}") // Sets serialize as empty objects
     Promise(_) => String_("{}") // Promises serialize as empty objects
+    Proxy(_) => String_("{}") // Proxies serialize as empty objects
     Array(data) => {
       // Cycle detection
       for s in seen {

@@ -1314,6 +1314,16 @@ fn collect_for_in_keys(obj : Value) -> Array[String] {
   let mut current = obj
   while true {
     match current {
+      Proxy(proxy_data) => {
+        // For Proxy with ownKeys trap, use it; otherwise delegate to target
+        match proxy_data.target {
+          Some(target) => {
+            current = target
+            continue
+          }
+          None => break
+        }
+      }
       Object(data) => {
         data.properties.each(fn(k, _v) {
           if not(seen.contains(k)) {
@@ -3774,7 +3784,7 @@ fn Interpreter::eval_expr(
                   match exec_result {
                     ReturnSignal(v) =>
                       match v {
-                        Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) => {
+                        Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => {
                           // Update 'this' in the current environment
                           env.assign("this", v)
                           return v
@@ -3793,7 +3803,7 @@ fn Interpreter::eval_expr(
               // Use constructor semantics (`new`) instead of plain call.
               let super_result = self.construct_value(super_ctor, args, loc)
               match super_result {
-                Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) => {
+                Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => {
                   env.assign("this", super_result)
                   super_result
                 }
@@ -3937,10 +3947,60 @@ fn Interpreter::eval_binary(
               }
           }
         }
+        Proxy(proxy_data) => {
+          // Proxy instanceof: get the prototype through the proxy get trap
+          let target = get_proxy_target(proxy_data)
+          let proto = self.get_property(r, "prototype", loc)
+          match proto {
+            Object(_) => instanceof_prototype_chain(l, proto, self.global)
+            _ => {
+              // Check if target is callable via getPrototypeOf trap
+              match target {
+                Object(t_data) =>
+                  match t_data.callable {
+                    Some(_) => Bool(false)
+                    None =>
+                      raise @errors.TypeError(
+                        message="Right-hand side of 'instanceof' is not callable",
+                      )
+                  }
+                _ => Bool(false)
+              }
+            }
+          }
+        }
         _ =>
           raise @errors.TypeError(
             message="Right-hand side of 'instanceof' is not an object",
           )
+      }
+    }
+    In => {
+      let left = self.eval_expr(left_expr, env)
+      let right = self.eval_expr(right_expr, env)
+      match right {
+        Proxy(proxy_data) => {
+          let trap = get_proxy_trap(proxy_data, "has")
+          match trap {
+            Some(trap_fn) => {
+              let target = get_proxy_target(proxy_data)
+              let handler = get_proxy_handler(proxy_data)
+              let prop_key = match left {
+                Symbol(_) => left
+                _ => String_(left.to_string())
+              }
+              let result = self.call_value(
+                trap_fn, handler, [target, prop_key], loc,
+              )
+              Bool(is_truthy(result))
+            }
+            None => {
+              let target = get_proxy_target(proxy_data)
+              eval_binary_op(In, left, target, loc)
+            }
+          }
+        }
+        _ => eval_binary_op(In, left, right, loc)
       }
     }
     _ => {
@@ -4136,6 +4196,15 @@ fn instanceof_prototype_chain(
     Map(_) => get_constructor_prototype(env, "Map")
     Set(_) => get_constructor_prototype(env, "Set")
     Promise(_) => get_constructor_prototype(env, "Promise")
+    Proxy(proxy_data) =>
+      match proxy_data.target {
+        Some(target) =>
+          match target {
+            Object(data) => data.prototype
+            _ => Null
+          }
+        None => return Bool(false)
+      }
     // Primitive values are never instances
     _ => return Bool(false)
   }
@@ -4185,6 +4254,7 @@ fn strict_equal(a : Value, b : Value) -> Bool {
     (Map(a), Map(b)) => physical_equal(a, b) // Maps compare by reference
     (Set(a), Set(b)) => physical_equal(a, b) // Sets compare by reference
     (Promise(a), Promise(b)) => physical_equal(a, b) // Promises compare by reference
+    (Proxy(a), Proxy(b)) => physical_equal(a, b) // Proxies compare by reference
     _ => false
   }
 }
@@ -4203,6 +4273,7 @@ fn loose_equal(a : Value, b : Value) -> Bool {
     (Array(x), Array(y)) => physical_equal(x, y)
     (Symbol(x), Symbol(y)) => x.id == y.id // Symbols compare by identity only
     (Promise(x), Promise(y)) => physical_equal(x, y) // Promises compare by reference
+    (Proxy(x), Proxy(y)) => physical_equal(x, y) // Proxies compare by reference
     // null == undefined
     (Null, Undefined) | (Undefined, Null) => true
     // Number == String: convert string to number
@@ -4269,6 +4340,42 @@ fn Interpreter::eval_unary(
         Member(obj_expr, prop, _) => {
           let obj = self.eval_expr(obj_expr, env)
           match obj {
+            Proxy(proxy_data) => {
+              let trap = get_proxy_trap(proxy_data, "deleteProperty")
+              match trap {
+                Some(trap_fn) => {
+                  let target = get_proxy_target(proxy_data)
+                  let handler = get_proxy_handler(proxy_data)
+                  let result = self.call_value(
+                    trap_fn, handler, [target, String_(prop)], loc,
+                  )
+                  Bool(is_truthy(result))
+                }
+                None => {
+                  let target = get_proxy_target(proxy_data)
+                  match target {
+                    Object(data) => {
+                      match data.descriptors.get(prop) {
+                        Some(desc) =>
+                          if not(desc.configurable) {
+                            if self.strict {
+                              raise @errors.TypeError(
+                                message="Cannot delete property '\{prop}'",
+                              )
+                            }
+                            return Bool(false)
+                          }
+                        None => ()
+                      }
+                      let _ = data.properties.remove(prop)
+                      let _ = data.descriptors.remove(prop)
+                      Bool(true)
+                    }
+                    _ => Bool(true)
+                  }
+                }
+              }
+            }
             Object(data) => {
               match data.descriptors.get(prop) {
                 Some(desc) =>
@@ -4293,6 +4400,47 @@ fn Interpreter::eval_unary(
           let obj = self.eval_expr(obj_expr, env)
           let key = self.eval_expr(key_expr, env)
           match obj {
+            Proxy(proxy_data) => {
+              let trap = get_proxy_trap(proxy_data, "deleteProperty")
+              match trap {
+                Some(trap_fn) => {
+                  let target = get_proxy_target(proxy_data)
+                  let handler = get_proxy_handler(proxy_data)
+                  let prop_key = match key {
+                    Symbol(_) => key
+                    _ => String_(key.to_string())
+                  }
+                  let result = self.call_value(
+                    trap_fn, handler, [target, prop_key], loc,
+                  )
+                  Bool(is_truthy(result))
+                }
+                None => {
+                  let target = get_proxy_target(proxy_data)
+                  match target {
+                    Object(data) => {
+                      let k = key.to_string()
+                      match data.descriptors.get(k) {
+                        Some(desc) =>
+                          if not(desc.configurable) {
+                            if self.strict {
+                              raise @errors.TypeError(
+                                message="Cannot delete property '\{k}'",
+                              )
+                            }
+                            return Bool(false)
+                          }
+                        None => ()
+                      }
+                      let _ = data.properties.remove(k)
+                      let _ = data.descriptors.remove(k)
+                      Bool(true)
+                    }
+                    _ => Bool(true)
+                  }
+                }
+              }
+            }
             Object(data) => {
               let k = key.to_string()
               match data.descriptors.get(k) {
@@ -4713,6 +4861,23 @@ fn Interpreter::call_value(
     }
   }
   match callee {
+    Proxy(proxy_data) => {
+      let trap = get_proxy_trap(proxy_data, "apply")
+      match trap {
+        Some(trap_fn) => {
+          let target = get_proxy_target(proxy_data)
+          let handler = get_proxy_handler(proxy_data)
+          let args_array : Value = Array({ elements: args.copy() })
+          return self.call_value(
+            trap_fn, handler, [target, this_val, args_array], loc,
+          )
+        }
+        None => {
+          let target = get_proxy_target(proxy_data)
+          return self.call_value(target, this_val, args, loc)
+        }
+      }
+    }
     Object(obj_data) =>
       match obj_data.callable {
         Some(UserFunc(data)) => {
@@ -5177,6 +5342,20 @@ fn Interpreter::get_property(
   loc : @token.Loc,
 ) -> Value raise Error {
   match obj {
+    Proxy(proxy_data) => {
+      let trap = get_proxy_trap(proxy_data, "get")
+      match trap {
+        Some(trap_fn) => {
+          let target = get_proxy_target(proxy_data)
+          let handler = get_proxy_handler(proxy_data)
+          self.call_value(trap_fn, handler, [target, String_(prop), obj], loc)
+        }
+        None => {
+          let target = get_proxy_target(proxy_data)
+          self.get_property(target, prop, loc)
+        }
+      }
+    }
     Object(data) => {
       // Check for accessor descriptor (getter) on own property
       match data.descriptors.get(prop) {
@@ -5593,6 +5772,30 @@ fn Interpreter::get_computed_property(
   key : Value,
   loc : @token.Loc,
 ) -> Value raise Error {
+  // Handle Proxy objects first
+  match obj {
+    Proxy(proxy_data) => {
+      let trap = get_proxy_trap(proxy_data, "get")
+      match trap {
+        Some(trap_fn) => {
+          let target = get_proxy_target(proxy_data)
+          let handler = get_proxy_handler(proxy_data)
+          let prop_key = match key {
+            Symbol(_) => key
+            _ => String_(key.to_string())
+          }
+          return self.call_value(
+            trap_fn, handler, [target, prop_key, obj], loc,
+          )
+        }
+        None => {
+          let target = get_proxy_target(proxy_data)
+          return self.get_computed_property(target, key, loc)
+        }
+      }
+    }
+    _ => ()
+  }
   // Handle Symbol keys specially
   match key {
     Symbol(sym) =>
@@ -6040,6 +6243,33 @@ fn Interpreter::set_property(
   loc : @token.Loc,
 ) -> Value raise Error {
   match obj {
+    Proxy(proxy_data) => {
+      let trap = get_proxy_trap(proxy_data, "set")
+      match trap {
+        Some(trap_fn) => {
+          let target = get_proxy_target(proxy_data)
+          let handler = get_proxy_handler(proxy_data)
+          let result = self.call_value(
+            trap_fn,
+            handler,
+            [target, String_(prop), value, obj],
+            loc,
+          )
+          if not(is_truthy(result)) {
+            if self.strict {
+              raise @errors.TypeError(
+                message="'set' on proxy: trap returned falsish for property '\{prop}'",
+              )
+            }
+          }
+          value
+        }
+        None => {
+          let target = get_proxy_target(proxy_data)
+          self.set_property(target, prop, value, loc)
+        }
+      }
+    }
     Object(data) => {
       // Check for accessor descriptor (setter)
       match data.descriptors.get(prop) {
@@ -6186,6 +6416,37 @@ fn Interpreter::set_computed_property(
   loc : @token.Loc,
 ) -> Value raise Error {
   match obj {
+    Proxy(proxy_data) => {
+      let trap = get_proxy_trap(proxy_data, "set")
+      match trap {
+        Some(trap_fn) => {
+          let target = get_proxy_target(proxy_data)
+          let handler = get_proxy_handler(proxy_data)
+          let prop_key = match key {
+            Symbol(_) => key
+            _ => String_(key.to_string())
+          }
+          let result = self.call_value(
+            trap_fn,
+            handler,
+            [target, prop_key, value, obj],
+            loc,
+          )
+          if not(is_truthy(result)) {
+            if self.strict {
+              raise @errors.TypeError(
+                message="'set' on proxy: trap returned falsish",
+              )
+            }
+          }
+          return value
+        }
+        None => {
+          let target = get_proxy_target(proxy_data)
+          return self.set_computed_property(target, key, value, loc)
+        }
+      }
+    }
     Object(data) =>
       match key {
         Symbol(sym) => {
@@ -6398,7 +6659,7 @@ fn Interpreter::eval_new(
 ///|
 fn is_object_like_for_constructor_return(value : Value) -> Bool {
   match value {
-    Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) => true
+    Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => true
     _ => false
   }
 }
@@ -6474,6 +6735,31 @@ fn Interpreter::construct_value(
   loc : @token.Loc,
 ) -> Value raise Error {
   match ctor {
+    Proxy(proxy_data) => {
+      let trap = get_proxy_trap(proxy_data, "construct")
+      match trap {
+        Some(trap_fn) => {
+          let target = get_proxy_target(proxy_data)
+          let handler = get_proxy_handler(proxy_data)
+          let args_array : Value = Array({ elements: args.copy() })
+          let result = self.call_value(
+            trap_fn, handler, [target, args_array, ctor], loc,
+          )
+          match result {
+            Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) =>
+              result
+            _ =>
+              raise @errors.TypeError(
+                message="'construct' on proxy: trap returned non-Object",
+              )
+          }
+        }
+        None => {
+          let target = get_proxy_target(proxy_data)
+          self.construct_value(target, args, loc)
+        }
+      }
+    }
     Object(obj_data) =>
       match obj_data.callable {
         Some(UserFunc(data)) => {

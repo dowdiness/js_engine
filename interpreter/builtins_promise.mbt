@@ -75,7 +75,7 @@ pub fn Interpreter::run_microtasks(self : Interpreter) -> Unit raise Error {
 /// ES object-like values that participate in thenable assimilation.
 fn is_thenable_object_candidate(value : Value) -> Bool {
   match value {
-    Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) => true
+    Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => true
     _ => false
   }
 }

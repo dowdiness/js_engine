@@ -21,6 +21,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               Map(_) => String_("[object Map]")
               Set(_) => String_("[object Set]")
               Promise(_) => String_("[object Promise]")
+              Proxy(_) => String_("[object Object]")
               Object(data) =>
                 if data.class_name == "Function" {
                   String_("[object Function]")
@@ -394,7 +395,9 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               | Symbol(_)
               | Array(_)
               | Map(_)
-              | Set(_) =>
+              | Set(_)
+              | Promise(_)
+              | Proxy(_) =>
                 raise @errors.TypeError(
                   message="Property descriptors must be an object",
                 )
@@ -798,8 +801,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                       data.symbol_properties[sym_id] = v
                     })
                   }
-                  // ToObject conversion: Map, Set, Number, Bool, Symbol have no enumerable properties
-                  Map(_) | Set(_) | Number(_) | Bool(_) | Symbol(_) => ()
+                  // ToObject conversion: Map, Set, Number, Bool, Symbol, Proxy have no enumerable own string properties
+                  Map(_) | Set(_) | Number(_) | Bool(_) | Symbol(_) | Proxy(_) => ()
                 }
               }
               target
@@ -830,6 +833,15 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             Map(_) => get_ctor_proto("Map")
             Set(_) => get_ctor_proto("Set")
             Promise(_) => get_ctor_proto("Promise")
+            Proxy(proxy_data) =>
+              match proxy_data.target {
+                Some(target) =>
+                  match target {
+                    Object(data) => data.prototype
+                    _ => Null
+                  }
+                None => Null
+              }
             _ => Null
           }
         }),
@@ -1074,7 +1086,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           // Per ES spec, Object.defineProperty on non-object throws TypeError
           // Array, Map, Set, Promise are JS objects
           match obj {
-            Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) => ()
+            Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => ()
             _ =>
               raise @errors.TypeError(
                 message="Object.defineProperty called on non-object",
@@ -1083,7 +1095,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           // Per ES spec, descriptor must be an object
           // Array, Map, Set, Promise are JS objects
           match descriptor {
-            Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) => ()
+            Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => ()
             _ =>
               raise @errors.TypeError(
                 message="Property description must be an object: \{descriptor.to_string()}",
@@ -2091,7 +2103,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           // Per ES spec, Object.defineProperties on non-object throws TypeError
           // Array, Map, Set, Promise are JS objects
           match obj {
-            Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) => ()
+            Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => ()
             _ =>
               raise @errors.TypeError(
                 message="Object.defineProperties called on non-object",

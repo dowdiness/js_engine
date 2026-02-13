@@ -948,3 +948,376 @@ test "ES module: anonymous export default class" {
   let (output, _) = @js_engine.run_modules(modules)
   inspect(output, content="[\"hi world\"]")
 }
+
+// ============================================================
+// Proxy tests
+// ============================================================
+
+///|
+test "Proxy basic get trap" {
+  let src =
+    #|const target = { name: "world" };
+    #|const handler = {
+    #|  get(target, prop, receiver) {
+    #|    return prop === "name" ? "hello " + target[prop] : target[prop];
+    #|  }
+    #|};
+    #|const proxy = new Proxy(target, handler);
+    #|console.log(proxy.name);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"hello world\"]")
+}
+
+///|
+test "Proxy basic set trap" {
+  let src =
+    #|const target = {};
+    #|const handler = {
+    #|  set(target, prop, value, receiver) {
+    #|    target[prop] = value * 2;
+    #|    return true;
+    #|  }
+    #|};
+    #|const proxy = new Proxy(target, handler);
+    #|proxy.x = 5;
+    #|console.log(target.x);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"10\"]")
+}
+
+///|
+test "Proxy has trap" {
+  let src =
+    #|const target = { a: 1 };
+    #|const handler = {
+    #|  has(target, prop) {
+    #|    return prop === "b" ? true : prop in target;
+    #|  }
+    #|};
+    #|const proxy = new Proxy(target, handler);
+    #|console.log("a" in proxy);
+    #|console.log("b" in proxy);
+    #|console.log("c" in proxy);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"true\", \"true\", \"false\"]")
+}
+
+///|
+test "Proxy deleteProperty trap" {
+  let src =
+    #|const target = { a: 1, b: 2 };
+    #|const deleted = [];
+    #|const handler = {
+    #|  deleteProperty(target, prop) {
+    #|    deleted.push(prop);
+    #|    delete target[prop];
+    #|    return true;
+    #|  }
+    #|};
+    #|const proxy = new Proxy(target, handler);
+    #|delete proxy.a;
+    #|console.log(deleted.join(","));
+    #|console.log(target.a);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"a\", \"undefined\"]")
+}
+
+///|
+test "Proxy apply trap" {
+  let src =
+    #|function sum(a, b) { return a + b; }
+    #|const handler = {
+    #|  apply(target, thisArg, argsList) {
+    #|    return target.apply(thisArg, argsList) * 10;
+    #|  }
+    #|};
+    #|const proxy = new Proxy(sum, handler);
+    #|console.log(proxy(1, 2));
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"30\"]")
+}
+
+///|
+test "Proxy construct trap" {
+  let src =
+    #|function Point(x, y) { this.x = x; this.y = y; }
+    #|const handler = {
+    #|  construct(target, args, newTarget) {
+    #|    const obj = new target(...args);
+    #|    obj.created = true;
+    #|    return obj;
+    #|  }
+    #|};
+    #|const ProxyPoint = new Proxy(Point, handler);
+    #|const p = new ProxyPoint(1, 2);
+    #|console.log(p.x + "," + p.y + "," + p.created);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"1,2,true\"]")
+}
+
+///|
+test "Proxy no trap - delegates to target" {
+  let src =
+    #|const target = { x: 42 };
+    #|const proxy = new Proxy(target, {});
+    #|console.log(proxy.x);
+    #|proxy.y = 99;
+    #|console.log(target.y);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"42\", \"99\"]")
+}
+
+///|
+test "Proxy.revocable" {
+  let src =
+    #|const target = { value: 100 };
+    #|const { proxy, revoke } = Proxy.revocable(target, {
+    #|  get(target, prop) {
+    #|    return target[prop];
+    #|  }
+    #|});
+    #|console.log(proxy.value);
+    #|revoke();
+    #|try {
+    #|  proxy.value;
+    #|} catch(e) {
+    #|  console.log(e.message);
+    #|}
+  let (output, _) = @js_engine.run(src)
+  inspect(
+    output,
+    content="[\"100\", \"Cannot perform 'get' on a proxy that has been revoked\"]",
+  )
+}
+
+///|
+test "Proxy typeof is object" {
+  let src =
+    #|const proxy = new Proxy({}, {});
+    #|console.log(typeof proxy);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"object\"]")
+}
+
+///|
+test "Proxy constructor requires new" {
+  let src =
+    #|try {
+    #|  Proxy({}, {});
+    #|} catch(e) {
+    #|  console.log(e instanceof TypeError);
+    #|}
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "Proxy get with computed property" {
+  let src =
+    #|const target = { a: 1, b: 2 };
+    #|const handler = {
+    #|  get(target, prop) {
+    #|    return target[prop] + 100;
+    #|  }
+    #|};
+    #|const proxy = new Proxy(target, handler);
+    #|const key = "b";
+    #|console.log(proxy[key]);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"102\"]")
+}
+
+///|
+test "Proxy set with computed property" {
+  let src =
+    #|const target = {};
+    #|const handler = {
+    #|  set(target, prop, value) {
+    #|    target[prop] = value + "_modified";
+    #|    return true;
+    #|  }
+    #|};
+    #|const proxy = new Proxy(target, handler);
+    #|const key = "foo";
+    #|proxy[key] = "bar";
+    #|console.log(target.foo);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"bar_modified\"]")
+}
+
+// ============================================================
+// Reflect tests
+// ============================================================
+
+///|
+test "Reflect.get" {
+  let src =
+    #|const obj = { x: 42 };
+    #|console.log(Reflect.get(obj, "x"));
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"42\"]")
+}
+
+///|
+test "Reflect.set" {
+  let src =
+    #|const obj = {};
+    #|Reflect.set(obj, "x", 42);
+    #|console.log(obj.x);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"42\"]")
+}
+
+///|
+test "Reflect.has" {
+  let src =
+    #|const obj = { a: 1 };
+    #|console.log(Reflect.has(obj, "a"));
+    #|console.log(Reflect.has(obj, "b"));
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"true\", \"false\"]")
+}
+
+///|
+test "Reflect.deleteProperty" {
+  let src =
+    #|const obj = { a: 1, b: 2 };
+    #|console.log(Reflect.deleteProperty(obj, "a"));
+    #|console.log(obj.a);
+    #|console.log(obj.b);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"true\", \"undefined\", \"2\"]")
+}
+
+///|
+test "Reflect.ownKeys" {
+  let src =
+    #|const obj = { a: 1, b: 2, c: 3 };
+    #|const keys = Reflect.ownKeys(obj);
+    #|console.log(keys.join(","));
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"a,b,c\"]")
+}
+
+///|
+test "Reflect.apply" {
+  let src =
+    #|function greet(name) { return "Hello, " + name; }
+    #|console.log(Reflect.apply(greet, undefined, ["World"]));
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"Hello, World\"]")
+}
+
+///|
+test "Reflect.construct" {
+  let src =
+    #|function Point(x, y) { this.x = x; this.y = y; }
+    #|const p = Reflect.construct(Point, [3, 4]);
+    #|console.log(p.x + "," + p.y);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"3,4\"]")
+}
+
+///|
+test "Reflect.getPrototypeOf" {
+  let src =
+    #|const obj = {};
+    #|console.log(Reflect.getPrototypeOf(obj) === Object.prototype);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "Reflect.isExtensible" {
+  let src =
+    #|const obj = {};
+    #|console.log(Reflect.isExtensible(obj));
+    #|Object.preventExtensions(obj);
+    #|console.log(Reflect.isExtensible(obj));
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"true\", \"false\"]")
+}
+
+///|
+test "Reflect.preventExtensions" {
+  let src =
+    #|const obj = {};
+    #|Reflect.preventExtensions(obj);
+    #|console.log(Object.isExtensible(obj));
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"false\"]")
+}
+
+///|
+test "Reflect.defineProperty" {
+  let src =
+    #|const obj = {};
+    #|Reflect.defineProperty(obj, "x", { value: 42, writable: true, enumerable: true, configurable: true });
+    #|console.log(obj.x);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"42\"]")
+}
+
+///|
+test "Reflect.setPrototypeOf" {
+  let src =
+    #|const obj = {};
+    #|const proto = { greet() { return "hello"; } };
+    #|Reflect.setPrototypeOf(obj, proto);
+    #|console.log(obj.greet());
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"hello\"]")
+}
+
+///|
+test "Proxy and Reflect together - logging proxy" {
+  let src =
+    #|const target = { x: 1, y: 2, z: 3 };
+    #|const log = [];
+    #|const handler = {
+    #|  get(target, prop, receiver) {
+    #|    log.push("get:" + prop);
+    #|    return Reflect.get(target, prop, receiver);
+    #|  },
+    #|  set(target, prop, value, receiver) {
+    #|    log.push("set:" + prop + "=" + value);
+    #|    return Reflect.set(target, prop, value, receiver);
+    #|  }
+    #|};
+    #|const proxy = new Proxy(target, handler);
+    #|proxy.x;
+    #|proxy.y = 20;
+    #|console.log(log.join(", "));
+    #|console.log(target.y);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"get:x, set:y=20\", \"20\"]")
+}
+
+///|
+test "Proxy identity - strict equality" {
+  let src =
+    #|const target = {};
+    #|const p1 = new Proxy(target, {});
+    #|const p2 = new Proxy(target, {});
+    #|console.log(p1 === p1);
+    #|console.log(p1 === p2);
+    #|console.log(p1 === target);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"true\", \"false\", \"false\"]")
+}
+
+///|
+test "Reflect.getOwnPropertyDescriptor" {
+  let src =
+    #|const obj = {};
+    #|Object.defineProperty(obj, "x", { value: 42, writable: false, enumerable: true, configurable: false });
+    #|const desc = Reflect.getOwnPropertyDescriptor(obj, "x");
+    #|console.log(desc.value);
+    #|console.log(desc.writable);
+    #|console.log(desc.enumerable);
+    #|console.log(desc.configurable);
+  let (output, _) = @js_engine.run(src)
+  inspect(
+    output, content="[\"42\", \"false\", \"true\", \"false\"]",
+  )
+}
