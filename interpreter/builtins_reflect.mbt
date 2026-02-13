@@ -1,4 +1,32 @@
 ///|
+/// Convert an array-like value to an Array[Value] (CreateListFromArrayLike)
+fn create_list_from_array_like(val : Value) -> Array[Value] raise Error {
+  match val {
+    Array(data) => data.elements.copy()
+    Object(data) => {
+      let result : Array[Value] = []
+      match data.properties.get("length") {
+        Some(len_val) => {
+          let len = to_number(len_val).to_int()
+          for i = 0; i < len; i = i + 1 {
+            match data.properties.get(i.to_string()) {
+              Some(v) => result.push(v)
+              None => result.push(Undefined)
+            }
+          }
+        }
+        None => ()
+      }
+      result
+    }
+    _ =>
+      raise @errors.TypeError(
+        message="CreateListFromArrayLike called on non-object",
+      )
+  }
+}
+
+///|
 fn setup_reflect_builtins(env : Environment) -> Unit {
   let reflect_props : Map[String, Value] = {}
 
@@ -17,29 +45,7 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
         let target = args[0]
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let arg_list = if args.length() > 2 {
-          match args[2] {
-            Array(data) => data.elements.copy()
-            Object(data) => {
-              let result : Array[Value] = []
-              match data.properties.get("length") {
-                Some(len_val) => {
-                  let len = to_number(len_val).to_int()
-                  for i = 0; i < len; i = i + 1 {
-                    match data.properties.get(i.to_string()) {
-                      Some(v) => result.push(v)
-                      None => result.push(Undefined)
-                    }
-                  }
-                }
-                None => ()
-              }
-              result
-            }
-            _ =>
-              raise @errors.TypeError(
-                message="CreateListFromArrayLike called on non-object",
-              )
-          }
+          create_list_from_array_like(args[2])
         } else {
           []
         }
@@ -66,29 +72,7 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
           )
         }
         let target = args[0]
-        let arg_list = match args[1] {
-          Array(data) => data.elements.copy()
-          Object(data) => {
-            let result : Array[Value] = []
-            match data.properties.get("length") {
-              Some(len_val) => {
-                let len = to_number(len_val).to_int()
-                for i = 0; i < len; i = i + 1 {
-                  match data.properties.get(i.to_string()) {
-                    Some(v) => result.push(v)
-                    None => result.push(Undefined)
-                  }
-                }
-              }
-              None => ()
-            }
-            result
-          }
-          _ =>
-            raise @errors.TypeError(
-              message="CreateListFromArrayLike called on non-object",
-            )
-        }
+        let arg_list = create_list_from_array_like(args[1])
         let loc = @token.Loc::default()
         let result = interp.construct_value(target, arg_list, loc)
         // If newTarget is provided and differs from target, re-wire the prototype

@@ -1373,3 +1373,61 @@ test "Reflect.get with Symbol key" {
   let (output, _) = @js_engine.run(src)
   inspect(output, content="[\"hello\"]")
 }
+
+///|
+test "JSON.stringify with Proxy" {
+  let src =
+    #|const target = { a: 1, b: 2 };
+    #|const proxy = new Proxy(target, {});
+    #|console.log(JSON.stringify(proxy));
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"{\\\"a\\\":1,\\\"b\\\":2}\"]")
+}
+
+///|
+test "Object.assign with Proxy source" {
+  let src =
+    #|const target = {};
+    #|const source = new Proxy({ x: 10, y: 20 }, {});
+    #|Object.assign(target, source);
+    #|console.log(target.x);
+    #|console.log(target.y);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"10\", \"20\"]")
+}
+
+///|
+test "Object.defineProperty on Proxy target" {
+  let src =
+    #|const target = {};
+    #|const proxy = new Proxy(target, {});
+    #|Object.defineProperty(proxy, "x", { value: 42, writable: false, enumerable: true, configurable: false });
+    #|console.log(target.x);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"42\"]")
+}
+
+///|
+test "Object.getOwnPropertyDescriptor on Proxy" {
+  let src =
+    #|const target = { x: 42 };
+    #|const proxy = new Proxy(target, {});
+    #|const desc = Object.getOwnPropertyDescriptor(proxy, "x");
+    #|console.log(desc.value);
+    #|console.log(desc.writable);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"42\", \"true\"]")
+}
+
+///|
+test "apply trap rejects non-callable target" {
+  let src =
+    #|try {
+    #|  const proxy = new Proxy({}, { apply() { return 42; } });
+    #|  proxy();
+    #|} catch (e) {
+    #|  console.log(e.message);
+    #|}
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"proxy target is not a function\"]")
+}

@@ -2566,7 +2566,13 @@ fn json_stringify_value(
     Map(_) => String_("{}") // Maps serialize as empty objects
     Set(_) => String_("{}") // Sets serialize as empty objects
     Promise(_) => String_("{}") // Promises serialize as empty objects
-    Proxy(_) => String_("{}") // Proxies serialize as empty objects
+    Proxy(proxy_data) =>
+      // Unwrap proxy to its target and serialize that
+      match proxy_data.target {
+        Some(target) =>
+          json_stringify_value(target, seen, indent, depth, interp)
+        None => String_("{}")
+      }
     Array(data) => {
       // Cycle detection
       for s in seen {

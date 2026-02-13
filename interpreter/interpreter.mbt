@@ -1308,21 +1308,24 @@ fn Interpreter::exec_stmt(
 }
 
 ///|
-fn collect_for_in_keys(obj : Value) -> Array[String] {
+fn collect_for_in_keys(obj : Value) -> Array[String] raise Error {
   let keys : Array[String] = []
   let seen : Map[String, Bool] = {}
   let mut current = obj
   while true {
     match current {
       Proxy(proxy_data) => {
-        // For Proxy with ownKeys trap, use it; otherwise delegate to target
-        match proxy_data.target {
-          Some(target) => {
-            current = target
-            continue
-          }
-          None => break
+        // For Proxy, enumerate the target's enumerable properties
+        let target = match proxy_data.target {
+          Some(t) => t
+          None =>
+            raise @errors.TypeError(
+              message="Cannot perform 'ownKeys' on a proxy that has been revoked",
+            )
         }
+        // Delegate to target for key enumeration
+        current = target
+        continue
       }
       Object(data) => {
         data.properties.each(fn(k, _v) {
@@ -3948,23 +3951,47 @@ fn Interpreter::eval_binary(
           }
         }
         Proxy(proxy_data) => {
-          // Proxy instanceof: get the prototype through the proxy get trap
-          let target = get_proxy_target(proxy_data)
-          let proto = self.get_property(r, "prototype", loc)
-          match proto {
-            Object(_) => instanceof_prototype_chain(l, proto, self.global)
-            _ => {
-              // Check if target is callable via getPrototypeOf trap
-              match target {
-                Object(t_data) =>
-                  match t_data.callable {
-                    Some(_) => Bool(false)
+          // Step 1: Check for Symbol.hasInstance on the proxy (via get trap)
+          let has_instance_sym = get_hasinstance_symbol()
+          let has_instance_method = get_symbol_method(r, has_instance_sym.id)
+          match has_instance_method {
+            Some(has_instance_fn) =>
+              match has_instance_fn {
+                Object(fn_data) =>
+                  match fn_data.callable {
+                    Some(_) => {
+                      let result = self.call_value(has_instance_fn, r, [l], loc)
+                      Bool(is_truthy(result))
+                    }
                     None =>
                       raise @errors.TypeError(
-                        message="Right-hand side of 'instanceof' is not callable",
+                        message="Symbol.hasInstance is not a function",
                       )
                   }
-                _ => Bool(false)
+                _ =>
+                  raise @errors.TypeError(
+                    message="Symbol.hasInstance is not a function",
+                  )
+              }
+            None => {
+              // Step 2: Fall back to prototype chain check
+              let target = get_proxy_target(proxy_data)
+              let proto = self.get_property(r, "prototype", loc)
+              match proto {
+                Object(_) => instanceof_prototype_chain(l, proto, self.global)
+                _ =>
+                  // Check if target is callable
+                  match target {
+                    Object(t_data) =>
+                      match t_data.callable {
+                        Some(_) => Bool(false)
+                        None =>
+                          raise @errors.TypeError(
+                            message="Right-hand side of 'instanceof' is not callable",
+                          )
+                      }
+                    _ => Bool(false)
+                  }
               }
             }
           }
@@ -4349,6 +4376,11 @@ fn Interpreter::eval_unary(
                   let result = self.call_value(
                     trap_fn, handler, [target, String_(prop)], loc,
                   )
+                  if not(is_truthy(result)) && self.strict {
+                    raise @errors.TypeError(
+                      message="'deleteProperty' on proxy: trap returned falsish for property '\{prop}'",
+                    )
+                  }
                   Bool(is_truthy(result))
                 }
                 None => {
@@ -4413,6 +4445,11 @@ fn Interpreter::eval_unary(
                   let result = self.call_value(
                     trap_fn, handler, [target, prop_key], loc,
                   )
+                  if not(is_truthy(result)) && self.strict {
+                    raise @errors.TypeError(
+                      message="'deleteProperty' on proxy: trap returned falsish",
+                    )
+                  }
                   Bool(is_truthy(result))
                 }
                 None => {
@@ -4862,20 +4899,28 @@ fn Interpreter::call_value(
   }
   match callee {
     Proxy(proxy_data) => {
+      // Verify target is callable before invoking apply trap
+      let target = get_proxy_target(proxy_data)
+      match target {
+        Object(t_data) =>
+          match t_data.callable {
+            Some(_) => ()
+            None =>
+              raise @errors.TypeError(message="proxy target is not a function")
+          }
+        _ =>
+          raise @errors.TypeError(message="proxy target is not a function")
+      }
       let trap = get_proxy_trap(proxy_data, "apply")
       match trap {
         Some(trap_fn) => {
-          let target = get_proxy_target(proxy_data)
           let handler = get_proxy_handler(proxy_data)
           let args_array : Value = Array({ elements: args.copy() })
           return self.call_value(
             trap_fn, handler, [target, this_val, args_array], loc,
           )
         }
-        None => {
-          let target = get_proxy_target(proxy_data)
-          return self.call_value(target, this_val, args, loc)
-        }
+        None => return self.call_value(target, this_val, args, loc)
       }
     }
     Object(obj_data) =>
