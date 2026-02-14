@@ -8188,6 +8188,25 @@ test "test262: TypedArray Uint8ClampedArray clamping" {
 }
 
 ///|
+test "test262: TypedArray Uint8ClampedArray banker's rounding" {
+  let output = run_output(
+    (
+      #|var a = new Uint8ClampedArray(6);
+      #|a[0] = 0.5;   // half -> round to even (0)
+      #|a[1] = 1.5;   // half -> round to even (2)
+      #|a[2] = 2.5;   // half -> round to even (2)
+      #|a[3] = 3.5;   // half -> round to even (4)
+      #|a[4] = 4.5;   // half -> round to even (4)
+      #|a[5] = 5.5;   // half -> round to even (6)
+      #|var result = [];
+      #|for (var i = 0; i < 6; i++) result.push(a[i]);
+      #|console.log(result.join(","));
+    ),
+  )
+  inspect(output, content="[\"0,2,2,4,4,6\"]")
+}
+
+///|
 test "test262: TypedArray Int8Array signed wrap" {
   let output = run_output(
     (

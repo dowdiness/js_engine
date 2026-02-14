@@ -90,17 +90,22 @@ fn typed_array_set_element(
       bytes[byte_offset] = byte_val
     }
     "Uint8ClampedArray" => {
-      // Clamp to 0..255
-      let v = if value.is_nan() {
+      // ToUint8Clamp: clamp to 0..255 with round-half-to-even (banker's rounding)
+      let v = if value.is_nan() || value <= 0.0 {
         0
+      } else if value >= 255.0 {
+        255
       } else {
-        let rounded = value.round().to_int()
-        if rounded < 0 {
-          0
-        } else if rounded > 255 {
-          255
+        let floored = value.floor()
+        let frac = value - floored
+        let n = floored.to_int()
+        if frac > 0.5 {
+          n + 1
+        } else if frac < 0.5 {
+          n
         } else {
-          rounded
+          // Exactly 0.5: round to nearest even
+          if n % 2 == 0 { n } else { n + 1 }
         }
       }
       bytes[byte_offset] = v
