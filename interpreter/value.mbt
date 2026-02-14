@@ -276,6 +276,60 @@ pub fn get_tostringtag_symbol() -> SymbolData {
 }
 
 ///|
+/// Get the Symbol.toStringTag value by walking the prototype chain.
+/// Checks symbol properties and evaluates getter descriptors if present.
+pub fn get_tostringtag_value(data : ObjectData) -> String? {
+  let sym = get_tostringtag_symbol()
+  // Walk the object and its prototype chain
+  let mut current : Value = Object(data)
+  while true {
+    match current {
+      Object(obj_data) => {
+        // Check for getter descriptor on symbol property
+        match obj_data.symbol_descriptors.get(sym.id) {
+          Some(desc) =>
+            match desc.getter {
+              Some(getter_fn) =>
+                // Call the getter with the original object as `this`
+                match getter_fn {
+                  Object(getter_data) =>
+                    match getter_data.callable {
+                      Some(MethodCallable(_, f)) => {
+                        let result = f(Object(data), []) catch { _ => return None }
+                        match result {
+                          String_(s) => return Some(s)
+                          _ => return None
+                        }
+                      }
+                      Some(NativeCallable(_, f)) => {
+                        let result = f([Object(data)]) catch { _ => return None }
+                        match result {
+                          String_(s) => return Some(s)
+                          _ => return None
+                        }
+                      }
+                      _ => return None
+                    }
+                  _ => return None
+                }
+              None => ()
+            }
+          None => ()
+        }
+        // Check direct symbol property value
+        match obj_data.symbol_properties.get(sym.id) {
+          Some(String_(s)) => return Some(s)
+          Some(_) => return None // non-string toStringTag, short-circuit per spec
+          None => ()
+        }
+        current = obj_data.prototype
+      }
+      _ => break
+    }
+  }
+  None
+}
+
 ///|
 /// Proxy data structure - wraps a target and handler for meta-programming
 pub(all) struct ProxyData {

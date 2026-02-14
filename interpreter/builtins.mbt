@@ -618,6 +618,11 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
 
   // Set up Reflect global object
   setup_reflect_builtins(env)
+
+  // Set up ArrayBuffer, TypedArray, and DataView
+  setup_arraybuffer_builtins(env)
+  setup_typedarray_builtins(env)
+  setup_dataview_builtins(env)
 }
 
 ///|
@@ -1256,7 +1261,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     s = s ^ (s.reinterpret_as_uint() >> 17).reinterpret_as_int()
     s = s ^ (s << 5)
     rng_state[0] = s
-    let normalized = s.land(0x7FFFFFFF).to_double() / 2147483648.0
+    let normalized = (s & 0x7FFFFFFF).to_double() / 2147483648.0
     Number(normalized)
   })
   math_props["sign"] = make_native_func_with_length("sign", 1, fn(args) raise {
@@ -3807,10 +3812,22 @@ pub fn setup_harness_builtins(
         })
         realm_props["detachArrayBuffer"] = make_native_func(
           "detachArrayBuffer",
-          fn(_a) raise {
-            raise @errors.TypeError(
-              message="$262.detachArrayBuffer is not supported",
-            )
+          fn(a) raise {
+            if a.length() == 0 {
+              raise @errors.TypeError(
+                message="$262.detachArrayBuffer requires an ArrayBuffer argument",
+              )
+            }
+            match get_buffer_id(a[0]) {
+              Some(id) => {
+                detach_arraybuffer(id)
+                Undefined
+              }
+              None =>
+                raise @errors.TypeError(
+                  message="$262.detachArrayBuffer requires an ArrayBuffer argument",
+                )
+            }
           },
         )
         Object({
@@ -3857,9 +3874,23 @@ pub fn setup_harness_builtins(
     extensible: true,
   })
   dollar262_props["detachArrayBuffer"] = make_native_func("detachArrayBuffer", fn(
-    _args,
+    args,
   ) raise {
-    raise @errors.TypeError(message="$262.detachArrayBuffer is not supported")
+    if args.length() == 0 {
+      raise @errors.TypeError(
+        message="$262.detachArrayBuffer requires an ArrayBuffer argument",
+      )
+    }
+    match get_buffer_id(args[0]) {
+      Some(id) => {
+        detach_arraybuffer(id)
+        Undefined
+      }
+      None =>
+        raise @errors.TypeError(
+          message="$262.detachArrayBuffer requires an ArrayBuffer argument",
+        )
+    }
   })
   let dollar262 : Value = Object({
     properties: dollar262_props,

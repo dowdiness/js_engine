@@ -1328,8 +1328,26 @@ fn collect_for_in_keys(obj : Value) -> Array[String] raise Error {
         continue
       }
       Object(data) => {
+        // TypedArray: enumerate numeric indices as keys
+        if is_typedarray_class(data.class_name) {
+          let ta_len = match data.properties.get("[[ArrayLength]]") {
+            Some(Number(n)) => n.to_int()
+            _ => 0
+          }
+          for i = 0; i < ta_len; i = i + 1 {
+            let k = i.to_string()
+            if not(seen.contains(k)) {
+              seen[k] = true
+              keys.push(k)
+            }
+          }
+        }
         data.properties.each(fn(k, _v) {
           if not(seen.contains(k)) {
+            // Skip internal slots for TypedArray/ArrayBuffer/DataView only
+            if k.has_prefix("[[") && k.has_suffix("]]") && (is_typedarray_class(data.class_name) || data.class_name == "ArrayBuffer" || data.class_name == "DataView") {
+              return
+            }
             seen[k] = true
             let enumerable = match data.descriptors.get(k) {
               Some(d) => d.enumerable
@@ -4092,11 +4110,11 @@ fn eval_binary_op(
     (GtEq, l, r) => Bool(to_number(l) >= to_number(r))
     // Bitwise operations
     (BitAnd, l, r) =>
-      Number(to_int32(to_number(l)).land(to_int32(to_number(r))).to_double())
+      Number((to_int32(to_number(l)) & to_int32(to_number(r))).to_double())
     (BitOr, l, r) =>
-      Number(to_int32(to_number(l)).lor(to_int32(to_number(r))).to_double())
+      Number((to_int32(to_number(l)) | to_int32(to_number(r))).to_double())
     (BitXor, l, r) =>
-      Number(to_int32(to_number(l)).lxor(to_int32(to_number(r))).to_double())
+      Number((to_int32(to_number(l)) ^ to_int32(to_number(r))).to_double())
     // Shift operations
     (LShift, l, r) => {
       let a = to_int32(to_number(l))
@@ -4121,7 +4139,7 @@ fn eval_binary_op(
         let shifted = a >> shift
         let all_bits : Int = 0x7FFFFFFF
         let mask = all_bits >> (shift - 1)
-        Number(shifted.land(mask).to_double())
+        Number((shifted & mask).to_double())
       }
     }
     // in operator - walks prototype chain
@@ -5956,6 +5974,38 @@ fn Interpreter::get_computed_property(
   }
   match obj {
     Object(data) => {
+      // TypedArray indexed access: intercept numeric keys before regular property lookup
+      if is_typedarray_class(data.class_name) {
+        match key {
+          Number(n) => {
+            let idx = n.to_int()
+            if idx.to_double() == n && idx >= 0 {
+              return typedarray_get_index(data, idx)
+            }
+            // Non-integer or negative Number key: return undefined per spec
+            return Undefined
+          }
+          String_(s) => {
+            // Canonical numeric index string check per spec
+            // Note: "-0" is NOT canonical (ToString(ToNumber("-0")) === "0"), so it falls through
+            try {
+              let n = @strconv.parse_double(s)
+              // If string converts to a number and back to same string, it's a canonical numeric index
+              if n.to_string() == s {
+                let idx = n.to_int()
+                if idx.to_double() == n && idx >= 0 {
+                  return typedarray_get_index(data, idx)
+                }
+                // Canonical numeric index but not a valid integer index
+                return Undefined
+              }
+            } catch {
+              _ => () // Not a numeric string, fall through to normal property lookup
+            }
+          }
+          _ => ()
+        }
+      }
       let prop = key.to_string()
       // Check for accessor descriptor (getter) on own property
       match data.descriptors.get(prop) {
@@ -6320,6 +6370,25 @@ fn Interpreter::set_property(
       }
     }
     Object(data) => {
+      // TypedArray indexed write via dot notation (numeric string prop)
+      if is_typedarray_class(data.class_name) {
+        // Canonical numeric index string check per spec
+        // Note: "-0" is NOT canonical (ToString(ToNumber("-0")) === "0"), so it falls through
+        try {
+          let n = @strconv.parse_double(prop)
+          if n.to_string() == prop {
+            let idx = n.to_int()
+            if idx.to_double() == n && idx >= 0 {
+              let num = to_number(value)
+              typedarray_set_index(data, idx, num)
+            }
+            // Canonical numeric index: don't fall through to regular property set
+            return value
+          }
+        } catch {
+          _ => () // Not a numeric string, fall through to normal property set
+        }
+      }
       // Check for accessor descriptor (setter)
       match data.descriptors.get(prop) {
         Some(desc) =>
@@ -6576,6 +6645,38 @@ fn Interpreter::set_computed_property(
           value
         }
         _ => {
+          // TypedArray indexed write: intercept numeric keys
+          if is_typedarray_class(data.class_name) {
+            match key {
+              Number(n) => {
+                let idx = n.to_int()
+                if idx.to_double() == n && idx >= 0 {
+                  let num = to_number(value)
+                  typedarray_set_index(data, idx, num)
+                }
+                // Numeric key always intercepted for TypedArrays
+                return value
+              }
+              String_(s) => {
+                // Canonical numeric index string check per spec
+                // Note: "-0" is NOT canonical (ToString(ToNumber("-0")) === "0"), so it falls through
+                try {
+                  let n = @strconv.parse_double(s)
+                  if n.to_string() == s {
+                    let idx = n.to_int()
+                    if idx.to_double() == n && idx >= 0 {
+                      let num = to_number(value)
+                      typedarray_set_index(data, idx, num)
+                    }
+                    return value
+                  }
+                } catch {
+                  _ => () // Not numeric, fall through
+                }
+              }
+              _ => ()
+            }
+          }
           let prop = key.to_string()
           // Check for accessor descriptor (setter) on string key
           match data.descriptors.get(prop) {

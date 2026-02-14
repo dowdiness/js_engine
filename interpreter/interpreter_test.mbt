@@ -6135,7 +6135,7 @@ test "harness: $262.detachArrayBuffer throws TypeError" {
   )
   inspect(
     output,
-    content="[\"true\", \"$262.detachArrayBuffer is not supported\"]",
+    content="[\"true\", \"$262.detachArrayBuffer requires an ArrayBuffer argument\"]",
   )
 }
 
@@ -7621,4 +7621,1260 @@ test "strict: class constructor with duplicate params throws SyntaxError" {
     output,
     content="[\"SyntaxError: Duplicate parameter name not allowed in this context\"]",
   )
+}
+
+// ===== TypedArray / ArrayBuffer / DataView test262-style tests =====
+
+///|
+test "test262: ArrayBuffer constructor basic" {
+  let output = run_output(
+    (
+      #|var buf = new ArrayBuffer(8);
+      #|console.log(buf.byteLength);
+      #|console.log(buf instanceof ArrayBuffer);
+      #|console.log(typeof buf);
+    ),
+  )
+  inspect(output, content="[\"8\", \"true\", \"object\"]")
+}
+
+///|
+test "test262: ArrayBuffer constructor requires new" {
+  let output = run_output(
+    (
+      #|try {
+      #|  ArrayBuffer(8);
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "test262: ArrayBuffer.prototype.slice" {
+  let output = run_output(
+    (
+      #|var buf = new ArrayBuffer(8);
+      #|var view = new Uint8Array(buf);
+      #|for (var i = 0; i < 8; i++) view[i] = i * 10;
+      #|var sliced = buf.slice(2, 5);
+      #|var view2 = new Uint8Array(sliced);
+      #|console.log(sliced.byteLength);
+      #|console.log(view2[0]);
+      #|console.log(view2[1]);
+      #|console.log(view2[2]);
+    ),
+  )
+  inspect(output, content="[\"3\", \"20\", \"30\", \"40\"]")
+}
+
+///|
+test "test262: ArrayBuffer.isView" {
+  let output = run_output(
+    (
+      #|console.log(ArrayBuffer.isView(new Uint8Array(4)));
+      #|console.log(ArrayBuffer.isView(new DataView(new ArrayBuffer(4))));
+      #|console.log(ArrayBuffer.isView(new ArrayBuffer(4)));
+      #|console.log(ArrayBuffer.isView({}));
+      #|console.log(ArrayBuffer.isView(42));
+    ),
+  )
+  inspect(output, content="[\"true\", \"true\", \"false\", \"false\", \"false\"]")
+}
+
+///|
+test "test262: TypedArray constructors from length" {
+  let output = run_output(
+    (
+      #|var a = new Int8Array(3);
+      #|console.log(a.length);
+      #|console.log(a.byteLength);
+      #|console.log(a.BYTES_PER_ELEMENT);
+      #|console.log(a[0]);
+      #|var b = new Float64Array(2);
+      #|console.log(b.length);
+      #|console.log(b.byteLength);
+      #|console.log(b.BYTES_PER_ELEMENT);
+    ),
+  )
+  inspect(output, content="[\"3\", \"3\", \"1\", \"0\", \"2\", \"16\", \"8\"]")
+}
+
+///|
+test "test262: TypedArray constructor requires new" {
+  let output = run_output(
+    (
+      #|try {
+      #|  Int8Array(3);
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "test262: TypedArray constructor from array" {
+  let output = run_output(
+    (
+      #|var a = new Uint8Array([10, 20, 30]);
+      #|console.log(a.length);
+      #|console.log(a[0]);
+      #|console.log(a[1]);
+      #|console.log(a[2]);
+    ),
+  )
+  inspect(output, content="[\"3\", \"10\", \"20\", \"30\"]")
+}
+
+///|
+test "test262: TypedArray constructor from another TypedArray" {
+  let output = run_output(
+    (
+      #|var a = new Int16Array([1000, 2000, 3000]);
+      #|var b = new Uint8Array(a);
+      #|console.log(b.length);
+      #|console.log(b[0]);
+      #|console.log(b[1]);
+      #|console.log(b[2]);
+    ),
+  )
+  // 1000 & 0xFF = 232, 2000 & 0xFF = 208, 3000 & 0xFF = 184
+  inspect(output, content="[\"3\", \"232\", \"208\", \"184\"]")
+}
+
+///|
+test "test262: TypedArray constructor from ArrayBuffer" {
+  let output = run_output(
+    (
+      #|var buf = new ArrayBuffer(8);
+      #|var u8 = new Uint8Array(buf);
+      #|u8[0] = 1; u8[1] = 0; u8[2] = 2; u8[3] = 0;
+      #|u8[4] = 3; u8[5] = 0; u8[6] = 4; u8[7] = 0;
+      #|var u16 = new Uint16Array(buf);
+      #|console.log(u16.length);
+      #|console.log(u16[0]);
+      #|console.log(u16[1]);
+      #|console.log(u16[2]);
+      #|console.log(u16[3]);
+    ),
+  )
+  inspect(output, content="[\"4\", \"1\", \"2\", \"3\", \"4\"]")
+}
+
+///|
+test "test262: TypedArray constructor from ArrayBuffer with byteOffset" {
+  let output = run_output(
+    (
+      #|var buf = new ArrayBuffer(12);
+      #|var full = new Uint8Array(buf);
+      #|for (var i = 0; i < 12; i++) full[i] = i;
+      #|var view = new Uint32Array(buf, 4);
+      #|console.log(view.length);
+      #|console.log(view.byteOffset);
+      #|console.log(view.byteLength);
+    ),
+  )
+  inspect(output, content="[\"2\", \"4\", \"8\"]")
+}
+
+///|
+test "test262: TypedArray constructor from ArrayBuffer with offset and length" {
+  let output = run_output(
+    (
+      #|var buf = new ArrayBuffer(12);
+      #|var view = new Int32Array(buf, 4, 1);
+      #|console.log(view.length);
+      #|console.log(view.byteOffset);
+      #|console.log(view.byteLength);
+    ),
+  )
+  inspect(output, content="[\"1\", \"4\", \"4\"]")
+}
+
+///|
+test "test262: TypedArray constructor rejects detached ArrayBuffer" {
+  let output = run_output(
+    (
+      #|var buf = new ArrayBuffer(8);
+      #|$262.detachArrayBuffer(buf);
+      #|try {
+      #|  var a = new Uint8Array(buf);
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "test262: TypedArray constructor rejects negative byteOffset" {
+  let output = run_output(
+    (
+      #|var buf = new ArrayBuffer(8);
+      #|try {
+      #|  var a = new Uint8Array(buf, -1);
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof RangeError);
+      #|}
+    ),
+  )
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "test262: TypedArray constructor rejects unaligned byteOffset" {
+  let output = run_output(
+    (
+      #|var buf = new ArrayBuffer(8);
+      #|try {
+      #|  var a = new Int32Array(buf, 3);
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof RangeError);
+      #|}
+    ),
+  )
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "test262: TypedArray.prototype.set from array" {
+  let output = run_output(
+    (
+      #|var a = new Uint8Array(5);
+      #|a.set([10, 20, 30], 1);
+      #|console.log(a[0]);
+      #|console.log(a[1]);
+      #|console.log(a[2]);
+      #|console.log(a[3]);
+      #|console.log(a[4]);
+    ),
+  )
+  inspect(output, content="[\"0\", \"10\", \"20\", \"30\", \"0\"]")
+}
+
+///|
+test "test262: TypedArray.prototype.set from TypedArray" {
+  let output = run_output(
+    (
+      #|var src = new Uint8Array([10, 20, 30]);
+      #|var dst = new Uint8Array(5);
+      #|dst.set(src, 1);
+      #|console.log(dst[0]);
+      #|console.log(dst[1]);
+      #|console.log(dst[2]);
+      #|console.log(dst[3]);
+      #|console.log(dst[4]);
+    ),
+  )
+  inspect(output, content="[\"0\", \"10\", \"20\", \"30\", \"0\"]")
+}
+
+///|
+test "test262: TypedArray.prototype.set overlapping buffers" {
+  let output = run_output(
+    (
+      #|var buf = new ArrayBuffer(8);
+      #|var a = new Uint8Array(buf, 0, 4);
+      #|var b = new Uint8Array(buf, 2, 4);
+      #|a[0] = 1; a[1] = 2; a[2] = 3; a[3] = 4;
+      #|b.set(a);
+      #|console.log(b[0]);
+      #|console.log(b[1]);
+      #|console.log(b[2]);
+      #|console.log(b[3]);
+    ),
+  )
+  // After set: b should get the original a values [1,2,3,4]
+  inspect(output, content="[\"1\", \"2\", \"3\", \"4\"]")
+}
+
+///|
+test "test262: TypedArray.prototype.subarray" {
+  let output = run_output(
+    (
+      #|var a = new Uint8Array([10, 20, 30, 40, 50]);
+      #|var sub = a.subarray(1, 4);
+      #|console.log(sub.length);
+      #|console.log(sub[0]);
+      #|console.log(sub[1]);
+      #|console.log(sub[2]);
+      #|sub[0] = 99;
+      #|console.log(a[1]);
+    ),
+  )
+  // subarray shares the buffer, so modifying sub affects a
+  inspect(output, content="[\"3\", \"20\", \"30\", \"40\", \"99\"]")
+}
+
+///|
+test "test262: TypedArray.prototype.slice" {
+  let output = run_output(
+    (
+      #|var a = new Uint8Array([10, 20, 30, 40, 50]);
+      #|var s = a.slice(1, 4);
+      #|console.log(s.length);
+      #|console.log(s[0]);
+      #|console.log(s[1]);
+      #|console.log(s[2]);
+      #|s[0] = 99;
+      #|console.log(a[1]);
+    ),
+  )
+  // slice creates a new buffer, so modifying s does not affect a
+  inspect(output, content="[\"3\", \"20\", \"30\", \"40\", \"20\"]")
+}
+
+///|
+test "test262: TypedArray.prototype.fill" {
+  let output = run_output(
+    (
+      #|var a = new Uint8Array(5);
+      #|a.fill(42);
+      #|console.log(a[0]);
+      #|console.log(a[4]);
+      #|a.fill(99, 1, 3);
+      #|console.log(a[0]);
+      #|console.log(a[1]);
+      #|console.log(a[2]);
+      #|console.log(a[3]);
+    ),
+  )
+  inspect(output, content="[\"42\", \"42\", \"42\", \"99\", \"99\", \"42\"]")
+}
+
+///|
+test "test262: TypedArray.prototype.copyWithin" {
+  let output = run_output(
+    (
+      #|var a = new Uint8Array([1, 2, 3, 4, 5]);
+      #|a.copyWithin(0, 3);
+      #|console.log(a[0]);
+      #|console.log(a[1]);
+      #|console.log(a[2]);
+      #|console.log(a[3]);
+      #|console.log(a[4]);
+    ),
+  )
+  inspect(output, content="[\"4\", \"5\", \"3\", \"4\", \"5\"]")
+}
+
+///|
+test "test262: TypedArray.prototype.indexOf" {
+  let output = run_output(
+    (
+      #|var a = new Uint8Array([10, 20, 30, 20, 40]);
+      #|console.log(a.indexOf(20));
+      #|console.log(a.indexOf(20, 2));
+      #|console.log(a.indexOf(99));
+    ),
+  )
+  inspect(output, content="[\"1\", \"3\", \"-1\"]")
+}
+
+///|
+test "test262: TypedArray.prototype.lastIndexOf" {
+  let output = run_output(
+    (
+      #|var a = new Uint8Array([10, 20, 30, 20, 40]);
+      #|console.log(a.lastIndexOf(20));
+      #|console.log(a.lastIndexOf(20, 2));
+      #|console.log(a.lastIndexOf(99));
+    ),
+  )
+  inspect(output, content="[\"3\", \"1\", \"-1\"]")
+}
+
+///|
+test "test262: TypedArray.prototype.includes" {
+  let output = run_output(
+    (
+      #|var a = new Uint8Array([10, 20, 30]);
+      #|console.log(a.includes(20));
+      #|console.log(a.includes(99));
+    ),
+  )
+  inspect(output, content="[\"true\", \"false\"]")
+}
+
+///|
+test "test262: TypedArray.prototype.reverse" {
+  let output = run_output(
+    (
+      #|var a = new Uint8Array([1, 2, 3, 4, 5]);
+      #|a.reverse();
+      #|console.log(a[0]);
+      #|console.log(a[1]);
+      #|console.log(a[2]);
+      #|console.log(a[3]);
+      #|console.log(a[4]);
+    ),
+  )
+  inspect(output, content="[\"5\", \"4\", \"3\", \"2\", \"1\"]")
+}
+
+///|
+test "test262: TypedArray.prototype.sort default numeric" {
+  let output = run_output(
+    (
+      #|var a = new Uint8Array([30, 10, 50, 20, 40]);
+      #|a.sort();
+      #|console.log(a[0]);
+      #|console.log(a[1]);
+      #|console.log(a[2]);
+      #|console.log(a[3]);
+      #|console.log(a[4]);
+    ),
+  )
+  inspect(output, content="[\"10\", \"20\", \"30\", \"40\", \"50\"]")
+}
+
+///|
+test "test262: TypedArray.prototype.sort with comparator" {
+  let output = run_output(
+    (
+      #|var a = new Uint8Array([30, 10, 50, 20, 40]);
+      #|a.sort(function(x, y) { return y - x; });
+      #|console.log(a[0]);
+      #|console.log(a[1]);
+      #|console.log(a[2]);
+      #|console.log(a[3]);
+      #|console.log(a[4]);
+    ),
+  )
+  inspect(output, content="[\"50\", \"40\", \"30\", \"20\", \"10\"]")
+}
+
+///|
+test "test262: TypedArray.prototype.sort NaN sorts last" {
+  let output = run_output(
+    (
+      #|var a = new Float64Array([3, NaN, 1, NaN, 2]);
+      #|a.sort();
+      #|console.log(a[0]);
+      #|console.log(a[1]);
+      #|console.log(a[2]);
+      #|console.log(isNaN(a[3]));
+      #|console.log(isNaN(a[4]));
+    ),
+  )
+  inspect(output, content="[\"1\", \"2\", \"3\", \"true\", \"true\"]")
+}
+
+///|
+test "test262: TypedArray.prototype.join" {
+  let output = run_output(
+    (
+      #|var a = new Uint8Array([1, 2, 3]);
+      #|console.log(a.join());
+      #|console.log(a.join("-"));
+    ),
+  )
+  inspect(output, content="[\"1,2,3\", \"1-2-3\"]")
+}
+
+///|
+test "test262: TypedArray.prototype.toString" {
+  let output = run_output(
+    (
+      #|var a = new Uint8Array([1, 2, 3]);
+      #|console.log(a.toString());
+    ),
+  )
+  inspect(output, content="[\"1,2,3\"]")
+}
+
+///|
+test "test262: TypedArray.prototype.at" {
+  let output = run_output(
+    (
+      #|var a = new Uint8Array([10, 20, 30]);
+      #|console.log(a.at(0));
+      #|console.log(a.at(-1));
+      #|console.log(a.at(3));
+    ),
+  )
+  inspect(output, content="[\"10\", \"30\", \"undefined\"]")
+}
+
+///|
+test "test262: TypedArray.from basic" {
+  let output = run_output(
+    (
+      #|var a = Uint8Array.from([10, 20, 30]);
+      #|console.log(a.length);
+      #|console.log(a[0]);
+      #|console.log(a[1]);
+      #|console.log(a[2]);
+    ),
+  )
+  inspect(output, content="[\"3\", \"10\", \"20\", \"30\"]")
+}
+
+///|
+test "test262: TypedArray.from with mapFn" {
+  let output = run_output(
+    (
+      #|var a = Uint8Array.from([1, 2, 3], function(x) { return x * 10; });
+      #|console.log(a[0]);
+      #|console.log(a[1]);
+      #|console.log(a[2]);
+    ),
+  )
+  inspect(output, content="[\"10\", \"20\", \"30\"]")
+}
+
+///|
+test "test262: TypedArray.from with mapFn receives index" {
+  let output = run_output(
+    (
+      #|var a = Uint8Array.from([10, 20, 30], function(v, i) { return v + i; });
+      #|console.log(a[0]);
+      #|console.log(a[1]);
+      #|console.log(a[2]);
+    ),
+  )
+  inspect(output, content="[\"10\", \"21\", \"32\"]")
+}
+
+///|
+test "test262: TypedArray.of" {
+  let output = run_output(
+    (
+      #|var a = Uint8Array.of(10, 20, 30);
+      #|console.log(a.length);
+      #|console.log(a[0]);
+      #|console.log(a[1]);
+      #|console.log(a[2]);
+    ),
+  )
+  inspect(output, content="[\"3\", \"10\", \"20\", \"30\"]")
+}
+
+///|
+test "test262: TypedArray buffer property" {
+  let output = run_output(
+    (
+      #|var buf = new ArrayBuffer(8);
+      #|var a = new Uint8Array(buf);
+      #|console.log(a.buffer === buf);
+      #|console.log(a.buffer instanceof ArrayBuffer);
+    ),
+  )
+  inspect(output, content="[\"true\", \"true\"]")
+}
+
+///|
+test "test262: TypedArray Uint8ClampedArray clamping" {
+  let output = run_output(
+    (
+      #|var a = new Uint8ClampedArray(3);
+      #|a[0] = -5;
+      #|a[1] = 300;
+      #|a[2] = 128;
+      #|console.log(a[0]);
+      #|console.log(a[1]);
+      #|console.log(a[2]);
+    ),
+  )
+  inspect(output, content="[\"0\", \"255\", \"128\"]")
+}
+
+///|
+test "test262: TypedArray Uint8ClampedArray banker's rounding" {
+  let output = run_output(
+    (
+      #|var a = new Uint8ClampedArray(6);
+      #|a[0] = 0.5;   // half -> round to even (0)
+      #|a[1] = 1.5;   // half -> round to even (2)
+      #|a[2] = 2.5;   // half -> round to even (2)
+      #|a[3] = 3.5;   // half -> round to even (4)
+      #|a[4] = 4.5;   // half -> round to even (4)
+      #|a[5] = 5.5;   // half -> round to even (6)
+      #|var result = [];
+      #|for (var i = 0; i < 6; i++) result.push(a[i]);
+      #|console.log(result.join(","));
+    ),
+  )
+  inspect(output, content="[\"0,2,2,4,4,6\"]")
+}
+
+///|
+test "test262: TypedArray Int8Array signed wrap" {
+  let output = run_output(
+    (
+      #|var a = new Int8Array(2);
+      #|a[0] = 128;
+      #|a[1] = 255;
+      #|console.log(a[0]);
+      #|console.log(a[1]);
+    ),
+  )
+  inspect(output, content="[\"-128\", \"-1\"]")
+}
+
+///|
+test "test262: TypedArray Int16Array signed" {
+  let output = run_output(
+    (
+      #|var a = new Int16Array(1);
+      #|a[0] = 65535;
+      #|console.log(a[0]);
+    ),
+  )
+  inspect(output, content="[\"-1\"]")
+}
+
+///|
+test "test262: TypedArray Int32Array range" {
+  let output = run_output(
+    (
+      #|var a = new Int32Array(1);
+      #|a[0] = 2147483647;
+      #|console.log(a[0]);
+    ),
+  )
+  inspect(output, content="[\"2147483647\"]")
+}
+
+///|
+test "test262: TypedArray Float32Array precision" {
+  let output = run_output(
+    (
+      #|var a = new Float32Array(1);
+      #|a[0] = 1.5;
+      #|console.log(a[0]);
+    ),
+  )
+  inspect(output, content="[\"1.5\"]")
+}
+
+///|
+test "test262: TypedArray Float32Array mantissa carry" {
+  // Test values where mantissa rounding carries into exponent
+  let output = run_output(
+    (
+      #|var a = new Float32Array(4);
+      #|a[0] = 16777215;    // 2^24 - 1 = max exact int in float32
+      #|a[1] = 16777216;    // 2^24 = still exact
+      #|a[2] = 16777217;    // 2^24 + 1 = rounds to 2^24
+      #|a[3] = 16777218;    // 2^24 + 2 = representable
+      #|console.log(a[0]);
+      #|console.log(a[1]);
+      #|console.log(a[2]);
+      #|console.log(a[3]);
+    ),
+  )
+  inspect(output, content=(
+    #|["16777215", "16777216", "16777218", "16777218"]
+  ))
+}
+
+///|
+test "test262: TypedArray Float64Array" {
+  let output = run_output(
+    (
+      #|var a = new Float64Array(1);
+      #|a[0] = 1.7976931348623157e+308;
+      #|console.log(a[0]);
+    ),
+  )
+  inspect(output, content="[\"1.7976931348623157e+308\"]")
+}
+
+///|
+test "test262: TypedArray shared buffer view" {
+  let output = run_output(
+    (
+      #|var buf = new ArrayBuffer(4);
+      #|var u8 = new Uint8Array(buf);
+      #|var u16 = new Uint16Array(buf);
+      #|u8[0] = 1;
+      #|u8[1] = 0;
+      #|console.log(u16[0]);
+      #|u16[1] = 256;
+      #|console.log(u8[2]);
+      #|console.log(u8[3]);
+    ),
+  )
+  inspect(output, content="[\"1\", \"0\", \"1\"]")
+}
+
+///|
+test "test262: TypedArray Symbol.toStringTag" {
+  let output = run_output(
+    (
+      #|var a = new Uint8Array(0);
+      #|console.log(Object.prototype.toString.call(a));
+    ),
+  )
+  inspect(output, content="[\"[object Uint8Array]\"]")
+}
+
+///|
+test "test262: TypedArray Symbol.iterator" {
+  let output = run_output(
+    (
+      #|var a = new Uint8Array([10, 20, 30]);
+      #|var result = [];
+      #|for (var v of a) {
+      #|  result.push(v);
+      #|}
+      #|console.log(result.join(","));
+    ),
+  )
+  inspect(output, content="[\"10,20,30\"]")
+}
+
+///|
+test "test262: TypedArray entries iterator" {
+  let output = run_output(
+    (
+      #|var a = new Uint8Array([10, 20]);
+      #|var it = a.entries();
+      #|var n1 = it.next();
+      #|console.log(n1.done);
+      #|console.log(n1.value[0]);
+      #|console.log(n1.value[1]);
+      #|var n2 = it.next();
+      #|console.log(n2.value[0]);
+      #|console.log(n2.value[1]);
+      #|var n3 = it.next();
+      #|console.log(n3.done);
+    ),
+  )
+  inspect(output, content="[\"false\", \"0\", \"10\", \"1\", \"20\", \"true\"]")
+}
+
+///|
+test "test262: TypedArray keys iterator" {
+  let output = run_output(
+    (
+      #|var a = new Uint8Array(3);
+      #|var keys = [];
+      #|for (var k of a.keys()) {
+      #|  keys.push(k);
+      #|}
+      #|console.log(keys.join(","));
+    ),
+  )
+  inspect(output, content="[\"0,1,2\"]")
+}
+
+///|
+test "test262: TypedArray values iterator" {
+  let output = run_output(
+    (
+      #|var a = new Uint8Array([5, 10, 15]);
+      #|var vals = [];
+      #|for (var v of a.values()) {
+      #|  vals.push(v);
+      #|}
+      #|console.log(vals.join(","));
+    ),
+  )
+  inspect(output, content="[\"5,10,15\"]")
+}
+
+///|
+test "test262: TypedArray out-of-bounds index returns undefined" {
+  let output = run_output(
+    (
+      #|var a = new Uint8Array(3);
+      #|console.log(a[3]);
+      #|console.log(a[-1]);
+      #|console.log(a[100]);
+    ),
+  )
+  inspect(output, content="[\"undefined\", \"undefined\", \"undefined\"]")
+}
+
+///|
+test "test262: TypedArray canonical numeric index string" {
+  let output = run_output(
+    (
+      #|var a = new Uint8Array([10, 20, 30]);
+      #|console.log(a["0"]);
+      #|console.log(a["1"]);
+      #|console.log(a["-0"]);
+      #|console.log(a["1.5"]);
+    ),
+  )
+  inspect(output, content="[\"10\", \"20\", \"undefined\", \"undefined\"]")
+}
+
+///|
+test "test262: TypedArray BYTES_PER_ELEMENT" {
+  let output = run_output(
+    (
+      #|console.log(Int8Array.BYTES_PER_ELEMENT);
+      #|console.log(Uint8Array.BYTES_PER_ELEMENT);
+      #|console.log(Int16Array.BYTES_PER_ELEMENT);
+      #|console.log(Uint16Array.BYTES_PER_ELEMENT);
+      #|console.log(Int32Array.BYTES_PER_ELEMENT);
+      #|console.log(Uint32Array.BYTES_PER_ELEMENT);
+      #|console.log(Float32Array.BYTES_PER_ELEMENT);
+      #|console.log(Float64Array.BYTES_PER_ELEMENT);
+    ),
+  )
+  inspect(output, content="[\"1\", \"1\", \"2\", \"2\", \"4\", \"4\", \"4\", \"8\"]")
+}
+
+///|
+test "test262: TypedArray.prototype.set range error" {
+  let output = run_output(
+    (
+      #|var a = new Uint8Array(3);
+      #|try {
+      #|  a.set([1, 2, 3, 4]);
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof RangeError);
+      #|}
+    ),
+  )
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "test262: TypedArray.prototype.set array-like object" {
+  let output = run_output(
+    (
+      #|var a = new Uint8Array(4);
+      #|a.set({0: 10, 1: 20, 2: 30, length: 3});
+      #|console.log(a[0]);
+      #|console.log(a[1]);
+      #|console.log(a[2]);
+      #|console.log(a[3]);
+    ),
+  )
+  inspect(output, content="[\"10\", \"20\", \"30\", \"0\"]")
+}
+
+///|
+test "test262: TypedArray.prototype.subarray negative indices" {
+  let output = run_output(
+    (
+      #|var a = new Uint8Array([1, 2, 3, 4, 5]);
+      #|var sub = a.subarray(-3, -1);
+      #|console.log(sub.length);
+      #|console.log(sub[0]);
+      #|console.log(sub[1]);
+    ),
+  )
+  inspect(output, content="[\"2\", \"3\", \"4\"]")
+}
+
+///|
+test "test262: TypedArray.prototype.slice negative indices" {
+  let output = run_output(
+    (
+      #|var a = new Uint8Array([10, 20, 30, 40, 50]);
+      #|var s = a.slice(-3);
+      #|console.log(s.length);
+      #|console.log(s[0]);
+      #|console.log(s[1]);
+      #|console.log(s[2]);
+    ),
+  )
+  inspect(output, content="[\"3\", \"30\", \"40\", \"50\"]")
+}
+
+///|
+test "test262: TypedArray.prototype.fill negative indices" {
+  let output = run_output(
+    (
+      #|var a = new Uint8Array([1, 2, 3, 4, 5]);
+      #|a.fill(0, -3, -1);
+      #|console.log(a[0]);
+      #|console.log(a[1]);
+      #|console.log(a[2]);
+      #|console.log(a[3]);
+      #|console.log(a[4]);
+    ),
+  )
+  inspect(output, content="[\"1\", \"2\", \"0\", \"0\", \"5\"]")
+}
+
+///|
+test "test262: TypedArray for-in enumeration" {
+  let output = run_output(
+    (
+      #|var a = new Uint8Array([10, 20, 30]);
+      #|var keys = [];
+      #|for (var k in a) {
+      #|  keys.push(k);
+      #|}
+      #|console.log(keys.join(","));
+    ),
+  )
+  inspect(output, content="[\"0,1,2\"]")
+}
+
+///|
+test "test262: DataView constructor basic" {
+  let output = run_output(
+    (
+      #|var buf = new ArrayBuffer(8);
+      #|var dv = new DataView(buf);
+      #|console.log(dv.byteLength);
+      #|console.log(dv.byteOffset);
+      #|console.log(dv.buffer === buf);
+    ),
+  )
+  inspect(output, content="[\"8\", \"0\", \"true\"]")
+}
+
+///|
+test "test262: DataView constructor with offset and length" {
+  let output = run_output(
+    (
+      #|var buf = new ArrayBuffer(16);
+      #|var dv = new DataView(buf, 4, 8);
+      #|console.log(dv.byteLength);
+      #|console.log(dv.byteOffset);
+    ),
+  )
+  inspect(output, content="[\"8\", \"4\"]")
+}
+
+///|
+test "test262: DataView constructor requires new" {
+  let output = run_output(
+    (
+      #|try {
+      #|  DataView(new ArrayBuffer(8));
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "test262: DataView constructor rejects non-ArrayBuffer" {
+  let output = run_output(
+    (
+      #|try {
+      #|  new DataView({});
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "test262: DataView constructor rejects negative byteOffset" {
+  let output = run_output(
+    (
+      #|var buf = new ArrayBuffer(8);
+      #|try {
+      #|  new DataView(buf, -1);
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof RangeError);
+      #|}
+    ),
+  )
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "test262: DataView getInt8/setInt8" {
+  let output = run_output(
+    (
+      #|var buf = new ArrayBuffer(4);
+      #|var dv = new DataView(buf);
+      #|dv.setInt8(0, -128);
+      #|dv.setInt8(1, 127);
+      #|dv.setInt8(2, 0);
+      #|console.log(dv.getInt8(0));
+      #|console.log(dv.getInt8(1));
+      #|console.log(dv.getInt8(2));
+    ),
+  )
+  inspect(output, content="[\"-128\", \"127\", \"0\"]")
+}
+
+///|
+test "test262: DataView getUint8/setUint8" {
+  let output = run_output(
+    (
+      #|var buf = new ArrayBuffer(4);
+      #|var dv = new DataView(buf);
+      #|dv.setUint8(0, 255);
+      #|dv.setUint8(1, 0);
+      #|console.log(dv.getUint8(0));
+      #|console.log(dv.getUint8(1));
+    ),
+  )
+  inspect(output, content="[\"255\", \"0\"]")
+}
+
+///|
+test "test262: DataView getInt16/setInt16 endianness" {
+  let output = run_output(
+    (
+      #|var buf = new ArrayBuffer(4);
+      #|var dv = new DataView(buf);
+      #|dv.setInt16(0, 256, false);
+      #|console.log(dv.getUint8(0));
+      #|console.log(dv.getUint8(1));
+      #|dv.setInt16(2, 256, true);
+      #|console.log(dv.getUint8(2));
+      #|console.log(dv.getUint8(3));
+    ),
+  )
+  // Big-endian: 256 = 0x0100 => byte[0]=1, byte[1]=0
+  // Little-endian: 256 = 0x0100 => byte[2]=0, byte[3]=1
+  inspect(output, content="[\"1\", \"0\", \"0\", \"1\"]")
+}
+
+///|
+test "test262: DataView getInt32/setInt32" {
+  let output = run_output(
+    (
+      #|var buf = new ArrayBuffer(8);
+      #|var dv = new DataView(buf);
+      #|dv.setInt32(0, 305419896, false);
+      #|console.log(dv.getInt32(0, false));
+      #|console.log(dv.getInt32(0, true));
+    ),
+  )
+  // 305419896 = 0x12345678
+  // Big-endian read back: same = 305419896
+  // Little-endian read of big-endian stored: 0x78563412 = 2018915346
+  inspect(output, content="[\"305419896\", \"2018915346\"]")
+}
+
+///|
+test "test262: DataView getFloat64/setFloat64" {
+  let output = run_output(
+    (
+      #|var buf = new ArrayBuffer(8);
+      #|var dv = new DataView(buf);
+      #|dv.setFloat64(0, 3.14);
+      #|console.log(dv.getFloat64(0));
+    ),
+  )
+  inspect(output, content="[\"3.14\"]")
+}
+
+///|
+test "test262: DataView out-of-bounds access" {
+  let output = run_output(
+    (
+      #|var buf = new ArrayBuffer(4);
+      #|var dv = new DataView(buf);
+      #|try {
+      #|  dv.getInt32(2);
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof RangeError);
+      #|}
+    ),
+  )
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "test262: DataView receiver brand check" {
+  let output = run_output(
+    (
+      #|var dv = new DataView(new ArrayBuffer(4));
+      #|var getInt8 = dv.getInt8;
+      #|try {
+      #|  getInt8.call({}, 0);
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "test262: DataView Symbol.toStringTag" {
+  let output = run_output(
+    (
+      #|var dv = new DataView(new ArrayBuffer(4));
+      #|console.log(Object.prototype.toString.call(dv));
+    ),
+  )
+  inspect(output, content="[\"[object DataView]\"]")
+}
+
+///|
+test "test262: detachArrayBuffer makes TypedArray return undefined" {
+  let output = run_output(
+    (
+      #|var buf = new ArrayBuffer(8);
+      #|var a = new Uint8Array(buf);
+      #|a[0] = 42;
+      #|console.log(a[0]);
+      #|$262.detachArrayBuffer(buf);
+      #|console.log(a[0]);
+    ),
+  )
+  inspect(output, content="[\"42\", \"undefined\"]")
+}
+
+///|
+test "test262: TypedArray.prototype.sort comparator error propagation" {
+  let output = run_output(
+    (
+      #|var a = new Uint8Array([3, 1, 2]);
+      #|try {
+      #|  a.sort(function() { throw new Error("oops"); });
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e.message);
+      #|}
+    ),
+  )
+  inspect(output, content="[\"oops\"]")
+}
+
+///|
+test "test262: TypedArray.from with thisArg" {
+  let output = run_output(
+    (
+      #|var obj = { multiplier: 10 };
+      #|var a = Uint8Array.from([1, 2, 3], function(x) {
+      #|  return x * this.multiplier;
+      #|}, obj);
+      #|console.log(a[0]);
+      #|console.log(a[1]);
+      #|console.log(a[2]);
+    ),
+  )
+  inspect(output, content="[\"10\", \"20\", \"30\"]")
+}
+
+///|
+test "test262: TypedArray all constructor types exist" {
+  let output = run_output(
+    (
+      #|console.log(typeof Int8Array);
+      #|console.log(typeof Uint8Array);
+      #|console.log(typeof Uint8ClampedArray);
+      #|console.log(typeof Int16Array);
+      #|console.log(typeof Uint16Array);
+      #|console.log(typeof Int32Array);
+      #|console.log(typeof Uint32Array);
+      #|console.log(typeof Float32Array);
+      #|console.log(typeof Float64Array);
+    ),
+  )
+  inspect(
+    output,
+    content="[\"function\", \"function\", \"function\", \"function\", \"function\", \"function\", \"function\", \"function\", \"function\"]",
+  )
+}
+
+///|
+test "test262: TypedArray.prototype.copyWithin overlapping" {
+  let output = run_output(
+    (
+      #|var a = new Uint8Array([1, 2, 3, 4, 5]);
+      #|a.copyWithin(1, 0, 3);
+      #|console.log(a[0]);
+      #|console.log(a[1]);
+      #|console.log(a[2]);
+      #|console.log(a[3]);
+      #|console.log(a[4]);
+    ),
+  )
+  inspect(output, content="[\"1\", \"1\", \"2\", \"3\", \"5\"]")
+}
+
+///|
+test "test262: TypedArray.prototype.includes NaN" {
+  let output = run_output(
+    (
+      #|var a = new Float64Array([1, NaN, 3]);
+      #|console.log(a.includes(NaN));
+    ),
+  )
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "test262: ArrayBuffer.prototype.slice detached throws" {
+  let output = run_output(
+    (
+      #|var buf = new ArrayBuffer(8);
+      #|$262.detachArrayBuffer(buf);
+      #|try {
+      #|  buf.slice(0, 4);
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "test262: ArrayBuffer.prototype.byteLength detached throws" {
+  let output = run_output(
+    (
+      #|var buf = new ArrayBuffer(8);
+      #|$262.detachArrayBuffer(buf);
+      #|try {
+      #|  var len = buf.byteLength;
+      #|  console.log("no error: " + len);
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "test262: DataView on detached buffer throws" {
+  let output = run_output(
+    (
+      #|var buf = new ArrayBuffer(8);
+      #|var dv = new DataView(buf);
+      #|$262.detachArrayBuffer(buf);
+      #|try {
+      #|  dv.getInt8(0);
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "test262: DataView constructor rejects detached ArrayBuffer" {
+  let output = run_output(
+    (
+      #|var buf = new ArrayBuffer(8);
+      #|$262.detachArrayBuffer(buf);
+      #|try {
+      #|  new DataView(buf);
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  inspect(output, content="[\"true\"]")
 }

@@ -67,10 +67,8 @@ SKIP_FEATURES = {
     # Collections
     "WeakMap", "WeakSet", "WeakRef",
 
-    # Typed arrays and buffers
-    "ArrayBuffer", "SharedArrayBuffer", "DataView",
-    "DataView.prototype.setUint8",
-    "TypedArray", "Float16Array", "Uint8Array", "Atomics",
+    # Typed arrays and buffers (partially supported)
+    "SharedArrayBuffer", "Float16Array", "Atomics",
     "resizable-arraybuffer", "arraybuffer-transfer",
 
     # Tail calls

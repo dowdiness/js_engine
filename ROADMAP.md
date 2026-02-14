@@ -2,13 +2,14 @@
 
 ## Current Status
 
-**Test262**: 21,747 / 26,150 passed (83.16%) | 21,837 skipped | 4,403 failed | 157 timeouts
+**Test262**: 21,747+ / ~28,500 passed (pending re-run; Phase 16 un-skipped ~2,400 TypedArray/ArrayBuffer/DataView tests)
 
-**Unit tests**: 799 total, 799 passed, 0 failed
+**Unit tests**: 878 total, 878 passed, 0 failed
 
 **Targeted verification (2026-02-11)**: `language/block-scope` slice is 106/106 passing (39 skipped).
 **Targeted verification (2026-02-12)**: `built-ins/Promise` slice is 599/599 passing (100%, 41 skipped). `language/block-scope` is 106/106 passing (100%, 39 skipped).
 **Targeted verification (2026-02-13)**: `language/white-space` slice is 66/67 passing (98.5%, was 73.1%). Small compliance sweep completed. Proxy/Reflect implemented: Proxy 94.5% (257/272), Reflect 99.3% (152/153).
+**Phase 16 (2026-02-14)**: TypedArray/ArrayBuffer/DataView implemented. 9 typed array types, DataView with all getter/setter methods, ArrayBuffer with slice/detach. 79 new unit tests, all passing. Full test262 re-run pending.
 
 ## Phase History
 
@@ -33,6 +34,7 @@
 | 13 | +1,080 | 20,803 | P7: Promise species constructor, sloppy mode this, apply/arguments fixes — 100% Promise compliance, constructor subclassing, test harness improvements |
 | 14 | +67 | 20,870 | Small compliance sweep — Unicode whitespace (98.5%), Number/String.prototype.toLocaleString, String trim aliases, String.prototype.matchAll |
 | 15 | +877 | 21,747 | Proxy/Reflect — full Proxy trap support (13 traps), Reflect API (13 methods), PR review fixes, test262 conformance |
+| 16 | TBD | TBD | TypedArray/ArrayBuffer/DataView — 9 TypedArray types, DataView getters/setters, ArrayBuffer slice/detach, buffer detachment validation |
 
 For detailed implementation notes on Phases 1-6, see [docs/PHASE_HISTORY.md](docs/PHASE_HISTORY.md).
 
@@ -52,7 +54,7 @@ Top failing categories from the latest CI run (2026-02-13):
 | built-ins/Object | 3,115 | 258 | 92.4% | Low (P4 done) |
 | annexB/language | 312 | 505 | 38.2% | Low (--annex-b) |
 | built-ins/Promise | 614 | 4 | 99.4% | ✅ Done (P7) |
-| built-ins/DataView | 7 | 309 | 2.2% | Hard (needs TypedArray) |
+| built-ins/DataView | — | — | — | ✅ Done (P16, pending re-run) |
 | built-ins/RegExp | 615 | 222 | 73.5% | Hard |
 | language/module-code | 114 | 198 | 36.5% | Medium |
 | language/eval-code | 224 | 106 | 67.9% | Low (P5 done) |
@@ -62,7 +64,7 @@ Top failing categories from the latest CI run (2026-02-13):
 | built-ins/Number | 280 | 55 | 83.6% | Easy |
 | language/identifiers | 154 | 53 | 74.4% | Medium |
 | language/block-scope | 106 | 0 | 100.0% | ✅ Done |
-| built-ins/ArrayBuffer | 11 | 54 | 16.9% | Hard (needs TypedArray) |
+| built-ins/ArrayBuffer | — | — | — | ✅ Done (P16, pending re-run) |
 | built-ins/Proxy | 257 | 15 | 94.5% | ✅ Done (P15) |
 | built-ins/Reflect | 152 | 1 | 99.3% | ✅ Done (P15) |
 | built-ins/Map | 152 | 29 | 84.0% | Medium |
@@ -117,7 +119,7 @@ node ./_build/js/debug/build/cmd/main/main.js 'console.log(1 + 2)'
 # => 3
 ```
 
-All 799 unit tests pass on both WASM-GC and JS targets. See [docs/SELF_HOST_JS_RESEARCH.md](docs/SELF_HOST_JS_RESEARCH.md) for full analysis.
+All 878 unit tests pass on both WASM-GC and JS targets. See [docs/SELF_HOST_JS_RESEARCH.md](docs/SELF_HOST_JS_RESEARCH.md) for full analysis.
 
 ### What was needed
 - **Backend-specific argv handling**: `process.argv` on JS includes `["node", "script.js", ...]`, so user args start at index 2 (vs index 1 on WASM). Solved with `.js.mbt` / `.wasm.mbt` / `.wasm-gc.mbt` files.
@@ -474,6 +476,94 @@ Full ES6 Proxy and Reflect implementation with 13 proxy traps and 13 Reflect met
 
 ---
 
+### 16: TypedArray, ArrayBuffer, and DataView — DONE
+
+Full TypedArray/ArrayBuffer/DataView implementation (~3,724 lines of new builtin code):
+
+**ArrayBuffer** (builtins_arraybuffer.mbt, ~400 lines):
+- **Constructor**: `new ArrayBuffer(byteLength)` with non-negative length validation
+- **`ArrayBuffer.isView()`**: Detects TypedArray and DataView instances
+- **`ArrayBuffer.prototype.slice()`**: Creates new ArrayBuffer with byte range copy, detachment check
+- **`ArrayBuffer.prototype.byteLength`**: Getter with detachment check (throws TypeError if detached)
+- **`$262.detachArrayBuffer()`**: Full implementation (was previously a no-op stub)
+- **Detachment tracking**: Global registry of detached buffer IDs via `detach_arraybuffer()` / `is_arraybuffer_detached()`
+
+**TypedArray** (builtins_typedarray.mbt, ~2,414 lines):
+- **9 typed array types**: `Int8Array`, `Uint8Array`, `Uint8ClampedArray`, `Int16Array`, `Uint16Array`, `Int32Array`, `Uint32Array`, `Float32Array`, `Float64Array`
+- **Constructors**: From length, from array/iterable, from another TypedArray, from ArrayBuffer with optional byteOffset/length. Rejects detached ArrayBuffer and negative/unaligned byteOffset
+- **Prototype methods**: `set`, `subarray`, `slice`, `copyWithin`, `fill`, `indexOf`, `lastIndexOf`, `includes`, `join`, `toString`, `reverse`, `sort` (with custom comparator, NaN-last), `at`, `forEach`, `map`, `filter`, `reduce`, `reduceRight`, `every`, `some`, `find`, `findIndex`
+- **Static methods**: `TypedArray.from()` (with optional mapFn and thisArg), `TypedArray.of()`
+- **Iterators**: `entries()`, `keys()`, `values()`, `Symbol.iterator` with buffer detachment checks during iteration
+- **Properties**: `buffer`, `byteLength`, `byteOffset`, `length`, `BYTES_PER_ELEMENT`, `Symbol.toStringTag`
+- **Indexed access**: Canonical numeric index string handling per spec in get/set paths (3 sites in interpreter.mbt)
+- **Buffer detachment validation**: `validate_typedarray_buffer()` called by all iteration methods (forEach, map, filter, reduce, reduceRight, every, some, find, findIndex)
+
+**DataView** (builtins_dataview.mbt, ~910 lines):
+- **Constructor**: `new DataView(buffer, byteOffset?, byteLength?)` with validation
+- **Getter methods**: `getInt8`, `getUint8`, `getInt16`, `getUint16`, `getInt32`, `getUint32`, `getFloat32`, `getFloat64` with endianness support
+- **Setter methods**: `setInt8`, `setUint8`, `setInt16`, `setUint16`, `setInt32`, `setUint32`, `setFloat32`, `setFloat64` with endianness support
+- **Receiver brand check**: Validates `this` is actually a DataView (not TypedArray)
+- **Properties**: `buffer`, `byteLength`, `byteOffset`, `Symbol.toStringTag`
+
+**Interpreter Integration**:
+- `Object.prototype.toString` checks `Symbol.toStringTag` via `get_tostringtag_value()` on prototype chain
+- `for-in` enumerates numeric indices, skips internal `[[...]]` slots
+- Canonical numeric index string handling: `"-0"` correctly falls through to ordinary property access (not a canonical index per spec)
+
+**PR Review Fixes** (6 commits, 19 comments addressed):
+- Sort comparator support and NaN handling
+- TypedArray.from mapFn argument
+- Int32 overflow fix for Float32Array element read (b3 >= 128)
+- Denormalized float32 encoding off-by-one fix
+- forEach/map/filter/reduce/reduceRight/every/some/find/findIndex detachment validation
+- Missing iteration methods added to prototype
+- DataView receiver brand check
+- `-0` canonical numeric index fix (3 sites)
+
+**Test262**: Pending full re-run (test262 directory not available). ~2,400 previously-skipped tests now enabled (ArrayBuffer, DataView, TypedArray, Uint8Array features removed from skip list).
+
+**Unit tests**: 878 total (+79 new), 878 passed, 0 failed
+
+---
+
+## Recommended Next Steps for Conformance
+
+Prioritized by estimated test impact and implementation effort. These are the highest-ROI items for pushing past 85% test262 pass rate.
+
+| Priority | Feature | Est. Impact | Effort | Notes |
+|----------|---------|-------------|--------|-------|
+| **1** | Boxed primitives (`new String()`, `new Number()`, `new Boolean()`) | ~100+ tests | Medium | Not represented as Object internally; affects Proxy, typeof, and coercion tests across many categories |
+| **2** | RegExp `y` (sticky) and `u` (unicode) flags | ~222 tests | High | Only `g`, `i`, `m` flags currently supported; unblocks a large portion of `built-ins/RegExp` failures |
+| **3** | WeakMap / WeakSet | ~57 tests | Low-Medium | No dedicated Value variant; can implement with standard Map/Set semantics (true weak references not possible in this runtime) |
+| **4** | `with` statement | ~151 tests | Medium | Behind `--annex-b` flag; requires object environment record and dynamic scope injection |
+| **5** | Class public fields | ~723 skipped | Medium | `class C { x = 1; static y = 2; }` syntax; currently skipped in test262 |
+| **6** | Class private fields/methods | ~2,437 skipped | High | `#private` syntax across fields, methods, static members; large test surface but complex implementation |
+| **7** | async/await | ~500+ tests | Medium | Syntactic sugar over Promises + generator-like suspension; unblocked by generator implementation |
+
+### Boxed Primitives (Priority 1)
+
+**Problem**: `new String("hello")`, `new Number(42)`, `new Boolean(true)` should produce Object wrappers with `typeof` returning `"object"`. Currently these are stored as plain `String_`/`Number`/`Bool` values, failing ~100+ tests across:
+- `built-ins/Proxy` (10 tests: boxed primitive as Proxy target)
+- `language/expressions/typeof` (wrapper type checks)
+- `built-ins/Object` (coercion and descriptor tests)
+- Various `built-ins/String` and `built-ins/Number` tests expecting Object behavior
+
+**Approach**: Add `BoxedString`/`BoxedNumber`/`BoxedBoolean` handling in Object value or track wrapper state via `class_name` on ObjectData. Ensure `typeof` returns `"object"`, `instanceof` works, and methods delegate to primitive prototype.
+
+### RegExp Sticky/Unicode Flags (Priority 2)
+
+**Problem**: `built-ins/RegExp` has 222 failures. Many require `y` (sticky) flag support (match only at `lastIndex`) and `u` (unicode) flag (full Unicode code point matching, stricter escape validation).
+
+**Approach**: Extend `make_regexp_object` to handle `y` and `u` flags. Sticky requires `lastIndex`-based anchoring. Unicode requires surrogate pair awareness in the regex matcher.
+
+### WeakMap / WeakSet (Priority 3)
+
+**Problem**: 57 tests failing, plus tests in `SKIP_FEATURES`. Currently no `WeakMap`/`WeakSet` Value variant.
+
+**Approach**: Implement as regular Map/Set (no true GC-based weakness in a tree-walking interpreter). Add constructors, `get`/`set`/`has`/`delete` for WeakMap, `add`/`has`/`delete` for WeakSet. Key restriction: only objects allowed as keys.
+
+---
+
 ## Phase 12+ Targets
 
 ### async/await (~500 tests)
@@ -484,12 +574,17 @@ Syntactic sugar over Promises + generator-like suspension. Now unblocked by gene
 
 | Feature | Impact | Notes |
 |---------|--------|-------|
-| RegExp improvements | ~222 fail | Capture groups, backreferences, unicode/sticky flags |
+| Boxed primitives | ~100+ fail | `new String()`, `new Number()`, `new Boolean()` — not yet represented as Object |
+| RegExp improvements | ~222 fail | Sticky (`y`) and unicode (`u`) flags, capture groups, backreferences |
+| WeakMap/WeakSet | ~57 fail | Reference-based collections; implement with standard Map/Set semantics |
+| Class public fields | ~723 skip | `class C { x = 1; static y = 2; }` field declarations |
+| Class private fields/methods | ~2,437 skip | `#private` syntax across fields, methods, static members |
+| async/await | ~500+ | Syntactic sugar over Promises; unblocked by generators |
 | Date object | — | ✅ Done (8C+9) — 560/583 pass (96.1%) |
 | eval() | — | ✅ Done (P5) — 224/330 pass (67.9%) |
-| WeakMap/WeakSet | ~57 fail | Reference-based collections |
 | Proxy/Reflect | — | ✅ Done (Phase 15) — Proxy 257/272 (94.5%), Reflect 152/153 (99.3%) |
 | Promise improvements | — | ✅ Done (Phase 13) — 614/618 pass (99.4%) |
+| TypedArray/ArrayBuffer/DataView | — | ✅ Done (Phase 16) — 9 types, full DataView, detach support |
 
 ### Promise Conformance Batch (Implemented)
 
@@ -555,14 +650,13 @@ Low. These features are not required for modern JavaScript usage. Implement only
 
 ---
 
-## Skipped Features (21,837 tests)
+## Skipped Features (~19,400 tests)
 
 | Feature | Skipped | Notes |
 |---------|---------|-------|
 | Temporal | 4,482 | TC39 Stage 3 date/time API |
 | async-iteration | 3,731 | Requires async generators |
 | class-methods-private | 1,304 | #privateMethod |
-| TypedArray | 1,257 | Int8Array, Uint8Array, etc. |
 | BigInt | 1,250 | Arbitrary precision integers |
 | class-static-methods-private | 1,133 | static #method |
 | class-fields-public | 723 | Public field declarations |
@@ -570,6 +664,7 @@ Low. These features are not required for modern JavaScript usage. Implement only
 | module | 422 | import/export implemented; 338 in module dirs + 84 module-flagged tests in other dirs |
 | generators | — | ✅ No longer skipped (implemented in Phase 8) |
 | Proxy/Reflect | — | ✅ No longer skipped (implemented in Phase 15) |
+| TypedArray/ArrayBuffer/DataView | — | ✅ No longer skipped (implemented in Phase 16) |
 
 ---
 
@@ -581,7 +676,7 @@ Low. These features are not required for modern JavaScript usage. Implement only
 2. **Exception propagation** — MoonBit's native `raise` with `JsException(Value)` suberror
 3. **Property descriptors** — `ObjectData.descriptors` map alongside `properties`
 4. **Array storage** — Dedicated `Array(ArrayData)` variant with `elements: Array[Value]`
-5. **Builtin organization** — Split into `builtins_object.mbt`, `builtins_array.mbt`, `builtins_string.mbt`, etc.
+5. **Builtin organization** — Split into `builtins_object.mbt`, `builtins_array.mbt`, `builtins_string.mbt`, `builtins_typedarray.mbt`, `builtins_arraybuffer.mbt`, `builtins_dataview.mbt`, etc.
 
 ### Value Variants
 
