@@ -301,9 +301,16 @@ pub fn get_tostringtag_value(data : ObjectData) -> String? {
                           _ => return None
                         }
                       }
-                      _ => ()
+                      Some(NativeCallable(_, f)) => {
+                        let result = f([Object(data)]) catch { _ => return None }
+                        match result {
+                          String_(s) => return Some(s)
+                          _ => return None
+                        }
+                      }
+                      _ => return None
                     }
-                  _ => ()
+                  _ => return None
                 }
               None => ()
             }
@@ -312,7 +319,7 @@ pub fn get_tostringtag_value(data : ObjectData) -> String? {
         // Check direct symbol property value
         match obj_data.symbol_properties.get(sym.id) {
           Some(String_(s)) => return Some(s)
-          Some(_) => () // non-string toStringTag, continue
+          Some(_) => return None // non-string toStringTag, short-circuit per spec
           None => ()
         }
         current = obj_data.prototype

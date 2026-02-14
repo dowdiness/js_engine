@@ -53,8 +53,11 @@ fn typed_array_get_element(
       let b1 = bytes[byte_offset + 1]
       let b2 = bytes[byte_offset + 2]
       let b3 = bytes[byte_offset + 3]
-      let bits = b0 + b1 * 256 + b2 * 65536 + b3 * 16777216
-      Number(float32_bits_to_double(bits))
+      let bits64 = b0.to_int64() +
+        b1.to_int64() * 256L +
+        b2.to_int64() * 65536L +
+        b3.to_int64() * 16777216L
+      Number(float32_bits_to_double(bits64.to_int()))
     }
     "Float64Array" => {
       let mut bits = 0L
@@ -199,11 +202,9 @@ fn double_to_float32_bits(value : Double) -> Int {
     // Overflow to infinity
     return (sign_bit << 31) | 0x7F800000
   }
-  if exp < -126 {
+  if exp <= -126 && frac < 1.0 {
     // Denormalized
-    let shift = -126 - exp
-    frac = frac / ldexp(1.0, shift)
-    let mantissa = (frac * 8388608.0).to_int() & 0x7FFFFF
+    let mantissa = (frac * 8388608.0 + 0.5).to_int() & 0x7FFFFF
     return (sign_bit << 31) | mantissa
   }
   // Normalized: frac is in [1.0, 2.0)
@@ -245,7 +246,7 @@ pub fn make_typedarray_object(
   let buffer = make_arraybuffer_object(byte_length, ab_proto)
   let buf_id = match get_buffer_id(buffer) {
     Some(id) => id
-    None => 0
+    None => -1
   }
   let props : Map[String, Value] = {}
   props["[[TypedArrayName]]"] = String_(type_name)
@@ -291,7 +292,7 @@ fn make_typedarray_from_buffer(
 ) -> Value {
   let buf_id = match get_buffer_id(buffer) {
     Some(id) => id
-    None => 0
+    None => -1
   }
   let bpe = typed_array_bytes_per_element(type_name)
   let byte_length = length * bpe
@@ -1311,12 +1312,20 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
-              let len = match data.properties.get("[[ArrayLength]]") {
-                Some(Number(n)) => n.to_int()
-                _ => 0
-              }
               let index_ref : Ref[Int] = { val: 0 }
-              let next_method = make_native_func("next", fn(_a) {
+              let next_method = make_native_func("next", fn(_a) raise {
+                // Re-check detachment and length on each next() call per spec
+                let buf_id = match data.properties.get("[[ArrayBufferID]]") {
+                  Some(Number(n)) => n.to_int()
+                  _ => -1
+                }
+                if buf_id >= 0 && is_arraybuffer_detached(buf_id) {
+                  raise @errors.TypeError(message="Cannot iterate over a detached ArrayBuffer")
+                }
+                let len = match data.properties.get("[[ArrayLength]]") {
+                  Some(Number(n)) => n.to_int()
+                  _ => 0
+                }
                 let idx = index_ref.val
                 if idx < len {
                   let value = typedarray_get_index(data, idx)
@@ -1399,12 +1408,20 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
-              let len = match data.properties.get("[[ArrayLength]]") {
-                Some(Number(n)) => n.to_int()
-                _ => 0
-              }
               let index_ref : Ref[Int] = { val: 0 }
-              let next_method = make_native_func("next", fn(_a) {
+              let next_method = make_native_func("next", fn(_a) raise {
+                // Re-check detachment and length on each next() call per spec
+                let buf_id = match data.properties.get("[[ArrayBufferID]]") {
+                  Some(Number(n)) => n.to_int()
+                  _ => -1
+                }
+                if buf_id >= 0 && is_arraybuffer_detached(buf_id) {
+                  raise @errors.TypeError(message="Cannot iterate over a detached ArrayBuffer")
+                }
+                let len = match data.properties.get("[[ArrayLength]]") {
+                  Some(Number(n)) => n.to_int()
+                  _ => 0
+                }
                 let idx = index_ref.val
                 if idx < len {
                   index_ref.val = idx + 1
@@ -1485,12 +1502,20 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
-              let len = match data.properties.get("[[ArrayLength]]") {
-                Some(Number(n)) => n.to_int()
-                _ => 0
-              }
               let index_ref : Ref[Int] = { val: 0 }
-              let next_method = make_native_func("next", fn(_a) {
+              let next_method = make_native_func("next", fn(_a) raise {
+                // Re-check detachment and length on each next() call per spec
+                let buf_id = match data.properties.get("[[ArrayBufferID]]") {
+                  Some(Number(n)) => n.to_int()
+                  _ => -1
+                }
+                if buf_id >= 0 && is_arraybuffer_detached(buf_id) {
+                  raise @errors.TypeError(message="Cannot iterate over a detached ArrayBuffer")
+                }
+                let len = match data.properties.get("[[ArrayLength]]") {
+                  Some(Number(n)) => n.to_int()
+                  _ => 0
+                }
                 let idx = index_ref.val
                 if idx < len {
                   let value = typedarray_get_index(data, idx)
@@ -1563,14 +1588,409 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
   })
   ta_proto_props["values"] = values_fn
 
-  // forEach, every, some, find, findIndex, map, filter, reduce, reduceRight
-  // These need InterpreterCallable for callbacks - registered separately below.
+  // forEach(callbackFn [, thisArg])
+  ta_proto_props["forEach"] = Object({
+    properties: { "length": Number(1.0) },
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      InterpreterCallable("forEach", fn(interp, this_val, args) raise {
+        match this_val {
+          Object(data) =>
+            if is_typedarray_class(data.class_name) {
+              if args.length() == 0 {
+                raise @errors.TypeError(message="forEach requires a callback function")
+              }
+              let callback = args[0]
+              let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+              let len = match data.properties.get("[[ArrayLength]]") {
+                Some(Number(n)) => n.to_int()
+                _ => 0
+              }
+              let loc = @token.Loc::default()
+              for i = 0; i < len; i = i + 1 {
+                let elem = typedarray_get_index(data, i)
+                let _ = interp.call_value(callback, this_arg, [elem, Number(i.to_double()), this_val], loc)
+              }
+              Undefined
+            } else {
+              raise @errors.TypeError(message="forEach called on non-TypedArray")
+            }
+          _ => raise @errors.TypeError(message="forEach called on non-TypedArray")
+        }
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+
+  // map(callbackFn [, thisArg])
+  ta_proto_props["map"] = Object({
+    properties: { "length": Number(1.0) },
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      InterpreterCallable("map", fn(interp, this_val, args) raise {
+        match this_val {
+          Object(data) =>
+            if is_typedarray_class(data.class_name) {
+              if args.length() == 0 {
+                raise @errors.TypeError(message="map requires a callback function")
+              }
+              let callback = args[0]
+              let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+              let len = match data.properties.get("[[ArrayLength]]") {
+                Some(Number(n)) => n.to_int()
+                _ => 0
+              }
+              let loc = @token.Loc::default()
+              let result = make_typedarray_object(data.class_name, len, data.prototype, env)
+              match result {
+                Object(result_data) =>
+                  for i = 0; i < len; i = i + 1 {
+                    let elem = typedarray_get_index(data, i)
+                    let mapped = interp.call_value(callback, this_arg, [elem, Number(i.to_double()), this_val], loc)
+                    let num = to_number(mapped)
+                    typedarray_set_index(result_data, i, num)
+                  }
+                _ => ()
+              }
+              result
+            } else {
+              raise @errors.TypeError(message="map called on non-TypedArray")
+            }
+          _ => raise @errors.TypeError(message="map called on non-TypedArray")
+        }
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+
+  // filter(callbackFn [, thisArg])
+  ta_proto_props["filter"] = Object({
+    properties: { "length": Number(1.0) },
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      InterpreterCallable("filter", fn(interp, this_val, args) raise {
+        match this_val {
+          Object(data) =>
+            if is_typedarray_class(data.class_name) {
+              if args.length() == 0 {
+                raise @errors.TypeError(message="filter requires a callback function")
+              }
+              let callback = args[0]
+              let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+              let len = match data.properties.get("[[ArrayLength]]") {
+                Some(Number(n)) => n.to_int()
+                _ => 0
+              }
+              let loc = @token.Loc::default()
+              let kept : Array[Double] = []
+              for i = 0; i < len; i = i + 1 {
+                let elem = typedarray_get_index(data, i)
+                let result = interp.call_value(callback, this_arg, [elem, Number(i.to_double()), this_val], loc)
+                if is_truthy(result) {
+                  match elem {
+                    Number(n) => kept.push(n)
+                    _ => kept.push(0.0)
+                  }
+                }
+              }
+              let result = make_typedarray_object(data.class_name, kept.length(), data.prototype, env)
+              match result {
+                Object(result_data) =>
+                  for i = 0; i < kept.length(); i = i + 1 {
+                    typedarray_set_index(result_data, i, kept[i])
+                  }
+                _ => ()
+              }
+              result
+            } else {
+              raise @errors.TypeError(message="filter called on non-TypedArray")
+            }
+          _ => raise @errors.TypeError(message="filter called on non-TypedArray")
+        }
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+
+  // reduce(callbackFn [, initialValue])
+  ta_proto_props["reduce"] = Object({
+    properties: { "length": Number(1.0) },
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      InterpreterCallable("reduce", fn(interp, this_val, args) raise {
+        match this_val {
+          Object(data) =>
+            if is_typedarray_class(data.class_name) {
+              if args.length() == 0 {
+                raise @errors.TypeError(message="reduce requires a callback function")
+              }
+              let callback = args[0]
+              let len = match data.properties.get("[[ArrayLength]]") {
+                Some(Number(n)) => n.to_int()
+                _ => 0
+              }
+              let loc = @token.Loc::default()
+              let mut accumulator : Value = Undefined
+              let mut start_idx = 0
+              if args.length() > 1 {
+                accumulator = args[1]
+              } else {
+                if len == 0 {
+                  raise @errors.TypeError(message="Reduce of empty array with no initial value")
+                }
+                accumulator = typedarray_get_index(data, 0)
+                start_idx = 1
+              }
+              for i = start_idx; i < len; i = i + 1 {
+                let elem = typedarray_get_index(data, i)
+                accumulator = interp.call_value(callback, Undefined, [accumulator, elem, Number(i.to_double()), this_val], loc)
+              }
+              accumulator
+            } else {
+              raise @errors.TypeError(message="reduce called on non-TypedArray")
+            }
+          _ => raise @errors.TypeError(message="reduce called on non-TypedArray")
+        }
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+
+  // reduceRight(callbackFn [, initialValue])
+  ta_proto_props["reduceRight"] = Object({
+    properties: { "length": Number(1.0) },
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      InterpreterCallable("reduceRight", fn(interp, this_val, args) raise {
+        match this_val {
+          Object(data) =>
+            if is_typedarray_class(data.class_name) {
+              if args.length() == 0 {
+                raise @errors.TypeError(message="reduceRight requires a callback function")
+              }
+              let callback = args[0]
+              let len = match data.properties.get("[[ArrayLength]]") {
+                Some(Number(n)) => n.to_int()
+                _ => 0
+              }
+              let loc = @token.Loc::default()
+              let mut accumulator : Value = Undefined
+              let mut start_idx = len - 1
+              if args.length() > 1 {
+                accumulator = args[1]
+              } else {
+                if len == 0 {
+                  raise @errors.TypeError(message="Reduce of empty array with no initial value")
+                }
+                accumulator = typedarray_get_index(data, len - 1)
+                start_idx = len - 2
+              }
+              for i = start_idx; i >= 0; i = i - 1 {
+                let elem = typedarray_get_index(data, i)
+                accumulator = interp.call_value(callback, Undefined, [accumulator, elem, Number(i.to_double()), this_val], loc)
+              }
+              accumulator
+            } else {
+              raise @errors.TypeError(message="reduceRight called on non-TypedArray")
+            }
+          _ => raise @errors.TypeError(message="reduceRight called on non-TypedArray")
+        }
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+
+  // every(callbackFn [, thisArg])
+  ta_proto_props["every"] = Object({
+    properties: { "length": Number(1.0) },
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      InterpreterCallable("every", fn(interp, this_val, args) raise {
+        match this_val {
+          Object(data) =>
+            if is_typedarray_class(data.class_name) {
+              if args.length() == 0 {
+                raise @errors.TypeError(message="every requires a callback function")
+              }
+              let callback = args[0]
+              let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+              let len = match data.properties.get("[[ArrayLength]]") {
+                Some(Number(n)) => n.to_int()
+                _ => 0
+              }
+              let loc = @token.Loc::default()
+              for i = 0; i < len; i = i + 1 {
+                let elem = typedarray_get_index(data, i)
+                let result = interp.call_value(callback, this_arg, [elem, Number(i.to_double()), this_val], loc)
+                if not(is_truthy(result)) {
+                  return Bool(false)
+                }
+              }
+              Bool(true)
+            } else {
+              raise @errors.TypeError(message="every called on non-TypedArray")
+            }
+          _ => raise @errors.TypeError(message="every called on non-TypedArray")
+        }
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+
+  // some(callbackFn [, thisArg])
+  ta_proto_props["some"] = Object({
+    properties: { "length": Number(1.0) },
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      InterpreterCallable("some", fn(interp, this_val, args) raise {
+        match this_val {
+          Object(data) =>
+            if is_typedarray_class(data.class_name) {
+              if args.length() == 0 {
+                raise @errors.TypeError(message="some requires a callback function")
+              }
+              let callback = args[0]
+              let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+              let len = match data.properties.get("[[ArrayLength]]") {
+                Some(Number(n)) => n.to_int()
+                _ => 0
+              }
+              let loc = @token.Loc::default()
+              for i = 0; i < len; i = i + 1 {
+                let elem = typedarray_get_index(data, i)
+                let result = interp.call_value(callback, this_arg, [elem, Number(i.to_double()), this_val], loc)
+                if is_truthy(result) {
+                  return Bool(true)
+                }
+              }
+              Bool(false)
+            } else {
+              raise @errors.TypeError(message="some called on non-TypedArray")
+            }
+          _ => raise @errors.TypeError(message="some called on non-TypedArray")
+        }
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+
+  // find(callbackFn [, thisArg])
+  ta_proto_props["find"] = Object({
+    properties: { "length": Number(1.0) },
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      InterpreterCallable("find", fn(interp, this_val, args) raise {
+        match this_val {
+          Object(data) =>
+            if is_typedarray_class(data.class_name) {
+              if args.length() == 0 {
+                raise @errors.TypeError(message="find requires a callback function")
+              }
+              let callback = args[0]
+              let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+              let len = match data.properties.get("[[ArrayLength]]") {
+                Some(Number(n)) => n.to_int()
+                _ => 0
+              }
+              let loc = @token.Loc::default()
+              for i = 0; i < len; i = i + 1 {
+                let elem = typedarray_get_index(data, i)
+                let result = interp.call_value(callback, this_arg, [elem, Number(i.to_double()), this_val], loc)
+                if is_truthy(result) {
+                  return elem
+                }
+              }
+              Undefined
+            } else {
+              raise @errors.TypeError(message="find called on non-TypedArray")
+            }
+          _ => raise @errors.TypeError(message="find called on non-TypedArray")
+        }
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+
+  // findIndex(callbackFn [, thisArg])
+  ta_proto_props["findIndex"] = Object({
+    properties: { "length": Number(1.0) },
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      InterpreterCallable("findIndex", fn(interp, this_val, args) raise {
+        match this_val {
+          Object(data) =>
+            if is_typedarray_class(data.class_name) {
+              if args.length() == 0 {
+                raise @errors.TypeError(message="findIndex requires a callback function")
+              }
+              let callback = args[0]
+              let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+              let len = match data.properties.get("[[ArrayLength]]") {
+                Some(Number(n)) => n.to_int()
+                _ => 0
+              }
+              let loc = @token.Loc::default()
+              for i = 0; i < len; i = i + 1 {
+                let elem = typedarray_get_index(data, i)
+                let result = interp.call_value(callback, this_arg, [elem, Number(i.to_double()), this_val], loc)
+                if is_truthy(result) {
+                  return Number(i.to_double())
+                }
+              }
+              Number(-1.0)
+            } else {
+              raise @errors.TypeError(message="findIndex called on non-TypedArray")
+            }
+          _ => raise @errors.TypeError(message="findIndex called on non-TypedArray")
+        }
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
 
   // Mark all prototype methods as non-enumerable (per spec)
   let method_names = [
     "set", "subarray", "slice", "copyWithin", "fill",
     "indexOf", "lastIndexOf", "includes", "join", "toString",
     "reverse", "sort", "at", "entries", "keys", "values",
+    "forEach", "map", "filter", "reduce", "reduceRight",
+    "every", "some", "find", "findIndex",
   ]
   for name in method_names {
     ta_proto_descs[name] = {

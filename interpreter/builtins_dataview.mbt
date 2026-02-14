@@ -81,8 +81,11 @@ fn dataview_get_float32(
   let b1 = if little_endian { bytes[offset + 1] } else { bytes[offset + 2] }
   let b2 = if little_endian { bytes[offset + 2] } else { bytes[offset + 1] }
   let b3 = if little_endian { bytes[offset + 3] } else { bytes[offset] }
-  let bits = b0 + b1 * 256 + b2 * 65536 + b3 * 16777216
-  Number(float32_bits_to_double(bits))
+  let bits64 = b0.to_int64() +
+    b1.to_int64() * 256L +
+    b2.to_int64() * 65536L +
+    b3.to_int64() * 16777216L
+  Number(float32_bits_to_double(bits64.to_int()))
 }
 
 ///|

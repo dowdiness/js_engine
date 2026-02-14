@@ -1344,8 +1344,8 @@ fn collect_for_in_keys(obj : Value) -> Array[String] raise Error {
         }
         data.properties.each(fn(k, _v) {
           if not(seen.contains(k)) {
-            // Skip internal slots for TypedArray/ArrayBuffer/DataView
-            if k.has_prefix("[[") && k.has_suffix("]]") {
+            // Skip internal slots for TypedArray/ArrayBuffer/DataView only
+            if k.has_prefix("[[") && k.has_suffix("]]") && (is_typedarray_class(data.class_name) || data.class_name == "ArrayBuffer" || data.class_name == "DataView") {
               return
             }
             seen[k] = true
