@@ -2116,6 +2116,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
   // It serves as the [[Prototype]] of all individual TypedArray constructors
   // (e.g., Object.getPrototypeOf(Int8Array) === TypedArray).
   // It is NOT directly constructible.
+  let func_proto = env.get("[[FunctionPrototype]]") catch { _ => Null }
   let ta_ctor_props : Map[String, Value] = {}
   ta_ctor_props["prototype"] = ta_proto
   ta_ctor_props["name"] = String_("TypedArray")
@@ -2128,10 +2129,24 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     getter: None,
     setter: None,
   }
+  ta_ctor_descs["name"] = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
+  ta_ctor_descs["length"] = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   let ta_ctor : Value = Object({
     properties: ta_ctor_props,
     symbol_properties: {},
-    prototype: Null,
+    prototype: func_proto,
     callable: Some(
       NativeCallable("TypedArray", fn(_args) raise {
         raise @errors.TypeError(

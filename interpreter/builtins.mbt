@@ -3573,6 +3573,8 @@ fn setup_function_builtins(env : Environment) -> Unit {
     _ => ()
   }
 
+  // Register Function.prototype so other builtins can look it up
+  env.def_builtin("[[FunctionPrototype]]", func_proto)
   // Register the same Function constructor object globally
   env.def_builtin("Function", func_ctor)
 }
