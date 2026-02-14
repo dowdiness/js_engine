@@ -2,14 +2,15 @@
 
 ## Current Status
 
-**Test262**: 21,747+ / ~28,500 passed (pending re-run; Phase 16 un-skipped ~2,400 TypedArray/ArrayBuffer/DataView tests)
+**Test262**: 23,335+ / 27,491 executed (**84.9%+** pass rate) — post-Phase 17 targeted verification 2026-02-14
 
-**Unit tests**: 878 total, 878 passed, 0 failed
+**Unit tests**: 881 total, 881 passed, 0 failed
 
 **Targeted verification (2026-02-11)**: `language/block-scope` slice is 106/106 passing (39 skipped).
 **Targeted verification (2026-02-12)**: `built-ins/Promise` slice is 599/599 passing (100%, 41 skipped). `language/block-scope` is 106/106 passing (100%, 39 skipped).
 **Targeted verification (2026-02-13)**: `language/white-space` slice is 66/67 passing (98.5%, was 73.1%). Small compliance sweep completed. Proxy/Reflect implemented: Proxy 94.5% (257/272), Reflect 99.3% (152/153).
-**Phase 16 (2026-02-14)**: TypedArray/ArrayBuffer/DataView implemented. 9 typed array types, DataView with all getter/setter methods, ArrayBuffer with slice/detach. 79 new unit tests, all passing. Full test262 re-run pending.
+**Phase 16 (2026-02-14)**: TypedArray/ArrayBuffer/DataView implemented. 9 typed array types, DataView with all getter/setter methods, ArrayBuffer with slice/detach. 79 new unit tests, all passing. Full test262 re-run: **+2,142 tests passing** (20,870 → 23,012), pass rate 82.7% → **83.7%**.
+**Phase 17 (2026-02-14)**: TypedArray prototype chain conformance. Created `%TypedArray%` intrinsic constructor, set per-type constructor `[[Prototype]]` chains. TypedArray 55.1% → **92.8%** (+293), TypedArrayConstructors 86.1% → **94.4%** (+30). Estimated **+323 tests** passing overall.
 
 ## Phase History
 
@@ -34,7 +35,8 @@
 | 13 | +1,080 | 20,803 | P7: Promise species constructor, sloppy mode this, apply/arguments fixes — 100% Promise compliance, constructor subclassing, test harness improvements |
 | 14 | +67 | 20,870 | Small compliance sweep — Unicode whitespace (98.5%), Number/String.prototype.toLocaleString, String trim aliases, String.prototype.matchAll |
 | 15 | +877 | 21,747 | Proxy/Reflect — full Proxy trap support (13 traps), Reflect API (13 methods), PR review fixes, test262 conformance |
-| 16 | TBD | TBD | TypedArray/ArrayBuffer/DataView — 9 TypedArray types, DataView getters/setters, ArrayBuffer slice/detach, buffer detachment validation |
+| 16 | +2,142 | 23,012 | TypedArray/ArrayBuffer/DataView — 9 TypedArray types, DataView getters/setters, ArrayBuffer slice/detach, buffer detachment validation |
+| 17 | +323 | ~23,335 | TypedArray prototype chain — %TypedArray% intrinsic constructor, per-type [[Prototype]] chains, constructor.prototype linkage |
 
 For detailed implementation notes on Phases 1-6, see [docs/PHASE_HISTORY.md](docs/PHASE_HISTORY.md).
 
@@ -42,32 +44,39 @@ For detailed implementation notes on Phases 1-6, see [docs/PHASE_HISTORY.md](doc
 
 ## Failure Breakdown
 
-### Failure Breakdown by Category (4,400 remaining failures)
+### Failure Breakdown by Category (4,479 remaining failures)
 
-Top failing categories from the latest CI run (2026-02-13):
+Top failing categories from the full test262 run (2026-02-14):
 
 | Category | Pass | Fail | Rate | Priority |
 |----------|------|------|------|----------|
-| language/expressions | 4,908 | 591 | 89.3% | Medium |
-| language/statements | 3,455 | 727 | 82.6% | Medium |
-| built-ins/Array | 2,491 | 454 | 84.6% | Medium |
-| built-ins/Object | 3,115 | 258 | 92.4% | Low (P4 done) |
+| language/expressions | 4,919 | 591 | 89.3% | Medium |
+| language/statements | 3,488 | 727 | 82.8% | Medium |
+| built-ins/Array | 2,494 | 453 | 84.6% | Medium |
+| built-ins/TypedArray | 721 | 56 | 92.8% | ✅ Done (P17) |
+| built-ins/Object | 3,126 | 247 | 92.7% | Low (P4 done) |
 | annexB/language | 312 | 505 | 38.2% | Low (--annex-b) |
-| built-ins/Promise | 614 | 4 | 99.4% | ✅ Done (P7) |
-| built-ins/DataView | — | — | — | ✅ Done (P16, pending re-run) |
 | built-ins/RegExp | 615 | 222 | 73.5% | Hard |
 | language/module-code | 114 | 198 | 36.5% | Medium |
 | language/eval-code | 224 | 106 | 67.9% | Low (P5 done) |
 | built-ins/String | 1,099 | 96 | 92.0% | Low |
-| built-ins/Function | 340 | 71 | 82.7% | Medium |
 | language/literals | 231 | 88 | 72.4% | Medium |
+| language/import | 7 | 86 | 7.5% | Medium |
+| annexB/built-ins | 147 | 73 | 66.8% | Low (--annex-b) |
+| built-ins/Function | 340 | 71 | 82.7% | Medium |
 | built-ins/Number | 280 | 55 | 83.6% | Easy |
 | language/identifiers | 154 | 53 | 74.4% | Medium |
+| built-ins/TypedArrayConstructors | 339 | 20 | 94.4% | ✅ Done (P17) |
+| built-ins/DataView | 353 | 35 | 91.0% | ✅ Done (P16) |
+| built-ins/WeakMap | 51 | 31 | 62.2% | Medium |
+| built-ins/Map | 152 | 29 | 84.0% | Medium |
+| built-ins/WeakSet | 39 | 26 | 60.0% | Medium |
+| built-ins/Uint8Array | 44 | 24 | 64.7% | Medium |
+| built-ins/Promise | 614 | 4 | 99.4% | ✅ Done (P7) |
+| built-ins/ArrayBuffer | 73 | 8 | 90.1% | ✅ Done (P16) |
 | language/block-scope | 106 | 0 | 100.0% | ✅ Done |
-| built-ins/ArrayBuffer | — | — | — | ✅ Done (P16, pending re-run) |
 | built-ins/Proxy | 257 | 15 | 94.5% | ✅ Done (P15) |
 | built-ins/Reflect | 152 | 1 | 99.3% | ✅ Done (P15) |
-| built-ins/Map | 152 | 29 | 84.0% | Medium |
 | language/white-space | 66 | 1 | 98.5% | ✅ Done (P14) |
 
 ### High-Performing Categories (>90% pass rate)
@@ -86,8 +95,8 @@ Top failing categories from the latest CI run (2026-02-13):
 | built-ins/Reflect | 152 | 1 | 99.3% |
 | language/white-space | 66 | 1 | 98.5% |
 | built-ins/Math | 317 | 5 | 98.4% |
-| built-ins/parseFloat | 53 | 1 | 98.1% |
 | built-ins/parseInt | 54 | 1 | 98.2% |
+| built-ins/parseFloat | 53 | 1 | 98.1% |
 | built-ins/Set | 181 | 4 | 97.8% |
 | built-ins/decodeURIComponent | 53 | 2 | 96.4% |
 | built-ins/decodeURI | 52 | 2 | 96.3% |
@@ -98,14 +107,18 @@ Top failing categories from the latest CI run (2026-02-13):
 | language/comments | 22 | 1 | 95.7% |
 | built-ins/Proxy | 257 | 15 | 94.5% |
 | built-ins/JSON | 127 | 8 | 94.1% |
-| language/computed-property-names | 45 | 3 | 93.8% |
 | built-ins/encodeURIComponent | 29 | 2 | 93.5% |
 | built-ins/encodeURI | 29 | 2 | 93.5% |
 | language/asi | 95 | 7 | 93.1% |
+| built-ins/Object | 3,126 | 247 | 92.7% |
 | language/reserved-words | 25 | 2 | 92.6% |
-| built-ins/Object | 3,115 | 258 | 92.4% |
 | built-ins/String | 1,099 | 96 | 92.0% |
+| built-ins/DataView | 353 | 35 | 91.0% |
 | language/rest-parameters | 10 | 1 | 90.9% |
+| built-ins/ArrayBuffer | 73 | 8 | 90.1% |
+| built-ins/TypedArrayConstructors | 339 | 20 | 94.4% |
+| built-ins/TypedArray | 721 | 56 | 92.8% |
+| language/computed-property-names | 45 | 3 | 93.8% |
 
 ---
 
@@ -520,9 +533,44 @@ Full TypedArray/ArrayBuffer/DataView implementation (~3,724 lines of new builtin
 - DataView receiver brand check
 - `-0` canonical numeric index fix (3 sites)
 
-**Test262**: Pending full re-run (test262 directory not available). ~2,400 previously-skipped tests now enabled (ArrayBuffer, DataView, TypedArray, Uint8Array features removed from skip list).
+**Test262 (full run 2026-02-14)**: 23,012 / 27,491 passing (**83.7%**, was 82.7%). +2,142 new tests passing. Key category results:
+- `built-ins/DataView`: 353/388 passing (**91.0%**, was 2.3%)
+- `built-ins/ArrayBuffer`: 73/81 passing (**90.1%**, was 16.4%)
+- `built-ins/TypedArrayConstructors`: 309/359 passing (**86.1%**, new)
+- `built-ins/TypedArray`: 428/777 passing (**55.1%**, was 0%)
+- `built-ins/Uint8Array`: 44/68 passing (**64.7%**, new)
 
 **Unit tests**: 878 total (+79 new), 878 passed, 0 failed
+
+---
+
+### 17: TypedArray Prototype Chain Conformance (+323 tests) — DONE
+
+Created `%TypedArray%` intrinsic constructor and established proper prototype chain per ES spec:
+
+**%TypedArray% Constructor** (abstract, not directly constructible):
+- Created as a Function object with `TypedArray` name
+- Throws TypeError when directly constructed (per spec: "Abstract class TypedArray not directly constructable")
+- `%TypedArray%.prototype` points to the shared TypedArray prototype (with all shared methods)
+- `%TypedArray%.prototype.constructor` links back to `%TypedArray%`
+
+**Prototype Chain Fix**:
+- Each per-type constructor (Int8Array, Uint8Array, etc.) now has `[[Prototype]]` set to `%TypedArray%` constructor
+  - Before: `Object.getPrototypeOf(Int8Array)` → `null`
+  - After: `Object.getPrototypeOf(Int8Array)` → `%TypedArray%`
+- This enables the test262 pattern: `Object.getPrototypeOf(Int8Array.prototype) === TypedArray.prototype`
+- Stored as `[[TypedArrayConstructor]]` internal builtin for engine access
+
+**Test262 Results**:
+
+| Category | Before | After | Rate |
+|----------|--------|-------|------|
+| built-ins/TypedArray | 428/777 | 721/777 | **92.8%** (+293) |
+| built-ins/TypedArrayConstructors | 309/359 | 339/359 | **94.4%** (+30) |
+
+**Overall**: 23,012 → ~23,335 passing (+323 tests), **84.9%** pass rate (was 83.7%)
+
+**Unit tests**: 881 total (+3 new), 881 passed, 0 failed
 
 ---
 
@@ -534,11 +582,12 @@ Prioritized by estimated test impact and implementation effort. These are the hi
 |----------|---------|-------------|--------|-------|
 | **1** | Boxed primitives (`new String()`, `new Number()`, `new Boolean()`) | ~100+ tests | Medium | Not represented as Object internally; affects Proxy, typeof, and coercion tests across many categories |
 | **2** | RegExp `y` (sticky) and `u` (unicode) flags | ~222 tests | High | Only `g`, `i`, `m` flags currently supported; unblocks a large portion of `built-ins/RegExp` failures |
-| **3** | WeakMap / WeakSet | ~57 tests | Low-Medium | No dedicated Value variant; can implement with standard Map/Set semantics (true weak references not possible in this runtime) |
-| **4** | `with` statement | ~151 tests | Medium | Behind `--annex-b` flag; requires object environment record and dynamic scope injection |
-| **5** | Class public fields | ~723 skipped | Medium | `class C { x = 1; static y = 2; }` syntax; currently skipped in test262 |
-| **6** | Class private fields/methods | ~2,437 skipped | High | `#private` syntax across fields, methods, static members; large test surface but complex implementation |
-| **7** | async/await | ~500+ tests | Medium | Syntactic sugar over Promises + generator-like suspension; unblocked by generator implementation |
+| **3** | Iterator/Generator protocol compliance | ~35+ tests | Medium | GeneratorFunction (9.5%), GeneratorPrototype (73.8%), MapIteratorPrototype (27.3%), SetIteratorPrototype (27.3%) |
+| **4** | WeakMap / WeakSet | ~57 tests | Low-Medium | No dedicated Value variant; can implement with standard Map/Set semantics (true weak references not possible in this runtime) |
+| **5** | `with` statement | ~151 tests | Medium | Behind `--annex-b` flag; requires object environment record and dynamic scope injection |
+| **6** | Class public fields | ~723 skipped | Medium | `class C { x = 1; static y = 2; }` syntax; currently skipped in test262 |
+| **7** | Class private fields/methods | ~2,437 skipped | High | `#private` syntax across fields, methods, static members; large test surface but complex implementation |
+| **8** | async/await | ~500+ tests | Medium | Syntactic sugar over Promises + generator-like suspension; unblocked by generator implementation |
 
 ### Boxed Primitives (Priority 1)
 
@@ -556,7 +605,7 @@ Prioritized by estimated test impact and implementation effort. These are the hi
 
 **Approach**: Extend `make_regexp_object` to handle `y` and `u` flags. Sticky requires `lastIndex`-based anchoring. Unicode requires surrogate pair awareness in the regex matcher.
 
-### WeakMap / WeakSet (Priority 3)
+### WeakMap / WeakSet (Priority 4)
 
 **Problem**: 57 tests failing, plus tests in `SKIP_FEATURES`. Currently no `WeakMap`/`WeakSet` Value variant.
 
@@ -574,6 +623,7 @@ Syntactic sugar over Promises + generator-like suspension. Now unblocked by gene
 
 | Feature | Impact | Notes |
 |---------|--------|-------|
+| TypedArray prototype chain | — | ✅ Done (Phase 17) — TypedArray 721/777 (92.8%), TypedArrayConstructors 339/359 (94.4%) |
 | Boxed primitives | ~100+ fail | `new String()`, `new Number()`, `new Boolean()` — not yet represented as Object |
 | RegExp improvements | ~222 fail | Sticky (`y`) and unicode (`u`) flags, capture groups, backreferences |
 | WeakMap/WeakSet | ~57 fail | Reference-based collections; implement with standard Map/Set semantics |
@@ -584,7 +634,7 @@ Syntactic sugar over Promises + generator-like suspension. Now unblocked by gene
 | eval() | — | ✅ Done (P5) — 224/330 pass (67.9%) |
 | Proxy/Reflect | — | ✅ Done (Phase 15) — Proxy 257/272 (94.5%), Reflect 152/153 (99.3%) |
 | Promise improvements | — | ✅ Done (Phase 13) — 614/618 pass (99.4%) |
-| TypedArray/ArrayBuffer/DataView | — | ✅ Done (Phase 16) — 9 types, full DataView, detach support |
+| TypedArray/ArrayBuffer/DataView | — | ✅ Done (Phase 16) — DataView 353/388 (91.0%), ArrayBuffer 73/81 (90.1%), TypedArrayConstructors 309/359 (86.1%) |
 
 ### Promise Conformance Batch (Implemented)
 
@@ -650,7 +700,7 @@ Low. These features are not required for modern JavaScript usage. Implement only
 
 ---
 
-## Skipped Features (~19,400 tests)
+## Skipped Features (~20,497 tests)
 
 | Feature | Skipped | Notes |
 |---------|---------|-------|
