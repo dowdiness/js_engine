@@ -8444,6 +8444,21 @@ test "test262: TypedArray.prototype.set range error" {
 }
 
 ///|
+test "test262: TypedArray.prototype.set array-like object" {
+  let output = run_output(
+    (
+      #|var a = new Uint8Array(4);
+      #|a.set({0: 10, 1: 20, 2: 30, length: 3});
+      #|console.log(a[0]);
+      #|console.log(a[1]);
+      #|console.log(a[2]);
+      #|console.log(a[3]);
+    ),
+  )
+  inspect(output, content="[\"10\", \"20\", \"30\", \"0\"]")
+}
+
+///|
 test "test262: TypedArray.prototype.subarray negative indices" {
   let output = run_output(
     (

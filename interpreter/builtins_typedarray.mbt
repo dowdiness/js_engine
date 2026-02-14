@@ -620,8 +620,31 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
                   }
                   Undefined
                 }
-                _ => {
-                  // Array-like with length property
+                src => {
+                  // Generic array-like with length property
+                  let src_len = match src {
+                    Object(src_obj) =>
+                      match src_obj.properties.get("length") {
+                        Some(v) => to_number(v).to_int()
+                        _ => 0
+                      }
+                    _ => 0
+                  }
+                  if target_offset + src_len > ta_length {
+                    raise @errors.RangeError(message="Source is too large")
+                  }
+                  for i = 0; i < src_len; i = i + 1 {
+                    let val = match src {
+                      Object(src_obj) =>
+                        match src_obj.properties.get(i.to_string()) {
+                          Some(v) => v
+                          _ => Undefined
+                        }
+                      _ => Undefined
+                    }
+                    let num = to_number(val)
+                    typedarray_set_index(data, target_offset + i, num)
+                  }
                   Undefined
                 }
               }
