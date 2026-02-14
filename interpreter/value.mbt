@@ -573,8 +573,23 @@ pub impl Show for Value with output(self, logger) {
         Some(ClassConstructor(name, _, _, _, _, _)) =>
           logger.write_string("class \{name} { [code] }")
         None =>
-          // Error objects: use Error.prototype.toString() format "name: message"
-          if data.class_name.has_suffix("Error") {
+          // Boxed primitive objects: unwrap to primitive string representation
+          if data.class_name == "String" {
+            match data.properties.get("[[StringData]]") {
+              Some(String_(s)) => logger.write_string(s)
+              _ => logger.write_string("[object String]")
+            }
+          } else if data.class_name == "Number" {
+            match data.properties.get("[[NumberData]]") {
+              Some(n) => n.output(logger)
+              _ => logger.write_string("[object Number]")
+            }
+          } else if data.class_name == "Boolean" {
+            match data.properties.get("[[BooleanData]]") {
+              Some(Bool(b)) => logger.write_string(b.to_string())
+              _ => logger.write_string("[object Boolean]")
+            }
+          } else if data.class_name.has_suffix("Error") {
             let name = match data.properties.get("name") {
               Some(String_(s)) => s
               _ => data.class_name
@@ -642,6 +657,26 @@ pub fn to_number(val : Value) -> Double raise Error {
       if data.class_name == "Date" {
         match data.properties.get("[[DateValue]]") {
           Some(Number(v)) => v
+          _ => 0.0 / 0.0
+        }
+      } else if data.class_name == "Number" {
+        match data.properties.get("[[NumberData]]") {
+          Some(Number(v)) => v
+          _ => 0.0 / 0.0
+        }
+      } else if data.class_name == "Boolean" {
+        match data.properties.get("[[BooleanData]]") {
+          Some(Bool(b)) => if b { 1.0 } else { 0.0 }
+          _ => 0.0 / 0.0
+        }
+      } else if data.class_name == "String" {
+        match data.properties.get("[[StringData]]") {
+          Some(String_(s)) =>
+            if s.length() == 0 {
+              0.0
+            } else {
+              @strconv.parse_double(s) catch { _ => 0.0 / 0.0 }
+            }
           _ => 0.0 / 0.0
         }
       } else {

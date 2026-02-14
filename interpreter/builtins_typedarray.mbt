@@ -2111,6 +2111,70 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
   })
   env.def_builtin("[[TypedArrayPrototype]]", ta_proto)
 
+  // --- Create %TypedArray% intrinsic constructor ---
+  // Per spec, %TypedArray% is an abstract constructor (not directly exposed as a global).
+  // It serves as the [[Prototype]] of all individual TypedArray constructors
+  // (e.g., Object.getPrototypeOf(Int8Array) === TypedArray).
+  // It is NOT directly constructible.
+  let func_proto = env.get("[[FunctionPrototype]]") catch { _ => Null }
+  let ta_ctor_props : Map[String, Value] = {}
+  ta_ctor_props["prototype"] = ta_proto
+  ta_ctor_props["name"] = String_("TypedArray")
+  ta_ctor_props["length"] = Number(0.0)
+  let ta_ctor_descs : Map[String, PropDescriptor] = {}
+  ta_ctor_descs["prototype"] = {
+    writable: false,
+    enumerable: false,
+    configurable: false,
+    getter: None,
+    setter: None,
+  }
+  ta_ctor_descs["name"] = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
+  ta_ctor_descs["length"] = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
+  let ta_ctor : Value = Object({
+    properties: ta_ctor_props,
+    symbol_properties: {},
+    prototype: func_proto,
+    callable: Some(
+      NativeCallable("TypedArray", fn(_args) raise {
+        raise @errors.TypeError(
+          message="Abstract class TypedArray not directly constructable",
+        )
+      }),
+    ),
+    class_name: "Function",
+    descriptors: ta_ctor_descs,
+    symbol_descriptors: {},
+    extensible: true,
+  })
+  // Set ta_proto.constructor = %TypedArray%
+  match ta_proto {
+    Object(proto_data) => {
+      proto_data.properties["constructor"] = ta_ctor
+      proto_data.descriptors["constructor"] = {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
+    }
+    _ => ()
+  }
+  env.def_builtin("[[TypedArrayConstructor]]", ta_ctor)
+
   // --- Create individual TypedArray constructors ---
   let type_names = [
     "Int8Array", "Uint8Array", "Uint8ClampedArray",
@@ -2149,6 +2213,8 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     let ctor_props : Map[String, Value] = {}
     ctor_props["prototype"] = per_proto
     ctor_props["BYTES_PER_ELEMENT"] = Number(bpe.to_double())
+    ctor_props["name"] = String_(type_name)
+    ctor_props["length"] = Number(3.0) // TypedArray constructors have length 3
 
     // Static from(source [, mapFn [, thisArg]])
     ctor_props["from"] = Object({
@@ -2271,11 +2337,25 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
       getter: None,
       setter: None,
     }
+    ctor_descs["name"] = {
+      writable: false,
+      enumerable: false,
+      configurable: true,
+      getter: None,
+      setter: None,
+    }
+    ctor_descs["length"] = {
+      writable: false,
+      enumerable: false,
+      configurable: true,
+      getter: None,
+      setter: None,
+    }
 
     let ctor : Value = Object({
       properties: ctor_props,
       symbol_properties: {},
-      prototype: Null,
+      prototype: ta_ctor,
       callable: Some(
         NativeCallable(type_name, fn(args) raise {
           if not(is_constructing.val) {

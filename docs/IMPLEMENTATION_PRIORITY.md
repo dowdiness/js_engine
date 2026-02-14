@@ -2,11 +2,11 @@
 
 ## Current Status
 
-- **Pass rate**: 83.16%+ (21,747+ passed, pending full re-run after Phase 16)
-- **Skipped**: ~19,400 (feature-flagged; ~2,400 TypedArray/ArrayBuffer/DataView tests un-skipped in Phase 16)
-- **Failed**: ~4,400 (pre-Phase 16 baseline)
-- **Timeouts**: ~157
-- **Unit tests**: 879 total, 879 passed, 0 failed
+- **Pass rate**: **~85.5%** (~23,500 / 27,491 executed) — post-Phase 18 2026-02-14
+- **Skipped**: 20,497 (feature-flagged)
+- **Failed**: ~4,317
+- **Timeouts**: 156
+- **Unit tests**: 881 total, 881 passed, 0 failed
 
 Note: This document is a phase-planning snapshot. For latest live totals, targeted slices, and recommended next steps, see [ROADMAP.md](../ROADMAP.md).
 
@@ -181,15 +181,17 @@ The actual gain from P0–P3 (+7,439) far exceeded the projected range (+1,500�
 | **P7** | **Promise species + interpreter fixes** | **+1,080** | **82.4%** |
 | **P8** | **Small compliance sweep** | **+67** | **82.7%** |
 | **P9** | **Proxy/Reflect** | **+877** | **83.16%** |
-| **P10** | **TypedArray/ArrayBuffer/DataView** | **TBD (pending re-run)** | **TBD** |
+| **P10** | **TypedArray/ArrayBuffer/DataView** | **+2,142** | **83.7%** |
+| **P11** | **TypedArray prototype chain** | **+323** | **84.9%** |
+| **P12** | **Boxed primitives + TypedArray name fix** | **+162** | **~85.5%** |
 
 ### Projected Next Phases
 
 | Phase | Content | Est. New Tests | Notes |
 |-------|---------|---------------|-------|
-| P11 | Boxed primitives | ~100+ | Medium effort, cross-cutting impact |
-| P12 | RegExp sticky/unicode flags | ~222 | High effort, unlocks RegExp category |
-| P13 | WeakMap/WeakSet | ~57 | Low-medium effort |
+| P13 | RegExp sticky/unicode flags | ~222 | High effort, unlocks RegExp category |
+| P14 | Iterator/Generator protocol | ~35+ | Medium effort, multiple iterator categories |
+| P15 | WeakMap/WeakSet | ~57 | Low-medium effort |
 | Annex B | `--annex-b` gated features | ~857 | Low priority |
 
 ---
@@ -230,17 +232,17 @@ The actual gain from P0–P3 (+7,439) far exceeded the projected range (+1,500�
 These are feature-flagged as skipped but required for ES2015 compliance:
 - WeakMap/WeakSet (~147 executable tests) — Not yet implemented
 - Proxy/Reflect — ✅ Done (Phase 15): Proxy 94.5% (257/272), Reflect 99.3% (152/153)
-- TypedArray/ArrayBuffer/DataView — ✅ Done (Phase 16): 9 typed array types, full DataView, ArrayBuffer with detach
+- TypedArray/ArrayBuffer/DataView — ✅ Done (Phase 16-17): DataView 91.0%, ArrayBuffer 90.1%, TypedArrayConstructors 94.4%, TypedArray 92.8%
 - Tail call optimization (impractical for tree-walking interpreter)
 
 ## Recommended Next Steps (Post-Phase 16)
 
 See [ROADMAP.md](../ROADMAP.md) for the full prioritized list. Top items by ROI:
 
-1. **Boxed primitives** (`new String()`, `new Number()`, `new Boolean()`) — ~100+ tests, medium effort
-2. **RegExp sticky/unicode flags** — ~222 tests, high effort
+1. **RegExp sticky/unicode flags** — ~222 tests, high effort
+2. **Iterator/Generator protocol compliance** — ~35+ tests, medium effort. GeneratorFunction (9.5%), iterator prototypes (27.3%)
 3. **WeakMap/WeakSet** — ~57 tests, low-medium effort
 4. **`with` statement** (behind `--annex-b`) — ~151 tests, medium effort
-5. **Class public fields** — ~723 skipped tests, medium effort
-6. **Class private fields/methods** — ~2,437 skipped tests, high effort
-7. **async/await** — ~500+ tests, medium effort
+7. **Class public fields** — ~723 skipped tests, medium effort
+8. **Class private fields/methods** — ~2,437 skipped tests, high effort
+9. **async/await** — ~500+ tests, medium effort

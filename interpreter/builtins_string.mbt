@@ -1151,9 +1151,9 @@ pub fn this_to_string(this_val : Value) -> String raise Error {
         message="Cannot convert a Symbol value to a string",
       )
     Object(data) =>
-      // Check if it's a String wrapper object
+      // Check if it's a boxed String wrapper object
       if data.class_name == "String" {
-        match data.properties.get("__primitiveValue__") {
+        match data.properties.get("[[StringData]]") {
           Some(String_(s)) => s
           _ => this_val.to_string()
         }

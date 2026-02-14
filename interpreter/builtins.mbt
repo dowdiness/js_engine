@@ -408,7 +408,48 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
       callable: Some(
         NativeCallable("String", fn(args) {
           let val = if args.length() > 0 { args[0] } else { Undefined }
-          String_(val.to_string())
+          let str = val.to_string()
+          if is_constructing.val {
+            // new String(value) → boxed String object
+            let props : Map[String, Value] = {}
+            props["[[StringData]]"] = String_(str)
+            props["length"] = Number(str.length().to_double())
+            // Add indexed character properties
+            for i = 0; i < str.length(); i = i + 1 {
+              props[i.to_string()] = String_(
+                str.substring(start=i, end=i + 1),
+              )
+            }
+            let descs : Map[String, PropDescriptor] = {}
+            descs["length"] = {
+              writable: false,
+              enumerable: false,
+              configurable: false,
+              getter: None,
+              setter: None,
+            }
+            for i = 0; i < str.length(); i = i + 1 {
+              descs[i.to_string()] = {
+                writable: false,
+                enumerable: true,
+                configurable: false,
+                getter: None,
+                setter: None,
+              }
+            }
+            Object({
+              properties: props,
+              symbol_properties: {},
+              prototype: string_proto,
+              callable: None,
+              class_name: "String",
+              descriptors: descs,
+              symbol_descriptors: {},
+              extensible: true,
+            })
+          } else {
+            String_(str)
+          }
         }),
       ),
       class_name: "Function",
@@ -418,6 +459,8 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
     }),
   )
 
+  // Store String.prototype for ToObject wrapping
+  env.def_builtin("[[StringPrototype]]", string_proto)
   // Populate String.prototype with methods for .call() support
   setup_string_prototype(string_proto)
   // Set String.prototype.constructor = String
@@ -449,6 +492,20 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
       MethodCallable("toString", fn(this_val, _args) raise {
         match this_val {
           Bool(b) => String_(b.to_string())
+          Object(data) =>
+            if data.class_name == "Boolean" {
+              match data.properties.get("[[BooleanData]]") {
+                Some(Bool(b)) => String_(b.to_string())
+                _ =>
+                  raise @errors.TypeError(
+                    message="Boolean.prototype.toString requires a Boolean",
+                  )
+              }
+            } else {
+              raise @errors.TypeError(
+                message="Boolean.prototype.toString requires a Boolean",
+              )
+            }
           _ =>
             raise @errors.TypeError(
               message="Boolean.prototype.toString requires a Boolean",
@@ -469,6 +526,20 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
       MethodCallable("valueOf", fn(this_val, _args) raise {
         match this_val {
           Bool(b) => Bool(b)
+          Object(data) =>
+            if data.class_name == "Boolean" {
+              match data.properties.get("[[BooleanData]]") {
+                Some(Bool(b)) => Bool(b)
+                _ =>
+                  raise @errors.TypeError(
+                    message="Boolean.prototype.valueOf requires a Boolean",
+                  )
+              }
+            } else {
+              raise @errors.TypeError(
+                message="Boolean.prototype.valueOf requires a Boolean",
+              )
+            }
           _ =>
             raise @errors.TypeError(
               message="Boolean.prototype.valueOf requires a Boolean",
@@ -491,6 +562,8 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
     symbol_descriptors: {},
     extensible: true,
   })
+  // Store Boolean.prototype for ToObject wrapping
+  env.def_builtin("[[BooleanPrototype]]", boolean_proto)
   env.def_builtin(
     "Boolean",
     Object({
@@ -500,7 +573,22 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
       callable: Some(
         NativeCallable("Boolean", fn(args) {
           let val = if args.length() > 0 { args[0] } else { Undefined }
-          Bool(is_truthy(val))
+          let b = is_truthy(val)
+          if is_constructing.val {
+            // new Boolean(value) → boxed Boolean object
+            Object({
+              properties: { "[[BooleanData]]": Bool(b) },
+              symbol_properties: {},
+              prototype: boolean_proto,
+              callable: None,
+              class_name: "Boolean",
+              descriptors: {},
+              symbol_descriptors: {},
+              extensible: true,
+            })
+          } else {
+            Bool(b)
+          }
         }),
       ),
       class_name: "Function",
@@ -776,6 +864,7 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
       extensible: true,
     }),
   )
+  env.def_builtin("[[SymbolPrototype]]", symbol_proto)
   // Set Symbol.prototype.constructor = Symbol
   match symbol_proto {
     Object(data) => {
@@ -2134,6 +2223,8 @@ fn setup_number_builtins(env : Environment) -> Unit {
     symbol_descriptors: {},
     extensible: true,
   })
+  // Store Number.prototype for ToObject wrapping
+  env.def_builtin("[[NumberPrototype]]", number_proto)
   let number_props : Map[String, Value] = {}
   number_props["prototype"] = number_proto
   number_props["MAX_SAFE_INTEGER"] = Number(9007199254740991.0)
@@ -2198,7 +2289,22 @@ fn setup_number_builtins(env : Environment) -> Unit {
       callable: Some(
         NativeCallable("Number", fn(args) raise {
           let val = if args.length() > 0 { args[0] } else { Undefined }
-          Number(to_number(val))
+          let n = to_number(val)
+          if is_constructing.val {
+            // new Number(value) → boxed Number object
+            Object({
+              properties: { "[[NumberData]]": Number(n) },
+              symbol_properties: {},
+              prototype: number_proto,
+              callable: None,
+              class_name: "Number",
+              descriptors: {},
+              symbol_descriptors: {},
+              extensible: true,
+            })
+          } else {
+            Number(n)
+          }
         }),
       ),
       class_name: "Function",
@@ -3467,6 +3573,8 @@ fn setup_function_builtins(env : Environment) -> Unit {
     _ => ()
   }
 
+  // Register Function.prototype so other builtins can look it up
+  env.def_builtin("[[FunctionPrototype]]", func_proto)
   // Register the same Function constructor object globally
   env.def_builtin("Function", func_ctor)
 }

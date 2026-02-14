@@ -4333,13 +4333,48 @@ fn loose_equal(a : Value, b : Value) -> Bool {
     // Boolean == anything: convert boolean to number first
     (Bool(bval), _) => loose_equal(Number(if bval { 1.0 } else { 0.0 }), b)
     (_, Bool(bval)) => loose_equal(a, Number(if bval { 1.0 } else { 0.0 }))
-    // Object/Array == Number/String: try ToPrimitive (simplified: use to_string)
-    (Object(_), Number(_)) | (Object(_), String_(_)) => {
-      let prim = String_(a.to_string())
+    // Object/Array == Number/String: try ToPrimitive
+    (Object(data), Number(_)) | (Object(data), String_(_)) => {
+      // Unwrap boxed primitives to their inner value
+      let prim = if data.class_name == "Number" {
+        match data.properties.get("[[NumberData]]") {
+          Some(n) => n
+          _ => String_(a.to_string())
+        }
+      } else if data.class_name == "Boolean" {
+        match data.properties.get("[[BooleanData]]") {
+          Some(b2) => b2
+          _ => String_(a.to_string())
+        }
+      } else if data.class_name == "String" {
+        match data.properties.get("[[StringData]]") {
+          Some(s) => s
+          _ => String_(a.to_string())
+        }
+      } else {
+        String_(a.to_string())
+      }
       loose_equal(prim, b)
     }
-    (Number(_), Object(_)) | (String_(_), Object(_)) => {
-      let prim = String_(b.to_string())
+    (Number(_), Object(data)) | (String_(_), Object(data)) => {
+      let prim = if data.class_name == "Number" {
+        match data.properties.get("[[NumberData]]") {
+          Some(n) => n
+          _ => String_(b.to_string())
+        }
+      } else if data.class_name == "Boolean" {
+        match data.properties.get("[[BooleanData]]") {
+          Some(b2) => b2
+          _ => String_(b.to_string())
+        }
+      } else if data.class_name == "String" {
+        match data.properties.get("[[StringData]]") {
+          Some(s) => s
+          _ => String_(b.to_string())
+        }
+      } else {
+        String_(b.to_string())
+      }
       loose_equal(a, prim)
     }
     (Array(_), Number(_)) | (Array(_), String_(_)) => {
