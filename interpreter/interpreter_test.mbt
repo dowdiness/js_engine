@@ -8257,6 +8257,27 @@ test "test262: TypedArray Float32Array precision" {
 }
 
 ///|
+test "test262: TypedArray Float32Array mantissa carry" {
+  // Test values where mantissa rounding carries into exponent
+  let output = run_output(
+    (
+      #|var a = new Float32Array(4);
+      #|a[0] = 16777215;    // 2^24 - 1 = max exact int in float32
+      #|a[1] = 16777216;    // 2^24 = still exact
+      #|a[2] = 16777217;    // 2^24 + 1 = rounds to 2^24
+      #|a[3] = 16777218;    // 2^24 + 2 = representable
+      #|console.log(a[0]);
+      #|console.log(a[1]);
+      #|console.log(a[2]);
+      #|console.log(a[3]);
+    ),
+  )
+  inspect(output, content=(
+    #|["16777215", "16777216", "16777218", "16777218"]
+  ))
+}
+
+///|
 test "test262: TypedArray Float64Array" {
   let output = run_output(
     (

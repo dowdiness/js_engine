@@ -209,13 +209,29 @@ fn double_to_float32_bits(value : Double) -> Int {
   }
   if exp <= -126 && frac < 1.0 {
     // Denormalized
-    let mantissa = (frac * 8388608.0 + 0.5).to_int() & 0x7FFFFF
+    let mantissa_raw = (frac * 8388608.0 + 0.5).to_int()
+    if mantissa_raw == 0x800000 {
+      // Mantissa rounds up to smallest normal: denormal -> normal with biased_exp=1
+      return (sign_bit << 31) | (1 << 23)
+    }
+    let mantissa = mantissa_raw & 0x7FFFFF
     return (sign_bit << 31) | mantissa
   }
   // Normalized: frac is in [1.0, 2.0)
-  let mantissa = ((frac - 1.0) * 8388608.0 + 0.5).to_int() & 0x7FFFFF
-  let biased_exp = (exp + 127) & 0xFF
-  (sign_bit << 31) | (biased_exp << 23) | mantissa
+  let mantissa_raw = ((frac - 1.0) * 8388608.0 + 0.5).to_int()
+  let mut biased_exp = exp + 127
+  let mantissa = if mantissa_raw == 0x800000 {
+    // Mantissa rounds up: carry into exponent, mantissa becomes 0
+    biased_exp = biased_exp + 1
+    if biased_exp >= 0xFF {
+      // Exponent saturates to infinity
+      return (sign_bit << 31) | 0x7F800000
+    }
+    0
+  } else {
+    mantissa_raw & 0x7FFFFF
+  }
+  (sign_bit << 31) | ((biased_exp & 0xFF) << 23) | mantissa
 }
 
 ///|
