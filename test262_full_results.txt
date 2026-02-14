@@ -1,5 +1,5 @@
 Verifying engine...
-Discovering tests in /home/user/js_engine/test262...
+Discovering tests in ./test262...
 Found 48145 test files
 Using 8 parallel worker(s) with 5s timeout per test
   Progress: 500/48145 (39 tests/sec, ETA: 20.2m)
@@ -436,4 +436,4 @@ Completed in 970.3s
         SyntaxError: Expected 'from', got Star at line 246, col 14
   ... and 4429 more
 
-  Results saved to: /home/user/js_engine/test262-results.json
+  Results saved to: ./test262-results.json
