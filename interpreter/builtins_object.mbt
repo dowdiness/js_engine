@@ -3137,10 +3137,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             }
             Symbol(_) => {
               // ToObject: wrap symbol as boxed Symbol object
+              let symbol_proto = env.get("[[SymbolPrototype]]") catch {
+                _ => Null
+              }
               Object({
                 properties: { "[[SymbolData]]": val },
                 symbol_properties: {},
-                prototype: obj_proto,
+                prototype: symbol_proto,
                 callable: None,
                 class_name: "Symbol",
                 descriptors: {},

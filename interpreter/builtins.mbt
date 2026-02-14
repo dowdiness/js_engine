@@ -864,6 +864,7 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
       extensible: true,
     }),
   )
+  env.def_builtin("[[SymbolPrototype]]", symbol_proto)
   // Set Symbol.prototype.constructor = Symbol
   match symbol_proto {
     Object(data) => {
