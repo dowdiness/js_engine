@@ -225,7 +225,7 @@ pub fn setup_arraybuffer_builtins(env : Environment) -> Unit {
               let new_buf = make_arraybuffer_object(new_len, ab_proto2)
               let new_id = match get_buffer_id(new_buf) {
                 Some(id) => id
-                None => 0
+                None => -1
               }
               match get_arraybuffer_bytes(new_id) {
                 Some(new_bytes) =>
