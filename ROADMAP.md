@@ -2,7 +2,7 @@
 
 ## Current Status
 
-**Test262**: 23,335+ / 27,491 executed (**84.9%+** pass rate) — post-Phase 17 targeted verification 2026-02-14
+**Test262**: ~23,500+ / 27,491 executed (**~85.5%+** pass rate) — post-Phase 18 targeted verification 2026-02-14
 
 **Unit tests**: 881 total, 881 passed, 0 failed
 
@@ -11,6 +11,7 @@
 **Targeted verification (2026-02-13)**: `language/white-space` slice is 66/67 passing (98.5%, was 73.1%). Small compliance sweep completed. Proxy/Reflect implemented: Proxy 94.5% (257/272), Reflect 99.3% (152/153).
 **Phase 16 (2026-02-14)**: TypedArray/ArrayBuffer/DataView implemented. 9 typed array types, DataView with all getter/setter methods, ArrayBuffer with slice/detach. 79 new unit tests, all passing. Full test262 re-run: **+2,142 tests passing** (20,870 → 23,012), pass rate 82.7% → **83.7%**.
 **Phase 17 (2026-02-14)**: TypedArray prototype chain conformance. Created `%TypedArray%` intrinsic constructor, set per-type constructor `[[Prototype]]` chains. TypedArray 55.1% → **92.8%** (+293), TypedArrayConstructors 86.1% → **94.4%** (+30). Estimated **+323 tests** passing overall.
+**Phase 18 (2026-02-14)**: Boxed primitives (`new String/Number/Boolean`). Constructor wrapping with `[[StringData]]`/`[[NumberData]]`/`[[BooleanData]]` internal slots, `Object()` ToObject wrapping, ToPrimitive coercion in `loose_equal`, prototype method support. Also fixed TypedArray constructor name inheritance regression. Key improvements: Object 92.7% → **95.9%** (+108), String 92.0% → **95.1%** (+38), Number 83.6% → **85.7%** (+7), TypedArray 92.8% → **93.4%** (+5), TypedArrayConstructors 94.4% → **95.3%** (+3), Boolean 83.7% → **85.7%** (+1). Estimated **+162 tests** passing in targeted categories.
 
 ## Phase History
 
@@ -37,6 +38,7 @@
 | 15 | +877 | 21,747 | Proxy/Reflect — full Proxy trap support (13 traps), Reflect API (13 methods), PR review fixes, test262 conformance |
 | 16 | +2,142 | 23,012 | TypedArray/ArrayBuffer/DataView — 9 TypedArray types, DataView getters/setters, ArrayBuffer slice/detach, buffer detachment validation |
 | 17 | +323 | ~23,335 | TypedArray prototype chain — %TypedArray% intrinsic constructor, per-type [[Prototype]] chains, constructor.prototype linkage |
+| 18 | +162 | ~23,500 | Boxed primitives (`new String/Number/Boolean`), Object() ToObject wrapping, ToPrimitive coercion, TypedArray constructor name fix |
 
 For detailed implementation notes on Phases 1-6, see [docs/PHASE_HISTORY.md](docs/PHASE_HISTORY.md).
 
@@ -53,20 +55,20 @@ Top failing categories from the full test262 run (2026-02-14):
 | language/expressions | 4,919 | 591 | 89.3% | Medium |
 | language/statements | 3,488 | 727 | 82.8% | Medium |
 | built-ins/Array | 2,494 | 453 | 84.6% | Medium |
-| built-ins/TypedArray | 721 | 56 | 92.8% | ✅ Done (P17) |
-| built-ins/Object | 3,126 | 247 | 92.7% | Low (P4 done) |
+| built-ins/TypedArray | 726 | 51 | 93.4% | ✅ Done (P17-18) |
+| built-ins/Object | 3,234 | 139 | 95.9% | ✅ Done (P18) |
 | annexB/language | 312 | 505 | 38.2% | Low (--annex-b) |
 | built-ins/RegExp | 615 | 222 | 73.5% | Hard |
 | language/module-code | 114 | 198 | 36.5% | Medium |
 | language/eval-code | 224 | 106 | 67.9% | Low (P5 done) |
-| built-ins/String | 1,099 | 96 | 92.0% | Low |
+| built-ins/String | 1,137 | 58 | 95.1% | ✅ Done (P18) |
 | language/literals | 231 | 88 | 72.4% | Medium |
 | language/import | 7 | 86 | 7.5% | Medium |
 | annexB/built-ins | 147 | 73 | 66.8% | Low (--annex-b) |
 | built-ins/Function | 340 | 71 | 82.7% | Medium |
-| built-ins/Number | 280 | 55 | 83.6% | Easy |
+| built-ins/Number | 287 | 48 | 85.7% | Medium |
 | language/identifiers | 154 | 53 | 74.4% | Medium |
-| built-ins/TypedArrayConstructors | 339 | 20 | 94.4% | ✅ Done (P17) |
+| built-ins/TypedArrayConstructors | 342 | 17 | 95.3% | ✅ Done (P17-18) |
 | built-ins/DataView | 353 | 35 | 91.0% | ✅ Done (P16) |
 | built-ins/WeakMap | 51 | 31 | 62.2% | Medium |
 | built-ins/Map | 152 | 29 | 84.0% | Medium |
@@ -110,14 +112,14 @@ Top failing categories from the full test262 run (2026-02-14):
 | built-ins/encodeURIComponent | 29 | 2 | 93.5% |
 | built-ins/encodeURI | 29 | 2 | 93.5% |
 | language/asi | 95 | 7 | 93.1% |
-| built-ins/Object | 3,126 | 247 | 92.7% |
+| built-ins/Object | 3,234 | 139 | 95.9% |
+| built-ins/String | 1,137 | 58 | 95.1% |
+| built-ins/TypedArrayConstructors | 342 | 17 | 95.3% |
 | language/reserved-words | 25 | 2 | 92.6% |
-| built-ins/String | 1,099 | 96 | 92.0% |
 | built-ins/DataView | 353 | 35 | 91.0% |
 | language/rest-parameters | 10 | 1 | 90.9% |
 | built-ins/ArrayBuffer | 73 | 8 | 90.1% |
-| built-ins/TypedArrayConstructors | 339 | 20 | 94.4% |
-| built-ins/TypedArray | 721 | 56 | 92.8% |
+| built-ins/TypedArray | 726 | 51 | 93.4% |
 | language/computed-property-names | 45 | 3 | 93.8% |
 
 ---
@@ -574,32 +576,63 @@ Created `%TypedArray%` intrinsic constructor and established proper prototype ch
 
 ---
 
+### 18: Boxed Primitives and TypedArray Constructor Name Fix (+162 tests) — DONE
+
+Implemented ES spec-compliant boxed primitive wrappers and fixed TypedArray constructor name inheritance regression:
+
+**Boxed Primitives** (`new String/Number/Boolean`):
+- **String constructor**: When called with `new`, returns Object with `[[StringData]]` internal slot, indexed character properties, and `length`. Without `new`, returns primitive string (type coercion)
+- **Number constructor**: When called with `new`, returns Object with `[[NumberData]]` internal slot. Without `new`, returns primitive number
+- **Boolean constructor**: When called with `new`, returns Object with `[[BooleanData]]` internal slot. Without `new`, returns primitive boolean
+- **`Object()` ToObject wrapping**: `Object("hello")` wraps to boxed String, `Object(42)` to boxed Number, `Object(true)` to boxed Boolean, `Object(Symbol())` to boxed Symbol
+- **Prototype storage**: `[[StringPrototype]]`, `[[NumberPrototype]]`, `[[BooleanPrototype]]` stored as builtins for cross-module access
+- **ToPrimitive coercion**: `loose_equal` updated to unwrap boxed primitives (`[[NumberData]]`/`[[BooleanData]]`/`[[StringData]]`) for `==` comparisons
+- **`to_number` extraction**: Boxed Number/Boolean/String objects unwrap to their primitive values during numeric coercion
+- **`Show` for Value**: Boxed primitives display their underlying primitive value (not `[object String]`)
+- **`Boolean.prototype.valueOf/toString`**: Handle boxed Boolean objects (check `class_name == "Boolean"`, extract `[[BooleanData]]`)
+- **`this_to_string`**: Updated to use `[[StringData]]` internal slot for String prototype methods
+
+**TypedArray Constructor Name Fix**:
+- Phase 17 set each constructor's `[[Prototype]]` to `%TypedArray%`, which caused `Int8Array.name` to resolve to `"TypedArray"` via prototype chain walk
+- Fix: Added own `name` and `length` properties (with correct descriptors: non-writable, non-enumerable, configurable) to each typed array constructor's `ctor_props`
+- This prevents prototype chain inheritance of the `%TypedArray%` constructor's name
+
+**Test262 Results (targeted verification)**:
+
+| Category | Before | After | Rate |
+|----------|--------|-------|------|
+| built-ins/Object | 3,126/3,373 | 3,234/3,373 | **95.9%** (+108) |
+| built-ins/String | 1,099/1,195 | 1,137/1,195 | **95.1%** (+38) |
+| built-ins/Number | 280/335 | 287/335 | **85.7%** (+7) |
+| built-ins/TypedArray | 721/777 | 726/777 | **93.4%** (+5) |
+| built-ins/TypedArrayConstructors | 339/359 | 342/359 | **95.3%** (+3) |
+| built-ins/Boolean | 41/49 | 42/49 | **85.7%** (+1) |
+
+**Overall**: ~23,335 → ~23,500 passing (+162 targeted), **~85.5%** pass rate (was 84.9%)
+
+**Unit tests**: 881 total, 881 passed, 0 failed
+
+---
+
 ## Recommended Next Steps for Conformance
 
 Prioritized by estimated test impact and implementation effort. These are the highest-ROI items for pushing past 85% test262 pass rate.
 
 | Priority | Feature | Est. Impact | Effort | Notes |
 |----------|---------|-------------|--------|-------|
-| **1** | Boxed primitives (`new String()`, `new Number()`, `new Boolean()`) | ~100+ tests | Medium | Not represented as Object internally; affects Proxy, typeof, and coercion tests across many categories |
-| **2** | RegExp `y` (sticky) and `u` (unicode) flags | ~222 tests | High | Only `g`, `i`, `m` flags currently supported; unblocks a large portion of `built-ins/RegExp` failures |
-| **3** | Iterator/Generator protocol compliance | ~35+ tests | Medium | GeneratorFunction (9.5%), GeneratorPrototype (73.8%), MapIteratorPrototype (27.3%), SetIteratorPrototype (27.3%) |
-| **4** | WeakMap / WeakSet | ~57 tests | Low-Medium | No dedicated Value variant; can implement with standard Map/Set semantics (true weak references not possible in this runtime) |
-| **5** | `with` statement | ~151 tests | Medium | Behind `--annex-b` flag; requires object environment record and dynamic scope injection |
-| **6** | Class public fields | ~723 skipped | Medium | `class C { x = 1; static y = 2; }` syntax; currently skipped in test262 |
-| **7** | Class private fields/methods | ~2,437 skipped | High | `#private` syntax across fields, methods, static members; large test surface but complex implementation |
-| **8** | async/await | ~500+ tests | Medium | Syntactic sugar over Promises + generator-like suspension; unblocked by generator implementation |
+| **1** | RegExp `y` (sticky) and `u` (unicode) flags | ~222 tests | High | Only `g`, `i`, `m` flags currently supported; unblocks a large portion of `built-ins/RegExp` failures |
+| **2** | Iterator/Generator protocol compliance | ~35+ tests | Medium | GeneratorFunction (9.5%), GeneratorPrototype (73.8%), MapIteratorPrototype (27.3%), SetIteratorPrototype (27.3%) |
+| **3** | WeakMap / WeakSet | ~57 tests | Low-Medium | No dedicated Value variant; can implement with standard Map/Set semantics (true weak references not possible in this runtime) |
+| **4** | `with` statement | ~151 tests | Medium | Behind `--annex-b` flag; requires object environment record and dynamic scope injection |
+| **5** | Class public fields | ~723 skipped | Medium | `class C { x = 1; static y = 2; }` syntax; currently skipped in test262 |
+| **6** | Class private fields/methods | ~2,437 skipped | High | `#private` syntax across fields, methods, static members; large test surface but complex implementation |
+| **7** | async/await | ~500+ tests | Medium | Syntactic sugar over Promises + generator-like suspension; unblocked by generator implementation |
 
-### Boxed Primitives (Priority 1)
+### Boxed Primitives — ✅ DONE (Phase 18)
 
-**Problem**: `new String("hello")`, `new Number(42)`, `new Boolean(true)` should produce Object wrappers with `typeof` returning `"object"`. Currently these are stored as plain `String_`/`Number`/`Bool` values, failing ~100+ tests across:
-- `built-ins/Proxy` (10 tests: boxed primitive as Proxy target)
-- `language/expressions/typeof` (wrapper type checks)
-- `built-ins/Object` (coercion and descriptor tests)
-- Various `built-ins/String` and `built-ins/Number` tests expecting Object behavior
+Implemented `new String()`, `new Number()`, `new Boolean()` as Object wrappers with internal slots (`[[StringData]]`, `[[NumberData]]`, `[[BooleanData]]`). `Object()` performs ToObject wrapping. ToPrimitive coercion in `loose_equal`. Prototype methods updated for boxed values. TypedArray constructor name inheritance regression fixed. Key gains: Object +108, String +38, Number +7, TypedArray +5, TypedArrayConstructors +3, Boolean +1.
 
-**Approach**: Add `BoxedString`/`BoxedNumber`/`BoxedBoolean` handling in Object value or track wrapper state via `class_name` on ObjectData. Ensure `typeof` returns `"object"`, `instanceof` works, and methods delegate to primitive prototype.
-
-### RegExp Sticky/Unicode Flags (Priority 2)
+### RegExp Sticky/Unicode Flags (Priority 1)
 
 **Problem**: `built-ins/RegExp` has 222 failures. Many require `y` (sticky) flag support (match only at `lastIndex`) and `u` (unicode) flag (full Unicode code point matching, stricter escape validation).
 
@@ -624,7 +657,7 @@ Syntactic sugar over Promises + generator-like suspension. Now unblocked by gene
 | Feature | Impact | Notes |
 |---------|--------|-------|
 | TypedArray prototype chain | — | ✅ Done (Phase 17) — TypedArray 721/777 (92.8%), TypedArrayConstructors 339/359 (94.4%) |
-| Boxed primitives | ~100+ fail | `new String()`, `new Number()`, `new Boolean()` — not yet represented as Object |
+| Boxed primitives | — | ✅ Done (Phase 18) — Object 3,234/3,373 (95.9%), String 1,137/1,195 (95.1%), Number 287/335 (85.7%) |
 | RegExp improvements | ~222 fail | Sticky (`y`) and unicode (`u`) flags, capture groups, backreferences |
 | WeakMap/WeakSet | ~57 fail | Reference-based collections; implement with standard Map/Set semantics |
 | Class public fields | ~723 skip | `class C { x = 1; static y = 2; }` field declarations |

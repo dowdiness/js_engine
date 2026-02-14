@@ -3049,7 +3049,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         NativeCallable("Object", fn(args) {
           let val = if args.length() > 0 { args[0] } else { Undefined }
           match val {
-            Object(_) => val
+            Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) =>
+              val
             Undefined | Null =>
               Object({
                 properties: {},
@@ -3061,7 +3062,92 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 symbol_descriptors: {},
                 extensible: true,
               })
-            _ => val
+            String_(s) => {
+              // ToObject: wrap string as boxed String object
+              let string_proto = env.get("[[StringPrototype]]") catch {
+                _ => Null
+              }
+              let props : Map[String, Value] = {}
+              props["[[StringData]]"] = String_(s)
+              props["length"] = Number(s.length().to_double())
+              for i = 0; i < s.length(); i = i + 1 {
+                props[i.to_string()] = String_(
+                  s.substring(start=i, end=i + 1),
+                )
+              }
+              let descs : Map[String, PropDescriptor] = {}
+              descs["length"] = {
+                writable: false,
+                enumerable: false,
+                configurable: false,
+                getter: None,
+                setter: None,
+              }
+              for i = 0; i < s.length(); i = i + 1 {
+                descs[i.to_string()] = {
+                  writable: false,
+                  enumerable: true,
+                  configurable: false,
+                  getter: None,
+                  setter: None,
+                }
+              }
+              Object({
+                properties: props,
+                symbol_properties: {},
+                prototype: string_proto,
+                callable: None,
+                class_name: "String",
+                descriptors: descs,
+                symbol_descriptors: {},
+                extensible: true,
+              })
+            }
+            Number(n) => {
+              // ToObject: wrap number as boxed Number object
+              let number_proto = env.get("[[NumberPrototype]]") catch {
+                _ => Null
+              }
+              Object({
+                properties: { "[[NumberData]]": Number(n) },
+                symbol_properties: {},
+                prototype: number_proto,
+                callable: None,
+                class_name: "Number",
+                descriptors: {},
+                symbol_descriptors: {},
+                extensible: true,
+              })
+            }
+            Bool(b) => {
+              // ToObject: wrap boolean as boxed Boolean object
+              let boolean_proto = env.get("[[BooleanPrototype]]") catch {
+                _ => Null
+              }
+              Object({
+                properties: { "[[BooleanData]]": Bool(b) },
+                symbol_properties: {},
+                prototype: boolean_proto,
+                callable: None,
+                class_name: "Boolean",
+                descriptors: {},
+                symbol_descriptors: {},
+                extensible: true,
+              })
+            }
+            Symbol(_) => {
+              // ToObject: wrap symbol as boxed Symbol object
+              Object({
+                properties: { "[[SymbolData]]": val },
+                symbol_properties: {},
+                prototype: obj_proto,
+                callable: None,
+                class_name: "Symbol",
+                descriptors: {},
+                symbol_descriptors: {},
+                extensible: true,
+              })
+            }
           }
         }),
       ),

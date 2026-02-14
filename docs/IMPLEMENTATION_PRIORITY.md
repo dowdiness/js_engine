@@ -2,11 +2,11 @@
 
 ## Current Status
 
-- **Pass rate**: **84.9%** (~23,335 / 27,491 executed) — post-Phase 17 2026-02-14
+- **Pass rate**: **~85.5%** (~23,500 / 27,491 executed) — post-Phase 18 2026-02-14
 - **Skipped**: 20,497 (feature-flagged)
-- **Failed**: 4,479
+- **Failed**: ~4,317
 - **Timeouts**: 156
-- **Unit tests**: 878 total, 878 passed, 0 failed
+- **Unit tests**: 881 total, 881 passed, 0 failed
 
 Note: This document is a phase-planning snapshot. For latest live totals, targeted slices, and recommended next steps, see [ROADMAP.md](../ROADMAP.md).
 
@@ -183,12 +183,12 @@ The actual gain from P0–P3 (+7,439) far exceeded the projected range (+1,500�
 | **P9** | **Proxy/Reflect** | **+877** | **83.16%** |
 | **P10** | **TypedArray/ArrayBuffer/DataView** | **+2,142** | **83.7%** |
 | **P11** | **TypedArray prototype chain** | **+323** | **84.9%** |
+| **P12** | **Boxed primitives + TypedArray name fix** | **+162** | **~85.5%** |
 
 ### Projected Next Phases
 
 | Phase | Content | Est. New Tests | Notes |
 |-------|---------|---------------|-------|
-| P12 | Boxed primitives | ~100+ | Medium effort, cross-cutting impact |
 | P13 | RegExp sticky/unicode flags | ~222 | High effort, unlocks RegExp category |
 | P14 | Iterator/Generator protocol | ~35+ | Medium effort, multiple iterator categories |
 | P15 | WeakMap/WeakSet | ~57 | Low-medium effort |
@@ -239,11 +239,10 @@ These are feature-flagged as skipped but required for ES2015 compliance:
 
 See [ROADMAP.md](../ROADMAP.md) for the full prioritized list. Top items by ROI:
 
-1. **Boxed primitives** (`new String()`, `new Number()`, `new Boolean()`) — ~100+ tests, medium effort
-2. **RegExp sticky/unicode flags** — ~222 tests, high effort
-3. **Iterator/Generator protocol compliance** — ~35+ tests, medium effort. GeneratorFunction (9.5%), iterator prototypes (27.3%)
-4. **WeakMap/WeakSet** — ~57 tests, low-medium effort
-6. **`with` statement** (behind `--annex-b`) — ~151 tests, medium effort
+1. **RegExp sticky/unicode flags** — ~222 tests, high effort
+2. **Iterator/Generator protocol compliance** — ~35+ tests, medium effort. GeneratorFunction (9.5%), iterator prototypes (27.3%)
+3. **WeakMap/WeakSet** — ~57 tests, low-medium effort
+4. **`with` statement** (behind `--annex-b`) — ~151 tests, medium effort
 7. **Class public fields** — ~723 skipped tests, medium effort
 8. **Class private fields/methods** — ~2,437 skipped tests, high effort
 9. **async/await** — ~500+ tests, medium effort

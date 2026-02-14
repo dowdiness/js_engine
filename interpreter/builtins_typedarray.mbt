@@ -2198,6 +2198,8 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     let ctor_props : Map[String, Value] = {}
     ctor_props["prototype"] = per_proto
     ctor_props["BYTES_PER_ELEMENT"] = Number(bpe.to_double())
+    ctor_props["name"] = String_(type_name)
+    ctor_props["length"] = Number(3.0) // TypedArray constructors have length 3
 
     // Static from(source [, mapFn [, thisArg]])
     ctor_props["from"] = Object({
@@ -2317,6 +2319,20 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
       writable: false,
       enumerable: false,
       configurable: false,
+      getter: None,
+      setter: None,
+    }
+    ctor_descs["name"] = {
+      writable: false,
+      enumerable: false,
+      configurable: true,
+      getter: None,
+      setter: None,
+    }
+    ctor_descs["length"] = {
+      writable: false,
+      enumerable: false,
+      configurable: true,
       getter: None,
       setter: None,
     }
