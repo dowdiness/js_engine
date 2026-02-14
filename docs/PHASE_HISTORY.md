@@ -1,6 +1,6 @@
 # Phase Implementation History (Archive)
 
-Detailed implementation notes for completed phases (1-15). For current status and future plans, see [ROADMAP.md](../ROADMAP.md).
+Detailed implementation notes for completed phases (1-16). For current status and future plans, see [ROADMAP.md](../ROADMAP.md).
 
 ---
 
@@ -766,3 +766,127 @@ These require larger refactoring (e.g., `NativeCallable` → `InterpreterCallabl
 - `js_engine_test.mbt` — Proxy/Reflect regression tests
 
 **Unit tests**: 799 total (+36), 799 passed, 0 failed
+
+---
+
+## Phase 16: TypedArray, ArrayBuffer, and DataView (pending test262 re-run)
+
+Full TypedArray/ArrayBuffer/DataView implementation with 9 typed array types, DataView with all getter/setter methods, and ArrayBuffer with slice/detach support. ~3,724 lines of new builtin code across 3 new files.
+
+### ArrayBuffer Implementation (builtins_arraybuffer.mbt, ~400 lines)
+
+- **Constructor**: `new ArrayBuffer(byteLength)` with non-negative length validation, `requires new` check
+- **`ArrayBuffer.isView(arg)`**: Returns `true` for TypedArray and DataView instances
+- **`ArrayBuffer.prototype.slice(begin, end)`**: Creates new buffer with byte range copy; throws TypeError if detached
+- **`ArrayBuffer.prototype.byteLength`**: Getter that throws TypeError on detached buffer
+- **Detachment tracking**: Global `Set[Int]` of detached buffer IDs. `detach_arraybuffer(id)` marks detached, `is_arraybuffer_detached(id)` queries state
+- **`$262.detachArrayBuffer(buf)`**: Full implementation replacing the previous no-op stub; enables test262 detachment tests
+- **Buffer validation helper**: `validate_typedarray_buffer(data)` throws TypeError on detached buffer; used by all TypedArray iteration methods
+
+### TypedArray Implementation (builtins_typedarray.mbt, ~2,414 lines)
+
+**9 typed array types**:
+- `Int8Array` (1 byte, signed -128..127)
+- `Uint8Array` (1 byte, unsigned 0..255)
+- `Uint8ClampedArray` (1 byte, clamped 0..255)
+- `Int16Array` (2 bytes, signed)
+- `Uint16Array` (2 bytes, unsigned)
+- `Int32Array` (4 bytes, signed)
+- `Uint32Array` (4 bytes, unsigned)
+- `Float32Array` (4 bytes, IEEE 754 single precision)
+- `Float64Array` (8 bytes, IEEE 754 double precision)
+
+**Constructors** (4 paths):
+1. From length: `new Uint8Array(10)` — allocates new buffer
+2. From array/iterable: `new Uint8Array([1, 2, 3])` — copies element values
+3. From another TypedArray: `new Int32Array(uint8)` — type conversion copy
+4. From ArrayBuffer: `new Uint8Array(buf, offset, length)` — view over existing buffer
+   - Rejects detached ArrayBuffer (TypeError)
+   - Validates byteOffset alignment and non-negative value (RangeError)
+   - Validates length bounds against buffer size
+
+**Prototype methods** (25 methods):
+- Mutation: `set`, `copyWithin`, `fill`, `reverse`, `sort`
+- Slicing: `subarray`, `slice`
+- Search: `indexOf`, `lastIndexOf`, `includes`
+- Iteration: `forEach`, `map`, `filter`, `reduce`, `reduceRight`, `every`, `some`, `find`, `findIndex`
+- Conversion: `join`, `toString`, `at`
+- `sort` supports custom comparator function, NaN-sorts-last per spec
+
+**Static methods**:
+- `TypedArray.from(source, mapFn?, thisArg?)` — creates from array-like/iterable with optional mapping
+- `TypedArray.of(...items)` — creates from arguments
+
+**Iterators**:
+- `entries()`, `keys()`, `values()`, `Symbol.iterator` — all with buffer detachment checks per iteration step
+
+**Properties**:
+- `buffer`, `byteLength`, `byteOffset`, `length` (instance)
+- `BYTES_PER_ELEMENT` (instance and constructor)
+- `Symbol.toStringTag` (returns type name)
+
+**Buffer detachment validation**:
+- All 9 iteration methods (forEach, map, filter, reduce, reduceRight, every, some, find, findIndex) call `validate_typedarray_buffer()` at entry
+- Iterator `next()` re-validates detachment per spec
+
+### DataView Implementation (builtins_dataview.mbt, ~910 lines)
+
+- **Constructor**: `new DataView(buffer, byteOffset?, byteLength?)` with full validation (requires ArrayBuffer, rejects detached, validates offset/length bounds)
+- **8 getter methods**: `getInt8`, `getUint8`, `getInt16`, `getUint16`, `getInt32`, `getUint32`, `getFloat32`, `getFloat64` — all with byte offset bounds checking and optional littleEndian parameter
+- **8 setter methods**: `setInt8`, `setUint8`, `setInt16`, `setUint16`, `setInt32`, `setUint32`, `setFloat32`, `setFloat64` — matching getter signatures
+- **Receiver brand check**: `validate_dataview_access()` verifies `this.class_name == "DataView"` to prevent TypedArray objects from calling DataView methods
+- **Properties**: `buffer`, `byteLength`, `byteOffset`, `Symbol.toStringTag`
+
+### Interpreter Integration
+
+- **`Object.prototype.toString`**: New `get_tostringtag_value(data)` function walks prototype chain, checks `Symbol.toStringTag` in symbol descriptors, evaluates getter descriptors. Returns correct `[object Uint8Array]` etc.
+- **Indexed property access**: 3 sites in `interpreter.mbt` handle TypedArray indexed get/set with canonical numeric index string validation per spec
+- **`"-0"` fix**: Removed `"-0"` short-circuit from all 3 property access sites. Per spec, `ToString(ToNumber("-0"))` yields `"0"`, so `"-0"` is NOT a canonical numeric index string and falls through to ordinary property access
+- **`for-in` enumeration**: `collect_for_in_keys` enumerates numeric indices `"0"` through `"length-1"`, skips internal `[[...]]` slots
+
+### Float32 Implementation Details
+
+- **Read**: Reconstructs IEEE 754 bits using `Int64` arithmetic to avoid `Int32` overflow for high byte >= 128. Extracts sign, exponent, mantissa, handles denormals, infinity, and NaN
+- **Write**: Encodes double to 4-byte IEEE 754 single-precision format via sign/exponent/mantissa extraction, normalization loop, denormal encoding, and infinity/NaN special cases
+
+### PR Review Fixes (PR #34)
+
+6 commits addressing 19 review comments from coderabbitai[bot] and chatgpt-codex-connector[bot]:
+
+**Commit 1** (`17b7aff`, 7 issues): Sort comparator support + NaN handling, TypedArray.from mapFn argument, DataView receiver brand check, canonical numeric index validation improvement
+
+**Commit 2** (`091fc75`): Enabled test262 tests — removed ArrayBuffer, DataView, TypedArray, Uint8Array from skip lists. Fixed `$262.detachArrayBuffer()` implementation
+
+**Commit 3** (`922422d`, 4 issues): Int32 overflow fix for Float32Array reads (use Int64 arithmetic), denormalized float32 encoding off-by-one fix, added missing forEach/map/filter/reduce/reduceRight to prototype, fallback `buf_id = 0` → `-1` sentinel. Also eliminated all deprecated syntax warnings
+
+**Commit 4** (`7738a52`, 3 issues): Iterator detachment checks per next() call, test snapshot regeneration, `get_tostringtag_value` non-string short-circuit and getter type support
+
+**Commit 5** (`fa76e81`, 2 issues): Buffer detachment validation in all 9 iteration methods (forEach, map, filter, reduce, reduceRight, every, some, find, findIndex), `"-0"` canonical numeric index fix across 3 sites
+
+### Test262 Results
+
+Pending full re-run (test262 directory not available in current environment). ~2,400 tests previously skipped for ArrayBuffer/DataView/TypedArray/Uint8Array features are now enabled for execution.
+
+Previous baseline (pre-Phase 16):
+| Category | Pass | Fail | Skip | Rate |
+|----------|------|------|------|------|
+| built-ins/ArrayBuffer | 10 | 51 | 135 | 16.4% |
+| built-ins/DataView | 7 | 304 | 250 | 2.3% |
+| built-ins/TypedArray | 0 | 9 | 1,429 | 0.0% |
+| built-ins/TypedArrayConstructors | 0 | 0 | 736 | N/A |
+| built-ins/Uint8Array | 0 | 0 | 68 | N/A |
+
+### Files Changed
+
+- `interpreter/builtins_arraybuffer.mbt` (~400 lines, new file) — ArrayBuffer constructor, prototype methods, detachment tracking, buffer validation helper
+- `interpreter/builtins_typedarray.mbt` (~2,414 lines, new file) — 9 TypedArray types, constructors, 25 prototype methods, static methods, iterators
+- `interpreter/builtins_dataview.mbt` (~910 lines, new file) — DataView constructor, 16 getter/setter methods, brand check
+- `interpreter/interpreter.mbt` (+109 lines) — TypedArray indexed access (get/set), canonical numeric index, for-in enumeration, `-0` fix
+- `interpreter/value.mbt` (+54 lines) — `get_tostringtag_value()` for Symbol.toStringTag support
+- `interpreter/builtins.mbt` (+45/-7 lines) — Registration calls, `$262.detachArrayBuffer` implementation
+- `interpreter/builtins_object.mbt` (+7/-1 lines) — toString Symbol.toStringTag integration
+- `interpreter/interpreter_test.mbt` (+1,202/-1 lines) — 79 new tests
+- `test262-runner.py` (+6/-8 lines) — Removed TypedArray features from skip list
+- `test262-analyze.py` — Removed TypedArray features from skip list (updated in docs commit)
+
+**Unit tests**: 878 total (+79), 878 passed, 0 failed
