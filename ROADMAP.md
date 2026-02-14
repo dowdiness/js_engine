@@ -526,6 +526,44 @@ Full TypedArray/ArrayBuffer/DataView implementation (~3,724 lines of new builtin
 
 ---
 
+## Recommended Next Steps for Conformance
+
+Prioritized by estimated test impact and implementation effort. These are the highest-ROI items for pushing past 85% test262 pass rate.
+
+| Priority | Feature | Est. Impact | Effort | Notes |
+|----------|---------|-------------|--------|-------|
+| **1** | Boxed primitives (`new String()`, `new Number()`, `new Boolean()`) | ~100+ tests | Medium | Not represented as Object internally; affects Proxy, typeof, and coercion tests across many categories |
+| **2** | RegExp `y` (sticky) and `u` (unicode) flags | ~222 tests | High | Only `g`, `i`, `m` flags currently supported; unblocks a large portion of `built-ins/RegExp` failures |
+| **3** | WeakMap / WeakSet | ~57 tests | Low-Medium | No dedicated Value variant; can implement with standard Map/Set semantics (true weak references not possible in this runtime) |
+| **4** | `with` statement | ~151 tests | Medium | Behind `--annex-b` flag; requires object environment record and dynamic scope injection |
+| **5** | Class public fields | ~723 skipped | Medium | `class C { x = 1; static y = 2; }` syntax; currently skipped in test262 |
+| **6** | Class private fields/methods | ~2,437 skipped | High | `#private` syntax across fields, methods, static members; large test surface but complex implementation |
+| **7** | async/await | ~500+ tests | Medium | Syntactic sugar over Promises + generator-like suspension; unblocked by generator implementation |
+
+### Boxed Primitives (Priority 1)
+
+**Problem**: `new String("hello")`, `new Number(42)`, `new Boolean(true)` should produce Object wrappers with `typeof` returning `"object"`. Currently these are stored as plain `String_`/`Number`/`Bool` values, failing ~100+ tests across:
+- `built-ins/Proxy` (10 tests: boxed primitive as Proxy target)
+- `language/expressions/typeof` (wrapper type checks)
+- `built-ins/Object` (coercion and descriptor tests)
+- Various `built-ins/String` and `built-ins/Number` tests expecting Object behavior
+
+**Approach**: Add `BoxedString`/`BoxedNumber`/`BoxedBoolean` handling in Object value or track wrapper state via `class_name` on ObjectData. Ensure `typeof` returns `"object"`, `instanceof` works, and methods delegate to primitive prototype.
+
+### RegExp Sticky/Unicode Flags (Priority 2)
+
+**Problem**: `built-ins/RegExp` has 222 failures. Many require `y` (sticky) flag support (match only at `lastIndex`) and `u` (unicode) flag (full Unicode code point matching, stricter escape validation).
+
+**Approach**: Extend `make_regexp_object` to handle `y` and `u` flags. Sticky requires `lastIndex`-based anchoring. Unicode requires surrogate pair awareness in the regex matcher.
+
+### WeakMap / WeakSet (Priority 3)
+
+**Problem**: 57 tests failing, plus tests in `SKIP_FEATURES`. Currently no `WeakMap`/`WeakSet` Value variant.
+
+**Approach**: Implement as regular Map/Set (no true GC-based weakness in a tree-walking interpreter). Add constructors, `get`/`set`/`has`/`delete` for WeakMap, `add`/`has`/`delete` for WeakSet. Key restriction: only objects allowed as keys.
+
+---
+
 ## Phase 12+ Targets
 
 ### async/await (~500 tests)
@@ -536,10 +574,14 @@ Syntactic sugar over Promises + generator-like suspension. Now unblocked by gene
 
 | Feature | Impact | Notes |
 |---------|--------|-------|
-| RegExp improvements | ~222 fail | Capture groups, backreferences, unicode/sticky flags |
+| Boxed primitives | ~100+ fail | `new String()`, `new Number()`, `new Boolean()` — not yet represented as Object |
+| RegExp improvements | ~222 fail | Sticky (`y`) and unicode (`u`) flags, capture groups, backreferences |
+| WeakMap/WeakSet | ~57 fail | Reference-based collections; implement with standard Map/Set semantics |
+| Class public fields | ~723 skip | `class C { x = 1; static y = 2; }` field declarations |
+| Class private fields/methods | ~2,437 skip | `#private` syntax across fields, methods, static members |
+| async/await | ~500+ | Syntactic sugar over Promises; unblocked by generators |
 | Date object | — | ✅ Done (8C+9) — 560/583 pass (96.1%) |
 | eval() | — | ✅ Done (P5) — 224/330 pass (67.9%) |
-| WeakMap/WeakSet | ~57 fail | Reference-based collections |
 | Proxy/Reflect | — | ✅ Done (Phase 15) — Proxy 257/272 (94.5%), Reflect 152/153 (99.3%) |
 | Promise improvements | — | ✅ Done (Phase 13) — 614/618 pass (99.4%) |
 | TypedArray/ArrayBuffer/DataView | — | ✅ Done (Phase 16) — 9 types, full DataView, detach support |

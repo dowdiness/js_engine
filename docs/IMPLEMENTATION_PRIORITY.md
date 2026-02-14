@@ -2,12 +2,13 @@
 
 ## Current Status
 
-- **Pass rate**: 83.16% (21,747 / 26,150 executed)
-- **Skipped**: 21,837 (feature-flagged)
-- **Failed**: 4,403
-- **Timeouts**: 157
+- **Pass rate**: 83.16%+ (21,747+ passed, pending full re-run after Phase 16)
+- **Skipped**: ~19,400 (feature-flagged; ~2,400 TypedArray/ArrayBuffer/DataView tests un-skipped in Phase 16)
+- **Failed**: ~4,400 (pre-Phase 16 baseline)
+- **Timeouts**: ~157
+- **Unit tests**: 879 total, 879 passed, 0 failed
 
-Note: This document is a phase-planning snapshot. For latest live totals and targeted slices, see [ROADMAP.md](../ROADMAP.md).
+Note: This document is a phase-planning snapshot. For latest live totals, targeted slices, and recommended next steps, see [ROADMAP.md](../ROADMAP.md).
 
 ### Previous Baseline (Phase 8C)
 
@@ -171,16 +172,25 @@ The actual gain from P0–P3 (+7,439) far exceeded the projected range (+1,500�
 3. Destructuring defaults (P2) fixed patterns used pervasively in test262 harness code
 4. Parser cleanup (P3) fixed arrow function parameters that gated large test suites
 
-### Remaining Phases (Projected from P6 baseline)
+### Completed Phases (P5–P16)
 
-| Phase | Content | Est. New Tests | Cumulative Rate |
-|-------|---------|---------------|-----------------|
+| Phase | Content | Actual New Tests | Cumulative Rate |
+|-------|---------|-----------------|-----------------|
 | **P5** | **eval() semantics** | **+603** | **78.2%** |
 | **P6** | **Strict-mode prerequisites** | **+3** | **78.2%** |
 | **P7** | **Promise species + interpreter fixes** | **+1,080** | **82.4%** |
 | **P8** | **Small compliance sweep** | **+67** | **82.7%** |
 | **P9** | **Proxy/Reflect** | **+877** | **83.16%** |
-| Annex B | `--annex-b` gated features | +857 | TBD |
+| **P10** | **TypedArray/ArrayBuffer/DataView** | **TBD (pending re-run)** | **TBD** |
+
+### Projected Next Phases
+
+| Phase | Content | Est. New Tests | Notes |
+|-------|---------|---------------|-------|
+| P11 | Boxed primitives | ~100+ | Medium effort, cross-cutting impact |
+| P12 | RegExp sticky/unicode flags | ~222 | High effort, unlocks RegExp category |
+| P13 | WeakMap/WeakSet | ~57 | Low-medium effort |
+| Annex B | `--annex-b` gated features | ~857 | Low priority |
 
 ---
 
@@ -218,7 +228,19 @@ The actual gain from P0–P3 (+7,439) far exceeded the projected range (+1,500�
 ## Skipped Features Needed for ES2015 (future)
 
 These are feature-flagged as skipped but required for ES2015 compliance:
-- WeakMap/WeakSet (~147 executable tests)
+- WeakMap/WeakSet (~147 executable tests) — Not yet implemented
 - Proxy/Reflect — ✅ Done (Phase 15): Proxy 94.5% (257/272), Reflect 99.3% (152/153)
-- TypedArray/ArrayBuffer/DataView (~1,568+ tests)
+- TypedArray/ArrayBuffer/DataView — ✅ Done (Phase 16): 9 typed array types, full DataView, ArrayBuffer with detach
 - Tail call optimization (impractical for tree-walking interpreter)
+
+## Recommended Next Steps (Post-Phase 16)
+
+See [ROADMAP.md](../ROADMAP.md) for the full prioritized list. Top items by ROI:
+
+1. **Boxed primitives** (`new String()`, `new Number()`, `new Boolean()`) — ~100+ tests, medium effort
+2. **RegExp sticky/unicode flags** — ~222 tests, high effort
+3. **WeakMap/WeakSet** — ~57 tests, low-medium effort
+4. **`with` statement** (behind `--annex-b`) — ~151 tests, medium effort
+5. **Class public fields** — ~723 skipped tests, medium effort
+6. **Class private fields/methods** — ~2,437 skipped tests, high effort
+7. **async/await** — ~500+ tests, medium effort
