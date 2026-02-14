@@ -5987,9 +5987,7 @@ fn Interpreter::get_computed_property(
           }
           String_(s) => {
             // Canonical numeric index string check per spec
-            if s == "-0" {
-              return Undefined
-            }
+            // Note: "-0" is NOT canonical (ToString(ToNumber("-0")) === "0"), so it falls through
             try {
               let n = @strconv.parse_double(s)
               // If string converts to a number and back to same string, it's a canonical numeric index
@@ -6375,9 +6373,7 @@ fn Interpreter::set_property(
       // TypedArray indexed write via dot notation (numeric string prop)
       if is_typedarray_class(data.class_name) {
         // Canonical numeric index string check per spec
-        if prop == "-0" {
-          return value // -0 is a valid canonical numeric index but not a valid integer index
-        }
+        // Note: "-0" is NOT canonical (ToString(ToNumber("-0")) === "0"), so it falls through
         try {
           let n = @strconv.parse_double(prop)
           if n.to_string() == prop {
@@ -6663,9 +6659,7 @@ fn Interpreter::set_computed_property(
               }
               String_(s) => {
                 // Canonical numeric index string check per spec
-                if s == "-0" {
-                  return value
-                }
+                // Note: "-0" is NOT canonical (ToString(ToNumber("-0")) === "0"), so it falls through
                 try {
                   let n = @strconv.parse_double(s)
                   if n.to_string() == s {

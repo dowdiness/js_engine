@@ -1598,6 +1598,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
+              validate_typedarray_buffer(data)
               if args.length() == 0 {
                 raise @errors.TypeError(message="forEach requires a callback function")
               }
@@ -1636,6 +1637,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
+              validate_typedarray_buffer(data)
               if args.length() == 0 {
                 raise @errors.TypeError(message="map requires a callback function")
               }
@@ -1681,6 +1683,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
+              validate_typedarray_buffer(data)
               if args.length() == 0 {
                 raise @errors.TypeError(message="filter requires a callback function")
               }
@@ -1734,6 +1737,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
+              validate_typedarray_buffer(data)
               if args.length() == 0 {
                 raise @errors.TypeError(message="reduce requires a callback function")
               }
@@ -1782,6 +1786,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
+              validate_typedarray_buffer(data)
               if args.length() == 0 {
                 raise @errors.TypeError(message="reduceRight requires a callback function")
               }
@@ -1830,6 +1835,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
+              validate_typedarray_buffer(data)
               if args.length() == 0 {
                 raise @errors.TypeError(message="every requires a callback function")
               }
@@ -1871,6 +1877,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
+              validate_typedarray_buffer(data)
               if args.length() == 0 {
                 raise @errors.TypeError(message="some requires a callback function")
               }
@@ -1912,6 +1919,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
+              validate_typedarray_buffer(data)
               if args.length() == 0 {
                 raise @errors.TypeError(message="find requires a callback function")
               }
@@ -1953,6 +1961,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
+              validate_typedarray_buffer(data)
               if args.length() == 0 {
                 raise @errors.TypeError(message="findIndex requires a callback function")
               }

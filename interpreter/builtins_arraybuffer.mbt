@@ -373,6 +373,21 @@ pub fn is_typedarray_class(name : String) -> Bool {
 }
 
 ///|
+/// Validate that a TypedArray's underlying buffer is not detached.
+/// Throws TypeError if detached. Per spec, iteration methods must check this.
+pub fn validate_typedarray_buffer(data : ObjectData) -> Unit raise Error {
+  let buf_id = match data.properties.get("[[ArrayBufferID]]") {
+    Some(Number(n)) => n.to_int()
+    _ => -1
+  }
+  if buf_id >= 0 && is_arraybuffer_detached(buf_id) {
+    raise @errors.TypeError(
+      message="Cannot perform operation on a detached ArrayBuffer",
+    )
+  }
+}
+
+///|
 /// Get the bytes-per-element for a TypedArray type name.
 pub fn typed_array_bytes_per_element(name : String) -> Int {
   match name {
