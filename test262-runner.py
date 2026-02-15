@@ -65,7 +65,7 @@ SKIP_FEATURES = {
     "set-methods",
 
     # Collections
-    "WeakMap", "WeakSet", "WeakRef",
+    "WeakRef",
 
     # Typed arrays and buffers (partially supported)
     "SharedArrayBuffer", "Float16Array", "Atomics",

@@ -711,6 +711,9 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
   setup_arraybuffer_builtins(env)
   setup_typedarray_builtins(env)
   setup_dataview_builtins(env)
+
+  // Set up WeakMap and WeakSet
+  setup_weakmap_set_builtins(env)
 }
 
 ///|

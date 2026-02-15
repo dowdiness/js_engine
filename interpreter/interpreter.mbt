@@ -5740,10 +5740,16 @@ fn Interpreter::get_property(
       if prop == "length" {
         Number(data.elements.length().to_double())
       } else {
-        let result = get_array_method_with_interp(data, prop)
-        match result {
-          Undefined => lookup_builtin_proto(self, obj, "Array", prop, loc)
-          _ => result
+        // Check named properties side table first (e.g., index, input on exec results)
+        match get_array_named_prop(data, prop) {
+          Some(v) => v
+          None => {
+            let result = get_array_method_with_interp(data, prop)
+            match result {
+              Undefined => lookup_builtin_proto(self, obj, "Array", prop, loc)
+              _ => result
+            }
+          }
         }
       }
     String_(s) =>
@@ -5939,6 +5945,36 @@ fn Interpreter::get_computed_property(
                   _ => break
                 }
               }
+              // Boxed primitive objects: delegate Symbol.iterator to primitive
+              let iterator_sym = get_iterator_symbol()
+              if sym.id == iterator_sym.id {
+                if data.class_name == "String" {
+                  match data.properties.get("[[StringData]]") {
+                    Some(String_(s)) =>
+                      return Object({
+                        properties: {},
+                        symbol_properties: {},
+                        prototype: Null,
+                        callable: Some(
+                          MethodCallable(
+                            "[Symbol.iterator]",
+                            fn(_this_val, _args) {
+                              make_string_iterator_value(s)
+                            },
+                          ),
+                        ),
+                        class_name: "Function",
+                        descriptors: {},
+                        symbol_descriptors: {},
+                        extensible: true,
+                      })
+                    _ => ()
+                  }
+                } else if data.class_name == "Array" {
+                  // Shouldn't reach here for arrays normally, but fallback
+                  ()
+                }
+              }
               return Undefined
             }
           }
@@ -5995,6 +6031,42 @@ fn Interpreter::get_computed_property(
               symbol_descriptors: {},
               extensible: true,
             })
+          }
+          return Undefined
+        }
+        Map(_) => {
+          // Handle Symbol.iterator for Maps (delegates to entries)
+          let iterator_sym = get_iterator_symbol()
+          if sym.id == iterator_sym.id {
+            return get_map_method(
+              match obj {
+                Map(data) => data
+                _ => abort("unreachable")
+              },
+              "entries",
+            )
+          }
+          let tostringtag_sym = get_tostringtag_symbol()
+          if sym.id == tostringtag_sym.id {
+            return String_("Map")
+          }
+          return Undefined
+        }
+        Set(_) => {
+          // Handle Symbol.iterator for Sets (delegates to values)
+          let iterator_sym = get_iterator_symbol()
+          if sym.id == iterator_sym.id {
+            return get_set_method(
+              match obj {
+                Set(data) => data
+                _ => abort("unreachable")
+              },
+              "values",
+            )
+          }
+          let tostringtag_sym = get_tostringtag_symbol()
+          if sym.id == tostringtag_sym.id {
+            return String_("Set")
           }
           return Undefined
         }
@@ -6808,6 +6880,9 @@ fn Interpreter::set_computed_property(
             while data.elements.length() > n {
               let _ = data.elements.pop()
             }
+          } else {
+            // Store named properties in side table
+            set_array_named_prop(data, prop, value)
           }
           value
         }

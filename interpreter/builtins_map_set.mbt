@@ -328,6 +328,94 @@ fn setup_map_builtins(env : Environment) -> Unit {
     extensible: true,
   })
 
+  // Map.prototype.getOrInsert(key, value)
+  map_proto_props["getOrInsert"] = Object({
+    properties: {},
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      MethodCallable("getOrInsert", fn(this_val, args) raise {
+        match this_val {
+          Map(data) => {
+            let key = if args.length() > 0 { args[0] } else { Undefined }
+            let value = if args.length() > 1 { args[1] } else { Undefined }
+            // If key exists, return existing value
+            for i = 0; i < data.entries.length(); i = i + 1 {
+              let (k, v) = data.entries[i]
+              if same_value_zero(k, key) {
+                return v
+              }
+            }
+            // Key not found, insert and return value
+            data.entries.push((key, value))
+            value
+          }
+          _ =>
+            raise @errors.TypeError(
+              message="Method Map.prototype.getOrInsert called on incompatible receiver",
+            )
+        }
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+
+  // Map.prototype.getOrInsertComputed(key, callbackfn)
+  map_proto_props["getOrInsertComputed"] = Object({
+    properties: {},
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      InterpreterCallable(
+        "getOrInsertComputed",
+        fn(interp, this_val, args) raise {
+          match this_val {
+            Map(data) => {
+              let key = if args.length() > 0 { args[0] } else { Undefined }
+              let callbackfn = if args.length() > 1 {
+                args[1]
+              } else {
+                Undefined
+              }
+              // If key exists, return existing value without calling callback
+              for i = 0; i < data.entries.length(); i = i + 1 {
+                let (k, v) = data.entries[i]
+                if same_value_zero(k, key) {
+                  return v
+                }
+              }
+              // Key not found, call callback to get value
+              let loc = @token.Loc::default()
+              let value = interp.call_value(callbackfn, Undefined, [key], loc)
+              // Re-check if key was added by callback (mutation during callback)
+              for i = 0; i < data.entries.length(); i = i + 1 {
+                let (k, _) = data.entries[i]
+                if same_value_zero(k, key) {
+                  // Overwrite with computed value per spec
+                  data.entries[i] = (key, value)
+                  return value
+                }
+              }
+              data.entries.push((key, value))
+              value
+            }
+            _ =>
+              raise @errors.TypeError(
+                message="Method Map.prototype.getOrInsertComputed called on incompatible receiver",
+              )
+          }
+        },
+      ),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+
   // Create Map prototype
   let map_proto : Value = Object({
     properties: map_proto_props,
@@ -823,12 +911,96 @@ fn setup_set_builtins(env : Environment) -> Unit {
 }
 
 ///|
+/// Shared %MapIteratorPrototype% - lazily initialized
+let map_iterator_proto_ref : Ref[Value?] = { val: None }
+
+///|
+/// Get or create the shared %MapIteratorPrototype%
+fn get_map_iterator_proto() -> Value {
+  match map_iterator_proto_ref.val {
+    Some(proto) => proto
+    None => {
+      let iterator_sym = get_iterator_symbol()
+      let tostringtag_sym = get_tostringtag_symbol()
+      let proto_sym_props : Map[Int, Value] = {}
+      proto_sym_props[tostringtag_sym.id] = String_("Map Iterator")
+      let proto_props : Map[String, Value] = {}
+      let proto_sym_descs : Map[Int, PropDescriptor] = {}
+      proto_sym_descs[tostringtag_sym.id] = {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
+      // Add [Symbol.iterator] that returns the iterator itself
+      proto_sym_props[iterator_sym.id] = Object({
+        properties: {},
+        symbol_properties: {},
+        prototype: Null,
+        callable: Some(
+          MethodCallable("[Symbol.iterator]", fn(this_val, _args) { this_val }),
+        ),
+        class_name: "Function",
+        descriptors: {},
+        symbol_descriptors: {},
+        extensible: true,
+      })
+      // Add a placeholder next method with correct name/length on prototype
+      proto_props["next"] = Object({
+        properties: { "length": Number(0.0), "name": String_("next") },
+        symbol_properties: {},
+        prototype: Null,
+        callable: Some(
+          MethodCallable("next", fn(_this_val, _args) raise {
+            raise @errors.TypeError(
+              message="Map Iterator.prototype.next requires that |this| be a Map Iterator",
+            )
+          }),
+        ),
+        class_name: "Function",
+        descriptors: {
+          "length": {
+            writable: false,
+            enumerable: false,
+            configurable: true,
+            getter: None,
+            setter: None,
+          },
+          "name": {
+            writable: false,
+            enumerable: false,
+            configurable: true,
+            getter: None,
+            setter: None,
+          },
+        },
+        symbol_descriptors: {},
+        extensible: true,
+      })
+      let proto = Object({
+        properties: proto_props,
+        symbol_properties: proto_sym_props,
+        prototype: Null,
+        callable: None,
+        class_name: "Map Iterator",
+        descriptors: {},
+        symbol_descriptors: proto_sym_descs,
+        extensible: true,
+      })
+      map_iterator_proto_ref.val = Some(proto)
+      proto
+    }
+  }
+}
+
+///|
 /// Create a Map keys iterator
 fn make_map_keys_iterator(map_data : MapData) -> Value {
-  let iterator_sym = get_iterator_symbol()
+  let map_iter_proto = get_map_iterator_proto()
   let index_ref : Ref[Int] = { val: 0 }
   let next_method = Object({
-    properties: {},
+    properties: { "length": Number(0.0), "name": String_("next") },
     symbol_properties: {},
     prototype: Null,
     callable: Some(
@@ -868,50 +1040,46 @@ fn make_map_keys_iterator(map_data : MapData) -> Value {
       }),
     ),
     class_name: "Function",
-    descriptors: {},
+    descriptors: {
+      "length": {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      },
+      "name": {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      },
+    },
     symbol_descriptors: {},
     extensible: true,
   })
   let iter_props : Map[String, Value] = {}
   iter_props["next"] = next_method
-  let iter_obj = Object({
+  Object({
     properties: iter_props,
     symbol_properties: {},
-    prototype: Null,
+    prototype: map_iter_proto,
     callable: None,
     class_name: "Map Iterator",
     descriptors: {},
     symbol_descriptors: {},
     extensible: true,
   })
-
-  // Add [Symbol.iterator] that returns the iterator itself
-  match iter_obj {
-    Object(data) =>
-      data.symbol_properties[iterator_sym.id] = Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          MethodCallable("[Symbol.iterator]", fn(this_val, _args) { this_val }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      })
-    _ => ()
-  }
-  iter_obj
 }
 
 ///|
 /// Create a Map values iterator
 fn make_map_values_iterator(map_data : MapData) -> Value {
-  let iterator_sym = get_iterator_symbol()
+  let map_iter_proto = get_map_iterator_proto()
   let index_ref : Ref[Int] = { val: 0 }
   let next_method = Object({
-    properties: {},
+    properties: { "length": Number(0.0), "name": String_("next") },
     symbol_properties: {},
     prototype: Null,
     callable: Some(
@@ -951,50 +1119,46 @@ fn make_map_values_iterator(map_data : MapData) -> Value {
       }),
     ),
     class_name: "Function",
-    descriptors: {},
+    descriptors: {
+      "length": {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      },
+      "name": {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      },
+    },
     symbol_descriptors: {},
     extensible: true,
   })
   let iter_props : Map[String, Value] = {}
   iter_props["next"] = next_method
-  let iter_obj = Object({
+  Object({
     properties: iter_props,
     symbol_properties: {},
-    prototype: Null,
+    prototype: map_iter_proto,
     callable: None,
     class_name: "Map Iterator",
     descriptors: {},
     symbol_descriptors: {},
     extensible: true,
   })
-
-  // Add [Symbol.iterator] that returns the iterator itself
-  match iter_obj {
-    Object(data) =>
-      data.symbol_properties[iterator_sym.id] = Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          MethodCallable("[Symbol.iterator]", fn(this_val, _args) { this_val }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      })
-    _ => ()
-  }
-  iter_obj
 }
 
 ///|
 /// Create a Map entries iterator
 fn make_map_entries_iterator(map_data : MapData) -> Value {
-  let iterator_sym = get_iterator_symbol()
+  let map_iter_proto = get_map_iterator_proto()
   let index_ref : Ref[Int] = { val: 0 }
   let next_method = Object({
-    properties: {},
+    properties: { "length": Number(0.0), "name": String_("next") },
     symbol_properties: {},
     prototype: Null,
     callable: Some(
@@ -1036,27 +1200,63 @@ fn make_map_entries_iterator(map_data : MapData) -> Value {
       }),
     ),
     class_name: "Function",
-    descriptors: {},
+    descriptors: {
+      "length": {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      },
+      "name": {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      },
+    },
     symbol_descriptors: {},
     extensible: true,
   })
   let iter_props : Map[String, Value] = {}
   iter_props["next"] = next_method
-  let iter_obj = Object({
+  Object({
     properties: iter_props,
     symbol_properties: {},
-    prototype: Null,
+    prototype: map_iter_proto,
     callable: None,
     class_name: "Map Iterator",
     descriptors: {},
     symbol_descriptors: {},
     extensible: true,
   })
+}
 
-  // Add [Symbol.iterator] that returns the iterator itself
-  match iter_obj {
-    Object(data) =>
-      data.symbol_properties[iterator_sym.id] = Object({
+///|
+/// Shared %SetIteratorPrototype% - lazily initialized
+let set_iterator_proto_ref : Ref[Value?] = { val: None }
+
+///|
+/// Get or create the shared %SetIteratorPrototype%
+fn get_set_iterator_proto() -> Value {
+  match set_iterator_proto_ref.val {
+    Some(proto) => proto
+    None => {
+      let iterator_sym = get_iterator_symbol()
+      let tostringtag_sym = get_tostringtag_symbol()
+      let proto_sym_props : Map[Int, Value] = {}
+      proto_sym_props[tostringtag_sym.id] = String_("Set Iterator")
+      let proto_props : Map[String, Value] = {}
+      let proto_sym_descs : Map[Int, PropDescriptor] = {}
+      proto_sym_descs[tostringtag_sym.id] = {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
+      proto_sym_props[iterator_sym.id] = Object({
         properties: {},
         symbol_properties: {},
         prototype: Null,
@@ -1068,18 +1268,60 @@ fn make_map_entries_iterator(map_data : MapData) -> Value {
         symbol_descriptors: {},
         extensible: true,
       })
-    _ => ()
+      proto_props["next"] = Object({
+        properties: { "length": Number(0.0), "name": String_("next") },
+        symbol_properties: {},
+        prototype: Null,
+        callable: Some(
+          MethodCallable("next", fn(_this_val, _args) raise {
+            raise @errors.TypeError(
+              message="Set Iterator.prototype.next requires that |this| be a Set Iterator",
+            )
+          }),
+        ),
+        class_name: "Function",
+        descriptors: {
+          "length": {
+            writable: false,
+            enumerable: false,
+            configurable: true,
+            getter: None,
+            setter: None,
+          },
+          "name": {
+            writable: false,
+            enumerable: false,
+            configurable: true,
+            getter: None,
+            setter: None,
+          },
+        },
+        symbol_descriptors: {},
+        extensible: true,
+      })
+      let proto = Object({
+        properties: proto_props,
+        symbol_properties: proto_sym_props,
+        prototype: Null,
+        callable: None,
+        class_name: "Set Iterator",
+        descriptors: {},
+        symbol_descriptors: proto_sym_descs,
+        extensible: true,
+      })
+      set_iterator_proto_ref.val = Some(proto)
+      proto
+    }
   }
-  iter_obj
 }
 
 ///|
 /// Create a Set values iterator
 fn make_set_values_iterator(set_data : SetData) -> Value {
-  let iterator_sym = get_iterator_symbol()
+  let set_iter_proto = get_set_iterator_proto()
   let index_ref : Ref[Int] = { val: 0 }
   let next_method = Object({
-    properties: {},
+    properties: { "length": Number(0.0), "name": String_("next") },
     symbol_properties: {},
     prototype: Null,
     callable: Some(
@@ -1119,50 +1361,46 @@ fn make_set_values_iterator(set_data : SetData) -> Value {
       }),
     ),
     class_name: "Function",
-    descriptors: {},
+    descriptors: {
+      "length": {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      },
+      "name": {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      },
+    },
     symbol_descriptors: {},
     extensible: true,
   })
   let iter_props : Map[String, Value] = {}
   iter_props["next"] = next_method
-  let iter_obj = Object({
+  Object({
     properties: iter_props,
     symbol_properties: {},
-    prototype: Null,
+    prototype: set_iter_proto,
     callable: None,
     class_name: "Set Iterator",
     descriptors: {},
     symbol_descriptors: {},
     extensible: true,
   })
-
-  // Add [Symbol.iterator] that returns the iterator itself
-  match iter_obj {
-    Object(data) =>
-      data.symbol_properties[iterator_sym.id] = Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          MethodCallable("[Symbol.iterator]", fn(this_val, _args) { this_val }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      })
-    _ => ()
-  }
-  iter_obj
 }
 
 ///|
 /// Create a Set entries iterator (returns [value, value] pairs)
 fn make_set_entries_iterator(set_data : SetData) -> Value {
-  let iterator_sym = get_iterator_symbol()
+  let set_iter_proto = get_set_iterator_proto()
   let index_ref : Ref[Int] = { val: 0 }
   let next_method = Object({
-    properties: {},
+    properties: { "length": Number(0.0), "name": String_("next") },
     symbol_properties: {},
     prototype: Null,
     callable: Some(
@@ -1204,39 +1442,35 @@ fn make_set_entries_iterator(set_data : SetData) -> Value {
       }),
     ),
     class_name: "Function",
-    descriptors: {},
+    descriptors: {
+      "length": {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      },
+      "name": {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      },
+    },
     symbol_descriptors: {},
     extensible: true,
   })
   let iter_props : Map[String, Value] = {}
   iter_props["next"] = next_method
-  let iter_obj = Object({
+  Object({
     properties: iter_props,
     symbol_properties: {},
-    prototype: Null,
+    prototype: set_iter_proto,
     callable: None,
     class_name: "Set Iterator",
     descriptors: {},
     symbol_descriptors: {},
     extensible: true,
   })
-
-  // Add [Symbol.iterator] that returns the iterator itself
-  match iter_obj {
-    Object(data) =>
-      data.symbol_properties[iterator_sym.id] = Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          MethodCallable("[Symbol.iterator]", fn(this_val, _args) { this_val }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      })
-    _ => ()
-  }
-  iter_obj
 }

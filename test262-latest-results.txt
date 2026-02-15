@@ -1,166 +1,76 @@
-Verifying engine...
-Discovering tests in ./test262...
-Found 48145 test files
-Using 16 parallel worker(s) with 5s timeout per test
-  Progress: 500/48145 (41 tests/sec, ETA: 19.4m)
-  Progress: 1000/48145 (42 tests/sec, ETA: 18.6m)
-  Progress: 1500/48145 (40 tests/sec, ETA: 19.5m)
-  Progress: 2000/48145 (41 tests/sec, ETA: 19.0m)
-  Progress: 2500/48145 (41 tests/sec, ETA: 18.5m)
-  Progress: 3000/48145 (40 tests/sec, ETA: 19.0m)
-  Progress: 3500/48145 (40 tests/sec, ETA: 18.7m)
-  Progress: 4000/48145 (40 tests/sec, ETA: 18.5m)
-  Progress: 4500/48145 (42 tests/sec, ETA: 17.5m)
-  Progress: 5000/48145 (46 tests/sec, ETA: 15.7m)
-  Progress: 5500/48145 (47 tests/sec, ETA: 15.0m)
-  Progress: 6000/48145 (47 tests/sec, ETA: 15.0m)
-  Progress: 6500/48145 (48 tests/sec, ETA: 14.6m)
-  Progress: 7000/48145 (48 tests/sec, ETA: 14.4m)
-  Progress: 7500/48145 (50 tests/sec, ETA: 13.5m)
-  Progress: 8000/48145 (50 tests/sec, ETA: 13.4m)
-  Progress: 8500/48145 (49 tests/sec, ETA: 13.4m)
-  Progress: 9000/48145 (49 tests/sec, ETA: 13.4m)
-  Progress: 9500/48145 (48 tests/sec, ETA: 13.4m)
-  Progress: 10000/48145 (47 tests/sec, ETA: 13.4m)
-  Progress: 10500/48145 (47 tests/sec, ETA: 13.4m)
-  Progress: 11000/48145 (46 tests/sec, ETA: 13.4m)
-  Progress: 11500/48145 (46 tests/sec, ETA: 13.2m)
-  Progress: 12000/48145 (46 tests/sec, ETA: 13.1m)
-  Progress: 12500/48145 (46 tests/sec, ETA: 13.0m)
-  Progress: 13000/48145 (46 tests/sec, ETA: 12.8m)
-  Progress: 13500/48145 (46 tests/sec, ETA: 12.6m)
-  Progress: 14000/48145 (47 tests/sec, ETA: 12.2m)
-  Progress: 14500/48145 (48 tests/sec, ETA: 11.7m)
-  Progress: 15000/48145 (48 tests/sec, ETA: 11.5m)
-  Progress: 15500/48145 (49 tests/sec, ETA: 11.1m)
-  Progress: 16000/48145 (49 tests/sec, ETA: 10.9m)
-  Progress: 16500/48145 (49 tests/sec, ETA: 10.7m)
-  Progress: 17000/48145 (49 tests/sec, ETA: 10.6m)
-  Progress: 17500/48145 (50 tests/sec, ETA: 10.2m)
-  Progress: 18000/48145 (52 tests/sec, ETA: 9.7m)
-  Progress: 18500/48145 (53 tests/sec, ETA: 9.3m)
-  Progress: 19000/48145 (54 tests/sec, ETA: 8.9m)
-  Progress: 19500/48145 (56 tests/sec, ETA: 8.6m)
-  Progress: 20000/48145 (57 tests/sec, ETA: 8.2m)
-  Progress: 20500/48145 (58 tests/sec, ETA: 7.9m)
-  Progress: 21000/48145 (60 tests/sec, ETA: 7.6m)
-  Progress: 21500/48145 (61 tests/sec, ETA: 7.3m)
-  Progress: 22000/48145 (61 tests/sec, ETA: 7.1m)
-  Progress: 22500/48145 (61 tests/sec, ETA: 7.0m)
-  Progress: 23000/48145 (62 tests/sec, ETA: 6.8m)
-  Progress: 23500/48145 (62 tests/sec, ETA: 6.6m)
-  Progress: 24000/48145 (62 tests/sec, ETA: 6.5m)
-  Progress: 24500/48145 (61 tests/sec, ETA: 6.5m)
-  Progress: 25000/48145 (61 tests/sec, ETA: 6.3m)
-  Progress: 25500/48145 (61 tests/sec, ETA: 6.2m)
-  Progress: 26000/48145 (60 tests/sec, ETA: 6.1m)
-  Progress: 26500/48145 (59 tests/sec, ETA: 6.1m)
-  Progress: 27000/48145 (60 tests/sec, ETA: 5.9m)
-  Progress: 27500/48145 (61 tests/sec, ETA: 5.7m)
-  Progress: 28000/48145 (61 tests/sec, ETA: 5.5m)
-  Progress: 28500/48145 (61 tests/sec, ETA: 5.3m)
-  Progress: 29000/48145 (62 tests/sec, ETA: 5.1m)
-  Progress: 29500/48145 (62 tests/sec, ETA: 5.0m)
-  Progress: 30000/48145 (62 tests/sec, ETA: 4.9m)
-  Progress: 30500/48145 (63 tests/sec, ETA: 4.7m)
-  Progress: 31000/48145 (64 tests/sec, ETA: 4.5m)
-  Progress: 31500/48145 (64 tests/sec, ETA: 4.3m)
-  Progress: 32000/48145 (65 tests/sec, ETA: 4.2m)
-  Progress: 32500/48145 (64 tests/sec, ETA: 4.0m)
-  Progress: 33000/48145 (65 tests/sec, ETA: 3.9m)
-  Progress: 33500/48145 (66 tests/sec, ETA: 3.7m)
-  Progress: 34000/48145 (65 tests/sec, ETA: 3.6m)
-  Progress: 34500/48145 (65 tests/sec, ETA: 3.5m)
-  Progress: 35000/48145 (65 tests/sec, ETA: 3.4m)
-  Progress: 35500/48145 (65 tests/sec, ETA: 3.3m)
-  Progress: 36000/48145 (64 tests/sec, ETA: 3.1m)
-  Progress: 36500/48145 (64 tests/sec, ETA: 3.0m)
-  Progress: 37000/48145 (64 tests/sec, ETA: 2.9m)
-  Progress: 37500/48145 (64 tests/sec, ETA: 2.8m)
-  Progress: 38000/48145 (64 tests/sec, ETA: 2.6m)
-  Progress: 38500/48145 (65 tests/sec, ETA: 2.5m)
-  Progress: 39000/48145 (65 tests/sec, ETA: 2.3m)
-  Progress: 39500/48145 (66 tests/sec, ETA: 2.2m)
-  Progress: 40000/48145 (66 tests/sec, ETA: 2.1m)
-  Progress: 40500/48145 (66 tests/sec, ETA: 1.9m)
-  Progress: 41000/48145 (66 tests/sec, ETA: 1.8m)
-  Progress: 41500/48145 (67 tests/sec, ETA: 1.6m)
-  Progress: 42000/48145 (67 tests/sec, ETA: 1.5m)
-  Progress: 42500/48145 (67 tests/sec, ETA: 1.4m)
-  Progress: 43000/48145 (68 tests/sec, ETA: 1.3m)
-  Progress: 43500/48145 (68 tests/sec, ETA: 1.1m)
-  Progress: 44000/48145 (67 tests/sec, ETA: 1.0m)
-  Progress: 44500/48145 (68 tests/sec, ETA: 0.9m)
-  Progress: 45000/48145 (68 tests/sec, ETA: 0.8m)
-  Progress: 45500/48145 (69 tests/sec, ETA: 0.6m)
-  Progress: 46000/48145 (68 tests/sec, ETA: 0.5m)
-  Progress: 46500/48145 (67 tests/sec, ETA: 0.4m)
-  Progress: 47000/48145 (67 tests/sec, ETA: 0.3m)
-  Progress: 47500/48145 (67 tests/sec, ETA: 0.2m)
-  Progress: 48000/48145 (67 tests/sec, ETA: 0.0m)
-
-Completed in 724.8s
-
-========================================================================
   Test262 ECMAScript Conformance Report
   Engine: MoonBit JS Engine
-  Date: 2026-02-15 04:37:37
+  Date: 2026-02-15 05:52:10
 ========================================================================
 
   Total tests discovered: 48145
-  Skipped:               20497
-  Executed:              27486
-  Passed:                23537
-  Failed:                3949
+  Skipped:               20391
+  Executed:              27592
+  Passed:                23760
+  Failed:                3832
   Timeouts:              161
   Errors:                1
 
-  Pass rate:             85.6% (23537/27486)
+  Pass rate:             86.1% (23760/27592)
 
 ────────────────────────────────────────────────────────────────────────
   Category                                   Pass   Fail   Skip     Rate
 ────────────────────────────────────────────────────────────────────────
   annexB/built-ins                            147     73     21    66.8%
-  annexB/language                             312    505     28    38.2%
+  annexB/language                             313    504     28    38.3%
+  built-ins/AbstractModuleSource                0      0      8      N/A
   built-ins/AggregateError                     24      0      1   100.0%
   built-ins/Array                            2517    428    112    85.5%
   built-ins/ArrayBuffer                        73      5    115    93.6%
-  built-ins/ArrayIteratorPrototype             17     10      0    63.0%
+  built-ins/ArrayIteratorPrototype             19      8      0    70.4%
+  built-ins/AsyncDisposableStack                0      0     52      N/A
+  built-ins/AsyncFromSyncIteratorPrototype      0      0     38      N/A
   built-ins/AsyncFunction                       2     14      2    12.5%
   built-ins/AsyncGeneratorFunction              1      0     22   100.0%
+  built-ins/AsyncGeneratorPrototype             0      0     48      N/A
+  built-ins/AsyncIteratorPrototype              0      0     13      N/A
+  built-ins/Atomics                             1      5    376    16.7%
+  built-ins/BigInt                              1      0     76   100.0%
   built-ins/Boolean                            42      7      2    85.7%
   built-ins/DataView                          353     35    173    91.0%
   built-ins/Date                              560     23     11    96.1%
+  built-ins/DisposableStack                     0      0     91      N/A
   built-ins/Error                              43     11      4    79.6%
+  built-ins/FinalizationRegistry                0      0     47      N/A
   built-ins/Function                          342     69     98    83.2%
   built-ins/GeneratorFunction                   2     19      2     9.5%
   built-ins/GeneratorPrototype                 45     16      0    73.8%
   built-ins/Infinity                            5      1      0    83.3%
   built-ins/Iterator                            4      1    505    80.0%
   built-ins/JSON                              132      3     30    97.8%
-  built-ins/Map                               152     29     18    84.0%
-  built-ins/MapIteratorPrototype                3      8      0    27.3%
+  built-ins/Map                               179     15      5    92.3%
+  built-ins/MapIteratorPrototype               11      0      0   100.0%
   built-ins/Math                              317      5      5    98.4%
   built-ins/NaN                                 5      1      0    83.3%
   built-ins/NativeErrors                       88      0      6   100.0%
   built-ins/Number                            287     48      3    85.7%
-  built-ins/Object                           3234    139     38    95.9%
+  built-ins/Object                           3238    137     36    95.9%
   built-ins/Promise                           614      4     22    99.4%
   built-ins/Proxy                             262     10     39    96.3%
   built-ins/Reflect                           153      0      0   100.0%
-  built-ins/RegExp                            621    216   1035    74.2%
+  built-ins/RegExp                            647    190   1035    77.3%
   built-ins/RegExpStringIteratorPrototype       0     17      0     0.0%
-  built-ins/Set                               181      4    197    97.8%
-  built-ins/SetIteratorPrototype                3      8      0    27.3%
+  built-ins/Set                               188      4    190    97.9%
+  built-ins/SetIteratorPrototype               11      0      0   100.0%
+  built-ins/ShadowRealm                         0      0     64      N/A
+  built-ins/SharedArrayBuffer                   0      0    104      N/A
   built-ins/String                           1137     58     27    95.1%
-  built-ins/StringIteratorPrototype             5      2      0    71.4%
+  built-ins/StringIteratorPrototype             7      0      0   100.0%
+  built-ins/SuppressedError                     0      0     22      N/A
   built-ins/Symbol                             66      9     23    88.0%
+  built-ins/Temporal                            0      0   4482      N/A
   built-ins/ThrowTypeError                      0     13      1     0.0%
-  built-ins/TypedArray                        726     51    661    93.4%
+  built-ins/TypedArray                        714     63    661    91.9%
   built-ins/TypedArrayConstructors            342     17    376    95.3%
   built-ins/Uint8Array                         44     24      0    64.7%
-  built-ins/WeakMap                            51     31     59    62.2%
-  built-ins/WeakSet                            39     26     20    60.0%
+  built-ins/WeakMap                           139      0      2   100.0%
+  built-ins/WeakRef                             0      0     29      N/A
+  built-ins/WeakSet                            84      0      1   100.0%
   built-ins/decodeURI                          52      2      0    96.3%
   built-ins/decodeURIComponent                 53      2      0    96.4%
   built-ins/encodeURI                          29      2      0    93.5%
@@ -172,32 +82,20 @@ Completed in 724.8s
   built-ins/parseFloat                         53      1      0    98.1%
   built-ins/parseInt                           54      1      0    98.2%
   built-ins/undefined                           4      3      1    57.1%
-  language/arguments-object                   146      6    111    96.1%
-  language/asi                                 95      7      0    93.1%
-  language/block-scope                        106      0     39   100.0%
-  language/comments                            22      1     29    95.7%
-  language/computed-property-names             45      3      0    93.8%
-  language/destructuring                       15      3      1    83.3%
-  language/directive-prologue                  49     13      0    79.0%
-  language/eval-code                          224    106     17    67.9%
-  language/export                               0      3      0     0.0%
-  language/expressions                       4919    591   5467    89.3%
-  language/function-code                      166      7     44    96.0%
-  language/future-reserved-words               34      3     18    91.9%
-  language/global-code                         23     11      8    67.6%
-  language/identifier-resolution                6      6      2    50.0%
-  language/identifiers                        154     53     61    74.4%
-  language/import                               7     86     19     7.5%
-  language/keywords                            24      1      0    96.0%
-  language/line-terminators                    20     21      0    48.8%
-  language/literals                           231     88    215    72.4%
-  language/module-code                        114    198    280    36.5%
-  language/punctuators                         11      0      0   100.0%
-  language/reserved-words                      25      2      0    92.6%
-  language/rest-parameters                     10      1      0    90.9%
-  language/source-text                          1      0      0   100.0%
-  language/statementList                       64     16      0    80.0%
-  language/statements                        3488    727   5063    82.8%
-  language/types                               92     13      8    87.6%
-  language/white-space                         66      1      0    98.5%
-────────────────────────────────────────────────────────────────────────
+  harness/assert-false.js                       1      0      0   100.0%
+  harness/assert-notsamevalue-nan.js            1      0      0   100.0%
+  harness/assert-notsamevalue-notsame.js        1      0      0   100.0%
+  harness/assert-notsamevalue-objects.js        1      0      0   100.0%
+  harness/assert-notsamevalue-tostring.js       0      0      1      N/A
+  harness/assert-notsamevalue-zeros.js          1      0      0   100.0%
+  harness/assert-obj.js                         1      0      0   100.0%
+  harness/assert-samevalue-nan.js               1      0      0   100.0%
+  harness/assert-samevalue-objects.js           1      0      0   100.0%
+  harness/assert-samevalue-same.js              1      0      0   100.0%
+  harness/assert-samevalue-tostring.js          0      0      1      N/A
+  harness/assert-samevalue-zeros.js             1      0      0   100.0%
+  harness/assert-throws-custom-typeerror.js      1      0      0   100.0%
+  harness/assert-throws-custom.js               1      0      0   100.0%
+  harness/assert-throws-incorrect-ctor.js       1      0      0   100.0%
+  harness/assert-throws-native.js               1      0      0   100.0%
+  harness/assert-throws-no-arg.js               1      0      0   100.0%

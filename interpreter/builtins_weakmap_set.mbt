@@ -1,0 +1,943 @@
+///|
+/// WeakMap and WeakSet built-in implementations
+///
+/// Per ECMAScript spec, WeakMap/WeakSet:
+/// - Only accept objects (and symbols) as keys
+/// - Are not iterable (no forEach, keys, values, entries, Symbol.iterator)
+/// - Have no "size" property
+/// - In this interpreter, implemented with standard Map/Set semantics
+///   (true GC-based weakness is not possible in a tree-walking interpreter)
+
+///|
+/// Global counter for WeakMap instance IDs
+let weakmap_id_counter : Ref[Int] = { val: 0 }
+
+///|
+/// Global storage for WeakMap entries keyed by instance ID
+let weakmap_storage : Map[Int, Array[(Value, Value)]] = {}
+
+///|
+/// Global counter for WeakSet instance IDs
+let weakset_id_counter : Ref[Int] = { val: 0 }
+
+///|
+/// Global storage for WeakSet entries keyed by instance ID
+let weakset_storage : Map[Int, Array[Value]] = {}
+
+///|
+/// Global storage for WeakMap prototype
+let weakmap_prototype_ref : Ref[Value?] = { val: None }
+
+///|
+/// Global storage for WeakSet prototype
+let weakset_prototype_ref : Ref[Value?] = { val: None }
+
+///|
+/// Check if a value is a valid WeakMap/WeakSet key (must be an object or symbol)
+fn is_valid_weak_key(val : Value) -> Bool {
+  match val {
+    Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => true
+    Symbol(_) => true // ES2023: symbols are valid weak keys
+    _ => false
+  }
+}
+
+///|
+/// Get the WeakMap ID from an object's internal properties
+fn get_weakmap_id(data : ObjectData) -> Int? {
+  match data.properties.get("[[WeakMapId]]") {
+    Some(Number(n)) => Some(n.to_int())
+    _ => None
+  }
+}
+
+///|
+/// Get the WeakSet ID from an object's internal properties
+fn get_weakset_id(data : ObjectData) -> Int? {
+  match data.properties.get("[[WeakSetId]]") {
+    Some(Number(n)) => Some(n.to_int())
+    _ => None
+  }
+}
+
+///|
+/// Compare two values by reference identity (for weak collection key comparison)
+fn weak_key_equal(a : Value, b : Value) -> Bool {
+  match (a, b) {
+    (Object(a_data), Object(b_data)) => physical_equal(a_data, b_data)
+    (Array(a_data), Array(b_data)) => physical_equal(a_data, b_data)
+    (Map(a_data), Map(b_data)) => physical_equal(a_data, b_data)
+    (Set(a_data), Set(b_data)) => physical_equal(a_data, b_data)
+    (Promise(a_data), Promise(b_data)) => physical_equal(a_data, b_data)
+    (Proxy(a_data), Proxy(b_data)) => physical_equal(a_data, b_data)
+    (Symbol(a_sym), Symbol(b_sym)) => a_sym.id == b_sym.id
+    _ => false
+  }
+}
+
+///|
+/// Get WeakMap.prototype method for a WeakMap instance
+pub fn get_weakmap_method(data : ObjectData, prop : String) -> Value {
+  // Check own properties first (like [[WeakMapId]])
+  match data.properties.get(prop) {
+    Some(v) => return v
+    None => ()
+  }
+  match weakmap_prototype_ref.val {
+    Some(proto) =>
+      match proto {
+        Object(proto_data) =>
+          match proto_data.properties.get(prop) {
+            Some(m) => m
+            None => Undefined
+          }
+        _ => Undefined
+      }
+    None => Undefined
+  }
+}
+
+///|
+/// Get WeakSet.prototype method for a WeakSet instance
+pub fn get_weakset_method(data : ObjectData, prop : String) -> Value {
+  // Check own properties first (like [[WeakSetId]])
+  match data.properties.get(prop) {
+    Some(v) => return v
+    None => ()
+  }
+  match weakset_prototype_ref.val {
+    Some(proto) =>
+      match proto {
+        Object(proto_data) =>
+          match proto_data.properties.get(prop) {
+            Some(m) => m
+            None => Undefined
+          }
+        _ => Undefined
+      }
+    None => Undefined
+  }
+}
+
+///|
+/// Setup WeakMap and WeakSet constructors and prototypes
+pub fn setup_weakmap_set_builtins(env : Environment) -> Unit {
+  setup_weakmap_builtins(env)
+  setup_weakset_builtins(env)
+}
+
+///|
+/// Setup WeakMap constructor and prototype
+fn setup_weakmap_builtins(env : Environment) -> Unit {
+  let tostringtag_sym = get_tostringtag_symbol()
+
+  // WeakMap.prototype methods
+  let wm_proto_props : Map[String, Value] = {}
+
+  // WeakMap.prototype.get(key)
+  wm_proto_props["get"] = Object({
+    properties: { "length": Number(1.0) },
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      MethodCallable("get", fn(this_val, args) raise {
+        match this_val {
+          Object(data) =>
+            match get_weakmap_id(data) {
+              Some(id) => {
+                let key = if args.length() > 0 { args[0] } else { Undefined }
+                match weakmap_storage.get(id) {
+                  Some(entries) => {
+                    for i = 0; i < entries.length(); i = i + 1 {
+                      let (k, v) = entries[i]
+                      if weak_key_equal(k, key) {
+                        return v
+                      }
+                    }
+                    Undefined
+                  }
+                  None => Undefined
+                }
+              }
+              None =>
+                raise @errors.TypeError(
+                  message="Method WeakMap.prototype.get called on incompatible receiver",
+                )
+            }
+          _ =>
+            raise @errors.TypeError(
+              message="Method WeakMap.prototype.get called on incompatible receiver",
+            )
+        }
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {
+      "length": {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      },
+    },
+    symbol_descriptors: {},
+    extensible: true,
+  })
+
+  // WeakMap.prototype.set(key, value)
+  wm_proto_props["set"] = Object({
+    properties: { "length": Number(2.0) },
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      MethodCallable("set", fn(this_val, args) raise {
+        match this_val {
+          Object(data) =>
+            match get_weakmap_id(data) {
+              Some(id) => {
+                let key = if args.length() > 0 { args[0] } else { Undefined }
+                let value = if args.length() > 1 { args[1] } else { Undefined }
+                if not(is_valid_weak_key(key)) {
+                  raise @errors.TypeError(
+                    message="Invalid value used as weak map key",
+                  )
+                }
+                match weakmap_storage.get(id) {
+                  Some(entries) => {
+                    for i = 0; i < entries.length(); i = i + 1 {
+                      let (k, _) = entries[i]
+                      if weak_key_equal(k, key) {
+                        entries[i] = (key, value)
+                        return this_val
+                      }
+                    }
+                    entries.push((key, value))
+                    this_val
+                  }
+                  None => {
+                    // Initialize storage if somehow missing
+                    weakmap_storage[id] = [(key, value)]
+                    this_val
+                  }
+                }
+              }
+              None =>
+                raise @errors.TypeError(
+                  message="Method WeakMap.prototype.set called on incompatible receiver",
+                )
+            }
+          _ =>
+            raise @errors.TypeError(
+              message="Method WeakMap.prototype.set called on incompatible receiver",
+            )
+        }
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {
+      "length": {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      },
+    },
+    symbol_descriptors: {},
+    extensible: true,
+  })
+
+  // WeakMap.prototype.has(key)
+  wm_proto_props["has"] = Object({
+    properties: { "length": Number(1.0) },
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      MethodCallable("has", fn(this_val, args) raise {
+        match this_val {
+          Object(data) =>
+            match get_weakmap_id(data) {
+              Some(id) => {
+                let key = if args.length() > 0 { args[0] } else { Undefined }
+                match weakmap_storage.get(id) {
+                  Some(entries) => {
+                    for i = 0; i < entries.length(); i = i + 1 {
+                      let (k, _) = entries[i]
+                      if weak_key_equal(k, key) {
+                        return Bool(true)
+                      }
+                    }
+                    Bool(false)
+                  }
+                  None => Bool(false)
+                }
+              }
+              None =>
+                raise @errors.TypeError(
+                  message="Method WeakMap.prototype.has called on incompatible receiver",
+                )
+            }
+          _ =>
+            raise @errors.TypeError(
+              message="Method WeakMap.prototype.has called on incompatible receiver",
+            )
+        }
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {
+      "length": {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      },
+    },
+    symbol_descriptors: {},
+    extensible: true,
+  })
+
+  // WeakMap.prototype.delete(key)
+  wm_proto_props["delete"] = Object({
+    properties: { "length": Number(1.0) },
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      MethodCallable("delete", fn(this_val, args) raise {
+        match this_val {
+          Object(data) =>
+            match get_weakmap_id(data) {
+              Some(id) => {
+                let key = if args.length() > 0 { args[0] } else { Undefined }
+                match weakmap_storage.get(id) {
+                  Some(entries) => {
+                    for i = 0; i < entries.length(); i = i + 1 {
+                      let (k, _) = entries[i]
+                      if weak_key_equal(k, key) {
+                        let _ = entries.remove(i)
+                        return Bool(true)
+                      }
+                    }
+                    Bool(false)
+                  }
+                  None => Bool(false)
+                }
+              }
+              None =>
+                raise @errors.TypeError(
+                  message="Method WeakMap.prototype.delete called on incompatible receiver",
+                )
+            }
+          _ =>
+            raise @errors.TypeError(
+              message="Method WeakMap.prototype.delete called on incompatible receiver",
+            )
+        }
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {
+      "length": {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      },
+    },
+    symbol_descriptors: {},
+    extensible: true,
+  })
+
+  // WeakMap.prototype.getOrInsert(key, value)
+  wm_proto_props["getOrInsert"] = Object({
+    properties: { "length": Number(2.0) },
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      MethodCallable("getOrInsert", fn(this_val, args) raise {
+        match this_val {
+          Object(data) =>
+            match get_weakmap_id(data) {
+              Some(id) => {
+                let key = if args.length() > 0 { args[0] } else { Undefined }
+                let value = if args.length() > 1 { args[1] } else { Undefined }
+                if not(is_valid_weak_key(key)) {
+                  raise @errors.TypeError(
+                    message="Invalid value used as weak map key",
+                  )
+                }
+                match weakmap_storage.get(id) {
+                  Some(entries) => {
+                    // If key exists, return existing value
+                    for i = 0; i < entries.length(); i = i + 1 {
+                      let (k, v) = entries[i]
+                      if weak_key_equal(k, key) {
+                        return v
+                      }
+                    }
+                    // Key not found, insert and return value
+                    entries.push((key, value))
+                    value
+                  }
+                  None => {
+                    weakmap_storage[id] = [(key, value)]
+                    value
+                  }
+                }
+              }
+              None =>
+                raise @errors.TypeError(
+                  message="Method WeakMap.prototype.getOrInsert called on incompatible receiver",
+                )
+            }
+          _ =>
+            raise @errors.TypeError(
+              message="Method WeakMap.prototype.getOrInsert called on incompatible receiver",
+            )
+        }
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {
+      "length": {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      },
+    },
+    symbol_descriptors: {},
+    extensible: true,
+  })
+
+  // WeakMap.prototype.getOrInsertComputed(key, callbackfn)
+  wm_proto_props["getOrInsertComputed"] = Object({
+    properties: { "length": Number(2.0) },
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      InterpreterCallable(
+        "getOrInsertComputed",
+        fn(interp, this_val, args) raise {
+          match this_val {
+            Object(data) =>
+              match get_weakmap_id(data) {
+                Some(id) => {
+                  let key = if args.length() > 0 { args[0] } else { Undefined }
+                  let callbackfn = if args.length() > 1 {
+                    args[1]
+                  } else {
+                    Undefined
+                  }
+                  if not(is_valid_weak_key(key)) {
+                    raise @errors.TypeError(
+                      message="Invalid value used as weak map key",
+                    )
+                  }
+                  match weakmap_storage.get(id) {
+                    Some(entries) => {
+                      // If key exists, return existing value without calling callback
+                      for i = 0; i < entries.length(); i = i + 1 {
+                        let (k, v) = entries[i]
+                        if weak_key_equal(k, key) {
+                          return v
+                        }
+                      }
+                      // Key not found, call callback to get value
+                      let loc = @token.Loc::default()
+                      let value = interp.call_value(
+                        callbackfn, Undefined, [key], loc,
+                      )
+                      // Re-check if key was added by callback (mutation during callback)
+                      for i = 0; i < entries.length(); i = i + 1 {
+                        let (k, _) = entries[i]
+                        if weak_key_equal(k, key) {
+                          // Overwrite with computed value per spec
+                          entries[i] = (key, value)
+                          return value
+                        }
+                      }
+                      entries.push((key, value))
+                      value
+                    }
+                    None => {
+                      let loc = @token.Loc::default()
+                      let value = interp.call_value(
+                        callbackfn, Undefined, [key], loc,
+                      )
+                      weakmap_storage[id] = [(key, value)]
+                      value
+                    }
+                  }
+                }
+                None =>
+                  raise @errors.TypeError(
+                    message="Method WeakMap.prototype.getOrInsertComputed called on incompatible receiver",
+                  )
+              }
+            _ =>
+              raise @errors.TypeError(
+                message="Method WeakMap.prototype.getOrInsertComputed called on incompatible receiver",
+              )
+          }
+        },
+      ),
+    ),
+    class_name: "Function",
+    descriptors: {
+      "length": {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      },
+    },
+    symbol_descriptors: {},
+    extensible: true,
+  })
+
+  // Create WeakMap prototype
+  let wm_proto_sym_props : Map[Int, Value] = {}
+  wm_proto_sym_props[tostringtag_sym.id] = String_("WeakMap")
+  let wm_proto : Value = Object({
+    properties: wm_proto_props,
+    symbol_properties: wm_proto_sym_props,
+    prototype: Null,
+    callable: None,
+    class_name: "WeakMap",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+
+  // Store WeakMap prototype globally
+  weakmap_prototype_ref.val = Some(wm_proto)
+
+  // WeakMap constructor
+  let wm_ctor = Object({
+    properties: { "prototype": wm_proto, "length": Number(0.0) },
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      InterpreterCallable("WeakMap", fn(interp, _this_val, args) raise {
+        // Create new WeakMap instance
+        let id = weakmap_id_counter.val
+        weakmap_id_counter.val = id + 1
+        let entries : Array[(Value, Value)] = []
+        weakmap_storage[id] = entries
+        let wm_obj : Value = Object({
+          properties: { "[[WeakMapId]]": Number(id.to_double()) },
+          symbol_properties: {},
+          prototype: wm_proto,
+          callable: None,
+          class_name: "WeakMap",
+          descriptors: {},
+          symbol_descriptors: {},
+          extensible: true,
+        })
+
+        // If iterable provided, populate
+        if args.length() > 0 {
+          let iterable = args[0]
+          match iterable {
+            Undefined | Null => ()
+            _ => {
+              let loc = @token.Loc::default()
+              let iterator_sym = get_iterator_symbol()
+              let iterator_method = interp.get_computed_property(
+                iterable,
+                Symbol(iterator_sym),
+                loc,
+              )
+              let iterator = match iterator_method {
+                Object(data) =>
+                  match data.callable {
+                    Some(_) =>
+                      interp.call_value(iterator_method, iterable, [], loc)
+                    None =>
+                      raise @errors.TypeError(
+                        message="Result of the Symbol.iterator method is not an object",
+                      )
+                  }
+                _ =>
+                  raise @errors.TypeError(
+                    message="\{type_of(iterable)} is not iterable",
+                  )
+              }
+
+              while true {
+                let next_method = interp.get_property(iterator, "next", loc)
+                let result = interp.call_value(next_method, iterator, [], loc)
+                let done = match interp.get_property(result, "done", loc) {
+                  Bool(b) => b
+                  _ => false
+                }
+                if done {
+                  break
+                }
+                let value = interp.get_property(result, "value", loc)
+                // Value should be [key, value] pair
+                let key = interp.get_computed_property(value, Number(0.0), loc)
+                let val = interp.get_computed_property(value, Number(1.0), loc)
+                if not(is_valid_weak_key(key)) {
+                  raise @errors.TypeError(
+                    message="Invalid value used as weak map key",
+                  )
+                }
+                // Upsert
+                let mut found = false
+                for i = 0; i < entries.length(); i = i + 1 {
+                  let (k, _) = entries[i]
+                  if weak_key_equal(k, key) {
+                    entries[i] = (key, val)
+                    found = true
+                    break
+                  }
+                }
+                if not(found) {
+                  entries.push((key, val))
+                }
+              }
+            }
+          }
+        }
+        wm_obj
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {
+      "length": {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      },
+    },
+    symbol_descriptors: {},
+    extensible: true,
+  })
+  env.def_builtin("WeakMap", wm_ctor)
+
+  // Set WeakMap.prototype.constructor = WeakMap
+  match wm_proto {
+    Object(data) => {
+      data.properties["constructor"] = wm_ctor
+      data.descriptors["constructor"] = {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
+    }
+    _ => ()
+  }
+}
+
+///|
+/// Setup WeakSet constructor and prototype
+fn setup_weakset_builtins(env : Environment) -> Unit {
+  let tostringtag_sym = get_tostringtag_symbol()
+
+  // WeakSet.prototype methods
+  let ws_proto_props : Map[String, Value] = {}
+
+  // WeakSet.prototype.add(value)
+  ws_proto_props["add"] = Object({
+    properties: { "length": Number(1.0) },
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      MethodCallable("add", fn(this_val, args) raise {
+        match this_val {
+          Object(data) =>
+            match get_weakset_id(data) {
+              Some(id) => {
+                let value = if args.length() > 0 { args[0] } else { Undefined }
+                if not(is_valid_weak_key(value)) {
+                  raise @errors.TypeError(
+                    message="Invalid value used in weak set",
+                  )
+                }
+                match weakset_storage.get(id) {
+                  Some(values) => {
+                    for i = 0; i < values.length(); i = i + 1 {
+                      if weak_key_equal(values[i], value) {
+                        return this_val
+                      }
+                    }
+                    values.push(value)
+                    this_val
+                  }
+                  None => {
+                    weakset_storage[id] = [value]
+                    this_val
+                  }
+                }
+              }
+              None =>
+                raise @errors.TypeError(
+                  message="Method WeakSet.prototype.add called on incompatible receiver",
+                )
+            }
+          _ =>
+            raise @errors.TypeError(
+              message="Method WeakSet.prototype.add called on incompatible receiver",
+            )
+        }
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {
+      "length": {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      },
+    },
+    symbol_descriptors: {},
+    extensible: true,
+  })
+
+  // WeakSet.prototype.has(value)
+  ws_proto_props["has"] = Object({
+    properties: { "length": Number(1.0) },
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      MethodCallable("has", fn(this_val, args) raise {
+        match this_val {
+          Object(data) =>
+            match get_weakset_id(data) {
+              Some(id) => {
+                let value = if args.length() > 0 { args[0] } else { Undefined }
+                match weakset_storage.get(id) {
+                  Some(values) => {
+                    for i = 0; i < values.length(); i = i + 1 {
+                      if weak_key_equal(values[i], value) {
+                        return Bool(true)
+                      }
+                    }
+                    Bool(false)
+                  }
+                  None => Bool(false)
+                }
+              }
+              None =>
+                raise @errors.TypeError(
+                  message="Method WeakSet.prototype.has called on incompatible receiver",
+                )
+            }
+          _ =>
+            raise @errors.TypeError(
+              message="Method WeakSet.prototype.has called on incompatible receiver",
+            )
+        }
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {
+      "length": {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      },
+    },
+    symbol_descriptors: {},
+    extensible: true,
+  })
+
+  // WeakSet.prototype.delete(value)
+  ws_proto_props["delete"] = Object({
+    properties: { "length": Number(1.0) },
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      MethodCallable("delete", fn(this_val, args) raise {
+        match this_val {
+          Object(data) =>
+            match get_weakset_id(data) {
+              Some(id) => {
+                let value = if args.length() > 0 { args[0] } else { Undefined }
+                match weakset_storage.get(id) {
+                  Some(values) => {
+                    for i = 0; i < values.length(); i = i + 1 {
+                      if weak_key_equal(values[i], value) {
+                        let _ = values.remove(i)
+                        return Bool(true)
+                      }
+                    }
+                    Bool(false)
+                  }
+                  None => Bool(false)
+                }
+              }
+              None =>
+                raise @errors.TypeError(
+                  message="Method WeakSet.prototype.delete called on incompatible receiver",
+                )
+            }
+          _ =>
+            raise @errors.TypeError(
+              message="Method WeakSet.prototype.delete called on incompatible receiver",
+            )
+        }
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {
+      "length": {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      },
+    },
+    symbol_descriptors: {},
+    extensible: true,
+  })
+
+  // Create WeakSet prototype
+  let ws_proto_sym_props : Map[Int, Value] = {}
+  ws_proto_sym_props[tostringtag_sym.id] = String_("WeakSet")
+  let ws_proto : Value = Object({
+    properties: ws_proto_props,
+    symbol_properties: ws_proto_sym_props,
+    prototype: Null,
+    callable: None,
+    class_name: "WeakSet",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+
+  // Store WeakSet prototype globally
+  weakset_prototype_ref.val = Some(ws_proto)
+
+  // WeakSet constructor
+  let ws_ctor = Object({
+    properties: { "prototype": ws_proto, "length": Number(0.0) },
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      InterpreterCallable("WeakSet", fn(interp, _this_val, args) raise {
+        // Create new WeakSet instance
+        let id = weakset_id_counter.val
+        weakset_id_counter.val = id + 1
+        let values : Array[Value] = []
+        weakset_storage[id] = values
+        let ws_obj : Value = Object({
+          properties: { "[[WeakSetId]]": Number(id.to_double()) },
+          symbol_properties: {},
+          prototype: ws_proto,
+          callable: None,
+          class_name: "WeakSet",
+          descriptors: {},
+          symbol_descriptors: {},
+          extensible: true,
+        })
+
+        // If iterable provided, populate
+        if args.length() > 0 {
+          let iterable = args[0]
+          match iterable {
+            Undefined | Null => ()
+            _ => {
+              let loc = @token.Loc::default()
+              let iterator_sym = get_iterator_symbol()
+              let iterator_method = interp.get_computed_property(
+                iterable,
+                Symbol(iterator_sym),
+                loc,
+              )
+              let iterator = match iterator_method {
+                Object(data) =>
+                  match data.callable {
+                    Some(_) =>
+                      interp.call_value(iterator_method, iterable, [], loc)
+                    None =>
+                      raise @errors.TypeError(
+                        message="Result of the Symbol.iterator method is not an object",
+                      )
+                  }
+                _ =>
+                  raise @errors.TypeError(
+                    message="\{type_of(iterable)} is not iterable",
+                  )
+              }
+
+              while true {
+                let next_method = interp.get_property(iterator, "next", loc)
+                let result = interp.call_value(next_method, iterator, [], loc)
+                let done = match interp.get_property(result, "done", loc) {
+                  Bool(b) => b
+                  _ => false
+                }
+                if done {
+                  break
+                }
+                let value = interp.get_property(result, "value", loc)
+                if not(is_valid_weak_key(value)) {
+                  raise @errors.TypeError(
+                    message="Invalid value used in weak set",
+                  )
+                }
+                // Add if not present
+                let mut found = false
+                for i = 0; i < values.length(); i = i + 1 {
+                  if weak_key_equal(values[i], value) {
+                    found = true
+                    break
+                  }
+                }
+                if not(found) {
+                  values.push(value)
+                }
+              }
+            }
+          }
+        }
+        ws_obj
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {
+      "length": {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      },
+    },
+    symbol_descriptors: {},
+    extensible: true,
+  })
+  env.def_builtin("WeakSet", ws_ctor)
+
+  // Set WeakSet.prototype.constructor = WeakSet
+  match ws_proto {
+    Object(data) => {
+      data.properties["constructor"] = ws_ctor
+      data.descriptors["constructor"] = {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
+    }
+    _ => ()
+  }
+}
