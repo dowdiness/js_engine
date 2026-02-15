@@ -2,7 +2,7 @@
 
 ## Current Status
 
-**Test262**: 23,537 / 27,486 executed (**85.6%** pass rate) — full run 2026-02-15
+**Test262**: 23,849 / 27,599 executed (**86.4%** pass rate) — full run 2026-02-15
 
 **Unit tests**: 881 total, 881 passed, 0 failed
 
@@ -13,6 +13,8 @@
 **Phase 17 (2026-02-14)**: TypedArray prototype chain conformance. Created `%TypedArray%` intrinsic constructor, set per-type constructor `[[Prototype]]` chains. TypedArray 55.1% → **92.8%** (+293), TypedArrayConstructors 86.1% → **94.4%** (+30). Estimated **+323 tests** passing overall.
 **Phase 18 (2026-02-14)**: Boxed primitives (`new String/Number/Boolean`). Constructor wrapping with `[[StringData]]`/`[[NumberData]]`/`[[BooleanData]]` internal slots, `Object()` ToObject wrapping, ToPrimitive coercion in `loose_equal`, prototype method support. Also fixed TypedArray constructor name inheritance regression. Key improvements: Object 92.7% → **95.9%** (+108), String 92.0% → **95.1%** (+38), Number 83.6% → **85.7%** (+7), TypedArray 92.8% → **93.4%** (+5), TypedArrayConstructors 94.4% → **95.3%** (+3), Boolean 83.7% → **85.7%** (+1). Estimated **+162 tests** passing in targeted categories.
 **Phase 19 (2026-02-15)**: Symbol/TypedArray prototype fixes and full re-run verification. Registered `[[SymbolPrototype]]` and `[[FunctionPrototype]]` as environment builtins. Boxed Symbol objects now use Symbol.prototype (was Object.prototype). `%TypedArray%` constructor gets `name`/`length` descriptors and `[[Prototype]]` set to Function.prototype. Reflect now **100%** (153/153). Full test262 re-run: **+525 tests passing** (23,012 → 23,537), pass rate 83.7% → **85.6%**.
+**Phase 20 (2026-02-15)**: WeakMap/WeakSet, iterator prototypes, RegExp improvements. Implemented WeakMap (100%, 139/139) and WeakSet (100%, 84/84) with full constructor/prototype support including `getOrInsert`/`getOrInsertComputed`. Added `getOrInsert`/`getOrInsertComputed` to Map (100%). Created shared iterator prototypes (`%MapIteratorPrototype%`, `%SetIteratorPrototype%`, `%ArrayIteratorPrototype%`, `%StringIteratorPrototype%`) with proper `[Symbol.toStringTag]`, `next` method `name`/`length` descriptors. Added `Symbol.iterator` support for Map/Set/boxed String. RegExp: added lookahead `(?=…)`/`(?!…)`, multiline `^`/`$` anchoring, backreferences `\1`-`\9`, dotAll `s` flag, sticky `y` flag, unicode `u` flag properties, full ES whitespace in `\s`/`\S`, `exec` result `index`/`input`/`groups` properties. Full test262 re-run: **+223 tests passing** (23,537 → 23,760), pass rate 85.6% → **86.1%**.
+**Phase 20 review fixes (2026-02-15)**: PR review fixes for regex, WeakMap/WeakSet, and array properties. RegExp: `is_line_terminator` helper for dot/multiline anchors covering `\r`/`\u2028`/`\u2029`; sticky flag reads/writes `lastIndex`; `regex_search` accepts `start_pos`. WeakMap/WeakSet: IDs moved to non-forgeable side tables with `physical_equal`; constructors reject calls without `new`; `is_constructing` flag set for `InterpreterCallable` in `eval_new`; `getOrInsertComputed` callback safety. Arrays: `set_property` persists named props to side table; `get_computed_property`/`set_computed_property` detect canonical numeric index strings; `get_computed_property` checks side table for named props. String `@@iterator` uses call-time receiver. Full test262 re-run: **+89 tests passing** (23,760 → 23,849), pass rate 86.1% → **86.4%**.
 
 ## Phase History
 
@@ -41,6 +43,8 @@
 | 17 | +323 | ~23,335 | TypedArray prototype chain — %TypedArray% intrinsic constructor, per-type [[Prototype]] chains, constructor.prototype linkage |
 | 18 | +162 | ~23,500 | Boxed primitives (`new String/Number/Boolean`), Object() ToObject wrapping, ToPrimitive coercion, TypedArray constructor name fix |
 | 19 | +525 | 23,537 | Symbol/TypedArray prototype fixes, `[[SymbolPrototype]]`/`[[FunctionPrototype]]` builtins, full re-run verification (85.6%) |
+| 20 | +223 | 23,760 | WeakMap/WeakSet, iterator prototypes, RegExp improvements — full re-run verification (86.1%) |
+| 20-fix | +89 | 23,849 | PR review fixes: regex line terminators/lastIndex, WeakMap/WeakSet constructor checks, array named props, canonical numeric indices (86.4%) |
 
 For detailed implementation notes on Phases 1-6, see [docs/PHASE_HISTORY.md](docs/PHASE_HISTORY.md).
 
@@ -48,23 +52,25 @@ For detailed implementation notes on Phases 1-6, see [docs/PHASE_HISTORY.md](doc
 
 ## Failure Breakdown
 
-### Failure Breakdown by Category (3,949 remaining failures)
+### Failure Breakdown by Category (3,750 remaining failures)
 
 Top failing categories from the full test262 run (2026-02-15):
 
 | Category | Pass | Fail | Rate | Priority |
 |----------|------|------|------|----------|
-| language/expressions | 4,919 | 591 | 89.3% | Medium |
-| language/statements | 3,488 | 727 | 82.8% | Medium |
-| built-ins/Array | 2,517 | 428 | 85.5% | Medium |
-| built-ins/TypedArray | 726 | 51 | 93.4% | ✅ Done (P17-19) |
-| built-ins/Object | 3,234 | 139 | 95.9% | ✅ Done (P18) |
-| annexB/language | 312 | 505 | 38.2% | Low (--annex-b) |
-| built-ins/RegExp | 621 | 216 | 74.2% | Hard |
+| language/expressions | 4,921 | 591 | 89.3% | Medium |
+| language/statements | 3,502 | 719 | 83.0% | Medium |
+| built-ins/Array | 2,596 | 349 | 88.1% | Medium |
+| built-ins/TypedArray | 714 | 63 | 91.9% | ✅ Done (P17-19) |
+| built-ins/Object | 3,238 | 137 | 95.9% | ✅ Done (P18) |
+| annexB/language | 313 | 504 | 38.3% | Low (--annex-b) |
+| built-ins/RegExp | 652 | 192 | 77.3% | Medium (P20 improved) |
+| built-ins/WeakMap | 139 | 0 | 100.0% | ✅ Done (P20) |
+| built-ins/WeakSet | 84 | 0 | 100.0% | ✅ Done (P20) |
 | language/module-code | 114 | 198 | 36.5% | Medium |
 | language/eval-code | 224 | 106 | 67.9% | Low (P5 done) |
-| built-ins/String | 1,137 | 58 | 95.1% | ✅ Done (P18) |
-| language/literals | 231 | 88 | 72.4% | Medium |
+| built-ins/String | 1,142 | 53 | 95.6% | ✅ Done (P18) |
+| language/literals | 232 | 87 | 72.7% | Medium |
 | language/import | 7 | 86 | 7.5% | Medium |
 | annexB/built-ins | 147 | 73 | 66.8% | Low (--annex-b) |
 | built-ins/Function | 342 | 69 | 83.2% | Medium |
@@ -72,9 +78,7 @@ Top failing categories from the full test262 run (2026-02-15):
 | language/identifiers | 154 | 53 | 74.4% | Medium |
 | built-ins/TypedArrayConstructors | 342 | 17 | 95.3% | ✅ Done (P17-19) |
 | built-ins/DataView | 353 | 35 | 91.0% | ✅ Done (P16) |
-| built-ins/WeakMap | 51 | 31 | 62.2% | Medium |
-| built-ins/Map | 152 | 29 | 84.0% | Medium |
-| built-ins/WeakSet | 39 | 26 | 60.0% | Medium |
+| built-ins/Map | 179 | 15 | 92.3% | Medium |
 | built-ins/Uint8Array | 44 | 24 | 64.7% | Medium |
 | built-ins/Promise | 614 | 4 | 99.4% | ✅ Done (P7) |
 | built-ins/ArrayBuffer | 73 | 5 | 93.6% | ✅ Done (P16-19) |
@@ -88,8 +92,13 @@ Top failing categories from the full test262 run (2026-02-15):
 | Category | Pass | Fail | Rate |
 |----------|------|------|------|
 | built-ins/AggregateError | 24 | 0 | 100.0% |
+| built-ins/MapIteratorPrototype | 11 | 0 | 100.0% |
 | built-ins/NativeErrors | 88 | 0 | 100.0% |
 | built-ins/Reflect | 153 | 0 | 100.0% |
+| built-ins/SetIteratorPrototype | 11 | 0 | 100.0% |
+| built-ins/StringIteratorPrototype | 7 | 0 | 100.0% |
+| built-ins/WeakMap | 139 | 0 | 100.0% |
+| built-ins/WeakSet | 84 | 0 | 100.0% |
 | built-ins/global | 27 | 0 | 100.0% |
 | built-ins/isFinite | 15 | 0 | 100.0% |
 | built-ins/isNaN | 15 | 0 | 100.0% |
@@ -101,8 +110,8 @@ Top failing categories from the full test262 run (2026-02-15):
 | built-ins/Math | 317 | 5 | 98.4% |
 | built-ins/parseInt | 54 | 1 | 98.2% |
 | built-ins/parseFloat | 53 | 1 | 98.1% |
+| built-ins/Set | 188 | 4 | 97.9% |
 | built-ins/JSON | 132 | 3 | 97.8% |
-| built-ins/Set | 181 | 4 | 97.8% |
 | built-ins/decodeURIComponent | 53 | 2 | 96.4% |
 | built-ins/decodeURI | 52 | 2 | 96.3% |
 | built-ins/Proxy | 262 | 10 | 96.3% |
@@ -110,17 +119,19 @@ Top failing categories from the full test262 run (2026-02-15):
 | language/arguments-object | 146 | 6 | 96.1% |
 | language/function-code | 166 | 7 | 96.0% |
 | language/keywords | 24 | 1 | 96.0% |
-| built-ins/Object | 3,234 | 139 | 95.9% |
+| built-ins/Object | 3,238 | 137 | 95.9% |
 | language/comments | 22 | 1 | 95.7% |
+| built-ins/String | 1,142 | 53 | 95.6% |
 | built-ins/TypedArrayConstructors | 342 | 17 | 95.3% |
-| built-ins/String | 1,137 | 58 | 95.1% |
-| built-ins/ArrayBuffer | 73 | 5 | 93.6% |
 | language/computed-property-names | 45 | 3 | 93.8% |
-| built-ins/TypedArray | 726 | 51 | 93.4% |
+| built-ins/ArrayBuffer | 73 | 5 | 93.6% |
 | built-ins/encodeURIComponent | 29 | 2 | 93.5% |
 | built-ins/encodeURI | 29 | 2 | 93.5% |
 | language/asi | 95 | 7 | 93.1% |
 | language/reserved-words | 25 | 2 | 92.6% |
+| built-ins/Map | 179 | 15 | 92.3% |
+| built-ins/TypedArray | 714 | 63 | 91.9% |
+| language/future-reserved-words | 34 | 3 | 91.9% |
 | built-ins/DataView | 353 | 35 | 91.0% |
 | language/rest-parameters | 10 | 1 | 90.9% |
 
@@ -663,29 +674,29 @@ Prioritized by estimated test impact and implementation effort. These are the hi
 
 | Priority | Feature | Est. Impact | Effort | Notes |
 |----------|---------|-------------|--------|-------|
-| **1** | RegExp `y` (sticky) and `u` (unicode) flags | ~216 tests | High | Only `g`, `i`, `m` flags currently supported; unblocks a large portion of `built-ins/RegExp` failures |
-| **2** | Iterator/Generator protocol compliance | ~35+ tests | Medium | GeneratorFunction (9.5%), GeneratorPrototype (73.8%), MapIteratorPrototype (27.3%), SetIteratorPrototype (27.3%) |
-| **3** | WeakMap / WeakSet | ~57 tests | Low-Medium | No dedicated Value variant; can implement with standard Map/Set semantics (true weak references not possible in this runtime) |
-| **4** | `with` statement | ~151 tests | Medium | Behind `--annex-b` flag; requires object environment record and dynamic scope injection |
-| **5** | Class public fields | ~723 skipped | Medium | `class C { x = 1; static y = 2; }` syntax; currently skipped in test262 |
-| **6** | Class private fields/methods | ~2,437 skipped | High | `#private` syntax across fields, methods, static members; large test surface but complex implementation |
-| **7** | async/await | ~500+ tests | Medium | Syntactic sugar over Promises + generator-like suspension; unblocked by generator implementation |
+| **1** | `with` statement | ~151 tests | Medium | Behind `--annex-b` flag; requires object environment record and dynamic scope injection |
+| **2** | Class public fields | ~723 skipped | Medium | `class C { x = 1; static y = 2; }` syntax; currently skipped in test262 |
+| **3** | Class private fields/methods | ~2,437 skipped | High | `#private` syntax across fields, methods, static members; large test surface but complex implementation |
+| **4** | async/await | ~500+ tests | Medium | Syntactic sugar over Promises + generator-like suspension; unblocked by generator implementation |
+| **5** | RegExp named groups/lookbehind | ~190 tests | Medium | Currently skipped; `(?<name>...)` and `(?<=...)` syntax |
+| **6** | String.prototype.matchAll | ~17 tests | Low | `RegExpStringIteratorPrototype` implementation |
+| **7** | GeneratorFunction/Prototype compliance | ~35 tests | Medium | Constructor semantics, prototype chain fixes |
+
+### WeakMap / WeakSet — ✅ DONE (Phase 20)
+
+Implemented WeakMap and WeakSet with full constructor/prototype support. Both at **100%** pass rate. Includes ES2025 `getOrInsert`/`getOrInsertComputed` methods (also added to Map). Uses global side-table storage with object-identity key comparison. Only accepts objects/symbols as keys per spec.
+
+### Iterator Prototypes — ✅ DONE (Phase 20)
+
+Created shared `%MapIteratorPrototype%`, `%SetIteratorPrototype%`, `%ArrayIteratorPrototype%`, `%StringIteratorPrototype%` with proper `[Symbol.toStringTag]` and `next` method `name`/`length` descriptors. MapIteratorPrototype and SetIteratorPrototype now **100%**. StringIteratorPrototype **100%**. Added `Symbol.iterator` support for Map, Set, and boxed String objects.
+
+### RegExp Improvements — Partial (Phase 20)
+
+Added lookahead `(?=…)`/`(?!…)`, multiline `^`/`$` anchoring with `m` flag, backreferences `\1`-`\9`, dotAll `s` flag, sticky `y`/unicode `u` flag properties, full ES whitespace in `\s`/`\S`, and `exec` result `index`/`input`/`groups` properties. Pass rate improved from 74.2% to **77.3%**. Remaining improvements: `String.prototype.matchAll`, RegExp `[Symbol.replace]`/`[Symbol.split]`/`[Symbol.match]`, named capture groups.
 
 ### Boxed Primitives — ✅ DONE (Phase 18)
 
 Implemented `new String()`, `new Number()`, `new Boolean()` as Object wrappers with internal slots (`[[StringData]]`, `[[NumberData]]`, `[[BooleanData]]`). `Object()` performs ToObject wrapping. ToPrimitive coercion in `loose_equal`. Prototype methods updated for boxed values. TypedArray constructor name inheritance regression fixed. Key gains: Object +108, String +38, Number +7, TypedArray +5, TypedArrayConstructors +3, Boolean +1.
-
-### RegExp Sticky/Unicode Flags (Priority 1)
-
-**Problem**: `built-ins/RegExp` has 222 failures. Many require `y` (sticky) flag support (match only at `lastIndex`) and `u` (unicode) flag (full Unicode code point matching, stricter escape validation).
-
-**Approach**: Extend `make_regexp_object` to handle `y` and `u` flags. Sticky requires `lastIndex`-based anchoring. Unicode requires surrogate pair awareness in the regex matcher.
-
-### WeakMap / WeakSet (Priority 4)
-
-**Problem**: 57 tests failing, plus tests in `SKIP_FEATURES`. Currently no `WeakMap`/`WeakSet` Value variant.
-
-**Approach**: Implement as regular Map/Set (no true GC-based weakness in a tree-walking interpreter). Add constructors, `get`/`set`/`has`/`delete` for WeakMap, `add`/`has`/`delete` for WeakSet. Key restriction: only objects allowed as keys.
 
 ---
 
@@ -701,8 +712,8 @@ Syntactic sugar over Promises + generator-like suspension. Now unblocked by gene
 |---------|--------|-------|
 | TypedArray prototype chain | — | ✅ Done (Phase 17-19) — TypedArray 726/777 (93.4%), TypedArrayConstructors 342/359 (95.3%) |
 | Boxed primitives | — | ✅ Done (Phase 18-19) — Object 3,234/3,373 (95.9%), String 1,137/1,195 (95.1%), Number 287/335 (85.7%) |
-| RegExp improvements | ~216 fail | Sticky (`y`) and unicode (`u`) flags, capture groups, backreferences |
-| WeakMap/WeakSet | ~57 fail | Reference-based collections; implement with standard Map/Set semantics |
+| RegExp improvements | ~192 fail | Named groups, lookbehind, Symbol.replace/split/match |
+| WeakMap/WeakSet | — | ✅ Done (Phase 20) — WeakMap 139/139 (100%), WeakSet 84/84 (100%) |
 | Class public fields | ~723 skip | `class C { x = 1; static y = 2; }` field declarations |
 | Class private fields/methods | ~2,437 skip | `#private` syntax across fields, methods, static members |
 | async/await | ~500+ | Syntactic sugar over Promises; unblocked by generators |

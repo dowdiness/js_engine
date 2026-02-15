@@ -5740,10 +5740,16 @@ fn Interpreter::get_property(
       if prop == "length" {
         Number(data.elements.length().to_double())
       } else {
-        let result = get_array_method_with_interp(data, prop)
-        match result {
-          Undefined => lookup_builtin_proto(self, obj, "Array", prop, loc)
-          _ => result
+        // Check named properties side table first (e.g., index, input on exec results)
+        match get_array_named_prop(data, prop) {
+          Some(v) => v
+          None => {
+            let result = get_array_method_with_interp(data, prop)
+            match result {
+              Undefined => lookup_builtin_proto(self, obj, "Array", prop, loc)
+              _ => result
+            }
+          }
         }
       }
     String_(s) =>
@@ -5939,6 +5945,53 @@ fn Interpreter::get_computed_property(
                   _ => break
                 }
               }
+              // Boxed primitive objects: delegate Symbol.iterator to primitive
+              let iterator_sym = get_iterator_symbol()
+              if sym.id == iterator_sym.id {
+                if data.class_name == "String" {
+                  match data.properties.get("[[StringData]]") {
+                    Some(String_(_)) =>
+                      return Object({
+                        properties: {},
+                        symbol_properties: {},
+                        prototype: Null,
+                        callable: Some(
+                          MethodCallable(
+                            "[Symbol.iterator]",
+                            fn(this_val, _args) raise {
+                              let str = match this_val {
+                                String_(sv) => sv
+                                Object(d) =>
+                                  if d.class_name == "String" {
+                                    match d.properties.get("[[StringData]]") {
+                                      Some(String_(sv)) => sv
+                                      _ => this_val.to_string()
+                                    }
+                                  } else {
+                                    this_val.to_string()
+                                  }
+                                Null | Undefined =>
+                                  raise @errors.TypeError(
+                                    message="Cannot convert undefined or null to object",
+                                  )
+                                _ => this_val.to_string()
+                              }
+                              make_string_iterator_value(str)
+                            },
+                          ),
+                        ),
+                        class_name: "Function",
+                        descriptors: {},
+                        symbol_descriptors: {},
+                        extensible: true,
+                      })
+                    _ => ()
+                  }
+                } else if data.class_name == "Array" {
+                  // Shouldn't reach here for arrays normally, but fallback
+                  ()
+                }
+              }
               return Undefined
             }
           }
@@ -5995,6 +6048,42 @@ fn Interpreter::get_computed_property(
               symbol_descriptors: {},
               extensible: true,
             })
+          }
+          return Undefined
+        }
+        Map(_) => {
+          // Handle Symbol.iterator for Maps (delegates to entries)
+          let iterator_sym = get_iterator_symbol()
+          if sym.id == iterator_sym.id {
+            return get_map_method(
+              match obj {
+                Map(data) => data
+                _ => abort("unreachable")
+              },
+              "entries",
+            )
+          }
+          let tostringtag_sym = get_tostringtag_symbol()
+          if sym.id == tostringtag_sym.id {
+            return String_("Map")
+          }
+          return Undefined
+        }
+        Set(_) => {
+          // Handle Symbol.iterator for Sets (delegates to values)
+          let iterator_sym = get_iterator_symbol()
+          if sym.id == iterator_sym.id {
+            return get_set_method(
+              match obj {
+                Set(data) => data
+                _ => abort("unreachable")
+              },
+              "values",
+            )
+          }
+          let tostringtag_sym = get_tostringtag_symbol()
+          if sym.id == tostringtag_sym.id {
+            return String_("Set")
           }
           return Undefined
         }
@@ -6330,7 +6419,30 @@ fn Interpreter::get_computed_property(
           }
         }
         String_("length") => Number(data.elements.length().to_double())
-        String_(s) => get_array_method_with_interp(data, s)
+        String_(s) => {
+          // Canonical numeric index string check: parseDouble(s).toString() === s
+          let mut numeric_result : Value? = None
+          try {
+            let n = @strconv.parse_double(s)
+            if n.to_string() == s {
+              let idx = n.to_int()
+              if idx.to_double() == n && idx >= 0 && idx < data.elements.length() {
+                numeric_result = Some(data.elements[idx])
+              }
+            }
+          } catch {
+            _ => () // Not a numeric string
+          }
+          match numeric_result {
+            Some(v) => v
+            None =>
+              // Check side table for named properties, then methods
+              match get_array_named_prop(data, s) {
+                Some(v) => v
+                None => get_array_method_with_interp(data, s)
+              }
+          }
+        }
         _ => Undefined
       }
     String_(s) =>
@@ -6509,6 +6621,7 @@ fn Interpreter::set_property(
         }
       } else {
         // try numeric index
+        let mut handled = false
         try {
           let i = @strconv.parse_int(prop)
           if i >= 0 {
@@ -6516,9 +6629,14 @@ fn Interpreter::set_property(
               data.elements.push(Undefined)
             }
             data.elements[i] = value
+            handled = true
           }
         } catch {
           _ => ()
+        }
+        if not(handled) {
+          // Store named properties in side table
+          set_array_named_prop(data, prop, value)
         }
       }
       value
@@ -6807,6 +6925,28 @@ fn Interpreter::set_computed_property(
             let n = to_number(value).to_int()
             while data.elements.length() > n {
               let _ = data.elements.pop()
+            }
+          } else {
+            // Canonical numeric index string check: parseDouble(s).toString() === s
+            let mut handled = false
+            try {
+              let n = @strconv.parse_double(prop)
+              if n.to_string() == prop {
+                let idx = n.to_int()
+                if idx.to_double() == n && idx >= 0 {
+                  while data.elements.length() <= idx {
+                    data.elements.push(Undefined)
+                  }
+                  data.elements[idx] = value
+                  handled = true
+                }
+              }
+            } catch {
+              _ => ()
+            }
+            if not(handled) {
+              // Store named properties in side table
+              set_array_named_prop(data, prop, value)
             }
           }
           value
@@ -7184,7 +7324,15 @@ fn Interpreter::construct_value(
               ),
             )
           } else {
-            func(self, Undefined, args)
+            is_constructing.val = true
+            let result = func(self, Undefined, args) catch {
+              e => {
+                is_constructing.val = false
+                raise e
+              }
+            }
+            is_constructing.val = false
+            result
           }
         Some(ConstructorOnlyCallable(_, func)) => func(self, args)
         Some(ArrowFunc(_)) | Some(ArrowFuncExt(_)) =>

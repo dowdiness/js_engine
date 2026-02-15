@@ -159,6 +159,39 @@ pub fn new_promise_data() -> PromiseData {
 let array_iterator_overrides : Array[(ArrayData, Value?, Value?)] = []
 
 ///|
+/// Named properties on arrays (e.g., index, input on RegExp exec results)
+let array_named_props : Array[(ArrayData, Map[String, Value])] = []
+
+///|
+pub fn set_array_named_prop(
+  arr : ArrayData,
+  key : String,
+  value : Value,
+) -> Unit {
+  for i = 0; i < array_named_props.length(); i = i + 1 {
+    let (existing, props) = array_named_props[i]
+    if physical_equal(existing, arr) {
+      props[key] = value
+      return
+    }
+  }
+  let props : Map[String, Value] = {}
+  props[key] = value
+  array_named_props.push((arr, props))
+}
+
+///|
+pub fn get_array_named_prop(arr : ArrayData, key : String) -> Value? {
+  for i = 0; i < array_named_props.length(); i = i + 1 {
+    let (existing, props) = array_named_props[i]
+    if physical_equal(existing, arr) {
+      return props.get(key)
+    }
+  }
+  None
+}
+
+///|
 pub fn set_array_iterator_override(
   arr : ArrayData,
   getter : Value?,
@@ -735,14 +768,96 @@ pub fn type_of(val : Value) -> String {
 }
 
 ///|
+/// Shared %ArrayIteratorPrototype% - lazily initialized
+let array_iterator_proto_ref : Ref[Value?] = { val: None }
+
+///|
+/// Get or create the shared %ArrayIteratorPrototype%
+pub fn get_array_iterator_proto() -> Value {
+  match array_iterator_proto_ref.val {
+    Some(proto) => proto
+    None => {
+      let iterator_sym = get_iterator_symbol()
+      let tostringtag_sym = get_tostringtag_symbol()
+      let proto_sym_props : Map[Int, Value] = {}
+      proto_sym_props[tostringtag_sym.id] = String_("Array Iterator")
+      let proto_props : Map[String, Value] = {}
+      let proto_sym_descs : Map[Int, PropDescriptor] = {}
+      proto_sym_descs[tostringtag_sym.id] = {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
+      proto_sym_props[iterator_sym.id] = Object({
+        properties: {},
+        symbol_properties: {},
+        prototype: Null,
+        callable: Some(
+          MethodCallable("[Symbol.iterator]", fn(this_val, _args) { this_val }),
+        ),
+        class_name: "Function",
+        descriptors: {},
+        symbol_descriptors: {},
+        extensible: true,
+      })
+      proto_props["next"] = Object({
+        properties: { "length": Number(0.0), "name": String_("next") },
+        symbol_properties: {},
+        prototype: Null,
+        callable: Some(
+          MethodCallable("next", fn(_this_val, _args) raise {
+            raise @errors.TypeError(
+              message="Array Iterator.prototype.next requires that |this| be an Array Iterator",
+            )
+          }),
+        ),
+        class_name: "Function",
+        descriptors: {
+          "length": {
+            writable: false,
+            enumerable: false,
+            configurable: true,
+            getter: None,
+            setter: None,
+          },
+          "name": {
+            writable: false,
+            enumerable: false,
+            configurable: true,
+            getter: None,
+            setter: None,
+          },
+        },
+        symbol_descriptors: {},
+        extensible: true,
+      })
+      let proto = Object({
+        properties: proto_props,
+        symbol_properties: proto_sym_props,
+        prototype: Null,
+        callable: None,
+        class_name: "Array Iterator",
+        descriptors: {},
+        symbol_descriptors: proto_sym_descs,
+        extensible: true,
+      })
+      array_iterator_proto_ref.val = Some(proto)
+      proto
+    }
+  }
+}
+
+///|
 /// Create an array iterator object that iterates over array elements
 pub fn make_array_iterator_value(arr : ArrayData) -> Value {
-  let iterator_sym = get_iterator_symbol()
+  let arr_iter_proto = get_array_iterator_proto()
   let index_ref : Ref[Int] = { val: 0 }
 
   // Create the next method
   let next_method = Object({
-    properties: {},
+    properties: { "length": Number(0.0), "name": String_("next") },
     symbol_properties: {},
     prototype: Null,
     callable: Some(
@@ -782,7 +897,22 @@ pub fn make_array_iterator_value(arr : ArrayData) -> Value {
       }),
     ),
     class_name: "Function",
-    descriptors: {},
+    descriptors: {
+      "length": {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      },
+      "name": {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      },
+    },
     symbol_descriptors: {},
     extensible: true,
   })
@@ -791,23 +921,42 @@ pub fn make_array_iterator_value(arr : ArrayData) -> Value {
   let iter_props : Map[String, Value] = {}
   iter_props["next"] = next_method
 
-  // Create symbol properties map with Symbol.iterator
-  let iter_symbol_props : Map[Int, Value] = {}
-  let iter_obj = Object({
+  Object({
     properties: iter_props,
-    symbol_properties: iter_symbol_props,
-    prototype: Null,
+    symbol_properties: {},
+    prototype: arr_iter_proto,
     callable: None,
     class_name: "Array Iterator",
     descriptors: {},
     symbol_descriptors: {},
     extensible: true,
   })
+}
 
-  // Add [Symbol.iterator] that returns the iterator itself
-  match iter_obj {
-    Object(data) =>
-      data.symbol_properties[iterator_sym.id] = Object({
+///|
+/// Shared %StringIteratorPrototype% - lazily initialized
+let string_iterator_proto_ref : Ref[Value?] = { val: None }
+
+///|
+/// Get or create the shared %StringIteratorPrototype%
+pub fn get_string_iterator_proto() -> Value {
+  match string_iterator_proto_ref.val {
+    Some(proto) => proto
+    None => {
+      let iterator_sym = get_iterator_symbol()
+      let tostringtag_sym = get_tostringtag_symbol()
+      let proto_sym_props : Map[Int, Value] = {}
+      proto_sym_props[tostringtag_sym.id] = String_("String Iterator")
+      let proto_props : Map[String, Value] = {}
+      let proto_sym_descs : Map[Int, PropDescriptor] = {}
+      proto_sym_descs[tostringtag_sym.id] = {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
+      proto_sym_props[iterator_sym.id] = Object({
         properties: {},
         symbol_properties: {},
         prototype: Null,
@@ -819,20 +968,62 @@ pub fn make_array_iterator_value(arr : ArrayData) -> Value {
         symbol_descriptors: {},
         extensible: true,
       })
-    _ => ()
+      proto_props["next"] = Object({
+        properties: { "length": Number(0.0), "name": String_("next") },
+        symbol_properties: {},
+        prototype: Null,
+        callable: Some(
+          MethodCallable("next", fn(_this_val, _args) raise {
+            raise @errors.TypeError(
+              message="String Iterator.prototype.next requires that |this| be a String Iterator",
+            )
+          }),
+        ),
+        class_name: "Function",
+        descriptors: {
+          "length": {
+            writable: false,
+            enumerable: false,
+            configurable: true,
+            getter: None,
+            setter: None,
+          },
+          "name": {
+            writable: false,
+            enumerable: false,
+            configurable: true,
+            getter: None,
+            setter: None,
+          },
+        },
+        symbol_descriptors: {},
+        extensible: true,
+      })
+      let proto = Object({
+        properties: proto_props,
+        symbol_properties: proto_sym_props,
+        prototype: Null,
+        callable: None,
+        class_name: "String Iterator",
+        descriptors: {},
+        symbol_descriptors: proto_sym_descs,
+        extensible: true,
+      })
+      string_iterator_proto_ref.val = Some(proto)
+      proto
+    }
   }
-  iter_obj
 }
 
 ///|
 /// Create a string iterator object that iterates over string characters
 /// Handles Unicode surrogate pairs correctly per ES6 spec
 pub fn make_string_iterator_value(s : String) -> Value {
-  let iterator_sym = get_iterator_symbol()
+  let str_iter_proto = get_string_iterator_proto()
   let chars = s.to_array()
   let index_ref : Ref[Int] = { val: 0 }
   let next_method = Object({
-    properties: {},
+    properties: { "length": Number(0.0), "name": String_("next") },
     symbol_properties: {},
     prototype: Null,
     callable: Some(
@@ -894,39 +1085,35 @@ pub fn make_string_iterator_value(s : String) -> Value {
       }),
     ),
     class_name: "Function",
-    descriptors: {},
+    descriptors: {
+      "length": {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      },
+      "name": {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      },
+    },
     symbol_descriptors: {},
     extensible: true,
   })
   let iter_props : Map[String, Value] = {}
   iter_props["next"] = next_method
-  let iter_obj = Object({
+  Object({
     properties: iter_props,
     symbol_properties: {},
-    prototype: Null,
+    prototype: str_iter_proto,
     callable: None,
     class_name: "String Iterator",
     descriptors: {},
     symbol_descriptors: {},
     extensible: true,
   })
-
-  // Add [Symbol.iterator] that returns the iterator itself
-  match iter_obj {
-    Object(data) =>
-      data.symbol_properties[iterator_sym.id] = Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          MethodCallable("[Symbol.iterator]", fn(this_val, _args) { this_val }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      })
-    _ => ()
-  }
-  iter_obj
 }
