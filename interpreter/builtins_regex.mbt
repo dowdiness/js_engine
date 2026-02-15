@@ -450,6 +450,12 @@ fn is_word_char(c : Char) -> Bool {
 }
 
 ///|
+/// ES spec line terminators: LF, CR, LS (U+2028), PS (U+2029)
+fn is_line_terminator(c : Char) -> Bool {
+  c == '\n' || c == '\r' || c.to_int() == 0x2028 || c.to_int() == 0x2029
+}
+
+///|
 fn char_eq_icase(a : Char, b : Char, icase : Bool) -> Bool {
   if a == b {
     return true
@@ -545,7 +551,7 @@ fn regex_exec_single(
       }
     Dot =>
       if pos < input.length() {
-        if flags.dot_all || input[pos] != '\n' {
+        if flags.dot_all || not(is_line_terminator(input[pos])) {
           Some(pos + 1)
         } else {
           None
@@ -565,7 +571,7 @@ fn regex_exec_single(
         Start =>
           if pos == 0 {
             Some(pos)
-          } else if flags.multiline && pos > 0 && input[pos - 1] == '\n' {
+          } else if flags.multiline && pos > 0 && is_line_terminator(input[pos - 1]) {
             Some(pos)
           } else {
             None
@@ -573,7 +579,9 @@ fn regex_exec_single(
         End =>
           if pos == input.length() {
             Some(pos)
-          } else if flags.multiline && pos < input.length() && input[pos] == '\n' {
+          } else if flags.multiline &&
+            pos < input.length() &&
+            is_line_terminator(input[pos]) {
             Some(pos)
           } else {
             None
@@ -877,6 +885,7 @@ pub fn regex_search(
   pattern : String,
   flags : String,
   input : String,
+  start_pos~ : Int = 0,
 ) -> RegexMatch? raise Error {
   let node = RegexParser::new(pattern).parse()
   let input_chars = input.to_array()
@@ -884,14 +893,18 @@ pub fn regex_search(
   let rflags = make_regex_flags(flags)
   let is_sticky = flags.contains("y")
   if is_sticky {
-    // Sticky flag: only match at position 0 (start_pos for exec is handled by caller)
+    // Sticky flag: only match at the given start_pos (lastIndex)
+    if start_pos > input_chars.length() {
+      return None
+    }
     let captures : Array[String?] = Array::make(num_groups, None)
-    match regex_exec(node, input_chars, 0, captures, rflags) {
-      Some(end_pos) => return Some({ start: 0, end_: end_pos, captures })
+    match regex_exec(node, input_chars, start_pos, captures, rflags) {
+      Some(end_pos) =>
+        return Some({ start: start_pos, end_: end_pos, captures })
       None => return None
     }
   }
-  for i = 0; i <= input_chars.length(); i = i + 1 {
+  for i = start_pos; i <= input_chars.length(); i = i + 1 {
     let captures : Array[String?] = Array::make(num_groups, None)
     match regex_exec(node, input_chars, i, captures, rflags) {
       Some(end_pos) => return Some({ start: i, end_: end_pos, captures })
@@ -983,22 +996,106 @@ pub fn make_regexp_object(pattern : String, flags : String) -> Value {
   props["dotAll"] = Bool(has_dotall)
   props["lastIndex"] = Number(0.0)
   // test method
-  props["test"] = make_native_func("test", fn(args) {
-    let str = if args.length() > 0 { args[0].to_string() } else { "" }
-    let result = regex_search(pattern, flags, str) catch { _ => None }
-    match result {
-      Some(_) => Bool(true)
-      None => Bool(false)
-    }
+  props["test"] = Object({
+    properties: {},
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      MethodCallable("test", fn(this_val, args) {
+        let str = if args.length() > 0 { args[0].to_string() } else { "" }
+        let start = if has_sticky || has_global {
+          match this_val {
+            Object(d) =>
+              match d.properties.get("lastIndex") {
+                Some(Number(n)) => n.to_int()
+                _ => 0
+              }
+            _ => 0
+          }
+        } else {
+          0
+        }
+        let result = regex_search(pattern, flags, str, start_pos=start) catch {
+          _ => None
+        }
+        match result {
+          Some(m) => {
+            if has_sticky || has_global {
+              match this_val {
+                Object(d) =>
+                  d.properties["lastIndex"] = Number(m.end_.to_double())
+                _ => ()
+              }
+            }
+            Bool(true)
+          }
+          None => {
+            if has_sticky || has_global {
+              match this_val {
+                Object(d) => d.properties["lastIndex"] = Number(0.0)
+                _ => ()
+              }
+            }
+            Bool(false)
+          }
+        }
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
   })
   // exec method
-  props["exec"] = make_native_func("exec", fn(args) {
-    let str = if args.length() > 0 { args[0].to_string() } else { "" }
-    let result = regex_search(pattern, flags, str) catch { _ => None }
-    match result {
-      Some(m) => make_regex_match_array(m, str)
-      None => Null
-    }
+  props["exec"] = Object({
+    properties: {},
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      MethodCallable("exec", fn(this_val, args) {
+        let str = if args.length() > 0 { args[0].to_string() } else { "" }
+        let start = if has_sticky || has_global {
+          match this_val {
+            Object(d) =>
+              match d.properties.get("lastIndex") {
+                Some(Number(n)) => n.to_int()
+                _ => 0
+              }
+            _ => 0
+          }
+        } else {
+          0
+        }
+        let result = regex_search(pattern, flags, str, start_pos=start) catch {
+          _ => None
+        }
+        match result {
+          Some(m) => {
+            if has_sticky || has_global {
+              match this_val {
+                Object(d) =>
+                  d.properties["lastIndex"] = Number(m.end_.to_double())
+                _ => ()
+              }
+            }
+            make_regex_match_array(m, str)
+          }
+          None => {
+            if has_sticky || has_global {
+              match this_val {
+                Object(d) => d.properties["lastIndex"] = Number(0.0)
+                _ => ()
+              }
+            }
+            Null
+          }
+        }
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
   })
   Object({
     properties: props,

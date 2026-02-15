@@ -76,9 +76,7 @@ Top failing categories from the full test262 run (2026-02-15):
 | language/identifiers | 154 | 53 | 74.4% | Medium |
 | built-ins/TypedArrayConstructors | 342 | 17 | 95.3% | ✅ Done (P17-19) |
 | built-ins/DataView | 353 | 35 | 91.0% | ✅ Done (P16) |
-| built-ins/WeakMap | 51 | 31 | 62.2% | Medium |
 | built-ins/Map | 152 | 29 | 84.0% | Medium |
-| built-ins/WeakSet | 39 | 26 | 60.0% | Medium |
 | built-ins/Uint8Array | 44 | 24 | 64.7% | Medium |
 | built-ins/Promise | 614 | 4 | 99.4% | ✅ Done (P7) |
 | built-ins/ArrayBuffer | 73 | 5 | 93.6% | ✅ Done (P16-19) |

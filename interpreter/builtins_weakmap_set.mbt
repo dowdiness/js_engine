@@ -551,6 +551,11 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
     prototype: Null,
     callable: Some(
       InterpreterCallable("WeakMap", fn(interp, _this_val, args) raise {
+        if not(is_constructing.val) {
+          raise @errors.TypeError(
+            message="Constructor WeakMap requires 'new'",
+          )
+        }
         // Create new WeakMap instance
         let id = weakmap_id_counter.val
         weakmap_id_counter.val = id + 1
@@ -860,6 +865,11 @@ fn setup_weakset_builtins(env : Environment) -> Unit {
     prototype: Null,
     callable: Some(
       InterpreterCallable("WeakSet", fn(interp, _this_val, args) raise {
+        if not(is_constructing.val) {
+          raise @errors.TypeError(
+            message="Constructor WeakSet requires 'new'",
+          )
+        }
         // Create new WeakSet instance
         let id = weakset_id_counter.val
         weakset_id_counter.val = id + 1

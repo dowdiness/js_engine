@@ -5950,7 +5950,7 @@ fn Interpreter::get_computed_property(
               if sym.id == iterator_sym.id {
                 if data.class_name == "String" {
                   match data.properties.get("[[StringData]]") {
-                    Some(String_(s)) =>
+                    Some(String_(_)) =>
                       return Object({
                         properties: {},
                         symbol_properties: {},
@@ -5958,8 +5958,25 @@ fn Interpreter::get_computed_property(
                         callable: Some(
                           MethodCallable(
                             "[Symbol.iterator]",
-                            fn(_this_val, _args) {
-                              make_string_iterator_value(s)
+                            fn(this_val, _args) raise {
+                              let str = match this_val {
+                                String_(sv) => sv
+                                Object(d) =>
+                                  if d.class_name == "String" {
+                                    match d.properties.get("[[StringData]]") {
+                                      Some(String_(sv)) => sv
+                                      _ => this_val.to_string()
+                                    }
+                                  } else {
+                                    this_val.to_string()
+                                  }
+                                Null | Undefined =>
+                                  raise @errors.TypeError(
+                                    message="Cannot convert undefined or null to object",
+                                  )
+                                _ => this_val.to_string()
+                              }
+                              make_string_iterator_value(str)
                             },
                           ),
                         ),
@@ -6402,7 +6419,13 @@ fn Interpreter::get_computed_property(
           }
         }
         String_("length") => Number(data.elements.length().to_double())
-        String_(s) => get_array_method_with_interp(data, s)
+        String_(s) => {
+          // Check side table for named properties first
+          match get_array_named_prop(data, s) {
+            Some(v) => v
+            None => get_array_method_with_interp(data, s)
+          }
+        }
         _ => Undefined
       }
     String_(s) =>
@@ -6581,6 +6604,7 @@ fn Interpreter::set_property(
         }
       } else {
         // try numeric index
+        let mut handled = false
         try {
           let i = @strconv.parse_int(prop)
           if i >= 0 {
@@ -6588,9 +6612,14 @@ fn Interpreter::set_property(
               data.elements.push(Undefined)
             }
             data.elements[i] = value
+            handled = true
           }
         } catch {
           _ => ()
+        }
+        if not(handled) {
+          // Store named properties in side table
+          set_array_named_prop(data, prop, value)
         }
       }
       value
