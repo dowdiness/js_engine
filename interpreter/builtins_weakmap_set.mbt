@@ -495,7 +495,21 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
                       let value = interp.call_value(
                         callbackfn, Undefined, [key], loc,
                       )
-                      weakmap_storage[id] = [(key, value)]
+                      // Re-read storage after callback (it may have inserted entries)
+                      match weakmap_storage.get(id) {
+                        Some(entries) => {
+                          // Check if key was already added by callback
+                          for i = 0; i < entries.length(); i = i + 1 {
+                            let (k, _) = entries[i]
+                            if weak_key_equal(k, key) {
+                              entries[i] = (key, value)
+                              return value
+                            }
+                          }
+                          entries.push((key, value))
+                        }
+                        None => weakmap_storage[id] = [(key, value)]
+                      }
                       value
                     }
                   }

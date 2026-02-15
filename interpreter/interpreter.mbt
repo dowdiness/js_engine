@@ -6420,10 +6420,29 @@ fn Interpreter::get_computed_property(
         }
         String_("length") => Number(data.elements.length().to_double())
         String_(s) => {
-          // Check side table for named properties first
-          match get_array_named_prop(data, s) {
+          // Canonical numeric index string check: parseDouble(s).toString() === s
+          let mut numeric_result : Value? = None
+          try {
+            let n = @strconv.parse_double(s)
+            if n.to_string() == s {
+              let idx = n.to_int()
+              if idx.to_double() == n && idx >= 0 && idx < data.elements.length() {
+                numeric_result = Some(data.elements[idx])
+              } else {
+                numeric_result = Some(Undefined)
+              }
+            }
+          } catch {
+            _ => () // Not a numeric string
+          }
+          match numeric_result {
             Some(v) => v
-            None => get_array_method_with_interp(data, s)
+            None =>
+              // Check side table for named properties, then methods
+              match get_array_named_prop(data, s) {
+                Some(v) => v
+                None => get_array_method_with_interp(data, s)
+              }
           }
         }
         _ => Undefined
@@ -6910,8 +6929,27 @@ fn Interpreter::set_computed_property(
               let _ = data.elements.pop()
             }
           } else {
-            // Store named properties in side table
-            set_array_named_prop(data, prop, value)
+            // Canonical numeric index string check: parseDouble(s).toString() === s
+            let mut handled = false
+            try {
+              let n = @strconv.parse_double(prop)
+              if n.to_string() == prop {
+                let idx = n.to_int()
+                if idx.to_double() == n && idx >= 0 {
+                  while data.elements.length() <= idx {
+                    data.elements.push(Undefined)
+                  }
+                  data.elements[idx] = value
+                  handled = true
+                }
+              }
+            } catch {
+              _ => ()
+            }
+            if not(handled) {
+              // Store named properties in side table
+              set_array_named_prop(data, prop, value)
+            }
           }
           value
         }
