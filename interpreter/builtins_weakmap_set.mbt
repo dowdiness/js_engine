@@ -33,6 +33,14 @@ let weakmap_prototype_ref : Ref[Value?] = { val: None }
 let weakset_prototype_ref : Ref[Value?] = { val: None }
 
 ///|
+/// Side table for WeakMap instance IDs (non-forgeable by user code)
+let weakmap_id_table : Array[(ObjectData, Int)] = []
+
+///|
+/// Side table for WeakSet instance IDs (non-forgeable by user code)
+let weakset_id_table : Array[(ObjectData, Int)] = []
+
+///|
 /// Check if a value is a valid WeakMap/WeakSet key (must be an object or symbol)
 fn is_valid_weak_key(val : Value) -> Bool {
   match val {
@@ -43,21 +51,39 @@ fn is_valid_weak_key(val : Value) -> Bool {
 }
 
 ///|
-/// Get the WeakMap ID from an object's internal properties
+/// Get the WeakMap ID from the side table (non-forgeable)
 fn get_weakmap_id(data : ObjectData) -> Int? {
-  match data.properties.get("[[WeakMapId]]") {
-    Some(Number(n)) => Some(n.to_int())
-    _ => None
+  for i = 0; i < weakmap_id_table.length(); i = i + 1 {
+    let (existing, id) = weakmap_id_table[i]
+    if physical_equal(existing, data) {
+      return Some(id)
+    }
   }
+  None
 }
 
 ///|
-/// Get the WeakSet ID from an object's internal properties
+/// Store a WeakMap ID in the side table
+fn set_weakmap_id(data : ObjectData, id : Int) -> Unit {
+  weakmap_id_table.push((data, id))
+}
+
+///|
+/// Get the WeakSet ID from the side table (non-forgeable)
 fn get_weakset_id(data : ObjectData) -> Int? {
-  match data.properties.get("[[WeakSetId]]") {
-    Some(Number(n)) => Some(n.to_int())
-    _ => None
+  for i = 0; i < weakset_id_table.length(); i = i + 1 {
+    let (existing, id) = weakset_id_table[i]
+    if physical_equal(existing, data) {
+      return Some(id)
+    }
   }
+  None
+}
+
+///|
+/// Store a WeakSet ID in the side table
+fn set_weakset_id(data : ObjectData, id : Int) -> Unit {
+  weakset_id_table.push((data, id))
 }
 
 ///|
@@ -78,7 +104,7 @@ fn weak_key_equal(a : Value, b : Value) -> Bool {
 ///|
 /// Get WeakMap.prototype method for a WeakMap instance
 pub fn get_weakmap_method(data : ObjectData, prop : String) -> Value {
-  // Check own properties first (like [[WeakMapId]])
+  // Check own properties first
   match data.properties.get(prop) {
     Some(v) => return v
     None => ()
@@ -100,7 +126,7 @@ pub fn get_weakmap_method(data : ObjectData, prop : String) -> Value {
 ///|
 /// Get WeakSet.prototype method for a WeakSet instance
 pub fn get_weakset_method(data : ObjectData, prop : String) -> Value {
-  // Check own properties first (like [[WeakSetId]])
+  // Check own properties first
   match data.properties.get(prop) {
     Some(v) => return v
     None => ()
@@ -530,8 +556,8 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
         weakmap_id_counter.val = id + 1
         let entries : Array[(Value, Value)] = []
         weakmap_storage[id] = entries
-        let wm_obj : Value = Object({
-          properties: { "[[WeakMapId]]": Number(id.to_double()) },
+        let wm_data : ObjectData = {
+          properties: {},
           symbol_properties: {},
           prototype: wm_proto,
           callable: None,
@@ -539,7 +565,9 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
           descriptors: {},
           symbol_descriptors: {},
           extensible: true,
-        })
+        }
+        set_weakmap_id(wm_data, id)
+        let wm_obj : Value = Object(wm_data)
 
         // If iterable provided, populate
         if args.length() > 0 {
@@ -837,8 +865,8 @@ fn setup_weakset_builtins(env : Environment) -> Unit {
         weakset_id_counter.val = id + 1
         let values : Array[Value] = []
         weakset_storage[id] = values
-        let ws_obj : Value = Object({
-          properties: { "[[WeakSetId]]": Number(id.to_double()) },
+        let ws_data : ObjectData = {
+          properties: {},
           symbol_properties: {},
           prototype: ws_proto,
           callable: None,
@@ -846,7 +874,9 @@ fn setup_weakset_builtins(env : Environment) -> Unit {
           descriptors: {},
           symbol_descriptors: {},
           extensible: true,
-        })
+        }
+        set_weakset_id(ws_data, id)
+        let ws_obj : Value = Object(ws_data)
 
         // If iterable provided, populate
         if args.length() > 0 {

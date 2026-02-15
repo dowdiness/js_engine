@@ -524,6 +524,7 @@ priv struct RegexFlags {
   icase : Bool
   multiline : Bool
   dot_all : Bool
+  sticky : Bool
 }
 
 ///|
@@ -849,6 +850,7 @@ fn make_regex_flags(flags : String) -> RegexFlags {
     icase: flags.contains("i"),
     multiline: flags.contains("m"),
     dot_all: flags.contains("s"),
+    sticky: flags.contains("y"),
   }
 }
 
@@ -922,7 +924,13 @@ pub fn regex_search_all(
           i = end_pos
         }
       }
-      None => i += 1
+      None => {
+        // With sticky flag, stop on first failed match position
+        if rflags.sticky {
+          break
+        }
+        i += 1
+      }
     }
   }
   results
