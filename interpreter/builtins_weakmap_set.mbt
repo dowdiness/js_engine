@@ -459,6 +459,16 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
                   } else {
                     Undefined
                   }
+                  // Check callbackfn is callable before validating key (per spec order)
+                  let cb_is_callable = match callbackfn {
+                    Object(od) => od.callable is Some(_)
+                    _ => false
+                  }
+                  if not(cb_is_callable) {
+                    raise @errors.TypeError(
+                      message="callbackfn is not a function",
+                    )
+                  }
                   if not(is_valid_weak_key(key)) {
                     raise @errors.TypeError(
                       message="Invalid value used as weak map key",

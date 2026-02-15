@@ -6428,8 +6428,6 @@ fn Interpreter::get_computed_property(
               let idx = n.to_int()
               if idx.to_double() == n && idx >= 0 && idx < data.elements.length() {
                 numeric_result = Some(data.elements[idx])
-              } else {
-                numeric_result = Some(Undefined)
               }
             }
           } catch {
