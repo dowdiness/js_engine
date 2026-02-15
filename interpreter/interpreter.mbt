@@ -7326,7 +7326,15 @@ fn Interpreter::construct_value(
               ),
             )
           } else {
-            func(self, Undefined, args)
+            is_constructing.val = true
+            let result = func(self, Undefined, args) catch {
+              e => {
+                is_constructing.val = false
+                raise e
+              }
+            }
+            is_constructing.val = false
+            result
           }
         Some(ConstructorOnlyCallable(_, func)) => func(self, args)
         Some(ArrowFunc(_)) | Some(ArrowFuncExt(_)) =>
