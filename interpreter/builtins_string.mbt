@@ -1220,19 +1220,26 @@ pub fn this_to_string(this_val : Value) -> String raise Error {
 
 ///|
 /// Populate String.prototype with all string methods
-pub fn setup_string_prototype(string_proto : Value) -> Unit {
+pub fn setup_string_prototype(string_proto : Value, annex_b~ : Bool = false) -> Unit {
   match string_proto {
     Object(data) => {
-      let methods = [
+      let methods : Array[String] = [
         "charAt", "charCodeAt", "at", "codePointAt", "indexOf", "lastIndexOf", "includes",
         "startsWith", "endsWith", "slice", "substring", "toUpperCase", "toLowerCase",
         "trim", "trimStart", "trimEnd", "trimLeft", "trimRight", "padStart", "padEnd", "repeat", "replace",
         "replaceAll", "split", "search", "match", "matchAll", "concat", "normalize", "isWellFormed",
         "toWellFormed", "localeCompare", "toLocaleString", "toString", "valueOf",
-        // Annex B HTML string methods
-        "anchor", "big", "blink", "bold", "fixed", "fontcolor", "fontsize",
-        "italics", "link", "small", "strike", "sub", "sup",
       ]
+      // Annex B HTML string methods — only when --annex-b is enabled
+      if annex_b {
+        let annex_b_methods = [
+          "anchor", "big", "blink", "bold", "fixed", "fontcolor", "fontsize",
+          "italics", "link", "small", "strike", "sub", "sup",
+        ]
+        for m in annex_b_methods {
+          methods.push(m)
+        }
+      }
       for method_name in methods {
         let mname = method_name
         data.properties[mname] = Object({

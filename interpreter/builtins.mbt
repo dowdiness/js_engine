@@ -11,7 +11,7 @@ fn func_body_has_use_strict(body : Array[@ast.Stmt]) -> Bool {
 }
 
 ///|
-pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
+pub fn setup_builtins(env : Environment, output : Array[String], annex_b~ : Bool = false) -> Unit {
   let _ = output
   // Global constants
   env.def_builtin("NaN", Number(0.0 / 0.0))
@@ -460,7 +460,7 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
   // Store String.prototype for ToObject wrapping
   env.def_builtin("[[StringPrototype]]", string_proto)
   // Populate String.prototype with methods for .call() support
-  setup_string_prototype(string_proto)
+  setup_string_prototype(string_proto, annex_b~)
   // Set String.prototype.constructor = String
   match string_proto {
     Object(data) => {

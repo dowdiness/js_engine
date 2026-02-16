@@ -876,13 +876,21 @@ pub fn get_array_iterator_proto() -> Value {
         symbol_descriptors: {},
         extensible: true,
       })
+      let proto_descs : Map[String, PropDescriptor] = {}
+      proto_descs["next"] = {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
       let proto = Object({
         properties: proto_props,
         symbol_properties: proto_sym_props,
         prototype: get_iterator_proto(),
         callable: None,
         class_name: "Array Iterator",
-        descriptors: {},
+        descriptors: proto_descs,
         symbol_descriptors: proto_sym_descs,
         extensible: true,
       })
@@ -1042,13 +1050,21 @@ pub fn get_string_iterator_proto() -> Value {
         symbol_descriptors: {},
         extensible: true,
       })
+      let str_proto_descs : Map[String, PropDescriptor] = {}
+      str_proto_descs["next"] = {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
       let proto = Object({
         properties: proto_props,
         symbol_properties: proto_sym_props,
         prototype: get_iterator_proto(),
         callable: None,
         class_name: "String Iterator",
-        descriptors: {},
+        descriptors: str_proto_descs,
         symbol_descriptors: proto_sym_descs,
         extensible: true,
       })

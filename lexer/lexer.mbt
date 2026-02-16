@@ -851,8 +851,9 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             'v' => write_code_point(buf, 11) // vertical tab
             'f' => write_code_point(buf, 12) // form feed
             '0' => {
-              // \0 is NUL only when NOT followed by a decimal digit (ES spec)
-              if offset + 1 < len && is_digit(char_at(offset + 1)) {
+              // \0 is NUL only when NOT followed by an octal digit (ES spec)
+              // \08 and \09 are valid: NUL char followed by literal digit
+              if offset + 1 < len && char_at(offset + 1) >= '0' && char_at(offset + 1) <= '7' {
                 raise @errors.SyntaxError(
                   message="Invalid escape sequence at line \{line}, col \{col}",
                 )
