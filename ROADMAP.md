@@ -2,7 +2,7 @@
 
 ## Current Status
 
-**Test262**: 23,849 / 27,599 executed (**86.4%** pass rate) — full run 2026-02-15
+**Test262**: 23,875 / 27,614 executed (**86.5%** pass rate) — full run 2026-02-16
 
 **Unit tests**: 881 total, 881 passed, 0 failed
 
@@ -15,6 +15,7 @@
 **Phase 19 (2026-02-15)**: Symbol/TypedArray prototype fixes and full re-run verification. Registered `[[SymbolPrototype]]` and `[[FunctionPrototype]]` as environment builtins. Boxed Symbol objects now use Symbol.prototype (was Object.prototype). `%TypedArray%` constructor gets `name`/`length` descriptors and `[[Prototype]]` set to Function.prototype. Reflect now **100%** (153/153). Full test262 re-run: **+525 tests passing** (23,012 → 23,537), pass rate 83.7% → **85.6%**.
 **Phase 20 (2026-02-15)**: WeakMap/WeakSet, iterator prototypes, RegExp improvements. Implemented WeakMap (100%, 139/139) and WeakSet (100%, 84/84) with full constructor/prototype support including `getOrInsert`/`getOrInsertComputed`. Added `getOrInsert`/`getOrInsertComputed` to Map (100%). Created shared iterator prototypes (`%MapIteratorPrototype%`, `%SetIteratorPrototype%`, `%ArrayIteratorPrototype%`, `%StringIteratorPrototype%`) with proper `[Symbol.toStringTag]`, `next` method `name`/`length` descriptors. Added `Symbol.iterator` support for Map/Set/boxed String. RegExp: added lookahead `(?=…)`/`(?!…)`, multiline `^`/`$` anchoring, backreferences `\1`-`\9`, dotAll `s` flag, sticky `y` flag, unicode `u` flag properties, full ES whitespace in `\s`/`\S`, `exec` result `index`/`input`/`groups` properties. Full test262 re-run: **+223 tests passing** (23,537 → 23,760), pass rate 85.6% → **86.1%**.
 **Phase 20 review fixes (2026-02-15)**: PR review fixes for regex, WeakMap/WeakSet, and array properties. RegExp: `is_line_terminator` helper for dot/multiline anchors covering `\r`/`\u2028`/`\u2029`; sticky flag reads/writes `lastIndex`; `regex_search` accepts `start_pos`. WeakMap/WeakSet: IDs moved to non-forgeable side tables with `physical_equal`; constructors reject calls without `new`; `is_constructing` flag set for `InterpreterCallable` in `eval_new`; `getOrInsertComputed` callback safety. Arrays: `set_property` persists named props to side table; `get_computed_property`/`set_computed_property` detect canonical numeric index strings; `get_computed_property` checks side table for named props. String `@@iterator` uses call-time receiver. Full test262 re-run: **+89 tests passing** (23,760 → 23,849), pass rate 86.1% → **86.4%**.
+**Phase 21 (2026-02-16)**: Annex B `get_string_method` gating and conformance fixes. `get_string_method` now accepts `annex_b~` parameter and returns `Undefined` for Annex B HTML method names when flag is false, preventing direct primitive access from bypassing `setup_string_prototype` gating. All interpreter call sites forward `self.annex_b`. Replaced `str[i:i+1].to_string()` with `str.view()[i:i+1].to_string()` in String constructor. Removed dead `"annex-b" in meta.includes` clause from test262-runner.py. Full test262 re-run: **+26 tests passing** (23,849 → 23,875), pass rate 86.4% → **86.5%**. Key improvements: annexB/built-ins 66.8% → **72.7%** (+13), JSON 97.8% → **99.3%** (+2), String 95.6% → **95.1%** (more tests executed), Iterator 80.0% → **100.0%** (+1).
 
 ## Phase History
 
@@ -45,6 +46,7 @@
 | 19 | +525 | 23,537 | Symbol/TypedArray prototype fixes, `[[SymbolPrototype]]`/`[[FunctionPrototype]]` builtins, full re-run verification (85.6%) |
 | 20 | +223 | 23,760 | WeakMap/WeakSet, iterator prototypes, RegExp improvements — full re-run verification (86.1%) |
 | 20-fix | +89 | 23,849 | PR review fixes: regex line terminators/lastIndex, WeakMap/WeakSet constructor checks, array named props, canonical numeric indices (86.4%) |
+| 21 | +26 | 23,875 | Annex B `get_string_method` gating, StringView fix, test runner fix (86.5%) |
 
 For detailed implementation notes on Phases 1-6, see [docs/PHASE_HISTORY.md](docs/PHASE_HISTORY.md).
 
@@ -52,27 +54,27 @@ For detailed implementation notes on Phases 1-6, see [docs/PHASE_HISTORY.md](doc
 
 ## Failure Breakdown
 
-### Failure Breakdown by Category (3,750 remaining failures)
+### Failure Breakdown by Category (3,739 remaining failures)
 
-Top failing categories from the full test262 run (2026-02-15):
+Top failing categories from the full test262 run (2026-02-16):
 
 | Category | Pass | Fail | Rate | Priority |
 |----------|------|------|------|----------|
-| language/expressions | 4,921 | 591 | 89.3% | Medium |
+| language/expressions | 4,925 | 587 | 89.4% | Medium |
 | language/statements | 3,502 | 719 | 83.0% | Medium |
-| built-ins/Array | 2,596 | 349 | 88.1% | Medium |
+| built-ins/Array | 2,595 | 350 | 88.1% | Medium |
 | built-ins/TypedArray | 714 | 63 | 91.9% | ✅ Done (P17-19) |
 | built-ins/Object | 3,238 | 137 | 95.9% | ✅ Done (P18) |
-| annexB/language | 313 | 504 | 38.3% | Low (--annex-b) |
+| annexB/language | 311 | 506 | 38.1% | Low (--annex-b) |
 | built-ins/RegExp | 652 | 192 | 77.3% | Medium (P20 improved) |
 | built-ins/WeakMap | 139 | 0 | 100.0% | ✅ Done (P20) |
 | built-ins/WeakSet | 84 | 0 | 100.0% | ✅ Done (P20) |
 | language/module-code | 114 | 198 | 36.5% | Medium |
 | language/eval-code | 224 | 106 | 67.9% | Low (P5 done) |
-| built-ins/String | 1,142 | 53 | 95.6% | ✅ Done (P18) |
+| built-ins/String | 1,151 | 59 | 95.1% | ✅ Done (P18) |
 | language/literals | 232 | 87 | 72.7% | Medium |
 | language/import | 7 | 86 | 7.5% | Medium |
-| annexB/built-ins | 147 | 73 | 66.8% | Low (--annex-b) |
+| annexB/built-ins | 160 | 60 | 72.7% | Low (--annex-b, P21 improved) |
 | built-ins/Function | 342 | 69 | 83.2% | Medium |
 | built-ins/Number | 287 | 48 | 85.7% | Medium |
 | language/identifiers | 154 | 53 | 74.4% | Medium |
@@ -105,13 +107,14 @@ Top failing categories from the full test262 run (2026-02-15):
 | language/block-scope | 106 | 0 | 100.0% |
 | language/punctuators | 11 | 0 | 100.0% |
 | language/source-text | 1 | 0 | 100.0% |
+| built-ins/Iterator | 5 | 0 | 100.0% |
 | built-ins/Promise | 614 | 4 | 99.4% |
+| built-ins/JSON | 134 | 1 | 99.3% |
 | language/white-space | 66 | 1 | 98.5% |
 | built-ins/Math | 317 | 5 | 98.4% |
 | built-ins/parseInt | 54 | 1 | 98.2% |
 | built-ins/parseFloat | 53 | 1 | 98.1% |
 | built-ins/Set | 188 | 4 | 97.9% |
-| built-ins/JSON | 132 | 3 | 97.8% |
 | built-ins/decodeURIComponent | 53 | 2 | 96.4% |
 | built-ins/decodeURI | 52 | 2 | 96.3% |
 | built-ins/Proxy | 262 | 10 | 96.3% |
@@ -121,7 +124,7 @@ Top failing categories from the full test262 run (2026-02-15):
 | language/keywords | 24 | 1 | 96.0% |
 | built-ins/Object | 3,238 | 137 | 95.9% |
 | language/comments | 22 | 1 | 95.7% |
-| built-ins/String | 1,142 | 53 | 95.6% |
+| built-ins/String | 1,151 | 59 | 95.1% |
 | built-ins/TypedArrayConstructors | 342 | 17 | 95.3% |
 | language/computed-property-names | 45 | 3 | 93.8% |
 | built-ins/ArrayBuffer | 73 | 5 | 93.6% |
@@ -672,31 +675,182 @@ Registered dedicated prototype builtins and fixed prototype chain conformance:
 
 Prioritized by estimated test impact and implementation effort. These are the highest-ROI items for pushing past 90% test262 pass rate.
 
-| Priority | Feature | Est. Impact | Effort | Notes |
-|----------|---------|-------------|--------|-------|
-| **1** | `with` statement | ~151 tests | Medium | Behind `--annex-b` flag; requires object environment record and dynamic scope injection |
-| **2** | Class public fields | ~723 skipped | Medium | `class C { x = 1; static y = 2; }` syntax; currently skipped in test262 |
-| **3** | Class private fields/methods | ~2,437 skipped | High | `#private` syntax across fields, methods, static members; large test surface but complex implementation |
-| **4** | async/await | ~500+ tests | Medium | Syntactic sugar over Promises + generator-like suspension; unblocked by generator implementation |
-| **5** | RegExp named groups/lookbehind | ~190 tests | Medium | Currently skipped; `(?<name>...)` and `(?<=...)` syntax |
-| **6** | String.prototype.matchAll | ~17 tests | Low | `RegExpStringIteratorPrototype` implementation |
-| **7** | GeneratorFunction/Prototype compliance | ~35 tests | Medium | Constructor semantics, prototype chain fixes |
+### Path to 90%
 
-### WeakMap / WeakSet — ✅ DONE (Phase 20)
+Current: **23,875 / 27,614 executed (86.5%)**. Need **~978 more passing tests** to reach 90%. The fixes below are ordered by ROI (tests gained per unit of effort). Completing Tiers 1-2 should reach or exceed 90%.
 
-Implemented WeakMap and WeakSet with full constructor/prototype support. Both at **100%** pass rate. Includes ES2025 `getOrInsert`/`getOrInsertComputed` methods (also added to Map). Uses global side-table storage with object-identity key comparison. Only accepts objects/symbols as keys per spec.
+### Tier 1 — Quick Wins (~220+ tests, low effort)
 
-### Iterator Prototypes — ✅ DONE (Phase 20)
+These are small, self-contained fixes that each require minimal code changes but unlock disproportionate test gains.
 
-Created shared `%MapIteratorPrototype%`, `%SetIteratorPrototype%`, `%ArrayIteratorPrototype%`, `%StringIteratorPrototype%` with proper `[Symbol.toStringTag]` and `next` method `name`/`length` descriptors. MapIteratorPrototype and SetIteratorPrototype now **100%**. StringIteratorPrototype **100%**. Added `Symbol.iterator` support for Map, Set, and boxed String objects.
+| # | Fix | Est. Impact | Effort | Files to Modify |
+|---|-----|-------------|--------|-----------------|
+| **1a** | **String escape sequences** (`\r`, `\b`, `\v`, `\f`, `\0`, `\xHH`) | ~90-120 tests | Very Low | `lexer/lexer.mbt` (lines 813-829 string handler, lines 257-273 template handler) |
+| **1b** | **`%ThrowTypeError%` intrinsic** | ~13 tests | Very Low | `interpreter/builtins.mbt` |
+| **1c** | **Annex B HTML string methods** — ✅ DONE (P21): `get_string_method` gated behind `annex_b~` param; `setup_string_prototype` gating intact | +13 tests | Low | `interpreter/builtins_string.mbt` |
+| **1d** | **`RegExpStringIteratorPrototype`** (for `String.prototype.matchAll`) | ~17 tests | Low | `interpreter/builtins_regex.mbt`, `interpreter/builtins_string.mbt` |
+| **1e** | **Import syntax validation** (reject escaped keywords like `\u0066rom`, duplicate bound names) | ~10 tests | Low | `parser/stmt.mbt` |
 
-### RegExp Improvements — Partial (Phase 20)
+**Details:**
 
-Added lookahead `(?=…)`/`(?!…)`, multiline `^`/`$` anchoring with `m` flag, backreferences `\1`-`\9`, dotAll `s` flag, sticky `y`/unicode `u` flag properties, full ES whitespace in `\s`/`\S`, and `exec` result `index`/`input`/`groups` properties. Pass rate improved from 74.2% to **77.3%**. Remaining improvements: `String.prototype.matchAll`, RegExp `[Symbol.replace]`/`[Symbol.split]`/`[Symbol.match]`, named capture groups.
+**1a — String escape sequences.** The lexer's string literal handler (`lexer.mbt:813`) and template literal handler (`lexer.mbt:257`) only recognize `\n`, `\t`, `\\`, quotes, and `\u`. The default branch emits `\` + the literal character, which is wrong for all other standard escapes. Missing escapes to add:
 
-### Boxed Primitives — ✅ DONE (Phase 18)
+```moonbit
+'r' => buf.write_char('\r')    // 0x0D carriage return
+'b' => buf.write_char('\x08')  // 0x08 backspace
+'v' => buf.write_char('\x0B')  // 0x0B vertical tab
+'f' => buf.write_char('\x0C')  // 0x0C form feed
+'0' => buf.write_char('\x00')  // 0x00 null (when not followed by digit)
+'x' => { /* parse 2 hex digits */ }  // \xHH hex escape
+```
 
-Implemented `new String()`, `new Number()`, `new Boolean()` as Object wrappers with internal slots (`[[StringData]]`, `[[NumberData]]`, `[[BooleanData]]`). `Object()` performs ToObject wrapping. ToPrimitive coercion in `loose_equal`. Prototype methods updated for boxed values. TypedArray constructor name inheritance regression fixed. Key gains: Object +108, String +38, Number +7, TypedArray +5, TypedArrayConstructors +3, Boolean +1.
+This is the single highest-ROI fix. It directly causes the `language/line-terminators` category to fail at **48.8%** (21/41 failures, mostly `\r` related), many `language/literals` failures (87 total), and some `language/identifiers` failures (53 total). The `\xHH` escape is used pervasively in test262 test bodies.
+
+**1b — `%ThrowTypeError%` intrinsic.** Per ES spec §10.2.4, `%ThrowTypeError%` is a single frozen function object that throws `TypeError` when called. It must be installed as the getter/setter for:
+- `arguments.callee` and `arguments.caller` in strict mode
+- `Function.prototype.caller` and `Function.prototype.arguments`
+
+All 13 `built-ins/ThrowTypeError` tests fail (0% pass rate). Implementation: create one native function in `builtins.mbt`, install as accessor descriptors on the 4 properties above.
+
+**1c — Annex B HTML string methods.** ✅ DONE (Phase 21). `get_string_method` now accepts `annex_b~` parameter and returns `Undefined` for the 13 Annex B method names when the flag is false. All interpreter call sites forward `self.annex_b`. `setup_string_prototype` gating was already in place. This fixed `annexB/built-ins` from 66.8% → **72.7%** (+13 tests). The remaining 60 failures are non-HTML-method Annex B built-in tests.
+
+**1d — `RegExpStringIteratorPrototype`.** All 17 `built-ins/RegExpStringIteratorPrototype` tests fail (0%). `String.prototype.matchAll` is already partially implemented but needs a proper iterator prototype with `[Symbol.toStringTag]` set to `"RegExp String Iterator"`, and `next` method with correct `name`/`length` descriptors. Follows the same pattern used for Map/Set/Array/String iterator prototypes in Phase 20.
+
+### Tier 2 — Medium Wins (~650-800 tests, medium effort)
+
+These require more substantial implementation work but each addresses a major failure cluster.
+
+| # | Fix | Est. Impact | Effort | Files to Modify |
+|---|-----|-------------|--------|-----------------|
+| **2a** | **Annex B block-level function hoisting** (sloppy mode) | ~504 tests | Medium | `interpreter/interpreter.mbt`, `interpreter/environment.mbt` |
+| **2b** | **`with` statement** | ~151 tests | Medium | `ast/ast.mbt`, `parser/stmt.mbt`, `interpreter/interpreter.mbt`, `interpreter/environment.mbt` |
+| **2c** | **RegExp `[Symbol.match]`/`[Symbol.replace]`/`[Symbol.split]`/`[Symbol.search]`** | ~50+ tests | Medium | `interpreter/builtins_regex.mbt`, `interpreter/builtins_string.mbt` |
+
+**Details:**
+
+**2a — Annex B block-level function hoisting.** This is the single largest cluster of failures: **504 tests** in `annexB/language` (38.3% pass rate). Per Annex B.3.3, when a `FunctionDeclaration` appears inside a block (`if`, `for`, `while`, `try`, etc.) in sloppy mode, it must be hoisted to the enclosing function scope as a `var` binding (not just block-scoped). The behavior is:
+1. At function entry, create a `var` binding for the function name (initialized to `undefined`).
+2. At the block where the declaration appears, create a block-scoped binding.
+3. When execution reaches the declaration, assign the block-scoped value to the function-scope `var` binding.
+
+This does NOT apply in strict mode (where block-scoped `function` declarations are the correct behavior). Implementation requires detecting sloppy-mode block-level function declarations during scope analysis and adding the dual binding logic.
+
+**2b — `with` statement.** The `with` keyword is parsed but not implemented (currently no `With` AST node). Requires:
+1. New `WithStmt(expression: Expr, body: Stmt)` AST node.
+2. Parser rule in `parse_stmt()` for `Token::With`.
+3. **Object environment record**: a new scope type in `environment.mbt` where property lookups check a target object first, then fall through to the outer scope.
+4. In strict mode, `with` must always throw `SyntaxError` (regardless of `--annex-b` flag).
+
+This unlocks ~151 currently-failing tests across `language/statements`, `language/expressions`, and a few `built-ins/Proxy` tests that use `with` for scope injection testing.
+
+**2c — RegExp well-known symbol methods.** The symbols `Symbol.match`, `Symbol.replace`, `Symbol.split`, and `Symbol.search` are created in `builtins.mbt:734-737` but never installed as methods on `RegExp.prototype`. Per spec, `String.prototype.match/replace/split/search` should delegate to these symbol-keyed methods on the regex object. This affects ~50+ tests across `built-ins/RegExp` and `built-ins/String`. Implementation:
+1. Add `RegExp.prototype[Symbol.match]` (similar to existing `exec` logic).
+2. Add `RegExp.prototype[Symbol.replace]` (handle replacement patterns `$1`, `$&`, etc.).
+3. Add `RegExp.prototype[Symbol.split]` (split with regex, respecting `limit`).
+4. Add `RegExp.prototype[Symbol.search]` (return index of first match).
+5. Update `String.prototype.match/replace/split/search` to check for these symbol methods on the argument.
+
+### Tier 3 — Feature Implementations (~3,000+ skipped tests unlocked, high effort)
+
+These are major missing language features. Each unlocks a large batch of currently-skipped tests but requires significant implementation work.
+
+| # | Feature | Skipped Tests | Effort | Notes |
+|---|---------|---------------|--------|-------|
+| **3a** | **Class public fields** | ~723 | Medium | `class C { x = 1; static y = 2; }` field initializer syntax |
+| **3b** | **async/await** | ~500+ executing + ~3,500 skipped | High | Syntactic sugar over Promises + generator-like suspension |
+| **3c** | **Class private fields/methods** | ~2,437 | High | `#private` syntax with brand-check semantics |
+| **3d** | **RegExp named groups & lookbehind** | ~679+ skipped | Medium | `(?<name>...)` capture groups and `(?<=...)`/`(?<!...)` assertions |
+
+**Details:**
+
+**3a — Class public fields.** Currently all tests with the `class-fields-public` and `class-static-fields-public` features are skipped (~723 tests). Implementation requires:
+1. Parser: recognize field declarations in class bodies (`x = expr;` and `static x = expr;`).
+2. New AST nodes for `ClassField(name, initializer, is_static)`.
+3. Interpreter: evaluate field initializers in `[[Construct]]` (instance fields) or class definition time (static fields).
+4. Field initializers run with `this` bound to the new instance (or the constructor for static).
+5. The initializer expression is evaluated per the `[[Define]]` semantics (not `[[Set]]`), meaning it bypasses setters.
+
+**3b — async/await.** The generator infrastructure (Phase 8) and Promise system (Phase 13, 99.4%) provide the foundation. Implementation requires:
+1. Parser: `async function`, `async () =>`, `await expr` syntax.
+2. Interpreter: async functions return Promises; `await` suspends and resumes via microtask queue (similar to `yield` in generators).
+3. Test runner: remove `async-functions` from `SKIP_FEATURES` in `test262-runner.py`.
+4. Unblocks `async-iteration` as a follow-up (~3,731 skipped tests).
+
+**3c — Class private fields/methods.** The largest single batch of skipped tests (~2,437 across `class-fields-private`, `class-methods-private`, `class-static-fields-private`, `class-static-methods-private`). Requires:
+1. Parser: `#name` syntax for fields, methods, accessors, and static variants.
+2. **Brand checking**: each class gets a unique brand; instances are stamped with the brand at construction time; accessing `#field` on an object without the brand throws `TypeError`.
+3. Private name resolution: lexical scope model where `#name` resolves to a per-class WeakMap-like storage slot.
+4. This is the most complex single feature due to the interaction between brand checks, inheritance, and static private members.
+
+**3d — RegExp named groups & lookbehind.** Currently skipped via `regexp-named-groups`, `regexp-lookbehind`, and `regexp-unicode-property-escapes` features. Implementation:
+1. Named groups `(?<name>...)`: extend `RegexNode` enum with `NamedGroup(name, inner)`, populate `groups` object on match result.
+2. Lookbehind `(?<=...)` / `(?<!...)`: requires backward matching from the current position (more complex than lookahead).
+3. Unicode property escapes `\p{Letter}` / `\P{Script=Greek}`: requires Unicode property tables (large data dependency).
+
+### Tier 4 — Polish & Edge Cases (~200-300 tests, varied effort)
+
+Targeted fixes for specific failing subcategories within otherwise high-performing areas.
+
+| # | Fix | Est. Impact | Effort | Category |
+|---|-----|-------------|--------|----------|
+| **4a** | GeneratorFunction constructor | ~19 tests | Medium | `built-ins/GeneratorFunction` (9.5%) |
+| **4b** | Generator `return()` with `finally` | ~16 tests | Medium | `built-ins/GeneratorPrototype` (73.8%) |
+| **4c** | `language/directive-prologue` edge cases | ~13 tests | Low | `language/directive-prologue` (79.0%) |
+| **4d** | `language/line-terminators` (beyond `\r`) | ~10 tests | Low | `language/line-terminators` (48.8%) |
+| **4e** | `built-ins/undefined` conformance | ~3 tests | Very Low | `built-ins/undefined` (57.1%) |
+| **4f** | Eval-code edge cases | ~30-50 tests | Medium-High | `language/eval-code` (67.9%) |
+| **4g** | Module system improvements | ~50-100 tests | High | `language/module-code` (36.5%) |
+
+**Details:**
+
+**4a — GeneratorFunction constructor.** `GeneratorFunction("a", "yield a")` should work like the `Function` constructor but return a generator function. The `Function` constructor exists in `builtins.mbt` but there's no `GeneratorFunction` constructor variant. Requires extending the `Function` constructor logic to handle the generator case and setting up the `GeneratorFunction` prototype chain.
+
+**4b — Generator `return()` with `finally`.** When `generator.return(value)` is called and the generator body has a `try...finally` block, the `finally` block must execute before the generator completes. The current statement-replay model may not handle this correctly. 16 failures in `built-ins/GeneratorPrototype`.
+
+**4d — `language/line-terminators`.** Beyond the `\r` escape fix (Tier 1), some failures may relate to the lexer not treating `\u2028` (LINE SEPARATOR) and `\u2029` (PARAGRAPH SEPARATOR) as line terminators in all contexts (line counting, ASI, string literal restrictions).
+
+**4f — Eval-code edge cases.** The 106 remaining failures in `language/eval-code` involve complex interactions: strict-mode eval variable scoping, `eval` in arrow functions with `this` binding, `Function` constructor body parsing edge cases, and nested eval with `var` hoisting across scope boundaries.
+
+**4g — Module system.** The 198 failures in `language/module-code` and 86 in `language/import` stem from: `import defer` syntax (Stage 3, ~50 tests), circular import resolution, live binding updates, `export * as ns` namespace re-exports, and multi-file module fixtures that the test runner doesn't supply.
+
+### Summary: Projected Impact
+
+| Milestone | Tests Fixed | Cumulative | Projected Rate |
+|-----------|------------|------------|----------------|
+| Current baseline | — | 23,875 | **86.5%** |
+| Tier 1 (quick wins) | ~207 | ~24,082 | **87.2%** |
+| Tier 2 (medium wins) | ~700 | ~24,782 | **89.7%** |
+| Tier 1+2 combined | ~907 | ~24,782 | **~90%** |
+| Tier 3a (class public fields) | ~723 unskipped | ~25,200* | **~89%*** |
+| Tier 3b (async/await) | ~500+ unskipped | ~25,700* | **~89%*** |
+| All tiers | ~2,000+ fixed + ~4,000+ unskipped | ~28,000+* | **~90%+*** |
+
+\* Projected rates for Tier 3 account for both newly-passing and newly-executed (denominator increases).
+
+### Root Cause Clustering of Remaining 3,739 Failures
+
+| Root Cause | Est. Failures | % of Total | Key Categories Affected |
+|------------|---------------|------------|-------------------------|
+| Annex B block-level function hoisting | ~504 | 13.4% | `annexB/language` |
+| Missing string escapes (`\r`, `\b`, `\v`, `\f`, `\0`, `\xHH`) | ~90-120 | 2.7% | `language/line-terminators`, `language/literals`, `language/identifiers` |
+| Missing `with` statement | ~151 | 4.0% | `language/statements`, `language/expressions` |
+| Module system gaps | ~284 | 7.6% | `language/module-code`, `language/import` |
+| RegExp gaps (symbols, named groups, edge cases) | ~209 | 5.6% | `built-ins/RegExp`, `built-ins/RegExpStringIteratorPrototype` |
+| Eval-code edge cases | ~106 | 2.8% | `language/eval-code` |
+| Annex B HTML string methods | ~60 | 1.6% | `annexB/built-ins` (P21 reduced from 73) |
+| Class body / expression edge cases | ~100-150 | 3.3% | `language/expressions`, `language/statements` |
+| Generator conformance | ~35 | 0.9% | `built-ins/GeneratorFunction`, `built-ins/GeneratorPrototype` |
+| `%ThrowTypeError%` intrinsic | ~13 | 0.3% | `built-ins/ThrowTypeError` |
+| For-in/for-of edge cases | ~50-80 | 1.7% | `language/statements` |
+| Variable hoisting / TDZ edge cases | ~50-80 | 1.7% | `language/statements`, `language/expressions` |
+| Assorted spec edge cases | ~500-700 | 15.5% | Spread across all categories |
+
+### Previously Completed
+
+- **WeakMap / WeakSet** — ✅ DONE (Phase 20). Both at 100% pass rate.
+- **Iterator Prototypes** — ✅ DONE (Phase 20). MapIteratorPrototype, SetIteratorPrototype, StringIteratorPrototype all at 100%.
+- **RegExp Improvements** — Partial (Phase 20). Lookahead, multiline, backreferences, dotAll, sticky, unicode flag properties added. 77.3% pass rate.
+- **Boxed Primitives** — ✅ DONE (Phase 18). `new String/Number/Boolean` with internal slots, Object() wrapping, ToPrimitive coercion.
 
 ---
 
@@ -744,7 +898,7 @@ Completed work for `Promise.all`, `Promise.allSettled`, `Promise.any`, and `Prom
 
 ## Annex B / Legacy Features (`--annex-b` flag)
 
-**Status**: Planned. Deprecated and legacy ECMAScript features will be gated behind an `--annex-b` CLI flag, suppressed by default.
+**Status**: In progress. Deprecated and legacy ECMAScript features are gated behind the `--annex-b` CLI flag, suppressed by default. Phase 21 added `annex_b~` gating to `get_string_method` for HTML string methods.
 
 **Rationale**: Annex B features are deprecated, banned in strict mode, and irrelevant to modern JavaScript. Implementing them unconditionally adds complexity and pollutes the core engine. Gating them behind a flag keeps the default engine clean while allowing opt-in for legacy compatibility testing.
 
@@ -761,7 +915,7 @@ node engine.js --annex-b 'with ({x: 1}) { print(x) }'
 ```
 
 - **CLI**: `--annex-b` flag parsed in `cmd/main/main.mbt`, passed to interpreter as `self.annex_b : Bool`
-- **Test262 runner**: `test262-runner.py` passes `--annex-b` for tests in `annexB/` directories or tests with `includes: [annexB]` metadata
+- **Test262 runner**: `test262-runner.py` passes `--annex-b` for tests in `annexB/` directories
 - **Metadata parsing**: `test262-runner.py` and `test262-analyze.py` share `test262_utils.py` and run with or without PyYAML installed
 - **Feature gating**: Each Annex B feature checks `self.annex_b` before enabling legacy behavior
 
@@ -774,12 +928,12 @@ node engine.js --annex-b 'with ({x: 1}) { print(x) }'
 | Legacy octal escapes (`\077`) | ~20 | Octal escape sequences in strings |
 | `__proto__` property | ~40 | `Object.prototype.__proto__` getter/setter |
 | HTML comment syntax (`<!--`, `-->`) | ~10 | HTML-style comments in script code |
-| `String.prototype.{anchor,big,blink,...}` | ~73 fail | HTML wrapper methods (`"str".bold()` → `"<b>str</b>"`) |
+| `String.prototype.{anchor,big,blink,...}` | ~60 fail | ✅ Gated in P21. HTML wrapper methods (`"str".bold()` → `"<b>str</b>"`) |
 | `RegExp.prototype.compile` | ~10 | Legacy RegExp recompilation |
 | `escape()`/`unescape()` | ~20 | Legacy encoding functions |
 | Block-level function declarations (sloppy) | ~503 fail | `annexB/language` — FunctionDeclaration in blocks under sloppy mode (Annex B.3.3) |
 
-**Estimated total**: ~857 tests currently failing due to missing Annex B features
+**Estimated total**: ~844 tests currently failing due to missing Annex B features
 
 ### Priority
 

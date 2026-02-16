@@ -84,7 +84,6 @@ SKIP_FEATURES = {
     "regexp-match-indices", "regexp-v-flag", "regexp-dotall",
     "regexp-modifiers",
     "RegExp.escape",
-    "String.prototype.matchAll",
 
     # Missing operators and syntax
     "hashbang",
@@ -326,8 +325,16 @@ def run_single_test(
     else:
         full_source = harness + "\n" + source
 
-    # Build engine command - add --module flag for module tests
-    cmd = engine_cmd + (["--module"] if is_module else []) + [full_source]
+    # Determine if Annex B flag is needed (tests in annexB/ directories)
+    is_annex_b = "annexB" in test_path
+
+    # Build engine command - add --module and --annex-b flags as needed
+    cmd = engine_cmd
+    if is_module:
+        cmd = cmd + ["--module"]
+    if is_annex_b:
+        cmd = cmd + ["--annex-b"]
+    cmd = cmd + [full_source]
 
     start = time.monotonic()
     try:

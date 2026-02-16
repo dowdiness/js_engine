@@ -768,6 +768,49 @@ pub fn type_of(val : Value) -> String {
 }
 
 ///|
+/// Shared %IteratorPrototype% - lazily initialized (ES spec §27.1.2)
+let iterator_proto_ref : Ref[Value?] = { val: None }
+
+///|
+/// Get or create the shared %IteratorPrototype%
+/// Per ES spec, %IteratorPrototype% has [Symbol.iterator] that returns `this`
+/// and its [[Prototype]] is %Object.prototype% (Null for now since we don't
+/// thread Object.prototype here — iterators still function correctly).
+pub fn get_iterator_proto() -> Value {
+  match iterator_proto_ref.val {
+    Some(proto) => proto
+    None => {
+      let iterator_sym = get_iterator_symbol()
+      let proto_sym_props : Map[Int, Value] = {}
+      proto_sym_props[iterator_sym.id] = Object({
+        properties: {},
+        symbol_properties: {},
+        prototype: Null,
+        callable: Some(
+          MethodCallable("[Symbol.iterator]", fn(this_val, _args) { this_val }),
+        ),
+        class_name: "Function",
+        descriptors: {},
+        symbol_descriptors: {},
+        extensible: true,
+      })
+      let proto : Value = Object({
+        properties: {},
+        symbol_properties: proto_sym_props,
+        prototype: Null,
+        callable: None,
+        class_name: "Iterator",
+        descriptors: {},
+        symbol_descriptors: {},
+        extensible: true,
+      })
+      iterator_proto_ref.val = Some(proto)
+      proto
+    }
+  }
+}
+
+///|
 /// Shared %ArrayIteratorPrototype% - lazily initialized
 let array_iterator_proto_ref : Ref[Value?] = { val: None }
 
@@ -833,13 +876,21 @@ pub fn get_array_iterator_proto() -> Value {
         symbol_descriptors: {},
         extensible: true,
       })
+      let proto_descs : Map[String, PropDescriptor] = {}
+      proto_descs["next"] = {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
       let proto = Object({
         properties: proto_props,
         symbol_properties: proto_sym_props,
-        prototype: Null,
+        prototype: get_iterator_proto(),
         callable: None,
         class_name: "Array Iterator",
-        descriptors: {},
+        descriptors: proto_descs,
         symbol_descriptors: proto_sym_descs,
         extensible: true,
       })
@@ -999,13 +1050,21 @@ pub fn get_string_iterator_proto() -> Value {
         symbol_descriptors: {},
         extensible: true,
       })
+      let str_proto_descs : Map[String, PropDescriptor] = {}
+      str_proto_descs["next"] = {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
       let proto = Object({
         properties: proto_props,
         symbol_properties: proto_sym_props,
-        prototype: Null,
+        prototype: get_iterator_proto(),
         callable: None,
         class_name: "String Iterator",
-        descriptors: {},
+        descriptors: str_proto_descs,
         symbol_descriptors: proto_sym_descs,
         extensible: true,
       })

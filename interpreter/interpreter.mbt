@@ -34,6 +34,7 @@ pub(all) struct Interpreter {
   global : Environment
   global_this : Value
   mut strict : Bool
+  annex_b : Bool // Enable Annex B legacy features (--annex-b flag)
   microtask_queue : Array[Microtask] // Event loop microtask queue
   timer_queue : Array[TimerTask] // Timer task queue (WHATWG task queue)
   timer_id_counter : Ref[Int] // Next timer ID
@@ -46,7 +47,7 @@ pub(all) struct Interpreter {
 }
 
 ///|
-pub fn Interpreter::new() -> Interpreter {
+pub fn Interpreter::new(annex_b~ : Bool = false) -> Interpreter {
   let global = Environment::new()
   global.is_var_scope = true
   let output : Array[String] = []
@@ -61,7 +62,7 @@ pub fn Interpreter::new() -> Interpreter {
     symbol_descriptors: {},
     extensible: true,
   })
-  setup_builtins(global, output)
+  setup_builtins(global, output, annex_b~)
   // Bind 'this' and 'globalThis' in global scope
   global.def_builtin("this", global_this)
   global.def_builtin("globalThis", global_this)
@@ -86,6 +87,7 @@ pub fn Interpreter::new() -> Interpreter {
     global,
     global_this,
     strict: false,
+    annex_b,
     microtask_queue,
     timer_queue,
     timer_id_counter,
@@ -3794,9 +3796,10 @@ fn Interpreter::eval_expr(
                     }
                     call_env.def(ctor_params[i], val, LetBinding)
                   }
+                  let tte : Value? = if call_env.has("[[ThrowTypeError]]") { Some(call_env.get("[[ThrowTypeError]]")) } else { None }
                   call_env.def(
                     "arguments",
-                    make_arguments_object(args, super_ctor, true),
+                    make_arguments_object(args, super_ctor, true, throw_type_error=tte),
                     VarBinding,
                   )
                   self.hoist_declarations(ctor_body, call_env)
@@ -5018,26 +5021,10 @@ fn Interpreter::call_value(
               }
             }
             // Create arguments object
-            let args_props : Map[String, Value] = {}
-            for i = 0; i < args.length(); i = i + 1 {
-              args_props[i.to_string()] = args[i]
-            }
-            args_props["length"] = Number(args.length().to_double())
-            if not(func_strict) {
-              args_props["callee"] = callee
-            }
+            let tte_val : Value? = if func_env.has("[[ThrowTypeError]]") { Some(func_env.get("[[ThrowTypeError]]")) } else { None }
             func_env.def(
               "arguments",
-              Object({
-                properties: args_props,
-                symbol_properties: {},
-                prototype: Null,
-                callable: None,
-                class_name: "Arguments",
-                descriptors: {},
-                symbol_descriptors: {},
-                extensible: true,
-              }),
+              make_arguments_object(args, callee, func_strict, throw_type_error=tte_val),
               VarBinding,
             )
             // Hoist var declarations and function declarations within function body
@@ -5186,26 +5173,10 @@ fn Interpreter::call_value(
               None => ()
             }
             // Create arguments object
-            let args_props : Map[String, Value] = {}
-            for i = 0; i < args.length(); i = i + 1 {
-              args_props[i.to_string()] = args[i]
-            }
-            args_props["length"] = Number(args.length().to_double())
-            if not(func_strict) {
-              args_props["callee"] = callee
-            }
+            let tte_val2 : Value? = if func_env.has("[[ThrowTypeError]]") { Some(func_env.get("[[ThrowTypeError]]")) } else { None }
             func_env.def(
               "arguments",
-              Object({
-                properties: args_props,
-                symbol_properties: {},
-                prototype: Null,
-                callable: None,
-                class_name: "Arguments",
-                descriptors: {},
-                symbol_descriptors: {},
-                extensible: true,
-              }),
+              make_arguments_object(args, callee, func_strict, throw_type_error=tte_val2),
               VarBinding,
             )
             self.hoist_declarations(data.body, func_env)
@@ -5756,7 +5727,7 @@ fn Interpreter::get_property(
       if prop == "length" {
         Number(s.length().to_double())
       } else {
-        let result = get_string_method(s, prop)
+        let result = get_string_method(s, prop, annex_b=self.annex_b)
         match result {
           Undefined => lookup_builtin_proto(self, obj, "String", prop, loc)
           _ => result
@@ -6458,7 +6429,7 @@ fn Interpreter::get_computed_property(
           }
         }
         String_("length") => Number(s.length().to_double())
-        String_(method_name) => get_string_method(s, method_name)
+        String_(method_name) => get_string_method(s, method_name, annex_b=self.annex_b)
         _ => Undefined
       }
     Number(_) =>
@@ -7008,14 +6979,37 @@ fn make_arguments_object(
   args : Array[Value],
   ctor : Value,
   strict : Bool,
+  throw_type_error? : Value? = None,
 ) -> Value {
   let new_args_props : Map[String, Value] = {}
   for i = 0; i < args.length(); i = i + 1 {
     new_args_props[i.to_string()] = args[i]
   }
   new_args_props["length"] = Number(args.length().to_double())
+  let new_args_descs : Map[String, PropDescriptor] = {}
   if not(strict) {
     new_args_props["callee"] = ctor
+  } else {
+    // Strict mode: install %ThrowTypeError% accessors for callee and caller
+    match throw_type_error {
+      Some(tte) => {
+        new_args_descs["callee"] = {
+          writable: false,
+          enumerable: false,
+          configurable: false,
+          getter: Some(tte),
+          setter: Some(tte),
+        }
+        new_args_descs["caller"] = {
+          writable: false,
+          enumerable: false,
+          configurable: false,
+          getter: Some(tte),
+          setter: Some(tte),
+        }
+      }
+      None => ()
+    }
   }
   Object({
     properties: new_args_props,
@@ -7023,7 +7017,7 @@ fn make_arguments_object(
     prototype: Null,
     callable: None,
     class_name: "Arguments",
-    descriptors: {},
+    descriptors: new_args_descs,
     symbol_descriptors: {},
     extensible: true,
   })
@@ -7140,9 +7134,10 @@ fn Interpreter::construct_value(
                 func_env.def(data.params[i], val, LetBinding)
               }
             }
+            let tte : Value? = if func_env.has("[[ThrowTypeError]]") { Some(func_env.get("[[ThrowTypeError]]")) } else { None }
             func_env.def(
               "arguments",
-              make_arguments_object(args, ctor, func_strict),
+              make_arguments_object(args, ctor, func_strict, throw_type_error=tte),
               VarBinding,
             )
             // Hoist var declarations and function declarations
@@ -7260,9 +7255,10 @@ fn Interpreter::construct_value(
               }
               None => ()
             }
+            let tte2 : Value? = if func_env.has("[[ThrowTypeError]]") { Some(func_env.get("[[ThrowTypeError]]")) } else { None }
             func_env.def(
               "arguments",
-              make_arguments_object(args, ctor, func_strict),
+              make_arguments_object(args, ctor, func_strict, throw_type_error=tte2),
               VarBinding,
             )
             self.hoist_declarations(data.body, func_env)
@@ -7387,9 +7383,10 @@ fn Interpreter::construct_value(
                   }
                   ctor_env.def(params[i], val, LetBinding)
                 }
+                let ctor_tte : Value? = if ctor_env.has("[[ThrowTypeError]]") { Some(ctor_env.get("[[ThrowTypeError]]")) } else { None }
                 ctor_env.def(
                   "arguments",
-                  make_arguments_object(args, ctor, true),
+                  make_arguments_object(args, ctor, true, throw_type_error=ctor_tte),
                   VarBinding,
                 )
                 // Hoist declarations and execute body
@@ -7461,9 +7458,10 @@ fn Interpreter::construct_value(
                                   }
                                   super_env.def(params[i], val, LetBinding)
                                 }
+                                let super_tte : Value? = if super_env.has("[[ThrowTypeError]]") { Some(super_env.get("[[ThrowTypeError]]")) } else { None }
                                 super_env.def(
                                   "arguments",
-                                  make_arguments_object(args, sc, true),
+                                  make_arguments_object(args, sc, true, throw_type_error=super_tte),
                                   VarBinding,
                                 )
                                 self.hoist_declarations(body, super_env)

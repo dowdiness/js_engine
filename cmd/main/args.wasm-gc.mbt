@@ -1,16 +1,17 @@
 ///|
 /// WASM-GC target: args = ["program", ...]
-fn parse_args(args : Array[String]) -> (Bool, String?) {
-  if args.length() < 2 {
-    return (false, None)
-  }
-  if args[1] == "--module" {
-    if args.length() < 3 {
-      (true, None)
-    } else {
-      (true, Some(args[2]))
+fn parse_args(args : Array[String]) -> (Bool, Bool, String?) {
+  let mut is_module = false
+  let mut annex_b = false
+  let mut source : String? = None
+  for i = 1; i < args.length(); i = i + 1 {
+    if args[i] == "--module" {
+      is_module = true
+    } else if args[i] == "--annex-b" {
+      annex_b = true
+    } else if source is None {
+      source = Some(args[i])
     }
-  } else {
-    (false, Some(args[1]))
   }
+  (is_module, annex_b, source)
 }

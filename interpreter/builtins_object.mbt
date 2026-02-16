@@ -3046,7 +3046,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
       symbol_properties: {},
       prototype: Null,
       callable: Some(
-        NativeCallable("Object", fn(args) {
+        NativeCallable("Object", fn(args) raise {
           let val = if args.length() > 0 { args[0] } else { Undefined }
           match val {
             Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) =>
@@ -3071,9 +3071,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               props["[[StringData]]"] = String_(s)
               props["length"] = Number(s.length().to_double())
               for i = 0; i < s.length(); i = i + 1 {
-                props[i.to_string()] = String_(
-                  s.substring(start=i, end=i + 1),
-                )
+                props[i.to_string()] = String_(s[i:i + 1].to_string())
               }
               let descs : Map[String, PropDescriptor] = {}
               descs["length"] = {

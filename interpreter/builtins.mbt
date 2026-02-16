@@ -11,7 +11,7 @@ fn func_body_has_use_strict(body : Array[@ast.Stmt]) -> Bool {
 }
 
 ///|
-pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
+pub fn setup_builtins(env : Environment, output : Array[String], annex_b~ : Bool = false) -> Unit {
   let _ = output
   // Global constants
   env.def_builtin("NaN", Number(0.0 / 0.0))
@@ -406,7 +406,7 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
       symbol_properties: {},
       prototype: Null,
       callable: Some(
-        NativeCallable("String", fn(args) {
+        NativeCallable("String", fn(args) raise {
           let val = if args.length() > 0 { args[0] } else { Undefined }
           let str = val.to_string()
           if is_constructing.val {
@@ -416,9 +416,7 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
             props["length"] = Number(str.length().to_double())
             // Add indexed character properties
             for i = 0; i < str.length(); i = i + 1 {
-              props[i.to_string()] = String_(
-                str.substring(start=i, end=i + 1),
-              )
+              props[i.to_string()] = String_(str.view()[i:i + 1].to_string())
             }
             let descs : Map[String, PropDescriptor] = {}
             descs["length"] = {
@@ -462,7 +460,7 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
   // Store String.prototype for ToObject wrapping
   env.def_builtin("[[StringPrototype]]", string_proto)
   // Populate String.prototype with methods for .call() support
-  setup_string_prototype(string_proto)
+  setup_string_prototype(string_proto, annex_b~)
   // Set String.prototype.constructor = String
   match string_proto {
     Object(data) => {
@@ -3445,16 +3443,73 @@ fn setup_function_builtins(env : Environment) -> Unit {
     symbol_descriptors: {},
     extensible: true,
   })
+  // %ThrowTypeError% intrinsic (ES spec §10.2.4)
+  // A single frozen function that throws TypeError when called.
+  let throw_type_error : Value = Object({
+    properties: {
+      "length": Number(0.0),
+      "name": String_("ThrowTypeError"),
+    },
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      NativeCallable("ThrowTypeError", fn(_args) raise {
+        raise @errors.TypeError(
+          message="'caller', 'callee', and 'arguments' properties may not be accessed on strict mode functions or the arguments objects for calls to them",
+        )
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {
+      "length": {
+        writable: false,
+        enumerable: false,
+        configurable: false,
+        getter: None,
+        setter: None,
+      },
+      "name": {
+        writable: false,
+        enumerable: false,
+        configurable: false,
+        getter: None,
+        setter: None,
+      },
+    },
+    symbol_descriptors: {},
+    extensible: false,
+  })
+
+  // Install ThrowTypeError accessors on Function.prototype for caller and arguments
+  let func_proto_descs : Map[String, PropDescriptor] = {}
+  func_proto_descs["caller"] = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: Some(throw_type_error),
+    setter: Some(throw_type_error),
+  }
+  func_proto_descs["arguments"] = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: Some(throw_type_error),
+    setter: Some(throw_type_error),
+  }
+
   let func_proto : Value = Object({
     properties: func_proto_props,
     symbol_properties: {},
     prototype: Null,
     callable: None,
     class_name: "Function",
-    descriptors: {},
+    descriptors: func_proto_descs,
     symbol_descriptors: {},
     extensible: true,
   })
+
+  // Register %ThrowTypeError% so it can be used for strict arguments objects
+  env.def_builtin("[[ThrowTypeError]]", throw_type_error)
 
   // Function constructor properties
   let func_ctor_props : Map[String, Value] = {}

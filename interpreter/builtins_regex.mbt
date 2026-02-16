@@ -130,8 +130,8 @@ fn RegexParser::parse_escape(self : RegexParser) -> RegexNode raise Error {
           ('\t', '\t'),
           ('\n', '\n'),
           ('\r', '\r'),
-          ('\x0B', '\x0B'),
-          ('\x0C', '\x0C'),
+          ('\u000B', '\u000B'),
+          ('\u000C', '\u000C'),
           ('\u00A0', '\u00A0'),
           ('\u1680', '\u1680'),
           ('\u2000', '\u200A'),
@@ -150,8 +150,8 @@ fn RegexParser::parse_escape(self : RegexParser) -> RegexNode raise Error {
           ('\t', '\t'),
           ('\n', '\n'),
           ('\r', '\r'),
-          ('\x0B', '\x0B'),
-          ('\x0C', '\x0C'),
+          ('\u000B', '\u000B'),
+          ('\u000C', '\u000C'),
           ('\u00A0', '\u00A0'),
           ('\u1680', '\u1680'),
           ('\u2000', '\u200A'),
@@ -168,9 +168,9 @@ fn RegexParser::parse_escape(self : RegexParser) -> RegexNode raise Error {
     'n' => Literal('\n')
     'r' => Literal('\r')
     't' => Literal('\t')
-    'f' => Literal('\x0C') // form feed
-    'v' => Literal('\x0B') // vertical tab
-    '0' => Literal('\x00') // null
+    'f' => Literal('\u000C') // form feed
+    'v' => Literal('\u000B') // vertical tab
+    '0' => Literal('\u0000') // null
     _ =>
       if ch >= '1' && ch <= '9' {
         // Backreference \1-\9
@@ -1252,4 +1252,95 @@ fn process_replacement(
     i += 1
   }
   buf.to_string()
+}
+
+///| Shared %RegExpStringIteratorPrototype% - lazily initialized
+let regexp_string_iterator_proto_ref : Ref[Value?] = { val: None }
+
+///|
+/// Get or create the shared %RegExpStringIteratorPrototype%
+pub fn get_regexp_string_iterator_proto() -> Value {
+  match regexp_string_iterator_proto_ref.val {
+    Some(proto) => proto
+    None => {
+      let iterator_sym = get_iterator_symbol()
+      let tostringtag_sym = get_tostringtag_symbol()
+      let proto_sym_props : Map[Int, Value] = {}
+      proto_sym_props[tostringtag_sym.id] = String_("RegExp String Iterator")
+      let proto_props : Map[String, Value] = {}
+      let proto_sym_descs : Map[Int, PropDescriptor] = {}
+      proto_sym_descs[tostringtag_sym.id] = {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
+      // Add [Symbol.iterator] that returns the iterator itself
+      proto_sym_props[iterator_sym.id] = Object({
+        properties: {},
+        symbol_properties: {},
+        prototype: Null,
+        callable: Some(
+          MethodCallable("[Symbol.iterator]", fn(this_val, _args) { this_val }),
+        ),
+        class_name: "Function",
+        descriptors: {},
+        symbol_descriptors: {},
+        extensible: true,
+      })
+      // Add a placeholder next method with correct name/length on prototype
+      proto_props["next"] = Object({
+        properties: { "length": Number(0.0), "name": String_("next") },
+        symbol_properties: {},
+        prototype: Null,
+        callable: Some(
+          MethodCallable("next", fn(_this_val, _args) raise {
+            raise @errors.TypeError(
+              message="RegExp String Iterator.prototype.next requires that |this| be a RegExp String Iterator",
+            )
+          }),
+        ),
+        class_name: "Function",
+        descriptors: {
+          "length": {
+            writable: false,
+            enumerable: false,
+            configurable: true,
+            getter: None,
+            setter: None,
+          },
+          "name": {
+            writable: false,
+            enumerable: false,
+            configurable: true,
+            getter: None,
+            setter: None,
+          },
+        },
+        symbol_descriptors: {},
+        extensible: true,
+      })
+      let proto_descs : Map[String, PropDescriptor] = {}
+      proto_descs["next"] = {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
+      let proto : Value = Object({
+        properties: proto_props,
+        symbol_properties: proto_sym_props,
+        prototype: get_iterator_proto(),
+        callable: None,
+        class_name: "RegExp String Iterator",
+        descriptors: proto_descs,
+        symbol_descriptors: proto_sym_descs,
+        extensible: true,
+      })
+      regexp_string_iterator_proto_ref.val = Some(proto)
+      proto
+    }
+  }
 }

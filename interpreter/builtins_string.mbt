@@ -1,5 +1,5 @@
 ///|
-pub fn get_string_method(s : String, prop : String) -> Value {
+pub fn get_string_method(s : String, prop : String, annex_b~ : Bool = false) -> Value {
   let chars = s.to_array()
   match prop {
     "charAt" =>
@@ -634,13 +634,13 @@ pub fn get_string_method(s : String, prop : String) -> Value {
                 symbol_descriptors: {},
                 extensible: true,
               })
-              // Create iterator object
+              // Create iterator object with proper prototype
               let iter_props : Map[String, Value] = {}
               iter_props["next"] = next_method
               Object({
                 properties: iter_props,
                 symbol_properties: {},
-                prototype: Null,
+                prototype: get_regexp_string_iterator_proto(),
                 callable: None,
                 class_name: "RegExp String Iterator",
                 descriptors: {},
@@ -989,8 +989,71 @@ pub fn get_string_method(s : String, prop : String) -> Value {
         String_(buf.to_string())
       })
     }
+    // Annex B HTML string methods (B.2.2.2 - B.2.2.14) — only when --annex-b
+    "anchor" | "big" | "blink" | "bold" | "fixed" | "fontcolor" | "fontsize"
+    | "italics" | "link" | "small" | "strike" | "sub" | "sup" =>
+      if not(annex_b) {
+        Undefined
+      } else {
+        match prop {
+          "anchor" =>
+            make_native_func("anchor", fn(args) {
+              let name = if args.length() > 0 { args[0].to_string() } else { "undefined" }
+              String_("<a name=\"" + escape_html_attr(name) + "\">" + s + "</a>")
+            })
+          "big" =>
+            make_native_func("big", fn(_args) { String_("<big>" + s + "</big>") })
+          "blink" =>
+            make_native_func("blink", fn(_args) { String_("<blink>" + s + "</blink>") })
+          "bold" =>
+            make_native_func("bold", fn(_args) { String_("<b>" + s + "</b>") })
+          "fixed" =>
+            make_native_func("fixed", fn(_args) { String_("<tt>" + s + "</tt>") })
+          "fontcolor" =>
+            make_native_func("fontcolor", fn(args) {
+              let color = if args.length() > 0 { args[0].to_string() } else { "undefined" }
+              String_("<font color=\"" + escape_html_attr(color) + "\">" + s + "</font>")
+            })
+          "fontsize" =>
+            make_native_func("fontsize", fn(args) {
+              let size = if args.length() > 0 { args[0].to_string() } else { "undefined" }
+              String_("<font size=\"" + escape_html_attr(size) + "\">" + s + "</font>")
+            })
+          "italics" =>
+            make_native_func("italics", fn(_args) { String_("<i>" + s + "</i>") })
+          "link" =>
+            make_native_func("link", fn(args) {
+              let url = if args.length() > 0 { args[0].to_string() } else { "undefined" }
+              String_("<a href=\"" + escape_html_attr(url) + "\">" + s + "</a>")
+            })
+          "small" =>
+            make_native_func("small", fn(_args) { String_("<small>" + s + "</small>") })
+          "strike" =>
+            make_native_func("strike", fn(_args) { String_("<strike>" + s + "</strike>") })
+          "sub" =>
+            make_native_func("sub", fn(_args) { String_("<sub>" + s + "</sub>") })
+          "sup" =>
+            make_native_func("sup", fn(_args) { String_("<sup>" + s + "</sup>") })
+          _ => Undefined
+        }
+      }
     _ => Undefined
   }
+}
+
+///|
+/// Escape double-quotes in attribute values per CreateHTML (ECMA-262 Annex B)
+fn escape_html_attr(value : String) -> String {
+  let chars = value.to_array()
+  let buf = StringBuilder::new()
+  for c in chars {
+    if c == '"' {
+      buf.write_string("&quot;")
+    } else {
+      buf.write_char(c)
+    }
+  }
+  buf.to_string()
 }
 
 ///|
@@ -1166,16 +1229,26 @@ pub fn this_to_string(this_val : Value) -> String raise Error {
 
 ///|
 /// Populate String.prototype with all string methods
-pub fn setup_string_prototype(string_proto : Value) -> Unit {
+pub fn setup_string_prototype(string_proto : Value, annex_b~ : Bool = false) -> Unit {
   match string_proto {
     Object(data) => {
-      let methods = [
+      let methods : Array[String] = [
         "charAt", "charCodeAt", "at", "codePointAt", "indexOf", "lastIndexOf", "includes",
         "startsWith", "endsWith", "slice", "substring", "toUpperCase", "toLowerCase",
         "trim", "trimStart", "trimEnd", "trimLeft", "trimRight", "padStart", "padEnd", "repeat", "replace",
         "replaceAll", "split", "search", "match", "matchAll", "concat", "normalize", "isWellFormed",
         "toWellFormed", "localeCompare", "toLocaleString", "toString", "valueOf",
       ]
+      // Annex B HTML string methods — only when --annex-b is enabled
+      if annex_b {
+        let annex_b_methods = [
+          "anchor", "big", "blink", "bold", "fixed", "fontcolor", "fontsize",
+          "italics", "link", "small", "strike", "sub", "sup",
+        ]
+        for m in annex_b_methods {
+          methods.push(m)
+        }
+      }
       for method_name in methods {
         let mname = method_name
         data.properties[mname] = Object({
@@ -1185,7 +1258,7 @@ pub fn setup_string_prototype(string_proto : Value) -> Unit {
           callable: Some(
             MethodCallable(mname, fn(this_val, args) raise {
               let s = this_to_string(this_val)
-              let meth_val = get_string_method(s, mname)
+              let meth_val = get_string_method(s, mname, annex_b~)
               match meth_val {
                 Object(fdata) =>
                   match fdata.callable {
