@@ -692,7 +692,7 @@ These are small, self-contained fixes that each require minimal code changes but
 
 **1a — String escape sequences.** The lexer's string literal handler (`lexer.mbt:813`) and template literal handler (`lexer.mbt:257`) only recognize `\n`, `\t`, `\\`, quotes, and `\u`. The default branch emits `\` + the literal character, which is wrong for all other standard escapes. Missing escapes to add:
 
-```
+```moonbit
 'r' => buf.write_char('\r')    // 0x0D carriage return
 'b' => buf.write_char('\x08')  // 0x08 backspace
 'v' => buf.write_char('\x0B')  // 0x0B vertical tab
@@ -709,7 +709,7 @@ This is the single highest-ROI fix. It directly causes the `language/line-termin
 
 All 13 `built-ins/ThrowTypeError` tests fail (0% pass rate). Implementation: create one native function in `builtins.mbt`, install as accessor descriptors on the 4 properties above.
 
-**1c — Annex B HTML string methods.** 13 trivial methods on `String.prototype` that wrap the string in HTML tags. Example: `"hello".bold()` → `"<b>hello</b>"`. Each is ~3 lines. The 73 `annexB/built-ins` failures are almost entirely these methods. These do NOT require the `--annex-b` flag since they are universally expected by test262.
+**1c — Annex B HTML string methods.** 13 trivial methods on `String.prototype` that wrap the string in HTML tags. Example: `"hello".bold()` → `"<b>hello</b>"`. Each is ~3 lines. The 73 `annexB/built-ins` failures are almost entirely these methods. Per the project's Annex B strategy, these should be gated behind the `--annex-b` flag. The test runner already passes `--annex-b` for tests in `annexB/` directories, so gated methods will still be exercised by the test262 suite and count toward the pass rate.
 
 **1d — `RegExpStringIteratorPrototype`.** All 17 `built-ins/RegExpStringIteratorPrototype` tests fail (0%). `String.prototype.matchAll` is already partially implemented but needs a proper iterator prototype with `[Symbol.toStringTag]` set to `"RegExp String Iterator"`, and `next` method with correct `name`/`length` descriptors. Follows the same pattern used for Map/Set/Array/String iterator prototypes in Phase 20.
 
