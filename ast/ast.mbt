@@ -217,6 +217,8 @@ pub(all) enum Stmt {
   GeneratorDeclExt(String, Array[Param], String?, Array[Stmt], @token.Loc) // name, params, rest_param, body
   // Class declaration
   ClassDecl(String, Expr?, Array[ClassMethod], @token.Loc) // name, superclass, methods
+  // With statement (sloppy mode only)
+  WithStmt(Expr, Stmt, @token.Loc) // with(expr) stmt
   // Module declarations
   // import defaultExport from 'source'
   // import { spec1, spec2 } from 'source'

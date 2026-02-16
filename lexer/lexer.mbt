@@ -790,8 +790,10 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
     if is_alpha(c) ||
       (c == '\\' && offset + 1 < len && char_at(offset + 1) == 'u') {
       let ident_buf = StringBuilder::new()
+      let mut has_escape = false
       if c == '\\' {
         // Unicode escape at identifier start
+        has_escape = true
         offset += 2 // skip \ and u
         col += 2
         let cp = parse_unicode_escape()
@@ -813,6 +815,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           offset += 1
           col += 1
         } else if ch == '\\' && offset + 1 < len && char_at(offset + 1) == 'u' {
+          has_escape = true
           offset += 2 // skip \ and u
           col += 2
           let cp = parse_unicode_escape()
@@ -827,7 +830,23 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         }
       }
       let decoded = ident_buf.to_string()
-      let kind = resolve_keyword(decoded)
+      // Per spec: identifiers formed with unicode escapes must not be
+      // treated as keywords (e.g. \u0066or is not 'for')
+      let kind : @token.TokenKind = if has_escape {
+        // Check for reserved words - these are SyntaxErrors when escaped
+        match resolve_keyword(decoded) {
+          @token.TokenKind::Ident(_) => @token.TokenKind::Ident(decoded)
+          // Contextual keywords (get, set, from, as, of) are ok as identifiers
+          Get | Set | From | As | Of => @token.TokenKind::Ident(decoded)
+          // True reserved words with escapes are SyntaxErrors
+          _ =>
+            raise @errors.SyntaxError(
+              message="Keyword '\{decoded}' must not contain escaped characters at line \{loc.line}, col \{loc.col}",
+            )
+        }
+      } else {
+        resolve_keyword(decoded)
+      }
       tokens.push({ kind, loc, raw: decoded })
       continue
     }

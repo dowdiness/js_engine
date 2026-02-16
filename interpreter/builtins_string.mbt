@@ -378,6 +378,28 @@ pub fn get_string_method(s : String, prop : String, annex_b~ : Bool = false) -> 
           Undefined => return Array({ elements: [String_(str)] })
           _ => ()
         }
+        // Per spec: check for [Symbol.split] method on the argument
+        match args[0] {
+          Object(data) => {
+            let split_sym = get_split_symbol()
+            match data.symbol_properties.get(split_sym.id) {
+              Some(Object(fn_data)) =>
+                match fn_data.callable {
+                  Some(MethodCallable(_, f)) => {
+                    let limit = if args.length() > 1 { args[1] } else { Undefined }
+                    return f(args[0], [String_(str), limit])
+                  }
+                  Some(NativeCallable(_, f)) => {
+                    let limit = if args.length() > 1 { args[1] } else { Undefined }
+                    return f([String_(str), limit])
+                  }
+                  _ => ()
+                }
+              _ => ()
+            }
+          }
+          _ => ()
+        }
         // Get limit parameter (default: 2^32 - 1 per ES spec)
         let limit : Int64 = if args.length() > 1 {
           match args[1] {
@@ -460,13 +482,29 @@ pub fn get_string_method(s : String, prop : String, annex_b~ : Bool = false) -> 
     }
     "replace" => {
       let str = s
-      make_native_func("replace", fn(args) {
+      make_native_func("replace", fn(args) raise {
         if args.length() == 0 {
           return String_(str)
         }
-        // Check if first arg is RegExp
+        // Per spec: check for [Symbol.replace] method on the argument
         match args[0] {
-          Object(data) =>
+          Object(data) => {
+            let replace_sym = get_replace_symbol()
+            match data.symbol_properties.get(replace_sym.id) {
+              Some(Object(fn_data)) =>
+                match fn_data.callable {
+                  Some(MethodCallable(_, f)) => {
+                    let rep = if args.length() > 1 { args[1] } else { Undefined }
+                    return f(args[0], [String_(str), rep])
+                  }
+                  Some(NativeCallable(_, f)) => {
+                    let rep = if args.length() > 1 { args[1] } else { Undefined }
+                    return f([String_(str), rep])
+                  }
+                  _ => ()
+                }
+              _ => ()
+            }
             if data.class_name == "RegExp" {
               let pattern = match data.properties.get("source") {
                 Some(String_(s)) => s
@@ -483,6 +521,7 @@ pub fn get_string_method(s : String, prop : String, annex_b~ : Bool = false) -> 
               }
               return string_replace_regex(str, pattern, flags, replacement)
             }
+          }
           _ => ()
         }
         let search = args[0].to_string()
@@ -524,12 +563,24 @@ pub fn get_string_method(s : String, prop : String, annex_b~ : Bool = false) -> 
     }
     "match" => {
       let str = s
-      make_native_func("match", fn(args) {
+      make_native_func("match", fn(args) raise {
         if args.length() == 0 {
           return Null
         }
+        // Per spec: check for [Symbol.match] method on the argument
         match args[0] {
-          Object(data) =>
+          Object(data) => {
+            let match_sym = get_match_symbol()
+            match data.symbol_properties.get(match_sym.id) {
+              Some(Object(fn_data)) =>
+                match fn_data.callable {
+                  Some(MethodCallable(_, f)) =>
+                    return f(args[0], [String_(str)])
+                  Some(NativeCallable(_, f)) => return f([String_(str)])
+                  _ => ()
+                }
+              _ => ()
+            }
             if data.class_name == "RegExp" {
               let pattern = match data.properties.get("source") {
                 Some(String_(s)) => s
@@ -541,6 +592,7 @@ pub fn get_string_method(s : String, prop : String, annex_b~ : Bool = false) -> 
               }
               return string_match_regex(str, pattern, flags)
             }
+          }
           _ => ()
         }
         // If not a RegExp, treat as string pattern
@@ -656,12 +708,24 @@ pub fn get_string_method(s : String, prop : String, annex_b~ : Bool = false) -> 
     }
     "search" => {
       let str = s
-      make_native_func("search", fn(args) {
+      make_native_func("search", fn(args) raise {
         if args.length() == 0 {
           return Number(0.0)
         }
+        // Per spec: check for [Symbol.search] method on the argument
         match args[0] {
-          Object(data) =>
+          Object(data) => {
+            let search_sym = get_search_symbol()
+            match data.symbol_properties.get(search_sym.id) {
+              Some(Object(fn_data)) =>
+                match fn_data.callable {
+                  Some(MethodCallable(_, f)) =>
+                    return f(args[0], [String_(str)])
+                  Some(NativeCallable(_, f)) => return f([String_(str)])
+                  _ => ()
+                }
+              _ => ()
+            }
             if data.class_name == "RegExp" {
               let pattern = match data.properties.get("source") {
                 Some(String_(s)) => s
@@ -673,6 +737,7 @@ pub fn get_string_method(s : String, prop : String, annex_b~ : Bool = false) -> 
               }
               return string_search_regex(str, pattern, flags)
             }
+          }
           _ => ()
         }
         let pattern = args[0].to_string()
@@ -827,6 +892,28 @@ pub fn get_string_method(s : String, prop : String, annex_b~ : Bool = false) -> 
       make_native_func("replaceAll", fn(args) raise {
         if args.length() == 0 {
           return String_(str)
+        }
+        // Per spec: check for [Symbol.replace] method on the argument
+        match args[0] {
+          Object(data) => {
+            let replace_sym = get_replace_symbol()
+            match data.symbol_properties.get(replace_sym.id) {
+              Some(Object(fn_data)) =>
+                match fn_data.callable {
+                  Some(MethodCallable(_, f)) => {
+                    let rep = if args.length() > 1 { args[1] } else { Undefined }
+                    return f(args[0], [String_(str), rep])
+                  }
+                  Some(NativeCallable(_, f)) => {
+                    let rep = if args.length() > 1 { args[1] } else { Undefined }
+                    return f([String_(str), rep])
+                  }
+                  _ => ()
+                }
+              _ => ()
+            }
+          }
+          _ => ()
         }
         // Check if first arg is RegExp
         match args[0] {

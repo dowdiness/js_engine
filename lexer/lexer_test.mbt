@@ -243,8 +243,13 @@ test "lex unicode escape in identifier middle" {
 
 ///|
 test "lex unicode escape identifier resolves to keyword" {
-  let kinds = tok_kinds("\\u0076\\u0061\\u0072")
-  inspect(kinds, content="[Var, EOF]")
+  // Per spec: escaped reserved words are SyntaxErrors (e.g. \u0076\u0061\u0072 = "var")
+  let result : Result[Array[@token.TokenKind], Error] = try {
+    Ok(tok_kinds("\\u0076\\u0061\\u0072"))
+  } catch {
+    e => Err(e)
+  }
+  inspect(result is Err(_), content="true")
 }
 
 ///|

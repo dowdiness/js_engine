@@ -48,8 +48,11 @@ fn Parser::parse_stmt(self : Parser) -> @ast.Stmt raise Error {
       // In generator context, yield is an expression statement; outside it's an identifier
       self.parse_expr_stmt()
     Ident(_) | Get | Set | From | As =>
-      // Labeled statement: ident ':'
-      if self.peek_kind_at(1) == Colon {
+      // Check for 'with' statement
+      if self.peek_kind() is Ident(name) && name == "with" {
+        self.parse_with_stmt()
+      } else if self.peek_kind_at(1) == Colon {
+        // Labeled statement: ident ':'
         self.parse_labeled_stmt()
       } else {
         self.parse_expr_stmt()
@@ -667,6 +670,16 @@ fn Parser::parse_do_while_stmt(self : Parser) -> @ast.Stmt raise Error {
 }
 
 ///|
+fn Parser::parse_with_stmt(self : Parser) -> @ast.Stmt raise Error {
+  let tok = self.advance() // consume 'with'
+  let _ = self.expect(LParen)
+  let expr = self.parse_expr()
+  let _ = self.expect(RParen)
+  let body = self.parse_stmt()
+  WithStmt(expr, body, tok.loc)
+}
+
+///|
 fn Parser::parse_labeled_stmt(self : Parser) -> @ast.Stmt raise Error {
   let tok = self.advance() // consume identifier
   let label : String = match tok.kind {
@@ -990,6 +1003,31 @@ fn Parser::parse_import_decl(self : Parser) -> @ast.Stmt raise Error {
     }
   }
   self.eat_semicolon()
+  // Validate: no duplicate bound names in import
+  let bound_names : Map[String, Bool] = {}
+  match default_import {
+    Some(name) => bound_names[name] = true
+    None => ()
+  }
+  match namespace_import {
+    Some(name) =>
+      if bound_names.contains(name) {
+        raise @errors.SyntaxError(
+          message="Duplicate import binding '\{name}'",
+        )
+      } else {
+        bound_names[name] = true
+      }
+    None => ()
+  }
+  for spec in specifiers {
+    if bound_names.contains(spec.local_name) {
+      raise @errors.SyntaxError(
+        message="Duplicate import binding '\{spec.local_name}'",
+      )
+    }
+    bound_names[spec.local_name] = true
+  }
   ImportDecl(default_import, specifiers, namespace_import, source, tok.loc)
 }
 

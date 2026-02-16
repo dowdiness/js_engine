@@ -503,6 +503,17 @@ fn Interpreter::exec_stmt(
       } else {
         env.def(name, func_val, VarBinding)
       }
+      // Annex B.3.3: propagate block-level function to function scope's var binding
+      if self.annex_b && not(self.strict) && not(env.is_var_scope) {
+        let var_env = env.find_var_env()
+        match var_env.bindings.get(name) {
+          Some(binding) =>
+            if binding.kind == VarBinding {
+              binding.value = func_val
+            }
+          None => ()
+        }
+      }
       Normal(Undefined)
     }
     ReturnStmt(expr, _) => {
@@ -1211,6 +1222,17 @@ fn Interpreter::exec_stmt(
       } else {
         env.def(name, func_val, VarBinding)
       }
+      // Annex B.3.3: propagate block-level function to function scope's var binding
+      if self.annex_b && not(self.strict) && not(env.is_var_scope) {
+        let var_env = env.find_var_env()
+        match var_env.bindings.get(name) {
+          Some(binding) =>
+            if binding.kind == VarBinding {
+              binding.value = func_val
+            }
+          None => ()
+        }
+      }
       Normal(Undefined)
     }
     GeneratorDecl(name, params, body, _) => {
@@ -1306,6 +1328,54 @@ fn Interpreter::exec_stmt(
     }
     ExportAllDecl(ns_alias, source, loc) =>
       self.exec_export_all(ns_alias, source, loc)
+    WithStmt(expr, body, _) => {
+      // In strict mode, 'with' is always a SyntaxError
+      if self.strict {
+        raise @errors.SyntaxError(
+          message="Strict mode code may not include a with statement",
+        )
+      }
+      let obj = self.eval_expr(expr, env)
+      // Create an object environment record: lookups check the object first
+      let with_env = Environment::new(parent=Some(env))
+      // Populate environment with object's enumerable properties
+      match obj {
+        Object(data) => {
+          // Add own properties (walking prototype chain for lookup)
+          let mut current : Value = obj
+          while true {
+            match current {
+              Object(cur_data) => {
+                cur_data.properties.each(fn(key, value) {
+                  if not(with_env.bindings.contains(key)) {
+                    // Check if property is enumerable or not (we add all own properties for with)
+                    with_env.bindings[key] = {
+                      value,
+                      kind: VarBinding,
+                      initialized: true,
+                    }
+                  }
+                })
+                current = cur_data.prototype
+              }
+              _ => break
+            }
+          }
+          // Execute the body; after execution, write back any modified bindings
+          let result = self.exec_stmt(body, with_env)
+          // Write back any changes to the object
+          with_env.bindings.each(fn(key, binding) {
+            if data.properties.contains(key) {
+              data.properties[key] = binding.value
+            }
+          })
+          result
+        }
+        _ =>
+          // For non-objects, just execute with the parent env
+          self.exec_stmt(body, env)
+      }
+    }
   }
 }
 
@@ -1759,6 +1829,12 @@ fn collect_block_var_decl_names_from_stmt(
         None => ()
       }
     }
+    WithStmt(_, body, _) =>
+      collect_block_var_decl_names_from_stmt(
+        body,
+        var_names,
+        include_function_decls~,
+      )
     ExportNamedDecl(Some(decl), _, _, _) =>
       collect_block_var_decl_names_from_stmt(
         decl,
@@ -2090,6 +2166,14 @@ fn validate_block_early_errors_stmt(
         // Class bodies are always strict.
         validate_block_early_errors_expr(m.value, true)
       }
+    WithStmt(_, body, _) => {
+      if strict_context {
+        raise @errors.SyntaxError(
+          message="Strict mode code may not include a with statement",
+        )
+      }
+      validate_block_early_errors_stmt(body, strict_context)
+    }
     ExportNamedDecl(Some(decl), _, _, _) =>
       validate_block_early_errors_stmt(decl, strict_context)
     ExportDefaultDecl(expr, _) =>
@@ -2215,6 +2299,8 @@ fn collect_eval_var_names_from_stmt(
         None => ()
       }
     }
+    WithStmt(_, body, _) =>
+      collect_eval_var_names_from_stmt(body, names, in_block~)
     ExportNamedDecl(Some(decl), _, _, _) =>
       collect_eval_var_names_from_stmt(decl, names, in_block~)
     _ => ()
@@ -2350,11 +2436,127 @@ fn hoist_var_declarations_from_stmt(
         None => ()
       }
     }
+    WithStmt(_, body, _) => hoist_var_declarations_from_stmt(body, env)
     // Export with declaration: hoist declarations from the inner declaration.
     ExportNamedDecl(Some(decl), _, _, _) =>
       hoist_var_declarations_from_stmt(decl, env)
     // Do not recurse into function/class declarations: their bodies create
     // separate var scopes.
+    _ => ()
+  }
+}
+
+///|
+/// Annex B.3.3: Scan nested blocks for function declarations and create
+/// var bindings in the function scope (initialized to undefined).
+/// Only used in sloppy mode with --annex-b.
+fn hoist_block_func_declarations(
+  stmt : @ast.Stmt,
+  var_env : Environment,
+) -> Unit raise Error {
+  match stmt {
+    Block(inner_stmts, _) => {
+      for inner in inner_stmts {
+        match inner {
+          FuncDecl(name, _, _, _) | FuncDeclExt(name, _, _, _, _) =>
+            if not(var_env.bindings.contains(name)) {
+              var_env.def(name, Undefined, VarBinding)
+            }
+          _ => ()
+        }
+        hoist_block_func_declarations(inner, var_env)
+      }
+    }
+    IfStmt(_, then_branch, else_branch, _) => {
+      // Also handle bare function declarations in if/else branches
+      match then_branch {
+        FuncDecl(name, _, _, _) | FuncDeclExt(name, _, _, _, _) =>
+          if not(var_env.bindings.contains(name)) {
+            var_env.def(name, Undefined, VarBinding)
+          }
+        _ => ()
+      }
+      hoist_block_func_declarations(then_branch, var_env)
+      match else_branch {
+        Some(eb) => {
+          match eb {
+            FuncDecl(name, _, _, _) | FuncDeclExt(name, _, _, _, _) =>
+              if not(var_env.bindings.contains(name)) {
+                var_env.def(name, Undefined, VarBinding)
+              }
+            _ => ()
+          }
+          hoist_block_func_declarations(eb, var_env)
+        }
+        None => ()
+      }
+    }
+    WhileStmt(_, body, _) => hoist_block_func_declarations(body, var_env)
+    DoWhileStmt(body, _, _) => hoist_block_func_declarations(body, var_env)
+    ForStmt(_, _, _, body, _) => hoist_block_func_declarations(body, var_env)
+    ForInStmt(_, _, _, body, _) => hoist_block_func_declarations(body, var_env)
+    ForOfStmt(_, _, _, body, _) => hoist_block_func_declarations(body, var_env)
+    ForInStmtPat(_, _, _, body, _) =>
+      hoist_block_func_declarations(body, var_env)
+    ForOfStmtPat(_, _, _, body, _) =>
+      hoist_block_func_declarations(body, var_env)
+    ForInExpr(_, _, body, _) => hoist_block_func_declarations(body, var_env)
+    ForOfExpr(_, _, body, _) => hoist_block_func_declarations(body, var_env)
+    LabeledStmt(_, inner, _) => hoist_block_func_declarations(inner, var_env)
+    WithStmt(_, body, _) => hoist_block_func_declarations(body, var_env)
+    SwitchStmt(_, cases, _) =>
+      for case_ in cases {
+        for inner in case_.body {
+          match inner {
+            FuncDecl(name, _, _, _) | FuncDeclExt(name, _, _, _, _) =>
+              if not(var_env.bindings.contains(name)) {
+                var_env.def(name, Undefined, VarBinding)
+              }
+            _ => ()
+          }
+          hoist_block_func_declarations(inner, var_env)
+        }
+      }
+    TryCatchStmt(try_body, _, catch_body, finally_body, _) => {
+      for inner in try_body {
+        match inner {
+          FuncDecl(name, _, _, _) | FuncDeclExt(name, _, _, _, _) =>
+            if not(var_env.bindings.contains(name)) {
+              var_env.def(name, Undefined, VarBinding)
+            }
+          _ => ()
+        }
+        hoist_block_func_declarations(inner, var_env)
+      }
+      match catch_body {
+        Some(cb) =>
+          for inner in cb {
+            match inner {
+              FuncDecl(name, _, _, _) | FuncDeclExt(name, _, _, _, _) =>
+                if not(var_env.bindings.contains(name)) {
+                  var_env.def(name, Undefined, VarBinding)
+                }
+              _ => ()
+            }
+            hoist_block_func_declarations(inner, var_env)
+          }
+        None => ()
+      }
+      match finally_body {
+        Some(fb) =>
+          for inner in fb {
+            match inner {
+              FuncDecl(name, _, _, _) | FuncDeclExt(name, _, _, _, _) =>
+                if not(var_env.bindings.contains(name)) {
+                  var_env.def(name, Undefined, VarBinding)
+                }
+              _ => ()
+            }
+            hoist_block_func_declarations(inner, var_env)
+          }
+        None => ()
+      }
+    }
     _ => ()
   }
 }
@@ -2506,6 +2708,10 @@ fn Interpreter::hoist_declarations(
     // Hoist var declarations recursively through nested statements
     // (e.g. var inside blocks still hoists to function/global var scope).
     hoist_var_declarations_from_stmt(stmt, env)
+    // Annex B.3.3: Hoist block-level function declarations as var bindings
+    if _self.annex_b && not(_self.strict) {
+      hoist_block_func_declarations(stmt, env)
+    }
   }
 }
 
