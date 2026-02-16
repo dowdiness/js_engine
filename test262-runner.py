@@ -84,7 +84,6 @@ SKIP_FEATURES = {
     "regexp-match-indices", "regexp-v-flag", "regexp-dotall",
     "regexp-modifiers",
     "RegExp.escape",
-    "String.prototype.matchAll",
 
     # Missing operators and syntax
     "hashbang",

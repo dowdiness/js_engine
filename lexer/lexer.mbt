@@ -257,9 +257,34 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         match esc {
           'n' => buf.write_char('\n')
           't' => buf.write_char('\t')
+          'r' => buf.write_char('\r')
+          'b' => write_code_point(buf, 8) // backspace
+          'v' => write_code_point(buf, 11) // vertical tab
+          'f' => write_code_point(buf, 12) // form feed
+          '0' => write_code_point(buf, 0) // null
           '\\' => buf.write_char('\\')
           '`' => buf.write_char('`')
           '$' => buf.write_char('$')
+          'x' => {
+            // \xHH hex escape — parse exactly 2 hex digits
+            offset += 1
+            col += 1
+            if offset + 1 < len &&
+              is_hex_digit(char_at(offset)) &&
+              is_hex_digit(char_at(offset + 1)) {
+              let hex_str = String::make(1, char_at(offset)) +
+                String::make(1, char_at(offset + 1))
+              let cp = parse_hex(hex_str).to_int()
+              buf.write_char(cp.unsafe_to_char())
+              offset += 2
+              col += 2
+            } else {
+              raise @errors.SyntaxError(
+                message="Invalid hexadecimal escape sequence at line \{line}, col \{col}",
+              )
+            }
+            continue
+          }
           'u' => {
             offset += 1 // skip 'u'
             col += 1
@@ -813,9 +838,34 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           match esc {
             'n' => buf.write_char('\n')
             't' => buf.write_char('\t')
+            'r' => buf.write_char('\r')
+            'b' => write_code_point(buf, 8) // backspace
+            'v' => write_code_point(buf, 11) // vertical tab
+            'f' => write_code_point(buf, 12) // form feed
+            '0' => write_code_point(buf, 0) // null
             '\\' => buf.write_char('\\')
             '\'' => buf.write_char('\'')
             '"' => buf.write_char('"')
+            'x' => {
+              // \xHH hex escape — parse exactly 2 hex digits
+              offset += 1
+              col += 1
+              if offset + 1 < len &&
+                is_hex_digit(char_at(offset)) &&
+                is_hex_digit(char_at(offset + 1)) {
+                let hex_str = String::make(1, char_at(offset)) +
+                  String::make(1, char_at(offset + 1))
+                let cp = parse_hex(hex_str).to_int()
+                buf.write_char(cp.unsafe_to_char())
+                offset += 2
+                col += 2
+              } else {
+                raise @errors.SyntaxError(
+                  message="Invalid hexadecimal escape sequence at line \{line}, col \{col}",
+                )
+              }
+              continue
+            }
             'u' => {
               offset += 1 // skip 'u'
               col += 1

@@ -634,13 +634,13 @@ pub fn get_string_method(s : String, prop : String) -> Value {
                 symbol_descriptors: {},
                 extensible: true,
               })
-              // Create iterator object
+              // Create iterator object with proper prototype
               let iter_props : Map[String, Value] = {}
               iter_props["next"] = next_method
               Object({
                 properties: iter_props,
                 symbol_properties: {},
-                prototype: Null,
+                prototype: get_regexp_string_iterator_proto(),
                 callable: None,
                 class_name: "RegExp String Iterator",
                 descriptors: {},
@@ -989,6 +989,45 @@ pub fn get_string_method(s : String, prop : String) -> Value {
         String_(buf.to_string())
       })
     }
+    // Annex B HTML string methods (B.2.2.2 - B.2.2.14)
+    "anchor" =>
+      make_native_func("anchor", fn(args) {
+        let name = if args.length() > 0 { args[0].to_string() } else { "undefined" }
+        String_("<a name=\"" + name + "\">" + s + "</a>")
+      })
+    "big" =>
+      make_native_func("big", fn(_args) { String_("<big>" + s + "</big>") })
+    "blink" =>
+      make_native_func("blink", fn(_args) { String_("<blink>" + s + "</blink>") })
+    "bold" =>
+      make_native_func("bold", fn(_args) { String_("<b>" + s + "</b>") })
+    "fixed" =>
+      make_native_func("fixed", fn(_args) { String_("<tt>" + s + "</tt>") })
+    "fontcolor" =>
+      make_native_func("fontcolor", fn(args) {
+        let color = if args.length() > 0 { args[0].to_string() } else { "undefined" }
+        String_("<font color=\"" + color + "\">" + s + "</font>")
+      })
+    "fontsize" =>
+      make_native_func("fontsize", fn(args) {
+        let size = if args.length() > 0 { args[0].to_string() } else { "undefined" }
+        String_("<font size=\"" + size + "\">" + s + "</font>")
+      })
+    "italics" =>
+      make_native_func("italics", fn(_args) { String_("<i>" + s + "</i>") })
+    "link" =>
+      make_native_func("link", fn(args) {
+        let url = if args.length() > 0 { args[0].to_string() } else { "undefined" }
+        String_("<a href=\"" + url + "\">" + s + "</a>")
+      })
+    "small" =>
+      make_native_func("small", fn(_args) { String_("<small>" + s + "</small>") })
+    "strike" =>
+      make_native_func("strike", fn(_args) { String_("<strike>" + s + "</strike>") })
+    "sub" =>
+      make_native_func("sub", fn(_args) { String_("<sub>" + s + "</sub>") })
+    "sup" =>
+      make_native_func("sup", fn(_args) { String_("<sup>" + s + "</sup>") })
     _ => Undefined
   }
 }
@@ -1175,6 +1214,9 @@ pub fn setup_string_prototype(string_proto : Value) -> Unit {
         "trim", "trimStart", "trimEnd", "trimLeft", "trimRight", "padStart", "padEnd", "repeat", "replace",
         "replaceAll", "split", "search", "match", "matchAll", "concat", "normalize", "isWellFormed",
         "toWellFormed", "localeCompare", "toLocaleString", "toString", "valueOf",
+        // Annex B HTML string methods
+        "anchor", "big", "blink", "bold", "fixed", "fontcolor", "fontsize",
+        "italics", "link", "small", "strike", "sub", "sup",
       ]
       for method_name in methods {
         let mname = method_name

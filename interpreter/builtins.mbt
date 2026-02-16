@@ -3445,16 +3445,73 @@ fn setup_function_builtins(env : Environment) -> Unit {
     symbol_descriptors: {},
     extensible: true,
   })
+  // %ThrowTypeError% intrinsic (ES spec §10.2.4)
+  // A single frozen function that throws TypeError when called.
+  let throw_type_error : Value = Object({
+    properties: {
+      "length": Number(0.0),
+      "name": String_("ThrowTypeError"),
+    },
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      NativeCallable("ThrowTypeError", fn(_args) raise {
+        raise @errors.TypeError(
+          message="'caller', 'callee', and 'arguments' properties may not be accessed on strict mode functions or the arguments objects for calls to them",
+        )
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {
+      "length": {
+        writable: false,
+        enumerable: false,
+        configurable: false,
+        getter: None,
+        setter: None,
+      },
+      "name": {
+        writable: false,
+        enumerable: false,
+        configurable: false,
+        getter: None,
+        setter: None,
+      },
+    },
+    symbol_descriptors: {},
+    extensible: false,
+  })
+
+  // Install ThrowTypeError accessors on Function.prototype for caller and arguments
+  let func_proto_descs : Map[String, PropDescriptor] = {}
+  func_proto_descs["caller"] = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: Some(throw_type_error),
+    setter: Some(throw_type_error),
+  }
+  func_proto_descs["arguments"] = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: Some(throw_type_error),
+    setter: Some(throw_type_error),
+  }
+
   let func_proto : Value = Object({
     properties: func_proto_props,
     symbol_properties: {},
     prototype: Null,
     callable: None,
     class_name: "Function",
-    descriptors: {},
+    descriptors: func_proto_descs,
     symbol_descriptors: {},
     extensible: true,
   })
+
+  // Register %ThrowTypeError% so it can be used for strict arguments objects
+  env.def_builtin("[[ThrowTypeError]]", throw_type_error)
 
   // Function constructor properties
   let func_ctor_props : Map[String, Value] = {}

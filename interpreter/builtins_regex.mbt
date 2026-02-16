@@ -1253,3 +1253,94 @@ fn process_replacement(
   }
   buf.to_string()
 }
+
+/// Shared %RegExpStringIteratorPrototype% - lazily initialized
+let regexp_string_iterator_proto_ref : Ref[Value?] = { val: None }
+
+///|
+/// Get or create the shared %RegExpStringIteratorPrototype%
+pub fn get_regexp_string_iterator_proto() -> Value {
+  match regexp_string_iterator_proto_ref.val {
+    Some(proto) => proto
+    None => {
+      let iterator_sym = get_iterator_symbol()
+      let tostringtag_sym = get_tostringtag_symbol()
+      let proto_sym_props : Map[Int, Value] = {}
+      proto_sym_props[tostringtag_sym.id] = String_("RegExp String Iterator")
+      let proto_props : Map[String, Value] = {}
+      let proto_sym_descs : Map[Int, PropDescriptor] = {}
+      proto_sym_descs[tostringtag_sym.id] = {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
+      // Add [Symbol.iterator] that returns the iterator itself
+      proto_sym_props[iterator_sym.id] = Object({
+        properties: {},
+        symbol_properties: {},
+        prototype: Null,
+        callable: Some(
+          MethodCallable("[Symbol.iterator]", fn(this_val, _args) { this_val }),
+        ),
+        class_name: "Function",
+        descriptors: {},
+        symbol_descriptors: {},
+        extensible: true,
+      })
+      // Add a placeholder next method with correct name/length on prototype
+      proto_props["next"] = Object({
+        properties: { "length": Number(0.0), "name": String_("next") },
+        symbol_properties: {},
+        prototype: Null,
+        callable: Some(
+          MethodCallable("next", fn(_this_val, _args) raise {
+            raise @errors.TypeError(
+              message="RegExp String Iterator.prototype.next requires that |this| be a RegExp String Iterator",
+            )
+          }),
+        ),
+        class_name: "Function",
+        descriptors: {
+          "length": {
+            writable: false,
+            enumerable: false,
+            configurable: true,
+            getter: None,
+            setter: None,
+          },
+          "name": {
+            writable: false,
+            enumerable: false,
+            configurable: true,
+            getter: None,
+            setter: None,
+          },
+        },
+        symbol_descriptors: {},
+        extensible: true,
+      })
+      let proto_descs : Map[String, PropDescriptor] = {}
+      proto_descs["next"] = {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
+      let proto : Value = Object({
+        properties: proto_props,
+        symbol_properties: proto_sym_props,
+        prototype: Null,
+        callable: None,
+        class_name: "RegExp String Iterator",
+        descriptors: proto_descs,
+        symbol_descriptors: proto_sym_descs,
+        extensible: true,
+      })
+      regexp_string_iterator_proto_ref.val = Some(proto)
+      proto
+    }
+  }
+}

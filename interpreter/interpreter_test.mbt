@@ -3380,11 +3380,12 @@ test "use strict: no arguments.callee" {
   let src =
     #|"use strict";
     #|function f() {
-    #|  return typeof arguments.callee;
+    #|  try { arguments.callee; return "no error"; }
+    #|  catch(e) { return e instanceof TypeError; }
     #|}
     #|console.log(f());
   let output = run_output(src)
-  inspect(output, content="[\"undefined\"]")
+  inspect(output, content="[\"true\"]")
 }
 
 ///|
@@ -3725,11 +3726,12 @@ test "bugfix: UserFuncExt strict mode" {
   let src =
     #|function f(a = 1) {
     #|  "use strict";
-    #|  console.log(arguments.callee);
+    #|  try { arguments.callee; console.log("no error"); }
+    #|  catch(e) { console.log(e instanceof TypeError); }
     #|}
     #|f();
   let output = run_output(src)
-  inspect(output, content="[\"undefined\"]")
+  inspect(output, content="[\"true\"]")
 }
 
 ///|
@@ -7452,12 +7454,13 @@ test "class body is implicitly strict: no arguments.callee" {
   let src =
     #|class C {
     #|  method() {
-    #|    return typeof arguments.callee;
+    #|    try { arguments.callee; return "no error"; }
+    #|    catch(e) { return e instanceof TypeError; }
     #|  }
     #|}
     #|console.log(new C().method());
   let output = run_output(src)
-  inspect(output, content="[\"undefined\"]")
+  inspect(output, content="[\"true\"]")
 }
 
 ///|

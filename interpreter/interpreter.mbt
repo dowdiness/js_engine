@@ -5023,8 +5023,28 @@ fn Interpreter::call_value(
               args_props[i.to_string()] = args[i]
             }
             args_props["length"] = Number(args.length().to_double())
+            let args_descs : Map[String, PropDescriptor] = {}
             if not(func_strict) {
               args_props["callee"] = callee
+            } else {
+              // Strict mode: install %ThrowTypeError% accessors for callee and caller
+              if func_env.has("[[ThrowTypeError]]") {
+                  let tte = func_env.get("[[ThrowTypeError]]")
+                  args_descs["callee"] = {
+                    writable: false,
+                    enumerable: false,
+                    configurable: false,
+                    getter: Some(tte),
+                    setter: Some(tte),
+                  }
+                  args_descs["caller"] = {
+                    writable: false,
+                    enumerable: false,
+                    configurable: false,
+                    getter: Some(tte),
+                    setter: Some(tte),
+                  }
+              }
             }
             func_env.def(
               "arguments",
@@ -5034,7 +5054,7 @@ fn Interpreter::call_value(
                 prototype: Null,
                 callable: None,
                 class_name: "Arguments",
-                descriptors: {},
+                descriptors: args_descs,
                 symbol_descriptors: {},
                 extensible: true,
               }),
@@ -5186,23 +5206,43 @@ fn Interpreter::call_value(
               None => ()
             }
             // Create arguments object
-            let args_props : Map[String, Value] = {}
+            let args_props2 : Map[String, Value] = {}
             for i = 0; i < args.length(); i = i + 1 {
-              args_props[i.to_string()] = args[i]
+              args_props2[i.to_string()] = args[i]
             }
-            args_props["length"] = Number(args.length().to_double())
+            args_props2["length"] = Number(args.length().to_double())
+            let args_descs2 : Map[String, PropDescriptor] = {}
             if not(func_strict) {
-              args_props["callee"] = callee
+              args_props2["callee"] = callee
+            } else {
+              // Strict mode: install %ThrowTypeError% accessors for callee and caller
+              if func_env.has("[[ThrowTypeError]]") {
+                  let tte = func_env.get("[[ThrowTypeError]]")
+                  args_descs2["callee"] = {
+                    writable: false,
+                    enumerable: false,
+                    configurable: false,
+                    getter: Some(tte),
+                    setter: Some(tte),
+                  }
+                  args_descs2["caller"] = {
+                    writable: false,
+                    enumerable: false,
+                    configurable: false,
+                    getter: Some(tte),
+                    setter: Some(tte),
+                  }
+              }
             }
             func_env.def(
               "arguments",
               Object({
-                properties: args_props,
+                properties: args_props2,
                 symbol_properties: {},
                 prototype: Null,
                 callable: None,
                 class_name: "Arguments",
-                descriptors: {},
+                descriptors: args_descs2,
                 symbol_descriptors: {},
                 extensible: true,
               }),
@@ -7008,14 +7048,37 @@ fn make_arguments_object(
   args : Array[Value],
   ctor : Value,
   strict : Bool,
+  throw_type_error? : Value? = None,
 ) -> Value {
   let new_args_props : Map[String, Value] = {}
   for i = 0; i < args.length(); i = i + 1 {
     new_args_props[i.to_string()] = args[i]
   }
   new_args_props["length"] = Number(args.length().to_double())
+  let new_args_descs : Map[String, PropDescriptor] = {}
   if not(strict) {
     new_args_props["callee"] = ctor
+  } else {
+    // Strict mode: install %ThrowTypeError% accessors for callee and caller
+    match throw_type_error {
+      Some(tte) => {
+        new_args_descs["callee"] = {
+          writable: false,
+          enumerable: false,
+          configurable: false,
+          getter: Some(tte),
+          setter: Some(tte),
+        }
+        new_args_descs["caller"] = {
+          writable: false,
+          enumerable: false,
+          configurable: false,
+          getter: Some(tte),
+          setter: Some(tte),
+        }
+      }
+      None => ()
+    }
   }
   Object({
     properties: new_args_props,
@@ -7023,7 +7086,7 @@ fn make_arguments_object(
     prototype: Null,
     callable: None,
     class_name: "Arguments",
-    descriptors: {},
+    descriptors: new_args_descs,
     symbol_descriptors: {},
     extensible: true,
   })
