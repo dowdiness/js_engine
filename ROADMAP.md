@@ -684,7 +684,7 @@ These are small, self-contained fixes that each require minimal code changes but
 |---|-----|-------------|--------|-----------------|
 | **1a** | **String escape sequences** (`\r`, `\b`, `\v`, `\f`, `\0`, `\xHH`) | ~90-120 tests | Very Low | `lexer/lexer.mbt` (lines 813-829 string handler, lines 257-273 template handler) |
 | **1b** | **`%ThrowTypeError%` intrinsic** | ~13 tests | Very Low | `interpreter/builtins.mbt` |
-| **1c** | **Annex B HTML string methods** (`anchor`, `big`, `blink`, `bold`, `fixed`, `fontcolor`, `fontsize`, `italics`, `link`, `small`, `strike`, `sub`, `sup`) | ~73 tests | Low | `interpreter/builtins_string.mbt` |
+| **1c** | **Annex B HTML string methods** (`anchor`, `big`, `blink`, `bold`, `fixed`, `fontcolor`, `fontsize`, `italics`, `link`, `small`, `strike`, `sub`, `sup`) — gate behind `--annex-b` | ~73 tests | Low | `interpreter/builtins_string.mbt` |
 | **1d** | **`RegExpStringIteratorPrototype`** (for `String.prototype.matchAll`) | ~17 tests | Low | `interpreter/builtins_regex.mbt`, `interpreter/builtins_string.mbt` |
 | **1e** | **Import syntax validation** (reject escaped keywords like `\u0066rom`, duplicate bound names) | ~10 tests | Low | `parser/stmt.mbt` |
 

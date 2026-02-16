@@ -993,7 +993,7 @@ pub fn get_string_method(s : String, prop : String) -> Value {
     "anchor" =>
       make_native_func("anchor", fn(args) {
         let name = if args.length() > 0 { args[0].to_string() } else { "undefined" }
-        String_("<a name=\"" + name + "\">" + s + "</a>")
+        String_("<a name=\"" + escape_html_attr(name) + "\">" + s + "</a>")
       })
     "big" =>
       make_native_func("big", fn(_args) { String_("<big>" + s + "</big>") })
@@ -1006,19 +1006,19 @@ pub fn get_string_method(s : String, prop : String) -> Value {
     "fontcolor" =>
       make_native_func("fontcolor", fn(args) {
         let color = if args.length() > 0 { args[0].to_string() } else { "undefined" }
-        String_("<font color=\"" + color + "\">" + s + "</font>")
+        String_("<font color=\"" + escape_html_attr(color) + "\">" + s + "</font>")
       })
     "fontsize" =>
       make_native_func("fontsize", fn(args) {
         let size = if args.length() > 0 { args[0].to_string() } else { "undefined" }
-        String_("<font size=\"" + size + "\">" + s + "</font>")
+        String_("<font size=\"" + escape_html_attr(size) + "\">" + s + "</font>")
       })
     "italics" =>
       make_native_func("italics", fn(_args) { String_("<i>" + s + "</i>") })
     "link" =>
       make_native_func("link", fn(args) {
         let url = if args.length() > 0 { args[0].to_string() } else { "undefined" }
-        String_("<a href=\"" + url + "\">" + s + "</a>")
+        String_("<a href=\"" + escape_html_attr(url) + "\">" + s + "</a>")
       })
     "small" =>
       make_native_func("small", fn(_args) { String_("<small>" + s + "</small>") })
@@ -1030,6 +1030,21 @@ pub fn get_string_method(s : String, prop : String) -> Value {
       make_native_func("sup", fn(_args) { String_("<sup>" + s + "</sup>") })
     _ => Undefined
   }
+}
+
+///|
+/// Escape double-quotes in attribute values per CreateHTML (ECMA-262 Annex B)
+fn escape_html_attr(value : String) -> String {
+  let chars = value.to_array()
+  let buf = StringBuilder::new()
+  for c in chars {
+    if c == '"' {
+      buf.write_string("&quot;")
+    } else {
+      buf.write_char(c)
+    }
+  }
+  buf.to_string()
 }
 
 ///|

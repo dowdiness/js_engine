@@ -3852,14 +3852,20 @@ test "bugfix: strict mode restored after throwing strict function" {
 
 ///|
 test "bugfix: constructor honors function strict mode" {
+  // In strict mode, arguments.callee has %ThrowTypeError% getter per ES spec
   let src =
     #|function C() {
     #|  "use strict";
-    #|  console.log(typeof arguments.callee);
+    #|  try {
+    #|    arguments.callee;
+    #|    console.log("no error");
+    #|  } catch (e) {
+    #|    console.log(e instanceof TypeError);
+    #|  }
     #|}
     #|new C();
   let output = run_output(src)
-  inspect(output, content="[\"undefined\"]")
+  inspect(output, content="[\"true\"]")
 }
 
 ///|

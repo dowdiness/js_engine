@@ -3794,9 +3794,10 @@ fn Interpreter::eval_expr(
                     }
                     call_env.def(ctor_params[i], val, LetBinding)
                   }
+                  let tte : Value? = if call_env.has("[[ThrowTypeError]]") { Some(call_env.get("[[ThrowTypeError]]")) } else { None }
                   call_env.def(
                     "arguments",
-                    make_arguments_object(args, super_ctor, true),
+                    make_arguments_object(args, super_ctor, true, throw_type_error=tte),
                     VarBinding,
                   )
                   self.hoist_declarations(ctor_body, call_env)
@@ -7203,9 +7204,10 @@ fn Interpreter::construct_value(
                 func_env.def(data.params[i], val, LetBinding)
               }
             }
+            let tte : Value? = if func_env.has("[[ThrowTypeError]]") { Some(func_env.get("[[ThrowTypeError]]")) } else { None }
             func_env.def(
               "arguments",
-              make_arguments_object(args, ctor, func_strict),
+              make_arguments_object(args, ctor, func_strict, throw_type_error=tte),
               VarBinding,
             )
             // Hoist var declarations and function declarations
@@ -7323,9 +7325,10 @@ fn Interpreter::construct_value(
               }
               None => ()
             }
+            let tte2 : Value? = if func_env.has("[[ThrowTypeError]]") { Some(func_env.get("[[ThrowTypeError]]")) } else { None }
             func_env.def(
               "arguments",
-              make_arguments_object(args, ctor, func_strict),
+              make_arguments_object(args, ctor, func_strict, throw_type_error=tte2),
               VarBinding,
             )
             self.hoist_declarations(data.body, func_env)
@@ -7450,9 +7453,10 @@ fn Interpreter::construct_value(
                   }
                   ctor_env.def(params[i], val, LetBinding)
                 }
+                let ctor_tte : Value? = if ctor_env.has("[[ThrowTypeError]]") { Some(ctor_env.get("[[ThrowTypeError]]")) } else { None }
                 ctor_env.def(
                   "arguments",
-                  make_arguments_object(args, ctor, true),
+                  make_arguments_object(args, ctor, true, throw_type_error=ctor_tte),
                   VarBinding,
                 )
                 // Hoist declarations and execute body
@@ -7524,9 +7528,10 @@ fn Interpreter::construct_value(
                                   }
                                   super_env.def(params[i], val, LetBinding)
                                 }
+                                let super_tte : Value? = if super_env.has("[[ThrowTypeError]]") { Some(super_env.get("[[ThrowTypeError]]")) } else { None }
                                 super_env.def(
                                   "arguments",
-                                  make_arguments_object(args, sc, true),
+                                  make_arguments_object(args, sc, true, throw_type_error=super_tte),
                                   VarBinding,
                                 )
                                 self.hoist_declarations(body, super_env)

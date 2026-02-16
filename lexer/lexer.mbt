@@ -261,7 +261,15 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           'b' => write_code_point(buf, 8) // backspace
           'v' => write_code_point(buf, 11) // vertical tab
           'f' => write_code_point(buf, 12) // form feed
-          '0' => write_code_point(buf, 0) // null
+          '0' => {
+            // \0 is NUL only when NOT followed by a decimal digit (ES spec)
+            if offset + 1 < len && is_digit(char_at(offset + 1)) {
+              raise @errors.SyntaxError(
+                message="Invalid escape sequence at line \{line}, col \{col}",
+              )
+            }
+            write_code_point(buf, 0)
+          }
           '\\' => buf.write_char('\\')
           '`' => buf.write_char('`')
           '$' => buf.write_char('$')
@@ -842,7 +850,15 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             'b' => write_code_point(buf, 8) // backspace
             'v' => write_code_point(buf, 11) // vertical tab
             'f' => write_code_point(buf, 12) // form feed
-            '0' => write_code_point(buf, 0) // null
+            '0' => {
+              // \0 is NUL only when NOT followed by a decimal digit (ES spec)
+              if offset + 1 < len && is_digit(char_at(offset + 1)) {
+                raise @errors.SyntaxError(
+                  message="Invalid escape sequence at line \{line}, col \{col}",
+                )
+              }
+              write_code_point(buf, 0)
+            }
             '\\' => buf.write_char('\\')
             '\'' => buf.write_char('\'')
             '"' => buf.write_char('"')

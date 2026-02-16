@@ -981,7 +981,7 @@ fn get_map_iterator_proto() -> Value {
       let proto = Object({
         properties: proto_props,
         symbol_properties: proto_sym_props,
-        prototype: Null,
+        prototype: get_iterator_proto(),
         callable: None,
         class_name: "Map Iterator",
         descriptors: {},
@@ -1302,7 +1302,7 @@ fn get_set_iterator_proto() -> Value {
       let proto = Object({
         properties: proto_props,
         symbol_properties: proto_sym_props,
-        prototype: Null,
+        prototype: get_iterator_proto(),
         callable: None,
         class_name: "Set Iterator",
         descriptors: {},

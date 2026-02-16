@@ -1254,7 +1254,7 @@ fn process_replacement(
   buf.to_string()
 }
 
-/// Shared %RegExpStringIteratorPrototype% - lazily initialized
+///| Shared %RegExpStringIteratorPrototype% - lazily initialized
 let regexp_string_iterator_proto_ref : Ref[Value?] = { val: None }
 
 ///|
@@ -1332,7 +1332,7 @@ pub fn get_regexp_string_iterator_proto() -> Value {
       let proto : Value = Object({
         properties: proto_props,
         symbol_properties: proto_sym_props,
-        prototype: Null,
+        prototype: get_iterator_proto(),
         callable: None,
         class_name: "RegExp String Iterator",
         descriptors: proto_descs,
