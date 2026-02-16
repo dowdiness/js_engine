@@ -5727,7 +5727,7 @@ fn Interpreter::get_property(
       if prop == "length" {
         Number(s.length().to_double())
       } else {
-        let result = get_string_method(s, prop)
+        let result = get_string_method(s, prop, annex_b=self.annex_b)
         match result {
           Undefined => lookup_builtin_proto(self, obj, "String", prop, loc)
           _ => result
@@ -6429,7 +6429,7 @@ fn Interpreter::get_computed_property(
           }
         }
         String_("length") => Number(s.length().to_double())
-        String_(method_name) => get_string_method(s, method_name)
+        String_(method_name) => get_string_method(s, method_name, annex_b=self.annex_b)
         _ => Undefined
       }
     Number(_) =>

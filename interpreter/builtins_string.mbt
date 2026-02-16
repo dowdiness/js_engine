@@ -1,5 +1,5 @@
 ///|
-pub fn get_string_method(s : String, prop : String) -> Value {
+pub fn get_string_method(s : String, prop : String, annex_b~ : Bool = false) -> Value {
   let chars = s.to_array()
   match prop {
     "charAt" =>
@@ -989,45 +989,54 @@ pub fn get_string_method(s : String, prop : String) -> Value {
         String_(buf.to_string())
       })
     }
-    // Annex B HTML string methods (B.2.2.2 - B.2.2.14)
-    "anchor" =>
-      make_native_func("anchor", fn(args) {
-        let name = if args.length() > 0 { args[0].to_string() } else { "undefined" }
-        String_("<a name=\"" + escape_html_attr(name) + "\">" + s + "</a>")
-      })
-    "big" =>
-      make_native_func("big", fn(_args) { String_("<big>" + s + "</big>") })
-    "blink" =>
-      make_native_func("blink", fn(_args) { String_("<blink>" + s + "</blink>") })
-    "bold" =>
-      make_native_func("bold", fn(_args) { String_("<b>" + s + "</b>") })
-    "fixed" =>
-      make_native_func("fixed", fn(_args) { String_("<tt>" + s + "</tt>") })
-    "fontcolor" =>
-      make_native_func("fontcolor", fn(args) {
-        let color = if args.length() > 0 { args[0].to_string() } else { "undefined" }
-        String_("<font color=\"" + escape_html_attr(color) + "\">" + s + "</font>")
-      })
-    "fontsize" =>
-      make_native_func("fontsize", fn(args) {
-        let size = if args.length() > 0 { args[0].to_string() } else { "undefined" }
-        String_("<font size=\"" + escape_html_attr(size) + "\">" + s + "</font>")
-      })
-    "italics" =>
-      make_native_func("italics", fn(_args) { String_("<i>" + s + "</i>") })
-    "link" =>
-      make_native_func("link", fn(args) {
-        let url = if args.length() > 0 { args[0].to_string() } else { "undefined" }
-        String_("<a href=\"" + escape_html_attr(url) + "\">" + s + "</a>")
-      })
-    "small" =>
-      make_native_func("small", fn(_args) { String_("<small>" + s + "</small>") })
-    "strike" =>
-      make_native_func("strike", fn(_args) { String_("<strike>" + s + "</strike>") })
-    "sub" =>
-      make_native_func("sub", fn(_args) { String_("<sub>" + s + "</sub>") })
-    "sup" =>
-      make_native_func("sup", fn(_args) { String_("<sup>" + s + "</sup>") })
+    // Annex B HTML string methods (B.2.2.2 - B.2.2.14) — only when --annex-b
+    "anchor" | "big" | "blink" | "bold" | "fixed" | "fontcolor" | "fontsize"
+    | "italics" | "link" | "small" | "strike" | "sub" | "sup" =>
+      if not(annex_b) {
+        Undefined
+      } else {
+        match prop {
+          "anchor" =>
+            make_native_func("anchor", fn(args) {
+              let name = if args.length() > 0 { args[0].to_string() } else { "undefined" }
+              String_("<a name=\"" + escape_html_attr(name) + "\">" + s + "</a>")
+            })
+          "big" =>
+            make_native_func("big", fn(_args) { String_("<big>" + s + "</big>") })
+          "blink" =>
+            make_native_func("blink", fn(_args) { String_("<blink>" + s + "</blink>") })
+          "bold" =>
+            make_native_func("bold", fn(_args) { String_("<b>" + s + "</b>") })
+          "fixed" =>
+            make_native_func("fixed", fn(_args) { String_("<tt>" + s + "</tt>") })
+          "fontcolor" =>
+            make_native_func("fontcolor", fn(args) {
+              let color = if args.length() > 0 { args[0].to_string() } else { "undefined" }
+              String_("<font color=\"" + escape_html_attr(color) + "\">" + s + "</font>")
+            })
+          "fontsize" =>
+            make_native_func("fontsize", fn(args) {
+              let size = if args.length() > 0 { args[0].to_string() } else { "undefined" }
+              String_("<font size=\"" + escape_html_attr(size) + "\">" + s + "</font>")
+            })
+          "italics" =>
+            make_native_func("italics", fn(_args) { String_("<i>" + s + "</i>") })
+          "link" =>
+            make_native_func("link", fn(args) {
+              let url = if args.length() > 0 { args[0].to_string() } else { "undefined" }
+              String_("<a href=\"" + escape_html_attr(url) + "\">" + s + "</a>")
+            })
+          "small" =>
+            make_native_func("small", fn(_args) { String_("<small>" + s + "</small>") })
+          "strike" =>
+            make_native_func("strike", fn(_args) { String_("<strike>" + s + "</strike>") })
+          "sub" =>
+            make_native_func("sub", fn(_args) { String_("<sub>" + s + "</sub>") })
+          "sup" =>
+            make_native_func("sup", fn(_args) { String_("<sup>" + s + "</sup>") })
+          _ => Undefined
+        }
+      }
     _ => Undefined
   }
 }
@@ -1249,7 +1258,7 @@ pub fn setup_string_prototype(string_proto : Value, annex_b~ : Bool = false) -> 
           callable: Some(
             MethodCallable(mname, fn(this_val, args) raise {
               let s = this_to_string(this_val)
-              let meth_val = get_string_method(s, mname)
+              let meth_val = get_string_method(s, mname, annex_b~)
               match meth_val {
                 Object(fdata) =>
                   match fdata.callable {

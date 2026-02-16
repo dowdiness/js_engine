@@ -416,7 +416,7 @@ pub fn setup_builtins(env : Environment, output : Array[String], annex_b~ : Bool
             props["length"] = Number(str.length().to_double())
             // Add indexed character properties
             for i = 0; i < str.length(); i = i + 1 {
-              props[i.to_string()] = String_(str[i:i + 1].to_string())
+              props[i.to_string()] = String_(str.view()[i:i + 1].to_string())
             }
             let descs : Map[String, PropDescriptor] = {}
             descs["length"] = {

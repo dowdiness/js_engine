@@ -326,7 +326,7 @@ def run_single_test(
         full_source = harness + "\n" + source
 
     # Determine if Annex B flag is needed (tests in annexB/ directories)
-    is_annex_b = "annexB" in test_path or "annex-b" in meta.includes
+    is_annex_b = "annexB" in test_path
 
     # Build engine command - add --module and --annex-b flags as needed
     cmd = engine_cmd
