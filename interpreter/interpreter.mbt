@@ -1335,46 +1335,127 @@ fn Interpreter::exec_stmt(
           message="Strict mode code may not include a with statement",
         )
       }
-      let obj = self.eval_expr(expr, env)
+      let raw_obj = self.eval_expr(expr, env)
+      // Per spec: ToObject() the expression result. Throw TypeError for null/undefined.
+      let obj = match raw_obj {
+        Null =>
+          raise @errors.TypeError(
+            message="Cannot convert null to object",
+          )
+        Undefined =>
+          raise @errors.TypeError(
+            message="Cannot convert undefined to object",
+          )
+        String_(s) => {
+          // Box string primitive to String wrapper object
+          let str_proto = env.get("[[StringPrototype]]") catch { _ => Null }
+          let props : Map[String, Value] = {}
+          props["length"] = Number(s.to_array().length().to_double())
+          props["[[PrimitiveValue]]"] = String_(s)
+          // Add character indices as properties
+          let chars = s.to_array()
+          for i = 0; i < chars.length(); i = i + 1 {
+            props[i.to_string()] = String_(String::make(1, chars[i]))
+          }
+          Object({
+            properties: props,
+            symbol_properties: {},
+            prototype: str_proto,
+            callable: None,
+            class_name: "String",
+            descriptors: {},
+            symbol_descriptors: {},
+            extensible: true,
+          })
+        }
+        Number(n) => {
+          // Box number primitive to Number wrapper object
+          let num_proto = env.get("[[NumberPrototype]]") catch { _ => Null }
+          let props : Map[String, Value] = {}
+          props["[[PrimitiveValue]]"] = Number(n)
+          Object({
+            properties: props,
+            symbol_properties: {},
+            prototype: num_proto,
+            callable: None,
+            class_name: "Number",
+            descriptors: {},
+            symbol_descriptors: {},
+            extensible: true,
+          })
+        }
+        Bool(b) => {
+          // Box boolean primitive to Boolean wrapper object
+          let bool_proto = env.get("[[BooleanPrototype]]") catch { _ => Null }
+          let props : Map[String, Value] = {}
+          props["[[PrimitiveValue]]"] = Bool(b)
+          Object({
+            properties: props,
+            symbol_properties: {},
+            prototype: bool_proto,
+            callable: None,
+            class_name: "Boolean",
+            descriptors: {},
+            symbol_descriptors: {},
+            extensible: true,
+          })
+        }
+        Object(_) => raw_obj
+        _ => raw_obj
+      }
       // Create an object environment record: lookups check the object first
       let with_env = Environment::new(parent=Some(env))
-      // Populate environment with object's enumerable properties
-      match obj {
-        Object(data) => {
-          // Add own properties (walking prototype chain for lookup)
-          let mut current : Value = obj
-          while true {
-            match current {
-              Object(cur_data) => {
-                cur_data.properties.each(fn(key, value) {
-                  if not(with_env.bindings.contains(key)) {
-                    // Check if property is enumerable or not (we add all own properties for with)
-                    with_env.bindings[key] = {
-                      value,
-                      kind: VarBinding,
-                      initialized: true,
-                    }
-                  }
-                })
-                current = cur_data.prototype
-              }
-              _ => break
-            }
-          }
-          // Execute the body; after execution, write back any modified bindings
-          let result = self.exec_stmt(body, with_env)
-          // Write back any changes to the object
-          with_env.bindings.each(fn(key, binding) {
-            if data.properties.contains(key) {
-              data.properties[key] = binding.value
-            }
-          })
-          result
+      let data = match obj {
+        Object(d) => d
+        _ => {
+          // Fallback: just execute with parent env
+          return self.exec_stmt(body, env)
         }
-        _ =>
-          // For non-objects, just execute with the parent env
-          self.exec_stmt(body, env)
       }
+      // Add all properties (walking prototype chain for lookup)
+      let mut current : Value = obj
+      while true {
+        match current {
+          Object(cur_data) => {
+            cur_data.properties.each(fn(key, value) {
+              if not(with_env.bindings.contains(key)) {
+                with_env.bindings[key] = {
+                  value,
+                  kind: VarBinding,
+                  initialized: true,
+                }
+              }
+            })
+            current = cur_data.prototype
+          }
+          _ => break
+        }
+      }
+      // Execute the body; after execution, write back modified bindings
+      let result = self.exec_stmt(body, with_env)
+      // Write back changes: use [[Set]] semantics (own properties + prototype chain)
+      with_env.bindings.each(fn(key, binding) {
+        // Check if this binding existed before in the object or its prototype
+        let mut found = false
+        let mut cur : Value = obj
+        while true {
+          match cur {
+            Object(cur_data) => {
+              if cur_data.properties.contains(key) {
+                found = true
+                break
+              }
+              cur = cur_data.prototype
+            }
+            _ => break
+          }
+        }
+        if found {
+          // Write to the object itself (per [[Set]] semantics, own property creation)
+          data.properties[key] = binding.value
+        }
+      })
+      result
     }
   }
 }
@@ -2503,7 +2584,17 @@ fn hoist_block_func_declarations(
     ForInExpr(_, _, body, _) => hoist_block_func_declarations(body, var_env)
     ForOfExpr(_, _, body, _) => hoist_block_func_declarations(body, var_env)
     LabeledStmt(_, inner, _) => hoist_block_func_declarations(inner, var_env)
-    WithStmt(_, body, _) => hoist_block_func_declarations(body, var_env)
+    WithStmt(_, body, _) => {
+      // Handle bare function declarations directly in with body (Annex B.3.3)
+      match body {
+        FuncDecl(name, _, _, _) | FuncDeclExt(name, _, _, _, _) =>
+          if not(var_env.bindings.contains(name)) {
+            var_env.def(name, Undefined, VarBinding)
+          }
+        _ => ()
+      }
+      hoist_block_func_declarations(body, var_env)
+    }
     SwitchStmt(_, cases, _) =>
       for case_ in cases {
         for inner in case_.body {

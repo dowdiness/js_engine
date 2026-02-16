@@ -362,7 +362,7 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
       MethodCallable("getInt8", fn(this_val, args) raise {
         match this_val {
           Object(data) => {
-            let offset = if args.length() > 0 { to_number(args[0]).to_int() } else { 0 }
+            let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
             let (bytes, actual_offset) = validate_dataview_access(data, offset, 1)
             dataview_get_int8(bytes, actual_offset)
           }
@@ -385,7 +385,7 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
       MethodCallable("getUint8", fn(this_val, args) raise {
         match this_val {
           Object(data) => {
-            let offset = if args.length() > 0 { to_number(args[0]).to_int() } else { 0 }
+            let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
             let (bytes, actual_offset) = validate_dataview_access(data, offset, 1)
             dataview_get_uint8(bytes, actual_offset)
           }
@@ -408,7 +408,7 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
       MethodCallable("getInt16", fn(this_val, args) raise {
         match this_val {
           Object(data) => {
-            let offset = if args.length() > 0 { to_number(args[0]).to_int() } else { 0 }
+            let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
             let le = get_little_endian(args, 1)
             let (bytes, actual_offset) = validate_dataview_access(data, offset, 2)
             dataview_get_int16(bytes, actual_offset, le)
@@ -432,7 +432,7 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
       MethodCallable("getUint16", fn(this_val, args) raise {
         match this_val {
           Object(data) => {
-            let offset = if args.length() > 0 { to_number(args[0]).to_int() } else { 0 }
+            let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
             let le = get_little_endian(args, 1)
             let (bytes, actual_offset) = validate_dataview_access(data, offset, 2)
             dataview_get_uint16(bytes, actual_offset, le)
@@ -456,7 +456,7 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
       MethodCallable("getInt32", fn(this_val, args) raise {
         match this_val {
           Object(data) => {
-            let offset = if args.length() > 0 { to_number(args[0]).to_int() } else { 0 }
+            let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
             let le = get_little_endian(args, 1)
             let (bytes, actual_offset) = validate_dataview_access(data, offset, 4)
             dataview_get_int32(bytes, actual_offset, le)
@@ -480,7 +480,7 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
       MethodCallable("getUint32", fn(this_val, args) raise {
         match this_val {
           Object(data) => {
-            let offset = if args.length() > 0 { to_number(args[0]).to_int() } else { 0 }
+            let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
             let le = get_little_endian(args, 1)
             let (bytes, actual_offset) = validate_dataview_access(data, offset, 4)
             dataview_get_uint32(bytes, actual_offset, le)
@@ -504,7 +504,7 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
       MethodCallable("getFloat32", fn(this_val, args) raise {
         match this_val {
           Object(data) => {
-            let offset = if args.length() > 0 { to_number(args[0]).to_int() } else { 0 }
+            let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
             let le = get_little_endian(args, 1)
             let (bytes, actual_offset) = validate_dataview_access(data, offset, 4)
             dataview_get_float32(bytes, actual_offset, le)
@@ -528,7 +528,7 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
       MethodCallable("getFloat64", fn(this_val, args) raise {
         match this_val {
           Object(data) => {
-            let offset = if args.length() > 0 { to_number(args[0]).to_int() } else { 0 }
+            let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
             let le = get_little_endian(args, 1)
             let (bytes, actual_offset) = validate_dataview_access(data, offset, 8)
             dataview_get_float64(bytes, actual_offset, le)
@@ -552,7 +552,7 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
       MethodCallable("setInt8", fn(this_val, args) raise {
         match this_val {
           Object(data) => {
-            let offset = if args.length() > 0 { to_number(args[0]).to_int() } else { 0 }
+            let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
             let value = if args.length() > 1 { to_number(args[1]) } else { 0.0 }
             let (bytes, actual_offset) = validate_dataview_access(data, offset, 1)
             dataview_set_int8(bytes, actual_offset, value)
@@ -577,7 +577,7 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
       MethodCallable("setUint8", fn(this_val, args) raise {
         match this_val {
           Object(data) => {
-            let offset = if args.length() > 0 { to_number(args[0]).to_int() } else { 0 }
+            let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
             let value = if args.length() > 1 { to_number(args[1]) } else { 0.0 }
             let (bytes, actual_offset) = validate_dataview_access(data, offset, 1)
             dataview_set_uint8(bytes, actual_offset, value)
@@ -602,7 +602,7 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
       MethodCallable("setInt16", fn(this_val, args) raise {
         match this_val {
           Object(data) => {
-            let offset = if args.length() > 0 { to_number(args[0]).to_int() } else { 0 }
+            let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
             let value = if args.length() > 1 { to_number(args[1]) } else { 0.0 }
             let le = get_little_endian(args, 2)
             let (bytes, actual_offset) = validate_dataview_access(data, offset, 2)
@@ -628,7 +628,7 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
       MethodCallable("setUint16", fn(this_val, args) raise {
         match this_val {
           Object(data) => {
-            let offset = if args.length() > 0 { to_number(args[0]).to_int() } else { 0 }
+            let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
             let value = if args.length() > 1 { to_number(args[1]) } else { 0.0 }
             let le = get_little_endian(args, 2)
             let (bytes, actual_offset) = validate_dataview_access(data, offset, 2)
@@ -654,7 +654,7 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
       MethodCallable("setInt32", fn(this_val, args) raise {
         match this_val {
           Object(data) => {
-            let offset = if args.length() > 0 { to_number(args[0]).to_int() } else { 0 }
+            let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
             let value = if args.length() > 1 { to_number(args[1]) } else { 0.0 }
             let le = get_little_endian(args, 2)
             let (bytes, actual_offset) = validate_dataview_access(data, offset, 4)
@@ -680,7 +680,7 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
       MethodCallable("setUint32", fn(this_val, args) raise {
         match this_val {
           Object(data) => {
-            let offset = if args.length() > 0 { to_number(args[0]).to_int() } else { 0 }
+            let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
             let value = if args.length() > 1 { to_number(args[1]) } else { 0.0 }
             let le = get_little_endian(args, 2)
             let (bytes, actual_offset) = validate_dataview_access(data, offset, 4)
@@ -706,7 +706,7 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
       MethodCallable("setFloat32", fn(this_val, args) raise {
         match this_val {
           Object(data) => {
-            let offset = if args.length() > 0 { to_number(args[0]).to_int() } else { 0 }
+            let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
             let value = if args.length() > 1 { to_number(args[1]) } else { 0.0 }
             let le = get_little_endian(args, 2)
             let (bytes, actual_offset) = validate_dataview_access(data, offset, 4)
@@ -732,7 +732,7 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
       MethodCallable("setFloat64", fn(this_val, args) raise {
         match this_val {
           Object(data) => {
-            let offset = if args.length() > 0 { to_number(args[0]).to_int() } else { 0 }
+            let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
             let value = if args.length() > 1 { to_number(args[1]) } else { 0.0 }
             let le = get_little_endian(args, 2)
             let (bytes, actual_offset) = validate_dataview_access(data, offset, 8)

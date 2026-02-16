@@ -776,6 +776,26 @@ pub fn to_number(val : Value) -> Double raise Error {
 }
 
 ///|
+/// ECMAScript ToIndex: converts a value to a non-negative integer index.
+/// Throws RangeError for negative values or values >= 2^53.
+/// Returns 0 for undefined.
+pub fn to_index(val : Value) -> Int raise {
+  match val {
+    Undefined => 0
+    _ => {
+      let n = to_number(val)
+      if n.is_nan() || n == 0.0 {
+        return 0
+      }
+      if n.is_inf() || n < 0.0 || n >= 9007199254740992.0 {
+        raise @errors.RangeError(message="Invalid index")
+      }
+      n.to_int()
+    }
+  }
+}
+
+///|
 pub fn to_int32(n : Double) -> Int {
   if n.is_nan() || n.is_inf() || n == 0.0 {
     return 0

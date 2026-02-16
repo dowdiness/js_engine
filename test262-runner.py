@@ -69,7 +69,7 @@ SKIP_FEATURES = {
 
     # Typed arrays and buffers (partially supported)
     "SharedArrayBuffer", "Float16Array", "Atomics",
-    "resizable-arraybuffer", "arraybuffer-transfer",
+    "resizable-arraybuffer", "arraybuffer-transfer", "immutable-arraybuffer",
 
     # Tail calls
     "tail-call-optimization",

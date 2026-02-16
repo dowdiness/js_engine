@@ -893,6 +893,22 @@ pub fn get_string_method(s : String, prop : String, annex_b~ : Bool = false) -> 
         if args.length() == 0 {
           return String_(str)
         }
+        // Per spec §22.1.3.19: if searchValue is a RegExp, require global flag FIRST
+        match args[0] {
+          Object(data) =>
+            if data.class_name == "RegExp" {
+              let flags = match data.properties.get("flags") {
+                Some(String_(f)) => f
+                _ => ""
+              }
+              if not(flags.to_array().contains('g')) {
+                raise @errors.TypeError(
+                  message="replaceAll must be called with a global RegExp",
+                )
+              }
+            }
+          _ => ()
+        }
         // Per spec: check for [Symbol.replace] method on the argument
         match args[0] {
           Object(data) => {
@@ -915,19 +931,13 @@ pub fn get_string_method(s : String, prop : String, annex_b~ : Bool = false) -> 
           }
           _ => ()
         }
-        // Check if first arg is RegExp
+        // Fallback for RegExp without Symbol.replace
         match args[0] {
           Object(data) =>
             if data.class_name == "RegExp" {
-              // RegExp must have global flag for replaceAll
               let flags = match data.properties.get("flags") {
                 Some(String_(f)) => f
                 _ => ""
-              }
-              if not(flags.to_array().contains('g')) {
-                raise @errors.TypeError(
-                  message="replaceAll must be called with a global RegExp",
-                )
               }
               let pattern = match data.properties.get("source") {
                 Some(String_(s)) => s
