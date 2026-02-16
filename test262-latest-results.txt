@@ -1,27 +1,27 @@
 ========================================================================
   Test262 ECMAScript Conformance Report
   Engine: MoonBit JS Engine
-  Date: 2026-02-15 09:12:54
+  Date: 2026-02-16 11:33:40
 ========================================================================
 
   Total tests discovered: 48145
-  Skipped:               20391
-  Executed:              27599
-  Passed:                23849
-  Failed:                3750
+  Skipped:               20376
+  Executed:              27614
+  Passed:                23875
+  Failed:                3739
   Timeouts:              154
   Errors:                1
 
-  Pass rate:             86.4% (23849/27599)
+  Pass rate:             86.5% (23875/27614)
 
 ────────────────────────────────────────────────────────────────────────
   Category                                   Pass   Fail   Skip     Rate
 ────────────────────────────────────────────────────────────────────────
-  annexB/built-ins                            147     73     21    66.8%
-  annexB/language                             313    504     28    38.3%
+  annexB/built-ins                            160     60     21    72.7%
+  annexB/language                             311    506     28    38.1%
   built-ins/AbstractModuleSource                0      0      8      N/A
   built-ins/AggregateError                     24      0      1   100.0%
-  built-ins/Array                            2596    349    112    88.1%
+  built-ins/Array                            2595    350    112    88.1%
   built-ins/ArrayBuffer                        73      5    115    93.6%
   built-ins/ArrayIteratorPrototype             19      8      0    70.4%
   built-ins/AsyncDisposableStack                0      0     52      N/A
@@ -42,8 +42,8 @@
   built-ins/GeneratorFunction                   2     19      2     9.5%
   built-ins/GeneratorPrototype                 45     16      0    73.8%
   built-ins/Infinity                            5      1      0    83.3%
-  built-ins/Iterator                            4      1    505    80.0%
-  built-ins/JSON                              132      3     30    97.8%
+  built-ins/Iterator                            5      0    505   100.0%
+  built-ins/JSON                              134      1     30    99.3%
   built-ins/Map                               179     15      5    92.3%
   built-ins/MapIteratorPrototype               11      0      0   100.0%
   built-ins/Math                              317      5      5    98.4%
@@ -60,7 +60,7 @@
   built-ins/SetIteratorPrototype               11      0      0   100.0%
   built-ins/ShadowRealm                         0      0     64      N/A
   built-ins/SharedArrayBuffer                   0      0    104      N/A
-  built-ins/String                           1142     53     27    95.6%
+  built-ins/String                           1151     59     12    95.1%
   built-ins/StringIteratorPrototype             7      0      0   100.0%
   built-ins/SuppressedError                     0      0     22      N/A
   built-ins/Symbol                             66      9     23    88.0%
@@ -208,7 +208,7 @@
   language/directive-prologue                  49     13      0    79.0%
   language/eval-code                          224    106     17    67.9%
   language/export                               0      3      0     0.0%
-  language/expressions                       4921    591   5465    89.3%
+  language/expressions                       4925    587   5465    89.4%
   language/function-code                      166      7     44    96.0%
   language/future-reserved-words               34      3     18    91.9%
   language/global-code                         23     11      8    67.6%
@@ -228,5 +228,109 @@
   language/types                               92     13      8    87.6%
   language/white-space                         66      1      0    98.5%
 ────────────────────────────────────────────────────────────────────────
+
+  Failed tests (3739):
+────────────────────────────────────────────────────────────────────────
+  FAIL: test262/test/harness/assert-throws-same-realm.js
+        Error: Expected a Test262Error, but no error was thrown.
+  FAIL: test262/test/harness/asyncHelpers-throwsAsync-custom.js
+        SyntaxError: Expected RParen, got Function at line 335, col 17
+  FAIL: test262/test/harness/asyncHelpers-asyncTest-returns-undefined.js
+        SyntaxError: Expected RParen, got Function at line 337, col 8
+  FAIL: test262/test/harness/asyncHelpers-asyncTest-then-resolves.js
+        SyntaxError: Expected RParen, got Function at line 342, col 8
+  FAIL: test262/test/harness/asyncHelpers-asyncTest-then-rejects.js
+        SyntaxError: Expected RParen, got Function at line 346, col 8
+  FAIL: test262/test/harness/asyncHelpers-throwsAsync-custom-typeerror.js
+        SyntaxError: Expected RParen, got Function at line 335, col 17
+  FAIL: test262/test/harness/asyncHelpers-throwsAsync-incorrect-ctor.js
+        SyntaxError: Expected RParen, got Function at line 333, col 17
+  FAIL: test262/test/harness/asyncHelpers-throwsAsync-invalid-func.js
+        SyntaxError: Expected RParen, got Function at line 353, col 17
+  FAIL: test262/test/harness/asyncHelpers-throwsAsync-func-throws-sync.js
+        SyntaxError: Expected RParen, got Function at line 353, col 17
+  FAIL: test262/test/harness/asyncHelpers-throwsAsync-func-never-settles.js
+        SyntaxError: Expected RParen, got Function at line 346, col 8
+  FAIL: test262/test/harness/asyncHelpers-throwsAsync-native.js
+        SyntaxError: Expected RParen, got Function at line 333, col 17
+  FAIL: test262/test/harness/asyncHelpers-throwsAsync-no-arg.js
+        SyntaxError: Expected RParen, got Function at line 332, col 17
+  FAIL: test262/test/harness/asyncHelpers-throwsAsync-null.js
+        SyntaxError: Expected RParen, got Function at line 332, col 17
+  FAIL: test262/test/harness/asyncHelpers-throwsAsync-no-error.js
+        SyntaxError: Expected RParen, got Function at line 332, col 17
+  FAIL: test262/test/harness/asyncHelpers-throwsAsync-same-realm.js
+        SyntaxError: Expected RParen, got Function at line 333, col 17
+  FAIL: test262/test/harness/asyncHelpers-throwsAsync-primitive.js
+        SyntaxError: Expected RParen, got Function at line 332, col 17
+  FAIL: test262/test/harness/asyncHelpers-throwsAsync-single-arg.js
+        SyntaxError: Expected RParen, got Function at line 332, col 17
+  FAIL: test262/test/harness/asyncHelpers-throwsAsync-resolved-error.js
+        SyntaxError: Expected RParen, got Function at line 332, col 17
+  FAIL: test262/test/harness/deepEqual-mapset.js
+        TypeError: Cannot use 'in' operator to search for 'Symbol(Symbol.toStringTag)' in object
+  FAIL: test262/test/harness/deepEqual-primitives.js
+        TypeError: Symbol.prototype.valueOf requires a Symbol
+  FAIL: test262/test/harness/nativeFunctionMatcher.js
+        Error: "function(){[native code]}" should pass
+  FAIL: test262/test/harness/propertyhelper-verifywritable-writable.js
+        Error: `verifyWritable` should be non-destructive.
+  FAIL: test262/test/harness/verifyProperty-value-error.js
+        Error: The error thrown did not define the specified message
+  FAIL: test262/test/built-ins/DataView/prototype/setBigInt64/immutable-buffer.js
+        TypeError: is not a function
+  FAIL: test262/test/built-ins/DataView/prototype/setInt16/immutable-buffer.js
+        TypeError: is not a function
+  FAIL: test262/test/built-ins/DataView/prototype/setInt16/index-check-before-value-conversion.js
+        /home/user/js_engine/_build/js/release/build/cmd/main/main.js:121   throw new $PanicError();   ^  $P
+  FAIL: test262/test/built-ins/DataView/prototype/setInt16/index-is-out-of-range.js
+        /home/user/js_engine/_build/js/release/build/cmd/main/main.js:121   throw new $PanicError();   ^  $P
+  FAIL: test262/test/built-ins/DataView/prototype/setFloat32/index-is-out-of-range.js
+        /home/user/js_engine/_build/js/release/build/cmd/main/main.js:121   throw new $PanicError();   ^  $P
+  FAIL: test262/test/built-ins/DataView/prototype/setFloat32/index-check-before-value-conversion.js
+        /home/user/js_engine/_build/js/release/build/cmd/main/main.js:121   throw new $PanicError();   ^  $P
+  FAIL: test262/test/built-ins/DataView/prototype/setFloat32/immutable-buffer.js
+        TypeError: is not a function
+  FAIL: test262/test/built-ins/DataView/prototype/getFloat64/index-is-out-of-range.js
+        /home/user/js_engine/_build/js/release/build/cmd/main/main.js:121   throw new $PanicError();   ^  $P
+  FAIL: test262/test/built-ins/DataView/prototype/getUint16/index-is-out-of-range.js
+        /home/user/js_engine/_build/js/release/build/cmd/main/main.js:121   throw new $PanicError();   ^  $P
+  FAIL: test262/test/built-ins/DataView/prototype/setInt8/immutable-buffer.js
+        TypeError: is not a function
+  FAIL: test262/test/built-ins/DataView/prototype/setInt8/index-check-before-value-conversion.js
+        /home/user/js_engine/_build/js/release/build/cmd/main/main.js:121   throw new $PanicError();   ^  $P
+  FAIL: test262/test/built-ins/DataView/prototype/setInt8/index-is-out-of-range.js
+        /home/user/js_engine/_build/js/release/build/cmd/main/main.js:121   throw new $PanicError();   ^  $P
+  FAIL: test262/test/built-ins/DataView/prototype/setUint16/index-is-out-of-range.js
+        /home/user/js_engine/_build/js/release/build/cmd/main/main.js:121   throw new $PanicError();   ^  $P
+  FAIL: test262/test/built-ins/DataView/prototype/setUint16/index-check-before-value-conversion.js
+        /home/user/js_engine/_build/js/release/build/cmd/main/main.js:121   throw new $PanicError();   ^  $P
+  FAIL: test262/test/built-ins/DataView/prototype/setUint16/immutable-buffer.js
+        TypeError: is not a function
+  FAIL: test262/test/built-ins/DataView/prototype/getInt32/index-is-out-of-range.js
+        /home/user/js_engine/_build/js/release/build/cmd/main/main.js:121   throw new $PanicError();   ^  $P
+  FAIL: test262/test/built-ins/DataView/prototype/getInt8/index-is-out-of-range.js
+        /home/user/js_engine/_build/js/release/build/cmd/main/main.js:121   throw new $PanicError();   ^  $P
+  FAIL: test262/test/built-ins/DataView/prototype/getUint8/index-is-out-of-range.js
+        /home/user/js_engine/_build/js/release/build/cmd/main/main.js:121   throw new $PanicError();   ^  $P
+  FAIL: test262/test/built-ins/DataView/prototype/setUint32/index-check-before-value-conversion.js
+        /home/user/js_engine/_build/js/release/build/cmd/main/main.js:121   throw new $PanicError();   ^  $P
+  FAIL: test262/test/built-ins/DataView/prototype/setUint32/immutable-buffer.js
+        TypeError: is not a function
+  FAIL: test262/test/built-ins/DataView/prototype/setUint32/index-is-out-of-range.js
+        /home/user/js_engine/_build/js/release/build/cmd/main/main.js:121   throw new $PanicError();   ^  $P
+  FAIL: test262/test/built-ins/DataView/prototype/setUint8/immutable-buffer.js
+        TypeError: is not a function
+  FAIL: test262/test/built-ins/DataView/prototype/setUint8/index-check-before-value-conversion.js
+        /home/user/js_engine/_build/js/release/build/cmd/main/main.js:121   throw new $PanicError();   ^  $P
+  FAIL: test262/test/built-ins/DataView/prototype/setUint8/index-is-out-of-range.js
+        /home/user/js_engine/_build/js/release/build/cmd/main/main.js:121   throw new $PanicError();   ^  $P
+  FAIL: test262/test/built-ins/DataView/prototype/setFloat64/immutable-buffer.js
+        TypeError: is not a function
+  FAIL: test262/test/built-ins/DataView/prototype/setFloat64/index-check-before-value-conversion.js
+        /home/user/js_engine/_build/js/release/build/cmd/main/main.js:121   throw new $PanicError();   ^  $P
+  FAIL: test262/test/built-ins/DataView/prototype/setFloat64/index-is-out-of-range.js
+        /home/user/js_engine/_build/js/release/build/cmd/main/main.js:121   throw new $PanicError();   ^  $P
+  ... and 3689 more
 
   Results saved to: test262-results.json
