@@ -406,7 +406,7 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
       symbol_properties: {},
       prototype: Null,
       callable: Some(
-        NativeCallable("String", fn(args) {
+        NativeCallable("String", fn(args) raise {
           let val = if args.length() > 0 { args[0] } else { Undefined }
           let str = val.to_string()
           if is_constructing.val {
@@ -416,9 +416,7 @@ pub fn setup_builtins(env : Environment, output : Array[String]) -> Unit {
             props["length"] = Number(str.length().to_double())
             // Add indexed character properties
             for i = 0; i < str.length(); i = i + 1 {
-              props[i.to_string()] = String_(
-                str.substring(start=i, end=i + 1),
-              )
+              props[i.to_string()] = String_(str[i:i + 1].to_string())
             }
             let descs : Map[String, PropDescriptor] = {}
             descs["length"] = {

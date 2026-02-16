@@ -130,8 +130,8 @@ fn RegexParser::parse_escape(self : RegexParser) -> RegexNode raise Error {
           ('\t', '\t'),
           ('\n', '\n'),
           ('\r', '\r'),
-          ('\x0B', '\x0B'),
-          ('\x0C', '\x0C'),
+          ('\u000B', '\u000B'),
+          ('\u000C', '\u000C'),
           ('\u00A0', '\u00A0'),
           ('\u1680', '\u1680'),
           ('\u2000', '\u200A'),
@@ -150,8 +150,8 @@ fn RegexParser::parse_escape(self : RegexParser) -> RegexNode raise Error {
           ('\t', '\t'),
           ('\n', '\n'),
           ('\r', '\r'),
-          ('\x0B', '\x0B'),
-          ('\x0C', '\x0C'),
+          ('\u000B', '\u000B'),
+          ('\u000C', '\u000C'),
           ('\u00A0', '\u00A0'),
           ('\u1680', '\u1680'),
           ('\u2000', '\u200A'),
@@ -168,9 +168,9 @@ fn RegexParser::parse_escape(self : RegexParser) -> RegexNode raise Error {
     'n' => Literal('\n')
     'r' => Literal('\r')
     't' => Literal('\t')
-    'f' => Literal('\x0C') // form feed
-    'v' => Literal('\x0B') // vertical tab
-    '0' => Literal('\x00') // null
+    'f' => Literal('\u000C') // form feed
+    'v' => Literal('\u000B') // vertical tab
+    '0' => Literal('\u0000') // null
     _ =>
       if ch >= '1' && ch <= '9' {
         // Backreference \1-\9
