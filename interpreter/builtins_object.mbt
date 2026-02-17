@@ -9,7 +9,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         symbol_properties: {},
         prototype: Null,
         callable: Some(
-          MethodCallable("toString", fn(this_val, _args) {
+          MethodCallable("toString", fn(this_val, _args) raise {
             match this_val {
               Undefined => String_("[object Undefined]")
               Null => String_("[object Null]")
@@ -913,7 +913,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                     match proxy_data.target {
                       Some(target) =>
                         match target {
-                          Object(src) =>
+                          Object(src) => {
                             src.properties.each(fn(k, v) raise {
                               let enumerable = match src.descriptors.get(k) {
                                 Some(d) => d.enumerable
@@ -938,6 +938,36 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                                 data.properties[k] = v
                               }
                             })
+                            // Copy enumerable symbol properties from Proxy target
+                            src.symbol_properties.each(fn(sym_id, v) raise {
+                              let enumerable = match
+                                src.symbol_descriptors.get(sym_id) {
+                                Some(d) => d.enumerable
+                                None => true
+                              }
+                              if enumerable {
+                                let can_write = match
+                                  data.symbol_descriptors.get(sym_id) {
+                                  Some(d) => d.writable
+                                  None => true
+                                }
+                                let exists = data.symbol_properties.contains(
+                                  sym_id,
+                                )
+                                if not(can_write) {
+                                  raise @errors.TypeError(
+                                    message="Cannot assign to read-only symbol property",
+                                  )
+                                }
+                                if not(exists) && not(data.extensible) {
+                                  raise @errors.TypeError(
+                                    message="Cannot add symbol property to non-extensible object",
+                                  )
+                                }
+                                data.symbol_properties[sym_id] = v
+                              }
+                            })
+                          }
                           _ => ()
                         }
                       None =>

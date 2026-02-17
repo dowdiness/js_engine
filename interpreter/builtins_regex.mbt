@@ -573,7 +573,13 @@ fn regex_exec_single(
             Some(pos)
           } else if flags.multiline &&
             pos > 0 &&
-            is_line_terminator(input[pos - 1]) {
+            is_line_terminator(input[pos - 1]) &&
+            // CRLF is a single line terminator — ^ matches after \n, not between \r and \n
+            not(
+              input[pos - 1] == '\r' &&
+              pos < input.length() &&
+              input[pos] == '\n',
+            ) {
             Some(pos)
           } else {
             None

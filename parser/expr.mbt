@@ -713,7 +713,8 @@ fn Parser::parse_primary(self : Parser) -> @ast.Expr raise Error {
     Super => self.parse_super_expr()
     NoSubTemplate(s) => {
       self.pos += 1
-      StringLit(s, false, tok.loc)
+      // Mark has_escape=true so template literals are never treated as directives
+      StringLit(s, true, tok.loc)
     }
     TemplateHead(first_str) => {
       self.pos += 1

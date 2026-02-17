@@ -58,7 +58,7 @@ pub fn get_toprimitive_symbol() -> SymbolData
 
 pub fn get_tostringtag_symbol() -> SymbolData
 
-pub fn get_tostringtag_value(ObjectData) -> String?
+pub fn get_tostringtag_value(ObjectData) -> String? raise
 
 pub fn get_typedarray_prop(ObjectData, String) -> Value
 

@@ -363,7 +363,8 @@ pub fn get_split_symbol() -> SymbolData {
 ///|
 /// Get the Symbol.toStringTag value by walking the prototype chain.
 /// Checks symbol properties and evaluates getter descriptors if present.
-pub fn get_tostringtag_value(data : ObjectData) -> String? {
+/// Per spec, errors thrown by @@toStringTag getters propagate to the caller.
+pub fn get_tostringtag_value(data : ObjectData) -> String? raise Error {
   let sym = get_tostringtag_symbol()
   // Walk the object and its prototype chain
   let mut current : Value = Object(data)
@@ -380,18 +381,14 @@ pub fn get_tostringtag_value(data : ObjectData) -> String? {
                   Object(getter_data) =>
                     match getter_data.callable {
                       Some(MethodCallable(_, f)) => {
-                        let result = f(Object(data), []) catch {
-                          _ => return None
-                        }
+                        let result = f(Object(data), [])
                         match result {
                           String_(s) => return Some(s)
                           _ => return None
                         }
                       }
                       Some(NativeCallable(_, f)) => {
-                        let result = f([Object(data)]) catch {
-                          _ => return None
-                        }
+                        let result = f([Object(data)])
                         match result {
                           String_(s) => return Some(s)
                           _ => return None
