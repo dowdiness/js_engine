@@ -975,6 +975,25 @@ pub fn make_regex_match_array(m : RegexMatch, input : String) -> Value {
   Array(arr_data)
 }
 
+///|
+/// Extract source pattern and flags from a RegExp value
+fn extract_regexp_source_flags(val : Value) -> (String, String) {
+  match val {
+    Object(data) => {
+      let pat = match data.properties.get("source") {
+        Some(String_(s)) => s
+        _ => ""
+      }
+      let fl = match data.properties.get("flags") {
+        Some(String_(s)) => s
+        _ => ""
+      }
+      (pat, fl)
+    }
+    _ => ("", "")
+  }
+}
+
 // ---- RegExp Object Creation ----
 
 ///|
@@ -1097,9 +1116,170 @@ pub fn make_regexp_object(pattern : String, flags : String) -> Value {
     symbol_descriptors: {},
     extensible: true,
   })
+  // Install well-known symbol methods on each RegExp object
+  let sym_props : Map[Int, Value] = {}
+
+  // [Symbol.match](string) - implements RegExp.prototype[@@match]
+  let match_sym = get_match_symbol()
+  sym_props[match_sym.id] = Object({
+    properties: { "length": Number(1.0), "name": String_("[Symbol.match]") },
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      MethodCallable("[Symbol.match]", fn(this_val, args) {
+        let str = if args.length() > 0 { args[0].to_string() } else { "" }
+        let (pat, fl) = extract_regexp_source_flags(this_val)
+        string_match_regex(str, pat, fl)
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+
+  // [Symbol.search](string) - implements RegExp.prototype[@@search]
+  let search_sym = get_search_symbol()
+  sym_props[search_sym.id] = Object({
+    properties: { "length": Number(1.0), "name": String_("[Symbol.search]") },
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      MethodCallable("[Symbol.search]", fn(this_val, args) {
+        let str = if args.length() > 0 { args[0].to_string() } else { "" }
+        let (pat, fl) = extract_regexp_source_flags(this_val)
+        string_search_regex(str, pat, fl)
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+
+  // [Symbol.replace](string, replaceValue) - implements RegExp.prototype[@@replace]
+  let replace_sym = get_replace_symbol()
+  sym_props[replace_sym.id] = Object({
+    properties: { "length": Number(2.0), "name": String_("[Symbol.replace]") },
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      MethodCallable("[Symbol.replace]", fn(this_val, args) {
+        let str = if args.length() > 0 { args[0].to_string() } else { "" }
+        let replacement = if args.length() > 1 {
+          args[1].to_string()
+        } else {
+          "undefined"
+        }
+        let (pat, fl) = extract_regexp_source_flags(this_val)
+        string_replace_regex(str, pat, fl, replacement)
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+
+  // [Symbol.split](string, limit) - implements RegExp.prototype[@@split]
+  let split_sym = get_split_symbol()
+  sym_props[split_sym.id] = Object({
+    properties: { "length": Number(2.0), "name": String_("[Symbol.split]") },
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      MethodCallable("[Symbol.split]", fn(this_val, args) raise {
+        let str = if args.length() > 0 { args[0].to_string() } else { "" }
+        let limit : Int64 = if args.length() > 1 {
+          match args[1] {
+            Undefined => 4294967295L
+            _ => {
+              // Per spec: use ToUint32 semantics (modulo 2^32)
+              let n = to_int32(to_number(args[1]))
+              // Convert signed int32 to unsigned range [0, 2^32-1]
+              if n < 0 {
+                (n.to_int64() + 4294967296L)
+              } else {
+                n.to_int64()
+              }
+            }
+          }
+        } else {
+          4294967295L
+        }
+        if limit == 0L {
+          return Array({ elements: [] })
+        }
+        let (pat, fl) = extract_regexp_source_flags(this_val)
+        let input_chars = str.to_array()
+        let slen = str.length()
+        if slen == 0 {
+          // If string is empty, check if pattern matches empty string
+          let m = regex_search(pat, fl, str) catch { _ => None }
+          return match m {
+            Some(_) => Array({ elements: [] })
+            None => Array({ elements: [String_(str)] })
+          }
+        }
+        let results : Array[Value] = []
+        let mut last_end = 0
+        let mut pos = 0
+        while pos < slen {
+          let m = regex_search(pat, fl, str, start_pos=pos) catch { _ => None }
+          match m {
+            None => break
+            Some(match_data) => {
+              if match_data.end_ == last_end && match_data.start == pos {
+                // Zero-length match at same position, advance
+                pos = pos + 1
+                continue
+              }
+              // Add substring before match
+              let buf = StringBuilder::new()
+              for i = last_end; i < match_data.start; i = i + 1 {
+                buf.write_char(input_chars[i])
+              }
+              results.push(String_(buf.to_string()))
+              if results.length().to_int64() >= limit {
+                return Array({ elements: results })
+              }
+              // Add capture groups
+              for cap in match_data.captures {
+                match cap {
+                  Some(c) => results.push(String_(c))
+                  None => results.push(Undefined)
+                }
+                if results.length().to_int64() >= limit {
+                  return Array({ elements: results })
+                }
+              }
+              last_end = match_data.end_
+              pos = if match_data.end_ == match_data.start {
+                match_data.start + 1
+              } else {
+                match_data.end_
+              }
+            }
+          }
+        }
+        // Add remaining substring
+        let buf = StringBuilder::new()
+        for i = last_end; i < slen; i = i + 1 {
+          buf.write_char(input_chars[i])
+        }
+        results.push(String_(buf.to_string()))
+        Array({ elements: results })
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+
   Object({
     properties: props,
-    symbol_properties: {},
+    symbol_properties: sym_props,
     prototype: Null,
     callable: None,
     class_name: "RegExp",

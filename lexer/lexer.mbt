@@ -300,6 +300,22 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             write_code_point(buf, cp)
             continue
           }
+          // LineContinuation in template literal: \ followed by line terminator
+          '\n' => {
+            line += 1
+            col = 1
+            offset += 1
+            continue
+          }
+          '\r' => {
+            offset += 1
+            if offset < len && char_at(offset) == '\n' {
+              offset += 1
+            }
+            line += 1
+            col = 1
+            continue
+          }
           _ => {
             buf.write_char('\\')
             buf.write_char(esc)
@@ -790,8 +806,10 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
     if is_alpha(c) ||
       (c == '\\' && offset + 1 < len && char_at(offset + 1) == 'u') {
       let ident_buf = StringBuilder::new()
+      let mut has_escape = false
       if c == '\\' {
         // Unicode escape at identifier start
+        has_escape = true
         offset += 2 // skip \ and u
         col += 2
         let cp = parse_unicode_escape()
@@ -813,6 +831,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           offset += 1
           col += 1
         } else if ch == '\\' && offset + 1 < len && char_at(offset + 1) == 'u' {
+          has_escape = true
           offset += 2 // skip \ and u
           col += 2
           let cp = parse_unicode_escape()
@@ -827,7 +846,15 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         }
       }
       let decoded = ident_buf.to_string()
-      let kind = resolve_keyword(decoded)
+      // Per spec: identifiers formed with unicode escapes must not be
+      // treated as keywords. Escaped reserved words are valid as IdentifierName
+      // (property keys, member access) but invalid as Identifier (bindings).
+      // Emit as Ident and let the parser enforce binding restrictions.
+      let kind : @token.TokenKind = if has_escape {
+        @token.TokenKind::Ident(decoded)
+      } else {
+        resolve_keyword(decoded)
+      }
       tokens.push({ kind, loc, raw: decoded })
       continue
     }
@@ -888,6 +915,25 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
               col += 1
               let cp = parse_unicode_escape()
               write_code_point(buf, cp)
+              continue
+            }
+            // LineContinuation: \ followed by a line terminator
+            // The backslash and the line terminator are consumed but NOT added to the string value
+            '\n' => {
+              // \<LF> — skip both, line already consumed
+              line += 1
+              col = 1
+              offset += 1
+              continue
+            }
+            '\r' => {
+              // \<CR> or \<CR><LF>
+              offset += 1
+              if offset < len && char_at(offset) == '\n' {
+                offset += 1 // skip the LF in CRLF
+              }
+              line += 1
+              col = 1
               continue
             }
             _ => {

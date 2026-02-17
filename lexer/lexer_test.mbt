@@ -243,8 +243,10 @@ test "lex unicode escape in identifier middle" {
 
 ///|
 test "lex unicode escape identifier resolves to keyword" {
+  // Per spec: escaped reserved words become Ident tokens (valid as IdentifierName
+  // e.g. in property keys), not keyword tokens. Parser enforces binding restrictions.
   let kinds = tok_kinds("\\u0076\\u0061\\u0072")
-  inspect(kinds, content="[Var, EOF]")
+  inspect(kinds, content="[Ident(\"var\"), EOF]")
 }
 
 ///|

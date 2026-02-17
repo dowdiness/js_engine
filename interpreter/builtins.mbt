@@ -730,9 +730,13 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
   let is_concat_spreadable_sym = new_symbol(Some("Symbol.isConcatSpreadable"))
   let species_sym = new_symbol(Some("Symbol.species"))
   let match_sym = new_symbol(Some("Symbol.match"))
+  well_known_match_sym.val = Some(match_sym)
   let replace_sym = new_symbol(Some("Symbol.replace"))
+  well_known_replace_sym.val = Some(replace_sym)
   let search_sym = new_symbol(Some("Symbol.search"))
+  well_known_search_sym.val = Some(search_sym)
   let split_sym = new_symbol(Some("Symbol.split"))
+  well_known_split_sym.val = Some(split_sym)
   let unscopables_sym = new_symbol(Some("Symbol.unscopables"))
   let async_iterator_sym = new_symbol(Some("Symbol.asyncIterator"))
 

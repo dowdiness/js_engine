@@ -1,4 +1,20 @@
 ///|
+/// Check if a string is a reserved word that cannot be used as a binding identifier.
+/// Contextual keywords (get, set, from, as, of) are excluded since they ARE valid identifiers.
+fn is_reserved_word(name : String) -> Bool {
+  match name {
+    "let" | "const" | "var" | "function" | "return" | "if" | "else" | "while"
+    | "for" | "break" | "continue" | "true" | "false" | "null" | "undefined"
+    | "typeof" | "throw" | "try" | "catch" | "finally" | "new" | "this"
+    | "switch" | "case" | "default" | "void" | "delete" | "do" | "in"
+    | "instanceof" | "class" | "extends" | "super" | "static" | "import"
+    | "export" | "yield" | "enum" | "with" | "debugger" =>
+      true
+    _ => false
+  }
+}
+
+///|
 pub(all) struct Parser {
   tokens : Array[@token.Token]
   mut pos : Int
@@ -78,6 +94,15 @@ fn Parser::expect(
 fn Parser::expect_ident(self : Parser) -> String raise Error {
   match self.peek_kind() {
     Ident(name) => {
+      // Per spec: escaped reserved words (e.g. \u0076\u0061\u0072 = "var")
+      // are valid as IdentifierName (property keys) but NOT as Identifier (bindings).
+      // Since the lexer now emits them as Ident tokens, reject them here.
+      if is_reserved_word(name) {
+        let tok = self.peek()
+        raise @errors.SyntaxError(
+          message="Unexpected reserved word '\{name}' at line \{tok.loc.line}, col \{tok.loc.col}",
+        )
+      }
       self.pos += 1
       name
     }

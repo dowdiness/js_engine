@@ -309,6 +309,58 @@ pub fn get_tostringtag_symbol() -> SymbolData {
 }
 
 ///|
+/// Well-known Symbol.match - stored globally for RegExp @@match support
+pub let well_known_match_sym : Ref[SymbolData?] = { val: None }
+
+///|
+/// Well-known Symbol.replace - stored globally for RegExp @@replace support
+pub let well_known_replace_sym : Ref[SymbolData?] = { val: None }
+
+///|
+/// Well-known Symbol.search - stored globally for RegExp @@search support
+pub let well_known_search_sym : Ref[SymbolData?] = { val: None }
+
+///|
+/// Well-known Symbol.split - stored globally for RegExp @@split support
+pub let well_known_split_sym : Ref[SymbolData?] = { val: None }
+
+///|
+/// Get the well-known Symbol.match
+pub fn get_match_symbol() -> SymbolData {
+  match well_known_match_sym.val {
+    Some(sym) => sym
+    None => abort("Symbol.match not initialized")
+  }
+}
+
+///|
+/// Get the well-known Symbol.replace
+pub fn get_replace_symbol() -> SymbolData {
+  match well_known_replace_sym.val {
+    Some(sym) => sym
+    None => abort("Symbol.replace not initialized")
+  }
+}
+
+///|
+/// Get the well-known Symbol.search
+pub fn get_search_symbol() -> SymbolData {
+  match well_known_search_sym.val {
+    Some(sym) => sym
+    None => abort("Symbol.search not initialized")
+  }
+}
+
+///|
+/// Get the well-known Symbol.split
+pub fn get_split_symbol() -> SymbolData {
+  match well_known_split_sym.val {
+    Some(sym) => sym
+    None => abort("Symbol.split not initialized")
+  }
+}
+
+///|
 /// Get the Symbol.toStringTag value by walking the prototype chain.
 /// Checks symbol properties and evaluates getter descriptors if present.
 pub fn get_tostringtag_value(data : ObjectData) -> String? {
@@ -720,6 +772,26 @@ pub fn to_number(val : Value) -> Double raise Error {
       raise @errors.TypeError(
         message="Cannot convert a Symbol value to a number",
       )
+  }
+}
+
+///|
+/// ECMAScript ToIndex: converts a value to a non-negative integer index.
+/// Throws RangeError for negative values or values >= 2^53.
+/// Returns 0 for undefined.
+pub fn to_index(val : Value) -> Int raise {
+  match val {
+    Undefined => 0
+    _ => {
+      let n = to_number(val)
+      if n.is_nan() || n == 0.0 {
+        return 0
+      }
+      if n.is_inf() || n < 0.0 || n >= 9007199254740992.0 {
+        raise @errors.RangeError(message="Invalid index")
+      }
+      n.to_int()
+    }
   }
 }
 
