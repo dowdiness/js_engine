@@ -818,6 +818,21 @@ pub fn to_int32(n : Double) -> Int {
 }
 
 ///|
+/// ECMAScript ToUint32: converts a number to unsigned 32-bit integer range [0, 2^32-1].
+pub fn to_uint32(n : Double) -> Int64 {
+  if n.is_nan() || n.is_inf() || n == 0.0 {
+    return 0L
+  }
+  let two32 : Double = 4294967296.0
+  let abs_n = n.abs()
+  let sign : Double = if n < 0.0 { -1.0 } else { 1.0 }
+  let truncated = abs_n.floor() * sign
+  let remainder = truncated % two32
+  let pos_mod = if remainder < 0.0 { remainder + two32 } else { remainder }
+  pos_mod.to_int64()
+}
+
+///|
 pub fn type_of(val : Value) -> String {
   match val {
     Number(_) => "number"

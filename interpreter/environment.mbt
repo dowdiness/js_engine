@@ -17,11 +17,12 @@ pub(all) struct Environment {
   bindings : Map[String, Binding]
   parent : Environment?
   mut is_var_scope : Bool // true for function/global scopes (where var is hoisted to)
+  mut with_object : Value? // For object environment records (with statement)
 }
 
 ///|
 pub fn Environment::new(parent? : Environment? = None) -> Environment {
-  { bindings: {}, parent, is_var_scope: false }
+  { bindings: {}, parent, is_var_scope: false, with_object: None }
 }
 
 ///|
@@ -104,6 +105,19 @@ pub fn Environment::def_builtin(
 
 ///|
 pub fn Environment::has(self : Environment, name : String) -> Bool {
+  // Object environment record: check the object first
+  match self.with_object {
+    Some(obj) =>
+      if obj_has_property(obj, name) {
+        return true
+      } else {
+        return match self.parent {
+          Some(parent) => parent.has(name)
+          None => false
+        }
+      }
+    None => ()
+  }
   match self.bindings.get(name) {
     Some(_) => true
     None =>
@@ -169,6 +183,20 @@ pub fn Environment::assign_var(
 
 ///|
 pub fn Environment::get(self : Environment, name : String) -> Value raise Error {
+  // Object environment record: check the object first
+  match self.with_object {
+    Some(obj) =>
+      if obj_has_property(obj, name) {
+        return obj_get_property(obj, name)
+      } else {
+        return match self.parent {
+          Some(parent) => parent.get(name)
+          None =>
+            raise @errors.ReferenceError(message="\{name} is not defined")
+        }
+      }
+    None => ()
+  }
   match self.bindings.get(name) {
     Some(binding) =>
       if not(binding.initialized) {
@@ -192,6 +220,21 @@ pub fn Environment::assign(
   name : String,
   value : Value,
 ) -> Unit raise Error {
+  // Object environment record: check the object first
+  match self.with_object {
+    Some(obj) =>
+      if obj_has_property(obj, name) {
+        obj_set_property(obj, name, value)
+        return
+      } else {
+        match self.parent {
+          Some(parent) => return parent.assign(name, value)
+          None =>
+            raise @errors.ReferenceError(message="\{name} is not defined")
+        }
+      }
+    None => ()
+  }
   match self.bindings.get(name) {
     Some(binding) =>
       if not(binding.initialized) {
@@ -210,5 +253,75 @@ pub fn Environment::assign(
         Some(parent) => parent.assign(name, value)
         None => raise @errors.ReferenceError(message="\{name} is not defined")
       }
+  }
+}
+
+///|
+/// Check if an object (or its prototype chain) has a property.
+fn obj_has_property(obj : Value, name : String) -> Bool {
+  let mut current = obj
+  while true {
+    match current {
+      Object(data) => {
+        if data.properties.contains(name) {
+          return true
+        }
+        current = data.prototype
+      }
+      Array(data) => {
+        if name == "length" {
+          return true
+        }
+        let idx = try { @strconv.parse_int(name) } catch { _ => -1 }
+        if idx >= 0 && idx < data.elements.length() {
+          return true
+        }
+        return false
+      }
+      _ => return false
+    }
+  }
+  false
+}
+
+///|
+/// Get a property from an object, walking the prototype chain.
+fn obj_get_property(obj : Value, name : String) -> Value {
+  let mut current = obj
+  while true {
+    match current {
+      Object(data) =>
+        match data.properties.get(name) {
+          Some(val) => return val
+          None => current = data.prototype
+        }
+      Array(data) => {
+        if name == "length" {
+          return Number(data.elements.length().to_double())
+        }
+        let idx = try { @strconv.parse_int(name) } catch { _ => -1 }
+        if idx >= 0 && idx < data.elements.length() {
+          return data.elements[idx]
+        }
+        return Undefined
+      }
+      _ => return Undefined
+    }
+  }
+  Undefined
+}
+
+///|
+/// Set a property on an object using [[Set]] semantics.
+fn obj_set_property(obj : Value, name : String, value : Value) -> Unit {
+  match obj {
+    Object(data) => data.properties[name] = value
+    Array(data) => {
+      let idx = try { @strconv.parse_int(name) } catch { _ => -1 }
+      if idx >= 0 && idx < data.elements.length() {
+        data.elements[idx] = value
+      }
+    }
+    _ => ()
   }
 }

@@ -1193,16 +1193,7 @@ pub fn make_regexp_object(pattern : String, flags : String) -> Value {
         let limit : Int64 = if args.length() > 1 {
           match args[1] {
             Undefined => 4294967295L
-            _ => {
-              // Per spec: use ToUint32 semantics (modulo 2^32)
-              let n = to_int32(to_number(args[1]))
-              // Convert signed int32 to unsigned range [0, 2^32-1]
-              if n < 0 {
-                (n.to_int64() + 4294967296L)
-              } else {
-                n.to_int64()
-              }
-            }
+            _ => to_uint32(to_number(args[1]))
           }
         } else {
           4294967295L

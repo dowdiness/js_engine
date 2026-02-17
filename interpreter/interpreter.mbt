@@ -1352,7 +1352,6 @@ fn Interpreter::exec_stmt(
           let props : Map[String, Value] = {}
           props["length"] = Number(s.to_array().length().to_double())
           props["[[PrimitiveValue]]"] = String_(s)
-          // Add character indices as properties
           let chars = s.to_array()
           for i = 0; i < chars.length(); i = i + 1 {
             props[i.to_string()] = String_(String::make(1, chars[i]))
@@ -1400,62 +1399,29 @@ fn Interpreter::exec_stmt(
             extensible: true,
           })
         }
-        Object(_) => raw_obj
+        Symbol(sym_data) => {
+          // Box symbol primitive to Symbol wrapper object
+          let sym_proto = env.get("[[SymbolPrototype]]") catch { _ => Null }
+          let props : Map[String, Value] = {}
+          props["[[PrimitiveValue]]"] = Symbol(sym_data)
+          Object({
+            properties: props,
+            symbol_properties: {},
+            prototype: sym_proto,
+            callable: None,
+            class_name: "Symbol",
+            descriptors: {},
+            symbol_descriptors: {},
+            extensible: true,
+          })
+        }
+        Object(_) | Array(_) => raw_obj
         _ => raw_obj
       }
-      // Create an object environment record: lookups check the object first
+      // Create a live object environment record that delegates to the object
       let with_env = Environment::new(parent=Some(env))
-      let data = match obj {
-        Object(d) => d
-        _ => {
-          // Fallback: just execute with parent env
-          return self.exec_stmt(body, env)
-        }
-      }
-      // Add all properties (walking prototype chain for lookup)
-      let mut current : Value = obj
-      while true {
-        match current {
-          Object(cur_data) => {
-            cur_data.properties.each(fn(key, value) {
-              if not(with_env.bindings.contains(key)) {
-                with_env.bindings[key] = {
-                  value,
-                  kind: VarBinding,
-                  initialized: true,
-                }
-              }
-            })
-            current = cur_data.prototype
-          }
-          _ => break
-        }
-      }
-      // Execute the body; after execution, write back modified bindings
-      let result = self.exec_stmt(body, with_env)
-      // Write back changes: use [[Set]] semantics (own properties + prototype chain)
-      with_env.bindings.each(fn(key, binding) {
-        // Check if this binding existed before in the object or its prototype
-        let mut found = false
-        let mut cur : Value = obj
-        while true {
-          match cur {
-            Object(cur_data) => {
-              if cur_data.properties.contains(key) {
-                found = true
-                break
-              }
-              cur = cur_data.prototype
-            }
-            _ => break
-          }
-        }
-        if found {
-          // Write to the object itself (per [[Set]] semantics, own property creation)
-          data.properties[key] = binding.value
-        }
-      })
-      result
+      with_env.with_object = Some(obj)
+      self.exec_stmt(body, with_env)
     }
   }
 }

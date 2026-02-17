@@ -826,7 +826,7 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
           match args[1] {
             Undefined => 0
             _ => {
-              let n = to_number(args[1]).to_int()
+              let n = to_index(args[1])
               if n < 0 || n > buf_byte_length {
                 raise @errors.RangeError(
                   message="Start offset \{n} is outside the bounds of the buffer",
@@ -842,7 +842,7 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
           match args[2] {
             Undefined => buf_byte_length - byte_offset
             _ => {
-              let n = to_number(args[2]).to_int()
+              let n = to_index(args[2])
               if n < 0 || byte_offset + n > buf_byte_length {
                 raise @errors.RangeError(
                   message="Invalid DataView length \{n}",

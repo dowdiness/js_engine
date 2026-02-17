@@ -317,6 +317,13 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             continue
           }
           _ => {
+            // Check for U+2028/U+2029 line terminators in template line continuation
+            if esc.to_int() == 0x2028 || esc.to_int() == 0x2029 {
+              line += 1
+              col = 1
+              offset += 1
+              continue
+            }
             buf.write_char('\\')
             buf.write_char(esc)
           }
@@ -324,7 +331,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         offset += 1
         col += 1
       } else {
-        if tc == '\n' {
+        if tc == '\n' || tc.to_int() == 0x2028 || tc.to_int() == 0x2029 {
           line += 1
           col = 1
         } else {
@@ -937,6 +944,14 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
               continue
             }
             _ => {
+              // Check for U+2028 (LINE SEPARATOR) and U+2029 (PARAGRAPH SEPARATOR)
+              if esc.to_int() == 0x2028 || esc.to_int() == 0x2029 {
+                // LineContinuation with Unicode line terminators
+                line += 1
+                col = 1
+                offset += 1
+                continue
+              }
               buf.write_char('\\')
               buf.write_char(esc)
             }
@@ -944,13 +959,14 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           offset += 1
           col += 1
         } else {
-          if char_at(offset) == '\n' {
+          let ch = char_at(offset)
+          if ch == '\n' || ch.to_int() == 0x2028 || ch.to_int() == 0x2029 {
             line += 1
             col = 1
           } else {
             col += 1
           }
-          buf.write_char(char_at(offset))
+          buf.write_char(ch)
           offset += 1
         }
       }
