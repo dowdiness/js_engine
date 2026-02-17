@@ -33,7 +33,6 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
         }
         while arr.elements.length() > 0 {
           let _ = arr.elements.pop()
-
         }
         for el in new_elems {
           arr.elements.push(el)
@@ -50,7 +49,6 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
         }
         while arr.elements.length() > 0 {
           let _ = arr.elements.pop()
-
         }
         for arg in args {
           arr.elements.push(arg)
@@ -456,7 +454,6 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
         }
         while arr.elements.length() > start {
           let _ = arr.elements.pop()
-
         }
         for item in new_items {
           arr.elements.push(item)
@@ -511,7 +508,6 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
                 [arr.elements[i], Number(i.to_double()), Array(arr)],
                 loc,
               )
-
             }
             Undefined
           }),

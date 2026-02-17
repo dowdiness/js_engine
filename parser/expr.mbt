@@ -626,7 +626,9 @@ fn Parser::parse_primary(self : Parser) -> @ast.Expr raise Error {
     }
     String_(s) => {
       self.pos += 1
-      StringLit(s, tok.loc)
+      // has_escape = true if the raw token contains escape sequences
+      let has_escape = tok.raw.length() != s.length() + 2
+      StringLit(s, has_escape, tok.loc)
     }
     True => {
       self.pos += 1
@@ -711,7 +713,7 @@ fn Parser::parse_primary(self : Parser) -> @ast.Expr raise Error {
     Super => self.parse_super_expr()
     NoSubTemplate(s) => {
       self.pos += 1
-      StringLit(s, tok.loc)
+      StringLit(s, false, tok.loc)
     }
     TemplateHead(first_str) => {
       self.pos += 1
@@ -796,7 +798,6 @@ fn Parser::parse_new_expr(self : Parser) -> @ast.Expr raise Error {
       }
     }
     let _ = self.expect(RParen)
-
   }
   NewExpr(callee, args, loc)
 }
@@ -847,7 +848,6 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
       if not(self.at(RBrace)) {
         if self.at(Comma) {
           let _ = self.advance()
-
         }
       }
       continue
@@ -860,11 +860,11 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
         self.peek_kind() {
         Ident(name) => {
           let kloc = self.advance().loc
-          (StringLit(name, kloc), name, false)
+          (StringLit(name, false, kloc), name, false)
         }
         String_(s) => {
           let kloc = self.advance().loc
-          (StringLit(s, kloc), s, false)
+          (StringLit(s, false, kloc), s, false)
         }
         Number(n) => {
           let kloc = self.advance().loc
@@ -874,7 +874,7 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
           } else {
             n.to_string()
           }
-          (StringLit(name, kloc), name, false)
+          (StringLit(name, false, kloc), name, false)
         }
         LBracket => {
           let _ = self.advance()
@@ -931,7 +931,7 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
           match kw_name {
             Some(name) => {
               let kloc = self.advance().loc
-              (StringLit(name, kloc), name, false)
+              (StringLit(name, false, kloc), name, false)
             }
             None => {
               let t = self.peek()
@@ -995,7 +995,6 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
       if not(self.at(RBrace)) {
         if self.at(Comma) {
           let _ = self.advance()
-
         }
       }
       continue
@@ -1123,11 +1122,11 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
     ) = match self.peek_kind() {
       Ident(name) => {
         let kloc = self.advance().loc
-        (StringLit(name, kloc), name, false, true)
+        (StringLit(name, false, kloc), name, false, true)
       }
       String_(s) => {
         let kloc = self.advance().loc
-        (StringLit(s, kloc), s, false, false)
+        (StringLit(s, false, kloc), s, false, false)
       }
       Number(n) => {
         let kloc = self.advance().loc
@@ -1137,7 +1136,7 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
         } else {
           n.to_string()
         }
-        (StringLit(name, kloc), name, false, false)
+        (StringLit(name, false, kloc), name, false, false)
       }
       LBracket => {
         // Computed property name: [expr]
@@ -1198,7 +1197,7 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
             let kloc = self.advance().loc
             // Keywords are not valid IdentifierReference, so is_ident_key = false
             // This prevents `{ for }` or `{ for = 42 }` shorthand syntax
-            (StringLit(name, kloc), name, false, false)
+            (StringLit(name, false, kloc), name, false, false)
           }
           None => {
             let t = self.peek()
@@ -1302,7 +1301,6 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
       // Allow trailing comma
       if self.at(Comma) {
         let _ = self.advance()
-
       }
     }
   }
@@ -1564,7 +1562,7 @@ fn expr_to_pattern(expr : @ast.Expr) -> @ast.Pattern raise Error {
         // key: value => { key, value: Pattern, default_val }
         // Extract string key from the key expression
         let key_str : String = match prop.key {
-          StringLit(s, _) => s
+          StringLit(s, _, _) => s
           Ident(s, _) => s
           _ =>
             raise @errors.SyntaxError(
@@ -1771,17 +1769,17 @@ fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
   let (key_expr, computed) : (@ast.Expr, Bool) = match self.peek_kind() {
     Ident(name) => {
       let kloc = self.advance().loc
-      (StringLit(name, kloc), false)
+      (StringLit(name, false, kloc), false)
     }
     String_(s) => {
       let kloc = self.advance().loc
-      (StringLit(s, kloc), false)
+      (StringLit(s, false, kloc), false)
     }
     Number(n) => {
       let kloc = self.advance().loc
       let i = n.to_int()
       let name = if i.to_double() == n { i.to_string() } else { n.to_string() }
-      (StringLit(name, kloc), false)
+      (StringLit(name, false, kloc), false)
     }
     LBracket => {
       let _ = self.advance()
@@ -1839,7 +1837,7 @@ fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
       match kw_name {
         Some(name) => {
           let kloc = self.advance().loc
-          (StringLit(name, kloc), false)
+          (StringLit(name, false, kloc), false)
         }
         None => {
           let t = self.peek()

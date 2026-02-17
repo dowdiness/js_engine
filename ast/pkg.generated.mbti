@@ -79,7 +79,7 @@ pub impl Show for ExportSpecifier
 
 pub(all) enum Expr {
   NumberLit(Double, @token.Loc)
-  StringLit(String, @token.Loc)
+  StringLit(String, Bool, @token.Loc)
   BoolLit(Bool, @token.Loc)
   NullLit(@token.Loc)
   UndefinedLit(@token.Loc)
@@ -210,6 +210,7 @@ pub(all) enum Stmt {
   GeneratorDecl(String, Array[String], Array[Stmt], @token.Loc)
   GeneratorDeclExt(String, Array[Param], String?, Array[Stmt], @token.Loc)
   ClassDecl(String, Expr?, Array[ClassMethod], @token.Loc)
+  WithStmt(Expr, Stmt, @token.Loc)
   ImportDecl(String?, Array[ImportSpecifier], String?, String, @token.Loc)
   ExportNamedDecl(Stmt?, Array[ExportSpecifier], String?, @token.Loc)
   ExportDefaultDecl(Expr, @token.Loc)

@@ -1012,9 +1012,7 @@ fn Parser::parse_import_decl(self : Parser) -> @ast.Stmt raise Error {
   match namespace_import {
     Some(name) =>
       if bound_names.contains(name) {
-        raise @errors.SyntaxError(
-          message="Duplicate import binding '\{name}'",
-        )
+        raise @errors.SyntaxError(message="Duplicate import binding '\{name}'")
       } else {
         bound_names[name] = true
       }

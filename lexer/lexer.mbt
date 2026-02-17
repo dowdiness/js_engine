@@ -60,12 +60,12 @@ fn is_alnum(c : Char) -> Bool {
 ///|
 fn is_js_whitespace(c : Char) -> Bool {
   // ECMAScript-compliant whitespace including all Unicode Space_Separator (Zs) characters
+  // NOTE: \r (0x0D) is a LineTerminator, NOT whitespace — handled separately
   let cp = c.to_int()
   cp == 0x20 || // Space
   cp == 0x09 || // Tab
   cp == 0x0B || // Vertical Tab
   cp == 0x0C || // Form Feed
-  cp == 0x0D || // Carriage Return
   cp == 0x00A0 || // No-Break Space
   cp == 0xFEFF || // Zero Width No-Break Space (BOM)
   // Unicode Space Separators (Category Zs) - ES spec compliant
@@ -74,6 +74,13 @@ fn is_js_whitespace(c : Char) -> Bool {
   cp == 0x202F || // NARROW NO-BREAK SPACE
   cp == 0x205F || // MEDIUM MATHEMATICAL SPACE
   cp == 0x3000 // IDEOGRAPHIC SPACE
+}
+
+///|
+/// ECMAScript LineTerminator check: \n, \r, U+2028, U+2029
+fn is_line_terminator(c : Char) -> Bool {
+  let cp = c.to_int()
+  c == '\n' || c == '\r' || cp == 0x2028 || cp == 0x2029
 }
 
 ///|
@@ -300,16 +307,14 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             write_code_point(buf, cp)
             continue
           }
-          // LineContinuation in template literal: \ followed by line terminator
-          '\n' => {
-            line += 1
-            col = 1
-            offset += 1
-            continue
-          }
-          '\r' => {
-            offset += 1
-            if offset < len && char_at(offset) == '\n' {
+          // LineContinuation in template literal: \ followed by any LineTerminator
+          _ if is_line_terminator(esc) => {
+            if esc == '\r' {
+              offset += 1
+              if offset < len && char_at(offset) == '\n' {
+                offset += 1
+              }
+            } else {
               offset += 1
             }
             line += 1
@@ -324,13 +329,23 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         offset += 1
         col += 1
       } else {
-        if tc == '\n' {
+        // Unescaped characters in template — \u2028/\u2029 are allowed (unlike strings)
+        if is_line_terminator(tc) {
+          // \r\n counts as one line terminator; normalize to \n in the value
+          if tc == '\r' {
+            if offset + 1 < len && char_at(offset + 1) == '\n' {
+              offset += 1 // skip \r, \n will be written below
+            }
+            buf.write_char('\n')
+          } else {
+            buf.write_char(tc)
+          }
           line += 1
           col = 1
         } else {
           col += 1
+          buf.write_char(tc)
         }
-        buf.write_char(tc)
         offset += 1
       }
     }
@@ -347,16 +362,13 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       col += 1
       continue
     }
-    if c == '\n' {
+    // ECMAScript LineTerminators: \n, \r, U+2028, U+2029
+    if is_line_terminator(c) {
       offset += 1
-      line += 1
-      col = 1
-      continue
-    }
-    // ECMAScript line terminators U+2028 (LINE SEPARATOR) and U+2029 (PARAGRAPH SEPARATOR)
-    let cp = c.to_int()
-    if cp == 0x2028 || cp == 0x2029 {
-      offset += 1
+      // \r\n is a single line terminator sequence
+      if c == '\r' && offset < len && char_at(offset) == '\n' {
+        offset += 1
+      }
       line += 1
       col = 1
       continue
@@ -365,17 +377,17 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
     if c == '/' && offset + 1 < len {
       let next = char_at(offset + 1)
       if next == '/' {
-        // Single-line comment
+        // Single-line comment — terminates at any LineTerminator
         offset += 2
         col += 2
-        while offset < len && char_at(offset) != '\n' {
+        while offset < len && not(is_line_terminator(char_at(offset))) {
           offset += 1
           col += 1
         }
         continue
       }
       if next == '*' {
-        // Multi-line comment
+        // Multi-line comment — count all LineTerminators
         offset += 2
         col += 2
         while offset + 1 < len {
@@ -384,7 +396,13 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             col += 2
             break
           }
-          if char_at(offset) == '\n' {
+          if is_line_terminator(char_at(offset)) {
+            // \r\n counts as a single line terminator
+            if char_at(offset) == '\r' &&
+              offset + 1 < len &&
+              char_at(offset + 1) == '\n' {
+              offset += 1 // skip past \r, the loop increment skips \n
+            }
             line += 1
             col = 1
           } else {
@@ -880,7 +898,9 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             '0' => {
               // \0 is NUL only when NOT followed by an octal digit (ES spec)
               // \08 and \09 are valid: NUL char followed by literal digit
-              if offset + 1 < len && char_at(offset + 1) >= '0' && char_at(offset + 1) <= '7' {
+              if offset + 1 < len &&
+                char_at(offset + 1) >= '0' &&
+                char_at(offset + 1) <= '7' {
                 raise @errors.SyntaxError(
                   message="Invalid escape sequence at line \{line}, col \{col}",
                 )
@@ -917,20 +937,16 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
               write_code_point(buf, cp)
               continue
             }
-            // LineContinuation: \ followed by a line terminator
+            // LineContinuation: \ followed by any LineTerminator (\n, \r, U+2028, U+2029)
             // The backslash and the line terminator are consumed but NOT added to the string value
-            '\n' => {
-              // \<LF> — skip both, line already consumed
-              line += 1
-              col = 1
-              offset += 1
-              continue
-            }
-            '\r' => {
-              // \<CR> or \<CR><LF>
-              offset += 1
-              if offset < len && char_at(offset) == '\n' {
-                offset += 1 // skip the LF in CRLF
+            _ if is_line_terminator(esc) => {
+              if esc == '\r' {
+                offset += 1
+                if offset < len && char_at(offset) == '\n' {
+                  offset += 1 // skip the LF in CRLF
+                }
+              } else {
+                offset += 1
               }
               line += 1
               col = 1
@@ -944,12 +960,13 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           offset += 1
           col += 1
         } else {
-          if char_at(offset) == '\n' {
-            line += 1
-            col = 1
-          } else {
-            col += 1
+          // Unescaped LineTerminators are not allowed in string literals (ES spec §12.9.4)
+          if is_line_terminator(char_at(offset)) {
+            raise @errors.SyntaxError(
+              message="Unterminated string at line \{line}, col \{col}",
+            )
           }
+          col += 1
           buf.write_char(char_at(offset))
           offset += 1
         }

@@ -67,10 +67,7 @@ pub fn get_buffer_id(obj : Value) -> Int? {
 
 ///|
 /// Create an ArrayBuffer object with the given byte length.
-pub fn make_arraybuffer_object(
-  byte_length : Int,
-  proto : Value,
-) -> Value {
+pub fn make_arraybuffer_object(byte_length : Int, proto : Value) -> Value {
   let id = alloc_arraybuffer(byte_length)
   let props : Map[String, Value] = {}
   props["[[ArrayBufferID]]"] = Number(id.to_double())
@@ -198,7 +195,11 @@ pub fn setup_arraybuffer_builtins(env : Environment) -> Unit {
               }
               let start = if relative_start < 0 {
                 let s = len + relative_start
-                if s < 0 { 0 } else { s }
+                if s < 0 {
+                  0
+                } else {
+                  s
+                }
               } else if relative_start > len {
                 len
               } else {
@@ -214,7 +215,11 @@ pub fn setup_arraybuffer_builtins(env : Environment) -> Unit {
               }
               let end = if relative_end < 0 {
                 let e = len + relative_end
-                if e < 0 { 0 } else { e }
+                if e < 0 {
+                  0
+                } else {
+                  e
+                }
               } else if relative_end > len {
                 len
               } else {
@@ -290,8 +295,7 @@ pub fn setup_arraybuffer_builtins(env : Environment) -> Unit {
     match args[0] {
       Object(data) =>
         Bool(
-          data.class_name == "DataView" ||
-          is_typedarray_class(data.class_name),
+          data.class_name == "DataView" || is_typedarray_class(data.class_name),
         )
       _ => Bool(false)
     }
@@ -320,9 +324,7 @@ pub fn setup_arraybuffer_builtins(env : Environment) -> Unit {
         let byte_length = if args.length() > 0 {
           let n = to_number(args[0]).to_int()
           if n < 0 {
-            raise @errors.RangeError(
-              message="Invalid array buffer length",
-            )
+            raise @errors.RangeError(message="Invalid array buffer length")
           }
           n
         } else {

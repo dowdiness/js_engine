@@ -497,8 +497,14 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                       message="Property descriptors must be an object",
                     )
                 }
-              Null | String_(_) | Number(_) | Bool(_) | Symbol(_) | Array(_) |
-              Map(_) | Set(_) =>
+              Null
+              | String_(_)
+              | Number(_)
+              | Bool(_)
+              | Symbol(_)
+              | Array(_)
+              | Map(_)
+              | Set(_) =>
                 raise @errors.TypeError(
                   message="Property descriptors must be an object",
                 )
@@ -907,7 +913,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                     match proxy_data.target {
                       Some(target) =>
                         match target {
-                          Object(src) => {
+                          Object(src) =>
                             src.properties.each(fn(k, v) raise {
                               let enumerable = match src.descriptors.get(k) {
                                 Some(d) => d.enumerable
@@ -932,7 +938,6 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                                 data.properties[k] = v
                               }
                             })
-                          }
                           _ => ()
                         }
                       None =>
@@ -1704,7 +1709,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                   } else {
                     data.descriptors.contains(prop_name)
                   }
-                  if not(prop_exists) && not(prop_also_in_desc) &&
+                  if not(prop_exists) &&
+                    not(prop_also_in_desc) &&
                     not(data.extensible) {
                     let prop_display = if is_symbol_key {
                       prop_val.to_string()
@@ -2952,8 +2958,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                           } else if not(data.properties.contains(prop_name)) {
                             data.properties[prop_name] = Undefined
                           }
-                          let writable = match
-                            desc.properties.get("writable") {
+                          let writable = match desc.properties.get("writable") {
                             Some(v) => is_truthy(v)
                             None => false
                           }

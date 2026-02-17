@@ -149,7 +149,10 @@ fn setup_proxy_builtins(env : Environment) -> Unit {
               message="Cannot create proxy with a non-object as target or handler",
             )
         }
-        let proxy_data : ProxyData = { target: Some(target), handler: Some(handler) }
+        let proxy_data : ProxyData = {
+          target: Some(target),
+          handler: Some(handler),
+        }
         let proxy_val : Value = Proxy(proxy_data)
         // Create revoke function that nullifies both slots
         let revoke_func : Value = Object({

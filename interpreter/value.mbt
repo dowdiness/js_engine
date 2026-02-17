@@ -380,14 +380,18 @@ pub fn get_tostringtag_value(data : ObjectData) -> String? {
                   Object(getter_data) =>
                     match getter_data.callable {
                       Some(MethodCallable(_, f)) => {
-                        let result = f(Object(data), []) catch { _ => return None }
+                        let result = f(Object(data), []) catch {
+                          _ => return None
+                        }
                         match result {
                           String_(s) => return Some(s)
                           _ => return None
                         }
                       }
                       Some(NativeCallable(_, f)) => {
-                        let result = f([Object(data)]) catch { _ => return None }
+                        let result = f([Object(data)]) catch {
+                          _ => return None
+                        }
                         match result {
                           String_(s) => return Some(s)
                           _ => return None
@@ -422,6 +426,7 @@ pub(all) struct ProxyData {
   mut handler : Value? // None when revoked
 }
 
+///|
 pub(all) enum Value {
   Number(Double)
   String_(String)
@@ -760,7 +765,9 @@ pub fn to_number(val : Value) -> Double raise Error {
             if s.length() == 0 {
               0.0
             } else {
-              @strconv.parse_double(s) catch { _ => 0.0 / 0.0 }
+              @strconv.parse_double(s) catch {
+                _ => 0.0 / 0.0
+              }
             }
           _ => 0.0 / 0.0
         }

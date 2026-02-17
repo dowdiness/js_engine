@@ -1,17 +1,26 @@
 ///|
 fn func_body_has_use_strict(body : Array[@ast.Stmt]) -> Bool {
-  if body.length() > 0 {
-    match body[0] {
-      ExprStmt(StringLit("use strict", _), _) => true
-      _ => false
+  // Scan the directive prologue: the longest sequence of ExpressionStatements
+  // consisting entirely of StringLiterals at the beginning of the body.
+  // Only the literal string "use strict" WITHOUT escape sequences activates strict mode.
+  for i = 0; i < body.length(); i = i + 1 {
+    match body[i] {
+      ExprStmt(StringLit(s, has_escape, _), _) =>
+        if s == "use strict" && not(has_escape) {
+          return true
+        }
+      _ => break
     }
-  } else {
-    false
   }
+  false
 }
 
 ///|
-pub fn setup_builtins(env : Environment, output : Array[String], annex_b~ : Bool = false) -> Unit {
+pub fn setup_builtins(
+  env : Environment,
+  output : Array[String],
+  annex_b? : Bool = false,
+) -> Unit {
   let _ = output
   // Global constants
   env.def_builtin("NaN", Number(0.0 / 0.0))
@@ -3450,10 +3459,7 @@ fn setup_function_builtins(env : Environment) -> Unit {
   // %ThrowTypeError% intrinsic (ES spec §10.2.4)
   // A single frozen function that throws TypeError when called.
   let throw_type_error : Value = Object({
-    properties: {
-      "length": Number(0.0),
-      "name": String_("ThrowTypeError"),
-    },
+    properties: { "length": Number(0.0), "name": String_("ThrowTypeError") },
     symbol_properties: {},
     prototype: Null,
     callable: Some(
