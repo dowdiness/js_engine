@@ -1,8 +1,8 @@
 Using engine: node _build/js/release/build/cmd/main/main.js
 Verifying engine...
-Discovering tests in /home/user/js_engine/test262...
-Found 48145 test files
-Using 16 parallel worker(s) with 5s timeout per test
+Discovering tests in /home/runner/work/js_engine/js_engine/test262...
+Found 48142 test files
+Using 4 parallel worker(s) with 5s timeout per test
   Progress: 500/48145 (48 tests/sec, ETA: 16.5m)
   Progress: 1000/48145 (48 tests/sec, ETA: 16.3m)
   Progress: 1500/48145 (64 tests/sec, ETA: 12.2m)
@@ -105,28 +105,28 @@ Completed in 681.8s
 ========================================================================
   Test262 ECMAScript Conformance Report
   Engine: MoonBit JS Engine
-  Date: 2026-02-16 11:33:40
+  Date: 2026-02-18 15:57:17
 ========================================================================
 
-  Total tests discovered: 48145
-  Skipped:               20376
-  Executed:              27614
-  Passed:                23875
-  Failed:                3739
-  Timeouts:              154
+  Total tests discovered: 48142
+  Skipped:               20385
+  Executed:              27599
+  Passed:                24519
+  Failed:                3080
+  Timeouts:              157
   Errors:                1
 
-  Pass rate:             86.5% (23875/27614)
+  Pass rate:             88.8% (24519/27599)
 
 ────────────────────────────────────────────────────────────────────────
   Category                                   Pass   Fail   Skip     Rate
 ────────────────────────────────────────────────────────────────────────
-  annexB/built-ins                            160     60     21    72.7%
-  annexB/language                             311    506     28    38.1%
+  annexB/built-ins                            162     58     21    73.6%
+  annexB/language                             711    106     28    87.0%
   built-ins/AbstractModuleSource                0      0      8      N/A
   built-ins/AggregateError                     24      0      1   100.0%
-  built-ins/Array                            2595    350    112    88.1%
-  built-ins/ArrayBuffer                        73      5    115    93.6%
+  built-ins/Array                            2590    351    112    88.1%
+  built-ins/ArrayBuffer                        72      6    116    92.3%
   built-ins/ArrayIteratorPrototype             19      8      0    70.4%
   built-ins/AsyncDisposableStack                0      0     52      N/A
   built-ins/AsyncFromSyncIteratorPrototype      0      0     38      N/A
@@ -137,38 +137,38 @@ Completed in 681.8s
   built-ins/Atomics                             1      5    376    16.7%
   built-ins/BigInt                              1      0     76   100.0%
   built-ins/Boolean                            42      7      2    85.7%
-  built-ins/DataView                          353     35    173    91.0%
+  built-ins/DataView                          377      0    184   100.0%
   built-ins/Date                              560     23     11    96.1%
   built-ins/DisposableStack                     0      0     91      N/A
   built-ins/Error                              43     11      4    79.6%
   built-ins/FinalizationRegistry                0      0     47      N/A
   built-ins/Function                          342     69     98    83.2%
-  built-ins/GeneratorFunction                   2     19      2     9.5%
-  built-ins/GeneratorPrototype                 45     16      0    73.8%
-  built-ins/Infinity                            5      1      0    83.3%
+  built-ins/GeneratorFunction                  21      0      2   100.0%
+  built-ins/GeneratorPrototype                 54      7      0    88.5%
+  built-ins/Infinity                            6      0      0   100.0%
   built-ins/Iterator                            5      0    505   100.0%
   built-ins/JSON                              134      1     30    99.3%
   built-ins/Map                               179     15      5    92.3%
   built-ins/MapIteratorPrototype               11      0      0   100.0%
   built-ins/Math                              317      5      5    98.4%
-  built-ins/NaN                                 5      1      0    83.3%
+  built-ins/NaN                                 6      0      0   100.0%
   built-ins/NativeErrors                       88      0      6   100.0%
   built-ins/Number                            287     48      3    85.7%
-  built-ins/Object                           3238    137     36    95.9%
+  built-ins/Object                           3242    133     36    96.1%
   built-ins/Promise                           614      4     22    99.4%
-  built-ins/Proxy                             262     10     39    96.3%
+  built-ins/Proxy                             264      8     39    97.1%
   built-ins/Reflect                           153      0      0   100.0%
-  built-ins/RegExp                            652    192   1035    77.3%
+  built-ins/RegExp                            733    111   1035    86.8%
   built-ins/RegExpStringIteratorPrototype       0     17      0     0.0%
   built-ins/Set                               188      4    190    97.9%
   built-ins/SetIteratorPrototype               11      0      0   100.0%
   built-ins/ShadowRealm                         0      0     64      N/A
   built-ins/SharedArrayBuffer                   0      0    104      N/A
-  built-ins/String                           1151     59     12    95.1%
+  built-ins/String                           1152     58     12    95.2%
   built-ins/StringIteratorPrototype             7      0      0   100.0%
   built-ins/SuppressedError                     0      0     22      N/A
   built-ins/Symbol                             66      9     23    88.0%
-  built-ins/Temporal                            0      0   4482      N/A
+  built-ins/Temporal                            0      0   4474      N/A
   built-ins/ThrowTypeError                      0     13      1     0.0%
   built-ins/TypedArray                        714     63    661    91.9%
   built-ins/TypedArrayConstructors            342     17    376    95.3%
@@ -186,7 +186,7 @@ Completed in 681.8s
   built-ins/isNaN                              15      0      0   100.0%
   built-ins/parseFloat                         53      1      0    98.1%
   built-ins/parseInt                           54      1      0    98.2%
-  built-ins/undefined                           4      3      1    57.1%
+  built-ins/undefined                           5      2      1    71.4%
   harness/assert-false.js                       1      0      0   100.0%
   harness/assert-notsamevalue-nan.js            1      0      0   100.0%
   harness/assert-notsamevalue-notsame.js        1      0      0   100.0%
@@ -304,36 +304,36 @@ Completed in 681.8s
   harness/verifyProperty-value.js               1      0      0   100.0%
   harness/wellKnownIntrinsicObjects.js          1      0      0   100.0%
   language/arguments-object                   146      6    111    96.1%
-  language/asi                                 95      7      0    93.1%
+  language/asi                                 98      4      0    96.1%
   language/block-scope                        106      0     39   100.0%
   language/comments                            22      1     29    95.7%
   language/computed-property-names             45      3      0    93.8%
   language/destructuring                       15      3      1    83.3%
   language/directive-prologue                  49     13      0    79.0%
-  language/eval-code                          224    106     17    67.9%
-  language/export                               0      3      0     0.0%
-  language/expressions                       4925    587   5465    89.4%
+  language/eval-code                          233     97     17    70.6%
+  language/export                               2      1      0    66.7%
+  language/expressions                       4944    568   5465    89.7%
   language/function-code                      166      7     44    96.0%
-  language/future-reserved-words               34      3     18    91.9%
+  language/future-reserved-words               36      1     18    97.3%
   language/global-code                         23     11      8    67.6%
-  language/identifier-resolution                6      6      2    50.0%
-  language/identifiers                        154     53     61    74.4%
-  language/import                               7     86     19     7.5%
-  language/keywords                            24      1      0    96.0%
-  language/line-terminators                    20     21      0    48.8%
-  language/literals                           232     87    215    72.7%
+  language/identifier-resolution               11      1      2    91.7%
+  language/identifiers                        163     44     61    78.7%
+  language/import                              11     82     24    11.8%
+  language/keywords                            25      0      0   100.0%
+  language/line-terminators                    28     13      0    68.3%
+  language/literals                           230     89    215    72.1%
   language/module-code                        114    198    280    36.5%
   language/punctuators                         11      0      0   100.0%
-  language/reserved-words                      25      2      0    92.6%
+  language/reserved-words                      19      8      0    70.4%
   language/rest-parameters                     10      1      0    90.9%
   language/source-text                          1      0      0   100.0%
   language/statementList                       64     16      0    80.0%
-  language/statements                        3502    719   5057    83.0%
+  language/statements                        3552    669   5057    84.2%
   language/types                               92     13      8    87.6%
-  language/white-space                         66      1      0    98.5%
+  language/white-space                         67      0      0   100.0%
 ────────────────────────────────────────────────────────────────────────
 
-  Failed tests (3739):
+  Failed tests (3080):
 ────────────────────────────────────────────────────────────────────────
   FAIL: test262/test/harness/assert-throws-same-realm.js
         Error: Expected a Test262Error, but no error was thrown.

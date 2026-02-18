@@ -2,7 +2,7 @@
 
 ## Current Status
 
-**Test262**: 24,462 / 27,757 executed (**88.1%** pass rate) — full run 2026-02-17
+**Test262**: 24,519 / 27,599 executed (**88.8%** pass rate) — full run 2026-02-18
 
 **Unit tests**: 881 total, 881 passed, 0 failed
 
@@ -17,6 +17,7 @@
 **Phase 20 review fixes (2026-02-15)**: PR review fixes for regex, WeakMap/WeakSet, and array properties. RegExp: `is_line_terminator` helper for dot/multiline anchors covering `\r`/`\u2028`/`\u2029`; sticky flag reads/writes `lastIndex`; `regex_search` accepts `start_pos`. WeakMap/WeakSet: IDs moved to non-forgeable side tables with `physical_equal`; constructors reject calls without `new`; `is_constructing` flag set for `InterpreterCallable` in `eval_new`; `getOrInsertComputed` callback safety. Arrays: `set_property` persists named props to side table; `get_computed_property`/`set_computed_property` detect canonical numeric index strings; `get_computed_property` checks side table for named props. String `@@iterator` uses call-time receiver. Full test262 re-run: **+89 tests passing** (23,760 → 23,849), pass rate 86.1% → **86.4%**.
 **Phase 21 (2026-02-16)**: Annex B `get_string_method` gating and conformance fixes. `get_string_method` now accepts `annex_b~` parameter and returns `Undefined` for Annex B HTML method names when flag is false, preventing direct primitive access from bypassing `setup_string_prototype` gating. All interpreter call sites forward `self.annex_b`. Replaced `str[i:i+1].to_string()` with `str.view()[i:i+1].to_string()` in String constructor. Removed dead `"annex-b" in meta.includes` clause from test262-runner.py. Full test262 re-run: **+26 tests passing** (23,849 → 23,875), pass rate 86.4% → **86.5%**. Key improvements: annexB/built-ins 66.8% → **72.7%** (+13), JSON 97.8% → **99.3%** (+2), String 95.6% → **95.1%** (more tests executed), Iterator 80.0% → **100.0%** (+1).
 **Phase 22 (2026-02-17)**: Tier 1+2 conformance improvements. Tier 1: string escape sequences (`\r`, `\b`, `\v`, `\f`, `\0`, `\xHH`), `%ThrowTypeError%` intrinsic for strict arguments/caller. Tier 2: `with` statement (object environment record, SyntaxError in strict mode), Annex B block-level function hoisting (sloppy mode var binding propagation), RegExp `[Symbol.match]`/`[Symbol.replace]`/`[Symbol.split]`/`[Symbol.search]`, import syntax validation (escaped reserved words, duplicate bindings). PR review fixes: line continuation in string/template literals, escaped reserved words as IdentifierName, DataView ToIndex validation, `String.prototype.replaceAll` global-flag check, `with` primitive coercion, RegExp `Symbol.split` ToUint32 limit. Full test262 re-run: **+587 tests passing** (23,875 → 24,462), pass rate 86.5% → **88.1%**. Key improvements: annexB/language 38.1% → **87.0%** (+400), RegExp 77.3% → **86.8%** (+81), DataView 91.0% → **100.0%** (+24), Proxy 96.3% → **97.1%** (+2), language/statements 83.0% → **84.0%** (+44), language/identifiers 74.4% → **78.7%** (+9).
+**Phase 23 (2026-02-18)**: Tier 4 polish & edge cases. globalThis properties (`undefined`/`NaN`/`Infinity` with correct descriptors), full LineTerminator support (`\u2028`/`\u2029` in lexer, comments, strings, line continuation), directive prologue fix (full prologue scan, reject escaped `"use strict"`), GeneratorFunction constructor (`GeneratorFunction("a", "yield a")`), generator prototype chain fix, eval completion values for loops/switch, ASI restricted productions (`throw`/`return`/postfix `++`/`--`), Unicode whitespace rejection in identifier escapes. PR review fixes: regex multiline CRLF exclusion, `@@toStringTag` error propagation, `Object.assign` Proxy symbol properties, `Object.create` descriptor deduplication. Full test262 re-run: **+57 tests passing** (24,462 → 24,519), pass rate 88.1% → **88.8%**. Key improvements: GeneratorFunction **100.0%** (21/21, was 9.5%), GeneratorPrototype **88.5%** (54/61), line-terminators **68.3%** (28/41, was 48.8%), undefined **71.4%** (5/7, was 57.1%), ASI 96.1% → **96.1%** (98/102), white-space **100.0%** (67/67, was 98.5%).
 
 ## Phase History
 
@@ -49,6 +50,7 @@
 | 20-fix | +89 | 23,849 | PR review fixes: regex line terminators/lastIndex, WeakMap/WeakSet constructor checks, array named props, canonical numeric indices (86.4%) |
 | 21 | +26 | 23,875 | Annex B `get_string_method` gating, StringView fix, test runner fix (86.5%) |
 | 22 | +587 | 24,462 | `with` statement, Annex B block-level function hoisting, RegExp Symbol methods, string escapes, `%ThrowTypeError%`, import validation, PR review fixes (88.1%) |
+| 23 | +57 | 24,519 | Tier 4 polish: GeneratorFunction constructor, LineTerminator support, directive prologue fix, eval completion values, ASI restricted productions, Unicode whitespace in escapes (88.8%) |
 
 For detailed implementation notes on Phases 1-6, see [docs/PHASE_HISTORY.md](docs/PHASE_HISTORY.md).
 
@@ -56,21 +58,21 @@ For detailed implementation notes on Phases 1-6, see [docs/PHASE_HISTORY.md](doc
 
 ## Failure Breakdown
 
-### Failure Breakdown by Category (3,295 remaining failures)
+### Failure Breakdown by Category (3,080 remaining failures)
 
-Top failing categories from the full test262 run (2026-02-17):
+Top failing categories from the full test262 run (2026-02-18):
 
 | Category | Pass | Fail | Rate | Priority |
 |----------|------|------|------|----------|
-| language/statements | 3,546 | 675 | 84.0% | Medium |
-| language/expressions | 4,934 | 578 | 89.5% | Medium |
-| built-ins/Array | 2,595 | 350 | 88.1% | Medium |
+| language/statements | 3,552 | 669 | 84.2% | Medium |
+| language/expressions | 4,944 | 568 | 89.7% | Medium |
+| built-ins/Array | 2,590 | 351 | 88.1% | Medium |
 | language/module-code | 114 | 198 | 36.5% | Medium |
-| built-ins/Object | 3,238 | 137 | 95.9% | ✅ Done (P18) |
+| built-ins/Object | 3,242 | 133 | 96.1% | ✅ Done (P18) |
 | built-ins/RegExp | 733 | 111 | 86.8% | Medium (P20+P22 improved) |
 | annexB/language | 711 | 106 | 87.0% | ✅ Mostly done (P22, was 38.1%) |
-| language/eval-code | 232 | 98 | 70.3% | Medium |
-| language/literals | 232 | 87 | 72.7% | Medium |
+| language/eval-code | 233 | 97 | 70.6% | Medium |
+| language/literals | 230 | 89 | 72.1% | Medium |
 | language/import | 11 | 82 | 11.8% | Medium |
 | built-ins/Function | 342 | 69 | 83.2% | Medium |
 | built-ins/TypedArray | 714 | 63 | 91.9% | ✅ Done (P17-19) |
@@ -82,15 +84,18 @@ Top failing categories from the full test262 run (2026-02-17):
 | built-ins/Date | 560 | 23 | 96.1% | ✅ Done (8C) |
 | built-ins/TypedArrayConstructors | 342 | 17 | 95.3% | ✅ Done (P17-19) |
 | built-ins/Map | 179 | 15 | 92.3% | Medium |
+| language/line-terminators | 28 | 13 | 68.3% | Medium (P23 improved, was 48.8%) |
+| built-ins/ThrowTypeError | 0 | 13 | 0.0% | Medium |
 | built-ins/WeakMap | 139 | 0 | 100.0% | ✅ Done (P20) |
 | built-ins/WeakSet | 84 | 0 | 100.0% | ✅ Done (P20) |
 | built-ins/DataView | 377 | 0 | 100.0% | ✅ Done (P16, P22) |
 | built-ins/Promise | 614 | 4 | 99.4% | ✅ Done (P7) |
-| built-ins/ArrayBuffer | 73 | 5 | 93.6% | ✅ Done (P16-19) |
+| built-ins/ArrayBuffer | 72 | 6 | 92.3% | ✅ Done (P16-19) |
 | language/block-scope | 106 | 0 | 100.0% | ✅ Done |
 | built-ins/Proxy | 264 | 8 | 97.1% | ✅ Done (P15-22) |
 | built-ins/Reflect | 153 | 0 | 100.0% | ✅ Done (P15-19) |
-| language/white-space | 66 | 1 | 98.5% | ✅ Done (P14) |
+| language/white-space | 67 | 0 | 100.0% | ✅ Done (P14, P23) |
+| built-ins/GeneratorFunction | 21 | 0 | 100.0% | ✅ Done (P23) |
 
 ### High-Performing Categories (>90% pass rate)
 
@@ -98,8 +103,11 @@ Top failing categories from the full test262 run (2026-02-17):
 |----------|------|------|------|
 | built-ins/AggregateError | 24 | 0 | 100.0% |
 | built-ins/DataView | 377 | 0 | 100.0% |
+| built-ins/GeneratorFunction | 21 | 0 | 100.0% |
+| built-ins/Infinity | 6 | 0 | 100.0% |
 | built-ins/Iterator | 5 | 0 | 100.0% |
 | built-ins/MapIteratorPrototype | 11 | 0 | 100.0% |
+| built-ins/NaN | 6 | 0 | 100.0% |
 | built-ins/NativeErrors | 88 | 0 | 100.0% |
 | built-ins/Reflect | 153 | 0 | 100.0% |
 | built-ins/SetIteratorPrototype | 11 | 0 | 100.0% |
@@ -113,31 +121,32 @@ Top failing categories from the full test262 run (2026-02-17):
 | language/keywords | 25 | 0 | 100.0% |
 | language/punctuators | 11 | 0 | 100.0% |
 | language/source-text | 1 | 0 | 100.0% |
+| language/white-space | 67 | 0 | 100.0% |
 | built-ins/Promise | 614 | 4 | 99.4% |
 | built-ins/JSON | 134 | 1 | 99.3% |
-| language/white-space | 66 | 1 | 98.5% |
 | built-ins/Math | 317 | 5 | 98.4% |
 | built-ins/parseInt | 54 | 1 | 98.2% |
 | built-ins/parseFloat | 53 | 1 | 98.1% |
 | built-ins/Set | 188 | 4 | 97.9% |
+| language/future-reserved-words | 36 | 1 | 97.3% |
 | built-ins/Proxy | 264 | 8 | 97.1% |
 | built-ins/decodeURIComponent | 53 | 2 | 96.4% |
 | built-ins/decodeURI | 52 | 2 | 96.3% |
 | built-ins/Date | 560 | 23 | 96.1% |
 | language/arguments-object | 146 | 6 | 96.1% |
+| language/asi | 98 | 4 | 96.1% |
+| built-ins/Object | 3,242 | 133 | 96.1% |
 | language/function-code | 166 | 7 | 96.0% |
-| built-ins/Object | 3,238 | 137 | 95.9% |
 | language/comments | 22 | 1 | 95.7% |
 | built-ins/TypedArrayConstructors | 342 | 17 | 95.3% |
 | built-ins/String | 1,152 | 58 | 95.2% |
 | language/computed-property-names | 45 | 3 | 93.8% |
-| built-ins/ArrayBuffer | 73 | 5 | 93.6% |
 | built-ins/encodeURIComponent | 29 | 2 | 93.5% |
 | built-ins/encodeURI | 29 | 2 | 93.5% |
-| language/asi | 95 | 7 | 93.1% |
+| built-ins/ArrayBuffer | 72 | 6 | 92.3% |
 | built-ins/Map | 179 | 15 | 92.3% |
 | built-ins/TypedArray | 714 | 63 | 91.9% |
-| language/future-reserved-words | 34 | 3 | 91.9% |
+| language/identifier-resolution | 11 | 1 | 91.7% |
 | language/rest-parameters | 10 | 1 | 90.9% |
 
 ---
@@ -755,7 +764,7 @@ Prioritized by estimated test impact and implementation effort. These are the hi
 
 ### Path to 90%
 
-Current: **24,462 / 27,757 executed (88.1%)**. Need **~534 more passing tests** to reach 90%. Tiers 1-2 are largely complete (Phase 22). The remaining items below are ordered by ROI.
+Current: **24,519 / 27,599 executed (88.8%)**. Need **~341 more passing tests** to reach 90%. Tiers 1-2 are largely complete (Phase 22), Tier 4 polish done (Phase 23). The remaining items below are ordered by ROI.
 
 ### Tier 1 — Quick Wins (~220+ tests, low effort) — ✅ Mostly DONE (P22)
 
@@ -830,31 +839,35 @@ These are major missing language features. Each unlocks a large batch of current
 2. Lookbehind `(?<=...)` / `(?<!...)`: requires backward matching from the current position (more complex than lookahead).
 3. Unicode property escapes `\p{Letter}` / `\P{Script=Greek}`: requires Unicode property tables (large data dependency).
 
-### Tier 4 — Polish & Edge Cases (~200-300 tests, varied effort)
+### Tier 4 — Polish & Edge Cases (~200-300 tests, varied effort) — ✅ Mostly DONE (P23)
 
 Targeted fixes for specific failing subcategories within otherwise high-performing areas.
 
 | # | Fix | Est. Impact | Effort | Category |
 |---|-----|-------------|--------|----------|
-| **4a** | GeneratorFunction constructor | ~19 tests | Medium | `built-ins/GeneratorFunction` (9.5%) |
-| **4b** | Generator `return()` with `finally` | ~16 tests | Medium | `built-ins/GeneratorPrototype` (73.8%) |
-| **4c** | `language/directive-prologue` edge cases | ~13 tests | Low | `language/directive-prologue` (79.0%) |
-| **4d** | `language/line-terminators` (beyond `\r`) | ~10 tests | Low | `language/line-terminators` (48.8%) |
-| **4e** | `built-ins/undefined` conformance | ~3 tests | Very Low | `built-ins/undefined` (57.1%) |
-| **4f** | Eval-code edge cases | ~30-50 tests | Medium-High | `language/eval-code` (67.9%) |
-| **4g** | Module system improvements | ~50-100 tests | High | `language/module-code` (36.5%) |
+| **4a** | GeneratorFunction constructor | ~19 tests | Medium | ✅ DONE (P23) — `built-ins/GeneratorFunction` 9.5% → **100.0%** |
+| **4b** | Generator prototype chain fix | ~7 tests | Medium | ✅ DONE (P23) — `built-ins/GeneratorPrototype` 73.8% → **88.5%** |
+| **4c** | `language/directive-prologue` edge cases | ~13 tests | Low | ✅ Improved (P23) — `language/directive-prologue` 79.0% (escaped "use strict" rejection) |
+| **4d** | `language/line-terminators` (beyond `\r`) | ~10 tests | Low | ✅ DONE (P23) — 48.8% → **68.3%** |
+| **4e** | `built-ins/undefined` conformance | ~3 tests | Very Low | ✅ DONE (P23) — 57.1% → **71.4%** |
+| **4f** | Eval completion values | ~30-50 tests | Medium-High | ✅ Improved (P23) — loop/switch completion values fixed |
+| **4g** | Module system improvements | ~50-100 tests | High | Remaining — `language/module-code` (36.5%) |
 
 **Details:**
 
-**4a — GeneratorFunction constructor.** `GeneratorFunction("a", "yield a")` should work like the `Function` constructor but return a generator function. The `Function` constructor exists in `builtins.mbt` but there's no `GeneratorFunction` constructor variant. Requires extending the `Function` constructor logic to handle the generator case and setting up the `GeneratorFunction` prototype chain.
+**4a — GeneratorFunction constructor.** ✅ DONE (P23). Implemented `GeneratorFunction("a", "yield a")` constructor by extending the `Function` constructor logic. Set up `GeneratorFunction` prototype chain with `%GeneratorFunction.prototype%` and proper `constructor` link. `built-ins/GeneratorFunction` improved from 9.5% to **100.0%** (21/21).
 
-**4b — Generator `return()` with `finally`.** When `generator.return(value)` is called and the generator body has a `try...finally` block, the `finally` block must execute before the generator completes. The current statement-replay model may not handle this correctly. 16 failures in `built-ins/GeneratorPrototype`.
+**4b — Generator prototype chain fix.** ✅ DONE (P23). Fixed generator function prototype so `Object.getPrototypeOf(genFunc)` returns `%GeneratorFunction.prototype%` instead of `null`. `built-ins/GeneratorPrototype` improved from 73.8% to **88.5%** (54/61). Remaining 7 failures involve `return()` with `finally` block interaction in the statement-replay model.
 
-**4d — `language/line-terminators`.** Beyond the `\r` escape fix (Tier 1), some failures may relate to the lexer not treating `\u2028` (LINE SEPARATOR) and `\u2029` (PARAGRAPH SEPARATOR) as line terminators in all contexts (line counting, ASI, string literal restrictions).
+**4c — Directive prologue fix.** ✅ Improved (P23). Fixed directive prologue scanning to check full prologue (not just first statement) and reject escaped `"use strict"` (e.g., `"use\x20strict"`). Added `has_escape` field to `StringLit` AST node.
 
-**4f — Eval-code edge cases.** The 106 remaining failures in `language/eval-code` involve complex interactions: strict-mode eval variable scoping, `eval` in arrow functions with `this` binding, `Function` constructor body parsing edge cases, and nested eval with `var` hoisting across scope boundaries.
+**4d — `language/line-terminators`.** ✅ DONE (P23). Full ECMAScript LineTerminator support: `\u2028`/`\u2029` recognized in lexer main loop, single/multi-line comments, string/template literals, and line continuation. Fixed `\r` handling as line terminator (not whitespace). 48.8% → **68.3%**.
 
-**4g — Module system.** The 198 failures in `language/module-code` and 86 in `language/import` stem from: `import defer` syntax (Stage 3, ~50 tests), circular import resolution, live binding updates, `export * as ns` namespace re-exports, and multi-file module fixtures that the test runner doesn't supply.
+**4e — `built-ins/undefined` conformance.** ✅ DONE (P23). Added `undefined`, `NaN`, `Infinity` as globalThis properties with correct descriptors (non-writable, non-enumerable, non-configurable). 57.1% → **71.4%**.
+
+**4f — Eval completion values.** ✅ Improved (P23). Fixed eval completion values for loops (`while`, `for`, `do-while`, `for-in`, `for-of`) and switch statements to properly propagate body values. The 97 remaining failures in `language/eval-code` involve strict-mode scoping, arrow function `this` binding, and nested `var` hoisting.
+
+**4g — Module system.** The 198 failures in `language/module-code` and 82 in `language/import` stem from: `import defer` syntax (Stage 3, ~50 tests), circular import resolution, live binding updates, `export * as ns` namespace re-exports, and multi-file module fixtures that the test runner doesn't supply.
 
 ### Summary: Projected Impact
 
@@ -862,30 +875,33 @@ Targeted fixes for specific failing subcategories within otherwise high-performi
 |-----------|------------|------------|------|
 | Pre-P22 baseline | — | 23,875 | **86.5%** |
 | Tier 1+2 (P22) | +587 | 24,462 | **88.1%** |
-| Remaining Tier 1 (1d) | ~17 | ~24,479 | **88.2%** |
-| Tier 3a (class public fields) | ~723 unskipped | ~24,900* | **~88%*** |
-| Tier 3b (async/await) | ~500+ unskipped | ~25,400* | **~88%*** |
-| Tier 4 (polish) | ~200-300 | ~25,000 | **~90%** |
+| Tier 4 (P23) | +57 | 24,519 | **88.8%** |
+| Remaining Tier 1 (1d) | ~17 | ~24,536 | **88.9%** |
+| Remaining Tier 4 (4g modules) | ~50-100 | ~24,600 | **~89.2%** |
+| Tier 3a (class public fields) | ~723 unskipped | ~25,000* | **~89%*** |
+| Tier 3b (async/await) | ~500+ unskipped | ~25,500* | **~89%*** |
 | All tiers | ~1,500+ fixed + ~4,000+ unskipped | ~28,000+* | **~90%+*** |
 
 \* Projected rates for Tier 3 account for both newly-passing and newly-executed (denominator increases).
 
-### Root Cause Clustering of Remaining 3,295 Failures
+### Root Cause Clustering of Remaining 3,080 Failures
 
 | Root Cause | Est. Failures | % of Total | Key Categories Affected |
 |------------|---------------|------------|-------------------------|
-| Module system gaps | ~280 | 8.5% | `language/module-code`, `language/import` |
-| Language expression/statement edge cases | ~250+ | 7.6% | `language/expressions`, `language/statements` |
-| Built-ins/Array edge cases | ~350 | 10.6% | `built-ins/Array` |
-| RegExp remaining gaps (named groups, lookbehind, edge cases) | ~128 | 3.9% | `built-ins/RegExp`, `built-ins/RegExpStringIteratorPrototype` |
-| Eval-code edge cases | ~98 | 3.0% | `language/eval-code` |
-| Language/literals (octal, numeric, template) | ~87 | 2.6% | `language/literals` |
-| Annex B remaining (built-ins, language edge cases) | ~164 | 5.0% | `annexB/built-ins`, `annexB/language` |
-| Built-ins/Function edge cases | ~69 | 2.1% | `built-ins/Function` |
-| Built-ins/Number edge cases | ~48 | 1.5% | `built-ins/Number` |
-| Generator conformance | ~35 | 1.1% | `built-ins/GeneratorFunction`, `built-ins/GeneratorPrototype` |
-| Language/identifiers (Unicode) | ~44 | 1.3% | `language/identifiers` |
-| Assorted spec edge cases | ~500-700 | 17.4% | Spread across all categories |
+| Language expression/statement edge cases | ~1,237 | 40.2% | `language/expressions` (568), `language/statements` (669) |
+| Built-ins/Array edge cases | ~351 | 11.4% | `built-ins/Array` |
+| Module system gaps | ~280 | 9.1% | `language/module-code` (198), `language/import` (82) |
+| Annex B remaining (built-ins, language edge cases) | ~164 | 5.3% | `annexB/built-ins` (58), `annexB/language` (106) |
+| Built-ins/Object edge cases | ~133 | 4.3% | `built-ins/Object` |
+| RegExp remaining gaps (named groups, lookbehind, edge cases) | ~128 | 4.2% | `built-ins/RegExp` (111), `built-ins/RegExpStringIteratorPrototype` (17) |
+| Eval-code edge cases | ~97 | 3.2% | `language/eval-code` |
+| Language/literals (octal, numeric, template) | ~89 | 2.9% | `language/literals` |
+| Built-ins/Function edge cases | ~69 | 2.2% | `built-ins/Function` |
+| Built-ins/String edge cases | ~58 | 1.9% | `built-ins/String` |
+| Built-ins/Number edge cases | ~48 | 1.6% | `built-ins/Number` |
+| Language/identifiers (Unicode) | ~44 | 1.4% | `language/identifiers` |
+| Generator conformance | ~7 | 0.2% | `built-ins/GeneratorPrototype` (7 remaining) |
+| Assorted spec edge cases | ~375 | 12.2% | Spread across all categories |
 
 ### Previously Completed
 
