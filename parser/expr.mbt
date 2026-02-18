@@ -465,15 +465,23 @@ fn Parser::parse_unary(self : Parser) -> @ast.Expr raise Error {
 ///|
 fn Parser::parse_postfix(self : Parser) -> @ast.Expr raise Error {
   let expr = self.parse_call()
+  // [no LineTerminator here] — postfix ++/-- must be on the same line as the operand
+  let prev_line = self.tokens[self.pos - 1].loc.line
   match self.peek_kind() {
-    PlusPlus => {
-      let loc = self.advance().loc
-      UpdateExpr(@ast.Increment, expr, false, loc)
-    }
-    MinusMinus => {
-      let loc = self.advance().loc
-      UpdateExpr(@ast.Decrement, expr, false, loc)
-    }
+    PlusPlus =>
+      if self.peek().loc.line == prev_line {
+        let loc = self.advance().loc
+        UpdateExpr(@ast.Increment, expr, false, loc)
+      } else {
+        expr
+      }
+    MinusMinus =>
+      if self.peek().loc.line == prev_line {
+        let loc = self.advance().loc
+        UpdateExpr(@ast.Decrement, expr, false, loc)
+      } else {
+        expr
+      }
     _ => expr
   }
 }
