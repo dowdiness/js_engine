@@ -85,22 +85,37 @@ fn is_line_terminator(c : Char) -> Bool {
 
 ///|
 fn is_id_start_cp(cp : Int) -> Bool {
-  // For ASCII range, validate strictly; for non-ASCII, accept (Unicode letters)
+  // For ASCII range, validate strictly; for non-ASCII, accept Unicode letters
+  // but reject whitespace and line terminators
   if cp < 128 {
     is_alpha(cp.unsafe_to_char())
   } else {
-    true
+    not(is_whitespace_or_line_terminator_cp(cp))
   }
 }
 
 ///|
 fn is_id_continue_cp(cp : Int) -> Bool {
-  // For ASCII range, validate strictly; for non-ASCII, accept
+  // For ASCII range, validate strictly; for non-ASCII, accept Unicode letters
+  // but reject whitespace and line terminators
   if cp < 128 {
     is_alnum(cp.unsafe_to_char())
   } else {
-    true
+    not(is_whitespace_or_line_terminator_cp(cp))
   }
+}
+
+///|
+fn is_whitespace_or_line_terminator_cp(cp : Int) -> Bool {
+  cp == 0x00A0 || // No-Break Space
+  cp == 0xFEFF || // Zero Width No-Break Space (BOM)
+  cp == 0x1680 || // Ogham Space Mark
+  (cp >= 0x2000 && cp <= 0x200A) || // En Quad through Hair Space
+  cp == 0x202F || // Narrow No-Break Space
+  cp == 0x205F || // Medium Mathematical Space
+  cp == 0x3000 || // Ideographic Space
+  cp == 0x2028 || // Line Separator
+  cp == 0x2029 // Paragraph Separator
 }
 
 ///|
