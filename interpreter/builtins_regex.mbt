@@ -589,7 +589,9 @@ fn regex_exec_single(
             Some(pos)
           } else if flags.multiline &&
             pos < input.length() &&
-            is_line_terminator(input[pos]) {
+            is_line_terminator(input[pos]) &&
+            // CRLF is a single line terminator — $ matches before \r, not between \r and \n
+            not(input[pos] == '\n' && pos > 0 && input[pos - 1] == '\r') {
             Some(pos)
           } else {
             None
