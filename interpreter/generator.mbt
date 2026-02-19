@@ -244,6 +244,13 @@ pub fn setup_generator_function_constructor(
   env : Environment,
   global_this : Value,
 ) -> Unit {
+  let nf_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   // %GeneratorFunction.prototype% inherits from Function.prototype
   let func_proto : Value = match env.bindings.get("[[FunctionPrototype]]") {
     Some(binding) => binding.value
@@ -261,7 +268,7 @@ pub fn setup_generator_function_constructor(
   })
   // GeneratorFunction constructor: GeneratorFunction(p1, p2, ..., body)
   let gen_func_ctor : Value = Object({
-    properties: { "length": Number(1.0), "prototype": gen_func_proto },
+    properties: { "length": Number(1.0), "prototype": gen_func_proto, "name": String_("GeneratorFunction") },
     symbol_properties: {},
     prototype: Null,
     callable: Some(
@@ -327,7 +334,7 @@ pub fn setup_generator_function_constructor(
       }),
     ),
     class_name: "Function",
-    descriptors: {},
+    descriptors: { "name": nf_desc, "length": nf_desc },
     symbol_descriptors: {},
     extensible: true,
   })

@@ -743,6 +743,13 @@ fn current_time_ms() -> Double {
 
 ///|
 pub fn setup_date_builtins(env : Environment) -> Unit {
+  let nf_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   let date_proto_props : Map[String, Value] = {}
 
   // Date.prototype.getTime()
@@ -1658,6 +1665,8 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
   // Static methods
   let date_props : Map[String, Value] = {}
   date_props["prototype"] = date_proto
+  date_props["name"] = String_("Date")
+  date_props["length"] = Number(7.0)
 
   // Date.now()
   date_props["now"] = make_native_func_with_length("now", 0, fn(_args) {
@@ -1766,7 +1775,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
         }),
       ),
       class_name: "Function",
-      descriptors: {},
+      descriptors: { "name": nf_desc, "length": nf_desc },
       symbol_descriptors: {},
       extensible: true,
     }),

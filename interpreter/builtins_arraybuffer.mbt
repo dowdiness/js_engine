@@ -286,6 +286,8 @@ pub fn setup_arraybuffer_builtins(env : Environment) -> Unit {
   // ArrayBuffer constructor
   let ab_ctor_props : Map[String, Value] = {}
   ab_ctor_props["prototype"] = ab_proto
+  ab_ctor_props["name"] = String_("ArrayBuffer")
+  ab_ctor_props["length"] = Number(1.0)
 
   // ArrayBuffer.isView(arg)
   ab_ctor_props["isView"] = make_native_func("isView", fn(args) {
@@ -301,6 +303,13 @@ pub fn setup_arraybuffer_builtins(env : Environment) -> Unit {
     }
   })
 
+  let nf_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   let ab_ctor_descs : Map[String, PropDescriptor] = {}
   ab_ctor_descs["prototype"] = {
     writable: false,
@@ -309,6 +318,8 @@ pub fn setup_arraybuffer_builtins(env : Environment) -> Unit {
     getter: None,
     setter: None,
   }
+  ab_ctor_descs["name"] = nf_desc
+  ab_ctor_descs["length"] = nf_desc
 
   let ab_ctor : Value = Object({
     properties: ab_ctor_props,

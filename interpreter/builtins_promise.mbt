@@ -658,6 +658,13 @@ fn invoke_then_method(
 ///|
 /// Setup Promise constructor and prototype methods
 pub fn setup_promise(env : Environment) -> Unit {
+  let nf_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   // Promise prototype with then, catch, finally
   let promise_proto_props : Map[String, Value] = {}
 
@@ -939,6 +946,8 @@ pub fn setup_promise(env : Environment) -> Unit {
 
   // Promise constructor
   let promise_ctor_props : Map[String, Value] = {}
+  promise_ctor_props["name"] = String_("Promise")
+  promise_ctor_props["length"] = Number(1.0)
 
   // Promise.resolve(value)
   promise_ctor_props["resolve"] = Object({
@@ -1569,7 +1578,7 @@ pub fn setup_promise(env : Environment) -> Unit {
       }),
     ),
     class_name: "Function",
-    descriptors: {},
+    descriptors: { "name": nf_desc, "length": nf_desc },
     symbol_descriptors: {},
     extensible: true,
   })

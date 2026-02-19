@@ -95,6 +95,13 @@ fn apply_property_descriptor(
 
 ///|
 pub fn setup_object_builtins(env : Environment) -> Unit {
+  let nf_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   // Object.keys, Object.values, Object.entries, Object.create, Object.assign,
   // Object.getPrototypeOf, Object.getOwnPropertyNames
   let obj_proto : Value = Object({
@@ -353,6 +360,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     Object({
       properties: {
         "prototype": obj_proto,
+        "name": String_("Object"),
+        "length": Number(1.0),
         "keys": make_native_func("keys", fn(args) {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           match obj {
@@ -2986,7 +2995,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }),
       ),
       class_name: "Function",
-      descriptors: {},
+      descriptors: { "name": nf_desc, "length": nf_desc },
       symbol_descriptors: {},
       extensible: true,
     }),
@@ -4451,6 +4460,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
   // Array constructor with Array.isArray, Array.from, Array.of
   let array_props : Map[String, Value] = {}
   array_props["prototype"] = array_proto
+  array_props["name"] = String_("Array")
+  array_props["length"] = Number(1.0)
   array_props["isArray"] = make_native_func("isArray", fn(args) {
     let val = if args.length() > 0 { args[0] } else { Undefined }
     match val {
@@ -4586,7 +4597,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }),
       ),
       class_name: "Function",
-      descriptors: {},
+      descriptors: { "name": nf_desc, "length": nf_desc },
       symbol_descriptors: {},
       extensible: true,
     }),

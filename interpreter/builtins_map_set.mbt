@@ -59,6 +59,13 @@ pub fn setup_map_set_builtins(env : Environment) -> Unit {
 ///|
 /// Setup Map constructor and prototype
 fn setup_map_builtins(env : Environment) -> Unit {
+  let nf_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   let iterator_sym = get_iterator_symbol()
 
   // Map.prototype methods
@@ -441,7 +448,7 @@ fn setup_map_builtins(env : Environment) -> Unit {
 
   // Map constructor
   let map_ctor = Object({
-    properties: { "prototype": map_proto },
+    properties: { "prototype": map_proto, "name": String_("Map"), "length": Number(0.0) },
     symbol_properties: {},
     prototype: Null,
     callable: Some(
@@ -527,7 +534,7 @@ fn setup_map_builtins(env : Environment) -> Unit {
       }),
     ),
     class_name: "Function",
-    descriptors: {},
+    descriptors: { "name": nf_desc, "length": nf_desc },
     symbol_descriptors: {},
     extensible: true,
   })
@@ -551,6 +558,13 @@ fn setup_map_builtins(env : Environment) -> Unit {
 ///|
 /// Setup Set constructor and prototype
 fn setup_set_builtins(env : Environment) -> Unit {
+  let nf_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   let iterator_sym = get_iterator_symbol()
 
   // Set.prototype methods
@@ -808,7 +822,7 @@ fn setup_set_builtins(env : Environment) -> Unit {
 
   // Set constructor
   let set_ctor = Object({
-    properties: { "prototype": set_proto },
+    properties: { "prototype": set_proto, "name": String_("Set"), "length": Number(0.0) },
     symbol_properties: {},
     prototype: Null,
     callable: Some(
@@ -884,7 +898,7 @@ fn setup_set_builtins(env : Environment) -> Unit {
       }),
     ),
     class_name: "Function",
-    descriptors: {},
+    descriptors: { "name": nf_desc, "length": nf_desc },
     symbol_descriptors: {},
     extensible: true,
   })

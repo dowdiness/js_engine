@@ -815,8 +815,17 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
   env.def_builtin("[[DataViewPrototype]]", dv_proto)
 
   // DataView constructor
+  let nf_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   let dv_ctor_props : Map[String, Value] = {}
   dv_ctor_props["prototype"] = dv_proto
+  dv_ctor_props["name"] = String_("DataView")
+  dv_ctor_props["length"] = Number(1.0)
   let dv_ctor_descs : Map[String, PropDescriptor] = {}
   dv_ctor_descs["prototype"] = {
     writable: false,
@@ -825,6 +834,8 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
     getter: None,
     setter: None,
   }
+  dv_ctor_descs["name"] = nf_desc
+  dv_ctor_descs["length"] = nf_desc
 
   let dv_ctor : Value = Object({
     properties: dv_ctor_props,

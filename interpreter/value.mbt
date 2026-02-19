@@ -554,13 +554,20 @@ pub fn make_native_func(
   name : String,
   func : (Array[Value]) -> Value raise Error,
 ) -> Value {
+  let nf_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   Object({
-    properties: {},
+    properties: { "name": String_(name), "length": Number(0.0) },
     symbol_properties: {},
     prototype: Null,
     callable: Some(NativeCallable(name, func)),
     class_name: "Function",
-    descriptors: {},
+    descriptors: { "name": nf_desc, "length": nf_desc },
     symbol_descriptors: {},
     extensible: true,
   })
@@ -573,15 +580,23 @@ pub fn make_native_func_with_length(
   length : Int,
   func : (Array[Value]) -> Value raise Error,
 ) -> Value {
+  let nf_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   let props : Map[String, Value] = {}
   props["length"] = Number(length.to_double())
+  props["name"] = String_(name)
   Object({
     properties: props,
     symbol_properties: {},
     prototype: Null,
     callable: Some(NativeCallable(name, func)),
     class_name: "Function",
-    descriptors: {},
+    descriptors: { "name": nf_desc, "length": nf_desc },
     symbol_descriptors: {},
     extensible: true,
   })

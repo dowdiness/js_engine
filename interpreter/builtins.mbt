@@ -27,12 +27,19 @@ pub fn setup_builtins(
   env.def_builtin("Infinity", Number(1.0 / 0.0))
   env.def_builtin("undefined", Undefined)
 
+  let nf_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   // eval(x) — NonConstructableCallable so that new eval() throws TypeError.
   // Direct eval is handled at the call-site in eval_call.
   // Indirect eval (0,eval)("code") is intercepted in call_value where the
   // interpreter is available for perform_eval.
   let eval_func : Value = Object({
-    properties: { "length": Number(1.0) },
+    properties: { "length": Number(1.0), "name": String_("eval") },
     symbol_properties: {},
     prototype: Null,
     callable: Some(
@@ -45,15 +52,7 @@ pub fn setup_builtins(
       }),
     ),
     class_name: "Function",
-    descriptors: {
-      "length": {
-        writable: false,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-    },
+    descriptors: { "length": nf_desc, "name": nf_desc },
     symbol_descriptors: {},
     extensible: true,
   })
@@ -306,6 +305,8 @@ pub fn setup_builtins(
     Object({
       properties: {
         "prototype": string_proto,
+        "name": String_("String"),
+        "length": Number(1.0),
         "fromCharCode": make_native_func("fromCharCode", fn(args) raise {
           let buf = StringBuilder::new()
           for arg in args {
@@ -460,7 +461,7 @@ pub fn setup_builtins(
         }),
       ),
       class_name: "Function",
-      descriptors: {},
+      descriptors: { "name": nf_desc, "length": nf_desc },
       symbol_descriptors: {},
       extensible: true,
     }),
@@ -574,7 +575,7 @@ pub fn setup_builtins(
   env.def_builtin(
     "Boolean",
     Object({
-      properties: { "prototype": boolean_proto },
+      properties: { "prototype": boolean_proto, "name": String_("Boolean"), "length": Number(1.0) },
       symbol_properties: {},
       prototype: Null,
       callable: Some(
@@ -599,7 +600,7 @@ pub fn setup_builtins(
         }),
       ),
       class_name: "Function",
-      descriptors: {},
+      descriptors: { "name": nf_desc, "length": nf_desc },
       symbol_descriptors: {},
       extensible: true,
     }),
@@ -650,7 +651,7 @@ pub fn setup_builtins(
   env.def_builtin(
     "RegExp",
     Object({
-      properties: {},
+      properties: { "name": String_("RegExp"), "length": Number(2.0) },
       symbol_properties: {},
       prototype: Null,
       callable: Some(
@@ -684,7 +685,7 @@ pub fn setup_builtins(
         }),
       ),
       class_name: "Function",
-      descriptors: {},
+      descriptors: { "name": nf_desc, "length": nf_desc },
       symbol_descriptors: {},
       extensible: true,
     }),
@@ -725,6 +726,13 @@ pub fn setup_builtins(
 
 ///|
 fn setup_symbol_builtins(env : Environment) -> Unit {
+  let nf_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   // Create well-known symbols
   let iterator_sym = new_symbol(Some("Symbol.iterator"))
   // Store globally for iterator protocol support
@@ -854,6 +862,8 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
   })
 
   // Symbol constructor - cannot be called with new, only as function
+  symbol_props["name"] = String_("Symbol")
+  symbol_props["length"] = Number(0.0)
   env.def_builtin(
     "Symbol",
     Object({
@@ -874,7 +884,7 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
         }),
       ),
       class_name: "Function",
-      descriptors: {},
+      descriptors: { "name": nf_desc, "length": nf_desc },
       symbol_descriptors: {},
       extensible: true,
     }),
@@ -1578,6 +1588,13 @@ fn register_error_ctor(
   name : String,
   parent_proto : Value,
 ) -> Value {
+  let nf_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   let proto_props : Map[String, Value] = {}
   proto_props["name"] = String_(name)
   proto_props["message"] = String_("")
@@ -1597,7 +1614,7 @@ fn register_error_ctor(
   env.def_builtin(
     name,
     Object({
-      properties: { "prototype": proto_obj },
+      properties: { "prototype": proto_obj, "name": String_(name), "length": Number(1.0) },
       symbol_properties: {},
       prototype: Null,
       callable: Some(
@@ -1628,7 +1645,7 @@ fn register_error_ctor(
         }),
       ),
       class_name: "Function",
-      descriptors: {},
+      descriptors: { "name": nf_desc, "length": nf_desc },
       symbol_descriptors: {},
       extensible: true,
     }),
@@ -1656,6 +1673,13 @@ fn register_aggregate_error_ctor(
   env : Environment,
   parent_proto : Value,
 ) -> Value {
+  let nf_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   let name = "AggregateError"
   let proto_props : Map[String, Value] = {}
   proto_props["name"] = String_(name)
@@ -1676,7 +1700,7 @@ fn register_aggregate_error_ctor(
   env.def_builtin(
     name,
     Object({
-      properties: { "prototype": proto_obj, "length": Number(2.0) },
+      properties: { "prototype": proto_obj, "length": Number(2.0), "name": String_(name) },
       symbol_properties: {},
       prototype: Null,
       callable: Some(
@@ -1713,7 +1737,7 @@ fn register_aggregate_error_ctor(
         }),
       ),
       class_name: "Function",
-      descriptors: {},
+      descriptors: { "name": nf_desc, "length": nf_desc },
       symbol_descriptors: {},
       extensible: true,
     }),
@@ -1781,6 +1805,13 @@ fn char_to_digit(c : Char, radix : Int) -> Int {
 
 ///|
 fn setup_number_builtins(env : Environment) -> Unit {
+  let nf_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   let number_proto_props : Map[String, Value] = {}
   number_proto_props["toFixed"] = Object({
     properties: {},
@@ -2295,6 +2326,8 @@ fn setup_number_builtins(env : Environment) -> Unit {
   })
   number_props["parseInt"] = env.get("parseInt") catch { _ => Undefined }
   number_props["parseFloat"] = env.get("parseFloat") catch { _ => Undefined }
+  number_props["name"] = String_("Number")
+  number_props["length"] = Number(1.0)
   env.def_builtin(
     "Number",
     Object({
@@ -2323,7 +2356,7 @@ fn setup_number_builtins(env : Environment) -> Unit {
         }),
       ),
       class_name: "Function",
-      descriptors: {},
+      descriptors: { "name": nf_desc, "length": nf_desc },
       symbol_descriptors: {},
       extensible: true,
     }),
@@ -3348,6 +3381,13 @@ fn json_escape_string(s : String) -> String {
 
 ///|
 fn setup_function_builtins(env : Environment) -> Unit {
+  let nf_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   // Create Function.prototype
   let func_proto_props : Map[String, Value] = {}
 
@@ -3409,34 +3449,65 @@ fn setup_function_builtins(env : Environment) -> Unit {
 
   // Function.prototype.call - placeholder (actual implementation in interpreter)
   func_proto_props["call"] = Object({
-    properties: { "length": Number(1.0) },
+    properties: { "length": Number(1.0), "name": String_("call") },
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      NativeCallable("call", fn(_args) {
-        // This is a placeholder - actual call is handled by FuncCallMethod in interpreter
-        Undefined
+      InterpreterCallable("call", fn(interp, this_val, args) raise {
+        let loc = @token.Loc::default()
+        let call_this : Value = if args.length() > 0 { args[0] } else { Undefined }
+        let call_args : Array[Value] = []
+        for i = 1; i < args.length(); i = i + 1 {
+          call_args.push(args[i])
+        }
+        interp.call_value(this_val, call_this, call_args, loc)
       }),
     ),
     class_name: "Function",
-    descriptors: {},
+    descriptors: { "name": nf_desc, "length": nf_desc },
     symbol_descriptors: {},
     extensible: true,
   })
 
-  // Function.prototype.apply - placeholder (actual implementation in interpreter)
+  // Function.prototype.apply
   func_proto_props["apply"] = Object({
-    properties: { "length": Number(2.0) },
+    properties: { "length": Number(2.0), "name": String_("apply") },
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      NativeCallable("apply", fn(_args) {
-        // This is a placeholder - actual apply is handled by FuncApplyMethod in interpreter
-        Undefined
+      InterpreterCallable("apply", fn(interp, this_val, args) raise {
+        let loc = @token.Loc::default()
+        let call_this : Value = if args.length() > 0 { args[0] } else { Undefined }
+        let call_args : Array[Value] = []
+        if args.length() > 1 {
+          // Convert args[1] to array-like
+          match args[1] {
+            Array(data) =>
+              for el in data.elements {
+                call_args.push(el)
+              }
+            Object(data) => {
+              let len = match data.properties.get("length") {
+                Some(Number(n)) => n.to_int()
+                _ => 0
+              }
+              for i = 0; i < len; i = i + 1 {
+                let val = match data.properties.get(i.to_string()) {
+                  Some(v) => v
+                  None => Undefined
+                }
+                call_args.push(val)
+              }
+            }
+            Null | Undefined => ()
+            _ => ()
+          }
+        }
+        interp.call_value(this_val, call_this, call_args, loc)
       }),
     ),
     class_name: "Function",
-    descriptors: {},
+    descriptors: { "name": nf_desc, "length": nf_desc },
     symbol_descriptors: {},
     extensible: true,
   })
@@ -3526,6 +3597,7 @@ fn setup_function_builtins(env : Environment) -> Unit {
   let func_ctor_props : Map[String, Value] = {}
   func_ctor_props["prototype"] = func_proto
   func_ctor_props["length"] = Number(1.0)
+  func_ctor_props["name"] = String_("Function")
 
   // Create a single Function constructor object.
   // Function(p1, p2, ..., body) parses the body string and creates a real function.
@@ -3631,7 +3703,7 @@ fn setup_function_builtins(env : Environment) -> Unit {
       }),
     ),
     class_name: "Function",
-    descriptors: {},
+    descriptors: { "name": nf_desc, "length": nf_desc },
     symbol_descriptors: {},
     extensible: true,
   })

@@ -577,7 +577,7 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
 
   // WeakMap constructor
   let wm_ctor = Object({
-    properties: { "prototype": wm_proto, "length": Number(0.0) },
+    properties: { "prototype": wm_proto, "length": Number(0.0), "name": String_("WeakMap") },
     symbol_properties: {},
     prototype: Null,
     callable: Some(
@@ -674,6 +674,13 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
     class_name: "Function",
     descriptors: {
       "length": {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      },
+      "name": {
         writable: false,
         enumerable: false,
         configurable: true,
@@ -889,7 +896,7 @@ fn setup_weakset_builtins(env : Environment) -> Unit {
 
   // WeakSet constructor
   let ws_ctor = Object({
-    properties: { "prototype": ws_proto, "length": Number(0.0) },
+    properties: { "prototype": ws_proto, "length": Number(0.0), "name": String_("WeakSet") },
     symbol_properties: {},
     prototype: Null,
     callable: Some(
@@ -981,6 +988,13 @@ fn setup_weakset_builtins(env : Environment) -> Unit {
     class_name: "Function",
     descriptors: {
       "length": {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      },
+      "name": {
         writable: false,
         enumerable: false,
         configurable: true,
