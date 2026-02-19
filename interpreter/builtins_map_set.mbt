@@ -72,12 +72,7 @@ fn setup_map_builtins(env : Environment) -> Unit {
   let map_proto_props : Map[String, Value] = {}
 
   // Map.prototype.get(key)
-  map_proto_props["get"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("get", fn(this_val, args) raise {
+  map_proto_props["get"] = make_method_func("get", 1, fn(this_val, args) raise {
         match this_val {
           Map(data) => {
             let key = if args.length() > 0 { args[0] } else { Undefined }
@@ -95,21 +90,10 @@ fn setup_map_builtins(env : Environment) -> Unit {
               message="Method Map.prototype.get called on incompatible receiver",
             )
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Map.prototype.set(key, value)
-  map_proto_props["set"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("set", fn(this_val, args) raise {
+  map_proto_props["set"] = make_method_func("set", 1, fn(this_val, args) raise {
         match this_val {
           Map(data) => {
             let key = if args.length() > 0 { args[0] } else { Undefined }
@@ -132,21 +116,10 @@ fn setup_map_builtins(env : Environment) -> Unit {
               message="Method Map.prototype.set called on incompatible receiver",
             )
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Map.prototype.has(key)
-  map_proto_props["has"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("has", fn(this_val, args) raise {
+  map_proto_props["has"] = make_method_func("has", 1, fn(this_val, args) raise {
         match this_val {
           Map(data) => {
             let key = if args.length() > 0 { args[0] } else { Undefined }
@@ -164,21 +137,10 @@ fn setup_map_builtins(env : Environment) -> Unit {
               message="Method Map.prototype.has called on incompatible receiver",
             )
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Map.prototype.delete(key)
-  map_proto_props["delete"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("delete", fn(this_val, args) raise {
+  map_proto_props["delete"] = make_method_func("delete", 1, fn(this_val, args) raise {
         match this_val {
           Map(data) => {
             let key = if args.length() > 0 { args[0] } else { Undefined }
@@ -197,21 +159,10 @@ fn setup_map_builtins(env : Environment) -> Unit {
               message="Method Map.prototype.delete called on incompatible receiver",
             )
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Map.prototype.clear()
-  map_proto_props["clear"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("clear", fn(this_val, _args) raise {
+  map_proto_props["clear"] = make_method_func("clear", 0, fn(this_val, _args) raise {
         match this_val {
           Map(data) => {
             data.entries.clear()
@@ -222,21 +173,10 @@ fn setup_map_builtins(env : Environment) -> Unit {
               message="Method Map.prototype.clear called on incompatible receiver",
             )
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Map.prototype.forEach(callback, thisArg?)
-  map_proto_props["forEach"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("forEach", fn(interp, this_val, args) raise {
+  map_proto_props["forEach"] = make_interp_method_func("forEach", 1, fn(interp, this_val, args) raise {
         match this_val {
           Map(data) => {
             let callback = if args.length() > 0 { args[0] } else { Undefined }
@@ -260,21 +200,10 @@ fn setup_map_builtins(env : Environment) -> Unit {
               message="Method Map.prototype.forEach called on incompatible receiver",
             )
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Map.prototype.keys() - returns iterator of keys
-  map_proto_props["keys"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("keys", fn(this_val, _args) raise {
+  map_proto_props["keys"] = make_method_func("keys", 0, fn(this_val, _args) raise {
         match this_val {
           Map(data) => make_map_keys_iterator(data)
           _ =>
@@ -282,21 +211,10 @@ fn setup_map_builtins(env : Environment) -> Unit {
               message="Method Map.prototype.keys called on incompatible receiver",
             )
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Map.prototype.values() - returns iterator of values
-  map_proto_props["values"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("values", fn(this_val, _args) raise {
+  map_proto_props["values"] = make_method_func("values", 0, fn(this_val, _args) raise {
         match this_val {
           Map(data) => make_map_values_iterator(data)
           _ =>
@@ -304,21 +222,10 @@ fn setup_map_builtins(env : Environment) -> Unit {
               message="Method Map.prototype.values called on incompatible receiver",
             )
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Map.prototype.entries() - returns iterator of [key, value] pairs
-  map_proto_props["entries"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("entries", fn(this_val, _args) raise {
+  map_proto_props["entries"] = make_method_func("entries", 0, fn(this_val, _args) raise {
         match this_val {
           Map(data) => make_map_entries_iterator(data)
           _ =>
@@ -326,21 +233,10 @@ fn setup_map_builtins(env : Environment) -> Unit {
               message="Method Map.prototype.entries called on incompatible receiver",
             )
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Map.prototype.getOrInsert(key, value)
-  map_proto_props["getOrInsert"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("getOrInsert", fn(this_val, args) raise {
+  map_proto_props["getOrInsert"] = make_method_func("getOrInsert", 0, fn(this_val, args) raise {
         match this_val {
           Map(data) => {
             let key = if args.length() > 0 { args[0] } else { Undefined }
@@ -361,21 +257,10 @@ fn setup_map_builtins(env : Environment) -> Unit {
               message="Method Map.prototype.getOrInsert called on incompatible receiver",
             )
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Map.prototype.getOrInsertComputed(key, callbackfn)
-  map_proto_props["getOrInsertComputed"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("getOrInsertComputed", fn(
+  map_proto_props["getOrInsertComputed"] = make_interp_method_func("getOrInsertComputed", 2, fn(
         interp,
         this_val,
         args,
@@ -411,22 +296,34 @@ fn setup_map_builtins(env : Environment) -> Unit {
               message="Method Map.prototype.getOrInsertComputed called on incompatible receiver",
             )
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
+
+  // Non-enumerable descriptors for Map.prototype methods
+  let method_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+  let map_proto_descs : Map[String, PropDescriptor] = {}
+  map_proto_descs["get"] = method_desc
+  map_proto_descs["set"] = method_desc
+  map_proto_descs["has"] = method_desc
+  map_proto_descs["delete"] = method_desc
+  map_proto_descs["clear"] = method_desc
+  map_proto_descs["forEach"] = method_desc
+  map_proto_descs["keys"] = method_desc
+  map_proto_descs["values"] = method_desc
+  map_proto_descs["entries"] = method_desc
+  map_proto_descs["getOrInsert"] = method_desc
+  map_proto_descs["getOrInsertComputed"] = method_desc
 
   // Create Map prototype
+  let method_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+  map_proto_descs["size"] = method_desc
+
   let map_proto : Value = Object({
     properties: map_proto_props,
     symbol_properties: {},
     prototype: Null,
     callable: None,
     class_name: "Map",
-    descriptors: {},
+    descriptors: map_proto_descs,
     symbol_descriptors: {},
     extensible: true,
   })
@@ -447,12 +344,7 @@ fn setup_map_builtins(env : Environment) -> Unit {
   map_proto_props["size"] = Number(0.0) // Placeholder - will be handled specially
 
   // Map constructor
-  let map_ctor = Object({
-    properties: { "prototype": map_proto, "name": String_("Map"), "length": Number(0.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("Map", fn(interp, _this_val, args) raise {
+  let map_ctor = make_interp_method_func("Map", 0, fn(interp, _this_val, args) raise {
         // Create new Map instance
         let new_map : Value = Map({ entries: [] })
         let loc = @token.Loc::default()
@@ -531,13 +423,7 @@ fn setup_map_builtins(env : Environment) -> Unit {
           }
         }
         new_map
-      }),
-    ),
-    class_name: "Function",
-    descriptors: { "name": nf_desc, "length": nf_desc },
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
   env.def_builtin("Map", map_ctor)
   // Set Map.prototype.constructor = Map
   match map_proto {
@@ -571,12 +457,7 @@ fn setup_set_builtins(env : Environment) -> Unit {
   let set_proto_props : Map[String, Value] = {}
 
   // Set.prototype.add(value)
-  set_proto_props["add"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("add", fn(this_val, args) raise {
+  set_proto_props["add"] = make_method_func("add", 1, fn(this_val, args) raise {
         match this_val {
           Set(data) => {
             let value = if args.length() > 0 { args[0] } else { Undefined }
@@ -595,21 +476,10 @@ fn setup_set_builtins(env : Environment) -> Unit {
               message="Method Set.prototype.add called on incompatible receiver",
             )
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Set.prototype.has(value)
-  set_proto_props["has"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("has", fn(this_val, args) raise {
+  set_proto_props["has"] = make_method_func("has", 1, fn(this_val, args) raise {
         match this_val {
           Set(data) => {
             let value = if args.length() > 0 { args[0] } else { Undefined }
@@ -626,21 +496,10 @@ fn setup_set_builtins(env : Environment) -> Unit {
               message="Method Set.prototype.has called on incompatible receiver",
             )
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Set.prototype.delete(value)
-  set_proto_props["delete"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("delete", fn(this_val, args) raise {
+  set_proto_props["delete"] = make_method_func("delete", 1, fn(this_val, args) raise {
         match this_val {
           Set(data) => {
             let value = if args.length() > 0 { args[0] } else { Undefined }
@@ -658,21 +517,10 @@ fn setup_set_builtins(env : Environment) -> Unit {
               message="Method Set.prototype.delete called on incompatible receiver",
             )
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Set.prototype.clear()
-  set_proto_props["clear"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("clear", fn(this_val, _args) raise {
+  set_proto_props["clear"] = make_method_func("clear", 0, fn(this_val, _args) raise {
         match this_val {
           Set(data) => {
             data.values.clear()
@@ -683,21 +531,10 @@ fn setup_set_builtins(env : Environment) -> Unit {
               message="Method Set.prototype.clear called on incompatible receiver",
             )
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Set.prototype.forEach(callback, thisArg?)
-  set_proto_props["forEach"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("forEach", fn(interp, this_val, args) raise {
+  set_proto_props["forEach"] = make_interp_method_func("forEach", 1, fn(interp, this_val, args) raise {
         match this_val {
           Set(data) => {
             let callback = if args.length() > 0 { args[0] } else { Undefined }
@@ -721,21 +558,10 @@ fn setup_set_builtins(env : Environment) -> Unit {
               message="Method Set.prototype.forEach called on incompatible receiver",
             )
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Set.prototype.keys() - returns iterator of values (same as values())
-  set_proto_props["keys"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("keys", fn(this_val, _args) raise {
+  set_proto_props["keys"] = make_method_func("keys", 0, fn(this_val, _args) raise {
         match this_val {
           Set(data) => make_set_values_iterator(data)
           _ =>
@@ -743,21 +569,10 @@ fn setup_set_builtins(env : Environment) -> Unit {
               message="Method Set.prototype.keys called on incompatible receiver",
             )
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Set.prototype.values() - returns iterator of values
-  set_proto_props["values"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("values", fn(this_val, _args) raise {
+  set_proto_props["values"] = make_method_func("values", 0, fn(this_val, _args) raise {
         match this_val {
           Set(data) => make_set_values_iterator(data)
           _ =>
@@ -765,21 +580,10 @@ fn setup_set_builtins(env : Environment) -> Unit {
               message="Method Set.prototype.values called on incompatible receiver",
             )
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Set.prototype.entries() - returns iterator of [value, value] pairs
-  set_proto_props["entries"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("entries", fn(this_val, _args) raise {
+  set_proto_props["entries"] = make_method_func("entries", 0, fn(this_val, _args) raise {
         match this_val {
           Set(data) => make_set_entries_iterator(data)
           _ =>
@@ -787,22 +591,31 @@ fn setup_set_builtins(env : Environment) -> Unit {
               message="Method Set.prototype.entries called on incompatible receiver",
             )
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
+
+  // Non-enumerable descriptors for Set.prototype methods
+  let method_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+  let set_proto_descs : Map[String, PropDescriptor] = {}
+  set_proto_descs["add"] = method_desc
+  set_proto_descs["has"] = method_desc
+  set_proto_descs["delete"] = method_desc
+  set_proto_descs["clear"] = method_desc
+  set_proto_descs["forEach"] = method_desc
+  set_proto_descs["keys"] = method_desc
+  set_proto_descs["values"] = method_desc
+  set_proto_descs["entries"] = method_desc
 
   // Create Set prototype
+  let method_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+  set_proto_descs["size"] = method_desc
+
   let set_proto : Value = Object({
     properties: set_proto_props,
     symbol_properties: {},
     prototype: Null,
     callable: None,
     class_name: "Set",
-    descriptors: {},
+    descriptors: set_proto_descs,
     symbol_descriptors: {},
     extensible: true,
   })
@@ -821,12 +634,7 @@ fn setup_set_builtins(env : Environment) -> Unit {
   set_proto_props["size"] = Number(0.0) // Placeholder - will be handled specially
 
   // Set constructor
-  let set_ctor = Object({
-    properties: { "prototype": set_proto, "name": String_("Set"), "length": Number(0.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("Set", fn(interp, _this_val, args) raise {
+  let set_ctor = make_interp_method_func("Set", 0, fn(interp, _this_val, args) raise {
         // Create new Set instance
         let new_set : Value = Set({ values: [] })
         let loc = @token.Loc::default()
@@ -895,13 +703,7 @@ fn setup_set_builtins(env : Environment) -> Unit {
           }
         }
         new_set
-      }),
-    ),
-    class_name: "Function",
-    descriptors: { "name": nf_desc, "length": nf_desc },
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
   env.def_builtin("Set", set_ctor)
   // Set Set.prototype.constructor = Set
   match set_proto {
@@ -943,50 +745,13 @@ fn get_map_iterator_proto() -> Value {
         setter: None,
       }
       // Add [Symbol.iterator] that returns the iterator itself
-      proto_sym_props[iterator_sym.id] = Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          MethodCallable("[Symbol.iterator]", fn(this_val, _args) { this_val }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      })
+      proto_sym_props[iterator_sym.id] = make_method_func("[Symbol.iterator]", 0, fn(this_val, _args) { this_val })
       // Add a placeholder next method with correct name/length on prototype
-      proto_props["next"] = Object({
-        properties: { "length": Number(0.0), "name": String_("next") },
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          MethodCallable("next", fn(_this_val, _args) raise {
+      proto_props["next"] = make_method_func("next", 1, fn(_this_val, _args) raise {
             raise @errors.TypeError(
               message="Map Iterator.prototype.next requires that |this| be a Map Iterator",
             )
-          }),
-        ),
-        class_name: "Function",
-        descriptors: {
-          "length": {
-            writable: false,
-            enumerable: false,
-            configurable: true,
-            getter: None,
-            setter: None,
-          },
-          "name": {
-            writable: false,
-            enumerable: false,
-            configurable: true,
-            getter: None,
-            setter: None,
-          },
-        },
-        symbol_descriptors: {},
-        extensible: true,
-      })
+          })
       let proto = Object({
         properties: proto_props,
         symbol_properties: proto_sym_props,
@@ -1273,49 +1038,12 @@ fn get_set_iterator_proto() -> Value {
         getter: None,
         setter: None,
       }
-      proto_sym_props[iterator_sym.id] = Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          MethodCallable("[Symbol.iterator]", fn(this_val, _args) { this_val }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      })
-      proto_props["next"] = Object({
-        properties: { "length": Number(0.0), "name": String_("next") },
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          MethodCallable("next", fn(_this_val, _args) raise {
+      proto_sym_props[iterator_sym.id] = make_method_func("[Symbol.iterator]", 0, fn(this_val, _args) { this_val })
+      proto_props["next"] = make_method_func("next", 1, fn(_this_val, _args) raise {
             raise @errors.TypeError(
               message="Set Iterator.prototype.next requires that |this| be a Set Iterator",
             )
-          }),
-        ),
-        class_name: "Function",
-        descriptors: {
-          "length": {
-            writable: false,
-            enumerable: false,
-            configurable: true,
-            getter: None,
-            setter: None,
-          },
-          "name": {
-            writable: false,
-            enumerable: false,
-            configurable: true,
-            getter: None,
-            setter: None,
-          },
-        },
-        symbol_descriptors: {},
-        extensible: true,
-      })
+          })
       let proto = Object({
         properties: proto_props,
         symbol_properties: proto_sym_props,

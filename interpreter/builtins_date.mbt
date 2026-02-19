@@ -753,389 +753,175 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
   let date_proto_props : Map[String, Value] = {}
 
   // Date.prototype.getTime()
-  date_proto_props["getTime"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("getTime", fn(this_val, _args) raise {
+  date_proto_props["getTime"] = make_method_func("getTime", 0, fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         Number(t)
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Date.prototype.getFullYear()
-  date_proto_props["getFullYear"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("getFullYear", fn(this_val, _args) raise {
+  date_proto_props["getFullYear"] = make_method_func("getFullYear", 0, fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         if t.is_nan() {
           return Number(0.0 / 0.0)
         }
         Number(year_from_time(t).to_double())
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Date.prototype.getUTCFullYear()
-  date_proto_props["getUTCFullYear"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("getUTCFullYear", fn(this_val, _args) raise {
+  date_proto_props["getUTCFullYear"] = make_method_func("getUTCFullYear", 0, fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         if t.is_nan() {
           return Number(0.0 / 0.0)
         }
         Number(year_from_time(t).to_double())
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Date.prototype.getMonth()
-  date_proto_props["getMonth"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("getMonth", fn(this_val, _args) raise {
+  date_proto_props["getMonth"] = make_method_func("getMonth", 0, fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         if t.is_nan() {
           return Number(0.0 / 0.0)
         }
         Number(month_from_time(t).to_double())
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Date.prototype.getUTCMonth()
-  date_proto_props["getUTCMonth"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("getUTCMonth", fn(this_val, _args) raise {
+  date_proto_props["getUTCMonth"] = make_method_func("getUTCMonth", 0, fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         if t.is_nan() {
           return Number(0.0 / 0.0)
         }
         Number(month_from_time(t).to_double())
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Date.prototype.getDate()
-  date_proto_props["getDate"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("getDate", fn(this_val, _args) raise {
+  date_proto_props["getDate"] = make_method_func("getDate", 0, fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         if t.is_nan() {
           return Number(0.0 / 0.0)
         }
         Number(date_from_time(t).to_double())
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Date.prototype.getUTCDate()
-  date_proto_props["getUTCDate"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("getUTCDate", fn(this_val, _args) raise {
+  date_proto_props["getUTCDate"] = make_method_func("getUTCDate", 0, fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         if t.is_nan() {
           return Number(0.0 / 0.0)
         }
         Number(date_from_time(t).to_double())
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Date.prototype.getDay()
-  date_proto_props["getDay"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("getDay", fn(this_val, _args) raise {
+  date_proto_props["getDay"] = make_method_func("getDay", 0, fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         if t.is_nan() {
           return Number(0.0 / 0.0)
         }
         Number(week_day(t).to_double())
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Date.prototype.getUTCDay()
-  date_proto_props["getUTCDay"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("getUTCDay", fn(this_val, _args) raise {
+  date_proto_props["getUTCDay"] = make_method_func("getUTCDay", 0, fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         if t.is_nan() {
           return Number(0.0 / 0.0)
         }
         Number(week_day(t).to_double())
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Date.prototype.getHours()
-  date_proto_props["getHours"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("getHours", fn(this_val, _args) raise {
+  date_proto_props["getHours"] = make_method_func("getHours", 0, fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         if t.is_nan() {
           return Number(0.0 / 0.0)
         }
         Number(hours_from_time(t).to_double())
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Date.prototype.getUTCHours()
-  date_proto_props["getUTCHours"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("getUTCHours", fn(this_val, _args) raise {
+  date_proto_props["getUTCHours"] = make_method_func("getUTCHours", 0, fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         if t.is_nan() {
           return Number(0.0 / 0.0)
         }
         Number(hours_from_time(t).to_double())
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Date.prototype.getMinutes()
-  date_proto_props["getMinutes"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("getMinutes", fn(this_val, _args) raise {
+  date_proto_props["getMinutes"] = make_method_func("getMinutes", 0, fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         if t.is_nan() {
           return Number(0.0 / 0.0)
         }
         Number(minutes_from_time(t).to_double())
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Date.prototype.getUTCMinutes()
-  date_proto_props["getUTCMinutes"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("getUTCMinutes", fn(this_val, _args) raise {
+  date_proto_props["getUTCMinutes"] = make_method_func("getUTCMinutes", 0, fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         if t.is_nan() {
           return Number(0.0 / 0.0)
         }
         Number(minutes_from_time(t).to_double())
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Date.prototype.getSeconds()
-  date_proto_props["getSeconds"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("getSeconds", fn(this_val, _args) raise {
+  date_proto_props["getSeconds"] = make_method_func("getSeconds", 0, fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         if t.is_nan() {
           return Number(0.0 / 0.0)
         }
         Number(seconds_from_time(t).to_double())
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Date.prototype.getUTCSeconds()
-  date_proto_props["getUTCSeconds"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("getUTCSeconds", fn(this_val, _args) raise {
+  date_proto_props["getUTCSeconds"] = make_method_func("getUTCSeconds", 0, fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         if t.is_nan() {
           return Number(0.0 / 0.0)
         }
         Number(seconds_from_time(t).to_double())
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Date.prototype.getMilliseconds()
-  date_proto_props["getMilliseconds"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("getMilliseconds", fn(this_val, _args) raise {
+  date_proto_props["getMilliseconds"] = make_method_func("getMilliseconds", 0, fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         if t.is_nan() {
           return Number(0.0 / 0.0)
         }
         Number(millis_from_time(t).to_double())
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Date.prototype.getUTCMilliseconds()
-  date_proto_props["getUTCMilliseconds"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("getUTCMilliseconds", fn(this_val, _args) raise {
+  date_proto_props["getUTCMilliseconds"] = make_method_func("getUTCMilliseconds", 0, fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         if t.is_nan() {
           return Number(0.0 / 0.0)
         }
         Number(millis_from_time(t).to_double())
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Date.prototype.getTimezoneOffset() - always 0 (UTC)
-  date_proto_props["getTimezoneOffset"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("getTimezoneOffset", fn(this_val, _args) raise {
+  date_proto_props["getTimezoneOffset"] = make_method_func("getTimezoneOffset", 0, fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         if t.is_nan() {
           return Number(0.0 / 0.0)
         }
         Number(0.0) // UTC timezone, offset is 0
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Date.prototype.getYear() (deprecated, but still in spec Annex B)
-  date_proto_props["getYear"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("getYear", fn(this_val, _args) raise {
+  date_proto_props["getYear"] = make_method_func("getYear", 0, fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         if t.is_nan() {
           return Number(0.0 / 0.0)
         }
         Number((year_from_time(t) - 1900).to_double())
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Date.prototype.setTime(time)
-  date_proto_props["setTime"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("setTime", fn(this_val, args) raise {
+  date_proto_props["setTime"] = make_method_func("setTime", 1, fn(this_val, args) raise {
         let _ = get_date_value(this_val) // validate this is Date
         let v = if args.length() > 0 {
           time_clip(to_number(args[0]))
@@ -1144,21 +930,10 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
         }
         set_date_value(this_val, v)
         Number(v)
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Date.prototype.setMilliseconds(ms)
-  date_proto_props["setMilliseconds"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("setMilliseconds", fn(this_val, args) raise {
+  date_proto_props["setMilliseconds"] = make_method_func("setMilliseconds", 1, fn(this_val, args) raise {
         let t = get_date_value(this_val)
         let ms = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
         let new_time = make_time(
@@ -1170,24 +945,13 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
         let v = time_clip(make_date_value(day(t), new_time))
         set_date_value(this_val, v)
         Number(v)
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Date.prototype.setUTCMilliseconds(ms)
   date_proto_props["setUTCMilliseconds"] = date_proto_props["setMilliseconds"]
 
   // Date.prototype.setSeconds(sec [, ms])
-  date_proto_props["setSeconds"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("setSeconds", fn(this_val, args) raise {
+  date_proto_props["setSeconds"] = make_method_func("setSeconds", 2, fn(this_val, args) raise {
         let t = get_date_value(this_val)
         let sec = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
         let ms = if args.length() > 1 {
@@ -1204,24 +968,13 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
         let v = time_clip(make_date_value(day(t), new_time))
         set_date_value(this_val, v)
         Number(v)
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Date.prototype.setUTCSeconds(sec [, ms])
   date_proto_props["setUTCSeconds"] = date_proto_props["setSeconds"]
 
   // Date.prototype.setMinutes(min [, sec [, ms]])
-  date_proto_props["setMinutes"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("setMinutes", fn(this_val, args) raise {
+  date_proto_props["setMinutes"] = make_method_func("setMinutes", 3, fn(this_val, args) raise {
         let t = get_date_value(this_val)
         let min = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
         let sec = if args.length() > 1 {
@@ -1238,24 +991,13 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
         let v = time_clip(make_date_value(day(t), new_time))
         set_date_value(this_val, v)
         Number(v)
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Date.prototype.setUTCMinutes(min [, sec [, ms]])
   date_proto_props["setUTCMinutes"] = date_proto_props["setMinutes"]
 
   // Date.prototype.setHours(hour [, min [, sec [, ms]]])
-  date_proto_props["setHours"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("setHours", fn(this_val, args) raise {
+  date_proto_props["setHours"] = make_method_func("setHours", 4, fn(this_val, args) raise {
         let t = get_date_value(this_val)
         let hour = if args.length() > 0 {
           to_number(args[0])
@@ -1281,24 +1023,13 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
         let v = time_clip(make_date_value(day(t), new_time))
         set_date_value(this_val, v)
         Number(v)
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Date.prototype.setUTCHours(hour [, min [, sec [, ms]]])
   date_proto_props["setUTCHours"] = date_proto_props["setHours"]
 
   // Date.prototype.setDate(date)
-  date_proto_props["setDate"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("setDate", fn(this_val, args) raise {
+  date_proto_props["setDate"] = make_method_func("setDate", 1, fn(this_val, args) raise {
         let t = get_date_value(this_val)
         let dt = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
         let new_day = make_day(
@@ -1309,24 +1040,13 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
         let v = time_clip(make_date_value(new_day, time_within_day(t)))
         set_date_value(this_val, v)
         Number(v)
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Date.prototype.setUTCDate(date)
   date_proto_props["setUTCDate"] = date_proto_props["setDate"]
 
   // Date.prototype.setMonth(month [, date])
-  date_proto_props["setMonth"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("setMonth", fn(this_val, args) raise {
+  date_proto_props["setMonth"] = make_method_func("setMonth", 2, fn(this_val, args) raise {
         let t = get_date_value(this_val)
         let month = if args.length() > 0 {
           to_number(args[0])
@@ -1342,24 +1062,13 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
         let v = time_clip(make_date_value(new_day, time_within_day(t)))
         set_date_value(this_val, v)
         Number(v)
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Date.prototype.setUTCMonth(month [, date])
   date_proto_props["setUTCMonth"] = date_proto_props["setMonth"]
 
   // Date.prototype.setFullYear(year [, month [, date]])
-  date_proto_props["setFullYear"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("setFullYear", fn(this_val, args) raise {
+  date_proto_props["setFullYear"] = make_method_func("setFullYear", 3, fn(this_val, args) raise {
         let mut t = get_date_value(this_val)
         if t.is_nan() {
           t = 0.0 // Use +0 if current value is NaN per spec
@@ -1383,24 +1092,13 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
         let v = time_clip(make_date_value(new_day, time_within_day(t)))
         set_date_value(this_val, v)
         Number(v)
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Date.prototype.setUTCFullYear(year [, month [, date]])
   date_proto_props["setUTCFullYear"] = date_proto_props["setFullYear"]
 
   // Date.prototype.setYear(year) - deprecated Annex B
-  date_proto_props["setYear"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("setYear", fn(this_val, args) raise {
+  date_proto_props["setYear"] = make_method_func("setYear", 1, fn(this_val, args) raise {
         let mut t = get_date_value(this_val)
         if t.is_nan() {
           t = 0.0
@@ -1428,198 +1126,77 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
         let v = time_clip(make_date_value(new_day, time_within_day(t)))
         set_date_value(this_val, v)
         Number(v)
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Date.prototype.toString()
-  date_proto_props["toString"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("toString", fn(this_val, _args) raise {
+  date_proto_props["toString"] = make_method_func("toString", 0, fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         String_(date_to_string(t))
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Date.prototype.toDateString()
-  date_proto_props["toDateString"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("toDateString", fn(this_val, _args) raise {
+  date_proto_props["toDateString"] = make_method_func("toDateString", 0, fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         String_(date_to_date_string(t))
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Date.prototype.toTimeString()
-  date_proto_props["toTimeString"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("toTimeString", fn(this_val, _args) raise {
+  date_proto_props["toTimeString"] = make_method_func("toTimeString", 0, fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         String_(date_to_time_string(t))
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Date.prototype.toISOString()
-  date_proto_props["toISOString"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("toISOString", fn(this_val, _args) raise {
+  date_proto_props["toISOString"] = make_method_func("toISOString", 0, fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         String_(date_to_iso_string(t))
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Date.prototype.toUTCString()
-  date_proto_props["toUTCString"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("toUTCString", fn(this_val, _args) raise {
+  date_proto_props["toUTCString"] = make_method_func("toUTCString", 0, fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         String_(date_to_utc_string(t))
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Date.prototype.toGMTString() - alias for toUTCString
   date_proto_props["toGMTString"] = date_proto_props["toUTCString"]
 
   // Date.prototype.toJSON()
-  date_proto_props["toJSON"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("toJSON", fn(this_val, _args) raise {
+  date_proto_props["toJSON"] = make_method_func("toJSON", 1, fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         if t.is_nan() || t.is_inf() {
           Null
         } else {
           String_(date_to_iso_string(t))
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Date.prototype.valueOf()
-  date_proto_props["valueOf"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("valueOf", fn(this_val, _args) raise {
+  date_proto_props["valueOf"] = make_method_func("valueOf", 0, fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         Number(t)
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Date.prototype.toLocaleDateString() - simplified, same as toDateString
-  date_proto_props["toLocaleDateString"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("toLocaleDateString", fn(this_val, _args) raise {
+  date_proto_props["toLocaleDateString"] = make_method_func("toLocaleDateString", 0, fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         String_(date_to_date_string(t))
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Date.prototype.toLocaleTimeString() - simplified, same as toTimeString
-  date_proto_props["toLocaleTimeString"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("toLocaleTimeString", fn(this_val, _args) raise {
+  date_proto_props["toLocaleTimeString"] = make_method_func("toLocaleTimeString", 0, fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         String_(date_to_time_string(t))
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Date.prototype.toLocaleString() - simplified, same as toString
-  date_proto_props["toLocaleString"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("toLocaleString", fn(this_val, _args) raise {
+  date_proto_props["toLocaleString"] = make_method_func("toLocaleString", 0, fn(this_val, _args) raise {
         let t = get_date_value(this_val)
         String_(date_to_string(t))
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Date.prototype[Symbol.toPrimitive]
-  let to_primitive_method = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("[Symbol.toPrimitive]", fn(this_val, args) raise {
+  let to_primitive_method = make_method_func("[Symbol.toPrimitive]", 1, fn(this_val, args) raise {
         let hint = if args.length() > 0 {
           args[0].to_string()
         } else {
@@ -1631,13 +1208,57 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
           "string" | "default" => String_(date_to_string(t))
           _ => raise @errors.TypeError(message="Invalid hint: " + hint)
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
+
+  // Create descriptor map for Date.prototype methods (non-enumerable, writable, configurable)
+  let method_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+  let date_proto_descs : Map[String, PropDescriptor] = {}
+  date_proto_descs["getTime"] = method_desc
+  date_proto_descs["getFullYear"] = method_desc
+  date_proto_descs["getUTCFullYear"] = method_desc
+  date_proto_descs["getMonth"] = method_desc
+  date_proto_descs["getUTCMonth"] = method_desc
+  date_proto_descs["getDate"] = method_desc
+  date_proto_descs["getUTCDate"] = method_desc
+  date_proto_descs["getDay"] = method_desc
+  date_proto_descs["getUTCDay"] = method_desc
+  date_proto_descs["getHours"] = method_desc
+  date_proto_descs["getUTCHours"] = method_desc
+  date_proto_descs["getMinutes"] = method_desc
+  date_proto_descs["getUTCMinutes"] = method_desc
+  date_proto_descs["getSeconds"] = method_desc
+  date_proto_descs["getUTCSeconds"] = method_desc
+  date_proto_descs["getMilliseconds"] = method_desc
+  date_proto_descs["getUTCMilliseconds"] = method_desc
+  date_proto_descs["getTimezoneOffset"] = method_desc
+  date_proto_descs["getYear"] = method_desc
+  date_proto_descs["setTime"] = method_desc
+  date_proto_descs["setMilliseconds"] = method_desc
+  date_proto_descs["setUTCMilliseconds"] = method_desc
+  date_proto_descs["setSeconds"] = method_desc
+  date_proto_descs["setUTCSeconds"] = method_desc
+  date_proto_descs["setMinutes"] = method_desc
+  date_proto_descs["setUTCMinutes"] = method_desc
+  date_proto_descs["setHours"] = method_desc
+  date_proto_descs["setUTCHours"] = method_desc
+  date_proto_descs["setDate"] = method_desc
+  date_proto_descs["setUTCDate"] = method_desc
+  date_proto_descs["setMonth"] = method_desc
+  date_proto_descs["setUTCMonth"] = method_desc
+  date_proto_descs["setFullYear"] = method_desc
+  date_proto_descs["setUTCFullYear"] = method_desc
+  date_proto_descs["setYear"] = method_desc
+  date_proto_descs["toString"] = method_desc
+  date_proto_descs["toDateString"] = method_desc
+  date_proto_descs["toTimeString"] = method_desc
+  date_proto_descs["toISOString"] = method_desc
+  date_proto_descs["toUTCString"] = method_desc
+  date_proto_descs["toGMTString"] = method_desc
+  date_proto_descs["toJSON"] = method_desc
+  date_proto_descs["valueOf"] = method_desc
+  date_proto_descs["toLocaleDateString"] = method_desc
+  date_proto_descs["toLocaleTimeString"] = method_desc
+  date_proto_descs["toLocaleString"] = method_desc
 
   // Create the Date prototype object
   let date_proto : Value = Object({
@@ -1646,7 +1267,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     prototype: Null,
     callable: None,
     class_name: "Date",
-    descriptors: {},
+    descriptors: date_proto_descs,
     symbol_descriptors: {},
     extensible: true,
   })

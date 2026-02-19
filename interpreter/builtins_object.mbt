@@ -104,14 +104,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
   }
   // Object.keys, Object.values, Object.entries, Object.create, Object.assign,
   // Object.getPrototypeOf, Object.getOwnPropertyNames
-  let obj_proto : Value = Object({
-    properties: {
-      "toString": Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          MethodCallable("toString", fn(this_val, _args) raise {
+  let obj_proto : Value = make_method_func("toString", 0, fn(this_val, _args) raise {
             match this_val {
               Undefined => String_("[object Undefined]")
               Null => String_("[object Null]")
@@ -163,196 +156,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                   }
                 }
             }
-          }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      }),
-      "valueOf": Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          MethodCallable("valueOf", fn(this_val, _args) { this_val }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      }),
-      "hasOwnProperty": Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          MethodCallable("hasOwnProperty", fn(this_val, args) {
-            let key_val = if args.length() > 0 { args[0] } else { Undefined }
-            match this_val {
-              Object(data) =>
-                match key_val {
-                  Symbol(sym) => Bool(data.symbol_properties.contains(sym.id))
-                  _ => Bool(data.properties.contains(key_val.to_string()))
-                }
-              Array(data) => {
-                let key = key_val.to_string()
-                if key == "length" {
-                  Bool(true)
-                } else {
-                  let idx = @strconv.parse_int(key) catch { _ => -1 }
-                  Bool(
-                    idx >= 0 &&
-                    idx.to_string() == key &&
-                    idx < data.elements.length(),
-                  )
-                }
-              }
-              String_(s) => {
-                let key = key_val.to_string()
-                if key == "length" {
-                  Bool(true)
-                } else {
-                  let idx = @strconv.parse_int(key) catch { _ => -1 }
-                  Bool(idx >= 0 && idx.to_string() == key && idx < s.length())
-                }
-              }
-              _ => Bool(false)
-            }
-          }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      }),
-      "propertyIsEnumerable": Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          MethodCallable("propertyIsEnumerable", fn(this_val, args) {
-            let key_val = if args.length() > 0 { args[0] } else { Undefined }
-            let key = key_val.to_string()
-            match this_val {
-              Object(data) =>
-                if data.properties.contains(key) {
-                  match data.descriptors.get(key) {
-                    Some(d) => Bool(d.enumerable)
-                    None => Bool(true)
-                  }
-                } else {
-                  Bool(false)
-                }
-              Array(data) =>
-                if key == "length" {
-                  Bool(false) // length is not enumerable
-                } else {
-                  let idx = @strconv.parse_int(key) catch { _ => -1 }
-                  Bool(
-                    idx >= 0 &&
-                    idx.to_string() == key &&
-                    idx < data.elements.length(),
-                  )
-                }
-              String_(s) =>
-                if key == "length" {
-                  Bool(false)
-                } else {
-                  let idx = @strconv.parse_int(key) catch { _ => -1 }
-                  Bool(idx >= 0 && idx.to_string() == key && idx < s.length())
-                }
-              _ => Bool(false)
-            }
-          }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      }),
-      "isPrototypeOf": Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          MethodCallable("isPrototypeOf", fn(this_val, args) {
-            // Walk the argument's prototype chain looking for this_val
-            let arg = if args.length() > 0 { args[0] } else { Undefined }
-            let mut current : Value = match arg {
-              Object(data) => data.prototype
-              _ => return Bool(false)
-            }
-            while true {
-              match current {
-                Null | Undefined => return Bool(false)
-                Object(proto_data) => {
-                  // Compare by reference identity - check if this_val is the same object
-                  match this_val {
-                    Object(this_data) =>
-                      if physical_equal(this_data, proto_data) {
-                        return Bool(true)
-                      }
-                    _ => ()
-                  }
-                  current = proto_data.prototype
-                }
-                _ => return Bool(false)
-              }
-            }
-            Bool(false)
-          }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      }),
-    },
-    symbol_properties: {},
-    prototype: Null,
-    callable: None,
-    class_name: "Object",
-    descriptors: {
-      "toString": {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-      "valueOf": {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-      "hasOwnProperty": {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-      "propertyIsEnumerable": {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-      "isPrototypeOf": {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-    },
-    symbol_descriptors: {},
-    extensible: true,
-  })
+          })
   // Store Object.prototype so plain objects {} can link to it
   env.def_builtin("[[ObjectPrototype]]", obj_proto)
   env.def_builtin(
@@ -3019,14 +2823,11 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
 
   // Create Array.prototype with all array methods
   let array_proto_props : Map[String, Value] = {}
+  let array_proto_descs : Map[String, PropDescriptor] = {}
+  let method_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
 
   // Non-callback methods (using MethodCallable for this-aware dispatch)
-  array_proto_props["push"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("push", fn(this_val, args) raise {
+  array_proto_props["push"] = make_method_func("push", 1, fn(this_val, args) raise {
         match this_val {
           Array(arr) => {
             for arg in args {
@@ -3036,19 +2837,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           _ => raise @errors.TypeError(message="push called on non-array")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["pop"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("pop", fn(this_val, _args) raise {
+      })
+  array_proto_props["pop"] = make_method_func("pop", 0, fn(this_val, _args) raise {
         match this_val {
           Array(arr) =>
             if arr.elements.length() == 0 {
@@ -3058,19 +2848,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             }
           _ => raise @errors.TypeError(message="pop called on non-array")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["shift"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("shift", fn(this_val, _args) raise {
+      })
+  array_proto_props["shift"] = make_method_func("shift", 0, fn(this_val, _args) raise {
         match this_val {
           Array(arr) => {
             if arr.elements.length() == 0 {
@@ -3091,19 +2870,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           _ => raise @errors.TypeError(message="shift called on non-array")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["unshift"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("unshift", fn(this_val, args) raise {
+      })
+  array_proto_props["unshift"] = make_method_func("unshift", 1, fn(this_val, args) raise {
         match this_val {
           Array(arr) => {
             let old : Array[Value] = []
@@ -3123,19 +2891,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           _ => raise @errors.TypeError(message="unshift called on non-array")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["join"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("join", fn(this_val, args) {
+      })
+  array_proto_props["join"] = make_method_func("join", 1, fn(this_val, args) {
         let len = to_array_like_length(this_val)
         let sep = if args.length() > 0 {
           match args[0] {
@@ -3154,19 +2911,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
         }
         String_(parts.join(sep))
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["indexOf"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("indexOf", fn(this_val, args) raise {
+      })
+  array_proto_props["indexOf"] = make_method_func("indexOf", 1, fn(this_val, args) raise {
         let len = to_array_like_length(this_val)
         let search = if args.length() > 0 { args[0] } else { Undefined }
         let from_idx = if args.length() > 1 {
@@ -3192,19 +2938,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
         }
         Number(-1.0)
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["lastIndexOf"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("lastIndexOf", fn(this_val, args) raise {
+      })
+  array_proto_props["lastIndexOf"] = make_method_func("lastIndexOf", 1, fn(this_val, args) raise {
         let len = to_array_like_length(this_val)
         let search = if args.length() > 0 { args[0] } else { Undefined }
         let start = if args.length() > 1 {
@@ -3227,19 +2962,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
         }
         Number(-1.0)
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["includes"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("includes", fn(this_val, args) raise {
+      })
+  array_proto_props["includes"] = make_method_func("includes", 1, fn(this_val, args) raise {
         let len = to_array_like_length(this_val)
         let search = if args.length() > 0 { args[0] } else { Undefined }
         let from_idx = if args.length() > 1 {
@@ -3263,19 +2987,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
         }
         Bool(false)
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["slice"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("slice", fn(this_val, args) raise {
+      })
+  array_proto_props["slice"] = make_method_func("slice", 2, fn(this_val, args) raise {
         let alen = to_array_like_length(this_val)
         let mut start = if args.length() > 0 {
           to_number(args[0]).to_int()
@@ -3310,19 +3023,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           result.push(get_array_like_element(this_val, i))
         }
         Array({ elements: result })
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["concat"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("concat", fn(this_val, args) {
+      })
+  array_proto_props["concat"] = make_method_func("concat", 1, fn(this_val, args) {
         let result : Array[Value] = []
         // Add elements from this
         let len = to_array_like_length(this_val)
@@ -3346,19 +3048,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
         }
         Array({ elements: result })
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["reverse"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("reverse", fn(this_val, _args) raise {
+      })
+  array_proto_props["reverse"] = make_method_func("reverse", 0, fn(this_val, _args) raise {
         match this_val {
           Array(arr) => {
             arr.elements.rev_in_place()
@@ -3366,19 +3057,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           _ => raise @errors.TypeError(message="reverse called on non-array")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["fill"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("fill", fn(this_val, args) raise {
+      })
+  array_proto_props["fill"] = make_method_func("fill", 1, fn(this_val, args) raise {
         match this_val {
           Array(arr) => {
             let fill_val = if args.length() > 0 { args[0] } else { Undefined }
@@ -3408,19 +3088,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           _ => raise @errors.TypeError(message="fill called on non-array")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["toString"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("toString", fn(this_val, _args) {
+      })
+  array_proto_props["toString"] = make_method_func("toString", 0, fn(this_val, _args) {
         let len = to_array_like_length(this_val)
         let parts : Array[String] = []
         for i = 0; i < len; i = i + 1 {
@@ -3431,19 +3100,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
         }
         String_(parts.join(","))
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["at"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("at", fn(this_val, args) raise {
+      })
+  array_proto_props["at"] = make_method_func("at", 1, fn(this_val, args) raise {
         let len = to_array_like_length(this_val)
         let idx = if args.length() > 0 {
           to_number(args[0]).to_int()
@@ -3456,19 +3114,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         } else {
           Undefined
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["toLocaleString"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("toLocaleString", fn(this_val, _args) {
+      })
+  array_proto_props["toLocaleString"] = make_method_func("toLocaleString", 0, fn(this_val, _args) {
         let len = to_array_like_length(this_val)
         let parts : Array[String] = []
         for i = 0; i < len; i = i + 1 {
@@ -3479,21 +3126,10 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
         }
         String_(parts.join(","))
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Callback-requiring methods (using InterpreterCallable)
-  array_proto_props["forEach"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("forEach", fn(interp, this_val, args) raise {
+  array_proto_props["forEach"] = make_interp_method_func("forEach", 1, fn(interp, this_val, args) raise {
         let callback = if args.length() > 0 { args[0] } else { Undefined }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
@@ -3513,19 +3149,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
         }
         Undefined
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["map"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("map", fn(interp, this_val, args) raise {
+      })
+  array_proto_props["map"] = make_interp_method_func("map", 1, fn(interp, this_val, args) raise {
         let callback = if args.length() > 0 { args[0] } else { Undefined }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
@@ -3549,19 +3174,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
         }
         Array({ elements: result })
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["filter"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("filter", fn(interp, this_val, args) raise {
+      })
+  array_proto_props["filter"] = make_interp_method_func("filter", 1, fn(interp, this_val, args) raise {
         let callback = if args.length() > 0 { args[0] } else { Undefined }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
@@ -3582,19 +3196,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
         }
         Array({ elements: result })
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["reduce"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("reduce", fn(interp, this_val, args) raise {
+      })
+  array_proto_props["reduce"] = make_interp_method_func("reduce", 1, fn(interp, this_val, args) raise {
         let callback = if args.length() > 0 { args[0] } else { Undefined }
         let loc = @token.Loc::default()
         let len = to_array_like_length(this_val)
@@ -3627,19 +3230,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
         }
         acc
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["reduceRight"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("reduceRight", fn(interp, this_val, args) raise {
+      })
+  array_proto_props["reduceRight"] = make_interp_method_func("reduceRight", 1, fn(interp, this_val, args) raise {
         let callback = if args.length() > 0 { args[0] } else { Undefined }
         let loc = @token.Loc::default()
         let len = to_array_like_length(this_val)
@@ -3672,19 +3264,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
         }
         acc
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["find"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("find", fn(interp, this_val, args) raise {
+      })
+  array_proto_props["find"] = make_interp_method_func("find", 1, fn(interp, this_val, args) raise {
         let callback = if args.length() > 0 { args[0] } else { Undefined }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
@@ -3702,19 +3283,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
         }
         Undefined
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["findIndex"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("findIndex", fn(interp, this_val, args) raise {
+      })
+  array_proto_props["findIndex"] = make_interp_method_func("findIndex", 1, fn(interp, this_val, args) raise {
         let callback = if args.length() > 0 { args[0] } else { Undefined }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
@@ -3732,19 +3302,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
         }
         Number(-1.0)
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["findLast"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("findLast", fn(interp, this_val, args) raise {
+      })
+  array_proto_props["findLast"] = make_interp_method_func("findLast", 1, fn(interp, this_val, args) raise {
         let callback = if args.length() > 0 { args[0] } else { Undefined }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
@@ -3762,19 +3321,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
         }
         Undefined
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["findLastIndex"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("findLastIndex", fn(interp, this_val, args) raise {
+      })
+  array_proto_props["findLastIndex"] = make_interp_method_func("findLastIndex", 1, fn(interp, this_val, args) raise {
         let callback = if args.length() > 0 { args[0] } else { Undefined }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
@@ -3792,19 +3340,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
         }
         Number(-1.0)
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["every"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("every", fn(interp, this_val, args) raise {
+      })
+  array_proto_props["every"] = make_interp_method_func("every", 1, fn(interp, this_val, args) raise {
         let callback = if args.length() > 0 { args[0] } else { Undefined }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
@@ -3827,19 +3364,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
         }
         Bool(true)
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["some"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("some", fn(interp, this_val, args) raise {
+      })
+  array_proto_props["some"] = make_interp_method_func("some", 1, fn(interp, this_val, args) raise {
         let callback = if args.length() > 0 { args[0] } else { Undefined }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
@@ -3862,19 +3388,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
         }
         Bool(false)
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["sort"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("sort", fn(interp, this_val, args) raise {
+      })
+  array_proto_props["sort"] = make_interp_method_func("sort", 1, fn(interp, this_val, args) raise {
         match this_val {
           Array(arr) => {
             if args.length() > 0 {
@@ -3951,19 +3466,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           _ => raise @errors.TypeError(message="sort called on non-array")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["flat"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("flat", fn(this_val, args) raise {
+      })
+  array_proto_props["flat"] = make_method_func("flat", 0, fn(this_val, args) raise {
         match this_val {
           Array(arr) => {
             let depth = if args.length() > 0 {
@@ -3977,19 +3481,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           _ => raise @errors.TypeError(message="flat called on non-array")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["flatMap"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("flatMap", fn(interp, this_val, args) raise {
+      })
+  array_proto_props["flatMap"] = make_interp_method_func("flatMap", 1, fn(interp, this_val, args) raise {
         match this_val {
           Array(arr) => {
             let callback = if args.length() > 0 { args[0] } else { Undefined }
@@ -4015,19 +3508,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           _ => raise @errors.TypeError(message="flatMap called on non-array")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["splice"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("splice", fn(this_val, args) raise {
+      })
+  array_proto_props["splice"] = make_method_func("splice", 2, fn(this_val, args) raise {
         match this_val {
           Array(arr) => {
             let alen = arr.elements.length()
@@ -4082,19 +3564,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           _ => raise @errors.TypeError(message="splice called on non-array")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["copyWithin"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("copyWithin", fn(this_val, args) raise {
+      })
+  array_proto_props["copyWithin"] = make_method_func("copyWithin", 2, fn(this_val, args) raise {
         match this_val {
           Array(arr) => {
             let len = arr.elements.length()
@@ -4157,19 +3628,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           _ => raise @errors.TypeError(message="copyWithin called on non-array")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["entries"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("entries", fn(this_val, _args) raise {
+      })
+  array_proto_props["entries"] = make_method_func("entries", 0, fn(this_val, _args) raise {
         match this_val {
           Array(arr) => {
             let result : Array[Value] = []
@@ -4182,19 +3642,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           _ => raise @errors.TypeError(message="entries called on non-array")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["keys"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("keys", fn(this_val, _args) raise {
+      })
+  array_proto_props["keys"] = make_method_func("keys", 0, fn(this_val, _args) raise {
         match this_val {
           Array(arr) => {
             let result : Array[Value] = []
@@ -4205,19 +3654,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           _ => raise @errors.TypeError(message="keys called on non-array")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["values"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("values", fn(this_val, _args) raise {
+      })
+  array_proto_props["values"] = make_method_func("values", 0, fn(this_val, _args) raise {
         match this_val {
           Array(arr) => {
             // Return a copy to prevent mutation of the original
@@ -4229,19 +3667,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           _ => raise @errors.TypeError(message="values called on non-array")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["toReversed"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("toReversed", fn(this_val, _args) raise {
+      })
+  array_proto_props["toReversed"] = make_method_func("toReversed", 0, fn(this_val, _args) raise {
         match this_val {
           Array(arr) => {
             let result : Array[Value] = []
@@ -4252,19 +3679,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           _ => raise @errors.TypeError(message="toReversed called on non-array")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["toSorted"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("toSorted", fn(interp, this_val, args) raise {
+      })
+  array_proto_props["toSorted"] = make_interp_method_func("toSorted", 1, fn(interp, this_val, args) raise {
         match this_val {
           Array(arr) => {
             let result : Array[Value] = []
@@ -4345,19 +3761,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           _ => raise @errors.TypeError(message="toSorted called on non-array")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["toSpliced"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("toSpliced", fn(this_val, args) raise {
+      })
+  array_proto_props["toSpliced"] = make_method_func("toSpliced", 2, fn(this_val, args) raise {
         match this_val {
           Array(arr) => {
             let len = arr.elements.length()
@@ -4401,19 +3806,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           _ => raise @errors.TypeError(message="toSpliced called on non-array")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["with"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("with", fn(this_val, args) raise {
+      })
+  array_proto_props["with"] = make_method_func("with", 2, fn(this_val, args) raise {
         match this_val {
           Array(arr) => {
             let idx = if args.length() > 0 {
@@ -4439,20 +3833,52 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           _ => raise @errors.TypeError(message="with called on non-array")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
+  array_proto_descs["push"] = method_desc
+  array_proto_descs["pop"] = method_desc
+  array_proto_descs["shift"] = method_desc
+  array_proto_descs["unshift"] = method_desc
+  array_proto_descs["join"] = method_desc
+  array_proto_descs["indexOf"] = method_desc
+  array_proto_descs["lastIndexOf"] = method_desc
+  array_proto_descs["includes"] = method_desc
+  array_proto_descs["slice"] = method_desc
+  array_proto_descs["concat"] = method_desc
+  array_proto_descs["reverse"] = method_desc
+  array_proto_descs["fill"] = method_desc
+  array_proto_descs["toString"] = method_desc
+  array_proto_descs["at"] = method_desc
+  array_proto_descs["toLocaleString"] = method_desc
+  array_proto_descs["forEach"] = method_desc
+  array_proto_descs["map"] = method_desc
+  array_proto_descs["filter"] = method_desc
+  array_proto_descs["reduce"] = method_desc
+  array_proto_descs["reduceRight"] = method_desc
+  array_proto_descs["find"] = method_desc
+  array_proto_descs["findIndex"] = method_desc
+  array_proto_descs["findLast"] = method_desc
+  array_proto_descs["findLastIndex"] = method_desc
+  array_proto_descs["every"] = method_desc
+  array_proto_descs["some"] = method_desc
+  array_proto_descs["sort"] = method_desc
+  array_proto_descs["flat"] = method_desc
+  array_proto_descs["flatMap"] = method_desc
+  array_proto_descs["splice"] = method_desc
+  array_proto_descs["copyWithin"] = method_desc
+  array_proto_descs["entries"] = method_desc
+  array_proto_descs["keys"] = method_desc
+  array_proto_descs["values"] = method_desc
+  array_proto_descs["toReversed"] = method_desc
+  array_proto_descs["toSorted"] = method_desc
+  array_proto_descs["toSpliced"] = method_desc
+  array_proto_descs["with"] = method_desc
   let array_proto : Value = Object({
     properties: array_proto_props,
     symbol_properties: {},
     prototype: obj_proto,
     callable: None,
     class_name: "Array",
-    descriptors: {},
+    descriptors: array_proto_descs,
     symbol_descriptors: {},
     extensible: true,
   })
@@ -4474,12 +3900,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     Array({ elements: args })
   })
   // Array.from with mapFn support using InterpreterCallable
-  array_props["from"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("from", fn(interp, _this_val, args) raise {
+  array_props["from"] = make_interp_method_func("from", 0, fn(interp, _this_val, args) raise {
         let source = if args.length() > 0 { args[0] } else { Undefined }
         let map_fn = if args.length() > 1 {
           match args[1] {
@@ -4553,13 +3974,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           _ => ()
         }
         Array({ elements, })
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
   env.def_builtin(
     "Array",
     Object({

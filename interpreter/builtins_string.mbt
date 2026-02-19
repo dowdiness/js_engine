@@ -1442,28 +1442,26 @@ pub fn setup_string_prototype(
       }
       for method_name in methods {
         let mname = method_name
-        data.properties[mname] = Object({
-          properties: {},
-          symbol_properties: {},
-          prototype: Null,
-          callable: Some(
-            MethodCallable(mname, fn(this_val, args) raise {
-              let s = this_to_string(this_val)
-              let meth_val = get_string_method(s, mname, annex_b~)
-              match meth_val {
-                Object(fdata) =>
-                  match fdata.callable {
-                    Some(NativeCallable(_, f)) => f(args)
-                    _ => Undefined
-                  }
+        // Look up the length from the underlying native method
+        let meth_length = match get_string_method("", mname, annex_b~) {
+          Object(fdata) =>
+            match fdata.properties.get("length") {
+              Some(Number(n)) => n.to_int()
+              _ => 0
+            }
+          _ => 0
+        }
+        data.properties[mname] = make_method_func(mname, meth_length, fn(this_val, args) raise {
+          let s = this_to_string(this_val)
+          let meth_val = get_string_method(s, mname, annex_b~)
+          match meth_val {
+            Object(fdata) =>
+              match fdata.callable {
+                Some(NativeCallable(_, f)) => f(args)
                 _ => Undefined
               }
-            }),
-          ),
-          class_name: "Function",
-          descriptors: {},
-          symbol_descriptors: {},
-          extensible: true,
+            _ => Undefined
+          }
         })
         // Make methods non-enumerable
         data.descriptors[mname] = {

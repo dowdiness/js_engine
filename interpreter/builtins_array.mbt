@@ -491,12 +491,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
   match prop {
     "forEach" => {
       let arr = data
-      Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          InterpreterCallable("forEach", fn(interp, this_val, args) raise {
+      make_interp_method_func("forEach", 1, fn(interp, this_val, args) raise {
             let _ = this_val
             let callback = if args.length() > 0 { args[0] } else { Undefined }
             let this_arg = if args.length() > 1 { args[1] } else { Undefined }
@@ -510,22 +505,11 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
               )
             }
             Undefined
-          }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      })
+          })
     }
     "map" => {
       let arr = data
-      Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          InterpreterCallable("map", fn(interp, this_val, args) raise {
+      make_interp_method_func("map", 1, fn(interp, this_val, args) raise {
             let _ = this_val
             let callback = if args.length() > 0 { args[0] } else { Undefined }
             let this_arg = if args.length() > 1 { args[1] } else { Undefined }
@@ -541,22 +525,11 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
               result.push(val)
             }
             Array({ elements: result })
-          }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      })
+          })
     }
     "filter" => {
       let arr = data
-      Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          InterpreterCallable("filter", fn(interp, this_val, args) raise {
+      make_interp_method_func("filter", 1, fn(interp, this_val, args) raise {
             let _ = this_val
             let callback = if args.length() > 0 { args[0] } else { Undefined }
             let this_arg = if args.length() > 1 { args[1] } else { Undefined }
@@ -574,22 +547,11 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
               }
             }
             Array({ elements: result })
-          }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      })
+          })
     }
     "reduce" => {
       let arr = data
-      Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          InterpreterCallable("reduce", fn(interp, this_val, args) raise {
+      make_interp_method_func("reduce", 1, fn(interp, this_val, args) raise {
             let _ = this_val
             let callback = if args.length() > 0 { args[0] } else { Undefined }
             let loc = @token.Loc::default()
@@ -615,22 +577,11 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
               )
             }
             acc
-          }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      })
+          })
     }
     "reduceRight" => {
       let arr = data
-      Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          InterpreterCallable("reduceRight", fn(interp, this_val, args) raise {
+      make_interp_method_func("reduceRight", 1, fn(interp, this_val, args) raise {
             let _ = this_val
             let callback = if args.length() > 0 { args[0] } else { Undefined }
             let loc = @token.Loc::default()
@@ -656,22 +607,11 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
               )
             }
             acc
-          }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      })
+          })
     }
     "find" => {
       let arr = data
-      Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          InterpreterCallable("find", fn(interp, this_val, args) raise {
+      make_interp_method_func("find", 1, fn(interp, this_val, args) raise {
             let _ = this_val
             let callback = if args.length() > 0 { args[0] } else { Undefined }
             let this_arg = if args.length() > 1 { args[1] } else { Undefined }
@@ -688,22 +628,11 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
               }
             }
             Undefined
-          }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      })
+          })
     }
     "findIndex" => {
       let arr = data
-      Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          InterpreterCallable("findIndex", fn(interp, this_val, args) raise {
+      make_interp_method_func("findIndex", 1, fn(interp, this_val, args) raise {
             let _ = this_val
             let callback = if args.length() > 0 { args[0] } else { Undefined }
             let this_arg = if args.length() > 1 { args[1] } else { Undefined }
@@ -720,22 +649,11 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
               }
             }
             Number(-1.0)
-          }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      })
+          })
     }
     "every" => {
       let arr = data
-      Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          InterpreterCallable("every", fn(interp, this_val, args) raise {
+      make_interp_method_func("every", 1, fn(interp, this_val, args) raise {
             let _ = this_val
             let callback = if args.length() > 0 { args[0] } else { Undefined }
             let this_arg = if args.length() > 1 { args[1] } else { Undefined }
@@ -752,22 +670,11 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
               }
             }
             Bool(true)
-          }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      })
+          })
     }
     "some" => {
       let arr = data
-      Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          InterpreterCallable("some", fn(interp, this_val, args) raise {
+      make_interp_method_func("some", 1, fn(interp, this_val, args) raise {
             let _ = this_val
             let callback = if args.length() > 0 { args[0] } else { Undefined }
             let this_arg = if args.length() > 1 { args[1] } else { Undefined }
@@ -784,22 +691,11 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
               }
             }
             Bool(false)
-          }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      })
+          })
     }
     "findLast" => {
       let arr = data
-      Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          InterpreterCallable("findLast", fn(interp, this_val, args) raise {
+      make_interp_method_func("findLast", 1, fn(interp, this_val, args) raise {
             let _ = this_val
             let callback = if args.length() > 0 { args[0] } else { Undefined }
             let this_arg = if args.length() > 1 { args[1] } else { Undefined }
@@ -816,22 +712,11 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
               }
             }
             Undefined
-          }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      })
+          })
     }
     "findLastIndex" => {
       let arr = data
-      Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          InterpreterCallable("findLastIndex", fn(
+      make_interp_method_func("findLastIndex", 1, fn(
             interp,
             this_val,
             args,
@@ -852,13 +737,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
               }
             }
             Number(-1.0)
-          }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      })
+          })
     }
     "toReversed" => {
       let arr = data
@@ -873,12 +752,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
     }
     "toSorted" => {
       let arr = data
-      Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          InterpreterCallable("toSorted", fn(interp, this_val, args) raise {
+      make_interp_method_func("toSorted", 1, fn(interp, this_val, args) raise {
             let _ = this_val
             // Create a copy of the array
             let result : Array[Value] = []
@@ -960,13 +834,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
               })
             }
             Array({ elements: result })
-          }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      })
+          })
     }
     "toSpliced" => {
       let arr = data
@@ -1056,12 +924,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
     }
     "flatMap" => {
       let arr = data
-      Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          InterpreterCallable("flatMap", fn(interp, this_val, args) raise {
+      make_interp_method_func("flatMap", 1, fn(interp, this_val, args) raise {
             let _ = this_val
             let callback = if args.length() > 0 { args[0] } else { Undefined }
             let this_arg = if args.length() > 1 { args[1] } else { Undefined }
@@ -1083,23 +946,12 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
               }
             }
             Array({ elements: result })
-          }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      })
+          })
     }
     "sort" => {
       // Sort with optional compareFn needs InterpreterCallable
       let arr = data
-      Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          InterpreterCallable("sort", fn(interp, this_val, args) raise {
+      make_interp_method_func("sort", 1, fn(interp, this_val, args) raise {
             let _ = this_val
             if args.length() > 0 {
               match args[0] {
@@ -1175,13 +1027,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
               })
             }
             Array(arr)
-          }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      })
+          })
     }
     _ => get_array_method(data, prop)
   }

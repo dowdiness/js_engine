@@ -313,12 +313,7 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
       enumerable: false,
       configurable: true,
       getter: Some(
-        Object({
-          properties: {},
-          symbol_properties: {},
-          prototype: Null,
-          callable: Some(
-            MethodCallable("get \{getter_name}", fn(this_val, _args) raise {
+        make_method_func("get \{getter_name}", 0, fn(this_val, _args) raise {
               match this_val {
                 Object(data) =>
                   if data.class_name == "DataView" {
@@ -336,25 +331,14 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
                     message="get DataView.prototype.\{getter_name} called on incompatible receiver",
                   )
               }
-            }),
-          ),
-          class_name: "Function",
-          descriptors: {},
-          symbol_descriptors: {},
-          extensible: true,
-        }),
+            })
       ),
       setter: None,
     }
   }
 
   // getInt8(byteOffset)
-  dv_proto_props["getInt8"] = Object({
-    properties: { "length": Number(1.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("getInt8", fn(this_val, args) raise {
+  dv_proto_props["getInt8"] = make_method_func("getInt8", 1, fn(this_val, args) raise {
         match this_val {
           Object(data) => {
             let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
@@ -365,21 +349,10 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
           }
           _ => raise @errors.TypeError(message="getInt8 called on non-DataView")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // getUint8(byteOffset)
-  dv_proto_props["getUint8"] = Object({
-    properties: { "length": Number(1.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("getUint8", fn(this_val, args) raise {
+  dv_proto_props["getUint8"] = make_method_func("getUint8", 1, fn(this_val, args) raise {
         match this_val {
           Object(data) => {
             let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
@@ -391,21 +364,10 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
           _ =>
             raise @errors.TypeError(message="getUint8 called on non-DataView")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // getInt16(byteOffset [, littleEndian])
-  dv_proto_props["getInt16"] = Object({
-    properties: { "length": Number(1.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("getInt16", fn(this_val, args) raise {
+  dv_proto_props["getInt16"] = make_method_func("getInt16", 1, fn(this_val, args) raise {
         match this_val {
           Object(data) => {
             let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
@@ -418,21 +380,10 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
           _ =>
             raise @errors.TypeError(message="getInt16 called on non-DataView")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // getUint16(byteOffset [, littleEndian])
-  dv_proto_props["getUint16"] = Object({
-    properties: { "length": Number(1.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("getUint16", fn(this_val, args) raise {
+  dv_proto_props["getUint16"] = make_method_func("getUint16", 1, fn(this_val, args) raise {
         match this_val {
           Object(data) => {
             let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
@@ -445,21 +396,10 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
           _ =>
             raise @errors.TypeError(message="getUint16 called on non-DataView")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // getInt32(byteOffset [, littleEndian])
-  dv_proto_props["getInt32"] = Object({
-    properties: { "length": Number(1.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("getInt32", fn(this_val, args) raise {
+  dv_proto_props["getInt32"] = make_method_func("getInt32", 1, fn(this_val, args) raise {
         match this_val {
           Object(data) => {
             let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
@@ -472,21 +412,10 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
           _ =>
             raise @errors.TypeError(message="getInt32 called on non-DataView")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // getUint32(byteOffset [, littleEndian])
-  dv_proto_props["getUint32"] = Object({
-    properties: { "length": Number(1.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("getUint32", fn(this_val, args) raise {
+  dv_proto_props["getUint32"] = make_method_func("getUint32", 1, fn(this_val, args) raise {
         match this_val {
           Object(data) => {
             let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
@@ -499,21 +428,10 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
           _ =>
             raise @errors.TypeError(message="getUint32 called on non-DataView")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // getFloat32(byteOffset [, littleEndian])
-  dv_proto_props["getFloat32"] = Object({
-    properties: { "length": Number(1.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("getFloat32", fn(this_val, args) raise {
+  dv_proto_props["getFloat32"] = make_method_func("getFloat32", 1, fn(this_val, args) raise {
         match this_val {
           Object(data) => {
             let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
@@ -526,21 +444,10 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
           _ =>
             raise @errors.TypeError(message="getFloat32 called on non-DataView")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // getFloat64(byteOffset [, littleEndian])
-  dv_proto_props["getFloat64"] = Object({
-    properties: { "length": Number(1.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("getFloat64", fn(this_val, args) raise {
+  dv_proto_props["getFloat64"] = make_method_func("getFloat64", 1, fn(this_val, args) raise {
         match this_val {
           Object(data) => {
             let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
@@ -553,21 +460,10 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
           _ =>
             raise @errors.TypeError(message="getFloat64 called on non-DataView")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // setInt8(byteOffset, value)
-  dv_proto_props["setInt8"] = Object({
-    properties: { "length": Number(2.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("setInt8", fn(this_val, args) raise {
+  dv_proto_props["setInt8"] = make_method_func("setInt8", 2, fn(this_val, args) raise {
         match this_val {
           Object(data) => {
             let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
@@ -580,21 +476,10 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
           }
           _ => raise @errors.TypeError(message="setInt8 called on non-DataView")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // setUint8(byteOffset, value)
-  dv_proto_props["setUint8"] = Object({
-    properties: { "length": Number(2.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("setUint8", fn(this_val, args) raise {
+  dv_proto_props["setUint8"] = make_method_func("setUint8", 2, fn(this_val, args) raise {
         match this_val {
           Object(data) => {
             let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
@@ -608,21 +493,10 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
           _ =>
             raise @errors.TypeError(message="setUint8 called on non-DataView")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // setInt16(byteOffset, value [, littleEndian])
-  dv_proto_props["setInt16"] = Object({
-    properties: { "length": Number(2.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("setInt16", fn(this_val, args) raise {
+  dv_proto_props["setInt16"] = make_method_func("setInt16", 2, fn(this_val, args) raise {
         match this_val {
           Object(data) => {
             let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
@@ -637,21 +511,10 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
           _ =>
             raise @errors.TypeError(message="setInt16 called on non-DataView")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // setUint16(byteOffset, value [, littleEndian])
-  dv_proto_props["setUint16"] = Object({
-    properties: { "length": Number(2.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("setUint16", fn(this_val, args) raise {
+  dv_proto_props["setUint16"] = make_method_func("setUint16", 2, fn(this_val, args) raise {
         match this_val {
           Object(data) => {
             let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
@@ -666,21 +529,10 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
           _ =>
             raise @errors.TypeError(message="setUint16 called on non-DataView")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // setInt32(byteOffset, value [, littleEndian])
-  dv_proto_props["setInt32"] = Object({
-    properties: { "length": Number(2.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("setInt32", fn(this_val, args) raise {
+  dv_proto_props["setInt32"] = make_method_func("setInt32", 2, fn(this_val, args) raise {
         match this_val {
           Object(data) => {
             let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
@@ -695,21 +547,10 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
           _ =>
             raise @errors.TypeError(message="setInt32 called on non-DataView")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // setUint32(byteOffset, value [, littleEndian])
-  dv_proto_props["setUint32"] = Object({
-    properties: { "length": Number(2.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("setUint32", fn(this_val, args) raise {
+  dv_proto_props["setUint32"] = make_method_func("setUint32", 2, fn(this_val, args) raise {
         match this_val {
           Object(data) => {
             let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
@@ -724,21 +565,10 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
           _ =>
             raise @errors.TypeError(message="setUint32 called on non-DataView")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // setFloat32(byteOffset, value [, littleEndian])
-  dv_proto_props["setFloat32"] = Object({
-    properties: { "length": Number(2.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("setFloat32", fn(this_val, args) raise {
+  dv_proto_props["setFloat32"] = make_method_func("setFloat32", 2, fn(this_val, args) raise {
         match this_val {
           Object(data) => {
             let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
@@ -753,21 +583,10 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
           _ =>
             raise @errors.TypeError(message="setFloat32 called on non-DataView")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // setFloat64(byteOffset, value [, littleEndian])
-  dv_proto_props["setFloat64"] = Object({
-    properties: { "length": Number(2.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("setFloat64", fn(this_val, args) raise {
+  dv_proto_props["setFloat64"] = make_method_func("setFloat64", 2, fn(this_val, args) raise {
         match this_val {
           Object(data) => {
             let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
@@ -782,13 +601,30 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
           _ =>
             raise @errors.TypeError(message="setFloat64 called on non-DataView")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
+
+  // Non-enumerable descriptors for all DataView prototype methods
+  let method_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+  dv_proto_descs["getInt8"] = method_desc
+  dv_proto_descs["getUint8"] = method_desc
+  dv_proto_descs["getInt16"] = method_desc
+  dv_proto_descs["getUint16"] = method_desc
+  dv_proto_descs["getInt32"] = method_desc
+  dv_proto_descs["getUint32"] = method_desc
+  dv_proto_descs["getFloat32"] = method_desc
+  dv_proto_descs["getFloat64"] = method_desc
+  dv_proto_descs["getBigInt64"] = method_desc
+  dv_proto_descs["getBigUint64"] = method_desc
+  dv_proto_descs["setInt8"] = method_desc
+  dv_proto_descs["setUint8"] = method_desc
+  dv_proto_descs["setInt16"] = method_desc
+  dv_proto_descs["setUint16"] = method_desc
+  dv_proto_descs["setInt32"] = method_desc
+  dv_proto_descs["setUint32"] = method_desc
+  dv_proto_descs["setFloat32"] = method_desc
+  dv_proto_descs["setFloat64"] = method_desc
+  dv_proto_descs["setBigInt64"] = method_desc
+  dv_proto_descs["setBigUint64"] = method_desc
 
   // Symbol.toStringTag
   let dv_proto_sym_props : Map[Int, Value] = {}

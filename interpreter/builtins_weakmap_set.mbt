@@ -161,12 +161,7 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
   let wm_proto_props : Map[String, Value] = {}
 
   // WeakMap.prototype.get(key)
-  wm_proto_props["get"] = Object({
-    properties: { "length": Number(1.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("get", fn(this_val, args) raise {
+  wm_proto_props["get"] = make_method_func("get", 1, fn(this_val, args) raise {
         match this_val {
           Object(data) =>
             match get_weakmap_id(data) {
@@ -195,29 +190,10 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
               message="Method WeakMap.prototype.get called on incompatible receiver",
             )
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {
-      "length": {
-        writable: false,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-    },
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // WeakMap.prototype.set(key, value)
-  wm_proto_props["set"] = Object({
-    properties: { "length": Number(2.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("set", fn(this_val, args) raise {
+  wm_proto_props["set"] = make_method_func("set", 1, fn(this_val, args) raise {
         match this_val {
           Object(data) =>
             match get_weakmap_id(data) {
@@ -258,29 +234,10 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
               message="Method WeakMap.prototype.set called on incompatible receiver",
             )
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {
-      "length": {
-        writable: false,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-    },
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // WeakMap.prototype.has(key)
-  wm_proto_props["has"] = Object({
-    properties: { "length": Number(1.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("has", fn(this_val, args) raise {
+  wm_proto_props["has"] = make_method_func("has", 1, fn(this_val, args) raise {
         match this_val {
           Object(data) =>
             match get_weakmap_id(data) {
@@ -309,29 +266,10 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
               message="Method WeakMap.prototype.has called on incompatible receiver",
             )
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {
-      "length": {
-        writable: false,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-    },
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // WeakMap.prototype.delete(key)
-  wm_proto_props["delete"] = Object({
-    properties: { "length": Number(1.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("delete", fn(this_val, args) raise {
+  wm_proto_props["delete"] = make_method_func("delete", 1, fn(this_val, args) raise {
         match this_val {
           Object(data) =>
             match get_weakmap_id(data) {
@@ -361,29 +299,10 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
               message="Method WeakMap.prototype.delete called on incompatible receiver",
             )
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {
-      "length": {
-        writable: false,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-    },
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // WeakMap.prototype.getOrInsert(key, value)
-  wm_proto_props["getOrInsert"] = Object({
-    properties: { "length": Number(2.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("getOrInsert", fn(this_val, args) raise {
+  wm_proto_props["getOrInsert"] = make_method_func("getOrInsert", 0, fn(this_val, args) raise {
         match this_val {
           Object(data) =>
             match get_weakmap_id(data) {
@@ -424,29 +343,10 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
               message="Method WeakMap.prototype.getOrInsert called on incompatible receiver",
             )
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {
-      "length": {
-        writable: false,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-    },
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // WeakMap.prototype.getOrInsertComputed(key, callbackfn)
-  wm_proto_props["getOrInsertComputed"] = Object({
-    properties: { "length": Number(2.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("getOrInsertComputed", fn(
+  wm_proto_props["getOrInsertComputed"] = make_interp_method_func("getOrInsertComputed", 2, fn(
         interp,
         this_val,
         args,
@@ -542,21 +442,17 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
               message="Method WeakMap.prototype.getOrInsertComputed called on incompatible receiver",
             )
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {
-      "length": {
-        writable: false,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-    },
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
+
+  // Create descriptor map for WeakMap prototype methods
+  let wm_proto_descs : Map[String, PropDescriptor] = {}
+  let method_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+  wm_proto_descs["get"] = method_desc
+  wm_proto_descs["set"] = method_desc
+  wm_proto_descs["has"] = method_desc
+  wm_proto_descs["delete"] = method_desc
+  wm_proto_descs["getOrInsert"] = method_desc
+  wm_proto_descs["getOrInsertComputed"] = method_desc
 
   // Create WeakMap prototype
   let wm_proto_sym_props : Map[Int, Value] = {}
@@ -567,7 +463,7 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
     prototype: Null,
     callable: None,
     class_name: "WeakMap",
-    descriptors: {},
+    descriptors: wm_proto_descs,
     symbol_descriptors: {},
     extensible: true,
   })
@@ -576,12 +472,7 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
   weakmap_prototype_ref.val = Some(wm_proto)
 
   // WeakMap constructor
-  let wm_ctor = Object({
-    properties: { "prototype": wm_proto, "length": Number(0.0), "name": String_("WeakMap") },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("WeakMap", fn(interp, _this_val, args) raise {
+  let wm_ctor = make_interp_method_func("WeakMap", 0, fn(interp, _this_val, args) raise {
         if not(is_constructing.val) {
           raise @errors.TypeError(message="Constructor WeakMap requires 'new'")
         }
@@ -669,28 +560,7 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
           }
         }
         wm_obj
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {
-      "length": {
-        writable: false,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-      "name": {
-        writable: false,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-    },
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
   env.def_builtin("WeakMap", wm_ctor)
 
   // Set WeakMap.prototype.constructor = WeakMap
@@ -718,12 +588,7 @@ fn setup_weakset_builtins(env : Environment) -> Unit {
   let ws_proto_props : Map[String, Value] = {}
 
   // WeakSet.prototype.add(value)
-  ws_proto_props["add"] = Object({
-    properties: { "length": Number(1.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("add", fn(this_val, args) raise {
+  ws_proto_props["add"] = make_method_func("add", 1, fn(this_val, args) raise {
         match this_val {
           Object(data) =>
             match get_weakset_id(data) {
@@ -760,29 +625,10 @@ fn setup_weakset_builtins(env : Environment) -> Unit {
               message="Method WeakSet.prototype.add called on incompatible receiver",
             )
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {
-      "length": {
-        writable: false,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-    },
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // WeakSet.prototype.has(value)
-  ws_proto_props["has"] = Object({
-    properties: { "length": Number(1.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("has", fn(this_val, args) raise {
+  ws_proto_props["has"] = make_method_func("has", 1, fn(this_val, args) raise {
         match this_val {
           Object(data) =>
             match get_weakset_id(data) {
@@ -810,29 +656,10 @@ fn setup_weakset_builtins(env : Environment) -> Unit {
               message="Method WeakSet.prototype.has called on incompatible receiver",
             )
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {
-      "length": {
-        writable: false,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-    },
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // WeakSet.prototype.delete(value)
-  ws_proto_props["delete"] = Object({
-    properties: { "length": Number(1.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("delete", fn(this_val, args) raise {
+  ws_proto_props["delete"] = make_method_func("delete", 1, fn(this_val, args) raise {
         match this_val {
           Object(data) =>
             match get_weakset_id(data) {
@@ -861,21 +688,14 @@ fn setup_weakset_builtins(env : Environment) -> Unit {
               message="Method WeakSet.prototype.delete called on incompatible receiver",
             )
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {
-      "length": {
-        writable: false,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-    },
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
+
+  // Create descriptor map for WeakSet prototype methods
+  let ws_proto_descs : Map[String, PropDescriptor] = {}
+  let ws_method_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+  ws_proto_descs["add"] = ws_method_desc
+  ws_proto_descs["has"] = ws_method_desc
+  ws_proto_descs["delete"] = ws_method_desc
 
   // Create WeakSet prototype
   let ws_proto_sym_props : Map[Int, Value] = {}
@@ -886,7 +706,7 @@ fn setup_weakset_builtins(env : Environment) -> Unit {
     prototype: Null,
     callable: None,
     class_name: "WeakSet",
-    descriptors: {},
+    descriptors: ws_proto_descs,
     symbol_descriptors: {},
     extensible: true,
   })
@@ -895,12 +715,7 @@ fn setup_weakset_builtins(env : Environment) -> Unit {
   weakset_prototype_ref.val = Some(ws_proto)
 
   // WeakSet constructor
-  let ws_ctor = Object({
-    properties: { "prototype": ws_proto, "length": Number(0.0), "name": String_("WeakSet") },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("WeakSet", fn(interp, _this_val, args) raise {
+  let ws_ctor = make_interp_method_func("WeakSet", 0, fn(interp, _this_val, args) raise {
         if not(is_constructing.val) {
           raise @errors.TypeError(message="Constructor WeakSet requires 'new'")
         }
@@ -983,28 +798,7 @@ fn setup_weakset_builtins(env : Environment) -> Unit {
           }
         }
         ws_obj
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {
-      "length": {
-        writable: false,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-      "name": {
-        writable: false,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-    },
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
   env.def_builtin("WeakSet", ws_ctor)
 
   // Set WeakSet.prototype.constructor = WeakSet

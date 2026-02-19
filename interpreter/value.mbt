@@ -603,6 +603,64 @@ pub fn make_native_func_with_length(
 }
 
 ///|
+/// Helper to create a method function (MethodCallable) with name/length properties
+pub fn make_method_func(
+  name : String,
+  length : Int,
+  func : (Value, Array[Value]) -> Value raise Error,
+) -> Value {
+  let nf_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
+  let props : Map[String, Value] = {}
+  props["length"] = Number(length.to_double())
+  props["name"] = String_(name)
+  Object({
+    properties: props,
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(MethodCallable(name, func)),
+    class_name: "Function",
+    descriptors: { "name": nf_desc, "length": nf_desc },
+    symbol_descriptors: {},
+    extensible: true,
+  })
+}
+
+///|
+/// Helper to create an interpreter method function (InterpreterCallable) with name/length properties
+pub fn make_interp_method_func(
+  name : String,
+  length : Int,
+  func : (Interpreter, Value, Array[Value]) -> Value raise Error,
+) -> Value {
+  let nf_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
+  let props : Map[String, Value] = {}
+  props["length"] = Number(length.to_double())
+  props["name"] = String_(name)
+  Object({
+    properties: props,
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(InterpreterCallable(name, func)),
+    class_name: "Function",
+    descriptors: { "name": nf_desc, "length": nf_desc },
+    symbol_descriptors: {},
+    extensible: true,
+  })
+}
+
+///|
 /// Helper to create a basic object with default empty symbol maps
 pub fn make_object(
   properties : Map[String, Value],
@@ -886,18 +944,7 @@ pub fn get_iterator_proto() -> Value {
     None => {
       let iterator_sym = get_iterator_symbol()
       let proto_sym_props : Map[Int, Value] = {}
-      proto_sym_props[iterator_sym.id] = Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          MethodCallable("[Symbol.iterator]", fn(this_val, _args) { this_val }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      })
+      proto_sym_props[iterator_sym.id] = make_method_func("[Symbol.iterator]", 0, fn(this_val, _args) { this_val })
       let proto : Value = Object({
         properties: {},
         symbol_properties: proto_sym_props,
@@ -937,49 +984,12 @@ pub fn get_array_iterator_proto() -> Value {
         getter: None,
         setter: None,
       }
-      proto_sym_props[iterator_sym.id] = Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          MethodCallable("[Symbol.iterator]", fn(this_val, _args) { this_val }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      })
-      proto_props["next"] = Object({
-        properties: { "length": Number(0.0), "name": String_("next") },
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          MethodCallable("next", fn(_this_val, _args) raise {
+      proto_sym_props[iterator_sym.id] = make_method_func("[Symbol.iterator]", 0, fn(this_val, _args) { this_val })
+      proto_props["next"] = make_method_func("next", 1, fn(_this_val, _args) raise {
             raise @errors.TypeError(
               message="Array Iterator.prototype.next requires that |this| be an Array Iterator",
             )
-          }),
-        ),
-        class_name: "Function",
-        descriptors: {
-          "length": {
-            writable: false,
-            enumerable: false,
-            configurable: true,
-            getter: None,
-            setter: None,
-          },
-          "name": {
-            writable: false,
-            enumerable: false,
-            configurable: true,
-            getter: None,
-            setter: None,
-          },
-        },
-        symbol_descriptors: {},
-        extensible: true,
-      })
+          })
       let proto_descs : Map[String, PropDescriptor] = {}
       proto_descs["next"] = {
         writable: true,
@@ -1111,49 +1121,12 @@ pub fn get_string_iterator_proto() -> Value {
         getter: None,
         setter: None,
       }
-      proto_sym_props[iterator_sym.id] = Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          MethodCallable("[Symbol.iterator]", fn(this_val, _args) { this_val }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      })
-      proto_props["next"] = Object({
-        properties: { "length": Number(0.0), "name": String_("next") },
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          MethodCallable("next", fn(_this_val, _args) raise {
+      proto_sym_props[iterator_sym.id] = make_method_func("[Symbol.iterator]", 0, fn(this_val, _args) { this_val })
+      proto_props["next"] = make_method_func("next", 1, fn(_this_val, _args) raise {
             raise @errors.TypeError(
               message="String Iterator.prototype.next requires that |this| be a String Iterator",
             )
-          }),
-        ),
-        class_name: "Function",
-        descriptors: {
-          "length": {
-            writable: false,
-            enumerable: false,
-            configurable: true,
-            getter: None,
-            setter: None,
-          },
-          "name": {
-            writable: false,
-            enumerable: false,
-            configurable: true,
-            getter: None,
-            setter: None,
-          },
-        },
-        symbol_descriptors: {},
-        extensible: true,
-      })
+          })
       let str_proto_descs : Map[String, PropDescriptor] = {}
       str_proto_descs["next"] = {
         writable: true,

@@ -114,12 +114,7 @@ pub fn setup_arraybuffer_builtins(env : Environment) -> Unit {
     enumerable: false,
     configurable: true,
     getter: Some(
-      Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          MethodCallable("get byteLength", fn(this_val, _args) raise {
+      make_method_func("get byteLength", 0, fn(this_val, _args) raise {
             match this_val {
               Object(data) =>
                 if data.class_name == "ArrayBuffer" {
@@ -147,24 +142,13 @@ pub fn setup_arraybuffer_builtins(env : Environment) -> Unit {
                   message="get ArrayBuffer.prototype.byteLength called on incompatible receiver",
                 )
             }
-          }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      }),
+          })
     ),
     setter: None,
   }
 
   // ArrayBuffer.prototype.slice(begin, end)
-  ab_proto_props["slice"] = Object({
-    properties: { "length": Number(2.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("slice", fn(this_val, args) raise {
+  ab_proto_props["slice"] = make_method_func("slice", 2, fn(this_val, args) raise {
         match this_val {
           Object(data) =>
             if data.class_name == "ArrayBuffer" {
@@ -250,13 +234,7 @@ pub fn setup_arraybuffer_builtins(env : Environment) -> Unit {
               message="ArrayBuffer.prototype.slice called on non-ArrayBuffer",
             )
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Add Symbol.toStringTag
   let tostringtag_sym = get_tostringtag_symbol()

@@ -140,21 +140,10 @@ fn init_generator_prototype() -> Value {
   let descs : Map[String, PropDescriptor] = {}
 
   // .next(value)
-  props["next"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("next", fn(ip, this_val, args) raise {
+  props["next"] = make_interp_method_func("next", 1, fn(ip, this_val, args) raise {
         let arg = if args.length() > 0 { args[0] } else { Undefined }
         generator_resume(ip, this_val, Next(arg))
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
   descs["next"] = {
     writable: true,
     enumerable: false,
@@ -164,21 +153,10 @@ fn init_generator_prototype() -> Value {
   }
 
   // .throw(exception)
-  props["throw"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("throw", fn(ip, this_val, args) raise {
+  props["throw"] = make_interp_method_func("throw", 1, fn(ip, this_val, args) raise {
         let arg = if args.length() > 0 { args[0] } else { Undefined }
         generator_resume(ip, this_val, Throw(arg))
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
   descs["throw"] = {
     writable: true,
     enumerable: false,
@@ -188,21 +166,10 @@ fn init_generator_prototype() -> Value {
   }
 
   // .return(value)
-  props["return"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("return", fn(ip, this_val, args) raise {
+  props["return"] = make_interp_method_func("return", 1, fn(ip, this_val, args) raise {
         let arg = if args.length() > 0 { args[0] } else { Undefined }
         generator_resume(ip, this_val, Return(arg))
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
   descs["return"] = {
     writable: true,
     enumerable: false,
@@ -212,18 +179,7 @@ fn init_generator_prototype() -> Value {
   }
 
   // [Symbol.iterator]() { return this; }
-  sym_props[iterator_sym.id] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("[Symbol.iterator]", fn(this_val, _args) { this_val }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+  sym_props[iterator_sym.id] = make_method_func("[Symbol.iterator]", 0, fn(this_val, _args) { this_val })
   Object({
     properties: props,
     symbol_properties: sym_props,
@@ -267,12 +223,7 @@ pub fn setup_generator_function_constructor(
     extensible: true,
   })
   // GeneratorFunction constructor: GeneratorFunction(p1, p2, ..., body)
-  let gen_func_ctor : Value = Object({
-    properties: { "length": Number(1.0), "prototype": gen_func_proto, "name": String_("GeneratorFunction") },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("GeneratorFunction", fn(interp, _this, args) raise {
+  let gen_func_ctor : Value = make_interp_method_func("GeneratorFunction", 1, fn(interp, _this, args) raise {
         if args.length() == 0 {
           // No arguments: return empty generator function
           return interp.make_generator_function(
@@ -331,13 +282,7 @@ pub fn setup_generator_function_constructor(
           [],
           interp.global,
         )
-      }),
-    ),
-    class_name: "Function",
-    descriptors: { "name": nf_desc, "length": nf_desc },
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
   // Set up prototype chain: GeneratorFunction.prototype.constructor = GeneratorFunction
   match gen_func_proto {
     Object(data) => data.properties["constructor"] = gen_func_ctor

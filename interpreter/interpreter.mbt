@@ -6360,12 +6360,7 @@ fn Interpreter::get_property(
           }
           // Built-in Object methods
           if prop == "hasOwnProperty" {
-            return Object({
-              properties: {},
-              symbol_properties: {},
-              prototype: Null,
-              callable: Some(
-                MethodCallable("hasOwnProperty", fn(this_val, args) {
+            return make_method_func("hasOwnProperty", 1, fn(this_val, args) {
                   let key_val = if args.length() > 0 {
                     args[0]
                   } else {
@@ -6381,13 +6376,7 @@ fn Interpreter::get_property(
                       }
                     _ => Bool(false)
                   }
-                }),
-              ),
-              class_name: "Function",
-              descriptors: {},
-              symbol_descriptors: {},
-              extensible: true,
-            })
+                })
           }
           if prop == "toString" {
             return make_native_func("toString", fn(_args) {
@@ -6611,12 +6600,7 @@ fn Interpreter::get_computed_property(
                 if data.class_name == "String" {
                   match data.properties.get("[[StringData]]") {
                     Some(String_(_)) =>
-                      return Object({
-                        properties: {},
-                        symbol_properties: {},
-                        prototype: Null,
-                        callable: Some(
-                          MethodCallable("[Symbol.iterator]", fn(
+                      return make_method_func("[Symbol.iterator]", 0, fn(
                             this_val,
                             _args,
                           ) raise {
@@ -6638,13 +6622,7 @@ fn Interpreter::get_computed_property(
                               _ => this_val.to_string()
                             }
                             make_string_iterator_value(str)
-                          }),
-                        ),
-                        class_name: "Function",
-                        descriptors: {},
-                        symbol_descriptors: {},
-                        extensible: true,
-                      })
+                          })
                     _ => ()
                   }
                 } else if data.class_name == "Array" {
@@ -6661,20 +6639,9 @@ fn Interpreter::get_computed_property(
           let iterator_sym = get_iterator_symbol()
           if sym.id == iterator_sym.id {
             // Return a function that creates a string iterator
-            return Object({
-              properties: {},
-              symbol_properties: {},
-              prototype: Null,
-              callable: Some(
-                MethodCallable("[Symbol.iterator]", fn(_this_val, _args) {
+            return make_method_func("[Symbol.iterator]", 0, fn(_this_val, _args) {
                   make_string_iterator_value(s)
-                }),
-              ),
-              class_name: "Function",
-              descriptors: {},
-              symbol_descriptors: {},
-              extensible: true,
-            })
+                })
           }
           return Undefined
         }
@@ -6694,20 +6661,9 @@ fn Interpreter::get_computed_property(
               None => ()
             }
             // Return a function that creates an array iterator
-            return Object({
-              properties: {},
-              symbol_properties: {},
-              prototype: Null,
-              callable: Some(
-                MethodCallable("[Symbol.iterator]", fn(_this_val, _args) {
+            return make_method_func("[Symbol.iterator]", 0, fn(_this_val, _args) {
                   make_array_iterator_value(arr)
-                }),
-              ),
-              class_name: "Function",
-              descriptors: {},
-              symbol_descriptors: {},
-              extensible: true,
-            })
+                })
           }
           return Undefined
         }
@@ -7029,12 +6985,7 @@ fn Interpreter::get_computed_property(
           }
           // Built-in Object methods
           if prop == "hasOwnProperty" {
-            return Object({
-              properties: {},
-              symbol_properties: {},
-              prototype: Null,
-              callable: Some(
-                MethodCallable("hasOwnProperty", fn(this_val, args) {
+            return make_method_func("hasOwnProperty", 1, fn(this_val, args) {
                   let key_val = if args.length() > 0 {
                     args[0]
                   } else {
@@ -7050,13 +7001,7 @@ fn Interpreter::get_computed_property(
                       }
                     _ => Bool(false)
                   }
-                }),
-              ),
-              class_name: "Function",
-              descriptors: {},
-              symbol_descriptors: {},
-              extensible: true,
-            })
+                })
           }
           if prop == "toString" {
             return make_native_func("toString", fn(_args) {

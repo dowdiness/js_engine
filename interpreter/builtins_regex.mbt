@@ -1032,12 +1032,7 @@ pub fn make_regexp_object(pattern : String, flags : String) -> Value {
   props["dotAll"] = Bool(has_dotall)
   props["lastIndex"] = Number(0.0)
   // test method
-  props["test"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("test", fn(this_val, args) {
+  props["test"] = make_method_func("test", 1, fn(this_val, args) {
         let str = if args.length() > 0 { args[0].to_string() } else { "" }
         let start = if has_sticky || has_global {
           match this_val {
@@ -1075,20 +1070,9 @@ pub fn make_regexp_object(pattern : String, flags : String) -> Value {
             Bool(false)
           }
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
   // exec method
-  props["exec"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("exec", fn(this_val, args) {
+  props["exec"] = make_method_func("exec", 1, fn(this_val, args) {
         let str = if args.length() > 0 { args[0].to_string() } else { "" }
         let start = if has_sticky || has_global {
           match this_val {
@@ -1126,62 +1110,29 @@ pub fn make_regexp_object(pattern : String, flags : String) -> Value {
             Null
           }
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
   // Install well-known symbol methods on each RegExp object
   let sym_props : Map[Int, Value] = {}
 
   // [Symbol.match](string) - implements RegExp.prototype[@@match]
   let match_sym = get_match_symbol()
-  sym_props[match_sym.id] = Object({
-    properties: { "length": Number(1.0), "name": String_("[Symbol.match]") },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("[Symbol.match]", fn(this_val, args) {
+  sym_props[match_sym.id] = make_method_func("[Symbol.match]", 1, fn(this_val, args) {
         let str = if args.length() > 0 { args[0].to_string() } else { "" }
         let (pat, fl) = extract_regexp_source_flags(this_val)
         string_match_regex(str, pat, fl)
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // [Symbol.search](string) - implements RegExp.prototype[@@search]
   let search_sym = get_search_symbol()
-  sym_props[search_sym.id] = Object({
-    properties: { "length": Number(1.0), "name": String_("[Symbol.search]") },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("[Symbol.search]", fn(this_val, args) {
+  sym_props[search_sym.id] = make_method_func("[Symbol.search]", 1, fn(this_val, args) {
         let str = if args.length() > 0 { args[0].to_string() } else { "" }
         let (pat, fl) = extract_regexp_source_flags(this_val)
         string_search_regex(str, pat, fl)
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // [Symbol.replace](string, replaceValue) - implements RegExp.prototype[@@replace]
   let replace_sym = get_replace_symbol()
-  sym_props[replace_sym.id] = Object({
-    properties: { "length": Number(2.0), "name": String_("[Symbol.replace]") },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("[Symbol.replace]", fn(this_val, args) {
+  sym_props[replace_sym.id] = make_method_func("[Symbol.replace]", 2, fn(this_val, args) {
         let str = if args.length() > 0 { args[0].to_string() } else { "" }
         let replacement = if args.length() > 1 {
           args[1].to_string()
@@ -1190,22 +1141,11 @@ pub fn make_regexp_object(pattern : String, flags : String) -> Value {
         }
         let (pat, fl) = extract_regexp_source_flags(this_val)
         string_replace_regex(str, pat, fl, replacement)
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // [Symbol.split](string, limit) - implements RegExp.prototype[@@split]
   let split_sym = get_split_symbol()
-  sym_props[split_sym.id] = Object({
-    properties: { "length": Number(2.0), "name": String_("[Symbol.split]") },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("[Symbol.split]", fn(this_val, args) raise {
+  sym_props[split_sym.id] = make_method_func("[Symbol.split]", 0, fn(this_val, args) raise {
         let str = if args.length() > 0 { args[0].to_string() } else { "" }
         let limit : Int64 = if args.length() > 1 {
           match args[1] {
@@ -1286,13 +1226,27 @@ pub fn make_regexp_object(pattern : String, flags : String) -> Value {
         }
         results.push(String_(buf.to_string()))
         Array({ elements: results })
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
+
+  // Create descriptor maps for non-enumerable method properties
+  let re_descs : Map[String, PropDescriptor] = {}
+  let re_method_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+  re_descs["source"] = re_method_desc
+  re_descs["flags"] = re_method_desc
+  re_descs["global"] = re_method_desc
+  re_descs["ignoreCase"] = re_method_desc
+  re_descs["multiline"] = re_method_desc
+  re_descs["sticky"] = re_method_desc
+  re_descs["unicode"] = re_method_desc
+  re_descs["dotAll"] = re_method_desc
+  re_descs["test"] = re_method_desc
+  re_descs["exec"] = re_method_desc
+
+  let re_sym_descs : Map[Int, PropDescriptor] = {}
+  re_sym_descs[match_sym.id] = re_method_desc
+  re_sym_descs[search_sym.id] = re_method_desc
+  re_sym_descs[replace_sym.id] = re_method_desc
+  re_sym_descs[split_sym.id] = re_method_desc
 
   Object({
     properties: props,
@@ -1300,8 +1254,8 @@ pub fn make_regexp_object(pattern : String, flags : String) -> Value {
     prototype: Null,
     callable: None,
     class_name: "RegExp",
-    descriptors: {},
-    symbol_descriptors: {},
+    descriptors: re_descs,
+    symbol_descriptors: re_sym_descs,
     extensible: true,
   })
 }
@@ -1475,50 +1429,13 @@ pub fn get_regexp_string_iterator_proto() -> Value {
         setter: None,
       }
       // Add [Symbol.iterator] that returns the iterator itself
-      proto_sym_props[iterator_sym.id] = Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          MethodCallable("[Symbol.iterator]", fn(this_val, _args) { this_val }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      })
+      proto_sym_props[iterator_sym.id] = make_method_func("[Symbol.iterator]", 0, fn(this_val, _args) { this_val })
       // Add a placeholder next method with correct name/length on prototype
-      proto_props["next"] = Object({
-        properties: { "length": Number(0.0), "name": String_("next") },
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          MethodCallable("next", fn(_this_val, _args) raise {
+      proto_props["next"] = make_method_func("next", 1, fn(_this_val, _args) raise {
             raise @errors.TypeError(
               message="RegExp String Iterator.prototype.next requires that |this| be a RegExp String Iterator",
             )
-          }),
-        ),
-        class_name: "Function",
-        descriptors: {
-          "length": {
-            writable: false,
-            enumerable: false,
-            configurable: true,
-            getter: None,
-            setter: None,
-          },
-          "name": {
-            writable: false,
-            enumerable: false,
-            configurable: true,
-            getter: None,
-            setter: None,
-          },
-        },
-        symbol_descriptors: {},
-        extensible: true,
-      })
+          })
       let proto_descs : Map[String, PropDescriptor] = {}
       proto_descs["next"] = {
         writable: true,

@@ -53,12 +53,7 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
   let reflect_props : Map[String, Value] = {}
 
   // Reflect.apply(target, thisArg, argumentsList)
-  reflect_props["apply"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("apply", fn(interp, _this_val, args) raise {
+  reflect_props["apply"] = make_interp_method_func("apply", 3, fn(interp, _this_val, args) raise {
         if args.length() < 1 {
           raise @errors.TypeError(
             message="Reflect.apply requires a target function",
@@ -73,21 +68,10 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
         }
         let loc = @token.Loc::default()
         interp.call_value(target, this_arg, arg_list, loc)
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Reflect.construct(target, argumentsList, newTarget?)
-  reflect_props["construct"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("construct", fn(interp, _this_val, args) raise {
+  reflect_props["construct"] = make_interp_method_func("construct", 2, fn(interp, _this_val, args) raise {
         if args.length() < 2 {
           raise @errors.TypeError(
             message="Reflect.construct requires at least 2 arguments",
@@ -113,13 +97,7 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
           None
         }
         interp.construct_value(target, arg_list, loc, proto_override~)
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Reflect.defineProperty(target, propertyKey, attributes)
   reflect_props["defineProperty"] = Object({
@@ -395,12 +373,7 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
   })
 
   // Reflect.get(target, propertyKey, receiver?)
-  reflect_props["get"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("get", fn(interp, _this_val, args) raise {
+  reflect_props["get"] = make_interp_method_func("get", 1, fn(interp, _this_val, args) raise {
         if args.length() < 2 {
           raise @errors.TypeError(
             message="Reflect.get requires at least 2 arguments",
@@ -414,13 +387,7 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
           Symbol(_) => interp.get_computed_property(target, key, loc)
           _ => interp.get_property(target, key.to_string(), loc)
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Reflect.getOwnPropertyDescriptor(target, propertyKey)
   reflect_props["getOwnPropertyDescriptor"] = Object({
@@ -660,12 +627,7 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
   })
 
   // Reflect.ownKeys(target)
-  reflect_props["ownKeys"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("ownKeys", fn(interp, _this_val, args) raise {
+  reflect_props["ownKeys"] = make_interp_method_func("ownKeys", 1, fn(interp, _this_val, args) raise {
         if args.length() < 1 {
           raise @errors.TypeError(message="Reflect.ownKeys requires 1 argument")
         }
@@ -771,13 +733,7 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
             }
           }
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Reflect.preventExtensions(target)
   reflect_props["preventExtensions"] = Object({
@@ -818,12 +774,7 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
   })
 
   // Reflect.set(target, propertyKey, value, receiver?)
-  reflect_props["set"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("set", fn(interp, _this_val, args) raise {
+  reflect_props["set"] = make_interp_method_func("set", 4, fn(interp, _this_val, args) raise {
         if args.length() < 3 {
           raise @errors.TypeError(
             message="Reflect.set requires at least 3 arguments",
@@ -865,13 +816,7 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
           @errors.TypeError(_) => Bool(false)
           e => raise e
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Reflect.setPrototypeOf(target, proto)
   reflect_props["setPrototypeOf"] = Object({

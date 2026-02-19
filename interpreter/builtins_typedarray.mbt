@@ -485,12 +485,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
       enumerable: false,
       configurable: true,
       getter: Some(
-        Object({
-          properties: {},
-          symbol_properties: {},
-          prototype: Null,
-          callable: Some(
-            MethodCallable("get \{getter_name}", fn(this_val, _args) raise {
+        make_method_func("get \{getter_name}", 0, fn(this_val, _args) raise {
               match this_val {
                 Object(data) =>
                   if is_typedarray_class(data.class_name) {
@@ -509,12 +504,6 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
                   )
               }
             }),
-          ),
-          class_name: "Function",
-          descriptors: {},
-          symbol_descriptors: {},
-          extensible: true,
-        }),
       ),
       setter: None,
     }
@@ -527,12 +516,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     enumerable: false,
     configurable: true,
     getter: Some(
-      Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          MethodCallable("get buffer", fn(this_val, _args) raise {
+      make_method_func("get buffer", 0, fn(this_val, _args) raise {
             match this_val {
               Object(data) =>
                 if is_typedarray_class(data.class_name) {
@@ -551,12 +535,6 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
                 )
             }
           }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      }),
     ),
     setter: None,
   }
@@ -564,12 +542,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
   // --- Prototype methods ---
 
   // set(source [, offset])
-  ta_proto_props["set"] = Object({
-    properties: { "length": Number(1.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("set", fn(this_val, args) raise {
+  ta_proto_props["set"] = make_method_func("set", 1, fn(this_val, args) raise {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
@@ -663,21 +636,10 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
               message="TypedArray.prototype.set called on non-TypedArray",
             )
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // subarray(begin, end)
-  ta_proto_props["subarray"] = Object({
-    properties: { "length": Number(2.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("subarray", fn(this_val, args) raise {
+  ta_proto_props["subarray"] = make_method_func("subarray", 2, fn(this_val, args) raise {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
@@ -755,21 +717,10 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
           _ =>
             raise @errors.TypeError(message="subarray called on non-TypedArray")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // slice(begin, end)
-  ta_proto_props["slice"] = Object({
-    properties: { "length": Number(2.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("slice", fn(this_val, args) raise {
+  ta_proto_props["slice"] = make_method_func("slice", 2, fn(this_val, args) raise {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
@@ -844,21 +795,10 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
             }
           _ => raise @errors.TypeError(message="slice called on non-TypedArray")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // copyWithin(target, start [, end])
-  ta_proto_props["copyWithin"] = Object({
-    properties: { "length": Number(2.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("copyWithin", fn(this_val, args) raise {
+  ta_proto_props["copyWithin"] = make_method_func("copyWithin", 2, fn(this_val, args) raise {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
@@ -956,21 +896,10 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
               message="copyWithin called on non-TypedArray",
             )
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // fill(value [, start [, end]])
-  ta_proto_props["fill"] = Object({
-    properties: { "length": Number(1.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("fill", fn(this_val, args) raise {
+  ta_proto_props["fill"] = make_method_func("fill", 1, fn(this_val, args) raise {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
@@ -1031,21 +960,10 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
             }
           _ => raise @errors.TypeError(message="fill called on non-TypedArray")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // indexOf(searchElement [, fromIndex])
-  ta_proto_props["indexOf"] = Object({
-    properties: { "length": Number(1.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("indexOf", fn(this_val, args) raise {
+  ta_proto_props["indexOf"] = make_method_func("indexOf", 1, fn(this_val, args) raise {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
@@ -1088,21 +1006,10 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
             }
           _ => Number(-1.0)
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // lastIndexOf(searchElement [, fromIndex])
-  ta_proto_props["lastIndexOf"] = Object({
-    properties: { "length": Number(1.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("lastIndexOf", fn(this_val, args) raise {
+  ta_proto_props["lastIndexOf"] = make_method_func("lastIndexOf", 1, fn(this_val, args) raise {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
@@ -1142,21 +1049,10 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
             }
           _ => Number(-1.0)
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // includes(searchElement [, fromIndex])
-  ta_proto_props["includes"] = Object({
-    properties: { "length": Number(1.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("includes", fn(this_val, args) raise {
+  ta_proto_props["includes"] = make_method_func("includes", 1, fn(this_val, args) raise {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
@@ -1199,21 +1095,10 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
             }
           _ => Bool(false)
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // join(separator)
-  ta_proto_props["join"] = Object({
-    properties: { "length": Number(1.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("join", fn(this_val, args) {
+  ta_proto_props["join"] = make_method_func("join", 1, fn(this_val, args) {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
@@ -1243,21 +1128,10 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
             }
           _ => String_("")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // toString - delegates to join
-  ta_proto_props["toString"] = Object({
-    properties: { "length": Number(0.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("toString", fn(this_val, _args) {
+  ta_proto_props["toString"] = make_method_func("toString", 0, fn(this_val, _args) {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
@@ -1279,21 +1153,10 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
             }
           _ => String_("[object Object]")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // reverse()
-  ta_proto_props["reverse"] = Object({
-    properties: { "length": Number(0.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("reverse", fn(this_val, _args) {
+  ta_proto_props["reverse"] = make_method_func("reverse", 0, fn(this_val, _args) {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
@@ -1325,21 +1188,10 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
             }
           _ => this_val
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // sort([comparefn]) - uses InterpreterCallable for custom comparator support
-  ta_proto_props["sort"] = Object({
-    properties: { "length": Number(1.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("sort", fn(interp, this_val, args) raise {
+  ta_proto_props["sort"] = make_interp_method_func("sort", 1, fn(interp, this_val, args) raise {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
@@ -1439,21 +1291,10 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
             }
           _ => this_val
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // at(index)
-  ta_proto_props["at"] = Object({
-    properties: { "length": Number(1.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("at", fn(this_val, args) raise {
+  ta_proto_props["at"] = make_method_func("at", 1, fn(this_val, args) raise {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
@@ -1477,21 +1318,10 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
             }
           _ => Undefined
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // entries() - returns an iterator of [index, value] pairs
-  ta_proto_props["entries"] = Object({
-    properties: { "length": Number(0.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("entries", fn(this_val, _args) {
+  ta_proto_props["entries"] = make_method_func("entries", 0, fn(this_val, _args) {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
@@ -1577,21 +1407,10 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
             }
           _ => Undefined
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // keys() - returns an iterator of indices
-  ta_proto_props["keys"] = Object({
-    properties: { "length": Number(0.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("keys", fn(this_val, _args) {
+  ta_proto_props["keys"] = make_method_func("keys", 0, fn(this_val, _args) {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
@@ -1673,21 +1492,10 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
             }
           _ => Undefined
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // values() - returns an iterator of values (same as [Symbol.iterator])
-  let values_fn = Object({
-    properties: { "length": Number(0.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("values", fn(this_val, _args) {
+  let values_fn = make_method_func("values", 0, fn(this_val, _args) {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
@@ -1770,22 +1578,11 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
             }
           _ => Undefined
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
   ta_proto_props["values"] = values_fn
 
   // forEach(callbackFn [, thisArg])
-  ta_proto_props["forEach"] = Object({
-    properties: { "length": Number(1.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("forEach", fn(interp, this_val, args) raise {
+  ta_proto_props["forEach"] = make_interp_method_func("forEach", 1, fn(interp, this_val, args) raise {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
@@ -1820,21 +1617,10 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
           _ =>
             raise @errors.TypeError(message="forEach called on non-TypedArray")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // map(callbackFn [, thisArg])
-  ta_proto_props["map"] = Object({
-    properties: { "length": Number(1.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("map", fn(interp, this_val, args) raise {
+  ta_proto_props["map"] = make_interp_method_func("map", 1, fn(interp, this_val, args) raise {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
@@ -1878,21 +1664,10 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
             }
           _ => raise @errors.TypeError(message="map called on non-TypedArray")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // filter(callbackFn [, thisArg])
-  ta_proto_props["filter"] = Object({
-    properties: { "length": Number(1.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("filter", fn(interp, this_val, args) raise {
+  ta_proto_props["filter"] = make_interp_method_func("filter", 1, fn(interp, this_val, args) raise {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
@@ -1945,21 +1720,10 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
           _ =>
             raise @errors.TypeError(message="filter called on non-TypedArray")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // reduce(callbackFn [, initialValue])
-  ta_proto_props["reduce"] = Object({
-    properties: { "length": Number(1.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("reduce", fn(interp, this_val, args) raise {
+  ta_proto_props["reduce"] = make_interp_method_func("reduce", 1, fn(interp, this_val, args) raise {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
@@ -2004,21 +1768,10 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
           _ =>
             raise @errors.TypeError(message="reduce called on non-TypedArray")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // reduceRight(callbackFn [, initialValue])
-  ta_proto_props["reduceRight"] = Object({
-    properties: { "length": Number(1.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("reduceRight", fn(interp, this_val, args) raise {
+  ta_proto_props["reduceRight"] = make_interp_method_func("reduceRight", 1, fn(interp, this_val, args) raise {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
@@ -2067,21 +1820,10 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
               message="reduceRight called on non-TypedArray",
             )
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // every(callbackFn [, thisArg])
-  ta_proto_props["every"] = Object({
-    properties: { "length": Number(1.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("every", fn(interp, this_val, args) raise {
+  ta_proto_props["every"] = make_interp_method_func("every", 1, fn(interp, this_val, args) raise {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
@@ -2116,21 +1858,10 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
             }
           _ => raise @errors.TypeError(message="every called on non-TypedArray")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // some(callbackFn [, thisArg])
-  ta_proto_props["some"] = Object({
-    properties: { "length": Number(1.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("some", fn(interp, this_val, args) raise {
+  ta_proto_props["some"] = make_interp_method_func("some", 1, fn(interp, this_val, args) raise {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
@@ -2165,21 +1896,10 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
             }
           _ => raise @errors.TypeError(message="some called on non-TypedArray")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // find(callbackFn [, thisArg])
-  ta_proto_props["find"] = Object({
-    properties: { "length": Number(1.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("find", fn(interp, this_val, args) raise {
+  ta_proto_props["find"] = make_interp_method_func("find", 1, fn(interp, this_val, args) raise {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
@@ -2214,21 +1934,10 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
             }
           _ => raise @errors.TypeError(message="find called on non-TypedArray")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // findIndex(callbackFn [, thisArg])
-  ta_proto_props["findIndex"] = Object({
-    properties: { "length": Number(1.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("findIndex", fn(interp, this_val, args) raise {
+  ta_proto_props["findIndex"] = make_interp_method_func("findIndex", 1, fn(interp, this_val, args) raise {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
@@ -2268,29 +1977,35 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
               message="findIndex called on non-TypedArray",
             )
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Mark all prototype methods as non-enumerable (per spec)
-  let method_names = [
-    "set", "subarray", "slice", "copyWithin", "fill", "indexOf", "lastIndexOf", "includes",
-    "join", "toString", "reverse", "sort", "at", "entries", "keys", "values", "forEach",
-    "map", "filter", "reduce", "reduceRight", "every", "some", "find", "findIndex",
-  ]
-  for name in method_names {
-    ta_proto_descs[name] = {
-      writable: true,
-      enumerable: false,
-      configurable: true,
-      getter: None,
-      setter: None,
-    }
-  }
+  let method_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+  ta_proto_descs["set"] = method_desc
+  ta_proto_descs["subarray"] = method_desc
+  ta_proto_descs["slice"] = method_desc
+  ta_proto_descs["copyWithin"] = method_desc
+  ta_proto_descs["fill"] = method_desc
+  ta_proto_descs["indexOf"] = method_desc
+  ta_proto_descs["lastIndexOf"] = method_desc
+  ta_proto_descs["includes"] = method_desc
+  ta_proto_descs["join"] = method_desc
+  ta_proto_descs["toString"] = method_desc
+  ta_proto_descs["reverse"] = method_desc
+  ta_proto_descs["sort"] = method_desc
+  ta_proto_descs["at"] = method_desc
+  ta_proto_descs["entries"] = method_desc
+  ta_proto_descs["keys"] = method_desc
+  ta_proto_descs["values"] = method_desc
+  ta_proto_descs["forEach"] = method_desc
+  ta_proto_descs["map"] = method_desc
+  ta_proto_descs["filter"] = method_desc
+  ta_proto_descs["reduce"] = method_desc
+  ta_proto_descs["reduceRight"] = method_desc
+  ta_proto_descs["every"] = method_desc
+  ta_proto_descs["some"] = method_desc
+  ta_proto_descs["find"] = method_desc
+  ta_proto_descs["findIndex"] = method_desc
 
   // Create the shared %TypedArray%.prototype
   let ta_proto_sym_props : Map[Int, Value] = {}
@@ -2310,12 +2025,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     enumerable: false,
     configurable: true,
     getter: Some(
-      Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          MethodCallable("get [Symbol.toStringTag]", fn(this_val, _args) {
+      make_method_func("get [Symbol.toStringTag]", 0, fn(this_val, _args) {
             match this_val {
               Object(data) =>
                 if is_typedarray_class(data.class_name) {
@@ -2326,12 +2036,6 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
               _ => Undefined
             }
           }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      }),
     ),
     setter: None,
   }
@@ -2452,12 +2156,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     ctor_props["length"] = Number(3.0) // TypedArray constructors have length 3
 
     // Static from(source [, mapFn [, thisArg]])
-    ctor_props["from"] = Object({
-      properties: { "length": Number(1.0) },
-      symbol_properties: {},
-      prototype: Null,
-      callable: Some(
-        InterpreterCallable("from", fn(interp, _this_val, args) raise {
+    ctor_props["from"] = make_interp_method_func("from", 1, fn(interp, _this_val, args) raise {
           if args.length() == 0 {
             raise @errors.TypeError(
               message="TypedArray.from requires at least 1 argument",
@@ -2531,13 +2230,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
             _ => ()
           }
           result
-        }),
-      ),
-      class_name: "Function",
-      descriptors: {},
-      symbol_descriptors: {},
-      extensible: true,
-    })
+        })
 
     // Static of(...items)
     ctor_props["of"] = Object({

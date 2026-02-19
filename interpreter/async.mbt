@@ -418,72 +418,28 @@ fn init_async_generator_prototype() -> Value {
   }
 
   // .next(value) — returns Promise<{value, done}>
-  props["next"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("next", fn(ip, this_val, args) {
+  props["next"] = make_interp_method_func("next", 1, fn(ip, this_val, args) {
         let arg = if args.length() > 0 { args[0] } else { Undefined }
         async_generator_resume(ip, this_val, Next(arg))
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
   descs["next"] = non_enum
 
   // .throw(exception) — returns Promise<{value, done}>
-  props["throw"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("throw", fn(ip, this_val, args) {
+  props["throw"] = make_interp_method_func("throw", 1, fn(ip, this_val, args) {
         let arg = if args.length() > 0 { args[0] } else { Undefined }
         async_generator_resume(ip, this_val, Throw(arg))
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
   descs["throw"] = non_enum
 
   // .return(value) — returns Promise<{value, done}>
-  props["return"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("return", fn(ip, this_val, args) {
+  props["return"] = make_interp_method_func("return", 1, fn(ip, this_val, args) {
         let arg = if args.length() > 0 { args[0] } else { Undefined }
         async_generator_resume(ip, this_val, Return(arg))
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
   descs["return"] = non_enum
 
   // [Symbol.asyncIterator]() { return this; }
-  sym_props[async_iter_sym.id] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("[Symbol.asyncIterator]", fn(this_val, _args) { this_val }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+  sym_props[async_iter_sym.id] = make_method_func("[Symbol.asyncIterator]", 0, fn(this_val, _args) { this_val })
 
   Object({
     properties: props,

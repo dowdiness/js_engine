@@ -492,12 +492,7 @@ pub fn setup_builtins(
 
   // Boolean constructor with prototype
   let boolean_proto_props : Map[String, Value] = {}
-  boolean_proto_props["toString"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("toString", fn(this_val, _args) raise {
+  boolean_proto_props["toString"] = make_method_func("toString", 0, fn(this_val, _args) raise {
         match this_val {
           Bool(b) => String_(b.to_string())
           Object(data) =>
@@ -519,19 +514,8 @@ pub fn setup_builtins(
               message="Boolean.prototype.toString requires a Boolean",
             )
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  boolean_proto_props["valueOf"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("valueOf", fn(this_val, _args) raise {
+      })
+  boolean_proto_props["valueOf"] = make_method_func("valueOf", 0, fn(this_val, _args) raise {
         match this_val {
           Bool(b) => Bool(b)
           Object(data) =>
@@ -553,13 +537,7 @@ pub fn setup_builtins(
               message="Boolean.prototype.valueOf requires a Boolean",
             )
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
   let boolean_proto : Value = Object({
     properties: boolean_proto_props,
     symbol_properties: {},
@@ -760,12 +738,7 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
 
   // Symbol prototype
   let symbol_proto_props : Map[String, Value] = {}
-  symbol_proto_props["toString"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("toString", fn(this_val, _args) raise {
+  symbol_proto_props["toString"] = make_method_func("toString", 0, fn(this_val, _args) raise {
         match this_val {
           Symbol(sym) =>
             match sym.description {
@@ -777,19 +750,8 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
               message="Symbol.prototype.toString requires a Symbol",
             )
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  symbol_proto_props["valueOf"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("valueOf", fn(this_val, _args) raise {
+      })
+  symbol_proto_props["valueOf"] = make_method_func("valueOf", 0, fn(this_val, _args) raise {
         match this_val {
           Symbol(_) => this_val
           _ =>
@@ -797,13 +759,7 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
               message="Symbol.prototype.valueOf requires a Symbol",
             )
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
   symbol_proto_props["description"] = Undefined // Getter, simplified
   let symbol_proto : Value = Object({
     properties: symbol_proto_props,
@@ -987,18 +943,7 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
     // Add [Symbol.iterator] that returns the iterator itself
     match iter_obj {
       Object(data) =>
-        data.symbol_properties[iterator_sym.id] = Object({
-          properties: {},
-          symbol_properties: {},
-          prototype: Null,
-          callable: Some(
-            MethodCallable("[Symbol.iterator]", fn(this_val, _args) { this_val }),
-          ),
-          class_name: "Function",
-          descriptors: {},
-          symbol_descriptors: {},
-          extensible: true,
-        })
+        data.symbol_properties[iterator_sym.id] = make_method_func("[Symbol.iterator]", 0, fn(this_val, _args) { this_val })
       _ => ()
     }
     iter_obj
@@ -1011,12 +956,7 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
       match array_ctor.properties.get("prototype") {
         Some(Object(proto_data)) => {
           // Add [Symbol.iterator] method that returns an array iterator
-          proto_data.symbol_properties[iterator_sym.id] = Object({
-            properties: {},
-            symbol_properties: {},
-            prototype: Null,
-            callable: Some(
-              MethodCallable("[Symbol.iterator]", fn(this_val, _args) raise {
+          proto_data.symbol_properties[iterator_sym.id] = make_method_func("[Symbol.iterator]", 0, fn(this_val, _args) raise {
                 match this_val {
                   Array(arr) => make_array_iterator(arr)
                   _ =>
@@ -1024,21 +964,10 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
                       message="Array.prototype[Symbol.iterator] called on non-array",
                     )
                 }
-              }),
-            ),
-            class_name: "Function",
-            descriptors: {},
-            symbol_descriptors: {},
-            extensible: true,
-          })
+              })
 
           // Also add values() method (alias for [Symbol.iterator])
-          proto_data.properties["values"] = Object({
-            properties: {},
-            symbol_properties: {},
-            prototype: Null,
-            callable: Some(
-              MethodCallable("values", fn(this_val, _args) raise {
+          proto_data.properties["values"] = make_method_func("values", 0, fn(this_val, _args) raise {
                 match this_val {
                   Array(arr) => make_array_iterator(arr)
                   _ =>
@@ -1046,21 +975,10 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
                       message="Array.prototype.values called on non-array",
                     )
                 }
-              }),
-            ),
-            class_name: "Function",
-            descriptors: {},
-            symbol_descriptors: {},
-            extensible: true,
-          })
+              })
 
           // Add keys() method that returns an iterator over indices
-          proto_data.properties["keys"] = Object({
-            properties: {},
-            symbol_properties: {},
-            prototype: Null,
-            callable: Some(
-              MethodCallable("keys", fn(this_val, _args) raise {
+          proto_data.properties["keys"] = make_method_func("keys", 0, fn(this_val, _args) raise {
                 match this_val {
                   Array(arr) => {
                     let index_ref : Ref[Int] = { val: 0 }
@@ -1125,23 +1043,12 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
                     // Add [Symbol.iterator] to keys iterator
                     match iter_obj {
                       Object(data) =>
-                        data.symbol_properties[iterator_sym.id] = Object({
-                          properties: {},
-                          symbol_properties: {},
-                          prototype: Null,
-                          callable: Some(
-                            MethodCallable("[Symbol.iterator]", fn(
+                        data.symbol_properties[iterator_sym.id] = make_method_func("[Symbol.iterator]", 0, fn(
                               this_val,
                               _args,
                             ) {
                               this_val
-                            }),
-                          ),
-                          class_name: "Function",
-                          descriptors: {},
-                          symbol_descriptors: {},
-                          extensible: true,
-                        })
+                            })
                       _ => ()
                     }
                     iter_obj
@@ -1151,21 +1058,10 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
                       message="Array.prototype.keys called on non-array",
                     )
                 }
-              }),
-            ),
-            class_name: "Function",
-            descriptors: {},
-            symbol_descriptors: {},
-            extensible: true,
-          })
+              })
 
           // Add entries() method that returns an iterator over [index, value] pairs
-          proto_data.properties["entries"] = Object({
-            properties: {},
-            symbol_properties: {},
-            prototype: Null,
-            callable: Some(
-              MethodCallable("entries", fn(this_val, _args) raise {
+          proto_data.properties["entries"] = make_method_func("entries", 0, fn(this_val, _args) raise {
                 match this_val {
                   Array(arr) => {
                     let index_ref : Ref[Int] = { val: 0 }
@@ -1232,23 +1128,12 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
                     // Add [Symbol.iterator] to entries iterator
                     match iter_obj {
                       Object(data) =>
-                        data.symbol_properties[iterator_sym.id] = Object({
-                          properties: {},
-                          symbol_properties: {},
-                          prototype: Null,
-                          callable: Some(
-                            MethodCallable("[Symbol.iterator]", fn(
+                        data.symbol_properties[iterator_sym.id] = make_method_func("[Symbol.iterator]", 0, fn(
                               this_val,
                               _args,
                             ) {
                               this_val
-                            }),
-                          ),
-                          class_name: "Function",
-                          descriptors: {},
-                          symbol_descriptors: {},
-                          extensible: true,
-                        })
+                            })
                       _ => ()
                     }
                     iter_obj
@@ -1258,13 +1143,7 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
                       message="Array.prototype.entries called on non-array",
                     )
                 }
-              }),
-            ),
-            class_name: "Function",
-            descriptors: {},
-            symbol_descriptors: {},
-            extensible: true,
-          })
+              })
         }
         _ => ()
       }
@@ -1813,12 +1692,7 @@ fn setup_number_builtins(env : Environment) -> Unit {
     setter: None,
   }
   let number_proto_props : Map[String, Value] = {}
-  number_proto_props["toFixed"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("toFixed", fn(this_val, args) raise {
+  number_proto_props["toFixed"] = make_method_func("toFixed", 1, fn(this_val, args) raise {
         let n : Double = match this_val {
           Number(v) => v
           Object(data) =>
@@ -1888,19 +1762,8 @@ fn setup_number_builtins(env : Environment) -> Unit {
         }
         buf.write_string(frac_str)
         String_(buf.to_string())
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  number_proto_props["toString"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("toString", fn(this_val, args) raise {
+      })
+  number_proto_props["toString"] = make_method_func("toString", 0, fn(this_val, args) raise {
         // Validate this is a number
         let n : Double = match this_val {
           Number(v) => v
@@ -1965,19 +1828,8 @@ fn setup_number_builtins(env : Environment) -> Unit {
           buf.write_char(c)
         }
         String_(buf.to_string())
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  number_proto_props["valueOf"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("valueOf", fn(this_val, _args) raise {
+      })
+  number_proto_props["valueOf"] = make_method_func("valueOf", 0, fn(this_val, _args) raise {
         match this_val {
           Number(_) => this_val
           Object(data) =>
@@ -1999,19 +1851,8 @@ fn setup_number_builtins(env : Environment) -> Unit {
               message="Number.prototype.valueOf requires that 'this' be a Number",
             )
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  number_proto_props["toPrecision"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("toPrecision", fn(this_val, args) raise {
+      })
+  number_proto_props["toPrecision"] = make_method_func("toPrecision", 1, fn(this_val, args) raise {
         let n = to_number(this_val)
         // If no argument or undefined, just return toString result
         if args.length() == 0 {
@@ -2120,19 +1961,8 @@ fn setup_number_builtins(env : Environment) -> Unit {
           buf.write_string((rounded * multiplier).to_int().to_string())
         }
         String_(buf.to_string())
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  number_proto_props["toExponential"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("toExponential", fn(this_val, args) raise {
+      })
+  number_proto_props["toExponential"] = make_method_func("toExponential", 1, fn(this_val, args) raise {
         let n = to_number(this_val)
         if n.is_nan() {
           return String_("NaN")
@@ -2214,19 +2044,8 @@ fn setup_number_builtins(env : Environment) -> Unit {
         }
         buf.write_string(exp.to_string())
         String_(buf.to_string())
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  number_proto_props["toLocaleString"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("toLocaleString", fn(this_val, _args) raise {
+      })
+  number_proto_props["toLocaleString"] = make_method_func("toLocaleString", 0, fn(this_val, _args) raise {
         // Extract numeric value (same pattern as toFixed/toString)
         let n : Double = match this_val {
           Number(v) => v
@@ -2252,13 +2071,7 @@ fn setup_number_builtins(env : Environment) -> Unit {
         // Simple implementation: delegate to toString()
         // Full locale support would require Intl.NumberFormat (out of scope)
         String_(n.to_string())
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
   let number_proto : Value = Object({
     properties: number_proto_props,
     symbol_properties: {},
@@ -2385,12 +2198,7 @@ fn setup_json_builtins(env : Environment) -> Unit {
     let str = if args.length() > 0 { args[0].to_string() } else { "" }
     json_parse(str)
   })
-  json_props["stringify"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("stringify", fn(interp, _this, args) raise {
+  json_props["stringify"] = make_interp_method_func("stringify", 0, fn(interp, _this, args) raise {
         let val = if args.length() > 0 { args[0] } else { Undefined }
         let indent = if args.length() > 2 {
           match args[2] {
@@ -2414,13 +2222,7 @@ fn setup_json_builtins(env : Environment) -> Unit {
         }
         let seen : Array[Value] = []
         json_stringify_value(val, seen, indent, 0, Some(interp))
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
   env.def_builtin(
     "JSON",
     Object({
@@ -2938,12 +2740,7 @@ fn json_stringify_value(
 pub fn get_number_method(num_val : Value, prop : String) -> Value {
   match prop {
     "toFixed" =>
-      Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          MethodCallable("toFixed", fn(this_val, args) raise {
+      make_method_func("toFixed", 1, fn(this_val, args) raise {
             let n = to_number(this_val)
             let digits = if args.length() > 0 {
               to_number(args[0]).to_int()
@@ -2991,20 +2788,9 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
             }
             buf.write_string(frac_str)
             String_(buf.to_string())
-          }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      })
+          })
     "toString" =>
-      Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          MethodCallable("toString", fn(this_val, args) raise {
+      make_method_func("toString", 0, fn(this_val, args) raise {
             let n = to_number(this_val)
             let radix = if args.length() > 0 {
               to_number(args[0]).to_int()
@@ -3047,35 +2833,13 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
               buf.write_char(c)
             }
             String_(buf.to_string())
-          }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      })
+          })
     "valueOf" =>
-      Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          MethodCallable("valueOf", fn(this_val, _args) raise {
+      make_method_func("valueOf", 0, fn(this_val, _args) raise {
             Number(to_number(this_val))
-          }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      })
+          })
     "toPrecision" =>
-      Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          MethodCallable("toPrecision", fn(this_val, args) raise {
+      make_method_func("toPrecision", 1, fn(this_val, args) raise {
             let n = to_number(this_val)
             if args.length() == 0 {
               return String_(n.to_string())
@@ -3176,20 +2940,9 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
               buf.write_string((rounded * multiplier).to_int().to_string())
             }
             String_(buf.to_string())
-          }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      })
+          })
     "toExponential" =>
-      Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          MethodCallable("toExponential", fn(this_val, args) raise {
+      make_method_func("toExponential", 1, fn(this_val, args) raise {
             let n = to_number(this_val)
             if n.is_nan() {
               return String_("NaN")
@@ -3269,13 +3022,7 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
             }
             buf.write_string(exp.to_string())
             String_(buf.to_string())
-          }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      })
+          })
     _ => Undefined
   }
 }
@@ -3392,12 +3139,7 @@ fn setup_function_builtins(env : Environment) -> Unit {
   let func_proto_props : Map[String, Value] = {}
 
   // Function.prototype.toString - returns function source or [native code]
-  func_proto_props["toString"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("toString", fn(this_val, _args) raise {
+  func_proto_props["toString"] = make_method_func("toString", 0, fn(this_val, _args) raise {
         match this_val {
           Object(data) =>
             match data.callable {
@@ -3439,21 +3181,10 @@ fn setup_function_builtins(env : Environment) -> Unit {
               message="Function.prototype.toString requires a function",
             )
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Function.prototype.call - placeholder (actual implementation in interpreter)
-  func_proto_props["call"] = Object({
-    properties: { "length": Number(1.0), "name": String_("call") },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("call", fn(interp, this_val, args) raise {
+  func_proto_props["call"] = make_interp_method_func("call", 1, fn(interp, this_val, args) raise {
         let loc = @token.Loc::default()
         let call_this : Value = if args.length() > 0 { args[0] } else { Undefined }
         let call_args : Array[Value] = []
@@ -3461,21 +3192,10 @@ fn setup_function_builtins(env : Environment) -> Unit {
           call_args.push(args[i])
         }
         interp.call_value(this_val, call_this, call_args, loc)
-      }),
-    ),
-    class_name: "Function",
-    descriptors: { "name": nf_desc, "length": nf_desc },
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Function.prototype.apply
-  func_proto_props["apply"] = Object({
-    properties: { "length": Number(2.0), "name": String_("apply") },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("apply", fn(interp, this_val, args) raise {
+  func_proto_props["apply"] = make_interp_method_func("apply", 2, fn(interp, this_val, args) raise {
         let loc = @token.Loc::default()
         let call_this : Value = if args.length() > 0 { args[0] } else { Undefined }
         let call_args : Array[Value] = []
@@ -3504,13 +3224,7 @@ fn setup_function_builtins(env : Environment) -> Unit {
           }
         }
         interp.call_value(this_val, call_this, call_args, loc)
-      }),
-    ),
-    class_name: "Function",
-    descriptors: { "name": nf_desc, "length": nf_desc },
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Function.prototype.bind - placeholder (actual implementation in interpreter)
   func_proto_props["bind"] = Object({
@@ -3577,6 +3291,34 @@ fn setup_function_builtins(env : Environment) -> Unit {
     configurable: true,
     getter: Some(throw_type_error),
     setter: Some(throw_type_error),
+  }
+  func_proto_descs["toString"] = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
+  func_proto_descs["call"] = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
+  func_proto_descs["apply"] = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
+  func_proto_descs["bind"] = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
   }
 
   let func_proto : Value = Object({
@@ -4025,12 +3767,7 @@ pub fn setup_harness_builtins(
   // and returns the new realm's $262 object. The returned object's methods
   // (evalScript, etc.) are bound to the new realm's interpreter via closures,
   // ensuring proper isolation.
-  dollar262_props["createRealm"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("createRealm", fn(_interp, _this_val, _args) {
+  dollar262_props["createRealm"] = make_interp_method_func("createRealm", 0, fn(_interp, _this_val, _args) {
         let new_interp = Interpreter::new()
         // Build a $262 object with methods bound to the new interpreter.
         // Uses NativeCallable closures that capture new_interp so that
@@ -4089,22 +3826,11 @@ pub fn setup_harness_builtins(
           symbol_descriptors: {},
           extensible: true,
         })
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // $262.evalScript(code) - parses and evaluates code as a script
   // in the current realm's global scope.
-  dollar262_props["evalScript"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("evalScript", fn(interp, _this_val, args) raise {
+  dollar262_props["evalScript"] = make_interp_method_func("evalScript", 0, fn(interp, _this_val, args) raise {
         let code = if args.length() > 0 {
           match args[0] {
             String_(s) => s
@@ -4115,13 +3841,7 @@ pub fn setup_harness_builtins(
         }
         let prog = @parser.parse(code)
         interp.run(prog.stmts)
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
   dollar262_props["detachArrayBuffer"] = make_native_func("detachArrayBuffer", fn(
     args,
   ) raise {
