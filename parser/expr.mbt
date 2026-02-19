@@ -20,6 +20,58 @@ fn Parser::parse_assignment(self : Parser) -> @ast.Expr raise Error {
   if self.at(Yield) && self.in_generator() {
     return self.parse_yield_expr()
   }
+  // Check for async arrow functions (async arrows are assignment-level)
+  // async function expressions are handled in parse_primary
+  if self.peek_kind() is Ident("async") {
+    let async_line = self.tokens[self.pos].loc.line
+    // async arrow: async [no LT] ident =>
+    if self.peek_kind_at(1) is Ident(_) &&
+      self.tokens[self.pos + 1].loc.line == async_line &&
+      self.peek_kind_at(2) == Arrow {
+      let loc = self.advance().loc // consume 'async'
+      let name = self.expect_ident()
+      let _ = self.advance() // consume =>
+      self.push_async_context(true)
+      let body = self.parse_arrow_body()
+      self.pop_async_context()
+      return AsyncArrowFunc([name], body, loc)
+    }
+    // async arrow with parens: async [no LT] ( ... ) =>
+    if self.peek_kind_at(1) == LParen &&
+      self.tokens[self.pos + 1].loc.line == async_line {
+      let saved_pos = self.pos
+      let async_loc = self.advance().loc // consume 'async'
+      // Try extended params parse
+      let try_ext : (Array[@ast.Param], String?)? = Some(
+          self.parse_params_ext(),
+        ) catch {
+        _ => None
+      }
+      match try_ext {
+        Some((ext_params, rest_param)) =>
+          if self.at(Arrow) {
+            let _ = self.advance() // consume =>
+            self.push_async_context(true)
+            let body = self.parse_arrow_body()
+            self.pop_async_context()
+            let has_ext = rest_param is Some(_) ||
+              ext_params
+              .iter()
+              .any(fn(p) { p.default_val is Some(_) || p.pattern is Some(_) })
+            if has_ext {
+              return AsyncArrowFuncExt(ext_params, rest_param, body, async_loc)
+            } else {
+              let param_names = ext_params.map(fn(p) { p.name })
+              return AsyncArrowFunc(param_names, body, async_loc)
+            }
+          } else {
+            // Not an arrow, backtrack
+            self.pos = saved_pos
+          }
+        None => self.pos = saved_pos
+      }
+    }
+  }
   // Check for single-param arrow: ident => ...
   match self.peek_kind() {
     Ident(name) =>
@@ -412,6 +464,12 @@ fn Parser::parse_exponentiation(self : Parser) -> @ast.Expr raise Error {
 
 ///|
 fn Parser::parse_unary(self : Parser) -> @ast.Expr raise Error {
+  // await expression in async context
+  if self.peek_kind() is Ident("await") && self.in_async() {
+    let tok = self.advance() // consume 'await'
+    let expr = self.parse_unary()
+    return AwaitExpr(expr, tok.loc)
+  }
   match self.peek_kind() {
     Plus => {
       let loc = self.advance().loc
@@ -654,10 +712,14 @@ fn Parser::parse_primary(self : Parser) -> @ast.Expr raise Error {
       self.pos += 1
       UndefinedLit(tok.loc)
     }
-    Ident(name) => {
-      self.pos += 1
-      Ident(name, tok.loc)
-    }
+    Ident(name) =>
+      // async function expression: async [no LT] function
+      if name == "async" && self.is_async_function() {
+        self.parse_async_func_expr()
+      } else {
+        self.pos += 1
+        Ident(name, tok.loc)
+      }
     Get => {
       self.pos += 1
       Ident("get", tok.loc)
@@ -861,6 +923,21 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
       }
       continue
     }
+    // Check for async method: { async method() { ... } } or { async *gen() { ... } }
+    let mut obj_is_async = false
+    if self.peek_kind() is Ident("async") {
+      let async_line = self.tokens[self.pos].loc.line
+      match self.peek_kind_at(1) {
+        // async is itself the property name (shorthand, colon, method, etc.)
+        Colon | Comma | RBrace | LParen | Assign => ()
+        // async followed by another token on the same line = async modifier
+        _ =>
+          if self.tokens[self.pos + 1].loc.line == async_line {
+            self.pos += 1 // consume 'async'
+            obj_is_async = true
+          }
+      }
+    }
     // Check for generator method: { *gen() { yield 1; } }
     if self.at(Star) {
       let _ = self.advance() // consume '*'
@@ -954,21 +1031,19 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
       // Parse generator method params and body
       let gen_mloc = self.peek().loc
       let gen_saved_pos = self.pos
+      let gen_name = if gen_computed { None } else { Some(gen_key_name) }
       let gen_func_data : @ast.Expr = try {
         let params = self.parse_params()
         self.push_generator_context(true)
+        if obj_is_async { self.push_async_context(true) }
         let body = self.parse_block_body()
+        if obj_is_async { self.pop_async_context() }
         self.pop_generator_context()
-        @ast.Expr::GeneratorExpr(
-          if gen_computed {
-            None
-          } else {
-            Some(gen_key_name)
-          },
-          params,
-          body,
-          gen_mloc,
-        )
+        if obj_is_async {
+          @ast.Expr::AsyncGeneratorExpr(gen_name, params, body, gen_mloc)
+        } else {
+          @ast.Expr::GeneratorExpr(gen_name, params, body, gen_mloc)
+        }
       } catch {
         Failure::Failure(msg) =>
           if msg == "REST_PARAM_FOUND" ||
@@ -977,19 +1052,19 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
             self.pos = gen_saved_pos
             let (ext_params, rest_param) = self.parse_params_ext()
             self.push_generator_context(true)
+            if obj_is_async { self.push_async_context(true) }
             let body = self.parse_block_body()
+            if obj_is_async { self.pop_async_context() }
             self.pop_generator_context()
-            GeneratorExprExt(
-              if gen_computed {
-                None
-              } else {
-                Some(gen_key_name)
-              },
-              ext_params,
-              rest_param,
-              body,
-              gen_mloc,
-            )
+            if obj_is_async {
+              AsyncGeneratorExprExt(
+                gen_name, ext_params, rest_param, body, gen_mloc,
+              )
+            } else {
+              GeneratorExprExt(
+                gen_name, ext_params, rest_param, body, gen_mloc,
+              )
+            }
           } else {
             raise @errors.SyntaxError(message=msg)
           }
@@ -1222,6 +1297,7 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
       // Method shorthand or getter/setter
       let mloc = self.peek().loc
       let saved_pos = self.pos
+      let meth_name = if computed { None } else { Some(key_name) }
       let func_data : @ast.Expr = try {
         let params = self.parse_params()
         // Validate getter/setter arity
@@ -1240,17 +1316,14 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
             }
           @ast.Init | @ast.Spread => ()
         }
+        if obj_is_async { self.push_async_context(true) }
         let body = self.parse_block_body()
-        @ast.Expr::FuncExpr(
-          if computed {
-            None
-          } else {
-            Some(key_name)
-          },
-          params,
-          body,
-          mloc,
-        )
+        if obj_is_async { self.pop_async_context() }
+        if obj_is_async {
+          @ast.Expr::AsyncFuncExpr(meth_name, params, body, mloc)
+        } else {
+          @ast.Expr::FuncExpr(meth_name, params, body, mloc)
+        }
       } catch {
         Failure::Failure(msg) =>
           if msg == "REST_PARAM_FOUND" ||
@@ -1258,18 +1331,18 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
             msg == "DESTRUCTURE_PARAM_FOUND" {
             self.pos = saved_pos
             let (ext_params, rest_param) = self.parse_params_ext()
+            if obj_is_async { self.push_async_context(true) }
             let body = self.parse_block_body()
-            FuncExprExt(
-              if computed {
-                None
-              } else {
-                Some(key_name)
-              },
-              ext_params,
-              rest_param,
-              body,
-              mloc,
-            )
+            if obj_is_async { self.pop_async_context() }
+            if obj_is_async {
+              AsyncFuncExprExt(
+                meth_name, ext_params, rest_param, body, mloc,
+              )
+            } else {
+              FuncExprExt(
+                meth_name, ext_params, rest_param, body, mloc,
+              )
+            }
           } else {
             raise @errors.SyntaxError(message=msg)
           }
@@ -1341,7 +1414,9 @@ fn Parser::parse_func_expr(self : Parser) -> @ast.Expr raise Error {
         self.pos = saved_pos
         let (ext_params, rest_param) = self.parse_params_ext()
         self.push_generator_context(false)
+        self.push_async_context(false)
         let body = self.parse_block_body()
+        self.pop_async_context()
         self.pop_generator_context()
         return FuncExprExt(name, ext_params, rest_param, body, tok.loc)
       } else {
@@ -1350,7 +1425,9 @@ fn Parser::parse_func_expr(self : Parser) -> @ast.Expr raise Error {
     e => raise e
   }
   self.push_generator_context(false)
+  self.push_async_context(false)
   let body = self.parse_block_body()
+  self.pop_async_context()
   self.pop_generator_context()
   FuncExpr(name, params, body, tok.loc)
 }
@@ -1378,7 +1455,9 @@ fn Parser::parse_generator_expr(
         self.pos = saved_pos
         let (ext_params, rest_param) = self.parse_params_ext()
         self.push_generator_context(true)
+        self.push_async_context(false)
         let body = self.parse_block_body()
+        self.pop_async_context()
         self.pop_generator_context()
         return GeneratorExprExt(
           name,
@@ -1393,9 +1472,101 @@ fn Parser::parse_generator_expr(
     e => raise e
   }
   self.push_generator_context(true)
+  self.push_async_context(false)
   let body = self.parse_block_body()
+  self.pop_async_context()
   self.pop_generator_context()
   GeneratorExpr(name, params, body, func_tok.loc)
+}
+
+///|
+fn Parser::parse_async_func_expr(self : Parser) -> @ast.Expr raise Error {
+  let tok = self.advance() // consume 'async'
+  let _ = self.expect(Function)
+  // Check for async generator expression: async function* [name]() {}
+  if self.at(Star) {
+    return self.parse_async_generator_expr(tok)
+  }
+  // Optional name
+  let name : String? = match self.peek_kind() {
+    Ident(n) => {
+      self.pos += 1
+      Some(n)
+    }
+    _ => None
+  }
+  let saved_pos = self.pos
+  let params = self.parse_params() catch {
+    Failure::Failure(msg) =>
+      if msg == "REST_PARAM_FOUND" ||
+        msg == "DEFAULT_PARAM_FOUND" ||
+        msg == "DESTRUCTURE_PARAM_FOUND" {
+        self.pos = saved_pos
+        let (ext_params, rest_param) = self.parse_params_ext()
+        self.push_generator_context(false)
+        self.push_async_context(true)
+        let body = self.parse_block_body()
+        self.pop_async_context()
+        self.pop_generator_context()
+        return AsyncFuncExprExt(name, ext_params, rest_param, body, tok.loc)
+      } else {
+        raise @errors.SyntaxError(message=msg)
+      }
+    e => raise e
+  }
+  self.push_generator_context(false)
+  self.push_async_context(true)
+  let body = self.parse_block_body()
+  self.pop_async_context()
+  self.pop_generator_context()
+  AsyncFuncExpr(name, params, body, tok.loc)
+}
+
+///|
+fn Parser::parse_async_generator_expr(
+  self : Parser,
+  async_tok : @token.Token,
+) -> @ast.Expr raise Error {
+  let _ = self.expect(Star) // consume *
+  // Optional name
+  let name : String? = match self.peek_kind() {
+    Ident(n) => {
+      self.pos += 1
+      Some(n)
+    }
+    _ => None
+  }
+  let saved_pos = self.pos
+  let params = self.parse_params() catch {
+    Failure::Failure(msg) =>
+      if msg == "REST_PARAM_FOUND" ||
+        msg == "DEFAULT_PARAM_FOUND" ||
+        msg == "DESTRUCTURE_PARAM_FOUND" {
+        self.pos = saved_pos
+        let (ext_params, rest_param) = self.parse_params_ext()
+        self.push_generator_context(true)
+        self.push_async_context(true)
+        let body = self.parse_block_body()
+        self.pop_async_context()
+        self.pop_generator_context()
+        return AsyncGeneratorExprExt(
+          name,
+          ext_params,
+          rest_param,
+          body,
+          async_tok.loc,
+        )
+      } else {
+        raise @errors.SyntaxError(message=msg)
+      }
+    e => raise e
+  }
+  self.push_generator_context(true)
+  self.push_async_context(true)
+  let body = self.parse_block_body()
+  self.pop_async_context()
+  self.pop_generator_context()
+  AsyncGeneratorExpr(name, params, body, async_tok.loc)
 }
 
 ///|
@@ -1657,6 +1828,24 @@ fn Parser::parse_class_body(
 fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
   // Check for static modifier
   let is_static = self.eat(Static)
+  // Check for async modifier: async method() {} or static async method() {}
+  let is_async = if self.peek_kind() is Ident("async") {
+    let async_line = self.tokens[self.pos].loc.line
+    // async is a modifier if followed by a method name on the same line
+    // but NOT if followed by ( or : (meaning 'async' is itself the method name)
+    match self.peek_kind_at(1) {
+      LParen | Colon | Comma | RBrace | Assign => false
+      _ =>
+        if self.tokens[self.pos + 1].loc.line == async_line {
+          self.pos += 1 // consume 'async'
+          true
+        } else {
+          false
+        }
+    }
+  } else {
+    false
+  }
   // Check for generator modifier: *method() {} or static *method() {}
   let is_generator = self.eat(Star)
   // Check for getter/setter (not valid with generator *)
@@ -1883,9 +2072,15 @@ fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
           @ast.Init | @ast.Spread => ()
         }
         self.push_generator_context(is_generator)
+        if is_async { self.push_async_context(true) }
         let body = self.parse_block_body()
+        if is_async { self.pop_async_context() }
         self.pop_generator_context()
-        let func_val : @ast.Expr = if is_generator {
+        let func_val : @ast.Expr = if is_async && is_generator {
+          AsyncGeneratorExprExt(None, ext_params, rest_param, body, mloc)
+        } else if is_async {
+          AsyncFuncExprExt(None, ext_params, rest_param, body, mloc)
+        } else if is_generator {
           GeneratorExprExt(None, ext_params, rest_param, body, mloc)
         } else {
           FuncExprExt(None, ext_params, rest_param, body, mloc)
@@ -1918,9 +2113,15 @@ fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
     @ast.Init | @ast.Spread => ()
   }
   self.push_generator_context(is_generator)
+  if is_async { self.push_async_context(true) }
   let body = self.parse_block_body()
+  if is_async { self.pop_async_context() }
   self.pop_generator_context()
-  let func_val : @ast.Expr = if is_generator {
+  let func_val : @ast.Expr = if is_async && is_generator {
+    AsyncGeneratorExpr(None, params, body, mloc)
+  } else if is_async {
+    AsyncFuncExpr(None, params, body, mloc)
+  } else if is_generator {
     GeneratorExpr(None, params, body, mloc)
   } else {
     FuncExpr(None, params, body, mloc)

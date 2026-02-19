@@ -1317,6 +1317,74 @@ fn Interpreter::exec_stmt(
       }
       Normal(Undefined)
     }
+    AsyncFuncDecl(name, params, body, _) => {
+      let async_func = self.make_async_function(
+        Some(name),
+        params,
+        None,
+        body,
+        env,
+      )
+      if env.bindings.contains(name) {
+        env.assign(name, async_func)
+      } else if should_reconcile_eval_function_decl(env, name) {
+        env.assign_var(name, async_func)
+      } else {
+        env.def(name, async_func, VarBinding)
+      }
+      Normal(Undefined)
+    }
+    AsyncFuncDeclExt(name, params, rest_param, body, _) => {
+      let async_func = self.make_async_function_ext(
+        Some(name),
+        params,
+        rest_param,
+        body,
+        env,
+      )
+      if env.bindings.contains(name) {
+        env.assign(name, async_func)
+      } else if should_reconcile_eval_function_decl(env, name) {
+        env.assign_var(name, async_func)
+      } else {
+        env.def(name, async_func, VarBinding)
+      }
+      Normal(Undefined)
+    }
+    AsyncGeneratorDecl(name, params, body, _) => {
+      let gen_func = self.make_generator_function(
+        Some(name),
+        params,
+        None,
+        body,
+        env,
+      )
+      if env.bindings.contains(name) {
+        env.assign(name, gen_func)
+      } else if should_reconcile_eval_function_decl(env, name) {
+        env.assign_var(name, gen_func)
+      } else {
+        env.def(name, gen_func, VarBinding)
+      }
+      Normal(Undefined)
+    }
+    AsyncGeneratorDeclExt(name, params, rest_param, body, _) => {
+      let gen_func = self.make_generator_function_ext(
+        Some(name),
+        params,
+        rest_param,
+        body,
+        env,
+      )
+      if env.bindings.contains(name) {
+        env.assign(name, gen_func)
+      } else if should_reconcile_eval_function_decl(env, name) {
+        env.assign_var(name, gen_func)
+      } else {
+        env.def(name, gen_func, VarBinding)
+      }
+      Normal(Undefined)
+    }
     LabeledStmt(lbl, body, _) =>
       match self.exec_stmt(body, env, label=Some(lbl)) {
         BreakSignal(Some(l)) =>
@@ -3602,6 +3670,22 @@ fn Interpreter::eval_expr(
         body,
       )
       self.make_generator_function_ext(name, params, rest_param, body, env)
+    }
+    AsyncFuncExpr(name, params, body, _) =>
+      self.make_async_function(name, params, None, body, env)
+    AsyncFuncExprExt(name, params, rest_param, body, _) =>
+      self.make_async_function_ext(name, params, rest_param, body, env)
+    AsyncArrowFunc(params, body, _) =>
+      self.make_async_function(None, params, None, body, env)
+    AsyncArrowFuncExt(params, rest_param, body, _) =>
+      self.make_async_function_ext(None, params, rest_param, body, env)
+    AsyncGeneratorExpr(name, params, body, _) =>
+      self.make_generator_function(name, params, None, body, env)
+    AsyncGeneratorExprExt(name, params, rest_param, body, _) =>
+      self.make_generator_function_ext(name, params, rest_param, body, env)
+    AwaitExpr(argument, _) => {
+      // await acts like yield inside the generator that backs the async function
+      self.eval_yield(Some(argument), false, env)
     }
     YieldExpr(argument, delegate, _) => self.eval_yield(argument, delegate, env)
     ObjectLit(props, obj_loc) => {
