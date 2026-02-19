@@ -16,7 +16,7 @@ fn Interpreter::make_async_function(
     Some(n) => n
     None => "anonymous"
   }
-  let async_proto = get_async_function_prototype(self)
+  let async_proto = get_function_prototype(self)
   Object({
     properties: {},
     symbol_properties: {},
@@ -51,7 +51,7 @@ fn Interpreter::make_async_function_ext(
     Some(n) => n
     None => "anonymous"
   }
-  let async_proto = get_async_function_prototype(self)
+  let async_proto = get_function_prototype(self)
   Object({
     properties: {},
     symbol_properties: {},
@@ -164,7 +164,6 @@ fn async_step(
       let _ = ip.call_value(reject_fn, Undefined, [e], loc) catch {
         _ => Undefined
       }
-      ip.run_microtasks() catch { _ => () }
       return
     }
     e => {
@@ -172,7 +171,6 @@ fn async_step(
       let _ = ip.call_value(reject_fn, Undefined, [err_val], loc) catch {
         _ => Undefined
       }
-      ip.run_microtasks() catch { _ => () }
       return
     }
   }
@@ -193,72 +191,86 @@ fn async_step(
   }
   if is_done {
     // Generator completed — resolve the promise
+    // Do NOT call run_microtasks() here; the outer event loop
+    // (run_microtasks in js_engine.mbt) uses index-based draining
+    // and will process any newly enqueued reaction microtasks.
     let _ = try {
       ip.call_value(resolve_fn, Undefined, [result_value], loc)
     } catch {
       _ => Undefined
     }
-    ip.run_microtasks() catch { _ => () }
   } else {
-    // Generator yielded (await) — wrap value in Promise.resolve, then continue
+    // Generator yielded (await) — schedule continuation via microtask.
+    // Do NOT call run_microtasks() here to avoid recursive re-entry;
+    // the outer event loop drains the queue with its while loop.
     let awaited = result_value
-    match awaited {
-      Promise(pd) =>
-        match pd.state {
-          Fulfilled =>
-            async_step(ip, gen_val, pd.result, resolve_fn, reject_fn, false)
-          Rejected =>
-            async_step(ip, gen_val, pd.result, resolve_fn, reject_fn, true)
-          Pending => {
-            // Pending promise — schedule continuation via .then()
-            let gen = gen_val
-            let res_fn = resolve_fn
-            let rej_fn = reject_fn
-            let on_fulfill = make_interpreter_callable_with_length(
-              "",
-              1,
-              fn(i : Interpreter, _this : Value, args : Array[Value]) -> Value raise Error {
-                let v = if args.length() > 0 { args[0] } else { Undefined }
-                async_step(i, gen, v, res_fn, rej_fn, false)
-                Undefined
-              },
-            )
-            let on_reject = make_interpreter_callable_with_length(
-              "",
-              1,
-              fn(i : Interpreter, _this : Value, args : Array[Value]) -> Value raise Error {
-                let v = if args.length() > 0 { args[0] } else { Undefined }
-                async_step(i, gen, v, res_fn, rej_fn, true)
-                Undefined
-              },
-            )
-            let then_method = try {
-              ip.get_property(awaited, "then", loc)
-            } catch {
-              _ => Undefined
-            }
-            let _ = try {
-              ip.call_value(
-                then_method,
-                awaited,
-                [on_fulfill, on_reject],
-                loc,
-              )
-            } catch {
-              _ => Undefined
-            }
-            ip.run_microtasks() catch { _ => () }
-          }
-        }
-      _ =>
-        // Non-promise value — step synchronously (as if await resolved immediately)
-        async_step(ip, gen_val, awaited, resolve_fn, reject_fn, false)
+    let gen = gen_val
+    let res_fn = resolve_fn
+    let rej_fn = reject_fn
+    let on_fulfill = make_interpreter_callable_with_length(
+      "",
+      1,
+      fn(i : Interpreter, _this : Value, args : Array[Value]) -> Value raise Error {
+        let v = if args.length() > 0 { args[0] } else { Undefined }
+        async_step(i, gen, v, res_fn, rej_fn, false)
+        Undefined
+      },
+    )
+    let on_reject = make_interpreter_callable_with_length(
+      "",
+      1,
+      fn(i : Interpreter, _this : Value, args : Array[Value]) -> Value raise Error {
+        let v = if args.length() > 0 { args[0] } else { Undefined }
+        async_step(i, gen, v, res_fn, rej_fn, true)
+        Undefined
+      },
+    )
+    // Wrap the awaited value in Promise.resolve() then schedule .then()
+    // This ensures all await continuations go through the microtask queue,
+    // matching spec behavior and preventing stack overflow.
+    let resolved_promise = try {
+      let promise_ctor = ip.get_property(
+        ip.global.get("Promise"),
+        "resolve",
+        loc,
+      )
+      ip.call_value(
+        promise_ctor,
+        ip.global.get("Promise"),
+        [awaited],
+        loc,
+      )
+    } catch {
+      _ => {
+        // Fallback: directly schedule on microtask queue
+        ip.enqueue_microtask(on_fulfill, [awaited])
+        return
+      }
+    }
+    let then_method = try {
+      ip.get_property(resolved_promise, "then", loc)
+    } catch {
+      _ => Undefined
+    }
+    let _ = try {
+      ip.call_value(
+        then_method,
+        resolved_promise,
+        [on_fulfill, on_reject],
+        loc,
+      )
+    } catch {
+      _ => Undefined
     }
   }
 }
 
 ///|
-fn get_async_function_prototype(interp : Interpreter) -> Value {
+///|
+/// Get the function prototype for async function objects.
+/// Note: Uses the standard [[FunctionPrototype]] — there is no separate
+/// async-specific prototype in this engine.
+fn get_function_prototype(interp : Interpreter) -> Value {
   match interp.global.bindings.get("[[FunctionPrototype]]") {
     Some(binding) => binding.value
     None => Null

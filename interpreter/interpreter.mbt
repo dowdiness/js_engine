@@ -1318,6 +1318,7 @@ fn Interpreter::exec_stmt(
       Normal(Undefined)
     }
     AsyncFuncDecl(name, params, body, _) => {
+      validate_function_signature(self.strict, Some(name), params, body)
       let async_func = self.make_async_function(
         Some(name),
         params,
@@ -1335,6 +1336,13 @@ fn Interpreter::exec_stmt(
       Normal(Undefined)
     }
     AsyncFuncDeclExt(name, params, rest_param, body, _) => {
+      validate_function_signature_ext(
+        self.strict,
+        Some(name),
+        params,
+        rest_param,
+        body,
+      )
       let async_func = self.make_async_function_ext(
         Some(name),
         params,
@@ -1352,6 +1360,7 @@ fn Interpreter::exec_stmt(
       Normal(Undefined)
     }
     AsyncGeneratorDecl(name, params, body, _) => {
+      validate_function_signature(self.strict, Some(name), params, body)
       let gen_func = self.make_generator_function(
         Some(name),
         params,
@@ -1369,6 +1378,13 @@ fn Interpreter::exec_stmt(
       Normal(Undefined)
     }
     AsyncGeneratorDeclExt(name, params, rest_param, body, _) => {
+      validate_function_signature_ext(
+        self.strict,
+        Some(name),
+        params,
+        rest_param,
+        body,
+      )
       let gen_func = self.make_generator_function_ext(
         Some(name),
         params,
@@ -1811,6 +1827,50 @@ fn collect_block_lexical_decl_names_from_stmt(
         }
         block_function_kinds[name] = 2
       }
+    AsyncFuncDecl(name, _, _, _) =>
+      if include_block_functions {
+        if lexical_names.contains(name) {
+          raise @errors.SyntaxError(
+            message="Identifier '\{name}' has already been declared",
+          )
+        } else {
+          lexical_names[name] = true
+        }
+        block_function_kinds[name] = 2
+      }
+    AsyncFuncDeclExt(name, _, _, _, _) =>
+      if include_block_functions {
+        if lexical_names.contains(name) {
+          raise @errors.SyntaxError(
+            message="Identifier '\{name}' has already been declared",
+          )
+        } else {
+          lexical_names[name] = true
+        }
+        block_function_kinds[name] = 2
+      }
+    AsyncGeneratorDecl(name, _, _, _) =>
+      if include_block_functions {
+        if lexical_names.contains(name) {
+          raise @errors.SyntaxError(
+            message="Identifier '\{name}' has already been declared",
+          )
+        } else {
+          lexical_names[name] = true
+        }
+        block_function_kinds[name] = 2
+      }
+    AsyncGeneratorDeclExt(name, _, _, _, _) =>
+      if include_block_functions {
+        if lexical_names.contains(name) {
+          raise @errors.SyntaxError(
+            message="Identifier '\{name}' has already been declared",
+          )
+        } else {
+          lexical_names[name] = true
+        }
+        block_function_kinds[name] = 2
+      }
     StmtList(inner_stmts, _) =>
       for inner in inner_stmts {
         collect_block_lexical_decl_names_from_stmt(
@@ -1854,6 +1914,22 @@ fn collect_block_var_decl_names_from_stmt(
         var_names[name] = true
       }
     GeneratorDeclExt(name, _, _, _, _) =>
+      if include_function_decls {
+        var_names[name] = true
+      }
+    AsyncFuncDecl(name, _, _, _) =>
+      if include_function_decls {
+        var_names[name] = true
+      }
+    AsyncFuncDeclExt(name, _, _, _, _) =>
+      if include_function_decls {
+        var_names[name] = true
+      }
+    AsyncGeneratorDecl(name, _, _, _) =>
+      if include_function_decls {
+        var_names[name] = true
+      }
+    AsyncGeneratorDeclExt(name, _, _, _, _) =>
       if include_function_decls {
         var_names[name] = true
       }
@@ -2137,6 +2213,23 @@ fn validate_block_early_errors_expr(
         validate_block_early_errors_stmt(stmt, child_strict)
       }
     }
+    AsyncFuncExpr(_, _, body, _)
+    | AsyncFuncExprExt(_, _, _, body, _)
+    | AsyncArrowFunc(_, body, _)
+    | AsyncArrowFuncExt(_, _, body, _)
+    | AsyncGeneratorExpr(_, _, body, _)
+    | AsyncGeneratorExprExt(_, _, _, body, _) => {
+      validate_block_statement_list_early_errors(
+        body,
+        include_function_decls_in_var_names=true,
+      )
+      let child_strict = is_function_strict(strict_context, body)
+      for stmt in body {
+        validate_block_early_errors_stmt(stmt, child_strict)
+      }
+    }
+    AwaitExpr(inner, _) =>
+      validate_block_early_errors_expr(inner, strict_context)
     ClassExpr(_, _, methods, _) =>
       for m in methods {
         // Class bodies are always strict.
@@ -2350,6 +2443,46 @@ fn validate_block_early_errors_stmt(
         validate_block_early_errors_stmt(inner, child_strict)
       }
     }
+    AsyncFuncDecl(_, _, body, _) => {
+      validate_block_statement_list_early_errors(
+        body,
+        include_function_decls_in_var_names=true,
+      )
+      let child_strict = is_function_strict(strict_context, body)
+      for inner in body {
+        validate_block_early_errors_stmt(inner, child_strict)
+      }
+    }
+    AsyncFuncDeclExt(_, _, _, body, _) => {
+      validate_block_statement_list_early_errors(
+        body,
+        include_function_decls_in_var_names=true,
+      )
+      let child_strict = is_function_strict(strict_context, body)
+      for inner in body {
+        validate_block_early_errors_stmt(inner, child_strict)
+      }
+    }
+    AsyncGeneratorDecl(_, _, body, _) => {
+      validate_block_statement_list_early_errors(
+        body,
+        include_function_decls_in_var_names=true,
+      )
+      let child_strict = is_function_strict(strict_context, body)
+      for inner in body {
+        validate_block_early_errors_stmt(inner, child_strict)
+      }
+    }
+    AsyncGeneratorDeclExt(_, _, _, body, _) => {
+      validate_block_statement_list_early_errors(
+        body,
+        include_function_decls_in_var_names=true,
+      )
+      let child_strict = is_function_strict(strict_context, body)
+      for inner in body {
+        validate_block_early_errors_stmt(inner, child_strict)
+      }
+    }
     ClassDecl(_, _, methods, _) =>
       for m in methods {
         // Class bodies are always strict.
@@ -2402,6 +2535,11 @@ fn collect_eval_var_names_from_stmt(
     FuncDeclExt(name, _, _, _, _) => if not(in_block) { names.push(name) }
     GeneratorDecl(name, _, _, _) => if not(in_block) { names.push(name) }
     GeneratorDeclExt(name, _, _, _, _) => if not(in_block) { names.push(name) }
+    AsyncFuncDecl(name, _, _, _) => if not(in_block) { names.push(name) }
+    AsyncFuncDeclExt(name, _, _, _, _) => if not(in_block) { names.push(name) }
+    AsyncGeneratorDecl(name, _, _, _) => if not(in_block) { names.push(name) }
+    AsyncGeneratorDeclExt(name, _, _, _, _) =>
+      if not(in_block) { names.push(name) }
     DestructureDecl(VarKind, pattern, _, _) =>
       collect_pattern_var_names(pattern, names)
     StmtList(inner_stmts, _) =>
@@ -2824,6 +2962,78 @@ fn Interpreter::hoist_declarations(
         }
       }
       GeneratorDeclExt(name, params, rest_param, body, _) => {
+        validate_function_signature_ext(
+          _self.strict,
+          Some(name),
+          params,
+          rest_param,
+          body,
+        )
+        let gen_func = _self.make_generator_function_ext(
+          Some(name),
+          params,
+          rest_param,
+          body,
+          env,
+        )
+        if env.bindings.contains(name) {
+          env.assign(name, gen_func)
+        } else {
+          env.def(name, gen_func, VarBinding)
+        }
+      }
+      AsyncFuncDecl(name, params, body, _) => {
+        validate_function_signature(_self.strict, Some(name), params, body)
+        let async_func = _self.make_async_function(
+          Some(name),
+          params,
+          None,
+          body,
+          env,
+        )
+        if env.bindings.contains(name) {
+          env.assign(name, async_func)
+        } else {
+          env.def(name, async_func, VarBinding)
+        }
+      }
+      AsyncFuncDeclExt(name, params, rest_param, body, _) => {
+        validate_function_signature_ext(
+          _self.strict,
+          Some(name),
+          params,
+          rest_param,
+          body,
+        )
+        let async_func = _self.make_async_function_ext(
+          Some(name),
+          params,
+          rest_param,
+          body,
+          env,
+        )
+        if env.bindings.contains(name) {
+          env.assign(name, async_func)
+        } else {
+          env.def(name, async_func, VarBinding)
+        }
+      }
+      AsyncGeneratorDecl(name, params, body, _) => {
+        validate_function_signature(_self.strict, Some(name), params, body)
+        let gen_func = _self.make_generator_function(
+          Some(name),
+          params,
+          None,
+          body,
+          env,
+        )
+        if env.bindings.contains(name) {
+          env.assign(name, gen_func)
+        } else {
+          env.def(name, gen_func, VarBinding)
+        }
+      }
+      AsyncGeneratorDeclExt(name, params, rest_param, body, _) => {
         validate_function_signature_ext(
           _self.strict,
           Some(name),
@@ -3671,18 +3881,30 @@ fn Interpreter::eval_expr(
       )
       self.make_generator_function_ext(name, params, rest_param, body, env)
     }
-    AsyncFuncExpr(name, params, body, _) =>
+    AsyncFuncExpr(name, params, body, _) => {
+      validate_function_signature(self.strict, name, params, body)
       self.make_async_function(name, params, None, body, env)
-    AsyncFuncExprExt(name, params, rest_param, body, _) =>
+    }
+    AsyncFuncExprExt(name, params, rest_param, body, _) => {
+      validate_function_signature_ext(self.strict, name, params, rest_param, body)
       self.make_async_function_ext(name, params, rest_param, body, env)
-    AsyncArrowFunc(params, body, _) =>
+    }
+    AsyncArrowFunc(params, body, _) => {
+      validate_function_signature(self.strict, None, params, body)
       self.make_async_function(None, params, None, body, env)
-    AsyncArrowFuncExt(params, rest_param, body, _) =>
+    }
+    AsyncArrowFuncExt(params, rest_param, body, _) => {
+      validate_function_signature_ext(self.strict, None, params, rest_param, body)
       self.make_async_function_ext(None, params, rest_param, body, env)
-    AsyncGeneratorExpr(name, params, body, _) =>
+    }
+    AsyncGeneratorExpr(name, params, body, _) => {
+      validate_function_signature(self.strict, name, params, body)
       self.make_generator_function(name, params, None, body, env)
-    AsyncGeneratorExprExt(name, params, rest_param, body, _) =>
+    }
+    AsyncGeneratorExprExt(name, params, rest_param, body, _) => {
+      validate_function_signature_ext(self.strict, name, params, rest_param, body)
       self.make_generator_function_ext(name, params, rest_param, body, env)
+    }
     AwaitExpr(argument, _) => {
       // await acts like yield inside the generator that backs the async function
       self.eval_yield(Some(argument), false, env)
@@ -8834,6 +9056,14 @@ fn Interpreter::extract_export_names(
     GeneratorDecl(name, _, _, _) =>
       self.module_export_bindings.push((name, name))
     GeneratorDeclExt(name, _, _, _, _) =>
+      self.module_export_bindings.push((name, name))
+    AsyncFuncDecl(name, _, _, _) =>
+      self.module_export_bindings.push((name, name))
+    AsyncFuncDeclExt(name, _, _, _, _) =>
+      self.module_export_bindings.push((name, name))
+    AsyncGeneratorDecl(name, _, _, _) =>
+      self.module_export_bindings.push((name, name))
+    AsyncGeneratorDeclExt(name, _, _, _, _) =>
       self.module_export_bindings.push((name, name))
     ClassDecl(name, _, _, _) => self.module_export_bindings.push((name, name))
     DestructureDecl(_, pattern, _, _) =>
