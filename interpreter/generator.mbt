@@ -200,13 +200,6 @@ pub fn setup_generator_function_constructor(
   env : Environment,
   global_this : Value,
 ) -> Unit {
-  let nf_desc : PropDescriptor = {
-    writable: false,
-    enumerable: false,
-    configurable: true,
-    getter: None,
-    setter: None,
-  }
   // %GeneratorFunction.prototype% inherits from Function.prototype
   let func_proto : Value = match env.bindings.get("[[FunctionPrototype]]") {
     Some(binding) => binding.value
