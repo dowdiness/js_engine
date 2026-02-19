@@ -508,6 +508,12 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             if rc == '/' && not(in_class) {
               break
             }
+            // Line terminators are not allowed in regex literals
+            if is_line_terminator(rc) {
+              raise @errors.SyntaxError(
+                message="Unterminated regex literal at line \{rloc.line}, col \{rloc.col}",
+              )
+            }
             if rc == '[' {
               in_class = true
             }
