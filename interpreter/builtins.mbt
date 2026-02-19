@@ -748,6 +748,7 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
   well_known_split_sym.val = Some(split_sym)
   let unscopables_sym = new_symbol(Some("Symbol.unscopables"))
   let async_iterator_sym = new_symbol(Some("Symbol.asyncIterator"))
+  well_known_async_iterator_sym.val = Some(async_iterator_sym)
 
   // Symbol prototype
   let symbol_proto_props : Map[String, Value] = {}

@@ -1492,31 +1492,7 @@ fn Parser::parse_async_func_expr(self : Parser) -> @ast.Expr raise Error {
     }
     _ => None
   }
-  let saved_pos = self.pos
-  let params = self.parse_params() catch {
-    Failure::Failure(msg) =>
-      if msg == "REST_PARAM_FOUND" ||
-        msg == "DEFAULT_PARAM_FOUND" ||
-        msg == "DESTRUCTURE_PARAM_FOUND" {
-        self.pos = saved_pos
-        let (ext_params, rest_param) = self.parse_params_ext()
-        self.push_generator_context(false)
-        self.push_async_context(true)
-        let body = self.parse_block_body()
-        self.pop_async_context()
-        self.pop_generator_context()
-        return AsyncFuncExprExt(name, ext_params, rest_param, body, tok.loc)
-      } else {
-        raise @errors.SyntaxError(message=msg)
-      }
-    e => raise e
-  }
-  self.push_generator_context(false)
-  self.push_async_context(true)
-  let body = self.parse_block_body()
-  self.pop_async_context()
-  self.pop_generator_context()
-  AsyncFuncExpr(name, params, body, tok.loc)
+  self.parse_async_func_body(name, is_generator=false, tok.loc)
 }
 
 ///|
@@ -1533,6 +1509,19 @@ fn Parser::parse_async_generator_expr(
     }
     _ => None
   }
+  self.parse_async_func_body(name, is_generator=true, async_tok.loc)
+}
+
+///|
+/// Shared helper for parsing async function/generator expression bodies.
+/// Handles parse_params with fallback to parse_params_ext, context push/pop,
+/// and returns the appropriate AST variant.
+fn Parser::parse_async_func_body(
+  self : Parser,
+  name : String?,
+  is_generator~ : Bool,
+  loc : @token.Loc,
+) -> @ast.Expr raise Error {
   let saved_pos = self.pos
   let params = self.parse_params() catch {
     Failure::Failure(msg) =>
@@ -1541,29 +1530,31 @@ fn Parser::parse_async_generator_expr(
         msg == "DESTRUCTURE_PARAM_FOUND" {
         self.pos = saved_pos
         let (ext_params, rest_param) = self.parse_params_ext()
-        self.push_generator_context(true)
+        self.push_generator_context(is_generator)
         self.push_async_context(true)
         let body = self.parse_block_body()
         self.pop_async_context()
         self.pop_generator_context()
-        return AsyncGeneratorExprExt(
-          name,
-          ext_params,
-          rest_param,
-          body,
-          async_tok.loc,
-        )
+        return if is_generator {
+          AsyncGeneratorExprExt(name, ext_params, rest_param, body, loc)
+        } else {
+          AsyncFuncExprExt(name, ext_params, rest_param, body, loc)
+        }
       } else {
         raise @errors.SyntaxError(message=msg)
       }
     e => raise e
   }
-  self.push_generator_context(true)
+  self.push_generator_context(is_generator)
   self.push_async_context(true)
   let body = self.parse_block_body()
   self.pop_async_context()
   self.pop_generator_context()
-  AsyncGeneratorExpr(name, params, body, async_tok.loc)
+  if is_generator {
+    AsyncGeneratorExpr(name, params, body, loc)
+  } else {
+    AsyncFuncExpr(name, params, body, loc)
+  }
 }
 
 ///|

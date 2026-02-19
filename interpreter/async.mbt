@@ -313,9 +313,7 @@ fn async_step(
 }
 
 ///|
-/// Create an async generator function value.
-/// Async generators combine generator yield semantics with async/await.
-/// When called, they return a generator object whose .next() drives the body.
+/// Create an async generator function value (simple params).
 fn Interpreter::make_async_generator_function(
   self : Interpreter,
   name : String?,
@@ -324,12 +322,39 @@ fn Interpreter::make_async_generator_function(
   body : Array[@ast.Stmt],
   closure : Environment,
 ) -> Value {
-  let interp = self
-  let gen_proto = get_generator_prototype(interp)
+  make_async_gen_function_inner(self, name, params, None, rest_param, body, closure)
+}
+
+///|
+/// Create an async generator function value (extended params).
+fn Interpreter::make_async_generator_function_ext(
+  self : Interpreter,
+  name : String?,
+  params : Array[@ast.Param],
+  rest_param : String?,
+  body : Array[@ast.Stmt],
+  closure : Environment,
+) -> Value {
+  make_async_gen_function_inner(self, name, [], Some(params), rest_param, body, closure)
+}
+
+///|
+/// Shared factory for async generator functions.
+/// Builds the function object with async generator prototype and class name.
+fn make_async_gen_function_inner(
+  interp : Interpreter,
+  name : String?,
+  params : Array[String],
+  params_ext : Array[@ast.Param]?,
+  rest_param : String?,
+  body : Array[@ast.Stmt],
+  closure : Environment,
+) -> Value {
+  let async_gen_proto = init_async_generator_prototype()
   let func_prototype = Object({
     properties: {},
     symbol_properties: {},
-    prototype: gen_proto,
+    prototype: async_gen_proto,
     callable: None,
     class_name: "AsyncGenerator",
     descriptors: {},
@@ -360,7 +385,7 @@ fn Interpreter::make_async_generator_function(
             args,
             name,
             params,
-            None,
+            params_ext,
             rest_param,
             body,
             closure,
@@ -377,65 +402,155 @@ fn Interpreter::make_async_generator_function(
 }
 
 ///|
-/// Create an async generator function value (extended params).
-fn Interpreter::make_async_generator_function_ext(
-  self : Interpreter,
-  name : String?,
-  params : Array[@ast.Param],
-  rest_param : String?,
-  body : Array[@ast.Stmt],
-  closure : Environment,
-) -> Value {
-  let interp = self
-  let gen_proto = get_generator_prototype(interp)
-  let func_prototype = Object({
+/// Create the async generator prototype with Promise-wrapping protocol methods.
+/// Async generator .next()/.throw()/.return() return Promises per ECMAScript spec.
+fn init_async_generator_prototype() -> Value {
+  let async_iter_sym = get_async_iterator_symbol()
+  let props : Map[String, Value] = {}
+  let sym_props : Map[Int, Value] = {}
+  let descs : Map[String, PropDescriptor] = {}
+  let non_enum : PropDescriptor = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
+
+  // .next(value) — returns Promise<{value, done}>
+  props["next"] = Object({
     properties: {},
     symbol_properties: {},
-    prototype: gen_proto,
+    prototype: Null,
+    callable: Some(
+      InterpreterCallable("next", fn(ip, this_val, args) raise {
+        let arg = if args.length() > 0 { args[0] } else { Undefined }
+        async_generator_resume(ip, this_val, Next(arg))
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+  descs["next"] = non_enum
+
+  // .throw(exception) — returns Promise<{value, done}>
+  props["throw"] = Object({
+    properties: {},
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      InterpreterCallable("throw", fn(ip, this_val, args) raise {
+        let arg = if args.length() > 0 { args[0] } else { Undefined }
+        async_generator_resume(ip, this_val, Throw(arg))
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+  descs["throw"] = non_enum
+
+  // .return(value) — returns Promise<{value, done}>
+  props["return"] = Object({
+    properties: {},
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      InterpreterCallable("return", fn(ip, this_val, args) raise {
+        let arg = if args.length() > 0 { args[0] } else { Undefined }
+        async_generator_resume(ip, this_val, Return(arg))
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+  descs["return"] = non_enum
+
+  // [Symbol.asyncIterator]() { return this; }
+  sym_props[async_iter_sym.id] = Object({
+    properties: {},
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      MethodCallable("[Symbol.asyncIterator]", fn(this_val, _args) { this_val }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+
+  Object({
+    properties: props,
+    symbol_properties: sym_props,
+    prototype: Null,
     callable: None,
     class_name: "AsyncGenerator",
-    descriptors: {},
+    descriptors: descs,
     symbol_descriptors: {},
     extensible: true,
   })
-  let gen_func_proto : Value = match
-    interp.global.bindings.get("[[GeneratorFunctionPrototype]]") {
-    Some(binding) => binding.value
-    None => Null
+}
+
+///|
+/// Wrap generator_resume in a Promise for async generator protocol.
+/// Returns a resolved Promise with {value, done} on success,
+/// or a rejected Promise with the error on failure.
+fn async_generator_resume(
+  ip : Interpreter,
+  this_val : Value,
+  resume_kind : ResumeKind,
+) -> Value raise Error {
+  let result = try {
+    generator_resume(ip, this_val, resume_kind)
+  } catch {
+    JsException(e) => {
+      let pd : PromiseData = {
+        state: Rejected,
+        result: e,
+        fulfill_reactions: [],
+        reject_reactions: [],
+        is_handled: false,
+        properties: {},
+        symbol_properties: {},
+        descriptors: {},
+        symbol_descriptors: {},
+      }
+      return Promise(pd)
+    }
+    e => {
+      let err_val = js_error_to_value_with_env(e, Some(ip.global))
+      let pd : PromiseData = {
+        state: Rejected,
+        result: err_val,
+        fulfill_reactions: [],
+        reject_reactions: [],
+        is_handled: false,
+        properties: {},
+        symbol_properties: {},
+        descriptors: {},
+        symbol_descriptors: {},
+      }
+      return Promise(pd)
+    }
   }
-  let fn_props : Map[String, Value] = {}
-  fn_props["prototype"] = func_prototype
-  Object({
-    properties: fn_props,
+  let pd : PromiseData = {
+    state: Fulfilled,
+    result,
+    fulfill_reactions: [],
+    reject_reactions: [],
+    is_handled: false,
+    properties: {},
     symbol_properties: {},
-    prototype: gen_func_proto,
-    callable: Some(
-      InterpreterCallable(
-        match name {
-          Some(n) => n
-          None => "anonymous"
-        },
-        fn(ip, this_val, args) {
-          create_generator_instance(
-            ip,
-            this_val,
-            args,
-            name,
-            [],
-            Some(params),
-            rest_param,
-            body,
-            closure,
-            func_prototype,
-          )
-        },
-      ),
-    ),
-    class_name: "AsyncGeneratorFunction",
     descriptors: {},
     symbol_descriptors: {},
-    extensible: true,
-  })
+  }
+  Promise(pd)
 }
 
 ///|
