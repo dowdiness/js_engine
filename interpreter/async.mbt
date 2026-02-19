@@ -24,7 +24,7 @@ fn Interpreter::make_async_function(
     callable: Some(
       InterpreterCallable(
         display_name,
-        fn(ip : Interpreter, this_val : Value, args : Array[Value]) -> Value raise Error {
+        fn(ip : Interpreter, this_val : Value, args : Array[Value]) -> Value {
           run_async_body(
             ip, this_val, args, name, params, None, rest_param, body, closure,
           )
@@ -59,7 +59,7 @@ fn Interpreter::make_async_function_ext(
     callable: Some(
       InterpreterCallable(
         display_name,
-        fn(ip : Interpreter, this_val : Value, args : Array[Value]) -> Value raise Error {
+        fn(ip : Interpreter, this_val : Value, args : Array[Value]) -> Value {
           run_async_body(
             ip,
             this_val,
@@ -210,7 +210,7 @@ fn async_step(
     let on_fulfill = make_interpreter_callable_with_length(
       "",
       1,
-      fn(i : Interpreter, _this : Value, args : Array[Value]) -> Value raise Error {
+      fn(i : Interpreter, _this : Value, args : Array[Value]) -> Value {
         let v = if args.length() > 0 { args[0] } else { Undefined }
         async_step(i, gen, v, res_fn, rej_fn, false)
         Undefined
@@ -219,7 +219,7 @@ fn async_step(
     let on_reject = make_interpreter_callable_with_length(
       "",
       1,
-      fn(i : Interpreter, _this : Value, args : Array[Value]) -> Value raise Error {
+      fn(i : Interpreter, _this : Value, args : Array[Value]) -> Value {
         let v = if args.length() > 0 { args[0] } else { Undefined }
         async_step(i, gen, v, res_fn, rej_fn, true)
         Undefined
@@ -252,7 +252,7 @@ fn async_step(
                 let noop = make_interpreter_callable_with_length(
                   "",
                   0,
-                  fn(_i : Interpreter, _t : Value, _a : Array[Value]) -> Value raise Error {
+                  fn(_i : Interpreter, _t : Value, _a : Array[Value]) -> Value {
                     Undefined
                   },
                 )
@@ -423,7 +423,7 @@ fn init_async_generator_prototype() -> Value {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("next", fn(ip, this_val, args) raise {
+      InterpreterCallable("next", fn(ip, this_val, args) {
         let arg = if args.length() > 0 { args[0] } else { Undefined }
         async_generator_resume(ip, this_val, Next(arg))
       }),
@@ -441,7 +441,7 @@ fn init_async_generator_prototype() -> Value {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("throw", fn(ip, this_val, args) raise {
+      InterpreterCallable("throw", fn(ip, this_val, args) {
         let arg = if args.length() > 0 { args[0] } else { Undefined }
         async_generator_resume(ip, this_val, Throw(arg))
       }),
@@ -459,7 +459,7 @@ fn init_async_generator_prototype() -> Value {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable("return", fn(ip, this_val, args) raise {
+      InterpreterCallable("return", fn(ip, this_val, args) {
         let arg = if args.length() > 0 { args[0] } else { Undefined }
         async_generator_resume(ip, this_val, Return(arg))
       }),
@@ -505,7 +505,7 @@ fn async_generator_resume(
   ip : Interpreter,
   this_val : Value,
   resume_kind : ResumeKind,
-) -> Value raise Error {
+) -> Value {
   let result = try {
     generator_resume(ip, this_val, resume_kind)
   } catch {
