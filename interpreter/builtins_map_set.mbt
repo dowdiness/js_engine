@@ -245,7 +245,6 @@ fn setup_map_builtins(env : Environment) -> Unit {
                 [value, key, this_val],
                 loc,
               )
-
             }
             Undefined
           }
@@ -369,46 +368,43 @@ fn setup_map_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable(
-        "getOrInsertComputed",
-        fn(interp, this_val, args) raise {
-          match this_val {
-            Map(data) => {
-              let key = if args.length() > 0 { args[0] } else { Undefined }
-              let callbackfn = if args.length() > 1 {
-                args[1]
-              } else {
-                Undefined
+      InterpreterCallable("getOrInsertComputed", fn(
+        interp,
+        this_val,
+        args,
+      ) raise {
+        match this_val {
+          Map(data) => {
+            let key = if args.length() > 0 { args[0] } else { Undefined }
+            let callbackfn = if args.length() > 1 { args[1] } else { Undefined }
+            // If key exists, return existing value without calling callback
+            for i = 0; i < data.entries.length(); i = i + 1 {
+              let (k, v) = data.entries[i]
+              if same_value_zero(k, key) {
+                return v
               }
-              // If key exists, return existing value without calling callback
-              for i = 0; i < data.entries.length(); i = i + 1 {
-                let (k, v) = data.entries[i]
-                if same_value_zero(k, key) {
-                  return v
-                }
-              }
-              // Key not found, call callback to get value
-              let loc = @token.Loc::default()
-              let value = interp.call_value(callbackfn, Undefined, [key], loc)
-              // Re-check if key was added by callback (mutation during callback)
-              for i = 0; i < data.entries.length(); i = i + 1 {
-                let (k, _) = data.entries[i]
-                if same_value_zero(k, key) {
-                  // Overwrite with computed value per spec
-                  data.entries[i] = (key, value)
-                  return value
-                }
-              }
-              data.entries.push((key, value))
-              value
             }
-            _ =>
-              raise @errors.TypeError(
-                message="Method Map.prototype.getOrInsertComputed called on incompatible receiver",
-              )
+            // Key not found, call callback to get value
+            let loc = @token.Loc::default()
+            let value = interp.call_value(callbackfn, Undefined, [key], loc)
+            // Re-check if key was added by callback (mutation during callback)
+            for i = 0; i < data.entries.length(); i = i + 1 {
+              let (k, _) = data.entries[i]
+              if same_value_zero(k, key) {
+                // Overwrite with computed value per spec
+                data.entries[i] = (key, value)
+                return value
+              }
+            }
+            data.entries.push((key, value))
+            value
           }
-        },
-      ),
+          _ =>
+            raise @errors.TypeError(
+              message="Method Map.prototype.getOrInsertComputed called on incompatible receiver",
+            )
+        }
+      }),
     ),
     class_name: "Function",
     descriptors: {},
@@ -703,7 +699,6 @@ fn setup_set_builtins(env : Environment) -> Unit {
                 [value, value, this_val],
                 loc,
               )
-
             }
             Undefined
           }
@@ -984,7 +979,15 @@ fn get_map_iterator_proto() -> Value {
         prototype: get_iterator_proto(),
         callable: None,
         class_name: "Map Iterator",
-        descriptors: { "next": { writable: true, enumerable: false, configurable: true, getter: None, setter: None } },
+        descriptors: {
+          "next": {
+            writable: true,
+            enumerable: false,
+            configurable: true,
+            getter: None,
+            setter: None,
+          },
+        },
         symbol_descriptors: proto_sym_descs,
         extensible: true,
       })
@@ -1305,7 +1308,15 @@ fn get_set_iterator_proto() -> Value {
         prototype: get_iterator_proto(),
         callable: None,
         class_name: "Set Iterator",
-        descriptors: { "next": { writable: true, enumerable: false, configurable: true, getter: None, setter: None } },
+        descriptors: {
+          "next": {
+            writable: true,
+            enumerable: false,
+            configurable: true,
+            getter: None,
+            setter: None,
+          },
+        },
         symbol_descriptors: proto_sym_descs,
         extensible: true,
       })

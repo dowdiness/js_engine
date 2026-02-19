@@ -47,7 +47,7 @@ pub(all) struct Interpreter {
 }
 
 ///|
-pub fn Interpreter::new(annex_b~ : Bool = false) -> Interpreter {
+pub fn Interpreter::new(annex_b? : Bool = false) -> Interpreter {
   let global = Environment::new()
   global.is_var_scope = true
   let output : Array[String] = []
@@ -75,6 +75,29 @@ pub fn Interpreter::new(annex_b~ : Bool = false) -> Interpreter {
       }
     None => ()
   }
+  // Mirror global constants (undefined, NaN, Infinity) onto the global object
+  // with correct property descriptors per ES spec §19.1
+  match global_this {
+    Object(data) => {
+      data.properties["undefined"] = Undefined
+      data.properties["NaN"] = Number(0.0 / 0.0)
+      data.properties["Infinity"] = Number(1.0 / 0.0)
+      // All three are { writable: false, enumerable: false, configurable: false }
+      let frozen_desc : PropDescriptor = {
+        writable: false,
+        enumerable: false,
+        configurable: false,
+        getter: None,
+        setter: None,
+      }
+      data.descriptors["undefined"] = { ..frozen_desc }
+      data.descriptors["NaN"] = { ..frozen_desc }
+      data.descriptors["Infinity"] = { ..frozen_desc }
+    }
+    _ => ()
+  }
+  // Set up GeneratorFunction constructor
+  setup_generator_function_constructor(global, global_this)
   // Set up test262 harness host functions (print, $262)
   setup_harness_builtins(global, output, global_this)
   let microtask_queue : Array[Microtask] = []
@@ -101,14 +124,20 @@ pub fn Interpreter::new(annex_b~ : Bool = false) -> Interpreter {
 
 ///|
 fn has_use_strict(stmts : Array[@ast.Stmt]) -> Bool {
-  if stmts.length() > 0 {
-    match stmts[0] {
-      ExprStmt(StringLit("use strict", _), _) => true
-      _ => false
+  // Scan the directive prologue: the longest sequence of ExpressionStatements
+  // consisting entirely of StringLiterals at the beginning of the body.
+  // Only the literal string "use strict" WITHOUT escape sequences activates strict mode.
+  for i = 0; i < stmts.length(); i = i + 1 {
+    match stmts[i] {
+      ExprStmt(StringLit(s, has_escape, _), _) =>
+        if s == "use strict" && not(has_escape) {
+          return true
+        }
+      // Continue scanning — other string directives are part of the prologue
+      _ => break // Non-string ExprStmt or other statement ends the prologue
     }
-  } else {
-    false
   }
+  false
 }
 
 ///|
@@ -364,6 +393,8 @@ fn Interpreter::exec_stmt(
           _ => ()
         }
       }
+      // Track last completion value for eval completion semantics
+      let mut completion : Value = Undefined
       while true {
         if first_iteration {
           first_iteration = false
@@ -382,7 +413,7 @@ fn Interpreter::exec_stmt(
           }
         }
         match body_signal {
-          Normal(_) => ()
+          Normal(v) => completion = v
           ReturnSignal(v) => return ReturnSignal(v)
           BreakSignal(None) => break
           BreakSignal(Some(l)) =>
@@ -400,7 +431,7 @@ fn Interpreter::exec_stmt(
             }
         }
       }
-      Normal(Undefined)
+      Normal(completion)
     }
     ForStmt(init, cond, update, body, _) => {
       // Check if we're resuming inside a generator loop
@@ -426,6 +457,7 @@ fn Interpreter::exec_stmt(
         e
       }
       let mut first_iteration = resuming_loop // skip condition on first resumed iteration
+      let mut completion : Value = Undefined
       while true {
         if first_iteration {
           first_iteration = false
@@ -449,7 +481,7 @@ fn Interpreter::exec_stmt(
           }
         }
         match body_signal {
-          Normal(_) => ()
+          Normal(v) => completion = v
           ReturnSignal(v) => return ReturnSignal(v)
           BreakSignal(None) => break
           BreakSignal(Some(l)) =>
@@ -482,7 +514,7 @@ fn Interpreter::exec_stmt(
           None => ()
         }
       }
-      Normal(Undefined)
+      Normal(completion)
     }
     FuncDecl(name, params, body, _) => {
       validate_function_signature(self.strict, Some(name), params, body)
@@ -554,16 +586,17 @@ fn Interpreter::exec_stmt(
       } else {
         cases.length()
       }
+      let mut completion : Value = Undefined
       for i = start; i < cases.length(); i = i + 1 {
         for stmt in cases[i].body {
           match self.exec_stmt(stmt, env) {
-            Normal(_) => ()
-            BreakSignal(None) => return Normal(Undefined)
+            Normal(v) => completion = v
+            BreakSignal(None) => return Normal(completion)
             other => return other
           }
         }
       }
-      Normal(Undefined)
+      Normal(completion)
     }
     DoWhileStmt(body, cond, _) => {
       let gen_opt = current_generator.val
@@ -579,6 +612,7 @@ fn Interpreter::exec_stmt(
           _ => ()
         }
       }
+      let mut completion : Value = Undefined
       while true {
         let body_signal = self.exec_stmt(body, env) catch {
           e => {
@@ -592,7 +626,7 @@ fn Interpreter::exec_stmt(
           }
         }
         match body_signal {
-          Normal(_) => ()
+          Normal(v) => completion = v
           ReturnSignal(v) => return ReturnSignal(v)
           BreakSignal(None) => break
           BreakSignal(Some(l)) =>
@@ -613,11 +647,12 @@ fn Interpreter::exec_stmt(
           break
         }
       }
-      Normal(Undefined)
+      Normal(completion)
     }
     ForInStmt(var_kind, name, obj_expr, body, _) => {
       let obj = self.eval_expr(obj_expr, env)
       let keys = collect_for_in_keys(obj)
+      let mut completion : Value = Undefined
       for key in keys {
         let body_env = Environment::new(parent=Some(env))
         match var_kind {
@@ -632,7 +667,7 @@ fn Interpreter::exec_stmt(
           None => env.assign(name, String_(key))
         }
         match self.exec_stmt(body, body_env) {
-          Normal(_) => ()
+          Normal(v) => completion = v
           ReturnSignal(v) => return ReturnSignal(v)
           BreakSignal(None) => break
           BreakSignal(Some(l)) =>
@@ -650,7 +685,7 @@ fn Interpreter::exec_stmt(
             }
         }
       }
-      Normal(Undefined)
+      Normal(completion)
     }
     ForOfStmt(var_kind, name, iterable_expr, body, loc) => {
       // Check if we're resuming inside a generator for-of
@@ -745,6 +780,7 @@ fn Interpreter::exec_stmt(
       }
       // If resuming, first resume the body without calling next()
       let mut first_resume = resuming_for_of
+      let mut completion : Value = Undefined
       // Iterate using the iterator protocol
       while true {
         if first_resume {
@@ -784,7 +820,7 @@ fn Interpreter::exec_stmt(
             }
           }
           match body_signal {
-            Normal(_) => ()
+            Normal(v) => completion = v
             ReturnSignal(v) => return ReturnSignal(v)
             BreakSignal(None) => break
             BreakSignal(Some(l)) =>
@@ -868,7 +904,7 @@ fn Interpreter::exec_stmt(
           }
         }
         match body_signal {
-          Normal(_) => ()
+          Normal(v) => completion = v
           ReturnSignal(v) => return ReturnSignal(v)
           BreakSignal(None) => break
           BreakSignal(Some(l)) =>
@@ -886,11 +922,12 @@ fn Interpreter::exec_stmt(
             }
         }
       }
-      Normal(Undefined)
+      Normal(completion)
     }
     ForInStmtPat(var_kind, pattern, obj_expr, body, _) => {
       let obj = self.eval_expr(obj_expr, env)
       let keys = collect_for_in_keys(obj)
+      let mut completion : Value = Undefined
       for key in keys {
         let body_env = Environment::new(parent=Some(env))
         match var_kind {
@@ -909,7 +946,7 @@ fn Interpreter::exec_stmt(
           None => self.assign_pattern(pattern, String_(key), env)
         }
         match self.exec_stmt(body, body_env) {
-          Normal(_) => ()
+          Normal(v) => completion = v
           ReturnSignal(v) => return ReturnSignal(v)
           BreakSignal(None) => break
           BreakSignal(Some(l)) =>
@@ -927,7 +964,7 @@ fn Interpreter::exec_stmt(
             }
         }
       }
-      Normal(Undefined)
+      Normal(completion)
     }
     ForOfStmtPat(var_kind, pattern, iterable_expr, body, loc) => {
       let iterable = self.eval_expr(iterable_expr, env)
@@ -999,6 +1036,7 @@ fn Interpreter::exec_stmt(
       }
 
       // Iterate using the iterator protocol
+      let mut completion : Value = Undefined
       while true {
         let result = self.call_value(next_method, iterator, [], loc)
         let (done, value) = match result {
@@ -1036,7 +1074,7 @@ fn Interpreter::exec_stmt(
           None => self.assign_pattern(pattern, value, env)
         }
         match self.exec_stmt(body, body_env) {
-          Normal(_) => ()
+          Normal(v) => completion = v
           ReturnSignal(v) => return ReturnSignal(v)
           BreakSignal(None) => break
           BreakSignal(Some(l)) =>
@@ -1054,16 +1092,17 @@ fn Interpreter::exec_stmt(
             }
         }
       }
-      Normal(Undefined)
+      Normal(completion)
     }
     ForInExpr(lhs_expr, obj_expr, body, _) => {
       let obj = self.eval_expr(obj_expr, env)
       let keys = collect_for_in_keys(obj)
+      let mut completion : Value = Undefined
       for key in keys {
         let body_env = Environment::new(parent=Some(env))
         self.assign_to_expr(lhs_expr, String_(key), env)
         match self.exec_stmt(body, body_env) {
-          Normal(_) => ()
+          Normal(v) => completion = v
           ReturnSignal(v) => return ReturnSignal(v)
           BreakSignal(None) => break
           BreakSignal(Some(l)) =>
@@ -1081,7 +1120,7 @@ fn Interpreter::exec_stmt(
             }
         }
       }
-      Normal(Undefined)
+      Normal(completion)
     }
     ForOfExpr(lhs_expr, iterable_expr, body, loc) => {
       let iterable = self.eval_expr(iterable_expr, env)
@@ -1145,6 +1184,7 @@ fn Interpreter::exec_stmt(
           }
         _ => raise @errors.TypeError(message="Iterator is not an object")
       }
+      let mut completion : Value = Undefined
       while true {
         let result = self.call_value(next_method, iterator, [], loc)
         let (done, value) = match result {
@@ -1168,7 +1208,7 @@ fn Interpreter::exec_stmt(
         let body_env = Environment::new(parent=Some(env))
         self.assign_to_expr(lhs_expr, value, env)
         match self.exec_stmt(body, body_env) {
-          Normal(_) => ()
+          Normal(v) => completion = v
           ReturnSignal(v) => return ReturnSignal(v)
           BreakSignal(None) => break
           BreakSignal(Some(l)) =>
@@ -1186,7 +1226,7 @@ fn Interpreter::exec_stmt(
             }
         }
       }
-      Normal(Undefined)
+      Normal(completion)
     }
     DestructureDecl(kind, pattern, init_expr, _) => {
       let bk : BindingKind = match kind {
@@ -1338,14 +1378,9 @@ fn Interpreter::exec_stmt(
       let raw_obj = self.eval_expr(expr, env)
       // Per spec: ToObject() the expression result. Throw TypeError for null/undefined.
       let obj = match raw_obj {
-        Null =>
-          raise @errors.TypeError(
-            message="Cannot convert null to object",
-          )
+        Null => raise @errors.TypeError(message="Cannot convert null to object")
         Undefined =>
-          raise @errors.TypeError(
-            message="Cannot convert undefined to object",
-          )
+          raise @errors.TypeError(message="Cannot convert undefined to object")
         String_(s) => {
           // Box string primitive to String wrapper object
           let str_proto = env.get("[[StringPrototype]]") catch { _ => Null }
@@ -1407,10 +1442,9 @@ fn Interpreter::exec_stmt(
       let with_env = Environment::new(parent=Some(env))
       let data = match obj {
         Object(d) => d
-        _ => {
+        _ =>
           // Fallback: just execute with parent env
           return self.exec_stmt(body, env)
-        }
       }
       // Add all properties (walking prototype chain for lookup)
       let mut current : Value = obj
@@ -1498,7 +1532,13 @@ fn collect_for_in_keys(obj : Value) -> Array[String] raise Error {
         data.properties.each(fn(k, _v) {
           if not(seen.contains(k)) {
             // Skip internal slots for TypedArray/ArrayBuffer/DataView only
-            if k.has_prefix("[[") && k.has_suffix("]]") && (is_typedarray_class(data.class_name) || data.class_name == "ArrayBuffer" || data.class_name == "DataView") {
+            if k.has_prefix("[[") &&
+              k.has_suffix("]]") &&
+              (
+                is_typedarray_class(data.class_name) ||
+                data.class_name == "ArrayBuffer" ||
+                data.class_name == "DataView"
+              ) {
               return
             }
             seen[k] = true
@@ -2536,7 +2576,7 @@ fn hoist_block_func_declarations(
   var_env : Environment,
 ) -> Unit raise Error {
   match stmt {
-    Block(inner_stmts, _) => {
+    Block(inner_stmts, _) =>
       for inner in inner_stmts {
         match inner {
           FuncDecl(name, _, _, _) | FuncDeclExt(name, _, _, _, _) =>
@@ -2547,7 +2587,6 @@ fn hoist_block_func_declarations(
         }
         hoist_block_func_declarations(inner, var_env)
       }
-    }
     IfStmt(_, then_branch, else_branch, _) => {
       // Also handle bare function declarations in if/else branches
       match then_branch {
@@ -3512,7 +3551,7 @@ fn Interpreter::eval_expr(
 ) -> Value raise Error {
   match expr {
     NumberLit(n, _) => Number(n)
-    StringLit(s, _) => String_(s)
+    StringLit(s, _, _) => String_(s)
     BoolLit(b, _) => Bool(b)
     NullLit(_) => Null
     UndefinedLit(_) => Undefined
@@ -3731,7 +3770,7 @@ fn Interpreter::eval_expr(
         } else {
           // Static key - extract from StringLit
           let key_str = match prop.key {
-            StringLit(s, _) => s
+            StringLit(s, _, _) => s
             _ => prop.key.to_string() // fallback
           }
           match prop.kind {
@@ -4093,10 +4132,19 @@ fn Interpreter::eval_expr(
                     }
                     call_env.def(ctor_params[i], val, LetBinding)
                   }
-                  let tte : Value? = if call_env.has("[[ThrowTypeError]]") { Some(call_env.get("[[ThrowTypeError]]")) } else { None }
+                  let tte : Value? = if call_env.has("[[ThrowTypeError]]") {
+                    Some(call_env.get("[[ThrowTypeError]]"))
+                  } else {
+                    None
+                  }
                   call_env.def(
                     "arguments",
-                    make_arguments_object(args, super_ctor, true, throw_type_error=tte),
+                    make_arguments_object(
+                      args,
+                      super_ctor,
+                      true,
+                      throw_type_error=tte,
+                    ),
                     VarBinding,
                   )
                   self.hoist_declarations(ctor_body, call_env)
@@ -4105,7 +4153,12 @@ fn Interpreter::eval_expr(
                   match exec_result {
                     ReturnSignal(v) =>
                       match v {
-                        Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => {
+                        Object(_)
+                        | Array(_)
+                        | Map(_)
+                        | Set(_)
+                        | Promise(_)
+                        | Proxy(_) => {
                           // Update 'this' in the current environment
                           env.assign("this", v)
                           return v
@@ -4124,7 +4177,12 @@ fn Interpreter::eval_expr(
               // Use constructor semantics (`new`) instead of plain call.
               let super_result = self.construct_value(super_ctor, args, loc)
               match super_result {
-                Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => {
+                Object(_)
+                | Array(_)
+                | Map(_)
+                | Set(_)
+                | Promise(_)
+                | Proxy(_) => {
                   env.assign("this", super_result)
                   super_result
                 }
@@ -4335,7 +4393,10 @@ fn Interpreter::eval_binary(
                 _ => String_(left.to_string())
               }
               let result = self.call_value(
-                trap_fn, handler, [target, prop_key], loc,
+                trap_fn,
+                handler,
+                [target, prop_key],
+                loc,
               )
               Bool(is_truthy(result))
             }
@@ -4727,7 +4788,10 @@ fn Interpreter::eval_unary(
                   let target = get_proxy_target(proxy_data)
                   let handler = get_proxy_handler(proxy_data)
                   let result = self.call_value(
-                    trap_fn, handler, [target, String_(prop)], loc,
+                    trap_fn,
+                    handler,
+                    [target, String_(prop)],
+                    loc,
                   )
                   if not(is_truthy(result)) && self.strict {
                     raise @errors.TypeError(
@@ -4796,7 +4860,10 @@ fn Interpreter::eval_unary(
                     _ => String_(key.to_string())
                   }
                   let result = self.call_value(
-                    trap_fn, handler, [target, prop_key], loc,
+                    trap_fn,
+                    handler,
+                    [target, prop_key],
+                    loc,
                   )
                   if not(is_truthy(result)) && self.strict {
                     raise @errors.TypeError(
@@ -5274,7 +5341,10 @@ fn Interpreter::call_value(
           let handler = get_proxy_handler(proxy_data)
           let args_array : Value = Array({ elements: args.copy() })
           return self.call_value(
-            trap_fn, handler, [target, this_val, args_array], loc,
+            trap_fn,
+            handler,
+            [target, this_val, args_array],
+            loc,
           )
         }
         None => return self.call_value(target, this_val, args, loc)
@@ -5318,10 +5388,19 @@ fn Interpreter::call_value(
               }
             }
             // Create arguments object
-            let tte_val : Value? = if func_env.has("[[ThrowTypeError]]") { Some(func_env.get("[[ThrowTypeError]]")) } else { None }
+            let tte_val : Value? = if func_env.has("[[ThrowTypeError]]") {
+              Some(func_env.get("[[ThrowTypeError]]"))
+            } else {
+              None
+            }
             func_env.def(
               "arguments",
-              make_arguments_object(args, callee, func_strict, throw_type_error=tte_val),
+              make_arguments_object(
+                args,
+                callee,
+                func_strict,
+                throw_type_error=tte_val,
+              ),
               VarBinding,
             )
             // Hoist var declarations and function declarations within function body
@@ -5470,10 +5549,19 @@ fn Interpreter::call_value(
               None => ()
             }
             // Create arguments object
-            let tte_val2 : Value? = if func_env.has("[[ThrowTypeError]]") { Some(func_env.get("[[ThrowTypeError]]")) } else { None }
+            let tte_val2 : Value? = if func_env.has("[[ThrowTypeError]]") {
+              Some(func_env.get("[[ThrowTypeError]]"))
+            } else {
+              None
+            }
             func_env.def(
               "arguments",
-              make_arguments_object(args, callee, func_strict, throw_type_error=tte_val2),
+              make_arguments_object(
+                args,
+                callee,
+                func_strict,
+                throw_type_error=tte_val2,
+              ),
               VarBinding,
             )
             self.hoist_declarations(data.body, func_env)
@@ -6160,9 +6248,7 @@ fn Interpreter::get_computed_property(
             Symbol(_) => key
             _ => String_(key.to_string())
           }
-          return self.call_value(
-            trap_fn, handler, [target, prop_key, obj], loc,
-          )
+          return self.call_value(trap_fn, handler, [target, prop_key, obj], loc)
         }
         None => {
           let target = get_proxy_target(proxy_data)
@@ -6224,29 +6310,29 @@ fn Interpreter::get_computed_property(
                         symbol_properties: {},
                         prototype: Null,
                         callable: Some(
-                          MethodCallable(
-                            "[Symbol.iterator]",
-                            fn(this_val, _args) raise {
-                              let str = match this_val {
-                                String_(sv) => sv
-                                Object(d) =>
-                                  if d.class_name == "String" {
-                                    match d.properties.get("[[StringData]]") {
-                                      Some(String_(sv)) => sv
-                                      _ => this_val.to_string()
-                                    }
-                                  } else {
-                                    this_val.to_string()
+                          MethodCallable("[Symbol.iterator]", fn(
+                            this_val,
+                            _args,
+                          ) raise {
+                            let str = match this_val {
+                              String_(sv) => sv
+                              Object(d) =>
+                                if d.class_name == "String" {
+                                  match d.properties.get("[[StringData]]") {
+                                    Some(String_(sv)) => sv
+                                    _ => this_val.to_string()
                                   }
-                                Null | Undefined =>
-                                  raise @errors.TypeError(
-                                    message="Cannot convert undefined or null to object",
-                                  )
-                                _ => this_val.to_string()
-                              }
-                              make_string_iterator_value(str)
-                            },
-                          ),
+                                } else {
+                                  this_val.to_string()
+                                }
+                              Null | Undefined =>
+                                raise @errors.TypeError(
+                                  message="Cannot convert undefined or null to object",
+                                )
+                              _ => this_val.to_string()
+                            }
+                            make_string_iterator_value(str)
+                          }),
                         ),
                         class_name: "Function",
                         descriptors: {},
@@ -6377,7 +6463,7 @@ fn Interpreter::get_computed_property(
             // Non-integer or negative Number key: return undefined per spec
             return Undefined
           }
-          String_(s) => {
+          String_(s) =>
             // Canonical numeric index string check per spec
             // Note: "-0" is NOT canonical (ToString(ToNumber("-0")) === "0"), so it falls through
             try {
@@ -6394,7 +6480,6 @@ fn Interpreter::get_computed_property(
             } catch {
               _ => () // Not a numeric string, fall through to normal property lookup
             }
-          }
           _ => ()
         }
       }
@@ -6694,7 +6779,9 @@ fn Interpreter::get_computed_property(
             let n = @strconv.parse_double(s)
             if n.to_string() == s {
               let idx = n.to_int()
-              if idx.to_double() == n && idx >= 0 && idx < data.elements.length() {
+              if idx.to_double() == n &&
+                idx >= 0 &&
+                idx < data.elements.length() {
                 numeric_result = Some(data.elements[idx])
               }
             }
@@ -6726,7 +6813,8 @@ fn Interpreter::get_computed_property(
           }
         }
         String_("length") => Number(s.length().to_double())
-        String_(method_name) => get_string_method(s, method_name, annex_b=self.annex_b)
+        String_(method_name) =>
+          get_string_method(s, method_name, annex_b=self.annex_b)
         _ => Undefined
       }
     Number(_) =>
@@ -7078,7 +7166,7 @@ fn Interpreter::set_computed_property(
                 // Numeric key always intercepted for TypedArrays
                 return value
               }
-              String_(s) => {
+              String_(s) =>
                 // Canonical numeric index string check per spec
                 // Note: "-0" is NOT canonical (ToString(ToNumber("-0")) === "0"), so it falls through
                 try {
@@ -7094,7 +7182,6 @@ fn Interpreter::set_computed_property(
                 } catch {
                   _ => () // Not numeric, fall through
                 }
-              }
               _ => ()
             }
           }
@@ -7349,7 +7436,7 @@ fn Interpreter::construct_value(
   ctor : Value,
   args : Array[Value],
   loc : @token.Loc,
-  proto_override~ : Value? = None,
+  proto_override? : Value? = None,
 ) -> Value raise Error {
   match ctor {
     Proxy(proxy_data) => {
@@ -7367,9 +7454,7 @@ fn Interpreter::construct_value(
         }
       }
       if not(is_constructible(target)) {
-        raise @errors.TypeError(
-          message="target is not a constructor",
-        )
+        raise @errors.TypeError(message="target is not a constructor")
       }
       let trap = get_proxy_trap(proxy_data, "construct")
       match trap {
@@ -7377,7 +7462,10 @@ fn Interpreter::construct_value(
           let handler = get_proxy_handler(proxy_data)
           let args_array : Value = Array({ elements: args.copy() })
           let result = self.call_value(
-            trap_fn, handler, [target, args_array, ctor], loc,
+            trap_fn,
+            handler,
+            [target, args_array, ctor],
+            loc,
           )
           match result {
             Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) =>
@@ -7431,10 +7519,19 @@ fn Interpreter::construct_value(
                 func_env.def(data.params[i], val, LetBinding)
               }
             }
-            let tte : Value? = if func_env.has("[[ThrowTypeError]]") { Some(func_env.get("[[ThrowTypeError]]")) } else { None }
+            let tte : Value? = if func_env.has("[[ThrowTypeError]]") {
+              Some(func_env.get("[[ThrowTypeError]]"))
+            } else {
+              None
+            }
             func_env.def(
               "arguments",
-              make_arguments_object(args, ctor, func_strict, throw_type_error=tte),
+              make_arguments_object(
+                args,
+                ctor,
+                func_strict,
+                throw_type_error=tte,
+              ),
               VarBinding,
             )
             // Hoist var declarations and function declarations
@@ -7552,10 +7649,19 @@ fn Interpreter::construct_value(
               }
               None => ()
             }
-            let tte2 : Value? = if func_env.has("[[ThrowTypeError]]") { Some(func_env.get("[[ThrowTypeError]]")) } else { None }
+            let tte2 : Value? = if func_env.has("[[ThrowTypeError]]") {
+              Some(func_env.get("[[ThrowTypeError]]"))
+            } else {
+              None
+            }
             func_env.def(
               "arguments",
-              make_arguments_object(args, ctor, func_strict, throw_type_error=tte2),
+              make_arguments_object(
+                args,
+                ctor,
+                func_strict,
+                throw_type_error=tte2,
+              ),
               VarBinding,
             )
             self.hoist_declarations(data.body, func_env)
@@ -7680,10 +7786,19 @@ fn Interpreter::construct_value(
                   }
                   ctor_env.def(params[i], val, LetBinding)
                 }
-                let ctor_tte : Value? = if ctor_env.has("[[ThrowTypeError]]") { Some(ctor_env.get("[[ThrowTypeError]]")) } else { None }
+                let ctor_tte : Value? = if ctor_env.has("[[ThrowTypeError]]") {
+                  Some(ctor_env.get("[[ThrowTypeError]]"))
+                } else {
+                  None
+                }
                 ctor_env.def(
                   "arguments",
-                  make_arguments_object(args, ctor, true, throw_type_error=ctor_tte),
+                  make_arguments_object(
+                    args,
+                    ctor,
+                    true,
+                    throw_type_error=ctor_tte,
+                  ),
                   VarBinding,
                 )
                 // Hoist declarations and execute body
@@ -7755,10 +7870,21 @@ fn Interpreter::construct_value(
                                   }
                                   super_env.def(params[i], val, LetBinding)
                                 }
-                                let super_tte : Value? = if super_env.has("[[ThrowTypeError]]") { Some(super_env.get("[[ThrowTypeError]]")) } else { None }
+                                let super_tte : Value? = if super_env.has(
+                                    "[[ThrowTypeError]]",
+                                  ) {
+                                  Some(super_env.get("[[ThrowTypeError]]"))
+                                } else {
+                                  None
+                                }
                                 super_env.def(
                                   "arguments",
-                                  make_arguments_object(args, sc, true, throw_type_error=super_tte),
+                                  make_arguments_object(
+                                    args,
+                                    sc,
+                                    true,
+                                    throw_type_error=super_tte,
+                                  ),
                                   VarBinding,
                                 )
                                 self.hoist_declarations(body, super_env)
@@ -7833,7 +7959,7 @@ fn ensure_strict_body(body : Array[@ast.Stmt]) -> Array[@ast.Stmt] {
   } else {
     let strict_body : Array[@ast.Stmt] = [
       ExprStmt(
-        StringLit("use strict", @token.Loc::default()),
+        StringLit("use strict", false, @token.Loc::default()),
         @token.Loc::default(),
       ),
     ]
@@ -7886,7 +8012,7 @@ fn Interpreter::create_class(
   for m in methods {
     // Get the method key - could be string or symbol
     let key_val : Value = match m.key {
-      StringLit(s, _) => String_(s)
+      StringLit(s, _, _) => String_(s)
       _ => self.eval_expr(m.key, env)
     }
     let method_key_str : String = key_val.to_string()

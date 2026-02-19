@@ -6,7 +6,11 @@ import {
 }
 
 // Values
+pub fn detach_arraybuffer(Int) -> Unit
+
 pub fn get_array_iterator_override(ArrayData) -> (Value?, Value?)
+
+pub fn get_array_iterator_proto() -> Value
 
 pub fn get_array_like_element(Value, Int) -> Value
 
@@ -14,19 +18,39 @@ pub fn get_array_method(ArrayData, String) -> Value
 
 pub fn get_array_method_with_interp(ArrayData, String) -> Value
 
+pub fn get_array_named_prop(ArrayData, String) -> Value?
+
+pub fn get_arraybuffer_bytes(Int) -> Array[Int]?
+
+pub fn get_buffer_id(Value) -> Int?
+
 pub fn get_hasinstance_symbol() -> SymbolData
+
+pub fn get_iterator_proto() -> Value
 
 pub fn get_iterator_symbol() -> SymbolData
 
 pub fn get_map_method(MapData, String) -> Value
 
+pub fn get_match_symbol() -> SymbolData
+
 pub fn get_number_method(Value, String) -> Value
 
 pub fn get_promise_method(PromiseData, String) -> Value
 
+pub fn get_regexp_string_iterator_proto() -> Value
+
+pub fn get_replace_symbol() -> SymbolData
+
+pub fn get_search_symbol() -> SymbolData
+
 pub fn get_set_method(SetData, String) -> Value
 
-pub fn get_string_method(String, String) -> Value
+pub fn get_split_symbol() -> SymbolData
+
+pub fn get_string_iterator_proto() -> Value
+
+pub fn get_string_method(String, String, annex_b? : Bool) -> Value
 
 pub fn get_symbol_by_id(Int) -> SymbolData?
 
@@ -34,13 +58,25 @@ pub fn get_toprimitive_symbol() -> SymbolData
 
 pub fn get_tostringtag_symbol() -> SymbolData
 
+pub fn get_tostringtag_value(ObjectData) -> String? raise
+
+pub fn get_typedarray_prop(ObjectData, String) -> Value
+
+pub fn get_weakmap_method(ObjectData, String) -> Value
+
+pub fn get_weakset_method(ObjectData, String) -> Value
+
 pub fn has_array_like_element(Value, Int) -> Bool
+
+pub fn is_arraybuffer_detached(Int) -> Bool
 
 pub let is_constructing : Ref[Bool]
 
 pub fn is_js_catchable_error(Error) -> Bool
 
 pub fn is_truthy(Value) -> Bool
+
+pub fn is_typedarray_class(String) -> Bool
 
 pub fn js_error_to_throw_value(Error) -> Value
 
@@ -49,6 +85,8 @@ pub fn js_error_to_value(Error) -> Value
 pub fn js_error_to_value_with_env(Error, Environment?) -> Value
 
 pub fn make_array_iterator_value(ArrayData) -> Value
+
+pub fn make_arraybuffer_object(Int, Value) -> Value
 
 pub fn make_func(FuncData) -> Value
 
@@ -62,9 +100,13 @@ pub fn make_object(Map[String, Value], Value, Callable?, String, Map[String, Pro
 
 pub fn make_plain_object() -> Value
 
+pub fn make_regex_match_array(RegexMatch, String) -> Value
+
 pub fn make_regexp_object(String, String) -> Value
 
 pub fn make_string_iterator_value(String) -> Value
+
+pub fn make_typedarray_object(String, Int, Value, Environment) -> Value
 
 pub fn new_promise_data() -> PromiseData
 
@@ -72,7 +114,7 @@ pub fn new_symbol(String?) -> SymbolData
 
 pub fn regex_match_at(String, String, String, Int) -> RegexMatch? raise
 
-pub fn regex_search(String, String, String) -> RegexMatch? raise
+pub fn regex_search(String, String, String, start_pos? : Int) -> RegexMatch? raise
 
 pub fn regex_search_all(String, String, String) -> Array[RegexMatch] raise
 
@@ -82,9 +124,17 @@ pub fn same_value_zero(Value, Value) -> Bool
 
 pub fn set_array_iterator_override(ArrayData, Value?, Value?) -> Unit
 
-pub fn setup_builtins(Environment, Array[String]) -> Unit
+pub fn set_array_named_prop(ArrayData, String, Value) -> Unit
+
+pub fn setup_arraybuffer_builtins(Environment) -> Unit
+
+pub fn setup_builtins(Environment, Array[String], annex_b? : Bool) -> Unit
+
+pub fn setup_dataview_builtins(Environment) -> Unit
 
 pub fn setup_date_builtins(Environment) -> Unit
+
+pub fn setup_generator_function_constructor(Environment, Value) -> Unit
 
 pub fn setup_harness_builtins(Environment, Array[String], Value) -> Unit
 
@@ -94,9 +144,13 @@ pub fn setup_object_builtins(Environment) -> Unit
 
 pub fn setup_promise(Environment) -> Unit
 
-pub fn setup_string_prototype(Value) -> Unit
+pub fn setup_string_prototype(Value, annex_b? : Bool) -> Unit
 
 pub fn setup_timers(Environment) -> Unit
+
+pub fn setup_typedarray_builtins(Environment) -> Unit
+
+pub fn setup_weakmap_set_builtins(Environment) -> Unit
 
 pub fn strict_equal_val(Value, Value) -> Bool
 
@@ -110,15 +164,33 @@ pub fn this_to_string(Value) -> String raise
 
 pub fn to_array_like_length(Value) -> Int
 
+pub fn to_index(Value) -> Int raise
+
 pub fn to_int32(Double) -> Int
 
 pub fn to_number(Value) -> Double raise
 
 pub fn type_of(Value) -> String
 
+pub fn typed_array_bytes_per_element(String) -> Int
+
+pub fn typedarray_get_index(ObjectData, Int) -> Value
+
+pub fn typedarray_set_index(ObjectData, Int, Double) -> Unit
+
+pub fn validate_typedarray_buffer(ObjectData) -> Unit raise
+
 pub let well_known_hasinstance_sym : Ref[SymbolData?]
 
 pub let well_known_iterator_sym : Ref[SymbolData?]
+
+pub let well_known_match_sym : Ref[SymbolData?]
+
+pub let well_known_replace_sym : Ref[SymbolData?]
+
+pub let well_known_search_sym : Ref[SymbolData?]
+
+pub let well_known_split_sym : Ref[SymbolData?]
 
 pub let well_known_toprimitive_sym : Ref[SymbolData?]
 
@@ -244,6 +316,7 @@ pub(all) struct Interpreter {
   global : Environment
   global_this : Value
   mut strict : Bool
+  annex_b : Bool
   microtask_queue : Array[Microtask]
   timer_queue : Array[TimerTask]
   timer_id_counter : Ref[Int]
@@ -254,7 +327,7 @@ pub(all) struct Interpreter {
   mut module_export_bindings : Array[(String, String)]
 }
 pub fn Interpreter::enqueue_microtask(Self, Value, Array[Value]) -> Unit
-pub fn Interpreter::new() -> Self
+pub fn Interpreter::new(annex_b? : Bool) -> Self
 pub fn Interpreter::register_module(Self, String, Map[String, Value]) -> Unit
 pub fn Interpreter::run(Self, Array[@ast.Stmt]) -> Value raise
 pub fn Interpreter::run_microtasks(Self) -> Unit raise
@@ -319,6 +392,11 @@ pub(all) struct PropDescriptor {
   mut setter : Value?
 }
 
+pub(all) struct ProxyData {
+  mut target : Value?
+  mut handler : Value?
+}
+
 type RegexMatch
 
 pub(all) enum ResumeAction {
@@ -372,6 +450,7 @@ pub(all) enum Value {
   Map(MapData)
   Set(SetData)
   Promise(PromiseData)
+  Proxy(ProxyData)
 }
 pub impl Show for Value
 

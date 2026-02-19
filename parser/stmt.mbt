@@ -538,9 +538,11 @@ fn Parser::parse_for_rest(
 ///|
 fn Parser::parse_return_stmt(self : Parser) -> @ast.Stmt raise Error {
   let tok = self.expect(Return)
+  // [no LineTerminator here] — ASI inserts semicolon if next token is on a new line
   let value : @ast.Expr? = if self.at(Semicolon) ||
     self.at(RBrace) ||
-    self.at(EOF) {
+    self.at(EOF) ||
+    self.peek().loc.line != tok.loc.line {
     None
   } else {
     Some(self.parse_expr())
@@ -586,6 +588,13 @@ fn Parser::parse_continue_stmt(self : Parser) -> @ast.Stmt raise Error {
 ///|
 fn Parser::parse_throw_stmt(self : Parser) -> @ast.Stmt raise Error {
   let tok = self.expect(Throw)
+  // [no LineTerminator here] — a line terminator between throw and expression is illegal
+  let next = self.peek()
+  if next.loc.line != tok.loc.line || self.at(Semicolon) || self.at(EOF) {
+    raise @errors.SyntaxError(
+      message="Illegal newline after throw at line \{tok.loc.line}, col \{tok.loc.col}",
+    )
+  }
   let expr = self.parse_expr()
   self.eat_semicolon()
   ThrowStmt(expr, tok.loc)
@@ -1012,9 +1021,7 @@ fn Parser::parse_import_decl(self : Parser) -> @ast.Stmt raise Error {
   match namespace_import {
     Some(name) =>
       if bound_names.contains(name) {
-        raise @errors.SyntaxError(
-          message="Duplicate import binding '\{name}'",
-        )
+        raise @errors.SyntaxError(message="Duplicate import binding '\{name}'")
       } else {
         bound_names[name] = true
       }

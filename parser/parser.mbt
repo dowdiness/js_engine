@@ -3,13 +3,46 @@
 /// Contextual keywords (get, set, from, as, of) are excluded since they ARE valid identifiers.
 fn is_reserved_word(name : String) -> Bool {
   match name {
-    "let" | "const" | "var" | "function" | "return" | "if" | "else" | "while"
-    | "for" | "break" | "continue" | "true" | "false" | "null" | "undefined"
-    | "typeof" | "throw" | "try" | "catch" | "finally" | "new" | "this"
-    | "switch" | "case" | "default" | "void" | "delete" | "do" | "in"
-    | "instanceof" | "class" | "extends" | "super" | "static" | "import"
-    | "export" | "yield" | "enum" | "with" | "debugger" =>
-      true
+    "let"
+    | "const"
+    | "var"
+    | "function"
+    | "return"
+    | "if"
+    | "else"
+    | "while"
+    | "for"
+    | "break"
+    | "continue"
+    | "true"
+    | "false"
+    | "null"
+    | "undefined"
+    | "typeof"
+    | "throw"
+    | "try"
+    | "catch"
+    | "finally"
+    | "new"
+    | "this"
+    | "switch"
+    | "case"
+    | "default"
+    | "void"
+    | "delete"
+    | "do"
+    | "in"
+    | "instanceof"
+    | "class"
+    | "extends"
+    | "super"
+    | "static"
+    | "import"
+    | "export"
+    | "yield"
+    | "enum"
+    | "with"
+    | "debugger" => true
     _ => false
   }
 }
@@ -40,7 +73,6 @@ fn Parser::push_generator_context(self : Parser, is_generator : Bool) -> Unit {
 ///|
 fn Parser::pop_generator_context(self : Parser) -> Unit {
   let _ = self.generator_depth.pop()
-
 }
 
 ///|
@@ -219,7 +251,6 @@ fn Parser::peek_kind_at(self : Parser, offset : Int) -> @token.TokenKind {
 fn Parser::eat_semicolon(self : Parser) -> Unit {
   // Lenient: consume semicolon if present, no error otherwise
   let _ = self.eat(Semicolon)
-
 }
 
 ///|

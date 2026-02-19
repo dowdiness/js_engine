@@ -103,9 +103,11 @@ fn typed_array_set_element(
           n + 1
         } else if frac < 0.5 {
           n
-        } else {
           // Exactly 0.5: round to nearest even
-          if n % 2 == 0 { n } else { n + 1 }
+        } else if n % 2 == 0 {
+          n
+        } else {
+          n + 1
         }
       }
       bytes[byte_offset] = v
@@ -278,8 +280,8 @@ pub fn make_typedarray_object(
   props["[[ArrayLength]]"] = Number(length.to_double())
   let descs : Map[String, PropDescriptor] = {}
   let internal_keys = [
-    "[[TypedArrayName]]", "[[ViewedArrayBuffer]]", "[[ArrayBufferID]]",
-    "[[ByteOffset]]", "[[ByteLength]]", "[[ArrayLength]]",
+    "[[TypedArrayName]]", "[[ViewedArrayBuffer]]", "[[ArrayBufferID]]", "[[ByteOffset]]",
+    "[[ByteLength]]", "[[ArrayLength]]",
   ]
   for k in internal_keys {
     descs[k] = {
@@ -326,8 +328,8 @@ fn make_typedarray_from_buffer(
   props["[[ArrayLength]]"] = Number(length.to_double())
   let descs : Map[String, PropDescriptor] = {}
   let internal_keys = [
-    "[[TypedArrayName]]", "[[ViewedArrayBuffer]]", "[[ArrayBufferID]]",
-    "[[ByteOffset]]", "[[ByteLength]]", "[[ArrayLength]]",
+    "[[TypedArrayName]]", "[[ViewedArrayBuffer]]", "[[ArrayBufferID]]", "[[ByteOffset]]",
+    "[[ByteLength]]", "[[ArrayLength]]",
   ]
   for k in internal_keys {
     descs[k] = {
@@ -407,7 +409,8 @@ pub fn typedarray_set_index(
   let bpe = typed_array_bytes_per_element(data.class_name)
   let elem_offset = byte_offset + index * bpe
   match get_arraybuffer_bytes(buf_id) {
-    Some(bytes) => typed_array_set_element(bytes, elem_offset, data.class_name, value)
+    Some(bytes) =>
+      typed_array_set_element(bytes, elem_offset, data.class_name, value)
     None => ()
   }
 }
@@ -443,7 +446,7 @@ pub fn get_typedarray_prop(data : ObjectData, prop : String) -> Value {
         Some(v) => v
         None => Undefined
       }
-    _ => {
+    _ =>
       // Check if it's a numeric string (index access)
       try {
         let idx = @strconv.parse_int(prop)
@@ -454,7 +457,6 @@ pub fn get_typedarray_prop(data : ObjectData, prop : String) -> Value {
       } catch {
         _ => Undefined
       }
-    }
   }
 }
 
@@ -572,7 +574,9 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
               if args.length() == 0 {
-                raise @errors.TypeError(message="TypedArray.prototype.set requires at least 1 argument")
+                raise @errors.TypeError(
+                  message="TypedArray.prototype.set requires at least 1 argument",
+                )
               }
               let target_offset = if args.length() > 1 {
                 to_number(args[1]).to_int()
@@ -586,7 +590,8 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
               match args[0] {
                 // Source is a TypedArray
                 Object(src_data) if is_typedarray_class(src_data.class_name) => {
-                  let src_len = match src_data.properties.get("[[ArrayLength]]") {
+                  let src_len = match
+                    src_data.properties.get("[[ArrayLength]]") {
                     Some(Number(n)) => n.to_int()
                     _ => 0
                   }
@@ -649,9 +654,14 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
                 }
               }
             } else {
-              raise @errors.TypeError(message="TypedArray.prototype.set called on non-TypedArray")
+              raise @errors.TypeError(
+                message="TypedArray.prototype.set called on non-TypedArray",
+              )
             }
-          _ => raise @errors.TypeError(message="TypedArray.prototype.set called on non-TypedArray")
+          _ =>
+            raise @errors.TypeError(
+              message="TypedArray.prototype.set called on non-TypedArray",
+            )
         }
       }),
     ),
@@ -682,7 +692,11 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
               }
               let begin_index = if relative_begin < 0 {
                 let b = ta_length + relative_begin
-                if b < 0 { 0 } else { b }
+                if b < 0 {
+                  0
+                } else {
+                  b
+                }
               } else if relative_begin > ta_length {
                 ta_length
               } else {
@@ -698,7 +712,11 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
               }
               let end_index = if relative_end < 0 {
                 let e = ta_length + relative_end
-                if e < 0 { 0 } else { e }
+                if e < 0 {
+                  0
+                } else {
+                  e
+                }
               } else if relative_end > ta_length {
                 ta_length
               } else {
@@ -730,9 +748,12 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
                 proto,
               )
             } else {
-              raise @errors.TypeError(message="subarray called on non-TypedArray")
+              raise @errors.TypeError(
+                message="subarray called on non-TypedArray",
+              )
             }
-          _ => raise @errors.TypeError(message="subarray called on non-TypedArray")
+          _ =>
+            raise @errors.TypeError(message="subarray called on non-TypedArray")
         }
       }),
     ),
@@ -763,7 +784,11 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
               }
               let begin_index = if relative_begin < 0 {
                 let b = ta_length + relative_begin
-                if b < 0 { 0 } else { b }
+                if b < 0 {
+                  0
+                } else {
+                  b
+                }
               } else if relative_begin > ta_length {
                 ta_length
               } else {
@@ -779,7 +804,11 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
               }
               let end_index = if relative_end < 0 {
                 let e = ta_length + relative_end
-                if e < 0 { 0 } else { e }
+                if e < 0 {
+                  0
+                } else {
+                  e
+                }
               } else if relative_end > ta_length {
                 ta_length
               } else {
@@ -839,25 +868,68 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
               }
               let target_idx = if args.length() > 0 {
                 let t = to_number(args[0]).to_int()
-                if t < 0 { let r = len + t; if r < 0 { 0 } else { r } } else { if t > len { len } else { t } }
-              } else { 0 }
+                if t < 0 {
+                  let r = len + t
+                  if r < 0 {
+                    0
+                  } else {
+                    r
+                  }
+                } else if t > len {
+                  len
+                } else {
+                  t
+                }
+              } else {
+                0
+              }
               let start_idx = if args.length() > 1 {
                 let s = to_number(args[1]).to_int()
-                if s < 0 { let r = len + s; if r < 0 { 0 } else { r } } else { if s > len { len } else { s } }
-              } else { 0 }
+                if s < 0 {
+                  let r = len + s
+                  if r < 0 {
+                    0
+                  } else {
+                    r
+                  }
+                } else if s > len {
+                  len
+                } else {
+                  s
+                }
+              } else {
+                0
+              }
               let end_idx = if args.length() > 2 {
                 match args[2] {
                   Undefined => len
                   _ => {
                     let e = to_number(args[2]).to_int()
-                    if e < 0 { let r = len + e; if r < 0 { 0 } else { r } } else { if e > len { len } else { e } }
+                    if e < 0 {
+                      let r = len + e
+                      if r < 0 {
+                        0
+                      } else {
+                        r
+                      }
+                    } else if e > len {
+                      len
+                    } else {
+                      e
+                    }
                   }
                 }
-              } else { len }
+              } else {
+                len
+              }
               let count = {
                 let c1 = end_idx - start_idx
                 let c2 = len - target_idx
-                if c1 < c2 { c1 } else { c2 }
+                if c1 < c2 {
+                  c1
+                } else {
+                  c2
+                }
               }
               if count > 0 {
                 // Read all source values first to handle overlapping
@@ -875,9 +947,14 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
               }
               this_val
             } else {
-              raise @errors.TypeError(message="copyWithin called on non-TypedArray")
+              raise @errors.TypeError(
+                message="copyWithin called on non-TypedArray",
+              )
             }
-          _ => raise @errors.TypeError(message="copyWithin called on non-TypedArray")
+          _ =>
+            raise @errors.TypeError(
+              message="copyWithin called on non-TypedArray",
+            )
         }
       }),
     ),
@@ -908,17 +985,43 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
               }
               let start_idx = if args.length() > 1 {
                 let s = to_number(args[1]).to_int()
-                if s < 0 { let r = len + s; if r < 0 { 0 } else { r } } else { if s > len { len } else { s } }
-              } else { 0 }
+                if s < 0 {
+                  let r = len + s
+                  if r < 0 {
+                    0
+                  } else {
+                    r
+                  }
+                } else if s > len {
+                  len
+                } else {
+                  s
+                }
+              } else {
+                0
+              }
               let end_idx = if args.length() > 2 {
                 match args[2] {
                   Undefined => len
                   _ => {
                     let e = to_number(args[2]).to_int()
-                    if e < 0 { let r = len + e; if r < 0 { 0 } else { r } } else { if e > len { len } else { e } }
+                    if e < 0 {
+                      let r = len + e
+                      if r < 0 {
+                        0
+                      } else {
+                        r
+                      }
+                    } else if e > len {
+                      len
+                    } else {
+                      e
+                    }
                   }
                 }
-              } else { len }
+              } else {
+                len
+              }
               for i = start_idx; i < end_idx; i = i + 1 {
                 typedarray_set_index(data, i, fill_val)
               }
@@ -956,8 +1059,19 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
               let search_val = to_number(args[0])
               let from_idx = if args.length() > 1 {
                 let f = to_number(args[1]).to_int()
-                if f < 0 { let r = len + f; if r < 0 { 0 } else { r } } else { f }
-              } else { 0 }
+                if f < 0 {
+                  let r = len + f
+                  if r < 0 {
+                    0
+                  } else {
+                    r
+                  }
+                } else {
+                  f
+                }
+              } else {
+                0
+              }
               for i = from_idx; i < len; i = i + 1 {
                 let elem = typedarray_get_index(data, i)
                 match elem {
@@ -1002,8 +1116,16 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
               let search_val = to_number(args[0])
               let from_idx = if args.length() > 1 {
                 let f = to_number(args[1]).to_int()
-                if f < 0 { len + f } else { if f >= len { len - 1 } else { f } }
-              } else { len - 1 }
+                if f < 0 {
+                  len + f
+                } else if f >= len {
+                  len - 1
+                } else {
+                  f
+                }
+              } else {
+                len - 1
+              }
               for i = from_idx; i >= 0; i = i - 1 {
                 let elem = typedarray_get_index(data, i)
                 match elem {
@@ -1048,8 +1170,19 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
               let search_val = to_number(args[0])
               let from_idx = if args.length() > 1 {
                 let f = to_number(args[1]).to_int()
-                if f < 0 { let r = len + f; if r < 0 { 0 } else { r } } else { f }
-              } else { 0 }
+                if f < 0 {
+                  let r = len + f
+                  if r < 0 {
+                    0
+                  } else {
+                    r
+                  }
+                } else {
+                  f
+                }
+              } else {
+                0
+              }
               for i = from_idx; i < len; i = i + 1 {
                 let elem = typedarray_get_index(data, i)
                 match elem {
@@ -1173,8 +1306,14 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
               while lo < hi {
                 let lo_val = typedarray_get_index(data, lo)
                 let hi_val = typedarray_get_index(data, hi)
-                let lo_num = match lo_val { Number(n) => n; _ => 0.0 }
-                let hi_num = match hi_val { Number(n) => n; _ => 0.0 }
+                let lo_num = match lo_val {
+                  Number(n) => n
+                  _ => 0.0
+                }
+                let hi_num = match hi_val {
+                  Number(n) => n
+                  _ => 0.0
+                }
                 typedarray_set_index(data, lo, hi_num)
                 typedarray_set_index(data, hi, lo_num)
                 lo = lo + 1
@@ -1364,7 +1503,9 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
                   _ => -1
                 }
                 if buf_id >= 0 && is_arraybuffer_detached(buf_id) {
-                  raise @errors.TypeError(message="Cannot iterate over a detached ArrayBuffer")
+                  raise @errors.TypeError(
+                    message="Cannot iterate over a detached ArrayBuffer",
+                  )
                 }
                 let len = match data.properties.get("[[ArrayLength]]") {
                   Some(Number(n)) => n.to_int()
@@ -1374,7 +1515,9 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
                 if idx < len {
                   let value = typedarray_get_index(data, idx)
                   index_ref.val = idx + 1
-                  let pair = Array({ elements: [Number(idx.to_double()), value] })
+                  let pair = Array({
+                    elements: [Number(idx.to_double()), value],
+                  })
                   let result_props : Map[String, Value] = {}
                   result_props["value"] = pair
                   result_props["done"] = Bool(false)
@@ -1460,7 +1603,9 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
                   _ => -1
                 }
                 if buf_id >= 0 && is_arraybuffer_detached(buf_id) {
-                  raise @errors.TypeError(message="Cannot iterate over a detached ArrayBuffer")
+                  raise @errors.TypeError(
+                    message="Cannot iterate over a detached ArrayBuffer",
+                  )
                 }
                 let len = match data.properties.get("[[ArrayLength]]") {
                   Some(Number(n)) => n.to_int()
@@ -1554,7 +1699,9 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
                   _ => -1
                 }
                 if buf_id >= 0 && is_arraybuffer_detached(buf_id) {
-                  raise @errors.TypeError(message="Cannot iterate over a detached ArrayBuffer")
+                  raise @errors.TypeError(
+                    message="Cannot iterate over a detached ArrayBuffer",
+                  )
                 }
                 let len = match data.properties.get("[[ArrayLength]]") {
                   Some(Number(n)) => n.to_int()
@@ -1644,7 +1791,9 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
             if is_typedarray_class(data.class_name) {
               validate_typedarray_buffer(data)
               if args.length() == 0 {
-                raise @errors.TypeError(message="forEach requires a callback function")
+                raise @errors.TypeError(
+                  message="forEach requires a callback function",
+                )
               }
               let callback = args[0]
               let this_arg = if args.length() > 1 { args[1] } else { Undefined }
@@ -1655,13 +1804,21 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
               let loc = @token.Loc::default()
               for i = 0; i < len; i = i + 1 {
                 let elem = typedarray_get_index(data, i)
-                let _ = interp.call_value(callback, this_arg, [elem, Number(i.to_double()), this_val], loc)
+                let _ = interp.call_value(
+                  callback,
+                  this_arg,
+                  [elem, Number(i.to_double()), this_val],
+                  loc,
+                )
               }
               Undefined
             } else {
-              raise @errors.TypeError(message="forEach called on non-TypedArray")
+              raise @errors.TypeError(
+                message="forEach called on non-TypedArray",
+              )
             }
-          _ => raise @errors.TypeError(message="forEach called on non-TypedArray")
+          _ =>
+            raise @errors.TypeError(message="forEach called on non-TypedArray")
         }
       }),
     ),
@@ -1683,7 +1840,9 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
             if is_typedarray_class(data.class_name) {
               validate_typedarray_buffer(data)
               if args.length() == 0 {
-                raise @errors.TypeError(message="map requires a callback function")
+                raise @errors.TypeError(
+                  message="map requires a callback function",
+                )
               }
               let callback = args[0]
               let this_arg = if args.length() > 1 { args[1] } else { Undefined }
@@ -1692,12 +1851,22 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
                 _ => 0
               }
               let loc = @token.Loc::default()
-              let result = make_typedarray_object(data.class_name, len, data.prototype, env)
+              let result = make_typedarray_object(
+                data.class_name,
+                len,
+                data.prototype,
+                env,
+              )
               match result {
                 Object(result_data) =>
                   for i = 0; i < len; i = i + 1 {
                     let elem = typedarray_get_index(data, i)
-                    let mapped = interp.call_value(callback, this_arg, [elem, Number(i.to_double()), this_val], loc)
+                    let mapped = interp.call_value(
+                      callback,
+                      this_arg,
+                      [elem, Number(i.to_double()), this_val],
+                      loc,
+                    )
                     let num = to_number(mapped)
                     typedarray_set_index(result_data, i, num)
                   }
@@ -1729,7 +1898,9 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
             if is_typedarray_class(data.class_name) {
               validate_typedarray_buffer(data)
               if args.length() == 0 {
-                raise @errors.TypeError(message="filter requires a callback function")
+                raise @errors.TypeError(
+                  message="filter requires a callback function",
+                )
               }
               let callback = args[0]
               let this_arg = if args.length() > 1 { args[1] } else { Undefined }
@@ -1741,7 +1912,12 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
               let kept : Array[Double] = []
               for i = 0; i < len; i = i + 1 {
                 let elem = typedarray_get_index(data, i)
-                let result = interp.call_value(callback, this_arg, [elem, Number(i.to_double()), this_val], loc)
+                let result = interp.call_value(
+                  callback,
+                  this_arg,
+                  [elem, Number(i.to_double()), this_val],
+                  loc,
+                )
                 if is_truthy(result) {
                   match elem {
                     Number(n) => kept.push(n)
@@ -1749,7 +1925,12 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
                   }
                 }
               }
-              let result = make_typedarray_object(data.class_name, kept.length(), data.prototype, env)
+              let result = make_typedarray_object(
+                data.class_name,
+                kept.length(),
+                data.prototype,
+                env,
+              )
               match result {
                 Object(result_data) =>
                   for i = 0; i < kept.length(); i = i + 1 {
@@ -1761,7 +1942,8 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
             } else {
               raise @errors.TypeError(message="filter called on non-TypedArray")
             }
-          _ => raise @errors.TypeError(message="filter called on non-TypedArray")
+          _ =>
+            raise @errors.TypeError(message="filter called on non-TypedArray")
         }
       }),
     ),
@@ -1783,7 +1965,9 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
             if is_typedarray_class(data.class_name) {
               validate_typedarray_buffer(data)
               if args.length() == 0 {
-                raise @errors.TypeError(message="reduce requires a callback function")
+                raise @errors.TypeError(
+                  message="reduce requires a callback function",
+                )
               }
               let callback = args[0]
               let len = match data.properties.get("[[ArrayLength]]") {
@@ -1797,20 +1981,28 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
                 accumulator = args[1]
               } else {
                 if len == 0 {
-                  raise @errors.TypeError(message="Reduce of empty array with no initial value")
+                  raise @errors.TypeError(
+                    message="Reduce of empty array with no initial value",
+                  )
                 }
                 accumulator = typedarray_get_index(data, 0)
                 start_idx = 1
               }
               for i = start_idx; i < len; i = i + 1 {
                 let elem = typedarray_get_index(data, i)
-                accumulator = interp.call_value(callback, Undefined, [accumulator, elem, Number(i.to_double()), this_val], loc)
+                accumulator = interp.call_value(
+                  callback,
+                  Undefined,
+                  [accumulator, elem, Number(i.to_double()), this_val],
+                  loc,
+                )
               }
               accumulator
             } else {
               raise @errors.TypeError(message="reduce called on non-TypedArray")
             }
-          _ => raise @errors.TypeError(message="reduce called on non-TypedArray")
+          _ =>
+            raise @errors.TypeError(message="reduce called on non-TypedArray")
         }
       }),
     ),
@@ -1832,7 +2024,9 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
             if is_typedarray_class(data.class_name) {
               validate_typedarray_buffer(data)
               if args.length() == 0 {
-                raise @errors.TypeError(message="reduceRight requires a callback function")
+                raise @errors.TypeError(
+                  message="reduceRight requires a callback function",
+                )
               }
               let callback = args[0]
               let len = match data.properties.get("[[ArrayLength]]") {
@@ -1846,20 +2040,32 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
                 accumulator = args[1]
               } else {
                 if len == 0 {
-                  raise @errors.TypeError(message="Reduce of empty array with no initial value")
+                  raise @errors.TypeError(
+                    message="Reduce of empty array with no initial value",
+                  )
                 }
                 accumulator = typedarray_get_index(data, len - 1)
                 start_idx = len - 2
               }
               for i = start_idx; i >= 0; i = i - 1 {
                 let elem = typedarray_get_index(data, i)
-                accumulator = interp.call_value(callback, Undefined, [accumulator, elem, Number(i.to_double()), this_val], loc)
+                accumulator = interp.call_value(
+                  callback,
+                  Undefined,
+                  [accumulator, elem, Number(i.to_double()), this_val],
+                  loc,
+                )
               }
               accumulator
             } else {
-              raise @errors.TypeError(message="reduceRight called on non-TypedArray")
+              raise @errors.TypeError(
+                message="reduceRight called on non-TypedArray",
+              )
             }
-          _ => raise @errors.TypeError(message="reduceRight called on non-TypedArray")
+          _ =>
+            raise @errors.TypeError(
+              message="reduceRight called on non-TypedArray",
+            )
         }
       }),
     ),
@@ -1881,7 +2087,9 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
             if is_typedarray_class(data.class_name) {
               validate_typedarray_buffer(data)
               if args.length() == 0 {
-                raise @errors.TypeError(message="every requires a callback function")
+                raise @errors.TypeError(
+                  message="every requires a callback function",
+                )
               }
               let callback = args[0]
               let this_arg = if args.length() > 1 { args[1] } else { Undefined }
@@ -1892,7 +2100,12 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
               let loc = @token.Loc::default()
               for i = 0; i < len; i = i + 1 {
                 let elem = typedarray_get_index(data, i)
-                let result = interp.call_value(callback, this_arg, [elem, Number(i.to_double()), this_val], loc)
+                let result = interp.call_value(
+                  callback,
+                  this_arg,
+                  [elem, Number(i.to_double()), this_val],
+                  loc,
+                )
                 if not(is_truthy(result)) {
                   return Bool(false)
                 }
@@ -1923,7 +2136,9 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
             if is_typedarray_class(data.class_name) {
               validate_typedarray_buffer(data)
               if args.length() == 0 {
-                raise @errors.TypeError(message="some requires a callback function")
+                raise @errors.TypeError(
+                  message="some requires a callback function",
+                )
               }
               let callback = args[0]
               let this_arg = if args.length() > 1 { args[1] } else { Undefined }
@@ -1934,7 +2149,12 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
               let loc = @token.Loc::default()
               for i = 0; i < len; i = i + 1 {
                 let elem = typedarray_get_index(data, i)
-                let result = interp.call_value(callback, this_arg, [elem, Number(i.to_double()), this_val], loc)
+                let result = interp.call_value(
+                  callback,
+                  this_arg,
+                  [elem, Number(i.to_double()), this_val],
+                  loc,
+                )
                 if is_truthy(result) {
                   return Bool(true)
                 }
@@ -1965,7 +2185,9 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
             if is_typedarray_class(data.class_name) {
               validate_typedarray_buffer(data)
               if args.length() == 0 {
-                raise @errors.TypeError(message="find requires a callback function")
+                raise @errors.TypeError(
+                  message="find requires a callback function",
+                )
               }
               let callback = args[0]
               let this_arg = if args.length() > 1 { args[1] } else { Undefined }
@@ -1976,7 +2198,12 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
               let loc = @token.Loc::default()
               for i = 0; i < len; i = i + 1 {
                 let elem = typedarray_get_index(data, i)
-                let result = interp.call_value(callback, this_arg, [elem, Number(i.to_double()), this_val], loc)
+                let result = interp.call_value(
+                  callback,
+                  this_arg,
+                  [elem, Number(i.to_double()), this_val],
+                  loc,
+                )
                 if is_truthy(result) {
                   return elem
                 }
@@ -2007,7 +2234,9 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
             if is_typedarray_class(data.class_name) {
               validate_typedarray_buffer(data)
               if args.length() == 0 {
-                raise @errors.TypeError(message="findIndex requires a callback function")
+                raise @errors.TypeError(
+                  message="findIndex requires a callback function",
+                )
               }
               let callback = args[0]
               let this_arg = if args.length() > 1 { args[1] } else { Undefined }
@@ -2018,16 +2247,26 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
               let loc = @token.Loc::default()
               for i = 0; i < len; i = i + 1 {
                 let elem = typedarray_get_index(data, i)
-                let result = interp.call_value(callback, this_arg, [elem, Number(i.to_double()), this_val], loc)
+                let result = interp.call_value(
+                  callback,
+                  this_arg,
+                  [elem, Number(i.to_double()), this_val],
+                  loc,
+                )
                 if is_truthy(result) {
                   return Number(i.to_double())
                 }
               }
               Number(-1.0)
             } else {
-              raise @errors.TypeError(message="findIndex called on non-TypedArray")
+              raise @errors.TypeError(
+                message="findIndex called on non-TypedArray",
+              )
             }
-          _ => raise @errors.TypeError(message="findIndex called on non-TypedArray")
+          _ =>
+            raise @errors.TypeError(
+              message="findIndex called on non-TypedArray",
+            )
         }
       }),
     ),
@@ -2039,11 +2278,9 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
 
   // Mark all prototype methods as non-enumerable (per spec)
   let method_names = [
-    "set", "subarray", "slice", "copyWithin", "fill",
-    "indexOf", "lastIndexOf", "includes", "join", "toString",
-    "reverse", "sort", "at", "entries", "keys", "values",
-    "forEach", "map", "filter", "reduce", "reduceRight",
-    "every", "some", "find", "findIndex",
+    "set", "subarray", "slice", "copyWithin", "fill", "indexOf", "lastIndexOf", "includes",
+    "join", "toString", "reverse", "sort", "at", "entries", "keys", "values", "forEach",
+    "map", "filter", "reduce", "reduceRight", "every", "some", "find", "findIndex",
   ]
   for name in method_names {
     ta_proto_descs[name] = {
@@ -2177,10 +2414,8 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
 
   // --- Create individual TypedArray constructors ---
   let type_names = [
-    "Int8Array", "Uint8Array", "Uint8ClampedArray",
-    "Int16Array", "Uint16Array",
-    "Int32Array", "Uint32Array",
-    "Float32Array", "Float64Array",
+    "Int8Array", "Uint8Array", "Uint8ClampedArray", "Int16Array", "Uint16Array",
+    "Int32Array", "Uint32Array", "Float32Array", "Float64Array",
   ]
 
   for type_name in type_names {
@@ -2224,7 +2459,9 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
       callable: Some(
         InterpreterCallable("from", fn(interp, _this_val, args) raise {
           if args.length() == 0 {
-            raise @errors.TypeError(message="TypedArray.from requires at least 1 argument")
+            raise @errors.TypeError(
+              message="TypedArray.from requires at least 1 argument",
+            )
           }
           let source = args[0]
           let has_map_fn = args.length() > 1 && not(args[1] is Undefined)
@@ -2280,7 +2517,12 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
             }
             elements.push(to_number(mapped))
           }
-          let result = make_typedarray_object(type_name, elements.length(), per_proto, env)
+          let result = make_typedarray_object(
+            type_name,
+            elements.length(),
+            per_proto,
+            env,
+          )
           match result {
             Object(result_data) =>
               for i = 0; i < elements.length(); i = i + 1 {
@@ -2304,7 +2546,12 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
       prototype: Null,
       callable: Some(
         NativeCallable("of", fn(args) raise {
-          let result = make_typedarray_object(type_name, args.length(), per_proto, env)
+          let result = make_typedarray_object(
+            type_name,
+            args.length(),
+            per_proto,
+            env,
+          )
           match result {
             Object(result_data) =>
               for i = 0; i < args.length(); i = i + 1 {
@@ -2371,7 +2618,9 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
             Number(n) => {
               let length = n.to_int()
               if length < 0 || n != length.to_double() || n.is_nan() {
-                raise @errors.RangeError(message="Invalid typed array length: \{n}")
+                raise @errors.RangeError(
+                  message="Invalid typed array length: \{n}",
+                )
               }
               make_typedarray_object(type_name, length, per_proto, env)
             }
@@ -2381,7 +2630,9 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
                 Some(Number(ln)) => ln.to_int()
                 _ => 0
               }
-              let result = make_typedarray_object(type_name, src_len, per_proto, env)
+              let result = make_typedarray_object(
+                type_name, src_len, per_proto, env,
+              )
               match result {
                 Object(result_data) =>
                   for i = 0; i < src_len; i = i + 1 {
@@ -2399,7 +2650,8 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
             // From ArrayBuffer
             Object(buf_data) if buf_data.class_name == "ArrayBuffer" => {
               // Check for detached buffer
-              let check_buf_id = match buf_data.properties.get("[[ArrayBufferID]]") {
+              let check_buf_id = match
+                buf_data.properties.get("[[ArrayBufferID]]") {
                 Some(Number(n)) => n.to_int()
                 _ => -1
               }
@@ -2408,9 +2660,8 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
                   message="Cannot construct a TypedArray with a detached ArrayBuffer",
                 )
               }
-              let buf_byte_length = match buf_data.properties.get(
-                "[[ArrayBufferByteLength]]",
-              ) {
+              let buf_byte_length = match
+                buf_data.properties.get("[[ArrayBufferByteLength]]") {
                 Some(Number(n)) => n.to_int()
                 _ => 0
               }
@@ -2460,17 +2711,15 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
                 )
               }
               make_typedarray_from_buffer(
-                type_name,
-                first,
-                byte_offset,
-                length,
-                per_proto,
+                type_name, first, byte_offset, length, per_proto,
               )
             }
             // From array-like or iterable
             Array(arr_data) => {
               let len = arr_data.elements.length()
-              let result = make_typedarray_object(type_name, len, per_proto, env)
+              let result = make_typedarray_object(
+                type_name, len, per_proto, env,
+              )
               match result {
                 Object(result_data) =>
                   for i = 0; i < len; i = i + 1 {
@@ -2482,11 +2731,13 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
               result
             }
             // From generic object with length
-            Object(src_data) => {
+            Object(src_data) =>
               match src_data.properties.get("length") {
                 Some(Number(len_n)) => {
                   let len = len_n.to_int()
-                  let result = make_typedarray_object(type_name, len, per_proto, env)
+                  let result = make_typedarray_object(
+                    type_name, len, per_proto, env,
+                  )
                   match result {
                     Object(result_data) =>
                       for i = 0; i < len; i = i + 1 {
@@ -2502,12 +2753,9 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
                   }
                   result
                 }
-                _ =>
-                  make_typedarray_object(type_name, 0, per_proto, env)
+                _ => make_typedarray_object(type_name, 0, per_proto, env)
               }
-            }
-            _ =>
-              make_typedarray_object(type_name, 0, per_proto, env)
+            _ => make_typedarray_object(type_name, 0, per_proto, env)
           }
         }),
       ),

@@ -1,5 +1,9 @@
 ///|
-pub fn get_string_method(s : String, prop : String, annex_b~ : Bool = false) -> Value {
+pub fn get_string_method(
+  s : String,
+  prop : String,
+  annex_b? : Bool = false,
+) -> Value {
   let chars = s.to_array()
   match prop {
     "charAt" =>
@@ -386,11 +390,19 @@ pub fn get_string_method(s : String, prop : String, annex_b~ : Bool = false) -> 
               Some(Object(fn_data)) =>
                 match fn_data.callable {
                   Some(MethodCallable(_, f)) => {
-                    let limit = if args.length() > 1 { args[1] } else { Undefined }
+                    let limit = if args.length() > 1 {
+                      args[1]
+                    } else {
+                      Undefined
+                    }
                     return f(args[0], [String_(str), limit])
                   }
                   Some(NativeCallable(_, f)) => {
-                    let limit = if args.length() > 1 { args[1] } else { Undefined }
+                    let limit = if args.length() > 1 {
+                      args[1]
+                    } else {
+                      Undefined
+                    }
                     return f([String_(str), limit])
                   }
                   _ => ()
@@ -494,11 +506,19 @@ pub fn get_string_method(s : String, prop : String, annex_b~ : Bool = false) -> 
               Some(Object(fn_data)) =>
                 match fn_data.callable {
                   Some(MethodCallable(_, f)) => {
-                    let rep = if args.length() > 1 { args[1] } else { Undefined }
+                    let rep = if args.length() > 1 {
+                      args[1]
+                    } else {
+                      Undefined
+                    }
                     return f(args[0], [String_(str), rep])
                   }
                   Some(NativeCallable(_, f)) => {
-                    let rep = if args.length() > 1 { args[1] } else { Undefined }
+                    let rep = if args.length() > 1 {
+                      args[1]
+                    } else {
+                      Undefined
+                    }
                     return f([String_(str), rep])
                   }
                   _ => ()
@@ -624,7 +644,9 @@ pub fn get_string_method(s : String, prop : String, annex_b~ : Bool = false) -> 
                 )
               }
               // Get all matches
-              let matches = regex_search_all(pattern, flags, str) catch { _ => [] }
+              let matches = regex_search_all(pattern, flags, str) catch {
+                _ => []
+              }
               let input_chars = str.to_array()
               let index_ref : Ref[Int] = { val: 0 }
               // Create iterator with next() method
@@ -640,7 +662,9 @@ pub fn get_string_method(s : String, prop : String, annex_b~ : Bool = false) -> 
                       index_ref.val = idx + 1
                       // Create match array with captures (like non-global match())
                       let elements : Array[Value] = []
-                      elements.push(String_(substring(input_chars, m.start, m.end_)))
+                      elements.push(
+                        String_(substring(input_chars, m.start, m.end_)),
+                      )
                       for cap in m.captures {
                         match cap {
                           Some(c) => elements.push(String_(c))
@@ -700,9 +724,14 @@ pub fn get_string_method(s : String, prop : String, annex_b~ : Bool = false) -> 
                 extensible: true,
               })
             } else {
-              raise @errors.TypeError(message="matchAll requires a RegExp argument")
+              raise @errors.TypeError(
+                message="matchAll requires a RegExp argument",
+              )
             }
-          _ => raise @errors.TypeError(message="matchAll requires a RegExp argument")
+          _ =>
+            raise @errors.TypeError(
+              message="matchAll requires a RegExp argument",
+            )
         }
       })
     }
@@ -917,11 +946,19 @@ pub fn get_string_method(s : String, prop : String, annex_b~ : Bool = false) -> 
               Some(Object(fn_data)) =>
                 match fn_data.callable {
                   Some(MethodCallable(_, f)) => {
-                    let rep = if args.length() > 1 { args[1] } else { Undefined }
+                    let rep = if args.length() > 1 {
+                      args[1]
+                    } else {
+                      Undefined
+                    }
                     return f(args[0], [String_(str), rep])
                   }
                   Some(NativeCallable(_, f)) => {
-                    let rep = if args.length() > 1 { args[1] } else { Undefined }
+                    let rep = if args.length() > 1 {
+                      args[1]
+                    } else {
+                      Undefined
+                    }
                     return f([String_(str), rep])
                   }
                   _ => ()
@@ -1087,50 +1124,103 @@ pub fn get_string_method(s : String, prop : String, annex_b~ : Bool = false) -> 
       })
     }
     // Annex B HTML string methods (B.2.2.2 - B.2.2.14) — only when --annex-b
-    "anchor" | "big" | "blink" | "bold" | "fixed" | "fontcolor" | "fontsize"
-    | "italics" | "link" | "small" | "strike" | "sub" | "sup" =>
+    "anchor"
+    | "big"
+    | "blink"
+    | "bold"
+    | "fixed"
+    | "fontcolor"
+    | "fontsize"
+    | "italics"
+    | "link"
+    | "small"
+    | "strike"
+    | "sub"
+    | "sup" =>
       if not(annex_b) {
         Undefined
       } else {
         match prop {
           "anchor" =>
             make_native_func("anchor", fn(args) {
-              let name = if args.length() > 0 { args[0].to_string() } else { "undefined" }
-              String_("<a name=\"" + escape_html_attr(name) + "\">" + s + "</a>")
+              let name = if args.length() > 0 {
+                args[0].to_string()
+              } else {
+                "undefined"
+              }
+              String_(
+                "<a name=\"" + escape_html_attr(name) + "\">" + s + "</a>",
+              )
             })
           "big" =>
-            make_native_func("big", fn(_args) { String_("<big>" + s + "</big>") })
+            make_native_func("big", fn(_args) {
+              String_("<big>" + s + "</big>")
+            })
           "blink" =>
-            make_native_func("blink", fn(_args) { String_("<blink>" + s + "</blink>") })
+            make_native_func("blink", fn(_args) {
+              String_("<blink>" + s + "</blink>")
+            })
           "bold" =>
             make_native_func("bold", fn(_args) { String_("<b>" + s + "</b>") })
           "fixed" =>
-            make_native_func("fixed", fn(_args) { String_("<tt>" + s + "</tt>") })
+            make_native_func("fixed", fn(_args) {
+              String_("<tt>" + s + "</tt>")
+            })
           "fontcolor" =>
             make_native_func("fontcolor", fn(args) {
-              let color = if args.length() > 0 { args[0].to_string() } else { "undefined" }
-              String_("<font color=\"" + escape_html_attr(color) + "\">" + s + "</font>")
+              let color = if args.length() > 0 {
+                args[0].to_string()
+              } else {
+                "undefined"
+              }
+              String_(
+                "<font color=\"" +
+                escape_html_attr(color) +
+                "\">" +
+                s +
+                "</font>",
+              )
             })
           "fontsize" =>
             make_native_func("fontsize", fn(args) {
-              let size = if args.length() > 0 { args[0].to_string() } else { "undefined" }
-              String_("<font size=\"" + escape_html_attr(size) + "\">" + s + "</font>")
+              let size = if args.length() > 0 {
+                args[0].to_string()
+              } else {
+                "undefined"
+              }
+              String_(
+                "<font size=\"" + escape_html_attr(size) + "\">" + s + "</font>",
+              )
             })
           "italics" =>
-            make_native_func("italics", fn(_args) { String_("<i>" + s + "</i>") })
+            make_native_func("italics", fn(_args) {
+              String_("<i>" + s + "</i>")
+            })
           "link" =>
             make_native_func("link", fn(args) {
-              let url = if args.length() > 0 { args[0].to_string() } else { "undefined" }
+              let url = if args.length() > 0 {
+                args[0].to_string()
+              } else {
+                "undefined"
+              }
               String_("<a href=\"" + escape_html_attr(url) + "\">" + s + "</a>")
             })
           "small" =>
-            make_native_func("small", fn(_args) { String_("<small>" + s + "</small>") })
+            make_native_func("small", fn(_args) {
+              String_("<small>" + s + "</small>")
+            })
           "strike" =>
-            make_native_func("strike", fn(_args) { String_("<strike>" + s + "</strike>") })
+            make_native_func("strike", fn(_args) {
+              String_("<strike>" + s + "</strike>")
+            })
           "sub" =>
-            make_native_func("sub", fn(_args) { String_("<sub>" + s + "</sub>") })
+            make_native_func("sub", fn(_args) {
+              String_("<sub>" + s + "</sub>")
+            })
           "sup" =>
-            make_native_func("sup", fn(_args) { String_("<sup>" + s + "</sup>") })
+            make_native_func("sup", fn(_args) {
+              String_("<sup>" + s + "</sup>")
+            })
           _ => Undefined
         }
       }
@@ -1326,21 +1416,25 @@ pub fn this_to_string(this_val : Value) -> String raise Error {
 
 ///|
 /// Populate String.prototype with all string methods
-pub fn setup_string_prototype(string_proto : Value, annex_b~ : Bool = false) -> Unit {
+pub fn setup_string_prototype(
+  string_proto : Value,
+  annex_b? : Bool = false,
+) -> Unit {
   match string_proto {
     Object(data) => {
       let methods : Array[String] = [
         "charAt", "charCodeAt", "at", "codePointAt", "indexOf", "lastIndexOf", "includes",
         "startsWith", "endsWith", "slice", "substring", "toUpperCase", "toLowerCase",
-        "trim", "trimStart", "trimEnd", "trimLeft", "trimRight", "padStart", "padEnd", "repeat", "replace",
-        "replaceAll", "split", "search", "match", "matchAll", "concat", "normalize", "isWellFormed",
-        "toWellFormed", "localeCompare", "toLocaleString", "toString", "valueOf",
+        "trim", "trimStart", "trimEnd", "trimLeft", "trimRight", "padStart", "padEnd",
+        "repeat", "replace", "replaceAll", "split", "search", "match", "matchAll",
+        "concat", "normalize", "isWellFormed", "toWellFormed", "localeCompare", "toLocaleString",
+        "toString", "valueOf",
       ]
       // Annex B HTML string methods — only when --annex-b is enabled
       if annex_b {
         let annex_b_methods = [
-          "anchor", "big", "blink", "bold", "fixed", "fontcolor", "fontsize",
-          "italics", "link", "small", "strike", "sub", "sup",
+          "anchor", "big", "blink", "bold", "fixed", "fontcolor", "fontsize", "italics",
+          "link", "small", "strike", "sub", "sup",
         ]
         for m in annex_b_methods {
           methods.push(m)

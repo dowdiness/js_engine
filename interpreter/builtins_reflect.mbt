@@ -184,7 +184,9 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
                     let existing_is_accessor = existing.getter is Some(_) ||
                       existing.setter is Some(_)
                     // Cannot change between accessor and data descriptor types
-                    if existing_is_accessor && not(is_accessor) && (has_value || has_writable) {
+                    if existing_is_accessor &&
+                      not(is_accessor) &&
+                      (has_value || has_writable) {
                       return Bool(false)
                     }
                     if not(existing_is_accessor) && is_accessor {
@@ -213,7 +215,9 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
                                 return Bool(false)
                               }
                             None =>
-                              if not(g is Undefined) { return Bool(false) }
+                              if not(g is Undefined) {
+                                return Bool(false)
+                              }
                           }
                         None => ()
                       }
@@ -225,7 +229,9 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
                                 return Bool(false)
                               }
                             None =>
-                              if not(s is Undefined) { return Bool(false) }
+                              if not(s is Undefined) {
+                                return Bool(false)
+                              }
                           }
                         None => ()
                       }
@@ -234,14 +240,12 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
                     if not(existing_is_accessor) && not(is_accessor) {
                       if not(existing.writable) {
                         match attr_data.properties.get("writable") {
-                          Some(v) =>
-                            if is_truthy(v) { return Bool(false) }
+                          Some(v) => if is_truthy(v) { return Bool(false) }
                           None => ()
                         }
                         if has_value {
-                          let new_val = match attr_data.properties.get(
-                            "value",
-                          ) {
+                          let new_val = match
+                            attr_data.properties.get("value") {
                             Some(v) => v
                             None => Undefined
                           }
@@ -271,9 +275,8 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
                     None => false
                   }
               }
-              let configurable = match attr_data.properties.get(
-                "configurable",
-              ) {
+              let configurable = match
+                attr_data.properties.get("configurable") {
                 Some(v) => is_truthy(v)
                 None =>
                   match data.descriptors.get(prop) {
@@ -308,9 +311,8 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
                     None => false
                   }
               }
-              let configurable = match attr_data.properties.get(
-                "configurable",
-              ) {
+              let configurable = match
+                attr_data.properties.get("configurable") {
                 Some(v) => is_truthy(v)
                 None =>
                   match data.descriptors.get(prop) {
@@ -319,9 +321,8 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
                   }
               }
               if has_value {
-                data.properties[prop] = match attr_data.properties.get(
-                  "value",
-                ) {
+                data.properties[prop] = match
+                  attr_data.properties.get("value") {
                   Some(v) => v
                   None => Undefined
                 }
@@ -379,10 +380,7 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
             )
         }
         match data.descriptors.get(prop) {
-          Some(desc) =>
-            if not(desc.configurable) {
-              return Bool(false)
-            }
+          Some(desc) => if not(desc.configurable) { return Bool(false) }
           None => ()
         }
         let _ = data.properties.remove(prop)
@@ -552,16 +550,13 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
     callable: Some(
       NativeCallable("has", fn(args) raise {
         if args.length() < 2 {
-          raise @errors.TypeError(
-            message="Reflect.has requires 2 arguments",
-          )
+          raise @errors.TypeError(message="Reflect.has requires 2 arguments")
         }
         let target = args[0]
         let prop = args[1].to_string()
         match target {
           Object(data) => {
-            if data.properties.contains(prop) ||
-              data.descriptors.contains(prop) {
+            if data.properties.contains(prop) || data.descriptors.contains(prop) {
               return Bool(true)
             }
             // Walk prototype chain
@@ -622,9 +617,7 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
               None => Bool(false)
             }
           _ =>
-            raise @errors.TypeError(
-              message="Reflect.has called on non-object",
-            )
+            raise @errors.TypeError(message="Reflect.has called on non-object")
         }
       }),
     ),
@@ -674,9 +667,7 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
     callable: Some(
       InterpreterCallable("ownKeys", fn(interp, _this_val, args) raise {
         if args.length() < 1 {
-          raise @errors.TypeError(
-            message="Reflect.ownKeys requires 1 argument",
-          )
+          raise @errors.TypeError(message="Reflect.ownKeys requires 1 argument")
         }
         let target = args[0]
         match target {
@@ -689,7 +680,10 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
                 let handler = get_proxy_handler(proxy_data)
                 let loc = @token.Loc::default()
                 let result = interp.call_value(
-                  trap_fn, handler, [proxy_target], loc,
+                  trap_fn,
+                  handler,
+                  [proxy_target],
+                  loc,
                 )
                 // Convert result array to Array[Value]
                 match result {
@@ -723,7 +717,10 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
                           reflect_obj, "ownKeys", loc,
                         )
                         inner_interp.call_value(
-                          own_keys_fn, Undefined, inner_args, loc,
+                          own_keys_fn,
+                          Undefined,
+                          inner_args,
+                          loc,
                         )
                       }),
                     ),
@@ -852,7 +849,8 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
               None => ()
             }
             // Non-extensible and property doesn't exist: write fails
-            if not(data.extensible) && not(data.properties.contains(prop)) &&
+            if not(data.extensible) &&
+              not(data.properties.contains(prop)) &&
               not(data.descriptors.contains(prop)) {
               return Bool(false)
             }

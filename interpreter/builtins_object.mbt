@@ -1,4 +1,99 @@
 ///|
+fn validate_accessor(value : Value?, label : String) -> Unit raise Error {
+  match value {
+    Some(Object(o)) =>
+      if o.callable is None {
+        raise @errors.TypeError(
+          message="\{label} must be a function: [object Object]",
+        )
+      }
+    Some(Undefined) | None => ()
+    Some(v) =>
+      raise @errors.TypeError(
+        message="\{label} must be a function: \{v.to_string()}",
+      )
+  }
+}
+
+///|
+fn apply_property_descriptor(
+  data : ObjectData,
+  prop_name : String,
+  desc : ObjectData,
+) -> Unit raise Error {
+  let has_get = desc.properties.contains("get")
+  let has_set = desc.properties.contains("set")
+  let is_accessor = has_get || has_set
+  let has_value = desc.properties.contains("value")
+  let has_writable = desc.properties.contains("writable")
+  let is_data = has_value || has_writable
+  if is_accessor && is_data {
+    raise @errors.TypeError(
+      message="Invalid property descriptor. Cannot both specify accessors and a value or writable attribute, #<Object>",
+    )
+  }
+  if is_accessor {
+    if not(data.properties.contains(prop_name)) {
+      data.properties[prop_name] = Undefined
+    }
+    let getter : Value? = match desc.properties.get("get") {
+      Some(Undefined) => None
+      Some(v) => Some(v)
+      None => None
+    }
+    let setter : Value? = match desc.properties.get("set") {
+      Some(Undefined) => None
+      Some(v) => Some(v)
+      None => None
+    }
+    validate_accessor(getter, "Getter")
+    validate_accessor(setter, "Setter")
+    let enumerable = match desc.properties.get("enumerable") {
+      Some(v) => is_truthy(v)
+      _ => false
+    }
+    let configurable = match desc.properties.get("configurable") {
+      Some(v) => is_truthy(v)
+      _ => false
+    }
+    data.descriptors[prop_name] = {
+      writable: false,
+      enumerable,
+      configurable,
+      getter,
+      setter,
+    }
+  } else {
+    match desc.properties.get("value") {
+      Some(v) => data.properties[prop_name] = v
+      None =>
+        if not(data.properties.contains(prop_name)) {
+          data.properties[prop_name] = Undefined
+        }
+    }
+    let writable = match desc.properties.get("writable") {
+      Some(v) => is_truthy(v)
+      _ => false
+    }
+    let enumerable = match desc.properties.get("enumerable") {
+      Some(v) => is_truthy(v)
+      _ => false
+    }
+    let configurable = match desc.properties.get("configurable") {
+      Some(v) => is_truthy(v)
+      _ => false
+    }
+    data.descriptors[prop_name] = {
+      writable,
+      enumerable,
+      configurable,
+      getter: None,
+      setter: None,
+    }
+  }
+}
+
+///|
 pub fn setup_object_builtins(env : Environment) -> Unit {
   // Object.keys, Object.values, Object.entries, Object.create, Object.assign,
   // Object.getPrototypeOf, Object.getOwnPropertyNames
@@ -9,7 +104,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         symbol_properties: {},
         prototype: Null,
         callable: Some(
-          MethodCallable("toString", fn(this_val, _args) {
+          MethodCallable("toString", fn(this_val, _args) raise {
             match this_val {
               Undefined => String_("[object Undefined]")
               Null => String_("[object Null]")
@@ -401,93 +496,9 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                       Object(data) =>
                         desc_obj.properties.each(fn(prop_name, desc_val) raise {
                           match desc_val {
-                            Object(desc) => {
-                              let has_get = desc.properties.contains("get")
-                              let has_set = desc.properties.contains("set")
-                              let has_value = desc.properties.contains("value")
-                              let has_writable = desc.properties.contains(
-                                "writable",
-                              )
-                              let is_accessor = has_get || has_set
-                              let is_data = has_value || has_writable
-                              if is_accessor && is_data {
-                                raise @errors.TypeError(
-                                  message="Invalid property descriptor. Cannot both specify accessors and a value or writable attribute, #<Object>",
-                                )
-                              }
-                              if is_accessor {
-                                if not(data.properties.contains(prop_name)) {
-                                  data.properties[prop_name] = Undefined
-                                }
-                                let getter : Value? = match
-                                  desc.properties.get("get") {
-                                  Some(v) =>
-                                    match v {
-                                      Undefined => None
-                                      _ => Some(v)
-                                    }
-                                  None => None
-                                }
-                                let setter : Value? = match
-                                  desc.properties.get("set") {
-                                  Some(v) =>
-                                    match v {
-                                      Undefined => None
-                                      _ => Some(v)
-                                    }
-                                  None => None
-                                }
-                                let enumerable = match
-                                  desc.properties.get("enumerable") {
-                                  Some(v) => is_truthy(v)
-                                  None => false
-                                }
-                                let configurable = match
-                                  desc.properties.get("configurable") {
-                                  Some(v) => is_truthy(v)
-                                  None => false
-                                }
-                                data.descriptors[prop_name] = {
-                                  writable: false,
-                                  enumerable,
-                                  configurable,
-                                  getter,
-                                  setter,
-                                }
-                              } else {
-                                let value = match desc.properties.get("value") {
-                                  Some(v) => v
-                                  None => Undefined
-                                }
-                                data.properties[prop_name] = value
-                                let writable = match
-                                  desc.properties.get("writable") {
-                                  Some(v) => is_truthy(v)
-                                  None => false
-                                }
-                                let enumerable = match
-                                  desc.properties.get("enumerable") {
-                                  Some(v) => is_truthy(v)
-                                  None => false
-                                }
-                                let configurable = match
-                                  desc.properties.get("configurable") {
-                                  Some(v) => is_truthy(v)
-                                  None => false
-                                }
-                                data.descriptors[prop_name] = {
-                                  writable,
-                                  enumerable,
-                                  configurable,
-                                  getter: None,
-                                  setter: None,
-                                }
-                              }
-                            }
-                            _ =>
-                              raise @errors.TypeError(
-                                message="Property description must be an object",
-                              )
+                            Object(desc) =>
+                              apply_property_descriptor(data, prop_name, desc)
+                            _ => ()
                           }
                         })
                       _ => ()
@@ -497,243 +508,36 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                       message="Property descriptors must be an object",
                     )
                 }
-              Null | String_(_) | Number(_) | Bool(_) | Symbol(_) | Array(_) |
-              Map(_) | Set(_) =>
+              Null
+              | String_(_)
+              | Number(_)
+              | Bool(_)
+              | Symbol(_)
+              | Array(_)
+              | Map(_)
+              | Set(_) =>
                 raise @errors.TypeError(
                   message="Property descriptors must be an object",
                 )
               Object(desc_obj) =>
-                // Objects have properties field
                 match obj {
                   Object(data) =>
                     desc_obj.properties.each(fn(prop_name, desc_val) raise {
                       match desc_val {
-                        Object(desc) => {
-                          let has_get = desc.properties.contains("get")
-                          let has_set = desc.properties.contains("set")
-                          let is_accessor = has_get || has_set
-                          let has_value = desc.properties.contains("value")
-                          let has_writable = desc.properties.contains(
-                            "writable",
-                          )
-                          let is_data = has_value || has_writable
-                          // Accessor and data descriptor properties cannot be mixed
-                          if is_accessor && is_data {
-                            raise @errors.TypeError(
-                              message="Invalid property descriptor. Cannot both specify accessors and a value or writable attribute, #<Object>",
-                            )
-                          }
-                          if is_accessor {
-                            // Accessor descriptor
-                            if not(data.properties.contains(prop_name)) {
-                              data.properties[prop_name] = Undefined
-                            }
-                            let getter : Value? = match
-                              desc.properties.get("get") {
-                              Some(Undefined) => None
-                              Some(v) => Some(v)
-                              None => None
-                            }
-                            let setter : Value? = match
-                              desc.properties.get("set") {
-                              Some(Undefined) => None
-                              Some(v) => Some(v)
-                              None => None
-                            }
-                            // Validate getter/setter are callable (or undefined)
-                            match getter {
-                              Some(Object(g)) =>
-                                if g.callable is None {
-                                  raise @errors.TypeError(
-                                    message="Getter must be a function: [object Object]",
-                                  )
-                                }
-                              Some(Undefined) | None => ()
-                              Some(_) =>
-                                raise @errors.TypeError(
-                                  message="Getter must be a function: \{getter.unwrap().to_string()}",
-                                )
-                            }
-                            match setter {
-                              Some(Object(s)) =>
-                                if s.callable is None {
-                                  raise @errors.TypeError(
-                                    message="Setter must be a function: [object Object]",
-                                  )
-                                }
-                              Some(Undefined) | None => ()
-                              Some(_) =>
-                                raise @errors.TypeError(
-                                  message="Setter must be a function: \{setter.unwrap().to_string()}",
-                                )
-                            }
-                            let enumerable = match
-                              desc.properties.get("enumerable") {
-                              Some(v) => is_truthy(v)
-                              _ => false
-                            }
-                            let configurable = match
-                              desc.properties.get("configurable") {
-                              Some(v) => is_truthy(v)
-                              _ => false
-                            }
-                            data.descriptors[prop_name] = {
-                              writable: false,
-                              enumerable,
-                              configurable,
-                              getter,
-                              setter,
-                            }
-                          } else {
-                            // Data descriptor
-                            match desc.properties.get("value") {
-                              Some(v) => data.properties[prop_name] = v
-                              None =>
-                                if not(data.properties.contains(prop_name)) {
-                                  data.properties[prop_name] = Undefined
-                                }
-                            }
-                            let writable = match
-                              desc.properties.get("writable") {
-                              Some(v) => is_truthy(v)
-                              _ => false
-                            }
-                            let enumerable = match
-                              desc.properties.get("enumerable") {
-                              Some(v) => is_truthy(v)
-                              _ => false
-                            }
-                            let configurable = match
-                              desc.properties.get("configurable") {
-                              Some(v) => is_truthy(v)
-                              _ => false
-                            }
-                            data.descriptors[prop_name] = {
-                              writable,
-                              enumerable,
-                              configurable,
-                              getter: None,
-                              setter: None,
-                            }
-                          }
-                        }
+                        Object(desc) =>
+                          apply_property_descriptor(data, prop_name, desc)
                         _ => ()
                       }
                     })
                   _ => ()
                 }
               Promise(desc_obj) =>
-                // Promises also have properties field
                 match obj {
                   Object(data) =>
                     desc_obj.properties.each(fn(prop_name, desc_val) raise {
                       match desc_val {
-                        Object(desc) => {
-                          let has_get = desc.properties.contains("get")
-                          let has_set = desc.properties.contains("set")
-                          let is_accessor = has_get || has_set
-                          let has_value = desc.properties.contains("value")
-                          let has_writable = desc.properties.contains(
-                            "writable",
-                          )
-                          let is_data = has_value || has_writable
-                          if is_accessor && is_data {
-                            raise @errors.TypeError(
-                              message="Invalid property descriptor. Cannot both specify accessors and a value or writable attribute, #<Object>",
-                            )
-                          }
-                          if is_accessor {
-                            if not(data.properties.contains(prop_name)) {
-                              data.properties[prop_name] = Undefined
-                            }
-                            let getter : Value? = match
-                              desc.properties.get("get") {
-                              Some(Undefined) => None
-                              Some(v) => Some(v)
-                              None => None
-                            }
-                            let setter : Value? = match
-                              desc.properties.get("set") {
-                              Some(Undefined) => None
-                              Some(v) => Some(v)
-                              None => None
-                            }
-                            // Validate getter/setter are callable (or undefined)
-                            match getter {
-                              Some(Object(g)) =>
-                                if g.callable is None {
-                                  raise @errors.TypeError(
-                                    message="Getter must be a function: [object Object]",
-                                  )
-                                }
-                              Some(Undefined) | None => ()
-                              Some(_) =>
-                                raise @errors.TypeError(
-                                  message="Getter must be a function: \{getter.unwrap().to_string()}",
-                                )
-                            }
-                            match setter {
-                              Some(Object(s)) =>
-                                if s.callable is None {
-                                  raise @errors.TypeError(
-                                    message="Setter must be a function: [object Object]",
-                                  )
-                                }
-                              Some(Undefined) | None => ()
-                              Some(_) =>
-                                raise @errors.TypeError(
-                                  message="Setter must be a function: \{setter.unwrap().to_string()}",
-                                )
-                            }
-                            let enumerable = match
-                              desc.properties.get("enumerable") {
-                              Some(v) => is_truthy(v)
-                              _ => false
-                            }
-                            let configurable = match
-                              desc.properties.get("configurable") {
-                              Some(v) => is_truthy(v)
-                              _ => false
-                            }
-                            data.descriptors[prop_name] = {
-                              writable: false,
-                              enumerable,
-                              configurable,
-                              getter,
-                              setter,
-                            }
-                          } else {
-                            match desc.properties.get("value") {
-                              Some(v) => data.properties[prop_name] = v
-                              None =>
-                                if not(data.properties.contains(prop_name)) {
-                                  data.properties[prop_name] = Undefined
-                                }
-                            }
-                            let writable = match
-                              desc.properties.get("writable") {
-                              Some(v) => is_truthy(v)
-                              _ => false
-                            }
-                            let enumerable = match
-                              desc.properties.get("enumerable") {
-                              Some(v) => is_truthy(v)
-                              _ => false
-                            }
-                            let configurable = match
-                              desc.properties.get("configurable") {
-                              Some(v) => is_truthy(v)
-                              _ => false
-                            }
-                            data.descriptors[prop_name] = {
-                              writable,
-                              enumerable,
-                              configurable,
-                              getter: None,
-                              setter: None,
-                            }
-                          }
-                        }
+                        Object(desc) =>
+                          apply_property_descriptor(data, prop_name, desc)
                         _ => ()
                       }
                     })
@@ -930,6 +734,35 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                                   )
                                 }
                                 data.properties[k] = v
+                              }
+                            })
+                            // Copy enumerable symbol properties from Proxy target
+                            src.symbol_properties.each(fn(sym_id, v) raise {
+                              let enumerable = match
+                                src.symbol_descriptors.get(sym_id) {
+                                Some(d) => d.enumerable
+                                None => true
+                              }
+                              if enumerable {
+                                let can_write = match
+                                  data.symbol_descriptors.get(sym_id) {
+                                  Some(d) => d.writable
+                                  None => true
+                                }
+                                let exists = data.symbol_properties.contains(
+                                  sym_id,
+                                )
+                                if not(can_write) {
+                                  raise @errors.TypeError(
+                                    message="Cannot assign to read-only symbol property",
+                                  )
+                                }
+                                if not(exists) && not(data.extensible) {
+                                  raise @errors.TypeError(
+                                    message="Cannot add symbol property to non-extensible object",
+                                  )
+                                }
+                                data.symbol_properties[sym_id] = v
                               }
                             })
                           }
@@ -1704,7 +1537,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                   } else {
                     data.descriptors.contains(prop_name)
                   }
-                  if not(prop_exists) && not(prop_also_in_desc) &&
+                  if not(prop_exists) &&
+                    not(prop_also_in_desc) &&
                     not(data.extensible) {
                     let prop_display = if is_symbol_key {
                       prop_val.to_string()
@@ -2952,8 +2786,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                           } else if not(data.properties.contains(prop_name)) {
                             data.properties[prop_name] = Undefined
                           }
-                          let writable = match
-                            desc.properties.get("writable") {
+                          let writable = match desc.properties.get("writable") {
                             Some(v) => is_truthy(v)
                             None => false
                           }

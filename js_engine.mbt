@@ -20,7 +20,10 @@ pub fn sum(data~ : Array[Int], start? : Int = 0, length? : Int) -> Int {
 }
 
 ///|
-pub fn run(source : String, annex_b~ : Bool = false) -> (Array[String], String) raise Error {
+pub fn run(
+  source : String,
+  annex_b? : Bool = false,
+) -> (Array[String], String) raise Error {
   let interp = @interpreter.Interpreter::new(annex_b~)
   let prog = @parser.parse(source)
   let result = interp.run(prog.stmts)
@@ -37,7 +40,7 @@ pub fn run(source : String, annex_b~ : Bool = false) -> (Array[String], String) 
 /// This version allows the host to control microtask and timer execution timing
 pub fn run_with_event_loop(
   source : String,
-  annex_b~ : Bool = false,
+  annex_b? : Bool = false,
 ) -> (@interpreter.Interpreter, @interpreter.Value) raise Error {
   let interp = @interpreter.Interpreter::new(annex_b~)
   let prog = @parser.parse(source)
@@ -81,7 +84,7 @@ pub fn run_timer_checkpoint(
 /// The module is executed in strict mode and its exports are collected
 pub fn run_module(
   source : String,
-  annex_b~ : Bool = false,
+  annex_b? : Bool = false,
 ) -> (Array[String], Map[String, @interpreter.Value]) raise Error {
   let interp = @interpreter.Interpreter::new(annex_b~)
   let prog = @parser.parse(source)
@@ -98,7 +101,7 @@ pub fn run_module(
 /// Returns the exports of the last module
 pub fn run_modules(
   modules : Array[(String, String)],
-  annex_b~ : Bool = false,
+  annex_b? : Bool = false,
 ) -> (Array[String], Map[String, @interpreter.Value]) raise Error {
   let interp = @interpreter.Interpreter::new(annex_b~)
   let mut last_exports : Map[String, @interpreter.Value] = {}

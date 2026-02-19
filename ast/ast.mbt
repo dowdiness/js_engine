@@ -95,7 +95,7 @@ pub(all) struct SwitchCase {
 ///|
 pub(all) enum Expr {
   NumberLit(Double, @token.Loc)
-  StringLit(String, @token.Loc)
+  StringLit(String, Bool, @token.Loc) // value, has_escape, loc
   BoolLit(Bool, @token.Loc)
   NullLit(@token.Loc)
   UndefinedLit(@token.Loc)

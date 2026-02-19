@@ -237,6 +237,115 @@ fn init_generator_prototype() -> Value {
 }
 
 ///|
+/// Set up the GeneratorFunction constructor on the given interpreter.
+/// GeneratorFunction("a", "yield a") creates a generator function,
+/// analogous to Function("a", "return a") for regular functions.
+pub fn setup_generator_function_constructor(
+  env : Environment,
+  global_this : Value,
+) -> Unit {
+  // %GeneratorFunction.prototype% inherits from Function.prototype
+  let func_proto : Value = match env.bindings.get("[[FunctionPrototype]]") {
+    Some(binding) => binding.value
+    None => Null
+  }
+  let gen_func_proto : Value = Object({
+    properties: {},
+    symbol_properties: {},
+    prototype: func_proto,
+    callable: None,
+    class_name: "GeneratorFunction",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+  // GeneratorFunction constructor: GeneratorFunction(p1, p2, ..., body)
+  let gen_func_ctor : Value = Object({
+    properties: { "length": Number(1.0), "prototype": gen_func_proto },
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      InterpreterCallable("GeneratorFunction", fn(interp, _this, args) raise {
+        if args.length() == 0 {
+          // No arguments: return empty generator function
+          return interp.make_generator_function(
+            Some("anonymous"),
+            [],
+            None,
+            [],
+            interp.global,
+          )
+        }
+        // Last arg is body, previous args are parameter names
+        let body_str = match args[args.length() - 1] {
+          String_(s) => s
+          _ => args[args.length() - 1].to_string()
+        }
+        let param_parts : Array[String] = []
+        for i = 0; i < args.length() - 1; i = i + 1 {
+          match args[i] {
+            String_(s) => param_parts.push(s)
+            _ => param_parts.push(args[i].to_string())
+          }
+        }
+        let params_str = param_parts.join(",")
+        let source = "function* anonymous(" +
+          params_str +
+          ") {\n" +
+          body_str +
+          "\n}"
+        let prog = @parser.parse(source)
+        if prog.stmts.length() > 0 {
+          match prog.stmts[0] {
+            GeneratorDecl(_, params, body, _) =>
+              return interp.make_generator_function(
+                Some("anonymous"),
+                params,
+                None,
+                body,
+                interp.global,
+              )
+            GeneratorDeclExt(_, params, rest_param, body, _) =>
+              return interp.make_generator_function_ext(
+                Some("anonymous"),
+                params,
+                rest_param,
+                body,
+                interp.global,
+              )
+            _ => ()
+          }
+        }
+        // Fallback: empty generator function
+        interp.make_generator_function(
+          Some("anonymous"),
+          [],
+          None,
+          [],
+          interp.global,
+        )
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+  // Set up prototype chain: GeneratorFunction.prototype.constructor = GeneratorFunction
+  match gen_func_proto {
+    Object(data) => data.properties["constructor"] = gen_func_ctor
+    _ => ()
+  }
+  // Mirror onto globalThis
+  match global_this {
+    Object(data) => data.properties["GeneratorFunction"] = gen_func_ctor
+    _ => ()
+  }
+  env.def_builtin("GeneratorFunction", gen_func_ctor)
+  env.def_builtin("[[GeneratorFunctionPrototype]]", gen_func_proto)
+}
+
+///|
 /// Yield signal — used to suspend generator execution
 pub suberror YieldSignal {
   YieldSignal(Value) // the yielded value
@@ -272,12 +381,18 @@ fn Interpreter::make_generator_function(
     symbol_descriptors: {},
     extensible: true,
   })
+  // Generator functions inherit from %GeneratorFunction.prototype%
+  let gen_func_proto : Value = match
+    interp.global.bindings.get("[[GeneratorFunctionPrototype]]") {
+    Some(binding) => binding.value
+    None => Null
+  }
   let fn_props : Map[String, Value] = {}
   fn_props["prototype"] = func_prototype
   Object({
     properties: fn_props,
     symbol_properties: {},
-    prototype: Null,
+    prototype: gen_func_proto,
     callable: Some(
       InterpreterCallable(
         match name {
@@ -329,12 +444,18 @@ fn Interpreter::make_generator_function_ext(
     symbol_descriptors: {},
     extensible: true,
   })
+  // Generator functions inherit from %GeneratorFunction.prototype%
+  let gen_func_proto : Value = match
+    interp.global.bindings.get("[[GeneratorFunctionPrototype]]") {
+    Some(binding) => binding.value
+    None => Null
+  }
   let fn_props : Map[String, Value] = {}
   fn_props["prototype"] = func_prototype
   Object({
     properties: fn_props,
     symbol_properties: {},
-    prototype: Null,
+    prototype: gen_func_proto,
     callable: Some(
       InterpreterCallable(
         match name {

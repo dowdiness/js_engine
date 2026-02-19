@@ -1317,9 +1317,7 @@ test "Reflect.getOwnPropertyDescriptor" {
     #|console.log(desc.enumerable);
     #|console.log(desc.configurable);
   let (output, _) = @js_engine.run(src)
-  inspect(
-    output, content="[\"42\", \"false\", \"true\", \"false\"]",
-  )
+  inspect(output, content="[\"42\", \"false\", \"true\", \"false\"]")
 }
 
 ///|

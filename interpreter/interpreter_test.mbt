@@ -7690,7 +7690,10 @@ test "test262: ArrayBuffer.isView" {
       #|console.log(ArrayBuffer.isView(42));
     ),
   )
-  inspect(output, content="[\"true\", \"true\", \"false\", \"false\", \"false\"]")
+  inspect(
+    output,
+    content="[\"true\", \"true\", \"false\", \"false\", \"false\"]",
+  )
 }
 
 ///|
@@ -8281,9 +8284,12 @@ test "test262: TypedArray Float32Array mantissa carry" {
       #|console.log(a[3]);
     ),
   )
-  inspect(output, content=(
-    #|["16777215", "16777216", "16777218", "16777218"]
-  ))
+  inspect(
+    output,
+    content=(
+      #|["16777215", "16777216", "16777218", "16777218"]
+    ),
+  )
 }
 
 ///|
@@ -8433,7 +8439,10 @@ test "test262: TypedArray BYTES_PER_ELEMENT" {
       #|console.log(Float64Array.BYTES_PER_ELEMENT);
     ),
   )
-  inspect(output, content="[\"1\", \"1\", \"2\", \"2\", \"4\", \"4\", \"4\", \"8\"]")
+  inspect(
+    output,
+    content="[\"1\", \"1\", \"2\", \"2\", \"4\", \"4\", \"4\", \"8\"]",
+  )
 }
 
 ///|

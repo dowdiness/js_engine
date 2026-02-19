@@ -446,96 +446,103 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      InterpreterCallable(
-        "getOrInsertComputed",
-        fn(interp, this_val, args) raise {
-          match this_val {
-            Object(data) =>
-              match get_weakmap_id(data) {
-                Some(id) => {
-                  let key = if args.length() > 0 { args[0] } else { Undefined }
-                  let callbackfn = if args.length() > 1 {
-                    args[1]
-                  } else {
-                    Undefined
-                  }
-                  // Check callbackfn is callable before validating key (per spec order)
-                  let cb_is_callable = match callbackfn {
-                    Object(od) => od.callable is Some(_)
-                    _ => false
-                  }
-                  if not(cb_is_callable) {
-                    raise @errors.TypeError(
-                      message="callbackfn is not a function",
-                    )
-                  }
-                  if not(is_valid_weak_key(key)) {
-                    raise @errors.TypeError(
-                      message="Invalid value used as weak map key",
-                    )
-                  }
-                  match weakmap_storage.get(id) {
-                    Some(entries) => {
-                      // If key exists, return existing value without calling callback
-                      for i = 0; i < entries.length(); i = i + 1 {
-                        let (k, v) = entries[i]
-                        if weak_key_equal(k, key) {
-                          return v
-                        }
+      InterpreterCallable("getOrInsertComputed", fn(
+        interp,
+        this_val,
+        args,
+      ) raise {
+        match this_val {
+          Object(data) =>
+            match get_weakmap_id(data) {
+              Some(id) => {
+                let key = if args.length() > 0 { args[0] } else { Undefined }
+                let callbackfn = if args.length() > 1 {
+                  args[1]
+                } else {
+                  Undefined
+                }
+                // Check callbackfn is callable before validating key (per spec order)
+                let cb_is_callable = match callbackfn {
+                  Object(od) => od.callable is Some(_)
+                  _ => false
+                }
+                if not(cb_is_callable) {
+                  raise @errors.TypeError(
+                    message="callbackfn is not a function",
+                  )
+                }
+                if not(is_valid_weak_key(key)) {
+                  raise @errors.TypeError(
+                    message="Invalid value used as weak map key",
+                  )
+                }
+                match weakmap_storage.get(id) {
+                  Some(entries) => {
+                    // If key exists, return existing value without calling callback
+                    for i = 0; i < entries.length(); i = i + 1 {
+                      let (k, v) = entries[i]
+                      if weak_key_equal(k, key) {
+                        return v
                       }
-                      // Key not found, call callback to get value
-                      let loc = @token.Loc::default()
-                      let value = interp.call_value(
-                        callbackfn, Undefined, [key], loc,
-                      )
-                      // Re-check if key was added by callback (mutation during callback)
-                      for i = 0; i < entries.length(); i = i + 1 {
-                        let (k, _) = entries[i]
-                        if weak_key_equal(k, key) {
-                          // Overwrite with computed value per spec
-                          entries[i] = (key, value)
-                          return value
-                        }
-                      }
-                      entries.push((key, value))
-                      value
                     }
-                    None => {
-                      let loc = @token.Loc::default()
-                      let value = interp.call_value(
-                        callbackfn, Undefined, [key], loc,
-                      )
-                      // Re-read storage after callback (it may have inserted entries)
-                      match weakmap_storage.get(id) {
-                        Some(entries) => {
-                          // Check if key was already added by callback
-                          for i = 0; i < entries.length(); i = i + 1 {
-                            let (k, _) = entries[i]
-                            if weak_key_equal(k, key) {
-                              entries[i] = (key, value)
-                              return value
-                            }
+                    // Key not found, call callback to get value
+                    let loc = @token.Loc::default()
+                    let value = interp.call_value(
+                      callbackfn,
+                      Undefined,
+                      [key],
+                      loc,
+                    )
+                    // Re-check if key was added by callback (mutation during callback)
+                    for i = 0; i < entries.length(); i = i + 1 {
+                      let (k, _) = entries[i]
+                      if weak_key_equal(k, key) {
+                        // Overwrite with computed value per spec
+                        entries[i] = (key, value)
+                        return value
+                      }
+                    }
+                    entries.push((key, value))
+                    value
+                  }
+                  None => {
+                    let loc = @token.Loc::default()
+                    let value = interp.call_value(
+                      callbackfn,
+                      Undefined,
+                      [key],
+                      loc,
+                    )
+                    // Re-read storage after callback (it may have inserted entries)
+                    match weakmap_storage.get(id) {
+                      Some(entries) => {
+                        // Check if key was already added by callback
+                        for i = 0; i < entries.length(); i = i + 1 {
+                          let (k, _) = entries[i]
+                          if weak_key_equal(k, key) {
+                            entries[i] = (key, value)
+                            return value
                           }
-                          entries.push((key, value))
                         }
-                        None => weakmap_storage[id] = [(key, value)]
+                        entries.push((key, value))
                       }
-                      value
+                      None => weakmap_storage[id] = [(key, value)]
                     }
+                    value
                   }
                 }
-                None =>
-                  raise @errors.TypeError(
-                    message="Method WeakMap.prototype.getOrInsertComputed called on incompatible receiver",
-                  )
               }
-            _ =>
-              raise @errors.TypeError(
-                message="Method WeakMap.prototype.getOrInsertComputed called on incompatible receiver",
-              )
-          }
-        },
-      ),
+              None =>
+                raise @errors.TypeError(
+                  message="Method WeakMap.prototype.getOrInsertComputed called on incompatible receiver",
+                )
+            }
+          _ =>
+            raise @errors.TypeError(
+              message="Method WeakMap.prototype.getOrInsertComputed called on incompatible receiver",
+            )
+        }
+      }),
     ),
     class_name: "Function",
     descriptors: {
@@ -576,9 +583,7 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
     callable: Some(
       InterpreterCallable("WeakMap", fn(interp, _this_val, args) raise {
         if not(is_constructing.val) {
-          raise @errors.TypeError(
-            message="Constructor WeakMap requires 'new'",
-          )
+          raise @errors.TypeError(message="Constructor WeakMap requires 'new'")
         }
         // Create new WeakMap instance
         let id = weakmap_id_counter.val
@@ -890,9 +895,7 @@ fn setup_weakset_builtins(env : Environment) -> Unit {
     callable: Some(
       InterpreterCallable("WeakSet", fn(interp, _this_val, args) raise {
         if not(is_constructing.val) {
-          raise @errors.TypeError(
-            message="Constructor WeakSet requires 'new'",
-          )
+          raise @errors.TypeError(message="Constructor WeakSet requires 'new'")
         }
         // Create new WeakSet instance
         let id = weakset_id_counter.val

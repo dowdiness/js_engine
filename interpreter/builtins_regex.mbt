@@ -571,7 +571,15 @@ fn regex_exec_single(
         Start =>
           if pos == 0 {
             Some(pos)
-          } else if flags.multiline && pos > 0 && is_line_terminator(input[pos - 1]) {
+          } else if flags.multiline &&
+            pos > 0 &&
+            is_line_terminator(input[pos - 1]) &&
+            // CRLF is a single line terminator — ^ matches after \n, not between \r and \n
+            not(
+              input[pos - 1] == '\r' &&
+              pos < input.length() &&
+              input[pos] == '\n',
+            ) {
             Some(pos)
           } else {
             None
@@ -581,7 +589,9 @@ fn regex_exec_single(
             Some(pos)
           } else if flags.multiline &&
             pos < input.length() &&
-            is_line_terminator(input[pos]) {
+            is_line_terminator(input[pos]) &&
+            // CRLF is a single line terminator — $ matches before \r, not between \r and \n
+            not(input[pos] == '\n' && pos > 0 && input[pos - 1] == '\r') {
             Some(pos)
           } else {
             None
@@ -651,9 +661,7 @@ fn regex_exec_single(
             if pos + cap_chars.length() <= input.length() {
               let mut matches = true
               for i = 0; i < cap_chars.length(); i = i + 1 {
-                if not(
-                  char_eq_icase(input[pos + i], cap_chars[i], flags.icase),
-                ) {
+                if not(char_eq_icase(input[pos + i], cap_chars[i], flags.icase)) {
                   matches = false
                   break
                 }
@@ -791,12 +799,20 @@ fn match_sequence(
 ///|
 fn count_groups(node : RegexNode) -> Int {
   match node {
-    Literal(_) | Dot | CharClass(_, _) | Anchor(_) | WordBoundary(_) |
-    Backreference(_) => 0
+    Literal(_)
+    | Dot
+    | CharClass(_, _)
+    | Anchor(_)
+    | WordBoundary(_)
+    | Backreference(_) => 0
     Lookahead(children, _) =>
       children.fold(init=0, fn(acc, child) {
         let cg = count_groups(child)
-        if cg > acc { cg } else { acc }
+        if cg > acc {
+          cg
+        } else {
+          acc
+        }
       })
     Quantified(inner, _, _, _) => count_groups(inner)
     Group(children, group_idx) => {
@@ -852,6 +868,7 @@ fn count_groups(node : RegexNode) -> Int {
 // ---- Public API ----
 
 ///|
+
 ///|
 fn make_regex_flags(flags : String) -> RegexFlags {
   {
@@ -885,7 +902,7 @@ pub fn regex_search(
   pattern : String,
   flags : String,
   input : String,
-  start_pos~ : Int = 0,
+  start_pos? : Int = 0,
 ) -> RegexMatch? raise Error {
   let node = RegexParser::new(pattern).parse()
   let input_chars = input.to_array()
@@ -1198,7 +1215,7 @@ pub fn make_regexp_object(pattern : String, flags : String) -> Value {
               let n = to_int32(to_number(args[1]))
               // Convert signed int32 to unsigned range [0, 2^32-1]
               if n < 0 {
-                (n.to_int64() + 4294967296L)
+                n.to_int64() + 4294967296L
               } else {
                 n.to_int64()
               }
@@ -1434,7 +1451,8 @@ fn process_replacement(
   buf.to_string()
 }
 
-///| Shared %RegExpStringIteratorPrototype% - lazily initialized
+///|
+/// Shared %RegExpStringIteratorPrototype% - lazily initialized
 let regexp_string_iterator_proto_ref : Ref[Value?] = { val: None }
 
 ///|

@@ -115,11 +115,7 @@ fn dataview_set_int8(bytes : Array[Int], offset : Int, value : Double) -> Unit {
 }
 
 ///|
-fn dataview_set_uint8(
-  bytes : Array[Int],
-  offset : Int,
-  value : Double,
-) -> Unit {
+fn dataview_set_uint8(bytes : Array[Int], offset : Int, value : Double) -> Unit {
   let v = to_int32(value) & 0xFF
   bytes[offset] = v
 }
@@ -264,8 +260,7 @@ fn validate_dataview_access(
   }
   let buf_id = match data.properties.get("[[ArrayBufferID]]") {
     Some(Number(n)) => n.to_int()
-    _ =>
-      raise @errors.TypeError(message="DataView access on invalid object")
+    _ => raise @errors.TypeError(message="DataView access on invalid object")
   }
   if is_arraybuffer_detached(buf_id) {
     raise @errors.TypeError(
@@ -363,7 +358,9 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
         match this_val {
           Object(data) => {
             let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
-            let (bytes, actual_offset) = validate_dataview_access(data, offset, 1)
+            let (bytes, actual_offset) = validate_dataview_access(
+              data, offset, 1,
+            )
             dataview_get_int8(bytes, actual_offset)
           }
           _ => raise @errors.TypeError(message="getInt8 called on non-DataView")
@@ -386,10 +383,13 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
         match this_val {
           Object(data) => {
             let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
-            let (bytes, actual_offset) = validate_dataview_access(data, offset, 1)
+            let (bytes, actual_offset) = validate_dataview_access(
+              data, offset, 1,
+            )
             dataview_get_uint8(bytes, actual_offset)
           }
-          _ => raise @errors.TypeError(message="getUint8 called on non-DataView")
+          _ =>
+            raise @errors.TypeError(message="getUint8 called on non-DataView")
         }
       }),
     ),
@@ -410,10 +410,13 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
           Object(data) => {
             let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
             let le = get_little_endian(args, 1)
-            let (bytes, actual_offset) = validate_dataview_access(data, offset, 2)
+            let (bytes, actual_offset) = validate_dataview_access(
+              data, offset, 2,
+            )
             dataview_get_int16(bytes, actual_offset, le)
           }
-          _ => raise @errors.TypeError(message="getInt16 called on non-DataView")
+          _ =>
+            raise @errors.TypeError(message="getInt16 called on non-DataView")
         }
       }),
     ),
@@ -434,10 +437,13 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
           Object(data) => {
             let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
             let le = get_little_endian(args, 1)
-            let (bytes, actual_offset) = validate_dataview_access(data, offset, 2)
+            let (bytes, actual_offset) = validate_dataview_access(
+              data, offset, 2,
+            )
             dataview_get_uint16(bytes, actual_offset, le)
           }
-          _ => raise @errors.TypeError(message="getUint16 called on non-DataView")
+          _ =>
+            raise @errors.TypeError(message="getUint16 called on non-DataView")
         }
       }),
     ),
@@ -458,10 +464,13 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
           Object(data) => {
             let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
             let le = get_little_endian(args, 1)
-            let (bytes, actual_offset) = validate_dataview_access(data, offset, 4)
+            let (bytes, actual_offset) = validate_dataview_access(
+              data, offset, 4,
+            )
             dataview_get_int32(bytes, actual_offset, le)
           }
-          _ => raise @errors.TypeError(message="getInt32 called on non-DataView")
+          _ =>
+            raise @errors.TypeError(message="getInt32 called on non-DataView")
         }
       }),
     ),
@@ -482,10 +491,13 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
           Object(data) => {
             let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
             let le = get_little_endian(args, 1)
-            let (bytes, actual_offset) = validate_dataview_access(data, offset, 4)
+            let (bytes, actual_offset) = validate_dataview_access(
+              data, offset, 4,
+            )
             dataview_get_uint32(bytes, actual_offset, le)
           }
-          _ => raise @errors.TypeError(message="getUint32 called on non-DataView")
+          _ =>
+            raise @errors.TypeError(message="getUint32 called on non-DataView")
         }
       }),
     ),
@@ -506,10 +518,13 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
           Object(data) => {
             let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
             let le = get_little_endian(args, 1)
-            let (bytes, actual_offset) = validate_dataview_access(data, offset, 4)
+            let (bytes, actual_offset) = validate_dataview_access(
+              data, offset, 4,
+            )
             dataview_get_float32(bytes, actual_offset, le)
           }
-          _ => raise @errors.TypeError(message="getFloat32 called on non-DataView")
+          _ =>
+            raise @errors.TypeError(message="getFloat32 called on non-DataView")
         }
       }),
     ),
@@ -530,10 +545,13 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
           Object(data) => {
             let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
             let le = get_little_endian(args, 1)
-            let (bytes, actual_offset) = validate_dataview_access(data, offset, 8)
+            let (bytes, actual_offset) = validate_dataview_access(
+              data, offset, 8,
+            )
             dataview_get_float64(bytes, actual_offset, le)
           }
-          _ => raise @errors.TypeError(message="getFloat64 called on non-DataView")
+          _ =>
+            raise @errors.TypeError(message="getFloat64 called on non-DataView")
         }
       }),
     ),
@@ -554,7 +572,9 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
           Object(data) => {
             let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
             let value = if args.length() > 1 { to_number(args[1]) } else { 0.0 }
-            let (bytes, actual_offset) = validate_dataview_access(data, offset, 1)
+            let (bytes, actual_offset) = validate_dataview_access(
+              data, offset, 1,
+            )
             dataview_set_int8(bytes, actual_offset, value)
             Undefined
           }
@@ -579,11 +599,14 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
           Object(data) => {
             let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
             let value = if args.length() > 1 { to_number(args[1]) } else { 0.0 }
-            let (bytes, actual_offset) = validate_dataview_access(data, offset, 1)
+            let (bytes, actual_offset) = validate_dataview_access(
+              data, offset, 1,
+            )
             dataview_set_uint8(bytes, actual_offset, value)
             Undefined
           }
-          _ => raise @errors.TypeError(message="setUint8 called on non-DataView")
+          _ =>
+            raise @errors.TypeError(message="setUint8 called on non-DataView")
         }
       }),
     ),
@@ -605,11 +628,14 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
             let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
             let value = if args.length() > 1 { to_number(args[1]) } else { 0.0 }
             let le = get_little_endian(args, 2)
-            let (bytes, actual_offset) = validate_dataview_access(data, offset, 2)
+            let (bytes, actual_offset) = validate_dataview_access(
+              data, offset, 2,
+            )
             dataview_set_int16(bytes, actual_offset, value, le)
             Undefined
           }
-          _ => raise @errors.TypeError(message="setInt16 called on non-DataView")
+          _ =>
+            raise @errors.TypeError(message="setInt16 called on non-DataView")
         }
       }),
     ),
@@ -631,11 +657,14 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
             let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
             let value = if args.length() > 1 { to_number(args[1]) } else { 0.0 }
             let le = get_little_endian(args, 2)
-            let (bytes, actual_offset) = validate_dataview_access(data, offset, 2)
+            let (bytes, actual_offset) = validate_dataview_access(
+              data, offset, 2,
+            )
             dataview_set_uint16(bytes, actual_offset, value, le)
             Undefined
           }
-          _ => raise @errors.TypeError(message="setUint16 called on non-DataView")
+          _ =>
+            raise @errors.TypeError(message="setUint16 called on non-DataView")
         }
       }),
     ),
@@ -657,11 +686,14 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
             let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
             let value = if args.length() > 1 { to_number(args[1]) } else { 0.0 }
             let le = get_little_endian(args, 2)
-            let (bytes, actual_offset) = validate_dataview_access(data, offset, 4)
+            let (bytes, actual_offset) = validate_dataview_access(
+              data, offset, 4,
+            )
             dataview_set_int32(bytes, actual_offset, value, le)
             Undefined
           }
-          _ => raise @errors.TypeError(message="setInt32 called on non-DataView")
+          _ =>
+            raise @errors.TypeError(message="setInt32 called on non-DataView")
         }
       }),
     ),
@@ -683,11 +715,14 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
             let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
             let value = if args.length() > 1 { to_number(args[1]) } else { 0.0 }
             let le = get_little_endian(args, 2)
-            let (bytes, actual_offset) = validate_dataview_access(data, offset, 4)
+            let (bytes, actual_offset) = validate_dataview_access(
+              data, offset, 4,
+            )
             dataview_set_uint32(bytes, actual_offset, value, le)
             Undefined
           }
-          _ => raise @errors.TypeError(message="setUint32 called on non-DataView")
+          _ =>
+            raise @errors.TypeError(message="setUint32 called on non-DataView")
         }
       }),
     ),
@@ -709,11 +744,14 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
             let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
             let value = if args.length() > 1 { to_number(args[1]) } else { 0.0 }
             let le = get_little_endian(args, 2)
-            let (bytes, actual_offset) = validate_dataview_access(data, offset, 4)
+            let (bytes, actual_offset) = validate_dataview_access(
+              data, offset, 4,
+            )
             dataview_set_float32(bytes, actual_offset, value, le)
             Undefined
           }
-          _ => raise @errors.TypeError(message="setFloat32 called on non-DataView")
+          _ =>
+            raise @errors.TypeError(message="setFloat32 called on non-DataView")
         }
       }),
     ),
@@ -735,11 +773,14 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
             let offset = if args.length() > 0 { to_index(args[0]) } else { 0 }
             let value = if args.length() > 1 { to_number(args[1]) } else { 0.0 }
             let le = get_little_endian(args, 2)
-            let (bytes, actual_offset) = validate_dataview_access(data, offset, 8)
+            let (bytes, actual_offset) = validate_dataview_access(
+              data, offset, 8,
+            )
             dataview_set_float64(bytes, actual_offset, value, le)
             Undefined
           }
-          _ => raise @errors.TypeError(message="setFloat64 called on non-DataView")
+          _ =>
+            raise @errors.TypeError(message="setFloat64 called on non-DataView")
         }
       }),
     ),
@@ -792,9 +833,7 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
     callable: Some(
       NativeCallable("DataView", fn(args) raise {
         if not(is_constructing.val) {
-          raise @errors.TypeError(
-            message="Constructor DataView requires 'new'",
-          )
+          raise @errors.TypeError(message="Constructor DataView requires 'new'")
         }
         if args.length() == 0 {
           raise @errors.TypeError(
@@ -844,9 +883,7 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
             _ => {
               let n = to_number(args[2]).to_int()
               if n < 0 || byte_offset + n > buf_byte_length {
-                raise @errors.RangeError(
-                  message="Invalid DataView length \{n}",
-                )
+                raise @errors.RangeError(message="Invalid DataView length \{n}")
               }
               n
             }
@@ -861,8 +898,7 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
         props["[[ByteLength]]"] = Number(byte_length.to_double())
         let descs : Map[String, PropDescriptor] = {}
         let internal_keys = [
-          "[[ViewedArrayBuffer]]", "[[ArrayBufferID]]",
-          "[[ByteOffset]]", "[[ByteLength]]",
+          "[[ViewedArrayBuffer]]", "[[ArrayBufferID]]", "[[ByteOffset]]", "[[ByteLength]]",
         ]
         for k in internal_keys {
           descs[k] = {
