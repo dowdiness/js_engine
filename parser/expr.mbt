@@ -43,7 +43,8 @@ fn Parser::parse_assignment(self : Parser) -> @ast.Expr raise Error {
       let try_ext : (Array[@ast.Param], String?)? = Some(
           self.parse_params_ext(),
         ) catch {
-        _ => None
+        @errors.SyntaxError(_) | Failure::Failure(_) => None
+        e => raise e
       }
       match try_ext {
         Some((ext_params, rest_param)) =>

@@ -1361,7 +1361,7 @@ fn Interpreter::exec_stmt(
     }
     AsyncGeneratorDecl(name, params, body, _) => {
       validate_function_signature(self.strict, Some(name), params, body)
-      let gen_func = self.make_generator_function(
+      let gen_func = self.make_async_generator_function(
         Some(name),
         params,
         None,
@@ -1385,7 +1385,7 @@ fn Interpreter::exec_stmt(
         rest_param,
         body,
       )
-      let gen_func = self.make_generator_function_ext(
+      let gen_func = self.make_async_generator_function_ext(
         Some(name),
         params,
         rest_param,
@@ -3020,7 +3020,7 @@ fn Interpreter::hoist_declarations(
       }
       AsyncGeneratorDecl(name, params, body, _) => {
         validate_function_signature(_self.strict, Some(name), params, body)
-        let gen_func = _self.make_generator_function(
+        let gen_func = _self.make_async_generator_function(
           Some(name),
           params,
           None,
@@ -3041,7 +3041,7 @@ fn Interpreter::hoist_declarations(
           rest_param,
           body,
         )
-        let gen_func = _self.make_generator_function_ext(
+        let gen_func = _self.make_async_generator_function_ext(
           Some(name),
           params,
           rest_param,
@@ -3899,11 +3899,11 @@ fn Interpreter::eval_expr(
     }
     AsyncGeneratorExpr(name, params, body, _) => {
       validate_function_signature(self.strict, name, params, body)
-      self.make_generator_function(name, params, None, body, env)
+      self.make_async_generator_function(name, params, None, body, env)
     }
     AsyncGeneratorExprExt(name, params, rest_param, body, _) => {
       validate_function_signature_ext(self.strict, name, params, rest_param, body)
-      self.make_generator_function_ext(name, params, rest_param, body, env)
+      self.make_async_generator_function_ext(name, params, rest_param, body, env)
     }
     AwaitExpr(argument, _) => {
       // await acts like yield inside the generator that backs the async function

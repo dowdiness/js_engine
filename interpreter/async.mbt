@@ -242,30 +242,202 @@ fn async_step(
       )
     } catch {
       _ => {
-        // Fallback: directly schedule on microtask queue
-        ip.enqueue_microtask(on_fulfill, [awaited])
+        // Fallback: Promise.resolve() unavailable; inspect awaited directly
+        match awaited {
+          Promise(pd) =>
+            match pd.state {
+              Fulfilled => ip.enqueue_microtask(on_fulfill, [pd.result])
+              Rejected => ip.enqueue_microtask(on_reject, [pd.result])
+              Pending => {
+                let noop = make_interpreter_callable_with_length(
+                  "",
+                  0,
+                  fn(_i : Interpreter, _t : Value, _a : Array[Value]) -> Value raise Error {
+                    Undefined
+                  },
+                )
+                pd.fulfill_reactions.push({
+                  handler: Some(on_fulfill),
+                  resolve: noop,
+                  reject: noop,
+                  reaction_type: Fulfill,
+                })
+                pd.reject_reactions.push({
+                  handler: Some(on_reject),
+                  resolve: noop,
+                  reject: noop,
+                  reaction_type: Reject,
+                })
+              }
+            }
+          _ => ip.enqueue_microtask(on_fulfill, [awaited])
+        }
         return
       }
     }
     let then_method = try {
       ip.get_property(resolved_promise, "then", loc)
     } catch {
-      _ => Undefined
+      e => {
+        // get_property threw — propagate to on_reject
+        let err_val = js_error_to_value_with_env(e, Some(ip.global))
+        ip.enqueue_microtask(on_reject, [err_val])
+        return
+      }
     }
-    let _ = try {
-      ip.call_value(
-        then_method,
-        resolved_promise,
-        [on_fulfill, on_reject],
-        loc,
-      )
-    } catch {
-      _ => Undefined
+    // Check if then_method is callable before invoking
+    let is_callable = match then_method {
+      Object(od) => od.callable is Some(_)
+      _ => false
+    }
+    if is_callable {
+      try {
+        let _ = ip.call_value(
+          then_method,
+          resolved_promise,
+          [on_fulfill, on_reject],
+          loc,
+        )
+      } catch {
+        e => {
+          // .then() threw — propagate to on_reject
+          let err_val = js_error_to_value_with_env(e, Some(ip.global))
+          ip.enqueue_microtask(on_reject, [err_val])
+        }
+      }
+    } else {
+      // Non-callable .then — treat as non-thenable, fulfill directly
+      ip.enqueue_microtask(on_fulfill, [resolved_promise])
     }
   }
 }
 
 ///|
+/// Create an async generator function value.
+/// Async generators combine generator yield semantics with async/await.
+/// When called, they return a generator object whose .next() drives the body.
+fn Interpreter::make_async_generator_function(
+  self : Interpreter,
+  name : String?,
+  params : Array[String],
+  rest_param : String?,
+  body : Array[@ast.Stmt],
+  closure : Environment,
+) -> Value {
+  let interp = self
+  let gen_proto = get_generator_prototype(interp)
+  let func_prototype = Object({
+    properties: {},
+    symbol_properties: {},
+    prototype: gen_proto,
+    callable: None,
+    class_name: "AsyncGenerator",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+  let gen_func_proto : Value = match
+    interp.global.bindings.get("[[GeneratorFunctionPrototype]]") {
+    Some(binding) => binding.value
+    None => Null
+  }
+  let fn_props : Map[String, Value] = {}
+  fn_props["prototype"] = func_prototype
+  Object({
+    properties: fn_props,
+    symbol_properties: {},
+    prototype: gen_func_proto,
+    callable: Some(
+      InterpreterCallable(
+        match name {
+          Some(n) => n
+          None => "anonymous"
+        },
+        fn(ip, this_val, args) {
+          create_generator_instance(
+            ip,
+            this_val,
+            args,
+            name,
+            params,
+            None,
+            rest_param,
+            body,
+            closure,
+            func_prototype,
+          )
+        },
+      ),
+    ),
+    class_name: "AsyncGeneratorFunction",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+}
+
+///|
+/// Create an async generator function value (extended params).
+fn Interpreter::make_async_generator_function_ext(
+  self : Interpreter,
+  name : String?,
+  params : Array[@ast.Param],
+  rest_param : String?,
+  body : Array[@ast.Stmt],
+  closure : Environment,
+) -> Value {
+  let interp = self
+  let gen_proto = get_generator_prototype(interp)
+  let func_prototype = Object({
+    properties: {},
+    symbol_properties: {},
+    prototype: gen_proto,
+    callable: None,
+    class_name: "AsyncGenerator",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+  let gen_func_proto : Value = match
+    interp.global.bindings.get("[[GeneratorFunctionPrototype]]") {
+    Some(binding) => binding.value
+    None => Null
+  }
+  let fn_props : Map[String, Value] = {}
+  fn_props["prototype"] = func_prototype
+  Object({
+    properties: fn_props,
+    symbol_properties: {},
+    prototype: gen_func_proto,
+    callable: Some(
+      InterpreterCallable(
+        match name {
+          Some(n) => n
+          None => "anonymous"
+        },
+        fn(ip, this_val, args) {
+          create_generator_instance(
+            ip,
+            this_val,
+            args,
+            name,
+            [],
+            Some(params),
+            rest_param,
+            body,
+            closure,
+            func_prototype,
+          )
+        },
+      ),
+    ),
+    class_name: "AsyncGeneratorFunction",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+}
+
 ///|
 /// Get the function prototype for async function objects.
 /// Note: Uses the standard [[FunctionPrototype]] — there is no separate
