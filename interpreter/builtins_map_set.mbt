@@ -417,6 +417,11 @@ fn setup_map_builtins(env : Environment) -> Unit {
         }
         new_map
       })
+  // Add prototype property to Map constructor
+  match map_ctor {
+    Object(data) => data.properties["prototype"] = map_proto
+    _ => ()
+  }
   env.def_builtin("Map", map_ctor)
   // Set Map.prototype.constructor = Map
   match map_proto {
@@ -690,6 +695,11 @@ fn setup_set_builtins(env : Environment) -> Unit {
         }
         new_set
       })
+  // Add prototype property to Set constructor
+  match set_ctor {
+    Object(data) => data.properties["prototype"] = set_proto
+    _ => ()
+  }
   env.def_builtin("Set", set_ctor)
   // Set Set.prototype.constructor = Set
   match set_proto {

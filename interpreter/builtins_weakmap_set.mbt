@@ -561,6 +561,11 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
         }
         wm_obj
       })
+  // Add prototype property to WeakMap constructor
+  match wm_ctor {
+    Object(data) => data.properties["prototype"] = wm_proto
+    _ => ()
+  }
   env.def_builtin("WeakMap", wm_ctor)
 
   // Set WeakMap.prototype.constructor = WeakMap
@@ -799,6 +804,11 @@ fn setup_weakset_builtins(env : Environment) -> Unit {
         }
         ws_obj
       })
+  // Add prototype property to WeakSet constructor
+  match ws_ctor {
+    Object(data) => data.properties["prototype"] = ws_proto
+    _ => ()
+  }
   env.def_builtin("WeakSet", ws_ctor)
 
   // Set WeakSet.prototype.constructor = WeakSet

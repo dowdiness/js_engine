@@ -104,59 +104,192 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
   }
   // Object.keys, Object.values, Object.entries, Object.create, Object.assign,
   // Object.getPrototypeOf, Object.getOwnPropertyNames
-  let obj_proto : Value = make_method_func("toString", 0, fn(this_val, _args) raise {
-            match this_val {
-              Undefined => String_("[object Undefined]")
-              Null => String_("[object Null]")
-              Bool(_) => String_("[object Boolean]")
-              Number(_) => String_("[object Number]")
-              String_(_) => String_("[object String]")
-              Array(_) => String_("[object Array]")
-              Symbol(_) => String_("[object Symbol]")
-              Map(_) => String_("[object Map]")
-              Set(_) => String_("[object Set]")
-              Promise(_) => String_("[object Promise]")
-              Proxy(_) => String_("[object Object]")
-              Object(data) =>
-                if data.class_name == "Function" {
-                  String_("[object Function]")
-                } else if data.class_name == "RegExp" {
-                  String_("[object RegExp]")
-                } else if data.class_name == "Error" ||
-                  data.class_name == "TypeError" ||
-                  data.class_name == "ReferenceError" ||
-                  data.class_name == "SyntaxError" ||
-                  data.class_name == "RangeError" ||
-                  data.class_name == "URIError" ||
-                  data.class_name == "EvalError" ||
-                  data.class_name == "AggregateError" {
-                  String_("[object Error]")
-                } else if data.class_name == "Date" {
-                  String_("[object Date]")
-                } else if data.class_name == "Map" {
-                  String_("[object Map]")
-                } else if data.class_name == "Set" {
-                  String_("[object Set]")
-                } else if data.class_name == "Promise" {
-                  String_("[object Promise]")
-                } else if data.class_name == "Arguments" {
-                  String_("[object Arguments]")
-                } else if data.class_name == "Number" {
-                  String_("[object Number]")
-                } else if data.class_name == "String" {
-                  String_("[object String]")
-                } else if data.class_name == "Boolean" {
-                  String_("[object Boolean]")
-                } else {
-                  // Check Symbol.toStringTag on object and prototype chain
-                  let tag = get_tostringtag_value(data)
-                  match tag {
-                    Some(t) => String_("[object \{t}]")
-                    None => String_("[object Object]")
-                  }
-                }
+  let obj_proto_props : Map[String, Value] = {}
+  obj_proto_props["toString"] = make_method_func("toString", 0, fn(this_val, _args) raise {
+    match this_val {
+      Undefined => String_("[object Undefined]")
+      Null => String_("[object Null]")
+      Bool(_) => String_("[object Boolean]")
+      Number(_) => String_("[object Number]")
+      String_(_) => String_("[object String]")
+      Array(_) => String_("[object Array]")
+      Symbol(_) => String_("[object Symbol]")
+      Map(_) => String_("[object Map]")
+      Set(_) => String_("[object Set]")
+      Promise(_) => String_("[object Promise]")
+      Proxy(_) => String_("[object Object]")
+      Object(data) =>
+        if data.class_name == "Function" {
+          String_("[object Function]")
+        } else if data.class_name == "RegExp" {
+          String_("[object RegExp]")
+        } else if data.class_name == "Error" ||
+          data.class_name == "TypeError" ||
+          data.class_name == "ReferenceError" ||
+          data.class_name == "SyntaxError" ||
+          data.class_name == "RangeError" ||
+          data.class_name == "URIError" ||
+          data.class_name == "EvalError" ||
+          data.class_name == "AggregateError" {
+          String_("[object Error]")
+        } else if data.class_name == "Date" {
+          String_("[object Date]")
+        } else if data.class_name == "Map" {
+          String_("[object Map]")
+        } else if data.class_name == "Set" {
+          String_("[object Set]")
+        } else if data.class_name == "Promise" {
+          String_("[object Promise]")
+        } else if data.class_name == "Arguments" {
+          String_("[object Arguments]")
+        } else if data.class_name == "Number" {
+          String_("[object Number]")
+        } else if data.class_name == "String" {
+          String_("[object String]")
+        } else if data.class_name == "Boolean" {
+          String_("[object Boolean]")
+        } else {
+          // Check Symbol.toStringTag on object and prototype chain
+          let tag = get_tostringtag_value(data)
+          match tag {
+            Some(t) => String_("[object \{t}]")
+            None => String_("[object Object]")
+          }
+        }
+    }
+  })
+  obj_proto_props["valueOf"] = make_method_func("valueOf", 0, fn(this_val, _args) { this_val })
+  obj_proto_props["hasOwnProperty"] = make_method_func("hasOwnProperty", 1, fn(this_val, args) {
+    let key_val = if args.length() > 0 { args[0] } else { Undefined }
+    match this_val {
+      Object(data) =>
+        match key_val {
+          Symbol(sym) => Bool(data.symbol_properties.contains(sym.id))
+          _ => Bool(data.properties.contains(key_val.to_string()))
+        }
+      Array(data) => {
+        let key = key_val.to_string()
+        if key == "length" {
+          Bool(true)
+        } else {
+          let idx = @strconv.parse_int(key) catch { _ => -1 }
+          Bool(
+            idx >= 0 &&
+            idx.to_string() == key &&
+            idx < data.elements.length(),
+          )
+        }
+      }
+      String_(s) => {
+        let key = key_val.to_string()
+        if key == "length" {
+          Bool(true)
+        } else {
+          let idx = @strconv.parse_int(key) catch { _ => -1 }
+          Bool(idx >= 0 && idx.to_string() == key && idx < s.length())
+        }
+      }
+      _ => Bool(false)
+    }
+  })
+  obj_proto_props["propertyIsEnumerable"] = make_method_func("propertyIsEnumerable", 1, fn(this_val, args) {
+    let key_val = if args.length() > 0 { args[0] } else { Undefined }
+    let key = key_val.to_string()
+    match this_val {
+      Object(data) =>
+        if data.properties.contains(key) {
+          match data.descriptors.get(key) {
+            Some(d) => Bool(d.enumerable)
+            None => Bool(true)
+          }
+        } else {
+          Bool(false)
+        }
+      Array(data) =>
+        if key == "length" {
+          Bool(false) // length is not enumerable
+        } else {
+          let idx = @strconv.parse_int(key) catch { _ => -1 }
+          Bool(
+            idx >= 0 &&
+            idx.to_string() == key &&
+            idx < data.elements.length(),
+          )
+        }
+      String_(s) =>
+        if key == "length" {
+          Bool(false)
+        } else {
+          let idx = @strconv.parse_int(key) catch { _ => -1 }
+          Bool(idx >= 0 && idx.to_string() == key && idx < s.length())
+        }
+      _ => Bool(false)
+    }
+  })
+  obj_proto_props["isPrototypeOf"] = make_method_func("isPrototypeOf", 1, fn(this_val, args) {
+    // Walk the argument's prototype chain looking for this_val
+    let arg = if args.length() > 0 { args[0] } else { Undefined }
+    let mut current : Value = match arg {
+      Object(data) => data.prototype
+      _ => return Bool(false)
+    }
+    while true {
+      match current {
+        Null | Undefined => return Bool(false)
+        Object(proto_data) => {
+          // Compare by reference identity - check if this_val is the same object
+          match this_val {
+            Object(this_data) =>
+              if physical_equal(this_data, proto_data) {
+                return Bool(true)
+              }
+            _ => ()
+          }
+          current = proto_data.prototype
+        }
+        _ => return Bool(false)
+      }
+    }
+    Bool(false)
+  })
+  obj_proto_props["toLocaleString"] = make_method_func("toLocaleString", 0, fn(this_val, _args) raise {
+    match this_val {
+      Object(data) =>
+        match data.properties.get("toString") {
+          Some(Object(fn_data)) =>
+            match fn_data.callable {
+              Some(MethodCallable(_, f)) => f(this_val, [])
+              _ => String_(this_val.to_string())
             }
-          })
+          _ => String_(this_val.to_string())
+        }
+      _ => String_(this_val.to_string())
+    }
+  })
+  let obj_proto_descs : Map[String, PropDescriptor] = {}
+  let obj_method_desc : PropDescriptor = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
+  obj_proto_descs["toString"] = obj_method_desc
+  obj_proto_descs["valueOf"] = obj_method_desc
+  obj_proto_descs["hasOwnProperty"] = obj_method_desc
+  obj_proto_descs["propertyIsEnumerable"] = obj_method_desc
+  obj_proto_descs["isPrototypeOf"] = obj_method_desc
+  obj_proto_descs["toLocaleString"] = obj_method_desc
+  let obj_proto : Value = Object({
+    properties: obj_proto_props,
+    symbol_properties: {},
+    prototype: Null,
+    callable: None,
+    class_name: "Object",
+    descriptors: obj_proto_descs,
+    symbol_descriptors: {},
+    extensible: true,
+  })
   // Store Object.prototype so plain objects {} can link to it
   env.def_builtin("[[ObjectPrototype]]", obj_proto)
   env.def_builtin(

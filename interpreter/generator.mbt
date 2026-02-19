@@ -286,6 +286,11 @@ pub fn setup_generator_function_constructor(
     Object(data) => data.properties["GeneratorFunction"] = gen_func_ctor
     _ => ()
   }
+  // Add prototype property to GeneratorFunction constructor
+  match gen_func_ctor {
+    Object(data) => data.properties["prototype"] = gen_func_proto
+    _ => ()
+  }
   env.def_builtin("GeneratorFunction", gen_func_ctor)
   env.def_builtin("[[GeneratorFunctionPrototype]]", gen_func_proto)
 }
