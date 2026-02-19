@@ -743,7 +743,7 @@ fn get_map_iterator_proto() -> Value {
       // Add [Symbol.iterator] that returns the iterator itself
       proto_sym_props[iterator_sym.id] = make_method_func("[Symbol.iterator]", 0, fn(this_val, _args) { this_val })
       // Add a placeholder next method with correct name/length on prototype
-      proto_props["next"] = make_method_func("next", 1, fn(_this_val, _args) raise {
+      proto_props["next"] = make_method_func("next", 0, fn(_this_val, _args) raise {
             raise @errors.TypeError(
               message="Map Iterator.prototype.next requires that |this| be a Map Iterator",
             )
@@ -1035,7 +1035,7 @@ fn get_set_iterator_proto() -> Value {
         setter: None,
       }
       proto_sym_props[iterator_sym.id] = make_method_func("[Symbol.iterator]", 0, fn(this_val, _args) { this_val })
-      proto_props["next"] = make_method_func("next", 1, fn(_this_val, _args) raise {
+      proto_props["next"] = make_method_func("next", 0, fn(_this_val, _args) raise {
             raise @errors.TypeError(
               message="Set Iterator.prototype.next requires that |this| be a Set Iterator",
             )

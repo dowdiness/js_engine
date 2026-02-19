@@ -1431,7 +1431,7 @@ pub fn get_regexp_string_iterator_proto() -> Value {
       // Add [Symbol.iterator] that returns the iterator itself
       proto_sym_props[iterator_sym.id] = make_method_func("[Symbol.iterator]", 0, fn(this_val, _args) { this_val })
       // Add a placeholder next method with correct name/length on prototype
-      proto_props["next"] = make_method_func("next", 1, fn(_this_val, _args) raise {
+      proto_props["next"] = make_method_func("next", 0, fn(_this_val, _args) raise {
             raise @errors.TypeError(
               message="RegExp String Iterator.prototype.next requires that |this| be a RegExp String Iterator",
             )

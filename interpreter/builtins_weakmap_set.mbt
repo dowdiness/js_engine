@@ -193,7 +193,7 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
       })
 
   // WeakMap.prototype.set(key, value)
-  wm_proto_props["set"] = make_method_func("set", 1, fn(this_val, args) raise {
+  wm_proto_props["set"] = make_method_func("set", 2, fn(this_val, args) raise {
         match this_val {
           Object(data) =>
             match get_weakmap_id(data) {

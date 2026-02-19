@@ -985,7 +985,7 @@ pub fn get_array_iterator_proto() -> Value {
         setter: None,
       }
       proto_sym_props[iterator_sym.id] = make_method_func("[Symbol.iterator]", 0, fn(this_val, _args) { this_val })
-      proto_props["next"] = make_method_func("next", 1, fn(_this_val, _args) raise {
+      proto_props["next"] = make_method_func("next", 0, fn(_this_val, _args) raise {
             raise @errors.TypeError(
               message="Array Iterator.prototype.next requires that |this| be an Array Iterator",
             )
@@ -1122,7 +1122,7 @@ pub fn get_string_iterator_proto() -> Value {
         setter: None,
       }
       proto_sym_props[iterator_sym.id] = make_method_func("[Symbol.iterator]", 0, fn(this_val, _args) { this_val })
-      proto_props["next"] = make_method_func("next", 1, fn(_this_val, _args) raise {
+      proto_props["next"] = make_method_func("next", 0, fn(_this_val, _args) raise {
             raise @errors.TypeError(
               message="String Iterator.prototype.next requires that |this| be a String Iterator",
             )
