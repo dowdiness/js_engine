@@ -384,7 +384,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         "prototype": obj_proto,
         "name": String_("Object"),
         "length": Number(1.0),
-        "keys": make_native_func("keys", fn(args) {
+        "keys": make_static_func("keys", fn(args) {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           match obj {
             Object(data) => {
@@ -420,7 +420,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => Array({ elements: [] })
           }
         }),
-        "values": make_native_func("values", fn(args) {
+        "values": make_static_func("values", fn(args) {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           match obj {
             Object(data) => {
@@ -456,7 +456,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => Array({ elements: [] })
           }
         }),
-        "entries": make_native_func("entries", fn(args) {
+        "entries": make_static_func("entries", fn(args) {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           match obj {
             Object(data) => {
@@ -501,7 +501,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => Array({ elements: [] })
           }
         }),
-        "create": make_native_func("create", fn(args) raise {
+        "create": make_static_func("create", fn(args) raise {
           let proto = if args.length() > 0 { args[0] } else { Null }
           let obj = Object({
             properties: {},
@@ -578,7 +578,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           obj
         }),
-        "assign": make_native_func("assign", fn(args) raise {
+        "assign": make_static_func("assign", fn(args) raise {
           let target = if args.length() > 0 { args[0] } else { Undefined }
           match target {
             Object(data) => {
@@ -813,7 +813,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => target
           }
         }),
-        "getPrototypeOf": make_native_func("getPrototypeOf", fn(args) raise {
+        "getPrototypeOf": make_static_func("getPrototypeOf", fn(args) raise {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           fn get_ctor_proto(name : String) -> Value {
             let ctor = env.get(name) catch { _ => return Null }
@@ -851,7 +851,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => Null
           }
         }),
-        "getOwnPropertyNames": make_native_func("getOwnPropertyNames", fn(
+        "getOwnPropertyNames": make_static_func("getOwnPropertyNames", fn(
           args,
         ) {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
@@ -881,7 +881,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => Array({ elements: [] })
           }
         }),
-        "getOwnPropertySymbols": make_native_func("getOwnPropertySymbols", fn(
+        "getOwnPropertySymbols": make_static_func("getOwnPropertySymbols", fn(
           args,
         ) {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
@@ -899,7 +899,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => Array({ elements: [] })
           }
         }),
-        "getOwnPropertyDescriptors": make_native_func(
+        "getOwnPropertyDescriptors": make_static_func(
           "getOwnPropertyDescriptors",
           fn(args) {
             let obj = if args.length() > 0 { args[0] } else { Undefined }
@@ -1085,7 +1085,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             }
           },
         ),
-        "defineProperty": make_native_func("defineProperty", fn(args) raise {
+        "defineProperty": make_static_func("defineProperty", fn(args) raise {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           let prop_val = if args.length() > 1 { args[1] } else { Undefined }
           let descriptor = if args.length() > 2 { args[2] } else { Undefined }
@@ -1744,7 +1744,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           obj
         }),
-        "getOwnPropertyDescriptor": make_native_func(
+        "getOwnPropertyDescriptor": make_static_func(
           "getOwnPropertyDescriptor",
           fn(args) raise {
             let obj = if args.length() > 0 { args[0] } else { Undefined }
@@ -1915,6 +1915,57 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                       None => true
                     }
                     make_desc(val, writable, enumerable, configurable)
+                  }
+                } else if data.descriptors.contains(prop_name) {
+                  // Check for accessor-only properties in descriptors (e.g., strict mode arguments.callee)
+                  let desc = data.descriptors.get(prop_name)
+                  let is_accessor = match desc {
+                    Some(d) => d.getter is Some(_) || d.setter is Some(_)
+                    None => false
+                  }
+                  if is_accessor {
+                    let getter_val : Value = match desc {
+                      Some(d) =>
+                        match d.getter {
+                          Some(g) => g
+                          None => Undefined
+                        }
+                      None => Undefined
+                    }
+                    let setter_val : Value = match desc {
+                      Some(d) =>
+                        match d.setter {
+                          Some(s) => s
+                          None => Undefined
+                        }
+                      None => Undefined
+                    }
+                    let enumerable = match desc {
+                      Some(d) => d.enumerable
+                      None => true
+                    }
+                    let configurable = match desc {
+                      Some(d) => d.configurable
+                      None => true
+                    }
+                    make_accessor_desc(
+                      getter_val, setter_val, enumerable, configurable,
+                    )
+                  } else {
+                    // Data descriptor without a value in properties
+                    let writable = match desc {
+                      Some(d) => d.writable
+                      None => true
+                    }
+                    let enumerable = match desc {
+                      Some(d) => d.enumerable
+                      None => true
+                    }
+                    let configurable = match desc {
+                      Some(d) => d.configurable
+                      None => true
+                    }
+                    make_desc(Undefined, writable, enumerable, configurable)
                   }
                 } else {
                   // Check for built-in function properties (length, name)
@@ -2145,7 +2196,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             }
           },
         ),
-        "freeze": make_native_func("freeze", fn(args) {
+        "freeze": make_static_func("freeze", fn(args) {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           match obj {
             Object(data) => {
@@ -2199,7 +2250,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => obj
           }
         }),
-        "seal": make_native_func("seal", fn(args) {
+        "seal": make_static_func("seal", fn(args) {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           match obj {
             Object(data) => {
@@ -2259,7 +2310,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => obj
           }
         }),
-        "preventExtensions": make_native_func("preventExtensions", fn(args) {
+        "preventExtensions": make_static_func("preventExtensions", fn(args) {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           match obj {
             Object(data) => {
@@ -2269,7 +2320,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => obj
           }
         }),
-        "isFrozen": make_native_func("isFrozen", fn(args) {
+        "isFrozen": make_static_func("isFrozen", fn(args) {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           match obj {
             Object(data) => {
@@ -2288,7 +2339,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => Bool(true) // Non-objects are vacuously frozen
           }
         }),
-        "isSealed": make_native_func("isSealed", fn(args) {
+        "isSealed": make_static_func("isSealed", fn(args) {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           match obj {
             Object(data) => {
@@ -2307,20 +2358,20 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => Bool(true)
           }
         }),
-        "isExtensible": make_native_func("isExtensible", fn(args) {
+        "isExtensible": make_static_func("isExtensible", fn(args) {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           match obj {
             Object(data) => Bool(data.extensible)
             _ => Bool(false)
           }
         }),
-        "is": make_native_func("is", fn(args) {
+        "is": make_static_func("is", fn(args) {
           // Object.is() - SameValue algorithm
           let x = if args.length() > 0 { args[0] } else { Undefined }
           let y = if args.length() > 1 { args[1] } else { Undefined }
           Bool(same_value(x, y))
         }),
-        "fromEntries": make_native_func("fromEntries", fn(args) raise {
+        "fromEntries": make_static_func("fromEntries", fn(args) raise {
           // Object.fromEntries() - create object from iterable of key-value pairs
           let iterable = if args.length() > 0 { args[0] } else { Undefined }
           let properties : Map[String, Value] = {}
@@ -2378,7 +2429,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             extensible: true,
           })
         }),
-        "hasOwn": make_native_func("hasOwn", fn(args) {
+        "hasOwn": make_static_func("hasOwn", fn(args) {
           // Object.hasOwn() - modern hasOwnProperty replacement
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           let key_val = if args.length() > 1 { args[1] } else { Undefined }
@@ -2406,7 +2457,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => Bool(false)
           }
         }),
-        "setPrototypeOf": make_native_func("setPrototypeOf", fn(args) raise {
+        "setPrototypeOf": make_static_func("setPrototypeOf", fn(args) raise {
           // Object.setPrototypeOf(obj, prototype)
           // Sets the prototype of the specified object
           let obj = if args.length() > 0 { args[0] } else { Undefined }
@@ -2435,7 +2486,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           obj
         }),
-        "defineProperties": make_native_func("defineProperties", fn(
+        "defineProperties": make_static_func("defineProperties", fn(
           args,
         ) raise {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
@@ -4106,14 +4157,14 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
   array_props["prototype"] = array_proto
   array_props["name"] = String_("Array")
   array_props["length"] = Number(1.0)
-  array_props["isArray"] = make_native_func("isArray", fn(args) {
+  array_props["isArray"] = make_static_func("isArray", fn(args) {
     let val = if args.length() > 0 { args[0] } else { Undefined }
     match val {
       Array(_) => Bool(true)
       _ => Bool(false)
     }
   })
-  array_props["of"] = make_native_func("of", fn(args) {
+  array_props["of"] = make_static_func("of", fn(args) {
     // Array.of() - creates array from arguments
     Array({ elements: args })
   })

@@ -61,7 +61,7 @@ pub fn setup_builtins(
   // isNaN(value)
   env.def_builtin(
     "isNaN",
-    make_native_func("isNaN", fn(args) raise {
+    make_static_func("isNaN", fn(args) raise {
       let val = if args.length() > 0 { args[0] } else { Undefined }
       let n = to_number(val)
       Bool(n.is_nan())
@@ -71,7 +71,7 @@ pub fn setup_builtins(
   // isFinite(value)
   env.def_builtin(
     "isFinite",
-    make_native_func("isFinite", fn(args) raise {
+    make_static_func("isFinite", fn(args) raise {
       let val = if args.length() > 0 { args[0] } else { Undefined }
       let n = to_number(val)
       Bool(not(n.is_nan()) && not(n.is_inf()))
@@ -81,7 +81,7 @@ pub fn setup_builtins(
   // parseInt(string, radix?)
   env.def_builtin(
     "parseInt",
-    make_native_func("parseInt", fn(args) raise {
+    make_static_func("parseInt", fn(args) raise {
       let str_val = if args.length() > 0 { args[0] } else { Undefined }
       let s = match str_val {
         String_(s) => s
@@ -143,7 +143,7 @@ pub fn setup_builtins(
   // parseFloat(string)
   env.def_builtin(
     "parseFloat",
-    make_native_func("parseFloat", fn(args) raise {
+    make_static_func("parseFloat", fn(args) raise {
       let str_val = if args.length() > 0 { args[0] } else { Undefined }
       let s = match str_val {
         String_(s) => s
@@ -240,7 +240,7 @@ pub fn setup_builtins(
   // encodeURIComponent(string)
   env.def_builtin(
     "encodeURIComponent",
-    make_native_func("encodeURIComponent", fn(args) {
+    make_static_func("encodeURIComponent", fn(args) {
       let str = if args.length() > 0 {
         args[0].to_string()
       } else {
@@ -253,7 +253,7 @@ pub fn setup_builtins(
   // decodeURIComponent(string) - decodes everything
   env.def_builtin(
     "decodeURIComponent",
-    make_native_func("decodeURIComponent", fn(args) raise {
+    make_static_func("decodeURIComponent", fn(args) raise {
       let str = if args.length() > 0 {
         args[0].to_string()
       } else {
@@ -266,7 +266,7 @@ pub fn setup_builtins(
   // encodeURI(string)
   env.def_builtin(
     "encodeURI",
-    make_native_func("encodeURI", fn(args) {
+    make_static_func("encodeURI", fn(args) {
       let str = if args.length() > 0 {
         args[0].to_string()
       } else {
@@ -279,7 +279,7 @@ pub fn setup_builtins(
   // decodeURI(string) - preserves reserved characters (; , / ? : @ & = + $ #)
   env.def_builtin(
     "decodeURI",
-    make_native_func("decodeURI", fn(args) raise {
+    make_static_func("decodeURI", fn(args) raise {
       let str = if args.length() > 0 {
         args[0].to_string()
       } else {
@@ -307,7 +307,7 @@ pub fn setup_builtins(
         "prototype": string_proto,
         "name": String_("String"),
         "length": Number(1.0),
-        "fromCharCode": make_native_func("fromCharCode", fn(args) raise {
+        "fromCharCode": make_static_func("fromCharCode", fn(args) raise {
           let buf = StringBuilder::new()
           for arg in args {
             let code = to_number(arg).to_int()
@@ -317,7 +317,7 @@ pub fn setup_builtins(
           }
           String_(buf.to_string())
         }),
-        "fromCodePoint": make_native_func("fromCodePoint", fn(args) raise {
+        "fromCodePoint": make_static_func("fromCodePoint", fn(args) raise {
           // String.fromCodePoint() - accepts Unicode code points (not code units)
           let buf = StringBuilder::new()
           for arg in args {
@@ -352,7 +352,7 @@ pub fn setup_builtins(
           }
           String_(buf.to_string())
         }),
-        "raw": make_native_func("raw", fn(args) raise {
+        "raw": make_static_func("raw", fn(args) raise {
           // String.raw(template, ...substitutions)
           // Returns raw string content without processing escape sequences
           if args.length() == 0 {
@@ -791,7 +791,7 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
   symbol_props["asyncIterator"] = Symbol(async_iterator_sym)
 
   // Symbol.for(key) - returns symbol from global registry
-  symbol_props["for"] = make_native_func("for", fn(args) {
+  symbol_props["for"] = make_static_func("for", fn(args) {
     let key = if args.length() > 0 { args[0].to_string() } else { "undefined" }
     match global_symbol_registry.get(key) {
       Some(sym) => Symbol(sym)
@@ -805,7 +805,7 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
   })
 
   // Symbol.keyFor(sym) - returns key for symbol in global registry (O(1) via reverse lookup)
-  symbol_props["keyFor"] = make_native_func("keyFor", fn(args) raise {
+  symbol_props["keyFor"] = make_static_func("keyFor", fn(args) raise {
     let sym = if args.length() > 0 { args[0] } else { Undefined }
     match sym {
       Symbol(sym_data) =>
@@ -1167,21 +1167,21 @@ fn setup_math_builtins(env : Environment) -> Unit {
   math_props["LOG10E"] = Number(0.4342944819032518)
   math_props["SQRT2"] = Number(1.4142135623730951)
   math_props["SQRT1_2"] = Number(0.7071067811865476)
-  math_props["abs"] = make_native_func_with_length("abs", 1, fn(args) raise {
+  math_props["abs"] = make_static_func_with_length("abs", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(n.abs())
   })
-  math_props["floor"] = make_native_func_with_length("floor", 1, fn(
+  math_props["floor"] = make_static_func_with_length("floor", 1, fn(
     args,
   ) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(n.floor())
   })
-  math_props["ceil"] = make_native_func_with_length("ceil", 1, fn(args) raise {
+  math_props["ceil"] = make_static_func_with_length("ceil", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(n.ceil())
   })
-  math_props["round"] = make_native_func_with_length("round", 1, fn(
+  math_props["round"] = make_static_func_with_length("round", 1, fn(
     args,
   ) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
@@ -1196,7 +1196,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
       }
     }
   })
-  math_props["trunc"] = make_native_func_with_length("trunc", 1, fn(
+  math_props["trunc"] = make_static_func_with_length("trunc", 1, fn(
     args,
   ) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
@@ -1206,16 +1206,16 @@ fn setup_math_builtins(env : Environment) -> Unit {
       Number(-(-n).floor())
     }
   })
-  math_props["sqrt"] = make_native_func_with_length("sqrt", 1, fn(args) raise {
+  math_props["sqrt"] = make_static_func_with_length("sqrt", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(n.sqrt())
   })
-  math_props["pow"] = make_native_func_with_length("pow", 2, fn(args) raise {
+  math_props["pow"] = make_static_func_with_length("pow", 2, fn(args) raise {
     let base = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     let exp = if args.length() > 1 { to_number(args[1]) } else { 0.0 / 0.0 }
     Number(@math.pow(base, exp))
   })
-  math_props["min"] = make_native_func_with_length("min", 2, fn(args) raise {
+  math_props["min"] = make_static_func_with_length("min", 2, fn(args) raise {
     if args.length() == 0 {
       return Number(1.0 / 0.0)
     }
@@ -1231,7 +1231,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     }
     Number(result)
   })
-  math_props["max"] = make_native_func_with_length("max", 2, fn(args) raise {
+  math_props["max"] = make_static_func_with_length("max", 2, fn(args) raise {
     if args.length() == 0 {
       return Number(-1.0 / 0.0)
     }
@@ -1248,7 +1248,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     Number(result)
   })
   let rng_state : Array[Int] = [123456789]
-  math_props["random"] = make_native_func_with_length("random", 0, fn(_args) {
+  math_props["random"] = make_static_func_with_length("random", 0, fn(_args) {
     let mut s = rng_state[0]
     s = s ^ (s << 13)
     s = s ^ (s.reinterpret_as_uint() >> 17).reinterpret_as_int()
@@ -1257,7 +1257,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     let normalized = (s & 0x7FFFFFFF).to_double() / 2147483648.0
     Number(normalized)
   })
-  math_props["sign"] = make_native_func_with_length("sign", 1, fn(args) raise {
+  math_props["sign"] = make_static_func_with_length("sign", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     if n.is_nan() {
       Number(0.0 / 0.0)
@@ -1269,92 +1269,92 @@ fn setup_math_builtins(env : Environment) -> Unit {
       Number(n) // preserves +0/-0
     }
   })
-  math_props["log"] = make_native_func_with_length("log", 1, fn(args) raise {
+  math_props["log"] = make_static_func_with_length("log", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.ln(n))
   })
-  math_props["log2"] = make_native_func_with_length("log2", 1, fn(args) raise {
+  math_props["log2"] = make_static_func_with_length("log2", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.log2(n))
   })
-  math_props["log10"] = make_native_func_with_length("log10", 1, fn(
+  math_props["log10"] = make_static_func_with_length("log10", 1, fn(
     args,
   ) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.log10(n))
   })
-  math_props["sin"] = make_native_func_with_length("sin", 1, fn(args) raise {
+  math_props["sin"] = make_static_func_with_length("sin", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.sin(n))
   })
-  math_props["cos"] = make_native_func_with_length("cos", 1, fn(args) raise {
+  math_props["cos"] = make_static_func_with_length("cos", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.cos(n))
   })
-  math_props["tan"] = make_native_func_with_length("tan", 1, fn(args) raise {
+  math_props["tan"] = make_static_func_with_length("tan", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.tan(n))
   })
-  math_props["asin"] = make_native_func_with_length("asin", 1, fn(args) raise {
+  math_props["asin"] = make_static_func_with_length("asin", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.asin(n))
   })
-  math_props["acos"] = make_native_func_with_length("acos", 1, fn(args) raise {
+  math_props["acos"] = make_static_func_with_length("acos", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.acos(n))
   })
-  math_props["atan"] = make_native_func_with_length("atan", 1, fn(args) raise {
+  math_props["atan"] = make_static_func_with_length("atan", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.atan(n))
   })
-  math_props["atan2"] = make_native_func_with_length("atan2", 2, fn(
+  math_props["atan2"] = make_static_func_with_length("atan2", 2, fn(
     args,
   ) raise {
     let y = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     let x = if args.length() > 1 { to_number(args[1]) } else { 0.0 / 0.0 }
     Number(@math.atan2(y, x))
   })
-  math_props["sinh"] = make_native_func_with_length("sinh", 1, fn(args) raise {
+  math_props["sinh"] = make_static_func_with_length("sinh", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.sinh(n))
   })
-  math_props["cosh"] = make_native_func_with_length("cosh", 1, fn(args) raise {
+  math_props["cosh"] = make_static_func_with_length("cosh", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.cosh(n))
   })
-  math_props["tanh"] = make_native_func_with_length("tanh", 1, fn(args) raise {
+  math_props["tanh"] = make_static_func_with_length("tanh", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.tanh(n))
   })
-  math_props["asinh"] = make_native_func_with_length("asinh", 1, fn(
+  math_props["asinh"] = make_static_func_with_length("asinh", 1, fn(
     args,
   ) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.asinh(n))
   })
-  math_props["acosh"] = make_native_func_with_length("acosh", 1, fn(
+  math_props["acosh"] = make_static_func_with_length("acosh", 1, fn(
     args,
   ) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.acosh(n))
   })
-  math_props["atanh"] = make_native_func_with_length("atanh", 1, fn(
+  math_props["atanh"] = make_static_func_with_length("atanh", 1, fn(
     args,
   ) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.atanh(n))
   })
-  math_props["exp"] = make_native_func_with_length("exp", 1, fn(args) raise {
+  math_props["exp"] = make_static_func_with_length("exp", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.exp(n))
   })
-  math_props["expm1"] = make_native_func_with_length("expm1", 1, fn(
+  math_props["expm1"] = make_static_func_with_length("expm1", 1, fn(
     args,
   ) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     Number(@math.expm1(n))
   })
-  math_props["log1p"] = make_native_func_with_length("log1p", 1, fn(
+  math_props["log1p"] = make_static_func_with_length("log1p", 1, fn(
     args,
   ) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
@@ -1369,7 +1369,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
       Number(@math.ln(1.0 + n))
     }
   })
-  math_props["hypot"] = make_native_func_with_length("hypot", 2, fn(
+  math_props["hypot"] = make_static_func_with_length("hypot", 2, fn(
     args,
   ) raise {
     if args.length() == 0 {
@@ -1388,7 +1388,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     }
     Number(sum.sqrt())
   })
-  math_props["cbrt"] = make_native_func_with_length("cbrt", 1, fn(args) raise {
+  math_props["cbrt"] = make_static_func_with_length("cbrt", 1, fn(args) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
     if n.is_nan() || n.is_inf() || n == 0.0 {
       Number(n)
@@ -1397,7 +1397,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
       Number(sign * @math.pow(n.abs(), 1.0 / 3.0))
     }
   })
-  math_props["clz32"] = make_native_func_with_length("clz32", 1, fn(
+  math_props["clz32"] = make_static_func_with_length("clz32", 1, fn(
     args,
   ) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 }
@@ -1414,7 +1414,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     }
     Number(count.to_double())
   })
-  math_props["imul"] = make_native_func_with_length("imul", 2, fn(args) raise {
+  math_props["imul"] = make_static_func_with_length("imul", 2, fn(args) raise {
     let a = if args.length() > 0 { to_number(args[0]) } else { 0.0 }
     let b = if args.length() > 1 { to_number(args[1]) } else { 0.0 }
     let int_a = to_int32(a)
@@ -1430,7 +1430,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     }
     Number(result.to_double())
   })
-  math_props["fround"] = make_native_func_with_length("fround", 1, fn(
+  math_props["fround"] = make_static_func_with_length("fround", 1, fn(
     args,
   ) raise {
     let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
@@ -2094,21 +2094,21 @@ fn setup_number_builtins(env : Environment) -> Unit {
   number_props["POSITIVE_INFINITY"] = Number(1.0 / 0.0)
   number_props["NEGATIVE_INFINITY"] = Number(-1.0 / 0.0)
   number_props["NaN"] = Number(0.0 / 0.0)
-  number_props["isNaN"] = make_native_func("isNaN", fn(args) {
+  number_props["isNaN"] = make_static_func("isNaN", fn(args) {
     let val = if args.length() > 0 { args[0] } else { Undefined }
     match val {
       Number(n) => Bool(n.is_nan())
       _ => Bool(false) // Number.isNaN does NOT coerce
     }
   })
-  number_props["isFinite"] = make_native_func("isFinite", fn(args) {
+  number_props["isFinite"] = make_static_func("isFinite", fn(args) {
     let val = if args.length() > 0 { args[0] } else { Undefined }
     match val {
       Number(n) => Bool(not(n.is_nan()) && not(n.is_inf()))
       _ => Bool(false) // Number.isFinite does NOT coerce
     }
   })
-  number_props["isInteger"] = make_native_func("isInteger", fn(args) {
+  number_props["isInteger"] = make_static_func("isInteger", fn(args) {
     let val = if args.length() > 0 { args[0] } else { Undefined }
     match val {
       Number(n) =>
@@ -2120,7 +2120,7 @@ fn setup_number_builtins(env : Environment) -> Unit {
       _ => Bool(false)
     }
   })
-  number_props["isSafeInteger"] = make_native_func("isSafeInteger", fn(args) {
+  number_props["isSafeInteger"] = make_static_func("isSafeInteger", fn(args) {
     // Number.isSafeInteger() - check if value is a safe integer
     // Safe integers are integers in range -(2^53-1) to 2^53-1
     let val = if args.length() > 0 { args[0] } else { Undefined }
@@ -2194,7 +2194,7 @@ fn setup_number_builtins(env : Environment) -> Unit {
 ///|
 fn setup_json_builtins(env : Environment) -> Unit {
   let json_props : Map[String, Value] = {}
-  json_props["parse"] = make_native_func("parse", fn(args) raise {
+  json_props["parse"] = make_static_func("parse", fn(args) raise {
     let str = if args.length() > 0 { args[0].to_string() } else { "" }
     json_parse(str)
   })
@@ -3227,29 +3227,61 @@ fn setup_function_builtins(env : Environment) -> Unit {
       })
 
   // Function.prototype.bind - placeholder (actual implementation in interpreter)
-  func_proto_props["bind"] = Object({
-    properties: { "length": Number(1.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      NativeCallable("bind", fn(_args) {
-        // This is a placeholder - actual bind is handled in interpreter
-        Undefined
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
+  func_proto_props["bind"] = make_interp_method_func("bind", 1, fn(_interp, this_val, args) raise {
+    // Function.prototype.bind - §20.2.3.2
+    // Step 1: If IsCallable(this) is false, throw a TypeError exception
+    if not(is_function_value(this_val)) {
+      raise @errors.TypeError(
+        message="Function.prototype.bind called on non-callable",
+      )
+    }
+    let bind_this = if args.length() > 0 { args[0] } else { Undefined }
+    let bound_args : Array[Value] = []
+    for i = 1; i < args.length(); i = i + 1 {
+      bound_args.push(args[i])
+    }
+    let bound_name = get_bound_func_name(this_val)
+    let target_length = match this_val {
+      Object(data) =>
+        match data.callable {
+          Some(c) => get_func_length(c)
+          None => 0
+        }
+      _ => 0
+    }
+    let bound_length = {
+      let diff = target_length - bound_args.length()
+      if diff < 0 { 0 } else { diff }
+    }
+    let nf_desc : PropDescriptor = {
+      writable: false,
+      enumerable: false,
+      configurable: true,
+      getter: None,
+      setter: None,
+    }
+    let bprops : Map[String, Value] = {}
+    bprops["name"] = String_(bound_name)
+    bprops["length"] = Number(bound_length.to_double())
+    Object({
+      properties: bprops,
+      symbol_properties: {},
+      prototype: Null,
+      callable: Some(BoundFunc(this_val, bind_this, bound_args)),
+      class_name: "Function",
+      descriptors: { "name": nf_desc, "length": nf_desc },
+      symbol_descriptors: {},
+      extensible: true,
+    })
   })
   // %ThrowTypeError% intrinsic (ES spec §10.2.4)
   // A single frozen function that throws TypeError when called.
   let throw_type_error : Value = Object({
-    properties: { "length": Number(0.0), "name": String_("ThrowTypeError") },
+    properties: { "length": Number(0.0), "name": String_("") },
     symbol_properties: {},
     prototype: Null,
     callable: Some(
-      NativeCallable("ThrowTypeError", fn(_args) raise {
+      NonConstructableCallable("", fn(_args) raise {
         raise @errors.TypeError(
           message="'caller', 'callee', and 'arguments' properties may not be accessed on strict mode functions or the arguments objects for calls to them",
         )
@@ -3331,6 +3363,12 @@ fn setup_function_builtins(env : Environment) -> Unit {
     symbol_descriptors: {},
     extensible: true,
   })
+
+  // Set ThrowTypeError's prototype to Function.prototype (after func_proto is created)
+  match throw_type_error {
+    Object(tte_data) => tte_data.prototype = func_proto
+    _ => ()
+  }
 
   // Register %ThrowTypeError% so it can be used for strict arguments objects
   env.def_builtin("[[ThrowTypeError]]", throw_type_error)

@@ -6106,16 +6106,66 @@ fn Interpreter::eval_member(
 ///|
 fn get_bound_func_name(target : Value) -> String {
   match target {
-    Object(td) =>
+    Object(td) => {
+      // First check properties["name"] (set by Object.defineProperty or bind)
+      let prop_name = match td.properties.get("name") {
+        Some(String_(s)) => s
+        _ => ""
+      }
+      if prop_name != "" {
+        return "bound " + prop_name
+      }
       match td.callable {
         Some(UserFunc(fd)) => "bound " + fd.name.unwrap_or("")
         Some(UserFuncExt(fd)) => "bound " + fd.name.unwrap_or("")
         Some(NativeCallable(n, _)) => "bound " + n
         Some(NonConstructableCallable(n, _)) => "bound " + n
+        Some(BoundFunc(inner, _, _)) => "bound " + get_bound_func_name(inner)
+        Some(ArrowFunc(fd)) => "bound " + fd.name.unwrap_or("")
+        Some(ArrowFuncExt(fd)) => "bound " + fd.name.unwrap_or("")
+        Some(ClassConstructor(n, _, _, _, _, _)) => "bound " + n
+        Some(MethodCallable(n, _)) => "bound " + n
+        Some(InterpreterCallable(n, _)) => "bound " + n
         Some(_) => "bound "
         None => "bound "
       }
+    }
     _ => "bound "
+  }
+}
+
+///|
+fn get_func_length(callable : Callable) -> Int {
+  match callable {
+    UserFunc(func_data) => func_data.params.length()
+    UserFuncExt(func_data) => func_data.params.length()
+    ArrowFunc(func_data) => func_data.params.length()
+    ArrowFuncExt(func_data) => func_data.params.length()
+    BoundFunc(target, _, bound_args) =>
+      match target {
+        Object(td) =>
+          match td.callable {
+            Some(inner) => {
+              let target_len = get_func_length(inner)
+              let diff = target_len - bound_args.length()
+              if diff < 0 { 0 } else { diff }
+            }
+            None => 0
+          }
+        _ => 0
+      }
+    NativeCallable(_, _) => 0
+    NonConstructableCallable(_, _) => 0
+    FuncCallMethod(_) => 1
+    FuncApplyMethod(_) => 2
+    MethodCallable(_, _) => 0
+    InterpreterCallable(_, _) => 0
+    ConstructorOnlyCallable(_, _) => 0
+    ClassConstructor(_, _, _, ctor, _, _) =>
+      match ctor {
+        Some((params, _)) => params.length()
+        None => 0
+      }
   }
 }
 
@@ -6273,6 +6323,7 @@ fn Interpreter::get_property(
                 })
               } else if prop == "bind" {
                 let target = obj
+                let target_length = get_func_length(callable)
                 return make_native_func("bind", fn(args) {
                   let bind_this = if args.length() > 0 {
                     args[0]
@@ -6283,77 +6334,35 @@ fn Interpreter::get_property(
                   for i = 1; i < args.length(); i = i + 1 {
                     bound_args.push(args[i])
                   }
+                  let bound_name = get_bound_func_name(target)
+                  let bound_length = {
+                    let diff = target_length - bound_args.length()
+                    if diff < 0 { 0 } else { diff }
+                  }
+                  let nf_desc : PropDescriptor = {
+                    writable: false,
+                    enumerable: false,
+                    configurable: true,
+                    getter: None,
+                    setter: None,
+                  }
+                  let bprops : Map[String, Value] = {}
+                  bprops["name"] = String_(bound_name)
+                  bprops["length"] = Number(bound_length.to_double())
                   Object({
-                    properties: {},
+                    properties: bprops,
                     symbol_properties: {},
                     prototype: Null,
                     callable: Some(BoundFunc(target, bind_this, bound_args)),
                     class_name: "Function",
-                    descriptors: {},
+                    descriptors: { "name": nf_desc, "length": nf_desc },
                     symbol_descriptors: {},
                     extensible: true,
                   })
                 })
               } else if prop == "length" {
                 // Return the number of formal parameters
-                let param_count = match callable {
-                  UserFunc(func_data) => func_data.params.length()
-                  UserFuncExt(func_data) => func_data.params.length()
-                  ArrowFunc(func_data) => func_data.params.length()
-                  ArrowFuncExt(func_data) => func_data.params.length()
-                  BoundFunc(target, _, bound_args) =>
-                    match target {
-                      Object(td) =>
-                        match td.callable {
-                          Some(UserFunc(fd)) => {
-                            let diff = fd.params.length() - bound_args.length()
-                            if diff < 0 {
-                              0
-                            } else {
-                              diff
-                            }
-                          }
-                          Some(UserFuncExt(fd)) => {
-                            let diff = fd.params.length() - bound_args.length()
-                            if diff < 0 {
-                              0
-                            } else {
-                              diff
-                            }
-                          }
-                          Some(ArrowFunc(fd)) => {
-                            let diff = fd.params.length() - bound_args.length()
-                            if diff < 0 {
-                              0
-                            } else {
-                              diff
-                            }
-                          }
-                          Some(ArrowFuncExt(fd)) => {
-                            let diff = fd.params.length() - bound_args.length()
-                            if diff < 0 {
-                              0
-                            } else {
-                              diff
-                            }
-                          }
-                          _ => 0
-                        }
-                      _ => 0
-                    }
-                  NativeCallable(_, _) => 0
-                  NonConstructableCallable(_, _) => 0
-                  FuncCallMethod(_) => 1
-                  FuncApplyMethod(_) => 2
-                  MethodCallable(_, _) => 0
-                  InterpreterCallable(_, _) => 0
-                  ConstructorOnlyCallable(_, _) => 0
-                  ClassConstructor(_, _, _, ctor, _, _) =>
-                    match ctor {
-                      Some((params, _)) => params.length()
-                      None => 0
-                    }
-                }
+                let param_count = get_func_length(callable)
                 return Number(param_count.to_double())
               } else if prop == "name" {
                 // Return the function name
@@ -6963,6 +6972,7 @@ fn Interpreter::get_computed_property(
                 })
               } else if prop == "bind" {
                 let target = obj
+                let target_length = get_func_length(callable)
                 return make_native_func("bind", fn(args) {
                   let bind_this = if args.length() > 0 {
                     args[0]
@@ -6973,77 +6983,35 @@ fn Interpreter::get_computed_property(
                   for i = 1; i < args.length(); i = i + 1 {
                     bound_args.push(args[i])
                   }
+                  let bound_name = get_bound_func_name(target)
+                  let bound_length = {
+                    let diff = target_length - bound_args.length()
+                    if diff < 0 { 0 } else { diff }
+                  }
+                  let nf_desc : PropDescriptor = {
+                    writable: false,
+                    enumerable: false,
+                    configurable: true,
+                    getter: None,
+                    setter: None,
+                  }
+                  let bprops : Map[String, Value] = {}
+                  bprops["name"] = String_(bound_name)
+                  bprops["length"] = Number(bound_length.to_double())
                   Object({
-                    properties: {},
+                    properties: bprops,
                     symbol_properties: {},
                     prototype: Null,
                     callable: Some(BoundFunc(target, bind_this, bound_args)),
                     class_name: "Function",
-                    descriptors: {},
+                    descriptors: { "name": nf_desc, "length": nf_desc },
                     symbol_descriptors: {},
                     extensible: true,
                   })
                 })
               } else if prop == "length" {
                 // Return the number of formal parameters
-                let param_count = match callable {
-                  UserFunc(func_data) => func_data.params.length()
-                  UserFuncExt(func_data) => func_data.params.length()
-                  ArrowFunc(func_data) => func_data.params.length()
-                  ArrowFuncExt(func_data) => func_data.params.length()
-                  BoundFunc(target, _, bound_args) =>
-                    match target {
-                      Object(td) =>
-                        match td.callable {
-                          Some(UserFunc(fd)) => {
-                            let diff = fd.params.length() - bound_args.length()
-                            if diff < 0 {
-                              0
-                            } else {
-                              diff
-                            }
-                          }
-                          Some(UserFuncExt(fd)) => {
-                            let diff = fd.params.length() - bound_args.length()
-                            if diff < 0 {
-                              0
-                            } else {
-                              diff
-                            }
-                          }
-                          Some(ArrowFunc(fd)) => {
-                            let diff = fd.params.length() - bound_args.length()
-                            if diff < 0 {
-                              0
-                            } else {
-                              diff
-                            }
-                          }
-                          Some(ArrowFuncExt(fd)) => {
-                            let diff = fd.params.length() - bound_args.length()
-                            if diff < 0 {
-                              0
-                            } else {
-                              diff
-                            }
-                          }
-                          _ => 0
-                        }
-                      _ => 0
-                    }
-                  NativeCallable(_, _) => 0
-                  NonConstructableCallable(_, _) => 0
-                  FuncCallMethod(_) => 1
-                  FuncApplyMethod(_) => 2
-                  MethodCallable(_, _) => 0
-                  InterpreterCallable(_, _) => 0
-                  ConstructorOnlyCallable(_, _) => 0
-                  ClassConstructor(_, _, _, ctor, _, _) =>
-                    match ctor {
-                      Some((params, _)) => params.length()
-                      None => 0
-                    }
-                }
+                let param_count = get_func_length(callable)
                 return Number(param_count.to_double())
               } else if prop == "name" {
                 // Return the function name
@@ -8104,6 +8072,17 @@ fn Interpreter::construct_value(
           }
           self.strict = saved_strict
           result
+        }
+        Some(BoundFunc(target, _, bound_args)) => {
+          // new BoundFunc(...args) delegates to new Target(...boundArgs, ...args)
+          let all_args : Array[Value] = []
+          for a in bound_args {
+            all_args.push(a)
+          }
+          for a in args {
+            all_args.push(a)
+          }
+          self.construct_value(target, all_args, loc)
         }
         Some(NativeCallable(_, func)) => {
           is_constructing.val = true

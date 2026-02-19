@@ -642,6 +642,60 @@ pub fn make_native_func_with_length(
 }
 
 ///|
+/// Helper to create a non-constructable native function (for static methods)
+pub fn make_static_func(
+  name : String,
+  func : (Array[Value]) -> Value raise Error,
+) -> Value {
+  let nf_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
+  Object({
+    properties: { "name": String_(name), "length": Number(0.0) },
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(NonConstructableCallable(name, func)),
+    class_name: "Function",
+    descriptors: { "name": nf_desc, "length": nf_desc },
+    symbol_descriptors: {},
+    extensible: true,
+  })
+}
+
+///|
+/// Helper to create a non-constructable native function with explicit length (for static methods)
+pub fn make_static_func_with_length(
+  name : String,
+  length : Int,
+  func : (Array[Value]) -> Value raise Error,
+) -> Value {
+  let nf_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
+  let props : Map[String, Value] = {}
+  props["length"] = Number(length.to_double())
+  props["name"] = String_(name)
+  Object({
+    properties: props,
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(NonConstructableCallable(name, func)),
+    class_name: "Function",
+    descriptors: { "name": nf_desc, "length": nf_desc },
+    symbol_descriptors: {},
+    extensible: true,
+  })
+}
+
+///|
 /// Helper to create a method function (MethodCallable) with name/length properties
 pub fn make_method_func(
   name : String,

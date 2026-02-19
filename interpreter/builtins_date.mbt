@@ -1290,18 +1290,18 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
   date_props["length"] = Number(7.0)
 
   // Date.now()
-  date_props["now"] = make_native_func_with_length("now", 0, fn(_args) {
+  date_props["now"] = make_static_func_with_length("now", 0, fn(_args) {
     Number(current_time_ms().floor())
   })
 
   // Date.parse(string)
-  date_props["parse"] = make_native_func_with_length("parse", 1, fn(args) {
+  date_props["parse"] = make_static_func_with_length("parse", 1, fn(args) {
     let s = if args.length() > 0 { args[0].to_string() } else { "" }
     Number(parse_date_string(s))
   })
 
   // Date.UTC(year, month [, date [, hours [, minutes [, seconds [, ms]]]]])
-  date_props["UTC"] = make_native_func_with_length("UTC", 7, fn(args) raise {
+  date_props["UTC"] = make_static_func_with_length("UTC", 7, fn(args) raise {
     let year_arg = if args.length() > 0 {
       to_number(args[0])
     } else {
