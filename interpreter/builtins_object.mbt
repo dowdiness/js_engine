@@ -3096,7 +3096,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
   let method_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
 
   // Non-callback methods (using MethodCallable for this-aware dispatch)
-  array_proto_props["push"] = make_method_func("push", 1, fn(this_val, args) raise {
+  array_proto_props["push"] = make_method_func("push", 1, fn(this_val, args) {
         match this_val {
           Array(arr) => {
             for arg in args {
@@ -3104,10 +3104,18 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             }
             Number(arr.elements.length().to_double())
           }
-          _ => raise @errors.TypeError(message="push called on non-array")
+          _ => {
+            let mut len = to_array_like_length(this_val)
+            for arg in args {
+              set_array_like_element(this_val, len, arg)
+              len = len + 1
+            }
+            set_array_like_length(this_val, len)
+            Number(len.to_double())
+          }
         }
       })
-  array_proto_props["pop"] = make_method_func("pop", 0, fn(this_val, _args) raise {
+  array_proto_props["pop"] = make_method_func("pop", 0, fn(this_val, _args) {
         match this_val {
           Array(arr) =>
             if arr.elements.length() == 0 {
@@ -3115,10 +3123,22 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             } else {
               arr.elements.pop() |> Option::unwrap
             }
-          _ => raise @errors.TypeError(message="pop called on non-array")
+          _ => {
+            let len = to_array_like_length(this_val)
+            if len == 0 {
+              set_array_like_length(this_val, 0)
+              Undefined
+            } else {
+              let new_len = len - 1
+              let val = get_array_like_element(this_val, new_len)
+              delete_array_like_element(this_val, new_len)
+              set_array_like_length(this_val, new_len)
+              val
+            }
+          }
         }
       })
-  array_proto_props["shift"] = make_method_func("shift", 0, fn(this_val, _args) raise {
+  array_proto_props["shift"] = make_method_func("shift", 0, fn(this_val, _args) {
         match this_val {
           Array(arr) => {
             if arr.elements.length() == 0 {
@@ -3137,10 +3157,23 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             }
             first
           }
-          _ => raise @errors.TypeError(message="shift called on non-array")
+          _ => {
+            let len = to_array_like_length(this_val)
+            if len == 0 {
+              set_array_like_length(this_val, 0)
+              return Undefined
+            }
+            let first = get_array_like_element(this_val, 0)
+            for i = 1; i < len; i = i + 1 {
+              set_array_like_element(this_val, i - 1, get_array_like_element(this_val, i))
+            }
+            delete_array_like_element(this_val, len - 1)
+            set_array_like_length(this_val, len - 1)
+            first
+          }
         }
       })
-  array_proto_props["unshift"] = make_method_func("unshift", 1, fn(this_val, args) raise {
+  array_proto_props["unshift"] = make_method_func("unshift", 1, fn(this_val, args) {
         match this_val {
           Array(arr) => {
             let old : Array[Value] = []
@@ -3158,7 +3191,21 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             }
             Number(arr.elements.length().to_double())
           }
-          _ => raise @errors.TypeError(message="unshift called on non-array")
+          _ => {
+            let len = to_array_like_length(this_val)
+            let argc = args.length()
+            // Shift existing elements up by argc
+            for i = len - 1; i >= 0; i = i - 1 {
+              set_array_like_element(this_val, i + argc, get_array_like_element(this_val, i))
+            }
+            // Insert new elements at the beginning
+            for i = 0; i < argc; i = i + 1 {
+              set_array_like_element(this_val, i, args[i])
+            }
+            let new_len = len + argc
+            set_array_like_length(this_val, new_len)
+            Number(new_len.to_double())
+          }
         }
       })
   array_proto_props["join"] = make_method_func("join", 1, fn(this_val, args) {
@@ -3318,45 +3365,66 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }
         Array({ elements: result })
       })
-  array_proto_props["reverse"] = make_method_func("reverse", 0, fn(this_val, _args) raise {
+  array_proto_props["reverse"] = make_method_func("reverse", 0, fn(this_val, _args) {
         match this_val {
           Array(arr) => {
             arr.elements.rev_in_place()
             Array(arr)
           }
-          _ => raise @errors.TypeError(message="reverse called on non-array")
+          _ => {
+            let len = to_array_like_length(this_val)
+            let mut lower = 0
+            let mut upper = len - 1
+            while lower < upper {
+              let lower_val = get_array_like_element(this_val, lower)
+              let upper_val = get_array_like_element(this_val, upper)
+              set_array_like_element(this_val, lower, upper_val)
+              set_array_like_element(this_val, upper, lower_val)
+              lower = lower + 1
+              upper = upper - 1
+            }
+            this_val
+          }
         }
       })
   array_proto_props["fill"] = make_method_func("fill", 1, fn(this_val, args) raise {
-        match this_val {
-          Array(arr) => {
-            let fill_val = if args.length() > 0 { args[0] } else { Undefined }
-            let alen = arr.elements.length()
-            let mut start = if args.length() > 1 {
-              to_number(args[1]).to_int()
-            } else {
-              0
-            }
-            let mut end = if args.length() > 2 {
-              to_number(args[2]).to_int()
-            } else {
-              alen
-            }
-            if start < 0 {
-              start = alen + start
-            }
-            if end < 0 {
-              end = alen + end
-            }
-            for i = start; i < end; i = i + 1 {
-              if i >= 0 && i < alen {
-                arr.elements[i] = fill_val
-              }
-            }
-            Array(arr)
-          }
-          _ => raise @errors.TypeError(message="fill called on non-array")
+        let fill_val = if args.length() > 0 { args[0] } else { Undefined }
+        let alen = to_array_like_length(this_val)
+        let mut start = if args.length() > 1 {
+          to_number(args[1]).to_int()
+        } else {
+          0
         }
+        let mut end = if args.length() > 2 {
+          match args[2] {
+            Undefined => alen
+            _ => to_number(args[2]).to_int()
+          }
+        } else {
+          alen
+        }
+        if start < 0 {
+          start = alen + start
+          if start < 0 {
+            start = 0
+          }
+        }
+        if start > alen {
+          start = alen
+        }
+        if end < 0 {
+          end = alen + end
+          if end < 0 {
+            end = 0
+          }
+        }
+        if end > alen {
+          end = alen
+        }
+        for i = start; i < end; i = i + 1 {
+          set_array_like_element(this_val, i, fill_val)
+        }
+        this_val
       })
   array_proto_props["toString"] = make_method_func("toString", 0, fn(this_val, _args) {
         let len = to_array_like_length(this_val)
@@ -3659,67 +3727,15 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         Bool(false)
       })
   array_proto_props["sort"] = make_interp_method_func("sort", 1, fn(interp, this_val, args) raise {
-        match this_val {
-          Array(arr) => {
-            if args.length() > 0 {
-              match args[0] {
-                Undefined =>
-                  arr.elements.sort_by(fn(a, b) {
-                    let sa = a.to_string()
-                    let sb = b.to_string()
-                    if sa < sb {
-                      -1
-                    } else if sa > sb {
-                      1
-                    } else {
-                      0
-                    }
-                  })
-                _ => {
-                  let comparefn = args[0]
-                  let loc = @token.Loc::default()
-                  // Store any exception to re-throw after sort (spec requires propagation)
-                  let mut caught_error : Error? = None
-                  arr.elements.sort_by(fn(a, b) {
-                    if caught_error is Some(_) {
-                      return 0
-                    }
-                    let result = interp.call_value(
-                      comparefn,
-                      Undefined,
-                      [a, b],
-                      loc,
-                    ) catch {
-                      e => {
-                        caught_error = Some(e)
-                        return 0
-                      }
-                    }
-                    // Use sign-based comparison to avoid truncating fractional values
-                    let cmp = to_number(result) catch {
-                      e => {
-                        caught_error = Some(e)
-                        return 0
-                      }
-                    }
-                    if cmp.is_nan() {
-                      0
-                    } else if cmp < 0.0 {
-                      -1
-                    } else if cmp > 0.0 {
-                      1
-                    } else {
-                      0
-                    }
-                  })
-                  match caught_error {
-                    Some(e) => raise e
-                    None => ()
-                  }
-                }
-              }
-            } else {
-              arr.elements.sort_by(fn(a, b) {
+        // Extract elements into a mutable array for sorting
+        let elements : Array[Value] = match this_val {
+          Array(arr) => arr.elements
+          _ => to_array_like_elements(this_val)
+        }
+        if args.length() > 0 {
+          match args[0] {
+            Undefined =>
+              elements.sort_by(fn(a, b) {
                 let sa = a.to_string()
                 let sb = b.to_string()
                 if sa < sb {
@@ -3730,92 +3746,152 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                   0
                 }
               })
-            }
-            Array(arr)
-          }
-          _ => raise @errors.TypeError(message="sort called on non-array")
-        }
-      })
-  array_proto_props["flat"] = make_method_func("flat", 0, fn(this_val, args) raise {
-        match this_val {
-          Array(arr) => {
-            let depth = if args.length() > 0 {
-              to_number(args[0]).to_int()
-            } else {
-              1
-            }
-            let result : Array[Value] = []
-            flatten_array_val(arr.elements, depth, result)
-            Array({ elements: result })
-          }
-          _ => raise @errors.TypeError(message="flat called on non-array")
-        }
-      })
-  array_proto_props["flatMap"] = make_interp_method_func("flatMap", 1, fn(interp, this_val, args) raise {
-        match this_val {
-          Array(arr) => {
-            let callback = if args.length() > 0 { args[0] } else { Undefined }
-            let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-            let loc = @token.Loc::default()
-            let result : Array[Value] = []
-            for i = 0; i < arr.elements.length(); i = i + 1 {
-              let val = interp.call_value(
-                callback,
-                this_arg,
-                [arr.elements[i], Number(i.to_double()), Array(arr)],
-                loc,
-              )
-              match val {
-                Array(inner) =>
-                  for el in inner.elements {
-                    result.push(el)
+            _ => {
+              let comparefn = args[0]
+              let loc = @token.Loc::default()
+              let mut caught_error : Error? = None
+              elements.sort_by(fn(a, b) {
+                if caught_error is Some(_) {
+                  return 0
+                }
+                let result = interp.call_value(
+                  comparefn,
+                  Undefined,
+                  [a, b],
+                  loc,
+                ) catch {
+                  e => {
+                    caught_error = Some(e)
+                    return 0
                   }
-                _ => result.push(val)
+                }
+                let cmp = to_number(result) catch {
+                  e => {
+                    caught_error = Some(e)
+                    return 0
+                  }
+                }
+                if cmp.is_nan() {
+                  0
+                } else if cmp < 0.0 {
+                  -1
+                } else if cmp > 0.0 {
+                  1
+                } else {
+                  0
+                }
+              })
+              match caught_error {
+                Some(e) => raise e
+                None => ()
               }
             }
-            Array({ elements: result })
           }
-          _ => raise @errors.TypeError(message="flatMap called on non-array")
-        }
-      })
-  array_proto_props["splice"] = make_method_func("splice", 2, fn(this_val, args) raise {
-        match this_val {
-          Array(arr) => {
-            let alen = arr.elements.length()
-            let mut start = if args.length() > 0 {
-              to_number(args[0]).to_int()
+        } else {
+          elements.sort_by(fn(a, b) {
+            let sa = a.to_string()
+            let sb = b.to_string()
+            if sa < sb {
+              -1
+            } else if sa > sb {
+              1
             } else {
               0
             }
-            if start < 0 {
-              start = alen + start
-              if start < 0 {
-                start = 0
-              }
+          })
+        }
+        // For non-array objects, write sorted elements back
+        match this_val {
+          Array(arr) => Array(arr)
+          _ => {
+            for i = 0; i < elements.length(); i = i + 1 {
+              set_array_like_element(this_val, i, elements[i])
             }
-            if start > alen {
-              start = alen
-            }
-            let del_count = if args.length() > 1 {
-              let d = to_number(args[1]).to_int()
-              if d < 0 {
-                0
-              } else if d > alen - start {
-                alen - start
-              } else {
-                d
+            this_val
+          }
+        }
+      })
+  array_proto_props["flat"] = make_method_func("flat", 0, fn(this_val, args) raise {
+        let depth = if args.length() > 0 {
+          match args[0] {
+            Undefined => 1
+            _ => to_number(args[0]).to_int()
+          }
+        } else {
+          1
+        }
+        let elements = to_array_like_elements(this_val)
+        let result : Array[Value] = []
+        flatten_array_val(elements, depth, result)
+        Array({ elements: result })
+      })
+  array_proto_props["flatMap"] = make_interp_method_func("flatMap", 1, fn(interp, this_val, args) raise {
+        let callback = if args.length() > 0 { args[0] } else { Undefined }
+        let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+        let loc = @token.Loc::default()
+        let len = to_array_like_length(this_val)
+        let result : Array[Value] = []
+        for i = 0; i < len; i = i + 1 {
+          let el = get_array_like_element(this_val, i)
+          let val = interp.call_value(
+            callback,
+            this_arg,
+            [el, Number(i.to_double()), this_val],
+            loc,
+          )
+          match val {
+            Array(inner) =>
+              for item in inner.elements {
+                result.push(item)
               }
+            _ => result.push(val)
+          }
+        }
+        Array({ elements: result })
+      })
+  array_proto_props["splice"] = make_method_func("splice", 2, fn(this_val, args) raise {
+        let alen = to_array_like_length(this_val)
+        let mut start = if args.length() > 0 {
+          to_number(args[0]).to_int()
+        } else {
+          0
+        }
+        if start < 0 {
+          start = alen + start
+          if start < 0 {
+            start = 0
+          }
+        }
+        if start > alen {
+          start = alen
+        }
+        let del_count = if args.length() > 1 {
+          let d_num = to_number(args[1])
+          if d_num.is_inf() || d_num >= (alen - start).to_double() {
+            alen - start
+          } else {
+            let d = d_num.to_int()
+            if d < 0 {
+              0
             } else {
-              alen - start
+              d
             }
-            let removed : Array[Value] = []
-            for i = start; i < start + del_count; i = i + 1 {
-              removed.push(arr.elements[i])
-            }
-            let new_items : Array[Value] = []
-            for i = 2; i < args.length(); i = i + 1 {
-              new_items.push(args[i])
-            }
+          }
+        } else {
+          alen - start
+        }
+        let removed : Array[Value] = []
+        for i = start; i < start + del_count; i = i + 1 {
+          removed.push(get_array_like_element(this_val, i))
+        }
+        let new_items : Array[Value] = []
+        for i = 2; i < args.length(); i = i + 1 {
+          new_items.push(args[i])
+        }
+        let items_count = new_items.length()
+        // For Array type, use direct element manipulation
+        match this_val {
+          Array(arr) => {
             let tail : Array[Value] = []
             for i = start + del_count; i < alen; i = i + 1 {
               tail.push(arr.elements[i])
@@ -3829,191 +3905,138 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             for item in tail {
               arr.elements.push(item)
             }
-            Array({ elements: removed })
           }
-          _ => raise @errors.TypeError(message="splice called on non-array")
+          _ => {
+            // For objects: shift elements appropriately
+            if items_count < del_count {
+              // Shift left
+              for i = start; i < alen - del_count; i = i + 1 {
+                set_array_like_element(this_val, i + items_count, get_array_like_element(this_val, i + del_count))
+              }
+              // Delete trailing elements
+              let new_len = alen - del_count + items_count
+              for i = new_len; i < alen; i = i + 1 {
+                delete_array_like_element(this_val, i)
+              }
+              set_array_like_length(this_val, new_len)
+            } else if items_count > del_count {
+              // Shift right
+              let new_len = alen - del_count + items_count
+              for i = alen - 1; i >= start + del_count; i = i - 1 {
+                set_array_like_element(this_val, i + items_count - del_count, get_array_like_element(this_val, i))
+              }
+              set_array_like_length(this_val, new_len)
+            }
+            // Insert new items
+            for i = 0; i < items_count; i = i + 1 {
+              set_array_like_element(this_val, start + i, new_items[i])
+            }
+            if items_count == del_count {
+              // Length stays the same, no need to change
+              ()
+            }
+          }
         }
+        Array({ elements: removed })
       })
   array_proto_props["copyWithin"] = make_method_func("copyWithin", 2, fn(this_val, args) raise {
-        match this_val {
-          Array(arr) => {
-            let len = arr.elements.length()
-            let mut target = if args.length() > 0 {
-              to_number(args[0]).to_int()
-            } else {
-              0
-            }
-            let mut start = if args.length() > 1 {
-              to_number(args[1]).to_int()
-            } else {
-              0
-            }
-            let mut end = if args.length() > 2 {
-              match args[2] {
-                Undefined => len
-                _ => to_number(args[2]).to_int()
-              }
-            } else {
-              len
-            }
-            if target < 0 {
-              target = len + target
-              if target < 0 {
-                target = 0
-              }
-            }
-            if start < 0 {
-              start = len + start
-              if start < 0 {
-                start = 0
-              }
-            }
-            if end < 0 {
-              end = len + end
-              if end < 0 {
-                end = 0
-              }
-            }
-            if end > len {
-              end = len
-            }
-            let count = if end - start < len - target {
-              end - start
-            } else {
-              len - target
-            }
-            if count > 0 {
-              let temp : Array[Value] = []
-              for i = start; i < start + count; i = i + 1 {
-                temp.push(arr.elements[i])
-              }
-              for i = 0; i < count; i = i + 1 {
-                if target + i < len {
-                  arr.elements[target + i] = temp[i]
-                }
-              }
-            }
-            Array(arr)
-          }
-          _ => raise @errors.TypeError(message="copyWithin called on non-array")
+        let len = to_array_like_length(this_val)
+        let mut target = if args.length() > 0 {
+          to_number(args[0]).to_int()
+        } else {
+          0
         }
+        let mut start = if args.length() > 1 {
+          to_number(args[1]).to_int()
+        } else {
+          0
+        }
+        let mut end = if args.length() > 2 {
+          match args[2] {
+            Undefined => len
+            _ => to_number(args[2]).to_int()
+          }
+        } else {
+          len
+        }
+        if target < 0 {
+          target = len + target
+          if target < 0 {
+            target = 0
+          }
+        }
+        if start < 0 {
+          start = len + start
+          if start < 0 {
+            start = 0
+          }
+        }
+        if end < 0 {
+          end = len + end
+          if end < 0 {
+            end = 0
+          }
+        }
+        if end > len {
+          end = len
+        }
+        let count = if end - start < len - target {
+          end - start
+        } else {
+          len - target
+        }
+        if count > 0 {
+          let temp : Array[Value] = []
+          for i = start; i < start + count; i = i + 1 {
+            temp.push(get_array_like_element(this_val, i))
+          }
+          for i = 0; i < count; i = i + 1 {
+            if target + i < len {
+              set_array_like_element(this_val, target + i, temp[i])
+            }
+          }
+        }
+        this_val
       })
-  array_proto_props["entries"] = make_method_func("entries", 0, fn(this_val, _args) raise {
-        match this_val {
-          Array(arr) => {
-            let result : Array[Value] = []
-            for i = 0; i < arr.elements.length(); i = i + 1 {
-              result.push(
-                Array({ elements: [Number(i.to_double()), arr.elements[i]] }),
-              )
-            }
-            Array({ elements: result })
-          }
-          _ => raise @errors.TypeError(message="entries called on non-array")
+  array_proto_props["entries"] = make_method_func("entries", 0, fn(this_val, _args) {
+        let len = to_array_like_length(this_val)
+        let result : Array[Value] = []
+        for i = 0; i < len; i = i + 1 {
+          result.push(
+            Array({ elements: [Number(i.to_double()), get_array_like_element(this_val, i)] }),
+          )
         }
+        Array({ elements: result })
       })
-  array_proto_props["keys"] = make_method_func("keys", 0, fn(this_val, _args) raise {
-        match this_val {
-          Array(arr) => {
-            let result : Array[Value] = []
-            for i = 0; i < arr.elements.length(); i = i + 1 {
-              result.push(Number(i.to_double()))
-            }
-            Array({ elements: result })
-          }
-          _ => raise @errors.TypeError(message="keys called on non-array")
+  array_proto_props["keys"] = make_method_func("keys", 0, fn(this_val, _args) {
+        let len = to_array_like_length(this_val)
+        let result : Array[Value] = []
+        for i = 0; i < len; i = i + 1 {
+          result.push(Number(i.to_double()))
         }
+        Array({ elements: result })
       })
-  array_proto_props["values"] = make_method_func("values", 0, fn(this_val, _args) raise {
-        match this_val {
-          Array(arr) => {
-            // Return a copy to prevent mutation of the original
-            let result : Array[Value] = []
-            for el in arr.elements {
-              result.push(el)
-            }
-            Array({ elements: result })
-          }
-          _ => raise @errors.TypeError(message="values called on non-array")
+  array_proto_props["values"] = make_method_func("values", 0, fn(this_val, _args) {
+        let len = to_array_like_length(this_val)
+        let result : Array[Value] = []
+        for i = 0; i < len; i = i + 1 {
+          result.push(get_array_like_element(this_val, i))
         }
+        Array({ elements: result })
       })
-  array_proto_props["toReversed"] = make_method_func("toReversed", 0, fn(this_val, _args) raise {
-        match this_val {
-          Array(arr) => {
-            let result : Array[Value] = []
-            for i = arr.elements.length() - 1; i >= 0; i = i - 1 {
-              result.push(arr.elements[i])
-            }
-            Array({ elements: result })
-          }
-          _ => raise @errors.TypeError(message="toReversed called on non-array")
+  array_proto_props["toReversed"] = make_method_func("toReversed", 0, fn(this_val, _args) {
+        let len = to_array_like_length(this_val)
+        let result : Array[Value] = []
+        for i = len - 1; i >= 0; i = i - 1 {
+          result.push(get_array_like_element(this_val, i))
         }
+        Array({ elements: result })
       })
   array_proto_props["toSorted"] = make_interp_method_func("toSorted", 1, fn(interp, this_val, args) raise {
-        match this_val {
-          Array(arr) => {
-            let result : Array[Value] = []
-            for el in arr.elements {
-              result.push(el)
-            }
-            if args.length() > 0 {
-              match args[0] {
-                Undefined =>
-                  result.sort_by(fn(a, b) {
-                    let sa = a.to_string()
-                    let sb = b.to_string()
-                    if sa < sb {
-                      -1
-                    } else if sa > sb {
-                      1
-                    } else {
-                      0
-                    }
-                  })
-                _ => {
-                  let comparefn = args[0]
-                  let loc = @token.Loc::default()
-                  // Store any exception to re-throw after sort (spec requires propagation)
-                  let mut caught_error : Error? = None
-                  result.sort_by(fn(a, b) {
-                    if caught_error is Some(_) {
-                      return 0
-                    }
-                    let cmp_result = interp.call_value(
-                      comparefn,
-                      Undefined,
-                      [a, b],
-                      loc,
-                    ) catch {
-                      e => {
-                        caught_error = Some(e)
-                        return 0
-                      }
-                    }
-                    // Use sign-based comparison to avoid truncating fractional values
-                    let cmp = to_number(cmp_result) catch {
-                      e => {
-                        caught_error = Some(e)
-                        return 0
-                      }
-                    }
-                    if cmp.is_nan() {
-                      0
-                    } else if cmp < 0.0 {
-                      -1
-                    } else if cmp > 0.0 {
-                      1
-                    } else {
-                      0
-                    }
-                  })
-                  match caught_error {
-                    Some(e) => raise e
-                    None => ()
-                  }
-                }
-              }
-            } else {
+        let result = to_array_like_elements(this_val)
+        if args.length() > 0 {
+          match args[0] {
+            Undefined =>
               result.sort_by(fn(a, b) {
                 let sa = a.to_string()
                 let sb = b.to_string()
@@ -4025,83 +4048,123 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                   0
                 }
               })
+            _ => {
+              let comparefn = args[0]
+              let loc = @token.Loc::default()
+              let mut caught_error : Error? = None
+              result.sort_by(fn(a, b) {
+                if caught_error is Some(_) {
+                  return 0
+                }
+                let cmp_result = interp.call_value(
+                  comparefn,
+                  Undefined,
+                  [a, b],
+                  loc,
+                ) catch {
+                  e => {
+                    caught_error = Some(e)
+                    return 0
+                  }
+                }
+                let cmp = to_number(cmp_result) catch {
+                  e => {
+                    caught_error = Some(e)
+                    return 0
+                  }
+                }
+                if cmp.is_nan() {
+                  0
+                } else if cmp < 0.0 {
+                  -1
+                } else if cmp > 0.0 {
+                  1
+                } else {
+                  0
+                }
+              })
+              match caught_error {
+                Some(e) => raise e
+                None => ()
+              }
             }
-            Array({ elements: result })
           }
-          _ => raise @errors.TypeError(message="toSorted called on non-array")
+        } else {
+          result.sort_by(fn(a, b) {
+            let sa = a.to_string()
+            let sb = b.to_string()
+            if sa < sb {
+              -1
+            } else if sa > sb {
+              1
+            } else {
+              0
+            }
+          })
         }
+        Array({ elements: result })
       })
   array_proto_props["toSpliced"] = make_method_func("toSpliced", 2, fn(this_val, args) raise {
-        match this_val {
-          Array(arr) => {
-            let len = arr.elements.length()
-            let mut start = if args.length() > 0 {
-              to_number(args[0]).to_int()
-            } else {
-              0
-            }
-            if start < 0 {
-              start = len + start
-              if start < 0 {
-                start = 0
-              }
-            }
-            if start > len {
-              start = len
-            }
-            let del_count = if args.length() > 1 {
-              let d = to_number(args[1]).to_int()
-              if d < 0 {
-                0
-              } else if d > len - start {
-                len - start
-              } else {
-                d
-              }
-            } else {
-              len - start
-            }
-            let result : Array[Value] = []
-            for i = 0; i < start; i = i + 1 {
-              result.push(arr.elements[i])
-            }
-            for i = 2; i < args.length(); i = i + 1 {
-              result.push(args[i])
-            }
-            for i = start + del_count; i < len; i = i + 1 {
-              result.push(arr.elements[i])
-            }
-            Array({ elements: result })
-          }
-          _ => raise @errors.TypeError(message="toSpliced called on non-array")
+        let len = to_array_like_length(this_val)
+        let mut start = if args.length() > 0 {
+          to_number(args[0]).to_int()
+        } else {
+          0
         }
+        if start < 0 {
+          start = len + start
+          if start < 0 {
+            start = 0
+          }
+        }
+        if start > len {
+          start = len
+        }
+        let del_count = if args.length() > 1 {
+          let d = to_number(args[1]).to_int()
+          if d < 0 {
+            0
+          } else if d > len - start {
+            len - start
+          } else {
+            d
+          }
+        } else {
+          len - start
+        }
+        let result : Array[Value] = []
+        for i = 0; i < start; i = i + 1 {
+          result.push(get_array_like_element(this_val, i))
+        }
+        for i = 2; i < args.length(); i = i + 1 {
+          result.push(args[i])
+        }
+        for i = start + del_count; i < len; i = i + 1 {
+          result.push(get_array_like_element(this_val, i))
+        }
+        Array({ elements: result })
       })
   array_proto_props["with"] = make_method_func("with", 2, fn(this_val, args) raise {
-        match this_val {
-          Array(arr) => {
-            let idx = if args.length() > 0 {
-              to_number(args[0]).to_int()
-            } else {
-              0
-            }
-            let value = if args.length() > 1 { args[1] } else { Undefined }
-            let len = arr.elements.length()
-            let actual_idx = if idx < 0 { len + idx } else { idx }
-            if actual_idx < 0 || actual_idx >= len {
-              raise @errors.RangeError(message="Invalid index")
-            }
-            let result : Array[Value] = []
-            for i = 0; i < len; i = i + 1 {
-              if i == actual_idx {
-                result.push(value)
-              } else {
-                result.push(arr.elements[i])
-              }
-            }
-            Array({ elements: result })
-          }
-          _ => raise @errors.TypeError(message="with called on non-array")
+        let idx = if args.length() > 0 {
+          to_number(args[0]).to_int()
+        } else {
+          0
         }
+        let value = if args.length() > 1 { args[1] } else { Undefined }
+        let len = to_array_like_length(this_val)
+        let actual_idx = if idx < 0 { len + idx } else { idx }
+        if actual_idx < 0 || actual_idx >= len {
+          raise @errors.RangeError(message="Invalid index")
+        }
+        let result : Array[Value] = []
+        for i = 0; i < len; i = i + 1 {
+          if i == actual_idx {
+            result.push(value)
+          } else {
+            result.push(get_array_like_element(this_val, i))
+          }
+        }
+        Array({ elements: result })
       })
   array_proto_descs["push"] = method_desc
   array_proto_descs["pop"] = method_desc
@@ -4534,4 +4597,48 @@ pub fn has_array_like_element(val : Value, index : Int) -> Bool {
     String_(s) => index >= 0 && index < s.length()
     _ => false
   }
+}
+
+///|
+/// Set indexed element on array-like value
+pub fn set_array_like_element(val : Value, index : Int, value : Value) -> Unit {
+  let key = index.to_string()
+  match val {
+    Array(data) =>
+      if index >= 0 && index < data.elements.length() {
+        data.elements[index] = value
+      }
+    Object(data) => data.properties[key] = value
+    _ => ()
+  }
+}
+
+///|
+/// Set the length property on an array-like value
+pub fn set_array_like_length(val : Value, len : Int) -> Unit {
+  match val {
+    Object(data) => data.properties["length"] = Number(len.to_double())
+    _ => ()
+  }
+}
+
+///|
+/// Delete indexed element from array-like value
+pub fn delete_array_like_element(val : Value, index : Int) -> Unit {
+  let key = index.to_string()
+  match val {
+    Object(data) => data.properties.remove(key) |> ignore
+    _ => ()
+  }
+}
+
+///|
+/// Convert array-like value to an Array of Values
+pub fn to_array_like_elements(val : Value) -> Array[Value] {
+  let len = to_array_like_length(val)
+  let result : Array[Value] = []
+  for i = 0; i < len; i = i + 1 {
+    result.push(get_array_like_element(val, i))
+  }
+  result
 }

@@ -289,6 +289,32 @@ pub fn setup_builtins(
     }),
   )
 
+  // escape(string) — Annex B
+  env.def_builtin(
+    "escape",
+    make_static_func_with_length("escape", 1, fn(args) {
+      let str = if args.length() > 0 {
+        args[0].to_string()
+      } else {
+        "undefined"
+      }
+      String_(js_escape(str))
+    }),
+  )
+
+  // unescape(string) — Annex B
+  env.def_builtin(
+    "unescape",
+    make_static_func_with_length("unescape", 1, fn(args) {
+      let str = if args.length() > 0 {
+        args[0].to_string()
+      } else {
+        "undefined"
+      }
+      String_(js_unescape(str))
+    }),
+  )
+
   // String constructor with static methods
   let string_proto : Value = Object({
     properties: {},
@@ -949,6 +975,78 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
     iter_obj
   }
 
+  // Helper to create an array-like iterator for non-array objects
+  fn make_array_like_iterator(val : Value) -> Value {
+    let index_ref : Ref[Int] = { val: 0 }
+    let len = to_array_like_length(val)
+
+    let next_method = Object({
+      properties: {},
+      symbol_properties: {},
+      prototype: Null,
+      callable: Some(
+        NativeCallable("next", fn(_args) {
+          let idx = index_ref.val
+          if idx < len {
+            let value = get_array_like_element(val, idx)
+            index_ref.val = idx + 1
+            let result_props : Map[String, Value] = {}
+            result_props["value"] = value
+            result_props["done"] = Bool(false)
+            Object({
+              properties: result_props,
+              symbol_properties: {},
+              prototype: Null,
+              callable: None,
+              class_name: "Object",
+              descriptors: {},
+              symbol_descriptors: {},
+              extensible: true,
+            })
+          } else {
+            let result_props : Map[String, Value] = {}
+            result_props["value"] = Undefined
+            result_props["done"] = Bool(true)
+            Object({
+              properties: result_props,
+              symbol_properties: {},
+              prototype: Null,
+              callable: None,
+              class_name: "Object",
+              descriptors: {},
+              symbol_descriptors: {},
+              extensible: true,
+            })
+          }
+        }),
+      ),
+      class_name: "Function",
+      descriptors: {},
+      symbol_descriptors: {},
+      extensible: true,
+    })
+
+    let iter_props : Map[String, Value] = {}
+    iter_props["next"] = next_method
+    let iter_obj = Object({
+      properties: iter_props,
+      symbol_properties: {},
+      prototype: Null,
+      callable: None,
+      class_name: "Array Iterator",
+      descriptors: {},
+      symbol_descriptors: {},
+      extensible: true,
+    })
+
+    match iter_obj {
+      Object(data) =>
+        data.symbol_properties[iterator_sym.id] = make_method_func("[Symbol.iterator]", 0, fn(this_val, _args) { this_val })
+      _ => ()
+    }
+    iter_obj
+  }
+
   // Get Array constructor and add Symbol.iterator to its prototype
   let array_val = env.get("Array")
   match array_val {
@@ -956,193 +1054,173 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
       match array_ctor.properties.get("prototype") {
         Some(Object(proto_data)) => {
           // Add [Symbol.iterator] method that returns an array iterator
-          proto_data.symbol_properties[iterator_sym.id] = make_method_func("[Symbol.iterator]", 0, fn(this_val, _args) raise {
+          proto_data.symbol_properties[iterator_sym.id] = make_method_func("[Symbol.iterator]", 0, fn(this_val, _args) {
                 match this_val {
                   Array(arr) => make_array_iterator(arr)
-                  _ =>
-                    raise @errors.TypeError(
-                      message="Array.prototype[Symbol.iterator] called on non-array",
-                    )
+                  _ => make_array_like_iterator(this_val)
                 }
               })
 
           // Also add values() method (alias for [Symbol.iterator])
-          proto_data.properties["values"] = make_method_func("values", 0, fn(this_val, _args) raise {
+          proto_data.properties["values"] = make_method_func("values", 0, fn(this_val, _args) {
                 match this_val {
                   Array(arr) => make_array_iterator(arr)
-                  _ =>
-                    raise @errors.TypeError(
-                      message="Array.prototype.values called on non-array",
-                    )
+                  _ => make_array_like_iterator(this_val)
                 }
               })
 
           // Add keys() method that returns an iterator over indices
-          proto_data.properties["keys"] = make_method_func("keys", 0, fn(this_val, _args) raise {
-                match this_val {
-                  Array(arr) => {
-                    let index_ref : Ref[Int] = { val: 0 }
-                    let len = arr.elements.length()
-                    let next_method = Object({
-                      properties: {},
-                      symbol_properties: {},
-                      prototype: Null,
-                      callable: Some(
-                        NativeCallable("next", fn(_args) {
-                          let idx = index_ref.val
-                          if idx < len {
-                            index_ref.val = idx + 1
-                            let result_props : Map[String, Value] = {}
-                            result_props["value"] = Number(idx.to_double())
-                            result_props["done"] = Bool(false)
-                            Object({
-                              properties: result_props,
-                              symbol_properties: {},
-                              prototype: Null,
-                              callable: None,
-                              class_name: "Object",
-                              descriptors: {},
-                              symbol_descriptors: {},
-                              extensible: true,
-                            })
-                          } else {
-                            let result_props : Map[String, Value] = {}
-                            result_props["value"] = Undefined
-                            result_props["done"] = Bool(true)
-                            Object({
-                              properties: result_props,
-                              symbol_properties: {},
-                              prototype: Null,
-                              callable: None,
-                              class_name: "Object",
-                              descriptors: {},
-                              symbol_descriptors: {},
-                              extensible: true,
-                            })
-                          }
-                        }),
-                      ),
-                      class_name: "Function",
-                      descriptors: {},
-                      symbol_descriptors: {},
-                      extensible: true,
-                    })
-                    let iter_props : Map[String, Value] = {}
-                    iter_props["next"] = next_method
-                    let iter_obj = Object({
-                      properties: iter_props,
-                      symbol_properties: {},
-                      prototype: Null,
-                      callable: None,
-                      class_name: "Array Iterator",
-                      descriptors: {},
-                      symbol_descriptors: {},
-                      extensible: true,
-                    })
+          proto_data.properties["keys"] = make_method_func("keys", 0, fn(this_val, _args) {
+                let len = to_array_like_length(this_val)
+                let index_ref : Ref[Int] = { val: 0 }
+                let next_method = Object({
+                  properties: {},
+                  symbol_properties: {},
+                  prototype: Null,
+                  callable: Some(
+                    NativeCallable("next", fn(_args) {
+                      let idx = index_ref.val
+                      if idx < len {
+                        index_ref.val = idx + 1
+                        let result_props : Map[String, Value] = {}
+                        result_props["value"] = Number(idx.to_double())
+                        result_props["done"] = Bool(false)
+                        Object({
+                          properties: result_props,
+                          symbol_properties: {},
+                          prototype: Null,
+                          callable: None,
+                          class_name: "Object",
+                          descriptors: {},
+                          symbol_descriptors: {},
+                          extensible: true,
+                        })
+                      } else {
+                        let result_props : Map[String, Value] = {}
+                        result_props["value"] = Undefined
+                        result_props["done"] = Bool(true)
+                        Object({
+                          properties: result_props,
+                          symbol_properties: {},
+                          prototype: Null,
+                          callable: None,
+                          class_name: "Object",
+                          descriptors: {},
+                          symbol_descriptors: {},
+                          extensible: true,
+                        })
+                      }
+                    }),
+                  ),
+                  class_name: "Function",
+                  descriptors: {},
+                  symbol_descriptors: {},
+                  extensible: true,
+                })
+                let iter_props : Map[String, Value] = {}
+                iter_props["next"] = next_method
+                let iter_obj = Object({
+                  properties: iter_props,
+                  symbol_properties: {},
+                  prototype: Null,
+                  callable: None,
+                  class_name: "Array Iterator",
+                  descriptors: {},
+                  symbol_descriptors: {},
+                  extensible: true,
+                })
 
-                    // Add [Symbol.iterator] to keys iterator
-                    match iter_obj {
-                      Object(data) =>
-                        data.symbol_properties[iterator_sym.id] = make_method_func("[Symbol.iterator]", 0, fn(
-                              this_val,
-                              _args,
-                            ) {
-                              this_val
-                            })
-                      _ => ()
-                    }
-                    iter_obj
-                  }
-                  _ =>
-                    raise @errors.TypeError(
-                      message="Array.prototype.keys called on non-array",
-                    )
+                // Add [Symbol.iterator] to keys iterator
+                match iter_obj {
+                  Object(data) =>
+                    data.symbol_properties[iterator_sym.id] = make_method_func("[Symbol.iterator]", 0, fn(
+                          this_val,
+                          _args,
+                        ) {
+                          this_val
+                        })
+                  _ => ()
                 }
+                iter_obj
               })
 
           // Add entries() method that returns an iterator over [index, value] pairs
-          proto_data.properties["entries"] = make_method_func("entries", 0, fn(this_val, _args) raise {
-                match this_val {
-                  Array(arr) => {
-                    let index_ref : Ref[Int] = { val: 0 }
-                    let next_method = Object({
-                      properties: {},
-                      symbol_properties: {},
-                      prototype: Null,
-                      callable: Some(
-                        NativeCallable("next", fn(_args) {
-                          let idx = index_ref.val
-                          if idx < arr.elements.length() {
-                            let value = arr.elements[idx]
-                            index_ref.val = idx + 1
-                            let result_props : Map[String, Value] = {}
-                            result_props["value"] = Array({
-                              elements: [Number(idx.to_double()), value],
-                            })
-                            result_props["done"] = Bool(false)
-                            Object({
-                              properties: result_props,
-                              symbol_properties: {},
-                              prototype: Null,
-                              callable: None,
-                              class_name: "Object",
-                              descriptors: {},
-                              symbol_descriptors: {},
-                              extensible: true,
-                            })
-                          } else {
-                            let result_props : Map[String, Value] = {}
-                            result_props["value"] = Undefined
-                            result_props["done"] = Bool(true)
-                            Object({
-                              properties: result_props,
-                              symbol_properties: {},
-                              prototype: Null,
-                              callable: None,
-                              class_name: "Object",
-                              descriptors: {},
-                              symbol_descriptors: {},
-                              extensible: true,
-                            })
-                          }
-                        }),
-                      ),
-                      class_name: "Function",
-                      descriptors: {},
-                      symbol_descriptors: {},
-                      extensible: true,
-                    })
-                    let iter_props : Map[String, Value] = {}
-                    iter_props["next"] = next_method
-                    let iter_obj = Object({
-                      properties: iter_props,
-                      symbol_properties: {},
-                      prototype: Null,
-                      callable: None,
-                      class_name: "Array Iterator",
-                      descriptors: {},
-                      symbol_descriptors: {},
-                      extensible: true,
-                    })
+          proto_data.properties["entries"] = make_method_func("entries", 0, fn(this_val, _args) {
+                let the_val = this_val
+                let len = to_array_like_length(the_val)
+                let index_ref : Ref[Int] = { val: 0 }
+                let next_method = Object({
+                  properties: {},
+                  symbol_properties: {},
+                  prototype: Null,
+                  callable: Some(
+                    NativeCallable("next", fn(_args) {
+                      let idx = index_ref.val
+                      if idx < len {
+                        let value = get_array_like_element(the_val, idx)
+                        index_ref.val = idx + 1
+                        let result_props : Map[String, Value] = {}
+                        result_props["value"] = Array({
+                          elements: [Number(idx.to_double()), value],
+                        })
+                        result_props["done"] = Bool(false)
+                        Object({
+                          properties: result_props,
+                          symbol_properties: {},
+                          prototype: Null,
+                          callable: None,
+                          class_name: "Object",
+                          descriptors: {},
+                          symbol_descriptors: {},
+                          extensible: true,
+                        })
+                      } else {
+                        let result_props : Map[String, Value] = {}
+                        result_props["value"] = Undefined
+                        result_props["done"] = Bool(true)
+                        Object({
+                          properties: result_props,
+                          symbol_properties: {},
+                          prototype: Null,
+                          callable: None,
+                          class_name: "Object",
+                          descriptors: {},
+                          symbol_descriptors: {},
+                          extensible: true,
+                        })
+                      }
+                    }),
+                  ),
+                  class_name: "Function",
+                  descriptors: {},
+                  symbol_descriptors: {},
+                  extensible: true,
+                })
+                let iter_props : Map[String, Value] = {}
+                iter_props["next"] = next_method
+                let iter_obj = Object({
+                  properties: iter_props,
+                  symbol_properties: {},
+                  prototype: Null,
+                  callable: None,
+                  class_name: "Array Iterator",
+                  descriptors: {},
+                  symbol_descriptors: {},
+                  extensible: true,
+                })
 
-                    // Add [Symbol.iterator] to entries iterator
-                    match iter_obj {
-                      Object(data) =>
-                        data.symbol_properties[iterator_sym.id] = make_method_func("[Symbol.iterator]", 0, fn(
-                              this_val,
-                              _args,
-                            ) {
-                              this_val
-                            })
-                      _ => ()
-                    }
-                    iter_obj
-                  }
-                  _ =>
-                    raise @errors.TypeError(
-                      message="Array.prototype.entries called on non-array",
-                    )
+                // Add [Symbol.iterator] to entries iterator
+                match iter_obj {
+                  Object(data) =>
+                    data.symbol_properties[iterator_sym.id] = make_method_func("[Symbol.iterator]", 0, fn(
+                          this_val,
+                          _args,
+                        ) {
+                          this_val
+                        })
+                  _ => ()
                 }
+                iter_obj
               })
         }
         _ => ()
@@ -1522,16 +1600,47 @@ fn register_error_ctor(
   let proto_props : Map[String, Value] = {}
   proto_props["name"] = String_(name)
   proto_props["message"] = String_("")
-  proto_props["toString"] = make_native_func("toString", fn(_args) {
-    String_(name)
+  proto_props["toString"] = make_method_func("toString", 0, fn(this_val, _args) raise {
+    let name_val = match this_val {
+      Object(data) => match data.properties.get("name") {
+        Some(v) => v
+        None => Undefined
+      }
+      _ => Undefined
+    }
+    let name_str = match name_val {
+      Undefined => "Error"
+      String_(s) => s
+      other => other.to_string()
+    }
+    let msg_val = match this_val {
+      Object(data) => match data.properties.get("message") {
+        Some(v) => v
+        None => Undefined
+      }
+      _ => Undefined
+    }
+    let msg_str = match msg_val {
+      Undefined => ""
+      String_(s) => s
+      other => other.to_string()
+    }
+    if name_str == "" {
+      String_(msg_str)
+    } else if msg_str == "" {
+      String_(name_str)
+    } else {
+      String_(name_str + ": " + msg_str)
+    }
   })
+  let proto_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
   let proto_obj : Value = Object({
     properties: proto_props,
     symbol_properties: {},
     prototype: parent_proto,
     callable: None,
     class_name: name,
-    descriptors: {},
+    descriptors: { "name": proto_desc, "message": proto_desc, "toString": proto_desc },
     symbol_descriptors: {},
     extensible: true,
   })
@@ -1556,13 +1665,25 @@ fn register_error_ctor(
           err_props["message"] = String_(message)
           err_props["name"] = String_(name)
           err_props["stack"] = String_(name + ": " + message)
+          // Handle options parameter for cause
+          if args.length() > 1 {
+            match args[1] {
+              Object(opts_data) => {
+                if opts_data.properties.contains("cause") {
+                  err_props["cause"] = opts_data.properties["cause"]
+                }
+              }
+              _ => ()
+            }
+          }
+          let err_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
           Object({
             properties: err_props,
             symbol_properties: {},
             prototype: proto_obj,
             callable: None,
             class_name: name,
-            descriptors: {},
+            descriptors: { "message": err_desc, "name": err_desc, "stack": err_desc },
             symbol_descriptors: {},
             extensible: true,
           })
@@ -1608,16 +1729,47 @@ fn register_aggregate_error_ctor(
   let proto_props : Map[String, Value] = {}
   proto_props["name"] = String_(name)
   proto_props["message"] = String_("")
-  proto_props["toString"] = make_native_func("toString", fn(_args) {
-    String_(name)
+  proto_props["toString"] = make_method_func("toString", 0, fn(this_val, _args) raise {
+    let name_val = match this_val {
+      Object(data) => match data.properties.get("name") {
+        Some(v) => v
+        None => Undefined
+      }
+      _ => Undefined
+    }
+    let name_str = match name_val {
+      Undefined => "Error"
+      String_(s) => s
+      other => other.to_string()
+    }
+    let msg_val = match this_val {
+      Object(data) => match data.properties.get("message") {
+        Some(v) => v
+        None => Undefined
+      }
+      _ => Undefined
+    }
+    let msg_str = match msg_val {
+      Undefined => ""
+      String_(s) => s
+      other => other.to_string()
+    }
+    if name_str == "" {
+      String_(msg_str)
+    } else if msg_str == "" {
+      String_(name_str)
+    } else {
+      String_(name_str + ": " + msg_str)
+    }
   })
+  let proto_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
   let proto_obj : Value = Object({
     properties: proto_props,
     symbol_properties: {},
     prototype: parent_proto,
     callable: None,
     class_name: name,
-    descriptors: {},
+    descriptors: { "name": proto_desc, "message": proto_desc, "toString": proto_desc },
     symbol_descriptors: {},
     extensible: true,
   })
@@ -1648,13 +1800,25 @@ fn register_aggregate_error_ctor(
           err_props["message"] = String_(message)
           err_props["name"] = String_(name)
           err_props["stack"] = String_(name + ": " + message)
+          // Handle options parameter for cause
+          if args.length() > 2 {
+            match args[2] {
+              Object(opts_data) => {
+                if opts_data.properties.contains("cause") {
+                  err_props["cause"] = opts_data.properties["cause"]
+                }
+              }
+              _ => ()
+            }
+          }
+          let err_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
           Object({
             properties: err_props,
             symbol_properties: {},
             prototype: proto_obj,
             callable: None,
             class_name: name,
-            descriptors: {},
+            descriptors: { "message": err_desc, "name": err_desc, "stack": err_desc },
             symbol_descriptors: {},
             extensible: true,
           })
@@ -3789,6 +3953,99 @@ fn decode_percent_byte(chars : Array[Char], pos : Int) -> Int {
     }
   }
   -1
+}
+
+///|
+/// escape() helper — Annex B encoding.
+/// Characters A-Z, a-z, 0-9, @, *, _, +, -, ., / are left unchanged.
+/// Code points < 256 are encoded as %XX, others as %uXXXX.
+fn js_escape(s : String) -> String {
+  let buf = StringBuilder::new()
+  let hex_digits = "0123456789ABCDEF"
+  let hd = hex_digits.to_array()
+  let chars = s.to_array()
+  for c in chars {
+    let code = c.to_int()
+    // Check if the character is in the "safe" set
+    let safe = if code >= 65 && code <= 90 {
+      // A-Z
+      true
+    } else if code >= 97 && code <= 122 {
+      // a-z
+      true
+    } else if code >= 48 && code <= 57 {
+      // 0-9
+      true
+    } else if c == '@' ||
+      c == '*' ||
+      c == '_' ||
+      c == '+' ||
+      c == '-' ||
+      c == '.' ||
+      c == '/' {
+      true
+    } else {
+      false
+    }
+    if safe {
+      buf.write_char(c)
+    } else if code < 256 {
+      // %XX
+      buf.write_char('%')
+      buf.write_char(hd[(code >> 4) & 0xF])
+      buf.write_char(hd[code & 0xF])
+    } else {
+      // %uXXXX
+      buf.write_char('%')
+      buf.write_char('u')
+      buf.write_char(hd[(code >> 12) & 0xF])
+      buf.write_char(hd[(code >> 8) & 0xF])
+      buf.write_char(hd[(code >> 4) & 0xF])
+      buf.write_char(hd[code & 0xF])
+    }
+  }
+  buf.to_string()
+}
+
+///|
+/// unescape() helper — Annex B decoding.
+/// Recognises %uXXXX and %XX sequences; everything else passes through.
+fn js_unescape(s : String) -> String {
+  let buf = StringBuilder::new()
+  let chars = s.to_array()
+  let len = chars.length()
+  let mut i = 0
+  while i < len {
+    if chars[i] == '%' {
+      // Try %uXXXX first
+      if i + 5 < len && chars[i + 1] == 'u' {
+        let h1 = hex_char_value(chars[i + 2])
+        let h2 = hex_char_value(chars[i + 3])
+        let h3 = hex_char_value(chars[i + 4])
+        let h4 = hex_char_value(chars[i + 5])
+        if h1 >= 0 && h2 >= 0 && h3 >= 0 && h4 >= 0 {
+          let cp = (h1 << 12) | (h2 << 8) | (h3 << 4) | h4
+          buf.write_char(cp.unsafe_to_char())
+          i = i + 6
+          continue
+        }
+      }
+      // Try %XX
+      if i + 2 < len {
+        let h1 = hex_char_value(chars[i + 1])
+        let h2 = hex_char_value(chars[i + 2])
+        if h1 >= 0 && h2 >= 0 {
+          let cp = (h1 << 4) | h2
+          buf.write_char(cp.unsafe_to_char())
+          i = i + 3
+          continue
+        }
+      }
+    }
+    buf.write_char(chars[i])
+    i = i + 1
+  }
+  buf.to_string()
 }
 
 ///|
