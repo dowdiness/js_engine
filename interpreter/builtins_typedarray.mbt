@@ -1979,6 +1979,244 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
         }
       })
 
+  ta_proto_props["findLast"] = make_interp_method_func("findLast", 1, fn(interp, this_val, args) raise {
+        let callback = if args.length() > 0 { args[0] } else { Undefined }
+        let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+        let loc = @token.Loc::default()
+        match this_val {
+          Object(data) =>
+            if is_typedarray_class(data.class_name) {
+              let len = match data.properties.get("[[ArrayLength]]") {
+                Some(Number(n)) => n.to_int()
+                _ => 0
+              }
+              for i = len - 1; i >= 0; i = i - 1 {
+                let elem = typedarray_get_index(data, i)
+                let result = interp.call_value(
+                  callback,
+                  this_arg,
+                  [elem, Number(i.to_double()), this_val],
+                  loc,
+                )
+                if is_truthy(result) {
+                  return elem
+                }
+              }
+              Undefined
+            } else {
+              raise @errors.TypeError(
+                message="findLast called on non-TypedArray",
+              )
+            }
+          _ =>
+            raise @errors.TypeError(
+              message="findLast called on non-TypedArray",
+            )
+        }
+      })
+
+  ta_proto_props["findLastIndex"] = make_interp_method_func("findLastIndex", 1, fn(interp, this_val, args) raise {
+        let callback = if args.length() > 0 { args[0] } else { Undefined }
+        let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+        let loc = @token.Loc::default()
+        match this_val {
+          Object(data) =>
+            if is_typedarray_class(data.class_name) {
+              let len = match data.properties.get("[[ArrayLength]]") {
+                Some(Number(n)) => n.to_int()
+                _ => 0
+              }
+              for i = len - 1; i >= 0; i = i - 1 {
+                let elem = typedarray_get_index(data, i)
+                let result = interp.call_value(
+                  callback,
+                  this_arg,
+                  [elem, Number(i.to_double()), this_val],
+                  loc,
+                )
+                if is_truthy(result) {
+                  return Number(i.to_double())
+                }
+              }
+              Number(-1.0)
+            } else {
+              raise @errors.TypeError(
+                message="findLastIndex called on non-TypedArray",
+              )
+            }
+          _ =>
+            raise @errors.TypeError(
+              message="findLastIndex called on non-TypedArray",
+            )
+        }
+      })
+
+  ta_proto_props["toReversed"] = make_method_func("toReversed", 0, fn(this_val, _args) {
+        match this_val {
+          Object(data) =>
+            if is_typedarray_class(data.class_name) {
+              let len = match data.properties.get("[[ArrayLength]]") {
+                Some(Number(n)) => n.to_int()
+                _ => 0
+              }
+              let proto = data.prototype
+              let new_ta = make_typedarray_object(data.class_name, len, proto, env)
+              match new_ta {
+                Object(new_data) =>
+                  for i = 0; i < len; i = i + 1 {
+                    let val = typedarray_get_index(data, len - 1 - i)
+                    let num = match val {
+                      Number(n) => n
+                      _ => 0.0
+                    }
+                    typedarray_set_index(new_data, i, num)
+                  }
+                _ => ()
+              }
+              new_ta
+            } else {
+              Undefined
+            }
+          _ => Undefined
+        }
+      })
+
+  ta_proto_props["toSorted"] = make_interp_method_func("toSorted", 1, fn(interp, this_val, args) raise {
+        let comparefn = if args.length() > 0 {
+          match args[0] {
+            Undefined => None
+            v => Some(v)
+          }
+        } else {
+          None
+        }
+        match this_val {
+          Object(data) =>
+            if is_typedarray_class(data.class_name) {
+              let len = match data.properties.get("[[ArrayLength]]") {
+                Some(Number(n)) => n.to_int()
+                _ => 0
+              }
+              // Collect elements
+              let elements : Array[Double] = []
+              for i = 0; i < len; i = i + 1 {
+                let val = typedarray_get_index(data, i)
+                match val {
+                  Number(n) => elements.push(n)
+                  _ => elements.push(0.0)
+                }
+              }
+              let loc = @token.Loc::default()
+              match comparefn {
+                Some(cmp_fn) =>
+                  elements.sort_by(fn(a, b) {
+                    let result = try {
+                      interp.call_value(
+                        cmp_fn,
+                        Undefined,
+                        [Number(a), Number(b)],
+                        loc,
+                      )
+                    } catch {
+                      _ => Number(0.0)
+                    }
+                    match result {
+                      Number(n) =>
+                        if n < 0.0 {
+                          -1
+                        } else if n > 0.0 {
+                          1
+                        } else {
+                          0
+                        }
+                      _ => 0
+                    }
+                  })
+                None =>
+                  elements.sort_by(fn(a, b) {
+                    if a < b {
+                      -1
+                    } else if a > b {
+                      1
+                    } else {
+                      0
+                    }
+                  })
+              }
+              let proto = data.prototype
+              let new_ta = make_typedarray_object(
+                data.class_name, len, proto, env,
+              )
+              match new_ta {
+                Object(new_data) =>
+                  for i = 0; i < len; i = i + 1 {
+                    typedarray_set_index(new_data, i, elements[i])
+                  }
+                _ => ()
+              }
+              new_ta
+            } else {
+              raise @errors.TypeError(
+                message="toSorted called on non-TypedArray",
+              )
+            }
+          _ =>
+            raise @errors.TypeError(
+              message="toSorted called on non-TypedArray",
+            )
+        }
+      })
+
+  ta_proto_props["with"] = make_method_func("with", 2, fn(this_val, args) raise {
+        let index_val = if args.length() > 0 { args[0] } else { Undefined }
+        let value_val = if args.length() > 1 { args[1] } else { Undefined }
+        match this_val {
+          Object(data) =>
+            if is_typedarray_class(data.class_name) {
+              let len = match data.properties.get("[[ArrayLength]]") {
+                Some(Number(n)) => n.to_int()
+                _ => 0
+              }
+              let mut idx = to_number(index_val).to_int()
+              if idx < 0 {
+                idx = len + idx
+              }
+              if idx < 0 || idx >= len {
+                raise @errors.RangeError(
+                  message="Invalid index for TypedArray.prototype.with",
+                )
+              }
+              let proto = data.prototype
+              let new_ta = make_typedarray_object(
+                data.class_name, len, proto, env,
+              )
+              match new_ta {
+                Object(new_data) => {
+                  for i = 0; i < len; i = i + 1 {
+                    let val = typedarray_get_index(data, i)
+                    let num = match val {
+                      Number(n) => n
+                      _ => 0.0
+                    }
+                    typedarray_set_index(new_data, i, num)
+                  }
+                  typedarray_set_index(new_data, idx, to_number(value_val))
+                }
+                _ => ()
+              }
+              new_ta
+            } else {
+              raise @errors.TypeError(
+                message="with called on non-TypedArray",
+              )
+            }
+          _ =>
+            raise @errors.TypeError(
+              message="with called on non-TypedArray",
+            )
+        }
+      })
+
   // Mark all prototype methods as non-enumerable (per spec)
   let method_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
   ta_proto_descs["set"] = method_desc
@@ -2006,6 +2244,11 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
   ta_proto_descs["some"] = method_desc
   ta_proto_descs["find"] = method_desc
   ta_proto_descs["findIndex"] = method_desc
+  ta_proto_descs["findLast"] = method_desc
+  ta_proto_descs["findLastIndex"] = method_desc
+  ta_proto_descs["toReversed"] = method_desc
+  ta_proto_descs["toSorted"] = method_desc
+  ta_proto_descs["with"] = method_desc
 
   // Create the shared %TypedArray%.prototype
   let ta_proto_sym_props : Map[Int, Value] = {}

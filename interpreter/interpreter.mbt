@@ -518,35 +518,47 @@ fn Interpreter::exec_stmt(
     }
     FuncDecl(name, params, body, _) => {
       validate_function_signature(self.strict, Some(name), params, body)
-      let func_data : FuncData = {
-        name: Some(name),
-        params,
-        body,
-        closure: env,
-        strict: is_function_strict(self.strict, body),
+      // Check if this was already hoisted - if so, don't re-create the function.
+      // Function declarations at the top level (var scope) are fully handled
+      // during hoisting and should be no-ops during execution.
+      let already_hoisted = match env.bindings.get(name) {
+        Some(binding) => binding.kind == VarBinding
+        None => false
       }
-      let func_val = make_func(func_data)
-      // For non-strict eval execution, function declarations are hoisted into
-      // var_env but executed in exec_env. Reconcile assignment back to var_env.
-      if env.bindings.contains(name) {
-        env.assign(name, func_val)
-      } else if should_reconcile_eval_function_decl(env, name) {
-        env.assign_var(name, func_val)
+      if already_hoisted && env.is_var_scope {
+        // Function was hoisted; no-op during execution
+        Normal(Undefined)
       } else {
-        env.def(name, func_val, VarBinding)
-      }
-      // Annex B.3.3: propagate block-level function to function scope's var binding
-      if self.annex_b && not(self.strict) && not(env.is_var_scope) {
-        let var_env = env.find_var_env()
-        match var_env.bindings.get(name) {
-          Some(binding) =>
-            if binding.kind == VarBinding {
-              binding.value = func_val
-            }
-          None => ()
+        let func_data : FuncData = {
+          name: Some(name),
+          params,
+          body,
+          closure: env,
+          strict: is_function_strict(self.strict, body),
         }
+        let func_val = make_func(func_data)
+        // For non-strict eval execution, function declarations are hoisted into
+        // var_env but executed in exec_env. Reconcile assignment back to var_env.
+        if env.bindings.contains(name) {
+          env.assign(name, func_val)
+        } else if should_reconcile_eval_function_decl(env, name) {
+          env.assign_var(name, func_val)
+        } else {
+          env.def(name, func_val, VarBinding)
+        }
+        // Annex B.3.3: propagate block-level function to function scope's var binding
+        if self.annex_b && not(self.strict) && not(env.is_var_scope) {
+          let var_env = env.find_var_env()
+          match var_env.bindings.get(name) {
+            Some(binding) =>
+              if binding.kind == VarBinding {
+                binding.value = func_val
+              }
+            None => ()
+          }
+        }
+        Normal(Undefined)
       }
-      Normal(Undefined)
     }
     ReturnStmt(expr, _) => {
       let value : Value = match expr {
@@ -1246,34 +1258,43 @@ fn Interpreter::exec_stmt(
         rest_param,
         body,
       )
-      let func_data : FuncDataExt = {
-        name: Some(name),
-        params,
-        rest_param,
-        body,
-        closure: env,
-        strict: is_function_strict(self.strict, body),
+      // Same hoisting optimization as FuncDecl
+      let already_hoisted = match env.bindings.get(name) {
+        Some(binding) => binding.kind == VarBinding
+        None => false
       }
-      let func_val = make_func_ext(func_data)
-      if env.bindings.contains(name) {
-        env.assign(name, func_val)
-      } else if should_reconcile_eval_function_decl(env, name) {
-        env.assign_var(name, func_val)
+      if already_hoisted && env.is_var_scope {
+        Normal(Undefined)
       } else {
-        env.def(name, func_val, VarBinding)
-      }
-      // Annex B.3.3: propagate block-level function to function scope's var binding
-      if self.annex_b && not(self.strict) && not(env.is_var_scope) {
-        let var_env = env.find_var_env()
-        match var_env.bindings.get(name) {
-          Some(binding) =>
-            if binding.kind == VarBinding {
-              binding.value = func_val
-            }
-          None => ()
+        let func_data : FuncDataExt = {
+          name: Some(name),
+          params,
+          rest_param,
+          body,
+          closure: env,
+          strict: is_function_strict(self.strict, body),
         }
+        let func_val = make_func_ext(func_data)
+        if env.bindings.contains(name) {
+          env.assign(name, func_val)
+        } else if should_reconcile_eval_function_decl(env, name) {
+          env.assign_var(name, func_val)
+        } else {
+          env.def(name, func_val, VarBinding)
+        }
+        // Annex B.3.3: propagate block-level function to function scope's var binding
+        if self.annex_b && not(self.strict) && not(env.is_var_scope) {
+          let var_env = env.find_var_env()
+          match var_env.bindings.get(name) {
+            Some(binding) =>
+              if binding.kind == VarBinding {
+                binding.value = func_val
+              }
+            None => ()
+          }
+        }
+        Normal(Undefined)
       }
-      Normal(Undefined)
     }
     GeneratorDecl(name, params, body, _) => {
       validate_function_signature(self.strict, Some(name), params, body)
@@ -6153,6 +6174,75 @@ fn Interpreter::get_property(
                   None => current = proto_data.prototype
                 }
               }
+              Array(arr_data) => {
+                // Handle Array values in the prototype chain
+                if prop == "length" {
+                  return Number(arr_data.elements.length().to_double())
+                }
+                match get_array_named_prop(arr_data, prop) {
+                  Some(v) => return v
+                  None => {
+                    let result = get_array_method_with_interp(arr_data, prop)
+                    match result {
+                      Undefined => {
+                        // Continue to Array.prototype
+                        let ctor = self.global.get("Array") catch { _ => break }
+                        match ctor {
+                          Object(ctor_data) =>
+                            match ctor_data.properties.get("prototype") {
+                              Some(proto) => current = proto
+                              None => break
+                            }
+                          _ => break
+                        }
+                      }
+                      _ => return result
+                    }
+                  }
+                }
+              }
+              Map(map_data) => {
+                // Handle Map values in the prototype chain
+                if prop == "size" {
+                  return Number(map_data.entries.length().to_double())
+                }
+                let result = get_map_method(map_data, prop)
+                match result {
+                  Undefined => {
+                    let ctor = self.global.get("Map") catch { _ => break }
+                    match ctor {
+                      Object(ctor_data) =>
+                        match ctor_data.properties.get("prototype") {
+                          Some(proto) => current = proto
+                          None => break
+                        }
+                      _ => break
+                    }
+                  }
+                  _ => return result
+                }
+              }
+              Set(set_data) => {
+                // Handle Set values in the prototype chain
+                if prop == "size" {
+                  return Number(set_data.values.length().to_double())
+                }
+                let result = get_set_method(set_data, prop)
+                match result {
+                  Undefined => {
+                    let ctor = self.global.get("Set") catch { _ => break }
+                    match ctor {
+                      Object(ctor_data) =>
+                        match ctor_data.properties.get("prototype") {
+                          Some(proto) => current = proto
+                          None => break
+                        }
+                      _ => break
+                    }
+                  }
+                  _ => return result
+                }
+              }
               _ => break
             }
           }
@@ -6776,6 +6866,71 @@ fn Interpreter::get_computed_property(
                 match proto_data.properties.get(prop) {
                   Some(v) => return v
                   None => current = proto_data.prototype
+                }
+              }
+              Array(arr_data) => {
+                if prop == "length" {
+                  return Number(arr_data.elements.length().to_double())
+                }
+                match get_array_named_prop(arr_data, prop) {
+                  Some(v) => return v
+                  None => {
+                    let result = get_array_method_with_interp(arr_data, prop)
+                    match result {
+                      Undefined => {
+                        let ctor = self.global.get("Array") catch { _ => break }
+                        match ctor {
+                          Object(ctor_data) =>
+                            match ctor_data.properties.get("prototype") {
+                              Some(proto) => current = proto
+                              None => break
+                            }
+                          _ => break
+                        }
+                      }
+                      _ => return result
+                    }
+                  }
+                }
+              }
+              Map(map_data) => {
+                if prop == "size" {
+                  return Number(map_data.entries.length().to_double())
+                }
+                let result = get_map_method(map_data, prop)
+                match result {
+                  Undefined => {
+                    let ctor = self.global.get("Map") catch { _ => break }
+                    match ctor {
+                      Object(ctor_data) =>
+                        match ctor_data.properties.get("prototype") {
+                          Some(proto) => current = proto
+                          None => break
+                        }
+                      _ => break
+                    }
+                  }
+                  _ => return result
+                }
+              }
+              Set(set_data) => {
+                if prop == "size" {
+                  return Number(set_data.values.length().to_double())
+                }
+                let result = get_set_method(set_data, prop)
+                match result {
+                  Undefined => {
+                    let ctor = self.global.get("Set") catch { _ => break }
+                    match ctor {
+                      Object(ctor_data) =>
+                        match ctor_data.properties.get("prototype") {
+                          Some(proto) => current = proto
+                          None => break
+                        }
+                      _ => break
+                    }
+                  }
+                  _ => return result
                 }
               }
               _ => break
@@ -7965,25 +8120,16 @@ fn Interpreter::construct_value(
           raise @errors.TypeError(
             message=format_loc_context(name + " is not a constructor", loc),
           )
-        Some(InterpreterCallable(_, func)) =>
-          // Generator functions are not constructible
-          if obj_data.class_name == "GeneratorFunction" {
-            raise @errors.TypeError(
-              message=format_loc_context(
-                "cannot use 'new' with a generator function", loc,
-              ),
-            )
-          } else {
-            is_constructing.val = true
-            let result = func(self, Undefined, args) catch {
-              e => {
-                is_constructing.val = false
-                raise e
-              }
-            }
-            is_constructing.val = false
-            result
-          }
+        Some(InterpreterCallable(name, _)) =>
+          // InterpreterCallable methods (prototype methods, async functions,
+          // generator functions) are not constructable
+          raise @errors.TypeError(
+            message=format_loc_context(name + " is not a constructor", loc),
+          )
+        Some(MethodCallable(name, _)) =>
+          raise @errors.TypeError(
+            message=format_loc_context(name + " is not a constructor", loc),
+          )
         Some(ConstructorOnlyCallable(_, func)) => func(self, args)
         Some(ArrowFunc(_)) | Some(ArrowFuncExt(_)) =>
           raise @errors.TypeError(

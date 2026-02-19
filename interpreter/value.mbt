@@ -225,6 +225,45 @@ pub fn get_array_iterator_override(arr : ArrayData) -> (Value?, Value?) {
 pub let is_constructing : Ref[Bool] = { val: false }
 
 ///|
+/// Check if a Value is a constructor (has [[Construct]] internal method)
+pub fn is_constructor_value(v : Value) -> Bool {
+  match v {
+    Object(data) =>
+      match data.callable {
+        Some(UserFunc(_)) | Some(UserFuncExt(_)) => true
+        Some(NativeCallable(_, _)) => true
+        Some(ClassConstructor(_, _, _, _, _, _)) => true
+        Some(ConstructorOnlyCallable(_, _)) => true
+        Some(BoundFunc(target, _, _)) => is_constructor_value(target)
+        Some(NonConstructableCallable(_, _)) => false
+        Some(MethodCallable(_, _)) => false
+        Some(InterpreterCallable(_, _)) =>
+          // GeneratorFunction callables are not constructors;
+          // other InterpreterCallable like builtins also aren't
+          false
+        Some(ArrowFunc(_)) | Some(ArrowFuncExt(_)) => false
+        Some(FuncCallMethod(_)) | Some(FuncApplyMethod(_)) => false
+        None => false
+      }
+    Proxy(pd) =>
+      match pd.target {
+        Some(inner) => is_constructor_value(inner)
+        None => false
+      }
+    _ => false
+  }
+}
+
+///|
+/// Check if a Value is a function (has a callable)
+pub fn is_function_value(v : Value) -> Bool {
+  match v {
+    Object(data) => data.callable is Some(_)
+    _ => false
+  }
+}
+
+///|
 /// Global counter for generating unique symbol IDs
 let symbol_id_counter : Ref[Int] = { val: 0 }
 

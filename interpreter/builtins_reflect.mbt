@@ -78,11 +78,23 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
           )
         }
         let target = args[0]
+        // target must be a constructor
+        if not(is_constructor_value(target)) {
+          raise @errors.TypeError(
+            message="Reflect.construct: target is not a constructor",
+          )
+        }
         let arg_list = create_list_from_array_like(args[1])
         let loc = @token.Loc::default()
         // Per spec, when newTarget differs from target, create instance with newTarget.prototype
         let proto_override : Value? = if args.length() > 2 {
           let new_target = args[2]
+          // newTarget must be a constructor
+          if not(is_constructor_value(new_target)) {
+            raise @errors.TypeError(
+              message="Reflect.construct: newTarget is not a constructor",
+            )
+          }
           match new_target {
             Object(nt_data) =>
               Some(

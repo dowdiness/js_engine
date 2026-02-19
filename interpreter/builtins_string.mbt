@@ -293,6 +293,46 @@ pub fn get_string_method(
         String_(buf.to_string())
       })
     }
+    "substr" => {
+      // Annex B: String.prototype.substr(start, length)
+      let str = s
+      make_native_func_with_length("substr", 2, fn(args) raise {
+        let slen = str.length()
+        let mut start = if args.length() > 0 {
+          to_number(args[0]).to_int()
+        } else {
+          0
+        }
+        let length = if args.length() > 1 {
+          match args[1] {
+            Undefined => slen
+            _ => to_number(args[1]).to_int()
+          }
+        } else {
+          slen
+        }
+        // Handle negative start
+        if start < 0 {
+          start = slen + start
+          if start < 0 {
+            start = 0
+          }
+        }
+        if start >= slen || length <= 0 {
+          return String_("")
+        }
+        let mut end = start + length
+        if end > slen {
+          end = slen
+        }
+        let s_chars = str.to_array()
+        let buf = StringBuilder::new()
+        for i = start; i < end; i = i + 1 {
+          buf.write_char(s_chars[i])
+        }
+        String_(buf.to_string())
+      })
+    }
     "toLowerCase" => {
       let str = s
       make_native_func("toLowerCase", fn(_args) {
@@ -1425,6 +1465,7 @@ pub fn setup_string_prototype(
       let methods : Array[String] = [
         "charAt", "charCodeAt", "at", "codePointAt", "indexOf", "lastIndexOf", "includes",
         "startsWith", "endsWith", "slice", "substring", "toUpperCase", "toLowerCase",
+        "toLocaleLowerCase", "toLocaleUpperCase",
         "trim", "trimStart", "trimEnd", "trimLeft", "trimRight", "padStart", "padEnd",
         "repeat", "replace", "replaceAll", "split", "search", "match", "matchAll",
         "concat", "normalize", "isWellFormed", "toWellFormed", "localeCompare", "toLocaleString",
@@ -1434,7 +1475,7 @@ pub fn setup_string_prototype(
       if annex_b {
         let annex_b_methods = [
           "anchor", "big", "blink", "bold", "fixed", "fontcolor", "fontsize", "italics",
-          "link", "small", "strike", "sub", "sup",
+          "link", "small", "strike", "sub", "sup", "substr",
         ]
         for m in annex_b_methods {
           methods.push(m)

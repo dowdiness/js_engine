@@ -266,6 +266,87 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
       _ => String_(this_val.to_string())
     }
   })
+  // Annex B: __defineGetter__, __defineSetter__, __lookupGetter__, __lookupSetter__
+  obj_proto_props["__defineGetter__"] = make_method_func("__defineGetter__", 2, fn(this_val, args) {
+    let prop = if args.length() > 0 { args[0].to_string() } else { "" }
+    let getter = if args.length() > 1 { args[1] } else { Undefined }
+    match this_val {
+      Object(data) => {
+        let existing_setter : Value? = match data.descriptors.get(prop) {
+          Some(d) => d.setter
+          None => None
+        }
+        data.descriptors[prop] = {
+          writable: false, enumerable: true, configurable: true,
+          getter: Some(getter), setter: existing_setter,
+        }
+        data.properties[prop] = Undefined
+      }
+      _ => ()
+    }
+    Undefined
+  })
+  obj_proto_props["__defineSetter__"] = make_method_func("__defineSetter__", 2, fn(this_val, args) {
+    let prop = if args.length() > 0 { args[0].to_string() } else { "" }
+    let setter = if args.length() > 1 { args[1] } else { Undefined }
+    match this_val {
+      Object(data) => {
+        let existing_getter : Value? = match data.descriptors.get(prop) {
+          Some(d) => d.getter
+          None => None
+        }
+        data.descriptors[prop] = {
+          writable: false, enumerable: true, configurable: true,
+          getter: existing_getter, setter: Some(setter),
+        }
+        data.properties[prop] = Undefined
+      }
+      _ => ()
+    }
+    Undefined
+  })
+  obj_proto_props["__lookupGetter__"] = make_method_func("__lookupGetter__", 1, fn(this_val, args) {
+    let prop = if args.length() > 0 { args[0].to_string() } else { "" }
+    let mut current = this_val
+    while true {
+      match current {
+        Object(data) => {
+          match data.descriptors.get(prop) {
+            Some(desc) =>
+              match desc.getter {
+                Some(getter) => return getter
+                None => ()
+              }
+            None => ()
+          }
+          current = data.prototype
+        }
+        _ => break
+      }
+    }
+    Undefined
+  })
+  obj_proto_props["__lookupSetter__"] = make_method_func("__lookupSetter__", 1, fn(this_val, args) {
+    let prop = if args.length() > 0 { args[0].to_string() } else { "" }
+    let mut current = this_val
+    while true {
+      match current {
+        Object(data) => {
+          match data.descriptors.get(prop) {
+            Some(desc) =>
+              match desc.setter {
+                Some(setter) => return setter
+                None => ()
+              }
+            None => ()
+          }
+          current = data.prototype
+        }
+        _ => break
+      }
+    }
+    Undefined
+  })
   let obj_proto_descs : Map[String, PropDescriptor] = {}
   let obj_method_desc : PropDescriptor = {
     writable: true,
@@ -280,6 +361,10 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
   obj_proto_descs["propertyIsEnumerable"] = obj_method_desc
   obj_proto_descs["isPrototypeOf"] = obj_method_desc
   obj_proto_descs["toLocaleString"] = obj_method_desc
+  obj_proto_descs["__defineGetter__"] = obj_method_desc
+  obj_proto_descs["__defineSetter__"] = obj_method_desc
+  obj_proto_descs["__lookupGetter__"] = obj_method_desc
+  obj_proto_descs["__lookupSetter__"] = obj_method_desc
   let obj_proto : Value = Object({
     properties: obj_proto_props,
     symbol_properties: {},
@@ -4128,7 +4213,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 // Our implementation fills with undefined instead, making all indices
                 // present. This is an intentional simplification.
                 let len = n.to_int()
-                if len < 0 || n != len.to_double() || len > 0xFFFFFFFF {
+                if len < 0 || n != len.to_double() || n > 4294967295.0 {
                   raise @errors.RangeError(message="Invalid array length")
                 }
                 let elements : Array[Value] = []
