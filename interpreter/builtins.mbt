@@ -1442,20 +1442,65 @@ fn setup_math_builtins(env : Environment) -> Unit {
       Number(Float::from_double(n).to_double())
     }
   })
+  // Set up descriptors for Math properties
+  let math_descs : Map[String, PropDescriptor] = {}
+  let const_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: false,
+    getter: None,
+    setter: None,
+  }
+  let method_desc : PropDescriptor = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
+  // Constants are non-writable, non-enumerable, non-configurable
+  let math_constants = [
+    "PI", "E", "LN2", "LN10", "LOG2E", "LOG10E", "SQRT2", "SQRT1_2",
+  ]
+  for c in math_constants {
+    math_descs[c] = const_desc
+  }
+  // Methods are writable, non-enumerable, configurable
+  let math_methods = [
+    "abs", "floor", "ceil", "round", "trunc", "sqrt", "pow", "min", "max",
+    "random", "sign", "log", "log2", "log10", "sin", "cos", "tan", "asin",
+    "acos", "atan", "atan2", "sinh", "cosh", "tanh", "asinh", "acosh",
+    "atanh", "exp", "expm1", "log1p", "hypot", "cbrt", "clz32", "imul",
+    "fround",
+  ]
+  for m in math_methods {
+    math_descs[m] = method_desc
+  }
   // Set up Symbol.toStringTag for Math
   let math_symbol_props : Map[Int, Value] = {}
   let tostringtag_sym = get_tostringtag_symbol()
   math_symbol_props[tostringtag_sym.id] = String_("Math")
+  let math_symbol_descs : Map[Int, PropDescriptor] = {}
+  math_symbol_descs[tostringtag_sym.id] = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   env.def_builtin(
     "Math",
     Object({
       properties: math_props,
       symbol_properties: math_symbol_props,
-      prototype: Null,
+      prototype: match env.bindings.get("[[ObjectPrototype]]") {
+        Some(binding) => binding.value
+        None => Null
+      },
       callable: None,
       class_name: "Math",
-      descriptors: {},
-      symbol_descriptors: {},
+      descriptors: math_descs,
+      symbol_descriptors: math_symbol_descs,
       extensible: true,
     }),
   )
