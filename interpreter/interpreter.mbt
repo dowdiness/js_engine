@@ -1061,22 +1061,31 @@ fn Interpreter::exec_stmt(
                 }
                 _ => ()
               }
+            } else {
+              // Close iterator on exception (IteratorClose)
+              try { close_iterator(self, iterator, loc) } catch { _ => () }
             }
             raise e
           }
         }
         match body_signal {
           Normal(v) => completion = v
-          ReturnSignal(v) => return ReturnSignal(v)
+          ReturnSignal(v) => {
+            try { close_iterator(self, iterator, loc) } catch { _ => () }
+            return ReturnSignal(v)
+          }
           BreakSignal(v, None) => {
+            try { close_iterator(self, iterator, loc) } catch { _ => () }
             completion = v.unwrap_or(completion)
             break
           }
           BreakSignal(bv, Some(l)) =>
             if label == Some(l) {
+              try { close_iterator(self, iterator, loc) } catch { _ => () }
               completion = bv.unwrap_or(completion)
               break
             } else {
+              try { close_iterator(self, iterator, loc) } catch { _ => () }
               return BreakSignal(bv, Some(l))
             }
           ContinueSignal(v, None) => {
@@ -1088,6 +1097,7 @@ fn Interpreter::exec_stmt(
               completion = cv.unwrap_or(completion)
               continue
             } else {
+              try { close_iterator(self, iterator, loc) } catch { _ => () }
               return ContinueSignal(cv, Some(l))
             }
         }
@@ -1251,18 +1261,30 @@ fn Interpreter::exec_stmt(
           }
           None => self.assign_pattern(pattern, value, env)
         }
-        match self.exec_stmt(body, body_env) {
+        let body_signal = self.exec_stmt(body, body_env) catch {
+          e => {
+            try { close_iterator(self, iterator, loc) } catch { _ => () }
+            raise e
+          }
+        }
+        match body_signal {
           Normal(v) => completion = v
-          ReturnSignal(v) => return ReturnSignal(v)
+          ReturnSignal(v) => {
+            try { close_iterator(self, iterator, loc) } catch { _ => () }
+            return ReturnSignal(v)
+          }
           BreakSignal(v, None) => {
+            try { close_iterator(self, iterator, loc) } catch { _ => () }
             completion = v.unwrap_or(completion)
             break
           }
           BreakSignal(bv, Some(l)) =>
             if label == Some(l) {
+              try { close_iterator(self, iterator, loc) } catch { _ => () }
               completion = bv.unwrap_or(completion)
               break
             } else {
+              try { close_iterator(self, iterator, loc) } catch { _ => () }
               return BreakSignal(bv, Some(l))
             }
           ContinueSignal(v, None) => {
@@ -1274,6 +1296,7 @@ fn Interpreter::exec_stmt(
               completion = cv.unwrap_or(completion)
               continue
             } else {
+              try { close_iterator(self, iterator, loc) } catch { _ => () }
               return ContinueSignal(cv, Some(l))
             }
         }
@@ -3922,6 +3945,47 @@ fn Interpreter::assign_to_expr(
       raise @errors.ReferenceError(
         message="Invalid left-hand side in for-in/for-of",
       )
+  }
+}
+
+///|
+/// IteratorClose: call iterator.return() if it exists
+fn close_iterator(
+  interp : Interpreter,
+  iterator : Value,
+  loc : @token.Loc,
+) -> Unit raise Error {
+  match iterator {
+    Object(data) => {
+      // Look for 'return' method on iterator
+      let return_fn = match data.properties.get("return") {
+        Some(f) => f
+        None => {
+          // Walk prototype chain
+          let mut found : Value = Undefined
+          let mut current = data.prototype
+          while true {
+            match current {
+              Object(proto_data) =>
+                match proto_data.properties.get("return") {
+                  Some(f) => {
+                    found = f
+                    break
+                  }
+                  None => current = proto_data.prototype
+                }
+              _ => break
+            }
+          }
+          found
+        }
+      }
+      if is_callable(return_fn) {
+        let _ = interp.call_value(return_fn, iterator, [], loc)
+
+      }
+    }
+    _ => ()
   }
 }
 
