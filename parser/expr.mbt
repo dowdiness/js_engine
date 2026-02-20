@@ -707,7 +707,9 @@ fn Parser::parse_primary(self : Parser) -> @ast.Expr raise Error {
     }
     Undefined => {
       self.pos += 1
-      UndefinedLit(tok.loc)
+      // `undefined` is NOT a reserved word in JS — it's a global property.
+      // Parse it as an identifier so that assignment/delete follow spec behavior.
+      Ident("undefined", tok.loc)
     }
     Ident(name) =>
       // async function expression: async [no LT] function

@@ -6,6 +6,8 @@ import {
 }
 
 // Values
+pub fn delete_array_like_element(Value, Int) -> Unit
+
 pub fn detach_arraybuffer(Int) -> Unit
 
 pub fn get_array_iterator_override(ArrayData) -> (Value?, Value?)
@@ -21,6 +23,8 @@ pub fn get_array_method_with_interp(ArrayData, String) -> Value
 pub fn get_array_named_prop(ArrayData, String) -> Value?
 
 pub fn get_arraybuffer_bytes(Int) -> Array[Int]?
+
+pub fn get_async_iterator_symbol() -> SymbolData
 
 pub fn get_buffer_id(Value) -> Int?
 
@@ -72,6 +76,10 @@ pub fn is_arraybuffer_detached(Int) -> Bool
 
 pub let is_constructing : Ref[Bool]
 
+pub fn is_constructor_value(Value) -> Bool
+
+pub fn is_function_value(Value) -> Bool
+
 pub fn is_js_catchable_error(Error) -> Bool
 
 pub fn is_truthy(Value) -> Bool
@@ -92,6 +100,10 @@ pub fn make_func(FuncData) -> Value
 
 pub fn make_func_ext(FuncDataExt) -> Value
 
+pub fn make_interp_method_func(String, Int, (Interpreter, Value, Array[Value]) -> Value raise) -> Value
+
+pub fn make_method_func(String, Int, (Value, Array[Value]) -> Value raise) -> Value
+
 pub fn make_native_func(String, (Array[Value]) -> Value raise) -> Value
 
 pub fn make_native_func_with_length(String, Int, (Array[Value]) -> Value raise) -> Value
@@ -103,6 +115,10 @@ pub fn make_plain_object() -> Value
 pub fn make_regex_match_array(RegexMatch, String) -> Value
 
 pub fn make_regexp_object(String, String) -> Value
+
+pub fn make_static_func(String, (Array[Value]) -> Value raise) -> Value
+
+pub fn make_static_func_with_length(String, Int, (Array[Value]) -> Value raise) -> Value
 
 pub fn make_string_iterator_value(String) -> Value
 
@@ -123,6 +139,10 @@ pub fn same_value(Value, Value) -> Bool
 pub fn same_value_zero(Value, Value) -> Bool
 
 pub fn set_array_iterator_override(ArrayData, Value?, Value?) -> Unit
+
+pub fn set_array_like_element(Value, Int, Value) -> Unit
+
+pub fn set_array_like_length(Value, Int) -> Unit
 
 pub fn set_array_named_prop(ArrayData, String, Value) -> Unit
 
@@ -162,6 +182,8 @@ pub fn string_search_regex(String, String, String) -> Value
 
 pub fn this_to_string(Value) -> String raise
 
+pub fn to_array_like_elements(Value) -> Array[Value]
+
 pub fn to_array_like_length(Value) -> Int
 
 pub fn to_index(Value) -> Int raise
@@ -179,6 +201,8 @@ pub fn typedarray_get_index(ObjectData, Int) -> Value
 pub fn typedarray_set_index(ObjectData, Int, Double) -> Unit
 
 pub fn validate_typedarray_buffer(ObjectData) -> Unit raise
+
+pub let well_known_async_iterator_sym : Ref[SymbolData?]
 
 pub let well_known_hasinstance_sym : Ref[SymbolData?]
 

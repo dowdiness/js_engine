@@ -66,14 +66,40 @@ pub fn Interpreter::new(annex_b? : Bool = false) -> Interpreter {
   // Bind 'this' and 'globalThis' in global scope
   global.def_builtin("this", global_this)
   global.def_builtin("globalThis", global_this)
-  // Mirror eval onto the global object (globalThis.eval)
-  match global.bindings.get("eval") {
-    Some(binding) =>
-      match global_this {
-        Object(data) => data.properties["eval"] = binding.value
-        _ => ()
+  // Mirror global built-in functions onto the global object (globalThis.X)
+  // so that this.isFinite, this.isNaN, etc. work correctly per the ES spec
+  let global_func_names = [
+    "eval", "isFinite", "isNaN", "parseInt", "parseFloat",
+    "encodeURIComponent", "decodeURIComponent", "encodeURI", "decodeURI",
+    "escape", "unescape",
+    "String", "Number", "Boolean", "Object", "Array", "Function",
+    "RegExp", "Error", "TypeError", "RangeError", "ReferenceError",
+    "SyntaxError", "URIError", "EvalError", "Date", "Math", "JSON",
+    "Symbol", "Map", "Set", "WeakMap", "WeakSet", "Promise", "Proxy",
+    "Reflect", "ArrayBuffer", "DataView",
+    "Int8Array", "Uint8Array", "Uint8ClampedArray",
+    "Int16Array", "Uint16Array", "Int32Array", "Uint32Array",
+    "Float32Array", "Float64Array",
+  ]
+  let builtin_desc : PropDescriptor = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
+  match global_this {
+    Object(data) =>
+      for name in global_func_names {
+        match global.bindings.get(name) {
+          Some(binding) => {
+            data.properties[name] = binding.value
+            data.descriptors[name] = { ..builtin_desc }
+          }
+          None => ()
+        }
       }
-    None => ()
+    _ => ()
   }
   // Mirror global constants (undefined, NaN, Infinity) onto the global object
   // with correct property descriptors per ES spec §19.1
@@ -273,10 +299,47 @@ fn should_reconcile_eval_function_decl(
 }
 
 ///|
+/// Mirror a binding to the global object (globalThis) as an own property.
+/// This implements CreateGlobalVarBinding / CreateGlobalFunctionBinding per the
+/// ES spec, where global `var` and function declarations become properties of
+/// the global object.  `configurable` controls the property descriptor.
+fn Interpreter::mirror_to_global(
+  self : Interpreter,
+  name : String,
+  value : Value,
+  configurable~ : Bool = false,
+) -> Unit {
+  match self.global_this {
+    Object(data) => {
+      data.properties[name] = value
+      // Only set descriptor if not already set (preserve existing non-configurable)
+      match data.descriptors.get(name) {
+        Some(existing) =>
+          if existing.configurable {
+            // Update value via property, descriptor stays
+            ()
+          }
+        None =>
+          data.descriptors[name] = {
+            writable: true,
+            enumerable: true,
+            configurable,
+            getter: None,
+            setter: None,
+          }
+      }
+    }
+    _ => ()
+  }
+}
+
+///|
 pub fn Interpreter::run(
   self : Interpreter,
   stmts : Array[@ast.Stmt],
 ) -> Value raise Error {
+  // Store interpreter ref for ToPrimitive to use when calling user functions
+  current_interpreter.val = Some(self)
   try {
     // Check for "use strict" directive
     if has_use_strict(stmts) {
@@ -346,6 +409,10 @@ fn Interpreter::exec_stmt(
           // This ensures eval("var x = 1") targets the function scope's var x,
           // not a block-scoped let x in between.
           env.assign_var(name, value)
+          // Mirror var assignment to global object when in global scope
+          if physical_equal(env.find_var_env(), self.global) {
+            self.mirror_to_global(name, value)
+          }
         }
       } else if (bk == LetBinding || bk == ConstBinding) &&
         env.bindings.contains(name) {
@@ -353,6 +420,10 @@ fn Interpreter::exec_stmt(
         env.initialize(name, value)
       } else {
         env.def(name, value, bk)
+        // Mirror new var declaration to global object when in global scope
+        if bk == VarBinding && physical_equal(env.find_var_env(), self.global) {
+          self.mirror_to_global(name, value)
+        }
       }
       Normal(Undefined)
     }
@@ -676,7 +747,19 @@ fn Interpreter::exec_stmt(
             }
             body_env.def(name, String_(key), bk)
           }
-          None => env.assign(name, String_(key))
+          None =>
+            try {
+              env.assign(name, String_(key))
+            } catch {
+              @errors.ReferenceError(_) =>
+                if not(self.strict) {
+                  self.global.def(name, String_(key), VarBinding)
+                  self.mirror_to_global(name, String_(key), configurable=true)
+                } else {
+                  raise @errors.ReferenceError(message="\{name} is not defined")
+                }
+              e => raise e
+            }
         }
         match self.exec_stmt(body, body_env) {
           Normal(v) => completion = v
@@ -1490,12 +1573,18 @@ fn Interpreter::exec_stmt(
           // Box string primitive to String wrapper object
           let str_proto = env.get("[[StringPrototype]]") catch { _ => Null }
           let props : Map[String, Value] = {}
-          props["length"] = Number(s.to_array().length().to_double())
+          let utf16_units = string_to_utf16(s)
+          props["length"] = Number(utf16_units.length().to_double())
           props["[[PrimitiveValue]]"] = String_(s)
-          // Add character indices as properties
-          let chars = s.to_array()
-          for i = 0; i < chars.length(); i = i + 1 {
-            props[i.to_string()] = String_(String::make(1, chars[i]))
+          // Add character indices as properties (UTF-16 code units)
+          for i = 0; i < utf16_units.length(); i = i + 1 {
+            let unit = utf16_units[i]
+            let ch_str = if unit <= 0xFFFF {
+              String::make(1, unit.unsafe_to_char())
+            } else {
+              String::make(1, unit.unsafe_to_char())
+            }
+            props[i.to_string()] = String_(ch_str)
           }
           Object({
             properties: props,
@@ -2924,11 +3013,16 @@ fn Interpreter::hoist_declarations(
   stmts : Array[@ast.Stmt],
   env : Environment,
 ) -> Unit raise Error {
+  let is_global = physical_equal(env, _self.global)
   for stmt in stmts {
     match stmt {
       VarDecl(VarKind, name, _, _) =>
         if not(env.bindings.contains(name)) {
           env.def(name, Undefined, VarBinding)
+          // Mirror var declaration to global object per ES spec
+          if is_global {
+            _self.mirror_to_global(name, Undefined)
+          }
         }
       FuncDecl(name, params, body, _) => {
         validate_function_signature(_self.strict, Some(name), params, body)
@@ -2939,10 +3033,15 @@ fn Interpreter::hoist_declarations(
           closure: env,
           strict: is_function_strict(_self.strict, body),
         }
+        let func_val = make_func(func_data)
         if env.bindings.contains(name) {
-          env.assign(name, make_func(func_data))
+          env.assign(name, func_val)
         } else {
-          env.def(name, make_func(func_data), VarBinding)
+          env.def(name, func_val, VarBinding)
+        }
+        // Mirror function declaration to global object per ES spec
+        if is_global {
+          _self.mirror_to_global(name, func_val)
         }
       }
       FuncDeclExt(name, params, rest_param, body, _) => {
@@ -2961,10 +3060,15 @@ fn Interpreter::hoist_declarations(
           closure: env,
           strict: is_function_strict(_self.strict, body),
         }
+        let func_val = make_func_ext(func_data)
         if env.bindings.contains(name) {
-          env.assign(name, make_func_ext(func_data))
+          env.assign(name, func_val)
         } else {
-          env.def(name, make_func_ext(func_data), VarBinding)
+          env.def(name, func_val, VarBinding)
+        }
+        // Mirror function declaration to global object per ES spec
+        if is_global {
+          _self.mirror_to_global(name, func_val)
         }
       }
       GeneratorDecl(name, params, body, _) => {
@@ -2980,6 +3084,10 @@ fn Interpreter::hoist_declarations(
           env.assign(name, gen_func)
         } else {
           env.def(name, gen_func, VarBinding)
+        }
+        // Mirror generator declaration to global object per ES spec
+        if is_global {
+          _self.mirror_to_global(name, gen_func)
         }
       }
       GeneratorDeclExt(name, params, rest_param, body, _) => {
@@ -3001,6 +3109,10 @@ fn Interpreter::hoist_declarations(
           env.assign(name, gen_func)
         } else {
           env.def(name, gen_func, VarBinding)
+        }
+        // Mirror generator declaration to global object per ES spec
+        if is_global {
+          _self.mirror_to_global(name, gen_func)
         }
       }
       AsyncFuncDecl(name, params, body, _) => {
@@ -3661,7 +3773,20 @@ fn Interpreter::assign_to_expr(
   env : Environment,
 ) -> Unit raise Error {
   match expr {
-    Ident(name, _) => env.assign(name, value)
+    Ident(name, _) =>
+      try {
+        env.assign(name, value)
+      } catch {
+        @errors.ReferenceError(_) =>
+          if not(self.strict) {
+            // Implicit global creation in sloppy mode
+            self.global.def(name, value, VarBinding)
+            self.mirror_to_global(name, value, configurable=true)
+          } else {
+            raise @errors.ReferenceError(message="\{name} is not defined")
+          }
+        e => raise e
+      }
     Member(obj_expr, prop, loc) => {
       let obj = self.eval_expr(obj_expr, env)
       let _ = self.set_property(obj, prop, value, loc)
@@ -3866,7 +3991,35 @@ fn Interpreter::eval_expr(
         )
       }
       let value = self.eval_expr(value_expr, env)
-      env.assign(name, value)
+      // Check if the target is a non-writable property on the global object
+      // (e.g. undefined, NaN, Infinity). In strict mode this is a TypeError;
+      // in non-strict mode the assignment is silently ignored.
+      if self.is_immutable_global(name) {
+        if self.strict {
+          raise @errors.TypeError(
+            message="Cannot assign to read only property '\{name}' of object '[object global]'",
+          )
+        }
+        return value
+      }
+      try {
+        env.assign(name, value)
+      } catch {
+        @errors.ReferenceError(_) => {
+          // In non-strict mode, assigning to an undeclared variable creates
+          // a global property (sloppy mode implicit global).
+          if not(self.strict) {
+            self.global.def(name, value, VarBinding)
+            // Also mirror onto globalThis as a configurable, enumerable property
+            self.mirror_to_global(name, value, configurable=true)
+          } else {
+            raise @errors.ReferenceError(
+              message="\{name} is not defined",
+            )
+          }
+        }
+        e => raise e
+      }
       value
     }
     Ternary(cond, then_expr, else_expr, _) =>
@@ -5081,6 +5234,20 @@ fn loose_equal(a : Value, b : Value) -> Bool {
 }
 
 ///|
+/// Check whether `name` is a non-writable property on the global object
+/// (undefined, NaN, Infinity). These are { writable:false } per ES spec §19.1.
+fn Interpreter::is_immutable_global(self : Interpreter, name : String) -> Bool {
+  match self.global_this {
+    Object(data) =>
+      match data.descriptors.get(name) {
+        Some(desc) => not(desc.writable)
+        None => false
+      }
+    _ => false
+  }
+}
+
+///|
 fn Interpreter::eval_unary(
   self : Interpreter,
   op : @ast.UnaryOp,
@@ -5225,35 +5392,72 @@ fn Interpreter::eval_unary(
                 }
               }
             }
-            Object(data) => {
-              let k = key.to_string()
-              match data.descriptors.get(k) {
-                Some(desc) =>
-                  if not(desc.configurable) {
-                    if self.strict {
-                      raise @errors.TypeError(
-                        message="Cannot delete property '\{k}'",
-                      )
-                    }
-                    return Bool(false)
+            Object(data) =>
+              match key {
+                Symbol(sym) => {
+                  // Delete a symbol-keyed property
+                  match data.symbol_descriptors.get(sym.id) {
+                    Some(desc) =>
+                      if not(desc.configurable) {
+                        if self.strict {
+                          raise @errors.TypeError(
+                            message="Cannot delete property",
+                          )
+                        }
+                        return Bool(false)
+                      }
+                    None => ()
                   }
-                None => ()
+                  let _ = data.symbol_properties.remove(sym.id)
+                  let _ = data.symbol_descriptors.remove(sym.id)
+                  Bool(true)
+                }
+                _ => {
+                  let k = key.to_string()
+                  match data.descriptors.get(k) {
+                    Some(desc) =>
+                      if not(desc.configurable) {
+                        if self.strict {
+                          raise @errors.TypeError(
+                            message="Cannot delete property '\{k}'",
+                          )
+                        }
+                        return Bool(false)
+                      }
+                    None => ()
+                  }
+                  let _ = data.properties.remove(k)
+                  let _ = data.descriptors.remove(k)
+                  Bool(true)
+                }
               }
-              let _ = data.properties.remove(k)
-              let _ = data.descriptors.remove(k)
-              Bool(true)
-            }
             _ => Bool(true)
           }
         }
-        Ident(_, _) =>
+        Ident(name, _) =>
           // delete of an unqualified identifier is a SyntaxError in strict mode
           if self.strict {
             raise @errors.SyntaxError(
               message="Delete of an unqualified identifier in strict mode.",
             )
           } else {
-            Bool(true)
+            // In non-strict mode, check if the identifier is a non-configurable
+            // property on the global object (e.g. undefined, NaN, Infinity).
+            match self.global_this {
+              Object(data) =>
+                match data.descriptors.get(name) {
+                  Some(desc) =>
+                    if not(desc.configurable) {
+                      Bool(false)
+                    } else {
+                      let _ = data.properties.remove(name)
+                      let _ = data.descriptors.remove(name)
+                      Bool(true)
+                    }
+                  None => Bool(true)
+                }
+              _ => Bool(true)
+            }
           }
         _ => Bool(true)
       }
@@ -6504,7 +6708,7 @@ fn Interpreter::get_property(
       }
     String_(s) =>
       if prop == "length" {
-        Number(s.length().to_double())
+        Number(utf16_length(s).to_double())
       } else {
         let result = get_string_method(s, prop, annex_b=self.annex_b)
         match result {
@@ -6807,6 +7011,27 @@ fn Interpreter::get_computed_property(
             Some(v) => return v
             None => return Undefined
           }
+        Symbol(_) => {
+          // Delegate to Symbol.prototype for symbol-keyed property access
+          let proto = self.global.get("[[SymbolPrototype]]") catch { _ => Null }
+          match proto {
+            Object(proto_data) => {
+              match proto_data.symbol_descriptors.get(sym.id) {
+                Some(desc) =>
+                  match desc.getter {
+                    Some(getter) => return self.call_value(getter, obj, [], loc)
+                    None => ()
+                  }
+                None => ()
+              }
+              match proto_data.symbol_properties.get(sym.id) {
+                Some(v) => return v
+                None => return Undefined
+              }
+            }
+            _ => return Undefined
+          }
+        }
         _ => return Undefined
       }
     _ => ()
@@ -7186,7 +7411,7 @@ fn Interpreter::get_computed_property(
             Undefined
           }
         }
-        String_("length") => Number(s.length().to_double())
+        String_("length") => Number(utf16_length(s).to_double())
         String_(method_name) =>
           get_string_method(s, method_name, annex_b=self.annex_b)
         _ => Undefined
@@ -7402,9 +7627,15 @@ fn Interpreter::set_property(
       value
     }
     _ =>
-      raise @errors.TypeError(
-        message="Cannot set property '\{prop}' of \{type_of(obj)}",
-      )
+      // In non-strict mode, setting a property on a primitive is silently ignored
+      // (the temporary wrapper object is discarded). In strict mode, throw TypeError.
+      if self.strict {
+        raise @errors.TypeError(
+          message="Cannot set property '\{prop}' of \{type_of(obj)}",
+        )
+      } else {
+        value
+      }
   }
 }
 
@@ -7693,7 +7924,11 @@ fn Interpreter::set_computed_property(
         }
       }
     _ =>
-      raise @errors.TypeError(message="Cannot set property of \{type_of(obj)}")
+      if self.strict {
+        raise @errors.TypeError(message="Cannot set property of \{type_of(obj)}")
+      } else {
+        value
+      }
   }
 }
 
@@ -8652,7 +8887,15 @@ fn Interpreter::eval_update(
         Increment => Number(num + 1.0)
         Decrement => Number(num - 1.0)
       }
-      env.assign(name, new_val)
+      if self.is_immutable_global(name) {
+        if self.strict {
+          raise @errors.TypeError(
+            message="Cannot assign to read only property '\{name}' of object '[object global]'",
+          )
+        }
+      } else {
+        env.assign(name, new_val)
+      }
       if prefix {
         new_val
       } else {
@@ -8742,6 +8985,15 @@ fn Interpreter::eval_compound_assign(
       let current = env.get(name)
       let rhs = self.eval_expr(value_expr, env)
       let result = eval_binary_op(bin_op, current, rhs, loc)
+      // Check if the target is a non-writable property on the global object
+      if self.is_immutable_global(name) {
+        if self.strict {
+          raise @errors.TypeError(
+            message="Cannot assign to read only property '\{name}' of object '[object global]'",
+          )
+        }
+        return result
+      }
       env.assign(name, result)
       result
     }
@@ -8788,6 +9040,14 @@ fn Interpreter::eval_logical_assign_and(
       let current = env.get(name)
       if is_truthy(current) {
         let rhs = self.eval_expr(value_expr, env)
+        if self.is_immutable_global(name) {
+          if self.strict {
+            raise @errors.TypeError(
+              message="Cannot assign to read only property '\{name}' of object '[object global]'",
+            )
+          }
+          return rhs
+        }
         env.assign(name, rhs)
         rhs
       } else {
@@ -8841,6 +9101,14 @@ fn Interpreter::eval_logical_assign_or(
       let current = env.get(name)
       if not(is_truthy(current)) {
         let rhs = self.eval_expr(value_expr, env)
+        if self.is_immutable_global(name) {
+          if self.strict {
+            raise @errors.TypeError(
+              message="Cannot assign to read only property '\{name}' of object '[object global]'",
+            )
+          }
+          return rhs
+        }
         env.assign(name, rhs)
         rhs
       } else {
@@ -8895,6 +9163,14 @@ fn Interpreter::eval_nullish_assign(
       match current {
         Null | Undefined => {
           let rhs = self.eval_expr(value_expr, env)
+          if self.is_immutable_global(name) {
+            if self.strict {
+              raise @errors.TypeError(
+                message="Cannot assign to read only property '\{name}' of object '[object global]'",
+              )
+            }
+            return rhs
+          }
           env.assign(name, rhs)
           rhs
         }

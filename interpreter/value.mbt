@@ -906,6 +906,202 @@ pub fn is_truthy(val : Value) -> Bool {
 }
 
 ///|
+/// Global ref to current interpreter, set during execution so that
+/// ToPrimitive can call user-defined valueOf/toString/@@toPrimitive.
+pub let current_interpreter : Ref[Interpreter?] = { val: None }
+
+///|
+/// Call a callable value, dispatching to the interpreter for UserFunc types.
+/// Supports all callable types including user-defined functions.
+fn call_callable_direct(
+  callable_val : Value,
+  this_val : Value,
+  args : Array[Value],
+) -> Value raise Error {
+  match callable_val {
+    Object(obj_data) =>
+      match obj_data.callable {
+        Some(MethodCallable(_, f)) => f(this_val, args)
+        Some(NativeCallable(_, f)) => f(args)
+        Some(NonConstructableCallable(_, f)) => f(args)
+        Some(UserFunc(_)) | Some(ArrowFunc(_)) | Some(UserFuncExt(_)) |
+        Some(ArrowFuncExt(_)) | Some(BoundFunc(_, _, _)) |
+        Some(InterpreterCallable(_, _)) | Some(ClassConstructor(_, _, _, _, _, _)) =>
+          // Use the current interpreter to call user-defined functions
+          match current_interpreter.val {
+            Some(interp) =>
+              interp.call_value(
+                callable_val,
+                this_val,
+                args,
+                @token.Loc::default(),
+              )
+            None =>
+              raise @errors.TypeError(
+                message="Cannot call user function without interpreter context",
+              )
+          }
+        _ =>
+          raise @errors.TypeError(message="Value is not callable")
+      }
+    _ => raise @errors.TypeError(message="Value is not callable")
+  }
+}
+
+///|
+/// Check if a value is callable
+fn is_callable(val : Value) -> Bool {
+  match val {
+    Object(obj_data) =>
+      match obj_data.callable {
+        Some(_) => true
+        None => false
+      }
+    _ => false
+  }
+}
+
+///|
+/// Look up a string-keyed property on an object, walking the prototype chain.
+fn lookup_property_chain(data : ObjectData, name : String) -> Value? {
+  // Check own properties first
+  match data.properties.get(name) {
+    Some(v) => return Some(v)
+    None => ()
+  }
+  // Walk prototype chain
+  let mut current = data.prototype
+  while true {
+    match current {
+      Object(proto_data) => {
+        match proto_data.properties.get(name) {
+          Some(v) => return Some(v)
+          None => current = proto_data.prototype
+        }
+      }
+      _ => break
+    }
+  }
+  None
+}
+
+///|
+/// Look up a symbol-keyed property on an object, walking the prototype chain.
+/// Also handles getter descriptors - invokes them and returns the result.
+fn lookup_symbol_property_chain(
+  obj_val : Value,
+  data : ObjectData,
+  sym_id : Int,
+) -> Value? raise Error {
+  // Check own symbol descriptors for getter first
+  match data.symbol_descriptors.get(sym_id) {
+    Some(desc) =>
+      match desc.getter {
+        Some(getter_fn) => {
+          let result = call_callable_direct(getter_fn, obj_val, [])
+          return Some(result)
+        }
+        None => ()
+      }
+    None => ()
+  }
+  // Check own symbol properties
+  match data.symbol_properties.get(sym_id) {
+    Some(v) => return Some(v)
+    None => ()
+  }
+  // Walk prototype chain
+  let mut current = data.prototype
+  while true {
+    match current {
+      Object(proto_data) => {
+        // Check symbol descriptors for getter
+        match proto_data.symbol_descriptors.get(sym_id) {
+          Some(desc) =>
+            match desc.getter {
+              Some(getter_fn) => {
+                let result = call_callable_direct(getter_fn, obj_val, [])
+                return Some(result)
+              }
+              None => ()
+            }
+          None => ()
+        }
+        match proto_data.symbol_properties.get(sym_id) {
+          Some(v) => return Some(v)
+          None => current = proto_data.prototype
+        }
+      }
+      _ => break
+    }
+  }
+  None
+}
+
+///|
+/// ToPrimitive(input, hint "number") - converts an object to a primitive value.
+/// Follows the ECMAScript spec: check @@toPrimitive, then valueOf, then toString.
+fn to_primitive_number(obj_val : Value, data : ObjectData) -> Value raise Error {
+  // Step 1: Check for Symbol.toPrimitive
+  let to_prim_sym = get_toprimitive_symbol()
+  match lookup_symbol_property_chain(obj_val, data, to_prim_sym.id) {
+    Some(exotic_to_prim) => {
+      // If it's not callable, throw TypeError (GetMethod step 4)
+      if not(is_callable(exotic_to_prim)) {
+        raise @errors.TypeError(
+          message="Symbol.toPrimitive is not a function",
+        )
+      }
+      // Call it with hint "number"
+      let result = call_callable_direct(
+        exotic_to_prim,
+        obj_val,
+        [String_("number")],
+      )
+      // If result is an object, throw TypeError
+      match result {
+        Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) =>
+          raise @errors.TypeError(
+            message="Cannot convert object to primitive value",
+          )
+        _ => return result
+      }
+    }
+    None => ()
+  }
+  // Step 2: OrdinaryToPrimitive with hint "number" - try valueOf first, then toString
+  match lookup_property_chain(data, "valueOf") {
+    Some(value_of_fn) =>
+      if is_callable(value_of_fn) {
+        let result = call_callable_direct(value_of_fn, obj_val, [])
+        match result {
+          Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) =>
+            () // result is object, try toString next
+          _ => return result
+        }
+      }
+    None => ()
+  }
+  match lookup_property_chain(data, "toString") {
+    Some(to_string_fn) =>
+      if is_callable(to_string_fn) {
+        let result = call_callable_direct(to_string_fn, obj_val, [])
+        match result {
+          Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) =>
+            raise @errors.TypeError(
+              message="Cannot convert object to primitive value",
+            )
+          _ => return result
+        }
+      }
+    None => ()
+  }
+  raise @errors.TypeError(
+    message="Cannot convert object to primitive value",
+  )
+}
+
+///|
 pub fn to_number(val : Value) -> Double raise Error {
   match val {
     Number(n) => n
@@ -919,38 +1115,23 @@ pub fn to_number(val : Value) -> Double raise Error {
     }
     Bool(b) => if b { 1.0 } else { 0.0 }
     Null => 0.0
-    Object(data) =>
-      if data.class_name == "Date" {
-        match data.properties.get("[[DateValue]]") {
-          Some(Number(v)) => v
-          _ => 0.0 / 0.0
-        }
-      } else if data.class_name == "Number" {
-        match data.properties.get("[[NumberData]]") {
-          Some(Number(v)) => v
-          _ => 0.0 / 0.0
-        }
-      } else if data.class_name == "Boolean" {
-        match data.properties.get("[[BooleanData]]") {
-          Some(Bool(b)) => if b { 1.0 } else { 0.0 }
-          _ => 0.0 / 0.0
-        }
-      } else if data.class_name == "String" {
-        match data.properties.get("[[StringData]]") {
-          Some(String_(s)) =>
-            if s.length() == 0 {
-              0.0
-            } else {
-              @strconv.parse_double(s) catch {
-                _ => 0.0 / 0.0
-              }
-            }
-          _ => 0.0 / 0.0
-        }
+    Object(data) => {
+      // Use ToPrimitive to convert object to a primitive, then ToNumber on the result
+      let prim = to_primitive_number(Object(data), data)
+      to_number(prim)
+    }
+    Array(arr_data) => {
+      // Arrays: convert to string via join(","), then to number
+      let s = arr_data.elements.map(fn(v) { v.to_string() }).join(",")
+      if s.length() == 0 {
+        0.0
       } else {
-        0.0 / 0.0
+        @strconv.parse_double(s) catch {
+          _ => 0.0 / 0.0
+        }
       }
-    Undefined | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => 0.0 / 0.0
+    }
+    Undefined | Map(_) | Set(_) | Promise(_) | Proxy(_) => 0.0 / 0.0
     Symbol(_) =>
       raise @errors.TypeError(
         message="Cannot convert a Symbol value to a number",

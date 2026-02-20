@@ -17,7 +17,6 @@ fn is_reserved_word(name : String) -> Bool {
     | "true"
     | "false"
     | "null"
-    | "undefined"
     | "typeof"
     | "throw"
     | "try"

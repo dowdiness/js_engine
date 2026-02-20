@@ -61,7 +61,7 @@ pub fn setup_builtins(
   // isNaN(value)
   env.def_builtin(
     "isNaN",
-    make_static_func("isNaN", fn(args) raise {
+    make_static_func_with_length("isNaN", 1, fn(args) raise {
       let val = if args.length() > 0 { args[0] } else { Undefined }
       let n = to_number(val)
       Bool(n.is_nan())
@@ -71,7 +71,7 @@ pub fn setup_builtins(
   // isFinite(value)
   env.def_builtin(
     "isFinite",
-    make_static_func("isFinite", fn(args) raise {
+    make_static_func_with_length("isFinite", 1, fn(args) raise {
       let val = if args.length() > 0 { args[0] } else { Undefined }
       let n = to_number(val)
       Bool(not(n.is_nan()) && not(n.is_inf()))
@@ -564,6 +564,8 @@ pub fn setup_builtins(
             )
         }
       })
+  // Boolean.prototype has [[BooleanData]] internal slot with value false
+  boolean_proto_props["[[BooleanData]]"] = Bool(false)
   let boolean_proto : Value = Object({
     properties: boolean_proto_props,
     symbol_properties: {},
@@ -604,7 +606,7 @@ pub fn setup_builtins(
         }),
       ),
       class_name: "Function",
-      descriptors: { "name": nf_desc, "length": nf_desc },
+      descriptors: { "name": nf_desc, "length": nf_desc, "prototype": { writable: false, enumerable: false, configurable: false, getter: None, setter: None } },
       symbol_descriptors: {},
       extensible: true,
     }),
@@ -642,8 +644,96 @@ pub fn setup_builtins(
   // Object, Array constructors and built-in methods
   setup_object_builtins(env)
 
+  // Now that Object.prototype and Function.prototype exist, patch built-in
+  // prototype chains.  Boolean.prototype, String.prototype, Number.prototype
+  // all need [[Prototype]] = Object.prototype.  Built-in constructors like
+  // Boolean need [[Prototype]] = Function.prototype.
+  match env.bindings.get("[[ObjectPrototype]]") {
+    Some(binding) => {
+      let obj_proto = binding.value
+      // Patch Boolean.prototype.[[Prototype]]
+      match env.bindings.get("[[BooleanPrototype]]") {
+        Some(bp) =>
+          match bp.value {
+            Object(data) => data.prototype = obj_proto
+            _ => ()
+          }
+        None => ()
+      }
+      // Patch String.prototype.[[Prototype]]
+      match env.bindings.get("[[StringPrototype]]") {
+        Some(sp) =>
+          match sp.value {
+            Object(data) => data.prototype = obj_proto
+            _ => ()
+          }
+        None => ()
+      }
+      // Patch Number.prototype.[[Prototype]]
+      match env.bindings.get("[[NumberPrototype]]") {
+        Some(np) =>
+          match np.value {
+            Object(data) => data.prototype = obj_proto
+            _ => ()
+          }
+        None => ()
+      }
+      // Patch Function.prototype.[[Prototype]]
+      match env.bindings.get("[[FunctionPrototype]]") {
+        Some(fp) =>
+          match fp.value {
+            Object(data) => data.prototype = obj_proto
+            _ => ()
+          }
+        None => ()
+      }
+      // Patch Error.prototype.[[Prototype]] = Object.prototype
+      match error_proto {
+        Object(data) => data.prototype = obj_proto
+        _ => ()
+      }
+    }
+    None => ()
+  }
+  // Patch constructor [[Prototype]] to Function.prototype
+  match env.bindings.get("[[FunctionPrototype]]") {
+    Some(fp_binding) => {
+      let func_proto = fp_binding.value
+      let ctor_names = [
+        "Boolean", "String", "Number", "Error", "TypeError", "ReferenceError",
+        "SyntaxError", "RangeError", "URIError", "EvalError", "AggregateError",
+      ]
+      for name in ctor_names {
+        match env.bindings.get(name) {
+          Some(b) =>
+            match b.value {
+              Object(data) => data.prototype = func_proto
+              _ => ()
+            }
+          None => ()
+        }
+      }
+    }
+    None => ()
+  }
+
   // Symbol constructor and well-known symbols (must be before Math for Symbol.toStringTag)
   setup_symbol_builtins(env)
+  // Patch Symbol.prototype.[[Prototype]] = Object.prototype
+  match env.bindings.get("[[ObjectPrototype]]") {
+    Some(binding) => {
+      let obj_proto = binding.value
+      match env.bindings.get("[[SymbolPrototype]]") {
+        Some(sp) =>
+          match sp.value {
+            Object(data) => data.prototype = obj_proto
+            _ => ()
+          }
+        None => ()
+      }
+    }
+    None => ()
+  }
 
   // Math object
   setup_math_builtins(env)
@@ -737,6 +827,22 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
     getter: None,
     setter: None,
   }
+  // Descriptor for well-known symbol properties: { writable: false, enumerable: false, configurable: false }
+  let wks_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: false,
+    getter: None,
+    setter: None,
+  }
+  // Descriptor for methods: { writable: true, enumerable: false, configurable: true }
+  let method_desc : PropDescriptor = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   // Create well-known symbols
   let iterator_sym = new_symbol(Some("Symbol.iterator"))
   // Store globally for iterator protocol support
@@ -752,6 +858,7 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
   let species_sym = new_symbol(Some("Symbol.species"))
   let match_sym = new_symbol(Some("Symbol.match"))
   well_known_match_sym.val = Some(match_sym)
+  let match_all_sym = new_symbol(Some("Symbol.matchAll"))
   let replace_sym = new_symbol(Some("Symbol.replace"))
   well_known_replace_sym.val = Some(replace_sym)
   let search_sym = new_symbol(Some("Symbol.search"))
@@ -764,6 +871,7 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
 
   // Symbol prototype
   let symbol_proto_props : Map[String, Value] = {}
+  let symbol_proto_descs : Map[String, PropDescriptor] = {}
   symbol_proto_props["toString"] = make_method_func("toString", 0, fn(this_val, _args) raise {
         match this_val {
           Symbol(sym) =>
@@ -771,54 +879,171 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
               Some(desc) => String_("Symbol(\{desc})")
               None => String_("Symbol()")
             }
+          Object(data) =>
+            // Support Symbol wrapper objects (e.g. Object(sym).toString())
+            match data.properties.get("[[SymbolData]]") {
+              Some(Symbol(sym)) =>
+                match sym.description {
+                  Some(desc) => String_("Symbol(\{desc})")
+                  None => String_("Symbol()")
+                }
+              _ =>
+                raise @errors.TypeError(
+                  message="Symbol.prototype.toString requires a Symbol",
+                )
+            }
           _ =>
             raise @errors.TypeError(
               message="Symbol.prototype.toString requires a Symbol",
             )
         }
       })
+  symbol_proto_descs["toString"] = method_desc
   symbol_proto_props["valueOf"] = make_method_func("valueOf", 0, fn(this_val, _args) raise {
         match this_val {
           Symbol(_) => this_val
+          Object(data) =>
+            // Support Symbol wrapper objects
+            match data.properties.get("[[SymbolData]]") {
+              Some(sym) => sym
+              _ =>
+                raise @errors.TypeError(
+                  message="Symbol.prototype.valueOf requires a Symbol",
+                )
+            }
           _ =>
             raise @errors.TypeError(
               message="Symbol.prototype.valueOf requires a Symbol",
             )
         }
       })
-  symbol_proto_props["description"] = Undefined // Getter, simplified
+  symbol_proto_descs["valueOf"] = method_desc
+  // Symbol.prototype.description - getter per ES spec
+  // Stored as a getter descriptor (not a plain value)
+  let description_getter = make_method_func("get description", 0, fn(this_val, _args) raise {
+    match this_val {
+      Symbol(sym) =>
+        match sym.description {
+          Some(desc) => String_(desc)
+          None => Undefined
+        }
+      Object(data) =>
+        match data.properties.get("[[SymbolData]]") {
+          Some(Symbol(sym)) =>
+            match sym.description {
+              Some(desc) => String_(desc)
+              None => Undefined
+            }
+          _ =>
+            raise @errors.TypeError(
+              message="Symbol.prototype.description requires a Symbol",
+            )
+        }
+      _ =>
+        raise @errors.TypeError(
+          message="Symbol.prototype.description requires a Symbol",
+        )
+    }
+  })
+  // Set a placeholder in properties so hasOwnProperty returns true
+  symbol_proto_props["description"] = Undefined
+  symbol_proto_descs["description"] = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: Some(description_getter),
+    setter: None,
+  }
+
+  // Symbol.prototype[@@toPrimitive](hint)
+  let symbol_proto_sym_props : Map[Int, Value] = {}
+  let symbol_proto_sym_descs : Map[Int, PropDescriptor] = {}
+  let toprimitive_method = make_method_func("[Symbol.toPrimitive]", 1, fn(this_val, _args) raise {
+    match this_val {
+      Symbol(_) => this_val
+      Object(data) =>
+        match data.properties.get("[[SymbolData]]") {
+          Some(sym) => sym
+          _ =>
+            raise @errors.TypeError(
+              message="Symbol[Symbol.toPrimitive] requires a Symbol",
+            )
+        }
+      _ =>
+        raise @errors.TypeError(
+          message="Symbol[Symbol.toPrimitive] requires a Symbol",
+        )
+    }
+  })
+  symbol_proto_sym_props[to_primitive_sym.id] = toprimitive_method
+  symbol_proto_sym_descs[to_primitive_sym.id] = { ..wks_desc, configurable: true }
+
+  // Symbol.prototype[@@toStringTag] = "Symbol"
+  symbol_proto_sym_props[to_string_tag_sym.id] = String_("Symbol")
+  symbol_proto_sym_descs[to_string_tag_sym.id] = nf_desc
+
   let symbol_proto : Value = Object({
     properties: symbol_proto_props,
-    symbol_properties: {},
+    symbol_properties: symbol_proto_sym_props,
     prototype: Null,
     callable: None,
     class_name: "Symbol",
-    descriptors: {},
-    symbol_descriptors: {},
+    descriptors: symbol_proto_descs,
+    symbol_descriptors: symbol_proto_sym_descs,
     extensible: true,
   })
 
   // Symbol constructor properties
   let symbol_props : Map[String, Value] = {}
+  let symbol_descs : Map[String, PropDescriptor] = {}
   symbol_props["prototype"] = symbol_proto
+  symbol_descs["prototype"] = {
+    writable: false,
+    enumerable: false,
+    configurable: false,
+    getter: None,
+    setter: None,
+  }
 
-  // Well-known symbols as static properties
+  // Well-known symbols as static properties (all { writable: false, enumerable: false, configurable: false })
   symbol_props["iterator"] = Symbol(iterator_sym)
+  symbol_descs["iterator"] = { ..wks_desc }
   symbol_props["toPrimitive"] = Symbol(to_primitive_sym)
+  symbol_descs["toPrimitive"] = { ..wks_desc }
   symbol_props["toStringTag"] = Symbol(to_string_tag_sym)
+  symbol_descs["toStringTag"] = { ..wks_desc }
   symbol_props["hasInstance"] = Symbol(has_instance_sym)
+  symbol_descs["hasInstance"] = { ..wks_desc }
   symbol_props["isConcatSpreadable"] = Symbol(is_concat_spreadable_sym)
+  symbol_descs["isConcatSpreadable"] = { ..wks_desc }
   symbol_props["species"] = Symbol(species_sym)
+  symbol_descs["species"] = { ..wks_desc }
   symbol_props["match"] = Symbol(match_sym)
+  symbol_descs["match"] = { ..wks_desc }
+  symbol_props["matchAll"] = Symbol(match_all_sym)
+  symbol_descs["matchAll"] = { ..wks_desc }
   symbol_props["replace"] = Symbol(replace_sym)
+  symbol_descs["replace"] = { ..wks_desc }
   symbol_props["search"] = Symbol(search_sym)
+  symbol_descs["search"] = { ..wks_desc }
   symbol_props["split"] = Symbol(split_sym)
+  symbol_descs["split"] = { ..wks_desc }
   symbol_props["unscopables"] = Symbol(unscopables_sym)
+  symbol_descs["unscopables"] = { ..wks_desc }
   symbol_props["asyncIterator"] = Symbol(async_iterator_sym)
+  symbol_descs["asyncIterator"] = { ..wks_desc }
 
   // Symbol.for(key) - returns symbol from global registry
-  symbol_props["for"] = make_static_func("for", fn(args) {
-    let key = if args.length() > 0 { args[0].to_string() } else { "undefined" }
+  // Spec: 1. Let stringKey be ? ToString(key).  (throws TypeError for symbols)
+  symbol_props["for"] = make_static_func_with_length("for", 1, fn(args) raise {
+    let arg = if args.length() > 0 { args[0] } else { Undefined }
+    let key : String = match arg {
+      Symbol(_) =>
+        raise @errors.TypeError(
+          message="Cannot convert a Symbol value to a string",
+        )
+      _ => arg.to_string()
+    }
     match global_symbol_registry.get(key) {
       Some(sym) => Symbol(sym)
       None => {
@@ -829,9 +1054,10 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
       }
     }
   })
+  symbol_descs["for"] = method_desc
 
   // Symbol.keyFor(sym) - returns key for symbol in global registry (O(1) via reverse lookup)
-  symbol_props["keyFor"] = make_static_func("keyFor", fn(args) raise {
+  symbol_props["keyFor"] = make_static_func_with_length("keyFor", 1, fn(args) raise {
     let sym = if args.length() > 0 { args[0] } else { Undefined }
     match sym {
       Symbol(sym_data) =>
@@ -842,10 +1068,13 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
       _ => raise @errors.TypeError(message="Symbol.keyFor requires a symbol")
     }
   })
+  symbol_descs["keyFor"] = method_desc
 
   // Symbol constructor - cannot be called with new, only as function
   symbol_props["name"] = String_("Symbol")
+  symbol_descs["name"] = nf_desc
   symbol_props["length"] = Number(0.0)
+  symbol_descs["length"] = nf_desc
   env.def_builtin(
     "Symbol",
     Object({
@@ -853,10 +1082,14 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
       symbol_properties: {},
       prototype: Null,
       callable: Some(
-        NonConstructableCallable("Symbol", fn(args) {
+        NonConstructableCallable("Symbol", fn(args) raise {
           let description : String? = if args.length() > 0 {
             match args[0] {
               Undefined => None
+              Symbol(_) =>
+                raise @errors.TypeError(
+                  message="Cannot convert a Symbol value to a string",
+                )
               _ => Some(args[0].to_string())
             }
           } else {
@@ -866,7 +1099,7 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
         }),
       ),
       class_name: "Function",
-      descriptors: { "name": nf_desc, "length": nf_desc },
+      descriptors: symbol_descs,
       symbol_descriptors: {},
       extensible: true,
     }),
@@ -1601,6 +1834,11 @@ fn register_error_ctor(
   proto_props["name"] = String_(name)
   proto_props["message"] = String_("")
   proto_props["toString"] = make_method_func("toString", 0, fn(this_val, _args) raise {
+    // Step 1: If this is not an Object, throw TypeError
+    match this_val {
+      Object(_) => ()
+      _ => raise @errors.TypeError(message="Error.prototype.toString requires that 'this' be an Object")
+    }
     let name_val = match this_val {
       Object(data) => match data.properties.get("name") {
         Some(v) => v
@@ -1634,22 +1872,35 @@ fn register_error_ctor(
     }
   })
   let proto_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+  // Error.prototype class_name should be "Object" per spec (not error type name)
   let proto_obj : Value = Object({
     properties: proto_props,
     symbol_properties: {},
     prototype: parent_proto,
     callable: None,
-    class_name: name,
+    class_name: "Object",
     descriptors: { "name": proto_desc, "message": proto_desc, "toString": proto_desc },
     symbol_descriptors: {},
     extensible: true,
   })
+  // Determine the parent constructor's [[Prototype]] for the error constructor
+  // For Error itself, it should be Function.prototype (Null for now, set later)
+  // For NativeErrors, it should be the Error constructor
+  let ctor_proto : Value = if name == "Error" {
+    Null
+  } else {
+    match env.bindings.get("Error") {
+      Some(binding) => binding.value
+      None => Null
+    }
+  }
+  let proto_nw_desc : PropDescriptor = { writable: false, enumerable: false, configurable: false, getter: None, setter: None }
   env.def_builtin(
     name,
     Object({
       properties: { "prototype": proto_obj, "name": String_(name), "length": Number(1.0) },
       symbol_properties: {},
-      prototype: Null,
+      prototype: ctor_proto,
       callable: Some(
         NativeCallable(name, fn(args) {
           let message = if args.length() > 0 {
@@ -1665,32 +1916,34 @@ fn register_error_ctor(
           err_props["message"] = String_(message)
           err_props["name"] = String_(name)
           err_props["stack"] = String_(name + ": " + message)
+          let err_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+          let err_descs : Map[String, PropDescriptor] = { "message": err_desc, "name": err_desc, "stack": err_desc }
           // Handle options parameter for cause
           if args.length() > 1 {
             match args[1] {
               Object(opts_data) => {
                 if opts_data.properties.contains("cause") {
                   err_props["cause"] = opts_data.properties["cause"]
+                  err_descs["cause"] = err_desc
                 }
               }
               _ => ()
             }
           }
-          let err_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
           Object({
             properties: err_props,
             symbol_properties: {},
             prototype: proto_obj,
             callable: None,
             class_name: name,
-            descriptors: { "message": err_desc, "name": err_desc, "stack": err_desc },
+            descriptors: err_descs,
             symbol_descriptors: {},
             extensible: true,
           })
         }),
       ),
       class_name: "Function",
-      descriptors: { "name": nf_desc, "length": nf_desc },
+      descriptors: { "name": nf_desc, "length": nf_desc, "prototype": proto_nw_desc },
       symbol_descriptors: {},
       extensible: true,
     }),
@@ -1730,6 +1983,10 @@ fn register_aggregate_error_ctor(
   proto_props["name"] = String_(name)
   proto_props["message"] = String_("")
   proto_props["toString"] = make_method_func("toString", 0, fn(this_val, _args) raise {
+    match this_val {
+      Object(_) => ()
+      _ => raise @errors.TypeError(message="Error.prototype.toString requires that 'this' be an Object")
+    }
     let name_val = match this_val {
       Object(data) => match data.properties.get("name") {
         Some(v) => v
@@ -1768,17 +2025,23 @@ fn register_aggregate_error_ctor(
     symbol_properties: {},
     prototype: parent_proto,
     callable: None,
-    class_name: name,
+    class_name: "Object",
     descriptors: { "name": proto_desc, "message": proto_desc, "toString": proto_desc },
     symbol_descriptors: {},
     extensible: true,
   })
+  // AggregateError constructor's [[Prototype]] should be the Error constructor
+  let ctor_proto : Value = match env.bindings.get("Error") {
+    Some(binding) => binding.value
+    None => Null
+  }
+  let proto_nw_desc : PropDescriptor = { writable: false, enumerable: false, configurable: false, getter: None, setter: None }
   env.def_builtin(
     name,
     Object({
       properties: { "prototype": proto_obj, "length": Number(2.0), "name": String_(name) },
       symbol_properties: {},
-      prototype: Null,
+      prototype: ctor_proto,
       callable: Some(
         NativeCallable(name, fn(args) {
           let errors_value : Value = if args.length() > 0 {
@@ -1812,20 +2075,24 @@ fn register_aggregate_error_ctor(
             }
           }
           let err_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+          let err_descs : Map[String, PropDescriptor] = { "message": err_desc, "name": err_desc, "stack": err_desc }
+          if err_props.contains("cause") {
+            err_descs["cause"] = err_desc
+          }
           Object({
             properties: err_props,
             symbol_properties: {},
             prototype: proto_obj,
             callable: None,
             class_name: name,
-            descriptors: { "message": err_desc, "name": err_desc, "stack": err_desc },
+            descriptors: err_descs,
             symbol_descriptors: {},
             extensible: true,
           })
         }),
       ),
       class_name: "Function",
-      descriptors: { "name": nf_desc, "length": nf_desc },
+      descriptors: { "name": nf_desc, "length": nf_desc, "prototype": proto_nw_desc },
       symbol_descriptors: {},
       extensible: true,
     }),
@@ -1995,15 +2262,16 @@ fn setup_number_builtins(env : Environment) -> Unit {
               message="Number.prototype.toString requires that 'this' be a Number",
             )
         }
-        let radix = if args.length() > 0 {
-          to_number(args[0]).to_int()
+        let radix = if args.length() > 0 && not(args[0] is Undefined) {
+          let r = to_number(args[0]).to_int()
+          if r < 2 || r > 36 {
+            raise @errors.RangeError(
+              message="toString() radix must be between 2 and 36",
+            )
+          }
+          r
         } else {
           10
-        }
-        if radix < 2 || radix > 36 {
-          raise @errors.RangeError(
-            message="toString() radix must be between 2 and 36",
-          )
         }
         if n.is_nan() {
           return String_("NaN")
@@ -2281,6 +2549,8 @@ fn setup_number_builtins(env : Environment) -> Unit {
         // Full locale support would require Intl.NumberFormat (out of scope)
         String_(n.to_string())
       })
+  // Per ES spec, Number.prototype has [[NumberData]] internal slot with value +0
+  number_proto_props["[[NumberData]]"] = Number(0.0)
   let number_proto : Value = Object({
     properties: number_proto_props,
     symbol_properties: {},
@@ -2358,8 +2628,12 @@ fn setup_number_builtins(env : Environment) -> Unit {
       prototype: Null,
       callable: Some(
         NativeCallable("Number", fn(args) raise {
-          let val = if args.length() > 0 { args[0] } else { Undefined }
-          let n = to_number(val)
+          // Per spec: Number() with no args returns +0, not NaN
+          let n = if args.length() > 0 {
+            to_number(args[0])
+          } else {
+            0.0
+          }
           if is_constructing.val {
             // new Number(value) → boxed Number object
             Object({
