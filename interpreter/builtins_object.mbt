@@ -3553,7 +3553,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
-        let len = to_array_like_length(this_val)
+        let len = to_array_like_length_interp(this_val, interp)
         for i = 0; i < len; i = i + 1 {
           if has_array_like_element(this_val, i) {
             let _ = interp.call_value(
@@ -3577,7 +3577,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
-        let len = to_array_like_length(this_val)
+        let len = to_array_like_length_interp(this_val, interp)
         let result : Array[Value] = []
         for i = 0; i < len; i = i + 1 {
           if has_array_like_element(this_val, i) {
@@ -3605,7 +3605,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
-        let len = to_array_like_length(this_val)
+        let len = to_array_like_length_interp(this_val, interp)
         let result : Array[Value] = []
         for i = 0; i < len; i = i + 1 {
           if has_array_like_element(this_val, i) {
@@ -3629,7 +3629,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
         }
         let loc = @token.Loc::default()
-        let len = to_array_like_length(this_val)
+        let len = to_array_like_length_interp(this_val, interp)
         let mut acc : Value = Undefined
         let mut start = 0
         if args.length() > 1 {
@@ -3666,7 +3666,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
         }
         let loc = @token.Loc::default()
-        let len = to_array_like_length(this_val)
+        let len = to_array_like_length_interp(this_val, interp)
         let mut acc : Value = Undefined
         let mut start = len - 1
         if args.length() > 1 {
@@ -3704,7 +3704,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
-        let len = to_array_like_length(this_val)
+        let len = to_array_like_length_interp(this_val, interp)
         for i = 0; i < len; i = i + 1 {
           let el = get_array_like_element(this_val, i)
           let val = interp.call_value(
@@ -3726,7 +3726,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
-        let len = to_array_like_length(this_val)
+        let len = to_array_like_length_interp(this_val, interp)
         for i = 0; i < len; i = i + 1 {
           let el = get_array_like_element(this_val, i)
           let val = interp.call_value(
@@ -3748,7 +3748,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
-        let len = to_array_like_length(this_val)
+        let len = to_array_like_length_interp(this_val, interp)
         for i = len - 1; i >= 0; i = i - 1 {
           let el = get_array_like_element(this_val, i)
           let val = interp.call_value(
@@ -3770,7 +3770,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
-        let len = to_array_like_length(this_val)
+        let len = to_array_like_length_interp(this_val, interp)
         for i = len - 1; i >= 0; i = i - 1 {
           let el = get_array_like_element(this_val, i)
           let val = interp.call_value(
@@ -3792,7 +3792,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
-        let len = to_array_like_length(this_val)
+        let len = to_array_like_length_interp(this_val, interp)
         for i = 0; i < len; i = i + 1 {
           if has_array_like_element(this_val, i) {
             let val = interp.call_value(
@@ -3819,7 +3819,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
-        let len = to_array_like_length(this_val)
+        let len = to_array_like_length_interp(this_val, interp)
         for i = 0; i < len; i = i + 1 {
           if has_array_like_element(this_val, i) {
             let val = interp.call_value(
@@ -3956,7 +3956,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
-        let len = to_array_like_length(this_val)
+        let len = to_array_like_length_interp(this_val, interp)
         let result : Array[Value] = []
         for i = 0; i < len; i = i + 1 {
           let el = get_array_like_element(this_val, i)
@@ -4160,6 +4160,17 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         Array({ elements: result })
       })
   array_proto_props["toSorted"] = make_interp_method_func("toSorted", 1, fn(interp, this_val, args) raise {
+        // Step 1: Validate comparefn
+        if args.length() > 0 {
+          let comparefn = args[0]
+          match comparefn {
+            Undefined => ()
+            _ =>
+              if not(is_callable(comparefn)) {
+                raise @errors.TypeError(message=to_js_string(comparefn) + " is not a function")
+              }
+          }
+        }
         let result = to_array_like_elements(this_val)
         if args.length() > 0 {
           match args[0] {
@@ -4632,39 +4643,87 @@ pub fn to_array_like_length(val : Value) -> Int raise {
         message="Cannot convert undefined or null to object",
       )
     Array(data) => data.elements.length()
-    Object(data) =>
-      match data.properties.get("length") {
-        Some(Number(n)) => {
-          let len = n.to_int()
-          if len < 0 {
-            0
-          } else {
-            len
+    Object(data) => {
+      // Check for getter-based length first, then fall back to properties
+      let length_val : Value? = match data.properties.get("length") {
+        Some(v) => Some(v)
+        None =>
+          // Check if length is defined as an accessor (getter)
+          match data.descriptors.get("length") {
+            Some(desc) =>
+              match desc.getter {
+                Some(Object(getter_data)) =>
+                  match getter_data.callable {
+                    Some(NativeCallable(_, f)) => Some(f([]))
+                    Some(NonConstructableCallable(_, f)) => Some(f([]))
+                    Some(MethodCallable(_, f)) => Some(f(Object(data), []))
+                    _ => None
+                  }
+                _ => None
+              }
+            None => None
           }
-        }
-        Some(v) => {
-          let n = to_number(v) catch { _ => 0.0 }
-          if n.is_nan() {
-            0
-          } else if n.is_inf() {
-            if n > 0.0 {
-              0x7FFFFFFF
-            } else {
-              0
-            }
-          } else {
-            let i = n.to_int()
-            if i < 0 {
-              0
-            } else {
-              i
-            }
-          }
-        }
-        None => 0
       }
+      to_length_from_value(length_val)
+    }
     String_(s) => s.length()
     _ => 0
+  }
+}
+
+///|
+/// ToLength with full interpreter support for user-defined getter-based length
+pub fn to_array_like_length_interp(val : Value, interp : Interpreter) -> Int raise {
+  match val {
+    Null =>
+      raise @errors.TypeError(
+        message="Cannot convert undefined or null to object",
+      )
+    Undefined =>
+      raise @errors.TypeError(
+        message="Cannot convert undefined or null to object",
+      )
+    Array(data) => data.elements.length()
+    String_(s) => s.length()
+    _ => {
+      // Use interpreter's get_property to properly handle getters and prototype chains
+      let length_val = interp.get_property(val, "length", @token.Loc::default())
+      to_length_from_value(Some(length_val))
+    }
+  }
+}
+
+///|
+fn to_length_from_value(v : Value?) -> Int raise {
+  match v {
+    Some(Number(n)) => {
+      let len = n.to_int()
+      if len < 0 {
+        0
+      } else {
+        len
+      }
+    }
+    Some(v) => {
+      let n = to_number(v) catch { _ => 0.0 }
+      if n.is_nan() {
+        0
+      } else if n.is_inf() {
+        if n > 0.0 {
+          0x7FFFFFFF
+        } else {
+          0
+        }
+      } else {
+        let i = n.to_int()
+        if i < 0 {
+          0
+        } else {
+          i
+        }
+      }
+    }
+    None => 0
   }
 }
 
@@ -4679,29 +4738,49 @@ pub fn get_array_like_element(val : Value, index : Int) -> Value {
       } else {
         Undefined
       }
-    Object(data) =>
-      // Walk prototype chain for property lookup
-      match data.properties.get(key) {
+    Object(data) => {
+      // Check for accessor descriptor (getter) on own property first
+      let getter_result : Value? = match data.descriptors.get(key) {
+        Some(desc) =>
+          match desc.getter {
+            Some(Object(getter_data)) =>
+              match getter_data.callable {
+                Some(NativeCallable(_, f)) => try { Some(f([])) } catch { _ => None }
+                Some(NonConstructableCallable(_, f)) => try { Some(f([])) } catch { _ => None }
+                Some(MethodCallable(_, f)) => try { Some(f(Object(data), [])) } catch { _ => None }
+                _ => None
+              }
+            _ => None
+          }
+        None => None
+      }
+      match getter_result {
         Some(v) => v
-        None => {
-          let mut current = data.prototype
-          let mut result : Value = Undefined
-          while true {
-            match current {
-              Object(proto_data) =>
-                match proto_data.properties.get(key) {
-                  Some(v) => {
-                    result = v
-                    break
-                  }
-                  None => current = proto_data.prototype
+        None =>
+          // Walk prototype chain for property lookup
+          match data.properties.get(key) {
+            Some(v) => v
+            None => {
+              let mut current = data.prototype
+              let mut result : Value = Undefined
+              while true {
+                match current {
+                  Object(proto_data) =>
+                    match proto_data.properties.get(key) {
+                      Some(v) => {
+                        result = v
+                        break
+                      }
+                      None => current = proto_data.prototype
+                    }
+                  _ => break
                 }
-              _ => break
+              }
+              result
             }
           }
-          result
-        }
       }
+    }
     String_(s) => {
       let chars = s.to_array()
       if index >= 0 && index < chars.length() {
@@ -4725,6 +4804,11 @@ pub fn has_array_like_element(val : Value, index : Int) -> Bool {
     Object(data) => {
       if data.properties.contains(key) {
         return true
+      }
+      // Check for accessor descriptor
+      match data.descriptors.get(key) {
+        Some(desc) if desc.getter is Some(_) => return true
+        _ => ()
       }
       // Walk prototype chain
       let mut current = data.prototype
