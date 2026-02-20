@@ -4352,6 +4352,11 @@ fn Interpreter::eval_expr(
                 }
                 Get => {
                   let getter = self.eval_expr(prop.value, env)
+                  let sym_name = match sym.description {
+                    Some(d) => "get [\{d}]"
+                    None => "get "
+                  }
+                  set_function_name(getter, sym_name)
                   // Store accessor in descriptor, use Undefined as placeholder in properties
                   if not(symbol_properties.contains(sym.id)) {
                     symbol_properties[sym.id] = Undefined
@@ -4370,6 +4375,11 @@ fn Interpreter::eval_expr(
                 }
                 Set => {
                   let setter = self.eval_expr(prop.value, env)
+                  let sym_name = match sym.description {
+                    Some(d) => "set [\{d}]"
+                    None => "set "
+                  }
+                  set_function_name(setter, sym_name)
                   if not(symbol_properties.contains(sym.id)) {
                     symbol_properties[sym.id] = Undefined
                   }
@@ -4398,6 +4408,7 @@ fn Interpreter::eval_expr(
                 }
                 Get => {
                   let getter = self.eval_expr(prop.value, env)
+                  set_function_name(getter, "get " + key_str)
                   if not(properties.contains(key_str)) {
                     properties[key_str] = Undefined
                   }
@@ -4415,6 +4426,7 @@ fn Interpreter::eval_expr(
                 }
                 Set => {
                   let setter = self.eval_expr(prop.value, env)
+                  set_function_name(setter, "set " + key_str)
                   if not(properties.contains(key_str)) {
                     properties[key_str] = Undefined
                   }
@@ -4461,7 +4473,11 @@ fn Interpreter::eval_expr(
             }
             Get => {
               let getter = self.eval_expr(prop.value, env)
-              set_function_name(getter, "get " + key_str)
+              // Force set name with "get " prefix per spec
+              match getter {
+                Object(d) => d.properties["name"] = String_("get " + key_str)
+                _ => ()
+              }
               if not(properties.contains(key_str)) {
                 properties[key_str] = Undefined
               }
@@ -4479,7 +4495,11 @@ fn Interpreter::eval_expr(
             }
             Set => {
               let setter = self.eval_expr(prop.value, env)
-              set_function_name(setter, "set " + key_str)
+              // Force set name with "set " prefix per spec
+              match setter {
+                Object(d) => d.properties["name"] = String_("set " + key_str)
+                _ => ()
+              }
               if not(properties.contains(key_str)) {
                 properties[key_str] = Undefined
               }
@@ -9039,6 +9059,12 @@ fn Interpreter::create_class(
     }
     // Handle getter/setter vs regular method
     // Class methods are non-enumerable per spec
+    // Set appropriate function name with get/set prefix
+    match m.kind {
+      Get => set_function_name(method_val, "get " + method_key_str)
+      Set => set_function_name(method_val, "set " + method_key_str)
+      _ => set_function_name(method_val, method_key_str)
+    }
     match m.kind {
       Get =>
         // Getter method - store as accessor descriptor
