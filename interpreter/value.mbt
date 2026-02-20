@@ -439,7 +439,7 @@ pub fn get_tostringtag_value(data : ObjectData) -> String? raise Error {
                           _ => return None
                         }
                       }
-                      Some(NativeCallable(_, f)) => {
+                      Some(NativeCallable(_, f)) | Some(NonConstructableCallable(_, f)) => {
                         let result = f([Object(data)])
                         match result {
                           String_(s) => return Some(s)

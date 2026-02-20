@@ -524,6 +524,26 @@ fn Interpreter::exec_stmt(
         Some(g) => g.loop_env_stack.length() > 0
         _ => false
       }
+      // Collect let/const variable names from init for per-iteration scoping
+      let loop_vars : Array[String] = []
+      fn collect_loop_vars(stmt : @ast.Stmt) {
+        match stmt {
+          VarDecl(kind, name, _, _) =>
+            if kind == LetKind || kind == ConstKind {
+              loop_vars.push(name)
+            }
+          StmtList(stmts, _) =>
+            for s in stmts {
+              collect_loop_vars(s)
+            }
+          _ => ()
+        }
+      }
+      match init {
+        Some(init_stmt) => collect_loop_vars(init_stmt)
+        None => ()
+      }
+      let has_lexical_vars = loop_vars.length() > 0
       let for_env = if resuming_loop {
         // Use saved loop env from stack (pop from end = outermost first)
         match gen_opt {
@@ -551,8 +571,18 @@ fn Interpreter::exec_stmt(
             None => ()
           }
         }
+        // Per-iteration scoping: create a new scope with copies of loop vars
+        let iter_env = if has_lexical_vars {
+          let ie = Environment::new(parent=Some(env))
+          for v in loop_vars {
+            ie.def(v, for_env.get(v), LetBinding)
+          }
+          ie
+        } else {
+          for_env
+        }
         let mut do_continue = false
-        let body_signal = self.exec_stmt(body, for_env) catch {
+        let body_signal = self.exec_stmt(body, iter_env) catch {
           e => {
             if e is YieldSignal(_) {
               // Yield inside for loop body — save for_env for resume
@@ -589,6 +619,12 @@ fn Interpreter::exec_stmt(
             } else {
               return ContinueSignal(cv, Some(l))
             }
+        }
+        // Copy iteration values back to for_env for update expression
+        if has_lexical_vars {
+          for v in loop_vars {
+            for_env.assign(v, iter_env.get(v))
+          }
         }
         if do_continue {
           match update {
