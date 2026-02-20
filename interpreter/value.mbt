@@ -1137,10 +1137,26 @@ fn to_primitive_number(obj_val : Value, data : ObjectData) -> Value raise Error 
     None => ()
   }
   // Step 2: OrdinaryToPrimitive with hint "number" - try valueOf first, then toString
-  match lookup_property_chain(data, "valueOf") {
-    Some(value_of_fn) =>
-      if is_callable(value_of_fn) {
-        let result = call_callable_direct(value_of_fn, obj_val, [])
+  // Use interpreter for property lookup if available (handles synthetic props on functions etc.)
+  let value_of_fn : Value? = match lookup_property_chain(data, "valueOf") {
+    Some(f) => Some(f)
+    None =>
+      match current_interpreter.val {
+        Some(interp) => {
+          let v = interp.get_property(
+            obj_val,
+            "valueOf",
+            @token.Loc::default(),
+          ) catch { _ => Undefined }
+          if is_callable(v) { Some(v) } else { None }
+        }
+        None => None
+      }
+  }
+  match value_of_fn {
+    Some(vo_fn) =>
+      if is_callable(vo_fn) {
+        let result = call_callable_direct(vo_fn, obj_val, [])
         match result {
           Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) =>
             () // result is object, try toString next
@@ -1149,10 +1165,25 @@ fn to_primitive_number(obj_val : Value, data : ObjectData) -> Value raise Error 
       }
     None => ()
   }
-  match lookup_property_chain(data, "toString") {
-    Some(to_string_fn) =>
-      if is_callable(to_string_fn) {
-        let result = call_callable_direct(to_string_fn, obj_val, [])
+  let to_string_fn : Value? = match lookup_property_chain(data, "toString") {
+    Some(f) => Some(f)
+    None =>
+      match current_interpreter.val {
+        Some(interp) => {
+          let v = interp.get_property(
+            obj_val,
+            "toString",
+            @token.Loc::default(),
+          ) catch { _ => Undefined }
+          if is_callable(v) { Some(v) } else { None }
+        }
+        None => None
+      }
+  }
+  match to_string_fn {
+    Some(ts_fn) =>
+      if is_callable(ts_fn) {
+        let result = call_callable_direct(ts_fn, obj_val, [])
         match result {
           Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) =>
             raise @errors.TypeError(
@@ -1235,10 +1266,26 @@ fn to_primitive_string(obj_val : Value, data : ObjectData) -> Value raise Error 
     None => ()
   }
   // Step 2: OrdinaryToPrimitive with hint "string" - try toString first, then valueOf
-  match lookup_property_chain(data, "toString") {
-    Some(to_string_fn) =>
-      if is_callable(to_string_fn) {
-        let result = call_callable_direct(to_string_fn, obj_val, [])
+  // Use interpreter for property lookup if available (handles synthetic props on functions etc.)
+  let to_string_fn : Value? = match lookup_property_chain(data, "toString") {
+    Some(f) => Some(f)
+    None =>
+      match current_interpreter.val {
+        Some(interp) => {
+          let v = interp.get_property(
+            obj_val,
+            "toString",
+            @token.Loc::default(),
+          ) catch { _ => Undefined }
+          if is_callable(v) { Some(v) } else { None }
+        }
+        None => None
+      }
+  }
+  match to_string_fn {
+    Some(ts_fn) =>
+      if is_callable(ts_fn) {
+        let result = call_callable_direct(ts_fn, obj_val, [])
         match result {
           Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) =>
             () // result is object, try valueOf next
@@ -1247,10 +1294,25 @@ fn to_primitive_string(obj_val : Value, data : ObjectData) -> Value raise Error 
       }
     None => ()
   }
-  match lookup_property_chain(data, "valueOf") {
-    Some(value_of_fn) =>
-      if is_callable(value_of_fn) {
-        let result = call_callable_direct(value_of_fn, obj_val, [])
+  let value_of_fn : Value? = match lookup_property_chain(data, "valueOf") {
+    Some(f) => Some(f)
+    None =>
+      match current_interpreter.val {
+        Some(interp) => {
+          let v = interp.get_property(
+            obj_val,
+            "valueOf",
+            @token.Loc::default(),
+          ) catch { _ => Undefined }
+          if is_callable(v) { Some(v) } else { None }
+        }
+        None => None
+      }
+  }
+  match value_of_fn {
+    Some(vo_fn) =>
+      if is_callable(vo_fn) {
+        let result = call_callable_direct(vo_fn, obj_val, [])
         match result {
           Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) =>
             raise @errors.TypeError(

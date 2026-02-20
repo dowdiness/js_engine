@@ -4324,22 +4324,8 @@ fn Interpreter::eval_expr(
                 Spread => () // handled above
               }
             _ => {
-              // Convert to string key
-              let key_str : String = match key_val {
-                String_(s) => s
-                Number(n) => {
-                  let i = n.to_int()
-                  if i.to_double() == n {
-                    i.to_string()
-                  } else {
-                    n.to_string()
-                  }
-                }
-                Bool(b) => b.to_string()
-                Null => "null"
-                Undefined => "undefined"
-                _ => key_val.to_string()
-              }
+              // Convert to string key using ECMAScript ToString
+              let key_str = to_js_string(key_val)
               match prop.kind {
                 Init => {
                   let val = self.eval_expr(prop.value, env)
@@ -5386,54 +5372,20 @@ fn loose_equal(a : Value, b : Value) -> Bool {
     (_, Bool(bval)) => loose_equal(a, Number(if bval { 1.0 } else { 0.0 }))
     // Object/Array == Number/String: try ToPrimitive
     (Object(data), Number(_)) | (Object(data), String_(_)) => {
-      // Unwrap boxed primitives to their inner value
-      let prim = if data.class_name == "Number" {
-        match data.properties.get("[[NumberData]]") {
-          Some(n) => n
-          _ => String_(a.to_string())
-        }
-      } else if data.class_name == "Boolean" {
-        match data.properties.get("[[BooleanData]]") {
-          Some(b2) => b2
-          _ => String_(a.to_string())
-        }
-      } else if data.class_name == "String" {
-        match data.properties.get("[[StringData]]") {
-          Some(s) => s
-          _ => String_(a.to_string())
-        }
-      } else {
-        String_(a.to_string())
-      }
+      // Use ToPrimitive with "number" hint (default for ordinary objects)
+      let prim = try { to_primitive_number(a, data) } catch { _ => String_(a.to_string()) }
       loose_equal(prim, b)
     }
     (Number(_), Object(data)) | (String_(_), Object(data)) => {
-      let prim = if data.class_name == "Number" {
-        match data.properties.get("[[NumberData]]") {
-          Some(n) => n
-          _ => String_(b.to_string())
-        }
-      } else if data.class_name == "Boolean" {
-        match data.properties.get("[[BooleanData]]") {
-          Some(b2) => b2
-          _ => String_(b.to_string())
-        }
-      } else if data.class_name == "String" {
-        match data.properties.get("[[StringData]]") {
-          Some(s) => s
-          _ => String_(b.to_string())
-        }
-      } else {
-        String_(b.to_string())
-      }
+      let prim = try { to_primitive_number(b, data) } catch { _ => String_(b.to_string()) }
       loose_equal(a, prim)
     }
     (Array(_), Number(_)) | (Array(_), String_(_)) => {
-      let prim = String_(a.to_string())
+      let prim = try { String_(to_js_string(a)) } catch { _ => String_(a.to_string()) }
       loose_equal(prim, b)
     }
     (Number(_), Array(_)) | (String_(_), Array(_)) => {
-      let prim = String_(b.to_string())
+      let prim = try { String_(to_js_string(b)) } catch { _ => String_(b.to_string()) }
       loose_equal(a, prim)
     }
     // Symbols don't coerce - any comparison with Symbol and different type is false
@@ -5561,7 +5513,7 @@ fn Interpreter::eval_unary(
                   let handler = get_proxy_handler(proxy_data)
                   let prop_key = match key {
                     Symbol(_) => key
-                    _ => String_(key.to_string())
+                    _ => String_(to_js_string(key))
                   }
                   let result = self.call_value(
                     trap_fn,
@@ -5580,7 +5532,7 @@ fn Interpreter::eval_unary(
                   let target = get_proxy_target(proxy_data)
                   match target {
                     Object(data) => {
-                      let k = key.to_string()
+                      let k = to_js_string(key)
                       match data.descriptors.get(k) {
                         Some(desc) =>
                           if not(desc.configurable) {
@@ -5623,7 +5575,7 @@ fn Interpreter::eval_unary(
                   Bool(true)
                 }
                 _ => {
-                  let k = key.to_string()
+                  let k = to_js_string(key)
                   match data.descriptors.get(k) {
                     Some(desc) =>
                       if not(desc.configurable) {
@@ -6034,6 +5986,23 @@ fn Interpreter::eval_call(
           let func_val = self.get_computed_property(obj, key, mloc)
           let args = self.eval_args_with_spread(arg_exprs, env)
           self.call_value(func_val, obj, args, loc)
+        }
+        SuperMember(prop, sloc) => {
+          // super.method() - look up on super prototype, call with current this
+          let super_proto = env.get("[[SuperPrototype]]")
+          let func_val = self.get_property(super_proto, prop, sloc)
+          let this_val = env.get("this") catch { _ => Undefined }
+          let args = self.eval_args_with_spread(arg_exprs, env)
+          self.call_value(func_val, this_val, args, loc)
+        }
+        SuperComputedMember(key_expr, sloc) => {
+          // super[expr]() - look up on super prototype, call with current this
+          let super_proto = env.get("[[SuperPrototype]]")
+          let key = self.eval_expr(key_expr, env)
+          let func_val = self.get_computed_property(super_proto, key, sloc)
+          let this_val = env.get("this") catch { _ => Undefined }
+          let args = self.eval_args_with_spread(arg_exprs, env)
+          self.call_value(func_val, this_val, args, loc)
         }
         _ => {
           let callee = self.eval_expr(callee_expr, env)
@@ -7054,7 +7023,7 @@ fn Interpreter::get_computed_property(
           let handler = get_proxy_handler(proxy_data)
           let prop_key = match key {
             Symbol(_) => key
-            _ => String_(key.to_string())
+            _ => String_(to_js_string(key))
           }
           return self.call_value(trap_fn, handler, [target, prop_key, obj], loc)
         }
@@ -7279,7 +7248,7 @@ fn Interpreter::get_computed_property(
           _ => ()
         }
       }
-      let prop = key.to_string()
+      let prop = to_js_string(key)
       // Check for accessor descriptor (getter) on own property
       match data.descriptors.get(prop) {
         Some(desc) =>
@@ -7633,7 +7602,7 @@ fn Interpreter::get_computed_property(
       }
     Promise(data) => {
       // Coerce key to string via ToPropertyKey (Symbol handled above)
-      let prop = key.to_string()
+      let prop = to_js_string(key)
       match data.properties.get(prop) {
         Some(v) => v
         None => get_promise_method(data, prop)
@@ -7866,7 +7835,7 @@ fn Interpreter::set_computed_property(
           let handler = get_proxy_handler(proxy_data)
           let prop_key = match key {
             Symbol(_) => key
-            _ => String_(key.to_string())
+            _ => String_(to_js_string(key))
           }
           let result = self.call_value(
             trap_fn,
@@ -8000,7 +7969,7 @@ fn Interpreter::set_computed_property(
               _ => ()
             }
           }
-          let prop = key.to_string()
+          let prop = to_js_string(key)
           // Check for accessor descriptor (setter) on string key
           match data.descriptors.get(prop) {
             Some(desc) =>
@@ -8090,7 +8059,7 @@ fn Interpreter::set_computed_property(
           value
         }
         _ => {
-          let prop = key.to_string()
+          let prop = to_js_string(key)
           if prop == "length" {
             let n = to_number(value).to_int()
             while data.elements.length() > n {
@@ -8129,7 +8098,7 @@ fn Interpreter::set_computed_property(
           value
         }
         _ => {
-          data.properties[key.to_string()] = value
+          data.properties[to_js_string(key)] = value
           value
         }
       }
@@ -8917,6 +8886,23 @@ fn Interpreter::create_class(
   let static_symbol_descriptors : Map[Int, PropDescriptor] = {}
   // Track constructor method
   let mut ctor_fn : (Array[String], Array[@ast.Stmt])? = None
+  // Create method environments with [[SuperPrototype]] for super.method() support
+  let instance_method_env : Environment = match super_ctor {
+    Some(_) => {
+      let menv = Environment::new(parent=Some(env))
+      menv.def_builtin("[[SuperPrototype]]", super_proto)
+      menv
+    }
+    None => env
+  }
+  let static_method_env : Environment = match super_ctor {
+    Some(sc) => {
+      let menv = Environment::new(parent=Some(env))
+      menv.def_builtin("[[SuperPrototype]]", sc)
+      menv
+    }
+    None => env
+  }
   // Process all methods
   for m in methods {
     // Get the method key - could be string or symbol
@@ -8924,7 +8910,10 @@ fn Interpreter::create_class(
       StringLit(s, _, _) => String_(s)
       _ => self.eval_expr(m.key, env)
     }
-    let method_key_str : String = key_val.to_string()
+    let method_key_str : String = match key_val {
+      Symbol(_) => key_val.to_string()
+      _ => to_js_string(key_val)
+    }
     // Check if this is the constructor
     if method_key_str == "constructor" && not(m.is_static) {
       // Extract constructor params and body
@@ -8948,6 +8937,12 @@ fn Interpreter::create_class(
     }
     // Create the method function value
     // Class methods are always strict — ensure body has "use strict"
+    // Use the appropriate method environment for super.method() support
+    let method_closure = if m.is_static {
+      static_method_env
+    } else {
+      instance_method_env
+    }
     let method_val : Value = match m.value {
       FuncExpr(fn_name, params, body, _) => {
         let strict_body = ensure_strict_body(body)
@@ -8956,7 +8951,7 @@ fn Interpreter::create_class(
           name: fn_name,
           params,
           body: strict_body,
-          closure: env,
+          closure: method_closure,
           strict: true,
         }
         make_func(func_data)
@@ -8971,12 +8966,12 @@ fn Interpreter::create_class(
           params,
           rest_param: rest,
           body: strict_body,
-          closure: env,
+          closure: method_closure,
           strict: true,
         }
         make_func_ext(func_data)
       }
-      _ => self.eval_expr(m.value, env)
+      _ => self.eval_expr(m.value, method_closure)
     }
     // Handle getter/setter vs regular method
     // Class methods are non-enumerable per spec
@@ -9006,17 +9001,16 @@ fn Interpreter::create_class(
             }
           }
           _ => {
-            let method_key = key_val.to_string()
             let (props, descs) = if m.is_static {
               (static_props, static_descriptors)
             } else {
               (proto_props, proto_descriptors)
             }
-            if not(props.contains(method_key)) {
-              props[method_key] = Undefined
+            if not(props.contains(method_key_str)) {
+              props[method_key_str] = Undefined
             }
-            let existing = descs.get(method_key)
-            descs[method_key] = {
+            let existing = descs.get(method_key_str)
+            descs[method_key_str] = {
               writable: false,
               enumerable: false,
               configurable: true,
@@ -9053,17 +9047,16 @@ fn Interpreter::create_class(
             }
           }
           _ => {
-            let method_key = key_val.to_string()
             let (props, descs) = if m.is_static {
               (static_props, static_descriptors)
             } else {
               (proto_props, proto_descriptors)
             }
-            if not(props.contains(method_key)) {
-              props[method_key] = Undefined
+            if not(props.contains(method_key_str)) {
+              props[method_key_str] = Undefined
             }
-            let existing = descs.get(method_key)
-            descs[method_key] = {
+            let existing = descs.get(method_key_str)
+            descs[method_key_str] = {
               writable: false,
               enumerable: false,
               configurable: true,
@@ -9097,13 +9090,12 @@ fn Interpreter::create_class(
             }
           _ => {
             // String key - store in regular properties
-            let method_key = key_val.to_string()
             if m.is_static {
-              static_props[method_key] = method_val
-              static_descriptors[method_key] = method_descriptor
+              static_props[method_key_str] = method_val
+              static_descriptors[method_key_str] = method_descriptor
             } else {
-              proto_props[method_key] = method_val
-              proto_descriptors[method_key] = method_descriptor
+              proto_props[method_key_str] = method_val
+              proto_descriptors[method_key_str] = method_descriptor
             }
           }
         }
