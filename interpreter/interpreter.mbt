@@ -8463,12 +8463,18 @@ fn Interpreter::construct_value(
           raise @errors.TypeError(
             message=format_loc_context(name + " is not a constructor", loc),
           )
-        Some(InterpreterCallable(name, _)) =>
-          // InterpreterCallable methods (prototype methods, async functions,
-          // generator functions) are not constructable
-          raise @errors.TypeError(
-            message=format_loc_context(name + " is not a constructor", loc),
-          )
+        Some(InterpreterCallable(name, func)) => {
+          // InterpreterCallable can be constructable (e.g., Map, Set constructors)
+          is_constructing.val = true
+          let result = func(self, Undefined, args) catch {
+            e => {
+              is_constructing.val = false
+              raise e
+            }
+          }
+          is_constructing.val = false
+          result
+        }
         Some(MethodCallable(name, _)) =>
           raise @errors.TypeError(
             message=format_loc_context(name + " is not a constructor", loc),
