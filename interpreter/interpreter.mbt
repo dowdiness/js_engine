@@ -7992,14 +7992,23 @@ fn Interpreter::set_property(
     }
     Array(data) => {
       if prop == "length" {
-        let n = to_number(value).to_int()
+        let num = to_number(value)
+        // Validate: length must be a non-negative integer <= 2^32-1
+        if num.is_nan() || num < 0.0 || num > 4294967295.0 || num != @math.floor(num) {
+          raise @errors.RangeError(message="Invalid array length")
+        }
+        let n64 = num.to_int64()
+        let cur_len = data.elements.length().to_int64()
         // Truncate array if new length is shorter
-        while data.elements.length() > n {
+        while data.elements.length().to_int64() > n64 {
           let _ = data.elements.pop()
         }
-        // Expand array if new length is longer
-        while data.elements.length() < n {
-          data.elements.push(Undefined)
+        // Expand array if new length is longer (capped to prevent hangs)
+        if n64 > cur_len && n64 - cur_len <= 100000L {
+          let target = n64.to_int()
+          while data.elements.length() < target {
+            data.elements.push(Undefined)
+          }
         }
       } else {
         // try numeric index

@@ -4348,20 +4348,18 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           if args.length() == 1 {
             match args[0] {
               Number(n) => {
-                // Array(n) produces a dense array populated with undefined values.
-                // LIMITATION: This interpreter does not support sparse arrays.
-                // In standard JS, Array(n) creates sparse holes (empty slots), which
-                // behave differently: hasOwnProperty returns false for holes,
-                // 'in' operator returns false, and forEach/map/filter skip holes.
-                // Our implementation fills with undefined instead, making all indices
-                // present. This is an intentional simplification.
-                let len = n.to_int()
-                if len < 0 || n != len.to_double() || n > 4294967295.0 {
+                // Array(n) creates an array with the given length.
+                // Validate using double to avoid int32 overflow
+                if n < 0.0 || n > 4294967295.0 || n != @math.floor(n) || n.is_nan() {
                   raise @errors.RangeError(message="Invalid array length")
                 }
+                let len = n.to_int64().to_int()
                 let elements : Array[Value] = []
-                for _i = 0; _i < len; _i = _i + 1 {
-                  elements.push(Undefined)
+                // Cap pre-allocation to prevent hangs with very large lengths
+                if len >= 0 && len <= 100000 {
+                  for _i = 0; _i < len; _i = _i + 1 {
+                    elements.push(Undefined)
+                  }
                 }
                 Array({ elements, })
               }
