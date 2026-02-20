@@ -8844,7 +8844,18 @@ fn Interpreter::construct_value(
             message=format_loc_context(name + " is not a constructor", loc),
           )
         Some(InterpreterCallable(_name, func)) => {
-          // InterpreterCallable can be constructable (e.g., Map, Set constructors)
+          // Check if this function has a "prototype" property (constructors do, methods don't)
+          let is_ctor = match obj_data.properties.get("prototype") {
+            Some(_) => true
+            None => false
+          }
+          if not(is_ctor) {
+            raise @errors.TypeError(
+              message=format_loc_context(
+                _name + " is not a constructor", loc,
+              ),
+            )
+          }
           is_constructing.val = true
           let result = func(self, Undefined, args) catch {
             e => {
