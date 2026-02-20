@@ -1453,9 +1453,10 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 if prop_name == "length" {
                   // Handle length property changes
                   match desc_props.get("value") {
-                    Some(Number(n)) => {
+                    Some(val) => {
+                      let n = to_number(val)
                       let new_len = n.to_int()
-                      if new_len < 0 || new_len.to_double() != n {
+                      if new_len < 0 || new_len.to_double() != n || n.is_nan() {
                         raise @errors.RangeError(message="Invalid array length")
                       }
                       // Truncate or extend the array
@@ -1466,8 +1467,6 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                         arr_data.elements.push(Undefined)
                       }
                     }
-                    Some(_) =>
-                      raise @errors.RangeError(message="Invalid array length")
                     None => ()
                   }
                 } else {
@@ -2966,9 +2965,10 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                   Object(desc) =>
                     if prop_name == "length" {
                       match desc.properties.get("value") {
-                        Some(Number(n)) => {
+                        Some(val) => {
+                          let n = to_number(val)
                           let new_len = n.to_int()
-                          if new_len < 0 || new_len.to_double() != n {
+                          if new_len < 0 || new_len.to_double() != n || n.is_nan() {
                             raise @errors.RangeError(
                               message="Invalid array length",
                             )
@@ -2980,10 +2980,6 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                             arr_data.elements.push(Undefined)
                           }
                         }
-                        Some(_) =>
-                          raise @errors.RangeError(
-                            message="Invalid array length",
-                          )
                         None => ()
                       }
                     } else {
@@ -3119,7 +3115,20 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }),
       ),
       class_name: "Function",
-      descriptors: { "name": nf_desc, "length": nf_desc },
+      descriptors: {
+        "name": nf_desc, "length": nf_desc, "prototype": { writable: false, enumerable: false, configurable: false, getter: None, setter: None },
+        "keys": obj_method_desc, "values": obj_method_desc, "entries": obj_method_desc,
+        "create": obj_method_desc, "assign": obj_method_desc,
+        "getPrototypeOf": obj_method_desc, "setPrototypeOf": obj_method_desc,
+        "getOwnPropertyNames": obj_method_desc, "getOwnPropertyDescriptor": obj_method_desc,
+        "getOwnPropertyDescriptors": obj_method_desc, "getOwnPropertySymbols": obj_method_desc,
+        "defineProperty": obj_method_desc, "defineProperties": obj_method_desc,
+        "freeze": obj_method_desc, "seal": obj_method_desc,
+        "isFrozen": obj_method_desc, "isSealed": obj_method_desc,
+        "is": obj_method_desc, "isExtensible": obj_method_desc,
+        "preventExtensions": obj_method_desc, "fromEntries": obj_method_desc,
+        "hasOwn": obj_method_desc,
+      },
       symbol_descriptors: {},
       extensible: true,
     }),
