@@ -1,4 +1,58 @@
 ///|
+/// GetSubstitution - handles replacement patterns like $&, $`, $', $$, $<n> for string replace.
+fn get_substitution(
+  replacement : String,
+  matched : String,
+  str : String,
+  position : Int,
+) -> String {
+  let repl_chars = replacement.to_array()
+  let buf = StringBuilder::new()
+  let mut i = 0
+  while i < repl_chars.length() {
+    if repl_chars[i] == '$' && i + 1 < repl_chars.length() {
+      let next = repl_chars[i + 1]
+      if next == '$' {
+        buf.write_char('$')
+        i += 2
+        continue
+      } else if next == '&' {
+        buf.write_string(matched)
+        i += 2
+        continue
+      } else if next == '`' {
+        // $` = portion of str before matched
+        let s_chars = str.to_array()
+        for k = 0; k < position && k < s_chars.length(); k = k + 1 {
+          buf.write_char(s_chars[k])
+        }
+        i += 2
+        continue
+      } else if next == '\'' {
+        // $' = portion of str after matched
+        let s_chars = str.to_array()
+        let after = position + matched.length()
+        for k = after; k < s_chars.length(); k = k + 1 {
+          buf.write_char(s_chars[k])
+        }
+        i += 2
+        continue
+      } else if next >= '0' && next <= '9' {
+        // $1-$99 group references - for string replace these are undefined
+        // (only relevant for regex replace, not string replace)
+        buf.write_char('$')
+        buf.write_char(next)
+        i += 2
+        continue
+      }
+    }
+    buf.write_char(repl_chars[i])
+    i += 1
+  }
+  buf.to_string()
+}
+
+///|
 /// Convert a MoonBit string (sequence of Unicode code points) to an array
 /// of UTF-16 code units.  Supplementary characters (code point > 0xFFFF) are
 /// split into a surrogate pair (high surrogate + low surrogate).
@@ -625,16 +679,23 @@ pub fn get_string_method(
           }
           _ => ()
         }
-        let search = args[0].to_string()
-        let replacement = if args.length() > 1 {
-          args[1].to_string()
-        } else {
-          "undefined"
-        }
+        let search = to_js_string(args[0])
+        let replace_val = if args.length() > 1 { args[1] } else { Undefined }
+        let is_func = is_callable(replace_val)
         let slen = str.length()
         let search_len = search.length()
         if search_len == 0 {
-          return String_(replacement + str)
+          let rep = if is_func {
+            let result = call_callable_direct(
+              replace_val,
+              Undefined,
+              [String_(""), Number(0.0), String_(str)],
+            )
+            to_js_string(result)
+          } else {
+            get_substitution(to_js_string(replace_val), "", str, 0)
+          }
+          return String_(rep + str)
         }
         let s_chars = str.to_array()
         let search_chars = search.to_array()
@@ -652,7 +713,17 @@ pub fn get_string_method(
             for k = 0; k < i; k = k + 1 {
               buf.write_char(s_chars[k])
             }
-            buf.write_string(replacement)
+            let rep = if is_func {
+              let result = call_callable_direct(
+                replace_val,
+                Undefined,
+                [String_(search), Number(i.to_double()), String_(str)],
+              )
+              to_js_string(result)
+            } else {
+              get_substitution(to_js_string(replace_val), search, str, i)
+            }
+            buf.write_string(rep)
             for k = i + search_len; k < slen; k = k + 1 {
               buf.write_char(s_chars[k])
             }
@@ -1070,23 +1141,44 @@ pub fn get_string_method(
             }
           _ => ()
         }
-        let search = args[0].to_string()
-        let replacement = if args.length() > 1 {
-          args[1].to_string()
-        } else {
-          "undefined"
-        }
+        let search = to_js_string(args[0])
+        let replace_val = if args.length() > 1 { args[1] } else { Undefined }
+        let is_func = is_callable(replace_val)
         let slen = str.length()
         let search_len = search.length()
         if search_len == 0 {
           // Empty string: insert replacement before each char and at end
           let buf = StringBuilder::new()
           let s_chars = str.to_array()
-          for c in s_chars {
-            buf.write_string(replacement)
+          for i, c in s_chars {
+            let rep = if is_func {
+              let result = call_callable_direct(
+                replace_val,
+                Undefined,
+                [String_(""), Number(i.to_double()), String_(str)],
+              )
+              to_js_string(result)
+            } else {
+              get_substitution(to_js_string(replace_val), "", str, i)
+            }
+            buf.write_string(rep)
             buf.write_char(c)
           }
-          buf.write_string(replacement)
+          let rep_end = if is_func {
+            let result = call_callable_direct(
+              replace_val,
+              Undefined,
+              [
+                String_(""),
+                Number(s_chars.length().to_double()),
+                String_(str),
+              ],
+            )
+            to_js_string(result)
+          } else {
+            get_substitution(to_js_string(replace_val), "", str, s_chars.length())
+          }
+          buf.write_string(rep_end)
           return String_(buf.to_string())
         }
         let s_chars = str.to_array()
@@ -1103,7 +1195,17 @@ pub fn get_string_method(
               }
             }
             if matched {
-              buf.write_string(replacement)
+              let rep = if is_func {
+                let result = call_callable_direct(
+                  replace_val,
+                  Undefined,
+                  [String_(search), Number(i.to_double()), String_(str)],
+                )
+                to_js_string(result)
+              } else {
+                get_substitution(to_js_string(replace_val), search, str, i)
+              }
+              buf.write_string(rep)
               i = i + search_len
               continue
             }

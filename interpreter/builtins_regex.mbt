@@ -1383,8 +1383,35 @@ fn process_replacement(
         }
         i += 2
         continue
+      } else if next == '`' {
+        // $` = portion before match
+        for j = 0; j < m.start; j = j + 1 {
+          buf.write_char(input_chars[j])
+        }
+        i += 2
+        continue
+      } else if next == '\'' {
+        // $' = portion after match
+        for j = m.end_; j < input_chars.length(); j = j + 1 {
+          buf.write_char(input_chars[j])
+        }
+        i += 2
+        continue
       } else if next >= '1' && next <= '9' {
+        // Check for two-digit group reference ($10-$99)
         let group_idx = next.to_int() - '0'.to_int()
+        if i + 2 < repl_chars.length() && repl_chars[i + 2] >= '0' &&
+          repl_chars[i + 2] <= '9' {
+          let two_digit = group_idx * 10 + (repl_chars[i + 2].to_int() - '0'.to_int())
+          if two_digit - 1 < m.captures.length() {
+            match m.captures[two_digit - 1] {
+              Some(s) => buf.write_string(s)
+              None => ()
+            }
+            i += 3
+            continue
+          }
+        }
         if group_idx - 1 < m.captures.length() {
           match m.captures[group_idx - 1] {
             Some(s) => buf.write_string(s)

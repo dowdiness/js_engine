@@ -692,9 +692,11 @@ fn Parser::parse_try_catch_stmt(self : Parser) -> @ast.Stmt raise Error {
   let mut catch_body : Array[@ast.Stmt]? = None
   let mut finally_body : Array[@ast.Stmt]? = None
   if self.eat(Catch) {
-    let _ = self.expect(LParen)
-    catch_param = Some(self.expect_ident())
-    let _ = self.expect(RParen)
+    // Optional catch binding: catch { ... } without parameter
+    if self.eat(LParen) {
+      catch_param = Some(self.expect_ident())
+      let _ = self.expect(RParen)
+    }
     catch_body = Some(self.parse_block_body())
   }
   if self.eat(Finally) {

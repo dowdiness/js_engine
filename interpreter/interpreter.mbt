@@ -396,7 +396,12 @@ fn Interpreter::exec_stmt(
         VarKind => VarBinding
       }
       let value : Value = match init {
-        Some(expr) => self.eval_expr(expr, env)
+        Some(expr) => {
+          let v = self.eval_expr(expr, env)
+          // SetFunctionName for variable declarations
+          set_function_name(v, name)
+          v
+        }
         None => Undefined
       }
       // For var declarations that were hoisted, use assign instead of def.
@@ -3994,6 +3999,8 @@ fn Interpreter::eval_expr(
         )
       }
       let value = self.eval_expr(value_expr, env)
+      // SetFunctionName for assignments: x = function() {} gives name "x"
+      set_function_name(value, name)
       // Check if the target is a non-writable property on the global object
       // (e.g. undefined, NaN, Infinity). In strict mode this is a TypeError;
       // in non-strict mode the assignment is silently ignored.
@@ -4155,8 +4162,16 @@ fn Interpreter::eval_expr(
             Symbol(sym) =>
               // Symbol key - store in symbol_properties
               match prop.kind {
-                Init =>
-                  symbol_properties[sym.id] = self.eval_expr(prop.value, env)
+                Init => {
+                  let val = self.eval_expr(prop.value, env)
+                  // SetFunctionName with symbol description
+                  let sym_name = match sym.description {
+                    Some(d) => "[\{d}]"
+                    None => ""
+                  }
+                  set_function_name(val, sym_name)
+                  symbol_properties[sym.id] = val
+                }
                 Get => {
                   let getter = self.eval_expr(prop.value, env)
                   // Store accessor in descriptor, use Undefined as placeholder in properties
@@ -4212,7 +4227,11 @@ fn Interpreter::eval_expr(
                 _ => key_val.to_string()
               }
               match prop.kind {
-                Init => properties[key_str] = self.eval_expr(prop.value, env)
+                Init => {
+                  let val = self.eval_expr(prop.value, env)
+                  set_function_name(val, key_str)
+                  properties[key_str] = val
+                }
                 Get => {
                   let getter = self.eval_expr(prop.value, env)
                   if not(properties.contains(key_str)) {
@@ -4270,11 +4289,15 @@ fn Interpreter::eval_expr(
                   _ => properties[key_str] = val // primitives don't set proto
                 }
               } else {
-                properties[key_str] = self.eval_expr(prop.value, env)
+                let val = self.eval_expr(prop.value, env)
+                // SetFunctionName: infer name for anonymous functions
+                set_function_name(val, key_str)
+                properties[key_str] = val
               }
             }
             Get => {
               let getter = self.eval_expr(prop.value, env)
+              set_function_name(getter, "get " + key_str)
               if not(properties.contains(key_str)) {
                 properties[key_str] = Undefined
               }
@@ -4292,6 +4315,7 @@ fn Interpreter::eval_expr(
             }
             Set => {
               let setter = self.eval_expr(prop.value, env)
+              set_function_name(setter, "set " + key_str)
               if not(properties.contains(key_str)) {
                 properties[key_str] = Undefined
               }

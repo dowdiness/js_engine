@@ -992,6 +992,29 @@ fn call_callable_direct(
 }
 
 ///|
+/// SetFunctionName: set name property on anonymous functions per ES2015+.
+/// Only sets name if the current name is empty (anonymous).
+pub fn set_function_name(val : Value, name : String) -> Unit {
+  match val {
+    Object(data) =>
+      match data.callable {
+        Some(_) =>
+          // Only set if current name is empty (anonymous)
+          match data.properties.get("name") {
+            Some(String_(s)) =>
+              if s == "" {
+                data.properties["name"] = String_(name)
+              }
+            None => data.properties["name"] = String_(name)
+            _ => ()
+          }
+        None => ()
+      }
+    _ => ()
+  }
+}
+
+///|
 /// Check if a value is callable
 fn is_callable(val : Value) -> Bool {
   match val {
@@ -1183,6 +1206,99 @@ pub fn to_number(val : Value) -> Double raise Error {
 }
 
 ///|
+/// ToPrimitive(input, hint "string") - converts an object to a primitive value.
+/// Follows the ECMAScript spec: check @@toPrimitive, then toString, then valueOf.
+fn to_primitive_string(obj_val : Value, data : ObjectData) -> Value raise Error {
+  // Step 1: Check for Symbol.toPrimitive
+  let to_prim_sym = get_toprimitive_symbol()
+  match lookup_symbol_property_chain(obj_val, data, to_prim_sym.id) {
+    Some(exotic_to_prim) => {
+      if not(is_callable(exotic_to_prim)) {
+        raise @errors.TypeError(
+          message="Symbol.toPrimitive is not a function",
+        )
+      }
+      let result = call_callable_direct(
+        exotic_to_prim,
+        obj_val,
+        [String_("string")],
+      )
+      match result {
+        Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) =>
+          raise @errors.TypeError(
+            message="Cannot convert object to primitive value",
+          )
+        _ => return result
+      }
+    }
+    None => ()
+  }
+  // Step 2: OrdinaryToPrimitive with hint "string" - try toString first, then valueOf
+  match lookup_property_chain(data, "toString") {
+    Some(to_string_fn) =>
+      if is_callable(to_string_fn) {
+        let result = call_callable_direct(to_string_fn, obj_val, [])
+        match result {
+          Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) =>
+            () // result is object, try valueOf next
+          _ => return result
+        }
+      }
+    None => ()
+  }
+  match lookup_property_chain(data, "valueOf") {
+    Some(value_of_fn) =>
+      if is_callable(value_of_fn) {
+        let result = call_callable_direct(value_of_fn, obj_val, [])
+        match result {
+          Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) =>
+            raise @errors.TypeError(
+              message="Cannot convert object to primitive value",
+            )
+          _ => return result
+        }
+      }
+    None => ()
+  }
+  raise @errors.TypeError(
+    message="Cannot convert object to primitive value",
+  )
+}
+
+///|
+/// ECMAScript ToString - converts a value to a string following the spec.
+/// For objects, calls ToPrimitive(hint: "string") then converts result to string.
+pub fn to_js_string(val : Value) -> String raise Error {
+  match val {
+    String_(s) => s
+    Number(n) => {
+      let i = n.to_int()
+      if i.to_double() == n && not(n.is_inf()) && not(n.is_nan()) {
+        i.to_string()
+      } else {
+        n.to_string()
+      }
+    }
+    Bool(b) => b.to_string()
+    Null => "null"
+    Undefined => "undefined"
+    Symbol(_) =>
+      raise @errors.TypeError(
+        message="Cannot convert a Symbol value to a string",
+      )
+    Object(data) => {
+      let prim = to_primitive_string(Object(data), data)
+      to_js_string(prim)
+    }
+    Array(arr_data) => {
+      // Arrays: join elements with commas
+      arr_data.elements.map(fn(v) { v.to_string() }).join(",")
+    }
+    Map(_) | Set(_) | Promise(_) | Proxy(_) => "[object Object]"
+  }
+}
+
+///|
 /// ECMAScript ToIndex: converts a value to a non-negative integer index.
 /// Throws RangeError for negative values or values >= 2^53.
 /// Returns 0 for undefined.
@@ -1242,7 +1358,16 @@ pub fn type_of(val : Value) -> String {
     Map(_) => "object"
     Set(_) => "object"
     Promise(_) => "object"
-    Proxy(_) => "object"
+    Proxy(proxy_data) =>
+      // Callable proxy should return "function"
+      match proxy_data.target {
+        Some(Object(target_data)) =>
+          match target_data.callable {
+            Some(_) => "function"
+            None => "object"
+          }
+        _ => "object"
+      }
   }
 }
 
