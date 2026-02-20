@@ -9732,6 +9732,17 @@ fn Interpreter::eval_compound_assign(
     ComputedMember(obj_expr, key_expr, mloc) => {
       let obj = self.eval_expr(obj_expr, env)
       let key = self.eval_expr(key_expr, env)
+      // Per ES5 11.2.1 step 5: CheckObjectCoercible(baseValue) before ToString
+      if obj is Null {
+        raise @errors.TypeError(
+          message="Cannot read properties of null",
+        )
+      }
+      if obj is Undefined {
+        raise @errors.TypeError(
+          message="Cannot read properties of undefined",
+        )
+      }
       // Convert key to property key once (ToPropertyKey), so toString/valueOf
       // is only called once per spec
       let prop_key : Value = match key {
@@ -9797,6 +9808,13 @@ fn Interpreter::eval_logical_assign_and(
     ComputedMember(obj_expr, key_expr, mloc) => {
       let obj = self.eval_expr(obj_expr, env)
       let key = self.eval_expr(key_expr, env)
+      // Per ES5 11.2.1 step 5: CheckObjectCoercible(baseValue) before ToString
+      if obj is Null {
+        raise @errors.TypeError(message="Cannot read properties of null")
+      }
+      if obj is Undefined {
+        raise @errors.TypeError(message="Cannot read properties of undefined")
+      }
       let current = self.get_computed_property(obj, key, mloc)
       if is_truthy(current) {
         let rhs = self.eval_expr(value_expr, env)
@@ -9858,6 +9876,13 @@ fn Interpreter::eval_logical_assign_or(
     ComputedMember(obj_expr, key_expr, mloc) => {
       let obj = self.eval_expr(obj_expr, env)
       let key = self.eval_expr(key_expr, env)
+      // Per ES5 11.2.1 step 5: CheckObjectCoercible(baseValue) before ToString
+      if obj is Null {
+        raise @errors.TypeError(message="Cannot read properties of null")
+      }
+      if obj is Undefined {
+        raise @errors.TypeError(message="Cannot read properties of undefined")
+      }
       let current = self.get_computed_property(obj, key, mloc)
       if not(is_truthy(current)) {
         let rhs = self.eval_expr(value_expr, env)
@@ -9921,6 +9946,13 @@ fn Interpreter::eval_nullish_assign(
     ComputedMember(obj_expr, key_expr, mloc) => {
       let obj = self.eval_expr(obj_expr, env)
       let key = self.eval_expr(key_expr, env)
+      // Per ES5 11.2.1 step 5: CheckObjectCoercible(baseValue) before ToString
+      if obj is Null {
+        raise @errors.TypeError(message="Cannot read properties of null")
+      }
+      if obj is Undefined {
+        raise @errors.TypeError(message="Cannot read properties of undefined")
+      }
       let current = self.get_computed_property(obj, key, mloc)
       match current {
         Null | Undefined => {

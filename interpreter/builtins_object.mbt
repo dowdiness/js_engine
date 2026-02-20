@@ -1,4 +1,103 @@
 ///|
+/// ToObject (ES spec 7.1.13): convert primitives to their wrapper objects.
+/// Throws TypeError for null/undefined. Objects/Arrays/etc pass through unchanged.
+fn to_object(val : Value, interp : Interpreter) -> Value raise Error {
+  match val {
+    Null | Undefined =>
+      raise @errors.TypeError(
+        message="Cannot convert undefined or null to object",
+      )
+    Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => val
+    String_(s) => {
+      let string_proto = interp.global.get("[[StringPrototype]]") catch {
+        _ => Null
+      }
+      let props : Map[String, Value] = {}
+      props["[[StringData]]"] = String_(s)
+      props["length"] = Number(s.length().to_double())
+      let chars = s.to_array()
+      for i = 0; i < chars.length(); i = i + 1 {
+        let buf = StringBuilder::new()
+        buf.write_char(chars[i])
+        props[i.to_string()] = String_(buf.to_string())
+      }
+      let descs : Map[String, PropDescriptor] = {}
+      descs["length"] = {
+        writable: false,
+        enumerable: false,
+        configurable: false,
+        getter: None,
+        setter: None,
+      }
+      for i = 0; i < chars.length(); i = i + 1 {
+        descs[i.to_string()] = {
+          writable: false,
+          enumerable: true,
+          configurable: false,
+          getter: None,
+          setter: None,
+        }
+      }
+      Object({
+        properties: props,
+        symbol_properties: {},
+        prototype: string_proto,
+        callable: None,
+        class_name: "String",
+        descriptors: descs,
+        symbol_descriptors: {},
+        extensible: true,
+      })
+    }
+    Number(n) => {
+      let number_proto = interp.global.get("[[NumberPrototype]]") catch {
+        _ => Null
+      }
+      Object({
+        properties: { "[[NumberData]]": Number(n) },
+        symbol_properties: {},
+        prototype: number_proto,
+        callable: None,
+        class_name: "Number",
+        descriptors: {},
+        symbol_descriptors: {},
+        extensible: true,
+      })
+    }
+    Bool(b) => {
+      let boolean_proto = interp.global.get("[[BooleanPrototype]]") catch {
+        _ => Null
+      }
+      Object({
+        properties: { "[[BooleanData]]": Bool(b) },
+        symbol_properties: {},
+        prototype: boolean_proto,
+        callable: None,
+        class_name: "Boolean",
+        descriptors: {},
+        symbol_descriptors: {},
+        extensible: true,
+      })
+    }
+    Symbol(_) => {
+      let symbol_proto = interp.global.get("[[SymbolPrototype]]") catch {
+        _ => Null
+      }
+      Object({
+        properties: { "[[SymbolData]]": val },
+        symbol_properties: {},
+        prototype: symbol_proto,
+        callable: None,
+        class_name: "Symbol",
+        descriptors: {},
+        symbol_descriptors: {},
+        extensible: true,
+      })
+    }
+  }
+}
+
+///|
 fn validate_accessor(value : Value?, label : String) -> Unit raise Error {
   match value {
     Some(Object(o)) =>
@@ -1198,8 +1297,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           // Extract descriptor properties using full Get (ToPropertyDescriptor spec)
           // This handles inherited properties and accessor properties (getters)
-          let desc_props : Map[String, Value] = match descriptor {
-            Object(_) => {
+          let desc_props : Map[String, Value] = {
               let result : Map[String, Value] = {}
               let interp = match current_interpreter.val {
                 Some(i) => i
@@ -1218,8 +1316,6 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 }
               }
               result
-            }
-            _ => {}
           }
           // Detect accessor vs data descriptor
           let has_get = desc_props.contains("get")
@@ -3596,22 +3692,23 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
 
   // Callback-requiring methods (using InterpreterCallable)
   array_proto_props["forEach"] = make_interp_method_func("forEach", 1, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
         let callback = if args.length() > 0 { args[0] } else { Undefined }
         if not(is_callable(callback)) {
           raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
         }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
-        let len = to_array_like_length_interp(this_val, interp)
+        let len = to_array_like_length_interp(o, interp)
         for i = 0; i < len; i = i + 1 {
-          if has_array_like_element(this_val, i) {
+          if has_array_like_element(o, i) {
             let _ = interp.call_value(
               callback,
               this_arg,
               [
-                get_array_like_element(this_val, i),
+                get_array_like_element(o, i),
                 Number(i.to_double()),
-                this_val,
+                o,
               ],
               loc,
             )
@@ -3620,23 +3717,24 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         Undefined
       })
   array_proto_props["map"] = make_interp_method_func("map", 1, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
         let callback = if args.length() > 0 { args[0] } else { Undefined }
         if not(is_callable(callback)) {
           raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
         }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
-        let len = to_array_like_length_interp(this_val, interp)
+        let len = to_array_like_length_interp(o, interp)
         let result : Array[Value] = []
         for i = 0; i < len; i = i + 1 {
-          if has_array_like_element(this_val, i) {
+          if has_array_like_element(o, i) {
             let val = interp.call_value(
               callback,
               this_arg,
               [
-                get_array_like_element(this_val, i),
+                get_array_like_element(o, i),
                 Number(i.to_double()),
-                this_val,
+                o,
               ],
               loc,
             )
@@ -3648,21 +3746,22 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         Array({ elements: result })
       })
   array_proto_props["filter"] = make_interp_method_func("filter", 1, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
         let callback = if args.length() > 0 { args[0] } else { Undefined }
         if not(is_callable(callback)) {
           raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
         }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
-        let len = to_array_like_length_interp(this_val, interp)
+        let len = to_array_like_length_interp(o, interp)
         let result : Array[Value] = []
         for i = 0; i < len; i = i + 1 {
-          if has_array_like_element(this_val, i) {
-            let el = get_array_like_element(this_val, i)
+          if has_array_like_element(o, i) {
+            let el = get_array_like_element(o, i)
             let val = interp.call_value(
               callback,
               this_arg,
-              [el, Number(i.to_double()), this_val],
+              [el, Number(i.to_double()), o],
               loc,
             )
             if is_truthy(val) {
@@ -3673,12 +3772,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         Array({ elements: result })
       })
   array_proto_props["reduce"] = make_interp_method_func("reduce", 1, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
         let callback = if args.length() > 0 { args[0] } else { Undefined }
         if not(is_callable(callback)) {
           raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
         }
         let loc = @token.Loc::default()
-        let len = to_array_like_length_interp(this_val, interp)
+        let len = to_array_like_length_interp(o, interp)
         let mut acc : Value = Undefined
         let mut start = 0
         if args.length() > 1 {
@@ -3689,19 +3789,19 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               message="Reduce of empty array with no initial value",
             )
           }
-          acc = get_array_like_element(this_val, 0)
+          acc = get_array_like_element(o, 0)
           start = 1
         }
         for i = start; i < len; i = i + 1 {
-          if has_array_like_element(this_val, i) {
+          if has_array_like_element(o, i) {
             acc = interp.call_value(
               callback,
               Undefined,
               [
                 acc,
-                get_array_like_element(this_val, i),
+                get_array_like_element(o, i),
                 Number(i.to_double()),
-                this_val,
+                o,
               ],
               loc,
             )
@@ -3710,12 +3810,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         acc
       })
   array_proto_props["reduceRight"] = make_interp_method_func("reduceRight", 1, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
         let callback = if args.length() > 0 { args[0] } else { Undefined }
         if not(is_callable(callback)) {
           raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
         }
         let loc = @token.Loc::default()
-        let len = to_array_like_length_interp(this_val, interp)
+        let len = to_array_like_length_interp(o, interp)
         let mut acc : Value = Undefined
         let mut start = len - 1
         if args.length() > 1 {
@@ -3726,19 +3827,19 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               message="Reduce of empty array with no initial value",
             )
           }
-          acc = get_array_like_element(this_val, start)
+          acc = get_array_like_element(o, start)
           start = start - 1
         }
         for i = start; i >= 0; i = i - 1 {
-          if has_array_like_element(this_val, i) {
+          if has_array_like_element(o, i) {
             acc = interp.call_value(
               callback,
               Undefined,
               [
                 acc,
-                get_array_like_element(this_val, i),
+                get_array_like_element(o, i),
                 Number(i.to_double()),
-                this_val,
+                o,
               ],
               loc,
             )
@@ -3747,19 +3848,20 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         acc
       })
   array_proto_props["find"] = make_interp_method_func("find", 1, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
         let callback = if args.length() > 0 { args[0] } else { Undefined }
         if not(is_callable(callback)) {
           raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
         }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
-        let len = to_array_like_length_interp(this_val, interp)
+        let len = to_array_like_length_interp(o, interp)
         for i = 0; i < len; i = i + 1 {
-          let el = get_array_like_element(this_val, i)
+          let el = get_array_like_element(o, i)
           let val = interp.call_value(
             callback,
             this_arg,
-            [el, Number(i.to_double()), this_val],
+            [el, Number(i.to_double()), o],
             loc,
           )
           if is_truthy(val) {
@@ -3769,19 +3871,20 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         Undefined
       })
   array_proto_props["findIndex"] = make_interp_method_func("findIndex", 1, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
         let callback = if args.length() > 0 { args[0] } else { Undefined }
         if not(is_callable(callback)) {
           raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
         }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
-        let len = to_array_like_length_interp(this_val, interp)
+        let len = to_array_like_length_interp(o, interp)
         for i = 0; i < len; i = i + 1 {
-          let el = get_array_like_element(this_val, i)
+          let el = get_array_like_element(o, i)
           let val = interp.call_value(
             callback,
             this_arg,
-            [el, Number(i.to_double()), this_val],
+            [el, Number(i.to_double()), o],
             loc,
           )
           if is_truthy(val) {
@@ -3791,19 +3894,20 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         Number(-1.0)
       })
   array_proto_props["findLast"] = make_interp_method_func("findLast", 1, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
         let callback = if args.length() > 0 { args[0] } else { Undefined }
         if not(is_callable(callback)) {
           raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
         }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
-        let len = to_array_like_length_interp(this_val, interp)
+        let len = to_array_like_length_interp(o, interp)
         for i = len - 1; i >= 0; i = i - 1 {
-          let el = get_array_like_element(this_val, i)
+          let el = get_array_like_element(o, i)
           let val = interp.call_value(
             callback,
             this_arg,
-            [el, Number(i.to_double()), this_val],
+            [el, Number(i.to_double()), o],
             loc,
           )
           if is_truthy(val) {
@@ -3813,19 +3917,20 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         Undefined
       })
   array_proto_props["findLastIndex"] = make_interp_method_func("findLastIndex", 1, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
         let callback = if args.length() > 0 { args[0] } else { Undefined }
         if not(is_callable(callback)) {
           raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
         }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
-        let len = to_array_like_length_interp(this_val, interp)
+        let len = to_array_like_length_interp(o, interp)
         for i = len - 1; i >= 0; i = i - 1 {
-          let el = get_array_like_element(this_val, i)
+          let el = get_array_like_element(o, i)
           let val = interp.call_value(
             callback,
             this_arg,
-            [el, Number(i.to_double()), this_val],
+            [el, Number(i.to_double()), o],
             loc,
           )
           if is_truthy(val) {
@@ -3835,22 +3940,23 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         Number(-1.0)
       })
   array_proto_props["every"] = make_interp_method_func("every", 1, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
         let callback = if args.length() > 0 { args[0] } else { Undefined }
         if not(is_callable(callback)) {
           raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
         }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
-        let len = to_array_like_length_interp(this_val, interp)
+        let len = to_array_like_length_interp(o, interp)
         for i = 0; i < len; i = i + 1 {
-          if has_array_like_element(this_val, i) {
+          if has_array_like_element(o, i) {
             let val = interp.call_value(
               callback,
               this_arg,
               [
-                get_array_like_element(this_val, i),
+                get_array_like_element(o, i),
                 Number(i.to_double()),
-                this_val,
+                o,
               ],
               loc,
             )
@@ -3862,22 +3968,23 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         Bool(true)
       })
   array_proto_props["some"] = make_interp_method_func("some", 1, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
         let callback = if args.length() > 0 { args[0] } else { Undefined }
         if not(is_callable(callback)) {
           raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
         }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
-        let len = to_array_like_length_interp(this_val, interp)
+        let len = to_array_like_length_interp(o, interp)
         for i = 0; i < len; i = i + 1 {
-          if has_array_like_element(this_val, i) {
+          if has_array_like_element(o, i) {
             let val = interp.call_value(
               callback,
               this_arg,
               [
-                get_array_like_element(this_val, i),
+                get_array_like_element(o, i),
                 Number(i.to_double()),
-                this_val,
+                o,
               ],
               loc,
             )

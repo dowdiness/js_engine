@@ -1047,7 +1047,25 @@ pub fn has_property(val : Value, name : String) -> Bool {
       } catch {
         _ => ()
       }
-      get_array_named_prop(data, name) is Some(_)
+      if get_array_named_prop(data, name) is Some(_) {
+        return true
+      }
+      // Walk Array.prototype chain for inherited properties
+      match current_interpreter.val {
+        Some(interp) => {
+          let ctor = interp.global.get("Array") catch { _ => return false }
+          match ctor {
+            Object(ctor_data) =>
+              match ctor_data.properties.get("prototype") {
+                Some(Object(proto_data)) =>
+                  lookup_property_chain(proto_data, name) is Some(_)
+                _ => false
+              }
+            _ => false
+          }
+        }
+        None => false
+      }
     }
     _ => false
   }
@@ -1061,12 +1079,34 @@ fn lookup_property_chain(data : ObjectData, name : String) -> Value? {
   }
   // Walk prototype chain
   let mut current = data.prototype
+  let mut func_fallback_used = false
   while true {
     match current {
       Object(proto_data) => {
         match proto_data.properties.get(name) {
           Some(v) => return Some(v)
           None => current = proto_data.prototype
+        }
+      }
+      Null => {
+        // For function objects, fall back to Function.prototype once
+        if not(func_fallback_used) {
+          match data.callable {
+            Some(_) =>
+              match current_interpreter.val {
+                Some(interp) => {
+                  let fp = interp.global.get("[[FunctionPrototype]]") catch {
+                    _ => break
+                  }
+                  func_fallback_used = true
+                  current = fp
+                }
+                None => break
+              }
+            None => break
+          }
+        } else {
+          break
         }
       }
       _ => break
