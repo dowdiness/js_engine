@@ -231,6 +231,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     let arg = if args.length() > 0 { args[0] } else { Undefined }
     let mut current : Value = match arg {
       Object(data) => data.prototype
+      Array(_) =>
+        match current_interpreter.val {
+          Some(interp) =>
+            get_constructor_prototype(interp.global, "Array")
+          None => Null
+        }
+      Promise(_) => Null
       _ => return Bool(false)
     }
     while true {
