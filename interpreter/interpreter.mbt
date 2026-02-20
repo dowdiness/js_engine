@@ -1,4 +1,26 @@
 ///|
+/// Check if an expression is an anonymous function/class/arrow definition
+/// per ECMAScript IsAnonymousFunctionDefinition (§15.2)
+fn is_anonymous_function_definition(expr : @ast.Expr) -> Bool {
+  match expr {
+    FuncExpr(None, _, _, _) => true
+    FuncExprExt(None, _, _, _, _) => true
+    ArrowFunc(_, _, _) => true
+    ArrowFuncExt(_, _, _, _) => true
+    ClassExpr(None, _, _, _) => true
+    GeneratorExpr(None, _, _, _) => true
+    GeneratorExprExt(None, _, _, _, _) => true
+    AsyncFuncExpr(None, _, _, _) => true
+    AsyncFuncExprExt(None, _, _, _, _) => true
+    AsyncArrowFunc(_, _, _) => true
+    AsyncArrowFuncExt(_, _, _, _) => true
+    AsyncGeneratorExpr(None, _, _, _) => true
+    AsyncGeneratorExprExt(None, _, _, _, _) => true
+    _ => false
+  }
+}
+
+///|
 pub(all) enum Signal {
   Normal(Value)
   ReturnSignal(Value)
@@ -399,7 +421,11 @@ fn Interpreter::exec_stmt(
         Some(expr) => {
           let v = self.eval_expr(expr, env)
           // SetFunctionName for variable declarations
-          set_function_name(v, name)
+          // Per spec, only set name for IsAnonymousFunctionDefinition
+          // Comma expressions, parenthesized expressions are NOT anonymous function definitions
+          if is_anonymous_function_definition(expr) {
+            set_function_name(v, name)
+          }
           v
         }
         None => Undefined
@@ -3534,9 +3560,11 @@ fn Interpreter::bind_pattern(
       let final_val : Value = if value is Undefined {
         let v = self.eval_expr(default_expr, env)
         // Per spec, if default is anonymous function and target is identifier, set name
-        match inner_pat {
-          IdentPat(name) => set_function_name(v, name)
-          _ => ()
+        if is_anonymous_function_definition(default_expr) {
+          match inner_pat {
+            IdentPat(name) => set_function_name(v, name)
+            _ => ()
+          }
         }
         v
       } else {
@@ -3774,9 +3802,11 @@ fn Interpreter::assign_pattern(
       let final_val : Value = if value is Undefined {
         let v = self.eval_expr(default_expr, env)
         // Per spec, if default is anonymous function and target is identifier, set name
-        match inner_pat {
-          IdentPat(name) => set_function_name(v, name)
-          _ => ()
+        if is_anonymous_function_definition(default_expr) {
+          match inner_pat {
+            IdentPat(name) => set_function_name(v, name)
+            _ => ()
+          }
         }
         v
       } else {
@@ -4285,7 +4315,9 @@ fn Interpreter::eval_expr(
       }
       let value = self.eval_expr(value_expr, env)
       // SetFunctionName for assignments: x = function() {} gives name "x"
-      set_function_name(value, name)
+      if is_anonymous_function_definition(value_expr) {
+        set_function_name(value, name)
+      }
       // Check if the target is a non-writable property on the global object
       // (e.g. undefined, NaN, Infinity). In strict mode this is a TypeError;
       // in non-strict mode the assignment is silently ignored.
@@ -6468,7 +6500,8 @@ fn Interpreter::call_value(
                   Some(default_expr) => {
                     let v = self.eval_expr(default_expr, func_env)
                     // Set function name for anonymous function defaults
-                    if param.pattern is None {
+                    if param.pattern is None &&
+                      is_anonymous_function_definition(default_expr) {
                       set_function_name(v, param.name)
                     }
                     v
@@ -6579,7 +6612,8 @@ fn Interpreter::call_value(
                   Some(default_expr) => {
                     let v = self.eval_expr(default_expr, func_env)
                     // Set function name for anonymous function defaults
-                    if param.pattern is None {
+                    if param.pattern is None &&
+                      is_anonymous_function_definition(default_expr) {
                       set_function_name(v, param.name)
                     }
                     v
