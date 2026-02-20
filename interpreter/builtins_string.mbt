@@ -488,7 +488,7 @@ pub fn get_string_method(
     }
     "trimStart" => {
       let str = s
-      make_native_func("trimStart", fn(_args) { String_(trim_start(str)) })
+      make_native_func("trimStart", fn(_args) { String_(string_trim_start(str)) })
     }
     "trimEnd" => {
       let str = s
@@ -496,11 +496,13 @@ pub fn get_string_method(
     }
     "trimLeft" => {
       let str = s
-      make_native_func("trimLeft", fn(_args) { String_(trim_start(str)) })
+      // Per spec, trimLeft.name === "trimStart"
+      make_native_func("trimStart", fn(_args) { String_(string_trim_start(str)) })
     }
     "trimRight" => {
       let str = s
-      make_native_func("trimRight", fn(_args) { String_(string_trim_end(str)) })
+      // Per spec, trimRight.name === "trimEnd"
+      make_native_func("trimEnd", fn(_args) { String_(string_trim_end(str)) })
     }
     "toLocaleString" => {
       let str = s
@@ -1561,8 +1563,28 @@ fn unicode_to_upper(code : Int) -> Int {
 }
 
 ///|
+fn string_trim_start(s : String) -> String {
+  let chars = s.to_array()
+  let mut start = 0
+  while start < chars.length() {
+    if is_es_whitespace(chars[start]) {
+      start = start + 1
+    } else {
+      break
+    }
+  }
+  if start == 0 {
+    return s
+  }
+  let buf = StringBuilder::new()
+  for i = start; i < chars.length(); i = i + 1 {
+    buf.write_char(chars[i])
+  }
+  buf.to_string()
+}
+
 fn string_trim(s : String) -> String {
-  let trimmed_left = trim_start(s)
+  let trimmed_left = string_trim_start(s)
   string_trim_end(trimmed_left)
 }
 
@@ -1588,12 +1610,12 @@ pub fn this_to_string(this_val : Value) -> String raise Error {
       if data.class_name == "String" {
         match data.properties.get("[[StringData]]") {
           Some(String_(s)) => s
-          _ => this_val.to_string()
+          _ => to_js_string(this_val)
         }
       } else {
-        this_val.to_string()
+        to_js_string(this_val)
       }
-    _ => this_val.to_string()
+    _ => to_js_string(this_val)
   }
 }
 
@@ -1626,6 +1648,14 @@ pub fn setup_string_prototype(
       }
       for method_name in methods {
         let mname = method_name
+        // Per spec, trimLeft.name === "trimStart", trimRight.name === "trimEnd"
+        let display_name = if mname == "trimLeft" {
+          "trimStart"
+        } else if mname == "trimRight" {
+          "trimEnd"
+        } else {
+          mname
+        }
         // Look up the length from the underlying native method
         let meth_length = match get_string_method("", mname, annex_b~) {
           Object(fdata) =>
@@ -1635,13 +1665,14 @@ pub fn setup_string_prototype(
             }
           _ => 0
         }
-        data.properties[mname] = make_method_func(mname, meth_length, fn(this_val, args) raise {
+        data.properties[mname] = make_method_func(display_name, meth_length, fn(this_val, args) raise {
           let s = this_to_string(this_val)
           let meth_val = get_string_method(s, mname, annex_b~)
           match meth_val {
             Object(fdata) =>
               match fdata.callable {
                 Some(NativeCallable(_, f)) => f(args)
+                Some(NonConstructableCallable(_, f)) => f(args)
                 _ => Undefined
               }
             _ => Undefined
@@ -1664,12 +1695,44 @@ pub fn setup_string_prototype(
 }
 
 ///|
+///|
+/// Check if a character is ECMAScript whitespace (WhiteSpace + LineTerminator)
+fn is_es_whitespace(c : Char) -> Bool {
+  let code = c.to_int()
+  // WhiteSpace: TAB, VT, FF, SP, NBSP, BOM, USP category
+  // LineTerminator: LF, CR, LS, PS
+  code == 0x0009 || // TAB
+  code == 0x000A || // LF
+  code == 0x000B || // VT
+  code == 0x000C || // FF
+  code == 0x000D || // CR
+  code == 0x0020 || // SPACE
+  code == 0x00A0 || // NBSP
+  code == 0x1680 || // OGHAM SPACE MARK
+  code == 0x2000 || // EN QUAD
+  code == 0x2001 || // EM QUAD
+  code == 0x2002 || // EN SPACE
+  code == 0x2003 || // EM SPACE
+  code == 0x2004 || // THREE-PER-EM SPACE
+  code == 0x2005 || // FOUR-PER-EM SPACE
+  code == 0x2006 || // SIX-PER-EM SPACE
+  code == 0x2007 || // FIGURE SPACE
+  code == 0x2008 || // PUNCTUATION SPACE
+  code == 0x2009 || // THIN SPACE
+  code == 0x200A || // HAIR SPACE
+  code == 0x2028 || // LINE SEPARATOR
+  code == 0x2029 || // PARAGRAPH SEPARATOR
+  code == 0x202F || // NARROW NO-BREAK SPACE
+  code == 0x205F || // MEDIUM MATHEMATICAL SPACE
+  code == 0x3000 || // IDEOGRAPHIC SPACE
+  code == 0xFEFF    // BOM
+}
+
 fn string_trim_end(s : String) -> String {
   let chars = s.to_array()
   let mut end = chars.length()
   while end > 0 {
-    let c = chars[end - 1]
-    if c == ' ' || c == '\t' || c == '\n' || c == '\r' {
+    if is_es_whitespace(chars[end - 1]) {
       end = end - 1
     } else {
       break
