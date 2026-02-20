@@ -474,7 +474,13 @@ pub fn setup_builtins(
         }),
       ),
       class_name: "Function",
-      descriptors: { "name": nf_desc, "length": nf_desc },
+      descriptors: {
+        "name": nf_desc, "length": nf_desc,
+        "prototype": { writable: false, enumerable: false, configurable: false, getter: None, setter: None },
+        "fromCharCode": { writable: true, enumerable: false, configurable: true, getter: None, setter: None },
+        "fromCodePoint": { writable: true, enumerable: false, configurable: true, getter: None, setter: None },
+        "raw": { writable: true, enumerable: false, configurable: true, getter: None, setter: None },
+      },
       symbol_descriptors: {},
       extensible: true,
     }),
@@ -2702,6 +2708,14 @@ fn setup_number_builtins(env : Environment) -> Unit {
   number_descs["POSITIVE_INFINITY"] = const_desc
   number_descs["NEGATIVE_INFINITY"] = const_desc
   number_descs["NaN"] = const_desc
+  number_descs["prototype"] = { writable: false, enumerable: false, configurable: false, getter: None, setter: None }
+  let num_method_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+  number_descs["isNaN"] = num_method_desc
+  number_descs["isFinite"] = num_method_desc
+  number_descs["isInteger"] = num_method_desc
+  number_descs["isSafeInteger"] = num_method_desc
+  number_descs["parseInt"] = num_method_desc
+  number_descs["parseFloat"] = num_method_desc
   env.def_builtin(
     "Number",
     Object({

@@ -4471,7 +4471,11 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }),
       ),
       class_name: "Function",
-      descriptors: { "name": nf_desc, "length": nf_desc },
+      descriptors: {
+        "name": nf_desc, "length": nf_desc,
+        "prototype": { writable: false, enumerable: false, configurable: false, getter: None, setter: None },
+        "isArray": obj_method_desc, "from": obj_method_desc, "of": obj_method_desc,
+      },
       symbol_descriptors: {},
       extensible: true,
     }),
