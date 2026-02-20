@@ -16,6 +16,7 @@ fn is_anonymous_function_definition(expr : @ast.Expr) -> Bool {
     AsyncArrowFuncExt(_, _, _, _) => true
     AsyncGeneratorExpr(None, _, _, _) => true
     AsyncGeneratorExprExt(None, _, _, _, _) => true
+    Grouping(inner, _) => is_anonymous_function_definition(inner)
     _ => false
   }
 }
@@ -3548,8 +3549,6 @@ fn Interpreter::bind_pattern(
 ) -> Unit raise Error {
   match pattern {
     IdentPat(name) => {
-      // Per spec, set function name for anonymous functions bound via destructuring
-      set_function_name(value, name)
       if bk == VarBinding && env.bindings.contains(name) {
         env.assign(name, value)
       } else if (bk == LetBinding || bk == ConstBinding) &&
@@ -3802,8 +3801,6 @@ fn Interpreter::assign_pattern(
 ) -> Unit raise Error {
   match pattern {
     IdentPat(name) => {
-      // Per spec, set function name for anonymous functions assigned via destructuring
-      set_function_name(value, name)
       env.assign(name, value)
     }
     DefaultPat(inner_pat, default_expr) => {
