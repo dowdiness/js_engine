@@ -6494,6 +6494,22 @@ fn Interpreter::call_value(
             }
             func_env.def("this", effective_this, LetBinding)
             func_env.def("<new.target>", Undefined, LetBinding)
+            // Create arguments object BEFORE binding params so defaults can reference it
+            let tte_val2 : Value? = if func_env.has("[[ThrowTypeError]]") {
+              Some(func_env.get("[[ThrowTypeError]]"))
+            } else {
+              None
+            }
+            func_env.def(
+              "arguments",
+              make_arguments_object(
+                args,
+                callee,
+                func_strict,
+                throw_type_error=tte_val2,
+              ),
+              VarBinding,
+            )
             // Bind params with defaults
             let mut effective_param_count = 0
             for i = 0; i < data.params.length(); i = i + 1 {
@@ -6555,22 +6571,6 @@ fn Interpreter::call_value(
               }
               None => ()
             }
-            // Create arguments object
-            let tte_val2 : Value? = if func_env.has("[[ThrowTypeError]]") {
-              Some(func_env.get("[[ThrowTypeError]]"))
-            } else {
-              None
-            }
-            func_env.def(
-              "arguments",
-              make_arguments_object(
-                args,
-                callee,
-                func_strict,
-                throw_type_error=tte_val2,
-              ),
-              VarBinding,
-            )
             self.hoist_declarations(data.body, func_env)
             match data.name {
               Some(name) =>
@@ -8850,6 +8850,22 @@ fn Interpreter::construct_value(
             func_env.is_var_scope = true
             func_env.def("this", new_obj, LetBinding)
             func_env.def("<new.target>", ctor, LetBinding)
+            // Create arguments object BEFORE binding params so defaults can reference it
+            let tte2 : Value? = if func_env.has("[[ThrowTypeError]]") {
+              Some(func_env.get("[[ThrowTypeError]]"))
+            } else {
+              None
+            }
+            func_env.def(
+              "arguments",
+              make_arguments_object(
+                args,
+                ctor,
+                func_strict,
+                throw_type_error=tte2,
+              ),
+              VarBinding,
+            )
             let mut effective_param_count = 0
             for i = 0; i < data.params.length(); i = i + 1 {
               let param = data.params[i]
@@ -8900,21 +8916,6 @@ fn Interpreter::construct_value(
               }
               None => ()
             }
-            let tte2 : Value? = if func_env.has("[[ThrowTypeError]]") {
-              Some(func_env.get("[[ThrowTypeError]]"))
-            } else {
-              None
-            }
-            func_env.def(
-              "arguments",
-              make_arguments_object(
-                args,
-                ctor,
-                func_strict,
-                throw_type_error=tte2,
-              ),
-              VarBinding,
-            )
             self.hoist_declarations(data.body, func_env)
             match data.name {
               Some(name) =>
