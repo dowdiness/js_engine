@@ -6429,7 +6429,14 @@ fn Interpreter::call_value(
                 args[effective_param_count]
               } else {
                 match param.default_val {
-                  Some(default_expr) => self.eval_expr(default_expr, func_env)
+                  Some(default_expr) => {
+                    let v = self.eval_expr(default_expr, func_env)
+                    // Set function name for anonymous function defaults
+                    if param.pattern is None {
+                      set_function_name(v, param.name)
+                    }
+                    v
+                  }
                   None =>
                     if effective_param_count < args.length() {
                       args[effective_param_count]
@@ -6533,7 +6540,14 @@ fn Interpreter::call_value(
                 args[effective_param_count]
               } else {
                 match param.default_val {
-                  Some(default_expr) => self.eval_expr(default_expr, func_env)
+                  Some(default_expr) => {
+                    let v = self.eval_expr(default_expr, func_env)
+                    // Set function name for anonymous function defaults
+                    if param.pattern is None {
+                      set_function_name(v, param.name)
+                    }
+                    v
+                  }
                   None =>
                     if effective_param_count < args.length() {
                       args[effective_param_count]

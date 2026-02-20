@@ -100,7 +100,7 @@ pub fn get_string_method(
   let chars = s.to_array()
   match prop {
     "charAt" =>
-      make_native_func("charAt", fn(args) raise {
+      make_native_func_with_length("charAt", 1, fn(args) raise {
         let idx = if args.length() > 0 {
           to_number(args[0]).to_int()
         } else {
@@ -115,7 +115,7 @@ pub fn get_string_method(
         }
       })
     "charCodeAt" =>
-      make_native_func("charCodeAt", fn(args) raise {
+      make_native_func_with_length("charCodeAt", 1, fn(args) raise {
         let idx = if args.length() > 0 {
           to_number(args[0]).to_int()
         } else {
@@ -130,7 +130,7 @@ pub fn get_string_method(
         }
       })
     "at" =>
-      make_native_func("at", fn(args) raise {
+      make_native_func_with_length("at", 1, fn(args) raise {
         // String.prototype.at() - access character at index (supports negative)
         let idx = if args.length() > 0 {
           to_number(args[0]).to_int()
@@ -148,7 +148,7 @@ pub fn get_string_method(
         }
       })
     "codePointAt" =>
-      make_native_func("codePointAt", fn(args) raise {
+      make_native_func_with_length("codePointAt", 1, fn(args) raise {
         // String.prototype.codePointAt() - get code point at index
         let idx = if args.length() > 0 {
           to_number(args[0]).to_int()
@@ -174,20 +174,20 @@ pub fn get_string_method(
       })
     "concat" => {
       let str = s
-      make_native_func("concat", fn(args) {
+      make_native_func_with_length("concat", 1, fn(args) raise {
         let buf = StringBuilder::new()
         buf.write_string(str)
         for arg in args {
-          buf.write_string(arg.to_string())
+          buf.write_string(to_js_string(arg))
         }
         String_(buf.to_string())
       })
     }
     "indexOf" => {
       let str = s
-      make_native_func("indexOf", fn(args) raise {
+      make_native_func_with_length("indexOf", 1, fn(args) raise {
         let search = if args.length() > 0 {
-          args[0].to_string()
+          to_js_string(args[0])
         } else {
           "undefined"
         }
@@ -222,9 +222,9 @@ pub fn get_string_method(
     }
     "lastIndexOf" => {
       let str = s
-      make_native_func("lastIndexOf", fn(args) raise {
+      make_native_func_with_length("lastIndexOf", 1, fn(args) raise {
         let search = if args.length() > 0 {
-          args[0].to_string()
+          to_js_string(args[0])
         } else {
           "undefined"
         }
@@ -269,9 +269,9 @@ pub fn get_string_method(
     }
     "includes" => {
       let str = s
-      make_native_func("includes", fn(args) raise {
+      make_native_func_with_length("includes", 1, fn(args) raise {
         let search = if args.length() > 0 {
-          args[0].to_string()
+          to_js_string(args[0])
         } else {
           "undefined"
         }
@@ -305,7 +305,7 @@ pub fn get_string_method(
     }
     "slice" => {
       let str = s
-      make_native_func("slice", fn(args) raise {
+      make_native_func_with_length("slice", 2, fn(args) raise {
         let slen = str.length()
         let mut start = if args.length() > 0 {
           to_number(args[0]).to_int()
@@ -348,7 +348,7 @@ pub fn get_string_method(
     }
     "substring" => {
       let str = s
-      make_native_func("substring", fn(args) raise {
+      make_native_func_with_length("substring", 2, fn(args) raise {
         let slen = str.length()
         let mut start = if args.length() > 0 {
           to_number(args[0]).to_int()
@@ -508,7 +508,7 @@ pub fn get_string_method(
     }
     "split" => {
       let str = s
-      make_native_func("split", fn(args) raise {
+      make_native_func_with_length("split", 2, fn(args) raise {
         // Handle undefined separator - return array with whole string
         if args.length() == 0 {
           return Array({ elements: [String_(str)] })
@@ -567,7 +567,7 @@ pub fn get_string_method(
         if limit == 0L {
           return Array({ elements: [] })
         }
-        let sep = args[0].to_string()
+        let sep = to_js_string(args[0])
         // Empty separator splits into individual characters
         if sep.length() == 0 {
           let result : Array[Value] = []
@@ -629,7 +629,7 @@ pub fn get_string_method(
     }
     "replace" => {
       let str = s
-      make_native_func("replace", fn(args) raise {
+      make_native_func_with_length("replace", 2, fn(args) raise {
         if args.length() == 0 {
           return String_(str)
         }
@@ -670,7 +670,7 @@ pub fn get_string_method(
                 _ => ""
               }
               let replacement = if args.length() > 1 {
-                args[1].to_string()
+                to_js_string(args[1])
               } else {
                 "undefined"
               }
@@ -735,7 +735,7 @@ pub fn get_string_method(
     }
     "match" => {
       let str = s
-      make_native_func("match", fn(args) raise {
+      make_native_func_with_length("match", 1, fn(args) raise {
         if args.length() == 0 {
           return Null
         }
@@ -768,13 +768,13 @@ pub fn get_string_method(
           _ => ()
         }
         // If not a RegExp, treat as string pattern
-        let pattern = args[0].to_string()
+        let pattern = to_js_string(args[0])
         string_match_regex(str, pattern, "")
       })
     }
     "matchAll" => {
       let str = s
-      make_native_func("matchAll", fn(args) raise {
+      make_native_func_with_length("matchAll", 1, fn(args) raise {
         if args.length() == 0 {
           raise @errors.TypeError(message="matchAll requires a RegExp argument")
         }
@@ -889,7 +889,7 @@ pub fn get_string_method(
     }
     "search" => {
       let str = s
-      make_native_func("search", fn(args) raise {
+      make_native_func_with_length("search", 1, fn(args) raise {
         if args.length() == 0 {
           return Number(0.0)
         }
@@ -921,15 +921,15 @@ pub fn get_string_method(
           }
           _ => ()
         }
-        let pattern = args[0].to_string()
+        let pattern = to_js_string(args[0])
         string_search_regex(str, pattern, "")
       })
     }
     "startsWith" => {
       let str = s
-      make_native_func("startsWith", fn(args) raise {
+      make_native_func_with_length("startsWith", 1, fn(args) raise {
         let search = if args.length() > 0 {
-          args[0].to_string()
+          to_js_string(args[0])
         } else {
           "undefined"
         }
@@ -961,9 +961,9 @@ pub fn get_string_method(
     }
     "endsWith" => {
       let str = s
-      make_native_func("endsWith", fn(args) raise {
+      make_native_func_with_length("endsWith", 1, fn(args) raise {
         let search = if args.length() > 0 {
-          args[0].to_string()
+          to_js_string(args[0])
         } else {
           "undefined"
         }
@@ -997,7 +997,7 @@ pub fn get_string_method(
     }
     "repeat" => {
       let str = s
-      make_native_func("repeat", fn(args) raise {
+      make_native_func_with_length("repeat", 1, fn(args) raise {
         let count_num = if args.length() > 0 { to_number(args[0]) } else { 0.0 }
         // Check for negative or infinite count
         if count_num < 0.0 || count_num.is_inf() {
@@ -1016,13 +1016,13 @@ pub fn get_string_method(
     }
     "padStart" => {
       let str = s
-      make_native_func("padStart", fn(args) raise {
+      make_native_func_with_length("padStart", 1, fn(args) raise {
         let target_len = if args.length() > 0 {
           to_number(args[0]).to_int()
         } else {
           0
         }
-        let pad_str = if args.length() > 1 { args[1].to_string() } else { " " }
+        let pad_str = if args.length() > 1 { to_js_string(args[1]) } else { " " }
         let slen = str.length()
         if slen >= target_len || pad_str.length() == 0 {
           return String_(str)
@@ -1041,13 +1041,13 @@ pub fn get_string_method(
     }
     "padEnd" => {
       let str = s
-      make_native_func("padEnd", fn(args) raise {
+      make_native_func_with_length("padEnd", 1, fn(args) raise {
         let target_len = if args.length() > 0 {
           to_number(args[0]).to_int()
         } else {
           0
         }
-        let pad_str = if args.length() > 1 { args[1].to_string() } else { " " }
+        let pad_str = if args.length() > 1 { to_js_string(args[1]) } else { " " }
         let slen = str.length()
         if slen >= target_len || pad_str.length() == 0 {
           return String_(str)
@@ -1070,7 +1070,7 @@ pub fn get_string_method(
     }
     "replaceAll" => {
       let str = s
-      make_native_func("replaceAll", fn(args) raise {
+      make_native_func_with_length("replaceAll", 2, fn(args) raise {
         if args.length() == 0 {
           return String_(str)
         }
@@ -1133,7 +1133,7 @@ pub fn get_string_method(
                 _ => ""
               }
               let replacement = if args.length() > 1 {
-                args[1].to_string()
+                to_js_string(args[1])
               } else {
                 "undefined"
               }
@@ -1218,10 +1218,10 @@ pub fn get_string_method(
     }
     "localeCompare" => {
       let str = s
-      make_native_func("localeCompare", fn(args) {
+      make_native_func_with_length("localeCompare", 1, fn(args) raise {
         // Basic lexicographic comparison (no locale support)
         let other = if args.length() > 0 {
-          args[0].to_string()
+          to_js_string(args[0])
         } else {
           "undefined"
         }
@@ -1325,9 +1325,9 @@ pub fn get_string_method(
       } else {
         match prop {
           "anchor" =>
-            make_native_func("anchor", fn(args) {
+            make_native_func_with_length("anchor", 1, fn(args) raise {
               let name = if args.length() > 0 {
-                args[0].to_string()
+                to_js_string(args[0])
               } else {
                 "undefined"
               }
@@ -1350,9 +1350,9 @@ pub fn get_string_method(
               String_("<tt>" + s + "</tt>")
             })
           "fontcolor" =>
-            make_native_func("fontcolor", fn(args) {
+            make_native_func_with_length("fontcolor", 1, fn(args) raise {
               let color = if args.length() > 0 {
-                args[0].to_string()
+                to_js_string(args[0])
               } else {
                 "undefined"
               }
@@ -1365,9 +1365,9 @@ pub fn get_string_method(
               )
             })
           "fontsize" =>
-            make_native_func("fontsize", fn(args) {
+            make_native_func_with_length("fontsize", 1, fn(args) raise {
               let size = if args.length() > 0 {
-                args[0].to_string()
+                to_js_string(args[0])
               } else {
                 "undefined"
               }
@@ -1380,9 +1380,9 @@ pub fn get_string_method(
               String_("<i>" + s + "</i>")
             })
           "link" =>
-            make_native_func("link", fn(args) {
+            make_native_func_with_length("link", 1, fn(args) raise {
               let url = if args.length() > 0 {
-                args[0].to_string()
+                to_js_string(args[0])
               } else {
                 "undefined"
               }
