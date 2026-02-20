@@ -4983,8 +4983,8 @@ fn eval_binary_op(
       )
     // String concatenation
     (Add, String_(a), String_(b)) => String_(a + b)
-    (Add, String_(a), b) => String_(a + b.to_string())
-    (Add, a, String_(b)) => String_(a.to_string() + b)
+    (Add, String_(a), b) => String_(a + to_js_string(b))
+    (Add, a, String_(b)) => String_(to_js_string(a) + b)
     // Numeric operations
     (Add, Number(a), Number(b)) => Number(a + b)
     (Sub, Number(a), Number(b)) => Number(a - b)
@@ -5009,8 +5009,33 @@ fn eval_binary_op(
     // Exponentiation
     (Exp, Number(a), Number(b)) => Number(@math.pow(a, b))
     (Exp, l, r) => Number(@math.pow(to_number(l), to_number(r)))
-    // Arithmetic fallbacks (type coercion)
-    (Add, l, r) => Number(to_number(l) + to_number(r))
+    // Add fallback: ToPrimitive, then check for strings
+    (Add, l, r) => {
+      // ToPrimitive with hint "default" (acts like "number")
+      let lp = match l {
+        Object(data) => to_primitive_number(l, data)
+        Array(arr_data) => {
+          let s = arr_data.elements.map(fn(v) { v.to_string() }).join(",")
+          String_(s)
+        }
+        _ => l
+      }
+      let rp = match r {
+        Object(data) => to_primitive_number(r, data)
+        Array(arr_data) => {
+          let s = arr_data.elements.map(fn(v) { v.to_string() }).join(",")
+          String_(s)
+        }
+        _ => r
+      }
+      // If either is a string after ToPrimitive, do string concatenation
+      match (lp, rp) {
+        (String_(a), String_(b)) => String_(a + b)
+        (String_(a), b) => String_(a + to_js_string(b))
+        (a, String_(b)) => String_(to_js_string(a) + b)
+        (a, b) => Number(to_number(a) + to_number(b))
+      }
+    }
     (Sub, l, r) => Number(to_number(l) - to_number(r))
     (Mul, l, r) => Number(to_number(l) * to_number(r))
     (Div, l, r) => Number(to_number(l) / to_number(r))

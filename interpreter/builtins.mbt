@@ -83,12 +83,7 @@ pub fn setup_builtins(
     "parseInt",
     make_static_func("parseInt", fn(args) raise {
       let str_val = if args.length() > 0 { args[0] } else { Undefined }
-      let s = match str_val {
-        String_(s) => s
-        Number(n) => n.to_string()
-        Bool(b) => b.to_string()
-        _ => return Number(0.0 / 0.0)
-      }
+      let s = to_js_string(str_val)
       let trimmed = trim_start(s)
       if trimmed.length() == 0 {
         return Number(0.0 / 0.0)
@@ -145,23 +140,7 @@ pub fn setup_builtins(
     "parseFloat",
     make_static_func("parseFloat", fn(args) raise {
       let str_val = if args.length() > 0 { args[0] } else { Undefined }
-      let s = match str_val {
-        String_(s) => s
-        Number(n) => return Number(n)
-        Symbol(_) =>
-          raise @errors.TypeError(
-            message="Cannot convert a Symbol value to a string",
-          )
-        Bool(_)
-        | Null
-        | Undefined
-        | Object(_)
-        | Array(_)
-        | Map(_)
-        | Set(_)
-        | Promise(_)
-        | Proxy(_) => return Number(0.0 / 0.0)
-      }
+      let s = to_js_string(str_val)
       let trimmed = trim_start(s)
       if trimmed.length() == 0 {
         return Number(0.0 / 0.0)
@@ -444,7 +423,15 @@ pub fn setup_builtins(
       callable: Some(
         NativeCallable("String", fn(args) raise {
           let val = if args.length() > 0 { args[0] } else { Undefined }
-          let str = val.to_string()
+          // Per spec: String(symbol) returns the symbol description
+          let str = match val {
+            Symbol(sym) =>
+              match sym.description {
+                Some(d) => "Symbol(" + d + ")"
+                None => "Symbol()"
+              }
+            _ => to_js_string(val)
+          }
           if is_constructing.val {
             // new String(value) → boxed String object
             let props : Map[String, Value] = {}
