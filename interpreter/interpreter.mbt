@@ -7263,9 +7263,13 @@ fn Interpreter::get_property(
             None => get_promise_method(data, prop)
           }
       }
-    Null | Undefined =>
+    Null =>
       raise @errors.TypeError(
-        message="Cannot read property '\{prop}' of \{type_of(obj)}",
+        message="Cannot read properties of null (reading '\{prop}')",
+      )
+    Undefined =>
+      raise @errors.TypeError(
+        message="Cannot read properties of undefined (reading '\{prop}')",
       )
   }
 }
@@ -7921,8 +7925,14 @@ fn Interpreter::get_computed_property(
         None => get_promise_method(data, prop)
       }
     }
-    Null | Undefined =>
-      raise @errors.TypeError(message="Cannot read property of \{type_of(obj)}")
+    Null =>
+      raise @errors.TypeError(
+        message="Cannot read properties of null (reading '\{to_js_string(key)}')",
+      )
+    Undefined =>
+      raise @errors.TypeError(
+        message="Cannot read properties of undefined (reading '\{to_js_string(key)}')",
+      )
     _ => Undefined
   }
 }
