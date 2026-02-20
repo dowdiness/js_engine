@@ -816,6 +816,59 @@ pub fn setup_builtins(
 
   // Set up WeakMap and WeakSet
   setup_weakmap_set_builtins(env)
+
+  // Final prototype chain patching for constructors registered after initial patch
+  match env.bindings.get("[[FunctionPrototype]]") {
+    Some(fp_binding) => {
+      let func_proto = fp_binding.value
+      let late_ctors = [
+        "Map", "Set", "WeakMap", "WeakSet", "Date", "RegExp", "Promise",
+        "Proxy", "ArrayBuffer", "DataView",
+      ]
+      for name in late_ctors {
+        match env.bindings.get(name) {
+          Some(b) =>
+            match b.value {
+              Object(data) =>
+                if data.prototype is Null {
+                  data.prototype = func_proto
+                }
+              _ => ()
+            }
+          None => ()
+        }
+      }
+    }
+    None => ()
+  }
+  // Patch Map.prototype, Set.prototype etc [[Prototype]] to Object.prototype
+  match env.bindings.get("[[ObjectPrototype]]") {
+    Some(binding) => {
+      let obj_proto = binding.value
+      let ctor_names = [
+        "Map", "Set", "WeakMap", "WeakSet", "Date", "RegExp", "Promise",
+      ]
+      for cname in ctor_names {
+        match env.bindings.get(cname) {
+          Some(cb) =>
+            match cb.value {
+              Object(ctor_data) =>
+                // Get prototype from constructor's "prototype" property
+                match ctor_data.properties.get("prototype") {
+                  Some(Object(proto_data)) =>
+                    if proto_data.prototype is Null {
+                      proto_data.prototype = obj_proto
+                    }
+                  _ => ()
+                }
+              _ => ()
+            }
+          None => ()
+        }
+      }
+    }
+    None => ()
+  }
 }
 
 ///|

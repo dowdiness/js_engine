@@ -8463,7 +8463,7 @@ fn Interpreter::construct_value(
           raise @errors.TypeError(
             message=format_loc_context(name + " is not a constructor", loc),
           )
-        Some(InterpreterCallable(name, func)) => {
+        Some(InterpreterCallable(_name, func)) => {
           // InterpreterCallable can be constructable (e.g., Map, Set constructors)
           is_constructing.val = true
           let result = func(self, Undefined, args) catch {
