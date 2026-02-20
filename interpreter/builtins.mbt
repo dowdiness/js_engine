@@ -1249,7 +1249,7 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
   }
 
   // Helper to create an array-like iterator for non-array objects
-  fn make_array_like_iterator(val : Value) -> Value {
+  fn make_array_like_iterator(val : Value) -> Value raise {
     let index_ref : Ref[Int] = { val: 0 }
     let len = to_array_like_length(val)
 

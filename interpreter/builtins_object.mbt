@@ -4504,8 +4504,16 @@ fn flatten_array_val(
 
 ///|
 /// ToLength: Get length from any value as per ECMAScript spec (array-like objects)
-pub fn to_array_like_length(val : Value) -> Int {
+pub fn to_array_like_length(val : Value) -> Int raise {
   match val {
+    Null =>
+      raise @errors.TypeError(
+        message="Cannot convert undefined or null to object",
+      )
+    Undefined =>
+      raise @errors.TypeError(
+        message="Cannot convert undefined or null to object",
+      )
     Array(data) => data.elements.length()
     Object(data) =>
       match data.properties.get("length") {
@@ -4656,7 +4664,7 @@ pub fn delete_array_like_element(val : Value, index : Int) -> Unit {
 
 ///|
 /// Convert array-like value to an Array of Values
-pub fn to_array_like_elements(val : Value) -> Array[Value] {
+pub fn to_array_like_elements(val : Value) -> Array[Value] raise {
   let len = to_array_like_length(val)
   let result : Array[Value] = []
   for i = 0; i < len; i = i + 1 {
