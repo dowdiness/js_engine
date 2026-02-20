@@ -400,7 +400,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               )
             Object(data) => {
               let keys : Array[Value] = []
-              data.properties.each(fn(k, _v) {
+              let sorted = sort_property_keys(data.properties)
+              for k in sorted {
                 let enumerable = match data.descriptors.get(k) {
                   Some(d) => d.enumerable
                   None => true
@@ -408,7 +409,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 if enumerable {
                   keys.push(String_(k))
                 }
-              })
+              }
               Array({ elements: keys })
             }
             String_(s) => {
@@ -440,15 +441,19 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               )
             Object(data) => {
               let vals : Array[Value] = []
-              data.properties.each(fn(k, v) {
+              let sorted = sort_property_keys(data.properties)
+              for k in sorted {
                 let enumerable = match data.descriptors.get(k) {
                   Some(d) => d.enumerable
                   None => true
                 }
                 if enumerable {
-                  vals.push(v)
+                  match data.properties.get(k) {
+                    Some(v) => vals.push(v)
+                    None => ()
+                  }
                 }
-              })
+              }
               Array({ elements: vals })
             }
             String_(s) => {
@@ -480,15 +485,19 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               )
             Object(data) => {
               let entries : Array[Value] = []
-              data.properties.each(fn(k, v) {
+              let sorted = sort_property_keys(data.properties)
+              for k in sorted {
                 let enumerable = match data.descriptors.get(k) {
                   Some(d) => d.enumerable
                   None => true
                 }
                 if enumerable {
-                  entries.push(Array({ elements: [String_(k), v] }))
+                  match data.properties.get(k) {
+                    Some(v) => entries.push(Array({ elements: [String_(k), v] }))
+                    None => ()
+                  }
                 }
-              })
+              }
               Array({ elements: entries })
             }
             String_(s) => {
@@ -885,7 +894,10 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               )
             Object(data) => {
               let keys : Array[Value] = []
-              data.properties.each(fn(k, _v) { keys.push(String_(k)) })
+              let sorted = sort_property_keys(data.properties)
+              for k in sorted {
+                keys.push(String_(k))
+              }
               Array({ elements: keys })
             }
             Array(data) => {

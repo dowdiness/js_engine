@@ -1874,3 +1874,33 @@ pub fn make_string_iterator_value(s : String) -> Value {
     extensible: true,
   })
 }
+
+///| Sort property keys per OrdinaryOwnPropertyKeys spec order:
+/// 1. Integer indices in ascending numeric order
+/// 2. Other string keys in insertion order
+pub fn sort_property_keys(props : Map[String, Value]) -> Array[String] {
+  let int_keys : Array[String] = []
+  let str_keys : Array[String] = []
+  props.each(fn(k, _v) {
+    let idx = @strconv.parse_int(k) catch { _ => -1 }
+    if idx >= 0 && idx.to_string() == k {
+      int_keys.push(k)
+    } else {
+      str_keys.push(k)
+    }
+  })
+  // Sort integer keys by numeric value
+  int_keys.sort_by(fn(a, b) {
+    let na = @strconv.parse_int(a) catch { _ => 0 }
+    let nb = @strconv.parse_int(b) catch { _ => 0 }
+    na - nb
+  })
+  let result : Array[String] = []
+  for k in int_keys {
+    result.push(k)
+  }
+  for k in str_keys {
+    result.push(k)
+  }
+  result
+}
