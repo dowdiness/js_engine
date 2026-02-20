@@ -2562,6 +2562,14 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 message="Object.defineProperties called on non-object",
               )
           }
+          // Per ES spec step 2: ToObject(Properties) - null/undefined throws TypeError
+          match descs {
+            Null | Undefined =>
+              raise @errors.TypeError(
+                message="Cannot convert undefined or null to object",
+              )
+            _ => ()
+          }
           match (obj, descs) {
             (Object(data), Object(desc_obj)) =>
               // Only iterate enumerable own properties of descriptors object
