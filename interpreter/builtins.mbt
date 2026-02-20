@@ -2660,6 +2660,25 @@ fn setup_number_builtins(env : Environment) -> Unit {
   number_props["parseFloat"] = env.get("parseFloat") catch { _ => Undefined }
   number_props["name"] = String_("Number")
   number_props["length"] = Number(1.0)
+  // Non-writable, non-enumerable, non-configurable descriptors for constants
+  let const_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: false,
+    getter: None,
+    setter: None,
+  }
+  let number_descs : Map[String, PropDescriptor] = {}
+  number_descs["name"] = nf_desc
+  number_descs["length"] = nf_desc
+  number_descs["MAX_SAFE_INTEGER"] = const_desc
+  number_descs["MIN_SAFE_INTEGER"] = const_desc
+  number_descs["EPSILON"] = const_desc
+  number_descs["MAX_VALUE"] = const_desc
+  number_descs["MIN_VALUE"] = const_desc
+  number_descs["POSITIVE_INFINITY"] = const_desc
+  number_descs["NEGATIVE_INFINITY"] = const_desc
+  number_descs["NaN"] = const_desc
   env.def_builtin(
     "Number",
     Object({
@@ -2692,7 +2711,7 @@ fn setup_number_builtins(env : Environment) -> Unit {
         }),
       ),
       class_name: "Function",
-      descriptors: { "name": nf_desc, "length": nf_desc },
+      descriptors: number_descs,
       symbol_descriptors: {},
       extensible: true,
     }),

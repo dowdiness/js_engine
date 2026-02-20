@@ -5361,13 +5361,14 @@ fn eval_binary_op(
               Bool(false)
             }
             _ => {
-              let key = l.to_string()
+              let key = to_js_string(l)
               // Check own property first
               if data.properties.contains(key) {
                 return Bool(true)
               }
               // Walk prototype chain
               let mut current = data.prototype
+              let mut func_fallback_used = false
               while true {
                 match current {
                   Object(proto_data) =>
@@ -5376,6 +5377,27 @@ fn eval_binary_op(
                     } else {
                       current = proto_data.prototype
                     }
+                  Null => {
+                    // For function objects, fall back to Function.prototype once
+                    if not(func_fallback_used) {
+                      match data.callable {
+                        Some(_) =>
+                          match current_interpreter.val {
+                            Some(interp) => {
+                              let fp = interp.global.get("[[FunctionPrototype]]") catch {
+                                _ => break
+                              }
+                              func_fallback_used = true
+                              current = fp
+                            }
+                            None => break
+                          }
+                        None => break
+                      }
+                    } else {
+                      break
+                    }
+                  }
                   _ => break
                 }
               }
@@ -6752,6 +6774,7 @@ fn Interpreter::get_property(
         None => {
           // Walk prototype chain
           let mut current = data.prototype
+          let mut func_proto_checked = false
           while true {
             match current {
               Object(proto_data) => {
@@ -6840,15 +6863,20 @@ fn Interpreter::get_property(
                 }
               }
               Null => {
-                // For function objects, fall back to Function.prototype
-                match data.callable {
-                  Some(_) => {
-                    let fp = self.global.get("[[FunctionPrototype]]") catch {
-                      _ => break
+                // For function objects, fall back to Function.prototype (once)
+                if not(func_proto_checked) {
+                  match data.callable {
+                    Some(_) => {
+                      let fp = self.global.get("[[FunctionPrototype]]") catch {
+                        _ => break
+                      }
+                      func_proto_checked = true
+                      current = fp
                     }
-                    current = fp
+                    None => break
                   }
-                  None => break
+                } else {
+                  break
                 }
               }
               _ => break
