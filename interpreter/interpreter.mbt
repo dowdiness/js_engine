@@ -7993,8 +7993,13 @@ fn Interpreter::set_property(
     Array(data) => {
       if prop == "length" {
         let n = to_number(value).to_int()
+        // Truncate array if new length is shorter
         while data.elements.length() > n {
           let _ = data.elements.pop()
+        }
+        // Expand array if new length is longer
+        while data.elements.length() < n {
+          data.elements.push(Undefined)
         }
       } else {
         // try numeric index
