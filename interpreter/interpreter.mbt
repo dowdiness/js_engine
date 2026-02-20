@@ -3547,7 +3547,9 @@ fn Interpreter::bind_pattern(
   bk : BindingKind,
 ) -> Unit raise Error {
   match pattern {
-    IdentPat(name) =>
+    IdentPat(name) => {
+      // Per spec, set function name for anonymous functions bound via destructuring
+      set_function_name(value, name)
       if bk == VarBinding && env.bindings.contains(name) {
         env.assign(name, value)
       } else if (bk == LetBinding || bk == ConstBinding) &&
@@ -3557,6 +3559,7 @@ fn Interpreter::bind_pattern(
       } else {
         env.def(name, value, bk)
       }
+    }
     DefaultPat(inner_pat, default_expr) => {
       let final_val : Value = if value is Undefined {
         let v = self.eval_expr(default_expr, env)
@@ -3798,7 +3801,11 @@ fn Interpreter::assign_pattern(
   env : Environment,
 ) -> Unit raise Error {
   match pattern {
-    IdentPat(name) => env.assign(name, value)
+    IdentPat(name) => {
+      // Per spec, set function name for anonymous functions assigned via destructuring
+      set_function_name(value, name)
+      env.assign(name, value)
+    }
     DefaultPat(inner_pat, default_expr) => {
       let final_val : Value = if value is Undefined {
         let v = self.eval_expr(default_expr, env)
