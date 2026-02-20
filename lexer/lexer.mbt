@@ -705,6 +705,48 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           let raw = source.view()[start:offset].to_string()
           tokens.push({ kind: Number(value), loc, raw })
           continue
+        } else if next >= '0' && next <= '7' {
+          // Legacy octal number (e.g. 070 = 56)
+          // Only valid in non-strict mode, but we parse it and let the
+          // interpreter/parser reject it in strict mode
+          let mut is_legacy_octal = true
+          // Peek ahead to check if all digits are octal
+          let mut peek = offset + 1
+          while peek < len {
+            let pch = char_at(peek)
+            if pch >= '0' && pch <= '7' {
+              peek += 1
+            } else if pch == '8' || pch == '9' {
+              // Contains 8 or 9, not octal - treat as decimal
+              is_legacy_octal = false
+              break
+            } else {
+              break
+            }
+          }
+          if is_legacy_octal {
+            offset += 1 // skip leading '0'
+            col += 1
+            while offset < len {
+              let ch = char_at(offset)
+              if ch >= '0' && ch <= '7' {
+                buf.write_char(ch)
+                offset += 1
+                col += 1
+              } else {
+                break
+              }
+            }
+            let oct_str = buf.to_string()
+            let value = parse_octal(oct_str)
+            if offset < len && char_at(offset) == 'n' {
+              offset += 1
+              col += 1
+            }
+            let raw = source.view()[start:offset].to_string()
+            tokens.push({ kind: Number(value), loc, raw })
+            continue
+          }
         }
       }
       // Decimal number with optional numeric separators
@@ -771,14 +813,18 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           }
         }
         // Check trailing underscore after decimal part
+        // (but not if the last char is '.', which means no decimal digits yet - e.g. "0.e1")
         if prev_underscore {
           let num_str_so_far = buf.to_string()
-          if num_str_so_far.length() > 0 &&
-            num_str_so_far.to_array()[num_str_so_far.length() - 1] != '.' {
+          let last_is_dot = num_str_so_far.length() > 0 &&
+            num_str_so_far.to_array()[num_str_so_far.length() - 1] == '.'
+          if not(last_is_dot) {
             raise @errors.SyntaxError(
               message="Numeric separator cannot appear at the end at line \{loc.line}, col \{col - 1}",
             )
           }
+          // Reset prev_underscore since '.' is not actually a separator
+          prev_underscore = false
         }
       }
       // Exponent part
