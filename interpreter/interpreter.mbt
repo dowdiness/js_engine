@@ -4213,7 +4213,30 @@ fn Interpreter::eval_expr(
     BoolLit(b, _) => Bool(b)
     NullLit(_) => Null
     UndefinedLit(_) => Undefined
-    Ident(name, _) => env.get(name)
+    Ident(name, _) => {
+      try {
+        env.get(name)
+      } catch {
+        @errors.ReferenceError(_) => {
+          // Fallback: check global object (globalThis) for properties set via this.x = y
+          match self.global_this {
+            Object(data) =>
+              match data.properties.get(name) {
+                Some(v) => v
+                None =>
+                  raise @errors.ReferenceError(
+                    message="\{name} is not defined",
+                  )
+              }
+            _ =>
+              raise @errors.ReferenceError(
+                message="\{name} is not defined",
+              )
+          }
+        }
+        other => raise other
+      }
+    }
     Grouping(e, _) => self.eval_expr(e, env)
     Binary(op, left, right, loc) => self.eval_binary(op, left, right, env, loc)
     Unary(op, operand, loc) => self.eval_unary(op, operand, env, loc)
@@ -5556,7 +5579,15 @@ fn Interpreter::eval_unary(
           if env.has(name) {
             String_(type_of(env.get(name)))
           } else {
-            String_("undefined")
+            // Also check global object for properties
+            match self.global_this {
+              Object(data) =>
+                match data.properties.get(name) {
+                  Some(v) => String_(type_of(v))
+                  None => String_("undefined")
+                }
+              _ => String_("undefined")
+            }
           }
         _ => String_(type_of(self.eval_expr(operand, env)))
       }
