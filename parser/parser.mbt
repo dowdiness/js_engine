@@ -179,6 +179,11 @@ fn Parser::expect_ident(self : Parser) -> String raise Error {
       self.pos += 1
       "of"
     }
+    Undefined => {
+      // undefined is NOT a reserved word - it's a regular identifier
+      self.pos += 1
+      "undefined"
+    }
     Yield =>
       // yield is only a keyword inside generator bodies; outside it's an identifier
       if not(self.in_generator()) {
