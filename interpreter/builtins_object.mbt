@@ -16,16 +16,65 @@ fn validate_accessor(value : Value?, label : String) -> Unit raise Error {
 }
 
 ///|
+/// Get a property from a Value by walking the prototype chain (like [[Get]])
+fn get_value_property(val : Value, key : String) -> (Bool, Value) {
+  match val {
+    Object(data) => {
+      match data.properties.get(key) {
+        Some(v) => {
+          // Check for accessor descriptor
+          match data.descriptors.get(key) {
+            Some(desc) =>
+              match desc.getter {
+                Some(_) => (true, Undefined) // accessor, but can't call getter without interp
+                None => (true, v)
+              }
+            None => (true, v)
+          }
+        }
+        None => {
+          // Walk prototype chain
+          let mut current = data.prototype
+          while true {
+            match current {
+              Object(proto_data) =>
+                match proto_data.properties.get(key) {
+                  Some(v) => {
+                    match proto_data.descriptors.get(key) {
+                      Some(desc) =>
+                        match desc.getter {
+                          Some(_) => return (true, Undefined)
+                          None => return (true, v)
+                        }
+                      None => return (true, v)
+                    }
+                  }
+                  None => current = proto_data.prototype
+                }
+              _ => break
+            }
+          }
+          (false, Undefined)
+        }
+      }
+    }
+    _ => (false, Undefined)
+  }
+}
+
+///|
 fn apply_property_descriptor(
   data : ObjectData,
   prop_name : String,
   desc : ObjectData,
 ) -> Unit raise Error {
-  let has_get = desc.properties.contains("get")
-  let has_set = desc.properties.contains("set")
+  // Per spec ToPropertyDescriptor, use [[Get]] which walks prototype chain
+  let desc_val = Object(desc)
+  let (has_get, _) = get_value_property(desc_val, "get")
+  let (has_set, _) = get_value_property(desc_val, "set")
   let is_accessor = has_get || has_set
-  let has_value = desc.properties.contains("value")
-  let has_writable = desc.properties.contains("writable")
+  let (has_value, _) = get_value_property(desc_val, "value")
+  let (has_writable, _) = get_value_property(desc_val, "writable")
   let is_data = has_value || has_writable
   if is_accessor && is_data {
     raise @errors.TypeError(
@@ -36,24 +85,24 @@ fn apply_property_descriptor(
     if not(data.properties.contains(prop_name)) {
       data.properties[prop_name] = Undefined
     }
-    let getter : Value? = match desc.properties.get("get") {
-      Some(Undefined) => None
-      Some(v) => Some(v)
-      None => None
+    let getter : Value? = match get_value_property(desc_val, "get") {
+      (true, Undefined) => None
+      (true, v) => Some(v)
+      _ => None
     }
-    let setter : Value? = match desc.properties.get("set") {
-      Some(Undefined) => None
-      Some(v) => Some(v)
-      None => None
+    let setter : Value? = match get_value_property(desc_val, "set") {
+      (true, Undefined) => None
+      (true, v) => Some(v)
+      _ => None
     }
     validate_accessor(getter, "Getter")
     validate_accessor(setter, "Setter")
-    let enumerable = match desc.properties.get("enumerable") {
-      Some(v) => is_truthy(v)
+    let enumerable = match get_value_property(desc_val, "enumerable") {
+      (true, v) => is_truthy(v)
       _ => false
     }
-    let configurable = match desc.properties.get("configurable") {
-      Some(v) => is_truthy(v)
+    let configurable = match get_value_property(desc_val, "configurable") {
+      (true, v) => is_truthy(v)
       _ => false
     }
     data.descriptors[prop_name] = {
@@ -64,23 +113,23 @@ fn apply_property_descriptor(
       setter,
     }
   } else {
-    match desc.properties.get("value") {
-      Some(v) => data.properties[prop_name] = v
-      None =>
+    match get_value_property(desc_val, "value") {
+      (true, v) => data.properties[prop_name] = v
+      _ =>
         if not(data.properties.contains(prop_name)) {
           data.properties[prop_name] = Undefined
         }
     }
-    let writable = match desc.properties.get("writable") {
-      Some(v) => is_truthy(v)
+    let writable = match get_value_property(desc_val, "writable") {
+      (true, v) => is_truthy(v)
       _ => false
     }
-    let enumerable = match desc.properties.get("enumerable") {
-      Some(v) => is_truthy(v)
+    let enumerable = match get_value_property(desc_val, "enumerable") {
+      (true, v) => is_truthy(v)
       _ => false
     }
-    let configurable = match desc.properties.get("configurable") {
-      Some(v) => is_truthy(v)
+    let configurable = match get_value_property(desc_val, "configurable") {
+      (true, v) => is_truthy(v)
       _ => false
     }
     data.descriptors[prop_name] = {
@@ -4365,6 +4414,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     while true {
       match current {
         Array(_) => return Bool(true)
+        Object(data) =>
+          // Array.prototype is an Object with class_name "Array"
+          if data.class_name == "Array" {
+            return Bool(true)
+          } else {
+            return Bool(false)
+          }
         Proxy(proxy_data) =>
           match proxy_data.target {
             Some(target) => current = target
@@ -4380,7 +4436,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     Array({ elements: args })
   })
   // Array.from with mapFn support using InterpreterCallable
-  array_props["from"] = make_interp_method_func("from", 0, fn(interp, _this_val, args) raise {
+  array_props["from"] = make_interp_method_func("from", 1, fn(interp, _this_val, args) raise {
         let source = if args.length() > 0 { args[0] } else { Undefined }
         let map_fn = if args.length() > 1 {
           match args[1] {
