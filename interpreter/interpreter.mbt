@@ -3587,6 +3587,10 @@ fn Interpreter::bind_pattern(
             " is not iterable (cannot destructure)",
         )
       }
+      // Per spec: ArrayBindingPattern : [ ] → no iteration occurs
+      if elements.length() == 0 && rest is None {
+        return
+      }
       let arr_elements : Array[Value] = match value {
         Array(data) => data.elements
         _ => {
@@ -3730,7 +3734,17 @@ fn Interpreter::bind_pattern(
         let val : Value = self.get_property(value, prop.key, @token.Loc::default())
         let final_val : Value = if val is Undefined {
           match prop.default_val {
-            Some(default_expr) => self.eval_expr(default_expr, env)
+            Some(default_expr) => {
+              let v = self.eval_expr(default_expr, env)
+              // Per spec, SingleNameBinding: if IsAnonymousFunctionDefinition(Initializer), SetFunctionName
+              if is_anonymous_function_definition(default_expr) {
+                match prop.value {
+                  IdentPat(name) => set_function_name(v, name)
+                  _ => ()
+                }
+              }
+              v
+            }
             None => Undefined
           }
         } else {
@@ -3829,6 +3843,10 @@ fn Interpreter::assign_pattern(
           message=value.to_string() +
             " is not iterable (cannot destructure)",
         )
+      }
+      // Per spec: ArrayBindingPattern : [ ] → no iteration occurs
+      if elements.length() == 0 && rest is None {
+        return
       }
       let arr_elements : Array[Value] = match value {
         Array(data) => data.elements
@@ -3968,7 +3986,17 @@ fn Interpreter::assign_pattern(
         let val : Value = self.get_property(value, prop.key, @token.Loc::default())
         let final_val : Value = if val is Undefined {
           match prop.default_val {
-            Some(default_expr) => self.eval_expr(default_expr, env)
+            Some(default_expr) => {
+              let v = self.eval_expr(default_expr, env)
+              // Per spec, SingleNameBinding: if IsAnonymousFunctionDefinition(Initializer), SetFunctionName
+              if is_anonymous_function_definition(default_expr) {
+                match prop.value {
+                  IdentPat(name) => set_function_name(v, name)
+                  _ => ()
+                }
+              }
+              v
+            }
             None => Undefined
           }
         } else {

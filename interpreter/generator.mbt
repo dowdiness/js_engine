@@ -474,7 +474,104 @@ fn create_generator_instance(
   body : Array[@ast.Stmt],
   closure : Environment,
   func_prototype : Value,
-) -> Value {
+) -> Value raise Error {
+  // Per spec, FunctionDeclarationInstantiation runs eagerly when generator is called,
+  // NOT when .next() is called. This means parameter binding errors throw immediately.
+  let func_env = Environment::new(parent=Some(closure))
+  func_env.is_var_scope = true
+  func_env.def("this", this_val, LetBinding)
+  func_env.def("<new.target>", Undefined, LetBinding)
+  // Bind parameters eagerly
+  match params_ext {
+    Some(pext) => {
+      let mut effective_count = 0
+      for i = 0; i < pext.length(); i = i + 1 {
+        let param = pext[i]
+        if rest_param is Some(rn) && param.name == rn {
+          continue
+        }
+        let val : Value = if effective_count < args.length() &&
+          not(args[effective_count] is Undefined) {
+          args[effective_count]
+        } else {
+          match param.default_val {
+            Some(d) => interp.eval_expr(d, func_env)
+            None =>
+              if effective_count < args.length() {
+                args[effective_count]
+              } else {
+                Undefined
+              }
+          }
+        }
+        func_env.def(param.name, val, LetBinding)
+        match param.pattern {
+          Some(pat) => interp.bind_pattern(pat, val, func_env, LetBinding)
+          None => ()
+        }
+        effective_count = effective_count + 1
+      }
+      match rest_param {
+        Some(rp) => {
+          let rest_elems : Array[Value] = []
+          for i = effective_count; i < args.length(); i = i + 1 {
+            rest_elems.push(args[i])
+          }
+          let rest_val = Array({ elements: rest_elems })
+          func_env.def(rp, rest_val, LetBinding)
+          for p in pext {
+            if p.name == rp {
+              match p.pattern {
+                Some(pat) =>
+                  interp.bind_pattern(pat, rest_val, func_env, LetBinding)
+                None => ()
+              }
+              break
+            }
+          }
+        }
+        None => ()
+      }
+    }
+    None => {
+      for i = 0; i < params.length(); i = i + 1 {
+        let val = if i < args.length() { args[i] } else { Undefined }
+        func_env.def(params[i], val, LetBinding)
+      }
+      match rest_param {
+        Some(rp) => {
+          let rest_elems : Array[Value] = []
+          for i = params.length(); i < args.length(); i = i + 1 {
+            rest_elems.push(args[i])
+          }
+          func_env.def(rp, Array({ elements: rest_elems }), LetBinding)
+        }
+        None => ()
+      }
+    }
+  }
+  // Create arguments object
+  let args_props : Map[String, Value] = {}
+  for i = 0; i < args.length(); i = i + 1 {
+    args_props[i.to_string()] = args[i]
+  }
+  args_props["length"] = Number(args.length().to_double())
+  func_env.def(
+    "arguments",
+    Object({
+      properties: args_props,
+      symbol_properties: {},
+      prototype: Null,
+      callable: None,
+      class_name: "Arguments",
+      descriptors: {},
+      symbol_descriptors: {},
+      extensible: true,
+    }),
+    VarBinding,
+  )
+  // Hoist declarations eagerly too
+  interp.hoist_declarations(body, func_env)
   let gen_id = next_gen_id()
   let gen_obj : GeneratorObject = {
     id: gen_id,
@@ -488,7 +585,7 @@ fn create_generator_instance(
     interpreter: interp,
     args,
     this_val,
-    env: None,
+    env: Some(func_env),
     pc: 0,
     yield_value: Undefined,
     resuming: false,
@@ -610,111 +707,11 @@ fn generator_start(
   interp : Interpreter,
   gen : GeneratorObject,
 ) -> Value raise Error {
-  // Create execution environment
-  let func_env = Environment::new(parent=Some(gen.closure))
-  func_env.is_var_scope = true
-  func_env.def("this", gen.this_val, LetBinding)
-  func_env.def("<new.target>", Undefined, LetBinding)
-  // Bind parameters
-  match gen.params_ext {
-    Some(params_ext) => {
-      // Extended params with defaults (aligned with UserFuncExt semantics)
-      let mut effective_count = 0
-      for i = 0; i < params_ext.length(); i = i + 1 {
-        let param = params_ext[i]
-        // Skip rest destructuring params - they're bound via rest_param
-        if gen.rest_param is Some(rn) && param.name == rn {
-          continue
-        }
-        let val : Value = if effective_count < gen.args.length() &&
-          not(gen.args[effective_count] is Undefined) {
-          gen.args[effective_count]
-        } else {
-          match param.default_val {
-            Some(d) => interp.eval_expr(d, func_env)
-            None =>
-              if effective_count < gen.args.length() {
-                gen.args[effective_count]
-              } else {
-                Undefined
-              }
-          }
-        }
-        func_env.def(param.name, val, LetBinding)
-        // Destructure if pattern param
-        match param.pattern {
-          Some(pat) => interp.bind_pattern(pat, val, func_env, LetBinding)
-          None => ()
-        }
-        effective_count = effective_count + 1
-      }
-      // Rest param
-      match gen.rest_param {
-        Some(rp) => {
-          let rest_elems : Array[Value] = []
-          for i = effective_count; i < gen.args.length(); i = i + 1 {
-            rest_elems.push(gen.args[i])
-          }
-          let rest_val = Array({ elements: rest_elems })
-          func_env.def(rp, rest_val, LetBinding)
-          // Apply destructuring pattern if present
-          for p in params_ext {
-            if p.name == rp {
-              match p.pattern {
-                Some(pat) =>
-                  interp.bind_pattern(pat, rest_val, func_env, LetBinding)
-                None => ()
-              }
-              break
-            }
-          }
-        }
-        None => ()
-      }
-    }
-    None => {
-      // Simple params
-      for i = 0; i < gen.params.length(); i = i + 1 {
-        let val = if i < gen.args.length() { gen.args[i] } else { Undefined }
-        func_env.def(gen.params[i], val, LetBinding)
-      }
-      // Bind rest param if present
-      match gen.rest_param {
-        Some(rp) => {
-          let rest_elems : Array[Value] = []
-          for i = gen.params.length(); i < gen.args.length(); i = i + 1 {
-            rest_elems.push(gen.args[i])
-          }
-          func_env.def(rp, Array({ elements: rest_elems }), LetBinding)
-        }
-        None => ()
-      }
-    }
+  // Environment was already created and parameters bound in create_generator_instance
+  let func_env = match gen.env {
+    Some(e) => e
+    None => abort("generator_start: no environment")
   }
-  // Create arguments object
-  let args_props : Map[String, Value] = {}
-  for i = 0; i < gen.args.length(); i = i + 1 {
-    args_props[i.to_string()] = gen.args[i]
-  }
-  args_props["length"] = Number(gen.args.length().to_double())
-  func_env.def(
-    "arguments",
-    Object({
-      properties: args_props,
-      symbol_properties: {},
-      prototype: Null,
-      callable: None,
-      class_name: "Arguments",
-      descriptors: {},
-      symbol_descriptors: {},
-      extensible: true,
-    }),
-    VarBinding,
-  )
-  // Hoist declarations
-  interp.hoist_declarations(gen.body, func_env)
-  // Store env for later resumption
-  gen.env = Some(func_env)
   // Execute generator body, catching yields
   run_generator_body(interp, gen, func_env)
 }

@@ -147,18 +147,35 @@ fn run_async_body(
     symbol_descriptors: {},
     extensible: true,
   })
-  let gen_val = create_generator_instance(
-    ip,
-    this_val,
-    args,
-    name,
-    params,
-    params_ext,
-    rest_param,
-    body,
-    closure,
-    func_proto,
-  )
+  let gen_val = try {
+    create_generator_instance(
+      ip,
+      this_val,
+      args,
+      name,
+      params,
+      params_ext,
+      rest_param,
+      body,
+      closure,
+      func_proto,
+    )
+  } catch {
+    JsException(e) => {
+      // Parameter binding error rejects the promise
+      let _ = ip.call_value(reject_fn, Undefined, [e], @token.Loc::default()) catch {
+        _ => Undefined
+      }
+      return promise_val
+    }
+    e => {
+      let err_val = String_(e.to_string())
+      let _ = ip.call_value(reject_fn, Undefined, [err_val], @token.Loc::default()) catch {
+        _ => Undefined
+      }
+      return promise_val
+    }
+  }
   // Auto-step the generator
   async_step(ip, gen_val, Undefined, resolve_fn, reject_fn, false)
   promise_val
