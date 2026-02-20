@@ -737,7 +737,7 @@ fn run_generator_body(
           current_generator.val = prev_gen
           return make_iterator_result(v, true)
         }
-        BreakSignal(_) | ContinueSignal(_) => last_val = Undefined
+        BreakSignal(_, _) | ContinueSignal(_, _) => last_val = Undefined
       }
     }
     // Body completed normally

@@ -473,6 +473,7 @@ pub fn get_tostringtag_value(data : ObjectData) -> String? raise Error {
 pub(all) struct ProxyData {
   mut target : Value? // None when revoked
   mut handler : Value? // None when revoked
+  is_callable : Bool // Set at creation time, persists after revocation
 }
 
 ///|
@@ -1359,14 +1360,10 @@ pub fn type_of(val : Value) -> String {
     Set(_) => "object"
     Promise(_) => "object"
     Proxy(proxy_data) =>
-      // Callable proxy should return "function"
-      match proxy_data.target {
-        Some(Object(target_data)) =>
-          match target_data.callable {
-            Some(_) => "function"
-            None => "object"
-          }
-        _ => "object"
+      if proxy_data.is_callable {
+        "function"
+      } else {
+        "object"
       }
   }
 }

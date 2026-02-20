@@ -117,7 +117,7 @@ fn setup_proxy_builtins(env : Environment) -> Unit {
               message="Cannot create proxy with a non-object as target or handler",
             )
         }
-        Proxy({ target: Some(target), handler: Some(handler) })
+        Proxy({ target: Some(target), handler: Some(handler), is_callable: is_callable(target) })
       }),
     ),
     class_name: "Function",
@@ -159,6 +159,7 @@ fn setup_proxy_builtins(env : Environment) -> Unit {
         let proxy_data : ProxyData = {
           target: Some(target),
           handler: Some(handler),
+          is_callable: is_callable(target),
         }
         let proxy_val : Value = Proxy(proxy_data)
         // Create revoke function that nullifies both slots

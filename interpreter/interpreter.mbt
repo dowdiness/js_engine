@@ -2,8 +2,8 @@
 pub(all) enum Signal {
   Normal(Value)
   ReturnSignal(Value)
-  BreakSignal(String?)
-  ContinueSignal(String?)
+  BreakSignal(Value?, String?) // (completion_value (None=empty), label?)
+  ContinueSignal(Value?, String?) // (completion_value (None=empty), label?)
 }
 
 ///|
@@ -357,9 +357,9 @@ pub fn Interpreter::run(
           raise @errors.SyntaxError(
             message="return statement outside of function",
           )
-        BreakSignal(_) =>
+        BreakSignal(_, _) =>
           raise @errors.SyntaxError(message="break statement outside of loop")
-        ContinueSignal(_) =>
+        ContinueSignal(_, _) =>
           raise @errors.SyntaxError(
             message="continue statement outside of loop",
           )
@@ -491,19 +491,25 @@ fn Interpreter::exec_stmt(
         match body_signal {
           Normal(v) => completion = v
           ReturnSignal(v) => return ReturnSignal(v)
-          BreakSignal(None) => break
-          BreakSignal(Some(l)) =>
+          BreakSignal(v, None) => {
+            completion = v.unwrap_or(completion)
+            break
+          }
+          BreakSignal(bv, Some(l)) =>
             if label == Some(l) {
               break
             } else {
-              return BreakSignal(Some(l))
+              return BreakSignal(bv, Some(l))
             }
-          ContinueSignal(None) => continue
-          ContinueSignal(Some(l)) =>
+          ContinueSignal(v, None) => {
+            completion = v.unwrap_or(completion)
+            continue
+          }
+          ContinueSignal(cv, Some(l)) =>
             if label == Some(l) {
               continue
             } else {
-              return ContinueSignal(Some(l))
+              return ContinueSignal(cv, Some(l))
             }
         }
       }
@@ -559,19 +565,25 @@ fn Interpreter::exec_stmt(
         match body_signal {
           Normal(v) => completion = v
           ReturnSignal(v) => return ReturnSignal(v)
-          BreakSignal(None) => break
-          BreakSignal(Some(l)) =>
+          BreakSignal(v, None) => {
+            completion = v.unwrap_or(completion)
+            break
+          }
+          BreakSignal(bv, Some(l)) =>
             if label == Some(l) {
               break
             } else {
-              return BreakSignal(Some(l))
+              return BreakSignal(bv, Some(l))
             }
-          ContinueSignal(None) => do_continue = true
-          ContinueSignal(Some(l)) =>
+          ContinueSignal(v, None) => {
+            completion = v.unwrap_or(completion)
+            do_continue = true
+          }
+          ContinueSignal(cv, Some(l)) =>
             if label == Some(l) {
               do_continue = true
             } else {
-              return ContinueSignal(Some(l))
+              return ContinueSignal(cv, Some(l))
             }
         }
         if do_continue {
@@ -643,8 +655,8 @@ fn Interpreter::exec_stmt(
       }
       ReturnSignal(value)
     }
-    BreakStmt(label, _) => BreakSignal(label)
-    ContinueStmt(label, _) => ContinueSignal(label)
+    BreakStmt(label, _) => BreakSignal(None, label)
+    ContinueStmt(label, _) => ContinueSignal(None, label)
     ThrowStmt(expr, _) => {
       let value = self.eval_expr(expr, env)
       raise JsException(value)
@@ -682,7 +694,28 @@ fn Interpreter::exec_stmt(
         for stmt in cases[i].body {
           match self.exec_stmt(stmt, switch_env) {
             Normal(v) => completion = v
-            BreakSignal(None) => return Normal(completion)
+            BreakSignal(v, None) => {
+              // UpdateEmpty: use break's carried value if non-empty, otherwise accumulated
+              let cv = match v {
+                None => completion
+                Some(val) => val
+              }
+              return Normal(cv)
+            }
+            BreakSignal(v, Some(l)) => {
+              let cv = match v {
+                None => Some(completion)
+                some => some
+              }
+              return BreakSignal(cv, Some(l))
+            }
+            ContinueSignal(v, label) => {
+              let cv = match v {
+                None => Some(completion)
+                some => some
+              }
+              return ContinueSignal(cv, label)
+            }
             other => return other
           }
         }
@@ -719,19 +752,24 @@ fn Interpreter::exec_stmt(
         match body_signal {
           Normal(v) => completion = v
           ReturnSignal(v) => return ReturnSignal(v)
-          BreakSignal(None) => break
-          BreakSignal(Some(l)) =>
+          BreakSignal(v, None) => {
+            completion = v.unwrap_or(completion)
+            break
+          }
+          BreakSignal(bv, Some(l)) =>
             if label == Some(l) {
               break
             } else {
-              return BreakSignal(Some(l))
+              return BreakSignal(bv, Some(l))
             }
-          ContinueSignal(None) => ()
-          ContinueSignal(Some(l)) =>
+          ContinueSignal(v, None) => {
+            completion = v.unwrap_or(completion)
+          }
+          ContinueSignal(cv, Some(l)) =>
             if label == Some(l) {
               // continue — fall through to condition check
             } else {
-              return ContinueSignal(Some(l))
+              return ContinueSignal(cv, Some(l))
             }
         }
         if not(is_truthy(self.eval_expr(cond, env))) {
@@ -772,19 +810,25 @@ fn Interpreter::exec_stmt(
         match self.exec_stmt(body, body_env) {
           Normal(v) => completion = v
           ReturnSignal(v) => return ReturnSignal(v)
-          BreakSignal(None) => break
-          BreakSignal(Some(l)) =>
+          BreakSignal(v, None) => {
+            completion = v.unwrap_or(completion)
+            break
+          }
+          BreakSignal(bv, Some(l)) =>
             if label == Some(l) {
               break
             } else {
-              return BreakSignal(Some(l))
+              return BreakSignal(bv, Some(l))
             }
-          ContinueSignal(None) => continue
-          ContinueSignal(Some(l)) =>
+          ContinueSignal(v, None) => {
+            completion = v.unwrap_or(completion)
+            continue
+          }
+          ContinueSignal(cv, Some(l)) =>
             if label == Some(l) {
               continue
             } else {
-              return ContinueSignal(Some(l))
+              return ContinueSignal(cv, Some(l))
             }
         }
       }
@@ -925,19 +969,25 @@ fn Interpreter::exec_stmt(
           match body_signal {
             Normal(v) => completion = v
             ReturnSignal(v) => return ReturnSignal(v)
-            BreakSignal(None) => break
-            BreakSignal(Some(l)) =>
+            BreakSignal(v, None) => {
+              completion = v.unwrap_or(completion)
+              break
+            }
+            BreakSignal(bv, Some(l)) =>
               if label == Some(l) {
                 break
               } else {
-                return BreakSignal(Some(l))
+                return BreakSignal(bv, Some(l))
               }
-            ContinueSignal(None) => continue
-            ContinueSignal(Some(l)) =>
+            ContinueSignal(v, None) => {
+              completion = v.unwrap_or(completion)
+              continue
+            }
+            ContinueSignal(cv, Some(l)) =>
               if label == Some(l) {
                 continue
               } else {
-                return ContinueSignal(Some(l))
+                return ContinueSignal(cv, Some(l))
               }
           }
           // After resume body completes, continue the loop normally below
@@ -1009,19 +1059,25 @@ fn Interpreter::exec_stmt(
         match body_signal {
           Normal(v) => completion = v
           ReturnSignal(v) => return ReturnSignal(v)
-          BreakSignal(None) => break
-          BreakSignal(Some(l)) =>
+          BreakSignal(v, None) => {
+            completion = v.unwrap_or(completion)
+            break
+          }
+          BreakSignal(bv, Some(l)) =>
             if label == Some(l) {
               break
             } else {
-              return BreakSignal(Some(l))
+              return BreakSignal(bv, Some(l))
             }
-          ContinueSignal(None) => continue
-          ContinueSignal(Some(l)) =>
+          ContinueSignal(v, None) => {
+            completion = v.unwrap_or(completion)
+            continue
+          }
+          ContinueSignal(cv, Some(l)) =>
             if label == Some(l) {
               continue
             } else {
-              return ContinueSignal(Some(l))
+              return ContinueSignal(cv, Some(l))
             }
         }
       }
@@ -1051,19 +1107,25 @@ fn Interpreter::exec_stmt(
         match self.exec_stmt(body, body_env) {
           Normal(v) => completion = v
           ReturnSignal(v) => return ReturnSignal(v)
-          BreakSignal(None) => break
-          BreakSignal(Some(l)) =>
+          BreakSignal(v, None) => {
+            completion = v.unwrap_or(completion)
+            break
+          }
+          BreakSignal(bv, Some(l)) =>
             if label == Some(l) {
               break
             } else {
-              return BreakSignal(Some(l))
+              return BreakSignal(bv, Some(l))
             }
-          ContinueSignal(None) => continue
-          ContinueSignal(Some(l)) =>
+          ContinueSignal(v, None) => {
+            completion = v.unwrap_or(completion)
+            continue
+          }
+          ContinueSignal(cv, Some(l)) =>
             if label == Some(l) {
               continue
             } else {
-              return ContinueSignal(Some(l))
+              return ContinueSignal(cv, Some(l))
             }
         }
       }
@@ -1179,19 +1241,25 @@ fn Interpreter::exec_stmt(
         match self.exec_stmt(body, body_env) {
           Normal(v) => completion = v
           ReturnSignal(v) => return ReturnSignal(v)
-          BreakSignal(None) => break
-          BreakSignal(Some(l)) =>
+          BreakSignal(v, None) => {
+            completion = v.unwrap_or(completion)
+            break
+          }
+          BreakSignal(bv, Some(l)) =>
             if label == Some(l) {
               break
             } else {
-              return BreakSignal(Some(l))
+              return BreakSignal(bv, Some(l))
             }
-          ContinueSignal(None) => continue
-          ContinueSignal(Some(l)) =>
+          ContinueSignal(v, None) => {
+            completion = v.unwrap_or(completion)
+            continue
+          }
+          ContinueSignal(cv, Some(l)) =>
             if label == Some(l) {
               continue
             } else {
-              return ContinueSignal(Some(l))
+              return ContinueSignal(cv, Some(l))
             }
         }
       }
@@ -1207,19 +1275,25 @@ fn Interpreter::exec_stmt(
         match self.exec_stmt(body, body_env) {
           Normal(v) => completion = v
           ReturnSignal(v) => return ReturnSignal(v)
-          BreakSignal(None) => break
-          BreakSignal(Some(l)) =>
+          BreakSignal(v, None) => {
+            completion = v.unwrap_or(completion)
+            break
+          }
+          BreakSignal(bv, Some(l)) =>
             if label == Some(l) {
               break
             } else {
-              return BreakSignal(Some(l))
+              return BreakSignal(bv, Some(l))
             }
-          ContinueSignal(None) => continue
-          ContinueSignal(Some(l)) =>
+          ContinueSignal(v, None) => {
+            completion = v.unwrap_or(completion)
+            continue
+          }
+          ContinueSignal(cv, Some(l)) =>
             if label == Some(l) {
               continue
             } else {
-              return ContinueSignal(Some(l))
+              return ContinueSignal(cv, Some(l))
             }
         }
       }
@@ -1313,19 +1387,25 @@ fn Interpreter::exec_stmt(
         match self.exec_stmt(body, body_env) {
           Normal(v) => completion = v
           ReturnSignal(v) => return ReturnSignal(v)
-          BreakSignal(None) => break
-          BreakSignal(Some(l)) =>
+          BreakSignal(v, None) => {
+            completion = v.unwrap_or(completion)
+            break
+          }
+          BreakSignal(bv, Some(l)) =>
             if label == Some(l) {
               break
             } else {
-              return BreakSignal(Some(l))
+              return BreakSignal(bv, Some(l))
             }
-          ContinueSignal(None) => continue
-          ContinueSignal(Some(l)) =>
+          ContinueSignal(v, None) => {
+            completion = v.unwrap_or(completion)
+            continue
+          }
+          ContinueSignal(cv, Some(l)) =>
             if label == Some(l) {
               continue
             } else {
-              return ContinueSignal(Some(l))
+              return ContinueSignal(cv, Some(l))
             }
         }
       }
@@ -1515,11 +1595,11 @@ fn Interpreter::exec_stmt(
     }
     LabeledStmt(lbl, body, _) =>
       match self.exec_stmt(body, env, label=Some(lbl)) {
-        BreakSignal(Some(l)) =>
+        BreakSignal(v, Some(l)) =>
           if l == lbl {
-            Normal(Undefined)
+            Normal(v.unwrap_or(Undefined))
           } else {
-            BreakSignal(Some(l))
+            BreakSignal(v, Some(l))
           }
         other => other
       }
@@ -1781,6 +1861,21 @@ fn Interpreter::exec_stmts(
   for stmt in stmts {
     match self.exec_stmt(stmt, env) {
       Normal(v) => last = v
+      BreakSignal(v, label) => {
+        // UpdateEmpty: if break's value is None (empty), use accumulated value
+        let cv = match v {
+          None => Some(last)
+          some => some
+        }
+        return BreakSignal(cv, label)
+      }
+      ContinueSignal(v, label) => {
+        let cv = match v {
+          None => Some(last)
+          some => some
+        }
+        return ContinueSignal(cv, label)
+      }
       other => return other
     }
   }
@@ -4400,7 +4495,7 @@ fn Interpreter::eval_expr(
         buf.write_string(strings[i])
         if i < exprs.length() {
           let val = self.eval_expr(exprs[i], env)
-          buf.write_string(val.to_string())
+          buf.write_string(to_js_string(val))
         }
       }
       String_(buf.to_string())
@@ -5844,9 +5939,9 @@ fn Interpreter::perform_eval(
           raise @errors.SyntaxError(
             message="return statement outside of function",
           )
-        BreakSignal(_) =>
+        BreakSignal(_, _) =>
           raise @errors.SyntaxError(message="break statement outside of loop")
-        ContinueSignal(_) =>
+        ContinueSignal(_, _) =>
           raise @errors.SyntaxError(
             message="continue statement outside of loop",
           )
@@ -6042,11 +6137,11 @@ fn Interpreter::call_value(
             match self.exec_stmts(data.body, func_env) {
               Normal(_) => Undefined
               ReturnSignal(v) => v
-              BreakSignal(_) =>
+              BreakSignal(_, _) =>
                 raise @errors.SyntaxError(
                   message="break statement outside of loop",
                 )
-              ContinueSignal(_) =>
+              ContinueSignal(_, _) =>
                 raise @errors.SyntaxError(
                   message="continue statement outside of loop",
                 )
@@ -6079,11 +6174,11 @@ fn Interpreter::call_value(
             match self.exec_stmts(data.body, func_env) {
               Normal(_) => Undefined
               ReturnSignal(v) => v
-              BreakSignal(_) =>
+              BreakSignal(_, _) =>
                 raise @errors.SyntaxError(
                   message="break statement outside of loop",
                 )
-              ContinueSignal(_) =>
+              ContinueSignal(_, _) =>
                 raise @errors.SyntaxError(
                   message="continue statement outside of loop",
                 )
@@ -6202,11 +6297,11 @@ fn Interpreter::call_value(
             match self.exec_stmts(data.body, func_env) {
               Normal(_) => Undefined
               ReturnSignal(v) => v
-              BreakSignal(_) =>
+              BreakSignal(_, _) =>
                 raise @errors.SyntaxError(
                   message="break statement outside of loop",
                 )
-              ContinueSignal(_) =>
+              ContinueSignal(_, _) =>
                 raise @errors.SyntaxError(
                   message="continue statement outside of loop",
                 )
@@ -6283,11 +6378,11 @@ fn Interpreter::call_value(
             match self.exec_stmts(data.body, func_env) {
               Normal(_) => Undefined
               ReturnSignal(v) => v
-              BreakSignal(_) =>
+              BreakSignal(_, _) =>
                 raise @errors.SyntaxError(
                   message="break statement outside of loop",
                 )
-              ContinueSignal(_) =>
+              ContinueSignal(_, _) =>
                 raise @errors.SyntaxError(
                   message="continue statement outside of loop",
                 )
@@ -8339,11 +8434,11 @@ fn Interpreter::construct_value(
                 } else {
                   new_obj
                 }
-              BreakSignal(_) =>
+              BreakSignal(_, _) =>
                 raise @errors.SyntaxError(
                   message="break statement outside of loop",
                 )
-              ContinueSignal(_) =>
+              ContinueSignal(_, _) =>
                 raise @errors.SyntaxError(
                   message="continue statement outside of loop",
                 )
@@ -8468,11 +8563,11 @@ fn Interpreter::construct_value(
                 } else {
                   new_obj
                 }
-              BreakSignal(_) =>
+              BreakSignal(_, _) =>
                 raise @errors.SyntaxError(
                   message="break statement outside of loop",
                 )
-              ContinueSignal(_) =>
+              ContinueSignal(_, _) =>
                 raise @errors.SyntaxError(
                   message="continue statement outside of loop",
                 )
@@ -8608,11 +8703,11 @@ fn Interpreter::construct_value(
                     } else {
                       current_this
                     }
-                  BreakSignal(_) =>
+                  BreakSignal(_, _) =>
                     raise @errors.SyntaxError(
                       message="break statement outside of loop",
                     )
-                  ContinueSignal(_) =>
+                  ContinueSignal(_, _) =>
                     raise @errors.SyntaxError(
                       message="continue statement outside of loop",
                     )
@@ -9680,9 +9775,9 @@ pub fn Interpreter::run_module(
           raise @errors.SyntaxError(
             message="return statement outside of function",
           )
-        BreakSignal(_) =>
+        BreakSignal(_, _) =>
           raise @errors.SyntaxError(message="break statement outside of loop")
-        ContinueSignal(_) =>
+        ContinueSignal(_, _) =>
           raise @errors.SyntaxError(
             message="continue statement outside of loop",
           )
