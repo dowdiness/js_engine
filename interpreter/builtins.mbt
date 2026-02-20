@@ -2775,8 +2775,28 @@ fn setup_json_builtins(env : Environment) -> Unit {
         } else {
           None
         }
+        let replacer : Value? = if args.length() > 1 && is_callable(args[1]) {
+          Some(args[1])
+        } else {
+          None
+        }
+        // Wrap value in root holder for replacer
+        let root_props : Map[String, Value] = {}
+        root_props[""] = val
+        let root : Value = Object({
+          properties: root_props,
+          symbol_properties: {},
+          prototype: Null,
+          callable: None,
+          class_name: "Object",
+          descriptors: {},
+          symbol_descriptors: {},
+          extensible: true,
+        })
         let seen : Array[Value] = []
-        json_stringify_value(val, seen, indent, 0, Some(interp))
+        json_stringify_value(
+          val, seen, indent, 0, Some(interp), replacer~, holder=root, key="",
+        )
       })
   json_descs["stringify"] = ne_desc
   // Symbol.toStringTag = "JSON"
@@ -3149,7 +3169,25 @@ fn json_stringify_value(
   indent : String?,
   depth : Int,
   interp : Interpreter?,
+  replacer? : Value? = None,
+  holder? : Value = Undefined,
+  key? : String = "",
 ) -> Value raise Error {
+  // Step 1: Apply replacer function if provided
+  let val = match replacer {
+    Some(replacer_fn) =>
+      match interp {
+        Some(ip) =>
+          ip.call_value(
+            replacer_fn,
+            holder,
+            [String_(key), val],
+            @token.Loc::default(),
+          )
+        None => val
+      }
+    None => val
+  }
   match val {
     Undefined => Undefined
     Null => String_("null")
@@ -3169,7 +3207,7 @@ fn json_stringify_value(
       // Unwrap proxy to its target and serialize that
       match proxy_data.target {
         Some(target) =>
-          json_stringify_value(target, seen, indent, depth, interp)
+          json_stringify_value(target, seen, indent, depth, interp, replacer~)
         None => String_("{}")
       }
     Array(data) => {
@@ -3190,9 +3228,10 @@ fn json_stringify_value(
       let buf = StringBuilder::new()
       buf.write_char('[')
       let mut first = true
-      for el in data.elements {
+      for idx, el in data.elements {
         let stringified = json_stringify_value(
-          el, seen, indent, new_depth, interp,
+          el, seen, indent, new_depth, interp, replacer~,
+          holder=val, key=idx.to_string(),
         )
         match stringified {
           Undefined => {
@@ -3252,6 +3291,29 @@ fn json_stringify_value(
       match data.callable {
         Some(_) => Undefined // Functions are not serialized
         None => {
+          // Unwrap boxed primitives per spec (SerializeJSONProperty step 4)
+          if data.class_name == "Number" {
+            match data.properties.get("[[NumberData]]") {
+              Some(Number(n)) =>
+                return if n.is_nan() || n.is_inf() {
+                  String_("null")
+                } else {
+                  String_(Number(n).to_string())
+                }
+              _ => ()
+            }
+          } else if data.class_name == "String" {
+            match data.properties.get("[[StringData]]") {
+              Some(String_(s)) =>
+                return String_(json_escape_string(s))
+              _ => ()
+            }
+          } else if data.class_name == "Boolean" {
+            match data.properties.get("[[BooleanData]]") {
+              Some(Bool(b)) => return String_(b.to_string())
+              _ => ()
+            }
+          }
           // Check for toJSON method by walking the full prototype chain
           let mut to_json_fn : Value? = None
           let mut cur : Value? = Some(val)
@@ -3293,7 +3355,7 @@ fn json_stringify_value(
                   match json_val {
                     Some(v) =>
                       return json_stringify_value(
-                        v, seen, indent, depth, interp,
+                        v, seen, indent, depth, interp, replacer~,
                       )
                     None => ()
                   }
@@ -3325,7 +3387,8 @@ fn json_stringify_value(
               return
             }
             let stringified = json_stringify_value(
-              v, seen, indent, new_depth, interp,
+              v, seen, indent, new_depth, interp, replacer~,
+              holder=val, key=k,
             )
             match stringified {
               Undefined => () // Skip undefined values
