@@ -1242,7 +1242,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 Symbol(s) => s.id
                 _ => 0
               }
-              let prop_name = to_js_string(prop_val)
+              let prop_name = if is_symbol_key { "" } else { to_js_string(prop_val) }
 
               // Check if property exists (using symbol or string storage)
               let prop_exists = if is_symbol_key {

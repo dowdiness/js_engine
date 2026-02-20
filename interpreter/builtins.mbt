@@ -3848,13 +3848,6 @@ fn json_escape_string(s : String) -> String {
 
 ///|
 fn setup_function_builtins(env : Environment) -> Unit {
-  let nf_desc : PropDescriptor = {
-    writable: false,
-    enumerable: false,
-    configurable: true,
-    getter: None,
-    setter: None,
-  }
   // Create Function.prototype
   let func_proto_props : Map[String, Value] = {}
 
@@ -4073,11 +4066,24 @@ fn setup_function_builtins(env : Environment) -> Unit {
     setter: None,
   }
 
+  // Function.prototype is callable per spec (returns undefined when called)
+  // and has name="" and length=0 own properties
+  func_proto_props["name"] = String_("")
+  func_proto_props["length"] = Number(0.0)
+  let nf_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
+  func_proto_descs["name"] = nf_desc
+  func_proto_descs["length"] = nf_desc
   let func_proto : Value = Object({
     properties: func_proto_props,
     symbol_properties: {},
     prototype: Null,
-    callable: None,
+    callable: Some(NonConstructableCallable("", fn(_args) { Undefined })),
     class_name: "Function",
     descriptors: func_proto_descs,
     symbol_descriptors: {},
