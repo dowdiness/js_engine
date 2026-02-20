@@ -689,12 +689,35 @@ pub fn setup_builtins(
       let ctor_names = [
         "Boolean", "String", "Number", "Error", "TypeError", "ReferenceError",
         "SyntaxError", "RangeError", "URIError", "EvalError", "AggregateError",
+        "Array", "Object", "Function",
       ]
       for name in ctor_names {
         match env.bindings.get(name) {
           Some(b) =>
             match b.value {
               Object(data) => data.prototype = func_proto
+              _ => ()
+            }
+          None => ()
+        }
+      }
+    }
+    None => ()
+  }
+
+  // Patch NativeError constructors [[Prototype]] to Error (not Function.prototype)
+  match env.bindings.get("Error") {
+    Some(err_binding) => {
+      let error_ctor = err_binding.value
+      let native_errors = [
+        "TypeError", "ReferenceError", "SyntaxError", "RangeError",
+        "URIError", "EvalError", "AggregateError",
+      ]
+      for name in native_errors {
+        match env.bindings.get(name) {
+          Some(b) =>
+            match b.value {
+              Object(data) => data.prototype = error_ctor
               _ => ()
             }
           None => ()
@@ -3400,10 +3423,23 @@ fn json_stringify_value(
           let buf = StringBuilder::new()
           buf.write_char('{')
           let mut first = true
-          data.properties.each(fn(k, v) raise {
+          let sorted_keys = sort_property_keys(data.properties)
+          for k in sorted_keys {
             // Skip internal properties (e.g., [[DateValue]], [[NumberData]])
             if k.has_prefix("[[") {
-              return
+              continue
+            }
+            // Skip non-enumerable properties
+            let enumerable = match data.descriptors.get(k) {
+              Some(d) => d.enumerable
+              None => true
+            }
+            if not(enumerable) {
+              continue
+            }
+            let v = match data.properties.get(k) {
+              Some(v) => v
+              None => continue
             }
             let stringified = json_stringify_value(
               v, seen, indent, new_depth, interp, replacer~,
@@ -3435,7 +3471,7 @@ fn json_stringify_value(
               }
               _ => ()
             }
-          })
+          }
           match indent {
             Some(ind) =>
               if not(first) {

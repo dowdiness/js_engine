@@ -3832,6 +3832,17 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         Bool(false)
       })
   array_proto_props["sort"] = make_interp_method_func("sort", 1, fn(interp, this_val, args) raise {
+        // Step 1: Validate comparefn
+        if args.length() > 0 {
+          let comparefn = args[0]
+          match comparefn {
+            Undefined => ()
+            _ =>
+              if not(is_callable(comparefn)) {
+                raise @errors.TypeError(message=to_js_string(comparefn) + " is not a function")
+              }
+          }
+        }
         // Extract elements into a mutable array for sorting
         let elements : Array[Value] = match this_val {
           Array(arr) => arr.elements
@@ -4330,10 +4341,20 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
   array_props["length"] = Number(1.0)
   array_props["isArray"] = make_static_func_with_length("isArray", 1, fn(args) {
     let val = if args.length() > 0 { args[0] } else { Undefined }
-    match val {
-      Array(_) => Bool(true)
-      _ => Bool(false)
+    // Spec: Array.isArray unwraps proxies recursively
+    let mut current = val
+    while true {
+      match current {
+        Array(_) => return Bool(true)
+        Proxy(proxy_data) =>
+          match proxy_data.target {
+            Some(target) => current = target
+            None => return Bool(false)
+          }
+        _ => return Bool(false)
+      }
     }
+    Bool(false)
   })
   array_props["of"] = make_static_func("of", fn(args) {
     // Array.of() - creates array from arguments

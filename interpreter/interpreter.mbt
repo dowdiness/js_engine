@@ -1915,7 +1915,8 @@ fn collect_for_in_keys(obj : Value) -> Array[String] raise Error {
             }
           }
         }
-        data.properties.each(fn(k, _v) {
+        let sorted = sort_property_keys(data.properties)
+        for k in sorted {
           if not(seen.contains(k)) {
             // Skip internal slots for TypedArray/ArrayBuffer/DataView only
             if k.has_prefix("[[") &&
@@ -1925,7 +1926,7 @@ fn collect_for_in_keys(obj : Value) -> Array[String] raise Error {
                 data.class_name == "ArrayBuffer" ||
                 data.class_name == "DataView"
               ) {
-              return
+              continue
             }
             seen[k] = true
             let enumerable = match data.descriptors.get(k) {
@@ -1936,7 +1937,7 @@ fn collect_for_in_keys(obj : Value) -> Array[String] raise Error {
               keys.push(k)
             }
           }
-        })
+        }
         current = data.prototype
       }
       Array(data) => {
@@ -6818,9 +6819,27 @@ fn get_bound_func_name(target : Value) -> String {
 fn get_func_length(callable : Callable) -> Int {
   match callable {
     UserFunc(func_data) => func_data.params.length()
-    UserFuncExt(func_data) => func_data.params.length()
+    UserFuncExt(func_data) => {
+      let mut len = 0
+      for p in func_data.params {
+        if p.default_val is Some(_) {
+          break
+        }
+        len += 1
+      }
+      len
+    }
     ArrowFunc(func_data) => func_data.params.length()
-    ArrowFuncExt(func_data) => func_data.params.length()
+    ArrowFuncExt(func_data) => {
+      let mut len = 0
+      for p in func_data.params {
+        if p.default_val is Some(_) {
+          break
+        }
+        len += 1
+      }
+      len
+    }
     BoundFunc(target, _, bound_args) =>
       match target {
         Object(td) =>

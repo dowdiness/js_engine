@@ -989,6 +989,17 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
       let arr = data
       make_interp_method_func("sort", 1, fn(interp, this_val, args) raise {
             let _ = this_val
+            // Validate comparefn before sorting
+            if args.length() > 0 {
+              let comparefn = args[0]
+              match comparefn {
+                Undefined => ()
+                _ =>
+                  if not(is_callable(comparefn)) {
+                    raise @errors.TypeError(message=to_js_string(comparefn) + " is not a function")
+                  }
+              }
+            }
             if args.length() > 0 {
               match args[0] {
                 Undefined =>
