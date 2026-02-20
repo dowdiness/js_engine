@@ -4640,7 +4640,23 @@ fn Interpreter::eval_expr(
     }
     NewExpr(callee_expr, arg_exprs, loc) =>
       self.eval_new(callee_expr, arg_exprs, env, loc)
-    ThisExpr(_) => env.get("this") catch { _ => Undefined }
+    ThisExpr(_) => {
+      try {
+        env.get("this")
+      } catch {
+        @errors.ReferenceError(message~) => {
+          // In derived class constructors, 'this' is in TDZ until super() is called
+          if message.contains("before initialization") {
+            raise @errors.ReferenceError(
+              message="Must call super constructor in derived class before accessing 'this' or returning from derived constructor",
+            )
+          }
+          // Otherwise, 'this' is just not defined (global arrow function, etc.)
+          Undefined
+        }
+        other => raise other
+      }
+    }
     UpdateExpr(op, operand, prefix, loc) =>
       self.eval_update(op, operand, prefix, env, loc)
     CompoundAssign(op, target, value_expr, loc) =>
@@ -4900,7 +4916,12 @@ fn Interpreter::eval_expr(
       // super(args) - call the parent constructor
       // Get the [[HomeObject]] from the current environment
       let super_ctor = env.get("[[SuperConstructor]]")
-      let this_val = env.get("this")
+      // Use [[PendingThis]] if 'this' is in TDZ (derived class before super())
+      let this_val = if env.has("[[PendingThis]]") {
+        env.get("[[PendingThis]]")
+      } else {
+        env.get("this")
+      }
       let args = self.eval_args_with_spread(arg_exprs, env)
       // Call the super constructor
       match super_ctor {
@@ -4965,8 +4986,8 @@ fn Interpreter::eval_expr(
                         | Set(_)
                         | Promise(_)
                         | Proxy(_) => {
-                          // Update 'this' in the current environment
-                          env.assign("this", v)
+                          // Initialize 'this' (may be in TDZ for derived classes)
+                          try { env.initialize("this", v) } catch { _ => env.assign("this", v) }
                           return v
                         }
                         _ => ()
@@ -4976,6 +4997,8 @@ fn Interpreter::eval_expr(
                 }
                 None => ()
               }
+              // Initialize 'this' in the calling env (may be TDZ for derived classes)
+              try { env.initialize("this", this_val) } catch { _ => try { env.assign("this", this_val) } catch { _ => () } }
               env.get("this")
             }
             Some(_) => {
@@ -4989,10 +5012,13 @@ fn Interpreter::eval_expr(
                 | Set(_)
                 | Promise(_)
                 | Proxy(_) => {
-                  env.assign("this", super_result)
+                  try { env.initialize("this", super_result) } catch { _ => env.assign("this", super_result) }
                   super_result
                 }
-                _ => env.get("this")
+                _ => {
+                  try { env.initialize("this", this_val) } catch { _ => try { env.assign("this", this_val) } catch { _ => () } }
+                  env.get("this")
+                }
               }
             }
             _ =>
@@ -8840,16 +8866,21 @@ fn Interpreter::construct_value(
             // Set up the constructor environment
             let ctor_env = Environment::new(parent=Some(closure))
             ctor_env.is_var_scope = true
-            ctor_env.def_builtin("this", new_obj)
-            ctor_env.def("<new.target>", ctor, LetBinding)
-            // Set up [[SuperConstructor]] and [[SuperPrototype]] for super() calls
+            // For derived classes, 'this' is in TDZ until super() is called
             match super_ctor {
               Some(sc) => {
+                // Put 'this' in TDZ - will be initialized by super() call
+                ctor_env.def_tdz("this", LetBinding)
                 ctor_env.def_builtin("[[SuperConstructor]]", sc)
                 ctor_env.def_builtin("[[SuperPrototype]]", super_proto)
+                // Store the new instance for super() to use
+                ctor_env.def_builtin("[[PendingThis]]", new_obj)
               }
-              None => ()
+              None => {
+                ctor_env.def_builtin("this", new_obj)
+              }
             }
+            ctor_env.def("<new.target>", ctor, LetBinding)
             // Execute the constructor if one was defined
             match ctor_fn {
               Some((params, body)) => {
