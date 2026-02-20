@@ -4411,13 +4411,23 @@ fn Interpreter::eval_expr(
         closure: env,
         strict: is_function_strict(self.strict, body),
       }
+      let nf_desc : PropDescriptor = {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
       Object({
-        properties: {},
+        properties: {
+          "name": String_(""),
+          "length": Number(params.length().to_double()),
+        },
         symbol_properties: {},
         prototype: Null,
         callable: Some(ArrowFunc(func_data)),
         class_name: "Function",
-        descriptors: {},
+        descriptors: { "name": nf_desc, "length": nf_desc },
         symbol_descriptors: {},
         extensible: true,
       })
@@ -4438,13 +4448,31 @@ fn Interpreter::eval_expr(
         closure: env,
         strict: is_function_strict(self.strict, body),
       }
+      let nf_desc : PropDescriptor = {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
+      // Length = number of params before first default
+      let mut arrow_len = 0
+      for p in params {
+        if p.default_val is Some(_) {
+          break
+        }
+        arrow_len += 1
+      }
       Object({
-        properties: {},
+        properties: {
+          "name": String_(""),
+          "length": Number(arrow_len.to_double()),
+        },
         symbol_properties: {},
         prototype: Null,
         callable: Some(ArrowFuncExt(func_data)),
         class_name: "Function",
-        descriptors: {},
+        descriptors: { "name": nf_desc, "length": nf_desc },
         symbol_descriptors: {},
         extensible: true,
       })
@@ -7980,8 +8008,22 @@ fn make_arguments_object(
   }
   new_args_props["length"] = Number(args.length().to_double())
   let new_args_descs : Map[String, PropDescriptor] = {}
+  new_args_descs["length"] = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   if not(strict) {
     new_args_props["callee"] = ctor
+    new_args_descs["callee"] = {
+      writable: true,
+      enumerable: false,
+      configurable: true,
+      getter: None,
+      setter: None,
+    }
   } else {
     // Strict mode: install %ThrowTypeError% accessors for callee and caller
     match throw_type_error {
@@ -8004,9 +8046,77 @@ fn make_arguments_object(
       None => ()
     }
   }
+  // Add Symbol.iterator - creates an iterator over the arguments
+  let iter_sym = get_iterator_symbol()
+  let args_copy = args
+  let new_args_sym_props : Map[Int, Value] = {}
+  new_args_sym_props[iter_sym.id] = Object({
+    properties: {},
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      MethodCallable("values", fn(_this_val, _args2) {
+        let index_ref : Ref[Int] = { val: 0 }
+        let len = args_copy.length()
+        let next_fn = Object({
+          properties: {},
+          symbol_properties: {},
+          prototype: Null,
+          callable: Some(
+            NativeCallable("next", fn(_a) {
+              let idx = index_ref.val
+              if idx < len {
+                let value = args_copy[idx]
+                index_ref.val = idx + 1
+                Object({
+                  properties: { "value": value, "done": Bool(false) },
+                  symbol_properties: {},
+                  prototype: Null,
+                  callable: None,
+                  class_name: "Object",
+                  descriptors: {},
+                  symbol_descriptors: {},
+                  extensible: true,
+                })
+              } else {
+                Object({
+                  properties: { "value": Undefined, "done": Bool(true) },
+                  symbol_properties: {},
+                  prototype: Null,
+                  callable: None,
+                  class_name: "Object",
+                  descriptors: {},
+                  symbol_descriptors: {},
+                  extensible: true,
+                })
+              }
+            }),
+          ),
+          class_name: "Function",
+          descriptors: {},
+          symbol_descriptors: {},
+          extensible: true,
+        })
+        Object({
+          properties: { "next": next_fn },
+          symbol_properties: {},
+          prototype: Null,
+          callable: None,
+          class_name: "Array Iterator",
+          descriptors: {},
+          symbol_descriptors: {},
+          extensible: true,
+        })
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
   Object({
     properties: new_args_props,
-    symbol_properties: {},
+    symbol_properties: new_args_sym_props,
     prototype: Null,
     callable: None,
     class_name: "Arguments",

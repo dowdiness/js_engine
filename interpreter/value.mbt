@@ -508,8 +508,24 @@ pub fn make_func(data : FuncData) -> Value {
     symbol_descriptors: {},
     extensible: true,
   })
+  let func_name = match data.name {
+    Some(n) => n
+    None => ""
+  }
+  let func_length = data.params.length().to_double()
+  let nf_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   let func_obj = Object({
-    properties: { "prototype": proto },
+    properties: {
+      "prototype": proto,
+      "name": String_(func_name),
+      "length": Number(func_length),
+    },
     symbol_properties: {},
     prototype: Null,
     callable: Some(UserFunc(data)),
@@ -522,6 +538,8 @@ pub fn make_func(data : FuncData) -> Value {
         getter: None,
         setter: None,
       },
+      "name": nf_desc,
+      "length": nf_desc,
     },
     symbol_descriptors: {},
     extensible: true,
@@ -554,8 +572,31 @@ pub fn make_func_ext(data : FuncDataExt) -> Value {
     symbol_descriptors: {},
     extensible: true,
   })
+  let func_name = match data.name {
+    Some(n) => n
+    None => ""
+  }
+  // Length = number of params before first default value
+  let mut func_length = 0
+  for p in data.params {
+    if p.default_val is Some(_) {
+      break
+    }
+    func_length += 1
+  }
+  let nf_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   let func_obj = Object({
-    properties: { "prototype": proto },
+    properties: {
+      "prototype": proto,
+      "name": String_(func_name),
+      "length": Number(func_length.to_double()),
+    },
     symbol_properties: {},
     prototype: Null,
     callable: Some(UserFuncExt(data)),
@@ -568,6 +609,8 @@ pub fn make_func_ext(data : FuncDataExt) -> Value {
         getter: None,
         setter: None,
       },
+      "name": nf_desc,
+      "length": nf_desc,
     },
     symbol_descriptors: {},
     extensible: true,
