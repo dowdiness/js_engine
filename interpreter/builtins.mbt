@@ -2730,11 +2730,43 @@ fn setup_number_builtins(env : Environment) -> Unit {
 ///|
 fn setup_json_builtins(env : Environment) -> Unit {
   let json_props : Map[String, Value] = {}
-  json_props["parse"] = make_static_func("parse", fn(args) raise {
-    let str = if args.length() > 0 { args[0].to_string() } else { "" }
-    json_parse(str)
+  let json_descs : Map[String, PropDescriptor] = {}
+  let ne_desc : PropDescriptor = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
+  json_props["parse"] = make_static_func_with_length("parse", 2, fn(args) raise {
+    let str = if args.length() > 0 { to_js_string(args[0]) } else { "" }
+    let result = json_parse(str)
+    // Handle reviver
+    if args.length() > 1 && is_callable(args[1]) {
+      match current_interpreter.val {
+        Some(interp) => {
+          // Wrap in a root holder object
+          let root_props : Map[String, Value] = {}
+          root_props[""] = result
+          let root : Value = Object({
+            properties: root_props,
+            symbol_properties: {},
+            prototype: Null,
+            callable: None,
+            class_name: "Object",
+            descriptors: {},
+            symbol_descriptors: {},
+            extensible: true,
+          })
+          return json_internalize(root, "", args[1], interp)
+        }
+        None => ()
+      }
+    }
+    result
   })
-  json_props["stringify"] = make_interp_method_func("stringify", 0, fn(interp, _this, args) raise {
+  json_descs["parse"] = ne_desc
+  json_props["stringify"] = make_interp_method_func("stringify", 3, fn(interp, _this, args) raise {
         let val = if args.length() > 0 { args[0] } else { Undefined }
         let indent = if args.length() > 2 {
           match args[2] {
@@ -2759,16 +2791,33 @@ fn setup_json_builtins(env : Environment) -> Unit {
         let seen : Array[Value] = []
         json_stringify_value(val, seen, indent, 0, Some(interp))
       })
+  json_descs["stringify"] = ne_desc
+  // Symbol.toStringTag = "JSON"
+  let tostringtag_sym = get_tostringtag_symbol()
+  let json_sym_props : Map[Int, Value] = {}
+  let json_sym_descs : Map[Int, PropDescriptor] = {}
+  json_sym_props[tostringtag_sym.id] = String_("JSON")
+  json_sym_descs[tostringtag_sym.id] = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
+  let obj_proto = match env.bindings.get("[[ObjectPrototype]]") {
+    Some(b) => b.value
+    None => Null
+  }
   env.def_builtin(
     "JSON",
     Object({
       properties: json_props,
-      symbol_properties: {},
-      prototype: Null,
+      symbol_properties: json_sym_props,
+      prototype: obj_proto,
       callable: None,
       class_name: "JSON",
-      descriptors: {},
-      symbol_descriptors: {},
+      descriptors: json_descs,
+      symbol_descriptors: json_sym_descs,
       extensible: true,
     }),
   )
@@ -3038,6 +3087,72 @@ fn json_parse(input : String) -> Value raise Error {
     )
   }
   result
+}
+
+///|
+/// InternalizeJSONProperty - walks the parsed value and calls the reviver
+fn json_internalize(
+  holder : Value,
+  name : String,
+  reviver : Value,
+  interp : Interpreter,
+) -> Value raise Error {
+  let val = match holder {
+    Object(data) =>
+      match data.properties.get(name) {
+        Some(v) => v
+        None => Undefined
+      }
+    Array(arr_data) => {
+      let idx = @strconv.parse_int(name) catch { _ => -1 }
+      if idx >= 0 && idx < arr_data.elements.length() {
+        arr_data.elements[idx]
+      } else {
+        Undefined
+      }
+    }
+    _ => Undefined
+  }
+  // Recurse into objects and arrays
+  match val {
+    Object(data) => {
+      let keys : Array[String] = []
+      for key, _ in data.properties {
+        keys.push(key)
+      }
+      for key in keys {
+        let new_val = json_internalize(val, key, reviver, interp)
+        match new_val {
+          Undefined =>
+            // Delete the property
+            data.properties.remove(key)
+          _ => data.properties[key] = new_val
+        }
+      }
+    }
+    Array(arr_data) => {
+      for i = 0; i < arr_data.elements.length(); i = i + 1 {
+        let new_val = json_internalize(
+          val,
+          i.to_string(),
+          reviver,
+          interp,
+        )
+        match new_val {
+          Undefined => arr_data.elements[i] = Undefined
+          _ => arr_data.elements[i] = new_val
+        }
+      }
+    }
+    _ => ()
+  }
+  // Call reviver with (holder, name, val)
+  interp.call_value(
+    reviver,
+    holder,
+    [String_(name), val],
+    @token.Loc::default(),
+  )
 }
 
 ///|
