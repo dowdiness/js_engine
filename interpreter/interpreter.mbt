@@ -3496,7 +3496,13 @@ fn Interpreter::bind_pattern(
       }
     DefaultPat(inner_pat, default_expr) => {
       let final_val : Value = if value is Undefined {
-        self.eval_expr(default_expr, env)
+        let v = self.eval_expr(default_expr, env)
+        // Per spec, if default is anonymous function and target is identifier, set name
+        match inner_pat {
+          IdentPat(name) => set_function_name(v, name)
+          _ => ()
+        }
+        v
       } else {
         value
       }
@@ -3507,6 +3513,13 @@ fn Interpreter::bind_pattern(
       // not in binding declarations (let/const/var). Delegate to assign_to_expr.
       self.assign_to_expr(expr, value, env)
     ArrayPat(elements, rest) => {
+      // Per spec, destructuring null/undefined must throw TypeError
+      if value is (Null | Undefined) {
+        raise @errors.TypeError(
+          message=value.to_string() +
+            " is not iterable (cannot destructure)",
+        )
+      }
       let arr_elements : Array[Value] = match value {
         Array(data) => data.elements
         _ => {
@@ -3590,9 +3603,19 @@ fn Interpreter::bind_pattern(
                     }
                   }
                 }
-                None => []
+                None => {
+                  raise @errors.TypeError(
+                    message=value.to_string() +
+                      " is not iterable (cannot destructure)",
+                  )
+                }
               }
-            _ => []
+            _ => {
+              raise @errors.TypeError(
+                message=value.to_string() +
+                  " is not iterable (cannot destructure)",
+              )
+            }
           }
         }
       }
@@ -3626,17 +3649,18 @@ fn Interpreter::bind_pattern(
       }
     }
     ObjectPat(props, rest) => {
+      // Per spec, destructuring null/undefined must throw TypeError
+      if value is (Null | Undefined) {
+        raise @errors.TypeError(
+          message="Cannot destructure " +
+            value.to_string() +
+            " value",
+        )
+      }
       let used_keys : Map[String, Bool] = {}
       for prop in props {
         used_keys[prop.key] = true
-        let val : Value = match value {
-          Object(data) =>
-            match data.properties.get(prop.key) {
-              Some(v) => v
-              None => Undefined
-            }
-          _ => Undefined
-        }
+        let val : Value = self.get_property(value, prop.key, @token.Loc::default())
         let final_val : Value = if val is Undefined {
           match prop.default_val {
             Some(default_expr) => self.eval_expr(default_expr, env)
@@ -3712,7 +3736,13 @@ fn Interpreter::assign_pattern(
     IdentPat(name) => env.assign(name, value)
     DefaultPat(inner_pat, default_expr) => {
       let final_val : Value = if value is Undefined {
-        self.eval_expr(default_expr, env)
+        let v = self.eval_expr(default_expr, env)
+        // Per spec, if default is anonymous function and target is identifier, set name
+        match inner_pat {
+          IdentPat(name) => set_function_name(v, name)
+          _ => ()
+        }
+        v
       } else {
         value
       }
@@ -3722,6 +3752,13 @@ fn Interpreter::assign_pattern(
       // Member expression assignment target: [obj.x] = [1]
       self.assign_to_expr(expr, value, env)
     ArrayPat(elements, rest) => {
+      // Per spec, destructuring null/undefined must throw TypeError
+      if value is (Null | Undefined) {
+        raise @errors.TypeError(
+          message=value.to_string() +
+            " is not iterable (cannot destructure)",
+        )
+      }
       let arr_elements : Array[Value] = match value {
         Array(data) => data.elements
         _ => {
@@ -3805,9 +3842,19 @@ fn Interpreter::assign_pattern(
                     }
                   }
                 }
-                None => []
+                None => {
+                  raise @errors.TypeError(
+                    message=value.to_string() +
+                      " is not iterable (cannot destructure)",
+                  )
+                }
               }
-            _ => []
+            _ => {
+              raise @errors.TypeError(
+                message=value.to_string() +
+                  " is not iterable (cannot destructure)",
+              )
+            }
           }
         }
       }
@@ -3836,17 +3883,18 @@ fn Interpreter::assign_pattern(
       }
     }
     ObjectPat(props, rest) => {
+      // Per spec, destructuring null/undefined must throw TypeError
+      if value is (Null | Undefined) {
+        raise @errors.TypeError(
+          message="Cannot destructure " +
+            value.to_string() +
+            " value",
+        )
+      }
       let used_keys : Map[String, Bool] = {}
       for prop in props {
         used_keys[prop.key] = true
-        let val : Value = match value {
-          Object(data) =>
-            match data.properties.get(prop.key) {
-              Some(v) => v
-              None => Undefined
-            }
-          _ => Undefined
-        }
+        let val : Value = self.get_property(value, prop.key, @token.Loc::default())
         let final_val : Value = if val is Undefined {
           match prop.default_val {
             Some(default_expr) => self.eval_expr(default_expr, env)

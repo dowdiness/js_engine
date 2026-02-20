@@ -219,9 +219,9 @@ pub fn setup_builtins(
   // encodeURIComponent(string)
   env.def_builtin(
     "encodeURIComponent",
-    make_static_func("encodeURIComponent", fn(args) {
+    make_static_func("encodeURIComponent", fn(args) raise {
       let str = if args.length() > 0 {
-        args[0].to_string()
+        to_js_string(args[0])
       } else {
         "undefined"
       }
@@ -234,7 +234,7 @@ pub fn setup_builtins(
     "decodeURIComponent",
     make_static_func("decodeURIComponent", fn(args) raise {
       let str = if args.length() > 0 {
-        args[0].to_string()
+        to_js_string(args[0])
       } else {
         "undefined"
       }
@@ -245,9 +245,9 @@ pub fn setup_builtins(
   // encodeURI(string)
   env.def_builtin(
     "encodeURI",
-    make_static_func("encodeURI", fn(args) {
+    make_static_func("encodeURI", fn(args) raise {
       let str = if args.length() > 0 {
-        args[0].to_string()
+        to_js_string(args[0])
       } else {
         "undefined"
       }
@@ -260,7 +260,7 @@ pub fn setup_builtins(
     "decodeURI",
     make_static_func("decodeURI", fn(args) raise {
       let str = if args.length() > 0 {
-        args[0].to_string()
+        to_js_string(args[0])
       } else {
         "undefined"
       }
@@ -271,9 +271,9 @@ pub fn setup_builtins(
   // escape(string) — Annex B
   env.def_builtin(
     "escape",
-    make_static_func_with_length("escape", 1, fn(args) {
+    make_static_func_with_length("escape", 1, fn(args) raise {
       let str = if args.length() > 0 {
-        args[0].to_string()
+        to_js_string(args[0])
       } else {
         "undefined"
       }
@@ -284,9 +284,9 @@ pub fn setup_builtins(
   // unescape(string) — Annex B
   env.def_builtin(
     "unescape",
-    make_static_func_with_length("unescape", 1, fn(args) {
+    make_static_func_with_length("unescape", 1, fn(args) raise {
       let str = if args.length() > 0 {
-        args[0].to_string()
+        to_js_string(args[0])
       } else {
         "undefined"
       }

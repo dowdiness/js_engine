@@ -337,18 +337,28 @@ fn Interpreter::make_generator_function(
     Some(binding) => binding.value
     None => Null
   }
+  let func_name = match name {
+    Some(n) => n
+    None => ""
+  }
   let fn_props : Map[String, Value] = {}
   fn_props["prototype"] = func_prototype
+  fn_props["name"] = String_(func_name)
+  fn_props["length"] = Number(params.length().to_double())
+  let nf_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   Object({
     properties: fn_props,
     symbol_properties: {},
     prototype: gen_func_proto,
     callable: Some(
       InterpreterCallable(
-        match name {
-          Some(n) => n
-          None => "anonymous"
-        },
+        func_name,
         fn(ip, this_val, args) {
           create_generator_instance(
             ip,
@@ -366,7 +376,10 @@ fn Interpreter::make_generator_function(
       ),
     ),
     class_name: "GeneratorFunction",
-    descriptors: {},
+    descriptors: {
+      "name": nf_desc,
+      "length": nf_desc,
+    },
     symbol_descriptors: {},
     extensible: true,
   })
@@ -400,18 +413,28 @@ fn Interpreter::make_generator_function_ext(
     Some(binding) => binding.value
     None => Null
   }
+  let func_name = match name {
+    Some(n) => n
+    None => ""
+  }
   let fn_props : Map[String, Value] = {}
   fn_props["prototype"] = func_prototype
+  fn_props["name"] = String_(func_name)
+  fn_props["length"] = Number(params.length().to_double())
+  let nf_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   Object({
     properties: fn_props,
     symbol_properties: {},
     prototype: gen_func_proto,
     callable: Some(
       InterpreterCallable(
-        match name {
-          Some(n) => n
-          None => "anonymous"
-        },
+        func_name,
         fn(ip, this_val, args) {
           create_generator_instance(
             ip,
@@ -429,7 +452,10 @@ fn Interpreter::make_generator_function_ext(
       ),
     ),
     class_name: "GeneratorFunction",
-    descriptors: {},
+    descriptors: {
+      "name": nf_desc,
+      "length": nf_desc,
+    },
     symbol_descriptors: {},
     extensible: true,
   })

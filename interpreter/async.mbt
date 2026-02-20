@@ -12,18 +12,28 @@ fn Interpreter::make_async_function(
   body : Array[@ast.Stmt],
   closure : Environment,
 ) -> Value {
-  let display_name = match name {
+  let func_name = match name {
     Some(n) => n
-    None => "anonymous"
+    None => ""
+  }
+  let nf_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
   }
   let async_proto = get_function_prototype(self)
   Object({
-    properties: {},
+    properties: {
+      "name": String_(func_name),
+      "length": Number(params.length().to_double()),
+    },
     symbol_properties: {},
     prototype: async_proto,
     callable: Some(
       InterpreterCallable(
-        display_name,
+        func_name,
         fn(ip : Interpreter, this_val : Value, args : Array[Value]) -> Value {
           run_async_body(
             ip, this_val, args, name, params, None, rest_param, body, closure,
@@ -32,7 +42,10 @@ fn Interpreter::make_async_function(
       ),
     ),
     class_name: "AsyncFunction",
-    descriptors: {},
+    descriptors: {
+      "name": nf_desc,
+      "length": nf_desc,
+    },
     symbol_descriptors: {},
     extensible: true,
   })
@@ -47,18 +60,28 @@ fn Interpreter::make_async_function_ext(
   body : Array[@ast.Stmt],
   closure : Environment,
 ) -> Value {
-  let display_name = match name {
+  let func_name = match name {
     Some(n) => n
-    None => "anonymous"
+    None => ""
+  }
+  let nf_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
   }
   let async_proto = get_function_prototype(self)
   Object({
-    properties: {},
+    properties: {
+      "name": String_(func_name),
+      "length": Number(params.length().to_double()),
+    },
     symbol_properties: {},
     prototype: async_proto,
     callable: Some(
       InterpreterCallable(
-        display_name,
+        func_name,
         fn(ip : Interpreter, this_val : Value, args : Array[Value]) -> Value {
           run_async_body(
             ip,
@@ -75,7 +98,10 @@ fn Interpreter::make_async_function_ext(
       ),
     ),
     class_name: "AsyncFunction",
-    descriptors: {},
+    descriptors: {
+      "name": nf_desc,
+      "length": nf_desc,
+    },
     symbol_descriptors: {},
     extensible: true,
   })
