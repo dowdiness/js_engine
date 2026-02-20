@@ -497,6 +497,7 @@ fn Interpreter::exec_stmt(
           }
           BreakSignal(bv, Some(l)) =>
             if label == Some(l) {
+              completion = bv.unwrap_or(completion)
               break
             } else {
               return BreakSignal(bv, Some(l))
@@ -507,6 +508,7 @@ fn Interpreter::exec_stmt(
           }
           ContinueSignal(cv, Some(l)) =>
             if label == Some(l) {
+              completion = cv.unwrap_or(completion)
               continue
             } else {
               return ContinueSignal(cv, Some(l))
@@ -571,6 +573,7 @@ fn Interpreter::exec_stmt(
           }
           BreakSignal(bv, Some(l)) =>
             if label == Some(l) {
+              completion = bv.unwrap_or(completion)
               break
             } else {
               return BreakSignal(bv, Some(l))
@@ -581,6 +584,7 @@ fn Interpreter::exec_stmt(
           }
           ContinueSignal(cv, Some(l)) =>
             if label == Some(l) {
+              completion = cv.unwrap_or(completion)
               do_continue = true
             } else {
               return ContinueSignal(cv, Some(l))
@@ -758,6 +762,7 @@ fn Interpreter::exec_stmt(
           }
           BreakSignal(bv, Some(l)) =>
             if label == Some(l) {
+              completion = bv.unwrap_or(completion)
               break
             } else {
               return BreakSignal(bv, Some(l))
@@ -767,7 +772,7 @@ fn Interpreter::exec_stmt(
           }
           ContinueSignal(cv, Some(l)) =>
             if label == Some(l) {
-              // continue — fall through to condition check
+              completion = cv.unwrap_or(completion)
             } else {
               return ContinueSignal(cv, Some(l))
             }
@@ -816,6 +821,7 @@ fn Interpreter::exec_stmt(
           }
           BreakSignal(bv, Some(l)) =>
             if label == Some(l) {
+              completion = bv.unwrap_or(completion)
               break
             } else {
               return BreakSignal(bv, Some(l))
@@ -826,6 +832,7 @@ fn Interpreter::exec_stmt(
           }
           ContinueSignal(cv, Some(l)) =>
             if label == Some(l) {
+              completion = cv.unwrap_or(completion)
               continue
             } else {
               return ContinueSignal(cv, Some(l))
@@ -975,6 +982,7 @@ fn Interpreter::exec_stmt(
             }
             BreakSignal(bv, Some(l)) =>
               if label == Some(l) {
+                completion = bv.unwrap_or(completion)
                 break
               } else {
                 return BreakSignal(bv, Some(l))
@@ -985,6 +993,7 @@ fn Interpreter::exec_stmt(
             }
             ContinueSignal(cv, Some(l)) =>
               if label == Some(l) {
+                completion = cv.unwrap_or(completion)
                 continue
               } else {
                 return ContinueSignal(cv, Some(l))
@@ -1065,6 +1074,7 @@ fn Interpreter::exec_stmt(
           }
           BreakSignal(bv, Some(l)) =>
             if label == Some(l) {
+              completion = bv.unwrap_or(completion)
               break
             } else {
               return BreakSignal(bv, Some(l))
@@ -1075,6 +1085,7 @@ fn Interpreter::exec_stmt(
           }
           ContinueSignal(cv, Some(l)) =>
             if label == Some(l) {
+              completion = cv.unwrap_or(completion)
               continue
             } else {
               return ContinueSignal(cv, Some(l))
@@ -1113,6 +1124,7 @@ fn Interpreter::exec_stmt(
           }
           BreakSignal(bv, Some(l)) =>
             if label == Some(l) {
+              completion = bv.unwrap_or(completion)
               break
             } else {
               return BreakSignal(bv, Some(l))
@@ -1123,6 +1135,7 @@ fn Interpreter::exec_stmt(
           }
           ContinueSignal(cv, Some(l)) =>
             if label == Some(l) {
+              completion = cv.unwrap_or(completion)
               continue
             } else {
               return ContinueSignal(cv, Some(l))
@@ -1247,6 +1260,7 @@ fn Interpreter::exec_stmt(
           }
           BreakSignal(bv, Some(l)) =>
             if label == Some(l) {
+              completion = bv.unwrap_or(completion)
               break
             } else {
               return BreakSignal(bv, Some(l))
@@ -1257,6 +1271,7 @@ fn Interpreter::exec_stmt(
           }
           ContinueSignal(cv, Some(l)) =>
             if label == Some(l) {
+              completion = cv.unwrap_or(completion)
               continue
             } else {
               return ContinueSignal(cv, Some(l))
@@ -1281,6 +1296,7 @@ fn Interpreter::exec_stmt(
           }
           BreakSignal(bv, Some(l)) =>
             if label == Some(l) {
+              completion = bv.unwrap_or(completion)
               break
             } else {
               return BreakSignal(bv, Some(l))
@@ -1291,6 +1307,7 @@ fn Interpreter::exec_stmt(
           }
           ContinueSignal(cv, Some(l)) =>
             if label == Some(l) {
+              completion = cv.unwrap_or(completion)
               continue
             } else {
               return ContinueSignal(cv, Some(l))
@@ -1393,6 +1410,7 @@ fn Interpreter::exec_stmt(
           }
           BreakSignal(bv, Some(l)) =>
             if label == Some(l) {
+              completion = bv.unwrap_or(completion)
               break
             } else {
               return BreakSignal(bv, Some(l))
@@ -1403,6 +1421,7 @@ fn Interpreter::exec_stmt(
           }
           ContinueSignal(cv, Some(l)) =>
             if label == Some(l) {
+              completion = cv.unwrap_or(completion)
               continue
             } else {
               return ContinueSignal(cv, Some(l))

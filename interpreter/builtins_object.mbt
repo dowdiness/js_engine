@@ -165,10 +165,10 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
       Object(data) =>
         match key_val {
           Symbol(sym) => Bool(data.symbol_properties.contains(sym.id))
-          _ => Bool(data.properties.contains(key_val.to_string()))
+          _ => Bool(data.properties.contains(to_js_string(key_val)))
         }
       Array(data) => {
-        let key = key_val.to_string()
+        let key = to_js_string(key_val)
         if key == "length" {
           Bool(true)
         } else {
@@ -181,7 +181,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }
       }
       String_(s) => {
-        let key = key_val.to_string()
+        let key = to_js_string(key_val)
         if key == "length" {
           Bool(true)
         } else {
@@ -194,7 +194,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
   })
   obj_proto_props["propertyIsEnumerable"] = make_method_func("propertyIsEnumerable", 1, fn(this_val, args) {
     let key_val = if args.length() > 0 { args[0] } else { Undefined }
-    let key = key_val.to_string()
+    let key = to_js_string(key_val)
     match this_val {
       Object(data) =>
         if data.properties.contains(key) {
@@ -1195,7 +1195,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 Symbol(s) => s.id
                 _ => 0
               }
-              let prop_name = prop_val.to_string()
+              let prop_name = to_js_string(prop_val)
 
               // Check if property exists (using symbol or string storage)
               let prop_exists = if is_symbol_key {
@@ -1400,7 +1400,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                   set_array_iterator_override(arr_data, None, Some(value))
                 }
               } else {
-                let prop_name = prop_val.to_string()
+                let prop_name = to_js_string(prop_val)
                 if prop_name == "length" {
                   // Handle length property changes
                   match desc_props.get("value") {
@@ -1443,7 +1443,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               }
             }
             Promise(data) => {
-              let prop_name = prop_val.to_string()
+              let prop_name = to_js_string(prop_val)
               let existing_desc = data.descriptors.get(prop_name)
               if is_accessor {
                 if not(data.properties.contains(prop_name)) {
@@ -1553,7 +1553,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                     Symbol(s) => s.id
                     _ => 0
                   }
-                  let prop_name = prop_val.to_string()
+                  let prop_name = to_js_string(prop_val)
                   let prop_exists = if is_symbol_key {
                     data.symbol_properties.contains(sym_id)
                   } else {
