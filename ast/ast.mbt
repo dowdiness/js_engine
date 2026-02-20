@@ -212,7 +212,7 @@ pub(all) enum Stmt {
   BreakStmt(String?, @token.Loc)
   ContinueStmt(String?, @token.Loc)
   ThrowStmt(Expr, @token.Loc)
-  TryCatchStmt(Array[Stmt], String?, Array[Stmt]?, Array[Stmt]?, @token.Loc)
+  TryCatchStmt(Array[Stmt], Pattern?, Array[Stmt]?, Array[Stmt]?, @token.Loc)
   SwitchStmt(Expr, Array[SwitchCase], @token.Loc)
   DoWhileStmt(Stmt, Expr, @token.Loc)
   ForInStmt(VarKind?, String, Expr, Stmt, @token.Loc)

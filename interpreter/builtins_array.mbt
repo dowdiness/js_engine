@@ -494,6 +494,9 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
       make_interp_method_func("forEach", 1, fn(interp, this_val, args) raise {
             let _ = this_val
             let callback = if args.length() > 0 { args[0] } else { Undefined }
+            if not(is_callable(callback)) {
+              raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
+            }
             let this_arg = if args.length() > 1 { args[1] } else { Undefined }
             let loc = @token.Loc::default()
             for i = 0; i < arr.elements.length(); i = i + 1 {
@@ -512,6 +515,9 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
       make_interp_method_func("map", 1, fn(interp, this_val, args) raise {
             let _ = this_val
             let callback = if args.length() > 0 { args[0] } else { Undefined }
+            if not(is_callable(callback)) {
+              raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
+            }
             let this_arg = if args.length() > 1 { args[1] } else { Undefined }
             let loc = @token.Loc::default()
             let result : Array[Value] = []
@@ -532,6 +538,9 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
       make_interp_method_func("filter", 1, fn(interp, this_val, args) raise {
             let _ = this_val
             let callback = if args.length() > 0 { args[0] } else { Undefined }
+            if not(is_callable(callback)) {
+              raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
+            }
             let this_arg = if args.length() > 1 { args[1] } else { Undefined }
             let loc = @token.Loc::default()
             let result : Array[Value] = []
@@ -554,6 +563,9 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
       make_interp_method_func("reduce", 1, fn(interp, this_val, args) raise {
             let _ = this_val
             let callback = if args.length() > 0 { args[0] } else { Undefined }
+            if not(is_callable(callback)) {
+              raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
+            }
             let loc = @token.Loc::default()
             let mut acc : Value = Undefined
             let mut start = 0
@@ -584,6 +596,9 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
       make_interp_method_func("reduceRight", 1, fn(interp, this_val, args) raise {
             let _ = this_val
             let callback = if args.length() > 0 { args[0] } else { Undefined }
+            if not(is_callable(callback)) {
+              raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
+            }
             let loc = @token.Loc::default()
             let mut acc : Value = Undefined
             let mut start = arr.elements.length() - 1
@@ -614,6 +629,9 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
       make_interp_method_func("find", 1, fn(interp, this_val, args) raise {
             let _ = this_val
             let callback = if args.length() > 0 { args[0] } else { Undefined }
+            if not(is_callable(callback)) {
+              raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
+            }
             let this_arg = if args.length() > 1 { args[1] } else { Undefined }
             let loc = @token.Loc::default()
             for i = 0; i < arr.elements.length(); i = i + 1 {
@@ -635,6 +653,9 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
       make_interp_method_func("findIndex", 1, fn(interp, this_val, args) raise {
             let _ = this_val
             let callback = if args.length() > 0 { args[0] } else { Undefined }
+            if not(is_callable(callback)) {
+              raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
+            }
             let this_arg = if args.length() > 1 { args[1] } else { Undefined }
             let loc = @token.Loc::default()
             for i = 0; i < arr.elements.length(); i = i + 1 {
@@ -656,6 +677,9 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
       make_interp_method_func("every", 1, fn(interp, this_val, args) raise {
             let _ = this_val
             let callback = if args.length() > 0 { args[0] } else { Undefined }
+            if not(is_callable(callback)) {
+              raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
+            }
             let this_arg = if args.length() > 1 { args[1] } else { Undefined }
             let loc = @token.Loc::default()
             for i = 0; i < arr.elements.length(); i = i + 1 {
@@ -677,6 +701,9 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
       make_interp_method_func("some", 1, fn(interp, this_val, args) raise {
             let _ = this_val
             let callback = if args.length() > 0 { args[0] } else { Undefined }
+            if not(is_callable(callback)) {
+              raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
+            }
             let this_arg = if args.length() > 1 { args[1] } else { Undefined }
             let loc = @token.Loc::default()
             for i = 0; i < arr.elements.length(); i = i + 1 {
@@ -698,6 +725,9 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
       make_interp_method_func("findLast", 1, fn(interp, this_val, args) raise {
             let _ = this_val
             let callback = if args.length() > 0 { args[0] } else { Undefined }
+            if not(is_callable(callback)) {
+              raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
+            }
             let this_arg = if args.length() > 1 { args[1] } else { Undefined }
             let loc = @token.Loc::default()
             for i = arr.elements.length() - 1; i >= 0; i = i - 1 {
@@ -723,6 +753,9 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
           ) raise {
             let _ = this_val
             let callback = if args.length() > 0 { args[0] } else { Undefined }
+            if not(is_callable(callback)) {
+              raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
+            }
             let this_arg = if args.length() > 1 { args[1] } else { Undefined }
             let loc = @token.Loc::default()
             for i = arr.elements.length() - 1; i >= 0; i = i - 1 {
@@ -927,6 +960,9 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
       make_interp_method_func("flatMap", 1, fn(interp, this_val, args) raise {
             let _ = this_val
             let callback = if args.length() > 0 { args[0] } else { Undefined }
+            if not(is_callable(callback)) {
+              raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
+            }
             let this_arg = if args.length() > 1 { args[1] } else { Undefined }
             let loc = @token.Loc::default()
             let result : Array[Value] = []

@@ -4107,7 +4107,7 @@ fn close_iterator(
 fn Interpreter::exec_try_catch(
   self : Interpreter,
   try_body : Array[@ast.Stmt],
-  catch_param : String?,
+  catch_param : @ast.Pattern?,
   catch_body : Array[@ast.Stmt]?,
   finally_body : Array[@ast.Stmt]?,
   env : Environment,
@@ -4162,7 +4162,8 @@ fn Interpreter::exec_try_catch(
             (Some(param), Some(body)) => {
               let catch_env = Environment::new(parent=Some(env))
               let error_value = js_error_to_value_with_env(e, Some(env))
-              catch_env.def(param, error_value, LetBinding)
+              // Bind the catch parameter - supports simple identifier and destructuring
+              self.bind_pattern(param, error_value, catch_env, LetBinding)
               self.exec_stmts(body, catch_env) catch {
                 ce =>
                   if ce is YieldSignal(_) {
@@ -4200,7 +4201,8 @@ fn Interpreter::exec_try_catch(
           }
           _ => Undefined
         }
-        catch_env.def(param, error_value, LetBinding)
+        // Bind the catch parameter - supports simple identifier and destructuring
+        self.bind_pattern(param, error_value, catch_env, LetBinding)
         result = self.exec_stmts(body, catch_env) catch {
           ce =>
             if ce is YieldSignal(_) {

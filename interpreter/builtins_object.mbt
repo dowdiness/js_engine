@@ -3519,6 +3519,9 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
   // Callback-requiring methods (using InterpreterCallable)
   array_proto_props["forEach"] = make_interp_method_func("forEach", 1, fn(interp, this_val, args) raise {
         let callback = if args.length() > 0 { args[0] } else { Undefined }
+        if not(is_callable(callback)) {
+          raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
+        }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
         let len = to_array_like_length(this_val)
@@ -3540,6 +3543,9 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
       })
   array_proto_props["map"] = make_interp_method_func("map", 1, fn(interp, this_val, args) raise {
         let callback = if args.length() > 0 { args[0] } else { Undefined }
+        if not(is_callable(callback)) {
+          raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
+        }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
         let len = to_array_like_length(this_val)
@@ -3565,6 +3571,9 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
       })
   array_proto_props["filter"] = make_interp_method_func("filter", 1, fn(interp, this_val, args) raise {
         let callback = if args.length() > 0 { args[0] } else { Undefined }
+        if not(is_callable(callback)) {
+          raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
+        }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
         let len = to_array_like_length(this_val)
@@ -3587,6 +3596,9 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
       })
   array_proto_props["reduce"] = make_interp_method_func("reduce", 1, fn(interp, this_val, args) raise {
         let callback = if args.length() > 0 { args[0] } else { Undefined }
+        if not(is_callable(callback)) {
+          raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
+        }
         let loc = @token.Loc::default()
         let len = to_array_like_length(this_val)
         let mut acc : Value = Undefined
@@ -3621,6 +3633,9 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
       })
   array_proto_props["reduceRight"] = make_interp_method_func("reduceRight", 1, fn(interp, this_val, args) raise {
         let callback = if args.length() > 0 { args[0] } else { Undefined }
+        if not(is_callable(callback)) {
+          raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
+        }
         let loc = @token.Loc::default()
         let len = to_array_like_length(this_val)
         let mut acc : Value = Undefined
@@ -3655,6 +3670,9 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
       })
   array_proto_props["find"] = make_interp_method_func("find", 1, fn(interp, this_val, args) raise {
         let callback = if args.length() > 0 { args[0] } else { Undefined }
+        if not(is_callable(callback)) {
+          raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
+        }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
         let len = to_array_like_length(this_val)
@@ -3674,6 +3692,9 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
       })
   array_proto_props["findIndex"] = make_interp_method_func("findIndex", 1, fn(interp, this_val, args) raise {
         let callback = if args.length() > 0 { args[0] } else { Undefined }
+        if not(is_callable(callback)) {
+          raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
+        }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
         let len = to_array_like_length(this_val)
@@ -3693,6 +3714,9 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
       })
   array_proto_props["findLast"] = make_interp_method_func("findLast", 1, fn(interp, this_val, args) raise {
         let callback = if args.length() > 0 { args[0] } else { Undefined }
+        if not(is_callable(callback)) {
+          raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
+        }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
         let len = to_array_like_length(this_val)
@@ -3712,6 +3736,9 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
       })
   array_proto_props["findLastIndex"] = make_interp_method_func("findLastIndex", 1, fn(interp, this_val, args) raise {
         let callback = if args.length() > 0 { args[0] } else { Undefined }
+        if not(is_callable(callback)) {
+          raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
+        }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
         let len = to_array_like_length(this_val)
@@ -3731,6 +3758,9 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
       })
   array_proto_props["every"] = make_interp_method_func("every", 1, fn(interp, this_val, args) raise {
         let callback = if args.length() > 0 { args[0] } else { Undefined }
+        if not(is_callable(callback)) {
+          raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
+        }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
         let len = to_array_like_length(this_val)
@@ -3755,6 +3785,9 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
       })
   array_proto_props["some"] = make_interp_method_func("some", 1, fn(interp, this_val, args) raise {
         let callback = if args.length() > 0 { args[0] } else { Undefined }
+        if not(is_callable(callback)) {
+          raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
+        }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
         let len = to_array_like_length(this_val)
@@ -3878,6 +3911,9 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
       })
   array_proto_props["flatMap"] = make_interp_method_func("flatMap", 1, fn(interp, this_val, args) raise {
         let callback = if args.length() > 0 { args[0] } else { Undefined }
+        if not(is_callable(callback)) {
+          raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
+        }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
         let len = to_array_like_length(this_val)

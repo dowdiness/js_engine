@@ -688,13 +688,22 @@ fn Parser::parse_throw_stmt(self : Parser) -> @ast.Stmt raise Error {
 fn Parser::parse_try_catch_stmt(self : Parser) -> @ast.Stmt raise Error {
   let tok = self.expect(Try)
   let try_body = self.parse_block_body()
-  let mut catch_param : String? = None
+  let mut catch_param : @ast.Pattern? = None
   let mut catch_body : Array[@ast.Stmt]? = None
   let mut finally_body : Array[@ast.Stmt]? = None
   if self.eat(Catch) {
     // Optional catch binding: catch { ... } without parameter
     if self.eat(LParen) {
-      catch_param = Some(self.expect_ident())
+      // catch(ident), catch({destructure}), catch([destructure])
+      match self.peek_kind() {
+        LBrace | LBracket =>
+          // Destructuring pattern in catch clause
+          catch_param = Some(self.parse_pattern())
+        _ => {
+          let name = self.expect_ident()
+          catch_param = Some(@ast.IdentPat(name))
+        }
+      }
       let _ = self.expect(RParen)
     }
     catch_body = Some(self.parse_block_body())
