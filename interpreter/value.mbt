@@ -1030,6 +1030,29 @@ fn is_callable(val : Value) -> Bool {
 
 ///|
 /// Look up a string-keyed property on an object, walking the prototype chain.
+/// HasProperty: check if a named property exists on the object or its prototype chain
+pub fn has_property(val : Value, name : String) -> Bool {
+  match val {
+    Object(data) => lookup_property_chain(data, name) is Some(_)
+    Array(data) => {
+      if name == "length" {
+        return true
+      }
+      try {
+        let n = @strconv.parse_double(name)
+        let i = n.to_int()
+        if i.to_double() == n && i >= 0 && i < data.elements.length() {
+          return true
+        }
+      } catch {
+        _ => ()
+      }
+      get_array_named_prop(data, name) is Some(_)
+    }
+    _ => false
+  }
+}
+
 fn lookup_property_chain(data : ObjectData, name : String) -> Value? {
   // Check own properties first
   match data.properties.get(name) {

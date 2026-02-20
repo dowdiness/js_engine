@@ -1108,9 +1108,29 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 message="Property description must be an object: \{descriptor.to_string()}",
               )
           }
-          // Extract descriptor properties - works for Object; for Array/Map/Set/Promise use empty
+          // Extract descriptor properties using full Get (ToPropertyDescriptor spec)
+          // This handles inherited properties and accessor properties (getters)
           let desc_props : Map[String, Value] = match descriptor {
-            Object(desc) => desc.properties
+            Object(_) => {
+              let result : Map[String, Value] = {}
+              let interp = match current_interpreter.val {
+                Some(i) => i
+                None => abort("No interpreter")
+              }
+              let loc = @token.Loc::default()
+              let desc_keys = [
+                "value", "writable", "enumerable", "configurable", "get", "set",
+              ]
+              for key in desc_keys {
+                // Use has_property to check if key exists (includes prototype chain)
+                let has = has_property(descriptor, key)
+                if has {
+                  let v = interp.get_property(descriptor, key, loc)
+                  result[key] = v
+                }
+              }
+              result
+            }
             _ => {}
           }
           // Detect accessor vs data descriptor
