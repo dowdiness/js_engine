@@ -9585,13 +9585,18 @@ fn Interpreter::eval_update(
     ComputedMember(obj_expr, key_expr, mloc) => {
       let obj = self.eval_expr(obj_expr, env)
       let key = self.eval_expr(key_expr, env)
-      let current = self.get_computed_property(obj, key, mloc)
+      // Convert key to property key once (ToPropertyKey)
+      let prop_key : Value = match key {
+        Symbol(_) => key
+        _ => String_(to_js_string(key))
+      }
+      let current = self.get_computed_property(obj, prop_key, mloc)
       let num = to_number(current)
       let new_val : Value = match op {
         Increment => Number(num + 1.0)
         Decrement => Number(num - 1.0)
       }
-      let _ = self.set_computed_property(obj, key, new_val, loc)
+      let _ = self.set_computed_property(obj, prop_key, new_val, loc)
       if prefix {
         new_val
       } else {
@@ -9673,10 +9678,16 @@ fn Interpreter::eval_compound_assign(
     ComputedMember(obj_expr, key_expr, mloc) => {
       let obj = self.eval_expr(obj_expr, env)
       let key = self.eval_expr(key_expr, env)
-      let current = self.get_computed_property(obj, key, mloc)
+      // Convert key to property key once (ToPropertyKey), so toString/valueOf
+      // is only called once per spec
+      let prop_key : Value = match key {
+        Symbol(_) => key
+        _ => String_(to_js_string(key))
+      }
+      let current = self.get_computed_property(obj, prop_key, mloc)
       let rhs = self.eval_expr(value_expr, env)
       let result = eval_binary_op(bin_op, current, rhs, loc)
-      let _ = self.set_computed_property(obj, key, result, loc)
+      let _ = self.set_computed_property(obj, prop_key, result, loc)
       result
     }
     _ =>
