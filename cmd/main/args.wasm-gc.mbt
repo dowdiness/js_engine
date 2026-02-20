@@ -15,3 +15,10 @@ fn parse_args(args : Array[String]) -> (Bool, Bool, String?) {
   }
   (is_module, annex_b, source)
 }
+
+///|
+/// Exit the process with a non-zero exit code (WASM-GC target)
+fn exit_with_error() -> Unit {
+  // WASM-GC: no process.exit; use abort to signal error
+  abort("exit_with_error")
+}

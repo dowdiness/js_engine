@@ -391,9 +391,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         "prototype": obj_proto,
         "name": String_("Object"),
         "length": Number(1.0),
-        "keys": make_static_func_with_length("keys", 1, fn(args) {
+        "keys": make_static_func_with_length("keys", 1, fn(args) raise {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           match obj {
+            Null | Undefined =>
+              raise @errors.TypeError(
+                message="Cannot convert undefined or null to object",
+              )
             Object(data) => {
               let keys : Array[Value] = []
               data.properties.each(fn(k, _v) {
@@ -427,9 +431,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => Array({ elements: [] })
           }
         }),
-        "values": make_static_func_with_length("values", 1, fn(args) {
+        "values": make_static_func_with_length("values", 1, fn(args) raise {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           match obj {
+            Null | Undefined =>
+              raise @errors.TypeError(
+                message="Cannot convert undefined or null to object",
+              )
             Object(data) => {
               let vals : Array[Value] = []
               data.properties.each(fn(k, v) {
@@ -463,9 +471,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => Array({ elements: [] })
           }
         }),
-        "entries": make_static_func_with_length("entries", 1, fn(args) {
+        "entries": make_static_func_with_length("entries", 1, fn(args) raise {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           match obj {
+            Null | Undefined =>
+              raise @errors.TypeError(
+                message="Cannot convert undefined or null to object",
+              )
             Object(data) => {
               let entries : Array[Value] = []
               data.properties.each(fn(k, v) {
@@ -834,6 +846,10 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             }
           }
           match obj {
+            Null | Undefined =>
+              raise @errors.TypeError(
+                message="Cannot convert undefined or null to object",
+              )
             Object(data) => data.prototype
             Array(_) => get_ctor_proto("Array")
             String_(_) => get_ctor_proto("String")
@@ -860,9 +876,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }),
         "getOwnPropertyNames": make_static_func_with_length("getOwnPropertyNames", 1, fn(
           args,
-        ) {
+        ) raise {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           match obj {
+            Null | Undefined =>
+              raise @errors.TypeError(
+                message="Cannot convert undefined or null to object",
+              )
             Object(data) => {
               let keys : Array[Value] = []
               data.properties.each(fn(k, _v) { keys.push(String_(k)) })
@@ -1297,7 +1317,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                   None =>
                     match existing_desc {
                       Some(d) => d.enumerable
-                      None => false
+                      None => if prop_exists { true } else { false }
                     }
                 }
                 let configurable = match new_configurable {
@@ -1305,7 +1325,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                   None =>
                     match existing_desc {
                       Some(d) => d.configurable
-                      None => false
+                      None => if prop_exists { true } else { false }
                     }
                 }
                 let getter = match new_getter {
@@ -1364,12 +1384,14 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                     }
                 }
                 // Build final descriptor using new values or existing defaults
+                // If property exists but has no explicit descriptor, defaults are true
+                // (property was created by normal assignment)
                 let writable = match new_writable {
                   Some(w) => w
                   None =>
                     match existing_desc {
                       Some(d) => d.writable
-                      None => false
+                      None => if prop_exists { true } else { false }
                     }
                 }
                 let enumerable = match new_enumerable {
@@ -1377,7 +1399,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                   None =>
                     match existing_desc {
                       Some(d) => d.enumerable
-                      None => false
+                      None => if prop_exists { true } else { false }
                     }
                 }
                 let configurable = match new_configurable {
@@ -1385,7 +1407,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                   None =>
                     match existing_desc {
                       Some(d) => d.configurable
-                      None => false
+                      None => if prop_exists { true } else { false }
                     }
                 }
                 let final_desc : PropDescriptor = {

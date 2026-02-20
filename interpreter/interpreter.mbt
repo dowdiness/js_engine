@@ -8132,6 +8132,14 @@ fn Interpreter::set_property(
       data.properties[prop] = value
       value
     }
+    Null =>
+      raise @errors.TypeError(
+        message="Cannot set properties of null (setting '\{prop}')",
+      )
+    Undefined =>
+      raise @errors.TypeError(
+        message="Cannot set properties of undefined (setting '\{prop}')",
+      )
     _ =>
       // In non-strict mode, setting a property on a primitive is silently ignored
       // (the temporary wrapper object is discarded). In strict mode, throw TypeError.
@@ -8429,6 +8437,14 @@ fn Interpreter::set_computed_property(
           value
         }
       }
+    Null =>
+      raise @errors.TypeError(
+        message="Cannot set properties of null (setting '\{to_js_string(key)}')",
+      )
+    Undefined =>
+      raise @errors.TypeError(
+        message="Cannot set properties of undefined (setting '\{to_js_string(key)}')",
+      )
     _ =>
       if self.strict {
         raise @errors.TypeError(message="Cannot set property of \{type_of(obj)}")
