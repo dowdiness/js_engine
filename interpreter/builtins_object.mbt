@@ -384,7 +384,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         "prototype": obj_proto,
         "name": String_("Object"),
         "length": Number(1.0),
-        "keys": make_static_func("keys", fn(args) {
+        "keys": make_static_func_with_length("keys", 1, fn(args) {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           match obj {
             Object(data) => {
@@ -420,7 +420,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => Array({ elements: [] })
           }
         }),
-        "values": make_static_func("values", fn(args) {
+        "values": make_static_func_with_length("values", 1, fn(args) {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           match obj {
             Object(data) => {
@@ -456,7 +456,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => Array({ elements: [] })
           }
         }),
-        "entries": make_static_func("entries", fn(args) {
+        "entries": make_static_func_with_length("entries", 1, fn(args) {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           match obj {
             Object(data) => {
@@ -501,7 +501,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => Array({ elements: [] })
           }
         }),
-        "create": make_static_func("create", fn(args) raise {
+        "create": make_static_func_with_length("create", 2, fn(args) raise {
           let proto = if args.length() > 0 { args[0] } else { Null }
           let obj = Object({
             properties: {},
@@ -578,7 +578,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           obj
         }),
-        "assign": make_static_func("assign", fn(args) raise {
+        "assign": make_static_func_with_length("assign", 2, fn(args) raise {
           let target = if args.length() > 0 { args[0] } else { Undefined }
           match target {
             Object(data) => {
@@ -813,7 +813,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => target
           }
         }),
-        "getPrototypeOf": make_static_func("getPrototypeOf", fn(args) raise {
+        "getPrototypeOf": make_static_func_with_length("getPrototypeOf", 1, fn(args) raise {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           fn get_ctor_proto(name : String) -> Value {
             let ctor = env.get(name) catch { _ => return Null }
@@ -851,7 +851,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => Null
           }
         }),
-        "getOwnPropertyNames": make_static_func("getOwnPropertyNames", fn(
+        "getOwnPropertyNames": make_static_func_with_length("getOwnPropertyNames", 1, fn(
           args,
         ) {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
@@ -881,7 +881,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => Array({ elements: [] })
           }
         }),
-        "getOwnPropertySymbols": make_static_func("getOwnPropertySymbols", fn(
+        "getOwnPropertySymbols": make_static_func_with_length("getOwnPropertySymbols", 1, fn(
           args,
         ) {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
@@ -899,8 +899,9 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => Array({ elements: [] })
           }
         }),
-        "getOwnPropertyDescriptors": make_static_func(
+        "getOwnPropertyDescriptors": make_static_func_with_length(
           "getOwnPropertyDescriptors",
+          1,
           fn(args) {
             let obj = if args.length() > 0 { args[0] } else { Undefined }
             match obj {
@@ -1085,7 +1086,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             }
           },
         ),
-        "defineProperty": make_static_func("defineProperty", fn(args) raise {
+        "defineProperty": make_static_func_with_length("defineProperty", 3, fn(args) raise {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           let prop_val = if args.length() > 1 { args[1] } else { Undefined }
           let descriptor = if args.length() > 2 { args[2] } else { Undefined }
@@ -1744,8 +1745,9 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           obj
         }),
-        "getOwnPropertyDescriptor": make_static_func(
+        "getOwnPropertyDescriptor": make_static_func_with_length(
           "getOwnPropertyDescriptor",
+          2,
           fn(args) raise {
             let obj = if args.length() > 0 { args[0] } else { Undefined }
             let prop_key = if args.length() > 1 { args[1] } else { Undefined }
@@ -2196,7 +2198,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             }
           },
         ),
-        "freeze": make_static_func("freeze", fn(args) {
+        "freeze": make_static_func_with_length("freeze", 1, fn(args) {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           match obj {
             Object(data) => {
@@ -2250,7 +2252,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => obj
           }
         }),
-        "seal": make_static_func("seal", fn(args) {
+        "seal": make_static_func_with_length("seal", 1, fn(args) {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           match obj {
             Object(data) => {
@@ -2310,7 +2312,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => obj
           }
         }),
-        "preventExtensions": make_static_func("preventExtensions", fn(args) {
+        "preventExtensions": make_static_func_with_length("preventExtensions", 1, fn(args) {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           match obj {
             Object(data) => {
@@ -2320,7 +2322,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => obj
           }
         }),
-        "isFrozen": make_static_func("isFrozen", fn(args) {
+        "isFrozen": make_static_func_with_length("isFrozen", 1, fn(args) {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           match obj {
             Object(data) => {
@@ -2339,7 +2341,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => Bool(true) // Non-objects are vacuously frozen
           }
         }),
-        "isSealed": make_static_func("isSealed", fn(args) {
+        "isSealed": make_static_func_with_length("isSealed", 1, fn(args) {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           match obj {
             Object(data) => {
@@ -2358,20 +2360,20 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => Bool(true)
           }
         }),
-        "isExtensible": make_static_func("isExtensible", fn(args) {
+        "isExtensible": make_static_func_with_length("isExtensible", 1, fn(args) {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           match obj {
             Object(data) => Bool(data.extensible)
             _ => Bool(false)
           }
         }),
-        "is": make_static_func("is", fn(args) {
+        "is": make_static_func_with_length("is", 2, fn(args) {
           // Object.is() - SameValue algorithm
           let x = if args.length() > 0 { args[0] } else { Undefined }
           let y = if args.length() > 1 { args[1] } else { Undefined }
           Bool(same_value(x, y))
         }),
-        "fromEntries": make_static_func("fromEntries", fn(args) raise {
+        "fromEntries": make_static_func_with_length("fromEntries", 1, fn(args) raise {
           // Object.fromEntries() - create object from iterable of key-value pairs
           let iterable = if args.length() > 0 { args[0] } else { Undefined }
           let properties : Map[String, Value] = {}
@@ -2429,7 +2431,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             extensible: true,
           })
         }),
-        "hasOwn": make_static_func("hasOwn", fn(args) {
+        "hasOwn": make_static_func_with_length("hasOwn", 2, fn(args) {
           // Object.hasOwn() - modern hasOwnProperty replacement
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           let key_val = if args.length() > 1 { args[1] } else { Undefined }
@@ -2457,7 +2459,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => Bool(false)
           }
         }),
-        "setPrototypeOf": make_static_func("setPrototypeOf", fn(args) raise {
+        "setPrototypeOf": make_static_func_with_length("setPrototypeOf", 2, fn(args) raise {
           // Object.setPrototypeOf(obj, prototype)
           // Sets the prototype of the specified object
           let obj = if args.length() > 0 { args[0] } else { Undefined }
@@ -2486,7 +2488,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           obj
         }),
-        "defineProperties": make_static_func("defineProperties", fn(
+        "defineProperties": make_static_func_with_length("defineProperties", 2, fn(
           args,
         ) raise {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
@@ -4220,7 +4222,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
   array_props["prototype"] = array_proto
   array_props["name"] = String_("Array")
   array_props["length"] = Number(1.0)
-  array_props["isArray"] = make_static_func("isArray", fn(args) {
+  array_props["isArray"] = make_static_func_with_length("isArray", 1, fn(args) {
     let val = if args.length() > 0 { args[0] } else { Undefined }
     match val {
       Array(_) => Bool(true)

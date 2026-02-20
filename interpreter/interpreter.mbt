@@ -669,10 +669,13 @@ fn Interpreter::exec_stmt(
       } else {
         cases.length()
       }
+      // Create a new lexical environment for the switch block
+      // so that let/const declarations are scoped to the switch
+      let switch_env = Environment::new(parent=Some(env))
       let mut completion : Value = Undefined
       for i = start; i < cases.length(); i = i + 1 {
         for stmt in cases[i].body {
-          match self.exec_stmt(stmt, env) {
+          match self.exec_stmt(stmt, switch_env) {
             Normal(v) => completion = v
             BreakSignal(None) => return Normal(completion)
             other => return other
@@ -4089,6 +4092,7 @@ fn Interpreter::eval_expr(
       let symbol_properties : Map[Int, Value] = {}
       let descriptors : Map[String, PropDescriptor] = {}
       let symbol_descriptors : Map[Int, PropDescriptor] = {}
+      let mut proto_override : Value? = None
       for prop in props {
         // Handle spread property: { ...expr }
         if prop.kind == @ast.Spread {
@@ -4254,7 +4258,21 @@ fn Interpreter::eval_expr(
             _ => prop.key.to_string() // fallback
           }
           match prop.kind {
-            Init => properties[key_str] = self.eval_expr(prop.value, env)
+            Init => {
+              // Handle __proto__ as special syntax per B.3.1
+              if key_str == "__proto__" {
+                let val = self.eval_expr(prop.value, env)
+                match val {
+                  Object(_) | Array(_) | Map(_) | Set(_) => {
+                    proto_override = Some(val)
+                  }
+                  Null => proto_override = Some(Null)
+                  _ => properties[key_str] = val // primitives don't set proto
+                }
+              } else {
+                properties[key_str] = self.eval_expr(prop.value, env)
+              }
+            }
             Get => {
               let getter = self.eval_expr(prop.value, env)
               if not(properties.contains(key_str)) {
@@ -4293,8 +4311,9 @@ fn Interpreter::eval_expr(
           }
         }
       }
-      let obj_prototype : Value = env.get("[[ObjectPrototype]]") catch {
-        _ => Null
+      let obj_prototype : Value = match proto_override {
+        Some(p) => p
+        None => env.get("[[ObjectPrototype]]") catch { _ => Null }
       }
       Object({
         properties,
