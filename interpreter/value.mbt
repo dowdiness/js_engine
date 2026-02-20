@@ -1223,14 +1223,111 @@ fn to_primitive_number(obj_val : Value, data : ObjectData) -> Value raise Error 
 }
 
 ///|
+fn is_js_whitespace_code(ch : UInt16) -> Bool {
+  ch == 0x20 || ch == 0x09 || ch == 0x0A || ch == 0x0D ||
+  ch == 0x0B || ch == 0x0C ||
+  ch == 0x00A0 || ch == 0xFEFF ||
+  ch == 0x1680 ||
+  (ch >= 0x2000 && ch <= 0x200A) ||
+  ch == 0x2028 || ch == 0x2029 ||
+  ch == 0x202F || ch == 0x205F || ch == 0x3000
+}
+
+///|
+fn js_trim_whitespace(s : String) -> String {
+  let len = s.length()
+  let mut start = 0
+  let mut end = len
+  while start < end && is_js_whitespace_code(s[start]) {
+    start = start + 1
+  }
+  while end > start && is_js_whitespace_code(s[end - 1]) {
+    end = end - 1
+  }
+  if start == 0 && end == len {
+    s
+  } else {
+    s.substring(start~, end~)
+  }
+}
+
+///|
 pub fn to_number(val : Value) -> Double raise Error {
   match val {
     Number(n) => n
     String_(s) => {
-      if s.length() == 0 {
+      // Trim whitespace per spec (including Unicode whitespace)
+      let trimmed = js_trim_whitespace(s)
+      if trimmed.length() == 0 {
         return 0.0
       }
-      @strconv.parse_double(s) catch {
+      // Handle hex, binary, octal literals
+      if trimmed.length() > 2 {
+        let prefix = trimmed.view()[:2].to_string()
+        if prefix == "0x" || prefix == "0X" {
+          // Parse hex
+          let hex_str = trimmed.view()[2:].to_string()
+          if hex_str.length() == 0 {
+            return 0.0 / 0.0
+          }
+          let mut result : Double = 0.0
+          for ch in hex_str {
+            let digit = if ch >= '0' && ch <= '9' {
+              ch.to_int() - '0'.to_int()
+            } else if ch >= 'a' && ch <= 'f' {
+              ch.to_int() - 'a'.to_int() + 10
+            } else if ch >= 'A' && ch <= 'F' {
+              ch.to_int() - 'A'.to_int() + 10
+            } else {
+              return 0.0 / 0.0
+            }
+            result = result * 16.0 + digit.to_double()
+          }
+          return result
+        }
+        if prefix == "0b" || prefix == "0B" {
+          // Parse binary
+          let bin_str = trimmed.view()[2:].to_string()
+          if bin_str.length() == 0 {
+            return 0.0 / 0.0
+          }
+          let mut result : Double = 0.0
+          for ch in bin_str {
+            if ch == '0' {
+              result = result * 2.0
+            } else if ch == '1' {
+              result = result * 2.0 + 1.0
+            } else {
+              return 0.0 / 0.0
+            }
+          }
+          return result
+        }
+        if prefix == "0o" || prefix == "0O" {
+          // Parse octal
+          let oct_str = trimmed.view()[2:].to_string()
+          if oct_str.length() == 0 {
+            return 0.0 / 0.0
+          }
+          let mut result : Double = 0.0
+          for ch in oct_str {
+            if ch >= '0' && ch <= '7' {
+              result = result * 8.0 + (ch.to_int() - '0'.to_int()).to_double()
+            } else {
+              return 0.0 / 0.0
+            }
+          }
+          return result
+        }
+      }
+      // Handle Infinity
+      if trimmed == "Infinity" || trimmed == "+Infinity" {
+        return 1.0 / 0.0
+      }
+      if trimmed == "-Infinity" {
+        return -1.0 / 0.0
+      }
+      @strconv.parse_double(trimmed) catch {
         _ => 0.0 / 0.0
       }
     }

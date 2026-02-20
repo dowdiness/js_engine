@@ -6808,6 +6808,18 @@ fn Interpreter::get_property(
                   _ => return result
                 }
               }
+              Null => {
+                // For function objects, fall back to Function.prototype
+                match data.callable {
+                  Some(_) => {
+                    let fp = self.global.get("[[FunctionPrototype]]") catch {
+                      _ => break
+                    }
+                    current = fp
+                  }
+                  None => break
+                }
+              }
               _ => break
             }
           }
