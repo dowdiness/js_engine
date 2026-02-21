@@ -3735,7 +3735,27 @@ fn Interpreter::bind_pattern(
             bk,
           )
         }
-        None => ()
+        None => {
+          // Per spec: IteratorClose — call iterator.return() if not exhausted
+          if iter_done == false {
+            match iterator {
+              Object(iter_data) =>
+                match iter_data.properties.get("return") {
+                  Some(return_fn) =>
+                    if is_callable(return_fn) {
+                      let _ = self.call_value(
+                        return_fn,
+                        iterator,
+                        [],
+                        loc_dstr,
+                      )
+                    }
+                  None => ()
+                }
+              _ => ()
+            }
+          }
+        }
       }
     }
     ObjectPat(props, rest) => {
@@ -4014,7 +4034,27 @@ fn Interpreter::assign_pattern(
           }
           self.assign_pattern(rest_pat, Array({ elements: rest_elements }), env)
         }
-        None => ()
+        None => {
+          // Per spec: IteratorClose — call iterator.return() if not exhausted
+          if iter_done_a == false {
+            match iterator_a {
+              Object(iter_data) =>
+                match iter_data.properties.get("return") {
+                  Some(return_fn) =>
+                    if is_callable(return_fn) {
+                      let _ = self.call_value(
+                        return_fn,
+                        iterator_a,
+                        [],
+                        loc_dstr,
+                      )
+                    }
+                  None => ()
+                }
+              _ => ()
+            }
+          }
+        }
       }
     }
     ObjectPat(props, rest) => {
