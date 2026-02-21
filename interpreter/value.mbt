@@ -573,7 +573,7 @@ pub fn make_func(data : FuncData) -> Value {
       "length": Number(func_length),
     },
     symbol_properties: {},
-    prototype: Null,
+    prototype: get_func_proto(),
     callable: Some(UserFunc(data)),
     class_name: "Function",
     descriptors: {
@@ -644,7 +644,7 @@ pub fn make_func_ext(data : FuncDataExt) -> Value {
       "length": Number(func_length.to_double()),
     },
     symbol_properties: {},
-    prototype: Null,
+    prototype: get_func_proto(),
     callable: Some(UserFuncExt(data)),
     class_name: "Function",
     descriptors: {
@@ -678,6 +678,18 @@ pub fn make_func_ext(data : FuncDataExt) -> Value {
 }
 
 ///|
+/// Global reference to Function.prototype, set during initialization
+pub let function_prototype_ref : Ref[Value?] = { val: None }
+
+///|
+fn get_func_proto() -> Value {
+  match function_prototype_ref.val {
+    Some(p) => p
+    None => Null
+  }
+}
+
+///|
 pub fn make_native_func(
   name : String,
   func : (Array[Value]) -> Value raise Error,
@@ -692,7 +704,7 @@ pub fn make_native_func(
   Object({
     properties: { "name": String_(name), "length": Number(0.0) },
     symbol_properties: {},
-    prototype: Null,
+    prototype: get_func_proto(),
     callable: Some(NonConstructableCallable(name, func)),
     class_name: "Function",
     descriptors: { "name": nf_desc, "length": nf_desc },
@@ -721,7 +733,7 @@ pub fn make_native_func_with_length(
   Object({
     properties: props,
     symbol_properties: {},
-    prototype: Null,
+    prototype: get_func_proto(),
     callable: Some(NonConstructableCallable(name, func)),
     class_name: "Function",
     descriptors: { "name": nf_desc, "length": nf_desc },
@@ -746,7 +758,7 @@ pub fn make_static_func(
   Object({
     properties: { "name": String_(name), "length": Number(0.0) },
     symbol_properties: {},
-    prototype: Null,
+    prototype: get_func_proto(),
     callable: Some(NonConstructableCallable(name, func)),
     class_name: "Function",
     descriptors: { "name": nf_desc, "length": nf_desc },
@@ -775,7 +787,7 @@ pub fn make_static_func_with_length(
   Object({
     properties: props,
     symbol_properties: {},
-    prototype: Null,
+    prototype: get_func_proto(),
     callable: Some(NonConstructableCallable(name, func)),
     class_name: "Function",
     descriptors: { "name": nf_desc, "length": nf_desc },
@@ -804,7 +816,7 @@ pub fn make_method_func(
   Object({
     properties: props,
     symbol_properties: {},
-    prototype: Null,
+    prototype: get_func_proto(),
     callable: Some(MethodCallable(name, func)),
     class_name: "Function",
     descriptors: { "name": nf_desc, "length": nf_desc },
@@ -833,7 +845,7 @@ pub fn make_interp_method_func(
   Object({
     properties: props,
     symbol_properties: {},
-    prototype: Null,
+    prototype: get_func_proto(),
     callable: Some(InterpreterCallable(name, func)),
     class_name: "Function",
     descriptors: { "name": nf_desc, "length": nf_desc },

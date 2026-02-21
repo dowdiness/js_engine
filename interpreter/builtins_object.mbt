@@ -724,6 +724,15 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }),
         "create": make_static_func_with_length("create", 2, fn(args) raise {
           let proto = if args.length() > 0 { args[0] } else { Null }
+          // Per spec, first argument must be Object or null
+          match proto {
+            Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) | Null => ()
+            _ =>
+              raise @errors.TypeError(
+                message="Object prototype may only be an Object or null: " +
+                  type_of(proto),
+              )
+          }
           let obj = Object({
             properties: {},
             symbol_properties: {},
@@ -4634,10 +4643,25 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
   // Array.from with mapFn support using InterpreterCallable
   array_props["from"] = make_interp_method_func("from", 1, fn(interp, _this_val, args) raise {
         let source = if args.length() > 0 { args[0] } else { Undefined }
+        // Per spec, items must not be null/undefined
+        if source is (Null | Undefined) {
+          raise @errors.TypeError(
+            message="Cannot read properties of " +
+              to_js_string(source) +
+              " (reading 'Symbol(Symbol.iterator)')",
+          )
+        }
         let map_fn = if args.length() > 1 {
           match args[1] {
             Undefined => None
-            fn_val => Some(fn_val)
+            fn_val => {
+              if not(is_callable(fn_val)) {
+                raise @errors.TypeError(
+                  message=to_js_string(fn_val) + " is not a function",
+                )
+              }
+              Some(fn_val)
+            }
           }
         } else {
           None

@@ -810,6 +810,74 @@ pub fn setup_builtins(
         Some(b) => b.value
         None => Undefined
       }
+      // Add RegExp.prototype methods
+      // test() and exec() are placed on each instance by make_regexp_object
+      // Here we add them to prototype so typeof checks work
+      regexp_proto_props["test"] = make_method_func("test", 1, fn(this_val, args) raise {
+        // Get the instance's own test method and call it
+        match this_val {
+          Object(data) =>
+            match data.properties.get("test") {
+              Some(fn_val) =>
+                if is_callable(fn_val) {
+                  match fn_val {
+                    Object(fn_data) =>
+                      match fn_data.callable {
+                        Some(MethodCallable(_, f)) => f(this_val, args)
+                        Some(NativeCallable(_, f)) => f(args)
+                        Some(NonConstructableCallable(_, f)) => f(args)
+                        _ => Undefined
+                      }
+                    _ => Undefined
+                  }
+                } else {
+                  Undefined
+                }
+              None => Bool(false)
+            }
+          _ => raise @errors.TypeError(message="Method RegExp.prototype.test called on incompatible receiver")
+        }
+      })
+      regexp_proto_props["exec"] = make_method_func("exec", 1, fn(this_val, args) raise {
+        match this_val {
+          Object(data) =>
+            match data.properties.get("exec") {
+              Some(fn_val) =>
+                if is_callable(fn_val) {
+                  match fn_val {
+                    Object(fn_data) =>
+                      match fn_data.callable {
+                        Some(MethodCallable(_, f)) => f(this_val, args)
+                        Some(NativeCallable(_, f)) => f(args)
+                        Some(NonConstructableCallable(_, f)) => f(args)
+                        _ => Null
+                      }
+                    _ => Null
+                  }
+                } else {
+                  Null
+                }
+              None => Null
+            }
+          _ => raise @errors.TypeError(message="Method RegExp.prototype.exec called on incompatible receiver")
+        }
+      })
+      regexp_proto_props["toString"] = make_method_func("toString", 0, fn(this_val, _args) raise {
+        match this_val {
+          Object(data) => {
+            let source = match data.properties.get("source") {
+              Some(String_(s)) => s
+              _ => ""
+            }
+            let flags = match data.properties.get("flags") {
+              Some(String_(f)) => f
+              _ => ""
+            }
+            String_("/" + source + "/" + flags)
+          }
+          _ => String_("/(?:)/")
+        }
+      })
       let regexp_proto : Value = Object({
         properties: regexp_proto_props,
         symbol_properties: {},
@@ -4336,6 +4404,7 @@ fn setup_function_builtins(env : Environment) -> Unit {
 
   // Register Function.prototype so other builtins can look it up
   env.def_builtin("[[FunctionPrototype]]", func_proto)
+  function_prototype_ref.val = Some(func_proto)
   // Register the same Function constructor object globally
   env.def_builtin("Function", func_ctor)
 }
