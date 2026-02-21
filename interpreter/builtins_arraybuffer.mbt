@@ -268,7 +268,7 @@ pub fn setup_arraybuffer_builtins(env : Environment) -> Unit {
   ab_ctor_props["length"] = Number(1.0)
 
   // ArrayBuffer.isView(arg)
-  ab_ctor_props["isView"] = make_native_func("isView", fn(args) {
+  ab_ctor_props["isView"] = make_native_func_with_length("isView", 1, fn(args) {
     if args.length() == 0 {
       return Bool(false)
     }

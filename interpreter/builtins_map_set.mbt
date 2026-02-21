@@ -86,7 +86,7 @@ fn setup_map_builtins(env : Environment) -> Unit {
       })
 
   // Map.prototype.set(key, value)
-  map_proto_props["set"] = make_method_func("set", 1, fn(this_val, args) raise {
+  map_proto_props["set"] = make_method_func("set", 2, fn(this_val, args) raise {
         match this_val {
           Map(data) => {
             let key = if args.length() > 0 { args[0] } else { Undefined }
@@ -229,7 +229,7 @@ fn setup_map_builtins(env : Environment) -> Unit {
       })
 
   // Map.prototype.getOrInsert(key, value)
-  map_proto_props["getOrInsert"] = make_method_func("getOrInsert", 0, fn(this_val, args) raise {
+  map_proto_props["getOrInsert"] = make_method_func("getOrInsert", 2, fn(this_val, args) raise {
         match this_val {
           Map(data) => {
             let key = if args.length() > 0 { args[0] } else { Undefined }
@@ -306,9 +306,14 @@ fn setup_map_builtins(env : Environment) -> Unit {
   map_proto_descs["getOrInsert"] = method_desc
   map_proto_descs["getOrInsertComputed"] = method_desc
 
-  // Create Map prototype
-  let method_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
-  map_proto_descs["size"] = method_desc
+  // Create size getter for Map.prototype (per spec, size is an accessor property)
+  let size_getter = make_method_func("get size", 0, fn(this_val, _args) raise {
+        match this_val {
+          Map(data) => Number(data.entries.length().to_double())
+          _ => raise @errors.TypeError(message="Method Map.prototype.size called on incompatible receiver")
+        }
+      })
+  map_proto_descs["size"] = { writable: false, enumerable: false, configurable: true, getter: Some(size_getter), setter: None }
 
   let map_proto : Value = Object({
     properties: map_proto_props,
@@ -330,11 +335,6 @@ fn setup_map_builtins(env : Environment) -> Unit {
       data.symbol_properties[iterator_sym.id] = map_proto_props["entries"]
     _ => ()
   }
-
-  // Add size getter to Map.prototype
-  // Note: In full ES6, size is a getter. We simulate it by checking in get_property
-  // For now, we'll add it as a special method that returns the size
-  map_proto_props["size"] = Number(0.0) // Placeholder - will be handled specially
 
   // Map constructor
   let map_ctor = make_interp_method_func("Map", 0, fn(interp, _this_val, args) raise {
@@ -659,9 +659,14 @@ fn setup_set_builtins(env : Environment) -> Unit {
   set_proto_descs["values"] = method_desc
   set_proto_descs["entries"] = method_desc
 
-  // Create Set prototype
-  let method_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
-  set_proto_descs["size"] = method_desc
+  // Create size getter for Set.prototype (per spec, size is an accessor property)
+  let set_size_getter = make_method_func("get size", 0, fn(this_val, _args) raise {
+        match this_val {
+          Set(data) => Number(data.values.length().to_double())
+          _ => raise @errors.TypeError(message="Method Set.prototype.size called on incompatible receiver")
+        }
+      })
+  set_proto_descs["size"] = { writable: false, enumerable: false, configurable: true, getter: Some(set_size_getter), setter: None }
 
   let set_proto : Value = Object({
     properties: set_proto_props,
@@ -683,9 +688,6 @@ fn setup_set_builtins(env : Environment) -> Unit {
       data.symbol_properties[iterator_sym.id] = set_proto_props["values"]
     _ => ()
   }
-
-  // Add size getter placeholder
-  set_proto_props["size"] = Number(0.0) // Placeholder - will be handled specially
 
   // Set constructor
   let set_ctor = make_interp_method_func("Set", 0, fn(interp, _this_val, args) raise {

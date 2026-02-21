@@ -302,7 +302,7 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
       })
 
   // WeakMap.prototype.getOrInsert(key, value)
-  wm_proto_props["getOrInsert"] = make_method_func("getOrInsert", 0, fn(this_val, args) raise {
+  wm_proto_props["getOrInsert"] = make_method_func("getOrInsert", 2, fn(this_val, args) raise {
         match this_val {
           Object(data) =>
             match get_weakmap_id(data) {

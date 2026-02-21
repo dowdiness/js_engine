@@ -1122,6 +1122,84 @@ pub fn make_regexp_object(pattern : String, flags : String) -> Value {
         string_match_regex(str, pat, fl)
       })
 
+  // [Symbol.matchAll](string) - implements RegExp.prototype[@@matchAll]
+  let match_all_sym = get_matchall_symbol()
+  sym_props[match_all_sym.id] = make_method_func("[Symbol.matchAll]", 1, fn(this_val, args) {
+        let str = if args.length() > 0 { args[0].to_string() } else { "" }
+        let (pat, fl) = extract_regexp_source_flags(this_val)
+        // Per spec, matchAll always uses global matching
+        let flags = if fl.contains("g") { fl } else { fl + "g" }
+        let matches = regex_search_all(pat, flags, str) catch { _ => [] }
+        let input_chars = str.to_array()
+        let index_ref : Ref[Int] = { val: 0 }
+        let next_method = Object({
+          properties: {},
+          symbol_properties: {},
+          prototype: Null,
+          callable: Some(
+            NativeCallable("next", fn(_args) {
+              let idx = index_ref.val
+              if idx < matches.length() {
+                let m = matches[idx]
+                index_ref.val = idx + 1
+                let elements : Array[Value] = []
+                elements.push(String_(substring(input_chars, m.start, m.end_)))
+                for cap in m.captures {
+                  match cap {
+                    Some(c) => elements.push(String_(c))
+                    None => elements.push(Undefined)
+                  }
+                }
+                let match_array = Array({ elements, })
+                let result_props : Map[String, Value] = {}
+                result_props["value"] = match_array
+                result_props["done"] = Bool(false)
+                Object({
+                  properties: result_props,
+                  symbol_properties: {},
+                  prototype: Null,
+                  callable: None,
+                  class_name: "Object",
+                  descriptors: {},
+                  symbol_descriptors: {},
+                  extensible: true,
+                })
+              } else {
+                let result_props : Map[String, Value] = {}
+                result_props["value"] = Undefined
+                result_props["done"] = Bool(true)
+                Object({
+                  properties: result_props,
+                  symbol_properties: {},
+                  prototype: Null,
+                  callable: None,
+                  class_name: "Object",
+                  descriptors: {},
+                  symbol_descriptors: {},
+                  extensible: true,
+                })
+              }
+            }),
+          ),
+          class_name: "Function",
+          descriptors: {},
+          symbol_descriptors: {},
+          extensible: true,
+        })
+        let iter_props : Map[String, Value] = {}
+        iter_props["next"] = next_method
+        Object({
+          properties: iter_props,
+          symbol_properties: {},
+          prototype: get_regexp_string_iterator_proto(),
+          callable: None,
+          class_name: "RegExp String Iterator",
+          descriptors: {},
+          symbol_descriptors: {},
+          extensible: true,
+        })
+      })
+
   // [Symbol.search](string) - implements RegExp.prototype[@@search]
   let search_sym = get_search_symbol()
   sym_props[search_sym.id] = make_method_func("[Symbol.search]", 1, fn(this_val, args) {
@@ -1246,6 +1324,7 @@ pub fn make_regexp_object(pattern : String, flags : String) -> Value {
 
   let re_sym_descs : Map[Int, PropDescriptor] = {}
   re_sym_descs[match_sym.id] = re_method_desc
+  re_sym_descs[match_all_sym.id] = re_method_desc
   re_sym_descs[search_sym.id] = re_method_desc
   re_sym_descs[replace_sym.id] = re_method_desc
   re_sym_descs[split_sym.id] = re_method_desc

@@ -385,7 +385,7 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
   })
 
   // Reflect.get(target, propertyKey, receiver?)
-  reflect_props["get"] = make_interp_method_func("get", 3, fn(interp, _this_val, args) raise {
+  reflect_props["get"] = make_interp_method_func("get", 2, fn(interp, _this_val, args) raise {
         if args.length() < 2 {
           raise @errors.TypeError(
             message="Reflect.get requires at least 2 arguments",
@@ -864,7 +864,7 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
   })
 
   // Reflect.set(target, propertyKey, value, receiver?)
-  reflect_props["set"] = make_interp_method_func("set", 4, fn(interp, _this_val, args) raise {
+  reflect_props["set"] = make_interp_method_func("set", 3, fn(interp, _this_val, args) raise {
         if args.length() < 3 {
           raise @errors.TypeError(
             message="Reflect.set requires at least 3 arguments",

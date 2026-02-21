@@ -531,7 +531,7 @@ fn create_promise_capability_from_constructor(
 ) -> (Value, Value, Value) raise Error {
   let resolve_ref : Ref[Value] = { val: Undefined }
   let reject_ref : Ref[Value] = { val: Undefined }
-  let executor = make_interp_method_func("promiseCapabilityExecutor", 0, fn(
+  let executor = make_interp_method_func("promiseCapabilityExecutor", 2, fn(
         _i,
         _this,
         args,
@@ -906,7 +906,7 @@ pub fn setup_promise(env : Environment) -> Unit {
   promise_ctor_props["length"] = Number(1.0)
 
   // Promise.resolve(value)
-  promise_ctor_props["resolve"] = make_interp_method_func("resolve", 0, fn(interp, this_val, args) raise {
+  promise_ctor_props["resolve"] = make_interp_method_func("resolve", 1, fn(interp, this_val, args) raise {
         let value = if args.length() > 0 { args[0] } else { Undefined }
         let loc = @token.Loc::default()
 
@@ -929,7 +929,7 @@ pub fn setup_promise(env : Environment) -> Unit {
       })
 
   // Promise.reject(reason)
-  promise_ctor_props["reject"] = make_interp_method_func("reject", 0, fn(interp, this_val, args) raise {
+  promise_ctor_props["reject"] = make_interp_method_func("reject", 1, fn(interp, this_val, args) raise {
         let reason = if args.length() > 0 { args[0] } else { Undefined }
         let loc = @token.Loc::default()
         let (promise, _resolve, reject) = create_promise_capability_from_constructor(
@@ -942,7 +942,7 @@ pub fn setup_promise(env : Environment) -> Unit {
   // Promise.all(iterable)
   // NOTE: PerformPromiseAll synchronously consumes the entire input iterator
   // before any promise settles. Iterator consumption is NOT lazy.
-  promise_ctor_props["all"] = make_interp_method_func("all", 0, fn(interp, _this, args) raise {
+  promise_ctor_props["all"] = make_interp_method_func("all", 1, fn(interp, _this, args) raise {
         let iterable = if args.length() > 0 { args[0] } else { Undefined }
         let loc = @token.Loc::default()
         let (result_promise, resolve, reject) = create_promise_capability_from_constructor(
@@ -1058,7 +1058,7 @@ pub fn setup_promise(env : Environment) -> Unit {
   // NOTE: PerformPromiseRace synchronously consumes the ENTIRE iterator before
   // any promise settles. IteratorClose is only invoked for abrupt completion
   // during iteration (e.g., next() throws), NOT when a promise settles first.
-  promise_ctor_props["race"] = make_interp_method_func("race", 0, fn(interp, _this, args) raise {
+  promise_ctor_props["race"] = make_interp_method_func("race", 1, fn(interp, _this, args) raise {
         let iterable = if args.length() > 0 { args[0] } else { Undefined }
         let loc = @token.Loc::default()
         let (result_promise, resolve, reject) = create_promise_capability_from_constructor(
@@ -1130,7 +1130,7 @@ pub fn setup_promise(env : Environment) -> Unit {
   // Promise.allSettled(iterable)
   // NOTE: PerformPromiseAllSettled synchronously consumes the entire input
   // iterator. Never rejects - waits for all promises to settle.
-  promise_ctor_props["allSettled"] = make_interp_method_func("allSettled", 0, fn(interp, _this, args) raise {
+  promise_ctor_props["allSettled"] = make_interp_method_func("allSettled", 1, fn(interp, _this, args) raise {
         let iterable = if args.length() > 0 { args[0] } else { Undefined }
         let loc = @token.Loc::default()
         let (result_promise, resolve, reject) = create_promise_capability_from_constructor(
@@ -1296,7 +1296,7 @@ pub fn setup_promise(env : Environment) -> Unit {
   // Promise.any(iterable)
   // NOTE: PerformPromiseAny synchronously consumes the entire input iterator.
   // Rejects with AggregateError only if ALL promises reject.
-  promise_ctor_props["any"] = make_interp_method_func("any", 0, fn(interp, _this, args) raise {
+  promise_ctor_props["any"] = make_interp_method_func("any", 1, fn(interp, _this, args) raise {
         let iterable = if args.length() > 0 { args[0] } else { Undefined }
         let loc = @token.Loc::default()
         let (result_promise, resolve, reject) = create_promise_capability_from_constructor(

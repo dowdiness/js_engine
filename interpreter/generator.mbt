@@ -442,10 +442,18 @@ fn Interpreter::make_generator_function_ext(
     Some(n) => n
     None => ""
   }
+  // Count params before first default (ExpectedArgumentCount)
+  let mut expected_arg_count = 0
+  for p in params {
+    if p.default_val is Some(_) {
+      break
+    }
+    expected_arg_count += 1
+  }
   let fn_props : Map[String, Value] = {}
   fn_props["prototype"] = func_prototype
   fn_props["name"] = String_(func_name)
-  fn_props["length"] = Number(params.length().to_double())
+  fn_props["length"] = Number(expected_arg_count.to_double())
   let nf_desc : PropDescriptor = {
     writable: false,
     enumerable: false,

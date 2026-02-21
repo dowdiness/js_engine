@@ -1196,17 +1196,64 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
       })
 
   // Date.prototype[Symbol.toPrimitive]
-  let to_primitive_method = make_method_func("[Symbol.toPrimitive]", 1, fn(this_val, args) raise {
+  let to_primitive_method = make_interp_method_func("[Symbol.toPrimitive]", 1, fn(interp, this_val, args) raise {
+        // Step 1: If Type(O) is not Object, throw a TypeError exception
+        match this_val {
+          Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => ()
+          _ => raise @errors.TypeError(message="Date.prototype[Symbol.toPrimitive] requires that 'this' be an Object")
+        }
         let hint = if args.length() > 0 {
           args[0].to_string()
         } else {
           "default"
         }
-        let t = get_date_value(this_val)
-        match hint {
-          "number" => Number(t)
-          "string" | "default" => String_(date_to_string(t))
+        let try_first = match hint {
+          "string" | "default" => "string"
+          "number" => "number"
           _ => raise @errors.TypeError(message="Invalid hint: " + hint)
+        }
+        let loc = @token.Loc::default()
+        // OrdinaryToPrimitive: try toString/valueOf based on hint
+        if try_first == "string" {
+          // Try toString first
+          let to_string_val = interp.get_property(this_val, "toString", loc)
+          if is_callable(to_string_val) {
+            let result = interp.call_value(to_string_val, this_val, [], loc)
+            match result {
+              Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => ()
+              _ => return result
+            }
+          }
+          // Then try valueOf
+          let value_of_val = interp.get_property(this_val, "valueOf", loc)
+          if is_callable(value_of_val) {
+            let result = interp.call_value(value_of_val, this_val, [], loc)
+            match result {
+              Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => ()
+              _ => return result
+            }
+          }
+          raise @errors.TypeError(message="Cannot convert object to primitive value")
+        } else {
+          // Try valueOf first
+          let value_of_val = interp.get_property(this_val, "valueOf", loc)
+          if is_callable(value_of_val) {
+            let result = interp.call_value(value_of_val, this_val, [], loc)
+            match result {
+              Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => ()
+              _ => return result
+            }
+          }
+          // Then try toString
+          let to_string_val = interp.get_property(this_val, "toString", loc)
+          if is_callable(to_string_val) {
+            let result = interp.call_value(to_string_val, this_val, [], loc)
+            match result {
+              Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => ()
+              _ => return result
+            }
+          }
+          raise @errors.TypeError(message="Cannot convert object to primitive value")
         }
       })
 

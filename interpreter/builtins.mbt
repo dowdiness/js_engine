@@ -81,7 +81,7 @@ pub fn setup_builtins(
   // parseInt(string, radix?)
   env.def_builtin(
     "parseInt",
-    make_static_func("parseInt", fn(args) raise {
+    make_static_func_with_length("parseInt", 2, fn(args) raise {
       let str_val = if args.length() > 0 { args[0] } else { Undefined }
       let s = to_js_string(str_val)
       let trimmed = trim_start(s)
@@ -138,7 +138,7 @@ pub fn setup_builtins(
   // parseFloat(string)
   env.def_builtin(
     "parseFloat",
-    make_static_func("parseFloat", fn(args) raise {
+    make_static_func_with_length("parseFloat", 1, fn(args) raise {
       let str_val = if args.length() > 0 { args[0] } else { Undefined }
       let s = to_js_string(str_val)
       let trimmed = trim_start(s)
@@ -322,7 +322,7 @@ pub fn setup_builtins(
           }
           String_(buf.to_string())
         }),
-        "fromCodePoint": make_static_func("fromCodePoint", fn(args) raise {
+        "fromCodePoint": make_static_func_with_length("fromCodePoint", 1, fn(args) raise {
           // String.fromCodePoint() - accepts Unicode code points (not code units)
           let buf = StringBuilder::new()
           for arg in args {
@@ -357,7 +357,7 @@ pub fn setup_builtins(
           }
           String_(buf.to_string())
         }),
-        "raw": make_static_func("raw", fn(args) raise {
+        "raw": make_static_func_with_length("raw", 1, fn(args) raise {
           // String.raw(template, ...substitutions)
           // Returns raw string content without processing escape sequences
           if args.length() == 0 {
@@ -1299,6 +1299,7 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
   let match_sym = new_symbol(Some("Symbol.match"))
   well_known_match_sym.val = Some(match_sym)
   let match_all_sym = new_symbol(Some("Symbol.matchAll"))
+  well_known_matchall_sym.val = Some(match_all_sym)
   let replace_sym = new_symbol(Some("Symbol.replace"))
   well_known_replace_sym.val = Some(replace_sym)
   let search_sym = new_symbol(Some("Symbol.search"))
@@ -1950,9 +1951,19 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
   }
 
   // Add [Symbol.iterator] for String prototype
-  // String's [Symbol.iterator] is accessed via get_string_method, so we store a reference
-  // to tell the interpreter to use string iterator
-  // We'll handle this in the interpreter by checking for Symbol.iterator access on strings
+  let string_proto = env.get("[[StringPrototype]]")
+  match string_proto {
+    Object(proto_data) => {
+      let iter_method = make_method_func("[Symbol.iterator]", 0, fn(this_val, _args) {
+            let s = this_val.to_string()
+            make_string_iterator_value(s)
+          })
+      proto_data.symbol_properties[iterator_sym.id] = iter_method
+      let iter_method_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+      proto_data.symbol_descriptors[iterator_sym.id] = iter_method_desc
+    }
+    _ => ()
+  }
 
 }
 
@@ -2809,7 +2820,7 @@ fn setup_number_builtins(env : Environment) -> Unit {
         buf.write_string(frac_str)
         String_(buf.to_string())
       })
-  number_proto_props["toString"] = make_method_func("toString", 0, fn(this_val, args) raise {
+  number_proto_props["toString"] = make_method_func("toString", 1, fn(this_val, args) raise {
         // Validate this is a number
         let n : Double = match this_val {
           Number(v) => v
@@ -3143,21 +3154,21 @@ fn setup_number_builtins(env : Environment) -> Unit {
   number_props["POSITIVE_INFINITY"] = Number(1.0 / 0.0)
   number_props["NEGATIVE_INFINITY"] = Number(-1.0 / 0.0)
   number_props["NaN"] = Number(0.0 / 0.0)
-  number_props["isNaN"] = make_static_func("isNaN", fn(args) {
+  number_props["isNaN"] = make_static_func_with_length("isNaN", 1, fn(args) {
     let val = if args.length() > 0 { args[0] } else { Undefined }
     match val {
       Number(n) => Bool(n.is_nan())
       _ => Bool(false) // Number.isNaN does NOT coerce
     }
   })
-  number_props["isFinite"] = make_static_func("isFinite", fn(args) {
+  number_props["isFinite"] = make_static_func_with_length("isFinite", 1, fn(args) {
     let val = if args.length() > 0 { args[0] } else { Undefined }
     match val {
       Number(n) => Bool(not(n.is_nan()) && not(n.is_inf()))
       _ => Bool(false) // Number.isFinite does NOT coerce
     }
   })
-  number_props["isInteger"] = make_static_func("isInteger", fn(args) {
+  number_props["isInteger"] = make_static_func_with_length("isInteger", 1, fn(args) {
     let val = if args.length() > 0 { args[0] } else { Undefined }
     match val {
       Number(n) =>
@@ -3169,7 +3180,7 @@ fn setup_number_builtins(env : Environment) -> Unit {
       _ => Bool(false)
     }
   })
-  number_props["isSafeInteger"] = make_static_func("isSafeInteger", fn(args) {
+  number_props["isSafeInteger"] = make_static_func_with_length("isSafeInteger", 1, fn(args) {
     // Number.isSafeInteger() - check if value is a safe integer
     // Safe integers are integers in range -(2^53-1) to 2^53-1
     let val = if args.length() > 0 { args[0] } else { Undefined }

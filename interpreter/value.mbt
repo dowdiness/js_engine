@@ -431,6 +431,10 @@ pub fn get_species_symbol() -> SymbolData {
 }
 
 ///|
+/// Well-known Symbol.matchAll - stored globally for RegExp @@matchAll support
+pub let well_known_matchall_sym : Ref[SymbolData?] = { val: None }
+
+///|
 /// Well-known Symbol.split - stored globally for RegExp @@split support
 pub let well_known_split_sym : Ref[SymbolData?] = { val: None }
 
@@ -467,6 +471,15 @@ pub fn get_split_symbol() -> SymbolData {
   match well_known_split_sym.val {
     Some(sym) => sym
     None => abort("Symbol.split not initialized")
+  }
+}
+
+///|
+/// Get the well-known Symbol.matchAll
+pub fn get_matchall_symbol() -> SymbolData {
+  match well_known_matchall_sym.val {
+    Some(sym) => sym
+    None => abort("Symbol.matchAll not initialized")
   }
 }
 
