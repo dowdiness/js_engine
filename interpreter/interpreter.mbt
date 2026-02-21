@@ -7408,14 +7408,20 @@ fn Interpreter::get_property(
       if prop == "length" {
         Number(data.elements.length().to_double())
       } else {
-        // Check named properties side table first (e.g., index, input on exec results)
-        match get_array_named_prop(data, prop) {
-          Some(v) => v
-          None => {
-            let result = get_array_method_with_interp(data, prop)
-            match result {
-              Undefined => lookup_builtin_proto(self, obj, "Array", prop, loc)
-              _ => result
+        // Check numeric index access first
+        let num_idx = @strconv.parse_int(prop) catch { _ => -1 }
+        if num_idx >= 0 && num_idx < data.elements.length() && num_idx.to_string() == prop {
+          data.elements[num_idx]
+        } else {
+          // Check named properties side table (e.g., index, input on exec results)
+          match get_array_named_prop(data, prop) {
+            Some(v) => v
+            None => {
+              let result = get_array_method_with_interp(data, prop)
+              match result {
+                Undefined => lookup_builtin_proto(self, obj, "Array", prop, loc)
+                _ => result
+              }
             }
           }
         }

@@ -385,19 +385,97 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
   })
 
   // Reflect.get(target, propertyKey, receiver?)
-  reflect_props["get"] = make_interp_method_func("get", 1, fn(interp, _this_val, args) raise {
+  reflect_props["get"] = make_interp_method_func("get", 3, fn(interp, _this_val, args) raise {
         if args.length() < 2 {
           raise @errors.TypeError(
             message="Reflect.get requires at least 2 arguments",
           )
         }
         let target = args[0]
+        match target {
+          Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => ()
+          _ => raise @errors.TypeError(message="Reflect.get called on non-object")
+        }
         let key = args[1]
+        let receiver = if args.length() > 2 { args[2] } else { target }
         let loc = @token.Loc::default()
-        // Use computed property access to handle both string and Symbol keys
-        match key {
-          Symbol(_) => interp.get_computed_property(target, key, loc)
-          _ => interp.get_property(target, key.to_string(), loc)
+        // For receiver support, we need to check for accessor descriptors
+        // and call getters with the receiver as this
+        let key_str = match key {
+          Symbol(_) => ""
+          _ => key.to_string()
+        }
+        // Helper to find accessor descriptor and call with receiver
+        fn try_get_with_receiver(obj : Value) -> Value? raise {
+          match obj {
+            Object(data) => {
+              match key {
+                Symbol(sym) => {
+                  match data.symbol_descriptors.get(sym.id) {
+                    Some(desc) => match desc.getter {
+                      Some(getter) => Some(interp.call_value(getter, receiver, [], loc))
+                      None => match data.symbol_properties.get(sym.id) {
+                        Some(v) => Some(v)
+                        None => None
+                      }
+                    }
+                    None => match data.symbol_properties.get(sym.id) {
+                      Some(v) => Some(v)
+                      None => None
+                    }
+                  }
+                }
+                _ => {
+                  match data.descriptors.get(key_str) {
+                    Some(desc) => match desc.getter {
+                      Some(getter) => Some(interp.call_value(getter, receiver, [], loc))
+                      None => match data.properties.get(key_str) {
+                        Some(v) => Some(v)
+                        None => None
+                      }
+                    }
+                    None => match data.properties.get(key_str) {
+                      Some(v) => Some(v)
+                      None => None
+                    }
+                  }
+                }
+              }
+            }
+            _ => None
+          }
+        }
+        // Check target first
+        match try_get_with_receiver(target) {
+          Some(v) => v
+          None => {
+            // Walk prototype chain
+            let mut current = match target {
+              Object(data) => data.prototype
+              _ => Null
+            }
+            while true {
+              match current {
+                Object(data) => {
+                  match try_get_with_receiver(current) {
+                    Some(v) => return v
+                    None => current = data.prototype
+                  }
+                }
+                Null => break
+                _ => break
+              }
+            }
+            // Fall back to regular property access if receiver == target
+            if strict_equal(receiver, target) {
+              match key {
+                Symbol(_) => interp.get_computed_property(target, key, loc)
+                _ => interp.get_property(target, key_str, loc)
+              }
+            } else {
+              Undefined
+            }
+          }
         }
       })
 
@@ -793,6 +871,10 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
           )
         }
         let target = args[0]
+        match target {
+          Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => ()
+          _ => raise @errors.TypeError(message="Reflect.set called on non-object")
+        }
         let prop = args[1].to_string()
         let value = args[2]
         // Check for write failures before attempting set

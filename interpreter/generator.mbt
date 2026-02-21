@@ -183,6 +183,17 @@ fn init_generator_prototype() -> Value {
 
   // [Symbol.iterator]() { return this; }
   sym_props[iterator_sym.id] = make_method_func("[Symbol.iterator]", 0, fn(this_val, _args) { this_val })
+  // [Symbol.toStringTag] = "Generator"
+  let sym_descs : Map[Int, PropDescriptor] = {}
+  let tostringtag_sym = get_tostringtag_symbol()
+  sym_props[tostringtag_sym.id] = String_("Generator")
+  sym_descs[tostringtag_sym.id] = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   Object({
     properties: props,
     symbol_properties: sym_props,
@@ -190,7 +201,7 @@ fn init_generator_prototype() -> Value {
     callable: None,
     class_name: "Generator",
     descriptors: descs,
-    symbol_descriptors: {},
+    symbol_descriptors: sym_descs,
     extensible: true,
   })
 }
@@ -208,14 +219,25 @@ pub fn setup_generator_function_constructor(
     Some(binding) => binding.value
     None => Null
   }
+  let gf_sym_props : Map[Int, Value] = {}
+  let gf_sym_descs : Map[Int, PropDescriptor] = {}
+  let tostringtag_sym = get_tostringtag_symbol()
+  gf_sym_props[tostringtag_sym.id] = String_("GeneratorFunction")
+  gf_sym_descs[tostringtag_sym.id] = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   let gen_func_proto : Value = Object({
     properties: {},
-    symbol_properties: {},
+    symbol_properties: gf_sym_props,
     prototype: func_proto,
     callable: None,
     class_name: "GeneratorFunction",
     descriptors: {},
-    symbol_descriptors: {},
+    symbol_descriptors: gf_sym_descs,
     extensible: true,
   })
   // GeneratorFunction constructor: GeneratorFunction(p1, p2, ..., body)

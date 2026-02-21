@@ -3131,7 +3131,11 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                       }
                     }
                   }
-                  _ => ()
+                  _ =>
+                    // Per ES spec, ToPropertyDescriptor: if Obj is not an Object, throw TypeError
+                    raise @errors.TypeError(
+                      message="Property description must be an object: " + to_js_string(desc_val),
+                    )
                 }
               })
             (Proxy(proxy_data), Object(desc_obj)) =>

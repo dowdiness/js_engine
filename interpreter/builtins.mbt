@@ -897,6 +897,63 @@ pub fn setup_builtins(
           _ => raise @errors.TypeError(message="Method RegExp.prototype.exec called on incompatible receiver")
         }
       })
+      // RegExp.prototype.compile (Annex B)
+      regexp_proto_props["compile"] = make_method_func("compile", 2, fn(this_val, args) raise {
+        match this_val {
+          Object(data) => {
+            if data.class_name != "RegExp" {
+              raise @errors.TypeError(message="Method RegExp.prototype.compile called on incompatible receiver")
+            }
+            let pattern_arg = if args.length() > 0 { args[0] } else { Undefined }
+            let flags_arg = if args.length() > 1 { args[1] } else { Undefined }
+            let (source, flags) : (String, String) = match pattern_arg {
+              Object(re_data) => {
+                if re_data.class_name == "RegExp" {
+                  // If pattern is a RegExp and flags is not undefined, throw TypeError
+                  if not(flags_arg is Undefined) {
+                    raise @errors.TypeError(message="Cannot supply flags when constructing one RegExp from another")
+                  }
+                  let s = match re_data.properties.get("source") {
+                    Some(String_(s)) => s
+                    _ => ""
+                  }
+                  let f = match re_data.properties.get("flags") {
+                    Some(String_(f)) => f
+                    _ => ""
+                  }
+                  (s, f)
+                } else {
+                  let s = to_js_string(pattern_arg)
+                  let f = if flags_arg is Undefined { "" } else { to_js_string(flags_arg) }
+                  (s, f)
+                }
+              }
+              Undefined => {
+                let f = if flags_arg is Undefined { "" } else { to_js_string(flags_arg) }
+                ("(?:)", f)
+              }
+              _ => {
+                let s = to_js_string(pattern_arg)
+                let f = if flags_arg is Undefined { "" } else { to_js_string(flags_arg) }
+                (s, f)
+              }
+            }
+            // Update the RegExp object in place
+            data.properties["source"] = String_(source)
+            data.properties["flags"] = String_(flags)
+            data.properties["lastIndex"] = Number(0.0)
+            // Update flag booleans
+            data.properties["global"] = Bool(flags.contains("g"))
+            data.properties["ignoreCase"] = Bool(flags.contains("i"))
+            data.properties["multiline"] = Bool(flags.contains("m"))
+            data.properties["dotAll"] = Bool(flags.contains("s"))
+            data.properties["unicode"] = Bool(flags.contains("u"))
+            data.properties["sticky"] = Bool(flags.contains("y"))
+            this_val
+          }
+          _ => raise @errors.TypeError(message="Method RegExp.prototype.compile called on incompatible receiver")
+        }
+      })
       regexp_proto_props["toString"] = make_method_func("toString", 0, fn(this_val, _args) raise {
         match this_val {
           Object(data) => {
@@ -913,13 +970,125 @@ pub fn setup_builtins(
           _ => String_("/(?:)/")
         }
       })
+      // Add flag getter accessors to RegExp.prototype per spec
+      let regexp_proto_descs : Map[String, PropDescriptor] = {}
+      // Helper: create a getter that reads a flag from the regexp's flags string
+      fn make_flag_getter(flag_char : String) -> Value {
+        make_method_func("get " + flag_char, 0, fn(this_val, _args) raise {
+          match this_val {
+            Object(data) => {
+              if data.class_name != "RegExp" {
+                // Per spec, RegExp.prototype itself returns undefined for flag getters
+                if data.class_name == "Object" {
+                  return Undefined
+                }
+                raise @errors.TypeError(message="Method get RegExp.prototype." + flag_char + " called on incompatible receiver")
+              }
+              let flags_str = match data.properties.get("flags") {
+                Some(String_(f)) => f
+                _ => ""
+              }
+              match flag_char {
+                "global" => Bool(flags_str.contains("g"))
+                "ignoreCase" => Bool(flags_str.contains("i"))
+                "multiline" => Bool(flags_str.contains("m"))
+                "dotAll" => Bool(flags_str.contains("s"))
+                "unicode" => Bool(flags_str.contains("u"))
+                "sticky" => Bool(flags_str.contains("y"))
+                "unicodeSets" => Bool(flags_str.contains("v"))
+                "hasIndices" => Bool(flags_str.contains("d"))
+                _ => Undefined
+              }
+            }
+            _ => raise @errors.TypeError(message="Method get RegExp.prototype." + flag_char + " called on incompatible receiver")
+          }
+        })
+      }
+      let flag_names = ["global", "ignoreCase", "multiline", "dotAll", "unicode", "sticky", "unicodeSets", "hasIndices"]
+      for flag_name in flag_names {
+        let getter = make_flag_getter(flag_name)
+        regexp_proto_props[flag_name] = Undefined
+        regexp_proto_descs[flag_name] = {
+          writable: false,
+          enumerable: false,
+          configurable: true,
+          getter: Some(getter),
+          setter: None,
+        }
+      }
+      // flags getter - computes flags string from individual flag getters
+      let flags_getter = make_method_func("get flags", 0, fn(this_val, _args) raise {
+        match this_val {
+          Object(data) => {
+            // For actual RegExp instances, read the stored flags
+            match data.properties.get("flags") {
+              Some(String_(f)) => String_(f)
+              _ => {
+                // Per spec, compute from individual flag getters
+                fn is_flag_set(props : Map[String, Value], name : String) -> Bool {
+                  match props.get(name) {
+                    Some(Bool(true)) => true
+                    _ => false
+                  }
+                }
+                let p = data.properties
+                let mut result = ""
+                if is_flag_set(p, "hasIndices") { result = result + "d" }
+                if is_flag_set(p, "global") { result = result + "g" }
+                if is_flag_set(p, "ignoreCase") { result = result + "i" }
+                if is_flag_set(p, "multiline") { result = result + "m" }
+                if is_flag_set(p, "dotAll") { result = result + "s" }
+                if is_flag_set(p, "unicode") { result = result + "u" }
+                if is_flag_set(p, "unicodeSets") { result = result + "v" }
+                if is_flag_set(p, "sticky") { result = result + "y" }
+                String_(result)
+              }
+            }
+          }
+          _ => raise @errors.TypeError(message="Method get RegExp.prototype.flags called on incompatible receiver")
+        }
+      })
+      regexp_proto_props["flags"] = Undefined
+      regexp_proto_descs["flags"] = {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: Some(flags_getter),
+        setter: None,
+      }
+      // source getter
+      let source_getter = make_method_func("get source", 0, fn(this_val, _args) raise {
+        match this_val {
+          Object(data) => {
+            if data.class_name != "RegExp" {
+              if data.class_name == "Object" {
+                return String_("(?:)")
+              }
+              raise @errors.TypeError(message="Method get RegExp.prototype.source called on incompatible receiver")
+            }
+            match data.properties.get("source") {
+              Some(String_(s)) => String_(s)
+              _ => String_("(?:)")
+            }
+          }
+          _ => raise @errors.TypeError(message="Method get RegExp.prototype.source called on incompatible receiver")
+        }
+      })
+      regexp_proto_props["source"] = Undefined
+      regexp_proto_descs["source"] = {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: Some(source_getter),
+        setter: None,
+      }
       let regexp_proto : Value = Object({
         properties: regexp_proto_props,
         symbol_properties: {},
         prototype: obj_proto,
         callable: None,
         class_name: "Object",
-        descriptors: {},
+        descriptors: regexp_proto_descs,
         symbol_descriptors: {},
         extensible: true,
       })
@@ -1050,6 +1219,40 @@ pub fn setup_builtins(
       }
       _ => ()
     }
+  }
+
+  // Add Function.prototype[Symbol.hasInstance]
+  let has_instance_sym = get_hasinstance_symbol()
+  let has_instance_fn = make_interp_method_func("[Symbol.hasInstance]", 1, fn(interp, this_val, args) raise {
+    // OrdinaryHasInstance(C, O)
+    let o = if args.length() > 0 { args[0] } else { Undefined }
+    if not(is_callable(this_val)) {
+      return Bool(false)
+    }
+    // Get C.prototype
+    let loc = @token.Loc::default()
+    let p = interp.get_property(this_val, "prototype", loc)
+    match p {
+      Object(_) => instanceof_prototype_chain(o, p, interp.global)
+      _ => raise @errors.TypeError(message="Function has non-object prototype in instanceof check")
+    }
+  })
+  match env.bindings.get("[[FunctionPrototype]]") {
+    Some(binding) =>
+      match binding.value {
+        Object(fp_data) => {
+          fp_data.symbol_properties[has_instance_sym.id] = has_instance_fn
+          fp_data.symbol_descriptors[has_instance_sym.id] = {
+            writable: false,
+            enumerable: false,
+            configurable: false,
+            getter: None,
+            setter: None,
+          }
+        }
+        _ => ()
+      }
+    None => ()
   }
 }
 
@@ -2039,6 +2242,53 @@ fn setup_math_builtins(env : Environment) -> Unit {
       Number(Float::from_double(n).to_double())
     }
   })
+  // Math.sumPrecise(items) - sums iterable of numbers
+  math_props["sumPrecise"] = make_interp_method_func("sumPrecise", 1, fn(interp, _this_val, args) raise {
+    let items = if args.length() > 0 { args[0] } else { Undefined }
+    // items must be an iterable
+    let loc = @token.Loc::default()
+    let mut sum = 0.0
+    let mut count = 0
+    match items {
+      Array(arr_data) => {
+        for elem in arr_data.elements {
+          match elem {
+            Number(n) => sum = sum + n
+            _ => raise @errors.TypeError(message="Math.sumPrecise: non-number value in iterable")
+          }
+          count = count + 1
+        }
+      }
+      Object(_) => {
+        // Try to use Symbol.iterator
+        let iterator_sym = get_iterator_symbol()
+        let iter_fn = interp.get_computed_property(items, Symbol(iterator_sym), loc)
+        if is_callable(iter_fn) {
+          let iterator = interp.call_value(iter_fn, items, [], loc)
+          let next_fn = interp.get_property(iterator, "next", loc)
+          while true {
+            let result = interp.call_value(next_fn, iterator, [], loc)
+            let done = interp.get_property(result, "done", loc)
+            if is_truthy(done) {
+              break
+            }
+            let value = interp.get_property(result, "value", loc)
+            match value {
+              Number(n) => sum = sum + n
+              _ => raise @errors.TypeError(message="Math.sumPrecise: non-number value in iterable")
+            }
+            count = count + 1
+          }
+        } else {
+          raise @errors.TypeError(message="Math.sumPrecise: argument is not iterable")
+        }
+      }
+      _ => raise @errors.TypeError(message="Math.sumPrecise: argument is not iterable")
+    }
+    let _ = count
+    Number(sum)
+  })
+
   // Set up descriptors for Math properties
   let math_descs : Map[String, PropDescriptor] = {}
   let const_desc : PropDescriptor = {
@@ -2068,7 +2318,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     "random", "sign", "log", "log2", "log10", "sin", "cos", "tan", "asin",
     "acos", "atan", "atan2", "sinh", "cosh", "tanh", "asinh", "acosh",
     "atanh", "exp", "expm1", "log1p", "hypot", "cbrt", "clz32", "imul",
-    "fround",
+    "fround", "sumPrecise",
   ]
   for m in math_methods {
     math_descs[m] = method_desc
@@ -2189,21 +2439,25 @@ fn register_error_ctor(
       prototype: ctor_proto,
       callable: Some(
         NativeCallable(name, fn(args) {
-          let message = if args.length() > 0 {
+          let has_message = args.length() > 0 && not(args[0] is Undefined)
+          let message = if has_message {
             match args[0] {
               String_(s) => s
-              Undefined => ""
               other => other.to_string()
             }
           } else {
             ""
           }
           let err_props : Map[String, Value] = {}
-          err_props["message"] = String_(message)
-          err_props["name"] = String_(name)
+          if has_message {
+            err_props["message"] = String_(message)
+          }
           err_props["stack"] = String_(name + ": " + message)
           let err_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
-          let err_descs : Map[String, PropDescriptor] = { "message": err_desc, "name": err_desc, "stack": err_desc }
+          let err_descs : Map[String, PropDescriptor] = { "stack": err_desc }
+          if has_message {
+            err_descs["message"] = err_desc
+          }
           // Handle options parameter for cause
           if args.length() > 1 {
             match args[1] {

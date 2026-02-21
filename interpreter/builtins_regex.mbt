@@ -1241,6 +1241,8 @@ pub fn make_regexp_object(pattern : String, flags : String) -> Value {
   re_descs["dotAll"] = re_method_desc
   re_descs["test"] = re_method_desc
   re_descs["exec"] = re_method_desc
+  // lastIndex per spec: writable but NOT enumerable and NOT configurable
+  re_descs["lastIndex"] = { writable: true, enumerable: false, configurable: false, getter: None, setter: None }
 
   let re_sym_descs : Map[Int, PropDescriptor] = {}
   re_sym_descs[match_sym.id] = re_method_desc
