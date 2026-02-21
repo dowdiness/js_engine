@@ -418,6 +418,19 @@ pub let well_known_replace_sym : Ref[SymbolData?] = { val: None }
 pub let well_known_search_sym : Ref[SymbolData?] = { val: None }
 
 ///|
+/// Well-known Symbol.species - stored globally for @@species support
+pub let well_known_species_sym : Ref[SymbolData?] = { val: None }
+
+///|
+/// Get the well-known Symbol.species
+pub fn get_species_symbol() -> SymbolData {
+  match well_known_species_sym.val {
+    Some(sym) => sym
+    None => abort("Symbol.species not initialized")
+  }
+}
+
+///|
 /// Well-known Symbol.split - stored globally for RegExp @@split support
 pub let well_known_split_sym : Ref[SymbolData?] = { val: None }
 

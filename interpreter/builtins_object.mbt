@@ -2794,6 +2794,49 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             extensible: true,
           })
         }),
+        "groupBy": make_static_func_with_length("groupBy", 2, fn(args) raise {
+          // Object.groupBy(items, callbackFn)
+          let items = if args.length() > 0 { args[0] } else { Undefined }
+          let callback = if args.length() > 1 { args[1] } else { Undefined }
+          if not(is_callable(callback)) {
+            raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
+          }
+          let interp = match current_interpreter.val {
+            Some(i) => i
+            None => abort("No interpreter")
+          }
+          let loc = @token.Loc::default()
+          let o = to_object(items, interp)
+          let len = to_array_like_length_interp(o, interp)
+          let group_arrays : Map[String, Array[Value]] = {}
+          for k = 0; k < len; k = k + 1 {
+            let kvalue = get_array_like_element_interp(interp, o, k)
+            let key = interp.call_value(callback, Undefined, [kvalue, Number(k.to_double())], loc)
+            let property_key = to_js_string(key)
+            match group_arrays.get(property_key) {
+              Some(arr) => arr.push(kvalue)
+              None => {
+                let arr : Array[Value] = [kvalue]
+                group_arrays[property_key] = arr
+              }
+            }
+          }
+          // Build result object with null prototype
+          let result_props : Map[String, Value] = {}
+          group_arrays.each(fn(key, arr) {
+            result_props[key] = Array({ elements: arr })
+          })
+          Object({
+            properties: result_props,
+            symbol_properties: {},
+            prototype: Null,
+            callable: None,
+            class_name: "Object",
+            descriptors: {},
+            symbol_descriptors: {},
+            extensible: true,
+          })
+        }),
         "hasOwn": make_static_func_with_length("hasOwn", 2, fn(args) {
           // Object.hasOwn() - modern hasOwnProperty replacement
           let obj = if args.length() > 0 { args[0] } else { Undefined }
@@ -3457,6 +3500,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         "is": obj_method_desc, "isExtensible": obj_method_desc,
         "preventExtensions": obj_method_desc, "fromEntries": obj_method_desc,
         "hasOwn": obj_method_desc,
+        "groupBy": obj_method_desc,
       },
       symbol_descriptors: {},
       extensible: true,

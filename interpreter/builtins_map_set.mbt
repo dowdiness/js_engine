@@ -422,6 +422,69 @@ fn setup_map_builtins(env : Environment) -> Unit {
     Object(data) => data.properties["prototype"] = map_proto
     _ => ()
   }
+  // Add Map.groupBy static method
+  match map_ctor {
+    Object(ctor_data) => {
+      ctor_data.properties["groupBy"] = make_static_func_with_length("groupBy", 2, fn(
+        args,
+      ) raise {
+        // Map.groupBy(items, callbackFn)
+        let items = if args.length() > 0 { args[0] } else { Undefined }
+        let callback = if args.length() > 1 { args[1] } else { Undefined }
+        if not(is_callable(callback)) {
+          raise @errors.TypeError(
+            message=to_js_string(callback) + " is not a function",
+          )
+        }
+        let interp = match current_interpreter.val {
+          Some(i) => i
+          None => abort("No interpreter")
+        }
+        let loc = @token.Loc::default()
+        let o = to_object(items, interp)
+        let len = to_array_like_length_interp(o, interp)
+        let group_keys : Array[Value] = []
+        let group_arrays : Array[Array[Value]] = []
+        for k = 0; k < len; k = k + 1 {
+          let kvalue = get_array_like_element_interp(interp, o, k)
+          let key = interp.call_value(
+            callback,
+            Undefined,
+            [kvalue, Number(k.to_double())],
+            loc,
+          )
+          // Find existing group
+          let mut found_idx = -1
+          for i = 0; i < group_keys.length(); i = i + 1 {
+            if same_value_zero(group_keys[i], key) {
+              found_idx = i
+              break
+            }
+          }
+          if found_idx >= 0 {
+            group_arrays[found_idx].push(kvalue)
+          } else {
+            group_keys.push(key)
+            group_arrays.push([kvalue])
+          }
+        }
+        // Build result Map
+        let entries : Array[(Value, Value)] = []
+        for i = 0; i < group_keys.length(); i = i + 1 {
+          entries.push((group_keys[i], Array({ elements: group_arrays[i] })))
+        }
+        Map({ entries: entries })
+      })
+      ctor_data.descriptors["groupBy"] = {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
+    }
+    _ => ()
+  }
   env.def_builtin("Map", map_ctor)
   // Set Map.prototype.constructor = Map
   match map_proto {

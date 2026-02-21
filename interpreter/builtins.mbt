@@ -634,6 +634,41 @@ pub fn setup_builtins(
   register_error_ctor(env, "EvalError", error_proto) |> ignore
   register_aggregate_error_ctor(env, error_proto) |> ignore
 
+  // Add Error.isError static method
+  let error_ctor = env.get("Error") catch { _ => Undefined }
+  match error_ctor {
+    Object(error_data) => {
+      error_data.properties["isError"] = make_static_func_with_length("isError", 1, fn(
+        args,
+      ) {
+        let arg = if args.length() > 0 { args[0] } else { Undefined }
+        match arg {
+          Object(data) =>
+            // Check if the object's class_name is an error type
+            Bool(
+              data.class_name == "Error" ||
+              data.class_name == "TypeError" ||
+              data.class_name == "SyntaxError" ||
+              data.class_name == "RangeError" ||
+              data.class_name == "ReferenceError" ||
+              data.class_name == "URIError" ||
+              data.class_name == "EvalError" ||
+              data.class_name == "AggregateError",
+            )
+          _ => Bool(false)
+        }
+      })
+      error_data.descriptors["isError"] = {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
+    }
+    _ => ()
+  }
+
   // Object, Array constructors and built-in methods
   setup_object_builtins(env)
 
@@ -986,6 +1021,36 @@ pub fn setup_builtins(
     }
     None => ()
   }
+
+  // Add Symbol.species getter to built-in constructors (Array, RegExp, Map, Set)
+  // Per spec: static get [Symbol.species]() { return this; }
+  let species_getter = make_method_func("get [Symbol.species]", 0, fn(
+    this_val,
+    _args,
+  ) {
+    this_val
+  })
+  let species_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: Some(species_getter),
+    setter: None,
+  }
+  let ctors_to_add_species = [
+    "Array", "RegExp", "Map", "Set",
+  ]
+  for ctor_name in ctors_to_add_species {
+    let ctor_val = env.get(ctor_name) catch { _ => Undefined }
+    match ctor_val {
+      Object(ctor_data) => {
+        let sp_sym = get_species_symbol()
+        ctor_data.symbol_properties[sp_sym.id] = Undefined
+        ctor_data.symbol_descriptors[sp_sym.id] = species_desc
+      }
+      _ => ()
+    }
+  }
 }
 
 ///|
@@ -1027,6 +1092,7 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
   let is_concat_spreadable_sym = new_symbol(Some("Symbol.isConcatSpreadable"))
   well_known_isconcatspreadable_sym.val = Some(is_concat_spreadable_sym)
   let species_sym = new_symbol(Some("Symbol.species"))
+  well_known_species_sym.val = Some(species_sym)
   let match_sym = new_symbol(Some("Symbol.match"))
   well_known_match_sym.val = Some(match_sym)
   let match_all_sym = new_symbol(Some("Symbol.matchAll"))
@@ -1636,6 +1702,7 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
   // String's [Symbol.iterator] is accessed via get_string_method, so we store a reference
   // to tell the interpreter to use string iterator
   // We'll handle this in the interpreter by checking for Symbol.iterator access on strings
+
 }
 
 ///|
