@@ -3803,22 +3803,27 @@ fn Interpreter::bind_pattern(
         Some(rest_pat) => {
           let rest_props : Map[String, Value] = {}
           let rest_symbol_props : Map[Int, Value] = {}
+          let loc_rest = @token.Loc::default()
           match value {
             Object(data) => {
-              // Only copy own enumerable properties per ES CopyDataProperties
-              data.properties.each(fn(k, v) {
+              // CopyDataProperties: copy own enumerable properties, invoking getters
+              // First collect all own enumerable string keys (from properties and descriptors)
+              let all_keys : Map[String, Bool] = {}
+              data.properties.each(fn(k, _v) { all_keys[k] = true })
+              data.descriptors.each(fn(k, _v) { all_keys[k] = true })
+              all_keys.each(fn(k, _) {
                 if not(used_keys.contains(k)) {
-                  // Check if property is enumerable (default true if no descriptor)
                   let is_enumerable = match data.descriptors.get(k) {
                     Some(desc) => desc.enumerable
                     None => true
                   }
                   if is_enumerable {
-                    rest_props[k] = v
+                    // Use get_property to invoke getters
+                    rest_props[k] = self.get_property(value, k, loc_rest)
                   }
                 }
               })
-              // Also copy enumerable symbol properties (they are never in used_keys)
+              // Also copy enumerable symbol properties
               data.symbol_properties.each(fn(k, v) {
                 let is_enumerable = match data.symbol_descriptors.get(k) {
                   Some(desc) => desc.enumerable
@@ -4102,22 +4107,25 @@ fn Interpreter::assign_pattern(
         Some(rest_pat) => {
           let rest_props : Map[String, Value] = {}
           let rest_symbol_props : Map[Int, Value] = {}
+          let loc_rest_a = @token.Loc::default()
           match value {
             Object(data) => {
-              // Only copy own enumerable properties per ES CopyDataProperties
-              data.properties.each(fn(k, v) {
+              // CopyDataProperties: copy own enumerable properties, invoking getters
+              let all_keys_a : Map[String, Bool] = {}
+              data.properties.each(fn(k, _v) { all_keys_a[k] = true })
+              data.descriptors.each(fn(k, _v) { all_keys_a[k] = true })
+              all_keys_a.each(fn(k, _) {
                 if not(used_keys.contains(k)) {
-                  // Check if property is enumerable (default true if no descriptor)
                   let is_enumerable = match data.descriptors.get(k) {
                     Some(desc) => desc.enumerable
                     None => true
                   }
                   if is_enumerable {
-                    rest_props[k] = v
+                    rest_props[k] = self.get_property(value, k, loc_rest_a)
                   }
                 }
               })
-              // Also copy enumerable symbol properties (they are never in used_keys)
+              // Also copy enumerable symbol properties
               data.symbol_properties.each(fn(k, v) {
                 let is_enumerable = match data.symbol_descriptors.get(k) {
                   Some(desc) => desc.enumerable
