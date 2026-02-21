@@ -306,7 +306,9 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }
     }
   })
-  obj_proto_props["valueOf"] = make_method_func("valueOf", 0, fn(this_val, _args) { this_val })
+  obj_proto_props["valueOf"] = make_interp_method_func("valueOf", 0, fn(interp, this_val, _args) raise {
+        to_object(this_val, interp)
+      })
   obj_proto_props["hasOwnProperty"] = make_method_func("hasOwnProperty", 1, fn(this_val, args) {
     let key_val = if args.length() > 0 { args[0] } else { Undefined }
     match this_val {
@@ -2715,10 +2717,16 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               )
             _ => ()
           }
+          let interp = match current_interpreter.val {
+            Some(i) => i
+            None => abort("No interpreter")
+          }
+          let iloc = @token.Loc::default()
           match (obj, descs) {
             (Object(data), Object(desc_obj)) =>
               // Only iterate enumerable own properties of descriptors object
-              desc_obj.properties.each(fn(prop_name, desc_val) raise {
+              // Use get_property to invoke getters on the Properties object
+              desc_obj.properties.each(fn(prop_name, _raw_val) raise {
                 let desc_enumerable = match
                   desc_obj.descriptors.get(prop_name) {
                   Some(d) => d.enumerable
@@ -2727,12 +2735,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 if not(desc_enumerable) {
                   return
                 }
+                let desc_val = interp.get_property(descs, prop_name, iloc)
                 match desc_val {
                   Object(desc) => {
-                    let has_get = desc.properties.contains("get")
-                    let has_set = desc.properties.contains("set")
-                    let has_value = desc.properties.contains("value")
-                    let has_writable = desc.properties.contains("writable")
+                    let has_get = has_property(desc_val, "get")
+                    let has_set = has_property(desc_val, "set")
+                    let has_value = has_property(desc_val, "value")
+                    let has_writable = has_property(desc_val, "writable")
                     let is_accessor = has_get || has_set
                     let is_data = has_value || has_writable
                     if is_accessor && is_data {
@@ -2743,21 +2752,21 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                     let prop_exists = data.properties.contains(prop_name)
                     let existing_desc = data.descriptors.get(prop_name)
 
-                    // Validate getter/setter
+                    // Validate getter/setter - use get_property for prototype chain
                     let new_getter : Value? = if has_get {
-                      match desc.properties.get("get") {
-                        Some(Undefined) => Some(Undefined)
-                        Some(v) => Some(v)
-                        None => None
+                      let v = interp.get_property(desc_val, "get", iloc)
+                      match v {
+                        Undefined => Some(Undefined)
+                        _ => Some(v)
                       }
                     } else {
                       None
                     }
                     let new_setter : Value? = if has_set {
-                      match desc.properties.get("set") {
-                        Some(Undefined) => Some(Undefined)
-                        Some(v) => Some(v)
-                        None => None
+                      let v = interp.get_property(desc_val, "set", iloc)
+                      match v {
+                        Undefined => Some(Undefined)
+                        _ => Some(v)
                       }
                     } else {
                       None
@@ -2788,21 +2797,20 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                           message="Setter must be a function: \{new_setter.unwrap().to_string()}",
                         )
                     }
-                    let new_writable = match desc.properties.get("writable") {
-                      Some(v) => Some(is_truthy(v))
-                      None => None
-                    }
-                    let new_enumerable = match
-                      desc.properties.get("enumerable") {
-                      Some(v) => Some(is_truthy(v))
-                      None => None
-                    }
-                    let new_configurable = match
-                      desc.properties.get("configurable") {
-                      Some(v) => Some(is_truthy(v))
-                      None => None
-                    }
+                    let new_writable = if has_property(desc_val, "writable") {
+                      Some(is_truthy(interp.get_property(desc_val, "writable", iloc)))
+                    } else { None }
+                    let new_enumerable = if has_property(desc_val, "enumerable") {
+                      Some(is_truthy(interp.get_property(desc_val, "enumerable", iloc)))
+                    } else { None }
+                    let new_configurable = if has_property(desc_val, "configurable") {
+                      Some(is_truthy(interp.get_property(desc_val, "configurable", iloc)))
+                    } else { None }
 
+                    // Pre-extract new value for validation (invoke getter if needed)
+                    let new_desc_value : Value? = if has_value {
+                      Some(interp.get_property(desc_val, "value", iloc))
+                    } else { None }
                     // Validate non-configurable constraints or extensibility
                     match existing_desc {
                       Some(existing) =>
@@ -2823,7 +2831,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                               None => Undefined
                             }
                           },
-                          fn() { desc.properties.get("value") },
+                          fn() { new_desc_value },
                         )
                       None =>
                         if not(prop_exists) && not(data.extensible) {
@@ -2884,7 +2892,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                         setter: final_setter,
                       }
                     } else {
-                      match desc.properties.get("value") {
+                      match new_desc_value {
                         Some(v) => data.properties[prop_name] = v
                         None =>
                           if not(data.properties.contains(prop_name)) {
