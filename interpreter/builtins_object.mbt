@@ -4884,65 +4884,108 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         let this_arg = if args.length() > 2 { args[2] } else { Undefined }
         let loc = @token.Loc::default()
         let elements : Array[Value] = []
-        match source {
-          Array(data) =>
-            for i = 0; i < data.elements.length(); i = i + 1 {
-              let el = data.elements[i]
-              let mapped = match map_fn {
-                Some(fn_val) =>
-                  interp.call_value(
-                    fn_val,
-                    this_arg,
-                    [el, Number(i.to_double())],
-                    loc,
-                  )
-                None => el
-              }
-              elements.push(mapped)
+        // Per spec: first try Symbol.iterator (iterable protocol)
+        let iterator_sym = get_iterator_symbol()
+        let mut used_iterator = false
+        let iterator_method = interp.get_computed_property(
+          source,
+          Symbol(iterator_sym),
+          loc,
+        )
+        if is_callable(iterator_method) {
+          used_iterator = true
+          let iterator = interp.call_value(iterator_method, source, [], loc)
+          let mut k = 0
+          while true {
+            let next_fn = interp.get_property(iterator, "next", loc)
+            let next = interp.call_value(next_fn, iterator, [], loc)
+            let done = match next {
+              Object(d) =>
+                match d.properties.get("done") {
+                  Some(v) => is_truthy(v)
+                  _ => false
+                }
+              _ => true
             }
-          String_(s) => {
-            let chars = s.to_array()
-            for i = 0; i < chars.length(); i = i + 1 {
-              let el = String_(chars[i].to_string())
-              let mapped = match map_fn {
-                Some(fn_val) =>
-                  interp.call_value(
-                    fn_val,
-                    this_arg,
-                    [el, Number(i.to_double())],
-                    loc,
-                  )
-                None => el
+            if done {
+              break
+            }
+            let value = match next {
+              Object(d) =>
+                match d.properties.get("value") {
+                  Some(v) => v
+                  None => Undefined
+                }
+              _ => Undefined
+            }
+            let mapped = match map_fn {
+              Some(fn_val) =>
+                interp.call_value(
+                  fn_val,
+                  this_arg,
+                  [value, Number(k.to_double())],
+                  loc,
+                )
+              None => value
+            }
+            elements.push(mapped)
+            k = k + 1
+          }
+        }
+        if not(used_iterator) {
+          // Fallback: array-like behavior
+          match source {
+            Array(data) =>
+              for i = 0; i < data.elements.length(); i = i + 1 {
+                let el = data.elements[i]
+                let mapped = match map_fn {
+                  Some(fn_val) =>
+                    interp.call_value(
+                      fn_val,
+                      this_arg,
+                      [el, Number(i.to_double())],
+                      loc,
+                    )
+                  None => el
+                }
+                elements.push(mapped)
               }
-              elements.push(mapped)
+            String_(s) => {
+              let chars = s.to_array()
+              for i = 0; i < chars.length(); i = i + 1 {
+                let el = String_(chars[i].to_string())
+                let mapped = match map_fn {
+                  Some(fn_val) =>
+                    interp.call_value(
+                      fn_val,
+                      this_arg,
+                      [el, Number(i.to_double())],
+                      loc,
+                    )
+                  None => el
+                }
+                elements.push(mapped)
+              }
+            }
+            _ => {
+              let o = to_object(source, interp)
+              let len = to_array_like_length_interp(o, interp)
+              for i = 0; i < len; i = i + 1 {
+                let el = interp.get_property(o, i.to_string(), loc)
+                let mapped = match map_fn {
+                  Some(fn_val) =>
+                    interp.call_value(
+                      fn_val,
+                      this_arg,
+                      [el, Number(i.to_double())],
+                      loc,
+                    )
+                  None => el
+                }
+                elements.push(mapped)
+              }
             }
           }
-          Object(data) => {
-            let len = match data.properties.get("length") {
-              Some(Number(n)) => n.to_int()
-              Some(v) => to_number(v).to_int() catch { _ => 0 }
-              None => 0
-            }
-            for i = 0; i < len; i = i + 1 {
-              let key = i.to_string()
-              let el = match data.properties.get(key) {
-                Some(v) => v
-                None => Undefined
-              }
-              let mapped = match map_fn {
-                Some(fn_val) =>
-                  interp.call_value(
-                    fn_val,
-                    this_arg,
-                    [el, Number(i.to_double())],
-                    loc,
-                  )
-                None => el
-              }
-              elements.push(mapped)
-            }
-          }
-          _ => ()
         }
         Array({ elements, })
       })
