@@ -441,8 +441,17 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
     "sort" => {
       let arr = data
       make_native_func("sort", fn(_args) {
-        // Default sort: convert to strings and compare
+        // Default sort: undefined goes to end, then compare as strings
         arr.elements.sort_by(fn(a, b) {
+          if a is Undefined && b is Undefined {
+            return 0
+          }
+          if a is Undefined {
+            return 1
+          }
+          if b is Undefined {
+            return -1
+          }
           let sa = a.to_string()
           let sb = b.to_string()
           if sa < sb {
@@ -770,8 +779,17 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
             if args.length() > 0 {
               match args[0] {
                 Undefined =>
-                  // Default sort
+                  // Default sort: undefined goes to end
                   result.sort_by(fn(a, b) {
+                    if a is Undefined && b is Undefined {
+                      return 0
+                    }
+                    if a is Undefined {
+                      return 1
+                    }
+                    if b is Undefined {
+                      return -1
+                    }
                     let sa = a.to_string()
                     let sb = b.to_string()
                     if sa < sb {
@@ -788,6 +806,15 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
                   // Store any exception to re-throw after sort (spec requires propagation)
                   let mut caught_error : Error? = None
                   result.sort_by(fn(a, b) {
+                    if a is Undefined && b is Undefined {
+                      return 0
+                    }
+                    if a is Undefined {
+                      return 1
+                    }
+                    if b is Undefined {
+                      return -1
+                    }
                     // Skip comparisons if we already have an error
                     if caught_error is Some(_) {
                       return 0
@@ -829,6 +856,15 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
               }
             } else {
               result.sort_by(fn(a, b) {
+                if a is Undefined && b is Undefined {
+                  return 0
+                }
+                if a is Undefined {
+                  return 1
+                }
+                if b is Undefined {
+                  return -1
+                }
                 let sa = a.to_string()
                 let sb = b.to_string()
                 if sa < sb {
@@ -977,8 +1013,17 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
             if args.length() > 0 {
               match args[0] {
                 Undefined =>
-                  // Default sort
+                  // Default sort: undefined goes to end
                   arr.elements.sort_by(fn(a, b) {
+                    if a is Undefined && b is Undefined {
+                      return 0
+                    }
+                    if a is Undefined {
+                      return 1
+                    }
+                    if b is Undefined {
+                      return -1
+                    }
                     let sa = a.to_string()
                     let sb = b.to_string()
                     if sa < sb {
@@ -995,6 +1040,16 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
                   // Store any exception to re-throw after sort (spec requires propagation)
                   let mut caught_error : Error? = None
                   arr.elements.sort_by(fn(a, b) {
+                    // Per spec: undefined sorts to end even with comparefn
+                    if a is Undefined && b is Undefined {
+                      return 0
+                    }
+                    if a is Undefined {
+                      return 1
+                    }
+                    if b is Undefined {
+                      return -1
+                    }
                     // Skip comparisons if we already have an error
                     if caught_error is Some(_) {
                       return 0
@@ -1036,6 +1091,16 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
               }
             } else {
               arr.elements.sort_by(fn(a, b) {
+                // Per spec: undefined sorts to end
+                if a is Undefined && b is Undefined {
+                  return 0
+                }
+                if a is Undefined {
+                  return 1
+                }
+                if b is Undefined {
+                  return -1
+                }
                 let sa = a.to_string()
                 let sb = b.to_string()
                 if sa < sb {

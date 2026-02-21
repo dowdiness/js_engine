@@ -3479,7 +3479,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               Undefined
             } else {
               let new_len = len - 1
-              let val = get_array_like_element(o, new_len)
+              let val = get_array_like_element_interp(interp, o, new_len)
               delete_array_like_element(o, new_len)
               set_array_like_length(o, new_len)
               val
@@ -3513,9 +3513,9 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               set_array_like_length(o, 0)
               return Undefined
             }
-            let first = get_array_like_element(o, 0)
+            let first = get_array_like_element_interp(interp, o, 0)
             for i = 1; i < len; i = i + 1 {
-              set_array_like_element(o, i - 1, get_array_like_element(o, i))
+              set_array_like_element(o, i - 1, get_array_like_element_interp(interp, o, i))
             }
             delete_array_like_element(o, len - 1)
             set_array_like_length(o, len - 1)
@@ -3547,7 +3547,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             let argc = args.length()
             // Shift existing elements up by argc
             for i = len - 1; i >= 0; i = i - 1 {
-              set_array_like_element(o, i + argc, get_array_like_element(o, i))
+              set_array_like_element(o, i + argc, get_array_like_element_interp(interp, o, i))
             }
             // Insert new elements at the beginning
             for i = 0; i < argc; i = i + 1 {
@@ -3572,7 +3572,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }
         let parts : Array[String] = []
         for i = 0; i < len; i = i + 1 {
-          let v = get_array_like_element(o, i)
+          let v = get_array_like_element_interp(interp, o, i)
           match v {
             Null | Undefined => parts.push("")
             _ => parts.push(v.to_string())
@@ -3601,7 +3601,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }
         for i = start; i < len; i = i + 1 {
           if has_array_like_element(o, i) {
-            if strict_equal_val(get_array_like_element(o, i), search) {
+            if strict_equal_val(get_array_like_element_interp(interp, o, i), search) {
               return Number(i.to_double())
             }
           }
@@ -3626,7 +3626,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }
         for i = from; i >= 0; i = i - 1 {
           if has_array_like_element(o, i) {
-            if strict_equal_val(get_array_like_element(o, i), search) {
+            if strict_equal_val(get_array_like_element_interp(interp, o, i), search) {
               return Number(i.to_double())
             }
           }
@@ -3653,7 +3653,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           from_idx
         }
         for i = start; i < len; i = i + 1 {
-          if same_value_zero(get_array_like_element(o, i), search) {
+          if same_value_zero(get_array_like_element_interp(interp, o, i), search) {
             return Bool(true)
           }
         }
@@ -3692,7 +3692,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }
         let result : Array[Value] = []
         for i = start; i < end; i = i + 1 {
-          result.push(get_array_like_element(o, i))
+          result.push(get_array_like_element_interp(interp, o, i))
         }
         Array({ elements: result })
       })
@@ -3748,7 +3748,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             let len = to_array_like_length_interp(item, interp)
             for i = 0; i < len; i = i + 1 {
               if has_array_like_element(item, i) {
-                result.push(get_array_like_element(item, i))
+                result.push(get_array_like_element_interp(interp, item, i))
               } else {
                 result.push(Undefined)
               }
@@ -3771,8 +3771,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             let mut lower = 0
             let mut upper = len - 1
             while lower < upper {
-              let lower_val = get_array_like_element(o, lower)
-              let upper_val = get_array_like_element(o, upper)
+              let lower_val = get_array_like_element_interp(interp, o, lower)
+              let upper_val = get_array_like_element_interp(interp, o, upper)
               set_array_like_element(o, lower, upper_val)
               set_array_like_element(o, upper, lower_val)
               lower = lower + 1
@@ -3846,7 +3846,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }
         let actual_idx = if idx < 0 { len + idx } else { idx }
         if actual_idx >= 0 && actual_idx < len {
-          get_array_like_element(o, actual_idx)
+          get_array_like_element_interp(interp, o, actual_idx)
         } else {
           Undefined
         }
@@ -3856,7 +3856,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         let len = to_array_like_length_interp(o, interp)
         let parts : Array[String] = []
         for i = 0; i < len; i = i + 1 {
-          let v = get_array_like_element(o, i)
+          let v = get_array_like_element_interp(interp, o, i)
           match v {
             Null | Undefined => parts.push("")
             _ => {
@@ -3890,7 +3890,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               callback,
               this_arg,
               [
-                get_array_like_element(o, i),
+                get_array_like_element_interp(interp, o, i),
                 Number(i.to_double()),
                 o,
               ],
@@ -3916,7 +3916,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               callback,
               this_arg,
               [
-                get_array_like_element(o, i),
+                get_array_like_element_interp(interp, o, i),
                 Number(i.to_double()),
                 o,
               ],
@@ -3941,7 +3941,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         let result : Array[Value] = []
         for i = 0; i < len; i = i + 1 {
           if has_array_like_element(o, i) {
-            let el = get_array_like_element(o, i)
+            let el = get_array_like_element_interp(interp, o, i)
             let val = interp.call_value(
               callback,
               this_arg,
@@ -3973,7 +3973,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               message="Reduce of empty array with no initial value",
             )
           }
-          acc = get_array_like_element(o, 0)
+          acc = get_array_like_element_interp(interp, o, 0)
           start = 1
         }
         for i = start; i < len; i = i + 1 {
@@ -3983,7 +3983,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               Undefined,
               [
                 acc,
-                get_array_like_element(o, i),
+                get_array_like_element_interp(interp, o, i),
                 Number(i.to_double()),
                 o,
               ],
@@ -4011,7 +4011,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               message="Reduce of empty array with no initial value",
             )
           }
-          acc = get_array_like_element(o, start)
+          acc = get_array_like_element_interp(interp, o, start)
           start = start - 1
         }
         for i = start; i >= 0; i = i - 1 {
@@ -4021,7 +4021,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               Undefined,
               [
                 acc,
-                get_array_like_element(o, i),
+                get_array_like_element_interp(interp, o, i),
                 Number(i.to_double()),
                 o,
               ],
@@ -4041,7 +4041,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         let loc = @token.Loc::default()
         let len = to_array_like_length_interp(o, interp)
         for i = 0; i < len; i = i + 1 {
-          let el = get_array_like_element(o, i)
+          let el = get_array_like_element_interp(interp, o, i)
           let val = interp.call_value(
             callback,
             this_arg,
@@ -4064,7 +4064,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         let loc = @token.Loc::default()
         let len = to_array_like_length_interp(o, interp)
         for i = 0; i < len; i = i + 1 {
-          let el = get_array_like_element(o, i)
+          let el = get_array_like_element_interp(interp, o, i)
           let val = interp.call_value(
             callback,
             this_arg,
@@ -4087,7 +4087,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         let loc = @token.Loc::default()
         let len = to_array_like_length_interp(o, interp)
         for i = len - 1; i >= 0; i = i - 1 {
-          let el = get_array_like_element(o, i)
+          let el = get_array_like_element_interp(interp, o, i)
           let val = interp.call_value(
             callback,
             this_arg,
@@ -4110,7 +4110,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         let loc = @token.Loc::default()
         let len = to_array_like_length_interp(o, interp)
         for i = len - 1; i >= 0; i = i - 1 {
-          let el = get_array_like_element(o, i)
+          let el = get_array_like_element_interp(interp, o, i)
           let val = interp.call_value(
             callback,
             this_arg,
@@ -4138,7 +4138,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               callback,
               this_arg,
               [
-                get_array_like_element(o, i),
+                get_array_like_element_interp(interp, o, i),
                 Number(i.to_double()),
                 o,
               ],
@@ -4166,7 +4166,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               callback,
               this_arg,
               [
-                get_array_like_element(o, i),
+                get_array_like_element_interp(interp, o, i),
                 Number(i.to_double()),
                 o,
               ],
@@ -4200,6 +4200,16 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           match args[0] {
             Undefined =>
               elements.sort_by(fn(a, b) {
+                // Per spec: undefined sorts to end
+                if a is Undefined && b is Undefined {
+                  return 0
+                }
+                if a is Undefined {
+                  return 1
+                }
+                if b is Undefined {
+                  return -1
+                }
                 let sa = a.to_string()
                 let sb = b.to_string()
                 if sa < sb {
@@ -4215,6 +4225,16 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               let loc = @token.Loc::default()
               let mut caught_error : Error? = None
               elements.sort_by(fn(a, b) {
+                // Per spec: undefined sorts to end even with comparefn
+                if a is Undefined && b is Undefined {
+                  return 0
+                }
+                if a is Undefined {
+                  return 1
+                }
+                if b is Undefined {
+                  return -1
+                }
                 if caught_error is Some(_) {
                   return 0
                 }
@@ -4253,6 +4273,16 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
         } else {
           elements.sort_by(fn(a, b) {
+            // Per spec: undefined sorts to end
+            if a is Undefined && b is Undefined {
+              return 0
+            }
+            if a is Undefined {
+              return 1
+            }
+            if b is Undefined {
+              return -1
+            }
             let sa = a.to_string()
             let sb = b.to_string()
             if sa < sb {
@@ -4301,7 +4331,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         let len = to_array_like_length_interp(o, interp)
         let result : Array[Value] = []
         for i = 0; i < len; i = i + 1 {
-          let el = get_array_like_element(o, i)
+          let el = get_array_like_element_interp(interp, o, i)
           let val = interp.call_value(
             callback,
             this_arg,
@@ -4352,7 +4382,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }
         let removed : Array[Value] = []
         for i = start; i < start + del_count; i = i + 1 {
-          removed.push(get_array_like_element(o, i))
+          removed.push(get_array_like_element_interp(interp, o, i))
         }
         let new_items : Array[Value] = []
         for i = 2; i < args.length(); i = i + 1 {
@@ -4381,7 +4411,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             if items_count < del_count {
               // Shift left
               for i = start; i < alen - del_count; i = i + 1 {
-                set_array_like_element(o, i + items_count, get_array_like_element(o, i + del_count))
+                set_array_like_element(o, i + items_count, get_array_like_element_interp(interp, o, i + del_count))
               }
               // Delete trailing elements
               let new_len = alen - del_count + items_count
@@ -4393,7 +4423,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               // Shift right
               let new_len = alen - del_count + items_count
               for i = alen - 1; i >= start + del_count; i = i - 1 {
-                set_array_like_element(o, i + items_count - del_count, get_array_like_element(o, i))
+                set_array_like_element(o, i + items_count - del_count, get_array_like_element_interp(interp, o, i))
               }
               set_array_like_length(o, new_len)
             }
@@ -4459,7 +4489,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         if count > 0 {
           let temp : Array[Value] = []
           for i = start; i < start + count; i = i + 1 {
-            temp.push(get_array_like_element(o, i))
+            temp.push(get_array_like_element_interp(interp, o, i))
           }
           for i = 0; i < count; i = i + 1 {
             if target + i < len {
@@ -4475,7 +4505,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         let result : Array[Value] = []
         for i = 0; i < len; i = i + 1 {
           result.push(
-            Array({ elements: [Number(i.to_double()), get_array_like_element(o, i)] }),
+            Array({ elements: [Number(i.to_double()), get_array_like_element_interp(interp, o, i)] }),
           )
         }
         make_array_iterator_value({ elements: result })
@@ -4494,7 +4524,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         let len = to_array_like_length_interp(o, interp)
         let result : Array[Value] = []
         for i = 0; i < len; i = i + 1 {
-          result.push(get_array_like_element(o, i))
+          result.push(get_array_like_element_interp(interp, o, i))
         }
         make_array_iterator_value({ elements: result })
       })
@@ -4503,7 +4533,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         let len = to_array_like_length_interp(o, interp)
         let result : Array[Value] = []
         for i = len - 1; i >= 0; i = i - 1 {
-          result.push(get_array_like_element(o, i))
+          result.push(get_array_like_element_interp(interp, o, i))
         }
         Array({ elements: result })
       })
@@ -4524,6 +4554,15 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           match args[0] {
             Undefined =>
               result.sort_by(fn(a, b) {
+                if a is Undefined && b is Undefined {
+                  return 0
+                }
+                if a is Undefined {
+                  return 1
+                }
+                if b is Undefined {
+                  return -1
+                }
                 let sa = a.to_string()
                 let sb = b.to_string()
                 if sa < sb {
@@ -4539,6 +4578,15 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               let loc = @token.Loc::default()
               let mut caught_error : Error? = None
               result.sort_by(fn(a, b) {
+                if a is Undefined && b is Undefined {
+                  return 0
+                }
+                if a is Undefined {
+                  return 1
+                }
+                if b is Undefined {
+                  return -1
+                }
                 if caught_error is Some(_) {
                   return 0
                 }
@@ -4577,6 +4625,15 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
         } else {
           result.sort_by(fn(a, b) {
+            if a is Undefined && b is Undefined {
+              return 0
+            }
+            if a is Undefined {
+              return 1
+            }
+            if b is Undefined {
+              return -1
+            }
             let sa = a.to_string()
             let sb = b.to_string()
             if sa < sb {
@@ -4621,13 +4678,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }
         let result : Array[Value] = []
         for i = 0; i < start; i = i + 1 {
-          result.push(get_array_like_element(o, i))
+          result.push(get_array_like_element_interp(interp, o, i))
         }
         for i = 2; i < args.length(); i = i + 1 {
           result.push(args[i])
         }
         for i = start + del_count; i < len; i = i + 1 {
-          result.push(get_array_like_element(o, i))
+          result.push(get_array_like_element_interp(interp, o, i))
         }
         Array({ elements: result })
       })
@@ -4649,7 +4706,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           if i == actual_idx {
             result.push(value)
           } else {
-            result.push(get_array_like_element(o, i))
+            result.push(get_array_like_element_interp(interp, o, i))
           }
         }
         Array({ elements: result })
@@ -5077,7 +5134,7 @@ fn to_length_from_value(v : Value?) -> Int raise {
       }
     }
     Some(v) => {
-      let n = to_number(v) catch { _ => 0.0 }
+      let n = to_number(v)
       if n.is_nan() {
         0
       } else if n.is_inf() {
@@ -5164,6 +5221,24 @@ pub fn get_array_like_element(val : Value, index : Int) -> Value {
       }
     }
     _ => Undefined
+  }
+}
+
+///|
+/// Get indexed element from array-like value using interpreter (handles user-defined getters)
+pub fn get_array_like_element_interp(
+  interp : Interpreter,
+  val : Value,
+  index : Int
+) -> Value raise {
+  match val {
+    Array(data) =>
+      if index >= 0 && index < data.elements.length() {
+        data.elements[index]
+      } else {
+        Undefined
+      }
+    _ => interp.get_property(val, index.to_string(), @token.Loc::default())
   }
 }
 

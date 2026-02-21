@@ -9531,7 +9531,8 @@ fn Interpreter::create_class(
     None => (None, Null)
   }
   // Create the prototype object
-  let proto_props : Map[String, Value] = {}
+  // Pre-insert constructor so it appears first in property enumeration order
+  let proto_props : Map[String, Value] = { "constructor": Undefined }
   let proto_descriptors : Map[String, PropDescriptor] = {}
   let proto_symbol_props : Map[Int, Value] = {}
   let proto_symbol_descriptors : Map[Int, PropDescriptor] = {}
@@ -9542,6 +9543,7 @@ fn Interpreter::create_class(
   let static_symbol_descriptors : Map[Int, PropDescriptor] = {}
   // Track constructor method
   let mut ctor_fn : (Array[String], Array[@ast.Stmt])? = None
+  let mut ctor_param_count : Int = 0
   // Create method environments with [[SuperPrototype]] for super.method() support
   let instance_method_env : Environment = match super_ctor {
     Some(_) => {
@@ -9579,6 +9581,7 @@ fn Interpreter::create_class(
           let strict_body = ensure_strict_body(body)
           validate_function_signature(true, None, params, strict_body)
           ctor_fn = Some((params, strict_body))
+          ctor_param_count = params.length()
         }
         FuncExprExt(_, params, rest, body, _) => {
           let strict_body = ensure_strict_body(body)
@@ -9586,6 +9589,7 @@ fn Interpreter::create_class(
           // Convert Param array to String array (ignoring defaults for now)
           let param_names = params.map(fn(p) { p.name })
           ctor_fn = Some((param_names, strict_body))
+          ctor_param_count = params.length()
         }
         _ => ()
       }
@@ -9808,9 +9812,34 @@ fn Interpreter::create_class(
     }
     _ => ()
   }
-  // Add prototype property to the class
+  // Add length, name, prototype properties to the class constructor per spec
+  let non_enum_configurable : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   match class_obj {
-    Object(class_data) => class_data.properties["prototype"] = proto
+    Object(class_data) => {
+      // Add length (formal parameter count) - non-writable, non-enumerable, configurable
+      class_data.properties["length"] = Number(ctor_param_count.to_double())
+      class_data.descriptors["length"] = non_enum_configurable
+      // Add name - non-writable, non-enumerable, configurable
+      if name != "" {
+        class_data.properties["name"] = String_(name)
+        class_data.descriptors["name"] = non_enum_configurable
+      }
+      // Add prototype - non-writable, non-enumerable, non-configurable
+      class_data.properties["prototype"] = proto
+      class_data.descriptors["prototype"] = {
+        writable: false,
+        enumerable: false,
+        configurable: false,
+        getter: None,
+        setter: None,
+      }
+    }
     _ => ()
   }
   class_obj
