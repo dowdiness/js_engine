@@ -318,39 +318,74 @@ fn async_step(
         return
       }
     }
-    let then_method = try {
-      ip.get_property(resolved_promise, "then", loc)
-    } catch {
-      e => {
-        // get_property threw — propagate to on_reject
-        let err_val = js_error_to_value_with_env(e, Some(ip.global))
-        ip.enqueue_microtask(on_reject, [err_val])
-        return
-      }
-    }
-    // Check if then_method is callable before invoking
-    let is_callable = match then_method {
-      Object(od) => od.callable is Some(_)
-      _ => false
-    }
-    if is_callable {
-      try {
-        let _ = ip.call_value(
-          then_method,
-          resolved_promise,
-          [on_fulfill, on_reject],
-          loc,
-        )
-      } catch {
-        e => {
-          // .then() threw — propagate to on_reject
-          let err_val = js_error_to_value_with_env(e, Some(ip.global))
-          ip.enqueue_microtask(on_reject, [err_val])
+    // Fast path: if resolved_promise is a native Promise, bypass the JS-level
+    // .then property and attach reactions directly via the internal record.
+    // This avoids issues with overridden .then and matches spec PerformPromiseThen.
+    match resolved_promise {
+      Promise(pd) => {
+        match pd.state {
+          Fulfilled => ip.enqueue_microtask(on_fulfill, [pd.result])
+          Rejected => ip.enqueue_microtask(on_reject, [pd.result])
+          Pending => {
+            let noop = make_interpreter_callable_with_length(
+              "",
+              0,
+              fn(_i : Interpreter, _t : Value, _a : Array[Value]) -> Value {
+                Undefined
+              },
+            )
+            pd.fulfill_reactions.push({
+              handler: Some(on_fulfill),
+              resolve: noop,
+              reject: noop,
+              reaction_type: Fulfill,
+            })
+            pd.reject_reactions.push({
+              handler: Some(on_reject),
+              resolve: noop,
+              reject: noop,
+              reaction_type: Reject,
+            })
+          }
         }
       }
-    } else {
-      // Non-callable .then — treat as non-thenable, fulfill directly
-      ip.enqueue_microtask(on_fulfill, [resolved_promise])
+      _ => {
+        // Non-native promise: use JS-level .then() property
+        let then_method = try {
+          ip.get_property(resolved_promise, "then", loc)
+        } catch {
+          e => {
+            // get_property threw — propagate to on_reject
+            let err_val = js_error_to_value_with_env(e, Some(ip.global))
+            ip.enqueue_microtask(on_reject, [err_val])
+            return
+          }
+        }
+        // Check if then_method is callable before invoking
+        let is_callable = match then_method {
+          Object(od) => od.callable is Some(_)
+          _ => false
+        }
+        if is_callable {
+          try {
+            let _ = ip.call_value(
+              then_method,
+              resolved_promise,
+              [on_fulfill, on_reject],
+              loc,
+            )
+          } catch {
+            e => {
+              // .then() threw — propagate to on_reject
+              let err_val = js_error_to_value_with_env(e, Some(ip.global))
+              ip.enqueue_microtask(on_reject, [err_val])
+            }
+          }
+        } else {
+          // Non-callable .then — treat as non-thenable, fulfill directly
+          ip.enqueue_microtask(on_fulfill, [resolved_promise])
+        }
+      }
     }
   }
 }

@@ -5533,10 +5533,33 @@ fn eval_binary_op(
               Bool(false)
             }
           }
-        Array(data) => {
-          let idx = to_number(l).to_int() catch { _ => -1 }
-          Bool(idx >= 0 && idx < data.elements.length())
-        }
+        Array(data) =>
+          match l {
+            Symbol(sym) =>
+              Bool(get_array_symbol_prop(data, sym.id) is Some(_))
+            _ => {
+              let key = to_js_string(l)
+              if key == "length" {
+                return Bool(true)
+              }
+              // Check numeric index
+              try {
+                let n = @strconv.parse_double(key)
+                let idx = n.to_int()
+                if idx.to_double() == n && idx >= 0 && idx < data.elements.length() {
+                  return Bool(true)
+                }
+              } catch {
+                _ => ()
+              }
+              // Check named properties side-table
+              if get_array_named_prop(data, key) is Some(_) {
+                return Bool(true)
+              }
+              // Check Array.prototype chain
+              Bool(has_property(Array(data), key))
+            }
+          }
         _ =>
           raise @errors.TypeError(
             message="Cannot use 'in' operator to search for '\{l.to_string()}' in \{type_of(r)}",
@@ -7517,6 +7540,11 @@ fn Interpreter::get_computed_property(
                   make_array_iterator_value(arr)
                 })
           }
+          // Check array symbol property side-table
+          match get_array_symbol_prop(arr, sym.id) {
+            Some(v) => return v
+            None => ()
+          }
           return Undefined
         }
         Map(_) => {
@@ -7946,6 +7974,11 @@ fn Interpreter::get_computed_property(
               }
           }
         }
+        Symbol(sym) =>
+          match get_array_symbol_prop(data, sym.id) {
+            Some(v) => v
+            None => Undefined
+          }
         _ => Undefined
       }
     String_(s) =>
@@ -7970,22 +8003,39 @@ fn Interpreter::get_computed_property(
         String_(method_name) => get_number_method(obj, method_name)
         _ => Undefined
       }
-    Promise(data) => {
-      // Coerce key to string via ToPropertyKey (Symbol handled above)
-      let prop = to_js_string(key)
-      match data.properties.get(prop) {
-        Some(v) => v
-        None => get_promise_method(data, prop)
+    Promise(data) =>
+      match key {
+        Symbol(sym) =>
+          match data.symbol_properties.get(sym.id) {
+            Some(v) => v
+            None => Undefined
+          }
+        _ => {
+          let prop = to_js_string(key)
+          match data.properties.get(prop) {
+            Some(v) => v
+            None => get_promise_method(data, prop)
+          }
+        }
       }
+    Null => {
+      let key_str = match key {
+        Symbol(sym) => "Symbol(\{sym.description})"
+        _ => to_js_string(key)
+      }
+      raise @errors.TypeError(
+        message="Cannot read properties of null (reading '\{key_str}')",
+      )
     }
-    Null =>
+    Undefined => {
+      let key_str = match key {
+        Symbol(sym) => "Symbol(\{sym.description})"
+        _ => to_js_string(key)
+      }
       raise @errors.TypeError(
-        message="Cannot read properties of null (reading '\{to_js_string(key)}')",
+        message="Cannot read properties of undefined (reading '\{key_str}')",
       )
-    Undefined =>
-      raise @errors.TypeError(
-        message="Cannot read properties of undefined (reading '\{to_js_string(key)}')",
-      )
+    }
     _ => Undefined
   }
 }
@@ -8446,6 +8496,10 @@ fn Interpreter::set_computed_property(
       }
     Array(data) =>
       match key {
+        Symbol(sym) => {
+          set_array_symbol_prop(data, sym.id, value)
+          value
+        }
         Number(n) => {
           let i = n.to_int()
           if i >= 0 {
@@ -8500,14 +8554,24 @@ fn Interpreter::set_computed_property(
           value
         }
       }
-    Null =>
+    Null => {
+      let key_str = match key {
+        Symbol(sym) => "Symbol(\{sym.description})"
+        _ => to_js_string(key)
+      }
       raise @errors.TypeError(
-        message="Cannot set properties of null (setting '\{to_js_string(key)}')",
+        message="Cannot set properties of null (setting '\{key_str}')",
       )
-    Undefined =>
+    }
+    Undefined => {
+      let key_str = match key {
+        Symbol(sym) => "Symbol(\{sym.description})"
+        _ => to_js_string(key)
+      }
       raise @errors.TypeError(
-        message="Cannot set properties of undefined (setting '\{to_js_string(key)}')",
+        message="Cannot set properties of undefined (setting '\{key_str}')",
       )
+    }
     _ =>
       if self.strict {
         raise @errors.TypeError(message="Cannot set property of \{type_of(obj)}")

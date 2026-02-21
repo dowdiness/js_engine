@@ -202,25 +202,7 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
         Array({ elements: result })
       })
     }
-    "concat" => {
-      let arr = data
-      make_native_func("concat", fn(args) {
-        let result : Array[Value] = []
-        for el in arr.elements {
-          result.push(el)
-        }
-        for arg in args {
-          match arg {
-            Array(other) =>
-              for el in other.elements {
-                result.push(el)
-              }
-            _ => result.push(arg)
-          }
-        }
-        Array({ elements: result })
-      })
-    }
+    "concat" => Undefined // Handled in get_array_method_with_interp
     "reverse" => {
       let arr = data
       make_native_func("reverse", fn(_args) {
@@ -1075,6 +1057,92 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
             }
             Array(arr)
           })
+    }
+    "concat" => {
+      let arr = data
+      make_interp_method_func("concat", 1, fn(interp, this_val, args) raise {
+        let _ = this_val
+        let result : Array[Value] = []
+        let concat_sym_id = get_isconcatspreadable_symbol().id
+        // Process this array (arr) and each argument
+        let items : Array[Value] = [Array(arr)]
+        for a in args {
+          items.push(a)
+        }
+        for item in items {
+          // Determine spreadability per ES2015 spec
+          let spreadable = match item {
+            Object(od) => {
+              match od.symbol_properties.get(concat_sym_id) {
+                Some(v) =>
+                  match v {
+                    Undefined => od.class_name == "Array"
+                    _ => is_truthy(v)
+                  }
+                None => {
+                  // Walk prototype chain for @@isConcatSpreadable
+                  let mut found : Value = Undefined
+                  let mut cur = od.prototype
+                  while true {
+                    match cur {
+                      Object(pd) =>
+                        match pd.symbol_properties.get(concat_sym_id) {
+                          Some(v) => { found = v; break }
+                          None => cur = pd.prototype
+                        }
+                      _ => break
+                    }
+                  }
+                  match found {
+                    Undefined => od.class_name == "Array"
+                    _ => is_truthy(found)
+                  }
+                }
+              }
+            }
+            Array(arr_data) =>
+              match get_array_symbol_prop(arr_data, concat_sym_id) {
+                Some(v) =>
+                  match v {
+                    Undefined => true
+                    _ => is_truthy(v)
+                  }
+                None => true
+              }
+            _ => false
+          }
+          if spreadable {
+            let len = match item {
+              Array(ad) => ad.elements.length()
+              _ => {
+                let lv = interp.get_property(item, "length", @token.Loc::default())
+                to_number(lv).to_int()
+              }
+            }
+            for i = 0; i < len; i = i + 1 {
+              match item {
+                Array(ad) =>
+                  if i < ad.elements.length() {
+                    result.push(ad.elements[i])
+                  } else {
+                    result.push(Undefined)
+                  }
+                _ => {
+                  let el = interp.get_computed_property(
+                    item,
+                    Number(i.to_double()),
+                    @token.Loc::default(),
+                  )
+                  result.push(el)
+                }
+              }
+            }
+          } else {
+            result.push(item)
+          }
+        }
+        Array({ elements: result })
+      })
     }
     _ => get_array_method(data, prop)
   }

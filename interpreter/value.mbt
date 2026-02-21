@@ -192,6 +192,39 @@ pub fn get_array_named_prop(arr : ArrayData, key : String) -> Value? {
 }
 
 ///|
+/// Symbol properties on arrays (side-table, same approach as named props)
+let array_symbol_props : Array[(ArrayData, Map[Int, Value])] = []
+
+///|
+pub fn set_array_symbol_prop(
+  arr : ArrayData,
+  sym_id : Int,
+  value : Value,
+) -> Unit {
+  for i = 0; i < array_symbol_props.length(); i = i + 1 {
+    let (existing, props) = array_symbol_props[i]
+    if physical_equal(existing, arr) {
+      props[sym_id] = value
+      return
+    }
+  }
+  let props : Map[Int, Value] = {}
+  props[sym_id] = value
+  array_symbol_props.push((arr, props))
+}
+
+///|
+pub fn get_array_symbol_prop(arr : ArrayData, sym_id : Int) -> Value? {
+  for i = 0; i < array_symbol_props.length(); i = i + 1 {
+    let (existing, props) = array_symbol_props[i]
+    if physical_equal(existing, arr) {
+      return props.get(sym_id)
+    }
+  }
+  None
+}
+
+///|
 pub fn set_array_iterator_override(
   arr : ArrayData,
   getter : Value?,

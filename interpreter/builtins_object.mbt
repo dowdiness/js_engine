@@ -3610,7 +3610,15 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 _ => is_truthy(sym_val)
               }
             }
-            Array(_) => true
+            Array(arr_data) =>
+              match get_array_symbol_prop(arr_data, concat_sym_id) {
+                Some(v) =>
+                  match v {
+                    Undefined => true // default: arrays are spreadable
+                    _ => is_truthy(v)
+                  }
+                None => true // default: arrays are spreadable
+              }
             _ => false
           }
           if spreadable {
