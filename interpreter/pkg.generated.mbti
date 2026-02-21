@@ -333,6 +333,8 @@ pub(all) struct GeneratorObject {
   mut delegate_iterator : Value
   mut delegate_next : Value
   mut delegating : Bool
+  mut yield_index : Int
+  mut resume_at_yield : Int
 }
 
 pub(all) struct Interpreter {

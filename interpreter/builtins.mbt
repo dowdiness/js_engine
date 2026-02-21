@@ -801,6 +801,39 @@ pub fn setup_builtins(
     }),
   )
 
+  // Set up RegExp.prototype and store in regexp_prototype_ref
+  match env.bindings.get("[[ObjectPrototype]]") {
+    Some(obj_proto_binding) => {
+      let obj_proto = obj_proto_binding.value
+      let regexp_proto_props : Map[String, Value] = {}
+      regexp_proto_props["constructor"] = match env.bindings.get("RegExp") {
+        Some(b) => b.value
+        None => Undefined
+      }
+      let regexp_proto : Value = Object({
+        properties: regexp_proto_props,
+        symbol_properties: {},
+        prototype: obj_proto,
+        callable: None,
+        class_name: "Object",
+        descriptors: {},
+        symbol_descriptors: {},
+        extensible: true,
+      })
+      regexp_prototype_ref.val = Some(regexp_proto)
+      // Set RegExp.prototype on the constructor
+      match env.bindings.get("RegExp") {
+        Some(b) =>
+          match b.value {
+            Object(ctor_data) => ctor_data.properties["prototype"] = regexp_proto
+            _ => ()
+          }
+        None => ()
+      }
+    }
+    None => ()
+  }
+
   // Set up iterator protocol on Array and String prototypes
   // Use try/catch since setup_iterator_protocol can raise errors
   setup_iterator_protocol(env) catch {

@@ -1248,10 +1248,14 @@ pub fn make_regexp_object(pattern : String, flags : String) -> Value {
   re_sym_descs[replace_sym.id] = re_method_desc
   re_sym_descs[split_sym.id] = re_method_desc
 
+  let proto = match regexp_prototype_ref.val {
+    Some(p) => p
+    None => Null
+  }
   Object({
     properties: props,
     symbol_properties: sym_props,
-    prototype: Null,
+    prototype: proto,
     callable: None,
     class_name: "RegExp",
     descriptors: re_descs,
@@ -1431,6 +1435,10 @@ fn process_replacement(
   }
   buf.to_string()
 }
+
+///|
+/// Shared RegExp.prototype - set during global setup
+pub let regexp_prototype_ref : Ref[Value?] = { val: None }
 
 ///|
 /// Shared %RegExpStringIteratorPrototype% - lazily initialized

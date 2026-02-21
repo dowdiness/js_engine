@@ -61,6 +61,9 @@ pub(all) struct GeneratorObject {
   mut delegate_iterator : Value // the delegate iterator (or Undefined if not delegating)
   mut delegate_next : Value // the delegate's next method
   mut delegating : Bool // true if currently in yield* delegation
+  // Yield index tracking for nested yields (e.g. yield yield 1)
+  mut yield_index : Int // counter incremented each time eval_yield is called
+  mut resume_at_yield : Int // index of the yield that was suspended
 }
 
 ///|
@@ -601,6 +604,8 @@ fn create_generator_instance(
     delegate_iterator: Undefined,
     delegate_next: Undefined,
     delegating: false,
+    yield_index: 0,
+    resume_at_yield: 0,
   }
   generator_objects[gen_id] = gen_obj
   // Create the generator instance object with gen_id stored in a property
@@ -735,6 +740,7 @@ fn run_generator_body(
     while gen.pc < gen.body.length() {
       let i = gen.pc
       let stmt = gen.body[i]
+      gen.yield_index = 0 // Reset yield counter for each statement
       let signal = interp.exec_stmt(stmt, env) catch {
         YieldSignal(yielded_value) => {
           // Statement yielded. DON'T advance pc — on resume we'll replay this stmt.
@@ -814,9 +820,11 @@ fn Interpreter::eval_yield(
   env : Environment,
 ) -> Value raise Error {
   match current_generator.val {
-    Some(gen) =>
-      if gen.resuming {
-        // We're replaying this statement after resume.
+    Some(gen) => {
+      let current_yield_index = gen.yield_index
+      gen.yield_index = gen.yield_index + 1
+      if gen.resuming && current_yield_index == gen.resume_at_yield {
+        // This is the exact yield that was suspended — apply resume action
         gen.resuming = false
         match gen.resume_action {
           NextAction => gen.yield_value
@@ -877,6 +885,7 @@ fn Interpreter::eval_yield(
           gen.delegate_iterator = iterator
           gen.delegate_next = next_method
           gen.delegating = true
+          gen.resume_at_yield = current_yield_index
           raise YieldSignal(value)
         }
       } else {
@@ -885,8 +894,10 @@ fn Interpreter::eval_yield(
           Some(expr) => self.eval_expr(expr, env)
           None => Undefined
         }
+        gen.resume_at_yield = current_yield_index
         raise YieldSignal(yielded_value)
       }
+    }
     None =>
       // Parser prevents YieldExpr outside generator context, so this is unreachable
       raise @errors.TypeError(
