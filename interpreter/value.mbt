@@ -335,6 +335,18 @@ pub fn get_hasinstance_symbol() -> SymbolData {
 }
 
 ///|
+/// Well-known Symbol.isConcatSpreadable
+pub let well_known_isconcatspreadable_sym : Ref[SymbolData?] = { val: None }
+
+///|
+pub fn get_isconcatspreadable_symbol() -> SymbolData {
+  match well_known_isconcatspreadable_sym.val {
+    Some(sym) => sym
+    None => abort("Symbol.isConcatSpreadable not initialized")
+  }
+}
+
+///|
 /// Well-known Symbol.toPrimitive - stored globally for @@toPrimitive support
 pub let well_known_toprimitive_sym : Ref[SymbolData?] = { val: None }
 

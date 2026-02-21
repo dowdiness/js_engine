@@ -3573,27 +3573,57 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }
         Array({ elements: result })
       })
-  array_proto_props["concat"] = make_method_func("concat", 1, fn(this_val, args) {
+  array_proto_props["concat"] = make_interp_method_func("concat", 1, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
         let result : Array[Value] = []
-        // Add elements from this
-        let len = to_array_like_length(this_val)
-        match this_val {
-          Array(arr) =>
-            for el in arr.elements {
-              result.push(el)
-            }
-          _ =>
-            for i = 0; i < len; i = i + 1 {
-              result.push(get_array_like_element(this_val, i))
-            }
+        let concat_sym_id = get_isconcatspreadable_symbol().id
+        // Process this value and each argument per ES2015 concat spec
+        let items : Array[Value] = [o]
+        for a in args {
+          items.push(a)
         }
-        for arg in args {
-          match arg {
-            Array(other) =>
-              for el in other.elements {
-                result.push(el)
+        for item in items {
+          // Determine spreadability: check @@isConcatSpreadable
+          let spreadable = match item {
+            Object(data) => {
+              // Check own symbol property, then walk prototype chain
+              let sym_val = match data.symbol_properties.get(concat_sym_id) {
+                Some(v) => v
+                None => {
+                  let mut found : Value = Undefined
+                  let mut cur = data.prototype
+                  while true {
+                    match cur {
+                      Object(pd) =>
+                        match pd.symbol_properties.get(concat_sym_id) {
+                          Some(v) => { found = v; break }
+                          None => cur = pd.prototype
+                        }
+                      _ => break
+                    }
+                  }
+                  found
+                }
               }
-            _ => result.push(arg)
+              match sym_val {
+                Undefined => data.class_name == "Array"
+                _ => is_truthy(sym_val)
+              }
+            }
+            Array(_) => true
+            _ => false
+          }
+          if spreadable {
+            let len = to_array_like_length_interp(item, interp)
+            for i = 0; i < len; i = i + 1 {
+              if has_array_like_element(item, i) {
+                result.push(get_array_like_element(item, i))
+              } else {
+                result.push(Undefined)
+              }
+            }
+          } else {
+            result.push(item)
           }
         }
         Array({ elements: result })

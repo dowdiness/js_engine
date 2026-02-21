@@ -924,6 +924,7 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
   // Store globally for instanceof operator support
   well_known_hasinstance_sym.val = Some(has_instance_sym)
   let is_concat_spreadable_sym = new_symbol(Some("Symbol.isConcatSpreadable"))
+  well_known_isconcatspreadable_sym.val = Some(is_concat_spreadable_sym)
   let species_sym = new_symbol(Some("Symbol.species"))
   let match_sym = new_symbol(Some("Symbol.match"))
   well_known_match_sym.val = Some(match_sym)
