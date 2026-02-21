@@ -852,51 +852,80 @@ pub fn setup_builtins(
       // test() and exec() are placed on each instance by make_regexp_object
       // Here we add them to prototype so typeof checks work
       regexp_proto_props["test"] = make_method_func("test", 1, fn(this_val, args) raise {
-        // Get the instance's own test method and call it
         match this_val {
-          Object(data) =>
-            match data.properties.get("test") {
-              Some(fn_val) =>
-                if is_callable(fn_val) {
-                  match fn_val {
-                    Object(fn_data) =>
-                      match fn_data.callable {
-                        Some(MethodCallable(_, f)) => f(this_val, args)
-                        Some(NativeCallable(_, f)) => f(args)
-                        Some(NonConstructableCallable(_, f)) => f(args)
-                        _ => Undefined
-                      }
-                    _ => Undefined
-                  }
-                } else {
-                  Undefined
-                }
-              None => Bool(false)
+          Object(data) => {
+            if data.class_name != "RegExp" {
+              raise @errors.TypeError(message="Method RegExp.prototype.test called on incompatible receiver")
             }
+            let str = if args.length() > 0 { to_js_string(args[0]) } else { "" }
+            let (pat, fl) = extract_regexp_source_flags(this_val)
+            let has_global = fl.contains("g")
+            let has_sticky = fl.contains("y")
+            let start = if has_sticky || has_global {
+              match data.properties.get("lastIndex") {
+                Some(li) => to_int32(to_number(li))
+                _ => 0
+              }
+            } else {
+              0
+            }
+            let result = regex_search(pat, fl, str, start_pos=start) catch {
+              _ => None
+            }
+            match result {
+              Some(m) => {
+                if has_sticky || has_global {
+                  data.properties["lastIndex"] = Number(m.end_.to_double())
+                }
+                Bool(true)
+              }
+              None => {
+                if has_sticky || has_global {
+                  data.properties["lastIndex"] = Number(0.0)
+                }
+                Bool(false)
+              }
+            }
+          }
           _ => raise @errors.TypeError(message="Method RegExp.prototype.test called on incompatible receiver")
         }
       })
       regexp_proto_props["exec"] = make_method_func("exec", 1, fn(this_val, args) raise {
         match this_val {
-          Object(data) =>
-            match data.properties.get("exec") {
-              Some(fn_val) =>
-                if is_callable(fn_val) {
-                  match fn_val {
-                    Object(fn_data) =>
-                      match fn_data.callable {
-                        Some(MethodCallable(_, f)) => f(this_val, args)
-                        Some(NativeCallable(_, f)) => f(args)
-                        Some(NonConstructableCallable(_, f)) => f(args)
-                        _ => Null
-                      }
-                    _ => Null
-                  }
-                } else {
-                  Null
-                }
-              None => Null
+          Object(data) => {
+            if data.class_name != "RegExp" {
+              raise @errors.TypeError(message="Method RegExp.prototype.exec called on incompatible receiver")
             }
+            let str = if args.length() > 0 { to_js_string(args[0]) } else { "" }
+            let (pat, fl) = extract_regexp_source_flags(this_val)
+            let has_global = fl.contains("g")
+            let has_sticky = fl.contains("y")
+            let start = if has_sticky || has_global {
+              match data.properties.get("lastIndex") {
+                Some(li) => to_int32(to_number(li))
+                _ => 0
+              }
+            } else {
+              0
+            }
+            let result = regex_search(pat, fl, str, start_pos=start) catch {
+              _ => None
+            }
+            match result {
+              Some(m) => {
+                if has_sticky || has_global {
+                  data.properties["lastIndex"] = Number(m.end_.to_double())
+                }
+                make_regex_match_array(m, str)
+              }
+              None => {
+                if has_sticky || has_global {
+                  data.properties["lastIndex"] = Number(0.0)
+                }
+                Null
+              }
+            }
+          }
           _ => raise @errors.TypeError(message="Method RegExp.prototype.exec called on incompatible receiver")
         }
       })

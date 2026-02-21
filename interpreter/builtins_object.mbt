@@ -621,6 +621,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
   })
   // Store Object.prototype so plain objects {} can link to it
   env.def_builtin("[[ObjectPrototype]]", obj_proto)
+  object_prototype_ref.val = Some(obj_proto)
   env.def_builtin(
     "Object",
     Object({
@@ -1293,7 +1294,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                         "configurable": Bool(configurable),
                       },
                       symbol_properties: {},
-                      prototype: Null,
+                      prototype: get_obj_proto(),
                       callable: None,
                       class_name: "Object",
                       descriptors: {},
@@ -1321,7 +1322,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                         "configurable": Bool(configurable),
                       },
                       symbol_properties: {},
-                      prototype: Null,
+                      prototype: get_obj_proto(),
                       callable: None,
                       class_name: "Object",
                       descriptors: {},
@@ -1371,7 +1372,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                         "configurable": Bool(configurable),
                       },
                       symbol_properties: {},
-                      prototype: Null,
+                      prototype: get_obj_proto(),
                       callable: None,
                       class_name: "Object",
                       descriptors: {},
@@ -1399,7 +1400,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                         "configurable": Bool(configurable),
                       },
                       symbol_properties: {},
-                      prototype: Null,
+                      prototype: get_obj_proto(),
                       callable: None,
                       class_name: "Object",
                       descriptors: {},
@@ -1411,7 +1412,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 Object({
                   properties: descriptors_props,
                   symbol_properties: sym_descs,
-                  prototype: Null,
+                  prototype: get_obj_proto(),
                   callable: None,
                   class_name: "Object",
                   descriptors: {},
@@ -1423,7 +1424,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 Object({
                   properties: {},
                   symbol_properties: {},
-                  prototype: Null,
+                  prototype: get_obj_proto(),
                   callable: None,
                   class_name: "Object",
                   descriptors: {},
@@ -2136,7 +2137,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                   "configurable": Bool(configurable),
                 },
                 symbol_properties: {},
-                prototype: Null,
+                prototype: get_obj_proto(),
                 callable: None,
                 class_name: "Object",
                 descriptors: {},
@@ -2159,7 +2160,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                   "configurable": Bool(configurable),
                 },
                 symbol_properties: {},
-                prototype: Null,
+                prototype: get_obj_proto(),
                 callable: None,
                 class_name: "Object",
                 descriptors: {},

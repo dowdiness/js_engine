@@ -516,27 +516,17 @@ pub fn get_string_method(
           match args[0] {
             Object(data) => {
               let split_sym = get_split_symbol()
-              match data.symbol_properties.get(split_sym.id) {
-                Some(Object(fn_data)) =>
-                  match fn_data.callable {
-                    Some(MethodCallable(_, f)) => {
-                      let limit = if args.length() > 1 {
-                        args[1]
-                      } else {
-                        Undefined
-                      }
-                      return f(args[0], [String_(str), limit])
-                    }
-                    Some(NativeCallable(_, f)) => {
-                      let limit = if args.length() > 1 {
-                        args[1]
-                      } else {
-                        Undefined
-                      }
-                      return f([String_(str), limit])
-                    }
-                    _ => ()
+              let split_fn = lookup_symbol_property_chain(args[0], data, split_sym.id)
+              match split_fn {
+                Some(fn_val) => {
+                  let limit = if args.length() > 1 {
+                    args[1]
+                  } else {
+                    Undefined
                   }
+                  let result = call_callable_direct(fn_val, args[0], [String_(str), limit])
+                  return result
+                }
                 _ => ()
               }
             }
@@ -641,27 +631,17 @@ pub fn get_string_method(
         match args[0] {
           Object(data) => {
             let replace_sym = get_replace_symbol()
-            match data.symbol_properties.get(replace_sym.id) {
-              Some(Object(fn_data)) =>
-                match fn_data.callable {
-                  Some(MethodCallable(_, f)) => {
-                    let rep = if args.length() > 1 {
-                      args[1]
-                    } else {
-                      Undefined
-                    }
-                    return f(args[0], [String_(str), rep])
-                  }
-                  Some(NativeCallable(_, f)) => {
-                    let rep = if args.length() > 1 {
-                      args[1]
-                    } else {
-                      Undefined
-                    }
-                    return f([String_(str), rep])
-                  }
-                  _ => ()
+            let replace_fn = lookup_symbol_property_chain(args[0], data, replace_sym.id)
+            match replace_fn {
+              Some(fn_val) => {
+                let rep = if args.length() > 1 {
+                  args[1]
+                } else {
+                  Undefined
                 }
+                let result = call_callable_direct(fn_val, args[0], [String_(str), rep])
+                return result
+              }
               _ => ()
             }
             if data.class_name == "RegExp" {
@@ -747,14 +727,12 @@ pub fn get_string_method(
         match args[0] {
           Object(data) => {
             let match_sym = get_match_symbol()
-            match data.symbol_properties.get(match_sym.id) {
-              Some(Object(fn_data)) =>
-                match fn_data.callable {
-                  Some(MethodCallable(_, f)) =>
-                    return f(args[0], [String_(str)])
-                  Some(NativeCallable(_, f)) => return f([String_(str)])
-                  _ => ()
-                }
+            let match_fn = lookup_symbol_property_chain(args[0], data, match_sym.id)
+            match match_fn {
+              Some(fn_val) => {
+                let result = call_callable_direct(fn_val, args[0], [String_(str)])
+                return result
+              }
               _ => ()
             }
             if data.class_name == "RegExp" {
@@ -802,7 +780,8 @@ pub fn get_string_method(
             } else {
               // Check for Symbol.matchAll on the object
               let matchall_sym = get_matchall_symbol()
-              match data.symbol_properties.get(matchall_sym.id) {
+              let matchall_fn = lookup_symbol_property_chain(arg, data, matchall_sym.id)
+              match matchall_fn {
                 Some(method) => {
                   let result = call_callable_direct(method, arg, [String_(str)])
                   return result
@@ -915,14 +894,12 @@ pub fn get_string_method(
         match args[0] {
           Object(data) => {
             let search_sym = get_search_symbol()
-            match data.symbol_properties.get(search_sym.id) {
-              Some(Object(fn_data)) =>
-                match fn_data.callable {
-                  Some(MethodCallable(_, f)) =>
-                    return f(args[0], [String_(str)])
-                  Some(NativeCallable(_, f)) => return f([String_(str)])
-                  _ => ()
-                }
+            let search_fn = lookup_symbol_property_chain(args[0], data, search_sym.id)
+            match search_fn {
+              Some(fn_val) => {
+                let result = call_callable_direct(fn_val, args[0], [String_(str)])
+                return result
+              }
               _ => ()
             }
             if data.class_name == "RegExp" {
@@ -1112,27 +1089,17 @@ pub fn get_string_method(
         match args[0] {
           Object(data) => {
             let replace_sym = get_replace_symbol()
-            match data.symbol_properties.get(replace_sym.id) {
-              Some(Object(fn_data)) =>
-                match fn_data.callable {
-                  Some(MethodCallable(_, f)) => {
-                    let rep = if args.length() > 1 {
-                      args[1]
-                    } else {
-                      Undefined
-                    }
-                    return f(args[0], [String_(str), rep])
-                  }
-                  Some(NativeCallable(_, f)) => {
-                    let rep = if args.length() > 1 {
-                      args[1]
-                    } else {
-                      Undefined
-                    }
-                    return f([String_(str), rep])
-                  }
-                  _ => ()
+            let replace_fn = lookup_symbol_property_chain(args[0], data, replace_sym.id)
+            match replace_fn {
+              Some(fn_val) => {
+                let rep = if args.length() > 1 {
+                  args[1]
+                } else {
+                  Undefined
                 }
+                let result = call_callable_direct(fn_val, args[0], [String_(str), rep])
+                return result
+              }
               _ => ()
             }
           }

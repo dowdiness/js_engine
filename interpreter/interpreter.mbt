@@ -8232,7 +8232,10 @@ fn Interpreter::get_computed_property(
     Null => {
       let key_str = match key {
         Symbol(sym) => "Symbol(\{sym.description})"
-        _ => to_js_string(key)
+        String_(s) => s
+        Number(n) => n.to_string()
+        Bool(b) => b.to_string()
+        _ => ""
       }
       raise @errors.TypeError(
         message="Cannot read properties of null (reading '\{key_str}')",
@@ -8241,7 +8244,10 @@ fn Interpreter::get_computed_property(
     Undefined => {
       let key_str = match key {
         Symbol(sym) => "Symbol(\{sym.description})"
-        _ => to_js_string(key)
+        String_(s) => s
+        Number(n) => n.to_string()
+        Bool(b) => b.to_string()
+        _ => ""
       }
       raise @errors.TypeError(
         message="Cannot read properties of undefined (reading '\{key_str}')",
@@ -8768,7 +8774,10 @@ fn Interpreter::set_computed_property(
     Null => {
       let key_str = match key {
         Symbol(sym) => "Symbol(\{sym.description})"
-        _ => to_js_string(key)
+        String_(s) => s
+        Number(n) => n.to_string()
+        Bool(b) => b.to_string()
+        _ => ""
       }
       raise @errors.TypeError(
         message="Cannot set properties of null (setting '\{key_str}')",
@@ -8777,7 +8786,10 @@ fn Interpreter::set_computed_property(
     Undefined => {
       let key_str = match key {
         Symbol(sym) => "Symbol(\{sym.description})"
-        _ => to_js_string(key)
+        String_(s) => s
+        Number(n) => n.to_string()
+        Bool(b) => b.to_string()
+        _ => ""
       }
       raise @errors.TypeError(
         message="Cannot set properties of undefined (setting '\{key_str}')",

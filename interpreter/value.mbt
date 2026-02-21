@@ -721,8 +721,20 @@ pub fn make_func_ext(data : FuncDataExt) -> Value {
 pub let function_prototype_ref : Ref[Value?] = { val: None }
 
 ///|
+/// Global reference to Object.prototype, set during initialization
+pub let object_prototype_ref : Ref[Value?] = { val: None }
+
+///|
 fn get_func_proto() -> Value {
   match function_prototype_ref.val {
+    Some(p) => p
+    None => Null
+  }
+}
+
+///|
+pub fn get_obj_proto() -> Value {
+  match object_prototype_ref.val {
     Some(p) => p
     None => Null
   }
