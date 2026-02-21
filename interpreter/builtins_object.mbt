@@ -3988,32 +3988,42 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         let loc = @token.Loc::default()
         let len = to_array_like_length_interp(o, interp)
         let mut acc : Value = Undefined
-        let mut start = 0
+        let mut k = 0
         if args.length() > 1 {
           acc = args[1]
         } else {
-          if len == 0 {
+          // Per spec: find first present element as initial value
+          let mut k_present = false
+          while k < len {
+            if has_array_like_element(o, k) {
+              acc = get_array_like_element_interp(interp, o, k)
+              k = k + 1
+              k_present = true
+              break
+            }
+            k = k + 1
+          }
+          if not(k_present) {
             raise @errors.TypeError(
               message="Reduce of empty array with no initial value",
             )
           }
-          acc = get_array_like_element_interp(interp, o, 0)
-          start = 1
         }
-        for i = start; i < len; i = i + 1 {
-          if has_array_like_element(o, i) {
+        while k < len {
+          if has_array_like_element(o, k) {
             acc = interp.call_value(
               callback,
               Undefined,
               [
                 acc,
-                get_array_like_element_interp(interp, o, i),
-                Number(i.to_double()),
+                get_array_like_element_interp(interp, o, k),
+                Number(k.to_double()),
                 o,
               ],
               loc,
             )
           }
+          k = k + 1
         }
         acc
       })
@@ -4026,32 +4036,42 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         let loc = @token.Loc::default()
         let len = to_array_like_length_interp(o, interp)
         let mut acc : Value = Undefined
-        let mut start = len - 1
+        let mut k = len - 1
         if args.length() > 1 {
           acc = args[1]
         } else {
-          if len == 0 {
+          // Per spec: find last present element as initial value (searching right to left)
+          let mut k_present = false
+          while k >= 0 {
+            if has_array_like_element(o, k) {
+              acc = get_array_like_element_interp(interp, o, k)
+              k = k - 1
+              k_present = true
+              break
+            }
+            k = k - 1
+          }
+          if not(k_present) {
             raise @errors.TypeError(
               message="Reduce of empty array with no initial value",
             )
           }
-          acc = get_array_like_element_interp(interp, o, start)
-          start = start - 1
         }
-        for i = start; i >= 0; i = i - 1 {
-          if has_array_like_element(o, i) {
+        while k >= 0 {
+          if has_array_like_element(o, k) {
             acc = interp.call_value(
               callback,
               Undefined,
               [
                 acc,
-                get_array_like_element_interp(interp, o, i),
-                Number(i.to_double()),
+                get_array_like_element_interp(interp, o, k),
+                Number(k.to_double()),
                 o,
               ],
               loc,
             )
           }
+          k = k - 1
         }
         acc
       })
@@ -5285,12 +5305,17 @@ pub fn has_array_like_element(val : Value, index : Int) -> Bool {
       let mut current = data.prototype
       while true {
         match current {
-          Object(proto_data) =>
+          Object(proto_data) => {
             if proto_data.properties.contains(key) {
               return true
-            } else {
-              current = proto_data.prototype
             }
+            match proto_data.descriptors.get(key) {
+              Some(desc) if desc.getter is Some(_) => return true
+              _ => ()
+            }
+            current = proto_data.prototype
+          }
+          Array(arr_data) => return index >= 0 && index < arr_data.elements.length()
           _ => break
         }
       }

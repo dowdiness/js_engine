@@ -7099,6 +7099,11 @@ fn Interpreter::get_property(
                 if prop == "length" {
                   return Number(arr_data.elements.length().to_double())
                 }
+                // Check numeric index access on array elements
+                let num_idx = @strconv.parse_int(prop) catch { _ => -1 }
+                if num_idx >= 0 && num_idx < arr_data.elements.length() {
+                  return arr_data.elements[num_idx]
+                }
                 match get_array_named_prop(arr_data, prop) {
                   Some(v) => return v
                   None => {
@@ -7846,6 +7851,11 @@ fn Interpreter::get_computed_property(
               Array(arr_data) => {
                 if prop == "length" {
                   return Number(arr_data.elements.length().to_double())
+                }
+                // Check numeric index access on array elements
+                let num_idx2 = @strconv.parse_int(prop) catch { _ => -1 }
+                if num_idx2 >= 0 && num_idx2 < arr_data.elements.length() {
+                  return arr_data.elements[num_idx2]
                 }
                 match get_array_named_prop(arr_data, prop) {
                   Some(v) => return v

@@ -544,7 +544,46 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
     "reduce" => {
       let arr = data
       make_interp_method_func("reduce", 1, fn(interp, this_val, args) raise {
-            let _ = this_val
+            // Use this_val's array data if it's the same array, otherwise delegate to generic
+            let actual_arr : ArrayData = match this_val {
+              Array(a) => a
+              _ => {
+                // this_val is not an array — delegate to generic Object path
+                let o = to_object(this_val, interp)
+                let callback = if args.length() > 0 { args[0] } else { Undefined }
+                if not(is_callable(callback)) {
+                  raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
+                }
+                let loc = @token.Loc::default()
+                let len = to_array_like_length_interp(o, interp)
+                let mut acc : Value = Undefined
+                let mut k = 0
+                if args.length() > 1 {
+                  acc = args[1]
+                } else {
+                  let mut k_present = false
+                  while k < len {
+                    if has_array_like_element(o, k) {
+                      acc = get_array_like_element_interp(interp, o, k)
+                      k = k + 1
+                      k_present = true
+                      break
+                    }
+                    k = k + 1
+                  }
+                  if not(k_present) {
+                    raise @errors.TypeError(message="Reduce of empty array with no initial value")
+                  }
+                }
+                while k < len {
+                  if has_array_like_element(o, k) {
+                    acc = interp.call_value(callback, Undefined, [acc, get_array_like_element_interp(interp, o, k), Number(k.to_double()), o], loc)
+                  }
+                  k = k + 1
+                }
+                return acc
+              }
+            }
             let callback = if args.length() > 0 { args[0] } else { Undefined }
             if not(is_callable(callback)) {
               raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
@@ -555,19 +594,19 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
             if args.length() > 1 {
               acc = args[1]
             } else {
-              if arr.elements.length() == 0 {
+              if actual_arr.elements.length() == 0 {
                 raise @errors.TypeError(
                   message="Reduce of empty array with no initial value",
                 )
               }
-              acc = arr.elements[0]
+              acc = actual_arr.elements[0]
               start = 1
             }
-            for i = start; i < arr.elements.length(); i = i + 1 {
+            for i = start; i < actual_arr.elements.length(); i = i + 1 {
               acc = interp.call_value(
                 callback,
                 Undefined,
-                [acc, arr.elements[i], Number(i.to_double()), Array(arr)],
+                [acc, actual_arr.elements[i], Number(i.to_double()), Array(actual_arr)],
                 loc,
               )
             }
@@ -577,30 +616,68 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
     "reduceRight" => {
       let arr = data
       make_interp_method_func("reduceRight", 1, fn(interp, this_val, args) raise {
-            let _ = this_val
+            // Use this_val's array data if it's the same array, otherwise delegate to generic
+            let actual_arr : ArrayData = match this_val {
+              Array(a) => a
+              _ => {
+                let o = to_object(this_val, interp)
+                let callback = if args.length() > 0 { args[0] } else { Undefined }
+                if not(is_callable(callback)) {
+                  raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
+                }
+                let loc = @token.Loc::default()
+                let len = to_array_like_length_interp(o, interp)
+                let mut acc : Value = Undefined
+                let mut k = len - 1
+                if args.length() > 1 {
+                  acc = args[1]
+                } else {
+                  let mut k_present = false
+                  while k >= 0 {
+                    if has_array_like_element(o, k) {
+                      acc = get_array_like_element_interp(interp, o, k)
+                      k = k - 1
+                      k_present = true
+                      break
+                    }
+                    k = k - 1
+                  }
+                  if not(k_present) {
+                    raise @errors.TypeError(message="Reduce of empty array with no initial value")
+                  }
+                }
+                while k >= 0 {
+                  if has_array_like_element(o, k) {
+                    acc = interp.call_value(callback, Undefined, [acc, get_array_like_element_interp(interp, o, k), Number(k.to_double()), o], loc)
+                  }
+                  k = k - 1
+                }
+                return acc
+              }
+            }
             let callback = if args.length() > 0 { args[0] } else { Undefined }
             if not(is_callable(callback)) {
               raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
             }
             let loc = @token.Loc::default()
             let mut acc : Value = Undefined
-            let mut start = arr.elements.length() - 1
+            let mut start = actual_arr.elements.length() - 1
             if args.length() > 1 {
               acc = args[1]
             } else {
-              if arr.elements.length() == 0 {
+              if actual_arr.elements.length() == 0 {
                 raise @errors.TypeError(
                   message="Reduce of empty array with no initial value",
                 )
               }
-              acc = arr.elements[start]
+              acc = actual_arr.elements[start]
               start = start - 1
             }
             for i = start; i >= 0; i = i - 1 {
               acc = interp.call_value(
                 callback,
                 Undefined,
-                [acc, arr.elements[i], Number(i.to_double()), Array(arr)],
+                [acc, actual_arr.elements[i], Number(i.to_double()), Array(actual_arr)],
                 loc,
               )
             }
