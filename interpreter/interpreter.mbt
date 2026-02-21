@@ -1825,58 +1825,11 @@ fn Interpreter::exec_stmt(
         Object(_) => raw_obj
         _ => raw_obj
       }
-      // Create an object environment record: lookups check the object first
+      // Create an object environment record with live object reference
+      // Property lookups/assignments go directly through the object
       let with_env = Environment::new(parent=Some(env))
-      let data = match obj {
-        Object(d) => d
-        _ =>
-          // Fallback: just execute with parent env
-          return self.exec_stmt(body, env)
-      }
-      // Add all properties (walking prototype chain for lookup)
-      let mut current : Value = obj
-      while true {
-        match current {
-          Object(cur_data) => {
-            cur_data.properties.each(fn(key, value) {
-              if not(with_env.bindings.contains(key)) {
-                with_env.bindings[key] = {
-                  value,
-                  kind: VarBinding,
-                  initialized: true,
-                }
-              }
-            })
-            current = cur_data.prototype
-          }
-          _ => break
-        }
-      }
-      // Execute the body; after execution, write back modified bindings
-      let result = self.exec_stmt(body, with_env)
-      // Write back changes: use [[Set]] semantics (own properties + prototype chain)
-      with_env.bindings.each(fn(key, binding) {
-        // Check if this binding existed before in the object or its prototype
-        let mut found = false
-        let mut cur : Value = obj
-        while true {
-          match cur {
-            Object(cur_data) => {
-              if cur_data.properties.contains(key) {
-                found = true
-                break
-              }
-              cur = cur_data.prototype
-            }
-            _ => break
-          }
-        }
-        if found {
-          // Write to the object itself (per [[Set]] semantics, own property creation)
-          data.properties[key] = binding.value
-        }
-      })
-      result
+      with_env.with_object = Some(obj)
+      self.exec_stmt(body, with_env)
     }
   }
 }
@@ -6042,22 +5995,38 @@ fn Interpreter::eval_unary(
               message="Delete of an unqualified identifier in strict mode.",
             )
           } else {
-            // In non-strict mode, check if the identifier is a non-configurable
-            // property on the global object (e.g. undefined, NaN, Infinity).
-            match self.global_this {
-              Object(data) =>
-                match data.descriptors.get(name) {
+            // Check if this identifier is in a with-object first
+            match env.find_with_object(name) {
+              Some(Object(with_data)) => {
+                match with_data.descriptors.get(name) {
                   Some(desc) =>
                     if not(desc.configurable) {
-                      Bool(false)
-                    } else {
-                      let _ = data.properties.remove(name)
-                      let _ = data.descriptors.remove(name)
-                      Bool(true)
+                      return Bool(false)
                     }
-                  None => Bool(true)
+                  None => ()
                 }
-              _ => Bool(true)
+                let _ = with_data.properties.remove(name)
+                let _ = with_data.descriptors.remove(name)
+                Bool(true)
+              }
+              _ =>
+                // In non-strict mode, check if the identifier is a non-configurable
+                // property on the global object (e.g. undefined, NaN, Infinity).
+                match self.global_this {
+                  Object(data) =>
+                    match data.descriptors.get(name) {
+                      Some(desc) =>
+                        if not(desc.configurable) {
+                          Bool(false)
+                        } else {
+                          let _ = data.properties.remove(name)
+                          let _ = data.descriptors.remove(name)
+                          Bool(true)
+                        }
+                      None => Bool(true)
+                    }
+                  _ => Bool(true)
+                }
             }
           }
         _ => Bool(true)
