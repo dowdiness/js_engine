@@ -936,6 +936,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
   date_proto_props["setMilliseconds"] = make_method_func("setMilliseconds", 1, fn(this_val, args) raise {
         let t = get_date_value(this_val)
         let ms = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+        if t.is_nan() { return Number(0.0 / 0.0) }
         let new_time = make_time(
           hours_from_time(t).to_double(),
           minutes_from_time(t).to_double(),
@@ -951,6 +952,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
   date_proto_props["setUTCMilliseconds"] = make_method_func("setUTCMilliseconds", 1, fn(this_val, args) raise {
         let t = get_date_value(this_val)
         let ms = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+        if t.is_nan() { return Number(0.0 / 0.0) }
         let new_time = make_time(hours_from_time(t).to_double(), minutes_from_time(t).to_double(), seconds_from_time(t).to_double(), ms)
         let v = time_clip(make_date_value(day(t), new_time))
         set_date_value(this_val, v)
@@ -966,6 +968,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
         } else {
           millis_from_time(t).to_double()
         }
+        if t.is_nan() { return Number(0.0 / 0.0) }
         let new_time = make_time(
           hours_from_time(t).to_double(),
           minutes_from_time(t).to_double(),
@@ -982,6 +985,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
         let t = get_date_value(this_val)
         let sec = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
         let ms = if args.length() > 1 { to_number(args[1]) } else { millis_from_time(t).to_double() }
+        if t.is_nan() { return Number(0.0 / 0.0) }
         let new_time = make_time(hours_from_time(t).to_double(), minutes_from_time(t).to_double(), sec, ms)
         let v = time_clip(make_date_value(day(t), new_time))
         set_date_value(this_val, v)
@@ -1002,6 +1006,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
         } else {
           millis_from_time(t).to_double()
         }
+        if t.is_nan() { return Number(0.0 / 0.0) }
         let new_time = make_time(hours_from_time(t).to_double(), min, sec, ms)
         let v = time_clip(make_date_value(day(t), new_time))
         set_date_value(this_val, v)
@@ -1014,6 +1019,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
         let min = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
         let sec = if args.length() > 1 { to_number(args[1]) } else { seconds_from_time(t).to_double() }
         let ms = if args.length() > 2 { to_number(args[2]) } else { millis_from_time(t).to_double() }
+        if t.is_nan() { return Number(0.0 / 0.0) }
         let new_time = make_time(hours_from_time(t).to_double(), min, sec, ms)
         let v = time_clip(make_date_value(day(t), new_time))
         set_date_value(this_val, v)
@@ -1043,6 +1049,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
         } else {
           millis_from_time(t).to_double()
         }
+        if t.is_nan() { return Number(0.0 / 0.0) }
         let new_time = make_time(hour, min, sec, ms)
         let v = time_clip(make_date_value(day(t), new_time))
         set_date_value(this_val, v)
@@ -1056,6 +1063,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
         let min = if args.length() > 1 { to_number(args[1]) } else { minutes_from_time(t).to_double() }
         let sec = if args.length() > 2 { to_number(args[2]) } else { seconds_from_time(t).to_double() }
         let ms = if args.length() > 3 { to_number(args[3]) } else { millis_from_time(t).to_double() }
+        if t.is_nan() { return Number(0.0 / 0.0) }
         let new_time = make_time(hour, min, sec, ms)
         let v = time_clip(make_date_value(day(t), new_time))
         set_date_value(this_val, v)
@@ -1066,6 +1074,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
   date_proto_props["setDate"] = make_method_func("setDate", 1, fn(this_val, args) raise {
         let t = get_date_value(this_val)
         let dt = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+        if t.is_nan() { return Number(0.0 / 0.0) }
         let new_day = make_day(
           year_from_time(t).to_double(),
           month_from_time(t).to_double(),
@@ -1080,6 +1089,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
   date_proto_props["setUTCDate"] = make_method_func("setUTCDate", 1, fn(this_val, args) raise {
         let t = get_date_value(this_val)
         let dt = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+        if t.is_nan() { return Number(0.0 / 0.0) }
         let new_day = make_day(year_from_time(t).to_double(), month_from_time(t).to_double(), dt)
         let v = time_clip(make_date_value(new_day, time_within_day(t)))
         set_date_value(this_val, v)
@@ -1099,6 +1109,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
         } else {
           date_from_time(t).to_double()
         }
+        if t.is_nan() { return Number(0.0 / 0.0) }
         let new_day = make_day(year_from_time(t).to_double(), month, dt)
         let v = time_clip(make_date_value(new_day, time_within_day(t)))
         set_date_value(this_val, v)
@@ -1110,6 +1121,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
         let t = get_date_value(this_val)
         let month = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
         let dt = if args.length() > 1 { to_number(args[1]) } else { date_from_time(t).to_double() }
+        if t.is_nan() { return Number(0.0 / 0.0) }
         let new_day = make_day(year_from_time(t).to_double(), month, dt)
         let v = time_clip(make_date_value(new_day, time_within_day(t)))
         set_date_value(this_val, v)
@@ -1220,13 +1232,122 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
   // Date.prototype.toGMTString() - alias for toUTCString
   date_proto_props["toGMTString"] = date_proto_props["toUTCString"]
 
-  // Date.prototype.toJSON()
-  date_proto_props["toJSON"] = make_method_func("toJSON", 1, fn(this_val, _args) raise {
-        let t = get_date_value(this_val)
-        if t.is_nan() || t.is_inf() {
-          Null
-        } else {
-          String_(date_to_iso_string(t))
+  // Date.prototype.toJSON() - generic per spec (works on any object with toISOString)
+  date_proto_props["toJSON"] = make_interp_method_func("toJSON", 1, fn(interp, this_val, _args) raise {
+        // Step 1: Let O = ToObject(this)
+        let o = match this_val {
+          Object(_) | Array(_) => this_val
+          _ => this_val // Primitives will be handled by ToPrimitive
+        }
+        // Step 2: Let tv = ToPrimitive(O, number)
+        let tv = match o {
+          Object(data) => {
+            // Try valueOf first (hint number)
+            let mut result : Value = o
+            match data.properties.get("valueOf") {
+              Some(Object(fn_data)) =>
+                match fn_data.callable {
+                  Some(_) => {
+                    let v = interp.call_value(Object(fn_data), o, [], @token.Loc::default())
+                    match v {
+                      Object(_) | Array(_) => () // Not primitive, try toString
+                      _ => result = v
+                    }
+                  }
+                  _ => ()
+                }
+              _ => {
+                // Walk prototype chain for valueOf
+                let mut cur = data.prototype
+                while true {
+                  match cur {
+                    Object(proto_data) =>
+                      match proto_data.properties.get("valueOf") {
+                        Some(Object(fn_data)) =>
+                          match fn_data.callable {
+                            Some(_) => {
+                              let v = interp.call_value(Object(fn_data), o, [], @token.Loc::default())
+                              match v {
+                                Object(_) | Array(_) => ()
+                                _ => result = v
+                              }
+                              break
+                            }
+                            _ => cur = proto_data.prototype
+                          }
+                        _ => cur = proto_data.prototype
+                      }
+                    _ => break
+                  }
+                }
+              }
+            }
+            result
+          }
+          _ => o
+        }
+        // Step 3: If tv is a Number and is not finite, return null
+        match tv {
+          Number(n) =>
+            if n.is_nan() || n.is_inf() {
+              return Null
+            }
+          _ => ()
+        }
+        // Step 4: Return Invoke(O, "toISOString")
+        // Look up toISOString on the object
+        let to_iso = match o {
+          Object(data) => {
+            let mut found : Value = Undefined
+            let mut cur : Value = o
+            while true {
+              match cur {
+                Object(cur_data) =>
+                  match cur_data.properties.get("toISOString") {
+                    Some(v) => { found = v; break }
+                    None => cur = cur_data.prototype
+                  }
+                _ => break
+              }
+            }
+            // Also check for getter if not found via properties
+            match found {
+              Undefined => {
+                let mut cur2 : Value = o
+                while true {
+                  match cur2 {
+                    Object(cur_data) =>
+                      match cur_data.descriptors.get("toISOString") {
+                        Some(desc) =>
+                          match desc.getter {
+                            Some(getter) => {
+                              found = interp.call_value(getter, o, [], @token.Loc::default())
+                              break
+                            }
+                            None => cur2 = cur_data.prototype
+                          }
+                        None => cur2 = cur_data.prototype
+                      }
+                    _ => break
+                  }
+                }
+              }
+              _ => ()
+            }
+            found
+          }
+          _ => Undefined
+        }
+        match to_iso {
+          Object(fn_data) =>
+            match fn_data.callable {
+              Some(_) =>
+                interp.call_value(to_iso, o, [], @token.Loc::default())
+              None =>
+                raise @errors.TypeError(message="toISOString is not a function")
+            }
+          _ =>
+            raise @errors.TypeError(message="toISOString is not a function")
         }
       })
 

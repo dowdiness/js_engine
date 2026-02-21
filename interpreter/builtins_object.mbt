@@ -863,22 +863,22 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               )
             Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) =>
               raw_target
-            Number(_) =>
+            Number(n) =>
               Object({
-                properties: {},
+                properties: { "[[NumberData]]": Number(n) },
                 symbol_properties: {},
-                prototype: Null,
+                prototype: get_number_proto(),
                 callable: None,
                 class_name: "Number",
                 descriptors: {},
                 symbol_descriptors: {},
                 extensible: true,
               })
-            Bool(_) =>
+            Bool(b) =>
               Object({
-                properties: {},
+                properties: { "[[BooleanData]]": Bool(b) },
                 symbol_properties: {},
-                prototype: Null,
+                prototype: get_boolean_proto(),
                 callable: None,
                 class_name: "Boolean",
                 descriptors: {},
@@ -887,6 +887,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               })
             String_(s) => {
               let props : Map[String, Value] = {}
+              props["[[StringData]]"] = String_(s)
               props["length"] = Number(s.length().to_double())
               let chars = s.to_array()
               for i = 0; i < chars.length(); i = i + 1 {
@@ -894,22 +895,39 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 buf.write_char(chars[i])
                 props[i.to_string()] = String_(buf.to_string())
               }
+              let descs : Map[String, PropDescriptor] = {}
+              descs["length"] = {
+                writable: false,
+                enumerable: false,
+                configurable: false,
+                getter: None,
+                setter: None,
+              }
+              for i = 0; i < chars.length(); i = i + 1 {
+                descs[i.to_string()] = {
+                  writable: false,
+                  enumerable: true,
+                  configurable: false,
+                  getter: None,
+                  setter: None,
+                }
+              }
               Object({
                 properties: props,
                 symbol_properties: {},
-                prototype: Null,
+                prototype: get_string_proto(),
                 callable: None,
                 class_name: "String",
-                descriptors: {},
+                descriptors: descs,
                 symbol_descriptors: {},
                 extensible: true,
               })
             }
             Symbol(_) =>
               Object({
-                properties: {},
+                properties: { "[[SymbolData]]": raw_target },
                 symbol_properties: {},
-                prototype: Null,
+                prototype: get_symbol_proto(),
                 callable: None,
                 class_name: "Symbol",
                 descriptors: {},

@@ -487,6 +487,7 @@ pub fn setup_builtins(
 
   // Store String.prototype for ToObject wrapping
   env.def_builtin("[[StringPrototype]]", string_proto)
+  string_prototype_ref.val = Some(string_proto)
   // Populate String.prototype with methods for .call() support
   setup_string_prototype(string_proto, annex_b~)
   // Set String.prototype.constructor = String
@@ -574,6 +575,7 @@ pub fn setup_builtins(
   })
   // Store Boolean.prototype for ToObject wrapping
   env.def_builtin("[[BooleanPrototype]]", boolean_proto)
+  boolean_prototype_ref.val = Some(boolean_proto)
   env.def_builtin(
     "Boolean",
     Object({
@@ -1729,6 +1731,7 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
     }),
   )
   env.def_builtin("[[SymbolPrototype]]", symbol_proto)
+  symbol_prototype_ref.val = Some(symbol_proto)
   // Set Symbol.prototype.constructor = Symbol
   match symbol_proto {
     Object(data) => {
@@ -3340,6 +3343,7 @@ fn setup_number_builtins(env : Environment) -> Unit {
   })
   // Store Number.prototype for ToObject wrapping
   env.def_builtin("[[NumberPrototype]]", number_proto)
+  number_prototype_ref.val = Some(number_proto)
   let number_props : Map[String, Value] = {}
   number_props["prototype"] = number_proto
   number_props["MAX_SAFE_INTEGER"] = Number(9007199254740991.0)
