@@ -948,7 +948,14 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
       })
 
   // Date.prototype.setUTCMilliseconds(ms)
-  date_proto_props["setUTCMilliseconds"] = date_proto_props["setMilliseconds"]
+  date_proto_props["setUTCMilliseconds"] = make_method_func("setUTCMilliseconds", 1, fn(this_val, args) raise {
+        let t = get_date_value(this_val)
+        let ms = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+        let new_time = make_time(hours_from_time(t).to_double(), minutes_from_time(t).to_double(), seconds_from_time(t).to_double(), ms)
+        let v = time_clip(make_date_value(day(t), new_time))
+        set_date_value(this_val, v)
+        Number(v)
+      })
 
   // Date.prototype.setSeconds(sec [, ms])
   date_proto_props["setSeconds"] = make_method_func("setSeconds", 2, fn(this_val, args) raise {
@@ -971,7 +978,15 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
       })
 
   // Date.prototype.setUTCSeconds(sec [, ms])
-  date_proto_props["setUTCSeconds"] = date_proto_props["setSeconds"]
+  date_proto_props["setUTCSeconds"] = make_method_func("setUTCSeconds", 2, fn(this_val, args) raise {
+        let t = get_date_value(this_val)
+        let sec = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+        let ms = if args.length() > 1 { to_number(args[1]) } else { millis_from_time(t).to_double() }
+        let new_time = make_time(hours_from_time(t).to_double(), minutes_from_time(t).to_double(), sec, ms)
+        let v = time_clip(make_date_value(day(t), new_time))
+        set_date_value(this_val, v)
+        Number(v)
+      })
 
   // Date.prototype.setMinutes(min [, sec [, ms]])
   date_proto_props["setMinutes"] = make_method_func("setMinutes", 3, fn(this_val, args) raise {
@@ -994,7 +1009,16 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
       })
 
   // Date.prototype.setUTCMinutes(min [, sec [, ms]])
-  date_proto_props["setUTCMinutes"] = date_proto_props["setMinutes"]
+  date_proto_props["setUTCMinutes"] = make_method_func("setUTCMinutes", 3, fn(this_val, args) raise {
+        let t = get_date_value(this_val)
+        let min = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+        let sec = if args.length() > 1 { to_number(args[1]) } else { seconds_from_time(t).to_double() }
+        let ms = if args.length() > 2 { to_number(args[2]) } else { millis_from_time(t).to_double() }
+        let new_time = make_time(hours_from_time(t).to_double(), min, sec, ms)
+        let v = time_clip(make_date_value(day(t), new_time))
+        set_date_value(this_val, v)
+        Number(v)
+      })
 
   // Date.prototype.setHours(hour [, min [, sec [, ms]]])
   date_proto_props["setHours"] = make_method_func("setHours", 4, fn(this_val, args) raise {
@@ -1026,7 +1050,17 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
       })
 
   // Date.prototype.setUTCHours(hour [, min [, sec [, ms]]])
-  date_proto_props["setUTCHours"] = date_proto_props["setHours"]
+  date_proto_props["setUTCHours"] = make_method_func("setUTCHours", 4, fn(this_val, args) raise {
+        let t = get_date_value(this_val)
+        let hour = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+        let min = if args.length() > 1 { to_number(args[1]) } else { minutes_from_time(t).to_double() }
+        let sec = if args.length() > 2 { to_number(args[2]) } else { seconds_from_time(t).to_double() }
+        let ms = if args.length() > 3 { to_number(args[3]) } else { millis_from_time(t).to_double() }
+        let new_time = make_time(hour, min, sec, ms)
+        let v = time_clip(make_date_value(day(t), new_time))
+        set_date_value(this_val, v)
+        Number(v)
+      })
 
   // Date.prototype.setDate(date)
   date_proto_props["setDate"] = make_method_func("setDate", 1, fn(this_val, args) raise {
@@ -1043,7 +1077,14 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
       })
 
   // Date.prototype.setUTCDate(date)
-  date_proto_props["setUTCDate"] = date_proto_props["setDate"]
+  date_proto_props["setUTCDate"] = make_method_func("setUTCDate", 1, fn(this_val, args) raise {
+        let t = get_date_value(this_val)
+        let dt = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+        let new_day = make_day(year_from_time(t).to_double(), month_from_time(t).to_double(), dt)
+        let v = time_clip(make_date_value(new_day, time_within_day(t)))
+        set_date_value(this_val, v)
+        Number(v)
+      })
 
   // Date.prototype.setMonth(month [, date])
   date_proto_props["setMonth"] = make_method_func("setMonth", 2, fn(this_val, args) raise {
@@ -1065,7 +1106,15 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
       })
 
   // Date.prototype.setUTCMonth(month [, date])
-  date_proto_props["setUTCMonth"] = date_proto_props["setMonth"]
+  date_proto_props["setUTCMonth"] = make_method_func("setUTCMonth", 2, fn(this_val, args) raise {
+        let t = get_date_value(this_val)
+        let month = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+        let dt = if args.length() > 1 { to_number(args[1]) } else { date_from_time(t).to_double() }
+        let new_day = make_day(year_from_time(t).to_double(), month, dt)
+        let v = time_clip(make_date_value(new_day, time_within_day(t)))
+        set_date_value(this_val, v)
+        Number(v)
+      })
 
   // Date.prototype.setFullYear(year [, month [, date]])
   date_proto_props["setFullYear"] = make_method_func("setFullYear", 3, fn(this_val, args) raise {
@@ -1095,7 +1144,17 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
       })
 
   // Date.prototype.setUTCFullYear(year [, month [, date]])
-  date_proto_props["setUTCFullYear"] = date_proto_props["setFullYear"]
+  date_proto_props["setUTCFullYear"] = make_method_func("setUTCFullYear", 3, fn(this_val, args) raise {
+        let mut t = get_date_value(this_val)
+        if t.is_nan() { t = 0.0 }
+        let year = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+        let month = if args.length() > 1 { to_number(args[1]) } else { month_from_time(t).to_double() }
+        let dt = if args.length() > 2 { to_number(args[2]) } else { date_from_time(t).to_double() }
+        let new_day = make_day(year, month, dt)
+        let v = time_clip(make_date_value(new_day, time_within_day(t)))
+        set_date_value(this_val, v)
+        Number(v)
+      })
 
   // Date.prototype.setYear(year) - deprecated Annex B
   date_proto_props["setYear"] = make_method_func("setYear", 1, fn(this_val, args) raise {
