@@ -769,9 +769,9 @@ fn run_generator_body(
         BreakSignal(_, _) | ContinueSignal(_, _) => last_val = Undefined
       }
     }
-    // Body completed normally
+    // Body completed normally — per spec, generators return undefined if no explicit return
     complete_generator(gen)
-    make_iterator_result(last_val, true)
+    make_iterator_result(Undefined, true)
   } catch {
     e => {
       complete_generator(gen)
