@@ -121,6 +121,13 @@ pub(all) enum Expr {
   GeneratorExpr(String?, Array[String], Array[Stmt], @token.Loc)
   GeneratorExprExt(String?, Array[Param], String?, Array[Stmt], @token.Loc)
   YieldExpr(Expr?, Bool, @token.Loc)
+  AsyncFuncExpr(String?, Array[String], Array[Stmt], @token.Loc)
+  AsyncFuncExprExt(String?, Array[Param], String?, Array[Stmt], @token.Loc)
+  AsyncArrowFunc(Array[String], Array[Stmt], @token.Loc)
+  AsyncArrowFuncExt(Array[Param], String?, Array[Stmt], @token.Loc)
+  AsyncGeneratorExpr(String?, Array[String], Array[Stmt], @token.Loc)
+  AsyncGeneratorExprExt(String?, Array[Param], String?, Array[Stmt], @token.Loc)
+  AwaitExpr(Expr, @token.Loc)
 }
 pub impl Eq for Expr
 pub impl Show for Expr
@@ -169,6 +176,7 @@ pub(all) struct PropPat {
   key : String
   value : Pattern
   default_val : Expr?
+  computed_key : Expr?
 }
 pub impl Eq for PropPat
 pub impl Show for PropPat
@@ -209,6 +217,10 @@ pub(all) enum Stmt {
   LabeledStmt(String, Stmt, @token.Loc)
   GeneratorDecl(String, Array[String], Array[Stmt], @token.Loc)
   GeneratorDeclExt(String, Array[Param], String?, Array[Stmt], @token.Loc)
+  AsyncFuncDecl(String, Array[String], Array[Stmt], @token.Loc)
+  AsyncFuncDeclExt(String, Array[Param], String?, Array[Stmt], @token.Loc)
+  AsyncGeneratorDecl(String, Array[String], Array[Stmt], @token.Loc)
+  AsyncGeneratorDeclExt(String, Array[Param], String?, Array[Stmt], @token.Loc)
   ClassDecl(String, Expr?, Array[ClassMethod], @token.Loc)
   WithStmt(Expr, Stmt, @token.Loc)
   ImportDecl(String?, Array[ImportSpecifier], String?, String, @token.Loc)

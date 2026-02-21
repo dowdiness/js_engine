@@ -80,9 +80,16 @@ fn get_proxy_handler(proxy_data : ProxyData) -> Value raise Error {
 
 ///|
 fn setup_proxy_builtins(env : Environment) -> Unit {
+  let nf_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   // Proxy constructor: new Proxy(target, handler)
   let proxy_ctor : Value = Object({
-    properties: {},
+    properties: { "name": String_("Proxy"), "length": Number(2.0) },
     symbol_properties: {},
     prototype: Null,
     callable: Some(
@@ -110,11 +117,11 @@ fn setup_proxy_builtins(env : Environment) -> Unit {
               message="Cannot create proxy with a non-object as target or handler",
             )
         }
-        Proxy({ target: Some(target), handler: Some(handler) })
+        Proxy({ target: Some(target), handler: Some(handler), is_callable: is_callable(target) })
       }),
     ),
     class_name: "Function",
-    descriptors: {},
+    descriptors: { "name": nf_desc, "length": nf_desc },
     symbol_descriptors: {},
     extensible: true,
   })
@@ -152,6 +159,7 @@ fn setup_proxy_builtins(env : Environment) -> Unit {
         let proxy_data : ProxyData = {
           target: Some(target),
           handler: Some(handler),
+          is_callable: is_callable(target),
         }
         let proxy_val : Value = Proxy(proxy_data)
         // Create revoke function that nullifies both slots

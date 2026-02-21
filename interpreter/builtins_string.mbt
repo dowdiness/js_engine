@@ -1,4 +1,97 @@
 ///|
+/// GetSubstitution - handles replacement patterns like $&, $`, $', $$, $<n> for string replace.
+fn get_substitution(
+  replacement : String,
+  matched : String,
+  str : String,
+  position : Int,
+) -> String {
+  let repl_chars = replacement.to_array()
+  let buf = StringBuilder::new()
+  let mut i = 0
+  while i < repl_chars.length() {
+    if repl_chars[i] == '$' && i + 1 < repl_chars.length() {
+      let next = repl_chars[i + 1]
+      if next == '$' {
+        buf.write_char('$')
+        i += 2
+        continue
+      } else if next == '&' {
+        buf.write_string(matched)
+        i += 2
+        continue
+      } else if next == '`' {
+        // $` = portion of str before matched
+        let s_chars = str.to_array()
+        for k = 0; k < position && k < s_chars.length(); k = k + 1 {
+          buf.write_char(s_chars[k])
+        }
+        i += 2
+        continue
+      } else if next == '\'' {
+        // $' = portion of str after matched
+        let s_chars = str.to_array()
+        let after = position + matched.length()
+        for k = after; k < s_chars.length(); k = k + 1 {
+          buf.write_char(s_chars[k])
+        }
+        i += 2
+        continue
+      } else if next >= '0' && next <= '9' {
+        // $1-$99 group references - for string replace these are undefined
+        // (only relevant for regex replace, not string replace)
+        buf.write_char('$')
+        buf.write_char(next)
+        i += 2
+        continue
+      }
+    }
+    buf.write_char(repl_chars[i])
+    i += 1
+  }
+  buf.to_string()
+}
+
+///|
+/// Convert a MoonBit string (sequence of Unicode code points) to an array
+/// of UTF-16 code units.  Supplementary characters (code point > 0xFFFF) are
+/// split into a surrogate pair (high surrogate + low surrogate).
+fn string_to_utf16(s : String) -> Array[Int] {
+  let units : Array[Int] = []
+  let cps = s.to_array()
+  for ch in cps {
+    let cp = ch.to_int()
+    if cp > 0xFFFF {
+      // Encode as surrogate pair
+      let adjusted = cp - 0x10000
+      let high = 0xD800 + (adjusted >> 10)
+      let low = 0xDC00 + (adjusted & 0x3FF)
+      units.push(high)
+      units.push(low)
+    } else {
+      units.push(cp)
+    }
+  }
+  units
+}
+
+///|
+/// Get the UTF-16 length of a string (counting code units, not code points).
+pub fn utf16_length(s : String) -> Int {
+  let cps = s.to_array()
+  let mut len = 0
+  for ch in cps {
+    let cp = ch.to_int()
+    if cp > 0xFFFF {
+      len += 2
+    } else {
+      len += 1
+    }
+  }
+  len
+}
+
+///|
 pub fn get_string_method(
   s : String,
   prop : String,
@@ -7,7 +100,7 @@ pub fn get_string_method(
   let chars = s.to_array()
   match prop {
     "charAt" =>
-      make_native_func("charAt", fn(args) raise {
+      make_native_func_with_length("charAt", 1, fn(args) raise {
         let idx = if args.length() > 0 {
           to_number(args[0]).to_int()
         } else {
@@ -22,20 +115,22 @@ pub fn get_string_method(
         }
       })
     "charCodeAt" =>
-      make_native_func("charCodeAt", fn(args) raise {
+      make_native_func_with_length("charCodeAt", 1, fn(args) raise {
         let idx = if args.length() > 0 {
           to_number(args[0]).to_int()
         } else {
           0
         }
-        if idx >= 0 && idx < chars.length() {
-          Number(chars[idx].to_int().to_double())
+        // charCodeAt returns UTF-16 code units, not Unicode code points
+        let units = string_to_utf16(s)
+        if idx >= 0 && idx < units.length() {
+          Number(units[idx].to_double())
         } else {
           Number(0.0 / 0.0)
         }
       })
     "at" =>
-      make_native_func("at", fn(args) raise {
+      make_native_func_with_length("at", 1, fn(args) raise {
         // String.prototype.at() - access character at index (supports negative)
         let idx = if args.length() > 0 {
           to_number(args[0]).to_int()
@@ -53,7 +148,7 @@ pub fn get_string_method(
         }
       })
     "codePointAt" =>
-      make_native_func("codePointAt", fn(args) raise {
+      make_native_func_with_length("codePointAt", 1, fn(args) raise {
         // String.prototype.codePointAt() - get code point at index
         let idx = if args.length() > 0 {
           to_number(args[0]).to_int()
@@ -79,20 +174,20 @@ pub fn get_string_method(
       })
     "concat" => {
       let str = s
-      make_native_func("concat", fn(args) {
+      make_native_func_with_length("concat", 1, fn(args) raise {
         let buf = StringBuilder::new()
         buf.write_string(str)
         for arg in args {
-          buf.write_string(arg.to_string())
+          buf.write_string(to_js_string(arg))
         }
         String_(buf.to_string())
       })
     }
     "indexOf" => {
       let str = s
-      make_native_func("indexOf", fn(args) raise {
+      make_native_func_with_length("indexOf", 1, fn(args) raise {
         let search = if args.length() > 0 {
-          args[0].to_string()
+          to_js_string(args[0])
         } else {
           "undefined"
         }
@@ -127,9 +222,9 @@ pub fn get_string_method(
     }
     "lastIndexOf" => {
       let str = s
-      make_native_func("lastIndexOf", fn(args) raise {
+      make_native_func_with_length("lastIndexOf", 1, fn(args) raise {
         let search = if args.length() > 0 {
-          args[0].to_string()
+          to_js_string(args[0])
         } else {
           "undefined"
         }
@@ -174,9 +269,9 @@ pub fn get_string_method(
     }
     "includes" => {
       let str = s
-      make_native_func("includes", fn(args) raise {
+      make_native_func_with_length("includes", 1, fn(args) raise {
         let search = if args.length() > 0 {
-          args[0].to_string()
+          to_js_string(args[0])
         } else {
           "undefined"
         }
@@ -210,7 +305,7 @@ pub fn get_string_method(
     }
     "slice" => {
       let str = s
-      make_native_func("slice", fn(args) raise {
+      make_native_func_with_length("slice", 2, fn(args) raise {
         let slen = str.length()
         let mut start = if args.length() > 0 {
           to_number(args[0]).to_int()
@@ -253,7 +348,7 @@ pub fn get_string_method(
     }
     "substring" => {
       let str = s
-      make_native_func("substring", fn(args) raise {
+      make_native_func_with_length("substring", 2, fn(args) raise {
         let slen = str.length()
         let mut start = if args.length() > 0 {
           to_number(args[0]).to_int()
@@ -284,6 +379,46 @@ pub fn get_string_method(
           let tmp = start
           start = end
           end = tmp
+        }
+        let s_chars = str.to_array()
+        let buf = StringBuilder::new()
+        for i = start; i < end; i = i + 1 {
+          buf.write_char(s_chars[i])
+        }
+        String_(buf.to_string())
+      })
+    }
+    "substr" => {
+      // Annex B: String.prototype.substr(start, length)
+      let str = s
+      make_native_func_with_length("substr", 2, fn(args) raise {
+        let slen = str.length()
+        let mut start = if args.length() > 0 {
+          to_number(args[0]).to_int()
+        } else {
+          0
+        }
+        let length = if args.length() > 1 {
+          match args[1] {
+            Undefined => slen
+            _ => to_number(args[1]).to_int()
+          }
+        } else {
+          slen
+        }
+        // Handle negative start
+        if start < 0 {
+          start = slen + start
+          if start < 0 {
+            start = 0
+          }
+        }
+        if start >= slen || length <= 0 {
+          return String_("")
+        }
+        let mut end = start + length
+        if end > slen {
+          end = slen
         }
         let s_chars = str.to_array()
         let buf = StringBuilder::new()
@@ -353,7 +488,7 @@ pub fn get_string_method(
     }
     "trimStart" => {
       let str = s
-      make_native_func("trimStart", fn(_args) { String_(trim_start(str)) })
+      make_native_func("trimStart", fn(_args) { String_(string_trim_start(str)) })
     }
     "trimEnd" => {
       let str = s
@@ -361,11 +496,13 @@ pub fn get_string_method(
     }
     "trimLeft" => {
       let str = s
-      make_native_func("trimLeft", fn(_args) { String_(trim_start(str)) })
+      // Per spec, trimLeft.name === "trimStart"
+      make_native_func("trimStart", fn(_args) { String_(string_trim_start(str)) })
     }
     "trimRight" => {
       let str = s
-      make_native_func("trimRight", fn(_args) { String_(string_trim_end(str)) })
+      // Per spec, trimRight.name === "trimEnd"
+      make_native_func("trimEnd", fn(_args) { String_(string_trim_end(str)) })
     }
     "toLocaleString" => {
       let str = s
@@ -373,7 +510,7 @@ pub fn get_string_method(
     }
     "split" => {
       let str = s
-      make_native_func("split", fn(args) raise {
+      make_native_func_with_length("split", 2, fn(args) raise {
         // Handle undefined separator - return array with whole string
         if args.length() == 0 {
           return Array({ elements: [String_(str)] })
@@ -432,7 +569,7 @@ pub fn get_string_method(
         if limit == 0L {
           return Array({ elements: [] })
         }
-        let sep = args[0].to_string()
+        let sep = to_js_string(args[0])
         // Empty separator splits into individual characters
         if sep.length() == 0 {
           let result : Array[Value] = []
@@ -494,7 +631,7 @@ pub fn get_string_method(
     }
     "replace" => {
       let str = s
-      make_native_func("replace", fn(args) raise {
+      make_native_func_with_length("replace", 2, fn(args) raise {
         if args.length() == 0 {
           return String_(str)
         }
@@ -535,7 +672,7 @@ pub fn get_string_method(
                 _ => ""
               }
               let replacement = if args.length() > 1 {
-                args[1].to_string()
+                to_js_string(args[1])
               } else {
                 "undefined"
               }
@@ -544,16 +681,23 @@ pub fn get_string_method(
           }
           _ => ()
         }
-        let search = args[0].to_string()
-        let replacement = if args.length() > 1 {
-          args[1].to_string()
-        } else {
-          "undefined"
-        }
+        let search = to_js_string(args[0])
+        let replace_val = if args.length() > 1 { args[1] } else { Undefined }
+        let is_func = is_callable(replace_val)
         let slen = str.length()
         let search_len = search.length()
         if search_len == 0 {
-          return String_(replacement + str)
+          let rep = if is_func {
+            let result = call_callable_direct(
+              replace_val,
+              Undefined,
+              [String_(""), Number(0.0), String_(str)],
+            )
+            to_js_string(result)
+          } else {
+            get_substitution(to_js_string(replace_val), "", str, 0)
+          }
+          return String_(rep + str)
         }
         let s_chars = str.to_array()
         let search_chars = search.to_array()
@@ -571,7 +715,17 @@ pub fn get_string_method(
             for k = 0; k < i; k = k + 1 {
               buf.write_char(s_chars[k])
             }
-            buf.write_string(replacement)
+            let rep = if is_func {
+              let result = call_callable_direct(
+                replace_val,
+                Undefined,
+                [String_(search), Number(i.to_double()), String_(str)],
+              )
+              to_js_string(result)
+            } else {
+              get_substitution(to_js_string(replace_val), search, str, i)
+            }
+            buf.write_string(rep)
             for k = i + search_len; k < slen; k = k + 1 {
               buf.write_char(s_chars[k])
             }
@@ -583,7 +737,7 @@ pub fn get_string_method(
     }
     "match" => {
       let str = s
-      make_native_func("match", fn(args) raise {
+      make_native_func_with_length("match", 1, fn(args) raise {
         if args.length() == 0 {
           return Null
         }
@@ -616,13 +770,13 @@ pub fn get_string_method(
           _ => ()
         }
         // If not a RegExp, treat as string pattern
-        let pattern = args[0].to_string()
+        let pattern = to_js_string(args[0])
         string_match_regex(str, pattern, "")
       })
     }
     "matchAll" => {
       let str = s
-      make_native_func("matchAll", fn(args) raise {
+      make_native_func_with_length("matchAll", 1, fn(args) raise {
         if args.length() == 0 {
           raise @errors.TypeError(message="matchAll requires a RegExp argument")
         }
@@ -737,7 +891,7 @@ pub fn get_string_method(
     }
     "search" => {
       let str = s
-      make_native_func("search", fn(args) raise {
+      make_native_func_with_length("search", 1, fn(args) raise {
         if args.length() == 0 {
           return Number(0.0)
         }
@@ -769,15 +923,15 @@ pub fn get_string_method(
           }
           _ => ()
         }
-        let pattern = args[0].to_string()
+        let pattern = to_js_string(args[0])
         string_search_regex(str, pattern, "")
       })
     }
     "startsWith" => {
       let str = s
-      make_native_func("startsWith", fn(args) raise {
+      make_native_func_with_length("startsWith", 1, fn(args) raise {
         let search = if args.length() > 0 {
-          args[0].to_string()
+          to_js_string(args[0])
         } else {
           "undefined"
         }
@@ -809,9 +963,9 @@ pub fn get_string_method(
     }
     "endsWith" => {
       let str = s
-      make_native_func("endsWith", fn(args) raise {
+      make_native_func_with_length("endsWith", 1, fn(args) raise {
         let search = if args.length() > 0 {
-          args[0].to_string()
+          to_js_string(args[0])
         } else {
           "undefined"
         }
@@ -845,7 +999,7 @@ pub fn get_string_method(
     }
     "repeat" => {
       let str = s
-      make_native_func("repeat", fn(args) raise {
+      make_native_func_with_length("repeat", 1, fn(args) raise {
         let count_num = if args.length() > 0 { to_number(args[0]) } else { 0.0 }
         // Check for negative or infinite count
         if count_num < 0.0 || count_num.is_inf() {
@@ -864,13 +1018,13 @@ pub fn get_string_method(
     }
     "padStart" => {
       let str = s
-      make_native_func("padStart", fn(args) raise {
+      make_native_func_with_length("padStart", 1, fn(args) raise {
         let target_len = if args.length() > 0 {
           to_number(args[0]).to_int()
         } else {
           0
         }
-        let pad_str = if args.length() > 1 { args[1].to_string() } else { " " }
+        let pad_str = if args.length() > 1 { to_js_string(args[1]) } else { " " }
         let slen = str.length()
         if slen >= target_len || pad_str.length() == 0 {
           return String_(str)
@@ -889,13 +1043,13 @@ pub fn get_string_method(
     }
     "padEnd" => {
       let str = s
-      make_native_func("padEnd", fn(args) raise {
+      make_native_func_with_length("padEnd", 1, fn(args) raise {
         let target_len = if args.length() > 0 {
           to_number(args[0]).to_int()
         } else {
           0
         }
-        let pad_str = if args.length() > 1 { args[1].to_string() } else { " " }
+        let pad_str = if args.length() > 1 { to_js_string(args[1]) } else { " " }
         let slen = str.length()
         if slen >= target_len || pad_str.length() == 0 {
           return String_(str)
@@ -918,7 +1072,7 @@ pub fn get_string_method(
     }
     "replaceAll" => {
       let str = s
-      make_native_func("replaceAll", fn(args) raise {
+      make_native_func_with_length("replaceAll", 2, fn(args) raise {
         if args.length() == 0 {
           return String_(str)
         }
@@ -981,7 +1135,7 @@ pub fn get_string_method(
                 _ => ""
               }
               let replacement = if args.length() > 1 {
-                args[1].to_string()
+                to_js_string(args[1])
               } else {
                 "undefined"
               }
@@ -989,23 +1143,44 @@ pub fn get_string_method(
             }
           _ => ()
         }
-        let search = args[0].to_string()
-        let replacement = if args.length() > 1 {
-          args[1].to_string()
-        } else {
-          "undefined"
-        }
+        let search = to_js_string(args[0])
+        let replace_val = if args.length() > 1 { args[1] } else { Undefined }
+        let is_func = is_callable(replace_val)
         let slen = str.length()
         let search_len = search.length()
         if search_len == 0 {
           // Empty string: insert replacement before each char and at end
           let buf = StringBuilder::new()
           let s_chars = str.to_array()
-          for c in s_chars {
-            buf.write_string(replacement)
+          for i, c in s_chars {
+            let rep = if is_func {
+              let result = call_callable_direct(
+                replace_val,
+                Undefined,
+                [String_(""), Number(i.to_double()), String_(str)],
+              )
+              to_js_string(result)
+            } else {
+              get_substitution(to_js_string(replace_val), "", str, i)
+            }
+            buf.write_string(rep)
             buf.write_char(c)
           }
-          buf.write_string(replacement)
+          let rep_end = if is_func {
+            let result = call_callable_direct(
+              replace_val,
+              Undefined,
+              [
+                String_(""),
+                Number(s_chars.length().to_double()),
+                String_(str),
+              ],
+            )
+            to_js_string(result)
+          } else {
+            get_substitution(to_js_string(replace_val), "", str, s_chars.length())
+          }
+          buf.write_string(rep_end)
           return String_(buf.to_string())
         }
         let s_chars = str.to_array()
@@ -1022,7 +1197,17 @@ pub fn get_string_method(
               }
             }
             if matched {
-              buf.write_string(replacement)
+              let rep = if is_func {
+                let result = call_callable_direct(
+                  replace_val,
+                  Undefined,
+                  [String_(search), Number(i.to_double()), String_(str)],
+                )
+                to_js_string(result)
+              } else {
+                get_substitution(to_js_string(replace_val), search, str, i)
+              }
+              buf.write_string(rep)
               i = i + search_len
               continue
             }
@@ -1035,10 +1220,10 @@ pub fn get_string_method(
     }
     "localeCompare" => {
       let str = s
-      make_native_func("localeCompare", fn(args) {
+      make_native_func_with_length("localeCompare", 1, fn(args) raise {
         // Basic lexicographic comparison (no locale support)
         let other = if args.length() > 0 {
-          args[0].to_string()
+          to_js_string(args[0])
         } else {
           "undefined"
         }
@@ -1142,9 +1327,9 @@ pub fn get_string_method(
       } else {
         match prop {
           "anchor" =>
-            make_native_func("anchor", fn(args) {
+            make_native_func_with_length("anchor", 1, fn(args) raise {
               let name = if args.length() > 0 {
-                args[0].to_string()
+                to_js_string(args[0])
               } else {
                 "undefined"
               }
@@ -1167,9 +1352,9 @@ pub fn get_string_method(
               String_("<tt>" + s + "</tt>")
             })
           "fontcolor" =>
-            make_native_func("fontcolor", fn(args) {
+            make_native_func_with_length("fontcolor", 1, fn(args) raise {
               let color = if args.length() > 0 {
-                args[0].to_string()
+                to_js_string(args[0])
               } else {
                 "undefined"
               }
@@ -1182,9 +1367,9 @@ pub fn get_string_method(
               )
             })
           "fontsize" =>
-            make_native_func("fontsize", fn(args) {
+            make_native_func_with_length("fontsize", 1, fn(args) raise {
               let size = if args.length() > 0 {
-                args[0].to_string()
+                to_js_string(args[0])
               } else {
                 "undefined"
               }
@@ -1197,9 +1382,9 @@ pub fn get_string_method(
               String_("<i>" + s + "</i>")
             })
           "link" =>
-            make_native_func("link", fn(args) {
+            make_native_func_with_length("link", 1, fn(args) raise {
               let url = if args.length() > 0 {
-                args[0].to_string()
+                to_js_string(args[0])
               } else {
                 "undefined"
               }
@@ -1378,8 +1563,28 @@ fn unicode_to_upper(code : Int) -> Int {
 }
 
 ///|
+fn string_trim_start(s : String) -> String {
+  let chars = s.to_array()
+  let mut start = 0
+  while start < chars.length() {
+    if is_es_whitespace(chars[start]) {
+      start = start + 1
+    } else {
+      break
+    }
+  }
+  if start == 0 {
+    return s
+  }
+  let buf = StringBuilder::new()
+  for i = start; i < chars.length(); i = i + 1 {
+    buf.write_char(chars[i])
+  }
+  buf.to_string()
+}
+
 fn string_trim(s : String) -> String {
-  let trimmed_left = trim_start(s)
+  let trimmed_left = string_trim_start(s)
   string_trim_end(trimmed_left)
 }
 
@@ -1405,12 +1610,12 @@ pub fn this_to_string(this_val : Value) -> String raise Error {
       if data.class_name == "String" {
         match data.properties.get("[[StringData]]") {
           Some(String_(s)) => s
-          _ => this_val.to_string()
+          _ => to_js_string(this_val)
         }
       } else {
-        this_val.to_string()
+        to_js_string(this_val)
       }
-    _ => this_val.to_string()
+    _ => to_js_string(this_val)
   }
 }
 
@@ -1425,6 +1630,7 @@ pub fn setup_string_prototype(
       let methods : Array[String] = [
         "charAt", "charCodeAt", "at", "codePointAt", "indexOf", "lastIndexOf", "includes",
         "startsWith", "endsWith", "slice", "substring", "toUpperCase", "toLowerCase",
+        "toLocaleLowerCase", "toLocaleUpperCase",
         "trim", "trimStart", "trimEnd", "trimLeft", "trimRight", "padStart", "padEnd",
         "repeat", "replace", "replaceAll", "split", "search", "match", "matchAll",
         "concat", "normalize", "isWellFormed", "toWellFormed", "localeCompare", "toLocaleString",
@@ -1434,7 +1640,7 @@ pub fn setup_string_prototype(
       if annex_b {
         let annex_b_methods = [
           "anchor", "big", "blink", "bold", "fixed", "fontcolor", "fontsize", "italics",
-          "link", "small", "strike", "sub", "sup",
+          "link", "small", "strike", "sub", "sup", "substr",
         ]
         for m in annex_b_methods {
           methods.push(m)
@@ -1442,28 +1648,35 @@ pub fn setup_string_prototype(
       }
       for method_name in methods {
         let mname = method_name
-        data.properties[mname] = Object({
-          properties: {},
-          symbol_properties: {},
-          prototype: Null,
-          callable: Some(
-            MethodCallable(mname, fn(this_val, args) raise {
-              let s = this_to_string(this_val)
-              let meth_val = get_string_method(s, mname, annex_b~)
-              match meth_val {
-                Object(fdata) =>
-                  match fdata.callable {
-                    Some(NativeCallable(_, f)) => f(args)
-                    _ => Undefined
-                  }
+        // Per spec, trimLeft.name === "trimStart", trimRight.name === "trimEnd"
+        let display_name = if mname == "trimLeft" {
+          "trimStart"
+        } else if mname == "trimRight" {
+          "trimEnd"
+        } else {
+          mname
+        }
+        // Look up the length from the underlying native method
+        let meth_length = match get_string_method("", mname, annex_b~) {
+          Object(fdata) =>
+            match fdata.properties.get("length") {
+              Some(Number(n)) => n.to_int()
+              _ => 0
+            }
+          _ => 0
+        }
+        data.properties[mname] = make_method_func(display_name, meth_length, fn(this_val, args) raise {
+          let s = this_to_string(this_val)
+          let meth_val = get_string_method(s, mname, annex_b~)
+          match meth_val {
+            Object(fdata) =>
+              match fdata.callable {
+                Some(NativeCallable(_, f)) => f(args)
+                Some(NonConstructableCallable(_, f)) => f(args)
                 _ => Undefined
               }
-            }),
-          ),
-          class_name: "Function",
-          descriptors: {},
-          symbol_descriptors: {},
-          extensible: true,
+            _ => Undefined
+          }
         })
         // Make methods non-enumerable
         data.descriptors[mname] = {
@@ -1482,12 +1695,44 @@ pub fn setup_string_prototype(
 }
 
 ///|
+///|
+/// Check if a character is ECMAScript whitespace (WhiteSpace + LineTerminator)
+fn is_es_whitespace(c : Char) -> Bool {
+  let code = c.to_int()
+  // WhiteSpace: TAB, VT, FF, SP, NBSP, BOM, USP category
+  // LineTerminator: LF, CR, LS, PS
+  code == 0x0009 || // TAB
+  code == 0x000A || // LF
+  code == 0x000B || // VT
+  code == 0x000C || // FF
+  code == 0x000D || // CR
+  code == 0x0020 || // SPACE
+  code == 0x00A0 || // NBSP
+  code == 0x1680 || // OGHAM SPACE MARK
+  code == 0x2000 || // EN QUAD
+  code == 0x2001 || // EM QUAD
+  code == 0x2002 || // EN SPACE
+  code == 0x2003 || // EM SPACE
+  code == 0x2004 || // THREE-PER-EM SPACE
+  code == 0x2005 || // FOUR-PER-EM SPACE
+  code == 0x2006 || // SIX-PER-EM SPACE
+  code == 0x2007 || // FIGURE SPACE
+  code == 0x2008 || // PUNCTUATION SPACE
+  code == 0x2009 || // THIN SPACE
+  code == 0x200A || // HAIR SPACE
+  code == 0x2028 || // LINE SEPARATOR
+  code == 0x2029 || // PARAGRAPH SEPARATOR
+  code == 0x202F || // NARROW NO-BREAK SPACE
+  code == 0x205F || // MEDIUM MATHEMATICAL SPACE
+  code == 0x3000 || // IDEOGRAPHIC SPACE
+  code == 0xFEFF    // BOM
+}
+
 fn string_trim_end(s : String) -> String {
   let chars = s.to_array()
   let mut end = chars.length()
   while end > 0 {
-    let c = chars[end - 1]
-    if c == ' ' || c == '\t' || c == '\n' || c == '\r' {
+    if is_es_whitespace(chars[end - 1]) {
       end = end - 1
     } else {
       break

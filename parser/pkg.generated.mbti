@@ -17,6 +17,7 @@ pub(all) struct Parser {
   mut pos : Int
   mut allow_import_export : Bool
   generator_depth : Array[Bool]
+  async_depth : Array[Bool]
 }
 pub fn Parser::new(Array[@token.Token]) -> Self
 

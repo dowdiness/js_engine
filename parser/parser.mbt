@@ -17,7 +17,6 @@ fn is_reserved_word(name : String) -> Bool {
     | "true"
     | "false"
     | "null"
-    | "undefined"
     | "typeof"
     | "throw"
     | "try"
@@ -53,11 +52,18 @@ pub(all) struct Parser {
   mut pos : Int
   mut allow_import_export : Bool // true at module top-level, false in nested blocks
   generator_depth : Array[Bool] // Stack: true when inside a generator function body
+  async_depth : Array[Bool] // Stack: true when inside an async function body
 }
 
 ///|
 pub fn Parser::new(tokens : Array[@token.Token]) -> Parser {
-  { tokens, pos: 0, allow_import_export: true, generator_depth: [false] }
+  {
+    tokens,
+    pos: 0,
+    allow_import_export: true,
+    generator_depth: [false],
+    async_depth: [false],
+  }
 }
 
 ///|
@@ -73,6 +79,21 @@ fn Parser::push_generator_context(self : Parser, is_generator : Bool) -> Unit {
 ///|
 fn Parser::pop_generator_context(self : Parser) -> Unit {
   let _ = self.generator_depth.pop()
+}
+
+///|
+fn Parser::in_async(self : Parser) -> Bool {
+  self.async_depth[self.async_depth.length() - 1]
+}
+
+///|
+fn Parser::push_async_context(self : Parser, is_async : Bool) -> Unit {
+  self.async_depth.push(is_async)
+}
+
+///|
+fn Parser::pop_async_context(self : Parser) -> Unit {
+  let _ = self.async_depth.pop()
 }
 
 ///|
@@ -157,6 +178,11 @@ fn Parser::expect_ident(self : Parser) -> String raise Error {
     Of => {
       self.pos += 1
       "of"
+    }
+    Undefined => {
+      // undefined is NOT a reserved word - it's a regular identifier
+      self.pos += 1
+      "undefined"
     }
     Yield =>
       // yield is only a keyword inside generator bodies; outside it's an identifier
@@ -251,6 +277,39 @@ fn Parser::peek_kind_at(self : Parser, offset : Int) -> @token.TokenKind {
 fn Parser::eat_semicolon(self : Parser) -> Unit {
   // Lenient: consume semicolon if present, no error otherwise
   let _ = self.eat(Semicolon)
+}
+
+///|
+/// Check if current position is `async [no LineTerminator] function`.
+/// Does NOT consume any tokens.
+fn Parser::is_async_function(self : Parser) -> Bool {
+  match self.peek_kind() {
+    Ident("async") => {
+      let async_line = self.tokens[self.pos].loc.line
+      match self.peek_kind_at(1) {
+        Function => self.tokens[self.pos + 1].loc.line == async_line
+        _ => false
+      }
+    }
+    _ => false
+  }
+}
+
+///|
+/// Check if current position is `async [no LineTerminator] function *` (async generator).
+fn Parser::is_async_generator(self : Parser) -> Bool {
+  match self.peek_kind() {
+    Ident("async") => {
+      let async_line = self.tokens[self.pos].loc.line
+      match self.peek_kind_at(1) {
+        Function =>
+          self.tokens[self.pos + 1].loc.line == async_line &&
+          self.peek_kind_at(2) == Star
+        _ => false
+      }
+    }
+    _ => false
+  }
 }
 
 ///|

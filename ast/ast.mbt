@@ -140,6 +140,17 @@ pub(all) enum Expr {
   GeneratorExprExt(String?, Array[Param], String?, Array[Stmt], @token.Loc) // name, params, rest_param, body
   // Yield expression
   YieldExpr(Expr?, Bool, @token.Loc) // argument, delegate (yield* vs yield)
+  // Async function expressions
+  AsyncFuncExpr(String?, Array[String], Array[Stmt], @token.Loc) // name, params, body
+  AsyncFuncExprExt(String?, Array[Param], String?, Array[Stmt], @token.Loc) // name, params, rest_param, body
+  // Async arrow functions
+  AsyncArrowFunc(Array[String], Array[Stmt], @token.Loc) // params, body
+  AsyncArrowFuncExt(Array[Param], String?, Array[Stmt], @token.Loc) // params, rest_param, body
+  // Async generator expressions
+  AsyncGeneratorExpr(String?, Array[String], Array[Stmt], @token.Loc) // name, params, body
+  AsyncGeneratorExprExt(String?, Array[Param], String?, Array[Stmt], @token.Loc) // name, params, rest_param, body
+  // Await expression
+  AwaitExpr(Expr, @token.Loc) // argument
 } derive(Show, Eq)
 
 ///|
@@ -163,6 +174,7 @@ pub(all) struct PropPat {
   key : String
   value : Pattern
   default_val : Expr?
+  computed_key : Expr? // For computed property keys: { [expr]: pattern }
 } derive(Show, Eq)
 
 ///|
@@ -201,7 +213,7 @@ pub(all) enum Stmt {
   BreakStmt(String?, @token.Loc)
   ContinueStmt(String?, @token.Loc)
   ThrowStmt(Expr, @token.Loc)
-  TryCatchStmt(Array[Stmt], String?, Array[Stmt]?, Array[Stmt]?, @token.Loc)
+  TryCatchStmt(Array[Stmt], Pattern?, Array[Stmt]?, Array[Stmt]?, @token.Loc)
   SwitchStmt(Expr, Array[SwitchCase], @token.Loc)
   DoWhileStmt(Stmt, Expr, @token.Loc)
   ForInStmt(VarKind?, String, Expr, Stmt, @token.Loc)
@@ -215,6 +227,12 @@ pub(all) enum Stmt {
   // Generator declarations
   GeneratorDecl(String, Array[String], Array[Stmt], @token.Loc) // name, params, body
   GeneratorDeclExt(String, Array[Param], String?, Array[Stmt], @token.Loc) // name, params, rest_param, body
+  // Async function declarations
+  AsyncFuncDecl(String, Array[String], Array[Stmt], @token.Loc) // name, params, body
+  AsyncFuncDeclExt(String, Array[Param], String?, Array[Stmt], @token.Loc) // name, params, rest_param, body
+  // Async generator declarations
+  AsyncGeneratorDecl(String, Array[String], Array[Stmt], @token.Loc) // name, params, body
+  AsyncGeneratorDeclExt(String, Array[Param], String?, Array[Stmt], @token.Loc) // name, params, rest_param, body
   // Class declaration
   ClassDecl(String, Expr?, Array[ClassMethod], @token.Loc) // name, superclass, methods
   // With statement (sloppy mode only)
