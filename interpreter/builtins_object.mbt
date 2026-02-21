@@ -2228,7 +2228,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                   } else {
                     Undefined
                   }
-                } else if data.properties.contains(prop_name) {
+                } else if data.properties.contains(prop_name) &&
+                  not(prop_name.has_prefix("[[")) {
                   let val = match data.properties.get(prop_name) {
                     Some(v) => v
                     None => Undefined

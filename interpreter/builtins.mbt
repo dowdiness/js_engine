@@ -3511,6 +3511,25 @@ fn setup_json_builtins(env : Environment) -> Unit {
         } else {
           None
         }
+        // Handle replacer array (property list filter)
+        let property_list : Array[String]? = if args.length() > 1 {
+          match args[1] {
+            Array(arr) => {
+              let keys : Array[String] = []
+              for elem in arr.elements {
+                match elem {
+                  String_(s) => keys.push(s)
+                  Number(n) => keys.push(n.to_string())
+                  _ => ()
+                }
+              }
+              Some(keys)
+            }
+            _ => None
+          }
+        } else {
+          None
+        }
         // Wrap value in root holder for replacer
         let root_props : Map[String, Value] = {}
         root_props[""] = val
@@ -3527,6 +3546,7 @@ fn setup_json_builtins(env : Environment) -> Unit {
         let seen : Array[Value] = []
         json_stringify_value(
           val, seen, indent, 0, Some(interp), replacer~, holder=root, key="",
+          property_list~,
         )
       })
   json_descs["stringify"] = ne_desc
@@ -3903,6 +3923,7 @@ fn json_stringify_value(
   replacer? : Value? = None,
   holder? : Value = Undefined,
   key? : String = "",
+  property_list? : Array[String]? = None,
 ) -> Value raise Error {
   // Step 1: Apply replacer function if provided
   let val = match replacer {
@@ -3938,7 +3959,7 @@ fn json_stringify_value(
       // Unwrap proxy to its target and serialize that
       match proxy_data.target {
         Some(target) =>
-          json_stringify_value(target, seen, indent, depth, interp, replacer~)
+          json_stringify_value(target, seen, indent, depth, interp, replacer~, property_list~)
         None => String_("{}")
       }
     Array(data) => {
@@ -3962,7 +3983,7 @@ fn json_stringify_value(
       for idx, el in data.elements {
         let stringified = json_stringify_value(
           el, seen, indent, new_depth, interp, replacer~,
-          holder=val, key=idx.to_string(),
+          holder=val, key=idx.to_string(), property_list~,
         )
         match stringified {
           Undefined => {
@@ -4086,7 +4107,7 @@ fn json_stringify_value(
                   match json_val {
                     Some(v) =>
                       return json_stringify_value(
-                        v, seen, indent, depth, interp, replacer~,
+                        v, seen, indent, depth, interp, replacer~, property_list~,
                       )
                     None => ()
                   }
@@ -4112,27 +4133,33 @@ fn json_stringify_value(
           let buf = StringBuilder::new()
           buf.write_char('{')
           let mut first = true
-          let sorted_keys = sort_property_keys(data.properties)
-          for k in sorted_keys {
-            // Skip internal properties (e.g., [[DateValue]], [[NumberData]])
-            if k.has_prefix("[[") {
-              continue
+          // Use property list (from replacer array) or sorted keys
+          let keys_to_iterate : Array[String] = match property_list {
+            Some(pl) => pl
+            None => {
+              let sorted = sort_property_keys(data.properties)
+              let filtered : Array[String] = []
+              for k in sorted {
+                // Skip non-enumerable properties
+                let enumerable = match data.descriptors.get(k) {
+                  Some(d) => d.enumerable
+                  None => true
+                }
+                if enumerable {
+                  filtered.push(k)
+                }
+              }
+              filtered
             }
-            // Skip non-enumerable properties
-            let enumerable = match data.descriptors.get(k) {
-              Some(d) => d.enumerable
-              None => true
-            }
-            if not(enumerable) {
-              continue
-            }
+          }
+          for k in keys_to_iterate {
             let v = match data.properties.get(k) {
               Some(v) => v
               None => continue
             }
             let stringified = json_stringify_value(
               v, seen, indent, new_depth, interp, replacer~,
-              holder=val, key=k,
+              holder=val, key=k, property_list~,
             )
             match stringified {
               Undefined => () // Skip undefined values
