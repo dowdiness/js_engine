@@ -366,6 +366,24 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
       _ => ()
     }
     let key_val = if args.length() > 0 { args[0] } else { Undefined }
+    // Handle Symbol keys
+    match key_val {
+      Symbol(sym) =>
+        match this_val {
+          Object(data) =>
+            match data.symbol_descriptors.get(sym.id) {
+              Some(d) => return Bool(d.enumerable)
+              None =>
+                if data.symbol_properties.contains(sym.id) {
+                  return Bool(true)
+                } else {
+                  return Bool(false)
+                }
+            }
+          _ => return Bool(false)
+        }
+      _ => ()
+    }
     let key = to_js_string(key_val)
     match this_val {
       Object(data) =>
