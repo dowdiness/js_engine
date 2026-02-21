@@ -1359,6 +1359,39 @@ fn to_primitive_number(obj_val : Value, data : ObjectData) -> Value raise Error 
 }
 
 ///|
+/// ToPrimitive(input, hint "default") - for + operator.
+/// Same as "number" except passes "default" to @@toPrimitive.
+pub fn to_primitive_default(obj_val : Value, data : ObjectData) -> Value raise Error {
+  // Step 1: Check for Symbol.toPrimitive
+  let to_prim_sym = get_toprimitive_symbol()
+  match lookup_symbol_property_chain(obj_val, data, to_prim_sym.id) {
+    Some(exotic_to_prim) => {
+      if not(is_callable(exotic_to_prim)) {
+        raise @errors.TypeError(
+          message="Symbol.toPrimitive is not a function",
+        )
+      }
+      // Call it with hint "default"
+      let result = call_callable_direct(
+        exotic_to_prim,
+        obj_val,
+        [String_("default")],
+      )
+      match result {
+        Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) =>
+          raise @errors.TypeError(
+            message="Cannot convert object to primitive value",
+          )
+        _ => return result
+      }
+    }
+    None => ()
+  }
+  // Step 2: OrdinaryToPrimitive with hint "number" (default falls through to number behavior)
+  to_primitive_number(obj_val, data)
+}
+
+///|
 fn is_js_whitespace_code(ch : UInt16) -> Bool {
   ch == 0x20 || ch == 0x09 || ch == 0x0A || ch == 0x0D ||
   ch == 0x0B || ch == 0x0C ||

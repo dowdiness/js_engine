@@ -3487,9 +3487,27 @@ fn setup_json_builtins(env : Environment) -> Unit {
   json_props["stringify"] = make_interp_method_func("stringify", 3, fn(interp, _this, args) raise {
         let val = if args.length() > 0 { args[0] } else { Undefined }
         let indent = if args.length() > 2 {
-          match args[2] {
+          // Per spec: unwrap Number/String objects, cap at 10
+          let space_arg = match args[2] {
+            Object(data) =>
+              if data.class_name == "Number" {
+                match data.properties.get("[[NumberData]]") {
+                  Some(n) => n
+                  None => args[2]
+                }
+              } else if data.class_name == "String" {
+                match data.properties.get("[[StringData]]") {
+                  Some(s) => s
+                  None => args[2]
+                }
+              } else {
+                args[2]
+              }
+            _ => args[2]
+          }
+          match space_arg {
             Number(n) => {
-              let spaces = n.to_int()
+              let spaces = if n.to_int() > 10 { 10 } else { n.to_int() }
               if spaces > 0 {
                 let buf = StringBuilder::new()
                 for _i = 0; _i < spaces; _i = _i + 1 {
@@ -3500,7 +3518,14 @@ fn setup_json_builtins(env : Environment) -> Unit {
                 None
               }
             }
-            String_(s) => if s.length() > 0 { Some(s) } else { None }
+            String_(s) =>
+              if s.length() > 10 {
+                Some(s.substring(start=0, end=10))
+              } else if s.length() > 0 {
+                Some(s)
+              } else {
+                None
+              }
             _ => None
           }
         } else {

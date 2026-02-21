@@ -5462,10 +5462,16 @@ fn eval_binary_op(
       raise @errors.TypeError(
         message="Cannot convert a Symbol value to a string",
       )
-    // String concatenation
+    // String concatenation (only for primitive operands)
     (Add, String_(a), String_(b)) => String_(a + b)
-    (Add, String_(a), b) => String_(a + to_js_string(b))
-    (Add, a, String_(b)) => String_(to_js_string(a) + b)
+    (Add, String_(a), Number(b)) => String_(a + Number(b).to_string())
+    (Add, String_(a), Bool(b)) => String_(a + b.to_string())
+    (Add, String_(a), Null) => String_(a + "null")
+    (Add, String_(a), Undefined) => String_(a + "undefined")
+    (Add, Number(a), String_(b)) => String_(Number(a).to_string() + b)
+    (Add, Bool(a), String_(b)) => String_(a.to_string() + b)
+    (Add, Null, String_(b)) => String_("null" + b)
+    (Add, Undefined, String_(b)) => String_("undefined" + b)
     // Numeric operations
     (Add, Number(a), Number(b)) => Number(a + b)
     (Sub, Number(a), Number(b)) => Number(a - b)
@@ -5492,9 +5498,9 @@ fn eval_binary_op(
     (Exp, l, r) => Number(@math.pow(to_number(l), to_number(r)))
     // Add fallback: ToPrimitive, then check for strings
     (Add, l, r) => {
-      // ToPrimitive with hint "default" (acts like "number")
+      // ToPrimitive with hint "default" per spec (+ operator uses no preferred type)
       let lp = match l {
-        Object(data) => to_primitive_number(l, data)
+        Object(data) => to_primitive_default(l, data)
         Array(arr_data) => {
           let s = arr_data.elements.map(fn(v) { v.to_string() }).join(",")
           String_(s)
@@ -5502,7 +5508,7 @@ fn eval_binary_op(
         _ => l
       }
       let rp = match r {
-        Object(data) => to_primitive_number(r, data)
+        Object(data) => to_primitive_default(r, data)
         Array(arr_data) => {
           let s = arr_data.elements.map(fn(v) { v.to_string() }).join(",")
           String_(s)
