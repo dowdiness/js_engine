@@ -1424,6 +1424,20 @@ pub fn to_number(val : Value) -> Double raise Error {
       if trimmed == "-Infinity" {
         return -1.0 / 0.0
       }
+      // Per spec: numeric separators (_) are only valid in source code literals,
+      // not in Number() string-to-number conversion
+      if trimmed.contains("_") {
+        return 0.0 / 0.0
+      }
+      // Validate the string only contains valid Number() characters.
+      // parse_double may accept non-spec things like "INFINITY", "inf", etc.
+      let valid = trimmed.iter().fold(init=true, fn(acc, ch) {
+        acc && (ch >= '0' && ch <= '9' || ch == '.' || ch == 'e' || ch == 'E' ||
+                ch == '+' || ch == '-')
+      })
+      if not(valid) {
+        return 0.0 / 0.0
+      }
       @strconv.parse_double(trimmed) catch {
         _ => 0.0 / 0.0
       }
