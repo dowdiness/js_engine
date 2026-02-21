@@ -1692,6 +1692,54 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
                 }
                 iter_obj
               })
+          // Add @@unscopables to Array.prototype
+          let unscopables_sym_data = match env.get("Symbol") {
+            Object(s) =>
+              match s.properties.get("unscopables") {
+                Some(Symbol(sym)) => Some(sym)
+                _ => None
+              }
+            _ => None
+          }
+          match unscopables_sym_data {
+            Some(unscopables_sym2) => {
+              let unscopable_props : Map[String, Value] = {}
+              unscopable_props["at"] = Bool(true)
+              unscopable_props["copyWithin"] = Bool(true)
+              unscopable_props["entries"] = Bool(true)
+              unscopable_props["fill"] = Bool(true)
+              unscopable_props["find"] = Bool(true)
+              unscopable_props["findIndex"] = Bool(true)
+              unscopable_props["findLast"] = Bool(true)
+              unscopable_props["findLastIndex"] = Bool(true)
+              unscopable_props["flat"] = Bool(true)
+              unscopable_props["flatMap"] = Bool(true)
+              unscopable_props["includes"] = Bool(true)
+              unscopable_props["keys"] = Bool(true)
+              unscopable_props["toReversed"] = Bool(true)
+              unscopable_props["toSorted"] = Bool(true)
+              unscopable_props["toSpliced"] = Bool(true)
+              unscopable_props["values"] = Bool(true)
+              proto_data.symbol_properties[unscopables_sym2.id] = Object({
+                properties: unscopable_props,
+                symbol_properties: {},
+                prototype: Null,
+                callable: None,
+                class_name: "Object",
+                descriptors: {},
+                symbol_descriptors: {},
+                extensible: true,
+              })
+              proto_data.symbol_descriptors[unscopables_sym2.id] = {
+                writable: false,
+                enumerable: false,
+                configurable: true,
+                getter: None,
+                setter: None,
+              }
+            }
+            None => ()
+          }
         }
         _ => ()
       }

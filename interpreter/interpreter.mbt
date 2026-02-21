@@ -4547,6 +4547,13 @@ fn Interpreter::eval_expr(
       let descriptors : Map[String, PropDescriptor] = {}
       let symbol_descriptors : Map[Int, PropDescriptor] = {}
       let mut proto_override : Value? = None
+      // Create a placeholder for the object being built so methods can reference it as [[HomeObject]]
+      // The actual object will be stored after creation via the mutable ref
+      // Create method environment for super.x support in object literal methods
+      // Set [[SuperPrototype]] to Object.prototype as default
+      let method_env = Environment::new(parent=Some(env))
+      let default_obj_proto = env.get("[[ObjectPrototype]]") catch { _ => Null }
+      method_env.def_builtin("[[SuperPrototype]]", default_obj_proto)
       for prop in props {
         // Handle spread property: { ...expr }
         if prop.kind == @ast.Spread {
@@ -4610,7 +4617,7 @@ fn Interpreter::eval_expr(
               // Symbol key - store in symbol_properties
               match prop.kind {
                 Init => {
-                  let val = self.eval_expr(prop.value, env)
+                  let val = self.eval_expr(prop.value, method_env)
                   // SetFunctionName with symbol description
                   let sym_name = match sym.description {
                     Some(d) => "[\{d}]"
@@ -4620,7 +4627,7 @@ fn Interpreter::eval_expr(
                   symbol_properties[sym.id] = val
                 }
                 Get => {
-                  let getter = self.eval_expr(prop.value, env)
+                  let getter = self.eval_expr(prop.value, method_env)
                   let sym_name = match sym.description {
                     Some(d) => "get [\{d}]"
                     None => "get "
@@ -4643,7 +4650,7 @@ fn Interpreter::eval_expr(
                   }
                 }
                 Set => {
-                  let setter = self.eval_expr(prop.value, env)
+                  let setter = self.eval_expr(prop.value, method_env)
                   let sym_name = match sym.description {
                     Some(d) => "set [\{d}]"
                     None => "set "
@@ -4671,12 +4678,12 @@ fn Interpreter::eval_expr(
               let key_str = to_js_string(key_val)
               match prop.kind {
                 Init => {
-                  let val = self.eval_expr(prop.value, env)
+                  let val = self.eval_expr(prop.value, method_env)
                   set_function_name(val, key_str)
                   properties[key_str] = val
                 }
                 Get => {
-                  let getter = self.eval_expr(prop.value, env)
+                  let getter = self.eval_expr(prop.value, method_env)
                   set_function_name(getter, "get " + key_str)
                   if not(properties.contains(key_str)) {
                     properties[key_str] = Undefined
@@ -4694,7 +4701,7 @@ fn Interpreter::eval_expr(
                   }
                 }
                 Set => {
-                  let setter = self.eval_expr(prop.value, env)
+                  let setter = self.eval_expr(prop.value, method_env)
                   set_function_name(setter, "set " + key_str)
                   if not(properties.contains(key_str)) {
                     properties[key_str] = Undefined
@@ -4725,7 +4732,7 @@ fn Interpreter::eval_expr(
             Init => {
               // Handle __proto__ as special syntax per B.3.1
               if key_str == "__proto__" {
-                let val = self.eval_expr(prop.value, env)
+                let val = self.eval_expr(prop.value, method_env)
                 match val {
                   Object(_) | Array(_) | Map(_) | Set(_) => {
                     proto_override = Some(val)
@@ -4734,14 +4741,14 @@ fn Interpreter::eval_expr(
                   _ => properties[key_str] = val // primitives don't set proto
                 }
               } else {
-                let val = self.eval_expr(prop.value, env)
+                let val = self.eval_expr(prop.value, method_env)
                 // SetFunctionName: infer name for anonymous functions
                 set_function_name(val, key_str)
                 properties[key_str] = val
               }
             }
             Get => {
-              let getter = self.eval_expr(prop.value, env)
+              let getter = self.eval_expr(prop.value, method_env)
               // Force set name with "get " prefix per spec
               match getter {
                 Object(d) => d.properties["name"] = String_("get " + key_str)
@@ -4763,7 +4770,7 @@ fn Interpreter::eval_expr(
               }
             }
             Set => {
-              let setter = self.eval_expr(prop.value, env)
+              let setter = self.eval_expr(prop.value, method_env)
               // Force set name with "set " prefix per spec
               match setter {
                 Object(d) => d.properties["name"] = String_("set " + key_str)
@@ -4792,7 +4799,7 @@ fn Interpreter::eval_expr(
         Some(p) => p
         None => env.get("[[ObjectPrototype]]") catch { _ => Null }
       }
-      Object({
+      let result_obj = Object({
         properties,
         symbol_properties,
         prototype: obj_prototype,
@@ -4802,6 +4809,7 @@ fn Interpreter::eval_expr(
         symbol_descriptors,
         extensible: true,
       })
+      result_obj
     }
     ArrayLit(elements, _) => {
       let vals : Array[Value] = []
