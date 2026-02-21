@@ -1872,14 +1872,8 @@ fn collect_for_in_keys(obj : Value) -> Array[String] raise Error {
         let sorted = sort_property_keys(data.properties)
         for k in sorted {
           if not(seen.contains(k)) {
-            // Skip internal slots for TypedArray/ArrayBuffer/DataView only
-            if k.has_prefix("[[") &&
-              k.has_suffix("]]") &&
-              (
-                is_typedarray_class(data.class_name) ||
-                data.class_name == "ArrayBuffer" ||
-                data.class_name == "DataView"
-              ) {
+            // Skip internal slots (e.g., [[BooleanData]], [[NumberData]], [[StringData]])
+            if k.has_prefix("[[") {
               continue
             }
             seen[k] = true
@@ -7252,7 +7246,7 @@ fn Interpreter::get_property(
                   Object({
                     properties: bprops,
                     symbol_properties: {},
-                    prototype: Null,
+                    prototype: get_func_proto(),
                     callable: Some(BoundFunc(target, bind_this, bound_args)),
                     class_name: "Function",
                     descriptors: { "name": nf_desc, "length": nf_desc },
@@ -7357,48 +7351,51 @@ fn Interpreter::get_property(
               }
             None => ()
           }
-          // Built-in Object methods
-          if prop == "hasOwnProperty" {
-            return make_method_func("hasOwnProperty", 1, fn(this_val, args) {
-                  let key_val = if args.length() > 0 {
-                    args[0]
-                  } else {
-                    Undefined
-                  }
-                  match this_val {
-                    Object(d) =>
-                      match key_val {
-                        Symbol(sym) =>
-                          Bool(d.symbol_properties.contains(sym.id))
-                        _ => Bool(d.properties.contains(key_val.to_string()))
-                      }
-                    Array(ad) =>
-                      match key_val {
-                        Symbol(sym) =>
-                          Bool(get_array_symbol_prop(ad, sym.id) is Some(_))
-                        _ => {
-                          let k = key_val.to_string()
-                          if k == "length" {
-                            return Bool(true)
-                          }
-                          let idx = @strconv.parse_int(k) catch { _ => -1 }
-                          if idx >= 0 &&
-                            idx.to_string() == k &&
-                            idx < ad.elements.length() {
-                            Bool(true)
-                          } else {
-                            Bool(get_array_named_prop(ad, k) is Some(_))
+          // Built-in Object methods (only for objects that inherit from Object.prototype)
+          // Objects with null prototype (Object.create(null)) should NOT have these
+          if not(data.prototype is Null && data.callable is None) {
+            if prop == "hasOwnProperty" {
+              return make_method_func("hasOwnProperty", 1, fn(this_val, args) {
+                    let key_val = if args.length() > 0 {
+                      args[0]
+                    } else {
+                      Undefined
+                    }
+                    match this_val {
+                      Object(d) =>
+                        match key_val {
+                          Symbol(sym) =>
+                            Bool(d.symbol_properties.contains(sym.id))
+                          _ => Bool(d.properties.contains(key_val.to_string()))
+                        }
+                      Array(ad) =>
+                        match key_val {
+                          Symbol(sym) =>
+                            Bool(get_array_symbol_prop(ad, sym.id) is Some(_))
+                          _ => {
+                            let k = key_val.to_string()
+                            if k == "length" {
+                              return Bool(true)
+                            }
+                            let idx = @strconv.parse_int(k) catch { _ => -1 }
+                            if idx >= 0 &&
+                              idx.to_string() == k &&
+                              idx < ad.elements.length() {
+                              Bool(true)
+                            } else {
+                              Bool(get_array_named_prop(ad, k) is Some(_))
+                            }
                           }
                         }
-                      }
-                    _ => Bool(false)
-                  }
-                })
-          }
-          if prop == "toString" {
-            return make_native_func("toString", fn(_args) {
-              String_("[object Object]")
-            })
+                      _ => Bool(false)
+                    }
+                  })
+            }
+            if prop == "toString" {
+              return make_native_func("toString", fn(_args) {
+                String_("[object Object]")
+              })
+            }
           }
           Undefined
         }
@@ -7991,7 +7988,7 @@ fn Interpreter::get_computed_property(
                   Object({
                     properties: bprops,
                     symbol_properties: {},
-                    prototype: Null,
+                    prototype: get_func_proto(),
                     callable: Some(BoundFunc(target, bind_this, bound_args)),
                     class_name: "Function",
                     descriptors: { "name": nf_desc, "length": nf_desc },
@@ -8096,48 +8093,50 @@ fn Interpreter::get_computed_property(
               }
             None => ()
           }
-          // Built-in Object methods
-          if prop == "hasOwnProperty" {
-            return make_method_func("hasOwnProperty", 1, fn(this_val, args) {
-                  let key_val = if args.length() > 0 {
-                    args[0]
-                  } else {
-                    Undefined
-                  }
-                  match this_val {
-                    Object(d) =>
-                      match key_val {
-                        Symbol(sym) =>
-                          Bool(d.symbol_properties.contains(sym.id))
-                        _ => Bool(d.properties.contains(key_val.to_string()))
-                      }
-                    Array(ad) =>
-                      match key_val {
-                        Symbol(sym) =>
-                          Bool(get_array_symbol_prop(ad, sym.id) is Some(_))
-                        _ => {
-                          let k = key_val.to_string()
-                          if k == "length" {
-                            return Bool(true)
-                          }
-                          let idx = @strconv.parse_int(k) catch { _ => -1 }
-                          if idx >= 0 &&
-                            idx.to_string() == k &&
-                            idx < ad.elements.length() {
-                            Bool(true)
-                          } else {
-                            Bool(get_array_named_prop(ad, k) is Some(_))
+          // Built-in Object methods (only for objects that inherit from Object.prototype)
+          if not(data.prototype is Null && data.callable is None) {
+            if prop == "hasOwnProperty" {
+              return make_method_func("hasOwnProperty", 1, fn(this_val, args) {
+                    let key_val = if args.length() > 0 {
+                      args[0]
+                    } else {
+                      Undefined
+                    }
+                    match this_val {
+                      Object(d) =>
+                        match key_val {
+                          Symbol(sym) =>
+                            Bool(d.symbol_properties.contains(sym.id))
+                          _ => Bool(d.properties.contains(key_val.to_string()))
+                        }
+                      Array(ad) =>
+                        match key_val {
+                          Symbol(sym) =>
+                            Bool(get_array_symbol_prop(ad, sym.id) is Some(_))
+                          _ => {
+                            let k = key_val.to_string()
+                            if k == "length" {
+                              return Bool(true)
+                            }
+                            let idx = @strconv.parse_int(k) catch { _ => -1 }
+                            if idx >= 0 &&
+                              idx.to_string() == k &&
+                              idx < ad.elements.length() {
+                              Bool(true)
+                            } else {
+                              Bool(get_array_named_prop(ad, k) is Some(_))
+                            }
                           }
                         }
-                      }
-                    _ => Bool(false)
-                  }
-                })
-          }
-          if prop == "toString" {
-            return make_native_func("toString", fn(_args) {
-              String_("[object Object]")
-            })
+                      _ => Bool(false)
+                    }
+                  })
+            }
+            if prop == "toString" {
+              return make_native_func("toString", fn(_args) {
+                String_("[object Object]")
+              })
+            }
           }
           Undefined
         }

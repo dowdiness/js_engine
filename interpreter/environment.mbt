@@ -243,6 +243,40 @@ pub fn Environment::assign(
 }
 
 ///|
+/// Check if a property is blocked by @@unscopables on the binding object
+fn is_blocked_by_unscopables(obj : Value, name : String) -> Bool {
+  match obj {
+    Object(data) => {
+      let unscopables_sym = get_unscopables_symbol()
+      // Walk prototype chain to find @@unscopables
+      let mut current : Value = Object(data)
+      while true {
+        match current {
+          Object(obj_data) => {
+            match obj_data.symbol_properties.get(unscopables_sym.id) {
+              Some(Object(unscopables_data)) => {
+                // Check if the property name is truthy in the unscopables object
+                match unscopables_data.properties.get(name) {
+                  Some(v) => return is_truthy(v)
+                  None => return false
+                }
+              }
+              Some(_) => return false
+              None => {
+                current = obj_data.prototype
+              }
+            }
+          }
+          _ => break
+        }
+      }
+      false
+    }
+    _ => false
+  }
+}
+
+///|
 /// Check if a with-object (or its prototype chain) has a property
 fn with_object_has(obj : Value, name : String) -> Bool {
   let mut current = obj
@@ -250,10 +284,17 @@ fn with_object_has(obj : Value, name : String) -> Bool {
     match current {
       Object(data) => {
         if data.properties.contains(name) {
+          // Check @@unscopables
+          if is_blocked_by_unscopables(obj, name) {
+            return false
+          }
           return true
         }
         // Check descriptors (for accessor-only properties)
         if data.descriptors.contains(name) {
+          if is_blocked_by_unscopables(obj, name) {
+            return false
+          }
           return true
         }
         current = data.prototype

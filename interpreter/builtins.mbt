@@ -97,7 +97,7 @@ pub fn setup_builtins(
         sign = -1.0
         pos = pos + 1
       }
-      let radix_arg = if args.length() > 1 { to_number(args[1]).to_int() } else { 0 }
+      let radix_arg = if args.length() > 1 { to_int32(to_number(args[1])) } else { 0 }
       let mut radix = if radix_arg == 0 {
         10  // radix 0 defaults to 10
       } else if radix_arg < 2 || radix_arg > 36 {
@@ -1091,14 +1091,158 @@ pub fn setup_builtins(
       regexp_proto_descs["test"] = re_method_desc2
       regexp_proto_descs["toString"] = re_method_desc2
       regexp_proto_descs["compile"] = re_method_desc2
+      // Install well-known symbol methods on RegExp.prototype (not on instances)
+      let regexp_sym_props : Map[Int, Value] = {}
+      let regexp_sym_descs : Map[Int, PropDescriptor] = {}
+      let sym_method_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+      // [Symbol.match]
+      let match_sym = get_match_symbol()
+      regexp_sym_props[match_sym.id] = make_method_func("[Symbol.match]", 1, fn(this_val, args) {
+        let str = if args.length() > 0 { args[0].to_string() } else { "" }
+        let (pat, fl) = extract_regexp_source_flags(this_val)
+        string_match_regex(str, pat, fl)
+      })
+      regexp_sym_descs[match_sym.id] = sym_method_desc
+      // [Symbol.matchAll]
+      let match_all_sym = get_matchall_symbol()
+      regexp_sym_props[match_all_sym.id] = make_method_func("[Symbol.matchAll]", 1, fn(this_val, args) {
+        let str = if args.length() > 0 { args[0].to_string() } else { "" }
+        let (pat, fl) = extract_regexp_source_flags(this_val)
+        let flags = if fl.contains("g") { fl } else { fl + "g" }
+        let matches = regex_search_all(pat, flags, str) catch { _ => [] }
+        let input_chars = str.to_array()
+        let index_ref : Ref[Int] = { val: 0 }
+        let next_method = Object({
+          properties: {},
+          symbol_properties: {},
+          prototype: Null,
+          callable: Some(NativeCallable("next", fn(_args) {
+            let idx = index_ref.val
+            if idx < matches.length() {
+              let m = matches[idx]
+              index_ref.val = idx + 1
+              let elements : Array[Value] = []
+              elements.push(String_(substring(input_chars, m.start, m.end_)))
+              for cap in m.captures {
+                match cap {
+                  Some(c) => elements.push(String_(c))
+                  None => elements.push(Undefined)
+                }
+              }
+              let match_array = Array({ elements, })
+              let result_props : Map[String, Value] = {}
+              result_props["value"] = match_array
+              result_props["done"] = Bool(false)
+              Object({ properties: result_props, symbol_properties: {}, prototype: Null, callable: None, class_name: "Object", descriptors: {}, symbol_descriptors: {}, extensible: true })
+            } else {
+              let result_props : Map[String, Value] = {}
+              result_props["value"] = Undefined
+              result_props["done"] = Bool(true)
+              Object({ properties: result_props, symbol_properties: {}, prototype: Null, callable: None, class_name: "Object", descriptors: {}, symbol_descriptors: {}, extensible: true })
+            }
+          })),
+          class_name: "Function",
+          descriptors: {},
+          symbol_descriptors: {},
+          extensible: true,
+        })
+        let iter_props : Map[String, Value] = {}
+        iter_props["next"] = next_method
+        Object({
+          properties: iter_props,
+          symbol_properties: {},
+          prototype: get_regexp_string_iterator_proto(),
+          callable: None,
+          class_name: "RegExp String Iterator",
+          descriptors: {},
+          symbol_descriptors: {},
+          extensible: true,
+        })
+      })
+      regexp_sym_descs[match_all_sym.id] = sym_method_desc
+      // [Symbol.search]
+      let search_sym = get_search_symbol()
+      regexp_sym_props[search_sym.id] = make_method_func("[Symbol.search]", 1, fn(this_val, args) {
+        let str = if args.length() > 0 { args[0].to_string() } else { "" }
+        let (pat, fl) = extract_regexp_source_flags(this_val)
+        string_search_regex(str, pat, fl)
+      })
+      regexp_sym_descs[search_sym.id] = sym_method_desc
+      // [Symbol.replace]
+      let replace_sym = get_replace_symbol()
+      regexp_sym_props[replace_sym.id] = make_method_func("[Symbol.replace]", 2, fn(this_val, args) {
+        let str = if args.length() > 0 { args[0].to_string() } else { "" }
+        let replacement = if args.length() > 1 { args[1].to_string() } else { "undefined" }
+        let (pat, fl) = extract_regexp_source_flags(this_val)
+        string_replace_regex(str, pat, fl, replacement)
+      })
+      regexp_sym_descs[replace_sym.id] = sym_method_desc
+      // [Symbol.split]
+      let split_sym = get_split_symbol()
+      regexp_sym_props[split_sym.id] = make_method_func("[Symbol.split]", 0, fn(this_val, args) raise {
+        let str = if args.length() > 0 { args[0].to_string() } else { "" }
+        let limit : Int64 = if args.length() > 1 {
+          match args[1] {
+            Undefined => 4294967295L
+            _ => {
+              let n = to_int32(to_number(args[1]))
+              if n < 0 { n.to_int64() + 4294967296L } else { n.to_int64() }
+            }
+          }
+        } else { 4294967295L }
+        if limit == 0L { return Array({ elements: [] }) }
+        let (pat, fl) = extract_regexp_source_flags(this_val)
+        let input_chars = str.to_array()
+        let slen = str.length()
+        if slen == 0 {
+          let m = regex_search(pat, fl, str) catch { _ => None }
+          return match m {
+            Some(_) => Array({ elements: [] })
+            None => Array({ elements: [String_(str)] })
+          }
+        }
+        let results : Array[Value] = []
+        let mut last_end = 0
+        let mut pos = 0
+        while pos < slen {
+          let m = regex_search(pat, fl, str, start_pos=pos) catch { _ => None }
+          match m {
+            None => break
+            Some(match_data) => {
+              if match_data.end_ == last_end && match_data.start == pos {
+                pos = pos + 1
+                continue
+              }
+              let buf = StringBuilder::new()
+              for i = last_end; i < match_data.start; i = i + 1 { buf.write_char(input_chars[i]) }
+              results.push(String_(buf.to_string()))
+              if results.length().to_int64() >= limit { return Array({ elements: results }) }
+              for cap in match_data.captures {
+                match cap {
+                  Some(c) => results.push(String_(c))
+                  None => results.push(Undefined)
+                }
+                if results.length().to_int64() >= limit { return Array({ elements: results }) }
+              }
+              last_end = match_data.end_
+              pos = if match_data.end_ == match_data.start { match_data.end_ + 1 } else { match_data.end_ }
+            }
+          }
+        }
+        let buf = StringBuilder::new()
+        for i = last_end; i < slen; i = i + 1 { buf.write_char(input_chars[i]) }
+        results.push(String_(buf.to_string()))
+        Array({ elements: results })
+      })
+      regexp_sym_descs[split_sym.id] = sym_method_desc
       let regexp_proto : Value = Object({
         properties: regexp_proto_props,
-        symbol_properties: {},
+        symbol_properties: regexp_sym_props,
         prototype: obj_proto,
         callable: None,
         class_name: "Object",
         descriptors: regexp_proto_descs,
-        symbol_descriptors: {},
+        symbol_descriptors: regexp_sym_descs,
         extensible: true,
       })
       regexp_prototype_ref.val = Some(regexp_proto)
@@ -1316,6 +1460,7 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
   let split_sym = new_symbol(Some("Symbol.split"))
   well_known_split_sym.val = Some(split_sym)
   let unscopables_sym = new_symbol(Some("Symbol.unscopables"))
+  well_known_unscopables_sym.val = Some(unscopables_sym)
   let async_iterator_sym = new_symbol(Some("Symbol.asyncIterator"))
   well_known_async_iterator_sym.val = Some(async_iterator_sym)
 
@@ -4559,7 +4704,7 @@ fn setup_function_builtins(env : Environment) -> Unit {
     Object({
       properties: bprops,
       symbol_properties: {},
-      prototype: Null,
+      prototype: get_func_proto(),
       callable: Some(BoundFunc(this_val, bind_this, bound_args)),
       class_name: "Function",
       descriptors: { "name": nf_desc, "length": nf_desc },

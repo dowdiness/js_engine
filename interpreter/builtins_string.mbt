@@ -511,43 +511,37 @@ pub fn get_string_method(
     "split" => {
       let str = s
       make_native_func_with_length("split", 2, fn(args) raise {
-        // Handle undefined separator - return array with whole string
-        if args.length() == 0 {
-          return Array({ elements: [String_(str)] })
-        }
-        match args[0] {
-          Undefined => return Array({ elements: [String_(str)] })
-          _ => ()
-        }
-        // Per spec: check for [Symbol.split] method on the argument
-        match args[0] {
-          Object(data) => {
-            let split_sym = get_split_symbol()
-            match data.symbol_properties.get(split_sym.id) {
-              Some(Object(fn_data)) =>
-                match fn_data.callable {
-                  Some(MethodCallable(_, f)) => {
-                    let limit = if args.length() > 1 {
-                      args[1]
-                    } else {
-                      Undefined
+        // Per spec: check for [Symbol.split] method on the argument first
+        if args.length() > 0 {
+          match args[0] {
+            Object(data) => {
+              let split_sym = get_split_symbol()
+              match data.symbol_properties.get(split_sym.id) {
+                Some(Object(fn_data)) =>
+                  match fn_data.callable {
+                    Some(MethodCallable(_, f)) => {
+                      let limit = if args.length() > 1 {
+                        args[1]
+                      } else {
+                        Undefined
+                      }
+                      return f(args[0], [String_(str), limit])
                     }
-                    return f(args[0], [String_(str), limit])
-                  }
-                  Some(NativeCallable(_, f)) => {
-                    let limit = if args.length() > 1 {
-                      args[1]
-                    } else {
-                      Undefined
+                    Some(NativeCallable(_, f)) => {
+                      let limit = if args.length() > 1 {
+                        args[1]
+                      } else {
+                        Undefined
+                      }
+                      return f([String_(str), limit])
                     }
-                    return f([String_(str), limit])
+                    _ => ()
                   }
-                  _ => ()
-                }
-              _ => ()
+                _ => ()
+              }
             }
+            _ => ()
           }
-          _ => ()
         }
         // Get limit parameter (default: 2^32 - 1 per ES spec)
         let limit : Int64 = if args.length() > 1 {
@@ -568,6 +562,14 @@ pub fn get_string_method(
         // If limit is 0, return empty array
         if limit == 0L {
           return Array({ elements: [] })
+        }
+        // Handle undefined separator - return array with whole string
+        if args.length() == 0 {
+          return Array({ elements: [String_(str)] })
+        }
+        match args[0] {
+          Undefined => return Array({ elements: [String_(str)] })
+          _ => ()
         }
         let sep = to_js_string(args[0])
         // Empty separator splits into individual characters

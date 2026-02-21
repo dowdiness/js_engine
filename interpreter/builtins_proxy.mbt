@@ -127,8 +127,15 @@ fn setup_proxy_builtins(env : Environment) -> Unit {
   })
 
   // Proxy.revocable(target, handler)
+  let revocable_props : Map[String, Value] = {}
+  revocable_props["name"] = String_("revocable")
+  revocable_props["length"] = Number(2.0)
+  let nf_desc : PropDescriptor = { writable: false, enumerable: false, configurable: true, getter: None, setter: None }
+  let revocable_descs : Map[String, PropDescriptor] = {}
+  revocable_descs["name"] = nf_desc
+  revocable_descs["length"] = nf_desc
   let revocable_func : Value = Object({
-    properties: {},
+    properties: revocable_props,
     symbol_properties: {},
     prototype: Null,
     callable: Some(
@@ -202,7 +209,10 @@ fn setup_proxy_builtins(env : Environment) -> Unit {
 
   // Add Proxy.revocable as a static method
   match proxy_ctor {
-    Object(data) => data.properties["revocable"] = revocable_func
+    Object(data) => {
+      data.properties["revocable"] = revocable_func
+      data.descriptors["revocable"] = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+    }
     _ => ()
   }
 

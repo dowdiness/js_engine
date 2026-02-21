@@ -1346,7 +1346,7 @@ pub fn make_regexp_object(pattern : String, flags : String) -> Value {
 }
 
 ///|
-fn substring(chars : Array[Char], start : Int, end_ : Int) -> String {
+pub fn substring(chars : Array[Char], start : Int, end_ : Int) -> String {
   let buf = StringBuilder::new()
   for i = start; i < end_; i = i + 1 {
     buf.write_char(chars[i])

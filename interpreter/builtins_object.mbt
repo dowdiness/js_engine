@@ -266,44 +266,46 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
       Set(_) => String_("[object Set]")
       Promise(_) => String_("[object Promise]")
       Proxy(_) => String_("[object Object]")
-      Object(data) =>
-        if data.class_name == "Function" {
-          String_("[object Function]")
-        } else if data.class_name == "RegExp" {
-          String_("[object RegExp]")
-        } else if data.class_name == "Error" ||
-          data.class_name == "TypeError" ||
-          data.class_name == "ReferenceError" ||
-          data.class_name == "SyntaxError" ||
-          data.class_name == "RangeError" ||
-          data.class_name == "URIError" ||
-          data.class_name == "EvalError" ||
-          data.class_name == "AggregateError" {
-          String_("[object Error]")
-        } else if data.class_name == "Date" {
-          String_("[object Date]")
-        } else if data.class_name == "Map" {
-          String_("[object Map]")
-        } else if data.class_name == "Set" {
-          String_("[object Set]")
-        } else if data.class_name == "Promise" {
-          String_("[object Promise]")
-        } else if data.class_name == "Arguments" {
-          String_("[object Arguments]")
-        } else if data.class_name == "Number" {
-          String_("[object Number]")
-        } else if data.class_name == "String" {
-          String_("[object String]")
-        } else if data.class_name == "Boolean" {
-          String_("[object Boolean]")
-        } else {
-          // Check Symbol.toStringTag on object and prototype chain
-          let tag = get_tostringtag_value(data)
-          match tag {
-            Some(t) => String_("[object \{t}]")
-            None => String_("[object Object]")
-          }
+      Object(data) => {
+        // Per spec, always check Symbol.toStringTag first (it overrides built-in tags)
+        let tag = get_tostringtag_value(data)
+        match tag {
+          Some(t) => String_("[object \{t}]")
+          None =>
+            if data.class_name == "Function" {
+              String_("[object Function]")
+            } else if data.class_name == "RegExp" {
+              String_("[object RegExp]")
+            } else if data.class_name == "Error" ||
+              data.class_name == "TypeError" ||
+              data.class_name == "ReferenceError" ||
+              data.class_name == "SyntaxError" ||
+              data.class_name == "RangeError" ||
+              data.class_name == "URIError" ||
+              data.class_name == "EvalError" ||
+              data.class_name == "AggregateError" {
+              String_("[object Error]")
+            } else if data.class_name == "Date" {
+              String_("[object Date]")
+            } else if data.class_name == "Map" {
+              String_("[object Map]")
+            } else if data.class_name == "Set" {
+              String_("[object Set]")
+            } else if data.class_name == "Promise" {
+              String_("[object Promise]")
+            } else if data.class_name == "Arguments" {
+              String_("[object Arguments]")
+            } else if data.class_name == "Number" {
+              String_("[object Number]")
+            } else if data.class_name == "String" {
+              String_("[object String]")
+            } else if data.class_name == "Boolean" {
+              String_("[object Boolean]")
+            } else {
+              String_("[object Object]")
+            }
         }
+      }
     }
   })
   obj_proto_props["valueOf"] = make_interp_method_func("valueOf", 0, fn(interp, this_val, _args) raise {
@@ -4859,6 +4861,9 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
   array_proto_descs["toSorted"] = method_desc
   array_proto_descs["toSpliced"] = method_desc
   array_proto_descs["with"] = method_desc
+  // Array.prototype.length = 0 (per spec, Array.prototype is an Array with length 0)
+  array_proto_props["length"] = Number(0.0)
+  array_proto_descs["length"] = { writable: true, enumerable: false, configurable: false, getter: None, setter: None }
   let array_proto : Value = Object({
     properties: array_proto_props,
     symbol_properties: {},

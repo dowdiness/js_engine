@@ -484,6 +484,19 @@ pub fn get_matchall_symbol() -> SymbolData {
 }
 
 ///|
+/// Well-known Symbol.unscopables - stored globally for with statement support
+pub let well_known_unscopables_sym : Ref[SymbolData?] = { val: None }
+
+///|
+/// Get the well-known Symbol.unscopables
+pub fn get_unscopables_symbol() -> SymbolData {
+  match well_known_unscopables_sym.val {
+    Some(sym) => sym
+    None => abort("Symbol.unscopables not initialized")
+  }
+}
+
+///|
 /// Get the Symbol.toStringTag value by walking the prototype chain.
 /// Checks symbol properties and evaluates getter descriptors if present.
 /// Per spec, errors thrown by @@toStringTag getters propagate to the caller.
@@ -2019,6 +2032,10 @@ pub fn sort_property_keys(props : Map[String, Value]) -> Array[String] {
   let int_keys : Array[String] = []
   let str_keys : Array[String] = []
   props.each(fn(k, _v) {
+    // Skip internal slots (e.g., [[BooleanData]], [[NumberData]], [[StringData]])
+    if k.has_prefix("[[") {
+      return
+    }
     let idx = @strconv.parse_int(k) catch { _ => -1 }
     if idx >= 0 && idx.to_string() == k {
       int_keys.push(k)
