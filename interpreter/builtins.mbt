@@ -1812,6 +1812,10 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
 
     // Iterator should also have Symbol.iterator returning itself
     let iter_symbol_props : Map[Int, Value] = {}
+    let tostringtag_sym = get_tostringtag_symbol()
+    iter_symbol_props[tostringtag_sym.id] = String_("Array Iterator")
+    let iter_symbol_descs : Map[Int, PropDescriptor] = {}
+    iter_symbol_descs[tostringtag_sym.id] = { writable: false, enumerable: false, configurable: true, getter: None, setter: None }
     let iter_obj = Object({
       properties: iter_props,
       symbol_properties: iter_symbol_props,
@@ -1819,7 +1823,7 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
       callable: None,
       class_name: "Array Iterator",
       descriptors: {},
-      symbol_descriptors: {},
+      symbol_descriptors: iter_symbol_descs,
       extensible: true,
     })
 
@@ -4633,6 +4637,8 @@ fn json_escape_string(s : String) -> String {
       '\n' => buf.write_string("\\n")
       '\r' => buf.write_string("\\r")
       '\t' => buf.write_string("\\t")
+      _ if c.to_int() == 0x08 => buf.write_string("\\b")
+      _ if c.to_int() == 0x0C => buf.write_string("\\f")
       _ =>
         if c.to_int() < 32 {
           buf.write_string("\\u")

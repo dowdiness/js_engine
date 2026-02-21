@@ -2930,6 +2930,10 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               // Only iterate enumerable own properties of descriptors object
               // Use get_property to invoke getters on the Properties object
               desc_obj.properties.each(fn(prop_name, _raw_val) raise {
+                // Skip internal slots
+                if prop_name.has_prefix("[[") {
+                  return
+                }
                 let desc_enumerable = match
                   desc_obj.descriptors.get(prop_name) {
                   Some(d) => d.enumerable

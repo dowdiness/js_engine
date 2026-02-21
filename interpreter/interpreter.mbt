@@ -8961,7 +8961,7 @@ fn make_arguments_object(
   Object({
     properties: new_args_props,
     symbol_properties: new_args_sym_props,
-    prototype: Null,
+    prototype: get_obj_proto(),
     callable: None,
     class_name: "Arguments",
     descriptors: new_args_descs,
