@@ -1735,20 +1735,30 @@ fn expr_to_pattern(expr : @ast.Expr) -> @ast.Pattern raise Error {
           continue
         }
         // key: value => { key, value: Pattern, default_val }
-        // Extract string key from the key expression
-        let key_str : String = match prop.key {
-          StringLit(s, _, _) => s
-          Ident(s, _) => s
-          _ =>
-            raise @errors.SyntaxError(
-              message="Invalid key in destructuring pattern",
-            )
+        // Extract string key from the key expression, or mark as computed
+        let (key_str, computed_key) : (String, @ast.Expr?) = if prop.computed {
+          // Computed property key: { [expr]: pattern } = obj
+          ("", Some(prop.key))
+        } else {
+          match prop.key {
+            StringLit(s, _, _) => (s, None)
+            Ident(s, _) => (s, None)
+            NumberLit(n, _) => {
+              let i = n.to_int()
+              let name = if i.to_double() == n { i.to_string() } else { n.to_string() }
+              (name, None)
+            }
+            _ =>
+              raise @errors.SyntaxError(
+                message="Invalid key in destructuring pattern",
+              )
+          }
         }
         // Convert value expression to pattern
         // Assign(name, default) becomes DefaultPat(IdentPat(name), default)
         // which correctly handles both shorthand {x = 5} and non-shorthand {a: b = 1}
         let pat = expr_to_pattern(prop.value)
-        prop_pats.push({ key: key_str, value: pat, default_val: None })
+        prop_pats.push({ key: key_str, value: pat, default_val: None, computed_key })
       }
       ObjectPat(prop_pats, rest)
     }

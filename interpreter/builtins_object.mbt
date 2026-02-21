@@ -430,11 +430,30 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     }
   })
   // Annex B: __defineGetter__, __defineSetter__, __lookupGetter__, __lookupSetter__
-  obj_proto_props["__defineGetter__"] = make_method_func("__defineGetter__", 2, fn(this_val, args) {
-    let prop = if args.length() > 0 { args[0].to_string() } else { "" }
+  obj_proto_props["__defineGetter__"] = make_interp_method_func("__defineGetter__", 2, fn(interp, this_val, args) raise {
+    let o = to_object(this_val, interp)
     let getter = if args.length() > 1 { args[1] } else { Undefined }
-    match this_val {
+    if not(is_callable(getter)) {
+      raise @errors.TypeError(message="getter must be a function")
+    }
+    let prop = if args.length() > 0 { to_js_string(args[0]) } else { "" }
+    match o {
       Object(data) => {
+        // Check if property exists and is non-configurable
+        match data.descriptors.get(prop) {
+          Some(d) =>
+            if not(d.configurable) {
+              raise @errors.TypeError(
+                message="Cannot redefine property: \{prop}",
+              )
+            }
+          None => ()
+        }
+        if not(data.extensible) && not(data.properties.contains(prop)) {
+          raise @errors.TypeError(
+            message="Cannot define property on a non-extensible object",
+          )
+        }
         let existing_setter : Value? = match data.descriptors.get(prop) {
           Some(d) => d.setter
           None => None
@@ -449,11 +468,29 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     }
     Undefined
   })
-  obj_proto_props["__defineSetter__"] = make_method_func("__defineSetter__", 2, fn(this_val, args) {
-    let prop = if args.length() > 0 { args[0].to_string() } else { "" }
+  obj_proto_props["__defineSetter__"] = make_interp_method_func("__defineSetter__", 2, fn(interp, this_val, args) raise {
+    let o = to_object(this_val, interp)
     let setter = if args.length() > 1 { args[1] } else { Undefined }
-    match this_val {
+    if not(is_callable(setter)) {
+      raise @errors.TypeError(message="setter must be a function")
+    }
+    let prop = if args.length() > 0 { to_js_string(args[0]) } else { "" }
+    match o {
       Object(data) => {
+        match data.descriptors.get(prop) {
+          Some(d) =>
+            if not(d.configurable) {
+              raise @errors.TypeError(
+                message="Cannot redefine property: \{prop}",
+              )
+            }
+          None => ()
+        }
+        if not(data.extensible) && not(data.properties.contains(prop)) {
+          raise @errors.TypeError(
+            message="Cannot define property on a non-extensible object",
+          )
+        }
         let existing_getter : Value? = match data.descriptors.get(prop) {
           Some(d) => d.getter
           None => None
@@ -468,9 +505,9 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     }
     Undefined
   })
-  obj_proto_props["__lookupGetter__"] = make_method_func("__lookupGetter__", 1, fn(this_val, args) {
-    let prop = if args.length() > 0 { args[0].to_string() } else { "" }
-    let mut current = this_val
+  obj_proto_props["__lookupGetter__"] = make_interp_method_func("__lookupGetter__", 1, fn(interp, this_val, args) raise {
+    let prop = if args.length() > 0 { to_js_string(args[0]) } else { "" }
+    let mut current = to_object(this_val, interp)
     while true {
       match current {
         Object(data) => {
@@ -489,9 +526,9 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     }
     Undefined
   })
-  obj_proto_props["__lookupSetter__"] = make_method_func("__lookupSetter__", 1, fn(this_val, args) {
-    let prop = if args.length() > 0 { args[0].to_string() } else { "" }
-    let mut current = this_val
+  obj_proto_props["__lookupSetter__"] = make_interp_method_func("__lookupSetter__", 1, fn(interp, this_val, args) raise {
+    let prop = if args.length() > 0 { to_js_string(args[0]) } else { "" }
+    let mut current = to_object(this_val, interp)
     while true {
       match current {
         Object(data) => {

@@ -858,9 +858,28 @@ fn Parser::parse_object_pattern(self : Parser) -> @ast.Pattern raise Error {
       rest = Some(self.parse_pattern())
       break
     }
-    let key = self.expect_ident()
+    // Parse key: identifier, string literal, number literal, or computed [expr]
+    let (key, computed_key) : (String, @ast.Expr?) = match self.peek_kind() {
+      LBracket => {
+        let _ = self.advance()
+        let key_expr = self.parse_assignment()
+        let _ = self.expect(RBracket)
+        ("", Some(key_expr))
+      }
+      String_(s) => {
+        let _ = self.advance()
+        (s, None)
+      }
+      Number(n) => {
+        let _ = self.advance()
+        let i = n.to_int()
+        let name = if i.to_double() == n { i.to_string() } else { n.to_string() }
+        (name, None)
+      }
+      _ => (self.expect_ident(), None)
+    }
     let (value, default_val) : (@ast.Pattern, @ast.Expr?) = if self.eat(Colon) {
-      // { key: pattern }
+      // { key: pattern } or { [expr]: pattern }
       let pat = self.parse_pattern()
       let def : @ast.Expr? = if self.eat(Assign) {
         Some(self.parse_assignment())
@@ -877,7 +896,7 @@ fn Parser::parse_object_pattern(self : Parser) -> @ast.Pattern raise Error {
       }
       (IdentPat(key), def)
     }
-    props.push({ key, value, default_val })
+    props.push({ key, value, default_val, computed_key })
     if not(self.at(RBrace)) {
       let _ = self.expect(Comma)
     }

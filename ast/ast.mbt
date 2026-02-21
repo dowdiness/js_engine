@@ -174,6 +174,7 @@ pub(all) struct PropPat {
   key : String
   value : Pattern
   default_val : Expr?
+  computed_key : Expr? // For computed property keys: { [expr]: pattern }
 } derive(Show, Eq)
 
 ///|

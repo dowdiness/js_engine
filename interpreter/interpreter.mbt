@@ -3725,8 +3725,16 @@ fn Interpreter::bind_pattern(
       }
       let used_keys : Map[String, Bool] = {}
       for prop in props {
-        used_keys[prop.key] = true
-        let val : Value = self.get_property(value, prop.key, @token.Loc::default())
+        // Evaluate computed key if present, otherwise use static key
+        let key_str : String = match prop.computed_key {
+          Some(key_expr) => {
+            let key_val = self.eval_expr(key_expr, env)
+            to_js_string(key_val)
+          }
+          None => prop.key
+        }
+        used_keys[key_str] = true
+        let val : Value = self.get_property(value, key_str, @token.Loc::default())
         let final_val : Value = if val is Undefined {
           match prop.default_val {
             Some(default_expr) => {
@@ -3972,8 +3980,16 @@ fn Interpreter::assign_pattern(
       }
       let used_keys : Map[String, Bool] = {}
       for prop in props {
-        used_keys[prop.key] = true
-        let val : Value = self.get_property(value, prop.key, @token.Loc::default())
+        // Evaluate computed key if present, otherwise use static key
+        let key_str : String = match prop.computed_key {
+          Some(key_expr) => {
+            let key_val = self.eval_expr(key_expr, env)
+            to_js_string(key_val)
+          }
+          None => prop.key
+        }
+        used_keys[key_str] = true
+        let val : Value = self.get_property(value, key_str, @token.Loc::default())
         let final_val : Value = if val is Undefined {
           match prop.default_val {
             Some(default_expr) => {

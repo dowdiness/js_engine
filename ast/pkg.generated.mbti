@@ -176,6 +176,7 @@ pub(all) struct PropPat {
   key : String
   value : Pattern
   default_val : Expr?
+  computed_key : Expr?
 }
 pub impl Eq for PropPat
 pub impl Show for PropPat
