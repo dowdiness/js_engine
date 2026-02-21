@@ -355,37 +355,29 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
     "entries" => {
       let arr = data
       make_native_func("entries", fn(_args) {
-        // Returns array of [index, value] pairs (basic non-iterator version)
         let result : Array[Value] = []
         for i = 0; i < arr.elements.length(); i = i + 1 {
           result.push(
             Array({ elements: [Number(i.to_double()), arr.elements[i]] }),
           )
         }
-        Array({ elements: result })
+        make_array_iterator_value({ elements: result })
       })
     }
     "keys" => {
       let arr = data
       make_native_func("keys", fn(_args) {
-        // Returns array of keys (basic non-iterator version)
         let result : Array[Value] = []
         for i = 0; i < arr.elements.length(); i = i + 1 {
           result.push(Number(i.to_double()))
         }
-        Array({ elements: result })
+        make_array_iterator_value({ elements: result })
       })
     }
     "values" => {
       let arr = data
       make_native_func("values", fn(_args) {
-        // Returns array of values (basic non-iterator version)
-        // Return a copy to prevent mutation of the original
-        let result : Array[Value] = []
-        for el in arr.elements {
-          result.push(el)
-        }
-        Array({ elements: result })
+        make_array_iterator_value(arr)
       })
     }
     "splice" => {

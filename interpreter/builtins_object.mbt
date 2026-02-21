@@ -809,7 +809,69 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           obj
         }),
         "assign": make_static_func_with_length("assign", 2, fn(args) raise {
-          let target = if args.length() > 0 { args[0] } else { Undefined }
+          let raw_target = if args.length() > 0 { args[0] } else { Undefined }
+          // Step 1: ToObject(target) — throw for null/undefined, wrap primitives
+          let target : Value = match raw_target {
+            Null | Undefined =>
+              raise @errors.TypeError(
+                message="Cannot convert undefined or null to object",
+              )
+            Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) =>
+              raw_target
+            Number(_) =>
+              Object({
+                properties: {},
+                symbol_properties: {},
+                prototype: Null,
+                callable: None,
+                class_name: "Number",
+                descriptors: {},
+                symbol_descriptors: {},
+                extensible: true,
+              })
+            Bool(_) =>
+              Object({
+                properties: {},
+                symbol_properties: {},
+                prototype: Null,
+                callable: None,
+                class_name: "Boolean",
+                descriptors: {},
+                symbol_descriptors: {},
+                extensible: true,
+              })
+            String_(s) => {
+              let props : Map[String, Value] = {}
+              props["length"] = Number(s.length().to_double())
+              let chars = s.to_array()
+              for i = 0; i < chars.length(); i = i + 1 {
+                let buf = StringBuilder::new()
+                buf.write_char(chars[i])
+                props[i.to_string()] = String_(buf.to_string())
+              }
+              Object({
+                properties: props,
+                symbol_properties: {},
+                prototype: Null,
+                callable: None,
+                class_name: "String",
+                descriptors: {},
+                symbol_descriptors: {},
+                extensible: true,
+              })
+            }
+            Symbol(_) =>
+              Object({
+                properties: {},
+                symbol_properties: {},
+                prototype: Null,
+                callable: None,
+                class_name: "Symbol",
+                descriptors: {},
+                symbol_descriptors: {},
+                extensible: true,
+              })
+          }
           match target {
             Object(data) => {
               for i = 1; i < args.length(); i = i + 1 {
@@ -3381,8 +3443,9 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
   let method_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
 
   // Non-callback methods (using MethodCallable for this-aware dispatch)
-  array_proto_props["push"] = make_method_func("push", 1, fn(this_val, args) {
-        match this_val {
+  array_proto_props["push"] = make_interp_method_func("push", 1, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
+        match o {
           Array(arr) => {
             for arg in args {
               arr.elements.push(arg)
@@ -3390,18 +3453,19 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             Number(arr.elements.length().to_double())
           }
           _ => {
-            let mut len = to_array_like_length(this_val)
+            let mut len = to_array_like_length_interp(o, interp)
             for arg in args {
-              set_array_like_element(this_val, len, arg)
+              set_array_like_element(o, len, arg)
               len = len + 1
             }
-            set_array_like_length(this_val, len)
+            set_array_like_length(o, len)
             Number(len.to_double())
           }
         }
       })
-  array_proto_props["pop"] = make_method_func("pop", 0, fn(this_val, _args) {
-        match this_val {
+  array_proto_props["pop"] = make_interp_method_func("pop", 0, fn(interp, this_val, _args) raise {
+        let o = to_object(this_val, interp)
+        match o {
           Array(arr) =>
             if arr.elements.length() == 0 {
               Undefined
@@ -3409,22 +3473,23 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               arr.elements.pop() |> Option::unwrap
             }
           _ => {
-            let len = to_array_like_length(this_val)
+            let len = to_array_like_length_interp(o, interp)
             if len == 0 {
-              set_array_like_length(this_val, 0)
+              set_array_like_length(o, 0)
               Undefined
             } else {
               let new_len = len - 1
-              let val = get_array_like_element(this_val, new_len)
-              delete_array_like_element(this_val, new_len)
-              set_array_like_length(this_val, new_len)
+              let val = get_array_like_element(o, new_len)
+              delete_array_like_element(o, new_len)
+              set_array_like_length(o, new_len)
               val
             }
           }
         }
       })
-  array_proto_props["shift"] = make_method_func("shift", 0, fn(this_val, _args) {
-        match this_val {
+  array_proto_props["shift"] = make_interp_method_func("shift", 0, fn(interp, this_val, _args) raise {
+        let o = to_object(this_val, interp)
+        match o {
           Array(arr) => {
             if arr.elements.length() == 0 {
               return Undefined
@@ -3443,23 +3508,24 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             first
           }
           _ => {
-            let len = to_array_like_length(this_val)
+            let len = to_array_like_length_interp(o, interp)
             if len == 0 {
-              set_array_like_length(this_val, 0)
+              set_array_like_length(o, 0)
               return Undefined
             }
-            let first = get_array_like_element(this_val, 0)
+            let first = get_array_like_element(o, 0)
             for i = 1; i < len; i = i + 1 {
-              set_array_like_element(this_val, i - 1, get_array_like_element(this_val, i))
+              set_array_like_element(o, i - 1, get_array_like_element(o, i))
             }
-            delete_array_like_element(this_val, len - 1)
-            set_array_like_length(this_val, len - 1)
+            delete_array_like_element(o, len - 1)
+            set_array_like_length(o, len - 1)
             first
           }
         }
       })
-  array_proto_props["unshift"] = make_method_func("unshift", 1, fn(this_val, args) {
-        match this_val {
+  array_proto_props["unshift"] = make_interp_method_func("unshift", 1, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
+        match o {
           Array(arr) => {
             let old : Array[Value] = []
             for el in arr.elements {
@@ -3477,24 +3543,25 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             Number(arr.elements.length().to_double())
           }
           _ => {
-            let len = to_array_like_length(this_val)
+            let len = to_array_like_length_interp(o, interp)
             let argc = args.length()
             // Shift existing elements up by argc
             for i = len - 1; i >= 0; i = i - 1 {
-              set_array_like_element(this_val, i + argc, get_array_like_element(this_val, i))
+              set_array_like_element(o, i + argc, get_array_like_element(o, i))
             }
             // Insert new elements at the beginning
             for i = 0; i < argc; i = i + 1 {
-              set_array_like_element(this_val, i, args[i])
+              set_array_like_element(o, i, args[i])
             }
             let new_len = len + argc
-            set_array_like_length(this_val, new_len)
+            set_array_like_length(o, new_len)
             Number(new_len.to_double())
           }
         }
       })
-  array_proto_props["join"] = make_method_func("join", 1, fn(this_val, args) {
-        let len = to_array_like_length(this_val)
+  array_proto_props["join"] = make_interp_method_func("join", 1, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
+        let len = to_array_like_length_interp(o, interp)
         let sep = if args.length() > 0 {
           match args[0] {
             Undefined => ","
@@ -3505,7 +3572,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }
         let parts : Array[String] = []
         for i = 0; i < len; i = i + 1 {
-          let v = get_array_like_element(this_val, i)
+          let v = get_array_like_element(o, i)
           match v {
             Null | Undefined => parts.push("")
             _ => parts.push(v.to_string())
@@ -3513,8 +3580,9 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }
         String_(parts.join(sep))
       })
-  array_proto_props["indexOf"] = make_method_func("indexOf", 1, fn(this_val, args) raise {
-        let len = to_array_like_length(this_val)
+  array_proto_props["indexOf"] = make_interp_method_func("indexOf", 1, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
+        let len = to_array_like_length_interp(o, interp)
         let search = if args.length() > 0 { args[0] } else { Undefined }
         let from_idx = if args.length() > 1 {
           to_number(args[1]).to_int()
@@ -3532,16 +3600,17 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           from_idx
         }
         for i = start; i < len; i = i + 1 {
-          if has_array_like_element(this_val, i) {
-            if strict_equal_val(get_array_like_element(this_val, i), search) {
+          if has_array_like_element(o, i) {
+            if strict_equal_val(get_array_like_element(o, i), search) {
               return Number(i.to_double())
             }
           }
         }
         Number(-1.0)
       })
-  array_proto_props["lastIndexOf"] = make_method_func("lastIndexOf", 1, fn(this_val, args) raise {
-        let len = to_array_like_length(this_val)
+  array_proto_props["lastIndexOf"] = make_interp_method_func("lastIndexOf", 1, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
+        let len = to_array_like_length_interp(o, interp)
         let search = if args.length() > 0 { args[0] } else { Undefined }
         let start = if args.length() > 1 {
           to_number(args[1]).to_int()
@@ -3556,16 +3625,17 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           start
         }
         for i = from; i >= 0; i = i - 1 {
-          if has_array_like_element(this_val, i) {
-            if strict_equal_val(get_array_like_element(this_val, i), search) {
+          if has_array_like_element(o, i) {
+            if strict_equal_val(get_array_like_element(o, i), search) {
               return Number(i.to_double())
             }
           }
         }
         Number(-1.0)
       })
-  array_proto_props["includes"] = make_method_func("includes", 1, fn(this_val, args) raise {
-        let len = to_array_like_length(this_val)
+  array_proto_props["includes"] = make_interp_method_func("includes", 1, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
+        let len = to_array_like_length_interp(o, interp)
         let search = if args.length() > 0 { args[0] } else { Undefined }
         let from_idx = if args.length() > 1 {
           to_number(args[1]).to_int()
@@ -3583,14 +3653,15 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           from_idx
         }
         for i = start; i < len; i = i + 1 {
-          if same_value_zero(get_array_like_element(this_val, i), search) {
+          if same_value_zero(get_array_like_element(o, i), search) {
             return Bool(true)
           }
         }
         Bool(false)
       })
-  array_proto_props["slice"] = make_method_func("slice", 2, fn(this_val, args) raise {
-        let alen = to_array_like_length(this_val)
+  array_proto_props["slice"] = make_interp_method_func("slice", 2, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
+        let alen = to_array_like_length_interp(o, interp)
         let mut start = if args.length() > 0 {
           to_number(args[0]).to_int()
         } else {
@@ -3621,7 +3692,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }
         let result : Array[Value] = []
         for i = start; i < end; i = i + 1 {
-          result.push(get_array_like_element(this_val, i))
+          result.push(get_array_like_element(o, i))
         }
         Array({ elements: result })
       })
@@ -3688,31 +3759,33 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }
         Array({ elements: result })
       })
-  array_proto_props["reverse"] = make_method_func("reverse", 0, fn(this_val, _args) {
-        match this_val {
+  array_proto_props["reverse"] = make_interp_method_func("reverse", 0, fn(interp, this_val, _args) raise {
+        let o = to_object(this_val, interp)
+        match o {
           Array(arr) => {
             arr.elements.rev_in_place()
             Array(arr)
           }
           _ => {
-            let len = to_array_like_length(this_val)
+            let len = to_array_like_length_interp(o, interp)
             let mut lower = 0
             let mut upper = len - 1
             while lower < upper {
-              let lower_val = get_array_like_element(this_val, lower)
-              let upper_val = get_array_like_element(this_val, upper)
-              set_array_like_element(this_val, lower, upper_val)
-              set_array_like_element(this_val, upper, lower_val)
+              let lower_val = get_array_like_element(o, lower)
+              let upper_val = get_array_like_element(o, upper)
+              set_array_like_element(o, lower, upper_val)
+              set_array_like_element(o, upper, lower_val)
               lower = lower + 1
               upper = upper - 1
             }
-            this_val
+            o
           }
         }
       })
-  array_proto_props["fill"] = make_method_func("fill", 1, fn(this_val, args) raise {
+  array_proto_props["fill"] = make_interp_method_func("fill", 1, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
         let fill_val = if args.length() > 0 { args[0] } else { Undefined }
-        let alen = to_array_like_length(this_val)
+        let alen = to_array_like_length_interp(o, interp)
         let mut start = if args.length() > 1 {
           to_number(args[1]).to_int()
         } else {
@@ -3745,24 +3818,27 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           end = alen
         }
         for i = start; i < end; i = i + 1 {
-          set_array_like_element(this_val, i, fill_val)
+          set_array_like_element(o, i, fill_val)
         }
-        this_val
+        o
       })
-  array_proto_props["toString"] = make_method_func("toString", 0, fn(this_val, _args) {
-        let len = to_array_like_length(this_val)
-        let parts : Array[String] = []
-        for i = 0; i < len; i = i + 1 {
-          let v = get_array_like_element(this_val, i)
-          match v {
-            Null | Undefined => parts.push("")
-            _ => parts.push(v.to_string())
+  array_proto_props["toString"] = make_interp_method_func("toString", 0, fn(interp, this_val, _args) raise {
+        let o = to_object(this_val, interp)
+        // Per spec, toString calls join if available, otherwise Object.prototype.toString
+        let join_fn = interp.get_property(o, "join", @token.Loc::default())
+        if is_callable(join_fn) {
+          interp.call_value(join_fn, o, [], @token.Loc::default())
+        } else {
+          let cls = match o {
+            Object(d) => d.class_name
+            _ => "Object"
           }
+          String_("[object " + cls + "]")
         }
-        String_(parts.join(","))
       })
-  array_proto_props["at"] = make_method_func("at", 1, fn(this_val, args) raise {
-        let len = to_array_like_length(this_val)
+  array_proto_props["at"] = make_interp_method_func("at", 1, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
+        let len = to_array_like_length_interp(o, interp)
         let idx = if args.length() > 0 {
           to_number(args[0]).to_int()
         } else {
@@ -3770,19 +3846,29 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }
         let actual_idx = if idx < 0 { len + idx } else { idx }
         if actual_idx >= 0 && actual_idx < len {
-          get_array_like_element(this_val, actual_idx)
+          get_array_like_element(o, actual_idx)
         } else {
           Undefined
         }
       })
-  array_proto_props["toLocaleString"] = make_method_func("toLocaleString", 0, fn(this_val, _args) {
-        let len = to_array_like_length(this_val)
+  array_proto_props["toLocaleString"] = make_interp_method_func("toLocaleString", 0, fn(interp, this_val, _args) raise {
+        let o = to_object(this_val, interp)
+        let len = to_array_like_length_interp(o, interp)
         let parts : Array[String] = []
         for i = 0; i < len; i = i + 1 {
-          let v = get_array_like_element(this_val, i)
+          let v = get_array_like_element(o, i)
           match v {
             Null | Undefined => parts.push("")
-            _ => parts.push(v.to_string())
+            _ => {
+              // Per spec, call toLocaleString on each element
+              let tls = interp.get_property(v, "toLocaleString", @token.Loc::default())
+              if is_callable(tls) {
+                let result = interp.call_value(tls, v, [], @token.Loc::default())
+                parts.push(to_js_string(result))
+              } else {
+                parts.push(v.to_string())
+              }
+            }
           }
         }
         String_(parts.join(","))
@@ -4189,7 +4275,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
         }
       })
-  array_proto_props["flat"] = make_method_func("flat", 0, fn(this_val, args) raise {
+  array_proto_props["flat"] = make_interp_method_func("flat", 0, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
         let depth = if args.length() > 0 {
           match args[0] {
             Undefined => 1
@@ -4198,26 +4285,27 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         } else {
           1
         }
-        let elements = to_array_like_elements(this_val)
+        let elements = to_array_like_elements(o)
         let result : Array[Value] = []
         flatten_array_val(elements, depth, result)
         Array({ elements: result })
       })
   array_proto_props["flatMap"] = make_interp_method_func("flatMap", 1, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
         let callback = if args.length() > 0 { args[0] } else { Undefined }
         if not(is_callable(callback)) {
           raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
         }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
-        let len = to_array_like_length_interp(this_val, interp)
+        let len = to_array_like_length_interp(o, interp)
         let result : Array[Value] = []
         for i = 0; i < len; i = i + 1 {
-          let el = get_array_like_element(this_val, i)
+          let el = get_array_like_element(o, i)
           let val = interp.call_value(
             callback,
             this_arg,
-            [el, Number(i.to_double()), this_val],
+            [el, Number(i.to_double()), o],
             loc,
           )
           match val {
@@ -4230,8 +4318,9 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }
         Array({ elements: result })
       })
-  array_proto_props["splice"] = make_method_func("splice", 2, fn(this_val, args) raise {
-        let alen = to_array_like_length(this_val)
+  array_proto_props["splice"] = make_interp_method_func("splice", 2, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
+        let alen = to_array_like_length_interp(o, interp)
         let mut start = if args.length() > 0 {
           to_number(args[0]).to_int()
         } else {
@@ -4263,7 +4352,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }
         let removed : Array[Value] = []
         for i = start; i < start + del_count; i = i + 1 {
-          removed.push(get_array_like_element(this_val, i))
+          removed.push(get_array_like_element(o, i))
         }
         let new_items : Array[Value] = []
         for i = 2; i < args.length(); i = i + 1 {
@@ -4271,7 +4360,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }
         let items_count = new_items.length()
         // For Array type, use direct element manipulation
-        match this_val {
+        match o {
           Array(arr) => {
             let tail : Array[Value] = []
             for i = start + del_count; i < alen; i = i + 1 {
@@ -4292,25 +4381,25 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             if items_count < del_count {
               // Shift left
               for i = start; i < alen - del_count; i = i + 1 {
-                set_array_like_element(this_val, i + items_count, get_array_like_element(this_val, i + del_count))
+                set_array_like_element(o, i + items_count, get_array_like_element(o, i + del_count))
               }
               // Delete trailing elements
               let new_len = alen - del_count + items_count
               for i = new_len; i < alen; i = i + 1 {
-                delete_array_like_element(this_val, i)
+                delete_array_like_element(o, i)
               }
-              set_array_like_length(this_val, new_len)
+              set_array_like_length(o, new_len)
             } else if items_count > del_count {
               // Shift right
               let new_len = alen - del_count + items_count
               for i = alen - 1; i >= start + del_count; i = i - 1 {
-                set_array_like_element(this_val, i + items_count - del_count, get_array_like_element(this_val, i))
+                set_array_like_element(o, i + items_count - del_count, get_array_like_element(o, i))
               }
-              set_array_like_length(this_val, new_len)
+              set_array_like_length(o, new_len)
             }
             // Insert new items
             for i = 0; i < items_count; i = i + 1 {
-              set_array_like_element(this_val, start + i, new_items[i])
+              set_array_like_element(o, start + i, new_items[i])
             }
             if items_count == del_count {
               // Length stays the same, no need to change
@@ -4320,8 +4409,9 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }
         Array({ elements: removed })
       })
-  array_proto_props["copyWithin"] = make_method_func("copyWithin", 2, fn(this_val, args) raise {
-        let len = to_array_like_length(this_val)
+  array_proto_props["copyWithin"] = make_interp_method_func("copyWithin", 2, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
+        let len = to_array_like_length_interp(o, interp)
         let mut target = if args.length() > 0 {
           to_number(args[0]).to_int()
         } else {
@@ -4369,47 +4459,51 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         if count > 0 {
           let temp : Array[Value] = []
           for i = start; i < start + count; i = i + 1 {
-            temp.push(get_array_like_element(this_val, i))
+            temp.push(get_array_like_element(o, i))
           }
           for i = 0; i < count; i = i + 1 {
             if target + i < len {
-              set_array_like_element(this_val, target + i, temp[i])
+              set_array_like_element(o, target + i, temp[i])
             }
           }
         }
-        this_val
+        o
       })
-  array_proto_props["entries"] = make_method_func("entries", 0, fn(this_val, _args) {
-        let len = to_array_like_length(this_val)
+  array_proto_props["entries"] = make_interp_method_func("entries", 0, fn(interp, this_val, _args) raise {
+        let o = to_object(this_val, interp)
+        let len = to_array_like_length_interp(o, interp)
         let result : Array[Value] = []
         for i = 0; i < len; i = i + 1 {
           result.push(
-            Array({ elements: [Number(i.to_double()), get_array_like_element(this_val, i)] }),
+            Array({ elements: [Number(i.to_double()), get_array_like_element(o, i)] }),
           )
         }
-        Array({ elements: result })
+        make_array_iterator_value({ elements: result })
       })
-  array_proto_props["keys"] = make_method_func("keys", 0, fn(this_val, _args) {
-        let len = to_array_like_length(this_val)
+  array_proto_props["keys"] = make_interp_method_func("keys", 0, fn(interp, this_val, _args) raise {
+        let o = to_object(this_val, interp)
+        let len = to_array_like_length_interp(o, interp)
         let result : Array[Value] = []
         for i = 0; i < len; i = i + 1 {
           result.push(Number(i.to_double()))
         }
-        Array({ elements: result })
+        make_array_iterator_value({ elements: result })
       })
-  array_proto_props["values"] = make_method_func("values", 0, fn(this_val, _args) {
-        let len = to_array_like_length(this_val)
+  array_proto_props["values"] = make_interp_method_func("values", 0, fn(interp, this_val, _args) raise {
+        let o = to_object(this_val, interp)
+        let len = to_array_like_length_interp(o, interp)
         let result : Array[Value] = []
         for i = 0; i < len; i = i + 1 {
-          result.push(get_array_like_element(this_val, i))
+          result.push(get_array_like_element(o, i))
         }
-        Array({ elements: result })
+        make_array_iterator_value({ elements: result })
       })
-  array_proto_props["toReversed"] = make_method_func("toReversed", 0, fn(this_val, _args) {
-        let len = to_array_like_length(this_val)
+  array_proto_props["toReversed"] = make_interp_method_func("toReversed", 0, fn(interp, this_val, _args) raise {
+        let o = to_object(this_val, interp)
+        let len = to_array_like_length_interp(o, interp)
         let result : Array[Value] = []
         for i = len - 1; i >= 0; i = i - 1 {
-          result.push(get_array_like_element(this_val, i))
+          result.push(get_array_like_element(o, i))
         }
         Array({ elements: result })
       })
@@ -4496,8 +4590,9 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }
         Array({ elements: result })
       })
-  array_proto_props["toSpliced"] = make_method_func("toSpliced", 2, fn(this_val, args) raise {
-        let len = to_array_like_length(this_val)
+  array_proto_props["toSpliced"] = make_interp_method_func("toSpliced", 2, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
+        let len = to_array_like_length_interp(o, interp)
         let mut start = if args.length() > 0 {
           to_number(args[0]).to_int()
         } else {
@@ -4526,24 +4621,25 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }
         let result : Array[Value] = []
         for i = 0; i < start; i = i + 1 {
-          result.push(get_array_like_element(this_val, i))
+          result.push(get_array_like_element(o, i))
         }
         for i = 2; i < args.length(); i = i + 1 {
           result.push(args[i])
         }
         for i = start + del_count; i < len; i = i + 1 {
-          result.push(get_array_like_element(this_val, i))
+          result.push(get_array_like_element(o, i))
         }
         Array({ elements: result })
       })
-  array_proto_props["with"] = make_method_func("with", 2, fn(this_val, args) raise {
+  array_proto_props["with"] = make_interp_method_func("with", 2, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
         let idx = if args.length() > 0 {
           to_number(args[0]).to_int()
         } else {
           0
         }
         let value = if args.length() > 1 { args[1] } else { Undefined }
-        let len = to_array_like_length(this_val)
+        let len = to_array_like_length_interp(o, interp)
         let actual_idx = if idx < 0 { len + idx } else { idx }
         if actual_idx < 0 || actual_idx >= len {
           raise @errors.RangeError(message="Invalid index")
@@ -4553,7 +4649,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           if i == actual_idx {
             result.push(value)
           } else {
-            result.push(get_array_like_element(this_val, i))
+            result.push(get_array_like_element(o, i))
           }
         }
         Array({ elements: result })
