@@ -236,6 +236,9 @@ pub fn setup_arraybuffer_builtins(env : Environment) -> Unit {
         }
       })
 
+  ab_proto_descs["slice"] = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+  ab_proto_descs["constructor"] = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+
   // Add Symbol.toStringTag
   let tostringtag_sym = get_tostringtag_symbol()
   let ab_proto_sym_props : Map[Int, Value] = {}
@@ -298,6 +301,7 @@ pub fn setup_arraybuffer_builtins(env : Environment) -> Unit {
   }
   ab_ctor_descs["name"] = nf_desc
   ab_ctor_descs["length"] = nf_desc
+  ab_ctor_descs["isView"] = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
 
   let ab_ctor : Value = Object({
     properties: ab_ctor_props,

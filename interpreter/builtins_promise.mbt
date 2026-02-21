@@ -1468,7 +1468,7 @@ pub fn setup_promise(env : Environment) -> Unit {
       }),
     ),
     class_name: "Function",
-    descriptors: { "name": nf_desc, "length": nf_desc },
+    descriptors: { "name": nf_desc, "length": nf_desc, "prototype": { writable: false, enumerable: false, configurable: false, getter: None, setter: None }, "resolve": { writable: true, enumerable: false, configurable: true, getter: None, setter: None }, "reject": { writable: true, enumerable: false, configurable: true, getter: None, setter: None }, "all": { writable: true, enumerable: false, configurable: true, getter: None, setter: None }, "race": { writable: true, enumerable: false, configurable: true, getter: None, setter: None }, "allSettled": { writable: true, enumerable: false, configurable: true, getter: None, setter: None }, "any": { writable: true, enumerable: false, configurable: true, getter: None, setter: None } },
     symbol_descriptors: {},
     extensible: true,
   })

@@ -1383,6 +1383,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     Object(data) => {
       let to_prim_sym = get_toprimitive_symbol()
       data.symbol_properties[to_prim_sym.id] = to_primitive_method
+      data.symbol_descriptors[to_prim_sym.id] = { writable: false, enumerable: false, configurable: true, getter: None, setter: None }
       // Also store [[DateValue]] on proto for "Invalid Date" default
       data.properties["[[DateValue]]"] = Number(0.0 / 0.0)
     }
@@ -1502,7 +1503,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
         }),
       ),
       class_name: "Function",
-      descriptors: { "name": nf_desc, "length": nf_desc },
+      descriptors: { "name": nf_desc, "length": nf_desc, "prototype": { writable: false, enumerable: false, configurable: false, getter: None, setter: None }, "parse": { writable: true, enumerable: false, configurable: true, getter: None, setter: None }, "UTC": { writable: true, enumerable: false, configurable: true, getter: None, setter: None }, "now": { writable: true, enumerable: false, configurable: true, getter: None, setter: None } },
       symbol_descriptors: {},
       extensible: true,
     }),

@@ -984,6 +984,8 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
   reflect_descs["preventExtensions"] = method_desc
   reflect_descs["set"] = method_desc
   reflect_descs["setPrototypeOf"] = method_desc
+  let reflect_sym_descs : Map[Int, PropDescriptor] = {}
+  reflect_sym_descs[tostringtag_sym.id] = { writable: false, enumerable: false, configurable: true, getter: None, setter: None }
   let reflect_obj : Value = Object({
     properties: reflect_props,
     symbol_properties: reflect_sym_props,
@@ -991,7 +993,7 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
     callable: None,
     class_name: "Object",
     descriptors: reflect_descs,
-    symbol_descriptors: {},
+    symbol_descriptors: reflect_sym_descs,
     extensible: true,
   })
   env.def_builtin("Reflect", reflect_obj)

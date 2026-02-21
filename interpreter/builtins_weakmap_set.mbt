@@ -457,6 +457,8 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
   // Create WeakMap prototype
   let wm_proto_sym_props : Map[Int, Value] = {}
   wm_proto_sym_props[tostringtag_sym.id] = String_("WeakMap")
+  let wm_proto_sym_descs : Map[Int, PropDescriptor] = {}
+  wm_proto_sym_descs[tostringtag_sym.id] = { writable: false, enumerable: false, configurable: true, getter: None, setter: None }
   let wm_proto : Value = Object({
     properties: wm_proto_props,
     symbol_properties: wm_proto_sym_props,
@@ -464,7 +466,7 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
     callable: None,
     class_name: "WeakMap",
     descriptors: wm_proto_descs,
-    symbol_descriptors: {},
+    symbol_descriptors: wm_proto_sym_descs,
     extensible: true,
   })
 
@@ -563,7 +565,10 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
       })
   // Add prototype property to WeakMap constructor
   match wm_ctor {
-    Object(data) => data.properties["prototype"] = wm_proto
+    Object(data) => {
+      data.properties["prototype"] = wm_proto
+      data.descriptors["prototype"] = { writable: false, enumerable: false, configurable: false, getter: None, setter: None }
+    }
     _ => ()
   }
   env.def_builtin("WeakMap", wm_ctor)
@@ -705,6 +710,8 @@ fn setup_weakset_builtins(env : Environment) -> Unit {
   // Create WeakSet prototype
   let ws_proto_sym_props : Map[Int, Value] = {}
   ws_proto_sym_props[tostringtag_sym.id] = String_("WeakSet")
+  let ws_proto_sym_descs : Map[Int, PropDescriptor] = {}
+  ws_proto_sym_descs[tostringtag_sym.id] = { writable: false, enumerable: false, configurable: true, getter: None, setter: None }
   let ws_proto : Value = Object({
     properties: ws_proto_props,
     symbol_properties: ws_proto_sym_props,
@@ -712,7 +719,7 @@ fn setup_weakset_builtins(env : Environment) -> Unit {
     callable: None,
     class_name: "WeakSet",
     descriptors: ws_proto_descs,
-    symbol_descriptors: {},
+    symbol_descriptors: ws_proto_sym_descs,
     extensible: true,
   })
 
@@ -806,7 +813,10 @@ fn setup_weakset_builtins(env : Environment) -> Unit {
       })
   // Add prototype property to WeakSet constructor
   match ws_ctor {
-    Object(data) => data.properties["prototype"] = ws_proto
+    Object(data) => {
+      data.properties["prototype"] = ws_proto
+      data.descriptors["prototype"] = { writable: false, enumerable: false, configurable: false, getter: None, setter: None }
+    }
     _ => ()
   }
   env.def_builtin("WeakSet", ws_ctor)

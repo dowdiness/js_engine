@@ -331,8 +331,14 @@ fn setup_map_builtins(env : Environment) -> Unit {
 
   // Add Map.prototype[Symbol.iterator] = Map.prototype.entries
   match map_proto {
-    Object(data) =>
+    Object(data) => {
       data.symbol_properties[iterator_sym.id] = map_proto_props["entries"]
+      data.symbol_descriptors[iterator_sym.id] = method_desc
+      // Add Symbol.toStringTag = "Map"
+      let tostringtag_sym = get_tostringtag_symbol()
+      data.symbol_properties[tostringtag_sym.id] = String_("Map")
+      data.symbol_descriptors[tostringtag_sym.id] = { writable: false, enumerable: false, configurable: true, getter: None, setter: None }
+    }
     _ => ()
   }
 
@@ -419,7 +425,10 @@ fn setup_map_builtins(env : Environment) -> Unit {
       })
   // Add prototype property to Map constructor
   match map_ctor {
-    Object(data) => data.properties["prototype"] = map_proto
+    Object(data) => {
+      data.properties["prototype"] = map_proto
+      data.descriptors["prototype"] = { writable: false, enumerable: false, configurable: false, getter: None, setter: None }
+    }
     _ => ()
   }
   // Add Map.groupBy static method
@@ -684,8 +693,14 @@ fn setup_set_builtins(env : Environment) -> Unit {
 
   // Add Set.prototype[Symbol.iterator] = Set.prototype.values
   match set_proto {
-    Object(data) =>
+    Object(data) => {
       data.symbol_properties[iterator_sym.id] = set_proto_props["values"]
+      data.symbol_descriptors[iterator_sym.id] = method_desc
+      // Add Symbol.toStringTag = "Set"
+      let tostringtag_sym = get_tostringtag_symbol()
+      data.symbol_properties[tostringtag_sym.id] = String_("Set")
+      data.symbol_descriptors[tostringtag_sym.id] = { writable: false, enumerable: false, configurable: true, getter: None, setter: None }
+    }
     _ => ()
   }
 
@@ -762,7 +777,10 @@ fn setup_set_builtins(env : Environment) -> Unit {
       })
   // Add prototype property to Set constructor
   match set_ctor {
-    Object(data) => data.properties["prototype"] = set_proto
+    Object(data) => {
+      data.properties["prototype"] = set_proto
+      data.descriptors["prototype"] = { writable: false, enumerable: false, configurable: false, getter: None, setter: None }
+    }
     _ => ()
   }
   env.def_builtin("Set", set_ctor)

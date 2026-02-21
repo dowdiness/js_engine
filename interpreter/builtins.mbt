@@ -97,17 +97,16 @@ pub fn setup_builtins(
         sign = -1.0
         pos = pos + 1
       }
-      let mut radix = if args.length() > 1 {
-        let r = to_number(args[1]).to_int()
-        if r < 2 || r > 36 {
-          return Number(0.0 / 0.0)
-        }
-        r
+      let radix_arg = if args.length() > 1 { to_number(args[1]).to_int() } else { 0 }
+      let mut radix = if radix_arg == 0 {
+        10  // radix 0 defaults to 10
+      } else if radix_arg < 2 || radix_arg > 36 {
+        return Number(0.0 / 0.0)
       } else {
-        10
+        radix_arg
       }
       // Detect 0x prefix for hex
-      if radix == 16 || args.length() <= 1 || to_number(args[1]).to_int() == 0 {
+      if radix == 16 || radix_arg == 0 {
         if pos + 1 < chars.length() &&
           chars[pos] == '0' &&
           (chars[pos + 1] == 'x' || chars[pos + 1] == 'X') {
@@ -559,13 +558,17 @@ pub fn setup_builtins(
       })
   // Boolean.prototype has [[BooleanData]] internal slot with value false
   boolean_proto_props["[[BooleanData]]"] = Bool(false)
+  let method_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+  let boolean_proto_descs : Map[String, PropDescriptor] = {}
+  boolean_proto_descs["toString"] = method_desc
+  boolean_proto_descs["valueOf"] = method_desc
   let boolean_proto : Value = Object({
     properties: boolean_proto_props,
     symbol_properties: {},
     prototype: Null,
     callable: None,
     class_name: "Boolean",
-    descriptors: {},
+    descriptors: boolean_proto_descs,
     symbol_descriptors: {},
     extensible: true,
   })
@@ -1082,6 +1085,12 @@ pub fn setup_builtins(
         getter: Some(source_getter),
         setter: None,
       }
+      let re_method_desc2 : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+      regexp_proto_descs["constructor"] = re_method_desc2
+      regexp_proto_descs["exec"] = re_method_desc2
+      regexp_proto_descs["test"] = re_method_desc2
+      regexp_proto_descs["toString"] = re_method_desc2
+      regexp_proto_descs["compile"] = re_method_desc2
       let regexp_proto : Value = Object({
         properties: regexp_proto_props,
         symbol_properties: {},
@@ -3132,13 +3141,22 @@ fn setup_number_builtins(env : Environment) -> Unit {
       })
   // Per ES spec, Number.prototype has [[NumberData]] internal slot with value +0
   number_proto_props["[[NumberData]]"] = Number(0.0)
+  let num_method_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+  let number_proto_descs : Map[String, PropDescriptor] = {}
+  number_proto_descs["toString"] = num_method_desc
+  number_proto_descs["toLocaleString"] = num_method_desc
+  number_proto_descs["toFixed"] = num_method_desc
+  number_proto_descs["toExponential"] = num_method_desc
+  number_proto_descs["toPrecision"] = num_method_desc
+  number_proto_descs["valueOf"] = num_method_desc
+  number_proto_descs["constructor"] = num_method_desc
   let number_proto : Value = Object({
     properties: number_proto_props,
     symbol_properties: {},
     prototype: Null,
     callable: None,
     class_name: "Number",
-    descriptors: {},
+    descriptors: number_proto_descs,
     symbol_descriptors: {},
     extensible: true,
   })
@@ -4778,7 +4796,10 @@ fn setup_function_builtins(env : Environment) -> Unit {
 
   // Add constructor back-reference to prototype (same object as global Function)
   match func_proto {
-    Object(data) => data.properties["constructor"] = func_ctor
+    Object(data) => {
+      data.properties["constructor"] = func_ctor
+      data.descriptors["constructor"] = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+    }
     _ => ()
   }
 

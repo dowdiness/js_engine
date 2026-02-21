@@ -777,116 +777,130 @@ pub fn get_string_method(
     "matchAll" => {
       let str = s
       make_native_func_with_length("matchAll", 1, fn(args) raise {
-        if args.length() == 0 {
-          raise @errors.TypeError(message="matchAll requires a RegExp argument")
-        }
-        match args[0] {
+        let arg = if args.length() > 0 { args[0] } else { Undefined }
+        // Step 2: If regexp is neither undefined nor null, check for @@matchAll
+        let (pattern, flags) = match arg {
           Object(data) =>
             if data.class_name == "RegExp" {
-              let pattern = match data.properties.get("source") {
+              let p = match data.properties.get("source") {
                 Some(String_(s)) => s
                 _ => ""
               }
-              let flags = match data.properties.get("flags") {
+              let f = match data.properties.get("flags") {
                 Some(String_(s)) => s
                 _ => ""
               }
               // matchAll requires global flag
-              if not(flags.contains("g")) {
+              if not(f.contains("g")) {
                 raise @errors.TypeError(
                   message="matchAll requires a RegExp with global flag",
                 )
               }
-              // Get all matches
-              let matches = regex_search_all(pattern, flags, str) catch {
-                _ => []
-              }
-              let input_chars = str.to_array()
-              let index_ref : Ref[Int] = { val: 0 }
-              // Create iterator with next() method
-              let next_method = Object({
-                properties: {},
-                symbol_properties: {},
-                prototype: Null,
-                callable: Some(
-                  NativeCallable("next", fn(_args) {
-                    let idx = index_ref.val
-                    if idx < matches.length() {
-                      let m = matches[idx]
-                      index_ref.val = idx + 1
-                      // Create match array with captures (like non-global match())
-                      let elements : Array[Value] = []
-                      elements.push(
-                        String_(substring(input_chars, m.start, m.end_)),
-                      )
-                      for cap in m.captures {
-                        match cap {
-                          Some(c) => elements.push(String_(c))
-                          None => elements.push(Undefined)
-                        }
-                      }
-                      // TODO: Add index and input properties when ArrayData supports it
-                      let match_array = Array({ elements, })
-                      // Return {value: match_array, done: false}
-                      let result_props : Map[String, Value] = {}
-                      result_props["value"] = match_array
-                      result_props["done"] = Bool(false)
-                      Object({
-                        properties: result_props,
-                        symbol_properties: {},
-                        prototype: Null,
-                        callable: None,
-                        class_name: "Object",
-                        descriptors: {},
-                        symbol_descriptors: {},
-                        extensible: true,
-                      })
-                    } else {
-                      // Return {value: undefined, done: true}
-                      let result_props : Map[String, Value] = {}
-                      result_props["value"] = Undefined
-                      result_props["done"] = Bool(true)
-                      Object({
-                        properties: result_props,
-                        symbol_properties: {},
-                        prototype: Null,
-                        callable: None,
-                        class_name: "Object",
-                        descriptors: {},
-                        symbol_descriptors: {},
-                        extensible: true,
-                      })
-                    }
-                  }),
-                ),
-                class_name: "Function",
-                descriptors: {},
-                symbol_descriptors: {},
-                extensible: true,
-              })
-              // Create iterator object with proper prototype
-              let iter_props : Map[String, Value] = {}
-              iter_props["next"] = next_method
-              Object({
-                properties: iter_props,
-                symbol_properties: {},
-                prototype: get_regexp_string_iterator_proto(),
-                callable: None,
-                class_name: "RegExp String Iterator",
-                descriptors: {},
-                symbol_descriptors: {},
-                extensible: true,
-              })
+              (p, f)
             } else {
-              raise @errors.TypeError(
-                message="matchAll requires a RegExp argument",
-              )
+              // Check for Symbol.matchAll on the object
+              let matchall_sym = get_matchall_symbol()
+              match data.symbol_properties.get(matchall_sym.id) {
+                Some(method) => {
+                  let result = call_callable_direct(method, arg, [String_(str)])
+                  return result
+                }
+                _ => {
+                  // Convert to string and create RegExp
+                  let r = arg.to_string()
+                  (r, "g")
+                }
+              }
             }
-          _ =>
-            raise @errors.TypeError(
-              message="matchAll requires a RegExp argument",
-            )
+          Undefined | Null => {
+            // Step 3-5: Convert to string, create RegExp with "g" flag
+            let r = if arg is Undefined { "" } else { arg.to_string() }
+            (r, "g")
+          }
+          String_(_) | Number(_) | Bool(_) => {
+            let r = arg.to_string()
+            (r, "g")
+          }
+          _ => {
+            let r = arg.to_string()
+            (r, "g")
+          }
         }
+        // Get all matches
+        let matches = regex_search_all(pattern, flags, str) catch {
+          _ => []
+        }
+        let input_chars = str.to_array()
+        let index_ref : Ref[Int] = { val: 0 }
+        // Create iterator with next() method
+        let next_method = Object({
+          properties: {},
+          symbol_properties: {},
+          prototype: Null,
+          callable: Some(
+            NativeCallable("next", fn(_args) {
+              let idx = index_ref.val
+              if idx < matches.length() {
+                let m = matches[idx]
+                index_ref.val = idx + 1
+                let elements : Array[Value] = []
+                elements.push(
+                  String_(substring(input_chars, m.start, m.end_)),
+                )
+                for cap in m.captures {
+                  match cap {
+                    Some(c) => elements.push(String_(c))
+                    None => elements.push(Undefined)
+                  }
+                }
+                let match_array = Array({ elements, })
+                let result_props : Map[String, Value] = {}
+                result_props["value"] = match_array
+                result_props["done"] = Bool(false)
+                Object({
+                  properties: result_props,
+                  symbol_properties: {},
+                  prototype: Null,
+                  callable: None,
+                  class_name: "Object",
+                  descriptors: {},
+                  symbol_descriptors: {},
+                  extensible: true,
+                })
+              } else {
+                let result_props : Map[String, Value] = {}
+                result_props["value"] = Undefined
+                result_props["done"] = Bool(true)
+                Object({
+                  properties: result_props,
+                  symbol_properties: {},
+                  prototype: Null,
+                  callable: None,
+                  class_name: "Object",
+                  descriptors: {},
+                  symbol_descriptors: {},
+                  extensible: true,
+                })
+              }
+            }),
+          ),
+          class_name: "Function",
+          descriptors: {},
+          symbol_descriptors: {},
+          extensible: true,
+        })
+        let iter_props : Map[String, Value] = {}
+        iter_props["next"] = next_method
+        Object({
+          properties: iter_props,
+          symbol_properties: {},
+          prototype: get_regexp_string_iterator_proto(),
+          callable: None,
+          class_name: "RegExp String Iterator",
+          descriptors: {},
+          symbol_descriptors: {},
+          extensible: true,
+        })
       })
     }
     "search" => {
@@ -1687,6 +1701,9 @@ pub fn setup_string_prototype(
           setter: None,
         }
       }
+      // Per spec, trimLeft === trimStart and trimRight === trimEnd (same object)
+      data.properties["trimLeft"] = data.properties["trimStart"]
+      data.properties["trimRight"] = data.properties["trimEnd"]
       // Add constructor back-reference placeholder
       data.properties["constructor"] = Undefined
     }
