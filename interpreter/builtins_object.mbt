@@ -317,19 +317,25 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           Symbol(sym) => Bool(data.symbol_properties.contains(sym.id))
           _ => Bool(data.properties.contains(to_js_string(key_val)))
         }
-      Array(data) => {
-        let key = to_js_string(key_val)
-        if key == "length" {
-          Bool(true)
-        } else {
-          let idx = @strconv.parse_int(key) catch { _ => -1 }
-          Bool(
-            idx >= 0 &&
-            idx.to_string() == key &&
-            idx < data.elements.length(),
-          )
+      Array(data) =>
+        match key_val {
+          Symbol(sym) => Bool(get_array_symbol_prop(data, sym.id) is Some(_))
+          _ => {
+            let key = to_js_string(key_val)
+            if key == "length" {
+              Bool(true)
+            } else {
+              // Check numeric index
+              let idx = @strconv.parse_int(key) catch { _ => -1 }
+              if idx >= 0 && idx.to_string() == key && idx < data.elements.length() {
+                Bool(true)
+              } else {
+                // Check named properties side-table
+                Bool(get_array_named_prop(data, key) is Some(_))
+              }
+            }
+          }
         }
-      }
       String_(s) => {
         let key = to_js_string(key_val)
         if key == "length" {

@@ -3591,103 +3591,98 @@ fn Interpreter::bind_pattern(
       if elements.length() == 0 && rest is None {
         return
       }
-      let arr_elements : Array[Value] = match value {
-        Array(data) => data.elements
-        _ => {
-          // Try iterator protocol for non-array iterables (e.g. generators)
-          let loc = @token.Loc::default()
-          let iterator_sym = get_iterator_symbol()
-          let iterator_method = self.get_computed_property(
-            value,
-            Symbol(iterator_sym),
-            loc,
-          )
-          match iterator_method {
-            Object(data) =>
-              match data.callable {
-                Some(_) => {
-                  let iterator = self.call_value(
-                    iterator_method,
-                    value,
-                    [],
-                    loc,
-                  )
-                  // Get next method from iterator (walk prototype chain)
-                  let next_method : Value = match iterator {
-                    Object(iter_data) =>
-                      match iter_data.properties.get("next") {
-                        Some(next_fn) => next_fn
-                        None => {
-                          let mut found : Value = Undefined
-                          let mut current = iter_data.prototype
-                          while true {
-                            match current {
-                              Object(proto_data) =>
-                                match proto_data.properties.get("next") {
-                                  Some(next_fn) => {
-                                    found = next_fn
-                                    break
-                                  }
-                                  None => current = proto_data.prototype
-                                }
-                              _ => break
-                            }
-                          }
-                          found
-                        }
-                      }
-                    _ => Undefined
-                  }
-                  match next_method {
-                    Undefined => []
-                    _ => {
-                      let collected : Array[Value] = []
+      // Always use iterator protocol per spec (ArrayBindingPattern uses GetIterator)
+      let loc_dstr = @token.Loc::default()
+      let iterator_sym_dstr = get_iterator_symbol()
+      let iterator_method_dstr = self.get_computed_property(
+        value,
+        Symbol(iterator_sym_dstr),
+        loc_dstr,
+      )
+      let arr_elements : Array[Value] = match iterator_method_dstr {
+        Object(data) =>
+          match data.callable {
+            Some(_) => {
+              let iterator = self.call_value(
+                iterator_method_dstr,
+                value,
+                [],
+                loc_dstr,
+              )
+              // Get next method from iterator (walk prototype chain)
+              let next_method : Value = match iterator {
+                Object(iter_data) =>
+                  match iter_data.properties.get("next") {
+                    Some(next_fn) => next_fn
+                    None => {
+                      let mut found : Value = Undefined
+                      let mut current = iter_data.prototype
                       while true {
-                        let iter_result = self.call_value(
-                          next_method,
-                          iterator,
-                          [],
-                          loc,
-                        )
-                        let (done, val) = match iter_result {
-                          Object(result_data) => {
-                            let done_val = match
-                              result_data.properties.get("done") {
-                              Some(v) => is_truthy(v)
-                              None => false
+                        match current {
+                          Object(proto_data) =>
+                            match proto_data.properties.get("next") {
+                              Some(next_fn) => {
+                                found = next_fn
+                                break
+                              }
+                              None => current = proto_data.prototype
                             }
-                            let value_val = match
-                              result_data.properties.get("value") {
-                              Some(v) => v
-                              None => Undefined
-                            }
-                            (done_val, value_val)
-                          }
-                          _ => (true, Undefined)
+                          _ => break
                         }
-                        if done {
-                          break
-                        }
-                        collected.push(val)
                       }
-                      collected
+                      found
                     }
                   }
-                }
-                None => {
-                  raise @errors.TypeError(
-                    message=value.to_string() +
-                      " is not iterable (cannot destructure)",
-                  )
+                _ => Undefined
+              }
+              match next_method {
+                Undefined => []
+                _ => {
+                  let collected : Array[Value] = []
+                  while true {
+                    let iter_result = self.call_value(
+                      next_method,
+                      iterator,
+                      [],
+                      loc_dstr,
+                    )
+                    let (done, val) = match iter_result {
+                      Object(result_data) => {
+                        let done_val = match
+                          result_data.properties.get("done") {
+                          Some(v) => is_truthy(v)
+                          None => false
+                        }
+                        let value_val = match
+                          result_data.properties.get("value") {
+                          Some(v) => v
+                          None => Undefined
+                        }
+                        (done_val, value_val)
+                      }
+                      _ => (true, Undefined)
+                    }
+                    if done {
+                      break
+                    }
+                    collected.push(val)
+                  }
+                  collected
                 }
               }
-            _ => {
+            }
+            None => {
               raise @errors.TypeError(
                 message=value.to_string() +
                   " is not iterable (cannot destructure)",
               )
             }
           }
+        _ => {
+          raise @errors.TypeError(
+            message=value.to_string() +
+              " is not iterable (cannot destructure)",
+          )
         }
       }
       for i = 0; i < elements.length(); i = i + 1 {
@@ -3848,103 +3843,98 @@ fn Interpreter::assign_pattern(
       if elements.length() == 0 && rest is None {
         return
       }
-      let arr_elements : Array[Value] = match value {
-        Array(data) => data.elements
-        _ => {
-          // Try iterator protocol for non-array iterables (e.g. generators)
-          let loc = @token.Loc::default()
-          let iterator_sym = get_iterator_symbol()
-          let iterator_method = self.get_computed_property(
-            value,
-            Symbol(iterator_sym),
-            loc,
-          )
-          match iterator_method {
-            Object(data) =>
-              match data.callable {
-                Some(_) => {
-                  let iterator = self.call_value(
-                    iterator_method,
-                    value,
-                    [],
-                    loc,
-                  )
-                  // Get next method from iterator (walk prototype chain)
-                  let next_method : Value = match iterator {
-                    Object(iter_data) =>
-                      match iter_data.properties.get("next") {
-                        Some(next_fn) => next_fn
-                        None => {
-                          let mut found : Value = Undefined
-                          let mut current = iter_data.prototype
-                          while true {
-                            match current {
-                              Object(proto_data) =>
-                                match proto_data.properties.get("next") {
-                                  Some(next_fn) => {
-                                    found = next_fn
-                                    break
-                                  }
-                                  None => current = proto_data.prototype
-                                }
-                              _ => break
-                            }
-                          }
-                          found
-                        }
-                      }
-                    _ => Undefined
-                  }
-                  match next_method {
-                    Undefined => []
-                    _ => {
-                      let collected : Array[Value] = []
+      // Always use iterator protocol per spec (ArrayBindingPattern uses GetIterator)
+      let loc_dstr = @token.Loc::default()
+      let iterator_sym_dstr = get_iterator_symbol()
+      let iterator_method_dstr = self.get_computed_property(
+        value,
+        Symbol(iterator_sym_dstr),
+        loc_dstr,
+      )
+      let arr_elements : Array[Value] = match iterator_method_dstr {
+        Object(data) =>
+          match data.callable {
+            Some(_) => {
+              let iterator = self.call_value(
+                iterator_method_dstr,
+                value,
+                [],
+                loc_dstr,
+              )
+              // Get next method from iterator (walk prototype chain)
+              let next_method : Value = match iterator {
+                Object(iter_data) =>
+                  match iter_data.properties.get("next") {
+                    Some(next_fn) => next_fn
+                    None => {
+                      let mut found : Value = Undefined
+                      let mut current = iter_data.prototype
                       while true {
-                        let iter_result = self.call_value(
-                          next_method,
-                          iterator,
-                          [],
-                          loc,
-                        )
-                        let (done, val) = match iter_result {
-                          Object(result_data) => {
-                            let done_val = match
-                              result_data.properties.get("done") {
-                              Some(v) => is_truthy(v)
-                              None => false
+                        match current {
+                          Object(proto_data) =>
+                            match proto_data.properties.get("next") {
+                              Some(next_fn) => {
+                                found = next_fn
+                                break
+                              }
+                              None => current = proto_data.prototype
                             }
-                            let value_val = match
-                              result_data.properties.get("value") {
-                              Some(v) => v
-                              None => Undefined
-                            }
-                            (done_val, value_val)
-                          }
-                          _ => (true, Undefined)
+                          _ => break
                         }
-                        if done {
-                          break
-                        }
-                        collected.push(val)
                       }
-                      collected
+                      found
                     }
                   }
-                }
-                None => {
-                  raise @errors.TypeError(
-                    message=value.to_string() +
-                      " is not iterable (cannot destructure)",
-                  )
+                _ => Undefined
+              }
+              match next_method {
+                Undefined => []
+                _ => {
+                  let collected : Array[Value] = []
+                  while true {
+                    let iter_result = self.call_value(
+                      next_method,
+                      iterator,
+                      [],
+                      loc_dstr,
+                    )
+                    let (done, val) = match iter_result {
+                      Object(result_data) => {
+                        let done_val = match
+                          result_data.properties.get("done") {
+                          Some(v) => is_truthy(v)
+                          None => false
+                        }
+                        let value_val = match
+                          result_data.properties.get("value") {
+                          Some(v) => v
+                          None => Undefined
+                        }
+                        (done_val, value_val)
+                      }
+                      _ => (true, Undefined)
+                    }
+                    if done {
+                      break
+                    }
+                    collected.push(val)
+                  }
+                  collected
                 }
               }
-            _ => {
+            }
+            None => {
               raise @errors.TypeError(
                 message=value.to_string() +
                   " is not iterable (cannot destructure)",
               )
             }
           }
+        _ => {
+          raise @errors.TypeError(
+            message=value.to_string() +
+              " is not iterable (cannot destructure)",
+          )
         }
       }
       for i = 0; i < elements.length(); i = i + 1 {
@@ -7239,11 +7229,29 @@ fn Interpreter::get_property(
                   }
                   match this_val {
                     Object(d) =>
-                      // Handle Symbol keys
                       match key_val {
                         Symbol(sym) =>
                           Bool(d.symbol_properties.contains(sym.id))
                         _ => Bool(d.properties.contains(key_val.to_string()))
+                      }
+                    Array(ad) =>
+                      match key_val {
+                        Symbol(sym) =>
+                          Bool(get_array_symbol_prop(ad, sym.id) is Some(_))
+                        _ => {
+                          let k = key_val.to_string()
+                          if k == "length" {
+                            return Bool(true)
+                          }
+                          let idx = @strconv.parse_int(k) catch { _ => -1 }
+                          if idx >= 0 &&
+                            idx.to_string() == k &&
+                            idx < ad.elements.length() {
+                            Bool(true)
+                          } else {
+                            Bool(get_array_named_prop(ad, k) is Some(_))
+                          }
+                        }
                       }
                     _ => Bool(false)
                   }
@@ -7521,7 +7529,43 @@ fn Interpreter::get_computed_property(
           return Undefined
         }
         Array(arr) => {
-          // Handle Symbol.iterator for arrays
+          // Check array's own symbol property side-table first
+          match get_array_symbol_prop(arr, sym.id) {
+            Some(v) => return v
+            None => ()
+          }
+          // Check Array.prototype for symbol properties (e.g. overridden Symbol.iterator)
+          match current_interpreter.val {
+            Some(interp) => {
+              let array_ctor = interp.global.get("Array") catch { _ => Undefined }
+              match array_ctor {
+                Object(ctor_data) =>
+                  match ctor_data.properties.get("prototype") {
+                    Some(Object(proto_data)) => {
+                      // Check symbol descriptors for getters
+                      match proto_data.symbol_descriptors.get(sym.id) {
+                        Some(desc) =>
+                          match desc.getter {
+                            Some(getter) =>
+                              return self.call_value(getter, obj, [], loc)
+                            None => ()
+                          }
+                        None => ()
+                      }
+                      // Check symbol properties
+                      match proto_data.symbol_properties.get(sym.id) {
+                        Some(v) => return v
+                        None => ()
+                      }
+                    }
+                    _ => ()
+                  }
+                _ => ()
+              }
+            }
+            None => ()
+          }
+          // Handle Symbol.iterator default for arrays
           let iterator_sym = get_iterator_symbol()
           if sym.id == iterator_sym.id {
             let (override_getter, override_value) = get_array_iterator_override(
@@ -7535,15 +7579,10 @@ fn Interpreter::get_computed_property(
               Some(v) => return v
               None => ()
             }
-            // Return a function that creates an array iterator
+            // Return default array iterator
             return make_method_func("[Symbol.iterator]", 0, fn(_this_val, _args) {
                   make_array_iterator_value(arr)
                 })
-          }
-          // Check array symbol property side-table
-          match get_array_symbol_prop(arr, sym.id) {
-            Some(v) => return v
-            None => ()
           }
           return Undefined
         }
@@ -7918,11 +7957,29 @@ fn Interpreter::get_computed_property(
                   }
                   match this_val {
                     Object(d) =>
-                      // Handle Symbol keys
                       match key_val {
                         Symbol(sym) =>
                           Bool(d.symbol_properties.contains(sym.id))
                         _ => Bool(d.properties.contains(key_val.to_string()))
+                      }
+                    Array(ad) =>
+                      match key_val {
+                        Symbol(sym) =>
+                          Bool(get_array_symbol_prop(ad, sym.id) is Some(_))
+                        _ => {
+                          let k = key_val.to_string()
+                          if k == "length" {
+                            return Bool(true)
+                          }
+                          let idx = @strconv.parse_int(k) catch { _ => -1 }
+                          if idx >= 0 &&
+                            idx.to_string() == k &&
+                            idx < ad.elements.length() {
+                            Bool(true)
+                          } else {
+                            Bool(get_array_named_prop(ad, k) is Some(_))
+                          }
+                        }
                       }
                     _ => Bool(false)
                   }
