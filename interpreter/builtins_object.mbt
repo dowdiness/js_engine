@@ -310,6 +310,14 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         to_object(this_val, interp)
       })
   obj_proto_props["hasOwnProperty"] = make_method_func("hasOwnProperty", 1, fn(this_val, args) {
+    // RequireObjectCoercible(this) - throw TypeError for null/undefined
+    match this_val {
+      Null | Undefined =>
+        raise @errors.TypeError(
+          message="Cannot convert undefined or null to object",
+        )
+      _ => ()
+    }
     let key_val = if args.length() > 0 { args[0] } else { Undefined }
     match this_val {
       Object(data) =>
@@ -349,6 +357,14 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     }
   })
   obj_proto_props["propertyIsEnumerable"] = make_method_func("propertyIsEnumerable", 1, fn(this_val, args) {
+    // RequireObjectCoercible(this) - throw TypeError for null/undefined
+    match this_val {
+      Null | Undefined =>
+        raise @errors.TypeError(
+          message="Cannot convert undefined or null to object",
+        )
+      _ => ()
+    }
     let key_val = if args.length() > 0 { args[0] } else { Undefined }
     let key = to_js_string(key_val)
     match this_val {
@@ -383,6 +399,14 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
     }
   })
   obj_proto_props["isPrototypeOf"] = make_method_func("isPrototypeOf", 1, fn(this_val, args) {
+    // RequireObjectCoercible(this) - throw TypeError for null/undefined
+    match this_val {
+      Null | Undefined =>
+        raise @errors.TypeError(
+          message="Cannot convert undefined or null to object",
+        )
+      _ => ()
+    }
     // Walk the argument's prototype chain looking for this_val
     let arg = if args.length() > 0 { args[0] } else { Undefined }
     let mut current : Value = match arg {

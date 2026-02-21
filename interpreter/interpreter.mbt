@@ -1911,6 +1911,28 @@ fn collect_for_in_keys(obj : Value) -> Array[String] raise Error {
 }
 
 ///|
+fn is_declaration_stmt(stmt : @ast.Stmt) -> Bool {
+  match stmt {
+    VarDecl(_, _, _, _)
+    | DestructureDecl(_, _, _, _)
+    | FuncDecl(_, _, _, _)
+    | FuncDeclExt(_, _, _, _, _)
+    | GeneratorDecl(_, _, _, _)
+    | GeneratorDeclExt(_, _, _, _, _)
+    | AsyncFuncDecl(_, _, _, _)
+    | AsyncFuncDeclExt(_, _, _, _, _)
+    | AsyncGeneratorDecl(_, _, _, _)
+    | AsyncGeneratorDeclExt(_, _, _, _, _)
+    | ClassDecl(_, _, _, _)
+    | ImportDecl(_, _, _, _, _)
+    | ExportNamedDecl(_, _, _, _)
+    | ExportDefaultDecl(_, _)
+    | ExportAllDecl(_, _, _) => true
+    _ => false
+  }
+}
+
+///|
 fn Interpreter::exec_stmts(
   self : Interpreter,
   stmts : Array[@ast.Stmt],
@@ -1919,7 +1941,12 @@ fn Interpreter::exec_stmts(
   let mut last : Value = Undefined
   for stmt in stmts {
     match self.exec_stmt(stmt, env) {
-      Normal(v) => last = v
+      Normal(v) =>
+        // Per spec, declarations have empty completion values that don't update
+        // the statement list's value. Only non-declaration statements update it.
+        if not(is_declaration_stmt(stmt)) {
+          last = v
+        }
       BreakSignal(v, label) => {
         // UpdateEmpty: if break's value is None (empty), use accumulated value
         let cv = match v {
@@ -6326,7 +6353,11 @@ fn Interpreter::perform_eval(
     let mut last : Value = Undefined
     for stmt in stmts {
       match self.exec_stmt(stmt, exec_env) {
-        Normal(v) => last = v
+        Normal(v) =>
+          // Per spec, declarations have empty completion values
+          if not(is_declaration_stmt(stmt)) {
+            last = v
+          }
         ReturnSignal(_) =>
           raise @errors.SyntaxError(
             message="return statement outside of function",
