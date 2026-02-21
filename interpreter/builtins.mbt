@@ -218,7 +218,7 @@ pub fn setup_builtins(
   // encodeURIComponent(string)
   env.def_builtin(
     "encodeURIComponent",
-    make_static_func("encodeURIComponent", fn(args) raise {
+    make_static_func_with_length("encodeURIComponent", 1, fn(args) raise {
       let str = if args.length() > 0 {
         to_js_string(args[0])
       } else {
@@ -231,7 +231,7 @@ pub fn setup_builtins(
   // decodeURIComponent(string) - decodes everything
   env.def_builtin(
     "decodeURIComponent",
-    make_static_func("decodeURIComponent", fn(args) raise {
+    make_static_func_with_length("decodeURIComponent", 1, fn(args) raise {
       let str = if args.length() > 0 {
         to_js_string(args[0])
       } else {
@@ -244,7 +244,7 @@ pub fn setup_builtins(
   // encodeURI(string)
   env.def_builtin(
     "encodeURI",
-    make_static_func("encodeURI", fn(args) raise {
+    make_static_func_with_length("encodeURI", 1, fn(args) raise {
       let str = if args.length() > 0 {
         to_js_string(args[0])
       } else {
@@ -257,7 +257,7 @@ pub fn setup_builtins(
   // decodeURI(string) - preserves reserved characters (; , / ? : @ & = + $ #)
   env.def_builtin(
     "decodeURI",
-    make_static_func("decodeURI", fn(args) raise {
+    make_static_func_with_length("decodeURI", 1, fn(args) raise {
       let str = if args.length() > 0 {
         to_js_string(args[0])
       } else {
@@ -295,12 +295,12 @@ pub fn setup_builtins(
 
   // String constructor with static methods
   let string_proto : Value = Object({
-    properties: {},
+    properties: { "[[StringData]]": String_(""), "length": Number(0.0) },
     symbol_properties: {},
     prototype: Null,
     callable: None,
     class_name: "String",
-    descriptors: {},
+    descriptors: { "length": { writable: false, enumerable: false, configurable: false, getter: None, setter: None } },
     symbol_descriptors: {},
     extensible: true,
   })
@@ -311,7 +311,7 @@ pub fn setup_builtins(
         "prototype": string_proto,
         "name": String_("String"),
         "length": Number(1.0),
-        "fromCharCode": make_static_func("fromCharCode", fn(args) raise {
+        "fromCharCode": make_static_func_with_length("fromCharCode", 1, fn(args) raise {
           let buf = StringBuilder::new()
           for arg in args {
             let code = to_number(arg).to_int()

@@ -303,7 +303,10 @@ pub fn setup_generator_function_constructor(
       })
   // Set up prototype chain: GeneratorFunction.prototype.constructor = GeneratorFunction
   match gen_func_proto {
-    Object(data) => data.properties["constructor"] = gen_func_ctor
+    Object(data) => {
+      data.properties["constructor"] = gen_func_ctor
+      data.descriptors["constructor"] = { writable: false, enumerable: false, configurable: true, getter: None, setter: None }
+    }
     _ => ()
   }
   // Mirror onto globalThis
@@ -313,7 +316,10 @@ pub fn setup_generator_function_constructor(
   }
   // Add prototype property to GeneratorFunction constructor
   match gen_func_ctor {
-    Object(data) => data.properties["prototype"] = gen_func_proto
+    Object(data) => {
+      data.properties["prototype"] = gen_func_proto
+      data.descriptors["prototype"] = { writable: false, enumerable: false, configurable: false, getter: None, setter: None }
+    }
     _ => ()
   }
   env.def_builtin("GeneratorFunction", gen_func_ctor)
@@ -404,6 +410,7 @@ fn Interpreter::make_generator_function(
     descriptors: {
       "name": nf_desc,
       "length": nf_desc,
+      "prototype": { writable: true, enumerable: false, configurable: false, getter: None, setter: None },
     },
     symbol_descriptors: {},
     extensible: true,
@@ -488,6 +495,7 @@ fn Interpreter::make_generator_function_ext(
     descriptors: {
       "name": nf_desc,
       "length": nf_desc,
+      "prototype": { writable: true, enumerable: false, configurable: false, getter: None, setter: None },
     },
     symbol_descriptors: {},
     extensible: true,
