@@ -51,6 +51,7 @@ fn unwrap_proxy_target(val : Value) -> ObjectData? raise Error {
 ///|
 fn setup_reflect_builtins(env : Environment) -> Unit {
   let reflect_props : Map[String, Value] = {}
+  let nf_desc : PropDescriptor = { writable: false, enumerable: false, configurable: true, getter: None, setter: None }
 
   // Reflect.apply(target, thisArg, argumentsList)
   reflect_props["apply"] = make_interp_method_func("apply", 3, fn(interp, _this_val, args) raise {
@@ -113,9 +114,9 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
 
   // Reflect.defineProperty(target, propertyKey, attributes)
   reflect_props["defineProperty"] = Object({
-    properties: {},
+    properties: { "name": String_("defineProperty"), "length": Number(3.0) },
     symbol_properties: {},
-    prototype: Null,
+    prototype: get_func_proto(),
     callable: Some(
       NativeCallable("defineProperty", fn(args) raise {
         if args.length() < 3 {
@@ -335,16 +336,16 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
       }),
     ),
     class_name: "Function",
-    descriptors: {},
+    descriptors: { "name": nf_desc, "length": nf_desc },
     symbol_descriptors: {},
     extensible: true,
   })
 
   // Reflect.deleteProperty(target, propertyKey)
   reflect_props["deleteProperty"] = Object({
-    properties: {},
+    properties: { "name": String_("deleteProperty"), "length": Number(2.0) },
     symbol_properties: {},
-    prototype: Null,
+    prototype: get_func_proto(),
     callable: Some(
       NativeCallable("deleteProperty", fn(args) raise {
         if args.length() < 2 {
@@ -379,7 +380,7 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
       }),
     ),
     class_name: "Function",
-    descriptors: {},
+    descriptors: { "name": nf_desc, "length": nf_desc },
     symbol_descriptors: {},
     extensible: true,
   })
@@ -481,9 +482,9 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
 
   // Reflect.getOwnPropertyDescriptor(target, propertyKey)
   reflect_props["getOwnPropertyDescriptor"] = Object({
-    properties: {},
+    properties: { "name": String_("getOwnPropertyDescriptor"), "length": Number(2.0) },
     symbol_properties: {},
-    prototype: Null,
+    prototype: get_func_proto(),
     callable: Some(
       NativeCallable("getOwnPropertyDescriptor", fn(args) raise {
         if args.length() < 2 {
@@ -562,16 +563,16 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
       }),
     ),
     class_name: "Function",
-    descriptors: {},
+    descriptors: { "name": nf_desc, "length": nf_desc },
     symbol_descriptors: {},
     extensible: true,
   })
 
   // Reflect.getPrototypeOf(target)
   reflect_props["getPrototypeOf"] = Object({
-    properties: {},
+    properties: { "name": String_("getPrototypeOf"), "length": Number(1.0) },
     symbol_properties: {},
-    prototype: Null,
+    prototype: get_func_proto(),
     callable: Some(
       NativeCallable("getPrototypeOf", fn(args) raise {
         if args.length() < 1 {
@@ -594,16 +595,16 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
       }),
     ),
     class_name: "Function",
-    descriptors: {},
+    descriptors: { "name": nf_desc, "length": nf_desc },
     symbol_descriptors: {},
     extensible: true,
   })
 
   // Reflect.has(target, propertyKey)
   reflect_props["has"] = Object({
-    properties: {},
+    properties: { "name": String_("has"), "length": Number(2.0) },
     symbol_properties: {},
-    prototype: Null,
+    prototype: get_func_proto(),
     callable: Some(
       NativeCallable("has", fn(args) raise {
         if args.length() < 2 {
@@ -679,16 +680,16 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
       }),
     ),
     class_name: "Function",
-    descriptors: {},
+    descriptors: { "name": nf_desc, "length": nf_desc },
     symbol_descriptors: {},
     extensible: true,
   })
 
   // Reflect.isExtensible(target)
   reflect_props["isExtensible"] = Object({
-    properties: {},
+    properties: { "name": String_("isExtensible"), "length": Number(1.0) },
     symbol_properties: {},
-    prototype: Null,
+    prototype: get_func_proto(),
     callable: Some(
       NativeCallable("isExtensible", fn(args) raise {
         if args.length() < 1 {
@@ -711,7 +712,7 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
       }),
     ),
     class_name: "Function",
-    descriptors: {},
+    descriptors: { "name": nf_desc, "length": nf_desc },
     symbol_descriptors: {},
     extensible: true,
   })
@@ -827,9 +828,9 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
 
   // Reflect.preventExtensions(target)
   reflect_props["preventExtensions"] = Object({
-    properties: {},
+    properties: { "name": String_("preventExtensions"), "length": Number(1.0) },
     symbol_properties: {},
-    prototype: Null,
+    prototype: get_func_proto(),
     callable: Some(
       NativeCallable("preventExtensions", fn(args) raise {
         if args.length() < 1 {
@@ -858,7 +859,7 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
       }),
     ),
     class_name: "Function",
-    descriptors: {},
+    descriptors: { "name": nf_desc, "length": nf_desc },
     symbol_descriptors: {},
     extensible: true,
   })
@@ -914,9 +915,9 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
 
   // Reflect.setPrototypeOf(target, proto)
   reflect_props["setPrototypeOf"] = Object({
-    properties: {},
+    properties: { "name": String_("setPrototypeOf"), "length": Number(2.0) },
     symbol_properties: {},
-    prototype: Null,
+    prototype: get_func_proto(),
     callable: Some(
       NativeCallable("setPrototypeOf", fn(args) raise {
         if args.length() < 2 {
@@ -959,7 +960,7 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
       }),
     ),
     class_name: "Function",
-    descriptors: {},
+    descriptors: { "name": nf_desc, "length": nf_desc },
     symbol_descriptors: {},
     extensible: true,
   })
@@ -968,13 +969,28 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
   let tostringtag_sym = get_tostringtag_symbol()
   let reflect_sym_props : Map[Int, Value] = {}
   reflect_sym_props[tostringtag_sym.id] = String_("Reflect")
+  let method_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+  let reflect_descs : Map[String, PropDescriptor] = {}
+  reflect_descs["apply"] = method_desc
+  reflect_descs["construct"] = method_desc
+  reflect_descs["defineProperty"] = method_desc
+  reflect_descs["deleteProperty"] = method_desc
+  reflect_descs["get"] = method_desc
+  reflect_descs["getOwnPropertyDescriptor"] = method_desc
+  reflect_descs["getPrototypeOf"] = method_desc
+  reflect_descs["has"] = method_desc
+  reflect_descs["isExtensible"] = method_desc
+  reflect_descs["ownKeys"] = method_desc
+  reflect_descs["preventExtensions"] = method_desc
+  reflect_descs["set"] = method_desc
+  reflect_descs["setPrototypeOf"] = method_desc
   let reflect_obj : Value = Object({
     properties: reflect_props,
     symbol_properties: reflect_sym_props,
     prototype: Null,
     callable: None,
     class_name: "Object",
-    descriptors: {},
+    descriptors: reflect_descs,
     symbol_descriptors: {},
     extensible: true,
   })
