@@ -3819,9 +3819,22 @@ fn Interpreter::assign_pattern(
   env : Environment,
 ) -> Unit raise Error {
   match pattern {
-    IdentPat(name) => {
-      env.assign(name, value)
-    }
+    IdentPat(name) =>
+      try {
+        env.assign(name, value)
+      } catch {
+        @errors.ReferenceError(_) =>
+          if not(self.strict) {
+            // Sloppy mode: implicit global creation
+            self.global.def(name, value, VarBinding)
+            self.mirror_to_global(name, value, configurable=true)
+          } else {
+            raise @errors.ReferenceError(
+              message="\{name} is not defined",
+            )
+          }
+        other => raise other
+      }
     DefaultPat(inner_pat, default_expr) => {
       let final_val : Value = if value is Undefined {
         let v = self.eval_expr(default_expr, env)
