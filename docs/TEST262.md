@@ -155,4 +155,4 @@ The GitHub Actions workflow (`.github/workflows/test262.yml`) runs the full suit
 
 ## Current Status
 
-As of 2026-02-18: **88.8% pass rate** (24,519 / 27,599 executed). See [ROADMAP.md](../ROADMAP.md) for detailed category breakdowns and phase history.
+As of 2026-02-22: **84.4% pass rate** (44,933 / 53,208 tasks executed, strict + non-strict). The runner now tests both strict and non-strict modes for each test file (~92,000 tasks from ~48,000 files). See [ROADMAP.md](../ROADMAP.md) for detailed category breakdowns and phase history.
