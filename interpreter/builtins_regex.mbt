@@ -76,6 +76,19 @@ fn RegexParser::parse_sequence(self : RegexParser) -> RegexNode raise Error {
     }
     let node = self.parse_atom()
     let quantified = self.parse_quantifier(node)
+    // Check for double quantifier (e.g., a**  a++  a{1}{1,})
+    match quantified {
+      Quantified(_,_,_,_) =>
+        if self.pos < self.pattern.length() {
+          let next = self.pattern[self.pos]
+          if next == '*' || next == '+' || next == '?' || next == '{' {
+            raise @errors.SyntaxError(
+              message="Invalid regex: nothing to repeat",
+            )
+          }
+        }
+      _ => ()
+    }
     nodes.push(quantified)
   }
   if nodes.length() == 1 {
@@ -103,6 +116,9 @@ fn RegexParser::parse_atom(self : RegexParser) -> RegexNode raise Error {
     '[' => self.parse_char_class()
     '(' => self.parse_group()
     '\\' => self.parse_escape()
+    '*' | '+' | '?' => raise @errors.SyntaxError(
+      message="Invalid regex: nothing to repeat",
+    )
     _ => {
       self.pos += 1
       Literal(ch)
@@ -253,6 +269,11 @@ fn RegexParser::parse_char_class(self : RegexParser) -> RegexNode raise Error {
         self.pos += 1
         c
       }
+      if start > end_ch {
+        raise @errors.SyntaxError(
+          message="Invalid regex: range out of order in character class",
+        )
+      }
       ranges.push((start, end_ch))
     } else {
       ranges.push((start, start))
@@ -260,6 +281,10 @@ fn RegexParser::parse_char_class(self : RegexParser) -> RegexNode raise Error {
   }
   if self.pos < self.pattern.length() {
     self.pos += 1 // skip ']'
+  } else {
+    raise @errors.SyntaxError(
+      message="Invalid regex: unterminated character class",
+    )
   }
   CharClass(ranges, negated)
 }
@@ -1014,7 +1039,34 @@ fn extract_regexp_source_flags(val : Value) -> (String, String) {
 // ---- RegExp Object Creation ----
 
 ///|
-pub fn make_regexp_object(pattern : String, flags : String) -> Value {
+pub fn make_regexp_object(pattern : String, flags : String) -> Value raise Error {
+  // Validate flags - check for invalid or duplicate flag characters
+  let valid_flags = "gimsuy"
+  let seen_flags : Map[Char, Bool] = {}
+  for ch in flags {
+    if not(valid_flags.contains(ch.to_string())) {
+      raise @errors.SyntaxError(
+        message="Invalid regular expression flags: " + flags,
+      )
+    }
+    if seen_flags.contains(ch) {
+      raise @errors.SyntaxError(
+        message="Invalid regular expression flags: " + flags,
+      )
+    }
+    seen_flags[ch] = true
+  }
+  // Validate pattern by attempting to parse it
+  let _valid : Unit = try {
+    let _parsed = RegexParser::new(pattern).parse()
+  } catch {
+    @errors.SyntaxError(message=msg) => raise @errors.SyntaxError(
+      message="Invalid regular expression: /" + pattern + "/: " + msg,
+    )
+    e => raise @errors.SyntaxError(
+      message="Invalid regular expression: /" + pattern + "/: " + e.to_string(),
+    )
+  }
   let has_global = flags.contains("g")
   let has_ignore_case = flags.contains("i")
   let has_multiline = flags.contains("m")

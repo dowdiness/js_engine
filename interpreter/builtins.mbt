@@ -805,7 +805,7 @@ pub fn setup_builtins(
       symbol_properties: {},
       prototype: Null,
       callable: Some(
-        NativeCallable("RegExp", fn(args) {
+        NativeCallable("RegExp", fn(args) raise {
           let pattern = if args.length() > 0 {
             match args[0] {
               Object(data) =>

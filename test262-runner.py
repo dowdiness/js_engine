@@ -728,20 +728,47 @@ def main():
     print(f"Discovering tests in {test262_dir}...")
     test_files = discover_tests(test262_dir, args.filter)
     print(f"Found {len(test_files)} test files")
+
+    # Build (test_file, mode) pairs
+    # For tests with onlyStrict: run in strict mode
+    # For tests with noStrict or raw or module: run in non-strict mode
+    # For other tests: run in both modes
+    test_tasks = []
+    for tf in test_files:
+        # Quick-read metadata to determine modes
+        try:
+            with open(tf, "r", encoding="utf-8") as f:
+                source = f.read()
+            meta = parse_metadata(source)
+            flags = meta.flags
+            if "raw" in flags or "module" in flags:
+                test_tasks.append((tf, "non-strict"))
+            elif "onlyStrict" in flags:
+                test_tasks.append((tf, "strict"))
+            elif "noStrict" in flags:
+                test_tasks.append((tf, "non-strict"))
+            else:
+                test_tasks.append((tf, "non-strict"))
+                test_tasks.append((tf, "strict"))
+        except Exception:
+            test_tasks.append((tf, "non-strict"))
+
+    print(f"Running {len(test_tasks)} test tasks ({len(test_files)} files, strict+non-strict)")
     print(f"Using {args.threads} parallel worker(s) with {args.timeout}s timeout per test")
 
     # Run tests
     results = []
     completed = 0
+    total_tasks = len(test_tasks)
     start_time = time.monotonic()
 
     if args.threads > 1:
         with ThreadPoolExecutor(max_workers=args.threads) as executor:
             futures = {
                 executor.submit(
-                    run_single_test, engine_cmd, test262_dir, tf, args.timeout, "non-strict"
-                ): tf
-                for tf in test_files
+                    run_single_test, engine_cmd, test262_dir, tf, args.timeout, mode
+                ): (tf, mode)
+                for tf, mode in test_tasks
             }
             for future in as_completed(futures):
                 r = future.result()
@@ -755,11 +782,11 @@ def main():
                 elif completed % 500 == 0:
                     elapsed = time.monotonic() - start_time
                     rate = completed / elapsed if elapsed > 0 else 0
-                    eta = (len(test_files) - completed) / rate if rate > 0 else 0
-                    print(f"  Progress: {completed}/{len(test_files)} ({rate:.0f} tests/sec, ETA: {eta/60:.1f}m)", flush=True)
+                    eta = (total_tasks - completed) / rate if rate > 0 else 0
+                    print(f"  Progress: {completed}/{total_tasks} ({rate:.0f} tests/sec, ETA: {eta/60:.1f}m)", flush=True)
     else:
-        for tf in test_files:
-            r = run_single_test(engine_cmd, test262_dir, tf, args.timeout, "non-strict")
+        for tf, mode in test_tasks:
+            r = run_single_test(engine_cmd, test262_dir, tf, args.timeout, mode)
             results.append(r)
             completed += 1
             if args.verbose:
@@ -770,8 +797,8 @@ def main():
             elif completed % 500 == 0:
                 elapsed = time.monotonic() - start_time
                 rate = completed / elapsed if elapsed > 0 else 0
-                eta = (len(test_files) - completed) / rate if rate > 0 else 0
-                print(f"  Progress: {completed}/{len(test_files)} ({rate:.0f} tests/sec, ETA: {eta/60:.1f}m)", flush=True)
+                eta = (total_tasks - completed) / rate if rate > 0 else 0
+                print(f"  Progress: {completed}/{total_tasks} ({rate:.0f} tests/sec, ETA: {eta/60:.1f}m)", flush=True)
 
     if args.verbose:
         print()

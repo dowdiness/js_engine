@@ -271,9 +271,9 @@ pub fn is_constructor_value(v : Value) -> Bool {
         Some(NonConstructableCallable(_, _)) => false
         Some(MethodCallable(_, _)) => false
         Some(InterpreterCallable(_, _)) =>
-          // GeneratorFunction callables are not constructors;
-          // other InterpreterCallable like builtins also aren't
-          false
+          // InterpreterCallable is a constructor if it has a prototype property
+          // (builtin constructors like Map, Set, Promise have prototype)
+          data.properties.contains("prototype")
         Some(ArrowFunc(_)) | Some(ArrowFuncExt(_)) => false
         Some(FuncCallMethod(_)) | Some(FuncApplyMethod(_)) => false
         None => false
