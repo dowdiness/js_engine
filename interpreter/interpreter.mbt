@@ -5110,8 +5110,25 @@ fn Interpreter::eval_expr(
           }
         }
       }
-    ClassExpr(name, superclass, methods, _) =>
-      self.create_class(name.unwrap_or(""), superclass, methods, env)
+    ClassExpr(name, superclass, methods, _) => {
+      // For named class expressions, the name is visible inside the class body
+      // but not in the outer scope. Create a new scope for this.
+      let class_name = name.unwrap_or("")
+      let class_env = if class_name != "" {
+        let inner = Environment::new(parent=Some(env))
+        // Pre-define the name (will be set after class creation)
+        inner.def(class_name, Undefined, LetBinding)
+        inner
+      } else {
+        env
+      }
+      let class_val = self.create_class(class_name, superclass, methods, class_env)
+      // Set the class name binding in the inner scope
+      if class_name != "" {
+        class_env.assign(class_name, class_val) catch { _ => () }
+      }
+      class_val
+    }
     SuperCall(arg_exprs, loc) => {
       // super(args) - call the parent constructor
       // Get the [[HomeObject]] from the current environment
