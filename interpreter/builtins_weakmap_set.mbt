@@ -462,7 +462,7 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
   let wm_proto : Value = Object({
     properties: wm_proto_props,
     symbol_properties: wm_proto_sym_props,
-    prototype: Null,
+    prototype: get_obj_proto(),
     callable: None,
     class_name: "WeakMap",
     descriptors: wm_proto_descs,
@@ -715,7 +715,7 @@ fn setup_weakset_builtins(env : Environment) -> Unit {
   let ws_proto : Value = Object({
     properties: ws_proto_props,
     symbol_properties: ws_proto_sym_props,
-    prototype: Null,
+    prototype: get_obj_proto(),
     callable: None,
     class_name: "WeakSet",
     descriptors: ws_proto_descs,

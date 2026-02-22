@@ -3815,7 +3815,7 @@ fn Interpreter::bind_pattern(
             Object({
               properties: rest_props,
               symbol_properties: rest_symbol_props,
-              prototype: Null,
+              prototype: get_obj_proto(),
               callable: None,
               class_name: "Object",
               descriptors: {},
@@ -4130,7 +4130,7 @@ fn Interpreter::assign_pattern(
             Object({
               properties: rest_props,
               symbol_properties: rest_symbol_props,
-              prototype: Null,
+              prototype: get_obj_proto(),
               callable: None,
               class_name: "Object",
               descriptors: {},
@@ -7343,7 +7343,7 @@ fn Interpreter::get_property(
                     let proto : Value = Object({
                       properties: {},
                       symbol_properties: {},
-                      prototype: Null,
+                      prototype: get_obj_proto(),
                       callable: None,
                       class_name: "Object",
                       descriptors: {},
@@ -8085,7 +8085,7 @@ fn Interpreter::get_computed_property(
                     let proto : Value = Object({
                       properties: {},
                       symbol_properties: {},
-                      prototype: Null,
+                      prototype: get_obj_proto(),
                       callable: None,
                       class_name: "Object",
                       descriptors: {},

@@ -586,7 +586,7 @@ pub fn make_func(data : FuncData) -> Value {
   let proto = Object({
     properties: {},
     symbol_properties: {},
-    prototype: Null,
+    prototype: get_obj_proto(),
     callable: None,
     class_name: "Object",
     descriptors: {},
@@ -650,7 +650,7 @@ pub fn make_func_ext(data : FuncDataExt) -> Value {
   let proto = Object({
     properties: {},
     symbol_properties: {},
-    prototype: Null,
+    prototype: get_obj_proto(),
     callable: None,
     class_name: "Object",
     descriptors: {},

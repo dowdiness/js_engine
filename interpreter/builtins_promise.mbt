@@ -889,7 +889,7 @@ pub fn setup_promise(env : Environment) -> Unit {
   let promise_proto = Object({
     properties: promise_proto_props,
     symbol_properties: {},
-    prototype: Null,
+    prototype: get_obj_proto(),
     callable: None,
     class_name: "Promise",
     descriptors: promise_proto_descs,

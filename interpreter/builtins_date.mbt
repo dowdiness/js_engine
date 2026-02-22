@@ -1491,7 +1491,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
   let date_proto : Value = Object({
     properties: date_proto_props,
     symbol_properties: {},
-    prototype: Null,
+    prototype: get_obj_proto(),
     callable: None,
     class_name: "Date",
     descriptors: date_proto_descs,

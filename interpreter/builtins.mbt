@@ -297,7 +297,7 @@ pub fn setup_builtins(
   let string_proto : Value = Object({
     properties: { "[[StringData]]": String_(""), "length": Number(0.0) },
     symbol_properties: {},
-    prototype: Null,
+    prototype: get_obj_proto(),
     callable: None,
     class_name: "String",
     descriptors: { "length": { writable: false, enumerable: false, configurable: false, getter: None, setter: None } },
@@ -566,7 +566,7 @@ pub fn setup_builtins(
   let boolean_proto : Value = Object({
     properties: boolean_proto_props,
     symbol_properties: {},
-    prototype: Null,
+    prototype: get_obj_proto(),
     callable: None,
     class_name: "Boolean",
     descriptors: boolean_proto_descs,
@@ -630,7 +630,7 @@ pub fn setup_builtins(
   setup_function_builtins(env)
 
   // Error constructors
-  let error_proto = register_error_ctor(env, "Error", Null)
+  let error_proto = register_error_ctor(env, "Error", get_obj_proto())
   register_error_ctor(env, "TypeError", error_proto) |> ignore
   register_error_ctor(env, "ReferenceError", error_proto) |> ignore
   register_error_ctor(env, "SyntaxError", error_proto) |> ignore
@@ -1611,7 +1611,7 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
   let symbol_proto : Value = Object({
     properties: symbol_proto_props,
     symbol_properties: symbol_proto_sym_props,
-    prototype: Null,
+    prototype: get_obj_proto(),
     callable: None,
     class_name: "Symbol",
     descriptors: symbol_proto_descs,
@@ -3334,7 +3334,7 @@ fn setup_number_builtins(env : Environment) -> Unit {
   let number_proto : Value = Object({
     properties: number_proto_props,
     symbol_properties: {},
-    prototype: Null,
+    prototype: get_obj_proto(),
     callable: None,
     class_name: "Number",
     descriptors: number_proto_descs,

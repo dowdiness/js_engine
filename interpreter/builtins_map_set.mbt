@@ -318,7 +318,7 @@ fn setup_map_builtins(env : Environment) -> Unit {
   let map_proto : Value = Object({
     properties: map_proto_props,
     symbol_properties: {},
-    prototype: Null,
+    prototype: get_obj_proto(),
     callable: None,
     class_name: "Map",
     descriptors: map_proto_descs,
@@ -680,7 +680,7 @@ fn setup_set_builtins(env : Environment) -> Unit {
   let set_proto : Value = Object({
     properties: set_proto_props,
     symbol_properties: {},
-    prototype: Null,
+    prototype: get_obj_proto(),
     callable: None,
     class_name: "Set",
     descriptors: set_proto_descs,
