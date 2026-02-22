@@ -456,7 +456,7 @@ fn make_async_gen_function_inner(
           Some(n) => n
           None => "anonymous"
         },
-        fn(ip, this_val, args) {
+        fn(ip, this_val, args) raise {
           create_generator_instance(
             ip,
             this_val,

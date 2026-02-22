@@ -805,8 +805,8 @@ pub fn get_string_method(
                   let r = arg.to_string()
                   (r, "g")
                 }
-                Some(method) => {
-                  let result = call_callable_direct(method, arg, [String_(str)])
+                Some(matchall_method) => {
+                  let result = call_callable_direct(matchall_method, arg, [String_(str)])
                   return result
                 }
               }

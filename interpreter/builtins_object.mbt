@@ -311,7 +311,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
   obj_proto_props["valueOf"] = make_interp_method_func("valueOf", 0, fn(interp, this_val, _args) raise {
         to_object(this_val, interp)
       })
-  obj_proto_props["hasOwnProperty"] = make_method_func("hasOwnProperty", 1, fn(this_val, args) {
+  obj_proto_props["hasOwnProperty"] = make_method_func("hasOwnProperty", 1, fn(this_val, args) raise {
     // RequireObjectCoercible(this) - throw TypeError for null/undefined
     match this_val {
       Null | Undefined =>
@@ -358,7 +358,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
       _ => Bool(false)
     }
   })
-  obj_proto_props["propertyIsEnumerable"] = make_method_func("propertyIsEnumerable", 1, fn(this_val, args) {
+  obj_proto_props["propertyIsEnumerable"] = make_method_func("propertyIsEnumerable", 1, fn(this_val, args) raise {
     // RequireObjectCoercible(this) - throw TypeError for null/undefined
     match this_val {
       Null | Undefined =>
@@ -418,7 +418,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
       _ => Bool(false)
     }
   })
-  obj_proto_props["isPrototypeOf"] = make_method_func("isPrototypeOf", 1, fn(this_val, args) {
+  obj_proto_props["isPrototypeOf"] = make_method_func("isPrototypeOf", 1, fn(this_val, args) raise {
     // RequireObjectCoercible(this) - throw TypeError for null/undefined
     match this_val {
       Null | Undefined =>
@@ -1207,7 +1207,6 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                     message="Cannot perform 'getPrototypeOf' on a proxy that has been revoked",
                   )
               }
-            _ => Null
           }
         }),
         "getOwnPropertyNames": make_static_func_with_length("getOwnPropertyNames", 1, fn(
@@ -2962,7 +2961,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 }
                 let desc_val = interp.get_property(descs, prop_name, iloc)
                 match desc_val {
-                  Object(desc) => {
+                  Object(_) => {
                     let has_get = has_property(desc_val, "get")
                     let has_set = has_property(desc_val, "set")
                     let has_value = has_property(desc_val, "value")

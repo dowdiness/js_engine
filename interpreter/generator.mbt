@@ -390,7 +390,7 @@ fn Interpreter::make_generator_function(
     callable: Some(
       InterpreterCallable(
         func_name,
-        fn(ip, this_val, args) {
+        fn(ip, this_val, args) raise {
           create_generator_instance(
             ip,
             this_val,
@@ -475,7 +475,7 @@ fn Interpreter::make_generator_function_ext(
     callable: Some(
       InterpreterCallable(
         func_name,
-        fn(ip, this_val, args) {
+        fn(ip, this_val, args) raise {
           create_generator_instance(
             ip,
             this_val,
@@ -774,7 +774,6 @@ fn run_generator_body(
   let prev_gen = current_generator.val
   current_generator.val = Some(gen)
   let result = try {
-    let mut last_val : Value = Undefined
     while gen.pc < gen.body.length() {
       let i = gen.pc
       let stmt = gen.body[i]
@@ -798,13 +797,13 @@ fn run_generator_body(
       // Statement completed normally — advance to next
       gen.pc = i + 1
       match signal {
-        Normal(v) => last_val = v
+        Normal(_) => ()
         ReturnSignal(v) => {
           complete_generator(gen)
           current_generator.val = prev_gen
           return make_iterator_result(v, true)
         }
-        BreakSignal(_, _) | ContinueSignal(_, _) => last_val = Undefined
+        BreakSignal(_, _) | ContinueSignal(_, _) => ()
       }
     }
     // Body completed normally — per spec, generators return undefined if no explicit return

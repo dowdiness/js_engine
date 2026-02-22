@@ -1297,7 +1297,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
         // Step 4: Return Invoke(O, "toISOString")
         // Look up toISOString on the object
         let to_iso = match o {
-          Object(data) => {
+          Object(_) => {
             let mut found : Value = Undefined
             let mut cur : Value = o
             while true {

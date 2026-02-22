@@ -993,7 +993,7 @@ pub fn setup_builtins(
           _ => raise @errors.TypeError(message="Method RegExp.prototype.compile called on incompatible receiver")
         }
       })
-      regexp_proto_props["toString"] = make_method_func("toString", 0, fn(this_val, _args) raise {
+      regexp_proto_props["toString"] = make_method_func("toString", 0, fn(this_val, _args) {
         match this_val {
           Object(data) => {
             let source = match data.properties.get("source") {
@@ -1923,7 +1923,7 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
       match array_ctor.properties.get("prototype") {
         Some(Object(proto_data)) => {
           // Add [Symbol.iterator] method that returns an array iterator
-          proto_data.symbol_properties[iterator_sym.id] = make_method_func("[Symbol.iterator]", 0, fn(this_val, _args) {
+          proto_data.symbol_properties[iterator_sym.id] = make_method_func("[Symbol.iterator]", 0, fn(this_val, _args) raise {
                 match this_val {
                   Array(arr) => make_array_iterator(arr)
                   _ => make_array_like_iterator(this_val)
@@ -1931,7 +1931,7 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
               })
 
           // Also add values() method (alias for [Symbol.iterator])
-          proto_data.properties["values"] = make_method_func("values", 0, fn(this_val, _args) {
+          proto_data.properties["values"] = make_method_func("values", 0, fn(this_val, _args) raise {
                 match this_val {
                   Array(arr) => make_array_iterator(arr)
                   _ => make_array_like_iterator(this_val)
@@ -1939,7 +1939,7 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
               })
 
           // Add keys() method that returns an iterator over indices
-          proto_data.properties["keys"] = make_method_func("keys", 0, fn(this_val, _args) {
+          proto_data.properties["keys"] = make_method_func("keys", 0, fn(this_val, _args) raise {
                 let len = to_array_like_length(this_val)
                 let index_ref : Ref[Int] = { val: 0 }
                 let next_method = Object({
@@ -2014,7 +2014,7 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
               })
 
           // Add entries() method that returns an iterator over [index, value] pairs
-          proto_data.properties["entries"] = make_method_func("entries", 0, fn(this_val, _args) {
+          proto_data.properties["entries"] = make_method_func("entries", 0, fn(this_val, _args) raise {
                 let the_val = this_val
                 let len = to_array_like_length(the_val)
                 let index_ref : Ref[Int] = { val: 0 }
@@ -3562,7 +3562,7 @@ fn setup_json_builtins(env : Environment) -> Unit {
             }
             String_(s) =>
               if s.length() > 10 {
-                Some(s.substring(start=0, end=10))
+                Some(s[:10].to_string())
               } else if s.length() > 0 {
                 Some(s)
               } else {

@@ -1463,7 +1463,7 @@ fn is_js_whitespace_code(ch : UInt16) -> Bool {
 }
 
 ///|
-fn js_trim_whitespace(s : String) -> String {
+fn js_trim_whitespace(s : String) -> String raise {
   let len = s.length()
   let mut start = 0
   let mut end = len
@@ -1476,7 +1476,7 @@ fn js_trim_whitespace(s : String) -> String {
   if start == 0 && end == len {
     s
   } else {
-    s.substring(start~, end~)
+    s[start:end].to_string()
   }
 }
 
@@ -1564,7 +1564,7 @@ pub fn to_number(val : Value) -> Double raise Error {
       // Validate the string only contains valid Number() characters.
       // parse_double may accept non-spec things like "INFINITY", "inf", etc.
       let valid = trimmed.iter().fold(init=true, fn(acc, ch) {
-        acc && (ch >= '0' && ch <= '9' || ch == '.' || ch == 'e' || ch == 'E' ||
+        acc && ((ch >= '0' && ch <= '9') || ch == '.' || ch == 'e' || ch == 'E' ||
                 ch == '+' || ch == '-')
       })
       if not(valid) {

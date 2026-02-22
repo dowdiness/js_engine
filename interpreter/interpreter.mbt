@@ -3785,7 +3785,7 @@ fn Interpreter::bind_pattern(
               let all_keys : Map[String, Bool] = {}
               data.properties.each(fn(k, _v) { all_keys[k] = true })
               data.descriptors.each(fn(k, _v) { all_keys[k] = true })
-              all_keys.each(fn(k, _) {
+              all_keys.each(fn(k, _) raise {
                 if not(used_keys.contains(k)) {
                   let is_enumerable = match data.descriptors.get(k) {
                     Some(desc) => desc.enumerable
@@ -4101,7 +4101,7 @@ fn Interpreter::assign_pattern(
               let all_keys_a : Map[String, Bool] = {}
               data.properties.each(fn(k, _v) { all_keys_a[k] = true })
               data.descriptors.each(fn(k, _v) { all_keys_a[k] = true })
-              all_keys_a.each(fn(k, _) {
+              all_keys_a.each(fn(k, _) raise {
                 if not(used_keys.contains(k)) {
                   let is_enumerable = match data.descriptors.get(k) {
                     Some(desc) => desc.enumerable

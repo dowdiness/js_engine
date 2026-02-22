@@ -473,7 +473,7 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
 pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
   match prop {
     "forEach" => {
-      let arr = data
+      let _arr = data
       make_interp_method_func("forEach", 1, fn(interp, this_val, args) raise {
             let callback = if args.length() > 0 { args[0] } else { Undefined }
             if not(is_callable(callback)) {
@@ -507,7 +507,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
           })
     }
     "map" => {
-      let arr = data
+      let _arr = data
       make_interp_method_func("map", 1, fn(interp, this_val, args) raise {
             let callback = if args.length() > 0 { args[0] } else { Undefined }
             if not(is_callable(callback)) {
@@ -547,7 +547,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
           })
     }
     "filter" => {
-      let arr = data
+      let _arr = data
       make_interp_method_func("filter", 1, fn(interp, this_val, args) raise {
             let callback = if args.length() > 0 { args[0] } else { Undefined }
             if not(is_callable(callback)) {
@@ -589,7 +589,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
           })
     }
     "reduce" => {
-      let arr = data
+      let _arr = data
       make_interp_method_func("reduce", 1, fn(interp, this_val, args) raise {
             // Use this_val's array data if it's the same array, otherwise delegate to generic
             let actual_arr : ArrayData = match this_val {
@@ -661,7 +661,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
           })
     }
     "reduceRight" => {
-      let arr = data
+      let _arr = data
       make_interp_method_func("reduceRight", 1, fn(interp, this_val, args) raise {
             // Use this_val's array data if it's the same array, otherwise delegate to generic
             let actual_arr : ArrayData = match this_val {
@@ -732,7 +732,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
           })
     }
     "find" => {
-      let arr = data
+      let _arr = data
       make_interp_method_func("find", 1, fn(interp, this_val, args) raise {
             let callback = if args.length() > 0 { args[0] } else { Undefined }
             if not(is_callable(callback)) {
@@ -770,7 +770,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
           })
     }
     "findIndex" => {
-      let arr = data
+      let _arr = data
       make_interp_method_func("findIndex", 1, fn(interp, this_val, args) raise {
             let callback = if args.length() > 0 { args[0] } else { Undefined }
             if not(is_callable(callback)) {
@@ -808,7 +808,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
           })
     }
     "every" => {
-      let arr = data
+      let _arr = data
       make_interp_method_func("every", 1, fn(interp, this_val, args) raise {
             let callback = if args.length() > 0 { args[0] } else { Undefined }
             if not(is_callable(callback)) {
@@ -848,7 +848,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
           })
     }
     "some" => {
-      let arr = data
+      let _arr = data
       make_interp_method_func("some", 1, fn(interp, this_val, args) raise {
             let callback = if args.length() > 0 { args[0] } else { Undefined }
             if not(is_callable(callback)) {
@@ -888,7 +888,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
           })
     }
     "findLast" => {
-      let arr = data
+      let _arr = data
       make_interp_method_func("findLast", 1, fn(interp, this_val, args) raise {
             let callback = if args.length() > 0 { args[0] } else { Undefined }
             if not(is_callable(callback)) {
@@ -926,7 +926,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
           })
     }
     "findLastIndex" => {
-      let arr = data
+      let _arr = data
       make_interp_method_func("findLastIndex", 1, fn(
             interp,
             this_val,
@@ -1178,7 +1178,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
       })
     }
     "flatMap" => {
-      let arr = data
+      let _arr = data
       make_interp_method_func("flatMap", 1, fn(interp, this_val, args) raise {
             let callback = if args.length() > 0 { args[0] } else { Undefined }
             if not(is_callable(callback)) {
