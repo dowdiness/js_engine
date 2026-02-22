@@ -5219,12 +5219,21 @@ fn Interpreter::eval_expr(
               env.get("this")
             }
             Some(_) => {
-              // Support non-class constructible supers (e.g. Promise constructor).
+              // Support non-class constructible supers (e.g. built-in constructors like Error).
               // Use constructor semantics (`new`) instead of plain call.
               let super_result = self.construct_value(super_ctor, args, loc)
               match super_result {
-                Object(_)
-                | Array(_)
+                Object(result_data) => {
+                  // Per spec, OrdinaryCreateFromConstructor uses newTarget's prototype.
+                  // Set the prototype from the subclass's pending this object.
+                  match this_val {
+                    Object(this_data) => result_data.prototype = this_data.prototype
+                    _ => ()
+                  }
+                  try { env.initialize("this", super_result) } catch { _ => env.assign("this", super_result) }
+                  super_result
+                }
+                Array(_)
                 | Map(_)
                 | Set(_)
                 | Promise(_)
@@ -8864,11 +8873,18 @@ fn make_arguments_object(
   throw_type_error? : Value? = None,
 ) -> Value {
   let new_args_props : Map[String, Value] = {}
+  let new_args_descs : Map[String, PropDescriptor] = {}
   for i = 0; i < args.length(); i = i + 1 {
     new_args_props[i.to_string()] = args[i]
+    new_args_descs[i.to_string()] = {
+      writable: true,
+      enumerable: true,
+      configurable: true,
+      getter: None,
+      setter: None,
+    }
   }
   new_args_props["length"] = Number(args.length().to_double())
-  let new_args_descs : Map[String, PropDescriptor] = {}
   new_args_descs["length"] = {
     writable: true,
     enumerable: false,
@@ -9523,6 +9539,41 @@ fn Interpreter::construct_value(
                               return maybe_set_promise_constructor(
                                 super_result, derived_ctor,
                               )
+                            }
+                          }
+                          Some(NativeCallable(_, _))
+                          | Some(InterpreterCallable(_, _)) => {
+                            // Built-in constructors like Error, Map, Set, etc.
+                            let super_result = self.construct_value(
+                              sc, args,
+                              @token.Loc::default(),
+                            )
+                            match super_result {
+                              Object(result_data) => {
+                                // Set prototype to the subclass's prototype (newTarget semantics)
+                                result_data.prototype = new_obj
+                                  |> fn(v) {
+                                      match v {
+                                        Object(d) => d.prototype
+                                        _ => Null
+                                      }
+                                    }
+                                self.strict = saved_strict
+                                return maybe_set_promise_constructor(
+                                  super_result, derived_ctor,
+                                )
+                              }
+                              _ => {
+                                // For Map, Set, Promise, etc. that return non-Object values
+                                if is_object_like_for_constructor_return(
+                                    super_result,
+                                  ) {
+                                  self.strict = saved_strict
+                                  return maybe_set_promise_constructor(
+                                    super_result, derived_ctor,
+                                  )
+                                }
+                              }
                             }
                           }
                           _ => ()

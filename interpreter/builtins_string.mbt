@@ -270,6 +270,18 @@ pub fn get_string_method(
     "includes" => {
       let str = s
       make_native_func_with_length("includes", 1, fn(args) raise {
+        // Per spec: throw TypeError if searchString is a RegExp
+        if args.length() > 0 {
+          match args[0] {
+            Object(data) =>
+              if data.class_name == "RegExp" {
+                raise @errors.TypeError(
+                  message="First argument to String.prototype.includes must not be a regular expression",
+                )
+              }
+            _ => ()
+          }
+        }
         let search = if args.length() > 0 {
           to_js_string(args[0])
         } else {
@@ -401,7 +413,10 @@ pub fn get_string_method(
         let length = if args.length() > 1 {
           match args[1] {
             Undefined => slen
-            _ => to_number(args[1]).to_int()
+            _ => {
+              let n = to_number(args[1])
+              if n.is_inf() && n > 0.0 { slen } else if n.is_nan() { 0 } else { n.to_int() }
+            }
           }
         } else {
           slen
@@ -518,6 +533,7 @@ pub fn get_string_method(
               let split_sym = get_split_symbol()
               let split_fn = lookup_symbol_property_chain(args[0], data, split_sym.id)
               match split_fn {
+                Some(Null) | Some(Undefined) => ()  // GetMethod: null/undefined means no method
                 Some(fn_val) => {
                   let limit = if args.length() > 1 {
                     args[1]
@@ -633,6 +649,7 @@ pub fn get_string_method(
             let replace_sym = get_replace_symbol()
             let replace_fn = lookup_symbol_property_chain(args[0], data, replace_sym.id)
             match replace_fn {
+              Some(Null) | Some(Undefined) => ()  // GetMethod: null/undefined means no method
               Some(fn_val) => {
                 let rep = if args.length() > 1 {
                   args[1]
@@ -729,6 +746,7 @@ pub fn get_string_method(
             let match_sym = get_match_symbol()
             let match_fn = lookup_symbol_property_chain(args[0], data, match_sym.id)
             match match_fn {
+              Some(Null) | Some(Undefined) => ()  // GetMethod: null/undefined means no method
               Some(fn_val) => {
                 let result = call_callable_direct(fn_val, args[0], [String_(str)])
                 return result
@@ -782,14 +800,14 @@ pub fn get_string_method(
               let matchall_sym = get_matchall_symbol()
               let matchall_fn = lookup_symbol_property_chain(arg, data, matchall_sym.id)
               match matchall_fn {
+                Some(Null) | Some(Undefined) | None => {
+                  // GetMethod: null/undefined means no method, fall through to string conversion
+                  let r = arg.to_string()
+                  (r, "g")
+                }
                 Some(method) => {
                   let result = call_callable_direct(method, arg, [String_(str)])
                   return result
-                }
-                _ => {
-                  // Convert to string and create RegExp
-                  let r = arg.to_string()
-                  (r, "g")
                 }
               }
             }
@@ -896,6 +914,7 @@ pub fn get_string_method(
             let search_sym = get_search_symbol()
             let search_fn = lookup_symbol_property_chain(args[0], data, search_sym.id)
             match search_fn {
+              Some(Null) | Some(Undefined) => ()  // GetMethod: null/undefined means no method
               Some(fn_val) => {
                 let result = call_callable_direct(fn_val, args[0], [String_(str)])
                 return result
@@ -923,6 +942,18 @@ pub fn get_string_method(
     "startsWith" => {
       let str = s
       make_native_func_with_length("startsWith", 1, fn(args) raise {
+        // Per spec: throw TypeError if searchString is a RegExp
+        if args.length() > 0 {
+          match args[0] {
+            Object(data) =>
+              if data.class_name == "RegExp" {
+                raise @errors.TypeError(
+                  message="First argument to String.prototype.startsWith must not be a regular expression",
+                )
+              }
+            _ => ()
+          }
+        }
         let search = if args.length() > 0 {
           to_js_string(args[0])
         } else {
@@ -957,6 +988,18 @@ pub fn get_string_method(
     "endsWith" => {
       let str = s
       make_native_func_with_length("endsWith", 1, fn(args) raise {
+        // Per spec: throw TypeError if searchString is a RegExp
+        if args.length() > 0 {
+          match args[0] {
+            Object(data) =>
+              if data.class_name == "RegExp" {
+                raise @errors.TypeError(
+                  message="First argument to String.prototype.endsWith must not be a regular expression",
+                )
+              }
+            _ => ()
+          }
+        }
         let search = if args.length() > 0 {
           to_js_string(args[0])
         } else {
@@ -1091,6 +1134,7 @@ pub fn get_string_method(
             let replace_sym = get_replace_symbol()
             let replace_fn = lookup_symbol_property_chain(args[0], data, replace_sym.id)
             match replace_fn {
+              Some(Null) | Some(Undefined) => ()  // GetMethod: null/undefined means no method
               Some(fn_val) => {
                 let rep = if args.length() > 1 {
                   args[1]

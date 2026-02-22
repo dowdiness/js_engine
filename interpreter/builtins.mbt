@@ -421,15 +421,20 @@ pub fn setup_builtins(
       prototype: Null,
       callable: Some(
         NativeCallable("String", fn(args) raise {
-          let val = if args.length() > 0 { args[0] } else { Undefined }
-          // Per spec: String(symbol) returns the symbol description
-          let str = match val {
-            Symbol(sym) =>
-              match sym.description {
-                Some(d) => "Symbol(" + d + ")"
-                None => "Symbol()"
-              }
-            _ => to_js_string(val)
+          let str = if args.length() == 0 {
+            // Per spec: String() with no args returns ""
+            ""
+          } else {
+            let val = args[0]
+            // Per spec: String(symbol) returns the symbol description
+            match val {
+              Symbol(sym) =>
+                match sym.description {
+                  Some(d) => "Symbol(" + d + ")"
+                  None => "Symbol()"
+                }
+              _ => to_js_string(val)
+            }
           }
           if is_constructing.val {
             // new String(value) → boxed String object
