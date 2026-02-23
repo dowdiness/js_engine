@@ -2,7 +2,7 @@
 
 ## Current Status
 
-**Test262**: 24,519 / 27,599 executed (**88.8%** pass rate) — full run 2026-02-18
+**Test262**: 44,933 / 53,208 tasks executed (**84.4%** pass rate, strict + non-strict) — full run 2026-02-22
 
 **Unit tests**: 881 total, 881 passed, 0 failed
 
@@ -18,6 +18,8 @@
 **Phase 21 (2026-02-16)**: Annex B `get_string_method` gating and conformance fixes. `get_string_method` now accepts `annex_b~` parameter and returns `Undefined` for Annex B HTML method names when flag is false, preventing direct primitive access from bypassing `setup_string_prototype` gating. All interpreter call sites forward `self.annex_b`. Replaced `str[i:i+1].to_string()` with `str.view()[i:i+1].to_string()` in String constructor. Removed dead `"annex-b" in meta.includes` clause from test262-runner.py. Full test262 re-run: **+26 tests passing** (23,849 → 23,875), pass rate 86.4% → **86.5%**. Key improvements: annexB/built-ins 66.8% → **72.7%** (+13), JSON 97.8% → **99.3%** (+2), String 95.6% → **95.1%** (more tests executed), Iterator 80.0% → **100.0%** (+1).
 **Phase 22 (2026-02-17)**: Tier 1+2 conformance improvements. Tier 1: string escape sequences (`\r`, `\b`, `\v`, `\f`, `\0`, `\xHH`), `%ThrowTypeError%` intrinsic for strict arguments/caller. Tier 2: `with` statement (object environment record, SyntaxError in strict mode), Annex B block-level function hoisting (sloppy mode var binding propagation), RegExp `[Symbol.match]`/`[Symbol.replace]`/`[Symbol.split]`/`[Symbol.search]`, import syntax validation (escaped reserved words, duplicate bindings). PR review fixes: line continuation in string/template literals, escaped reserved words as IdentifierName, DataView ToIndex validation, `String.prototype.replaceAll` global-flag check, `with` primitive coercion, RegExp `Symbol.split` ToUint32 limit. Full test262 re-run: **+587 tests passing** (23,875 → 24,462), pass rate 86.5% → **88.1%**. Key improvements: annexB/language 38.1% → **87.0%** (+400), RegExp 77.3% → **86.8%** (+81), DataView 91.0% → **100.0%** (+24), Proxy 96.3% → **97.1%** (+2), language/statements 83.0% → **84.0%** (+44), language/identifiers 74.4% → **78.7%** (+9).
 **Phase 23 (2026-02-18)**: Tier 4 polish & edge cases. globalThis properties (`undefined`/`NaN`/`Infinity` with correct descriptors), full LineTerminator support (`\u2028`/`\u2029` in lexer, comments, strings, line continuation), directive prologue fix (full prologue scan, reject escaped `"use strict"`), GeneratorFunction constructor (`GeneratorFunction("a", "yield a")`), generator prototype chain fix, eval completion values for loops/switch, ASI restricted productions (`throw`/`return`/postfix `++`/`--`), Unicode whitespace rejection in identifier escapes. PR review fixes: regex multiline CRLF exclusion, `@@toStringTag` error propagation, `Object.assign` Proxy symbol properties, `Object.create` descriptor deduplication. Full test262 re-run: **+57 tests passing** (24,462 → 24,519), pass rate 88.1% → **88.8%**. Key improvements: GeneratorFunction **100.0%** (21/21, was 9.5%), GeneratorPrototype **88.5%** (54/61), line-terminators **68.3%** (28/41, was 48.8%), undefined **71.4%** (5/7, was 57.1%), ASI 96.1% → **96.1%** (98/102), white-space **100.0%** (67/67, was 98.5%).
+
+**Phase 24 (2026-02-22)**: Compiler warning cleanup and strict-mode test262 expansion. Fixed all 34 MoonBit compiler warnings: deprecated `fn` syntax → explicit `raise` annotations, unused variables prefixed with `_`, deprecated `substring` → slice syntax, reserved keyword `method` renamed, unreachable code removed, ambiguous `&&`/`||` precedence disambiguated, dead-store variable removed. Test runner now tests both strict and non-strict modes (92,291 tasks from 48,157 files). Full test262 re-run: **84.4%** pass rate (44,933/53,208 tasks). Key improvements: line-terminators **100.0%** (82/82, was 68.3%), ThrowTypeError **96.2%** (25/26, was 0.0%). Build now produces **0 warnings**.
 
 ## Phase History
 
@@ -51,6 +53,9 @@
 | 21 | +26 | 23,875 | Annex B `get_string_method` gating, StringView fix, test runner fix (86.5%) |
 | 22 | +587 | 24,462 | `with` statement, Annex B block-level function hoisting, RegExp Symbol methods, string escapes, `%ThrowTypeError%`, import validation, PR review fixes (88.1%) |
 | 23 | +57 | 24,519 | Tier 4 polish: GeneratorFunction constructor, LineTerminator support, directive prologue fix, eval completion values, ASI restricted productions, Unicode whitespace in escapes (88.8%) |
+| 24 | — | 44,933† | Compiler warning cleanup (34→0), test runner now tests strict + non-strict modes (84.4% of 53,208 tasks) |
+
+† Phase 24 changed test methodology: runner now tests both strict and non-strict modes (92,291 tasks from 48,157 files), revealing strict-mode failures not previously counted. Non-strict-only pass rate remains comparable to Phase 23.
 
 For detailed implementation notes on Phases 1-6, see [docs/PHASE_HISTORY.md](docs/PHASE_HISTORY.md).
 
@@ -58,96 +63,103 @@ For detailed implementation notes on Phases 1-6, see [docs/PHASE_HISTORY.md](doc
 
 ## Failure Breakdown
 
-### Failure Breakdown by Category (3,080 remaining failures)
+### Failure Breakdown by Category (8,275 remaining task failures)
 
-Top failing categories from the full test262 run (2026-02-18):
+Top failing categories from the full test262 run (2026-02-22, strict + non-strict):
 
 | Category | Pass | Fail | Rate | Priority |
 |----------|------|------|------|----------|
-| language/statements | 3,552 | 669 | 84.2% | Medium |
-| language/expressions | 4,944 | 568 | 89.7% | Medium |
-| built-ins/Array | 2,590 | 351 | 88.1% | Medium |
-| language/module-code | 114 | 198 | 36.5% | Medium |
-| built-ins/Object | 3,242 | 133 | 96.1% | ✅ Done (P18) |
-| built-ins/RegExp | 733 | 111 | 86.8% | Medium (P20+P22 improved) |
-| annexB/language | 711 | 106 | 87.0% | ✅ Mostly done (P22, was 38.1%) |
-| language/eval-code | 233 | 97 | 70.6% | Medium |
-| language/literals | 230 | 89 | 72.1% | Medium |
-| language/import | 11 | 82 | 11.8% | Medium |
-| built-ins/Function | 342 | 69 | 83.2% | Medium |
-| built-ins/TypedArray | 714 | 63 | 91.9% | ✅ Done (P17-19) |
-| annexB/built-ins | 162 | 58 | 73.6% | Low (--annex-b) |
-| built-ins/String | 1,152 | 58 | 95.2% | ✅ Done (P18) |
-| built-ins/Number | 287 | 48 | 85.7% | Medium |
-| language/identifiers | 163 | 44 | 78.7% | Medium |
-| built-ins/Uint8Array | 44 | 24 | 64.7% | Medium |
-| built-ins/Date | 560 | 23 | 96.1% | ✅ Done (8C) |
-| built-ins/TypedArrayConstructors | 342 | 17 | 95.3% | ✅ Done (P17-19) |
-| built-ins/Map | 179 | 15 | 92.3% | Medium |
-| language/line-terminators | 28 | 13 | 68.3% | Medium (P23 improved, was 48.8%) |
-| built-ins/ThrowTypeError | 0 | 13 | 0.0% | Medium |
-| built-ins/WeakMap | 139 | 0 | 100.0% | ✅ Done (P20) |
-| built-ins/WeakSet | 84 | 0 | 100.0% | ✅ Done (P20) |
-| built-ins/DataView | 377 | 0 | 100.0% | ✅ Done (P16, P22) |
-| built-ins/Promise | 614 | 4 | 99.4% | ✅ Done (P7) |
-| built-ins/ArrayBuffer | 72 | 6 | 92.3% | ✅ Done (P16-19) |
-| language/block-scope | 106 | 0 | 100.0% | ✅ Done |
-| built-ins/Proxy | 264 | 8 | 97.1% | ✅ Done (P15-22) |
-| built-ins/Reflect | 153 | 0 | 100.0% | ✅ Done (P15-19) |
-| language/white-space | 67 | 0 | 100.0% | ✅ Done (P14, P23) |
-| built-ins/GeneratorFunction | 21 | 0 | 100.0% | ✅ Done (P23) |
+| built-ins/Array | 4,573 | 1,249 | 78.5% | Medium |
+| built-ins/Object | 5,642 | 1,102 | 83.7% | Medium |
+| language/expressions | 10,024 | 853 | 92.2% | Medium |
+| built-ins/TypedArray | 802 | 752 | 51.6% | Medium |
+| language/statements | 7,615 | 647 | 92.2% | Medium |
+| built-ins/RegExp | 1,102 | 586 | 65.3% | Medium |
+| annexB/language | 404 | 439 | 47.9% | Medium |
+| built-ins/Proxy | 224 | 310 | 41.9% | Medium |
+| built-ins/String | 2,160 | 257 | 89.4% | Medium |
+| built-ins/TypedArrayConstructors | 489 | 228 | 68.2% | Medium |
+| built-ins/Function | 610 | 182 | 77.0% | Medium |
+| language/eval-code | 283 | 169 | 62.6% | Medium |
+| built-ins/Uint8Array | 16 | 120 | 11.8% | Medium |
+| language/module-code | 193 | 119 | 61.9% | Medium |
+| built-ins/Promise | 1,162 | 98 | 92.2% | Medium |
+| built-ins/Reflect | 210 | 96 | 68.6% | Medium |
+| built-ins/JSON | 180 | 90 | 66.7% | Medium |
+| annexB/built-ins | 354 | 86 | 80.5% | Low (--annex-b) |
+| language/import | 17 | 82 | 17.2% | Medium |
+| language/identifiers | 335 | 80 | 80.7% | Medium |
+| language/literals | 581 | 60 | 90.6% | Medium |
+| built-ins/DataView | 700 | 54 | 92.8% | Medium |
+| built-ins/Date | 1,112 | 54 | 95.4% | ✅ Done (8C) |
+| built-ins/GeneratorPrototype | 78 | 44 | 63.9% | Medium |
+| built-ins/Number | 640 | 30 | 95.5% | ✅ Done |
+| built-ins/Map | 365 | 24 | 93.8% | Medium |
+| built-ins/WeakMap | 257 | 22 | 92.1% | Medium |
+| built-ins/Math | 626 | 18 | 97.2% | ✅ Done |
+| built-ins/Set | 370 | 14 | 96.4% | ✅ Done |
+| built-ins/WeakSet | 156 | 12 | 92.9% | Medium |
+| built-ins/Boolean | 99 | 0 | 100.0% | ✅ Done |
+| built-ins/Infinity | 10 | 0 | 100.0% | ✅ Done |
+| built-ins/NaN | 10 | 0 | 100.0% | ✅ Done |
+| built-ins/undefined | 12 | 0 | 100.0% | ✅ Done |
+| built-ins/isFinite | 30 | 0 | 100.0% | ✅ Done |
+| built-ins/isNaN | 30 | 0 | 100.0% | ✅ Done |
+| built-ins/ThrowTypeError | 25 | 1 | 96.2% | ✅ Done (P24, was 0.0%) |
+| language/line-terminators | 82 | 0 | 100.0% | ✅ Done (P24, was 68.3%) |
+| language/block-scope | 215 | 0 | 100.0% | ✅ Done |
+| language/white-space | 134 | 0 | 100.0% | ✅ Done (P14, P23) |
+| language/asi | 204 | 0 | 100.0% | ✅ Done |
+| language/keywords | 50 | 0 | 100.0% | ✅ Done |
+| language/comments | 46 | 0 | 100.0% | ✅ Done |
+| language/punctuators | 22 | 0 | 100.0% | ✅ Done |
 
-### High-Performing Categories (>90% pass rate)
+### High-Performing Categories (>90% pass rate, strict + non-strict)
 
 | Category | Pass | Fail | Rate |
 |----------|------|------|------|
-| built-ins/AggregateError | 24 | 0 | 100.0% |
-| built-ins/DataView | 377 | 0 | 100.0% |
-| built-ins/GeneratorFunction | 21 | 0 | 100.0% |
-| built-ins/Infinity | 6 | 0 | 100.0% |
-| built-ins/Iterator | 5 | 0 | 100.0% |
-| built-ins/MapIteratorPrototype | 11 | 0 | 100.0% |
-| built-ins/NaN | 6 | 0 | 100.0% |
-| built-ins/NativeErrors | 88 | 0 | 100.0% |
-| built-ins/Reflect | 153 | 0 | 100.0% |
-| built-ins/SetIteratorPrototype | 11 | 0 | 100.0% |
-| built-ins/StringIteratorPrototype | 7 | 0 | 100.0% |
-| built-ins/WeakMap | 139 | 0 | 100.0% |
-| built-ins/WeakSet | 84 | 0 | 100.0% |
-| built-ins/global | 27 | 0 | 100.0% |
-| built-ins/isFinite | 15 | 0 | 100.0% |
-| built-ins/isNaN | 15 | 0 | 100.0% |
-| language/block-scope | 106 | 0 | 100.0% |
-| language/keywords | 25 | 0 | 100.0% |
-| language/punctuators | 11 | 0 | 100.0% |
-| language/source-text | 1 | 0 | 100.0% |
-| language/white-space | 67 | 0 | 100.0% |
-| built-ins/Promise | 614 | 4 | 99.4% |
-| built-ins/JSON | 134 | 1 | 99.3% |
-| built-ins/Math | 317 | 5 | 98.4% |
-| built-ins/parseInt | 54 | 1 | 98.2% |
-| built-ins/parseFloat | 53 | 1 | 98.1% |
-| built-ins/Set | 188 | 4 | 97.9% |
-| language/future-reserved-words | 36 | 1 | 97.3% |
-| built-ins/Proxy | 264 | 8 | 97.1% |
-| built-ins/decodeURIComponent | 53 | 2 | 96.4% |
-| built-ins/decodeURI | 52 | 2 | 96.3% |
-| built-ins/Date | 560 | 23 | 96.1% |
-| language/arguments-object | 146 | 6 | 96.1% |
-| language/asi | 98 | 4 | 96.1% |
-| built-ins/Object | 3,242 | 133 | 96.1% |
-| language/function-code | 166 | 7 | 96.0% |
-| language/comments | 22 | 1 | 95.7% |
-| built-ins/TypedArrayConstructors | 342 | 17 | 95.3% |
-| built-ins/String | 1,152 | 58 | 95.2% |
-| language/computed-property-names | 45 | 3 | 93.8% |
-| built-ins/encodeURIComponent | 29 | 2 | 93.5% |
-| built-ins/encodeURI | 29 | 2 | 93.5% |
-| built-ins/ArrayBuffer | 72 | 6 | 92.3% |
-| built-ins/Map | 179 | 15 | 92.3% |
-| built-ins/TypedArray | 714 | 63 | 91.9% |
-| language/identifier-resolution | 11 | 1 | 91.7% |
-| language/rest-parameters | 10 | 1 | 90.9% |
+| built-ins/Boolean | 99 | 0 | 100.0% |
+| built-ins/Infinity | 10 | 0 | 100.0% |
+| built-ins/NaN | 10 | 0 | 100.0% |
+| built-ins/eval | 18 | 0 | 100.0% |
+| built-ins/isFinite | 30 | 0 | 100.0% |
+| built-ins/isNaN | 30 | 0 | 100.0% |
+| built-ins/undefined | 12 | 0 | 100.0% |
+| language/asi | 204 | 0 | 100.0% |
+| language/block-scope | 215 | 0 | 100.0% |
+| language/comments | 46 | 0 | 100.0% |
+| language/export | 3 | 0 | 100.0% |
+| language/identifier-resolution | 20 | 0 | 100.0% |
+| language/keywords | 50 | 0 | 100.0% |
+| language/line-terminators | 82 | 0 | 100.0% |
+| language/punctuators | 22 | 0 | 100.0% |
+| language/source-text | 2 | 0 | 100.0% |
+| language/white-space | 134 | 0 | 100.0% |
+| language/function-code | 277 | 4 | 98.6% |
+| language/future-reserved-words | 84 | 1 | 98.8% |
+| language/directive-prologue | 61 | 1 | 98.4% |
+| built-ins/parseInt | 108 | 2 | 98.2% |
+| built-ins/parseFloat | 106 | 2 | 98.1% |
+| built-ins/decodeURI | 106 | 2 | 98.1% |
+| built-ins/NativeErrors | 172 | 4 | 97.7% |
+| built-ins/Math | 626 | 18 | 97.2% |
+| built-ins/Set | 370 | 14 | 96.4% |
+| built-ins/decodeURIComponent | 106 | 4 | 96.4% |
+| built-ins/ThrowTypeError | 25 | 1 | 96.2% |
+| language/reserved-words | 51 | 2 | 96.2% |
+| built-ins/Date | 1,112 | 54 | 95.4% |
+| built-ins/Number | 640 | 30 | 95.5% |
+| language/types | 198 | 9 | 95.7% |
+| built-ins/Map | 365 | 24 | 93.8% |
+| built-ins/global | 52 | 4 | 92.9% |
+| built-ins/WeakSet | 156 | 12 | 92.9% |
+| built-ins/DataView | 700 | 54 | 92.8% |
+| built-ins/Promise | 1,162 | 98 | 92.2% |
+| language/expressions | 10,024 | 853 | 92.2% |
+| language/statements | 7,615 | 647 | 92.2% |
+| built-ins/WeakMap | 257 | 22 | 92.1% |
+| built-ins/Symbol | 138 | 12 | 92.0% |
+| language/literals | 581 | 60 | 90.6% |
 
 ---
 

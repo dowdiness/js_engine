@@ -1,9 +1,32 @@
 ///|
+/// Check if an expression is an anonymous function/class/arrow definition
+/// per ECMAScript IsAnonymousFunctionDefinition (§15.2)
+fn is_anonymous_function_definition(expr : @ast.Expr) -> Bool {
+  match expr {
+    FuncExpr(None, _, _, _) => true
+    FuncExprExt(None, _, _, _, _) => true
+    ArrowFunc(_, _, _) => true
+    ArrowFuncExt(_, _, _, _) => true
+    ClassExpr(None, _, _, _) => true
+    GeneratorExpr(None, _, _, _) => true
+    GeneratorExprExt(None, _, _, _, _) => true
+    AsyncFuncExpr(None, _, _, _) => true
+    AsyncFuncExprExt(None, _, _, _, _) => true
+    AsyncArrowFunc(_, _, _) => true
+    AsyncArrowFuncExt(_, _, _, _) => true
+    AsyncGeneratorExpr(None, _, _, _) => true
+    AsyncGeneratorExprExt(None, _, _, _, _) => true
+    Grouping(inner, _) => is_anonymous_function_definition(inner)
+    _ => false
+  }
+}
+
+///|
 pub(all) enum Signal {
   Normal(Value)
   ReturnSignal(Value)
-  BreakSignal(String?)
-  ContinueSignal(String?)
+  BreakSignal(Value?, String?) // (completion_value (None=empty), label?)
+  ContinueSignal(Value?, String?) // (completion_value (None=empty), label?)
 }
 
 ///|
@@ -66,14 +89,40 @@ pub fn Interpreter::new(annex_b? : Bool = false) -> Interpreter {
   // Bind 'this' and 'globalThis' in global scope
   global.def_builtin("this", global_this)
   global.def_builtin("globalThis", global_this)
-  // Mirror eval onto the global object (globalThis.eval)
-  match global.bindings.get("eval") {
-    Some(binding) =>
-      match global_this {
-        Object(data) => data.properties["eval"] = binding.value
-        _ => ()
+  // Mirror global built-in functions onto the global object (globalThis.X)
+  // so that this.isFinite, this.isNaN, etc. work correctly per the ES spec
+  let global_func_names = [
+    "eval", "isFinite", "isNaN", "parseInt", "parseFloat",
+    "encodeURIComponent", "decodeURIComponent", "encodeURI", "decodeURI",
+    "escape", "unescape",
+    "String", "Number", "Boolean", "Object", "Array", "Function",
+    "RegExp", "Error", "TypeError", "RangeError", "ReferenceError",
+    "SyntaxError", "URIError", "EvalError", "Date", "Math", "JSON",
+    "Symbol", "Map", "Set", "WeakMap", "WeakSet", "Promise", "Proxy",
+    "Reflect", "ArrayBuffer", "DataView",
+    "Int8Array", "Uint8Array", "Uint8ClampedArray",
+    "Int16Array", "Uint16Array", "Int32Array", "Uint32Array",
+    "Float32Array", "Float64Array",
+  ]
+  let builtin_desc : PropDescriptor = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
+  match global_this {
+    Object(data) =>
+      for name in global_func_names {
+        match global.bindings.get(name) {
+          Some(binding) => {
+            data.properties[name] = binding.value
+            data.descriptors[name] = { ..builtin_desc }
+          }
+          None => ()
+        }
       }
-    None => ()
+    _ => ()
   }
   // Mirror global constants (undefined, NaN, Infinity) onto the global object
   // with correct property descriptors per ES spec §19.1
@@ -273,10 +322,47 @@ fn should_reconcile_eval_function_decl(
 }
 
 ///|
+/// Mirror a binding to the global object (globalThis) as an own property.
+/// This implements CreateGlobalVarBinding / CreateGlobalFunctionBinding per the
+/// ES spec, where global `var` and function declarations become properties of
+/// the global object.  `configurable` controls the property descriptor.
+fn Interpreter::mirror_to_global(
+  self : Interpreter,
+  name : String,
+  value : Value,
+  configurable~ : Bool = false,
+) -> Unit {
+  match self.global_this {
+    Object(data) => {
+      data.properties[name] = value
+      // Only set descriptor if not already set (preserve existing non-configurable)
+      match data.descriptors.get(name) {
+        Some(existing) =>
+          if existing.configurable {
+            // Update value via property, descriptor stays
+            ()
+          }
+        None =>
+          data.descriptors[name] = {
+            writable: true,
+            enumerable: true,
+            configurable,
+            getter: None,
+            setter: None,
+          }
+      }
+    }
+    _ => ()
+  }
+}
+
+///|
 pub fn Interpreter::run(
   self : Interpreter,
   stmts : Array[@ast.Stmt],
 ) -> Value raise Error {
+  // Store interpreter ref for ToPrimitive to use when calling user functions
+  current_interpreter.val = Some(self)
   try {
     // Check for "use strict" directive
     if has_use_strict(stmts) {
@@ -294,9 +380,9 @@ pub fn Interpreter::run(
           raise @errors.SyntaxError(
             message="return statement outside of function",
           )
-        BreakSignal(_) =>
+        BreakSignal(_, _) =>
           raise @errors.SyntaxError(message="break statement outside of loop")
-        ContinueSignal(_) =>
+        ContinueSignal(_, _) =>
           raise @errors.SyntaxError(
             message="continue statement outside of loop",
           )
@@ -333,7 +419,16 @@ fn Interpreter::exec_stmt(
         VarKind => VarBinding
       }
       let value : Value = match init {
-        Some(expr) => self.eval_expr(expr, env)
+        Some(expr) => {
+          let v = self.eval_expr(expr, env)
+          // SetFunctionName for variable declarations
+          // Per spec, only set name for IsAnonymousFunctionDefinition
+          // Comma expressions, parenthesized expressions are NOT anonymous function definitions
+          if is_anonymous_function_definition(expr) {
+            set_function_name(v, name)
+          }
+          v
+        }
         None => Undefined
       }
       // For var declarations that were hoisted, use assign instead of def.
@@ -346,6 +441,10 @@ fn Interpreter::exec_stmt(
           // This ensures eval("var x = 1") targets the function scope's var x,
           // not a block-scoped let x in between.
           env.assign_var(name, value)
+          // Mirror var assignment to global object when in global scope
+          if physical_equal(env.find_var_env(), self.global) {
+            self.mirror_to_global(name, value)
+          }
         }
       } else if (bk == LetBinding || bk == ConstBinding) &&
         env.bindings.contains(name) {
@@ -353,6 +452,10 @@ fn Interpreter::exec_stmt(
         env.initialize(name, value)
       } else {
         env.def(name, value, bk)
+        // Mirror new var declaration to global object when in global scope
+        if bk == VarBinding && physical_equal(env.find_var_env(), self.global) {
+          self.mirror_to_global(name, value)
+        }
       }
       Normal(Undefined)
     }
@@ -415,19 +518,27 @@ fn Interpreter::exec_stmt(
         match body_signal {
           Normal(v) => completion = v
           ReturnSignal(v) => return ReturnSignal(v)
-          BreakSignal(None) => break
-          BreakSignal(Some(l)) =>
+          BreakSignal(v, None) => {
+            completion = v.unwrap_or(completion)
+            break
+          }
+          BreakSignal(bv, Some(l)) =>
             if label == Some(l) {
+              completion = bv.unwrap_or(completion)
               break
             } else {
-              return BreakSignal(Some(l))
+              return BreakSignal(bv, Some(l))
             }
-          ContinueSignal(None) => continue
-          ContinueSignal(Some(l)) =>
+          ContinueSignal(v, None) => {
+            completion = v.unwrap_or(completion)
+            continue
+          }
+          ContinueSignal(cv, Some(l)) =>
             if label == Some(l) {
+              completion = cv.unwrap_or(completion)
               continue
             } else {
-              return ContinueSignal(Some(l))
+              return ContinueSignal(cv, Some(l))
             }
         }
       }
@@ -440,6 +551,26 @@ fn Interpreter::exec_stmt(
         Some(g) => g.loop_env_stack.length() > 0
         _ => false
       }
+      // Collect let/const variable names from init for per-iteration scoping
+      let loop_vars : Array[String] = []
+      fn collect_loop_vars(stmt : @ast.Stmt) {
+        match stmt {
+          VarDecl(kind, name, _, _) =>
+            if kind == LetKind || kind == ConstKind {
+              loop_vars.push(name)
+            }
+          StmtList(stmts, _) =>
+            for s in stmts {
+              collect_loop_vars(s)
+            }
+          _ => ()
+        }
+      }
+      match init {
+        Some(init_stmt) => collect_loop_vars(init_stmt)
+        None => ()
+      }
+      let has_lexical_vars = loop_vars.length() > 0
       let for_env = if resuming_loop {
         // Use saved loop env from stack (pop from end = outermost first)
         match gen_opt {
@@ -467,8 +598,18 @@ fn Interpreter::exec_stmt(
             None => ()
           }
         }
+        // Per-iteration scoping: create a new scope with copies of loop vars
+        let iter_env = if has_lexical_vars {
+          let ie = Environment::new(parent=Some(env))
+          for v in loop_vars {
+            ie.def(v, for_env.get(v), LetBinding)
+          }
+          ie
+        } else {
+          for_env
+        }
         let mut do_continue = false
-        let body_signal = self.exec_stmt(body, for_env) catch {
+        let body_signal = self.exec_stmt(body, iter_env) catch {
           e => {
             if e is YieldSignal(_) {
               // Yield inside for loop body — save for_env for resume
@@ -483,20 +624,34 @@ fn Interpreter::exec_stmt(
         match body_signal {
           Normal(v) => completion = v
           ReturnSignal(v) => return ReturnSignal(v)
-          BreakSignal(None) => break
-          BreakSignal(Some(l)) =>
+          BreakSignal(v, None) => {
+            completion = v.unwrap_or(completion)
+            break
+          }
+          BreakSignal(bv, Some(l)) =>
             if label == Some(l) {
+              completion = bv.unwrap_or(completion)
               break
             } else {
-              return BreakSignal(Some(l))
+              return BreakSignal(bv, Some(l))
             }
-          ContinueSignal(None) => do_continue = true
-          ContinueSignal(Some(l)) =>
+          ContinueSignal(v, None) => {
+            completion = v.unwrap_or(completion)
+            do_continue = true
+          }
+          ContinueSignal(cv, Some(l)) =>
             if label == Some(l) {
+              completion = cv.unwrap_or(completion)
               do_continue = true
             } else {
-              return ContinueSignal(Some(l))
+              return ContinueSignal(cv, Some(l))
             }
+        }
+        // Copy iteration values back to for_env for update expression
+        if has_lexical_vars {
+          for v in loop_vars {
+            for_env.assign(v, iter_env.get(v))
+          }
         }
         if do_continue {
           match update {
@@ -518,35 +673,47 @@ fn Interpreter::exec_stmt(
     }
     FuncDecl(name, params, body, _) => {
       validate_function_signature(self.strict, Some(name), params, body)
-      let func_data : FuncData = {
-        name: Some(name),
-        params,
-        body,
-        closure: env,
-        strict: is_function_strict(self.strict, body),
+      // Check if this was already hoisted - if so, don't re-create the function.
+      // Function declarations at the top level (var scope) are fully handled
+      // during hoisting and should be no-ops during execution.
+      let already_hoisted = match env.bindings.get(name) {
+        Some(binding) => binding.kind == VarBinding
+        None => false
       }
-      let func_val = make_func(func_data)
-      // For non-strict eval execution, function declarations are hoisted into
-      // var_env but executed in exec_env. Reconcile assignment back to var_env.
-      if env.bindings.contains(name) {
-        env.assign(name, func_val)
-      } else if should_reconcile_eval_function_decl(env, name) {
-        env.assign_var(name, func_val)
+      if already_hoisted && env.is_var_scope {
+        // Function was hoisted; no-op during execution
+        Normal(Undefined)
       } else {
-        env.def(name, func_val, VarBinding)
-      }
-      // Annex B.3.3: propagate block-level function to function scope's var binding
-      if self.annex_b && not(self.strict) && not(env.is_var_scope) {
-        let var_env = env.find_var_env()
-        match var_env.bindings.get(name) {
-          Some(binding) =>
-            if binding.kind == VarBinding {
-              binding.value = func_val
-            }
-          None => ()
+        let func_data : FuncData = {
+          name: Some(name),
+          params,
+          body,
+          closure: env,
+          strict: is_function_strict(self.strict, body),
         }
+        let func_val = make_func(func_data)
+        // For non-strict eval execution, function declarations are hoisted into
+        // var_env but executed in exec_env. Reconcile assignment back to var_env.
+        if env.bindings.contains(name) {
+          env.assign(name, func_val)
+        } else if should_reconcile_eval_function_decl(env, name) {
+          env.assign_var(name, func_val)
+        } else {
+          env.def(name, func_val, VarBinding)
+        }
+        // Annex B.3.3: propagate block-level function to function scope's var binding
+        if self.annex_b && not(self.strict) && not(env.is_var_scope) {
+          let var_env = env.find_var_env()
+          match var_env.bindings.get(name) {
+            Some(binding) =>
+              if binding.kind == VarBinding {
+                binding.value = func_val
+              }
+            None => ()
+          }
+        }
+        Normal(Undefined)
       }
-      Normal(Undefined)
     }
     ReturnStmt(expr, _) => {
       let value : Value = match expr {
@@ -555,8 +722,8 @@ fn Interpreter::exec_stmt(
       }
       ReturnSignal(value)
     }
-    BreakStmt(label, _) => BreakSignal(label)
-    ContinueStmt(label, _) => ContinueSignal(label)
+    BreakStmt(label, _) => BreakSignal(None, label)
+    ContinueStmt(label, _) => ContinueSignal(None, label)
     ThrowStmt(expr, _) => {
       let value = self.eval_expr(expr, env)
       raise JsException(value)
@@ -586,12 +753,36 @@ fn Interpreter::exec_stmt(
       } else {
         cases.length()
       }
+      // Create a new lexical environment for the switch block
+      // so that let/const declarations are scoped to the switch
+      let switch_env = Environment::new(parent=Some(env))
       let mut completion : Value = Undefined
       for i = start; i < cases.length(); i = i + 1 {
         for stmt in cases[i].body {
-          match self.exec_stmt(stmt, env) {
+          match self.exec_stmt(stmt, switch_env) {
             Normal(v) => completion = v
-            BreakSignal(None) => return Normal(completion)
+            BreakSignal(v, None) => {
+              // UpdateEmpty: use break's carried value if non-empty, otherwise accumulated
+              let cv = match v {
+                None => completion
+                Some(val) => val
+              }
+              return Normal(cv)
+            }
+            BreakSignal(v, Some(l)) => {
+              let cv = match v {
+                None => Some(completion)
+                some => some
+              }
+              return BreakSignal(cv, Some(l))
+            }
+            ContinueSignal(v, label) => {
+              let cv = match v {
+                None => Some(completion)
+                some => some
+              }
+              return ContinueSignal(cv, label)
+            }
             other => return other
           }
         }
@@ -628,19 +819,25 @@ fn Interpreter::exec_stmt(
         match body_signal {
           Normal(v) => completion = v
           ReturnSignal(v) => return ReturnSignal(v)
-          BreakSignal(None) => break
-          BreakSignal(Some(l)) =>
+          BreakSignal(v, None) => {
+            completion = v.unwrap_or(completion)
+            break
+          }
+          BreakSignal(bv, Some(l)) =>
             if label == Some(l) {
+              completion = bv.unwrap_or(completion)
               break
             } else {
-              return BreakSignal(Some(l))
+              return BreakSignal(bv, Some(l))
             }
-          ContinueSignal(None) => ()
-          ContinueSignal(Some(l)) =>
+          ContinueSignal(v, None) => {
+            completion = v.unwrap_or(completion)
+          }
+          ContinueSignal(cv, Some(l)) =>
             if label == Some(l) {
-              // continue — fall through to condition check
+              completion = cv.unwrap_or(completion)
             } else {
-              return ContinueSignal(Some(l))
+              return ContinueSignal(cv, Some(l))
             }
         }
         if not(is_truthy(self.eval_expr(cond, env))) {
@@ -664,24 +861,44 @@ fn Interpreter::exec_stmt(
             }
             body_env.def(name, String_(key), bk)
           }
-          None => env.assign(name, String_(key))
+          None =>
+            try {
+              env.assign(name, String_(key))
+            } catch {
+              @errors.ReferenceError(_) =>
+                if not(self.strict) {
+                  self.global.def(name, String_(key), VarBinding)
+                  self.mirror_to_global(name, String_(key), configurable=true)
+                } else {
+                  raise @errors.ReferenceError(message="\{name} is not defined")
+                }
+              e => raise e
+            }
         }
         match self.exec_stmt(body, body_env) {
           Normal(v) => completion = v
           ReturnSignal(v) => return ReturnSignal(v)
-          BreakSignal(None) => break
-          BreakSignal(Some(l)) =>
+          BreakSignal(v, None) => {
+            completion = v.unwrap_or(completion)
+            break
+          }
+          BreakSignal(bv, Some(l)) =>
             if label == Some(l) {
+              completion = bv.unwrap_or(completion)
               break
             } else {
-              return BreakSignal(Some(l))
+              return BreakSignal(bv, Some(l))
             }
-          ContinueSignal(None) => continue
-          ContinueSignal(Some(l)) =>
+          ContinueSignal(v, None) => {
+            completion = v.unwrap_or(completion)
+            continue
+          }
+          ContinueSignal(cv, Some(l)) =>
             if label == Some(l) {
+              completion = cv.unwrap_or(completion)
               continue
             } else {
-              return ContinueSignal(Some(l))
+              return ContinueSignal(cv, Some(l))
             }
         }
       }
@@ -822,19 +1039,27 @@ fn Interpreter::exec_stmt(
           match body_signal {
             Normal(v) => completion = v
             ReturnSignal(v) => return ReturnSignal(v)
-            BreakSignal(None) => break
-            BreakSignal(Some(l)) =>
+            BreakSignal(v, None) => {
+              completion = v.unwrap_or(completion)
+              break
+            }
+            BreakSignal(bv, Some(l)) =>
               if label == Some(l) {
+                completion = bv.unwrap_or(completion)
                 break
               } else {
-                return BreakSignal(Some(l))
+                return BreakSignal(bv, Some(l))
               }
-            ContinueSignal(None) => continue
-            ContinueSignal(Some(l)) =>
+            ContinueSignal(v, None) => {
+              completion = v.unwrap_or(completion)
+              continue
+            }
+            ContinueSignal(cv, Some(l)) =>
               if label == Some(l) {
+                completion = cv.unwrap_or(completion)
                 continue
               } else {
-                return ContinueSignal(Some(l))
+                return ContinueSignal(cv, Some(l))
               }
           }
           // After resume body completes, continue the loop normally below
@@ -899,26 +1124,44 @@ fn Interpreter::exec_stmt(
                 }
                 _ => ()
               }
+            } else {
+              // Close iterator on exception (IteratorClose)
+              try { close_iterator(self, iterator, loc) } catch { _ => () }
             }
             raise e
           }
         }
         match body_signal {
           Normal(v) => completion = v
-          ReturnSignal(v) => return ReturnSignal(v)
-          BreakSignal(None) => break
-          BreakSignal(Some(l)) =>
+          ReturnSignal(v) => {
+            try { close_iterator(self, iterator, loc) } catch { _ => () }
+            return ReturnSignal(v)
+          }
+          BreakSignal(v, None) => {
+            try { close_iterator(self, iterator, loc) } catch { _ => () }
+            completion = v.unwrap_or(completion)
+            break
+          }
+          BreakSignal(bv, Some(l)) =>
             if label == Some(l) {
+              try { close_iterator(self, iterator, loc) } catch { _ => () }
+              completion = bv.unwrap_or(completion)
               break
             } else {
-              return BreakSignal(Some(l))
+              try { close_iterator(self, iterator, loc) } catch { _ => () }
+              return BreakSignal(bv, Some(l))
             }
-          ContinueSignal(None) => continue
-          ContinueSignal(Some(l)) =>
+          ContinueSignal(v, None) => {
+            completion = v.unwrap_or(completion)
+            continue
+          }
+          ContinueSignal(cv, Some(l)) =>
             if label == Some(l) {
+              completion = cv.unwrap_or(completion)
               continue
             } else {
-              return ContinueSignal(Some(l))
+              try { close_iterator(self, iterator, loc) } catch { _ => () }
+              return ContinueSignal(cv, Some(l))
             }
         }
       }
@@ -948,19 +1191,27 @@ fn Interpreter::exec_stmt(
         match self.exec_stmt(body, body_env) {
           Normal(v) => completion = v
           ReturnSignal(v) => return ReturnSignal(v)
-          BreakSignal(None) => break
-          BreakSignal(Some(l)) =>
+          BreakSignal(v, None) => {
+            completion = v.unwrap_or(completion)
+            break
+          }
+          BreakSignal(bv, Some(l)) =>
             if label == Some(l) {
+              completion = bv.unwrap_or(completion)
               break
             } else {
-              return BreakSignal(Some(l))
+              return BreakSignal(bv, Some(l))
             }
-          ContinueSignal(None) => continue
-          ContinueSignal(Some(l)) =>
+          ContinueSignal(v, None) => {
+            completion = v.unwrap_or(completion)
+            continue
+          }
+          ContinueSignal(cv, Some(l)) =>
             if label == Some(l) {
+              completion = cv.unwrap_or(completion)
               continue
             } else {
-              return ContinueSignal(Some(l))
+              return ContinueSignal(cv, Some(l))
             }
         }
       }
@@ -1073,22 +1324,43 @@ fn Interpreter::exec_stmt(
           }
           None => self.assign_pattern(pattern, value, env)
         }
-        match self.exec_stmt(body, body_env) {
+        let body_signal = self.exec_stmt(body, body_env) catch {
+          e => {
+            try { close_iterator(self, iterator, loc) } catch { _ => () }
+            raise e
+          }
+        }
+        match body_signal {
           Normal(v) => completion = v
-          ReturnSignal(v) => return ReturnSignal(v)
-          BreakSignal(None) => break
-          BreakSignal(Some(l)) =>
+          ReturnSignal(v) => {
+            try { close_iterator(self, iterator, loc) } catch { _ => () }
+            return ReturnSignal(v)
+          }
+          BreakSignal(v, None) => {
+            try { close_iterator(self, iterator, loc) } catch { _ => () }
+            completion = v.unwrap_or(completion)
+            break
+          }
+          BreakSignal(bv, Some(l)) =>
             if label == Some(l) {
+              try { close_iterator(self, iterator, loc) } catch { _ => () }
+              completion = bv.unwrap_or(completion)
               break
             } else {
-              return BreakSignal(Some(l))
+              try { close_iterator(self, iterator, loc) } catch { _ => () }
+              return BreakSignal(bv, Some(l))
             }
-          ContinueSignal(None) => continue
-          ContinueSignal(Some(l)) =>
+          ContinueSignal(v, None) => {
+            completion = v.unwrap_or(completion)
+            continue
+          }
+          ContinueSignal(cv, Some(l)) =>
             if label == Some(l) {
+              completion = cv.unwrap_or(completion)
               continue
             } else {
-              return ContinueSignal(Some(l))
+              try { close_iterator(self, iterator, loc) } catch { _ => () }
+              return ContinueSignal(cv, Some(l))
             }
         }
       }
@@ -1104,19 +1376,27 @@ fn Interpreter::exec_stmt(
         match self.exec_stmt(body, body_env) {
           Normal(v) => completion = v
           ReturnSignal(v) => return ReturnSignal(v)
-          BreakSignal(None) => break
-          BreakSignal(Some(l)) =>
+          BreakSignal(v, None) => {
+            completion = v.unwrap_or(completion)
+            break
+          }
+          BreakSignal(bv, Some(l)) =>
             if label == Some(l) {
+              completion = bv.unwrap_or(completion)
               break
             } else {
-              return BreakSignal(Some(l))
+              return BreakSignal(bv, Some(l))
             }
-          ContinueSignal(None) => continue
-          ContinueSignal(Some(l)) =>
+          ContinueSignal(v, None) => {
+            completion = v.unwrap_or(completion)
+            continue
+          }
+          ContinueSignal(cv, Some(l)) =>
             if label == Some(l) {
+              completion = cv.unwrap_or(completion)
               continue
             } else {
-              return ContinueSignal(Some(l))
+              return ContinueSignal(cv, Some(l))
             }
         }
       }
@@ -1210,19 +1490,27 @@ fn Interpreter::exec_stmt(
         match self.exec_stmt(body, body_env) {
           Normal(v) => completion = v
           ReturnSignal(v) => return ReturnSignal(v)
-          BreakSignal(None) => break
-          BreakSignal(Some(l)) =>
+          BreakSignal(v, None) => {
+            completion = v.unwrap_or(completion)
+            break
+          }
+          BreakSignal(bv, Some(l)) =>
             if label == Some(l) {
+              completion = bv.unwrap_or(completion)
               break
             } else {
-              return BreakSignal(Some(l))
+              return BreakSignal(bv, Some(l))
             }
-          ContinueSignal(None) => continue
-          ContinueSignal(Some(l)) =>
+          ContinueSignal(v, None) => {
+            completion = v.unwrap_or(completion)
+            continue
+          }
+          ContinueSignal(cv, Some(l)) =>
             if label == Some(l) {
+              completion = cv.unwrap_or(completion)
               continue
             } else {
-              return ContinueSignal(Some(l))
+              return ContinueSignal(cv, Some(l))
             }
         }
       }
@@ -1246,34 +1534,43 @@ fn Interpreter::exec_stmt(
         rest_param,
         body,
       )
-      let func_data : FuncDataExt = {
-        name: Some(name),
-        params,
-        rest_param,
-        body,
-        closure: env,
-        strict: is_function_strict(self.strict, body),
+      // Same hoisting optimization as FuncDecl
+      let already_hoisted = match env.bindings.get(name) {
+        Some(binding) => binding.kind == VarBinding
+        None => false
       }
-      let func_val = make_func_ext(func_data)
-      if env.bindings.contains(name) {
-        env.assign(name, func_val)
-      } else if should_reconcile_eval_function_decl(env, name) {
-        env.assign_var(name, func_val)
+      if already_hoisted && env.is_var_scope {
+        Normal(Undefined)
       } else {
-        env.def(name, func_val, VarBinding)
-      }
-      // Annex B.3.3: propagate block-level function to function scope's var binding
-      if self.annex_b && not(self.strict) && not(env.is_var_scope) {
-        let var_env = env.find_var_env()
-        match var_env.bindings.get(name) {
-          Some(binding) =>
-            if binding.kind == VarBinding {
-              binding.value = func_val
-            }
-          None => ()
+        let func_data : FuncDataExt = {
+          name: Some(name),
+          params,
+          rest_param,
+          body,
+          closure: env,
+          strict: is_function_strict(self.strict, body),
         }
+        let func_val = make_func_ext(func_data)
+        if env.bindings.contains(name) {
+          env.assign(name, func_val)
+        } else if should_reconcile_eval_function_decl(env, name) {
+          env.assign_var(name, func_val)
+        } else {
+          env.def(name, func_val, VarBinding)
+        }
+        // Annex B.3.3: propagate block-level function to function scope's var binding
+        if self.annex_b && not(self.strict) && not(env.is_var_scope) {
+          let var_env = env.find_var_env()
+          match var_env.bindings.get(name) {
+            Some(binding) =>
+              if binding.kind == VarBinding {
+                binding.value = func_val
+              }
+            None => ()
+          }
+        }
+        Normal(Undefined)
       }
-      Normal(Undefined)
     }
     GeneratorDecl(name, params, body, _) => {
       validate_function_signature(self.strict, Some(name), params, body)
@@ -1317,13 +1614,97 @@ fn Interpreter::exec_stmt(
       }
       Normal(Undefined)
     }
+    AsyncFuncDecl(name, params, body, _) => {
+      validate_function_signature(self.strict, Some(name), params, body)
+      let async_func = self.make_async_function(
+        Some(name),
+        params,
+        None,
+        body,
+        env,
+      )
+      if env.bindings.contains(name) {
+        env.assign(name, async_func)
+      } else if should_reconcile_eval_function_decl(env, name) {
+        env.assign_var(name, async_func)
+      } else {
+        env.def(name, async_func, VarBinding)
+      }
+      Normal(Undefined)
+    }
+    AsyncFuncDeclExt(name, params, rest_param, body, _) => {
+      validate_function_signature_ext(
+        self.strict,
+        Some(name),
+        params,
+        rest_param,
+        body,
+      )
+      let async_func = self.make_async_function_ext(
+        Some(name),
+        params,
+        rest_param,
+        body,
+        env,
+      )
+      if env.bindings.contains(name) {
+        env.assign(name, async_func)
+      } else if should_reconcile_eval_function_decl(env, name) {
+        env.assign_var(name, async_func)
+      } else {
+        env.def(name, async_func, VarBinding)
+      }
+      Normal(Undefined)
+    }
+    AsyncGeneratorDecl(name, params, body, _) => {
+      validate_function_signature(self.strict, Some(name), params, body)
+      let gen_func = self.make_async_generator_function(
+        Some(name),
+        params,
+        None,
+        body,
+        env,
+      )
+      if env.bindings.contains(name) {
+        env.assign(name, gen_func)
+      } else if should_reconcile_eval_function_decl(env, name) {
+        env.assign_var(name, gen_func)
+      } else {
+        env.def(name, gen_func, VarBinding)
+      }
+      Normal(Undefined)
+    }
+    AsyncGeneratorDeclExt(name, params, rest_param, body, _) => {
+      validate_function_signature_ext(
+        self.strict,
+        Some(name),
+        params,
+        rest_param,
+        body,
+      )
+      let gen_func = self.make_async_generator_function_ext(
+        Some(name),
+        params,
+        rest_param,
+        body,
+        env,
+      )
+      if env.bindings.contains(name) {
+        env.assign(name, gen_func)
+      } else if should_reconcile_eval_function_decl(env, name) {
+        env.assign_var(name, gen_func)
+      } else {
+        env.def(name, gen_func, VarBinding)
+      }
+      Normal(Undefined)
+    }
     LabeledStmt(lbl, body, _) =>
       match self.exec_stmt(body, env, label=Some(lbl)) {
-        BreakSignal(Some(l)) =>
+        BreakSignal(v, Some(l)) =>
           if l == lbl {
-            Normal(Undefined)
+            Normal(v.unwrap_or(Undefined))
           } else {
-            BreakSignal(Some(l))
+            BreakSignal(v, Some(l))
           }
         other => other
       }
@@ -1385,12 +1766,18 @@ fn Interpreter::exec_stmt(
           // Box string primitive to String wrapper object
           let str_proto = env.get("[[StringPrototype]]") catch { _ => Null }
           let props : Map[String, Value] = {}
-          props["length"] = Number(s.to_array().length().to_double())
+          let utf16_units = string_to_utf16(s)
+          props["length"] = Number(utf16_units.length().to_double())
           props["[[PrimitiveValue]]"] = String_(s)
-          // Add character indices as properties
-          let chars = s.to_array()
-          for i = 0; i < chars.length(); i = i + 1 {
-            props[i.to_string()] = String_(String::make(1, chars[i]))
+          // Add character indices as properties (UTF-16 code units)
+          for i = 0; i < utf16_units.length(); i = i + 1 {
+            let unit = utf16_units[i]
+            let ch_str = if unit <= 0xFFFF {
+              String::make(1, unit.unsafe_to_char())
+            } else {
+              String::make(1, unit.unsafe_to_char())
+            }
+            props[i.to_string()] = String_(ch_str)
           }
           Object({
             properties: props,
@@ -1438,58 +1825,11 @@ fn Interpreter::exec_stmt(
         Object(_) => raw_obj
         _ => raw_obj
       }
-      // Create an object environment record: lookups check the object first
+      // Create an object environment record with live object reference
+      // Property lookups/assignments go directly through the object
       let with_env = Environment::new(parent=Some(env))
-      let data = match obj {
-        Object(d) => d
-        _ =>
-          // Fallback: just execute with parent env
-          return self.exec_stmt(body, env)
-      }
-      // Add all properties (walking prototype chain for lookup)
-      let mut current : Value = obj
-      while true {
-        match current {
-          Object(cur_data) => {
-            cur_data.properties.each(fn(key, value) {
-              if not(with_env.bindings.contains(key)) {
-                with_env.bindings[key] = {
-                  value,
-                  kind: VarBinding,
-                  initialized: true,
-                }
-              }
-            })
-            current = cur_data.prototype
-          }
-          _ => break
-        }
-      }
-      // Execute the body; after execution, write back modified bindings
-      let result = self.exec_stmt(body, with_env)
-      // Write back changes: use [[Set]] semantics (own properties + prototype chain)
-      with_env.bindings.each(fn(key, binding) {
-        // Check if this binding existed before in the object or its prototype
-        let mut found = false
-        let mut cur : Value = obj
-        while true {
-          match cur {
-            Object(cur_data) => {
-              if cur_data.properties.contains(key) {
-                found = true
-                break
-              }
-              cur = cur_data.prototype
-            }
-            _ => break
-          }
-        }
-        if found {
-          // Write to the object itself (per [[Set]] semantics, own property creation)
-          data.properties[key] = binding.value
-        }
-      })
-      result
+      with_env.with_object = Some(obj)
+      self.exec_stmt(body, with_env)
     }
   }
 }
@@ -1529,17 +1869,12 @@ fn collect_for_in_keys(obj : Value) -> Array[String] raise Error {
             }
           }
         }
-        data.properties.each(fn(k, _v) {
+        let sorted = sort_property_keys(data.properties)
+        for k in sorted {
           if not(seen.contains(k)) {
-            // Skip internal slots for TypedArray/ArrayBuffer/DataView only
-            if k.has_prefix("[[") &&
-              k.has_suffix("]]") &&
-              (
-                is_typedarray_class(data.class_name) ||
-                data.class_name == "ArrayBuffer" ||
-                data.class_name == "DataView"
-              ) {
-              return
+            // Skip internal slots (e.g., [[BooleanData]], [[NumberData]], [[StringData]])
+            if k.has_prefix("[[") {
+              continue
             }
             seen[k] = true
             let enumerable = match data.descriptors.get(k) {
@@ -1550,7 +1885,7 @@ fn collect_for_in_keys(obj : Value) -> Array[String] raise Error {
               keys.push(k)
             }
           }
-        })
+        }
         current = data.prototype
       }
       Array(data) => {
@@ -1570,6 +1905,28 @@ fn collect_for_in_keys(obj : Value) -> Array[String] raise Error {
 }
 
 ///|
+fn is_declaration_stmt(stmt : @ast.Stmt) -> Bool {
+  match stmt {
+    VarDecl(_, _, _, _)
+    | DestructureDecl(_, _, _, _)
+    | FuncDecl(_, _, _, _)
+    | FuncDeclExt(_, _, _, _, _)
+    | GeneratorDecl(_, _, _, _)
+    | GeneratorDeclExt(_, _, _, _, _)
+    | AsyncFuncDecl(_, _, _, _)
+    | AsyncFuncDeclExt(_, _, _, _, _)
+    | AsyncGeneratorDecl(_, _, _, _)
+    | AsyncGeneratorDeclExt(_, _, _, _, _)
+    | ClassDecl(_, _, _, _)
+    | ImportDecl(_, _, _, _, _)
+    | ExportNamedDecl(_, _, _, _)
+    | ExportDefaultDecl(_, _)
+    | ExportAllDecl(_, _, _) => true
+    _ => false
+  }
+}
+
+///|
 fn Interpreter::exec_stmts(
   self : Interpreter,
   stmts : Array[@ast.Stmt],
@@ -1578,7 +1935,27 @@ fn Interpreter::exec_stmts(
   let mut last : Value = Undefined
   for stmt in stmts {
     match self.exec_stmt(stmt, env) {
-      Normal(v) => last = v
+      Normal(v) =>
+        // Per spec, declarations have empty completion values that don't update
+        // the statement list's value. Only non-declaration statements update it.
+        if not(is_declaration_stmt(stmt)) {
+          last = v
+        }
+      BreakSignal(v, label) => {
+        // UpdateEmpty: if break's value is None (empty), use accumulated value
+        let cv = match v {
+          None => Some(last)
+          some => some
+        }
+        return BreakSignal(cv, label)
+      }
+      ContinueSignal(v, label) => {
+        let cv = match v {
+          None => Some(last)
+          some => some
+        }
+        return ContinueSignal(cv, label)
+      }
       other => return other
     }
   }
@@ -1743,6 +2120,50 @@ fn collect_block_lexical_decl_names_from_stmt(
         }
         block_function_kinds[name] = 2
       }
+    AsyncFuncDecl(name, _, _, _) =>
+      if include_block_functions {
+        if lexical_names.contains(name) {
+          raise @errors.SyntaxError(
+            message="Identifier '\{name}' has already been declared",
+          )
+        } else {
+          lexical_names[name] = true
+        }
+        block_function_kinds[name] = 2
+      }
+    AsyncFuncDeclExt(name, _, _, _, _) =>
+      if include_block_functions {
+        if lexical_names.contains(name) {
+          raise @errors.SyntaxError(
+            message="Identifier '\{name}' has already been declared",
+          )
+        } else {
+          lexical_names[name] = true
+        }
+        block_function_kinds[name] = 2
+      }
+    AsyncGeneratorDecl(name, _, _, _) =>
+      if include_block_functions {
+        if lexical_names.contains(name) {
+          raise @errors.SyntaxError(
+            message="Identifier '\{name}' has already been declared",
+          )
+        } else {
+          lexical_names[name] = true
+        }
+        block_function_kinds[name] = 2
+      }
+    AsyncGeneratorDeclExt(name, _, _, _, _) =>
+      if include_block_functions {
+        if lexical_names.contains(name) {
+          raise @errors.SyntaxError(
+            message="Identifier '\{name}' has already been declared",
+          )
+        } else {
+          lexical_names[name] = true
+        }
+        block_function_kinds[name] = 2
+      }
     StmtList(inner_stmts, _) =>
       for inner in inner_stmts {
         collect_block_lexical_decl_names_from_stmt(
@@ -1786,6 +2207,22 @@ fn collect_block_var_decl_names_from_stmt(
         var_names[name] = true
       }
     GeneratorDeclExt(name, _, _, _, _) =>
+      if include_function_decls {
+        var_names[name] = true
+      }
+    AsyncFuncDecl(name, _, _, _) =>
+      if include_function_decls {
+        var_names[name] = true
+      }
+    AsyncFuncDeclExt(name, _, _, _, _) =>
+      if include_function_decls {
+        var_names[name] = true
+      }
+    AsyncGeneratorDecl(name, _, _, _) =>
+      if include_function_decls {
+        var_names[name] = true
+      }
+    AsyncGeneratorDeclExt(name, _, _, _, _) =>
       if include_function_decls {
         var_names[name] = true
       }
@@ -2069,6 +2506,23 @@ fn validate_block_early_errors_expr(
         validate_block_early_errors_stmt(stmt, child_strict)
       }
     }
+    AsyncFuncExpr(_, _, body, _)
+    | AsyncFuncExprExt(_, _, _, body, _)
+    | AsyncArrowFunc(_, body, _)
+    | AsyncArrowFuncExt(_, _, body, _)
+    | AsyncGeneratorExpr(_, _, body, _)
+    | AsyncGeneratorExprExt(_, _, _, body, _) => {
+      validate_block_statement_list_early_errors(
+        body,
+        include_function_decls_in_var_names=true,
+      )
+      let child_strict = is_function_strict(strict_context, body)
+      for stmt in body {
+        validate_block_early_errors_stmt(stmt, child_strict)
+      }
+    }
+    AwaitExpr(inner, _) =>
+      validate_block_early_errors_expr(inner, strict_context)
     ClassExpr(_, _, methods, _) =>
       for m in methods {
         // Class bodies are always strict.
@@ -2282,6 +2736,46 @@ fn validate_block_early_errors_stmt(
         validate_block_early_errors_stmt(inner, child_strict)
       }
     }
+    AsyncFuncDecl(_, _, body, _) => {
+      validate_block_statement_list_early_errors(
+        body,
+        include_function_decls_in_var_names=true,
+      )
+      let child_strict = is_function_strict(strict_context, body)
+      for inner in body {
+        validate_block_early_errors_stmt(inner, child_strict)
+      }
+    }
+    AsyncFuncDeclExt(_, _, _, body, _) => {
+      validate_block_statement_list_early_errors(
+        body,
+        include_function_decls_in_var_names=true,
+      )
+      let child_strict = is_function_strict(strict_context, body)
+      for inner in body {
+        validate_block_early_errors_stmt(inner, child_strict)
+      }
+    }
+    AsyncGeneratorDecl(_, _, body, _) => {
+      validate_block_statement_list_early_errors(
+        body,
+        include_function_decls_in_var_names=true,
+      )
+      let child_strict = is_function_strict(strict_context, body)
+      for inner in body {
+        validate_block_early_errors_stmt(inner, child_strict)
+      }
+    }
+    AsyncGeneratorDeclExt(_, _, _, body, _) => {
+      validate_block_statement_list_early_errors(
+        body,
+        include_function_decls_in_var_names=true,
+      )
+      let child_strict = is_function_strict(strict_context, body)
+      for inner in body {
+        validate_block_early_errors_stmt(inner, child_strict)
+      }
+    }
     ClassDecl(_, _, methods, _) =>
       for m in methods {
         // Class bodies are always strict.
@@ -2334,6 +2828,11 @@ fn collect_eval_var_names_from_stmt(
     FuncDeclExt(name, _, _, _, _) => if not(in_block) { names.push(name) }
     GeneratorDecl(name, _, _, _) => if not(in_block) { names.push(name) }
     GeneratorDeclExt(name, _, _, _, _) => if not(in_block) { names.push(name) }
+    AsyncFuncDecl(name, _, _, _) => if not(in_block) { names.push(name) }
+    AsyncFuncDeclExt(name, _, _, _, _) => if not(in_block) { names.push(name) }
+    AsyncGeneratorDecl(name, _, _, _) => if not(in_block) { names.push(name) }
+    AsyncGeneratorDeclExt(name, _, _, _, _) =>
+      if not(in_block) { names.push(name) }
     DestructureDecl(VarKind, pattern, _, _) =>
       collect_pattern_var_names(pattern, names)
     StmtList(inner_stmts, _) =>
@@ -2697,11 +3196,16 @@ fn Interpreter::hoist_declarations(
   stmts : Array[@ast.Stmt],
   env : Environment,
 ) -> Unit raise Error {
+  let is_global = physical_equal(env, _self.global)
   for stmt in stmts {
     match stmt {
       VarDecl(VarKind, name, _, _) =>
         if not(env.bindings.contains(name)) {
           env.def(name, Undefined, VarBinding)
+          // Mirror var declaration to global object per ES spec
+          if is_global {
+            _self.mirror_to_global(name, Undefined)
+          }
         }
       FuncDecl(name, params, body, _) => {
         validate_function_signature(_self.strict, Some(name), params, body)
@@ -2712,10 +3216,15 @@ fn Interpreter::hoist_declarations(
           closure: env,
           strict: is_function_strict(_self.strict, body),
         }
+        let func_val = make_func(func_data)
         if env.bindings.contains(name) {
-          env.assign(name, make_func(func_data))
+          env.assign(name, func_val)
         } else {
-          env.def(name, make_func(func_data), VarBinding)
+          env.def(name, func_val, VarBinding)
+        }
+        // Mirror function declaration to global object per ES spec
+        if is_global {
+          _self.mirror_to_global(name, func_val)
         }
       }
       FuncDeclExt(name, params, rest_param, body, _) => {
@@ -2734,10 +3243,15 @@ fn Interpreter::hoist_declarations(
           closure: env,
           strict: is_function_strict(_self.strict, body),
         }
+        let func_val = make_func_ext(func_data)
         if env.bindings.contains(name) {
-          env.assign(name, make_func_ext(func_data))
+          env.assign(name, func_val)
         } else {
-          env.def(name, make_func_ext(func_data), VarBinding)
+          env.def(name, func_val, VarBinding)
+        }
+        // Mirror function declaration to global object per ES spec
+        if is_global {
+          _self.mirror_to_global(name, func_val)
         }
       }
       GeneratorDecl(name, params, body, _) => {
@@ -2754,6 +3268,10 @@ fn Interpreter::hoist_declarations(
         } else {
           env.def(name, gen_func, VarBinding)
         }
+        // Mirror generator declaration to global object per ES spec
+        if is_global {
+          _self.mirror_to_global(name, gen_func)
+        }
       }
       GeneratorDeclExt(name, params, rest_param, body, _) => {
         validate_function_signature_ext(
@@ -2764,6 +3282,82 @@ fn Interpreter::hoist_declarations(
           body,
         )
         let gen_func = _self.make_generator_function_ext(
+          Some(name),
+          params,
+          rest_param,
+          body,
+          env,
+        )
+        if env.bindings.contains(name) {
+          env.assign(name, gen_func)
+        } else {
+          env.def(name, gen_func, VarBinding)
+        }
+        // Mirror generator declaration to global object per ES spec
+        if is_global {
+          _self.mirror_to_global(name, gen_func)
+        }
+      }
+      AsyncFuncDecl(name, params, body, _) => {
+        validate_function_signature(_self.strict, Some(name), params, body)
+        let async_func = _self.make_async_function(
+          Some(name),
+          params,
+          None,
+          body,
+          env,
+        )
+        if env.bindings.contains(name) {
+          env.assign(name, async_func)
+        } else {
+          env.def(name, async_func, VarBinding)
+        }
+      }
+      AsyncFuncDeclExt(name, params, rest_param, body, _) => {
+        validate_function_signature_ext(
+          _self.strict,
+          Some(name),
+          params,
+          rest_param,
+          body,
+        )
+        let async_func = _self.make_async_function_ext(
+          Some(name),
+          params,
+          rest_param,
+          body,
+          env,
+        )
+        if env.bindings.contains(name) {
+          env.assign(name, async_func)
+        } else {
+          env.def(name, async_func, VarBinding)
+        }
+      }
+      AsyncGeneratorDecl(name, params, body, _) => {
+        validate_function_signature(_self.strict, Some(name), params, body)
+        let gen_func = _self.make_async_generator_function(
+          Some(name),
+          params,
+          None,
+          body,
+          env,
+        )
+        if env.bindings.contains(name) {
+          env.assign(name, gen_func)
+        } else {
+          env.def(name, gen_func, VarBinding)
+        }
+      }
+      AsyncGeneratorDeclExt(name, params, rest_param, body, _) => {
+        validate_function_signature_ext(
+          _self.strict,
+          Some(name),
+          params,
+          rest_param,
+          body,
+        )
+        let gen_func = _self.make_async_generator_function_ext(
           Some(name),
           params,
           rest_param,
@@ -2928,7 +3522,7 @@ fn Interpreter::bind_pattern(
   bk : BindingKind,
 ) -> Unit raise Error {
   match pattern {
-    IdentPat(name) =>
+    IdentPat(name) => {
       if bk == VarBinding && env.bindings.contains(name) {
         env.assign(name, value)
       } else if (bk == LetBinding || bk == ConstBinding) &&
@@ -2938,9 +3532,18 @@ fn Interpreter::bind_pattern(
       } else {
         env.def(name, value, bk)
       }
+    }
     DefaultPat(inner_pat, default_expr) => {
       let final_val : Value = if value is Undefined {
-        self.eval_expr(default_expr, env)
+        let v = self.eval_expr(default_expr, env)
+        // Per spec, if default is anonymous function and target is identifier, set name
+        if is_anonymous_function_definition(default_expr) {
+          match inner_pat {
+            IdentPat(name) => set_function_name(v, name)
+            _ => ()
+          }
+        }
+        v
       } else {
         value
       }
@@ -2951,113 +3554,153 @@ fn Interpreter::bind_pattern(
       // not in binding declarations (let/const/var). Delegate to assign_to_expr.
       self.assign_to_expr(expr, value, env)
     ArrayPat(elements, rest) => {
-      let arr_elements : Array[Value] = match value {
-        Array(data) => data.elements
-        _ => {
-          // Try iterator protocol for non-array iterables (e.g. generators)
-          let loc = @token.Loc::default()
-          let iterator_sym = get_iterator_symbol()
-          let iterator_method = self.get_computed_property(
-            value,
-            Symbol(iterator_sym),
-            loc,
-          )
-          match iterator_method {
-            Object(data) =>
-              match data.callable {
-                Some(_) => {
-                  let iterator = self.call_value(
-                    iterator_method,
-                    value,
-                    [],
-                    loc,
-                  )
-                  // Get next method from iterator (walk prototype chain)
-                  let next_method : Value = match iterator {
-                    Object(iter_data) =>
-                      match iter_data.properties.get("next") {
-                        Some(next_fn) => next_fn
-                        None => {
-                          let mut found : Value = Undefined
-                          let mut current = iter_data.prototype
-                          while true {
-                            match current {
-                              Object(proto_data) =>
-                                match proto_data.properties.get("next") {
-                                  Some(next_fn) => {
-                                    found = next_fn
-                                    break
-                                  }
-                                  None => current = proto_data.prototype
-                                }
-                              _ => break
-                            }
-                          }
-                          found
-                        }
-                      }
-                    _ => Undefined
-                  }
-                  match next_method {
-                    Undefined => []
-                    _ => {
-                      let collected : Array[Value] = []
+      // Per spec, destructuring null/undefined must throw TypeError
+      if value is (Null | Undefined) {
+        raise @errors.TypeError(
+          message=value.to_string() +
+            " is not iterable (cannot destructure)",
+        )
+      }
+      // Per spec: ArrayBindingPattern : [ ] → no iteration occurs
+      if elements.length() == 0 && rest is None {
+        return
+      }
+      // Always use iterator protocol per spec (ArrayBindingPattern uses GetIterator)
+      let loc_dstr = @token.Loc::default()
+      let iterator_sym_dstr = get_iterator_symbol()
+      let iterator_method_dstr = self.get_computed_property(
+        value,
+        Symbol(iterator_sym_dstr),
+        loc_dstr,
+      )
+      // Get iterator and next method
+      let (iterator, next_method) : (Value, Value) = match iterator_method_dstr {
+        Object(data) =>
+          match data.callable {
+            Some(_) => {
+              let iter = self.call_value(
+                iterator_method_dstr,
+                value,
+                [],
+                loc_dstr,
+              )
+              // Get next method from iterator (walk prototype chain)
+              let next_fn : Value = match iter {
+                Object(iter_data) =>
+                  match iter_data.properties.get("next") {
+                    Some(f) => f
+                    None => {
+                      let mut found : Value = Undefined
+                      let mut current = iter_data.prototype
                       while true {
-                        let iter_result = self.call_value(
-                          next_method,
-                          iterator,
-                          [],
-                          loc,
-                        )
-                        let (done, val) = match iter_result {
-                          Object(result_data) => {
-                            let done_val = match
-                              result_data.properties.get("done") {
-                              Some(v) => is_truthy(v)
-                              None => false
+                        match current {
+                          Object(proto_data) =>
+                            match proto_data.properties.get("next") {
+                              Some(f) => {
+                                found = f
+                                break
+                              }
+                              None => current = proto_data.prototype
                             }
-                            let value_val = match
-                              result_data.properties.get("value") {
-                              Some(v) => v
-                              None => Undefined
-                            }
-                            (done_val, value_val)
-                          }
-                          _ => (true, Undefined)
+                          _ => break
                         }
-                        if done {
-                          break
-                        }
-                        collected.push(val)
                       }
-                      collected
+                      found
                     }
                   }
-                }
-                None => []
+                _ => Undefined
               }
-            _ => []
+              (iter, next_fn)
+            }
+            None => {
+              raise @errors.TypeError(
+                message=value.to_string() +
+                  " is not iterable (cannot destructure)",
+              )
+            }
           }
+        _ => {
+          raise @errors.TypeError(
+            message=value.to_string() +
+              " is not iterable (cannot destructure)",
+          )
         }
+      }
+      // Lazily consume iterator values per spec — one next() call per element
+      let mut iter_done = match next_method {
+        Undefined => true
+        _ => false
       }
       for i = 0; i < elements.length(); i = i + 1 {
-        match elements[i] {
-          Some(pat) => {
-            let val : Value = if i < arr_elements.length() {
-              arr_elements[i]
-            } else {
-              Undefined
+        // Advance iterator one step for this element position
+        let val : Value = if iter_done {
+          Undefined
+        } else {
+          let iter_result = self.call_value(
+            next_method,
+            iterator,
+            [],
+            loc_dstr,
+          )
+          match iter_result {
+            Object(result_data) => {
+              let done_val = match result_data.properties.get("done") {
+                Some(v) => is_truthy(v)
+                None => false
+              }
+              if done_val {
+                iter_done = true
+                Undefined
+              } else {
+                match result_data.properties.get("value") {
+                  Some(v) => v
+                  None => Undefined
+                }
+              }
             }
-            self.bind_pattern(pat, val, env, bk)
+            _ => { iter_done = true; Undefined }
           }
-          None => () // hole — skip
+        }
+        match elements[i] {
+          Some(pat) => self.bind_pattern(pat, val, env, bk)
+          None => () // elision — value consumed above, just discard
         }
       }
+      // Handle rest pattern: collect remaining iterator values
       match rest {
         Some(rest_pat) => {
           let rest_elements : Array[Value] = []
-          for i = elements.length(); i < arr_elements.length(); i = i + 1 {
-            rest_elements.push(arr_elements[i])
+          if iter_done {
+            // iterator already exhausted, rest is empty
+          } else {
+            while true {
+              let iter_result = self.call_value(
+                next_method,
+                iterator,
+                [],
+                loc_dstr,
+              )
+              let (done, val) = match iter_result {
+                Object(result_data) => {
+                  let done_val = match
+                    result_data.properties.get("done") {
+                    Some(v) => is_truthy(v)
+                    None => false
+                  }
+                  let value_val = match
+                    result_data.properties.get("value") {
+                    Some(v) => v
+                    None => Undefined
+                  }
+                  (done_val, value_val)
+                }
+                _ => (true, Undefined)
+              }
+              if done {
+                break
+              }
+              rest_elements.push(val)
+            }
           }
           self.bind_pattern(
             rest_pat,
@@ -3066,24 +3709,63 @@ fn Interpreter::bind_pattern(
             bk,
           )
         }
-        None => ()
+        None => {
+          // Per spec: IteratorClose — call iterator.return() if not exhausted
+          if iter_done == false {
+            match iterator {
+              Object(iter_data) =>
+                match iter_data.properties.get("return") {
+                  Some(return_fn) =>
+                    if is_callable(return_fn) {
+                      let _ = self.call_value(
+                        return_fn,
+                        iterator,
+                        [],
+                        loc_dstr,
+                      )
+                    }
+                  None => ()
+                }
+              _ => ()
+            }
+          }
+        }
       }
     }
     ObjectPat(props, rest) => {
+      // Per spec, destructuring null/undefined must throw TypeError
+      if value is (Null | Undefined) {
+        raise @errors.TypeError(
+          message="Cannot destructure " +
+            value.to_string() +
+            " value",
+        )
+      }
       let used_keys : Map[String, Bool] = {}
       for prop in props {
-        used_keys[prop.key] = true
-        let val : Value = match value {
-          Object(data) =>
-            match data.properties.get(prop.key) {
-              Some(v) => v
-              None => Undefined
-            }
-          _ => Undefined
+        // Evaluate computed key if present, otherwise use static key
+        let key_str : String = match prop.computed_key {
+          Some(key_expr) => {
+            let key_val = self.eval_expr(key_expr, env)
+            to_js_string(key_val)
+          }
+          None => prop.key
         }
+        used_keys[key_str] = true
+        let val : Value = self.get_property(value, key_str, @token.Loc::default())
         let final_val : Value = if val is Undefined {
           match prop.default_val {
-            Some(default_expr) => self.eval_expr(default_expr, env)
+            Some(default_expr) => {
+              let v = self.eval_expr(default_expr, env)
+              // Per spec, SingleNameBinding: if IsAnonymousFunctionDefinition(Initializer), SetFunctionName
+              if is_anonymous_function_definition(default_expr) {
+                match prop.value {
+                  IdentPat(name) => set_function_name(v, name)
+                  _ => ()
+                }
+              }
+              v
+            }
             None => Undefined
           }
         } else {
@@ -3095,22 +3777,27 @@ fn Interpreter::bind_pattern(
         Some(rest_pat) => {
           let rest_props : Map[String, Value] = {}
           let rest_symbol_props : Map[Int, Value] = {}
+          let loc_rest = @token.Loc::default()
           match value {
             Object(data) => {
-              // Only copy own enumerable properties per ES CopyDataProperties
-              data.properties.each(fn(k, v) {
+              // CopyDataProperties: copy own enumerable properties, invoking getters
+              // First collect all own enumerable string keys (from properties and descriptors)
+              let all_keys : Map[String, Bool] = {}
+              data.properties.each(fn(k, _v) { all_keys[k] = true })
+              data.descriptors.each(fn(k, _v) { all_keys[k] = true })
+              all_keys.each(fn(k, _) raise {
                 if not(used_keys.contains(k)) {
-                  // Check if property is enumerable (default true if no descriptor)
                   let is_enumerable = match data.descriptors.get(k) {
                     Some(desc) => desc.enumerable
                     None => true
                   }
                   if is_enumerable {
-                    rest_props[k] = v
+                    // Use get_property to invoke getters
+                    rest_props[k] = self.get_property(value, k, loc_rest)
                   }
                 }
               })
-              // Also copy enumerable symbol properties (they are never in used_keys)
+              // Also copy enumerable symbol properties
               data.symbol_properties.each(fn(k, v) {
                 let is_enumerable = match data.symbol_descriptors.get(k) {
                   Some(desc) => desc.enumerable
@@ -3128,7 +3815,7 @@ fn Interpreter::bind_pattern(
             Object({
               properties: rest_props,
               symbol_properties: rest_symbol_props,
-              prototype: Null,
+              prototype: get_obj_proto(),
               callable: None,
               class_name: "Object",
               descriptors: {},
@@ -3153,10 +3840,33 @@ fn Interpreter::assign_pattern(
   env : Environment,
 ) -> Unit raise Error {
   match pattern {
-    IdentPat(name) => env.assign(name, value)
+    IdentPat(name) =>
+      try {
+        env.assign(name, value)
+      } catch {
+        @errors.ReferenceError(_) =>
+          if not(self.strict) {
+            // Sloppy mode: implicit global creation
+            self.global.def(name, value, VarBinding)
+            self.mirror_to_global(name, value, configurable=true)
+          } else {
+            raise @errors.ReferenceError(
+              message="\{name} is not defined",
+            )
+          }
+        other => raise other
+      }
     DefaultPat(inner_pat, default_expr) => {
       let final_val : Value = if value is Undefined {
-        self.eval_expr(default_expr, env)
+        let v = self.eval_expr(default_expr, env)
+        // Per spec, if default is anonymous function and target is identifier, set name
+        if is_anonymous_function_definition(default_expr) {
+          match inner_pat {
+            IdentPat(name) => set_function_name(v, name)
+            _ => ()
+          }
+        }
+        v
       } else {
         value
       }
@@ -3166,134 +3876,213 @@ fn Interpreter::assign_pattern(
       // Member expression assignment target: [obj.x] = [1]
       self.assign_to_expr(expr, value, env)
     ArrayPat(elements, rest) => {
-      let arr_elements : Array[Value] = match value {
-        Array(data) => data.elements
-        _ => {
-          // Try iterator protocol for non-array iterables (e.g. generators)
-          let loc = @token.Loc::default()
-          let iterator_sym = get_iterator_symbol()
-          let iterator_method = self.get_computed_property(
-            value,
-            Symbol(iterator_sym),
-            loc,
-          )
-          match iterator_method {
-            Object(data) =>
-              match data.callable {
-                Some(_) => {
-                  let iterator = self.call_value(
-                    iterator_method,
-                    value,
-                    [],
-                    loc,
-                  )
-                  // Get next method from iterator (walk prototype chain)
-                  let next_method : Value = match iterator {
-                    Object(iter_data) =>
-                      match iter_data.properties.get("next") {
-                        Some(next_fn) => next_fn
-                        None => {
-                          let mut found : Value = Undefined
-                          let mut current = iter_data.prototype
-                          while true {
-                            match current {
-                              Object(proto_data) =>
-                                match proto_data.properties.get("next") {
-                                  Some(next_fn) => {
-                                    found = next_fn
-                                    break
-                                  }
-                                  None => current = proto_data.prototype
-                                }
-                              _ => break
-                            }
-                          }
-                          found
-                        }
-                      }
-                    _ => Undefined
-                  }
-                  match next_method {
-                    Undefined => []
-                    _ => {
-                      let collected : Array[Value] = []
+      // Per spec, destructuring null/undefined must throw TypeError
+      if value is (Null | Undefined) {
+        raise @errors.TypeError(
+          message=value.to_string() +
+            " is not iterable (cannot destructure)",
+        )
+      }
+      // Per spec: ArrayBindingPattern : [ ] → no iteration occurs
+      if elements.length() == 0 && rest is None {
+        return
+      }
+      // Always use iterator protocol per spec (ArrayBindingPattern uses GetIterator)
+      let loc_dstr = @token.Loc::default()
+      let iterator_sym_dstr = get_iterator_symbol()
+      let iterator_method_dstr = self.get_computed_property(
+        value,
+        Symbol(iterator_sym_dstr),
+        loc_dstr,
+      )
+      // Get iterator and next method
+      let (iterator_a, next_method_a) : (Value, Value) = match iterator_method_dstr {
+        Object(data) =>
+          match data.callable {
+            Some(_) => {
+              let iter = self.call_value(
+                iterator_method_dstr,
+                value,
+                [],
+                loc_dstr,
+              )
+              // Get next method from iterator (walk prototype chain)
+              let next_fn : Value = match iter {
+                Object(iter_data) =>
+                  match iter_data.properties.get("next") {
+                    Some(f) => f
+                    None => {
+                      let mut found : Value = Undefined
+                      let mut current = iter_data.prototype
                       while true {
-                        let iter_result = self.call_value(
-                          next_method,
-                          iterator,
-                          [],
-                          loc,
-                        )
-                        let (done, val) = match iter_result {
-                          Object(result_data) => {
-                            let done_val = match
-                              result_data.properties.get("done") {
-                              Some(v) => is_truthy(v)
-                              None => false
+                        match current {
+                          Object(proto_data) =>
+                            match proto_data.properties.get("next") {
+                              Some(f) => {
+                                found = f
+                                break
+                              }
+                              None => current = proto_data.prototype
                             }
-                            let value_val = match
-                              result_data.properties.get("value") {
-                              Some(v) => v
-                              None => Undefined
-                            }
-                            (done_val, value_val)
-                          }
-                          _ => (true, Undefined)
+                          _ => break
                         }
-                        if done {
-                          break
-                        }
-                        collected.push(val)
                       }
-                      collected
+                      found
                     }
                   }
-                }
-                None => []
+                _ => Undefined
               }
-            _ => []
+              (iter, next_fn)
+            }
+            None => {
+              raise @errors.TypeError(
+                message=value.to_string() +
+                  " is not iterable (cannot destructure)",
+              )
+            }
           }
+        _ => {
+          raise @errors.TypeError(
+            message=value.to_string() +
+              " is not iterable (cannot destructure)",
+          )
         }
+      }
+      // Lazily consume iterator values per spec — one next() call per element
+      let mut iter_done_a = match next_method_a {
+        Undefined => true
+        _ => false
       }
       for i = 0; i < elements.length(); i = i + 1 {
-        match elements[i] {
-          Some(pat) => {
-            let val : Value = if i < arr_elements.length() {
-              arr_elements[i]
-            } else {
-              Undefined
+        // Advance iterator one step for this element position
+        let val : Value = if iter_done_a {
+          Undefined
+        } else {
+          let iter_result = self.call_value(
+            next_method_a,
+            iterator_a,
+            [],
+            loc_dstr,
+          )
+          match iter_result {
+            Object(result_data) => {
+              let done_val = match result_data.properties.get("done") {
+                Some(v) => is_truthy(v)
+                None => false
+              }
+              if done_val {
+                iter_done_a = true
+                Undefined
+              } else {
+                match result_data.properties.get("value") {
+                  Some(v) => v
+                  None => Undefined
+                }
+              }
             }
-            self.assign_pattern(pat, val, env)
+            _ => { iter_done_a = true; Undefined }
           }
-          None => ()
+        }
+        match elements[i] {
+          Some(pat) => self.assign_pattern(pat, val, env)
+          None => () // elision — value consumed above, just discard
         }
       }
+      // Handle rest pattern: collect remaining iterator values
       match rest {
         Some(rest_pat) => {
           let rest_elements : Array[Value] = []
-          for i = elements.length(); i < arr_elements.length(); i = i + 1 {
-            rest_elements.push(arr_elements[i])
+          if iter_done_a {
+            // iterator already exhausted, rest is empty
+          } else {
+            while true {
+              let iter_result = self.call_value(
+                next_method_a,
+                iterator_a,
+                [],
+                loc_dstr,
+              )
+              let (done, val) = match iter_result {
+                Object(result_data) => {
+                  let done_val = match
+                    result_data.properties.get("done") {
+                    Some(v) => is_truthy(v)
+                    None => false
+                  }
+                  let value_val = match
+                    result_data.properties.get("value") {
+                    Some(v) => v
+                    None => Undefined
+                  }
+                  (done_val, value_val)
+                }
+                _ => (true, Undefined)
+              }
+              if done {
+                break
+              }
+              rest_elements.push(val)
+            }
           }
           self.assign_pattern(rest_pat, Array({ elements: rest_elements }), env)
         }
-        None => ()
+        None => {
+          // Per spec: IteratorClose — call iterator.return() if not exhausted
+          if iter_done_a == false {
+            match iterator_a {
+              Object(iter_data) =>
+                match iter_data.properties.get("return") {
+                  Some(return_fn) =>
+                    if is_callable(return_fn) {
+                      let _ = self.call_value(
+                        return_fn,
+                        iterator_a,
+                        [],
+                        loc_dstr,
+                      )
+                    }
+                  None => ()
+                }
+              _ => ()
+            }
+          }
+        }
       }
     }
     ObjectPat(props, rest) => {
+      // Per spec, destructuring null/undefined must throw TypeError
+      if value is (Null | Undefined) {
+        raise @errors.TypeError(
+          message="Cannot destructure " +
+            value.to_string() +
+            " value",
+        )
+      }
       let used_keys : Map[String, Bool] = {}
       for prop in props {
-        used_keys[prop.key] = true
-        let val : Value = match value {
-          Object(data) =>
-            match data.properties.get(prop.key) {
-              Some(v) => v
-              None => Undefined
-            }
-          _ => Undefined
+        // Evaluate computed key if present, otherwise use static key
+        let key_str : String = match prop.computed_key {
+          Some(key_expr) => {
+            let key_val = self.eval_expr(key_expr, env)
+            to_js_string(key_val)
+          }
+          None => prop.key
         }
+        used_keys[key_str] = true
+        let val : Value = self.get_property(value, key_str, @token.Loc::default())
         let final_val : Value = if val is Undefined {
           match prop.default_val {
-            Some(default_expr) => self.eval_expr(default_expr, env)
+            Some(default_expr) => {
+              let v = self.eval_expr(default_expr, env)
+              // Per spec, SingleNameBinding: if IsAnonymousFunctionDefinition(Initializer), SetFunctionName
+              if is_anonymous_function_definition(default_expr) {
+                match prop.value {
+                  IdentPat(name) => set_function_name(v, name)
+                  _ => ()
+                }
+              }
+              v
+            }
             None => Undefined
           }
         } else {
@@ -3305,22 +4094,25 @@ fn Interpreter::assign_pattern(
         Some(rest_pat) => {
           let rest_props : Map[String, Value] = {}
           let rest_symbol_props : Map[Int, Value] = {}
+          let loc_rest_a = @token.Loc::default()
           match value {
             Object(data) => {
-              // Only copy own enumerable properties per ES CopyDataProperties
-              data.properties.each(fn(k, v) {
+              // CopyDataProperties: copy own enumerable properties, invoking getters
+              let all_keys_a : Map[String, Bool] = {}
+              data.properties.each(fn(k, _v) { all_keys_a[k] = true })
+              data.descriptors.each(fn(k, _v) { all_keys_a[k] = true })
+              all_keys_a.each(fn(k, _) raise {
                 if not(used_keys.contains(k)) {
-                  // Check if property is enumerable (default true if no descriptor)
                   let is_enumerable = match data.descriptors.get(k) {
                     Some(desc) => desc.enumerable
                     None => true
                   }
                   if is_enumerable {
-                    rest_props[k] = v
+                    rest_props[k] = self.get_property(value, k, loc_rest_a)
                   }
                 }
               })
-              // Also copy enumerable symbol properties (they are never in used_keys)
+              // Also copy enumerable symbol properties
               data.symbol_properties.each(fn(k, v) {
                 let is_enumerable = match data.symbol_descriptors.get(k) {
                   Some(desc) => desc.enumerable
@@ -3338,7 +4130,7 @@ fn Interpreter::assign_pattern(
             Object({
               properties: rest_props,
               symbol_properties: rest_symbol_props,
-              prototype: Null,
+              prototype: get_obj_proto(),
               callable: None,
               class_name: "Object",
               descriptors: {},
@@ -3362,7 +4154,20 @@ fn Interpreter::assign_to_expr(
   env : Environment,
 ) -> Unit raise Error {
   match expr {
-    Ident(name, _) => env.assign(name, value)
+    Ident(name, _) =>
+      try {
+        env.assign(name, value)
+      } catch {
+        @errors.ReferenceError(_) =>
+          if not(self.strict) {
+            // Implicit global creation in sloppy mode
+            self.global.def(name, value, VarBinding)
+            self.mirror_to_global(name, value, configurable=true)
+          } else {
+            raise @errors.ReferenceError(message="\{name} is not defined")
+          }
+        e => raise e
+      }
     Member(obj_expr, prop, loc) => {
       let obj = self.eval_expr(obj_expr, env)
       let _ = self.set_property(obj, prop, value, loc)
@@ -3380,10 +4185,51 @@ fn Interpreter::assign_to_expr(
 }
 
 ///|
+/// IteratorClose: call iterator.return() if it exists
+fn close_iterator(
+  interp : Interpreter,
+  iterator : Value,
+  loc : @token.Loc,
+) -> Unit raise Error {
+  match iterator {
+    Object(data) => {
+      // Look for 'return' method on iterator
+      let return_fn = match data.properties.get("return") {
+        Some(f) => f
+        None => {
+          // Walk prototype chain
+          let mut found : Value = Undefined
+          let mut current = data.prototype
+          while true {
+            match current {
+              Object(proto_data) =>
+                match proto_data.properties.get("return") {
+                  Some(f) => {
+                    found = f
+                    break
+                  }
+                  None => current = proto_data.prototype
+                }
+              _ => break
+            }
+          }
+          found
+        }
+      }
+      if is_callable(return_fn) {
+        let _ = interp.call_value(return_fn, iterator, [], loc)
+
+      }
+    }
+    _ => ()
+  }
+}
+
+///|
 fn Interpreter::exec_try_catch(
   self : Interpreter,
   try_body : Array[@ast.Stmt],
-  catch_param : String?,
+  catch_param : @ast.Pattern?,
   catch_body : Array[@ast.Stmt]?,
   finally_body : Array[@ast.Stmt]?,
   env : Environment,
@@ -3438,7 +4284,8 @@ fn Interpreter::exec_try_catch(
             (Some(param), Some(body)) => {
               let catch_env = Environment::new(parent=Some(env))
               let error_value = js_error_to_value_with_env(e, Some(env))
-              catch_env.def(param, error_value, LetBinding)
+              // Bind the catch parameter - supports simple identifier and destructuring
+              self.bind_pattern(param, error_value, catch_env, LetBinding)
               self.exec_stmts(body, catch_env) catch {
                 ce =>
                   if ce is YieldSignal(_) {
@@ -3476,7 +4323,8 @@ fn Interpreter::exec_try_catch(
           }
           _ => Undefined
         }
-        catch_env.def(param, error_value, LetBinding)
+        // Bind the catch parameter - supports simple identifier and destructuring
+        self.bind_pattern(param, error_value, catch_env, LetBinding)
         result = self.exec_stmts(body, catch_env) catch {
           ce =>
             if ce is YieldSignal(_) {
@@ -3555,7 +4403,30 @@ fn Interpreter::eval_expr(
     BoolLit(b, _) => Bool(b)
     NullLit(_) => Null
     UndefinedLit(_) => Undefined
-    Ident(name, _) => env.get(name)
+    Ident(name, _) => {
+      try {
+        env.get(name)
+      } catch {
+        @errors.ReferenceError(_) => {
+          // Fallback: check global object (globalThis) for properties set via this.x = y
+          match self.global_this {
+            Object(data) =>
+              match data.properties.get(name) {
+                Some(v) => v
+                None =>
+                  raise @errors.ReferenceError(
+                    message="\{name} is not defined",
+                  )
+              }
+            _ =>
+              raise @errors.ReferenceError(
+                message="\{name} is not defined",
+              )
+          }
+        }
+        other => raise other
+      }
+    }
     Grouping(e, _) => self.eval_expr(e, env)
     Binary(op, left, right, loc) => self.eval_binary(op, left, right, env, loc)
     Unary(op, operand, loc) => self.eval_unary(op, operand, env, loc)
@@ -3567,7 +4438,39 @@ fn Interpreter::eval_expr(
         )
       }
       let value = self.eval_expr(value_expr, env)
-      env.assign(name, value)
+      // SetFunctionName for assignments: x = function() {} gives name "x"
+      if is_anonymous_function_definition(value_expr) {
+        set_function_name(value, name)
+      }
+      // Check if the target is a non-writable property on the global object
+      // (e.g. undefined, NaN, Infinity). In strict mode this is a TypeError;
+      // in non-strict mode the assignment is silently ignored.
+      if self.is_immutable_global(name) {
+        if self.strict {
+          raise @errors.TypeError(
+            message="Cannot assign to read only property '\{name}' of object '[object global]'",
+          )
+        }
+        return value
+      }
+      try {
+        env.assign(name, value)
+      } catch {
+        @errors.ReferenceError(_) => {
+          // In non-strict mode, assigning to an undeclared variable creates
+          // a global property (sloppy mode implicit global).
+          if not(self.strict) {
+            self.global.def(name, value, VarBinding)
+            // Also mirror onto globalThis as a configurable, enumerable property
+            self.mirror_to_global(name, value, configurable=true)
+          } else {
+            raise @errors.ReferenceError(
+              message="\{name} is not defined",
+            )
+          }
+        }
+        e => raise e
+      }
       value
     }
     Ternary(cond, then_expr, else_expr, _) =>
@@ -3603,12 +4506,48 @@ fn Interpreter::eval_expr(
       )
       self.make_generator_function_ext(name, params, rest_param, body, env)
     }
+    AsyncFuncExpr(name, params, body, _) => {
+      validate_function_signature(self.strict, name, params, body)
+      self.make_async_function(name, params, None, body, env)
+    }
+    AsyncFuncExprExt(name, params, rest_param, body, _) => {
+      validate_function_signature_ext(self.strict, name, params, rest_param, body)
+      self.make_async_function_ext(name, params, rest_param, body, env)
+    }
+    AsyncArrowFunc(params, body, _) => {
+      validate_function_signature(self.strict, None, params, body)
+      self.make_async_function(None, params, None, body, env)
+    }
+    AsyncArrowFuncExt(params, rest_param, body, _) => {
+      validate_function_signature_ext(self.strict, None, params, rest_param, body)
+      self.make_async_function_ext(None, params, rest_param, body, env)
+    }
+    AsyncGeneratorExpr(name, params, body, _) => {
+      validate_function_signature(self.strict, name, params, body)
+      self.make_async_generator_function(name, params, None, body, env)
+    }
+    AsyncGeneratorExprExt(name, params, rest_param, body, _) => {
+      validate_function_signature_ext(self.strict, name, params, rest_param, body)
+      self.make_async_generator_function_ext(name, params, rest_param, body, env)
+    }
+    AwaitExpr(argument, _) => {
+      // await acts like yield inside the generator that backs the async function
+      self.eval_yield(Some(argument), false, env)
+    }
     YieldExpr(argument, delegate, _) => self.eval_yield(argument, delegate, env)
     ObjectLit(props, obj_loc) => {
       let properties : Map[String, Value] = {}
       let symbol_properties : Map[Int, Value] = {}
       let descriptors : Map[String, PropDescriptor] = {}
       let symbol_descriptors : Map[Int, PropDescriptor] = {}
+      let mut proto_override : Value? = None
+      // Create a placeholder for the object being built so methods can reference it as [[HomeObject]]
+      // The actual object will be stored after creation via the mutable ref
+      // Create method environment for super.x support in object literal methods
+      // Set [[SuperPrototype]] to Object.prototype as default
+      let method_env = Environment::new(parent=Some(env))
+      let default_obj_proto = env.get("[[ObjectPrototype]]") catch { _ => Null }
+      method_env.def_builtin("[[SuperPrototype]]", default_obj_proto)
       for prop in props {
         // Handle spread property: { ...expr }
         if prop.kind == @ast.Spread {
@@ -3671,10 +4610,23 @@ fn Interpreter::eval_expr(
             Symbol(sym) =>
               // Symbol key - store in symbol_properties
               match prop.kind {
-                Init =>
-                  symbol_properties[sym.id] = self.eval_expr(prop.value, env)
+                Init => {
+                  let val = self.eval_expr(prop.value, method_env)
+                  // SetFunctionName with symbol description
+                  let sym_name = match sym.description {
+                    Some(d) => "[\{d}]"
+                    None => ""
+                  }
+                  set_function_name(val, sym_name)
+                  symbol_properties[sym.id] = val
+                }
                 Get => {
-                  let getter = self.eval_expr(prop.value, env)
+                  let getter = self.eval_expr(prop.value, method_env)
+                  let sym_name = match sym.description {
+                    Some(d) => "get [\{d}]"
+                    None => "get "
+                  }
+                  set_function_name(getter, sym_name)
                   // Store accessor in descriptor, use Undefined as placeholder in properties
                   if not(symbol_properties.contains(sym.id)) {
                     symbol_properties[sym.id] = Undefined
@@ -3692,7 +4644,12 @@ fn Interpreter::eval_expr(
                   }
                 }
                 Set => {
-                  let setter = self.eval_expr(prop.value, env)
+                  let setter = self.eval_expr(prop.value, method_env)
+                  let sym_name = match sym.description {
+                    Some(d) => "set [\{d}]"
+                    None => "set "
+                  }
+                  set_function_name(setter, sym_name)
                   if not(symbol_properties.contains(sym.id)) {
                     symbol_properties[sym.id] = Undefined
                   }
@@ -3711,26 +4668,17 @@ fn Interpreter::eval_expr(
                 Spread => () // handled above
               }
             _ => {
-              // Convert to string key
-              let key_str : String = match key_val {
-                String_(s) => s
-                Number(n) => {
-                  let i = n.to_int()
-                  if i.to_double() == n {
-                    i.to_string()
-                  } else {
-                    n.to_string()
-                  }
-                }
-                Bool(b) => b.to_string()
-                Null => "null"
-                Undefined => "undefined"
-                _ => key_val.to_string()
-              }
+              // Convert to string key using ECMAScript ToString
+              let key_str = to_js_string(key_val)
               match prop.kind {
-                Init => properties[key_str] = self.eval_expr(prop.value, env)
+                Init => {
+                  let val = self.eval_expr(prop.value, method_env)
+                  set_function_name(val, key_str)
+                  properties[key_str] = val
+                }
                 Get => {
-                  let getter = self.eval_expr(prop.value, env)
+                  let getter = self.eval_expr(prop.value, method_env)
+                  set_function_name(getter, "get " + key_str)
                   if not(properties.contains(key_str)) {
                     properties[key_str] = Undefined
                   }
@@ -3747,7 +4695,8 @@ fn Interpreter::eval_expr(
                   }
                 }
                 Set => {
-                  let setter = self.eval_expr(prop.value, env)
+                  let setter = self.eval_expr(prop.value, method_env)
+                  set_function_name(setter, "set " + key_str)
                   if not(properties.contains(key_str)) {
                     properties[key_str] = Undefined
                   }
@@ -3774,9 +4723,31 @@ fn Interpreter::eval_expr(
             _ => prop.key.to_string() // fallback
           }
           match prop.kind {
-            Init => properties[key_str] = self.eval_expr(prop.value, env)
+            Init => {
+              // Handle __proto__ as special syntax per B.3.1
+              if key_str == "__proto__" {
+                let val = self.eval_expr(prop.value, method_env)
+                match val {
+                  Object(_) | Array(_) | Map(_) | Set(_) => {
+                    proto_override = Some(val)
+                  }
+                  Null => proto_override = Some(Null)
+                  _ => properties[key_str] = val // primitives don't set proto
+                }
+              } else {
+                let val = self.eval_expr(prop.value, method_env)
+                // SetFunctionName: infer name for anonymous functions
+                set_function_name(val, key_str)
+                properties[key_str] = val
+              }
+            }
             Get => {
-              let getter = self.eval_expr(prop.value, env)
+              let getter = self.eval_expr(prop.value, method_env)
+              // Force set name with "get " prefix per spec
+              match getter {
+                Object(d) => d.properties["name"] = String_("get " + key_str)
+                _ => ()
+              }
               if not(properties.contains(key_str)) {
                 properties[key_str] = Undefined
               }
@@ -3793,7 +4764,12 @@ fn Interpreter::eval_expr(
               }
             }
             Set => {
-              let setter = self.eval_expr(prop.value, env)
+              let setter = self.eval_expr(prop.value, method_env)
+              // Force set name with "set " prefix per spec
+              match setter {
+                Object(d) => d.properties["name"] = String_("set " + key_str)
+                _ => ()
+              }
               if not(properties.contains(key_str)) {
                 properties[key_str] = Undefined
               }
@@ -3813,10 +4789,11 @@ fn Interpreter::eval_expr(
           }
         }
       }
-      let obj_prototype : Value = env.get("[[ObjectPrototype]]") catch {
-        _ => Null
+      let obj_prototype : Value = match proto_override {
+        Some(p) => p
+        None => env.get("[[ObjectPrototype]]") catch { _ => Null }
       }
-      Object({
+      let result_obj = Object({
         properties,
         symbol_properties,
         prototype: obj_prototype,
@@ -3826,6 +4803,7 @@ fn Interpreter::eval_expr(
         symbol_descriptors,
         extensible: true,
       })
+      result_obj
     }
     ArrayLit(elements, _) => {
       let vals : Array[Value] = []
@@ -3862,7 +4840,23 @@ fn Interpreter::eval_expr(
     }
     NewExpr(callee_expr, arg_exprs, loc) =>
       self.eval_new(callee_expr, arg_exprs, env, loc)
-    ThisExpr(_) => env.get("this") catch { _ => Undefined }
+    ThisExpr(_) => {
+      try {
+        env.get("this")
+      } catch {
+        @errors.ReferenceError(message~) => {
+          // In derived class constructors, 'this' is in TDZ until super() is called
+          if message.contains("before initialization") {
+            raise @errors.ReferenceError(
+              message="Must call super constructor in derived class before accessing 'this' or returning from derived constructor",
+            )
+          }
+          // Otherwise, 'this' is just not defined (global arrow function, etc.)
+          Undefined
+        }
+        other => raise other
+      }
+    }
     UpdateExpr(op, operand, prefix, loc) =>
       self.eval_update(op, operand, prefix, env, loc)
     CompoundAssign(op, target, value_expr, loc) =>
@@ -3877,7 +4871,7 @@ fn Interpreter::eval_expr(
         buf.write_string(strings[i])
         if i < exprs.length() {
           let val = self.eval_expr(exprs[i], env)
-          buf.write_string(val.to_string())
+          buf.write_string(to_js_string(val))
         }
       }
       String_(buf.to_string())
@@ -3931,13 +4925,23 @@ fn Interpreter::eval_expr(
         closure: env,
         strict: is_function_strict(self.strict, body),
       }
+      let nf_desc : PropDescriptor = {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
       Object({
-        properties: {},
+        properties: {
+          "name": String_(""),
+          "length": Number(params.length().to_double()),
+        },
         symbol_properties: {},
-        prototype: Null,
+        prototype: get_func_proto(),
         callable: Some(ArrowFunc(func_data)),
         class_name: "Function",
-        descriptors: {},
+        descriptors: { "name": nf_desc, "length": nf_desc },
         symbol_descriptors: {},
         extensible: true,
       })
@@ -3958,13 +4962,31 @@ fn Interpreter::eval_expr(
         closure: env,
         strict: is_function_strict(self.strict, body),
       }
+      let nf_desc : PropDescriptor = {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
+      // Length = number of params before first default
+      let mut arrow_len = 0
+      for p in params {
+        if p.default_val is Some(_) {
+          break
+        }
+        arrow_len += 1
+      }
       Object({
-        properties: {},
+        properties: {
+          "name": String_(""),
+          "length": Number(arrow_len.to_double()),
+        },
         symbol_properties: {},
-        prototype: Null,
+        prototype: get_func_proto(),
         callable: Some(ArrowFuncExt(func_data)),
         class_name: "Function",
-        descriptors: {},
+        descriptors: { "name": nf_desc, "length": nf_desc },
         symbol_descriptors: {},
         extensible: true,
       })
@@ -4088,13 +5110,35 @@ fn Interpreter::eval_expr(
           }
         }
       }
-    ClassExpr(name, superclass, methods, _) =>
-      self.create_class(name.unwrap_or(""), superclass, methods, env)
+    ClassExpr(name, superclass, methods, _) => {
+      // For named class expressions, the name is visible inside the class body
+      // but not in the outer scope. Create a new scope for this.
+      let class_name = name.unwrap_or("")
+      let class_env = if class_name != "" {
+        let inner = Environment::new(parent=Some(env))
+        // Pre-define the name (will be set after class creation)
+        inner.def(class_name, Undefined, LetBinding)
+        inner
+      } else {
+        env
+      }
+      let class_val = self.create_class(class_name, superclass, methods, class_env)
+      // Set the class name binding in the inner scope
+      if class_name != "" {
+        class_env.assign(class_name, class_val) catch { _ => () }
+      }
+      class_val
+    }
     SuperCall(arg_exprs, loc) => {
       // super(args) - call the parent constructor
       // Get the [[HomeObject]] from the current environment
       let super_ctor = env.get("[[SuperConstructor]]")
-      let this_val = env.get("this")
+      // Use [[PendingThis]] if 'this' is in TDZ (derived class before super())
+      let this_val = if env.has("[[PendingThis]]") {
+        env.get("[[PendingThis]]")
+      } else {
+        env.get("this")
+      }
       let args = self.eval_args_with_spread(arg_exprs, env)
       // Call the super constructor
       match super_ctor {
@@ -4159,8 +5203,8 @@ fn Interpreter::eval_expr(
                         | Set(_)
                         | Promise(_)
                         | Proxy(_) => {
-                          // Update 'this' in the current environment
-                          env.assign("this", v)
+                          // Initialize 'this' (may be in TDZ for derived classes)
+                          try { env.initialize("this", v) } catch { _ => env.assign("this", v) }
                           return v
                         }
                         _ => ()
@@ -4170,23 +5214,37 @@ fn Interpreter::eval_expr(
                 }
                 None => ()
               }
+              // Initialize 'this' in the calling env (may be TDZ for derived classes)
+              try { env.initialize("this", this_val) } catch { _ => try { env.assign("this", this_val) } catch { _ => () } }
               env.get("this")
             }
             Some(_) => {
-              // Support non-class constructible supers (e.g. Promise constructor).
+              // Support non-class constructible supers (e.g. built-in constructors like Error).
               // Use constructor semantics (`new`) instead of plain call.
               let super_result = self.construct_value(super_ctor, args, loc)
               match super_result {
-                Object(_)
-                | Array(_)
+                Object(result_data) => {
+                  // Per spec, OrdinaryCreateFromConstructor uses newTarget's prototype.
+                  // Set the prototype from the subclass's pending this object.
+                  match this_val {
+                    Object(this_data) => result_data.prototype = this_data.prototype
+                    _ => ()
+                  }
+                  try { env.initialize("this", super_result) } catch { _ => env.assign("this", super_result) }
+                  super_result
+                }
+                Array(_)
                 | Map(_)
                 | Set(_)
                 | Promise(_)
                 | Proxy(_) => {
-                  env.assign("this", super_result)
+                  try { env.initialize("this", super_result) } catch { _ => env.assign("this", super_result) }
                   super_result
                 }
-                _ => env.get("this")
+                _ => {
+                  try { env.initialize("this", this_val) } catch { _ => try { env.assign("this", this_val) } catch { _ => () } }
+                  env.get("this")
+                }
               }
             }
             _ =>
@@ -4430,10 +5488,16 @@ fn eval_binary_op(
       raise @errors.TypeError(
         message="Cannot convert a Symbol value to a string",
       )
-    // String concatenation
+    // String concatenation (only for primitive operands)
     (Add, String_(a), String_(b)) => String_(a + b)
-    (Add, String_(a), b) => String_(a + b.to_string())
-    (Add, a, String_(b)) => String_(a.to_string() + b)
+    (Add, String_(a), Number(b)) => String_(a + Number(b).to_string())
+    (Add, String_(a), Bool(b)) => String_(a + b.to_string())
+    (Add, String_(a), Null) => String_(a + "null")
+    (Add, String_(a), Undefined) => String_(a + "undefined")
+    (Add, Number(a), String_(b)) => String_(Number(a).to_string() + b)
+    (Add, Bool(a), String_(b)) => String_(a.to_string() + b)
+    (Add, Null, String_(b)) => String_("null" + b)
+    (Add, Undefined, String_(b)) => String_("undefined" + b)
     // Numeric operations
     (Add, Number(a), Number(b)) => Number(a + b)
     (Sub, Number(a), Number(b)) => Number(a - b)
@@ -4458,8 +5522,33 @@ fn eval_binary_op(
     // Exponentiation
     (Exp, Number(a), Number(b)) => Number(@math.pow(a, b))
     (Exp, l, r) => Number(@math.pow(to_number(l), to_number(r)))
-    // Arithmetic fallbacks (type coercion)
-    (Add, l, r) => Number(to_number(l) + to_number(r))
+    // Add fallback: ToPrimitive, then check for strings
+    (Add, l, r) => {
+      // ToPrimitive with hint "default" per spec (+ operator uses no preferred type)
+      let lp = match l {
+        Object(data) => to_primitive_default(l, data)
+        Array(arr_data) => {
+          let s = arr_data.elements.map(fn(v) { v.to_string() }).join(",")
+          String_(s)
+        }
+        _ => l
+      }
+      let rp = match r {
+        Object(data) => to_primitive_default(r, data)
+        Array(arr_data) => {
+          let s = arr_data.elements.map(fn(v) { v.to_string() }).join(",")
+          String_(s)
+        }
+        _ => r
+      }
+      // If either is a string after ToPrimitive, do string concatenation
+      match (lp, rp) {
+        (String_(a), String_(b)) => String_(a + b)
+        (String_(a), b) => String_(a + to_js_string(b))
+        (a, String_(b)) => String_(to_js_string(a) + b)
+        (a, b) => Number(to_number(a) + to_number(b))
+      }
+    }
     (Sub, l, r) => Number(to_number(l) - to_number(r))
     (Mul, l, r) => Number(to_number(l) * to_number(r))
     (Div, l, r) => Number(to_number(l) / to_number(r))
@@ -4530,13 +5619,14 @@ fn eval_binary_op(
               Bool(false)
             }
             _ => {
-              let key = l.to_string()
+              let key = to_js_string(l)
               // Check own property first
               if data.properties.contains(key) {
                 return Bool(true)
               }
               // Walk prototype chain
               let mut current = data.prototype
+              let mut func_fallback_used = false
               while true {
                 match current {
                   Object(proto_data) =>
@@ -4545,16 +5635,60 @@ fn eval_binary_op(
                     } else {
                       current = proto_data.prototype
                     }
+                  Null => {
+                    // For function objects, fall back to Function.prototype once
+                    if not(func_fallback_used) {
+                      match data.callable {
+                        Some(_) =>
+                          match current_interpreter.val {
+                            Some(interp) => {
+                              let fp = interp.global.get("[[FunctionPrototype]]") catch {
+                                _ => break
+                              }
+                              func_fallback_used = true
+                              current = fp
+                            }
+                            None => break
+                          }
+                        None => break
+                      }
+                    } else {
+                      break
+                    }
+                  }
                   _ => break
                 }
               }
               Bool(false)
             }
           }
-        Array(data) => {
-          let idx = to_number(l).to_int() catch { _ => -1 }
-          Bool(idx >= 0 && idx < data.elements.length())
-        }
+        Array(data) =>
+          match l {
+            Symbol(sym) =>
+              Bool(get_array_symbol_prop(data, sym.id) is Some(_))
+            _ => {
+              let key = to_js_string(l)
+              if key == "length" {
+                return Bool(true)
+              }
+              // Check numeric index
+              try {
+                let n = @strconv.parse_double(key)
+                let idx = n.to_int()
+                if idx.to_double() == n && idx >= 0 && idx < data.elements.length() {
+                  return Bool(true)
+                }
+              } catch {
+                _ => ()
+              }
+              // Check named properties side-table
+              if get_array_named_prop(data, key) is Some(_) {
+                return Bool(true)
+              }
+              // Check Array.prototype chain
+              Bool(has_property(Array(data), key))
+            }
+          }
         _ =>
           raise @errors.TypeError(
             message="Cannot use 'in' operator to search for '\{l.to_string()}' in \{type_of(r)}",
@@ -4696,59 +5830,39 @@ fn loose_equal(a : Value, b : Value) -> Bool {
     (_, Bool(bval)) => loose_equal(a, Number(if bval { 1.0 } else { 0.0 }))
     // Object/Array == Number/String: try ToPrimitive
     (Object(data), Number(_)) | (Object(data), String_(_)) => {
-      // Unwrap boxed primitives to their inner value
-      let prim = if data.class_name == "Number" {
-        match data.properties.get("[[NumberData]]") {
-          Some(n) => n
-          _ => String_(a.to_string())
-        }
-      } else if data.class_name == "Boolean" {
-        match data.properties.get("[[BooleanData]]") {
-          Some(b2) => b2
-          _ => String_(a.to_string())
-        }
-      } else if data.class_name == "String" {
-        match data.properties.get("[[StringData]]") {
-          Some(s) => s
-          _ => String_(a.to_string())
-        }
-      } else {
-        String_(a.to_string())
-      }
+      // Use ToPrimitive with "number" hint (default for ordinary objects)
+      let prim = try { to_primitive_number(a, data) } catch { _ => String_(a.to_string()) }
       loose_equal(prim, b)
     }
     (Number(_), Object(data)) | (String_(_), Object(data)) => {
-      let prim = if data.class_name == "Number" {
-        match data.properties.get("[[NumberData]]") {
-          Some(n) => n
-          _ => String_(b.to_string())
-        }
-      } else if data.class_name == "Boolean" {
-        match data.properties.get("[[BooleanData]]") {
-          Some(b2) => b2
-          _ => String_(b.to_string())
-        }
-      } else if data.class_name == "String" {
-        match data.properties.get("[[StringData]]") {
-          Some(s) => s
-          _ => String_(b.to_string())
-        }
-      } else {
-        String_(b.to_string())
-      }
+      let prim = try { to_primitive_number(b, data) } catch { _ => String_(b.to_string()) }
       loose_equal(a, prim)
     }
     (Array(_), Number(_)) | (Array(_), String_(_)) => {
-      let prim = String_(a.to_string())
+      let prim = try { String_(to_js_string(a)) } catch { _ => String_(a.to_string()) }
       loose_equal(prim, b)
     }
     (Number(_), Array(_)) | (String_(_), Array(_)) => {
-      let prim = String_(b.to_string())
+      let prim = try { String_(to_js_string(b)) } catch { _ => String_(b.to_string()) }
       loose_equal(a, prim)
     }
     // Symbols don't coerce - any comparison with Symbol and different type is false
     (Symbol(_), _) | (_, Symbol(_)) => false
     // Everything else is false
+    _ => false
+  }
+}
+
+///|
+/// Check whether `name` is a non-writable property on the global object
+/// (undefined, NaN, Infinity). These are { writable:false } per ES spec §19.1.
+fn Interpreter::is_immutable_global(self : Interpreter, name : String) -> Bool {
+  match self.global_this {
+    Object(data) =>
+      match data.descriptors.get(name) {
+        Some(desc) => not(desc.writable)
+        None => false
+      }
     _ => false
   }
 }
@@ -4768,7 +5882,15 @@ fn Interpreter::eval_unary(
           if env.has(name) {
             String_(type_of(env.get(name)))
           } else {
-            String_("undefined")
+            // Also check global object for properties
+            match self.global_this {
+              Object(data) =>
+                match data.properties.get(name) {
+                  Some(v) => String_(type_of(v))
+                  None => String_("undefined")
+                }
+              _ => String_("undefined")
+            }
           }
         _ => String_(type_of(self.eval_expr(operand, env)))
       }
@@ -4857,7 +5979,7 @@ fn Interpreter::eval_unary(
                   let handler = get_proxy_handler(proxy_data)
                   let prop_key = match key {
                     Symbol(_) => key
-                    _ => String_(key.to_string())
+                    _ => String_(to_js_string(key))
                   }
                   let result = self.call_value(
                     trap_fn,
@@ -4876,7 +5998,7 @@ fn Interpreter::eval_unary(
                   let target = get_proxy_target(proxy_data)
                   match target {
                     Object(data) => {
-                      let k = key.to_string()
+                      let k = to_js_string(key)
                       match data.descriptors.get(k) {
                         Some(desc) =>
                           if not(desc.configurable) {
@@ -4898,35 +6020,88 @@ fn Interpreter::eval_unary(
                 }
               }
             }
-            Object(data) => {
-              let k = key.to_string()
-              match data.descriptors.get(k) {
-                Some(desc) =>
-                  if not(desc.configurable) {
-                    if self.strict {
-                      raise @errors.TypeError(
-                        message="Cannot delete property '\{k}'",
-                      )
-                    }
-                    return Bool(false)
+            Object(data) =>
+              match key {
+                Symbol(sym) => {
+                  // Delete a symbol-keyed property
+                  match data.symbol_descriptors.get(sym.id) {
+                    Some(desc) =>
+                      if not(desc.configurable) {
+                        if self.strict {
+                          raise @errors.TypeError(
+                            message="Cannot delete property",
+                          )
+                        }
+                        return Bool(false)
+                      }
+                    None => ()
                   }
-                None => ()
+                  let _ = data.symbol_properties.remove(sym.id)
+                  let _ = data.symbol_descriptors.remove(sym.id)
+                  Bool(true)
+                }
+                _ => {
+                  let k = to_js_string(key)
+                  match data.descriptors.get(k) {
+                    Some(desc) =>
+                      if not(desc.configurable) {
+                        if self.strict {
+                          raise @errors.TypeError(
+                            message="Cannot delete property '\{k}'",
+                          )
+                        }
+                        return Bool(false)
+                      }
+                    None => ()
+                  }
+                  let _ = data.properties.remove(k)
+                  let _ = data.descriptors.remove(k)
+                  Bool(true)
+                }
               }
-              let _ = data.properties.remove(k)
-              let _ = data.descriptors.remove(k)
-              Bool(true)
-            }
             _ => Bool(true)
           }
         }
-        Ident(_, _) =>
+        Ident(name, _) =>
           // delete of an unqualified identifier is a SyntaxError in strict mode
           if self.strict {
             raise @errors.SyntaxError(
               message="Delete of an unqualified identifier in strict mode.",
             )
           } else {
-            Bool(true)
+            // Check if this identifier is in a with-object first
+            match env.find_with_object(name) {
+              Some(Object(with_data)) => {
+                match with_data.descriptors.get(name) {
+                  Some(desc) =>
+                    if not(desc.configurable) {
+                      return Bool(false)
+                    }
+                  None => ()
+                }
+                let _ = with_data.properties.remove(name)
+                let _ = with_data.descriptors.remove(name)
+                Bool(true)
+              }
+              _ =>
+                // In non-strict mode, check if the identifier is a non-configurable
+                // property on the global object (e.g. undefined, NaN, Infinity).
+                match self.global_this {
+                  Object(data) =>
+                    match data.descriptors.get(name) {
+                      Some(desc) =>
+                        if not(desc.configurable) {
+                          Bool(false)
+                        } else {
+                          let _ = data.properties.remove(name)
+                          let _ = data.descriptors.remove(name)
+                          Bool(true)
+                        }
+                      None => Bool(true)
+                    }
+                  _ => Bool(true)
+                }
+            }
           }
         _ => Bool(true)
       }
@@ -5212,14 +6387,18 @@ fn Interpreter::perform_eval(
     let mut last : Value = Undefined
     for stmt in stmts {
       match self.exec_stmt(stmt, exec_env) {
-        Normal(v) => last = v
+        Normal(v) =>
+          // Per spec, declarations have empty completion values
+          if not(is_declaration_stmt(stmt)) {
+            last = v
+          }
         ReturnSignal(_) =>
           raise @errors.SyntaxError(
             message="return statement outside of function",
           )
-        BreakSignal(_) =>
+        BreakSignal(_, _) =>
           raise @errors.SyntaxError(message="break statement outside of loop")
-        ContinueSignal(_) =>
+        ContinueSignal(_, _) =>
           raise @errors.SyntaxError(
             message="continue statement outside of loop",
           )
@@ -5293,6 +6472,23 @@ fn Interpreter::eval_call(
           let func_val = self.get_computed_property(obj, key, mloc)
           let args = self.eval_args_with_spread(arg_exprs, env)
           self.call_value(func_val, obj, args, loc)
+        }
+        SuperMember(prop, sloc) => {
+          // super.method() - look up on super prototype, call with current this
+          let super_proto = env.get("[[SuperPrototype]]")
+          let func_val = self.get_property(super_proto, prop, sloc)
+          let this_val = env.get("this") catch { _ => Undefined }
+          let args = self.eval_args_with_spread(arg_exprs, env)
+          self.call_value(func_val, this_val, args, loc)
+        }
+        SuperComputedMember(key_expr, sloc) => {
+          // super[expr]() - look up on super prototype, call with current this
+          let super_proto = env.get("[[SuperPrototype]]")
+          let key = self.eval_expr(key_expr, env)
+          let func_val = self.get_computed_property(super_proto, key, sloc)
+          let this_val = env.get("this") catch { _ => Undefined }
+          let args = self.eval_args_with_spread(arg_exprs, env)
+          self.call_value(func_val, this_val, args, loc)
         }
         _ => {
           let callee = self.eval_expr(callee_expr, env)
@@ -5415,11 +6611,11 @@ fn Interpreter::call_value(
             match self.exec_stmts(data.body, func_env) {
               Normal(_) => Undefined
               ReturnSignal(v) => v
-              BreakSignal(_) =>
+              BreakSignal(_, _) =>
                 raise @errors.SyntaxError(
                   message="break statement outside of loop",
                 )
-              ContinueSignal(_) =>
+              ContinueSignal(_, _) =>
                 raise @errors.SyntaxError(
                   message="continue statement outside of loop",
                 )
@@ -5452,11 +6648,11 @@ fn Interpreter::call_value(
             match self.exec_stmts(data.body, func_env) {
               Normal(_) => Undefined
               ReturnSignal(v) => v
-              BreakSignal(_) =>
+              BreakSignal(_, _) =>
                 raise @errors.SyntaxError(
                   message="break statement outside of loop",
                 )
-              ContinueSignal(_) =>
+              ContinueSignal(_, _) =>
                 raise @errors.SyntaxError(
                   message="continue statement outside of loop",
                 )
@@ -5495,6 +6691,22 @@ fn Interpreter::call_value(
             }
             func_env.def("this", effective_this, LetBinding)
             func_env.def("<new.target>", Undefined, LetBinding)
+            // Create arguments object BEFORE binding params so defaults can reference it
+            let tte_val2 : Value? = if func_env.has("[[ThrowTypeError]]") {
+              Some(func_env.get("[[ThrowTypeError]]"))
+            } else {
+              None
+            }
+            func_env.def(
+              "arguments",
+              make_arguments_object(
+                args,
+                callee,
+                func_strict,
+                throw_type_error=tte_val2,
+              ),
+              VarBinding,
+            )
             // Bind params with defaults
             let mut effective_param_count = 0
             for i = 0; i < data.params.length(); i = i + 1 {
@@ -5508,7 +6720,15 @@ fn Interpreter::call_value(
                 args[effective_param_count]
               } else {
                 match param.default_val {
-                  Some(default_expr) => self.eval_expr(default_expr, func_env)
+                  Some(default_expr) => {
+                    let v = self.eval_expr(default_expr, func_env)
+                    // Set function name for anonymous function defaults
+                    if param.pattern is None &&
+                      is_anonymous_function_definition(default_expr) {
+                      set_function_name(v, param.name)
+                    }
+                    v
+                  }
                   None =>
                     if effective_param_count < args.length() {
                       args[effective_param_count]
@@ -5548,22 +6768,6 @@ fn Interpreter::call_value(
               }
               None => ()
             }
-            // Create arguments object
-            let tte_val2 : Value? = if func_env.has("[[ThrowTypeError]]") {
-              Some(func_env.get("[[ThrowTypeError]]"))
-            } else {
-              None
-            }
-            func_env.def(
-              "arguments",
-              make_arguments_object(
-                args,
-                callee,
-                func_strict,
-                throw_type_error=tte_val2,
-              ),
-              VarBinding,
-            )
             self.hoist_declarations(data.body, func_env)
             match data.name {
               Some(name) =>
@@ -5575,11 +6779,11 @@ fn Interpreter::call_value(
             match self.exec_stmts(data.body, func_env) {
               Normal(_) => Undefined
               ReturnSignal(v) => v
-              BreakSignal(_) =>
+              BreakSignal(_, _) =>
                 raise @errors.SyntaxError(
                   message="break statement outside of loop",
                 )
-              ContinueSignal(_) =>
+              ContinueSignal(_, _) =>
                 raise @errors.SyntaxError(
                   message="continue statement outside of loop",
                 )
@@ -5612,7 +6816,15 @@ fn Interpreter::call_value(
                 args[effective_param_count]
               } else {
                 match param.default_val {
-                  Some(default_expr) => self.eval_expr(default_expr, func_env)
+                  Some(default_expr) => {
+                    let v = self.eval_expr(default_expr, func_env)
+                    // Set function name for anonymous function defaults
+                    if param.pattern is None &&
+                      is_anonymous_function_definition(default_expr) {
+                      set_function_name(v, param.name)
+                    }
+                    v
+                  }
                   None =>
                     if effective_param_count < args.length() {
                       args[effective_param_count]
@@ -5656,11 +6868,11 @@ fn Interpreter::call_value(
             match self.exec_stmts(data.body, func_env) {
               Normal(_) => Undefined
               ReturnSignal(v) => v
-              BreakSignal(_) =>
+              BreakSignal(_, _) =>
                 raise @errors.SyntaxError(
                   message="break statement outside of loop",
                 )
-              ContinueSignal(_) =>
+              ContinueSignal(_, _) =>
                 raise @errors.SyntaxError(
                   message="continue statement outside of loop",
                 )
@@ -5779,16 +6991,84 @@ fn Interpreter::eval_member(
 ///|
 fn get_bound_func_name(target : Value) -> String {
   match target {
-    Object(td) =>
+    Object(td) => {
+      // First check properties["name"] (set by Object.defineProperty or bind)
+      let prop_name = match td.properties.get("name") {
+        Some(String_(s)) => s
+        _ => ""
+      }
+      if prop_name != "" {
+        return "bound " + prop_name
+      }
       match td.callable {
         Some(UserFunc(fd)) => "bound " + fd.name.unwrap_or("")
         Some(UserFuncExt(fd)) => "bound " + fd.name.unwrap_or("")
         Some(NativeCallable(n, _)) => "bound " + n
         Some(NonConstructableCallable(n, _)) => "bound " + n
+        Some(BoundFunc(inner, _, _)) => "bound " + get_bound_func_name(inner)
+        Some(ArrowFunc(fd)) => "bound " + fd.name.unwrap_or("")
+        Some(ArrowFuncExt(fd)) => "bound " + fd.name.unwrap_or("")
+        Some(ClassConstructor(n, _, _, _, _, _)) => "bound " + n
+        Some(MethodCallable(n, _)) => "bound " + n
+        Some(InterpreterCallable(n, _)) => "bound " + n
         Some(_) => "bound "
         None => "bound "
       }
+    }
     _ => "bound "
+  }
+}
+
+///|
+fn get_func_length(callable : Callable) -> Int {
+  match callable {
+    UserFunc(func_data) => func_data.params.length()
+    UserFuncExt(func_data) => {
+      let mut len = 0
+      for p in func_data.params {
+        if p.default_val is Some(_) {
+          break
+        }
+        len += 1
+      }
+      len
+    }
+    ArrowFunc(func_data) => func_data.params.length()
+    ArrowFuncExt(func_data) => {
+      let mut len = 0
+      for p in func_data.params {
+        if p.default_val is Some(_) {
+          break
+        }
+        len += 1
+      }
+      len
+    }
+    BoundFunc(target, _, bound_args) =>
+      match target {
+        Object(td) =>
+          match td.callable {
+            Some(inner) => {
+              let target_len = get_func_length(inner)
+              let diff = target_len - bound_args.length()
+              if diff < 0 { 0 } else { diff }
+            }
+            None => 0
+          }
+        _ => 0
+      }
+    NativeCallable(_, _) => 0
+    NonConstructableCallable(_, _) => 0
+    FuncCallMethod(_) => 1
+    FuncApplyMethod(_) => 2
+    MethodCallable(_, _) => 0
+    InterpreterCallable(_, _) => 0
+    ConstructorOnlyCallable(_, _) => 0
+    ClassConstructor(_, _, _, ctor, _, _) =>
+      match ctor {
+        Some((params, _)) => params.length()
+        None => 0
+      }
   }
 }
 
@@ -5829,6 +7109,7 @@ fn Interpreter::get_property(
         None => {
           // Walk prototype chain
           let mut current = data.prototype
+          let mut func_proto_checked = false
           while true {
             match current {
               Object(proto_data) => {
@@ -5845,6 +7126,97 @@ fn Interpreter::get_property(
                 match proto_data.properties.get(prop) {
                   Some(v) => return v
                   None => current = proto_data.prototype
+                }
+              }
+              Array(arr_data) => {
+                // Handle Array values in the prototype chain
+                if prop == "length" {
+                  return Number(arr_data.elements.length().to_double())
+                }
+                // Check numeric index access on array elements
+                let num_idx = @strconv.parse_int(prop) catch { _ => -1 }
+                if num_idx >= 0 && num_idx < arr_data.elements.length() {
+                  return arr_data.elements[num_idx]
+                }
+                match get_array_named_prop(arr_data, prop) {
+                  Some(v) => return v
+                  None => {
+                    let result = get_array_method_with_interp(arr_data, prop)
+                    match result {
+                      Undefined => {
+                        // Continue to Array.prototype
+                        let ctor = self.global.get("Array") catch { _ => break }
+                        match ctor {
+                          Object(ctor_data) =>
+                            match ctor_data.properties.get("prototype") {
+                              Some(proto) => current = proto
+                              None => break
+                            }
+                          _ => break
+                        }
+                      }
+                      _ => return result
+                    }
+                  }
+                }
+              }
+              Map(map_data) => {
+                // Handle Map values in the prototype chain
+                if prop == "size" {
+                  return Number(map_data.entries.length().to_double())
+                }
+                let result = get_map_method(map_data, prop)
+                match result {
+                  Undefined => {
+                    let ctor = self.global.get("Map") catch { _ => break }
+                    match ctor {
+                      Object(ctor_data) =>
+                        match ctor_data.properties.get("prototype") {
+                          Some(proto) => current = proto
+                          None => break
+                        }
+                      _ => break
+                    }
+                  }
+                  _ => return result
+                }
+              }
+              Set(set_data) => {
+                // Handle Set values in the prototype chain
+                if prop == "size" {
+                  return Number(set_data.values.length().to_double())
+                }
+                let result = get_set_method(set_data, prop)
+                match result {
+                  Undefined => {
+                    let ctor = self.global.get("Set") catch { _ => break }
+                    match ctor {
+                      Object(ctor_data) =>
+                        match ctor_data.properties.get("prototype") {
+                          Some(proto) => current = proto
+                          None => break
+                        }
+                      _ => break
+                    }
+                  }
+                  _ => return result
+                }
+              }
+              Null => {
+                // For function objects, fall back to Function.prototype (once)
+                if not(func_proto_checked) {
+                  match data.callable {
+                    Some(_) => {
+                      let fp = self.global.get("[[FunctionPrototype]]") catch {
+                        _ => break
+                      }
+                      func_proto_checked = true
+                      current = fp
+                    }
+                    None => break
+                  }
+                } else {
+                  break
                 }
               }
               _ => break
@@ -5877,6 +7249,7 @@ fn Interpreter::get_property(
                 })
               } else if prop == "bind" {
                 let target = obj
+                let target_length = get_func_length(callable)
                 return make_native_func("bind", fn(args) {
                   let bind_this = if args.length() > 0 {
                     args[0]
@@ -5887,77 +7260,35 @@ fn Interpreter::get_property(
                   for i = 1; i < args.length(); i = i + 1 {
                     bound_args.push(args[i])
                   }
+                  let bound_name = get_bound_func_name(target)
+                  let bound_length = {
+                    let diff = target_length - bound_args.length()
+                    if diff < 0 { 0 } else { diff }
+                  }
+                  let nf_desc : PropDescriptor = {
+                    writable: false,
+                    enumerable: false,
+                    configurable: true,
+                    getter: None,
+                    setter: None,
+                  }
+                  let bprops : Map[String, Value] = {}
+                  bprops["name"] = String_(bound_name)
+                  bprops["length"] = Number(bound_length.to_double())
                   Object({
-                    properties: {},
+                    properties: bprops,
                     symbol_properties: {},
-                    prototype: Null,
+                    prototype: get_func_proto(),
                     callable: Some(BoundFunc(target, bind_this, bound_args)),
                     class_name: "Function",
-                    descriptors: {},
+                    descriptors: { "name": nf_desc, "length": nf_desc },
                     symbol_descriptors: {},
                     extensible: true,
                   })
                 })
               } else if prop == "length" {
                 // Return the number of formal parameters
-                let param_count = match callable {
-                  UserFunc(func_data) => func_data.params.length()
-                  UserFuncExt(func_data) => func_data.params.length()
-                  ArrowFunc(func_data) => func_data.params.length()
-                  ArrowFuncExt(func_data) => func_data.params.length()
-                  BoundFunc(target, _, bound_args) =>
-                    match target {
-                      Object(td) =>
-                        match td.callable {
-                          Some(UserFunc(fd)) => {
-                            let diff = fd.params.length() - bound_args.length()
-                            if diff < 0 {
-                              0
-                            } else {
-                              diff
-                            }
-                          }
-                          Some(UserFuncExt(fd)) => {
-                            let diff = fd.params.length() - bound_args.length()
-                            if diff < 0 {
-                              0
-                            } else {
-                              diff
-                            }
-                          }
-                          Some(ArrowFunc(fd)) => {
-                            let diff = fd.params.length() - bound_args.length()
-                            if diff < 0 {
-                              0
-                            } else {
-                              diff
-                            }
-                          }
-                          Some(ArrowFuncExt(fd)) => {
-                            let diff = fd.params.length() - bound_args.length()
-                            if diff < 0 {
-                              0
-                            } else {
-                              diff
-                            }
-                          }
-                          _ => 0
-                        }
-                      _ => 0
-                    }
-                  NativeCallable(_, _) => 0
-                  NonConstructableCallable(_, _) => 0
-                  FuncCallMethod(_) => 1
-                  FuncApplyMethod(_) => 2
-                  MethodCallable(_, _) => 0
-                  InterpreterCallable(_, _) => 0
-                  ConstructorOnlyCallable(_, _) => 0
-                  ClassConstructor(_, _, _, ctor, _, _) =>
-                    match ctor {
-                      Some((params, _)) => params.length()
-                      None => 0
-                    }
-                }
+                let param_count = get_func_length(callable)
                 return Number(param_count.to_double())
               } else if prop == "name" {
                 // Return the function name
@@ -6038,7 +7369,7 @@ fn Interpreter::get_property(
                     let proto : Value = Object({
                       properties: {},
                       symbol_properties: {},
-                      prototype: Null,
+                      prototype: get_obj_proto(),
                       callable: None,
                       class_name: "Object",
                       descriptors: {},
@@ -6052,41 +7383,51 @@ fn Interpreter::get_property(
               }
             None => ()
           }
-          // Built-in Object methods
-          if prop == "hasOwnProperty" {
-            return Object({
-              properties: {},
-              symbol_properties: {},
-              prototype: Null,
-              callable: Some(
-                MethodCallable("hasOwnProperty", fn(this_val, args) {
-                  let key_val = if args.length() > 0 {
-                    args[0]
-                  } else {
-                    Undefined
-                  }
-                  match this_val {
-                    Object(d) =>
-                      // Handle Symbol keys
-                      match key_val {
-                        Symbol(sym) =>
-                          Bool(d.symbol_properties.contains(sym.id))
-                        _ => Bool(d.properties.contains(key_val.to_string()))
-                      }
-                    _ => Bool(false)
-                  }
-                }),
-              ),
-              class_name: "Function",
-              descriptors: {},
-              symbol_descriptors: {},
-              extensible: true,
-            })
-          }
-          if prop == "toString" {
-            return make_native_func("toString", fn(_args) {
-              String_("[object Object]")
-            })
+          // Built-in Object methods (only for objects that inherit from Object.prototype)
+          // Objects with null prototype (Object.create(null)) should NOT have these
+          if not(data.prototype is Null && data.callable is None) {
+            if prop == "hasOwnProperty" {
+              return make_method_func("hasOwnProperty", 1, fn(this_val, args) {
+                    let key_val = if args.length() > 0 {
+                      args[0]
+                    } else {
+                      Undefined
+                    }
+                    match this_val {
+                      Object(d) =>
+                        match key_val {
+                          Symbol(sym) =>
+                            Bool(d.symbol_properties.contains(sym.id))
+                          _ => Bool(d.properties.contains(key_val.to_string()))
+                        }
+                      Array(ad) =>
+                        match key_val {
+                          Symbol(sym) =>
+                            Bool(get_array_symbol_prop(ad, sym.id) is Some(_))
+                          _ => {
+                            let k = key_val.to_string()
+                            if k == "length" {
+                              return Bool(true)
+                            }
+                            let idx = @strconv.parse_int(k) catch { _ => -1 }
+                            if idx >= 0 &&
+                              idx.to_string() == k &&
+                              idx < ad.elements.length() {
+                              Bool(true)
+                            } else {
+                              Bool(get_array_named_prop(ad, k) is Some(_))
+                            }
+                          }
+                        }
+                      _ => Bool(false)
+                    }
+                  })
+            }
+            if prop == "toString" {
+              return make_native_func("toString", fn(_args) {
+                String_("[object Object]")
+              })
+            }
           }
           Undefined
         }
@@ -6096,21 +7437,27 @@ fn Interpreter::get_property(
       if prop == "length" {
         Number(data.elements.length().to_double())
       } else {
-        // Check named properties side table first (e.g., index, input on exec results)
-        match get_array_named_prop(data, prop) {
-          Some(v) => v
-          None => {
-            let result = get_array_method_with_interp(data, prop)
-            match result {
-              Undefined => lookup_builtin_proto(self, obj, "Array", prop, loc)
-              _ => result
+        // Check numeric index access first
+        let num_idx = @strconv.parse_int(prop) catch { _ => -1 }
+        if num_idx >= 0 && num_idx < data.elements.length() && num_idx.to_string() == prop {
+          data.elements[num_idx]
+        } else {
+          // Check named properties side table (e.g., index, input on exec results)
+          match get_array_named_prop(data, prop) {
+            Some(v) => v
+            None => {
+              let result = get_array_method_with_interp(data, prop)
+              match result {
+                Undefined => lookup_builtin_proto(self, obj, "Array", prop, loc)
+                _ => result
+              }
             }
           }
         }
       }
     String_(s) =>
       if prop == "length" {
-        Number(s.length().to_double())
+        Number(utf16_length(s).to_double())
       } else {
         let result = get_string_method(s, prop, annex_b=self.annex_b)
         match result {
@@ -6173,9 +7520,13 @@ fn Interpreter::get_property(
             None => get_promise_method(data, prop)
           }
       }
-    Null | Undefined =>
+    Null =>
       raise @errors.TypeError(
-        message="Cannot read property '\{prop}' of \{type_of(obj)}",
+        message="Cannot read properties of null (reading '\{prop}')",
+      )
+    Undefined =>
+      raise @errors.TypeError(
+        message="Cannot read properties of undefined (reading '\{prop}')",
       )
   }
 }
@@ -6246,7 +7597,7 @@ fn Interpreter::get_computed_property(
           let handler = get_proxy_handler(proxy_data)
           let prop_key = match key {
             Symbol(_) => key
-            _ => String_(key.to_string())
+            _ => String_(to_js_string(key))
           }
           return self.call_value(trap_fn, handler, [target, prop_key, obj], loc)
         }
@@ -6305,12 +7656,7 @@ fn Interpreter::get_computed_property(
                 if data.class_name == "String" {
                   match data.properties.get("[[StringData]]") {
                     Some(String_(_)) =>
-                      return Object({
-                        properties: {},
-                        symbol_properties: {},
-                        prototype: Null,
-                        callable: Some(
-                          MethodCallable("[Symbol.iterator]", fn(
+                      return make_method_func("[Symbol.iterator]", 0, fn(
                             this_val,
                             _args,
                           ) raise {
@@ -6332,13 +7678,7 @@ fn Interpreter::get_computed_property(
                               _ => this_val.to_string()
                             }
                             make_string_iterator_value(str)
-                          }),
-                        ),
-                        class_name: "Function",
-                        descriptors: {},
-                        symbol_descriptors: {},
-                        extensible: true,
-                      })
+                          })
                     _ => ()
                   }
                 } else if data.class_name == "Array" {
@@ -6355,25 +7695,50 @@ fn Interpreter::get_computed_property(
           let iterator_sym = get_iterator_symbol()
           if sym.id == iterator_sym.id {
             // Return a function that creates a string iterator
-            return Object({
-              properties: {},
-              symbol_properties: {},
-              prototype: Null,
-              callable: Some(
-                MethodCallable("[Symbol.iterator]", fn(_this_val, _args) {
+            return make_method_func("[Symbol.iterator]", 0, fn(_this_val, _args) {
                   make_string_iterator_value(s)
-                }),
-              ),
-              class_name: "Function",
-              descriptors: {},
-              symbol_descriptors: {},
-              extensible: true,
-            })
+                })
           }
           return Undefined
         }
         Array(arr) => {
-          // Handle Symbol.iterator for arrays
+          // Check array's own symbol property side-table first
+          match get_array_symbol_prop(arr, sym.id) {
+            Some(v) => return v
+            None => ()
+          }
+          // Check Array.prototype for symbol properties (e.g. overridden Symbol.iterator)
+          match current_interpreter.val {
+            Some(interp) => {
+              let array_ctor = interp.global.get("Array") catch { _ => Undefined }
+              match array_ctor {
+                Object(ctor_data) =>
+                  match ctor_data.properties.get("prototype") {
+                    Some(Object(proto_data)) => {
+                      // Check symbol descriptors for getters
+                      match proto_data.symbol_descriptors.get(sym.id) {
+                        Some(desc) =>
+                          match desc.getter {
+                            Some(getter) =>
+                              return self.call_value(getter, obj, [], loc)
+                            None => ()
+                          }
+                        None => ()
+                      }
+                      // Check symbol properties
+                      match proto_data.symbol_properties.get(sym.id) {
+                        Some(v) => return v
+                        None => ()
+                      }
+                    }
+                    _ => ()
+                  }
+                _ => ()
+              }
+            }
+            None => ()
+          }
+          // Handle Symbol.iterator default for arrays
           let iterator_sym = get_iterator_symbol()
           if sym.id == iterator_sym.id {
             let (override_getter, override_value) = get_array_iterator_override(
@@ -6387,21 +7752,10 @@ fn Interpreter::get_computed_property(
               Some(v) => return v
               None => ()
             }
-            // Return a function that creates an array iterator
-            return Object({
-              properties: {},
-              symbol_properties: {},
-              prototype: Null,
-              callable: Some(
-                MethodCallable("[Symbol.iterator]", fn(_this_val, _args) {
+            // Return default array iterator
+            return make_method_func("[Symbol.iterator]", 0, fn(_this_val, _args) {
                   make_array_iterator_value(arr)
-                }),
-              ),
-              class_name: "Function",
-              descriptors: {},
-              symbol_descriptors: {},
-              extensible: true,
-            })
+                })
           }
           return Undefined
         }
@@ -6446,6 +7800,27 @@ fn Interpreter::get_computed_property(
             Some(v) => return v
             None => return Undefined
           }
+        Symbol(_) => {
+          // Delegate to Symbol.prototype for symbol-keyed property access
+          let proto = self.global.get("[[SymbolPrototype]]") catch { _ => Null }
+          match proto {
+            Object(proto_data) => {
+              match proto_data.symbol_descriptors.get(sym.id) {
+                Some(desc) =>
+                  match desc.getter {
+                    Some(getter) => return self.call_value(getter, obj, [], loc)
+                    None => ()
+                  }
+                None => ()
+              }
+              match proto_data.symbol_properties.get(sym.id) {
+                Some(v) => return v
+                None => return Undefined
+              }
+            }
+            _ => return Undefined
+          }
+        }
         _ => return Undefined
       }
     _ => ()
@@ -6483,7 +7858,7 @@ fn Interpreter::get_computed_property(
           _ => ()
         }
       }
-      let prop = key.to_string()
+      let prop = to_js_string(key)
       // Check for accessor descriptor (getter) on own property
       match data.descriptors.get(prop) {
         Some(desc) =>
@@ -6516,6 +7891,76 @@ fn Interpreter::get_computed_property(
                   None => current = proto_data.prototype
                 }
               }
+              Array(arr_data) => {
+                if prop == "length" {
+                  return Number(arr_data.elements.length().to_double())
+                }
+                // Check numeric index access on array elements
+                let num_idx2 = @strconv.parse_int(prop) catch { _ => -1 }
+                if num_idx2 >= 0 && num_idx2 < arr_data.elements.length() {
+                  return arr_data.elements[num_idx2]
+                }
+                match get_array_named_prop(arr_data, prop) {
+                  Some(v) => return v
+                  None => {
+                    let result = get_array_method_with_interp(arr_data, prop)
+                    match result {
+                      Undefined => {
+                        let ctor = self.global.get("Array") catch { _ => break }
+                        match ctor {
+                          Object(ctor_data) =>
+                            match ctor_data.properties.get("prototype") {
+                              Some(proto) => current = proto
+                              None => break
+                            }
+                          _ => break
+                        }
+                      }
+                      _ => return result
+                    }
+                  }
+                }
+              }
+              Map(map_data) => {
+                if prop == "size" {
+                  return Number(map_data.entries.length().to_double())
+                }
+                let result = get_map_method(map_data, prop)
+                match result {
+                  Undefined => {
+                    let ctor = self.global.get("Map") catch { _ => break }
+                    match ctor {
+                      Object(ctor_data) =>
+                        match ctor_data.properties.get("prototype") {
+                          Some(proto) => current = proto
+                          None => break
+                        }
+                      _ => break
+                    }
+                  }
+                  _ => return result
+                }
+              }
+              Set(set_data) => {
+                if prop == "size" {
+                  return Number(set_data.values.length().to_double())
+                }
+                let result = get_set_method(set_data, prop)
+                match result {
+                  Undefined => {
+                    let ctor = self.global.get("Set") catch { _ => break }
+                    match ctor {
+                      Object(ctor_data) =>
+                        match ctor_data.properties.get("prototype") {
+                          Some(proto) => current = proto
+                          None => break
+                        }
+                      _ => break
+                    }
+                  }
+                  _ => return result
+                }
+              }
               _ => break
             }
           }
@@ -6546,6 +7991,7 @@ fn Interpreter::get_computed_property(
                 })
               } else if prop == "bind" {
                 let target = obj
+                let target_length = get_func_length(callable)
                 return make_native_func("bind", fn(args) {
                   let bind_this = if args.length() > 0 {
                     args[0]
@@ -6556,77 +8002,35 @@ fn Interpreter::get_computed_property(
                   for i = 1; i < args.length(); i = i + 1 {
                     bound_args.push(args[i])
                   }
+                  let bound_name = get_bound_func_name(target)
+                  let bound_length = {
+                    let diff = target_length - bound_args.length()
+                    if diff < 0 { 0 } else { diff }
+                  }
+                  let nf_desc : PropDescriptor = {
+                    writable: false,
+                    enumerable: false,
+                    configurable: true,
+                    getter: None,
+                    setter: None,
+                  }
+                  let bprops : Map[String, Value] = {}
+                  bprops["name"] = String_(bound_name)
+                  bprops["length"] = Number(bound_length.to_double())
                   Object({
-                    properties: {},
+                    properties: bprops,
                     symbol_properties: {},
-                    prototype: Null,
+                    prototype: get_func_proto(),
                     callable: Some(BoundFunc(target, bind_this, bound_args)),
                     class_name: "Function",
-                    descriptors: {},
+                    descriptors: { "name": nf_desc, "length": nf_desc },
                     symbol_descriptors: {},
                     extensible: true,
                   })
                 })
               } else if prop == "length" {
                 // Return the number of formal parameters
-                let param_count = match callable {
-                  UserFunc(func_data) => func_data.params.length()
-                  UserFuncExt(func_data) => func_data.params.length()
-                  ArrowFunc(func_data) => func_data.params.length()
-                  ArrowFuncExt(func_data) => func_data.params.length()
-                  BoundFunc(target, _, bound_args) =>
-                    match target {
-                      Object(td) =>
-                        match td.callable {
-                          Some(UserFunc(fd)) => {
-                            let diff = fd.params.length() - bound_args.length()
-                            if diff < 0 {
-                              0
-                            } else {
-                              diff
-                            }
-                          }
-                          Some(UserFuncExt(fd)) => {
-                            let diff = fd.params.length() - bound_args.length()
-                            if diff < 0 {
-                              0
-                            } else {
-                              diff
-                            }
-                          }
-                          Some(ArrowFunc(fd)) => {
-                            let diff = fd.params.length() - bound_args.length()
-                            if diff < 0 {
-                              0
-                            } else {
-                              diff
-                            }
-                          }
-                          Some(ArrowFuncExt(fd)) => {
-                            let diff = fd.params.length() - bound_args.length()
-                            if diff < 0 {
-                              0
-                            } else {
-                              diff
-                            }
-                          }
-                          _ => 0
-                        }
-                      _ => 0
-                    }
-                  NativeCallable(_, _) => 0
-                  NonConstructableCallable(_, _) => 0
-                  FuncCallMethod(_) => 1
-                  FuncApplyMethod(_) => 2
-                  MethodCallable(_, _) => 0
-                  InterpreterCallable(_, _) => 0
-                  ConstructorOnlyCallable(_, _) => 0
-                  ClassConstructor(_, _, _, ctor, _, _) =>
-                    match ctor {
-                      Some((params, _)) => params.length()
-                      None => 0
-                    }
-                }
+                let param_count = get_func_length(callable)
                 return Number(param_count.to_double())
               } else if prop == "name" {
                 // Return the function name
@@ -6707,7 +8111,7 @@ fn Interpreter::get_computed_property(
                     let proto : Value = Object({
                       properties: {},
                       symbol_properties: {},
-                      prototype: Null,
+                      prototype: get_obj_proto(),
                       callable: None,
                       class_name: "Object",
                       descriptors: {},
@@ -6721,41 +8125,50 @@ fn Interpreter::get_computed_property(
               }
             None => ()
           }
-          // Built-in Object methods
-          if prop == "hasOwnProperty" {
-            return Object({
-              properties: {},
-              symbol_properties: {},
-              prototype: Null,
-              callable: Some(
-                MethodCallable("hasOwnProperty", fn(this_val, args) {
-                  let key_val = if args.length() > 0 {
-                    args[0]
-                  } else {
-                    Undefined
-                  }
-                  match this_val {
-                    Object(d) =>
-                      // Handle Symbol keys
-                      match key_val {
-                        Symbol(sym) =>
-                          Bool(d.symbol_properties.contains(sym.id))
-                        _ => Bool(d.properties.contains(key_val.to_string()))
-                      }
-                    _ => Bool(false)
-                  }
-                }),
-              ),
-              class_name: "Function",
-              descriptors: {},
-              symbol_descriptors: {},
-              extensible: true,
-            })
-          }
-          if prop == "toString" {
-            return make_native_func("toString", fn(_args) {
-              String_("[object Object]")
-            })
+          // Built-in Object methods (only for objects that inherit from Object.prototype)
+          if not(data.prototype is Null && data.callable is None) {
+            if prop == "hasOwnProperty" {
+              return make_method_func("hasOwnProperty", 1, fn(this_val, args) {
+                    let key_val = if args.length() > 0 {
+                      args[0]
+                    } else {
+                      Undefined
+                    }
+                    match this_val {
+                      Object(d) =>
+                        match key_val {
+                          Symbol(sym) =>
+                            Bool(d.symbol_properties.contains(sym.id))
+                          _ => Bool(d.properties.contains(key_val.to_string()))
+                        }
+                      Array(ad) =>
+                        match key_val {
+                          Symbol(sym) =>
+                            Bool(get_array_symbol_prop(ad, sym.id) is Some(_))
+                          _ => {
+                            let k = key_val.to_string()
+                            if k == "length" {
+                              return Bool(true)
+                            }
+                            let idx = @strconv.parse_int(k) catch { _ => -1 }
+                            if idx >= 0 &&
+                              idx.to_string() == k &&
+                              idx < ad.elements.length() {
+                              Bool(true)
+                            } else {
+                              Bool(get_array_named_prop(ad, k) is Some(_))
+                            }
+                          }
+                        }
+                      _ => Bool(false)
+                    }
+                  })
+            }
+            if prop == "toString" {
+              return make_native_func("toString", fn(_args) {
+                String_("[object Object]")
+              })
+            }
           }
           Undefined
         }
@@ -6798,6 +8211,11 @@ fn Interpreter::get_computed_property(
               }
           }
         }
+        Symbol(sym) =>
+          match get_array_symbol_prop(data, sym.id) {
+            Some(v) => v
+            None => Undefined
+          }
         _ => Undefined
       }
     String_(s) =>
@@ -6812,7 +8230,7 @@ fn Interpreter::get_computed_property(
             Undefined
           }
         }
-        String_("length") => Number(s.length().to_double())
+        String_("length") => Number(utf16_length(s).to_double())
         String_(method_name) =>
           get_string_method(s, method_name, annex_b=self.annex_b)
         _ => Undefined
@@ -6822,16 +8240,45 @@ fn Interpreter::get_computed_property(
         String_(method_name) => get_number_method(obj, method_name)
         _ => Undefined
       }
-    Promise(data) => {
-      // Coerce key to string via ToPropertyKey (Symbol handled above)
-      let prop = key.to_string()
-      match data.properties.get(prop) {
-        Some(v) => v
-        None => get_promise_method(data, prop)
+    Promise(data) =>
+      match key {
+        Symbol(sym) =>
+          match data.symbol_properties.get(sym.id) {
+            Some(v) => v
+            None => Undefined
+          }
+        _ => {
+          let prop = to_js_string(key)
+          match data.properties.get(prop) {
+            Some(v) => v
+            None => get_promise_method(data, prop)
+          }
+        }
       }
+    Null => {
+      let key_str = match key {
+        Symbol(sym) => "Symbol(\{sym.description})"
+        String_(s) => s
+        Number(n) => n.to_string()
+        Bool(b) => b.to_string()
+        _ => ""
+      }
+      raise @errors.TypeError(
+        message="Cannot read properties of null (reading '\{key_str}')",
+      )
     }
-    Null | Undefined =>
-      raise @errors.TypeError(message="Cannot read property of \{type_of(obj)}")
+    Undefined => {
+      let key_str = match key {
+        Symbol(sym) => "Symbol(\{sym.description})"
+        String_(s) => s
+        Number(n) => n.to_string()
+        Bool(b) => b.to_string()
+        _ => ""
+      }
+      raise @errors.TypeError(
+        message="Cannot read properties of undefined (reading '\{key_str}')",
+      )
+    }
     _ => Undefined
   }
 }
@@ -6971,9 +8418,23 @@ fn Interpreter::set_property(
     }
     Array(data) => {
       if prop == "length" {
-        let n = to_number(value).to_int()
-        while data.elements.length() > n {
+        let num = to_number(value)
+        // Validate: length must be a non-negative integer <= 2^32-1
+        if num.is_nan() || num < 0.0 || num > 4294967295.0 || num != @math.floor(num) {
+          raise @errors.RangeError(message="Invalid array length")
+        }
+        let n64 = num.to_int64()
+        let cur_len = data.elements.length().to_int64()
+        // Truncate array if new length is shorter
+        while data.elements.length().to_int64() > n64 {
           let _ = data.elements.pop()
+        }
+        // Expand array if new length is longer (capped to prevent hangs)
+        if n64 > cur_len && n64 - cur_len <= 100000L {
+          let target = n64.to_int()
+          while data.elements.length() < target {
+            data.elements.push(Undefined)
+          }
         }
       } else {
         // try numeric index
@@ -7027,10 +8488,24 @@ fn Interpreter::set_property(
       data.properties[prop] = value
       value
     }
-    _ =>
+    Null =>
       raise @errors.TypeError(
-        message="Cannot set property '\{prop}' of \{type_of(obj)}",
+        message="Cannot set properties of null (setting '\{prop}')",
       )
+    Undefined =>
+      raise @errors.TypeError(
+        message="Cannot set properties of undefined (setting '\{prop}')",
+      )
+    _ =>
+      // In non-strict mode, setting a property on a primitive is silently ignored
+      // (the temporary wrapper object is discarded). In strict mode, throw TypeError.
+      if self.strict {
+        raise @errors.TypeError(
+          message="Cannot set property '\{prop}' of \{type_of(obj)}",
+        )
+      } else {
+        value
+      }
   }
 }
 
@@ -7051,7 +8526,7 @@ fn Interpreter::set_computed_property(
           let handler = get_proxy_handler(proxy_data)
           let prop_key = match key {
             Symbol(_) => key
-            _ => String_(key.to_string())
+            _ => String_(to_js_string(key))
           }
           let result = self.call_value(
             trap_fn,
@@ -7185,7 +8660,7 @@ fn Interpreter::set_computed_property(
               _ => ()
             }
           }
-          let prop = key.to_string()
+          let prop = to_js_string(key)
           // Check for accessor descriptor (setter) on string key
           match data.descriptors.get(prop) {
             Some(desc) =>
@@ -7264,6 +8739,10 @@ fn Interpreter::set_computed_property(
       }
     Array(data) =>
       match key {
+        Symbol(sym) => {
+          set_array_symbol_prop(data, sym.id, value)
+          value
+        }
         Number(n) => {
           let i = n.to_int()
           if i >= 0 {
@@ -7275,7 +8754,7 @@ fn Interpreter::set_computed_property(
           value
         }
         _ => {
-          let prop = key.to_string()
+          let prop = to_js_string(key)
           if prop == "length" {
             let n = to_number(value).to_int()
             while data.elements.length() > n {
@@ -7314,12 +8793,40 @@ fn Interpreter::set_computed_property(
           value
         }
         _ => {
-          data.properties[key.to_string()] = value
+          data.properties[to_js_string(key)] = value
           value
         }
       }
+    Null => {
+      let key_str = match key {
+        Symbol(sym) => "Symbol(\{sym.description})"
+        String_(s) => s
+        Number(n) => n.to_string()
+        Bool(b) => b.to_string()
+        _ => ""
+      }
+      raise @errors.TypeError(
+        message="Cannot set properties of null (setting '\{key_str}')",
+      )
+    }
+    Undefined => {
+      let key_str = match key {
+        Symbol(sym) => "Symbol(\{sym.description})"
+        String_(s) => s
+        Number(n) => n.to_string()
+        Bool(b) => b.to_string()
+        _ => ""
+      }
+      raise @errors.TypeError(
+        message="Cannot set properties of undefined (setting '\{key_str}')",
+      )
+    }
     _ =>
-      raise @errors.TypeError(message="Cannot set property of \{type_of(obj)}")
+      if self.strict {
+        raise @errors.TypeError(message="Cannot set property of \{type_of(obj)}")
+      } else {
+        value
+      }
   }
 }
 
@@ -7366,13 +8873,34 @@ fn make_arguments_object(
   throw_type_error? : Value? = None,
 ) -> Value {
   let new_args_props : Map[String, Value] = {}
+  let new_args_descs : Map[String, PropDescriptor] = {}
   for i = 0; i < args.length(); i = i + 1 {
     new_args_props[i.to_string()] = args[i]
+    new_args_descs[i.to_string()] = {
+      writable: true,
+      enumerable: true,
+      configurable: true,
+      getter: None,
+      setter: None,
+    }
   }
   new_args_props["length"] = Number(args.length().to_double())
-  let new_args_descs : Map[String, PropDescriptor] = {}
+  new_args_descs["length"] = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   if not(strict) {
     new_args_props["callee"] = ctor
+    new_args_descs["callee"] = {
+      writable: true,
+      enumerable: false,
+      configurable: true,
+      getter: None,
+      setter: None,
+    }
   } else {
     // Strict mode: install %ThrowTypeError% accessors for callee and caller
     match throw_type_error {
@@ -7395,10 +8923,78 @@ fn make_arguments_object(
       None => ()
     }
   }
-  Object({
-    properties: new_args_props,
+  // Add Symbol.iterator - creates an iterator over the arguments
+  let iter_sym = get_iterator_symbol()
+  let args_copy = args
+  let new_args_sym_props : Map[Int, Value] = {}
+  new_args_sym_props[iter_sym.id] = Object({
+    properties: {},
     symbol_properties: {},
     prototype: Null,
+    callable: Some(
+      MethodCallable("values", fn(_this_val, _args2) {
+        let index_ref : Ref[Int] = { val: 0 }
+        let len = args_copy.length()
+        let next_fn = Object({
+          properties: {},
+          symbol_properties: {},
+          prototype: Null,
+          callable: Some(
+            NativeCallable("next", fn(_a) {
+              let idx = index_ref.val
+              if idx < len {
+                let value = args_copy[idx]
+                index_ref.val = idx + 1
+                Object({
+                  properties: { "value": value, "done": Bool(false) },
+                  symbol_properties: {},
+                  prototype: Null,
+                  callable: None,
+                  class_name: "Object",
+                  descriptors: {},
+                  symbol_descriptors: {},
+                  extensible: true,
+                })
+              } else {
+                Object({
+                  properties: { "value": Undefined, "done": Bool(true) },
+                  symbol_properties: {},
+                  prototype: Null,
+                  callable: None,
+                  class_name: "Object",
+                  descriptors: {},
+                  symbol_descriptors: {},
+                  extensible: true,
+                })
+              }
+            }),
+          ),
+          class_name: "Function",
+          descriptors: {},
+          symbol_descriptors: {},
+          extensible: true,
+        })
+        Object({
+          properties: { "next": next_fn },
+          symbol_properties: {},
+          prototype: Null,
+          callable: None,
+          class_name: "Array Iterator",
+          descriptors: {},
+          symbol_descriptors: {},
+          extensible: true,
+        })
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+  Object({
+    properties: new_args_props,
+    symbol_properties: new_args_sym_props,
+    prototype: get_obj_proto(),
     callable: None,
     class_name: "Arguments",
     descriptors: new_args_descs,
@@ -7552,11 +9148,11 @@ fn Interpreter::construct_value(
                 } else {
                   new_obj
                 }
-              BreakSignal(_) =>
+              BreakSignal(_, _) =>
                 raise @errors.SyntaxError(
                   message="break statement outside of loop",
                 )
-              ContinueSignal(_) =>
+              ContinueSignal(_, _) =>
                 raise @errors.SyntaxError(
                   message="continue statement outside of loop",
                 )
@@ -7599,6 +9195,22 @@ fn Interpreter::construct_value(
             func_env.is_var_scope = true
             func_env.def("this", new_obj, LetBinding)
             func_env.def("<new.target>", ctor, LetBinding)
+            // Create arguments object BEFORE binding params so defaults can reference it
+            let tte2 : Value? = if func_env.has("[[ThrowTypeError]]") {
+              Some(func_env.get("[[ThrowTypeError]]"))
+            } else {
+              None
+            }
+            func_env.def(
+              "arguments",
+              make_arguments_object(
+                args,
+                ctor,
+                func_strict,
+                throw_type_error=tte2,
+              ),
+              VarBinding,
+            )
             let mut effective_param_count = 0
             for i = 0; i < data.params.length(); i = i + 1 {
               let param = data.params[i]
@@ -7649,21 +9261,6 @@ fn Interpreter::construct_value(
               }
               None => ()
             }
-            let tte2 : Value? = if func_env.has("[[ThrowTypeError]]") {
-              Some(func_env.get("[[ThrowTypeError]]"))
-            } else {
-              None
-            }
-            func_env.def(
-              "arguments",
-              make_arguments_object(
-                args,
-                ctor,
-                func_strict,
-                throw_type_error=tte2,
-              ),
-              VarBinding,
-            )
             self.hoist_declarations(data.body, func_env)
             match data.name {
               Some(name) =>
@@ -7681,11 +9278,11 @@ fn Interpreter::construct_value(
                 } else {
                   new_obj
                 }
-              BreakSignal(_) =>
+              BreakSignal(_, _) =>
                 raise @errors.SyntaxError(
                   message="break statement outside of loop",
                 )
-              ContinueSignal(_) =>
+              ContinueSignal(_, _) =>
                 raise @errors.SyntaxError(
                   message="continue statement outside of loop",
                 )
@@ -7698,6 +9295,17 @@ fn Interpreter::construct_value(
           }
           self.strict = saved_strict
           result
+        }
+        Some(BoundFunc(target, _, bound_args)) => {
+          // new BoundFunc(...args) delegates to new Target(...boundArgs, ...args)
+          let all_args : Array[Value] = []
+          for a in bound_args {
+            all_args.push(a)
+          }
+          for a in args {
+            all_args.push(a)
+          }
+          self.construct_value(target, all_args, loc)
         }
         Some(NativeCallable(_, func)) => {
           is_constructing.val = true
@@ -7714,25 +9322,33 @@ fn Interpreter::construct_value(
           raise @errors.TypeError(
             message=format_loc_context(name + " is not a constructor", loc),
           )
-        Some(InterpreterCallable(_, func)) =>
-          // Generator functions are not constructible
-          if obj_data.class_name == "GeneratorFunction" {
+        Some(InterpreterCallable(_name, func)) => {
+          // Check if this function has a "prototype" property (constructors do, methods don't)
+          let is_ctor = match obj_data.properties.get("prototype") {
+            Some(_) => true
+            None => false
+          }
+          if not(is_ctor) {
             raise @errors.TypeError(
               message=format_loc_context(
-                "cannot use 'new' with a generator function", loc,
+                _name + " is not a constructor", loc,
               ),
             )
-          } else {
-            is_constructing.val = true
-            let result = func(self, Undefined, args) catch {
-              e => {
-                is_constructing.val = false
-                raise e
-              }
-            }
-            is_constructing.val = false
-            result
           }
+          is_constructing.val = true
+          let result = func(self, Undefined, args) catch {
+            e => {
+              is_constructing.val = false
+              raise e
+            }
+          }
+          is_constructing.val = false
+          result
+        }
+        Some(MethodCallable(name, _)) =>
+          raise @errors.TypeError(
+            message=format_loc_context(name + " is not a constructor", loc),
+          )
         Some(ConstructorOnlyCallable(_, func)) => func(self, args)
         Some(ArrowFunc(_)) | Some(ArrowFuncExt(_)) =>
           raise @errors.TypeError(
@@ -7759,16 +9375,21 @@ fn Interpreter::construct_value(
             // Set up the constructor environment
             let ctor_env = Environment::new(parent=Some(closure))
             ctor_env.is_var_scope = true
-            ctor_env.def_builtin("this", new_obj)
-            ctor_env.def("<new.target>", ctor, LetBinding)
-            // Set up [[SuperConstructor]] and [[SuperPrototype]] for super() calls
+            // For derived classes, 'this' is in TDZ until super() is called
             match super_ctor {
               Some(sc) => {
+                // Put 'this' in TDZ - will be initialized by super() call
+                ctor_env.def_tdz("this", LetBinding)
                 ctor_env.def_builtin("[[SuperConstructor]]", sc)
                 ctor_env.def_builtin("[[SuperPrototype]]", super_proto)
+                // Store the new instance for super() to use
+                ctor_env.def_builtin("[[PendingThis]]", new_obj)
               }
-              None => ()
+              None => {
+                ctor_env.def_builtin("this", new_obj)
+              }
             }
+            ctor_env.def("<new.target>", ctor, LetBinding)
             // Execute the constructor if one was defined
             match ctor_fn {
               Some((params, body)) => {
@@ -7813,11 +9434,11 @@ fn Interpreter::construct_value(
                     } else {
                       current_this
                     }
-                  BreakSignal(_) =>
+                  BreakSignal(_, _) =>
                     raise @errors.SyntaxError(
                       message="break statement outside of loop",
                     )
-                  ContinueSignal(_) =>
+                  ContinueSignal(_, _) =>
                     raise @errors.SyntaxError(
                       message="continue statement outside of loop",
                     )
@@ -7920,6 +9541,41 @@ fn Interpreter::construct_value(
                               )
                             }
                           }
+                          Some(NativeCallable(_, _))
+                          | Some(InterpreterCallable(_, _)) => {
+                            // Built-in constructors like Error, Map, Set, etc.
+                            let super_result = self.construct_value(
+                              sc, args,
+                              @token.Loc::default(),
+                            )
+                            match super_result {
+                              Object(result_data) => {
+                                // Set prototype to the subclass's prototype (newTarget semantics)
+                                result_data.prototype = new_obj
+                                  |> fn(v) {
+                                      match v {
+                                        Object(d) => d.prototype
+                                        _ => Null
+                                      }
+                                    }
+                                self.strict = saved_strict
+                                return maybe_set_promise_constructor(
+                                  super_result, derived_ctor,
+                                )
+                              }
+                              _ => {
+                                // For Map, Set, Promise, etc. that return non-Object values
+                                if is_object_like_for_constructor_return(
+                                    super_result,
+                                  ) {
+                                  self.strict = saved_strict
+                                  return maybe_set_promise_constructor(
+                                    super_result, derived_ctor,
+                                  )
+                                }
+                              }
+                            }
+                          }
                           _ => ()
                         }
                       _ => ()
@@ -7997,7 +9653,8 @@ fn Interpreter::create_class(
     None => (None, Null)
   }
   // Create the prototype object
-  let proto_props : Map[String, Value] = {}
+  // Pre-insert constructor so it appears first in property enumeration order
+  let proto_props : Map[String, Value] = { "constructor": Undefined }
   let proto_descriptors : Map[String, PropDescriptor] = {}
   let proto_symbol_props : Map[Int, Value] = {}
   let proto_symbol_descriptors : Map[Int, PropDescriptor] = {}
@@ -8008,6 +9665,24 @@ fn Interpreter::create_class(
   let static_symbol_descriptors : Map[Int, PropDescriptor] = {}
   // Track constructor method
   let mut ctor_fn : (Array[String], Array[@ast.Stmt])? = None
+  let mut ctor_param_count : Int = 0
+  // Create method environments with [[SuperPrototype]] for super.method() support
+  let instance_method_env : Environment = match super_ctor {
+    Some(_) => {
+      let menv = Environment::new(parent=Some(env))
+      menv.def_builtin("[[SuperPrototype]]", super_proto)
+      menv
+    }
+    None => env
+  }
+  let static_method_env : Environment = match super_ctor {
+    Some(sc) => {
+      let menv = Environment::new(parent=Some(env))
+      menv.def_builtin("[[SuperPrototype]]", sc)
+      menv
+    }
+    None => env
+  }
   // Process all methods
   for m in methods {
     // Get the method key - could be string or symbol
@@ -8015,7 +9690,10 @@ fn Interpreter::create_class(
       StringLit(s, _, _) => String_(s)
       _ => self.eval_expr(m.key, env)
     }
-    let method_key_str : String = key_val.to_string()
+    let method_key_str : String = match key_val {
+      Symbol(_) => key_val.to_string()
+      _ => to_js_string(key_val)
+    }
     // Check if this is the constructor
     if method_key_str == "constructor" && not(m.is_static) {
       // Extract constructor params and body
@@ -8025,6 +9703,7 @@ fn Interpreter::create_class(
           let strict_body = ensure_strict_body(body)
           validate_function_signature(true, None, params, strict_body)
           ctor_fn = Some((params, strict_body))
+          ctor_param_count = params.length()
         }
         FuncExprExt(_, params, rest, body, _) => {
           let strict_body = ensure_strict_body(body)
@@ -8032,6 +9711,7 @@ fn Interpreter::create_class(
           // Convert Param array to String array (ignoring defaults for now)
           let param_names = params.map(fn(p) { p.name })
           ctor_fn = Some((param_names, strict_body))
+          ctor_param_count = params.length()
         }
         _ => ()
       }
@@ -8039,6 +9719,12 @@ fn Interpreter::create_class(
     }
     // Create the method function value
     // Class methods are always strict — ensure body has "use strict"
+    // Use the appropriate method environment for super.method() support
+    let method_closure = if m.is_static {
+      static_method_env
+    } else {
+      instance_method_env
+    }
     let method_val : Value = match m.value {
       FuncExpr(fn_name, params, body, _) => {
         let strict_body = ensure_strict_body(body)
@@ -8047,7 +9733,7 @@ fn Interpreter::create_class(
           name: fn_name,
           params,
           body: strict_body,
-          closure: env,
+          closure: method_closure,
           strict: true,
         }
         make_func(func_data)
@@ -8062,15 +9748,21 @@ fn Interpreter::create_class(
           params,
           rest_param: rest,
           body: strict_body,
-          closure: env,
+          closure: method_closure,
           strict: true,
         }
         make_func_ext(func_data)
       }
-      _ => self.eval_expr(m.value, env)
+      _ => self.eval_expr(m.value, method_closure)
     }
     // Handle getter/setter vs regular method
     // Class methods are non-enumerable per spec
+    // Set appropriate function name with get/set prefix
+    match m.kind {
+      Get => set_function_name(method_val, "get " + method_key_str)
+      Set => set_function_name(method_val, "set " + method_key_str)
+      _ => set_function_name(method_val, method_key_str)
+    }
     match m.kind {
       Get =>
         // Getter method - store as accessor descriptor
@@ -8097,17 +9789,16 @@ fn Interpreter::create_class(
             }
           }
           _ => {
-            let method_key = key_val.to_string()
             let (props, descs) = if m.is_static {
               (static_props, static_descriptors)
             } else {
               (proto_props, proto_descriptors)
             }
-            if not(props.contains(method_key)) {
-              props[method_key] = Undefined
+            if not(props.contains(method_key_str)) {
+              props[method_key_str] = Undefined
             }
-            let existing = descs.get(method_key)
-            descs[method_key] = {
+            let existing = descs.get(method_key_str)
+            descs[method_key_str] = {
               writable: false,
               enumerable: false,
               configurable: true,
@@ -8144,17 +9835,16 @@ fn Interpreter::create_class(
             }
           }
           _ => {
-            let method_key = key_val.to_string()
             let (props, descs) = if m.is_static {
               (static_props, static_descriptors)
             } else {
               (proto_props, proto_descriptors)
             }
-            if not(props.contains(method_key)) {
-              props[method_key] = Undefined
+            if not(props.contains(method_key_str)) {
+              props[method_key_str] = Undefined
             }
-            let existing = descs.get(method_key)
-            descs[method_key] = {
+            let existing = descs.get(method_key_str)
+            descs[method_key_str] = {
               writable: false,
               enumerable: false,
               configurable: true,
@@ -8188,13 +9878,12 @@ fn Interpreter::create_class(
             }
           _ => {
             // String key - store in regular properties
-            let method_key = key_val.to_string()
             if m.is_static {
-              static_props[method_key] = method_val
-              static_descriptors[method_key] = method_descriptor
+              static_props[method_key_str] = method_val
+              static_descriptors[method_key_str] = method_descriptor
             } else {
-              proto_props[method_key] = method_val
-              proto_descriptors[method_key] = method_descriptor
+              proto_props[method_key_str] = method_val
+              proto_descriptors[method_key_str] = method_descriptor
             }
           }
         }
@@ -8245,9 +9934,34 @@ fn Interpreter::create_class(
     }
     _ => ()
   }
-  // Add prototype property to the class
+  // Add length, name, prototype properties to the class constructor per spec
+  let non_enum_configurable : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   match class_obj {
-    Object(class_data) => class_data.properties["prototype"] = proto
+    Object(class_data) => {
+      // Add length (formal parameter count) - non-writable, non-enumerable, configurable
+      class_data.properties["length"] = Number(ctor_param_count.to_double())
+      class_data.descriptors["length"] = non_enum_configurable
+      // Add name - non-writable, non-enumerable, configurable
+      if name != "" {
+        class_data.properties["name"] = String_(name)
+        class_data.descriptors["name"] = non_enum_configurable
+      }
+      // Add prototype - non-writable, non-enumerable, non-configurable
+      class_data.properties["prototype"] = proto
+      class_data.descriptors["prototype"] = {
+        writable: false,
+        enumerable: false,
+        configurable: false,
+        getter: None,
+        setter: None,
+      }
+    }
     _ => ()
   }
   class_obj
@@ -8276,7 +9990,15 @@ fn Interpreter::eval_update(
         Increment => Number(num + 1.0)
         Decrement => Number(num - 1.0)
       }
-      env.assign(name, new_val)
+      if self.is_immutable_global(name) {
+        if self.strict {
+          raise @errors.TypeError(
+            message="Cannot assign to read only property '\{name}' of object '[object global]'",
+          )
+        }
+      } else {
+        env.assign(name, new_val)
+      }
       if prefix {
         new_val
       } else {
@@ -8301,13 +10023,18 @@ fn Interpreter::eval_update(
     ComputedMember(obj_expr, key_expr, mloc) => {
       let obj = self.eval_expr(obj_expr, env)
       let key = self.eval_expr(key_expr, env)
-      let current = self.get_computed_property(obj, key, mloc)
+      // Convert key to property key once (ToPropertyKey)
+      let prop_key : Value = match key {
+        Symbol(_) => key
+        _ => String_(to_js_string(key))
+      }
+      let current = self.get_computed_property(obj, prop_key, mloc)
       let num = to_number(current)
       let new_val : Value = match op {
         Increment => Number(num + 1.0)
         Decrement => Number(num - 1.0)
       }
-      let _ = self.set_computed_property(obj, key, new_val, loc)
+      let _ = self.set_computed_property(obj, prop_key, new_val, loc)
       if prefix {
         new_val
       } else {
@@ -8366,6 +10093,15 @@ fn Interpreter::eval_compound_assign(
       let current = env.get(name)
       let rhs = self.eval_expr(value_expr, env)
       let result = eval_binary_op(bin_op, current, rhs, loc)
+      // Check if the target is a non-writable property on the global object
+      if self.is_immutable_global(name) {
+        if self.strict {
+          raise @errors.TypeError(
+            message="Cannot assign to read only property '\{name}' of object '[object global]'",
+          )
+        }
+        return result
+      }
       env.assign(name, result)
       result
     }
@@ -8380,10 +10116,27 @@ fn Interpreter::eval_compound_assign(
     ComputedMember(obj_expr, key_expr, mloc) => {
       let obj = self.eval_expr(obj_expr, env)
       let key = self.eval_expr(key_expr, env)
-      let current = self.get_computed_property(obj, key, mloc)
+      // Per ES5 11.2.1 step 5: CheckObjectCoercible(baseValue) before ToString
+      if obj is Null {
+        raise @errors.TypeError(
+          message="Cannot read properties of null",
+        )
+      }
+      if obj is Undefined {
+        raise @errors.TypeError(
+          message="Cannot read properties of undefined",
+        )
+      }
+      // Convert key to property key once (ToPropertyKey), so toString/valueOf
+      // is only called once per spec
+      let prop_key : Value = match key {
+        Symbol(_) => key
+        _ => String_(to_js_string(key))
+      }
+      let current = self.get_computed_property(obj, prop_key, mloc)
       let rhs = self.eval_expr(value_expr, env)
       let result = eval_binary_op(bin_op, current, rhs, loc)
-      let _ = self.set_computed_property(obj, key, result, loc)
+      let _ = self.set_computed_property(obj, prop_key, result, loc)
       result
     }
     _ =>
@@ -8412,6 +10165,14 @@ fn Interpreter::eval_logical_assign_and(
       let current = env.get(name)
       if is_truthy(current) {
         let rhs = self.eval_expr(value_expr, env)
+        if self.is_immutable_global(name) {
+          if self.strict {
+            raise @errors.TypeError(
+              message="Cannot assign to read only property '\{name}' of object '[object global]'",
+            )
+          }
+          return rhs
+        }
         env.assign(name, rhs)
         rhs
       } else {
@@ -8431,6 +10192,13 @@ fn Interpreter::eval_logical_assign_and(
     ComputedMember(obj_expr, key_expr, mloc) => {
       let obj = self.eval_expr(obj_expr, env)
       let key = self.eval_expr(key_expr, env)
+      // Per ES5 11.2.1 step 5: CheckObjectCoercible(baseValue) before ToString
+      if obj is Null {
+        raise @errors.TypeError(message="Cannot read properties of null")
+      }
+      if obj is Undefined {
+        raise @errors.TypeError(message="Cannot read properties of undefined")
+      }
       let current = self.get_computed_property(obj, key, mloc)
       if is_truthy(current) {
         let rhs = self.eval_expr(value_expr, env)
@@ -8465,6 +10233,14 @@ fn Interpreter::eval_logical_assign_or(
       let current = env.get(name)
       if not(is_truthy(current)) {
         let rhs = self.eval_expr(value_expr, env)
+        if self.is_immutable_global(name) {
+          if self.strict {
+            raise @errors.TypeError(
+              message="Cannot assign to read only property '\{name}' of object '[object global]'",
+            )
+          }
+          return rhs
+        }
         env.assign(name, rhs)
         rhs
       } else {
@@ -8484,6 +10260,13 @@ fn Interpreter::eval_logical_assign_or(
     ComputedMember(obj_expr, key_expr, mloc) => {
       let obj = self.eval_expr(obj_expr, env)
       let key = self.eval_expr(key_expr, env)
+      // Per ES5 11.2.1 step 5: CheckObjectCoercible(baseValue) before ToString
+      if obj is Null {
+        raise @errors.TypeError(message="Cannot read properties of null")
+      }
+      if obj is Undefined {
+        raise @errors.TypeError(message="Cannot read properties of undefined")
+      }
       let current = self.get_computed_property(obj, key, mloc)
       if not(is_truthy(current)) {
         let rhs = self.eval_expr(value_expr, env)
@@ -8519,6 +10302,14 @@ fn Interpreter::eval_nullish_assign(
       match current {
         Null | Undefined => {
           let rhs = self.eval_expr(value_expr, env)
+          if self.is_immutable_global(name) {
+            if self.strict {
+              raise @errors.TypeError(
+                message="Cannot assign to read only property '\{name}' of object '[object global]'",
+              )
+            }
+            return rhs
+          }
           env.assign(name, rhs)
           rhs
         }
@@ -8539,6 +10330,13 @@ fn Interpreter::eval_nullish_assign(
     ComputedMember(obj_expr, key_expr, mloc) => {
       let obj = self.eval_expr(obj_expr, env)
       let key = self.eval_expr(key_expr, env)
+      // Per ES5 11.2.1 step 5: CheckObjectCoercible(baseValue) before ToString
+      if obj is Null {
+        raise @errors.TypeError(message="Cannot read properties of null")
+      }
+      if obj is Undefined {
+        raise @errors.TypeError(message="Cannot read properties of undefined")
+      }
       let current = self.get_computed_property(obj, key, mloc)
       match current {
         Null | Undefined => {
@@ -8751,6 +10549,14 @@ fn Interpreter::extract_export_names(
       self.module_export_bindings.push((name, name))
     GeneratorDeclExt(name, _, _, _, _) =>
       self.module_export_bindings.push((name, name))
+    AsyncFuncDecl(name, _, _, _) =>
+      self.module_export_bindings.push((name, name))
+    AsyncFuncDeclExt(name, _, _, _, _) =>
+      self.module_export_bindings.push((name, name))
+    AsyncGeneratorDecl(name, _, _, _) =>
+      self.module_export_bindings.push((name, name))
+    AsyncGeneratorDeclExt(name, _, _, _, _) =>
+      self.module_export_bindings.push((name, name))
     ClassDecl(name, _, _, _) => self.module_export_bindings.push((name, name))
     DestructureDecl(_, pattern, _, _) =>
       self.extract_pattern_export_names(pattern)
@@ -8836,9 +10642,9 @@ pub fn Interpreter::run_module(
           raise @errors.SyntaxError(
             message="return statement outside of function",
           )
-        BreakSignal(_) =>
+        BreakSignal(_, _) =>
           raise @errors.SyntaxError(message="break statement outside of loop")
-        ContinueSignal(_) =>
+        ContinueSignal(_, _) =>
           raise @errors.SyntaxError(
             message="continue statement outside of loop",
           )

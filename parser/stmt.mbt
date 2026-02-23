@@ -48,8 +48,15 @@ fn Parser::parse_stmt(self : Parser) -> @ast.Stmt raise Error {
       // In generator context, yield is an expression statement; outside it's an identifier
       self.parse_expr_stmt()
     Ident(_) | Get | Set | From | As =>
-      // Check for 'with' statement
-      if self.peek_kind() is Ident(name) && name == "with" {
+      // Check for async function declaration: async [no LineTerminator] function
+      if self.is_async_function() {
+        if self.is_async_generator() {
+          self.parse_async_generator_decl()
+        } else {
+          self.parse_async_func_decl()
+        }
+      } else if self.peek_kind() is Ident(name) && name == "with" {
+        // Check for 'with' statement
         self.parse_with_stmt()
       } else if self.peek_kind_at(1) == Colon {
         // Labeled statement: ident ':'
@@ -131,7 +138,9 @@ fn Parser::parse_func_decl(self : Parser) -> @ast.Stmt raise Error {
         self.pos = saved_pos
         let (ext_params, rest_param) = self.parse_params_ext()
         self.push_generator_context(false)
+        self.push_async_context(false)
         let body = self.parse_block_body()
+        self.pop_async_context()
         self.pop_generator_context()
         return FuncDeclExt(name, ext_params, rest_param, body, tok.loc)
       } else {
@@ -140,7 +149,9 @@ fn Parser::parse_func_decl(self : Parser) -> @ast.Stmt raise Error {
     e => raise e
   }
   self.push_generator_context(false)
+  self.push_async_context(false)
   let body = self.parse_block_body()
+  self.pop_async_context()
   self.pop_generator_context()
   FuncDecl(name, params, body, tok.loc)
 }
@@ -159,7 +170,9 @@ fn Parser::parse_generator_decl(self : Parser) -> @ast.Stmt raise Error {
         self.pos = saved_pos
         let (ext_params, rest_param) = self.parse_params_ext()
         self.push_generator_context(true)
+        self.push_async_context(false)
         let body = self.parse_block_body()
+        self.pop_async_context()
         self.pop_generator_context()
         return GeneratorDeclExt(name, ext_params, rest_param, body, tok.loc)
       } else {
@@ -168,9 +181,76 @@ fn Parser::parse_generator_decl(self : Parser) -> @ast.Stmt raise Error {
     e => raise e
   }
   self.push_generator_context(true)
+  self.push_async_context(false)
   let body = self.parse_block_body()
+  self.pop_async_context()
   self.pop_generator_context()
   GeneratorDecl(name, params, body, tok.loc)
+}
+
+///|
+fn Parser::parse_async_func_decl(self : Parser) -> @ast.Stmt raise Error {
+  let tok = self.advance() // consume 'async'
+  let _ = self.expect(Function)
+  let name = self.expect_ident()
+  let saved_pos = self.pos
+  let params = self.parse_params() catch {
+    Failure::Failure(msg) =>
+      if msg == "REST_PARAM_FOUND" ||
+        msg == "DEFAULT_PARAM_FOUND" ||
+        msg == "DESTRUCTURE_PARAM_FOUND" {
+        self.pos = saved_pos
+        let (ext_params, rest_param) = self.parse_params_ext()
+        self.push_generator_context(false)
+        self.push_async_context(true)
+        let body = self.parse_block_body()
+        self.pop_async_context()
+        self.pop_generator_context()
+        return AsyncFuncDeclExt(name, ext_params, rest_param, body, tok.loc)
+      } else {
+        raise @errors.SyntaxError(message=msg)
+      }
+    e => raise e
+  }
+  self.push_generator_context(false)
+  self.push_async_context(true)
+  let body = self.parse_block_body()
+  self.pop_async_context()
+  self.pop_generator_context()
+  AsyncFuncDecl(name, params, body, tok.loc)
+}
+
+///|
+fn Parser::parse_async_generator_decl(self : Parser) -> @ast.Stmt raise Error {
+  let tok = self.advance() // consume 'async'
+  let _ = self.expect(Function)
+  let _ = self.expect(Star) // consume *
+  let name = self.expect_ident()
+  let saved_pos = self.pos
+  let params = self.parse_params() catch {
+    Failure::Failure(msg) =>
+      if msg == "REST_PARAM_FOUND" ||
+        msg == "DEFAULT_PARAM_FOUND" ||
+        msg == "DESTRUCTURE_PARAM_FOUND" {
+        self.pos = saved_pos
+        let (ext_params, rest_param) = self.parse_params_ext()
+        self.push_generator_context(true)
+        self.push_async_context(true)
+        let body = self.parse_block_body()
+        self.pop_async_context()
+        self.pop_generator_context()
+        return AsyncGeneratorDeclExt(name, ext_params, rest_param, body, tok.loc)
+      } else {
+        raise @errors.SyntaxError(message=msg)
+      }
+    e => raise e
+  }
+  self.push_generator_context(true)
+  self.push_async_context(true)
+  let body = self.parse_block_body()
+  self.pop_async_context()
+  self.pop_generator_context()
+  AsyncGeneratorDecl(name, params, body, tok.loc)
 }
 
 ///|
@@ -334,7 +414,11 @@ fn reject_function_decl_in_stmt_position(stmt : @ast.Stmt) -> Unit raise Error {
     FuncDecl(_, _, _, _)
     | FuncDeclExt(_, _, _, _, _)
     | GeneratorDecl(_, _, _, _)
-    | GeneratorDeclExt(_, _, _, _, _) =>
+    | GeneratorDeclExt(_, _, _, _, _)
+    | AsyncFuncDecl(_, _, _, _)
+    | AsyncFuncDeclExt(_, _, _, _, _)
+    | AsyncGeneratorDecl(_, _, _, _)
+    | AsyncGeneratorDeclExt(_, _, _, _, _) =>
       raise @errors.SyntaxError(
         message="Function declaration in statement position is not allowed",
       )
@@ -604,13 +688,24 @@ fn Parser::parse_throw_stmt(self : Parser) -> @ast.Stmt raise Error {
 fn Parser::parse_try_catch_stmt(self : Parser) -> @ast.Stmt raise Error {
   let tok = self.expect(Try)
   let try_body = self.parse_block_body()
-  let mut catch_param : String? = None
+  let mut catch_param : @ast.Pattern? = None
   let mut catch_body : Array[@ast.Stmt]? = None
   let mut finally_body : Array[@ast.Stmt]? = None
   if self.eat(Catch) {
-    let _ = self.expect(LParen)
-    catch_param = Some(self.expect_ident())
-    let _ = self.expect(RParen)
+    // Optional catch binding: catch { ... } without parameter
+    if self.eat(LParen) {
+      // catch(ident), catch({destructure}), catch([destructure])
+      match self.peek_kind() {
+        LBrace | LBracket =>
+          // Destructuring pattern in catch clause
+          catch_param = Some(self.parse_pattern())
+        _ => {
+          let name = self.expect_ident()
+          catch_param = Some(@ast.IdentPat(name))
+        }
+      }
+      let _ = self.expect(RParen)
+    }
     catch_body = Some(self.parse_block_body())
   }
   if self.eat(Finally) {
@@ -763,9 +858,28 @@ fn Parser::parse_object_pattern(self : Parser) -> @ast.Pattern raise Error {
       rest = Some(self.parse_pattern())
       break
     }
-    let key = self.expect_ident()
+    // Parse key: identifier, string literal, number literal, or computed [expr]
+    let (key, computed_key) : (String, @ast.Expr?) = match self.peek_kind() {
+      LBracket => {
+        let _ = self.advance()
+        let key_expr = self.parse_assignment()
+        let _ = self.expect(RBracket)
+        ("", Some(key_expr))
+      }
+      String_(s) => {
+        let _ = self.advance()
+        (s, None)
+      }
+      Number(n) => {
+        let _ = self.advance()
+        let i = n.to_int()
+        let name = if i.to_double() == n { i.to_string() } else { n.to_string() }
+        (name, None)
+      }
+      _ => (self.expect_ident(), None)
+    }
     let (value, default_val) : (@ast.Pattern, @ast.Expr?) = if self.eat(Colon) {
-      // { key: pattern }
+      // { key: pattern } or { [expr]: pattern }
       let pat = self.parse_pattern()
       let def : @ast.Expr? = if self.eat(Assign) {
         Some(self.parse_assignment())
@@ -782,7 +896,7 @@ fn Parser::parse_object_pattern(self : Parser) -> @ast.Pattern raise Error {
       }
       (IdentPat(key), def)
     }
-    props.push({ key, value, default_val })
+    props.push({ key, value, default_val, computed_key })
     if not(self.at(RBrace)) {
       let _ = self.expect(Comma)
     }
@@ -795,8 +909,40 @@ fn Parser::parse_object_pattern(self : Parser) -> @ast.Pattern raise Error {
 fn Parser::parse_expr_stmt(self : Parser) -> @ast.Stmt raise Error {
   let loc = self.peek().loc
   let expr = self.parse_expr()
-  self.eat_semicolon()
+  // Use strict ASI for expression statements.
+  // This correctly rejects code like: `// comment\ncode_on_same_line`
+  // While still allowing valid ASI cases (newline, }, EOF, ;).
+  self.eat_semicolon_strict()
   ExprStmt(expr, loc)
+}
+
+///|
+/// Strict ASI check: used after expression statements where proper ASI enforcement is needed.
+/// Returns error if no valid semicolon termination exists on the same line.
+fn Parser::eat_semicolon_strict(self : Parser) -> Unit raise Error {
+  // Consume explicit semicolon if present
+  if self.eat(Semicolon) {
+    return
+  }
+  // ASI: automatic semicolon insertion allowed when:
+  // 1. Next token is }
+  // 2. Next token is EOF
+  if self.at(RBrace) || self.at(EOF) {
+    return
+  }
+  // 3. Next token is on a different line than the previous token
+  if self.pos > 0 {
+    let prev_line = self.tokens[self.pos - 1].loc.line
+    let next_line = self.peek().loc.line
+    if next_line != prev_line {
+      return
+    }
+  }
+  // No valid ASI condition — raise a syntax error
+  let next = self.peek()
+  raise @errors.SyntaxError(
+    message="Unexpected token '\{next.kind}' at line \{next.loc.line}, col \{next.loc.col}",
+  )
 }
 
 ///|
@@ -1085,6 +1231,11 @@ fn Parser::parse_export_decl(self : Parser) -> @ast.Stmt raise Error {
       let expr = self.parse_func_expr()
       return ExportDefaultDecl(expr, tok.loc)
     }
+    // export default async function [name]() {} - name is optional
+    if self.is_async_function() {
+      let expr = self.parse_async_func_expr()
+      return ExportDefaultDecl(expr, tok.loc)
+    }
     // export default class [Name] {} - name is optional
     if self.at(Class) {
       let expr = self.parse_class_expr()
@@ -1151,6 +1302,15 @@ fn Parser::parse_export_decl(self : Parser) -> @ast.Stmt raise Error {
   // export function name() {}
   if self.at(Function) {
     let decl = self.parse_func_decl()
+    return ExportNamedDecl(Some(decl), [], None, tok.loc)
+  }
+  // export async function name() {}
+  if self.is_async_function() {
+    let decl = if self.is_async_generator() {
+      self.parse_async_generator_decl()
+    } else {
+      self.parse_async_func_decl()
+    }
     return ExportNamedDecl(Some(decl), [], None, tok.loc)
   }
   // export class Name {}

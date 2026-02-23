@@ -76,6 +76,19 @@ fn RegexParser::parse_sequence(self : RegexParser) -> RegexNode raise Error {
     }
     let node = self.parse_atom()
     let quantified = self.parse_quantifier(node)
+    // Check for double quantifier (e.g., a**  a++  a{1}{1,})
+    match quantified {
+      Quantified(_,_,_,_) =>
+        if self.pos < self.pattern.length() {
+          let next = self.pattern[self.pos]
+          if next == '*' || next == '+' || next == '?' || next == '{' {
+            raise @errors.SyntaxError(
+              message="Invalid regex: nothing to repeat",
+            )
+          }
+        }
+      _ => ()
+    }
     nodes.push(quantified)
   }
   if nodes.length() == 1 {
@@ -103,6 +116,9 @@ fn RegexParser::parse_atom(self : RegexParser) -> RegexNode raise Error {
     '[' => self.parse_char_class()
     '(' => self.parse_group()
     '\\' => self.parse_escape()
+    '*' | '+' | '?' => raise @errors.SyntaxError(
+      message="Invalid regex: nothing to repeat",
+    )
     _ => {
       self.pos += 1
       Literal(ch)
@@ -253,6 +269,11 @@ fn RegexParser::parse_char_class(self : RegexParser) -> RegexNode raise Error {
         self.pos += 1
         c
       }
+      if start > end_ch {
+        raise @errors.SyntaxError(
+          message="Invalid regex: range out of order in character class",
+        )
+      }
       ranges.push((start, end_ch))
     } else {
       ranges.push((start, start))
@@ -260,6 +281,10 @@ fn RegexParser::parse_char_class(self : RegexParser) -> RegexNode raise Error {
   }
   if self.pos < self.pattern.length() {
     self.pos += 1 // skip ']'
+  } else {
+    raise @errors.SyntaxError(
+      message="Invalid regex: unterminated character class",
+    )
   }
   CharClass(ranges, negated)
 }
@@ -1014,7 +1039,34 @@ fn extract_regexp_source_flags(val : Value) -> (String, String) {
 // ---- RegExp Object Creation ----
 
 ///|
-pub fn make_regexp_object(pattern : String, flags : String) -> Value {
+pub fn make_regexp_object(pattern : String, flags : String) -> Value raise Error {
+  // Validate flags - check for invalid or duplicate flag characters
+  let valid_flags = "gimsuy"
+  let seen_flags : Map[Char, Bool] = {}
+  for ch in flags {
+    if not(valid_flags.contains(ch.to_string())) {
+      raise @errors.SyntaxError(
+        message="Invalid regular expression flags: " + flags,
+      )
+    }
+    if seen_flags.contains(ch) {
+      raise @errors.SyntaxError(
+        message="Invalid regular expression flags: " + flags,
+      )
+    }
+    seen_flags[ch] = true
+  }
+  // Validate pattern by attempting to parse it
+  let _valid : Unit = try {
+    let _parsed = RegexParser::new(pattern).parse()
+  } catch {
+    @errors.SyntaxError(message=msg) => raise @errors.SyntaxError(
+      message="Invalid regular expression: /" + pattern + "/: " + msg,
+    )
+    e => raise @errors.SyntaxError(
+      message="Invalid regular expression: /" + pattern + "/: " + e.to_string(),
+    )
+  }
   let has_global = flags.contains("g")
   let has_ignore_case = flags.contains("i")
   let has_multiline = flags.contains("m")
@@ -1032,12 +1084,7 @@ pub fn make_regexp_object(pattern : String, flags : String) -> Value {
   props["dotAll"] = Bool(has_dotall)
   props["lastIndex"] = Number(0.0)
   // test method
-  props["test"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("test", fn(this_val, args) {
+  props["test"] = make_method_func("test", 1, fn(this_val, args) {
         let str = if args.length() > 0 { args[0].to_string() } else { "" }
         let start = if has_sticky || has_global {
           match this_val {
@@ -1075,20 +1122,9 @@ pub fn make_regexp_object(pattern : String, flags : String) -> Value {
             Bool(false)
           }
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
   // exec method
-  props["exec"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("exec", fn(this_val, args) {
+  props["exec"] = make_method_func("exec", 1, fn(this_val, args) {
         let str = if args.length() > 0 { args[0].to_string() } else { "" }
         let start = if has_sticky || has_global {
           match this_val {
@@ -1126,188 +1162,47 @@ pub fn make_regexp_object(pattern : String, flags : String) -> Value {
             Null
           }
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  // Install well-known symbol methods on each RegExp object
+      })
+  // Symbol methods are now on RegExp.prototype (set up in builtins.mbt)
+  // Instances inherit them via the prototype chain
   let sym_props : Map[Int, Value] = {}
 
-  // [Symbol.match](string) - implements RegExp.prototype[@@match]
-  let match_sym = get_match_symbol()
-  sym_props[match_sym.id] = Object({
-    properties: { "length": Number(1.0), "name": String_("[Symbol.match]") },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("[Symbol.match]", fn(this_val, args) {
-        let str = if args.length() > 0 { args[0].to_string() } else { "" }
-        let (pat, fl) = extract_regexp_source_flags(this_val)
-        string_match_regex(str, pat, fl)
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+  // Create descriptor maps for non-enumerable method properties
+  let re_descs : Map[String, PropDescriptor] = {}
+  let re_method_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+  re_descs["source"] = re_method_desc
+  re_descs["flags"] = re_method_desc
+  re_descs["global"] = re_method_desc
+  re_descs["ignoreCase"] = re_method_desc
+  re_descs["multiline"] = re_method_desc
+  re_descs["sticky"] = re_method_desc
+  re_descs["unicode"] = re_method_desc
+  re_descs["dotAll"] = re_method_desc
+  re_descs["test"] = re_method_desc
+  re_descs["exec"] = re_method_desc
+  // lastIndex per spec: writable but NOT enumerable and NOT configurable
+  re_descs["lastIndex"] = { writable: true, enumerable: false, configurable: false, getter: None, setter: None }
 
-  // [Symbol.search](string) - implements RegExp.prototype[@@search]
-  let search_sym = get_search_symbol()
-  sym_props[search_sym.id] = Object({
-    properties: { "length": Number(1.0), "name": String_("[Symbol.search]") },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("[Symbol.search]", fn(this_val, args) {
-        let str = if args.length() > 0 { args[0].to_string() } else { "" }
-        let (pat, fl) = extract_regexp_source_flags(this_val)
-        string_search_regex(str, pat, fl)
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+  let re_sym_descs : Map[Int, PropDescriptor] = {}
 
-  // [Symbol.replace](string, replaceValue) - implements RegExp.prototype[@@replace]
-  let replace_sym = get_replace_symbol()
-  sym_props[replace_sym.id] = Object({
-    properties: { "length": Number(2.0), "name": String_("[Symbol.replace]") },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("[Symbol.replace]", fn(this_val, args) {
-        let str = if args.length() > 0 { args[0].to_string() } else { "" }
-        let replacement = if args.length() > 1 {
-          args[1].to_string()
-        } else {
-          "undefined"
-        }
-        let (pat, fl) = extract_regexp_source_flags(this_val)
-        string_replace_regex(str, pat, fl, replacement)
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-
-  // [Symbol.split](string, limit) - implements RegExp.prototype[@@split]
-  let split_sym = get_split_symbol()
-  sym_props[split_sym.id] = Object({
-    properties: { "length": Number(2.0), "name": String_("[Symbol.split]") },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("[Symbol.split]", fn(this_val, args) raise {
-        let str = if args.length() > 0 { args[0].to_string() } else { "" }
-        let limit : Int64 = if args.length() > 1 {
-          match args[1] {
-            Undefined => 4294967295L
-            _ => {
-              // Per spec: use ToUint32 semantics (modulo 2^32)
-              let n = to_int32(to_number(args[1]))
-              // Convert signed int32 to unsigned range [0, 2^32-1]
-              if n < 0 {
-                n.to_int64() + 4294967296L
-              } else {
-                n.to_int64()
-              }
-            }
-          }
-        } else {
-          4294967295L
-        }
-        if limit == 0L {
-          return Array({ elements: [] })
-        }
-        let (pat, fl) = extract_regexp_source_flags(this_val)
-        let input_chars = str.to_array()
-        let slen = str.length()
-        if slen == 0 {
-          // If string is empty, check if pattern matches empty string
-          let m = regex_search(pat, fl, str) catch { _ => None }
-          return match m {
-            Some(_) => Array({ elements: [] })
-            None => Array({ elements: [String_(str)] })
-          }
-        }
-        let results : Array[Value] = []
-        let mut last_end = 0
-        let mut pos = 0
-        while pos < slen {
-          let m = regex_search(pat, fl, str, start_pos=pos) catch { _ => None }
-          match m {
-            None => break
-            Some(match_data) => {
-              if match_data.end_ == last_end && match_data.start == pos {
-                // Zero-length match at same position, advance
-                pos = pos + 1
-                continue
-              }
-              // Add substring before match
-              let buf = StringBuilder::new()
-              for i = last_end; i < match_data.start; i = i + 1 {
-                buf.write_char(input_chars[i])
-              }
-              results.push(String_(buf.to_string()))
-              if results.length().to_int64() >= limit {
-                return Array({ elements: results })
-              }
-              // Add capture groups
-              for cap in match_data.captures {
-                match cap {
-                  Some(c) => results.push(String_(c))
-                  None => results.push(Undefined)
-                }
-                if results.length().to_int64() >= limit {
-                  return Array({ elements: results })
-                }
-              }
-              last_end = match_data.end_
-              pos = if match_data.end_ == match_data.start {
-                match_data.start + 1
-              } else {
-                match_data.end_
-              }
-            }
-          }
-        }
-        // Add remaining substring
-        let buf = StringBuilder::new()
-        for i = last_end; i < slen; i = i + 1 {
-          buf.write_char(input_chars[i])
-        }
-        results.push(String_(buf.to_string()))
-        Array({ elements: results })
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-
+  let proto = match regexp_prototype_ref.val {
+    Some(p) => p
+    None => Null
+  }
   Object({
     properties: props,
     symbol_properties: sym_props,
-    prototype: Null,
+    prototype: proto,
     callable: None,
     class_name: "RegExp",
-    descriptors: {},
-    symbol_descriptors: {},
+    descriptors: re_descs,
+    symbol_descriptors: re_sym_descs,
     extensible: true,
   })
 }
 
 ///|
-fn substring(chars : Array[Char], start : Int, end_ : Int) -> String {
+pub fn substring(chars : Array[Char], start : Int, end_ : Int) -> String {
   let buf = StringBuilder::new()
   for i = start; i < end_; i = i + 1 {
     buf.write_char(chars[i])
@@ -1429,8 +1324,35 @@ fn process_replacement(
         }
         i += 2
         continue
+      } else if next == '`' {
+        // $` = portion before match
+        for j = 0; j < m.start; j = j + 1 {
+          buf.write_char(input_chars[j])
+        }
+        i += 2
+        continue
+      } else if next == '\'' {
+        // $' = portion after match
+        for j = m.end_; j < input_chars.length(); j = j + 1 {
+          buf.write_char(input_chars[j])
+        }
+        i += 2
+        continue
       } else if next >= '1' && next <= '9' {
+        // Check for two-digit group reference ($10-$99)
         let group_idx = next.to_int() - '0'.to_int()
+        if i + 2 < repl_chars.length() && repl_chars[i + 2] >= '0' &&
+          repl_chars[i + 2] <= '9' {
+          let two_digit = group_idx * 10 + (repl_chars[i + 2].to_int() - '0'.to_int())
+          if two_digit - 1 < m.captures.length() {
+            match m.captures[two_digit - 1] {
+              Some(s) => buf.write_string(s)
+              None => ()
+            }
+            i += 3
+            continue
+          }
+        }
         if group_idx - 1 < m.captures.length() {
           match m.captures[group_idx - 1] {
             Some(s) => buf.write_string(s)
@@ -1450,6 +1372,10 @@ fn process_replacement(
   }
   buf.to_string()
 }
+
+///|
+/// Shared RegExp.prototype - set during global setup
+pub let regexp_prototype_ref : Ref[Value?] = { val: None }
 
 ///|
 /// Shared %RegExpStringIteratorPrototype% - lazily initialized
@@ -1475,50 +1401,13 @@ pub fn get_regexp_string_iterator_proto() -> Value {
         setter: None,
       }
       // Add [Symbol.iterator] that returns the iterator itself
-      proto_sym_props[iterator_sym.id] = Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          MethodCallable("[Symbol.iterator]", fn(this_val, _args) { this_val }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      })
+      proto_sym_props[iterator_sym.id] = make_method_func("[Symbol.iterator]", 0, fn(this_val, _args) { this_val })
       // Add a placeholder next method with correct name/length on prototype
-      proto_props["next"] = Object({
-        properties: { "length": Number(0.0), "name": String_("next") },
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          MethodCallable("next", fn(_this_val, _args) raise {
+      proto_props["next"] = make_method_func("next", 0, fn(_this_val, _args) raise {
             raise @errors.TypeError(
               message="RegExp String Iterator.prototype.next requires that |this| be a RegExp String Iterator",
             )
-          }),
-        ),
-        class_name: "Function",
-        descriptors: {
-          "length": {
-            writable: false,
-            enumerable: false,
-            configurable: true,
-            getter: None,
-            setter: None,
-          },
-          "name": {
-            writable: false,
-            enumerable: false,
-            configurable: true,
-            getter: None,
-            setter: None,
-          },
-        },
-        symbol_descriptors: {},
-        extensible: true,
-      })
+          })
       let proto_descs : Map[String, PropDescriptor] = {}
       proto_descs["next"] = {
         writable: true,

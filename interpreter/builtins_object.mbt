@@ -1,4 +1,103 @@
 ///|
+/// ToObject (ES spec 7.1.13): convert primitives to their wrapper objects.
+/// Throws TypeError for null/undefined. Objects/Arrays/etc pass through unchanged.
+fn to_object(val : Value, interp : Interpreter) -> Value raise Error {
+  match val {
+    Null | Undefined =>
+      raise @errors.TypeError(
+        message="Cannot convert undefined or null to object",
+      )
+    Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => val
+    String_(s) => {
+      let string_proto = interp.global.get("[[StringPrototype]]") catch {
+        _ => Null
+      }
+      let props : Map[String, Value] = {}
+      props["[[StringData]]"] = String_(s)
+      props["length"] = Number(s.length().to_double())
+      let chars = s.to_array()
+      for i = 0; i < chars.length(); i = i + 1 {
+        let buf = StringBuilder::new()
+        buf.write_char(chars[i])
+        props[i.to_string()] = String_(buf.to_string())
+      }
+      let descs : Map[String, PropDescriptor] = {}
+      descs["length"] = {
+        writable: false,
+        enumerable: false,
+        configurable: false,
+        getter: None,
+        setter: None,
+      }
+      for i = 0; i < chars.length(); i = i + 1 {
+        descs[i.to_string()] = {
+          writable: false,
+          enumerable: true,
+          configurable: false,
+          getter: None,
+          setter: None,
+        }
+      }
+      Object({
+        properties: props,
+        symbol_properties: {},
+        prototype: string_proto,
+        callable: None,
+        class_name: "String",
+        descriptors: descs,
+        symbol_descriptors: {},
+        extensible: true,
+      })
+    }
+    Number(n) => {
+      let number_proto = interp.global.get("[[NumberPrototype]]") catch {
+        _ => Null
+      }
+      Object({
+        properties: { "[[NumberData]]": Number(n) },
+        symbol_properties: {},
+        prototype: number_proto,
+        callable: None,
+        class_name: "Number",
+        descriptors: {},
+        symbol_descriptors: {},
+        extensible: true,
+      })
+    }
+    Bool(b) => {
+      let boolean_proto = interp.global.get("[[BooleanPrototype]]") catch {
+        _ => Null
+      }
+      Object({
+        properties: { "[[BooleanData]]": Bool(b) },
+        symbol_properties: {},
+        prototype: boolean_proto,
+        callable: None,
+        class_name: "Boolean",
+        descriptors: {},
+        symbol_descriptors: {},
+        extensible: true,
+      })
+    }
+    Symbol(_) => {
+      let symbol_proto = interp.global.get("[[SymbolPrototype]]") catch {
+        _ => Null
+      }
+      Object({
+        properties: { "[[SymbolData]]": val },
+        symbol_properties: {},
+        prototype: symbol_proto,
+        callable: None,
+        class_name: "Symbol",
+        descriptors: {},
+        symbol_descriptors: {},
+        extensible: true,
+      })
+    }
+  }
+}
+
+///|
 fn validate_accessor(value : Value?, label : String) -> Unit raise Error {
   match value {
     Some(Object(o)) =>
@@ -16,16 +115,65 @@ fn validate_accessor(value : Value?, label : String) -> Unit raise Error {
 }
 
 ///|
+/// Get a property from a Value by walking the prototype chain (like [[Get]])
+fn get_value_property(val : Value, key : String) -> (Bool, Value) {
+  match val {
+    Object(data) => {
+      match data.properties.get(key) {
+        Some(v) => {
+          // Check for accessor descriptor
+          match data.descriptors.get(key) {
+            Some(desc) =>
+              match desc.getter {
+                Some(_) => (true, Undefined) // accessor, but can't call getter without interp
+                None => (true, v)
+              }
+            None => (true, v)
+          }
+        }
+        None => {
+          // Walk prototype chain
+          let mut current = data.prototype
+          while true {
+            match current {
+              Object(proto_data) =>
+                match proto_data.properties.get(key) {
+                  Some(v) => {
+                    match proto_data.descriptors.get(key) {
+                      Some(desc) =>
+                        match desc.getter {
+                          Some(_) => return (true, Undefined)
+                          None => return (true, v)
+                        }
+                      None => return (true, v)
+                    }
+                  }
+                  None => current = proto_data.prototype
+                }
+              _ => break
+            }
+          }
+          (false, Undefined)
+        }
+      }
+    }
+    _ => (false, Undefined)
+  }
+}
+
+///|
 fn apply_property_descriptor(
   data : ObjectData,
   prop_name : String,
   desc : ObjectData,
 ) -> Unit raise Error {
-  let has_get = desc.properties.contains("get")
-  let has_set = desc.properties.contains("set")
+  // Per spec ToPropertyDescriptor, use [[Get]] which walks prototype chain
+  let desc_val = Object(desc)
+  let (has_get, _) = get_value_property(desc_val, "get")
+  let (has_set, _) = get_value_property(desc_val, "set")
   let is_accessor = has_get || has_set
-  let has_value = desc.properties.contains("value")
-  let has_writable = desc.properties.contains("writable")
+  let (has_value, _) = get_value_property(desc_val, "value")
+  let (has_writable, _) = get_value_property(desc_val, "writable")
   let is_data = has_value || has_writable
   if is_accessor && is_data {
     raise @errors.TypeError(
@@ -36,24 +184,24 @@ fn apply_property_descriptor(
     if not(data.properties.contains(prop_name)) {
       data.properties[prop_name] = Undefined
     }
-    let getter : Value? = match desc.properties.get("get") {
-      Some(Undefined) => None
-      Some(v) => Some(v)
-      None => None
+    let getter : Value? = match get_value_property(desc_val, "get") {
+      (true, Undefined) => None
+      (true, v) => Some(v)
+      _ => None
     }
-    let setter : Value? = match desc.properties.get("set") {
-      Some(Undefined) => None
-      Some(v) => Some(v)
-      None => None
+    let setter : Value? = match get_value_property(desc_val, "set") {
+      (true, Undefined) => None
+      (true, v) => Some(v)
+      _ => None
     }
     validate_accessor(getter, "Getter")
     validate_accessor(setter, "Setter")
-    let enumerable = match desc.properties.get("enumerable") {
-      Some(v) => is_truthy(v)
+    let enumerable = match get_value_property(desc_val, "enumerable") {
+      (true, v) => is_truthy(v)
       _ => false
     }
-    let configurable = match desc.properties.get("configurable") {
-      Some(v) => is_truthy(v)
+    let configurable = match get_value_property(desc_val, "configurable") {
+      (true, v) => is_truthy(v)
       _ => false
     }
     data.descriptors[prop_name] = {
@@ -64,23 +212,23 @@ fn apply_property_descriptor(
       setter,
     }
   } else {
-    match desc.properties.get("value") {
-      Some(v) => data.properties[prop_name] = v
-      None =>
+    match get_value_property(desc_val, "value") {
+      (true, v) => data.properties[prop_name] = v
+      _ =>
         if not(data.properties.contains(prop_name)) {
           data.properties[prop_name] = Undefined
         }
     }
-    let writable = match desc.properties.get("writable") {
-      Some(v) => is_truthy(v)
+    let writable = match get_value_property(desc_val, "writable") {
+      (true, v) => is_truthy(v)
       _ => false
     }
-    let enumerable = match desc.properties.get("enumerable") {
-      Some(v) => is_truthy(v)
+    let enumerable = match get_value_property(desc_val, "enumerable") {
+      (true, v) => is_truthy(v)
       _ => false
     }
-    let configurable = match desc.properties.get("configurable") {
-      Some(v) => is_truthy(v)
+    let configurable = match get_value_property(desc_val, "configurable") {
+      (true, v) => is_truthy(v)
       _ => false
     }
     data.descriptors[prop_name] = {
@@ -95,270 +243,403 @@ fn apply_property_descriptor(
 
 ///|
 pub fn setup_object_builtins(env : Environment) -> Unit {
+  let nf_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   // Object.keys, Object.values, Object.entries, Object.create, Object.assign,
   // Object.getPrototypeOf, Object.getOwnPropertyNames
+  let obj_proto_props : Map[String, Value] = {}
+  obj_proto_props["toString"] = make_method_func("toString", 0, fn(this_val, _args) raise {
+    match this_val {
+      Undefined => String_("[object Undefined]")
+      Null => String_("[object Null]")
+      Bool(_) => String_("[object Boolean]")
+      Number(_) => String_("[object Number]")
+      String_(_) => String_("[object String]")
+      Array(_) => String_("[object Array]")
+      Symbol(_) => String_("[object Symbol]")
+      Map(_) => String_("[object Map]")
+      Set(_) => String_("[object Set]")
+      Promise(_) => String_("[object Promise]")
+      Proxy(_) => String_("[object Object]")
+      Object(data) => {
+        // Per spec, always check Symbol.toStringTag first (it overrides built-in tags)
+        let tag = get_tostringtag_value(data)
+        match tag {
+          Some(t) => String_("[object \{t}]")
+          None =>
+            if data.class_name == "Function" {
+              String_("[object Function]")
+            } else if data.class_name == "RegExp" {
+              String_("[object RegExp]")
+            } else if data.class_name == "Error" ||
+              data.class_name == "TypeError" ||
+              data.class_name == "ReferenceError" ||
+              data.class_name == "SyntaxError" ||
+              data.class_name == "RangeError" ||
+              data.class_name == "URIError" ||
+              data.class_name == "EvalError" ||
+              data.class_name == "AggregateError" {
+              String_("[object Error]")
+            } else if data.class_name == "Date" {
+              String_("[object Date]")
+            } else if data.class_name == "Map" {
+              String_("[object Map]")
+            } else if data.class_name == "Set" {
+              String_("[object Set]")
+            } else if data.class_name == "Promise" {
+              String_("[object Promise]")
+            } else if data.class_name == "Arguments" {
+              String_("[object Arguments]")
+            } else if data.class_name == "Number" {
+              String_("[object Number]")
+            } else if data.class_name == "String" {
+              String_("[object String]")
+            } else if data.class_name == "Boolean" {
+              String_("[object Boolean]")
+            } else {
+              String_("[object Object]")
+            }
+        }
+      }
+    }
+  })
+  obj_proto_props["valueOf"] = make_interp_method_func("valueOf", 0, fn(interp, this_val, _args) raise {
+        to_object(this_val, interp)
+      })
+  obj_proto_props["hasOwnProperty"] = make_method_func("hasOwnProperty", 1, fn(this_val, args) raise {
+    // RequireObjectCoercible(this) - throw TypeError for null/undefined
+    match this_val {
+      Null | Undefined =>
+        raise @errors.TypeError(
+          message="Cannot convert undefined or null to object",
+        )
+      _ => ()
+    }
+    let key_val = if args.length() > 0 { args[0] } else { Undefined }
+    match this_val {
+      Object(data) =>
+        match key_val {
+          Symbol(sym) => Bool(data.symbol_properties.contains(sym.id))
+          _ => Bool(data.properties.contains(to_js_string(key_val)))
+        }
+      Array(data) =>
+        match key_val {
+          Symbol(sym) => Bool(get_array_symbol_prop(data, sym.id) is Some(_))
+          _ => {
+            let key = to_js_string(key_val)
+            if key == "length" {
+              Bool(true)
+            } else {
+              // Check numeric index
+              let idx = @strconv.parse_int(key) catch { _ => -1 }
+              if idx >= 0 && idx.to_string() == key && idx < data.elements.length() {
+                Bool(true)
+              } else {
+                // Check named properties side-table
+                Bool(get_array_named_prop(data, key) is Some(_))
+              }
+            }
+          }
+        }
+      String_(s) => {
+        let key = to_js_string(key_val)
+        if key == "length" {
+          Bool(true)
+        } else {
+          let idx = @strconv.parse_int(key) catch { _ => -1 }
+          Bool(idx >= 0 && idx.to_string() == key && idx < s.length())
+        }
+      }
+      _ => Bool(false)
+    }
+  })
+  obj_proto_props["propertyIsEnumerable"] = make_method_func("propertyIsEnumerable", 1, fn(this_val, args) raise {
+    // RequireObjectCoercible(this) - throw TypeError for null/undefined
+    match this_val {
+      Null | Undefined =>
+        raise @errors.TypeError(
+          message="Cannot convert undefined or null to object",
+        )
+      _ => ()
+    }
+    let key_val = if args.length() > 0 { args[0] } else { Undefined }
+    // Handle Symbol keys
+    match key_val {
+      Symbol(sym) =>
+        match this_val {
+          Object(data) =>
+            match data.symbol_descriptors.get(sym.id) {
+              Some(d) => return Bool(d.enumerable)
+              None =>
+                if data.symbol_properties.contains(sym.id) {
+                  return Bool(true)
+                } else {
+                  return Bool(false)
+                }
+            }
+          _ => return Bool(false)
+        }
+      _ => ()
+    }
+    let key = to_js_string(key_val)
+    match this_val {
+      Object(data) =>
+        if data.properties.contains(key) {
+          match data.descriptors.get(key) {
+            Some(d) => Bool(d.enumerable)
+            None => Bool(true)
+          }
+        } else {
+          Bool(false)
+        }
+      Array(data) =>
+        if key == "length" {
+          Bool(false) // length is not enumerable
+        } else {
+          let idx = @strconv.parse_int(key) catch { _ => -1 }
+          Bool(
+            idx >= 0 &&
+            idx.to_string() == key &&
+            idx < data.elements.length(),
+          )
+        }
+      String_(s) =>
+        if key == "length" {
+          Bool(false)
+        } else {
+          let idx = @strconv.parse_int(key) catch { _ => -1 }
+          Bool(idx >= 0 && idx.to_string() == key && idx < s.length())
+        }
+      _ => Bool(false)
+    }
+  })
+  obj_proto_props["isPrototypeOf"] = make_method_func("isPrototypeOf", 1, fn(this_val, args) raise {
+    // RequireObjectCoercible(this) - throw TypeError for null/undefined
+    match this_val {
+      Null | Undefined =>
+        raise @errors.TypeError(
+          message="Cannot convert undefined or null to object",
+        )
+      _ => ()
+    }
+    // Walk the argument's prototype chain looking for this_val
+    let arg = if args.length() > 0 { args[0] } else { Undefined }
+    let mut current : Value = match arg {
+      Object(data) => data.prototype
+      Array(_) =>
+        match current_interpreter.val {
+          Some(interp) =>
+            get_constructor_prototype(interp.global, "Array")
+          None => Null
+        }
+      Promise(_) => Null
+      _ => return Bool(false)
+    }
+    while true {
+      match current {
+        Null | Undefined => return Bool(false)
+        Object(proto_data) => {
+          // Compare by reference identity - check if this_val is the same object
+          match this_val {
+            Object(this_data) =>
+              if physical_equal(this_data, proto_data) {
+                return Bool(true)
+              }
+            _ => ()
+          }
+          current = proto_data.prototype
+        }
+        _ => return Bool(false)
+      }
+    }
+    Bool(false)
+  })
+  obj_proto_props["toLocaleString"] = make_method_func("toLocaleString", 0, fn(this_val, _args) raise {
+    match this_val {
+      Object(data) =>
+        match data.properties.get("toString") {
+          Some(Object(fn_data)) =>
+            match fn_data.callable {
+              Some(MethodCallable(_, f)) => f(this_val, [])
+              _ => String_(this_val.to_string())
+            }
+          _ => String_(this_val.to_string())
+        }
+      _ => String_(this_val.to_string())
+    }
+  })
+  // Annex B: __defineGetter__, __defineSetter__, __lookupGetter__, __lookupSetter__
+  obj_proto_props["__defineGetter__"] = make_interp_method_func("__defineGetter__", 2, fn(interp, this_val, args) raise {
+    let o = to_object(this_val, interp)
+    let getter = if args.length() > 1 { args[1] } else { Undefined }
+    if not(is_callable(getter)) {
+      raise @errors.TypeError(message="getter must be a function")
+    }
+    let prop = if args.length() > 0 { to_js_string(args[0]) } else { "" }
+    match o {
+      Object(data) => {
+        // Check if property exists and is non-configurable
+        match data.descriptors.get(prop) {
+          Some(d) =>
+            if not(d.configurable) {
+              raise @errors.TypeError(
+                message="Cannot redefine property: \{prop}",
+              )
+            }
+          None => ()
+        }
+        if not(data.extensible) && not(data.properties.contains(prop)) {
+          raise @errors.TypeError(
+            message="Cannot define property on a non-extensible object",
+          )
+        }
+        let existing_setter : Value? = match data.descriptors.get(prop) {
+          Some(d) => d.setter
+          None => None
+        }
+        data.descriptors[prop] = {
+          writable: false, enumerable: true, configurable: true,
+          getter: Some(getter), setter: existing_setter,
+        }
+        data.properties[prop] = Undefined
+      }
+      _ => ()
+    }
+    Undefined
+  })
+  obj_proto_props["__defineSetter__"] = make_interp_method_func("__defineSetter__", 2, fn(interp, this_val, args) raise {
+    let o = to_object(this_val, interp)
+    let setter = if args.length() > 1 { args[1] } else { Undefined }
+    if not(is_callable(setter)) {
+      raise @errors.TypeError(message="setter must be a function")
+    }
+    let prop = if args.length() > 0 { to_js_string(args[0]) } else { "" }
+    match o {
+      Object(data) => {
+        match data.descriptors.get(prop) {
+          Some(d) =>
+            if not(d.configurable) {
+              raise @errors.TypeError(
+                message="Cannot redefine property: \{prop}",
+              )
+            }
+          None => ()
+        }
+        if not(data.extensible) && not(data.properties.contains(prop)) {
+          raise @errors.TypeError(
+            message="Cannot define property on a non-extensible object",
+          )
+        }
+        let existing_getter : Value? = match data.descriptors.get(prop) {
+          Some(d) => d.getter
+          None => None
+        }
+        data.descriptors[prop] = {
+          writable: false, enumerable: true, configurable: true,
+          getter: existing_getter, setter: Some(setter),
+        }
+        data.properties[prop] = Undefined
+      }
+      _ => ()
+    }
+    Undefined
+  })
+  obj_proto_props["__lookupGetter__"] = make_interp_method_func("__lookupGetter__", 1, fn(interp, this_val, args) raise {
+    let prop = if args.length() > 0 { to_js_string(args[0]) } else { "" }
+    let mut current = to_object(this_val, interp)
+    while true {
+      match current {
+        Object(data) => {
+          match data.descriptors.get(prop) {
+            Some(desc) =>
+              match desc.getter {
+                Some(getter) => return getter
+                None => ()
+              }
+            None => ()
+          }
+          current = data.prototype
+        }
+        _ => break
+      }
+    }
+    Undefined
+  })
+  obj_proto_props["__lookupSetter__"] = make_interp_method_func("__lookupSetter__", 1, fn(interp, this_val, args) raise {
+    let prop = if args.length() > 0 { to_js_string(args[0]) } else { "" }
+    let mut current = to_object(this_val, interp)
+    while true {
+      match current {
+        Object(data) => {
+          match data.descriptors.get(prop) {
+            Some(desc) =>
+              match desc.setter {
+                Some(setter) => return setter
+                None => ()
+              }
+            None => ()
+          }
+          current = data.prototype
+        }
+        _ => break
+      }
+    }
+    Undefined
+  })
+  let obj_proto_descs : Map[String, PropDescriptor] = {}
+  let obj_method_desc : PropDescriptor = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
+  obj_proto_descs["toString"] = obj_method_desc
+  obj_proto_descs["valueOf"] = obj_method_desc
+  obj_proto_descs["hasOwnProperty"] = obj_method_desc
+  obj_proto_descs["propertyIsEnumerable"] = obj_method_desc
+  obj_proto_descs["isPrototypeOf"] = obj_method_desc
+  obj_proto_descs["toLocaleString"] = obj_method_desc
+  obj_proto_descs["__defineGetter__"] = obj_method_desc
+  obj_proto_descs["__defineSetter__"] = obj_method_desc
+  obj_proto_descs["__lookupGetter__"] = obj_method_desc
+  obj_proto_descs["__lookupSetter__"] = obj_method_desc
   let obj_proto : Value = Object({
-    properties: {
-      "toString": Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          MethodCallable("toString", fn(this_val, _args) raise {
-            match this_val {
-              Undefined => String_("[object Undefined]")
-              Null => String_("[object Null]")
-              Bool(_) => String_("[object Boolean]")
-              Number(_) => String_("[object Number]")
-              String_(_) => String_("[object String]")
-              Array(_) => String_("[object Array]")
-              Symbol(_) => String_("[object Symbol]")
-              Map(_) => String_("[object Map]")
-              Set(_) => String_("[object Set]")
-              Promise(_) => String_("[object Promise]")
-              Proxy(_) => String_("[object Object]")
-              Object(data) =>
-                if data.class_name == "Function" {
-                  String_("[object Function]")
-                } else if data.class_name == "RegExp" {
-                  String_("[object RegExp]")
-                } else if data.class_name == "Error" ||
-                  data.class_name == "TypeError" ||
-                  data.class_name == "ReferenceError" ||
-                  data.class_name == "SyntaxError" ||
-                  data.class_name == "RangeError" ||
-                  data.class_name == "URIError" ||
-                  data.class_name == "EvalError" ||
-                  data.class_name == "AggregateError" {
-                  String_("[object Error]")
-                } else if data.class_name == "Date" {
-                  String_("[object Date]")
-                } else if data.class_name == "Map" {
-                  String_("[object Map]")
-                } else if data.class_name == "Set" {
-                  String_("[object Set]")
-                } else if data.class_name == "Promise" {
-                  String_("[object Promise]")
-                } else if data.class_name == "Arguments" {
-                  String_("[object Arguments]")
-                } else if data.class_name == "Number" {
-                  String_("[object Number]")
-                } else if data.class_name == "String" {
-                  String_("[object String]")
-                } else if data.class_name == "Boolean" {
-                  String_("[object Boolean]")
-                } else {
-                  // Check Symbol.toStringTag on object and prototype chain
-                  let tag = get_tostringtag_value(data)
-                  match tag {
-                    Some(t) => String_("[object \{t}]")
-                    None => String_("[object Object]")
-                  }
-                }
-            }
-          }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      }),
-      "valueOf": Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          MethodCallable("valueOf", fn(this_val, _args) { this_val }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      }),
-      "hasOwnProperty": Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          MethodCallable("hasOwnProperty", fn(this_val, args) {
-            let key_val = if args.length() > 0 { args[0] } else { Undefined }
-            match this_val {
-              Object(data) =>
-                match key_val {
-                  Symbol(sym) => Bool(data.symbol_properties.contains(sym.id))
-                  _ => Bool(data.properties.contains(key_val.to_string()))
-                }
-              Array(data) => {
-                let key = key_val.to_string()
-                if key == "length" {
-                  Bool(true)
-                } else {
-                  let idx = @strconv.parse_int(key) catch { _ => -1 }
-                  Bool(
-                    idx >= 0 &&
-                    idx.to_string() == key &&
-                    idx < data.elements.length(),
-                  )
-                }
-              }
-              String_(s) => {
-                let key = key_val.to_string()
-                if key == "length" {
-                  Bool(true)
-                } else {
-                  let idx = @strconv.parse_int(key) catch { _ => -1 }
-                  Bool(idx >= 0 && idx.to_string() == key && idx < s.length())
-                }
-              }
-              _ => Bool(false)
-            }
-          }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      }),
-      "propertyIsEnumerable": Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          MethodCallable("propertyIsEnumerable", fn(this_val, args) {
-            let key_val = if args.length() > 0 { args[0] } else { Undefined }
-            let key = key_val.to_string()
-            match this_val {
-              Object(data) =>
-                if data.properties.contains(key) {
-                  match data.descriptors.get(key) {
-                    Some(d) => Bool(d.enumerable)
-                    None => Bool(true)
-                  }
-                } else {
-                  Bool(false)
-                }
-              Array(data) =>
-                if key == "length" {
-                  Bool(false) // length is not enumerable
-                } else {
-                  let idx = @strconv.parse_int(key) catch { _ => -1 }
-                  Bool(
-                    idx >= 0 &&
-                    idx.to_string() == key &&
-                    idx < data.elements.length(),
-                  )
-                }
-              String_(s) =>
-                if key == "length" {
-                  Bool(false)
-                } else {
-                  let idx = @strconv.parse_int(key) catch { _ => -1 }
-                  Bool(idx >= 0 && idx.to_string() == key && idx < s.length())
-                }
-              _ => Bool(false)
-            }
-          }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      }),
-      "isPrototypeOf": Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          MethodCallable("isPrototypeOf", fn(this_val, args) {
-            // Walk the argument's prototype chain looking for this_val
-            let arg = if args.length() > 0 { args[0] } else { Undefined }
-            let mut current : Value = match arg {
-              Object(data) => data.prototype
-              _ => return Bool(false)
-            }
-            while true {
-              match current {
-                Null | Undefined => return Bool(false)
-                Object(proto_data) => {
-                  // Compare by reference identity - check if this_val is the same object
-                  match this_val {
-                    Object(this_data) =>
-                      if physical_equal(this_data, proto_data) {
-                        return Bool(true)
-                      }
-                    _ => ()
-                  }
-                  current = proto_data.prototype
-                }
-                _ => return Bool(false)
-              }
-            }
-            Bool(false)
-          }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      }),
-    },
+    properties: obj_proto_props,
     symbol_properties: {},
     prototype: Null,
     callable: None,
     class_name: "Object",
-    descriptors: {
-      "toString": {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-      "valueOf": {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-      "hasOwnProperty": {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-      "propertyIsEnumerable": {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-      "isPrototypeOf": {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-    },
+    descriptors: obj_proto_descs,
     symbol_descriptors: {},
     extensible: true,
   })
   // Store Object.prototype so plain objects {} can link to it
   env.def_builtin("[[ObjectPrototype]]", obj_proto)
+  object_prototype_ref.val = Some(obj_proto)
   env.def_builtin(
     "Object",
     Object({
       properties: {
         "prototype": obj_proto,
-        "keys": make_native_func("keys", fn(args) {
+        "name": String_("Object"),
+        "length": Number(1.0),
+        "keys": make_static_func_with_length("keys", 1, fn(args) raise {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           match obj {
+            Null | Undefined =>
+              raise @errors.TypeError(
+                message="Cannot convert undefined or null to object",
+              )
             Object(data) => {
               let keys : Array[Value] = []
-              data.properties.each(fn(k, _v) {
+              let sorted = sort_property_keys(data.properties)
+              for k in sorted {
                 let enumerable = match data.descriptors.get(k) {
                   Some(d) => d.enumerable
                   None => true
@@ -366,7 +647,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 if enumerable {
                   keys.push(String_(k))
                 }
-              })
+              }
               Array({ elements: keys })
             }
             String_(s) => {
@@ -389,20 +670,28 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => Array({ elements: [] })
           }
         }),
-        "values": make_native_func("values", fn(args) {
+        "values": make_static_func_with_length("values", 1, fn(args) raise {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           match obj {
+            Null | Undefined =>
+              raise @errors.TypeError(
+                message="Cannot convert undefined or null to object",
+              )
             Object(data) => {
               let vals : Array[Value] = []
-              data.properties.each(fn(k, v) {
+              let sorted = sort_property_keys(data.properties)
+              for k in sorted {
                 let enumerable = match data.descriptors.get(k) {
                   Some(d) => d.enumerable
                   None => true
                 }
                 if enumerable {
-                  vals.push(v)
+                  match data.properties.get(k) {
+                    Some(v) => vals.push(v)
+                    None => ()
+                  }
                 }
-              })
+              }
               Array({ elements: vals })
             }
             String_(s) => {
@@ -425,20 +714,28 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => Array({ elements: [] })
           }
         }),
-        "entries": make_native_func("entries", fn(args) {
+        "entries": make_static_func_with_length("entries", 1, fn(args) raise {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           match obj {
+            Null | Undefined =>
+              raise @errors.TypeError(
+                message="Cannot convert undefined or null to object",
+              )
             Object(data) => {
               let entries : Array[Value] = []
-              data.properties.each(fn(k, v) {
+              let sorted = sort_property_keys(data.properties)
+              for k in sorted {
                 let enumerable = match data.descriptors.get(k) {
                   Some(d) => d.enumerable
                   None => true
                 }
                 if enumerable {
-                  entries.push(Array({ elements: [String_(k), v] }))
+                  match data.properties.get(k) {
+                    Some(v) => entries.push(Array({ elements: [String_(k), v] }))
+                    None => ()
+                  }
                 }
-              })
+              }
               Array({ elements: entries })
             }
             String_(s) => {
@@ -470,8 +767,17 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => Array({ elements: [] })
           }
         }),
-        "create": make_native_func("create", fn(args) raise {
+        "create": make_static_func_with_length("create", 2, fn(args) raise {
           let proto = if args.length() > 0 { args[0] } else { Null }
+          // Per spec, first argument must be Object or null
+          match proto {
+            Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) | Null => ()
+            _ =>
+              raise @errors.TypeError(
+                message="Object prototype may only be an Object or null: " +
+                  type_of(proto),
+              )
+          }
           let obj = Object({
             properties: {},
             symbol_properties: {},
@@ -547,8 +853,88 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           obj
         }),
-        "assign": make_native_func("assign", fn(args) raise {
-          let target = if args.length() > 0 { args[0] } else { Undefined }
+        "assign": make_static_func_with_length("assign", 2, fn(args) raise {
+          let raw_target = if args.length() > 0 { args[0] } else { Undefined }
+          // Step 1: ToObject(target) — throw for null/undefined, wrap primitives
+          let target : Value = match raw_target {
+            Null | Undefined =>
+              raise @errors.TypeError(
+                message="Cannot convert undefined or null to object",
+              )
+            Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) =>
+              raw_target
+            Number(n) =>
+              Object({
+                properties: { "[[NumberData]]": Number(n) },
+                symbol_properties: {},
+                prototype: get_number_proto(),
+                callable: None,
+                class_name: "Number",
+                descriptors: {},
+                symbol_descriptors: {},
+                extensible: true,
+              })
+            Bool(b) =>
+              Object({
+                properties: { "[[BooleanData]]": Bool(b) },
+                symbol_properties: {},
+                prototype: get_boolean_proto(),
+                callable: None,
+                class_name: "Boolean",
+                descriptors: {},
+                symbol_descriptors: {},
+                extensible: true,
+              })
+            String_(s) => {
+              let props : Map[String, Value] = {}
+              props["[[StringData]]"] = String_(s)
+              props["length"] = Number(s.length().to_double())
+              let chars = s.to_array()
+              for i = 0; i < chars.length(); i = i + 1 {
+                let buf = StringBuilder::new()
+                buf.write_char(chars[i])
+                props[i.to_string()] = String_(buf.to_string())
+              }
+              let descs : Map[String, PropDescriptor] = {}
+              descs["length"] = {
+                writable: false,
+                enumerable: false,
+                configurable: false,
+                getter: None,
+                setter: None,
+              }
+              for i = 0; i < chars.length(); i = i + 1 {
+                descs[i.to_string()] = {
+                  writable: false,
+                  enumerable: true,
+                  configurable: false,
+                  getter: None,
+                  setter: None,
+                }
+              }
+              Object({
+                properties: props,
+                symbol_properties: {},
+                prototype: get_string_proto(),
+                callable: None,
+                class_name: "String",
+                descriptors: descs,
+                symbol_descriptors: {},
+                extensible: true,
+              })
+            }
+            Symbol(_) =>
+              Object({
+                properties: { "[[SymbolData]]": raw_target },
+                symbol_properties: {},
+                prototype: get_symbol_proto(),
+                callable: None,
+                class_name: "Symbol",
+                descriptors: {},
+                symbol_descriptors: {},
+                extensible: true,
+              })
+          }
           match target {
             Object(data) => {
               for i = 1; i < args.length(); i = i + 1 {
@@ -782,7 +1168,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => target
           }
         }),
-        "getPrototypeOf": make_native_func("getPrototypeOf", fn(args) raise {
+        "getPrototypeOf": make_static_func_with_length("getPrototypeOf", 1, fn(args) raise {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           fn get_ctor_proto(name : String) -> Value {
             let ctor = env.get(name) catch { _ => return Null }
@@ -796,6 +1182,10 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             }
           }
           match obj {
+            Null | Undefined =>
+              raise @errors.TypeError(
+                message="Cannot convert undefined or null to object",
+              )
             Object(data) => data.prototype
             Array(_) => get_ctor_proto("Array")
             String_(_) => get_ctor_proto("String")
@@ -817,17 +1207,23 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                     message="Cannot perform 'getPrototypeOf' on a proxy that has been revoked",
                   )
               }
-            _ => Null
           }
         }),
-        "getOwnPropertyNames": make_native_func("getOwnPropertyNames", fn(
+        "getOwnPropertyNames": make_static_func_with_length("getOwnPropertyNames", 1, fn(
           args,
-        ) {
+        ) raise {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           match obj {
+            Null | Undefined =>
+              raise @errors.TypeError(
+                message="Cannot convert undefined or null to object",
+              )
             Object(data) => {
               let keys : Array[Value] = []
-              data.properties.each(fn(k, _v) { keys.push(String_(k)) })
+              let sorted = sort_property_keys(data.properties)
+              for k in sorted {
+                keys.push(String_(k))
+              }
               Array({ elements: keys })
             }
             Array(data) => {
@@ -850,7 +1246,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => Array({ elements: [] })
           }
         }),
-        "getOwnPropertySymbols": make_native_func("getOwnPropertySymbols", fn(
+        "getOwnPropertySymbols": make_static_func_with_length("getOwnPropertySymbols", 1, fn(
           args,
         ) {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
@@ -868,8 +1264,9 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => Array({ elements: [] })
           }
         }),
-        "getOwnPropertyDescriptors": make_native_func(
+        "getOwnPropertyDescriptors": make_static_func_with_length(
           "getOwnPropertyDescriptors",
+          1,
           fn(args) {
             let obj = if args.length() > 0 { args[0] } else { Undefined }
             match obj {
@@ -914,7 +1311,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                         "configurable": Bool(configurable),
                       },
                       symbol_properties: {},
-                      prototype: Null,
+                      prototype: get_obj_proto(),
                       callable: None,
                       class_name: "Object",
                       descriptors: {},
@@ -942,7 +1339,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                         "configurable": Bool(configurable),
                       },
                       symbol_properties: {},
-                      prototype: Null,
+                      prototype: get_obj_proto(),
                       callable: None,
                       class_name: "Object",
                       descriptors: {},
@@ -992,7 +1389,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                         "configurable": Bool(configurable),
                       },
                       symbol_properties: {},
-                      prototype: Null,
+                      prototype: get_obj_proto(),
                       callable: None,
                       class_name: "Object",
                       descriptors: {},
@@ -1020,7 +1417,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                         "configurable": Bool(configurable),
                       },
                       symbol_properties: {},
-                      prototype: Null,
+                      prototype: get_obj_proto(),
                       callable: None,
                       class_name: "Object",
                       descriptors: {},
@@ -1032,7 +1429,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 Object({
                   properties: descriptors_props,
                   symbol_properties: sym_descs,
-                  prototype: Null,
+                  prototype: get_obj_proto(),
                   callable: None,
                   class_name: "Object",
                   descriptors: {},
@@ -1044,7 +1441,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 Object({
                   properties: {},
                   symbol_properties: {},
-                  prototype: Null,
+                  prototype: get_obj_proto(),
                   callable: None,
                   class_name: "Object",
                   descriptors: {},
@@ -1054,7 +1451,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             }
           },
         ),
-        "defineProperty": make_native_func("defineProperty", fn(args) raise {
+        "defineProperty": make_static_func_with_length("defineProperty", 3, fn(args) raise {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           let prop_val = if args.length() > 1 { args[1] } else { Undefined }
           let descriptor = if args.length() > 2 { args[2] } else { Undefined }
@@ -1076,10 +1473,27 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 message="Property description must be an object: \{descriptor.to_string()}",
               )
           }
-          // Extract descriptor properties - works for Object; for Array/Map/Set/Promise use empty
-          let desc_props : Map[String, Value] = match descriptor {
-            Object(desc) => desc.properties
-            _ => {}
+          // Extract descriptor properties using full Get (ToPropertyDescriptor spec)
+          // This handles inherited properties and accessor properties (getters)
+          let desc_props : Map[String, Value] = {
+              let result : Map[String, Value] = {}
+              let interp = match current_interpreter.val {
+                Some(i) => i
+                None => abort("No interpreter")
+              }
+              let loc = @token.Loc::default()
+              let desc_keys = [
+                "value", "writable", "enumerable", "configurable", "get", "set",
+              ]
+              for key in desc_keys {
+                // Use has_property to check if key exists (includes prototype chain)
+                let has = has_property(descriptor, key)
+                if has {
+                  let v = interp.get_property(descriptor, key, loc)
+                  result[key] = v
+                }
+              }
+              result
           }
           // Detect accessor vs data descriptor
           let has_get = desc_props.contains("get")
@@ -1163,7 +1577,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 Symbol(s) => s.id
                 _ => 0
               }
-              let prop_name = prop_val.to_string()
+              let prop_name = if is_symbol_key { "" } else { to_js_string(prop_val) }
 
               // Check if property exists (using symbol or string storage)
               let prop_exists = if is_symbol_key {
@@ -1238,7 +1652,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                   None =>
                     match existing_desc {
                       Some(d) => d.enumerable
-                      None => false
+                      None => if prop_exists { true } else { false }
                     }
                 }
                 let configurable = match new_configurable {
@@ -1246,7 +1660,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                   None =>
                     match existing_desc {
                       Some(d) => d.configurable
-                      None => false
+                      None => if prop_exists { true } else { false }
                     }
                 }
                 let getter = match new_getter {
@@ -1305,12 +1719,14 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                     }
                 }
                 // Build final descriptor using new values or existing defaults
+                // If property exists but has no explicit descriptor, defaults are true
+                // (property was created by normal assignment)
                 let writable = match new_writable {
                   Some(w) => w
                   None =>
                     match existing_desc {
                       Some(d) => d.writable
-                      None => false
+                      None => if prop_exists { true } else { false }
                     }
                 }
                 let enumerable = match new_enumerable {
@@ -1318,7 +1734,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                   None =>
                     match existing_desc {
                       Some(d) => d.enumerable
-                      None => false
+                      None => if prop_exists { true } else { false }
                     }
                 }
                 let configurable = match new_configurable {
@@ -1326,7 +1742,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                   None =>
                     match existing_desc {
                       Some(d) => d.configurable
-                      None => false
+                      None => if prop_exists { true } else { false }
                     }
                 }
                 let final_desc : PropDescriptor = {
@@ -1368,13 +1784,14 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                   set_array_iterator_override(arr_data, None, Some(value))
                 }
               } else {
-                let prop_name = prop_val.to_string()
+                let prop_name = to_js_string(prop_val)
                 if prop_name == "length" {
                   // Handle length property changes
                   match desc_props.get("value") {
-                    Some(Number(n)) => {
+                    Some(val) => {
+                      let n = to_number(val)
                       let new_len = n.to_int()
-                      if new_len < 0 || new_len.to_double() != n {
+                      if new_len < 0 || new_len.to_double() != n || n.is_nan() {
                         raise @errors.RangeError(message="Invalid array length")
                       }
                       // Truncate or extend the array
@@ -1385,8 +1802,6 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                         arr_data.elements.push(Undefined)
                       }
                     }
-                    Some(_) =>
-                      raise @errors.RangeError(message="Invalid array length")
                     None => ()
                   }
                 } else {
@@ -1411,7 +1826,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               }
             }
             Promise(data) => {
-              let prop_name = prop_val.to_string()
+              let prop_name = to_js_string(prop_val)
               let existing_desc = data.descriptors.get(prop_name)
               if is_accessor {
                 if not(data.properties.contains(prop_name)) {
@@ -1521,7 +1936,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                     Symbol(s) => s.id
                     _ => 0
                   }
-                  let prop_name = prop_val.to_string()
+                  let prop_name = to_js_string(prop_val)
                   let prop_exists = if is_symbol_key {
                     data.symbol_properties.contains(sym_id)
                   } else {
@@ -1713,8 +2128,9 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           obj
         }),
-        "getOwnPropertyDescriptor": make_native_func(
+        "getOwnPropertyDescriptor": make_static_func_with_length(
           "getOwnPropertyDescriptor",
+          2,
           fn(args) raise {
             let obj = if args.length() > 0 { args[0] } else { Undefined }
             let prop_key = if args.length() > 1 { args[1] } else { Undefined }
@@ -1738,7 +2154,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                   "configurable": Bool(configurable),
                 },
                 symbol_properties: {},
-                prototype: Null,
+                prototype: get_obj_proto(),
                 callable: None,
                 class_name: "Object",
                 descriptors: {},
@@ -1761,7 +2177,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                   "configurable": Bool(configurable),
                 },
                 symbol_properties: {},
-                prototype: Null,
+                prototype: get_obj_proto(),
                 callable: None,
                 class_name: "Object",
                 descriptors: {},
@@ -1830,7 +2246,8 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                   } else {
                     Undefined
                   }
-                } else if data.properties.contains(prop_name) {
+                } else if data.properties.contains(prop_name) &&
+                  not(prop_name.has_prefix("[[")) {
                   let val = match data.properties.get(prop_name) {
                     Some(v) => v
                     None => Undefined
@@ -1884,6 +2301,57 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                       None => true
                     }
                     make_desc(val, writable, enumerable, configurable)
+                  }
+                } else if data.descriptors.contains(prop_name) {
+                  // Check for accessor-only properties in descriptors (e.g., strict mode arguments.callee)
+                  let desc = data.descriptors.get(prop_name)
+                  let is_accessor = match desc {
+                    Some(d) => d.getter is Some(_) || d.setter is Some(_)
+                    None => false
+                  }
+                  if is_accessor {
+                    let getter_val : Value = match desc {
+                      Some(d) =>
+                        match d.getter {
+                          Some(g) => g
+                          None => Undefined
+                        }
+                      None => Undefined
+                    }
+                    let setter_val : Value = match desc {
+                      Some(d) =>
+                        match d.setter {
+                          Some(s) => s
+                          None => Undefined
+                        }
+                      None => Undefined
+                    }
+                    let enumerable = match desc {
+                      Some(d) => d.enumerable
+                      None => true
+                    }
+                    let configurable = match desc {
+                      Some(d) => d.configurable
+                      None => true
+                    }
+                    make_accessor_desc(
+                      getter_val, setter_val, enumerable, configurable,
+                    )
+                  } else {
+                    // Data descriptor without a value in properties
+                    let writable = match desc {
+                      Some(d) => d.writable
+                      None => true
+                    }
+                    let enumerable = match desc {
+                      Some(d) => d.enumerable
+                      None => true
+                    }
+                    let configurable = match desc {
+                      Some(d) => d.configurable
+                      None => true
+                    }
+                    make_desc(Undefined, writable, enumerable, configurable)
                   }
                 } else {
                   // Check for built-in function properties (length, name)
@@ -2114,7 +2582,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             }
           },
         ),
-        "freeze": make_native_func("freeze", fn(args) {
+        "freeze": make_static_func_with_length("freeze", 1, fn(args) {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           match obj {
             Object(data) => {
@@ -2168,7 +2636,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => obj
           }
         }),
-        "seal": make_native_func("seal", fn(args) {
+        "seal": make_static_func_with_length("seal", 1, fn(args) {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           match obj {
             Object(data) => {
@@ -2228,7 +2696,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => obj
           }
         }),
-        "preventExtensions": make_native_func("preventExtensions", fn(args) {
+        "preventExtensions": make_static_func_with_length("preventExtensions", 1, fn(args) {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           match obj {
             Object(data) => {
@@ -2238,7 +2706,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => obj
           }
         }),
-        "isFrozen": make_native_func("isFrozen", fn(args) {
+        "isFrozen": make_static_func_with_length("isFrozen", 1, fn(args) {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           match obj {
             Object(data) => {
@@ -2257,7 +2725,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => Bool(true) // Non-objects are vacuously frozen
           }
         }),
-        "isSealed": make_native_func("isSealed", fn(args) {
+        "isSealed": make_static_func_with_length("isSealed", 1, fn(args) {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           match obj {
             Object(data) => {
@@ -2276,20 +2744,20 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => Bool(true)
           }
         }),
-        "isExtensible": make_native_func("isExtensible", fn(args) {
+        "isExtensible": make_static_func_with_length("isExtensible", 1, fn(args) {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           match obj {
             Object(data) => Bool(data.extensible)
             _ => Bool(false)
           }
         }),
-        "is": make_native_func("is", fn(args) {
+        "is": make_static_func_with_length("is", 2, fn(args) {
           // Object.is() - SameValue algorithm
           let x = if args.length() > 0 { args[0] } else { Undefined }
           let y = if args.length() > 1 { args[1] } else { Undefined }
           Bool(same_value(x, y))
         }),
-        "fromEntries": make_native_func("fromEntries", fn(args) raise {
+        "fromEntries": make_static_func_with_length("fromEntries", 1, fn(args) raise {
           // Object.fromEntries() - create object from iterable of key-value pairs
           let iterable = if args.length() > 0 { args[0] } else { Undefined }
           let properties : Map[String, Value] = {}
@@ -2347,7 +2815,50 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             extensible: true,
           })
         }),
-        "hasOwn": make_native_func("hasOwn", fn(args) {
+        "groupBy": make_static_func_with_length("groupBy", 2, fn(args) raise {
+          // Object.groupBy(items, callbackFn)
+          let items = if args.length() > 0 { args[0] } else { Undefined }
+          let callback = if args.length() > 1 { args[1] } else { Undefined }
+          if not(is_callable(callback)) {
+            raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
+          }
+          let interp = match current_interpreter.val {
+            Some(i) => i
+            None => abort("No interpreter")
+          }
+          let loc = @token.Loc::default()
+          let o = to_object(items, interp)
+          let len = to_array_like_length_interp(o, interp)
+          let group_arrays : Map[String, Array[Value]] = {}
+          for k = 0; k < len; k = k + 1 {
+            let kvalue = get_array_like_element_interp(interp, o, k)
+            let key = interp.call_value(callback, Undefined, [kvalue, Number(k.to_double())], loc)
+            let property_key = to_js_string(key)
+            match group_arrays.get(property_key) {
+              Some(arr) => arr.push(kvalue)
+              None => {
+                let arr : Array[Value] = [kvalue]
+                group_arrays[property_key] = arr
+              }
+            }
+          }
+          // Build result object with null prototype
+          let result_props : Map[String, Value] = {}
+          group_arrays.each(fn(key, arr) {
+            result_props[key] = Array({ elements: arr })
+          })
+          Object({
+            properties: result_props,
+            symbol_properties: {},
+            prototype: Null,
+            callable: None,
+            class_name: "Object",
+            descriptors: {},
+            symbol_descriptors: {},
+            extensible: true,
+          })
+        }),
+        "hasOwn": make_static_func_with_length("hasOwn", 2, fn(args) {
           // Object.hasOwn() - modern hasOwnProperty replacement
           let obj = if args.length() > 0 { args[0] } else { Undefined }
           let key_val = if args.length() > 1 { args[1] } else { Undefined }
@@ -2375,7 +2886,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             _ => Bool(false)
           }
         }),
-        "setPrototypeOf": make_native_func("setPrototypeOf", fn(args) raise {
+        "setPrototypeOf": make_static_func_with_length("setPrototypeOf", 2, fn(args) raise {
           // Object.setPrototypeOf(obj, prototype)
           // Sets the prototype of the specified object
           let obj = if args.length() > 0 { args[0] } else { Undefined }
@@ -2404,7 +2915,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
           obj
         }),
-        "defineProperties": make_native_func("defineProperties", fn(
+        "defineProperties": make_static_func_with_length("defineProperties", 2, fn(
           args,
         ) raise {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
@@ -2418,10 +2929,28 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 message="Object.defineProperties called on non-object",
               )
           }
+          // Per ES spec step 2: ToObject(Properties) - null/undefined throws TypeError
+          match descs {
+            Null | Undefined =>
+              raise @errors.TypeError(
+                message="Cannot convert undefined or null to object",
+              )
+            _ => ()
+          }
+          let interp = match current_interpreter.val {
+            Some(i) => i
+            None => abort("No interpreter")
+          }
+          let iloc = @token.Loc::default()
           match (obj, descs) {
             (Object(data), Object(desc_obj)) =>
               // Only iterate enumerable own properties of descriptors object
-              desc_obj.properties.each(fn(prop_name, desc_val) raise {
+              // Use get_property to invoke getters on the Properties object
+              desc_obj.properties.each(fn(prop_name, _raw_val) raise {
+                // Skip internal slots
+                if prop_name.has_prefix("[[") {
+                  return
+                }
                 let desc_enumerable = match
                   desc_obj.descriptors.get(prop_name) {
                   Some(d) => d.enumerable
@@ -2430,12 +2959,13 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                 if not(desc_enumerable) {
                   return
                 }
+                let desc_val = interp.get_property(descs, prop_name, iloc)
                 match desc_val {
-                  Object(desc) => {
-                    let has_get = desc.properties.contains("get")
-                    let has_set = desc.properties.contains("set")
-                    let has_value = desc.properties.contains("value")
-                    let has_writable = desc.properties.contains("writable")
+                  Object(_) => {
+                    let has_get = has_property(desc_val, "get")
+                    let has_set = has_property(desc_val, "set")
+                    let has_value = has_property(desc_val, "value")
+                    let has_writable = has_property(desc_val, "writable")
                     let is_accessor = has_get || has_set
                     let is_data = has_value || has_writable
                     if is_accessor && is_data {
@@ -2446,21 +2976,21 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                     let prop_exists = data.properties.contains(prop_name)
                     let existing_desc = data.descriptors.get(prop_name)
 
-                    // Validate getter/setter
+                    // Validate getter/setter - use get_property for prototype chain
                     let new_getter : Value? = if has_get {
-                      match desc.properties.get("get") {
-                        Some(Undefined) => Some(Undefined)
-                        Some(v) => Some(v)
-                        None => None
+                      let v = interp.get_property(desc_val, "get", iloc)
+                      match v {
+                        Undefined => Some(Undefined)
+                        _ => Some(v)
                       }
                     } else {
                       None
                     }
                     let new_setter : Value? = if has_set {
-                      match desc.properties.get("set") {
-                        Some(Undefined) => Some(Undefined)
-                        Some(v) => Some(v)
-                        None => None
+                      let v = interp.get_property(desc_val, "set", iloc)
+                      match v {
+                        Undefined => Some(Undefined)
+                        _ => Some(v)
                       }
                     } else {
                       None
@@ -2491,21 +3021,20 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                           message="Setter must be a function: \{new_setter.unwrap().to_string()}",
                         )
                     }
-                    let new_writable = match desc.properties.get("writable") {
-                      Some(v) => Some(is_truthy(v))
-                      None => None
-                    }
-                    let new_enumerable = match
-                      desc.properties.get("enumerable") {
-                      Some(v) => Some(is_truthy(v))
-                      None => None
-                    }
-                    let new_configurable = match
-                      desc.properties.get("configurable") {
-                      Some(v) => Some(is_truthy(v))
-                      None => None
-                    }
+                    let new_writable = if has_property(desc_val, "writable") {
+                      Some(is_truthy(interp.get_property(desc_val, "writable", iloc)))
+                    } else { None }
+                    let new_enumerable = if has_property(desc_val, "enumerable") {
+                      Some(is_truthy(interp.get_property(desc_val, "enumerable", iloc)))
+                    } else { None }
+                    let new_configurable = if has_property(desc_val, "configurable") {
+                      Some(is_truthy(interp.get_property(desc_val, "configurable", iloc)))
+                    } else { None }
 
+                    // Pre-extract new value for validation (invoke getter if needed)
+                    let new_desc_value : Value? = if has_value {
+                      Some(interp.get_property(desc_val, "value", iloc))
+                    } else { None }
                     // Validate non-configurable constraints or extensibility
                     match existing_desc {
                       Some(existing) =>
@@ -2526,7 +3055,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                               None => Undefined
                             }
                           },
-                          fn() { desc.properties.get("value") },
+                          fn() { new_desc_value },
                         )
                       None =>
                         if not(prop_exists) && not(data.extensible) {
@@ -2587,7 +3116,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                         setter: final_setter,
                       }
                     } else {
-                      match desc.properties.get("value") {
+                      match new_desc_value {
                         Some(v) => data.properties[prop_name] = v
                         None =>
                           if not(data.properties.contains(prop_name)) {
@@ -2627,7 +3156,11 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                       }
                     }
                   }
-                  _ => ()
+                  _ =>
+                    // Per ES spec, ToPropertyDescriptor: if Obj is not an Object, throw TypeError
+                    raise @errors.TypeError(
+                      message="Property description must be an object: " + to_js_string(desc_val),
+                    )
                 }
               })
             (Proxy(proxy_data), Object(desc_obj)) =>
@@ -2833,9 +3366,10 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                   Object(desc) =>
                     if prop_name == "length" {
                       match desc.properties.get("value") {
-                        Some(Number(n)) => {
+                        Some(val) => {
+                          let n = to_number(val)
                           let new_len = n.to_int()
-                          if new_len < 0 || new_len.to_double() != n {
+                          if new_len < 0 || new_len.to_double() != n || n.is_nan() {
                             raise @errors.RangeError(
                               message="Invalid array length",
                             )
@@ -2847,10 +3381,6 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                             arr_data.elements.push(Undefined)
                           }
                         }
-                        Some(_) =>
-                          raise @errors.RangeError(
-                            message="Invalid array length",
-                          )
                         None => ()
                       }
                     } else {
@@ -2986,7 +3516,21 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }),
       ),
       class_name: "Function",
-      descriptors: {},
+      descriptors: {
+        "name": nf_desc, "length": nf_desc, "prototype": { writable: false, enumerable: false, configurable: false, getter: None, setter: None },
+        "keys": obj_method_desc, "values": obj_method_desc, "entries": obj_method_desc,
+        "create": obj_method_desc, "assign": obj_method_desc,
+        "getPrototypeOf": obj_method_desc, "setPrototypeOf": obj_method_desc,
+        "getOwnPropertyNames": obj_method_desc, "getOwnPropertyDescriptor": obj_method_desc,
+        "getOwnPropertyDescriptors": obj_method_desc, "getOwnPropertySymbols": obj_method_desc,
+        "defineProperty": obj_method_desc, "defineProperties": obj_method_desc,
+        "freeze": obj_method_desc, "seal": obj_method_desc,
+        "isFrozen": obj_method_desc, "isSealed": obj_method_desc,
+        "is": obj_method_desc, "isExtensible": obj_method_desc,
+        "preventExtensions": obj_method_desc, "fromEntries": obj_method_desc,
+        "hasOwn": obj_method_desc,
+        "groupBy": obj_method_desc,
+      },
       symbol_descriptors: {},
       extensible: true,
     }),
@@ -3010,59 +3554,57 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
 
   // Create Array.prototype with all array methods
   let array_proto_props : Map[String, Value] = {}
+  let array_proto_descs : Map[String, PropDescriptor] = {}
+  let method_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
 
   // Non-callback methods (using MethodCallable for this-aware dispatch)
-  array_proto_props["push"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("push", fn(this_val, args) raise {
-        match this_val {
+  array_proto_props["push"] = make_interp_method_func("push", 1, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
+        match o {
           Array(arr) => {
             for arg in args {
               arr.elements.push(arg)
             }
             Number(arr.elements.length().to_double())
           }
-          _ => raise @errors.TypeError(message="push called on non-array")
+          _ => {
+            let mut len = to_array_like_length_interp(o, interp)
+            for arg in args {
+              set_array_like_element(o, len, arg)
+              len = len + 1
+            }
+            set_array_like_length(o, len)
+            Number(len.to_double())
+          }
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["pop"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("pop", fn(this_val, _args) raise {
-        match this_val {
+      })
+  array_proto_props["pop"] = make_interp_method_func("pop", 0, fn(interp, this_val, _args) raise {
+        let o = to_object(this_val, interp)
+        match o {
           Array(arr) =>
             if arr.elements.length() == 0 {
               Undefined
             } else {
               arr.elements.pop() |> Option::unwrap
             }
-          _ => raise @errors.TypeError(message="pop called on non-array")
+          _ => {
+            let len = to_array_like_length_interp(o, interp)
+            if len == 0 {
+              set_array_like_length(o, 0)
+              Undefined
+            } else {
+              let new_len = len - 1
+              let val = get_array_like_element_interp(interp, o, new_len)
+              delete_array_like_element(o, new_len)
+              set_array_like_length(o, new_len)
+              val
+            }
+          }
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["shift"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("shift", fn(this_val, _args) raise {
-        match this_val {
+      })
+  array_proto_props["shift"] = make_interp_method_func("shift", 0, fn(interp, this_val, _args) raise {
+        let o = to_object(this_val, interp)
+        match o {
           Array(arr) => {
             if arr.elements.length() == 0 {
               return Undefined
@@ -3080,22 +3622,25 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             }
             first
           }
-          _ => raise @errors.TypeError(message="shift called on non-array")
+          _ => {
+            let len = to_array_like_length_interp(o, interp)
+            if len == 0 {
+              set_array_like_length(o, 0)
+              return Undefined
+            }
+            let first = get_array_like_element_interp(interp, o, 0)
+            for i = 1; i < len; i = i + 1 {
+              set_array_like_element(o, i - 1, get_array_like_element_interp(interp, o, i))
+            }
+            delete_array_like_element(o, len - 1)
+            set_array_like_length(o, len - 1)
+            first
+          }
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["unshift"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("unshift", fn(this_val, args) raise {
-        match this_val {
+      })
+  array_proto_props["unshift"] = make_interp_method_func("unshift", 1, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
+        match o {
           Array(arr) => {
             let old : Array[Value] = []
             for el in arr.elements {
@@ -3112,22 +3657,26 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             }
             Number(arr.elements.length().to_double())
           }
-          _ => raise @errors.TypeError(message="unshift called on non-array")
+          _ => {
+            let len = to_array_like_length_interp(o, interp)
+            let argc = args.length()
+            // Shift existing elements up by argc
+            for i = len - 1; i >= 0; i = i - 1 {
+              set_array_like_element(o, i + argc, get_array_like_element_interp(interp, o, i))
+            }
+            // Insert new elements at the beginning
+            for i = 0; i < argc; i = i + 1 {
+              set_array_like_element(o, i, args[i])
+            }
+            let new_len = len + argc
+            set_array_like_length(o, new_len)
+            Number(new_len.to_double())
+          }
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["join"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("join", fn(this_val, args) {
-        let len = to_array_like_length(this_val)
+      })
+  array_proto_props["join"] = make_interp_method_func("join", 1, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
+        let len = to_array_like_length_interp(o, interp)
         let sep = if args.length() > 0 {
           match args[0] {
             Undefined => ","
@@ -3138,27 +3687,17 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }
         let parts : Array[String] = []
         for i = 0; i < len; i = i + 1 {
-          let v = get_array_like_element(this_val, i)
+          let v = get_array_like_element_interp(interp, o, i)
           match v {
             Null | Undefined => parts.push("")
             _ => parts.push(v.to_string())
           }
         }
         String_(parts.join(sep))
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["indexOf"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("indexOf", fn(this_val, args) raise {
-        let len = to_array_like_length(this_val)
+      })
+  array_proto_props["indexOf"] = make_interp_method_func("indexOf", 1, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
+        let len = to_array_like_length_interp(o, interp)
         let search = if args.length() > 0 { args[0] } else { Undefined }
         let from_idx = if args.length() > 1 {
           to_number(args[1]).to_int()
@@ -3176,27 +3715,17 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           from_idx
         }
         for i = start; i < len; i = i + 1 {
-          if has_array_like_element(this_val, i) {
-            if strict_equal_val(get_array_like_element(this_val, i), search) {
+          if has_array_like_element(o, i) {
+            if strict_equal_val(get_array_like_element_interp(interp, o, i), search) {
               return Number(i.to_double())
             }
           }
         }
         Number(-1.0)
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["lastIndexOf"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("lastIndexOf", fn(this_val, args) raise {
-        let len = to_array_like_length(this_val)
+      })
+  array_proto_props["lastIndexOf"] = make_interp_method_func("lastIndexOf", 1, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
+        let len = to_array_like_length_interp(o, interp)
         let search = if args.length() > 0 { args[0] } else { Undefined }
         let start = if args.length() > 1 {
           to_number(args[1]).to_int()
@@ -3211,27 +3740,17 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           start
         }
         for i = from; i >= 0; i = i - 1 {
-          if has_array_like_element(this_val, i) {
-            if strict_equal_val(get_array_like_element(this_val, i), search) {
+          if has_array_like_element(o, i) {
+            if strict_equal_val(get_array_like_element_interp(interp, o, i), search) {
               return Number(i.to_double())
             }
           }
         }
         Number(-1.0)
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["includes"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("includes", fn(this_val, args) raise {
-        let len = to_array_like_length(this_val)
+      })
+  array_proto_props["includes"] = make_interp_method_func("includes", 1, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
+        let len = to_array_like_length_interp(o, interp)
         let search = if args.length() > 0 { args[0] } else { Undefined }
         let from_idx = if args.length() > 1 {
           to_number(args[1]).to_int()
@@ -3249,25 +3768,15 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           from_idx
         }
         for i = start; i < len; i = i + 1 {
-          if same_value_zero(get_array_like_element(this_val, i), search) {
+          if same_value_zero(get_array_like_element_interp(interp, o, i), search) {
             return Bool(true)
           }
         }
         Bool(false)
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["slice"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("slice", fn(this_val, args) raise {
-        let alen = to_array_like_length(this_val)
+      })
+  array_proto_props["slice"] = make_interp_method_func("slice", 2, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
+        let alen = to_array_like_length_interp(o, interp)
         let mut start = if args.length() > 0 {
           to_number(args[0]).to_int()
         } else {
@@ -3298,144 +3807,153 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }
         let result : Array[Value] = []
         for i = start; i < end; i = i + 1 {
-          result.push(get_array_like_element(this_val, i))
+          result.push(get_array_like_element_interp(interp, o, i))
         }
         Array({ elements: result })
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["concat"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("concat", fn(this_val, args) {
+      })
+  array_proto_props["concat"] = make_interp_method_func("concat", 1, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
         let result : Array[Value] = []
-        // Add elements from this
-        let len = to_array_like_length(this_val)
-        match this_val {
-          Array(arr) =>
-            for el in arr.elements {
-              result.push(el)
-            }
-          _ =>
-            for i = 0; i < len; i = i + 1 {
-              result.push(get_array_like_element(this_val, i))
-            }
+        let concat_sym_id = get_isconcatspreadable_symbol().id
+        // Process this value and each argument per ES2015 concat spec
+        let items : Array[Value] = [o]
+        for a in args {
+          items.push(a)
         }
-        for arg in args {
-          match arg {
-            Array(other) =>
-              for el in other.elements {
-                result.push(el)
+        for item in items {
+          // Determine spreadability: check @@isConcatSpreadable
+          let spreadable = match item {
+            Object(data) => {
+              // Check own symbol property, then walk prototype chain
+              let sym_val = match data.symbol_properties.get(concat_sym_id) {
+                Some(v) => v
+                None => {
+                  let mut found : Value = Undefined
+                  let mut cur = data.prototype
+                  while true {
+                    match cur {
+                      Object(pd) =>
+                        match pd.symbol_properties.get(concat_sym_id) {
+                          Some(v) => { found = v; break }
+                          None => cur = pd.prototype
+                        }
+                      _ => break
+                    }
+                  }
+                  found
+                }
               }
-            _ => result.push(arg)
+              match sym_val {
+                Undefined => data.class_name == "Array"
+                _ => is_truthy(sym_val)
+              }
+            }
+            Array(arr_data) =>
+              match get_array_symbol_prop(arr_data, concat_sym_id) {
+                Some(v) =>
+                  match v {
+                    Undefined => true // default: arrays are spreadable
+                    _ => is_truthy(v)
+                  }
+                None => true // default: arrays are spreadable
+              }
+            _ => false
+          }
+          if spreadable {
+            let len = to_array_like_length_interp(item, interp)
+            for i = 0; i < len; i = i + 1 {
+              if has_array_like_element(item, i) {
+                result.push(get_array_like_element_interp(interp, item, i))
+              } else {
+                result.push(Undefined)
+              }
+            }
+          } else {
+            result.push(item)
           }
         }
         Array({ elements: result })
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["reverse"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("reverse", fn(this_val, _args) raise {
-        match this_val {
+      })
+  array_proto_props["reverse"] = make_interp_method_func("reverse", 0, fn(interp, this_val, _args) raise {
+        let o = to_object(this_val, interp)
+        match o {
           Array(arr) => {
             arr.elements.rev_in_place()
             Array(arr)
           }
-          _ => raise @errors.TypeError(message="reverse called on non-array")
-        }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["fill"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("fill", fn(this_val, args) raise {
-        match this_val {
-          Array(arr) => {
-            let fill_val = if args.length() > 0 { args[0] } else { Undefined }
-            let alen = arr.elements.length()
-            let mut start = if args.length() > 1 {
-              to_number(args[1]).to_int()
-            } else {
-              0
+          _ => {
+            let len = to_array_like_length_interp(o, interp)
+            let mut lower = 0
+            let mut upper = len - 1
+            while lower < upper {
+              let lower_val = get_array_like_element_interp(interp, o, lower)
+              let upper_val = get_array_like_element_interp(interp, o, upper)
+              set_array_like_element(o, lower, upper_val)
+              set_array_like_element(o, upper, lower_val)
+              lower = lower + 1
+              upper = upper - 1
             }
-            let mut end = if args.length() > 2 {
-              to_number(args[2]).to_int()
-            } else {
-              alen
-            }
-            if start < 0 {
-              start = alen + start
-            }
-            if end < 0 {
-              end = alen + end
-            }
-            for i = start; i < end; i = i + 1 {
-              if i >= 0 && i < alen {
-                arr.elements[i] = fill_val
-              }
-            }
-            Array(arr)
-          }
-          _ => raise @errors.TypeError(message="fill called on non-array")
-        }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["toString"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("toString", fn(this_val, _args) {
-        let len = to_array_like_length(this_val)
-        let parts : Array[String] = []
-        for i = 0; i < len; i = i + 1 {
-          let v = get_array_like_element(this_val, i)
-          match v {
-            Null | Undefined => parts.push("")
-            _ => parts.push(v.to_string())
+            o
           }
         }
-        String_(parts.join(","))
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["at"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("at", fn(this_val, args) raise {
-        let len = to_array_like_length(this_val)
+      })
+  array_proto_props["fill"] = make_interp_method_func("fill", 1, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
+        let fill_val = if args.length() > 0 { args[0] } else { Undefined }
+        let alen = to_array_like_length_interp(o, interp)
+        let mut start = if args.length() > 1 {
+          to_number(args[1]).to_int()
+        } else {
+          0
+        }
+        let mut end = if args.length() > 2 {
+          match args[2] {
+            Undefined => alen
+            _ => to_number(args[2]).to_int()
+          }
+        } else {
+          alen
+        }
+        if start < 0 {
+          start = alen + start
+          if start < 0 {
+            start = 0
+          }
+        }
+        if start > alen {
+          start = alen
+        }
+        if end < 0 {
+          end = alen + end
+          if end < 0 {
+            end = 0
+          }
+        }
+        if end > alen {
+          end = alen
+        }
+        for i = start; i < end; i = i + 1 {
+          set_array_like_element(o, i, fill_val)
+        }
+        o
+      })
+  array_proto_props["toString"] = make_interp_method_func("toString", 0, fn(interp, this_val, _args) raise {
+        let o = to_object(this_val, interp)
+        // Per spec, toString calls join if available, otherwise Object.prototype.toString
+        let join_fn = interp.get_property(o, "join", @token.Loc::default())
+        if is_callable(join_fn) {
+          interp.call_value(join_fn, o, [], @token.Loc::default())
+        } else {
+          let cls = match o {
+            Object(d) => d.class_name
+            _ => "Object"
+          }
+          String_("[object " + cls + "]")
+        }
+      })
+  array_proto_props["at"] = make_interp_method_func("at", 1, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
+        let len = to_array_like_length_interp(o, interp)
         let idx = if args.length() > 0 {
           to_number(args[0]).to_int()
         } else {
@@ -3443,94 +3961,79 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }
         let actual_idx = if idx < 0 { len + idx } else { idx }
         if actual_idx >= 0 && actual_idx < len {
-          get_array_like_element(this_val, actual_idx)
+          get_array_like_element_interp(interp, o, actual_idx)
         } else {
           Undefined
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["toLocaleString"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("toLocaleString", fn(this_val, _args) {
-        let len = to_array_like_length(this_val)
+      })
+  array_proto_props["toLocaleString"] = make_interp_method_func("toLocaleString", 0, fn(interp, this_val, _args) raise {
+        let o = to_object(this_val, interp)
+        let len = to_array_like_length_interp(o, interp)
         let parts : Array[String] = []
         for i = 0; i < len; i = i + 1 {
-          let v = get_array_like_element(this_val, i)
+          let v = get_array_like_element_interp(interp, o, i)
           match v {
             Null | Undefined => parts.push("")
-            _ => parts.push(v.to_string())
+            _ => {
+              // Per spec, call toLocaleString on each element
+              let tls = interp.get_property(v, "toLocaleString", @token.Loc::default())
+              if is_callable(tls) {
+                let result = interp.call_value(tls, v, [], @token.Loc::default())
+                parts.push(to_js_string(result))
+              } else {
+                parts.push(v.to_string())
+              }
+            }
           }
         }
         String_(parts.join(","))
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Callback-requiring methods (using InterpreterCallable)
-  array_proto_props["forEach"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("forEach", fn(interp, this_val, args) raise {
+  array_proto_props["forEach"] = make_interp_method_func("forEach", 1, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
         let callback = if args.length() > 0 { args[0] } else { Undefined }
+        if not(is_callable(callback)) {
+          raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
+        }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
-        let len = to_array_like_length(this_val)
+        let len = to_array_like_length_interp(o, interp)
         for i = 0; i < len; i = i + 1 {
-          if has_array_like_element(this_val, i) {
+          if has_array_like_element(o, i) {
             let _ = interp.call_value(
               callback,
               this_arg,
               [
-                get_array_like_element(this_val, i),
+                get_array_like_element_interp(interp, o, i),
                 Number(i.to_double()),
-                this_val,
+                o,
               ],
               loc,
             )
           }
         }
         Undefined
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["map"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("map", fn(interp, this_val, args) raise {
+      })
+  array_proto_props["map"] = make_interp_method_func("map", 1, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
         let callback = if args.length() > 0 { args[0] } else { Undefined }
+        if not(is_callable(callback)) {
+          raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
+        }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
-        let len = to_array_like_length(this_val)
+        let len = to_array_like_length_interp(o, interp)
         let result : Array[Value] = []
         for i = 0; i < len; i = i + 1 {
-          if has_array_like_element(this_val, i) {
+          if has_array_like_element(o, i) {
             let val = interp.call_value(
               callback,
               this_arg,
               [
-                get_array_like_element(this_val, i),
+                get_array_like_element_interp(interp, o, i),
                 Number(i.to_double()),
-                this_val,
+                o,
               ],
               loc,
             )
@@ -3540,31 +4043,24 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
         }
         Array({ elements: result })
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["filter"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("filter", fn(interp, this_val, args) raise {
+      })
+  array_proto_props["filter"] = make_interp_method_func("filter", 1, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
         let callback = if args.length() > 0 { args[0] } else { Undefined }
+        if not(is_callable(callback)) {
+          raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
+        }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
-        let len = to_array_like_length(this_val)
+        let len = to_array_like_length_interp(o, interp)
         let result : Array[Value] = []
         for i = 0; i < len; i = i + 1 {
-          if has_array_like_element(this_val, i) {
-            let el = get_array_like_element(this_val, i)
+          if has_array_like_element(o, i) {
+            let el = get_array_like_element_interp(interp, o, i)
             let val = interp.call_value(
               callback,
               this_arg,
-              [el, Number(i.to_double()), this_val],
+              [el, Number(i.to_double()), o],
               loc,
             )
             if is_truthy(val) {
@@ -3573,119 +4069,118 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
         }
         Array({ elements: result })
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["reduce"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("reduce", fn(interp, this_val, args) raise {
+      })
+  array_proto_props["reduce"] = make_interp_method_func("reduce", 1, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
         let callback = if args.length() > 0 { args[0] } else { Undefined }
+        if not(is_callable(callback)) {
+          raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
+        }
         let loc = @token.Loc::default()
-        let len = to_array_like_length(this_val)
+        let len = to_array_like_length_interp(o, interp)
         let mut acc : Value = Undefined
-        let mut start = 0
+        let mut k = 0
         if args.length() > 1 {
           acc = args[1]
         } else {
-          if len == 0 {
+          // Per spec: find first present element as initial value
+          let mut k_present = false
+          while k < len {
+            if has_array_like_element(o, k) {
+              acc = get_array_like_element_interp(interp, o, k)
+              k = k + 1
+              k_present = true
+              break
+            }
+            k = k + 1
+          }
+          if not(k_present) {
             raise @errors.TypeError(
               message="Reduce of empty array with no initial value",
             )
           }
-          acc = get_array_like_element(this_val, 0)
-          start = 1
         }
-        for i = start; i < len; i = i + 1 {
-          if has_array_like_element(this_val, i) {
+        while k < len {
+          if has_array_like_element(o, k) {
             acc = interp.call_value(
               callback,
               Undefined,
               [
                 acc,
-                get_array_like_element(this_val, i),
-                Number(i.to_double()),
-                this_val,
+                get_array_like_element_interp(interp, o, k),
+                Number(k.to_double()),
+                o,
               ],
               loc,
             )
           }
+          k = k + 1
         }
         acc
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["reduceRight"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("reduceRight", fn(interp, this_val, args) raise {
+      })
+  array_proto_props["reduceRight"] = make_interp_method_func("reduceRight", 1, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
         let callback = if args.length() > 0 { args[0] } else { Undefined }
+        if not(is_callable(callback)) {
+          raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
+        }
         let loc = @token.Loc::default()
-        let len = to_array_like_length(this_val)
+        let len = to_array_like_length_interp(o, interp)
         let mut acc : Value = Undefined
-        let mut start = len - 1
+        let mut k = len - 1
         if args.length() > 1 {
           acc = args[1]
         } else {
-          if len == 0 {
+          // Per spec: find last present element as initial value (searching right to left)
+          let mut k_present = false
+          while k >= 0 {
+            if has_array_like_element(o, k) {
+              acc = get_array_like_element_interp(interp, o, k)
+              k = k - 1
+              k_present = true
+              break
+            }
+            k = k - 1
+          }
+          if not(k_present) {
             raise @errors.TypeError(
               message="Reduce of empty array with no initial value",
             )
           }
-          acc = get_array_like_element(this_val, start)
-          start = start - 1
         }
-        for i = start; i >= 0; i = i - 1 {
-          if has_array_like_element(this_val, i) {
+        while k >= 0 {
+          if has_array_like_element(o, k) {
             acc = interp.call_value(
               callback,
               Undefined,
               [
                 acc,
-                get_array_like_element(this_val, i),
-                Number(i.to_double()),
-                this_val,
+                get_array_like_element_interp(interp, o, k),
+                Number(k.to_double()),
+                o,
               ],
               loc,
             )
           }
+          k = k - 1
         }
         acc
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["find"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("find", fn(interp, this_val, args) raise {
+      })
+  array_proto_props["find"] = make_interp_method_func("find", 1, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
         let callback = if args.length() > 0 { args[0] } else { Undefined }
+        if not(is_callable(callback)) {
+          raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
+        }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
-        let len = to_array_like_length(this_val)
+        let len = to_array_like_length_interp(o, interp)
         for i = 0; i < len; i = i + 1 {
-          let el = get_array_like_element(this_val, i)
+          let el = get_array_like_element_interp(interp, o, i)
           let val = interp.call_value(
             callback,
             this_arg,
-            [el, Number(i.to_double()), this_val],
+            [el, Number(i.to_double()), o],
             loc,
           )
           if is_truthy(val) {
@@ -3693,29 +4188,22 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
         }
         Undefined
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["findIndex"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("findIndex", fn(interp, this_val, args) raise {
+      })
+  array_proto_props["findIndex"] = make_interp_method_func("findIndex", 1, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
         let callback = if args.length() > 0 { args[0] } else { Undefined }
+        if not(is_callable(callback)) {
+          raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
+        }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
-        let len = to_array_like_length(this_val)
+        let len = to_array_like_length_interp(o, interp)
         for i = 0; i < len; i = i + 1 {
-          let el = get_array_like_element(this_val, i)
+          let el = get_array_like_element_interp(interp, o, i)
           let val = interp.call_value(
             callback,
             this_arg,
-            [el, Number(i.to_double()), this_val],
+            [el, Number(i.to_double()), o],
             loc,
           )
           if is_truthy(val) {
@@ -3723,29 +4211,22 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
         }
         Number(-1.0)
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["findLast"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("findLast", fn(interp, this_val, args) raise {
+      })
+  array_proto_props["findLast"] = make_interp_method_func("findLast", 1, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
         let callback = if args.length() > 0 { args[0] } else { Undefined }
+        if not(is_callable(callback)) {
+          raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
+        }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
-        let len = to_array_like_length(this_val)
+        let len = to_array_like_length_interp(o, interp)
         for i = len - 1; i >= 0; i = i - 1 {
-          let el = get_array_like_element(this_val, i)
+          let el = get_array_like_element_interp(interp, o, i)
           let val = interp.call_value(
             callback,
             this_arg,
-            [el, Number(i.to_double()), this_val],
+            [el, Number(i.to_double()), o],
             loc,
           )
           if is_truthy(val) {
@@ -3753,29 +4234,22 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
         }
         Undefined
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["findLastIndex"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("findLastIndex", fn(interp, this_val, args) raise {
+      })
+  array_proto_props["findLastIndex"] = make_interp_method_func("findLastIndex", 1, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
         let callback = if args.length() > 0 { args[0] } else { Undefined }
+        if not(is_callable(callback)) {
+          raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
+        }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
-        let len = to_array_like_length(this_val)
+        let len = to_array_like_length_interp(o, interp)
         for i = len - 1; i >= 0; i = i - 1 {
-          let el = get_array_like_element(this_val, i)
+          let el = get_array_like_element_interp(interp, o, i)
           let val = interp.call_value(
             callback,
             this_arg,
-            [el, Number(i.to_double()), this_val],
+            [el, Number(i.to_double()), o],
             loc,
           )
           if is_truthy(val) {
@@ -3783,32 +4257,25 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
         }
         Number(-1.0)
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["every"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("every", fn(interp, this_val, args) raise {
+      })
+  array_proto_props["every"] = make_interp_method_func("every", 1, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
         let callback = if args.length() > 0 { args[0] } else { Undefined }
+        if not(is_callable(callback)) {
+          raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
+        }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
-        let len = to_array_like_length(this_val)
+        let len = to_array_like_length_interp(o, interp)
         for i = 0; i < len; i = i + 1 {
-          if has_array_like_element(this_val, i) {
+          if has_array_like_element(o, i) {
             let val = interp.call_value(
               callback,
               this_arg,
               [
-                get_array_like_element(this_val, i),
+                get_array_like_element_interp(interp, o, i),
                 Number(i.to_double()),
-                this_val,
+                o,
               ],
               loc,
             )
@@ -3818,32 +4285,25 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
         }
         Bool(true)
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["some"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("some", fn(interp, this_val, args) raise {
+      })
+  array_proto_props["some"] = make_interp_method_func("some", 1, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
         let callback = if args.length() > 0 { args[0] } else { Undefined }
+        if not(is_callable(callback)) {
+          raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
+        }
         let this_arg = if args.length() > 1 { args[1] } else { Undefined }
         let loc = @token.Loc::default()
-        let len = to_array_like_length(this_val)
+        let len = to_array_like_length_interp(o, interp)
         for i = 0; i < len; i = i + 1 {
-          if has_array_like_element(this_val, i) {
+          if has_array_like_element(o, i) {
             let val = interp.call_value(
               callback,
               this_arg,
               [
-                get_array_like_element(this_val, i),
+                get_array_like_element_interp(interp, o, i),
                 Number(i.to_double()),
-                this_val,
+                o,
               ],
               loc,
             )
@@ -3853,80 +4313,38 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           }
         }
         Bool(false)
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["sort"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("sort", fn(interp, this_val, args) raise {
-        match this_val {
-          Array(arr) => {
-            if args.length() > 0 {
-              match args[0] {
-                Undefined =>
-                  arr.elements.sort_by(fn(a, b) {
-                    let sa = a.to_string()
-                    let sb = b.to_string()
-                    if sa < sb {
-                      -1
-                    } else if sa > sb {
-                      1
-                    } else {
-                      0
-                    }
-                  })
-                _ => {
-                  let comparefn = args[0]
-                  let loc = @token.Loc::default()
-                  // Store any exception to re-throw after sort (spec requires propagation)
-                  let mut caught_error : Error? = None
-                  arr.elements.sort_by(fn(a, b) {
-                    if caught_error is Some(_) {
-                      return 0
-                    }
-                    let result = interp.call_value(
-                      comparefn,
-                      Undefined,
-                      [a, b],
-                      loc,
-                    ) catch {
-                      e => {
-                        caught_error = Some(e)
-                        return 0
-                      }
-                    }
-                    // Use sign-based comparison to avoid truncating fractional values
-                    let cmp = to_number(result) catch {
-                      e => {
-                        caught_error = Some(e)
-                        return 0
-                      }
-                    }
-                    if cmp.is_nan() {
-                      0
-                    } else if cmp < 0.0 {
-                      -1
-                    } else if cmp > 0.0 {
-                      1
-                    } else {
-                      0
-                    }
-                  })
-                  match caught_error {
-                    Some(e) => raise e
-                    None => ()
-                  }
-                }
+      })
+  array_proto_props["sort"] = make_interp_method_func("sort", 1, fn(interp, this_val, args) raise {
+        // Step 1: Validate comparefn
+        if args.length() > 0 {
+          let comparefn = args[0]
+          match comparefn {
+            Undefined => ()
+            _ =>
+              if not(is_callable(comparefn)) {
+                raise @errors.TypeError(message=to_js_string(comparefn) + " is not a function")
               }
-            } else {
-              arr.elements.sort_by(fn(a, b) {
+          }
+        }
+        // Extract elements into a mutable array for sorting
+        let elements : Array[Value] = match this_val {
+          Array(arr) => arr.elements
+          _ => to_array_like_elements(this_val)
+        }
+        if args.length() > 0 {
+          match args[0] {
+            Undefined =>
+              elements.sort_by(fn(a, b) {
+                // Per spec: undefined sorts to end
+                if a is Undefined && b is Undefined {
+                  return 0
+                }
+                if a is Undefined {
+                  return 1
+                }
+                if b is Undefined {
+                  return -1
+                }
                 let sa = a.to_string()
                 let sb = b.to_string()
                 if sa < sb {
@@ -3937,125 +4355,178 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                   0
                 }
               })
-            }
-            Array(arr)
-          }
-          _ => raise @errors.TypeError(message="sort called on non-array")
-        }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["flat"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("flat", fn(this_val, args) raise {
-        match this_val {
-          Array(arr) => {
-            let depth = if args.length() > 0 {
-              to_number(args[0]).to_int()
-            } else {
-              1
-            }
-            let result : Array[Value] = []
-            flatten_array_val(arr.elements, depth, result)
-            Array({ elements: result })
-          }
-          _ => raise @errors.TypeError(message="flat called on non-array")
-        }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["flatMap"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("flatMap", fn(interp, this_val, args) raise {
-        match this_val {
-          Array(arr) => {
-            let callback = if args.length() > 0 { args[0] } else { Undefined }
-            let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-            let loc = @token.Loc::default()
-            let result : Array[Value] = []
-            for i = 0; i < arr.elements.length(); i = i + 1 {
-              let val = interp.call_value(
-                callback,
-                this_arg,
-                [arr.elements[i], Number(i.to_double()), Array(arr)],
-                loc,
-              )
-              match val {
-                Array(inner) =>
-                  for el in inner.elements {
-                    result.push(el)
+            _ => {
+              let comparefn = args[0]
+              let loc = @token.Loc::default()
+              let mut caught_error : Error? = None
+              elements.sort_by(fn(a, b) {
+                // Per spec: undefined sorts to end even with comparefn
+                if a is Undefined && b is Undefined {
+                  return 0
+                }
+                if a is Undefined {
+                  return 1
+                }
+                if b is Undefined {
+                  return -1
+                }
+                if caught_error is Some(_) {
+                  return 0
+                }
+                let result = interp.call_value(
+                  comparefn,
+                  Undefined,
+                  [a, b],
+                  loc,
+                ) catch {
+                  e => {
+                    caught_error = Some(e)
+                    return 0
                   }
-                _ => result.push(val)
+                }
+                let cmp = to_number(result) catch {
+                  e => {
+                    caught_error = Some(e)
+                    return 0
+                  }
+                }
+                if cmp.is_nan() {
+                  0
+                } else if cmp < 0.0 {
+                  -1
+                } else if cmp > 0.0 {
+                  1
+                } else {
+                  0
+                }
+              })
+              match caught_error {
+                Some(e) => raise e
+                None => ()
               }
             }
-            Array({ elements: result })
           }
-          _ => raise @errors.TypeError(message="flatMap called on non-array")
-        }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["splice"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("splice", fn(this_val, args) raise {
-        match this_val {
-          Array(arr) => {
-            let alen = arr.elements.length()
-            let mut start = if args.length() > 0 {
-              to_number(args[0]).to_int()
+        } else {
+          elements.sort_by(fn(a, b) {
+            // Per spec: undefined sorts to end
+            if a is Undefined && b is Undefined {
+              return 0
+            }
+            if a is Undefined {
+              return 1
+            }
+            if b is Undefined {
+              return -1
+            }
+            let sa = a.to_string()
+            let sb = b.to_string()
+            if sa < sb {
+              -1
+            } else if sa > sb {
+              1
             } else {
               0
             }
-            if start < 0 {
-              start = alen + start
-              if start < 0 {
-                start = 0
-              }
+          })
+        }
+        // For non-array objects, write sorted elements back
+        match this_val {
+          Array(arr) => Array(arr)
+          _ => {
+            for i = 0; i < elements.length(); i = i + 1 {
+              set_array_like_element(this_val, i, elements[i])
             }
-            if start > alen {
-              start = alen
-            }
-            let del_count = if args.length() > 1 {
-              let d = to_number(args[1]).to_int()
-              if d < 0 {
-                0
-              } else if d > alen - start {
-                alen - start
-              } else {
-                d
+            this_val
+          }
+        }
+      })
+  array_proto_props["flat"] = make_interp_method_func("flat", 0, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
+        let depth = if args.length() > 0 {
+          match args[0] {
+            Undefined => 1
+            _ => to_number(args[0]).to_int()
+          }
+        } else {
+          1
+        }
+        let elements = to_array_like_elements(o)
+        let result : Array[Value] = []
+        flatten_array_val(elements, depth, result)
+        Array({ elements: result })
+      })
+  array_proto_props["flatMap"] = make_interp_method_func("flatMap", 1, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
+        let callback = if args.length() > 0 { args[0] } else { Undefined }
+        if not(is_callable(callback)) {
+          raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
+        }
+        let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+        let loc = @token.Loc::default()
+        let len = to_array_like_length_interp(o, interp)
+        let result : Array[Value] = []
+        for i = 0; i < len; i = i + 1 {
+          let el = get_array_like_element_interp(interp, o, i)
+          let val = interp.call_value(
+            callback,
+            this_arg,
+            [el, Number(i.to_double()), o],
+            loc,
+          )
+          match val {
+            Array(inner) =>
+              for item in inner.elements {
+                result.push(item)
               }
+            _ => result.push(val)
+          }
+        }
+        Array({ elements: result })
+      })
+  array_proto_props["splice"] = make_interp_method_func("splice", 2, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
+        let alen = to_array_like_length_interp(o, interp)
+        let mut start = if args.length() > 0 {
+          to_number(args[0]).to_int()
+        } else {
+          0
+        }
+        if start < 0 {
+          start = alen + start
+          if start < 0 {
+            start = 0
+          }
+        }
+        if start > alen {
+          start = alen
+        }
+        let del_count = if args.length() > 1 {
+          let d_num = to_number(args[1])
+          if d_num.is_inf() || d_num >= (alen - start).to_double() {
+            alen - start
+          } else {
+            let d = d_num.to_int()
+            if d < 0 {
+              0
             } else {
-              alen - start
+              d
             }
-            let removed : Array[Value] = []
-            for i = start; i < start + del_count; i = i + 1 {
-              removed.push(arr.elements[i])
-            }
-            let new_items : Array[Value] = []
-            for i = 2; i < args.length(); i = i + 1 {
-              new_items.push(args[i])
-            }
+          }
+        } else {
+          alen - start
+        }
+        let removed : Array[Value] = []
+        for i = start; i < start + del_count; i = i + 1 {
+          removed.push(get_array_like_element_interp(interp, o, i))
+        }
+        let new_items : Array[Value] = []
+        for i = 2; i < args.length(); i = i + 1 {
+          new_items.push(args[i])
+        }
+        let items_count = new_items.length()
+        // For Array type, use direct element manipulation
+        match o {
+          Array(arr) => {
             let tail : Array[Value] = []
             for i = start + del_count; i < alen; i = i + 1 {
               tail.push(arr.elements[i])
@@ -4069,258 +4540,164 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
             for item in tail {
               arr.elements.push(item)
             }
-            Array({ elements: removed })
           }
-          _ => raise @errors.TypeError(message="splice called on non-array")
-        }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["copyWithin"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("copyWithin", fn(this_val, args) raise {
-        match this_val {
-          Array(arr) => {
-            let len = arr.elements.length()
-            let mut target = if args.length() > 0 {
-              to_number(args[0]).to_int()
-            } else {
-              0
-            }
-            let mut start = if args.length() > 1 {
-              to_number(args[1]).to_int()
-            } else {
-              0
-            }
-            let mut end = if args.length() > 2 {
-              match args[2] {
-                Undefined => len
-                _ => to_number(args[2]).to_int()
+          _ => {
+            // For objects: shift elements appropriately
+            if items_count < del_count {
+              // Shift left
+              for i = start; i < alen - del_count; i = i + 1 {
+                set_array_like_element(o, i + items_count, get_array_like_element_interp(interp, o, i + del_count))
               }
-            } else {
-              len
-            }
-            if target < 0 {
-              target = len + target
-              if target < 0 {
-                target = 0
+              // Delete trailing elements
+              let new_len = alen - del_count + items_count
+              for i = new_len; i < alen; i = i + 1 {
+                delete_array_like_element(o, i)
               }
-            }
-            if start < 0 {
-              start = len + start
-              if start < 0 {
-                start = 0
+              set_array_like_length(o, new_len)
+            } else if items_count > del_count {
+              // Shift right
+              let new_len = alen - del_count + items_count
+              for i = alen - 1; i >= start + del_count; i = i - 1 {
+                set_array_like_element(o, i + items_count - del_count, get_array_like_element_interp(interp, o, i))
               }
+              set_array_like_length(o, new_len)
             }
-            if end < 0 {
-              end = len + end
-              if end < 0 {
-                end = 0
-              }
+            // Insert new items
+            for i = 0; i < items_count; i = i + 1 {
+              set_array_like_element(o, start + i, new_items[i])
             }
-            if end > len {
-              end = len
+            if items_count == del_count {
+              // Length stays the same, no need to change
+              ()
             }
-            let count = if end - start < len - target {
-              end - start
-            } else {
-              len - target
-            }
-            if count > 0 {
-              let temp : Array[Value] = []
-              for i = start; i < start + count; i = i + 1 {
-                temp.push(arr.elements[i])
-              }
-              for i = 0; i < count; i = i + 1 {
-                if target + i < len {
-                  arr.elements[target + i] = temp[i]
-                }
-              }
-            }
-            Array(arr)
           }
-          _ => raise @errors.TypeError(message="copyWithin called on non-array")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["entries"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("entries", fn(this_val, _args) raise {
-        match this_val {
-          Array(arr) => {
-            let result : Array[Value] = []
-            for i = 0; i < arr.elements.length(); i = i + 1 {
-              result.push(
-                Array({ elements: [Number(i.to_double()), arr.elements[i]] }),
-              )
-            }
-            Array({ elements: result })
+        Array({ elements: removed })
+      })
+  array_proto_props["copyWithin"] = make_interp_method_func("copyWithin", 2, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
+        let len = to_array_like_length_interp(o, interp)
+        let mut target = if args.length() > 0 {
+          to_number(args[0]).to_int()
+        } else {
+          0
+        }
+        let mut start = if args.length() > 1 {
+          to_number(args[1]).to_int()
+        } else {
+          0
+        }
+        let mut end = if args.length() > 2 {
+          match args[2] {
+            Undefined => len
+            _ => to_number(args[2]).to_int()
           }
-          _ => raise @errors.TypeError(message="entries called on non-array")
+        } else {
+          len
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["keys"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("keys", fn(this_val, _args) raise {
-        match this_val {
-          Array(arr) => {
-            let result : Array[Value] = []
-            for i = 0; i < arr.elements.length(); i = i + 1 {
-              result.push(Number(i.to_double()))
-            }
-            Array({ elements: result })
+        if target < 0 {
+          target = len + target
+          if target < 0 {
+            target = 0
           }
-          _ => raise @errors.TypeError(message="keys called on non-array")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["values"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("values", fn(this_val, _args) raise {
-        match this_val {
-          Array(arr) => {
-            // Return a copy to prevent mutation of the original
-            let result : Array[Value] = []
-            for el in arr.elements {
-              result.push(el)
-            }
-            Array({ elements: result })
+        if start < 0 {
+          start = len + start
+          if start < 0 {
+            start = 0
           }
-          _ => raise @errors.TypeError(message="values called on non-array")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["toReversed"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("toReversed", fn(this_val, _args) raise {
-        match this_val {
-          Array(arr) => {
-            let result : Array[Value] = []
-            for i = arr.elements.length() - 1; i >= 0; i = i - 1 {
-              result.push(arr.elements[i])
-            }
-            Array({ elements: result })
+        if end < 0 {
+          end = len + end
+          if end < 0 {
+            end = 0
           }
-          _ => raise @errors.TypeError(message="toReversed called on non-array")
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["toSorted"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("toSorted", fn(interp, this_val, args) raise {
-        match this_val {
-          Array(arr) => {
-            let result : Array[Value] = []
-            for el in arr.elements {
-              result.push(el)
+        if end > len {
+          end = len
+        }
+        let count = if end - start < len - target {
+          end - start
+        } else {
+          len - target
+        }
+        if count > 0 {
+          let temp : Array[Value] = []
+          for i = start; i < start + count; i = i + 1 {
+            temp.push(get_array_like_element_interp(interp, o, i))
+          }
+          for i = 0; i < count; i = i + 1 {
+            if target + i < len {
+              set_array_like_element(o, target + i, temp[i])
             }
-            if args.length() > 0 {
-              match args[0] {
-                Undefined =>
-                  result.sort_by(fn(a, b) {
-                    let sa = a.to_string()
-                    let sb = b.to_string()
-                    if sa < sb {
-                      -1
-                    } else if sa > sb {
-                      1
-                    } else {
-                      0
-                    }
-                  })
-                _ => {
-                  let comparefn = args[0]
-                  let loc = @token.Loc::default()
-                  // Store any exception to re-throw after sort (spec requires propagation)
-                  let mut caught_error : Error? = None
-                  result.sort_by(fn(a, b) {
-                    if caught_error is Some(_) {
-                      return 0
-                    }
-                    let cmp_result = interp.call_value(
-                      comparefn,
-                      Undefined,
-                      [a, b],
-                      loc,
-                    ) catch {
-                      e => {
-                        caught_error = Some(e)
-                        return 0
-                      }
-                    }
-                    // Use sign-based comparison to avoid truncating fractional values
-                    let cmp = to_number(cmp_result) catch {
-                      e => {
-                        caught_error = Some(e)
-                        return 0
-                      }
-                    }
-                    if cmp.is_nan() {
-                      0
-                    } else if cmp < 0.0 {
-                      -1
-                    } else if cmp > 0.0 {
-                      1
-                    } else {
-                      0
-                    }
-                  })
-                  match caught_error {
-                    Some(e) => raise e
-                    None => ()
-                  }
-                }
+          }
+        }
+        o
+      })
+  array_proto_props["entries"] = make_interp_method_func("entries", 0, fn(interp, this_val, _args) raise {
+        let o = to_object(this_val, interp)
+        let len = to_array_like_length_interp(o, interp)
+        let result : Array[Value] = []
+        for i = 0; i < len; i = i + 1 {
+          result.push(
+            Array({ elements: [Number(i.to_double()), get_array_like_element_interp(interp, o, i)] }),
+          )
+        }
+        make_array_iterator_value({ elements: result })
+      })
+  array_proto_props["keys"] = make_interp_method_func("keys", 0, fn(interp, this_val, _args) raise {
+        let o = to_object(this_val, interp)
+        let len = to_array_like_length_interp(o, interp)
+        let result : Array[Value] = []
+        for i = 0; i < len; i = i + 1 {
+          result.push(Number(i.to_double()))
+        }
+        make_array_iterator_value({ elements: result })
+      })
+  array_proto_props["values"] = make_interp_method_func("values", 0, fn(interp, this_val, _args) raise {
+        let o = to_object(this_val, interp)
+        let len = to_array_like_length_interp(o, interp)
+        let result : Array[Value] = []
+        for i = 0; i < len; i = i + 1 {
+          result.push(get_array_like_element_interp(interp, o, i))
+        }
+        make_array_iterator_value({ elements: result })
+      })
+  array_proto_props["toReversed"] = make_interp_method_func("toReversed", 0, fn(interp, this_val, _args) raise {
+        let o = to_object(this_val, interp)
+        let len = to_array_like_length_interp(o, interp)
+        let result : Array[Value] = []
+        for i = len - 1; i >= 0; i = i - 1 {
+          result.push(get_array_like_element_interp(interp, o, i))
+        }
+        Array({ elements: result })
+      })
+  array_proto_props["toSorted"] = make_interp_method_func("toSorted", 1, fn(interp, this_val, args) raise {
+        // Step 1: Validate comparefn
+        if args.length() > 0 {
+          let comparefn = args[0]
+          match comparefn {
+            Undefined => ()
+            _ =>
+              if not(is_callable(comparefn)) {
+                raise @errors.TypeError(message=to_js_string(comparefn) + " is not a function")
               }
-            } else {
+          }
+        }
+        let result = to_array_like_elements(this_val)
+        if args.length() > 0 {
+          match args[0] {
+            Undefined =>
               result.sort_by(fn(a, b) {
+                if a is Undefined && b is Undefined {
+                  return 0
+                }
+                if a is Undefined {
+                  return 1
+                }
+                if b is Undefined {
+                  return -1
+                }
                 let sa = a.to_string()
                 let sb = b.to_string()
                 if sa < sb {
@@ -4331,119 +4708,192 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                   0
                 }
               })
+            _ => {
+              let comparefn = args[0]
+              let loc = @token.Loc::default()
+              let mut caught_error : Error? = None
+              result.sort_by(fn(a, b) {
+                if a is Undefined && b is Undefined {
+                  return 0
+                }
+                if a is Undefined {
+                  return 1
+                }
+                if b is Undefined {
+                  return -1
+                }
+                if caught_error is Some(_) {
+                  return 0
+                }
+                let cmp_result = interp.call_value(
+                  comparefn,
+                  Undefined,
+                  [a, b],
+                  loc,
+                ) catch {
+                  e => {
+                    caught_error = Some(e)
+                    return 0
+                  }
+                }
+                let cmp = to_number(cmp_result) catch {
+                  e => {
+                    caught_error = Some(e)
+                    return 0
+                  }
+                }
+                if cmp.is_nan() {
+                  0
+                } else if cmp < 0.0 {
+                  -1
+                } else if cmp > 0.0 {
+                  1
+                } else {
+                  0
+                }
+              })
+              match caught_error {
+                Some(e) => raise e
+                None => ()
+              }
             }
-            Array({ elements: result })
           }
-          _ => raise @errors.TypeError(message="toSorted called on non-array")
-        }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["toSpliced"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("toSpliced", fn(this_val, args) raise {
-        match this_val {
-          Array(arr) => {
-            let len = arr.elements.length()
-            let mut start = if args.length() > 0 {
-              to_number(args[0]).to_int()
+        } else {
+          result.sort_by(fn(a, b) {
+            if a is Undefined && b is Undefined {
+              return 0
+            }
+            if a is Undefined {
+              return 1
+            }
+            if b is Undefined {
+              return -1
+            }
+            let sa = a.to_string()
+            let sb = b.to_string()
+            if sa < sb {
+              -1
+            } else if sa > sb {
+              1
             } else {
               0
             }
-            if start < 0 {
-              start = len + start
-              if start < 0 {
-                start = 0
-              }
-            }
-            if start > len {
-              start = len
-            }
-            let del_count = if args.length() > 1 {
-              let d = to_number(args[1]).to_int()
-              if d < 0 {
-                0
-              } else if d > len - start {
-                len - start
-              } else {
-                d
-              }
-            } else {
-              len - start
-            }
-            let result : Array[Value] = []
-            for i = 0; i < start; i = i + 1 {
-              result.push(arr.elements[i])
-            }
-            for i = 2; i < args.length(); i = i + 1 {
-              result.push(args[i])
-            }
-            for i = start + del_count; i < len; i = i + 1 {
-              result.push(arr.elements[i])
-            }
-            Array({ elements: result })
-          }
-          _ => raise @errors.TypeError(message="toSpliced called on non-array")
+          })
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-  array_proto_props["with"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("with", fn(this_val, args) raise {
-        match this_val {
-          Array(arr) => {
-            let idx = if args.length() > 0 {
-              to_number(args[0]).to_int()
-            } else {
-              0
-            }
-            let value = if args.length() > 1 { args[1] } else { Undefined }
-            let len = arr.elements.length()
-            let actual_idx = if idx < 0 { len + idx } else { idx }
-            if actual_idx < 0 || actual_idx >= len {
-              raise @errors.RangeError(message="Invalid index")
-            }
-            let result : Array[Value] = []
-            for i = 0; i < len; i = i + 1 {
-              if i == actual_idx {
-                result.push(value)
-              } else {
-                result.push(arr.elements[i])
-              }
-            }
-            Array({ elements: result })
-          }
-          _ => raise @errors.TypeError(message="with called on non-array")
+        Array({ elements: result })
+      })
+  array_proto_props["toSpliced"] = make_interp_method_func("toSpliced", 2, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
+        let len = to_array_like_length_interp(o, interp)
+        let mut start = if args.length() > 0 {
+          to_number(args[0]).to_int()
+        } else {
+          0
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+        if start < 0 {
+          start = len + start
+          if start < 0 {
+            start = 0
+          }
+        }
+        if start > len {
+          start = len
+        }
+        let del_count = if args.length() > 1 {
+          let d = to_number(args[1]).to_int()
+          if d < 0 {
+            0
+          } else if d > len - start {
+            len - start
+          } else {
+            d
+          }
+        } else {
+          len - start
+        }
+        let result : Array[Value] = []
+        for i = 0; i < start; i = i + 1 {
+          result.push(get_array_like_element_interp(interp, o, i))
+        }
+        for i = 2; i < args.length(); i = i + 1 {
+          result.push(args[i])
+        }
+        for i = start + del_count; i < len; i = i + 1 {
+          result.push(get_array_like_element_interp(interp, o, i))
+        }
+        Array({ elements: result })
+      })
+  array_proto_props["with"] = make_interp_method_func("with", 2, fn(interp, this_val, args) raise {
+        let o = to_object(this_val, interp)
+        let idx = if args.length() > 0 {
+          to_number(args[0]).to_int()
+        } else {
+          0
+        }
+        let value = if args.length() > 1 { args[1] } else { Undefined }
+        let len = to_array_like_length_interp(o, interp)
+        let actual_idx = if idx < 0 { len + idx } else { idx }
+        if actual_idx < 0 || actual_idx >= len {
+          raise @errors.RangeError(message="Invalid index")
+        }
+        let result : Array[Value] = []
+        for i = 0; i < len; i = i + 1 {
+          if i == actual_idx {
+            result.push(value)
+          } else {
+            result.push(get_array_like_element_interp(interp, o, i))
+          }
+        }
+        Array({ elements: result })
+      })
+  array_proto_descs["push"] = method_desc
+  array_proto_descs["pop"] = method_desc
+  array_proto_descs["shift"] = method_desc
+  array_proto_descs["unshift"] = method_desc
+  array_proto_descs["join"] = method_desc
+  array_proto_descs["indexOf"] = method_desc
+  array_proto_descs["lastIndexOf"] = method_desc
+  array_proto_descs["includes"] = method_desc
+  array_proto_descs["slice"] = method_desc
+  array_proto_descs["concat"] = method_desc
+  array_proto_descs["reverse"] = method_desc
+  array_proto_descs["fill"] = method_desc
+  array_proto_descs["toString"] = method_desc
+  array_proto_descs["at"] = method_desc
+  array_proto_descs["toLocaleString"] = method_desc
+  array_proto_descs["forEach"] = method_desc
+  array_proto_descs["map"] = method_desc
+  array_proto_descs["filter"] = method_desc
+  array_proto_descs["reduce"] = method_desc
+  array_proto_descs["reduceRight"] = method_desc
+  array_proto_descs["find"] = method_desc
+  array_proto_descs["findIndex"] = method_desc
+  array_proto_descs["findLast"] = method_desc
+  array_proto_descs["findLastIndex"] = method_desc
+  array_proto_descs["every"] = method_desc
+  array_proto_descs["some"] = method_desc
+  array_proto_descs["sort"] = method_desc
+  array_proto_descs["flat"] = method_desc
+  array_proto_descs["flatMap"] = method_desc
+  array_proto_descs["splice"] = method_desc
+  array_proto_descs["copyWithin"] = method_desc
+  array_proto_descs["entries"] = method_desc
+  array_proto_descs["keys"] = method_desc
+  array_proto_descs["values"] = method_desc
+  array_proto_descs["toReversed"] = method_desc
+  array_proto_descs["toSorted"] = method_desc
+  array_proto_descs["toSpliced"] = method_desc
+  array_proto_descs["with"] = method_desc
+  // Array.prototype.length = 0 (per spec, Array.prototype is an Array with length 0)
+  array_proto_props["length"] = Number(0.0)
+  array_proto_descs["length"] = { writable: true, enumerable: false, configurable: false, getter: None, setter: None }
   let array_proto : Value = Object({
     properties: array_proto_props,
     symbol_properties: {},
     prototype: obj_proto,
     callable: None,
     class_name: "Array",
-    descriptors: {},
+    descriptors: array_proto_descs,
     symbol_descriptors: {},
     extensible: true,
   })
@@ -4451,29 +4901,58 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
   // Array constructor with Array.isArray, Array.from, Array.of
   let array_props : Map[String, Value] = {}
   array_props["prototype"] = array_proto
-  array_props["isArray"] = make_native_func("isArray", fn(args) {
+  array_props["name"] = String_("Array")
+  array_props["length"] = Number(1.0)
+  array_props["isArray"] = make_static_func_with_length("isArray", 1, fn(args) {
     let val = if args.length() > 0 { args[0] } else { Undefined }
-    match val {
-      Array(_) => Bool(true)
-      _ => Bool(false)
+    // Spec: Array.isArray unwraps proxies recursively
+    let mut current = val
+    while true {
+      match current {
+        Array(_) => return Bool(true)
+        Object(data) =>
+          // Array.prototype is an Object with class_name "Array"
+          if data.class_name == "Array" {
+            return Bool(true)
+          } else {
+            return Bool(false)
+          }
+        Proxy(proxy_data) =>
+          match proxy_data.target {
+            Some(target) => current = target
+            None => return Bool(false)
+          }
+        _ => return Bool(false)
+      }
     }
+    Bool(false)
   })
-  array_props["of"] = make_native_func("of", fn(args) {
+  array_props["of"] = make_static_func("of", fn(args) {
     // Array.of() - creates array from arguments
     Array({ elements: args })
   })
   // Array.from with mapFn support using InterpreterCallable
-  array_props["from"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("from", fn(interp, _this_val, args) raise {
+  array_props["from"] = make_interp_method_func("from", 1, fn(interp, _this_val, args) raise {
         let source = if args.length() > 0 { args[0] } else { Undefined }
+        // Per spec, items must not be null/undefined
+        if source is (Null | Undefined) {
+          raise @errors.TypeError(
+            message="Cannot read properties of " +
+              to_js_string(source) +
+              " (reading 'Symbol(Symbol.iterator)')",
+          )
+        }
         let map_fn = if args.length() > 1 {
           match args[1] {
             Undefined => None
-            fn_val => Some(fn_val)
+            fn_val => {
+              if not(is_callable(fn_val)) {
+                raise @errors.TypeError(
+                  message=to_js_string(fn_val) + " is not a function",
+                )
+              }
+              Some(fn_val)
+            }
           }
         } else {
           None
@@ -4481,74 +4960,111 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         let this_arg = if args.length() > 2 { args[2] } else { Undefined }
         let loc = @token.Loc::default()
         let elements : Array[Value] = []
-        match source {
-          Array(data) =>
-            for i = 0; i < data.elements.length(); i = i + 1 {
-              let el = data.elements[i]
-              let mapped = match map_fn {
-                Some(fn_val) =>
-                  interp.call_value(
-                    fn_val,
-                    this_arg,
-                    [el, Number(i.to_double())],
-                    loc,
-                  )
-                None => el
-              }
-              elements.push(mapped)
+        // Per spec: first try Symbol.iterator (iterable protocol)
+        let iterator_sym = get_iterator_symbol()
+        let mut used_iterator = false
+        let iterator_method = interp.get_computed_property(
+          source,
+          Symbol(iterator_sym),
+          loc,
+        )
+        if is_callable(iterator_method) {
+          used_iterator = true
+          let iterator = interp.call_value(iterator_method, source, [], loc)
+          let mut k = 0
+          while true {
+            let next_fn = interp.get_property(iterator, "next", loc)
+            let next = interp.call_value(next_fn, iterator, [], loc)
+            let done = match next {
+              Object(d) =>
+                match d.properties.get("done") {
+                  Some(v) => is_truthy(v)
+                  _ => false
+                }
+              _ => true
             }
-          String_(s) => {
-            let chars = s.to_array()
-            for i = 0; i < chars.length(); i = i + 1 {
-              let el = String_(chars[i].to_string())
-              let mapped = match map_fn {
-                Some(fn_val) =>
-                  interp.call_value(
-                    fn_val,
-                    this_arg,
-                    [el, Number(i.to_double())],
-                    loc,
-                  )
-                None => el
+            if done {
+              break
+            }
+            let value = match next {
+              Object(d) =>
+                match d.properties.get("value") {
+                  Some(v) => v
+                  None => Undefined
+                }
+              _ => Undefined
+            }
+            let mapped = match map_fn {
+              Some(fn_val) =>
+                interp.call_value(
+                  fn_val,
+                  this_arg,
+                  [value, Number(k.to_double())],
+                  loc,
+                )
+              None => value
+            }
+            elements.push(mapped)
+            k = k + 1
+          }
+        }
+        if not(used_iterator) {
+          // Fallback: array-like behavior
+          match source {
+            Array(data) =>
+              for i = 0; i < data.elements.length(); i = i + 1 {
+                let el = data.elements[i]
+                let mapped = match map_fn {
+                  Some(fn_val) =>
+                    interp.call_value(
+                      fn_val,
+                      this_arg,
+                      [el, Number(i.to_double())],
+                      loc,
+                    )
+                  None => el
+                }
+                elements.push(mapped)
               }
-              elements.push(mapped)
+            String_(s) => {
+              let chars = s.to_array()
+              for i = 0; i < chars.length(); i = i + 1 {
+                let el = String_(chars[i].to_string())
+                let mapped = match map_fn {
+                  Some(fn_val) =>
+                    interp.call_value(
+                      fn_val,
+                      this_arg,
+                      [el, Number(i.to_double())],
+                      loc,
+                    )
+                  None => el
+                }
+                elements.push(mapped)
+              }
+            }
+            _ => {
+              let o = to_object(source, interp)
+              let len = to_array_like_length_interp(o, interp)
+              for i = 0; i < len; i = i + 1 {
+                let el = interp.get_property(o, i.to_string(), loc)
+                let mapped = match map_fn {
+                  Some(fn_val) =>
+                    interp.call_value(
+                      fn_val,
+                      this_arg,
+                      [el, Number(i.to_double())],
+                      loc,
+                    )
+                  None => el
+                }
+                elements.push(mapped)
+              }
             }
           }
-          Object(data) => {
-            let len = match data.properties.get("length") {
-              Some(Number(n)) => n.to_int()
-              Some(v) => to_number(v).to_int() catch { _ => 0 }
-              None => 0
-            }
-            for i = 0; i < len; i = i + 1 {
-              let key = i.to_string()
-              let el = match data.properties.get(key) {
-                Some(v) => v
-                None => Undefined
-              }
-              let mapped = match map_fn {
-                Some(fn_val) =>
-                  interp.call_value(
-                    fn_val,
-                    this_arg,
-                    [el, Number(i.to_double())],
-                    loc,
-                  )
-                None => el
-              }
-              elements.push(mapped)
-            }
-          }
-          _ => ()
         }
         Array({ elements, })
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
   env.def_builtin(
     "Array",
     Object({
@@ -4561,20 +5077,18 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
           if args.length() == 1 {
             match args[0] {
               Number(n) => {
-                // Array(n) produces a dense array populated with undefined values.
-                // LIMITATION: This interpreter does not support sparse arrays.
-                // In standard JS, Array(n) creates sparse holes (empty slots), which
-                // behave differently: hasOwnProperty returns false for holes,
-                // 'in' operator returns false, and forEach/map/filter skip holes.
-                // Our implementation fills with undefined instead, making all indices
-                // present. This is an intentional simplification.
-                let len = n.to_int()
-                if len < 0 || n != len.to_double() || len > 0xFFFFFFFF {
+                // Array(n) creates an array with the given length.
+                // Validate using double to avoid int32 overflow
+                if n < 0.0 || n > 4294967295.0 || n != @math.floor(n) || n.is_nan() {
                   raise @errors.RangeError(message="Invalid array length")
                 }
+                let len = n.to_int64().to_int()
                 let elements : Array[Value] = []
-                for _i = 0; _i < len; _i = _i + 1 {
-                  elements.push(Undefined)
+                // Cap pre-allocation to prevent hangs with very large lengths
+                if len >= 0 && len <= 100000 {
+                  for _i = 0; _i < len; _i = _i + 1 {
+                    elements.push(Undefined)
+                  }
                 }
                 Array({ elements, })
               }
@@ -4586,7 +5100,11 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
         }),
       ),
       class_name: "Function",
-      descriptors: {},
+      descriptors: {
+        "name": nf_desc, "length": nf_desc,
+        "prototype": { writable: false, enumerable: false, configurable: false, getter: None, setter: None },
+        "isArray": obj_method_desc, "from": obj_method_desc, "of": obj_method_desc,
+      },
       symbol_descriptors: {},
       extensible: true,
     }),
@@ -4724,42 +5242,98 @@ fn flatten_array_val(
 
 ///|
 /// ToLength: Get length from any value as per ECMAScript spec (array-like objects)
-pub fn to_array_like_length(val : Value) -> Int {
+pub fn to_array_like_length(val : Value) -> Int raise {
   match val {
+    Null =>
+      raise @errors.TypeError(
+        message="Cannot convert undefined or null to object",
+      )
+    Undefined =>
+      raise @errors.TypeError(
+        message="Cannot convert undefined or null to object",
+      )
     Array(data) => data.elements.length()
-    Object(data) =>
-      match data.properties.get("length") {
-        Some(Number(n)) => {
-          let len = n.to_int()
-          if len < 0 {
-            0
-          } else {
-            len
+    Object(data) => {
+      // Check for getter-based length first, then fall back to properties
+      let length_val : Value? = match data.properties.get("length") {
+        Some(v) => Some(v)
+        None =>
+          // Check if length is defined as an accessor (getter)
+          match data.descriptors.get("length") {
+            Some(desc) =>
+              match desc.getter {
+                Some(Object(getter_data)) =>
+                  match getter_data.callable {
+                    Some(NativeCallable(_, f)) => Some(f([]))
+                    Some(NonConstructableCallable(_, f)) => Some(f([]))
+                    Some(MethodCallable(_, f)) => Some(f(Object(data), []))
+                    _ => None
+                  }
+                _ => None
+              }
+            None => None
           }
-        }
-        Some(v) => {
-          let n = to_number(v) catch { _ => 0.0 }
-          if n.is_nan() {
-            0
-          } else if n.is_inf() {
-            if n > 0.0 {
-              0x7FFFFFFF
-            } else {
-              0
-            }
-          } else {
-            let i = n.to_int()
-            if i < 0 {
-              0
-            } else {
-              i
-            }
-          }
-        }
-        None => 0
       }
+      to_length_from_value(length_val)
+    }
     String_(s) => s.length()
     _ => 0
+  }
+}
+
+///|
+/// ToLength with full interpreter support for user-defined getter-based length
+pub fn to_array_like_length_interp(val : Value, interp : Interpreter) -> Int raise {
+  match val {
+    Null =>
+      raise @errors.TypeError(
+        message="Cannot convert undefined or null to object",
+      )
+    Undefined =>
+      raise @errors.TypeError(
+        message="Cannot convert undefined or null to object",
+      )
+    Array(data) => data.elements.length()
+    String_(s) => s.length()
+    _ => {
+      // Use interpreter's get_property to properly handle getters and prototype chains
+      let length_val = interp.get_property(val, "length", @token.Loc::default())
+      to_length_from_value(Some(length_val))
+    }
+  }
+}
+
+///|
+fn to_length_from_value(v : Value?) -> Int raise {
+  match v {
+    Some(Number(n)) => {
+      let len = n.to_int()
+      if len < 0 {
+        0
+      } else {
+        len
+      }
+    }
+    Some(v) => {
+      let n = to_number(v)
+      if n.is_nan() {
+        0
+      } else if n.is_inf() {
+        if n > 0.0 {
+          0x7FFFFFFF
+        } else {
+          0
+        }
+      } else {
+        let i = n.to_int()
+        if i < 0 {
+          0
+        } else {
+          i
+        }
+      }
+    }
+    None => 0
   }
 }
 
@@ -4774,29 +5348,49 @@ pub fn get_array_like_element(val : Value, index : Int) -> Value {
       } else {
         Undefined
       }
-    Object(data) =>
-      // Walk prototype chain for property lookup
-      match data.properties.get(key) {
+    Object(data) => {
+      // Check for accessor descriptor (getter) on own property first
+      let getter_result : Value? = match data.descriptors.get(key) {
+        Some(desc) =>
+          match desc.getter {
+            Some(Object(getter_data)) =>
+              match getter_data.callable {
+                Some(NativeCallable(_, f)) => try { Some(f([])) } catch { _ => None }
+                Some(NonConstructableCallable(_, f)) => try { Some(f([])) } catch { _ => None }
+                Some(MethodCallable(_, f)) => try { Some(f(Object(data), [])) } catch { _ => None }
+                _ => None
+              }
+            _ => None
+          }
+        None => None
+      }
+      match getter_result {
         Some(v) => v
-        None => {
-          let mut current = data.prototype
-          let mut result : Value = Undefined
-          while true {
-            match current {
-              Object(proto_data) =>
-                match proto_data.properties.get(key) {
-                  Some(v) => {
-                    result = v
-                    break
-                  }
-                  None => current = proto_data.prototype
+        None =>
+          // Walk prototype chain for property lookup
+          match data.properties.get(key) {
+            Some(v) => v
+            None => {
+              let mut current = data.prototype
+              let mut result : Value = Undefined
+              while true {
+                match current {
+                  Object(proto_data) =>
+                    match proto_data.properties.get(key) {
+                      Some(v) => {
+                        result = v
+                        break
+                      }
+                      None => current = proto_data.prototype
+                    }
+                  _ => break
                 }
-              _ => break
+              }
+              result
             }
           }
-          result
-        }
       }
+    }
     String_(s) => {
       let chars = s.to_array()
       if index >= 0 && index < chars.length() {
@@ -4812,6 +5406,24 @@ pub fn get_array_like_element(val : Value, index : Int) -> Value {
 }
 
 ///|
+/// Get indexed element from array-like value using interpreter (handles user-defined getters)
+pub fn get_array_like_element_interp(
+  interp : Interpreter,
+  val : Value,
+  index : Int
+) -> Value raise {
+  match val {
+    Array(data) =>
+      if index >= 0 && index < data.elements.length() {
+        data.elements[index]
+      } else {
+        Undefined
+      }
+    _ => interp.get_property(val, index.to_string(), @token.Loc::default())
+  }
+}
+
+///|
 /// Check if array-like value has indexed property
 pub fn has_array_like_element(val : Value, index : Int) -> Bool {
   let key = index.to_string()
@@ -4821,16 +5433,26 @@ pub fn has_array_like_element(val : Value, index : Int) -> Bool {
       if data.properties.contains(key) {
         return true
       }
+      // Check for accessor descriptor
+      match data.descriptors.get(key) {
+        Some(desc) if desc.getter is Some(_) => return true
+        _ => ()
+      }
       // Walk prototype chain
       let mut current = data.prototype
       while true {
         match current {
-          Object(proto_data) =>
+          Object(proto_data) => {
             if proto_data.properties.contains(key) {
               return true
-            } else {
-              current = proto_data.prototype
             }
+            match proto_data.descriptors.get(key) {
+              Some(desc) if desc.getter is Some(_) => return true
+              _ => ()
+            }
+            current = proto_data.prototype
+          }
+          Array(arr_data) => return index >= 0 && index < arr_data.elements.length()
           _ => break
         }
       }
@@ -4839,4 +5461,48 @@ pub fn has_array_like_element(val : Value, index : Int) -> Bool {
     String_(s) => index >= 0 && index < s.length()
     _ => false
   }
+}
+
+///|
+/// Set indexed element on array-like value
+pub fn set_array_like_element(val : Value, index : Int, value : Value) -> Unit {
+  let key = index.to_string()
+  match val {
+    Array(data) =>
+      if index >= 0 && index < data.elements.length() {
+        data.elements[index] = value
+      }
+    Object(data) => data.properties[key] = value
+    _ => ()
+  }
+}
+
+///|
+/// Set the length property on an array-like value
+pub fn set_array_like_length(val : Value, len : Int) -> Unit {
+  match val {
+    Object(data) => data.properties["length"] = Number(len.to_double())
+    _ => ()
+  }
+}
+
+///|
+/// Delete indexed element from array-like value
+pub fn delete_array_like_element(val : Value, index : Int) -> Unit {
+  let key = index.to_string()
+  match val {
+    Object(data) => data.properties.remove(key) |> ignore
+    _ => ()
+  }
+}
+
+///|
+/// Convert array-like value to an Array of Values
+pub fn to_array_like_elements(val : Value) -> Array[Value] raise {
+  let len = to_array_like_length(val)
+  let result : Array[Value] = []
+  for i = 0; i < len; i = i + 1 {
+    result.push(get_array_like_element(val, i))
+  }
+  result
 }

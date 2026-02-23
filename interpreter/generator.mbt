@@ -61,6 +61,9 @@ pub(all) struct GeneratorObject {
   mut delegate_iterator : Value // the delegate iterator (or Undefined if not delegating)
   mut delegate_next : Value // the delegate's next method
   mut delegating : Bool // true if currently in yield* delegation
+  // Yield index tracking for nested yields (e.g. yield yield 1)
+  mut yield_index : Int // counter incremented each time eval_yield is called
+  mut resume_at_yield : Int // index of the yield that was suspended
 }
 
 ///|
@@ -140,21 +143,10 @@ fn init_generator_prototype() -> Value {
   let descs : Map[String, PropDescriptor] = {}
 
   // .next(value)
-  props["next"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("next", fn(ip, this_val, args) raise {
+  props["next"] = make_interp_method_func("next", 1, fn(ip, this_val, args) raise {
         let arg = if args.length() > 0 { args[0] } else { Undefined }
         generator_resume(ip, this_val, Next(arg))
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
   descs["next"] = {
     writable: true,
     enumerable: false,
@@ -164,21 +156,10 @@ fn init_generator_prototype() -> Value {
   }
 
   // .throw(exception)
-  props["throw"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("throw", fn(ip, this_val, args) raise {
+  props["throw"] = make_interp_method_func("throw", 1, fn(ip, this_val, args) raise {
         let arg = if args.length() > 0 { args[0] } else { Undefined }
         generator_resume(ip, this_val, Throw(arg))
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
   descs["throw"] = {
     writable: true,
     enumerable: false,
@@ -188,21 +169,10 @@ fn init_generator_prototype() -> Value {
   }
 
   // .return(value)
-  props["return"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("return", fn(ip, this_val, args) raise {
+  props["return"] = make_interp_method_func("return", 1, fn(ip, this_val, args) raise {
         let arg = if args.length() > 0 { args[0] } else { Undefined }
         generator_resume(ip, this_val, Return(arg))
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
   descs["return"] = {
     writable: true,
     enumerable: false,
@@ -212,18 +182,18 @@ fn init_generator_prototype() -> Value {
   }
 
   // [Symbol.iterator]() { return this; }
-  sym_props[iterator_sym.id] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("[Symbol.iterator]", fn(this_val, _args) { this_val }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+  sym_props[iterator_sym.id] = make_method_func("[Symbol.iterator]", 0, fn(this_val, _args) { this_val })
+  // [Symbol.toStringTag] = "Generator"
+  let sym_descs : Map[Int, PropDescriptor] = {}
+  let tostringtag_sym = get_tostringtag_symbol()
+  sym_props[tostringtag_sym.id] = String_("Generator")
+  sym_descs[tostringtag_sym.id] = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   Object({
     properties: props,
     symbol_properties: sym_props,
@@ -231,7 +201,7 @@ fn init_generator_prototype() -> Value {
     callable: None,
     class_name: "Generator",
     descriptors: descs,
-    symbol_descriptors: {},
+    symbol_descriptors: sym_descs,
     extensible: true,
   })
 }
@@ -249,23 +219,29 @@ pub fn setup_generator_function_constructor(
     Some(binding) => binding.value
     None => Null
   }
+  let gf_sym_props : Map[Int, Value] = {}
+  let gf_sym_descs : Map[Int, PropDescriptor] = {}
+  let tostringtag_sym = get_tostringtag_symbol()
+  gf_sym_props[tostringtag_sym.id] = String_("GeneratorFunction")
+  gf_sym_descs[tostringtag_sym.id] = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   let gen_func_proto : Value = Object({
     properties: {},
-    symbol_properties: {},
+    symbol_properties: gf_sym_props,
     prototype: func_proto,
     callable: None,
     class_name: "GeneratorFunction",
     descriptors: {},
-    symbol_descriptors: {},
+    symbol_descriptors: gf_sym_descs,
     extensible: true,
   })
   // GeneratorFunction constructor: GeneratorFunction(p1, p2, ..., body)
-  let gen_func_ctor : Value = Object({
-    properties: { "length": Number(1.0), "prototype": gen_func_proto },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("GeneratorFunction", fn(interp, _this, args) raise {
+  let gen_func_ctor : Value = make_interp_method_func("GeneratorFunction", 1, fn(interp, _this, args) raise {
         if args.length() == 0 {
           // No arguments: return empty generator function
           return interp.make_generator_function(
@@ -324,21 +300,26 @@ pub fn setup_generator_function_constructor(
           [],
           interp.global,
         )
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
   // Set up prototype chain: GeneratorFunction.prototype.constructor = GeneratorFunction
   match gen_func_proto {
-    Object(data) => data.properties["constructor"] = gen_func_ctor
+    Object(data) => {
+      data.properties["constructor"] = gen_func_ctor
+      data.descriptors["constructor"] = { writable: false, enumerable: false, configurable: true, getter: None, setter: None }
+    }
     _ => ()
   }
   // Mirror onto globalThis
   match global_this {
     Object(data) => data.properties["GeneratorFunction"] = gen_func_ctor
+    _ => ()
+  }
+  // Add prototype property to GeneratorFunction constructor
+  match gen_func_ctor {
+    Object(data) => {
+      data.properties["prototype"] = gen_func_proto
+      data.descriptors["prototype"] = { writable: false, enumerable: false, configurable: false, getter: None, setter: None }
+    }
     _ => ()
   }
   env.def_builtin("GeneratorFunction", gen_func_ctor)
@@ -387,19 +368,29 @@ fn Interpreter::make_generator_function(
     Some(binding) => binding.value
     None => Null
   }
+  let func_name = match name {
+    Some(n) => n
+    None => ""
+  }
   let fn_props : Map[String, Value] = {}
   fn_props["prototype"] = func_prototype
+  fn_props["name"] = String_(func_name)
+  fn_props["length"] = Number(params.length().to_double())
+  let nf_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   Object({
     properties: fn_props,
     symbol_properties: {},
     prototype: gen_func_proto,
     callable: Some(
       InterpreterCallable(
-        match name {
-          Some(n) => n
-          None => "anonymous"
-        },
-        fn(ip, this_val, args) {
+        func_name,
+        fn(ip, this_val, args) raise {
           create_generator_instance(
             ip,
             this_val,
@@ -416,7 +407,11 @@ fn Interpreter::make_generator_function(
       ),
     ),
     class_name: "GeneratorFunction",
-    descriptors: {},
+    descriptors: {
+      "name": nf_desc,
+      "length": nf_desc,
+      "prototype": { writable: true, enumerable: false, configurable: false, getter: None, setter: None },
+    },
     symbol_descriptors: {},
     extensible: true,
   })
@@ -450,19 +445,37 @@ fn Interpreter::make_generator_function_ext(
     Some(binding) => binding.value
     None => Null
   }
+  let func_name = match name {
+    Some(n) => n
+    None => ""
+  }
+  // Count params before first default (ExpectedArgumentCount)
+  let mut expected_arg_count = 0
+  for p in params {
+    if p.default_val is Some(_) {
+      break
+    }
+    expected_arg_count += 1
+  }
   let fn_props : Map[String, Value] = {}
   fn_props["prototype"] = func_prototype
+  fn_props["name"] = String_(func_name)
+  fn_props["length"] = Number(expected_arg_count.to_double())
+  let nf_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   Object({
     properties: fn_props,
     symbol_properties: {},
     prototype: gen_func_proto,
     callable: Some(
       InterpreterCallable(
-        match name {
-          Some(n) => n
-          None => "anonymous"
-        },
-        fn(ip, this_val, args) {
+        func_name,
+        fn(ip, this_val, args) raise {
           create_generator_instance(
             ip,
             this_val,
@@ -479,7 +492,11 @@ fn Interpreter::make_generator_function_ext(
       ),
     ),
     class_name: "GeneratorFunction",
-    descriptors: {},
+    descriptors: {
+      "name": nf_desc,
+      "length": nf_desc,
+      "prototype": { writable: true, enumerable: false, configurable: false, getter: None, setter: None },
+    },
     symbol_descriptors: {},
     extensible: true,
   })
@@ -498,7 +515,104 @@ fn create_generator_instance(
   body : Array[@ast.Stmt],
   closure : Environment,
   func_prototype : Value,
-) -> Value {
+) -> Value raise Error {
+  // Per spec, FunctionDeclarationInstantiation runs eagerly when generator is called,
+  // NOT when .next() is called. This means parameter binding errors throw immediately.
+  let func_env = Environment::new(parent=Some(closure))
+  func_env.is_var_scope = true
+  func_env.def("this", this_val, LetBinding)
+  func_env.def("<new.target>", Undefined, LetBinding)
+  // Bind parameters eagerly
+  match params_ext {
+    Some(pext) => {
+      let mut effective_count = 0
+      for i = 0; i < pext.length(); i = i + 1 {
+        let param = pext[i]
+        if rest_param is Some(rn) && param.name == rn {
+          continue
+        }
+        let val : Value = if effective_count < args.length() &&
+          not(args[effective_count] is Undefined) {
+          args[effective_count]
+        } else {
+          match param.default_val {
+            Some(d) => interp.eval_expr(d, func_env)
+            None =>
+              if effective_count < args.length() {
+                args[effective_count]
+              } else {
+                Undefined
+              }
+          }
+        }
+        func_env.def(param.name, val, LetBinding)
+        match param.pattern {
+          Some(pat) => interp.bind_pattern(pat, val, func_env, LetBinding)
+          None => ()
+        }
+        effective_count = effective_count + 1
+      }
+      match rest_param {
+        Some(rp) => {
+          let rest_elems : Array[Value] = []
+          for i = effective_count; i < args.length(); i = i + 1 {
+            rest_elems.push(args[i])
+          }
+          let rest_val = Array({ elements: rest_elems })
+          func_env.def(rp, rest_val, LetBinding)
+          for p in pext {
+            if p.name == rp {
+              match p.pattern {
+                Some(pat) =>
+                  interp.bind_pattern(pat, rest_val, func_env, LetBinding)
+                None => ()
+              }
+              break
+            }
+          }
+        }
+        None => ()
+      }
+    }
+    None => {
+      for i = 0; i < params.length(); i = i + 1 {
+        let val = if i < args.length() { args[i] } else { Undefined }
+        func_env.def(params[i], val, LetBinding)
+      }
+      match rest_param {
+        Some(rp) => {
+          let rest_elems : Array[Value] = []
+          for i = params.length(); i < args.length(); i = i + 1 {
+            rest_elems.push(args[i])
+          }
+          func_env.def(rp, Array({ elements: rest_elems }), LetBinding)
+        }
+        None => ()
+      }
+    }
+  }
+  // Create arguments object
+  let args_props : Map[String, Value] = {}
+  for i = 0; i < args.length(); i = i + 1 {
+    args_props[i.to_string()] = args[i]
+  }
+  args_props["length"] = Number(args.length().to_double())
+  func_env.def(
+    "arguments",
+    Object({
+      properties: args_props,
+      symbol_properties: {},
+      prototype: Null,
+      callable: None,
+      class_name: "Arguments",
+      descriptors: {},
+      symbol_descriptors: {},
+      extensible: true,
+    }),
+    VarBinding,
+  )
+  // Hoist declarations eagerly too
+  interp.hoist_declarations(body, func_env)
   let gen_id = next_gen_id()
   let gen_obj : GeneratorObject = {
     id: gen_id,
@@ -512,7 +626,7 @@ fn create_generator_instance(
     interpreter: interp,
     args,
     this_val,
-    env: None,
+    env: Some(func_env),
     pc: 0,
     yield_value: Undefined,
     resuming: false,
@@ -528,6 +642,8 @@ fn create_generator_instance(
     delegate_iterator: Undefined,
     delegate_next: Undefined,
     delegating: false,
+    yield_index: 0,
+    resume_at_yield: 0,
   }
   generator_objects[gen_id] = gen_obj
   // Create the generator instance object with gen_id stored in a property
@@ -634,111 +750,11 @@ fn generator_start(
   interp : Interpreter,
   gen : GeneratorObject,
 ) -> Value raise Error {
-  // Create execution environment
-  let func_env = Environment::new(parent=Some(gen.closure))
-  func_env.is_var_scope = true
-  func_env.def("this", gen.this_val, LetBinding)
-  func_env.def("<new.target>", Undefined, LetBinding)
-  // Bind parameters
-  match gen.params_ext {
-    Some(params_ext) => {
-      // Extended params with defaults (aligned with UserFuncExt semantics)
-      let mut effective_count = 0
-      for i = 0; i < params_ext.length(); i = i + 1 {
-        let param = params_ext[i]
-        // Skip rest destructuring params - they're bound via rest_param
-        if gen.rest_param is Some(rn) && param.name == rn {
-          continue
-        }
-        let val : Value = if effective_count < gen.args.length() &&
-          not(gen.args[effective_count] is Undefined) {
-          gen.args[effective_count]
-        } else {
-          match param.default_val {
-            Some(d) => interp.eval_expr(d, func_env)
-            None =>
-              if effective_count < gen.args.length() {
-                gen.args[effective_count]
-              } else {
-                Undefined
-              }
-          }
-        }
-        func_env.def(param.name, val, LetBinding)
-        // Destructure if pattern param
-        match param.pattern {
-          Some(pat) => interp.bind_pattern(pat, val, func_env, LetBinding)
-          None => ()
-        }
-        effective_count = effective_count + 1
-      }
-      // Rest param
-      match gen.rest_param {
-        Some(rp) => {
-          let rest_elems : Array[Value] = []
-          for i = effective_count; i < gen.args.length(); i = i + 1 {
-            rest_elems.push(gen.args[i])
-          }
-          let rest_val = Array({ elements: rest_elems })
-          func_env.def(rp, rest_val, LetBinding)
-          // Apply destructuring pattern if present
-          for p in params_ext {
-            if p.name == rp {
-              match p.pattern {
-                Some(pat) =>
-                  interp.bind_pattern(pat, rest_val, func_env, LetBinding)
-                None => ()
-              }
-              break
-            }
-          }
-        }
-        None => ()
-      }
-    }
-    None => {
-      // Simple params
-      for i = 0; i < gen.params.length(); i = i + 1 {
-        let val = if i < gen.args.length() { gen.args[i] } else { Undefined }
-        func_env.def(gen.params[i], val, LetBinding)
-      }
-      // Bind rest param if present
-      match gen.rest_param {
-        Some(rp) => {
-          let rest_elems : Array[Value] = []
-          for i = gen.params.length(); i < gen.args.length(); i = i + 1 {
-            rest_elems.push(gen.args[i])
-          }
-          func_env.def(rp, Array({ elements: rest_elems }), LetBinding)
-        }
-        None => ()
-      }
-    }
+  // Environment was already created and parameters bound in create_generator_instance
+  let func_env = match gen.env {
+    Some(e) => e
+    None => abort("generator_start: no environment")
   }
-  // Create arguments object
-  let args_props : Map[String, Value] = {}
-  for i = 0; i < gen.args.length(); i = i + 1 {
-    args_props[i.to_string()] = gen.args[i]
-  }
-  args_props["length"] = Number(gen.args.length().to_double())
-  func_env.def(
-    "arguments",
-    Object({
-      properties: args_props,
-      symbol_properties: {},
-      prototype: Null,
-      callable: None,
-      class_name: "Arguments",
-      descriptors: {},
-      symbol_descriptors: {},
-      extensible: true,
-    }),
-    VarBinding,
-  )
-  // Hoist declarations
-  interp.hoist_declarations(gen.body, func_env)
-  // Store env for later resumption
-  gen.env = Some(func_env)
   // Execute generator body, catching yields
   run_generator_body(interp, gen, func_env)
 }
@@ -758,10 +774,10 @@ fn run_generator_body(
   let prev_gen = current_generator.val
   current_generator.val = Some(gen)
   let result = try {
-    let mut last_val : Value = Undefined
     while gen.pc < gen.body.length() {
       let i = gen.pc
       let stmt = gen.body[i]
+      gen.yield_index = 0 // Reset yield counter for each statement
       let signal = interp.exec_stmt(stmt, env) catch {
         YieldSignal(yielded_value) => {
           // Statement yielded. DON'T advance pc — on resume we'll replay this stmt.
@@ -781,18 +797,18 @@ fn run_generator_body(
       // Statement completed normally — advance to next
       gen.pc = i + 1
       match signal {
-        Normal(v) => last_val = v
+        Normal(_) => ()
         ReturnSignal(v) => {
           complete_generator(gen)
           current_generator.val = prev_gen
           return make_iterator_result(v, true)
         }
-        BreakSignal(_) | ContinueSignal(_) => last_val = Undefined
+        BreakSignal(_, _) | ContinueSignal(_, _) => ()
       }
     }
-    // Body completed normally
+    // Body completed normally — per spec, generators return undefined if no explicit return
     complete_generator(gen)
-    make_iterator_result(last_val, true)
+    make_iterator_result(Undefined, true)
   } catch {
     e => {
       complete_generator(gen)
@@ -841,9 +857,11 @@ fn Interpreter::eval_yield(
   env : Environment,
 ) -> Value raise Error {
   match current_generator.val {
-    Some(gen) =>
-      if gen.resuming {
-        // We're replaying this statement after resume.
+    Some(gen) => {
+      let current_yield_index = gen.yield_index
+      gen.yield_index = gen.yield_index + 1
+      if gen.resuming && current_yield_index == gen.resume_at_yield {
+        // This is the exact yield that was suspended — apply resume action
         gen.resuming = false
         match gen.resume_action {
           NextAction => gen.yield_value
@@ -904,6 +922,7 @@ fn Interpreter::eval_yield(
           gen.delegate_iterator = iterator
           gen.delegate_next = next_method
           gen.delegating = true
+          gen.resume_at_yield = current_yield_index
           raise YieldSignal(value)
         }
       } else {
@@ -912,8 +931,10 @@ fn Interpreter::eval_yield(
           Some(expr) => self.eval_expr(expr, env)
           None => Undefined
         }
+        gen.resume_at_yield = current_yield_index
         raise YieldSignal(yielded_value)
       }
+    }
     None =>
       // Parser prevents YieldExpr outside generator context, so this is unreachable
       raise @errors.TypeError(

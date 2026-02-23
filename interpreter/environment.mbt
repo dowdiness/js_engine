@@ -17,11 +17,12 @@ pub(all) struct Environment {
   bindings : Map[String, Binding]
   parent : Environment?
   mut is_var_scope : Bool // true for function/global scopes (where var is hoisted to)
+  mut with_object : Value? // For 'with' statement: the live object to proxy lookups through
 }
 
 ///|
 pub fn Environment::new(parent? : Environment? = None) -> Environment {
-  { bindings: {}, parent, is_var_scope: false }
+  { bindings: {}, parent, is_var_scope: false, with_object: None }
 }
 
 ///|
@@ -104,6 +105,14 @@ pub fn Environment::def_builtin(
 
 ///|
 pub fn Environment::has(self : Environment, name : String) -> Bool {
+  // Check with_object first for 'with' statement environments
+  match self.with_object {
+    Some(obj) =>
+      if with_object_has(obj, name) {
+        return true
+      }
+    None => ()
+  }
   match self.bindings.get(name) {
     Some(_) => true
     None =>
@@ -169,6 +178,17 @@ pub fn Environment::assign_var(
 
 ///|
 pub fn Environment::get(self : Environment, name : String) -> Value raise Error {
+  // Check with_object first for 'with' statement environments
+  match self.with_object {
+    Some(obj) => {
+      let result = with_object_get(obj, name)
+      match result {
+        Some(v) => return v
+        None => ()
+      }
+    }
+    None => ()
+  }
   match self.bindings.get(name) {
     Some(binding) =>
       if not(binding.initialized) {
@@ -192,6 +212,15 @@ pub fn Environment::assign(
   name : String,
   value : Value,
 ) -> Unit raise Error {
+  // Check with_object first for 'with' statement environments
+  match self.with_object {
+    Some(obj) =>
+      if with_object_has(obj, name) {
+        with_object_set(obj, name, value)
+        return
+      }
+    None => ()
+  }
   match self.bindings.get(name) {
     Some(binding) =>
       if not(binding.initialized) {
@@ -210,5 +239,115 @@ pub fn Environment::assign(
         Some(parent) => parent.assign(name, value)
         None => raise @errors.ReferenceError(message="\{name} is not defined")
       }
+  }
+}
+
+///|
+/// Check if a property is blocked by @@unscopables on the binding object
+fn is_blocked_by_unscopables(obj : Value, name : String) -> Bool {
+  match obj {
+    Object(data) => {
+      let unscopables_sym = get_unscopables_symbol()
+      // Walk prototype chain to find @@unscopables
+      let mut current : Value = Object(data)
+      while true {
+        match current {
+          Object(obj_data) => {
+            match obj_data.symbol_properties.get(unscopables_sym.id) {
+              Some(Object(unscopables_data)) => {
+                // Check if the property name is truthy in the unscopables object
+                match unscopables_data.properties.get(name) {
+                  Some(v) => return is_truthy(v)
+                  None => return false
+                }
+              }
+              Some(_) => return false
+              None => {
+                current = obj_data.prototype
+              }
+            }
+          }
+          _ => break
+        }
+      }
+      false
+    }
+    _ => false
+  }
+}
+
+///|
+/// Check if a with-object (or its prototype chain) has a property
+fn with_object_has(obj : Value, name : String) -> Bool {
+  let mut current = obj
+  while true {
+    match current {
+      Object(data) => {
+        if data.properties.contains(name) {
+          // Check @@unscopables
+          if is_blocked_by_unscopables(obj, name) {
+            return false
+          }
+          return true
+        }
+        // Check descriptors (for accessor-only properties)
+        if data.descriptors.contains(name) {
+          if is_blocked_by_unscopables(obj, name) {
+            return false
+          }
+          return true
+        }
+        current = data.prototype
+      }
+      _ => break
+    }
+  }
+  false
+}
+
+///|
+/// Get a property from a with-object (walking prototype chain)
+fn with_object_get(obj : Value, name : String) -> Value? {
+  let mut current = obj
+  while true {
+    match current {
+      Object(data) => {
+        match data.properties.get(name) {
+          Some(v) => return Some(v)
+          None => ()
+        }
+        current = data.prototype
+      }
+      _ => break
+    }
+  }
+  None
+}
+
+///|
+/// Set a property on a with-object (always sets on the own object)
+fn with_object_set(obj : Value, name : String, value : Value) -> Unit {
+  match obj {
+    Object(data) => data.properties[name] = value
+    _ => ()
+  }
+}
+
+///|
+/// Find the with-object for a name (walking up env chain to find a with env containing this name)
+pub fn Environment::find_with_object(
+  self : Environment,
+  name : String
+) -> Value? {
+  match self.with_object {
+    Some(obj) =>
+      if with_object_has(obj, name) {
+        return Some(obj)
+      }
+    None => ()
+  }
+  match self.parent {
+    Some(parent) => parent.find_with_object(name)
+    None => None
   }
 }

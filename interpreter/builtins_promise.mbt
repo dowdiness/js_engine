@@ -169,12 +169,7 @@ fn create_resolving_functions(
             Some(_) => {
               // Thenable: enqueue PromiseResolveThenableJob
               let (res, rej) = create_resolving_functions(i, promise_data)
-              let job = Object({
-                properties: {},
-                symbol_properties: {},
-                prototype: Null,
-                callable: Some(
-                  InterpreterCallable("PromiseResolveThenableJob", fn(
+              let job = make_interp_method_func("PromiseResolveThenableJob", 0, fn(
                     i2,
                     _t,
                     _a,
@@ -193,13 +188,7 @@ fn create_resolving_functions(
                       }
                     }
                     Undefined
-                  }),
-                ),
-                class_name: "Function",
-                descriptors: {},
-                symbol_descriptors: {},
-                extensible: true,
-              })
+                  })
               i.enqueue_microtask(job, [])
             }
             None => fulfill_promise(i, promise_data, resolution)
@@ -284,12 +273,7 @@ fn enqueue_promise_reaction_job(
   argument : Value,
 ) -> Unit {
   // Create a job that will execute the reaction handler
-  let job_callback = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("PromiseReactionJob", fn(i, _this, args) raise {
+  let job_callback = make_interp_method_func("PromiseReactionJob", 0, fn(i, _this, args) raise {
         let value = if args.length() > 0 { args[0] } else { Undefined }
         let loc = @token.Loc::default()
 
@@ -327,13 +311,7 @@ fn enqueue_promise_reaction_job(
               }
             }
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
   interp.enqueue_microtask(job_callback, [argument])
 }
 
@@ -553,12 +531,7 @@ fn create_promise_capability_from_constructor(
 ) -> (Value, Value, Value) raise Error {
   let resolve_ref : Ref[Value] = { val: Undefined }
   let reject_ref : Ref[Value] = { val: Undefined }
-  let executor = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("promiseCapabilityExecutor", fn(
+  let executor = make_interp_method_func("promiseCapabilityExecutor", 2, fn(
         _i,
         _this,
         args,
@@ -576,13 +549,7 @@ fn create_promise_capability_from_constructor(
         resolve_ref.val = resolve_fn
         reject_ref.val = reject_fn
         Undefined
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
   let promise = construct_with_value(interp, ctor, [executor], loc)
   // Promise subclass instances are represented as Promise values in this engine.
   // Preserve the construction target so SpeciesConstructor-based lookups can
@@ -658,16 +625,18 @@ fn invoke_then_method(
 ///|
 /// Setup Promise constructor and prototype methods
 pub fn setup_promise(env : Environment) -> Unit {
+  let nf_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   // Promise prototype with then, catch, finally
   let promise_proto_props : Map[String, Value] = {}
 
   // Promise.prototype.then(onFulfilled, onRejected)
-  promise_proto_props["then"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("then", fn(interp, this_val, args) raise {
+  promise_proto_props["then"] = make_interp_method_func("then", 2, fn(interp, this_val, args) raise {
         match this_val {
           Promise(promise_data) => {
             let loc = @token.Loc::default()
@@ -749,21 +718,10 @@ pub fn setup_promise(env : Environment) -> Unit {
               message="Promise.prototype.then requires a Promise",
             )
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Promise.prototype.catch(onRejected)
-  promise_proto_props["catch"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("catch", fn(interp, this_val, args) raise {
+  promise_proto_props["catch"] = make_interp_method_func("catch", 1, fn(interp, this_val, args) raise {
         // catch(onRejected) is just then(undefined, onRejected)
         let then_method = interp.get_property(
           this_val,
@@ -773,21 +731,10 @@ pub fn setup_promise(env : Environment) -> Unit {
         let loc = @token.Loc::default()
         let on_rejected = if args.length() > 0 { args[0] } else { Undefined }
         interp.call_value(then_method, this_val, [Undefined, on_rejected], loc)
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Promise.prototype.finally(onFinally)
-  promise_proto_props["finally"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("finally", fn(interp, this_val, args) raise {
+  promise_proto_props["finally"] = make_interp_method_func("finally", 1, fn(interp, this_val, args) raise {
         let loc = @token.Loc::default()
         let ctor = get_promise_species_constructor(interp, this_val, loc)
         let on_finally = if args.length() > 0 { args[0] } else { Undefined }
@@ -916,20 +863,36 @@ pub fn setup_promise(env : Environment) -> Unit {
           [value_thunk, thrower_thunk],
           loc,
         )
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
+  let promise_proto_descs : Map[String, PropDescriptor] = {}
+  promise_proto_descs["then"] = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
+  promise_proto_descs["catch"] = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
+  promise_proto_descs["finally"] = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   let promise_proto = Object({
     properties: promise_proto_props,
     symbol_properties: {},
-    prototype: Null,
+    prototype: get_obj_proto(),
     callable: None,
     class_name: "Promise",
-    descriptors: {},
+    descriptors: promise_proto_descs,
     symbol_descriptors: {},
     extensible: true,
   })
@@ -939,14 +902,11 @@ pub fn setup_promise(env : Environment) -> Unit {
 
   // Promise constructor
   let promise_ctor_props : Map[String, Value] = {}
+  promise_ctor_props["name"] = String_("Promise")
+  promise_ctor_props["length"] = Number(1.0)
 
   // Promise.resolve(value)
-  promise_ctor_props["resolve"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("resolve", fn(interp, this_val, args) raise {
+  promise_ctor_props["resolve"] = make_interp_method_func("resolve", 1, fn(interp, this_val, args) raise {
         let value = if args.length() > 0 { args[0] } else { Undefined }
         let loc = @token.Loc::default()
 
@@ -966,21 +926,10 @@ pub fn setup_promise(env : Environment) -> Unit {
         )
         let _ = interp.call_value(resolve, Undefined, [value], loc)
         promise
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Promise.reject(reason)
-  promise_ctor_props["reject"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("reject", fn(interp, this_val, args) raise {
+  promise_ctor_props["reject"] = make_interp_method_func("reject", 1, fn(interp, this_val, args) raise {
         let reason = if args.length() > 0 { args[0] } else { Undefined }
         let loc = @token.Loc::default()
         let (promise, _resolve, reject) = create_promise_capability_from_constructor(
@@ -988,23 +937,12 @@ pub fn setup_promise(env : Environment) -> Unit {
         )
         let _ = interp.call_value(reject, Undefined, [reason], loc)
         promise
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Promise.all(iterable)
   // NOTE: PerformPromiseAll synchronously consumes the entire input iterator
   // before any promise settles. Iterator consumption is NOT lazy.
-  promise_ctor_props["all"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("all", fn(interp, _this, args) raise {
+  promise_ctor_props["all"] = make_interp_method_func("all", 1, fn(interp, _this, args) raise {
         let iterable = if args.length() > 0 { args[0] } else { Undefined }
         let loc = @token.Loc::default()
         let (result_promise, resolve, reject) = create_promise_capability_from_constructor(
@@ -1114,24 +1052,13 @@ pub fn setup_promise(env : Environment) -> Unit {
           )
         }
         result_promise
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Promise.race(iterable)
   // NOTE: PerformPromiseRace synchronously consumes the ENTIRE iterator before
   // any promise settles. IteratorClose is only invoked for abrupt completion
   // during iteration (e.g., next() throws), NOT when a promise settles first.
-  promise_ctor_props["race"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("race", fn(interp, _this, args) raise {
+  promise_ctor_props["race"] = make_interp_method_func("race", 1, fn(interp, _this, args) raise {
         let iterable = if args.length() > 0 { args[0] } else { Undefined }
         let loc = @token.Loc::default()
         let (result_promise, resolve, reject) = create_promise_capability_from_constructor(
@@ -1198,23 +1125,12 @@ pub fn setup_promise(env : Environment) -> Unit {
             )
         }
         result_promise
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Promise.allSettled(iterable)
   // NOTE: PerformPromiseAllSettled synchronously consumes the entire input
   // iterator. Never rejects - waits for all promises to settle.
-  promise_ctor_props["allSettled"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("allSettled", fn(interp, _this, args) raise {
+  promise_ctor_props["allSettled"] = make_interp_method_func("allSettled", 1, fn(interp, _this, args) raise {
         let iterable = if args.length() > 0 { args[0] } else { Undefined }
         let loc = @token.Loc::default()
         let (result_promise, resolve, reject) = create_promise_capability_from_constructor(
@@ -1375,23 +1291,12 @@ pub fn setup_promise(env : Environment) -> Unit {
           )
         }
         result_promise
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Promise.any(iterable)
   // NOTE: PerformPromiseAny synchronously consumes the entire input iterator.
   // Rejects with AggregateError only if ALL promises reject.
-  promise_ctor_props["any"] = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("any", fn(interp, _this, args) raise {
+  promise_ctor_props["any"] = make_interp_method_func("any", 1, fn(interp, _this, args) raise {
         let iterable = if args.length() > 0 { args[0] } else { Undefined }
         let loc = @token.Loc::default()
         let (result_promise, resolve, reject) = create_promise_capability_from_constructor(
@@ -1514,13 +1419,7 @@ pub fn setup_promise(env : Environment) -> Unit {
           let _ = interp.call_value(reject, Undefined, [agg_error], loc)
         }
         result_promise
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
 
   // Promise constructor itself - requires 'new' keyword
   let promise_ctor = Object({
@@ -1569,24 +1468,13 @@ pub fn setup_promise(env : Environment) -> Unit {
       }),
     ),
     class_name: "Function",
-    descriptors: {},
+    descriptors: { "name": nf_desc, "length": nf_desc, "prototype": { writable: false, enumerable: false, configurable: false, getter: None, setter: None }, "resolve": { writable: true, enumerable: false, configurable: true, getter: None, setter: None }, "reject": { writable: true, enumerable: false, configurable: true, getter: None, setter: None }, "all": { writable: true, enumerable: false, configurable: true, getter: None, setter: None }, "race": { writable: true, enumerable: false, configurable: true, getter: None, setter: None }, "allSettled": { writable: true, enumerable: false, configurable: true, getter: None, setter: None }, "any": { writable: true, enumerable: false, configurable: true, getter: None, setter: None } },
     symbol_descriptors: {},
     extensible: true,
   })
 
   // Promise[Symbol.species] getter returns `this` (used by SpeciesConstructor).
-  let species_getter = Object({
-    properties: {},
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("get [Symbol.species]", fn(this_val, _args) { this_val }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+  let species_getter = make_method_func("get [Symbol.species]", 0, fn(this_val, _args) { this_val })
   let species_symbol_val = env.get("Symbol") catch { _ => Undefined }
   match species_symbol_val {
     Object(symbol_data) =>
@@ -1635,12 +1523,7 @@ pub fn setup_promise(env : Environment) -> Unit {
   // Part of the Web Platform APIs, used for scheduling microtasks directly
   env.def_builtin(
     "queueMicrotask",
-    Object({
-      properties: {},
-      symbol_properties: {},
-      prototype: Null,
-      callable: Some(
-        InterpreterCallable("queueMicrotask", fn(interp, _this, args) raise {
+    make_interp_method_func("queueMicrotask", 0, fn(interp, _this, args) raise {
           let callback = if args.length() > 0 { args[0] } else { Undefined }
 
           // Validate callback is callable
@@ -1660,12 +1543,6 @@ pub fn setup_promise(env : Environment) -> Unit {
           }
           Undefined
         }),
-      ),
-      class_name: "Function",
-      descriptors: {},
-      symbol_descriptors: {},
-      extensible: true,
-    }),
   )
 }
 
@@ -1677,12 +1554,7 @@ pub fn setup_timers(env : Environment) -> Unit {
   // setTimeout(callback, delay, ...args) -> timerId
   env.def_builtin(
     "setTimeout",
-    Object({
-      properties: {},
-      symbol_properties: {},
-      prototype: Null,
-      callable: Some(
-        InterpreterCallable("setTimeout", fn(interp, _this, args) raise {
+    make_interp_method_func("setTimeout", 0, fn(interp, _this, args) raise {
           let callback = if args.length() > 0 { args[0] } else { Undefined }
           // Validate callback is callable
           match callback {
@@ -1735,23 +1607,12 @@ pub fn setup_timers(env : Environment) -> Unit {
           })
           Number(id.to_double())
         }),
-      ),
-      class_name: "Function",
-      descriptors: {},
-      symbol_descriptors: {},
-      extensible: true,
-    }),
   )
 
   // clearTimeout(id)
   env.def_builtin(
     "clearTimeout",
-    Object({
-      properties: {},
-      symbol_properties: {},
-      prototype: Null,
-      callable: Some(
-        InterpreterCallable("clearTimeout", fn(interp, _this, args) {
+    make_interp_method_func("clearTimeout", 0, fn(interp, _this, args) {
           let id = if args.length() > 0 {
             match args[0] {
               Number(n) => n.to_int()
@@ -1772,23 +1633,12 @@ pub fn setup_timers(env : Environment) -> Unit {
           interp.cancelled_timer_ids[id] = true
           Undefined
         }),
-      ),
-      class_name: "Function",
-      descriptors: {},
-      symbol_descriptors: {},
-      extensible: true,
-    }),
   )
 
   // setInterval(callback, delay, ...args) -> timerId
   env.def_builtin(
     "setInterval",
-    Object({
-      properties: {},
-      symbol_properties: {},
-      prototype: Null,
-      callable: Some(
-        InterpreterCallable("setInterval", fn(interp, _this, args) raise {
+    make_interp_method_func("setInterval", 0, fn(interp, _this, args) raise {
           let callback = if args.length() > 0 { args[0] } else { Undefined }
           match callback {
             Object(od) =>
@@ -1839,23 +1689,12 @@ pub fn setup_timers(env : Environment) -> Unit {
           })
           Number(id.to_double())
         }),
-      ),
-      class_name: "Function",
-      descriptors: {},
-      symbol_descriptors: {},
-      extensible: true,
-    }),
   )
 
   // clearInterval(id) - same semantics as clearTimeout
   env.def_builtin(
     "clearInterval",
-    Object({
-      properties: {},
-      symbol_properties: {},
-      prototype: Null,
-      callable: Some(
-        InterpreterCallable("clearInterval", fn(interp, _this, args) {
+    make_interp_method_func("clearInterval", 0, fn(interp, _this, args) {
           let id = if args.length() > 0 {
             match args[0] {
               Number(n) => n.to_int()
@@ -1875,12 +1714,6 @@ pub fn setup_timers(env : Environment) -> Unit {
           interp.cancelled_timer_ids[id] = true
           Undefined
         }),
-      ),
-      class_name: "Function",
-      descriptors: {},
-      symbol_descriptors: {},
-      extensible: true,
-    }),
   )
 }
 

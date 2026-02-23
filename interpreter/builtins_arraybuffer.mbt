@@ -114,12 +114,7 @@ pub fn setup_arraybuffer_builtins(env : Environment) -> Unit {
     enumerable: false,
     configurable: true,
     getter: Some(
-      Object({
-        properties: {},
-        symbol_properties: {},
-        prototype: Null,
-        callable: Some(
-          MethodCallable("get byteLength", fn(this_val, _args) raise {
+      make_method_func("get byteLength", 0, fn(this_val, _args) raise {
             match this_val {
               Object(data) =>
                 if data.class_name == "ArrayBuffer" {
@@ -147,24 +142,13 @@ pub fn setup_arraybuffer_builtins(env : Environment) -> Unit {
                   message="get ArrayBuffer.prototype.byteLength called on incompatible receiver",
                 )
             }
-          }),
-        ),
-        class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      }),
+          })
     ),
     setter: None,
   }
 
   // ArrayBuffer.prototype.slice(begin, end)
-  ab_proto_props["slice"] = Object({
-    properties: { "length": Number(2.0) },
-    symbol_properties: {},
-    prototype: Null,
-    callable: Some(
-      MethodCallable("slice", fn(this_val, args) raise {
+  ab_proto_props["slice"] = make_method_func("slice", 2, fn(this_val, args) raise {
         match this_val {
           Object(data) =>
             if data.class_name == "ArrayBuffer" {
@@ -250,13 +234,10 @@ pub fn setup_arraybuffer_builtins(env : Environment) -> Unit {
               message="ArrayBuffer.prototype.slice called on non-ArrayBuffer",
             )
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      })
+
+  ab_proto_descs["slice"] = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+  ab_proto_descs["constructor"] = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
 
   // Add Symbol.toStringTag
   let tostringtag_sym = get_tostringtag_symbol()
@@ -286,9 +267,11 @@ pub fn setup_arraybuffer_builtins(env : Environment) -> Unit {
   // ArrayBuffer constructor
   let ab_ctor_props : Map[String, Value] = {}
   ab_ctor_props["prototype"] = ab_proto
+  ab_ctor_props["name"] = String_("ArrayBuffer")
+  ab_ctor_props["length"] = Number(1.0)
 
   // ArrayBuffer.isView(arg)
-  ab_ctor_props["isView"] = make_native_func("isView", fn(args) {
+  ab_ctor_props["isView"] = make_native_func_with_length("isView", 1, fn(args) {
     if args.length() == 0 {
       return Bool(false)
     }
@@ -301,6 +284,13 @@ pub fn setup_arraybuffer_builtins(env : Environment) -> Unit {
     }
   })
 
+  let nf_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   let ab_ctor_descs : Map[String, PropDescriptor] = {}
   ab_ctor_descs["prototype"] = {
     writable: false,
@@ -309,6 +299,9 @@ pub fn setup_arraybuffer_builtins(env : Environment) -> Unit {
     getter: None,
     setter: None,
   }
+  ab_ctor_descs["name"] = nf_desc
+  ab_ctor_descs["length"] = nf_desc
+  ab_ctor_descs["isView"] = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
 
   let ab_ctor : Value = Object({
     properties: ab_ctor_props,
