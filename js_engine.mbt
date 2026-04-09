@@ -1,27 +1,4 @@
 ///|
-pub fn fib(n : Int) -> Int64 {
-  for i = n, a = 0L, b = 1L {
-    match (i, a, b) {
-      (0, _, b) => break b
-      (i, a, b) => continue i - 1, b, a + b
-    }
-  }
-}
-
-///|
-/// data is a labelled argument without default value having type Array[Int]
-/// start is an optional labelled argument with default value 0 having type Int
-/// length is an optional labelled argument without default value having type Option[Int]
-pub fn sum(data~ : Array[Int], start? : Int = 0, length? : Int) -> Int {
-  let end = if length is Some(length) { start + length } else { data.length() }
-  let mut total = 0
-  for i = start; i < end; i = i + 1 {
-    total = total + data[i]
-  }
-  total
-}
-
-///|
 pub fn run(
   source : String,
   annex_b? : Bool = false,
