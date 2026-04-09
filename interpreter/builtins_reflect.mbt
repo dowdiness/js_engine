@@ -51,66 +51,80 @@ fn unwrap_proxy_target(val : Value) -> ObjectData? raise Error {
 ///|
 fn setup_reflect_builtins(env : Environment) -> Unit {
   let reflect_props : Map[String, Value] = {}
-  let nf_desc : PropDescriptor = { writable: false, enumerable: false, configurable: true, getter: None, setter: None }
+  let nf_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
 
   // Reflect.apply(target, thisArg, argumentsList)
-  reflect_props["apply"] = make_interp_method_func("apply", 3, fn(interp, _this_val, args) raise {
-        if args.length() < 1 {
-          raise @errors.TypeError(
-            message="Reflect.apply requires a target function",
-          )
-        }
-        let target = args[0]
-        let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-        let arg_list = if args.length() > 2 {
-          create_list_from_array_like(args[2])
-        } else {
-          []
-        }
-        let loc = @token.Loc::default()
-        interp.call_value(target, this_arg, arg_list, loc)
-      })
+  reflect_props["apply"] = make_interp_method_func("apply", 3, fn(
+    interp,
+    _this_val,
+    args,
+  ) raise {
+    if args.length() < 1 {
+      raise @errors.TypeError(
+        message="Reflect.apply requires a target function",
+      )
+    }
+    let target = args[0]
+    let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+    let arg_list = if args.length() > 2 {
+      create_list_from_array_like(args[2])
+    } else {
+      []
+    }
+    let loc = @token.Loc::default()
+    interp.call_value(target, this_arg, arg_list, loc)
+  })
 
   // Reflect.construct(target, argumentsList, newTarget?)
-  reflect_props["construct"] = make_interp_method_func("construct", 2, fn(interp, _this_val, args) raise {
-        if args.length() < 2 {
-          raise @errors.TypeError(
-            message="Reflect.construct requires at least 2 arguments",
+  reflect_props["construct"] = make_interp_method_func("construct", 2, fn(
+    interp,
+    _this_val,
+    args,
+  ) raise {
+    if args.length() < 2 {
+      raise @errors.TypeError(
+        message="Reflect.construct requires at least 2 arguments",
+      )
+    }
+    let target = args[0]
+    // target must be a constructor
+    if !is_constructor_value(target) {
+      raise @errors.TypeError(
+        message="Reflect.construct: target is not a constructor",
+      )
+    }
+    let arg_list = create_list_from_array_like(args[1])
+    let loc = @token.Loc::default()
+    // Per spec, when newTarget differs from target, create instance with newTarget.prototype
+    let proto_override : Value? = if args.length() > 2 {
+      let new_target = args[2]
+      // newTarget must be a constructor
+      if !is_constructor_value(new_target) {
+        raise @errors.TypeError(
+          message="Reflect.construct: newTarget is not a constructor",
+        )
+      }
+      match new_target {
+        Object(nt_data) =>
+          Some(
+            match nt_data.properties.get("prototype") {
+              Some(p) => p
+              None => Null
+            },
           )
-        }
-        let target = args[0]
-        // target must be a constructor
-        if not(is_constructor_value(target)) {
-          raise @errors.TypeError(
-            message="Reflect.construct: target is not a constructor",
-          )
-        }
-        let arg_list = create_list_from_array_like(args[1])
-        let loc = @token.Loc::default()
-        // Per spec, when newTarget differs from target, create instance with newTarget.prototype
-        let proto_override : Value? = if args.length() > 2 {
-          let new_target = args[2]
-          // newTarget must be a constructor
-          if not(is_constructor_value(new_target)) {
-            raise @errors.TypeError(
-              message="Reflect.construct: newTarget is not a constructor",
-            )
-          }
-          match new_target {
-            Object(nt_data) =>
-              Some(
-                match nt_data.properties.get("prototype") {
-                  Some(p) => p
-                  None => Null
-                },
-              )
-            _ => None
-          }
-        } else {
-          None
-        }
-        interp.construct_value(target, arg_list, loc, proto_override~)
-      })
+        _ => None
+      }
+    } else {
+      None
+    }
+    interp.construct_value(target, arg_list, loc, proto_override~)
+  })
 
   // Reflect.defineProperty(target, propertyKey, attributes)
   reflect_props["defineProperty"] = Object({
@@ -164,23 +178,23 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
             let prop_exists = data.properties.contains(prop) ||
               data.descriptors.contains(prop)
             // Extensibility check: cannot add new property to non-extensible object
-            if not(prop_exists) && not(data.extensible) {
+            if !prop_exists && !data.extensible {
               return Bool(false)
             }
             // Non-configurable validation
             if prop_exists {
               match data.descriptors.get(prop) {
                 Some(existing) =>
-                  if not(existing.configurable) {
+                  if !existing.configurable {
                     let existing_is_accessor = existing.getter is Some(_) ||
                       existing.setter is Some(_)
                     // Cannot change between accessor and data descriptor types
                     if existing_is_accessor &&
-                      not(is_accessor) &&
+                      !is_accessor &&
                       (has_value || has_writable) {
                       return Bool(false)
                     }
-                    if not(existing_is_accessor) && is_accessor {
+                    if !existing_is_accessor && is_accessor {
                       return Bool(false)
                     }
                     // Cannot change configurable from false to true
@@ -202,13 +216,10 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
                         Some(g) =>
                           match existing.getter {
                             Some(eg) =>
-                              if not(strict_equal_val(g, eg)) {
+                              if !strict_equal_val(g, eg) {
                                 return Bool(false)
                               }
-                            None =>
-                              if not(g is Undefined) {
-                                return Bool(false)
-                              }
+                            None => if !(g is Undefined) { return Bool(false) }
                           }
                         None => ()
                       }
@@ -216,20 +227,17 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
                         Some(s) =>
                           match existing.setter {
                             Some(es) =>
-                              if not(strict_equal_val(s, es)) {
+                              if !strict_equal_val(s, es) {
                                 return Bool(false)
                               }
-                            None =>
-                              if not(s is Undefined) {
-                                return Bool(false)
-                              }
+                            None => if !(s is Undefined) { return Bool(false) }
                           }
                         None => ()
                       }
                     }
                     // Non-configurable data: writable false->true forbidden, value change on non-writable forbidden
-                    if not(existing_is_accessor) && not(is_accessor) {
-                      if not(existing.writable) {
+                    if !existing_is_accessor && !is_accessor {
+                      if !existing.writable {
                         match attr_data.properties.get("writable") {
                           Some(v) => if is_truthy(v) { return Bool(false) }
                           None => ()
@@ -244,7 +252,7 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
                             Some(v) => v
                             None => Undefined
                           }
-                          if not(strict_equal_val(new_val, old_val)) {
+                          if !strict_equal_val(new_val, old_val) {
                             return Bool(false)
                           }
                         }
@@ -371,7 +379,7 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
             )
         }
         match data.descriptors.get(prop) {
-          Some(desc) => if not(desc.configurable) { return Bool(false) }
+          Some(desc) => if !desc.configurable { return Bool(false) }
           None => ()
         }
         let _ = data.properties.remove(prop)
@@ -386,103 +394,114 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
   })
 
   // Reflect.get(target, propertyKey, receiver?)
-  reflect_props["get"] = make_interp_method_func("get", 2, fn(interp, _this_val, args) raise {
-        if args.length() < 2 {
-          raise @errors.TypeError(
-            message="Reflect.get requires at least 2 arguments",
-          )
-        }
-        let target = args[0]
-        match target {
-          Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => ()
-          _ => raise @errors.TypeError(message="Reflect.get called on non-object")
-        }
-        let key = args[1]
-        let receiver = if args.length() > 2 { args[2] } else { target }
-        let loc = @token.Loc::default()
-        // For receiver support, we need to check for accessor descriptors
-        // and call getters with the receiver as this
-        let key_str = match key {
-          Symbol(_) => ""
-          _ => key.to_string()
-        }
-        // Helper to find accessor descriptor and call with receiver
-        fn try_get_with_receiver(obj : Value) -> Value? raise {
-          match obj {
-            Object(data) => {
-              match key {
-                Symbol(sym) => {
-                  match data.symbol_descriptors.get(sym.id) {
-                    Some(desc) => match desc.getter {
-                      Some(getter) => Some(interp.call_value(getter, receiver, [], loc))
-                      None => match data.symbol_properties.get(sym.id) {
+  reflect_props["get"] = make_interp_method_func("get", 2, fn(
+    interp,
+    _this_val,
+    args,
+  ) raise {
+    if args.length() < 2 {
+      raise @errors.TypeError(
+        message="Reflect.get requires at least 2 arguments",
+      )
+    }
+    let target = args[0]
+    match target {
+      Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => ()
+      _ => raise @errors.TypeError(message="Reflect.get called on non-object")
+    }
+    let key = args[1]
+    let receiver = if args.length() > 2 { args[2] } else { target }
+    let loc = @token.Loc::default()
+    // For receiver support, we need to check for accessor descriptors
+    // and call getters with the receiver as this
+    let key_str = match key {
+      Symbol(_) => ""
+      _ => key.to_string()
+    }
+    // Helper to find accessor descriptor and call with receiver
+    fn try_get_with_receiver(obj : Value) -> Value? raise {
+      match obj {
+        Object(data) =>
+          match key {
+            Symbol(sym) =>
+              match data.symbol_descriptors.get(sym.id) {
+                Some(desc) =>
+                  match desc.getter {
+                    Some(getter) =>
+                      Some(interp.call_value(getter, receiver, [], loc))
+                    None =>
+                      match data.symbol_properties.get(sym.id) {
                         Some(v) => Some(v)
                         None => None
                       }
-                    }
-                    None => match data.symbol_properties.get(sym.id) {
-                      Some(v) => Some(v)
-                      None => None
-                    }
                   }
-                }
-                _ => {
-                  match data.descriptors.get(key_str) {
-                    Some(desc) => match desc.getter {
-                      Some(getter) => Some(interp.call_value(getter, receiver, [], loc))
-                      None => match data.properties.get(key_str) {
+                None =>
+                  match data.symbol_properties.get(sym.id) {
+                    Some(v) => Some(v)
+                    None => None
+                  }
+              }
+            _ =>
+              match data.descriptors.get(key_str) {
+                Some(desc) =>
+                  match desc.getter {
+                    Some(getter) =>
+                      Some(interp.call_value(getter, receiver, [], loc))
+                    None =>
+                      match data.properties.get(key_str) {
                         Some(v) => Some(v)
                         None => None
                       }
-                    }
-                    None => match data.properties.get(key_str) {
-                      Some(v) => Some(v)
-                      None => None
-                    }
                   }
-                }
+                None =>
+                  match data.properties.get(key_str) {
+                    Some(v) => Some(v)
+                    None => None
+                  }
               }
-            }
-            _ => None
+          }
+        _ => None
+      }
+    }
+    // Check target first
+    match try_get_with_receiver(target) {
+      Some(v) => v
+      None => {
+        // Walk prototype chain
+        let mut current = match target {
+          Object(data) => data.prototype
+          _ => Null
+        }
+        while true {
+          match current {
+            Object(data) =>
+              match try_get_with_receiver(current) {
+                Some(v) => return v
+                None => current = data.prototype
+              }
+            Null => break
+            _ => break
           }
         }
-        // Check target first
-        match try_get_with_receiver(target) {
-          Some(v) => v
-          None => {
-            // Walk prototype chain
-            let mut current = match target {
-              Object(data) => data.prototype
-              _ => Null
-            }
-            while true {
-              match current {
-                Object(data) => {
-                  match try_get_with_receiver(current) {
-                    Some(v) => return v
-                    None => current = data.prototype
-                  }
-                }
-                Null => break
-                _ => break
-              }
-            }
-            // Fall back to regular property access if receiver == target
-            if strict_equal(receiver, target) {
-              match key {
-                Symbol(_) => interp.get_computed_property(target, key, loc)
-                _ => interp.get_property(target, key_str, loc)
-              }
-            } else {
-              Undefined
-            }
+        // Fall back to regular property access if receiver == target
+        if strict_equal(receiver, target) {
+          match key {
+            Symbol(_) => interp.get_computed_property(target, key, loc)
+            _ => interp.get_property(target, key_str, loc)
           }
+        } else {
+          Undefined
         }
-      })
+      }
+    }
+  })
 
   // Reflect.getOwnPropertyDescriptor(target, propertyKey)
   reflect_props["getOwnPropertyDescriptor"] = Object({
-    properties: { "name": String_("getOwnPropertyDescriptor"), "length": Number(2.0) },
+    properties: {
+      "name": String_("getOwnPropertyDescriptor"),
+      "length": Number(2.0),
+    },
     symbol_properties: {},
     prototype: get_func_proto(),
     callable: Some(
@@ -512,7 +531,7 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
         let has_own_data = data.properties.contains(prop)
         let has_own_desc = data.descriptors.contains(prop)
         // Property must exist in either data or descriptors
-        if not(has_own_data) && not(has_own_desc) {
+        if !has_own_data && !has_own_desc {
           return Undefined
         }
         let result_props : Map[String, Value] = {}
@@ -637,7 +656,7 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
             let key = prop
             // Check numeric index
             try {
-              let idx = @strconv.parse_int(key)
+              let idx = @string.parse_int(key)
               if idx >= 0 && idx < data.elements.length() {
                 return Bool(true)
               }
@@ -718,113 +737,117 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
   })
 
   // Reflect.ownKeys(target)
-  reflect_props["ownKeys"] = make_interp_method_func("ownKeys", 1, fn(interp, _this_val, args) raise {
-        if args.length() < 1 {
-          raise @errors.TypeError(message="Reflect.ownKeys requires 1 argument")
-        }
-        let target = args[0]
-        match target {
-          Proxy(proxy_data) => {
-            // Check for ownKeys trap
-            let trap = get_proxy_trap(proxy_data, "ownKeys")
-            match trap {
-              Some(trap_fn) => {
-                let proxy_target = get_proxy_target(proxy_data)
-                let handler = get_proxy_handler(proxy_data)
-                let loc = @token.Loc::default()
-                let result = interp.call_value(
-                  trap_fn,
-                  handler,
-                  [proxy_target],
-                  loc,
-                )
-                // Convert result array to Array[Value]
-                match result {
-                  Array(data) => Array({ elements: data.elements.copy() })
-                  _ =>
-                    raise @errors.TypeError(
-                      message="'ownKeys' on proxy: trap result is not an Array",
-                    )
-                }
-              }
-              None => {
-                // No trap, delegate to target
-                let proxy_target = get_proxy_target(proxy_data)
-                let loc = @token.Loc::default()
-                interp.call_value(
-                  Object({
-                    properties: {},
-                    symbol_properties: {},
-                    prototype: Null,
-                    callable: Some(
-                      InterpreterCallable("ownKeys_inner", fn(
-                        inner_interp,
-                        _tv,
-                        inner_args,
-                      ) raise {
-                        // Recursively call Reflect.ownKeys on the proxy target
-                        let reflect_obj = inner_interp.global.get("Reflect") catch {
-                          _ => Undefined
-                        }
-                        let own_keys_fn = inner_interp.get_property(
-                          reflect_obj, "ownKeys", loc,
-                        )
-                        inner_interp.call_value(
-                          own_keys_fn,
-                          Undefined,
-                          inner_args,
-                          loc,
-                        )
-                      }),
-                    ),
-                    class_name: "Function",
-                    descriptors: {},
-                    symbol_descriptors: {},
-                    extensible: true,
-                  }),
-                  Undefined,
-                  [proxy_target],
-                  loc,
-                )
-              }
-            }
-          }
-          _ => {
-            fn collect_own_keys(data : ObjectData) -> Value {
-              let keys : Array[Value] = []
-              data.properties.each(fn(k, _v) { keys.push(String_(k)) })
-              data.symbol_properties.each(fn(id, _v) {
-                match get_symbol_by_id(id) {
-                  Some(sym) => keys.push(Symbol(sym))
-                  None => ()
-                }
-              })
-              // Also include keys from descriptors not in properties
-              data.descriptors.each(fn(k, _v) {
-                if not(data.properties.contains(k)) {
-                  keys.push(String_(k))
-                }
-              })
-              Array({ elements: keys })
-            }
-            match target {
-              Object(data) => collect_own_keys(data)
-              Array(data) => {
-                let keys : Array[Value] = []
-                for i = 0; i < data.elements.length(); i = i + 1 {
-                  keys.push(String_(i.to_string()))
-                }
-                keys.push(String_("length"))
-                Array({ elements: keys })
-              }
+  reflect_props["ownKeys"] = make_interp_method_func("ownKeys", 1, fn(
+    interp,
+    _this_val,
+    args,
+  ) raise {
+    if args.length() < 1 {
+      raise @errors.TypeError(message="Reflect.ownKeys requires 1 argument")
+    }
+    let target = args[0]
+    match target {
+      Proxy(proxy_data) => {
+        // Check for ownKeys trap
+        let trap = get_proxy_trap(proxy_data, "ownKeys")
+        match trap {
+          Some(trap_fn) => {
+            let proxy_target = get_proxy_target(proxy_data)
+            let handler = get_proxy_handler(proxy_data)
+            let loc = @token.Loc::default()
+            let result = interp.call_value(
+              trap_fn,
+              handler,
+              [proxy_target],
+              loc,
+            )
+            // Convert result array to Array[Value]
+            match result {
+              Array(data) => Array({ elements: data.elements.copy() })
               _ =>
                 raise @errors.TypeError(
-                  message="Reflect.ownKeys called on non-object",
+                  message="'ownKeys' on proxy: trap result is not an Array",
                 )
             }
           }
+          None => {
+            // No trap, delegate to target
+            let proxy_target = get_proxy_target(proxy_data)
+            let loc = @token.Loc::default()
+            interp.call_value(
+              Object({
+                properties: {},
+                symbol_properties: {},
+                prototype: Null,
+                callable: Some(
+                  InterpreterCallable("ownKeys_inner", fn(
+                    inner_interp,
+                    _tv,
+                    inner_args,
+                  ) raise {
+                    // Recursively call Reflect.ownKeys on the proxy target
+                    let reflect_obj = inner_interp.global.get("Reflect") catch {
+                      _ => Undefined
+                    }
+                    let own_keys_fn = inner_interp.get_property(
+                      reflect_obj, "ownKeys", loc,
+                    )
+                    inner_interp.call_value(
+                      own_keys_fn,
+                      Undefined,
+                      inner_args,
+                      loc,
+                    )
+                  }),
+                ),
+                class_name: "Function",
+                descriptors: {},
+                symbol_descriptors: {},
+                extensible: true,
+              }),
+              Undefined,
+              [proxy_target],
+              loc,
+            )
+          }
         }
-      })
+      }
+      _ => {
+        fn collect_own_keys(data : ObjectData) -> Value {
+          let keys : Array[Value] = []
+          data.properties.each(fn(k, _v) { keys.push(String_(k)) })
+          data.symbol_properties.each(fn(id, _v) {
+            match get_symbol_by_id(id) {
+              Some(sym) => keys.push(Symbol(sym))
+              None => ()
+            }
+          })
+          // Also include keys from descriptors not in properties
+          data.descriptors.each(fn(k, _v) {
+            if !data.properties.contains(k) {
+              keys.push(String_(k))
+            }
+          })
+          Array({ elements: keys })
+        }
+        match target {
+          Object(data) => collect_own_keys(data)
+          Array(data) => {
+            let keys : Array[Value] = []
+            for i = 0; i < data.elements.length(); i = i + 1 {
+              keys.push(String_(i.to_string()))
+            }
+            keys.push(String_("length"))
+            Array({ elements: keys })
+          }
+          _ =>
+            raise @errors.TypeError(
+              message="Reflect.ownKeys called on non-object",
+            )
+        }
+      }
+    }
+  })
 
   // Reflect.preventExtensions(target)
   reflect_props["preventExtensions"] = Object({
@@ -865,53 +888,57 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
   })
 
   // Reflect.set(target, propertyKey, value, receiver?)
-  reflect_props["set"] = make_interp_method_func("set", 3, fn(interp, _this_val, args) raise {
-        if args.length() < 3 {
-          raise @errors.TypeError(
-            message="Reflect.set requires at least 3 arguments",
-          )
-        }
-        let target = args[0]
-        match target {
-          Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => ()
-          _ => raise @errors.TypeError(message="Reflect.set called on non-object")
-        }
-        let prop = args[1].to_string()
-        let value = args[2]
-        // Check for write failures before attempting set
-        match target {
-          Object(data) => {
-            match data.descriptors.get(prop) {
-              Some(desc) => {
-                // Accessor with getter-only: write fails
-                if desc.getter is Some(_) && desc.setter is None {
-                  return Bool(false)
-                }
-                // Non-writable data property: write fails
-                if desc.getter is None && not(desc.writable) {
-                  return Bool(false)
-                }
-              }
-              None => ()
+  reflect_props["set"] = make_interp_method_func("set", 3, fn(
+    interp,
+    _this_val,
+    args,
+  ) raise {
+    if args.length() < 3 {
+      raise @errors.TypeError(
+        message="Reflect.set requires at least 3 arguments",
+      )
+    }
+    let target = args[0]
+    match target {
+      Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => ()
+      _ => raise @errors.TypeError(message="Reflect.set called on non-object")
+    }
+    let prop = args[1].to_string()
+    let value = args[2]
+    // Check for write failures before attempting set
+    match target {
+      Object(data) => {
+        match data.descriptors.get(prop) {
+          Some(desc) => {
+            // Accessor with getter-only: write fails
+            if desc.getter is Some(_) && desc.setter is None {
+              return Bool(false)
             }
-            // Non-extensible and property doesn't exist: write fails
-            if not(data.extensible) &&
-              not(data.properties.contains(prop)) &&
-              not(data.descriptors.contains(prop)) {
+            // Non-writable data property: write fails
+            if desc.getter is None && !desc.writable {
               return Bool(false)
             }
           }
-          _ => ()
+          None => ()
         }
-        let loc = @token.Loc::default()
-        try {
-          let _ = interp.set_property(target, prop, value, loc)
-          Bool(true)
-        } catch {
-          @errors.TypeError(_) => Bool(false)
-          e => raise e
+        // Non-extensible and property doesn't exist: write fails
+        if !data.extensible &&
+          !data.properties.contains(prop) &&
+          !data.descriptors.contains(prop) {
+          return Bool(false)
         }
-      })
+      }
+      _ => ()
+    }
+    let loc = @token.Loc::default()
+    try {
+      let _ = interp.set_property(target, prop, value, loc)
+      Bool(true)
+    } catch {
+      @errors.TypeError(_) => Bool(false)
+      e => raise e
+    }
+  })
 
   // Reflect.setPrototypeOf(target, proto)
   reflect_props["setPrototypeOf"] = Object({
@@ -945,8 +972,7 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
         match proto {
           Object(_) | Null => {
             // Non-extensible objects cannot change prototype
-            if not(data.extensible) &&
-              not(strict_equal_val(proto, data.prototype)) {
+            if !data.extensible && !strict_equal_val(proto, data.prototype) {
               return Bool(false)
             }
             data.prototype = proto
@@ -969,7 +995,13 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
   let tostringtag_sym = get_tostringtag_symbol()
   let reflect_sym_props : Map[Int, Value] = {}
   reflect_sym_props[tostringtag_sym.id] = String_("Reflect")
-  let method_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+  let method_desc : PropDescriptor = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   let reflect_descs : Map[String, PropDescriptor] = {}
   reflect_descs["apply"] = method_desc
   reflect_descs["construct"] = method_desc
@@ -985,7 +1017,13 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
   reflect_descs["set"] = method_desc
   reflect_descs["setPrototypeOf"] = method_desc
   let reflect_sym_descs : Map[Int, PropDescriptor] = {}
-  reflect_sym_descs[tostringtag_sym.id] = { writable: false, enumerable: false, configurable: true, getter: None, setter: None }
+  reflect_sym_descs[tostringtag_sym.id] = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   let reflect_obj : Value = Object({
     properties: reflect_props,
     symbol_properties: reflect_sym_props,

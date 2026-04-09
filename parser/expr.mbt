@@ -41,8 +41,8 @@ fn Parser::parse_assignment(self : Parser) -> @ast.Expr raise Error {
       let async_loc = self.advance().loc // consume 'async'
       // Try extended params parse
       let try_ext : (Array[@ast.Param], String?)? = Some(
-          self.parse_params_ext(),
-        ) catch {
+        self.parse_params_ext(),
+      ) catch {
         @errors.SyntaxError(_) | Failure::Failure(_) => None
         e => raise e
       }
@@ -232,7 +232,7 @@ fn Parser::parse_or(self : Parser) -> @ast.Expr raise Error {
         message="Cannot mix nullish coalescing (??) with logical OR (||) without parentheses",
       )
     }
-    if not(is_nullish) && seen_nullish {
+    if !is_nullish && seen_nullish {
       raise @errors.SyntaxError(
         message="Cannot mix logical OR (||) with nullish coalescing (??) without parentheses",
       )
@@ -551,7 +551,7 @@ fn Parser::parse_call(self : Parser) -> @ast.Expr raise Error {
     if self.at(LParen) {
       let loc = self.advance().loc
       let args : Array[@ast.Expr] = []
-      if not(self.at(RParen)) {
+      if !self.at(RParen) {
         if self.at(DotDotDot) {
           let sloc = self.advance().loc
           args.push(SpreadExpr(self.parse_assignment(), sloc))
@@ -640,7 +640,7 @@ fn Parser::parse_call(self : Parser) -> @ast.Expr raise Error {
         // Optional call: obj?.(args)
         let _ = self.advance()
         let args : Array[@ast.Expr] = []
-        if not(self.at(RParen)) {
+        if !self.at(RParen) {
           if self.at(DotDotDot) {
             let sloc = self.advance().loc
             args.push(SpreadExpr(self.parse_assignment(), sloc))
@@ -741,7 +741,7 @@ fn Parser::parse_primary(self : Parser) -> @ast.Expr raise Error {
     }
     Yield =>
       // Outside generator context, yield is a valid identifier
-      if not(self.in_generator()) {
+      if !self.in_generator() {
         self.pos += 1
         Ident("yield", tok.loc)
       } else {
@@ -848,7 +848,7 @@ fn Parser::parse_new_expr(self : Parser) -> @ast.Expr raise Error {
   let args : Array[@ast.Expr] = []
   if self.at(LParen) {
     let _ = self.advance()
-    if not(self.at(RParen)) {
+    if !self.at(RParen) {
       if self.at(DotDotDot) {
         let sloc = self.advance().loc
         args.push(SpreadExpr(self.parse_assignment(), sloc))
@@ -876,7 +876,7 @@ fn Parser::parse_new_expr(self : Parser) -> @ast.Expr raise Error {
 fn Parser::parse_array_literal(self : Parser) -> @ast.Expr raise Error {
   let loc = self.advance().loc // consume '['
   let elements : Array[@ast.Expr] = []
-  while not(self.at(RBracket)) && not(self.at(EOF)) {
+  while !self.at(RBracket) && !self.at(EOF) {
     // Handle elisions: [1,,3] or [,,] - consecutive commas create undefined holes
     if self.at(Comma) {
       elements.push(UndefinedLit(self.peek().loc))
@@ -889,7 +889,7 @@ fn Parser::parse_array_literal(self : Parser) -> @ast.Expr raise Error {
     } else {
       elements.push(self.parse_assignment())
     }
-    if not(self.at(RBracket)) {
+    if !self.at(RBracket) {
       if self.at(Comma) {
         let _ = self.advance()
         // consume comma
@@ -904,7 +904,7 @@ fn Parser::parse_array_literal(self : Parser) -> @ast.Expr raise Error {
 fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
   let loc = self.advance().loc // consume '{'
   let props : Array[@ast.Property] = []
-  while not(self.at(RBrace)) && not(self.at(EOF)) {
+  while !self.at(RBrace) && !self.at(EOF) {
     // Check for spread property: { ...expr }
     if self.at(DotDotDot) {
       let spread_loc = self.advance().loc
@@ -915,7 +915,7 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
         kind: @ast.Spread,
         computed: false,
       })
-      if not(self.at(RBrace)) {
+      if !self.at(RBrace) {
         if self.at(Comma) {
           let _ = self.advance()
         }
@@ -1060,9 +1060,7 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
                 gen_name, ext_params, rest_param, body, gen_mloc,
               )
             } else {
-              GeneratorExprExt(
-                gen_name, ext_params, rest_param, body, gen_mloc,
-              )
+              GeneratorExprExt(gen_name, ext_params, rest_param, body, gen_mloc)
             }
           } else {
             raise @errors.SyntaxError(message=msg)
@@ -1075,7 +1073,7 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
         kind: @ast.Init,
         computed: gen_computed,
       })
-      if not(self.at(RBrace)) {
+      if !self.at(RBrace) {
         if self.at(Comma) {
           let _ = self.advance()
         }
@@ -1334,13 +1332,9 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
             let body = self.parse_block_body()
             self.pop_async_context()
             if obj_is_async {
-              AsyncFuncExprExt(
-                meth_name, ext_params, rest_param, body, mloc,
-              )
+              AsyncFuncExprExt(meth_name, ext_params, rest_param, body, mloc)
             } else {
-              FuncExprExt(
-                meth_name, ext_params, rest_param, body, mloc,
-              )
+              FuncExprExt(meth_name, ext_params, rest_param, body, mloc)
             }
           } else {
             raise @errors.SyntaxError(message=msg)
@@ -1364,7 +1358,7 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
     } else if self.at(Comma) || self.at(RBrace) {
       // Shorthand property: { x } => { x: x }
       // Only identifier keys can use shorthand syntax
-      if not(is_ident_key) {
+      if !is_ident_key {
         let t = self.peek()
         raise @errors.SyntaxError(
           message="Shorthand properties require identifier keys at line \{t.loc.line}, col \{t.loc.col}",
@@ -1378,7 +1372,7 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
         message="Expected ':' or '(' in object literal, got \{t.kind} at line \{t.loc.line}, col \{t.loc.col}",
       )
     }
-    if not(self.at(RBrace)) {
+    if !self.at(RBrace) {
       // Allow trailing comma
       if self.at(Comma) {
         let _ = self.advance()
@@ -1578,23 +1572,21 @@ fn Parser::parse_yield_expr(self : Parser) -> @ast.Expr raise Error {
   }
   // Parse argument: yield is prefix unary with very low precedence
   // yield without argument (e.g., at statement end, before }, ), ], ;, comma)
-  let has_argument = not(
-    self.at(Semicolon) ||
+  let has_argument = !(self.at(Semicolon) ||
     self.at(RParen) ||
     self.at(RBracket) ||
     self.at(RBrace) ||
     self.at(Comma) ||
     self.at(Colon) ||
-    self.at(EOF),
-  )
+    self.at(EOF))
   // Also check if the next token is on a different line (ASI)
   let next_on_new_line = if has_argument {
     let next_tok = self.peek()
-    next_tok.loc.line != tok.loc.line && not(delegate)
+    next_tok.loc.line != tok.loc.line && !delegate
   } else {
     false
   }
-  if delegate || (has_argument && not(next_on_new_line)) {
+  if delegate || (has_argument && !next_on_new_line) {
     let argument = self.parse_assignment()
     YieldExpr(Some(argument), delegate, tok.loc)
   } else {
@@ -1605,7 +1597,7 @@ fn Parser::parse_yield_expr(self : Parser) -> @ast.Expr raise Error {
 ///|
 fn Parser::parse_arrow_body(
   self : Parser,
-  is_async~ : Bool = false,
+  is_async? : Bool = false,
 ) -> Array[@ast.Stmt] raise Error {
   // Arrow functions are never generators; yield is illegal inside them
   self.push_generator_context(false)
@@ -1745,7 +1737,11 @@ fn expr_to_pattern(expr : @ast.Expr) -> @ast.Pattern raise Error {
             Ident(s, _) => (s, None)
             NumberLit(n, _) => {
               let i = n.to_int()
-              let name = if i.to_double() == n { i.to_string() } else { n.to_string() }
+              let name = if i.to_double() == n {
+                i.to_string()
+              } else {
+                n.to_string()
+              }
               (name, None)
             }
             _ =>
@@ -1758,7 +1754,12 @@ fn expr_to_pattern(expr : @ast.Expr) -> @ast.Pattern raise Error {
         // Assign(name, default) becomes DefaultPat(IdentPat(name), default)
         // which correctly handles both shorthand {x = 5} and non-shorthand {a: b = 1}
         let pat = expr_to_pattern(prop.value)
-        prop_pats.push({ key: key_str, value: pat, default_val: None, computed_key })
+        prop_pats.push({
+          key: key_str,
+          value: pat,
+          default_val: None,
+          computed_key,
+        })
       }
       ObjectPat(prop_pats, rest)
     }
@@ -1816,7 +1817,7 @@ fn Parser::parse_class_body(
 ) -> Array[@ast.ClassMethod] raise Error {
   let _ = self.expect(LBrace)
   let methods : Array[@ast.ClassMethod] = []
-  while not(self.at(RBrace)) && not(self.at(EOF)) {
+  while !self.at(RBrace) && !self.at(EOF) {
     // Skip semicolons (allowed in class bodies)
     if self.at(Semicolon) {
       let _ = self.advance()
@@ -1855,7 +1856,7 @@ fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
   let is_generator = self.eat(Star)
   // Check for getter/setter (not valid with generator *)
   let mut method_kind : @ast.PropKind = @ast.Init
-  if not(is_generator) {
+  if !is_generator {
     match self.peek_kind() {
       Get =>
         match self.peek_kind_at(1) {
@@ -1905,7 +1906,7 @@ fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
           | Extends
           | Super
           | Static =>
-            if not(self.at_kind_at(1, LParen)) {
+            if !self.at_kind_at(1, LParen) {
               self.pos += 1
               method_kind = @ast.Get
             }
@@ -1959,7 +1960,7 @@ fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
           | Extends
           | Super
           | Static =>
-            if not(self.at_kind_at(1, LParen)) {
+            if !self.at_kind_at(1, LParen) {
               self.pos += 1
               method_kind = @ast.Set
             }
@@ -2152,7 +2153,7 @@ fn Parser::parse_super_expr(self : Parser) -> @ast.Expr raise Error {
     // super(args) - super call
     let _ = self.advance()
     let args : Array[@ast.Expr] = []
-    if not(self.at(RParen)) {
+    if !self.at(RParen) {
       if self.at(DotDotDot) {
         let sloc = self.advance().loc
         args.push(SpreadExpr(self.parse_assignment(), sloc))

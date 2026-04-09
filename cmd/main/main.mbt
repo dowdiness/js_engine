@@ -68,15 +68,42 @@ fn main {
           }
           exit_with_error()
         }
-        @errors.TypeError(message~) => { println("TypeError: \{message}"); exit_with_error() }
-        @errors.ReferenceError(message~) => { println("ReferenceError: \{message}"); exit_with_error() }
-        @errors.SyntaxError(message~) => { println("SyntaxError: \{message}"); exit_with_error() }
-        @errors.RangeError(message~) => { println("RangeError: \{message}"); exit_with_error() }
-        @errors.URIError(message~) => { println("URIError: \{message}"); exit_with_error() }
-        @errors.EvalError(message~) => { println("EvalError: \{message}"); exit_with_error() }
-        @errors.InternalError(message~) => { println("InternalError: \{message}"); exit_with_error() }
-        Failure::Failure(msg) => { println("Error: \{msg}"); exit_with_error() }
-        e => { println("Error: \{e}"); exit_with_error() }
+        @errors.TypeError(message~) => {
+          println("TypeError: \{message}")
+          exit_with_error()
+        }
+        @errors.ReferenceError(message~) => {
+          println("ReferenceError: \{message}")
+          exit_with_error()
+        }
+        @errors.SyntaxError(message~) => {
+          println("SyntaxError: \{message}")
+          exit_with_error()
+        }
+        @errors.RangeError(message~) => {
+          println("RangeError: \{message}")
+          exit_with_error()
+        }
+        @errors.URIError(message~) => {
+          println("URIError: \{message}")
+          exit_with_error()
+        }
+        @errors.EvalError(message~) => {
+          println("EvalError: \{message}")
+          exit_with_error()
+        }
+        @errors.InternalError(message~) => {
+          println("InternalError: \{message}")
+          exit_with_error()
+        }
+        Failure::Failure(msg) => {
+          println("Error: \{msg}")
+          exit_with_error()
+        }
+        e => {
+          println("Error: \{e}")
+          exit_with_error()
+        }
       }
   }
 }

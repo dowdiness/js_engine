@@ -3,12 +3,20 @@ package "dowdiness/js_engine/interpreter"
 
 import {
   "dowdiness/js_engine/ast",
+  "moonbitlang/core/debug",
+  "moonbitlang/core/ref",
 }
 
 // Values
+pub let boolean_prototype_ref : @ref.Ref[Value?]
+
+pub let current_interpreter : @ref.Ref[Interpreter?]
+
 pub fn delete_array_like_element(Value, Int) -> Unit
 
 pub fn detach_arraybuffer(Int) -> Unit
+
+pub let function_prototype_ref : @ref.Ref[Value?]
 
 pub fn get_array_iterator_override(ArrayData) -> (Value?, Value?)
 
@@ -16,19 +24,27 @@ pub fn get_array_iterator_proto() -> Value
 
 pub fn get_array_like_element(Value, Int) -> Value
 
+pub fn get_array_like_element_interp(Interpreter, Value, Int) -> Value raise
+
 pub fn get_array_method(ArrayData, String) -> Value
 
 pub fn get_array_method_with_interp(ArrayData, String) -> Value
 
 pub fn get_array_named_prop(ArrayData, String) -> Value?
 
+pub fn get_array_symbol_prop(ArrayData, Int) -> Value?
+
 pub fn get_arraybuffer_bytes(Int) -> Array[Int]?
 
 pub fn get_async_iterator_symbol() -> SymbolData
 
+pub fn get_boolean_proto() -> Value
+
 pub fn get_buffer_id(Value) -> Int?
 
 pub fn get_hasinstance_symbol() -> SymbolData
+
+pub fn get_isconcatspreadable_symbol() -> SymbolData
 
 pub fn get_iterator_proto() -> Value
 
@@ -38,7 +54,13 @@ pub fn get_map_method(MapData, String) -> Value
 
 pub fn get_match_symbol() -> SymbolData
 
+pub fn get_matchall_symbol() -> SymbolData
+
 pub fn get_number_method(Value, String) -> Value
+
+pub fn get_number_proto() -> Value
+
+pub fn get_obj_proto() -> Value
 
 pub fn get_promise_method(PromiseData, String) -> Value
 
@@ -50,13 +72,19 @@ pub fn get_search_symbol() -> SymbolData
 
 pub fn get_set_method(SetData, String) -> Value
 
+pub fn get_species_symbol() -> SymbolData
+
 pub fn get_split_symbol() -> SymbolData
 
 pub fn get_string_iterator_proto() -> Value
 
 pub fn get_string_method(String, String, annex_b? : Bool) -> Value
 
+pub fn get_string_proto() -> Value
+
 pub fn get_symbol_by_id(Int) -> SymbolData?
+
+pub fn get_symbol_proto() -> Value
 
 pub fn get_toprimitive_symbol() -> SymbolData
 
@@ -66,15 +94,19 @@ pub fn get_tostringtag_value(ObjectData) -> String? raise
 
 pub fn get_typedarray_prop(ObjectData, String) -> Value
 
+pub fn get_unscopables_symbol() -> SymbolData
+
 pub fn get_weakmap_method(ObjectData, String) -> Value
 
 pub fn get_weakset_method(ObjectData, String) -> Value
 
 pub fn has_array_like_element(Value, Int) -> Bool
 
+pub fn has_property(Value, String) -> Bool
+
 pub fn is_arraybuffer_detached(Int) -> Bool
 
-pub let is_constructing : Ref[Bool]
+pub let is_constructing : @ref.Ref[Bool]
 
 pub fn is_constructor_value(Value) -> Bool
 
@@ -114,7 +146,7 @@ pub fn make_plain_object() -> Value
 
 pub fn make_regex_match_array(RegexMatch, String) -> Value
 
-pub fn make_regexp_object(String, String) -> Value
+pub fn make_regexp_object(String, String) -> Value raise
 
 pub fn make_static_func(String, (Array[Value]) -> Value raise) -> Value
 
@@ -128,11 +160,17 @@ pub fn new_promise_data() -> PromiseData
 
 pub fn new_symbol(String?) -> SymbolData
 
+pub let number_prototype_ref : @ref.Ref[Value?]
+
+pub let object_prototype_ref : @ref.Ref[Value?]
+
 pub fn regex_match_at(String, String, String, Int) -> RegexMatch? raise
 
 pub fn regex_search(String, String, String, start_pos? : Int) -> RegexMatch? raise
 
 pub fn regex_search_all(String, String, String) -> Array[RegexMatch] raise
+
+pub let regexp_prototype_ref : @ref.Ref[Value?]
 
 pub fn same_value(Value, Value) -> Bool
 
@@ -145,6 +183,10 @@ pub fn set_array_like_element(Value, Int, Value) -> Unit
 pub fn set_array_like_length(Value, Int) -> Unit
 
 pub fn set_array_named_prop(ArrayData, String, Value) -> Unit
+
+pub fn set_array_symbol_prop(ArrayData, Int, Value) -> Unit
+
+pub fn set_function_name(Value, String) -> Unit
 
 pub fn setup_arraybuffer_builtins(Environment) -> Unit
 
@@ -172,25 +214,39 @@ pub fn setup_typedarray_builtins(Environment) -> Unit
 
 pub fn setup_weakmap_set_builtins(Environment) -> Unit
 
+pub fn sort_property_keys(Map[String, Value]) -> Array[String]
+
 pub fn strict_equal_val(Value, Value) -> Bool
 
 pub fn string_match_regex(String, String, String) -> Value
+
+pub let string_prototype_ref : @ref.Ref[Value?]
 
 pub fn string_replace_regex(String, String, String, String) -> Value
 
 pub fn string_search_regex(String, String, String) -> Value
 
+pub fn substring(Array[Char], Int, Int) -> String
+
+pub let symbol_prototype_ref : @ref.Ref[Value?]
+
 pub fn this_to_string(Value) -> String raise
 
-pub fn to_array_like_elements(Value) -> Array[Value]
+pub fn to_array_like_elements(Value) -> Array[Value] raise
 
-pub fn to_array_like_length(Value) -> Int
+pub fn to_array_like_length(Value) -> Int raise
+
+pub fn to_array_like_length_interp(Value, Interpreter) -> Int raise
 
 pub fn to_index(Value) -> Int raise
 
 pub fn to_int32(Double) -> Int
 
+pub fn to_js_string(Value) -> String raise
+
 pub fn to_number(Value) -> Double raise
+
+pub fn to_primitive_default(Value, ObjectData) -> Value raise
 
 pub fn type_of(Value) -> String
 
@@ -200,25 +256,35 @@ pub fn typedarray_get_index(ObjectData, Int) -> Value
 
 pub fn typedarray_set_index(ObjectData, Int, Double) -> Unit
 
+pub fn utf16_length(String) -> Int
+
 pub fn validate_typedarray_buffer(ObjectData) -> Unit raise
 
-pub let well_known_async_iterator_sym : Ref[SymbolData?]
+pub let well_known_async_iterator_sym : @ref.Ref[SymbolData?]
 
-pub let well_known_hasinstance_sym : Ref[SymbolData?]
+pub let well_known_hasinstance_sym : @ref.Ref[SymbolData?]
 
-pub let well_known_iterator_sym : Ref[SymbolData?]
+pub let well_known_isconcatspreadable_sym : @ref.Ref[SymbolData?]
 
-pub let well_known_match_sym : Ref[SymbolData?]
+pub let well_known_iterator_sym : @ref.Ref[SymbolData?]
 
-pub let well_known_replace_sym : Ref[SymbolData?]
+pub let well_known_match_sym : @ref.Ref[SymbolData?]
 
-pub let well_known_search_sym : Ref[SymbolData?]
+pub let well_known_matchall_sym : @ref.Ref[SymbolData?]
 
-pub let well_known_split_sym : Ref[SymbolData?]
+pub let well_known_replace_sym : @ref.Ref[SymbolData?]
 
-pub let well_known_toprimitive_sym : Ref[SymbolData?]
+pub let well_known_search_sym : @ref.Ref[SymbolData?]
 
-pub let well_known_tostringtag_sym : Ref[SymbolData?]
+pub let well_known_species_sym : @ref.Ref[SymbolData?]
+
+pub let well_known_split_sym : @ref.Ref[SymbolData?]
+
+pub let well_known_toprimitive_sym : @ref.Ref[SymbolData?]
+
+pub let well_known_tostringtag_sym : @ref.Ref[SymbolData?]
+
+pub let well_known_unscopables_sym : @ref.Ref[SymbolData?]
 
 // Errors
 pub suberror GeneratorReturnSignal {
@@ -244,8 +310,7 @@ pub(all) enum BindingKind {
   LetBinding
   ConstBinding
   VarBinding
-}
-pub impl Eq for BindingKind
+} derive(Eq, @debug.Debug)
 pub impl Show for BindingKind
 
 pub(all) enum Callable {
@@ -268,6 +333,7 @@ pub(all) struct Environment {
   bindings : Map[String, Binding]
   parent : Environment?
   mut is_var_scope : Bool
+  mut with_object : Value?
 }
 pub fn Environment::assign(Self, String, Value) -> Unit raise
 pub fn Environment::assign_var(Self, String, Value) -> Unit raise
@@ -275,6 +341,7 @@ pub fn Environment::def(Self, String, Value, BindingKind) -> Unit raise
 pub fn Environment::def_builtin(Self, String, Value) -> Unit
 pub fn Environment::def_tdz(Self, String, BindingKind) -> Unit raise
 pub fn Environment::find_var_env(Self) -> Self
+pub fn Environment::find_with_object(Self, String) -> Value?
 pub fn Environment::get(Self, String) -> Value raise
 pub fn Environment::has(Self, String) -> Bool
 pub fn Environment::has_var(Self, String) -> Bool
@@ -345,8 +412,8 @@ pub(all) struct Interpreter {
   annex_b : Bool
   microtask_queue : Array[Microtask]
   timer_queue : Array[TimerTask]
-  timer_id_counter : Ref[Int]
-  timer_insertion_counter : Ref[Int]
+  timer_id_counter : @ref.Ref[Int]
+  timer_insertion_counter : @ref.Ref[Int]
   cancelled_timer_ids : Map[Int, Bool]
   module_registry : Map[String, Map[String, Value]]
   mut module_exports : Map[String, Value]
@@ -421,6 +488,7 @@ pub(all) struct PropDescriptor {
 pub(all) struct ProxyData {
   mut target : Value?
   mut handler : Value?
+  is_callable : Bool
 }
 
 type RegexMatch
@@ -444,8 +512,8 @@ pub(all) struct SetData {
 pub(all) enum Signal {
   Normal(Value)
   ReturnSignal(Value)
-  BreakSignal(String?)
-  ContinueSignal(String?)
+  BreakSignal(Value?, String?)
+  ContinueSignal(Value?, String?)
 }
 
 pub(all) struct SymbolData {

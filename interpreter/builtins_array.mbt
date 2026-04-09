@@ -376,9 +376,7 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
     }
     "values" => {
       let arr = data
-      make_native_func("values", fn(_args) {
-        make_array_iterator_value(arr)
-      })
+      make_native_func("values", fn(_args) { make_array_iterator_value(arr) })
     }
     "splice" => {
       let arr = data
@@ -475,497 +473,606 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
     "forEach" => {
       let _arr = data
       make_interp_method_func("forEach", 1, fn(interp, this_val, args) raise {
-            let callback = if args.length() > 0 { args[0] } else { Undefined }
-            if not(is_callable(callback)) {
-              raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
-            }
-            let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-            let loc = @token.Loc::default()
-            let actual_arr : ArrayData = match this_val {
-              Array(a) => a
-              _ => {
-                let o = to_object(this_val, interp)
-                let len = to_array_like_length_interp(o, interp)
-                for i = 0; i < len; i = i + 1 {
-                  if has_array_like_element(o, i) {
-                    let elem = get_array_like_element_interp(interp, o, i)
-                    let _ = interp.call_value(callback, this_arg, [elem, Number(i.to_double()), o], loc)
-                  }
-                }
-                return Undefined
+        let callback = if args.length() > 0 { args[0] } else { Undefined }
+        if !is_callable(callback) {
+          raise @errors.TypeError(
+            message=to_js_string(callback) + " is not a function",
+          )
+        }
+        let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+        let loc = @token.Loc::default()
+        let actual_arr : ArrayData = match this_val {
+          Array(a) => a
+          _ => {
+            let o = to_object(this_val, interp)
+            let len = to_array_like_length_interp(o, interp)
+            for i = 0; i < len; i = i + 1 {
+              if has_array_like_element(o, i) {
+                let elem = get_array_like_element_interp(interp, o, i)
+                let _ = interp.call_value(
+                  callback,
+                  this_arg,
+                  [elem, Number(i.to_double()), o],
+                  loc,
+                )
               }
             }
-            for i = 0; i < actual_arr.elements.length(); i = i + 1 {
-              let _ = interp.call_value(
-                callback,
-                this_arg,
-                [actual_arr.elements[i], Number(i.to_double()), Array(actual_arr)],
-                loc,
-              )
-            }
-            Undefined
-          })
+            return Undefined
+          }
+        }
+        for i = 0; i < actual_arr.elements.length(); i = i + 1 {
+          let _ = interp.call_value(
+            callback,
+            this_arg,
+            [actual_arr.elements[i], Number(i.to_double()), Array(actual_arr)],
+            loc,
+          )
+        }
+        Undefined
+      })
     }
     "map" => {
       let _arr = data
       make_interp_method_func("map", 1, fn(interp, this_val, args) raise {
-            let callback = if args.length() > 0 { args[0] } else { Undefined }
-            if not(is_callable(callback)) {
-              raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
-            }
-            let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-            let loc = @token.Loc::default()
-            let actual_arr : ArrayData = match this_val {
-              Array(a) => a
-              _ => {
-                let o = to_object(this_val, interp)
-                let len = to_array_like_length_interp(o, interp)
-                let result : Array[Value] = []
-                for i = 0; i < len; i = i + 1 {
-                  if has_array_like_element(o, i) {
-                    let elem = get_array_like_element_interp(interp, o, i)
-                    let val = interp.call_value(callback, this_arg, [elem, Number(i.to_double()), o], loc)
-                    result.push(val)
-                  } else {
-                    result.push(Undefined)
-                  }
-                }
-                return Array({ elements: result })
+        let callback = if args.length() > 0 { args[0] } else { Undefined }
+        if !is_callable(callback) {
+          raise @errors.TypeError(
+            message=to_js_string(callback) + " is not a function",
+          )
+        }
+        let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+        let loc = @token.Loc::default()
+        let actual_arr : ArrayData = match this_val {
+          Array(a) => a
+          _ => {
+            let o = to_object(this_val, interp)
+            let len = to_array_like_length_interp(o, interp)
+            let result : Array[Value] = []
+            for i = 0; i < len; i = i + 1 {
+              if has_array_like_element(o, i) {
+                let elem = get_array_like_element_interp(interp, o, i)
+                let val = interp.call_value(
+                  callback,
+                  this_arg,
+                  [elem, Number(i.to_double()), o],
+                  loc,
+                )
+                result.push(val)
+              } else {
+                result.push(Undefined)
               }
             }
-            let result : Array[Value] = []
-            for i = 0; i < actual_arr.elements.length(); i = i + 1 {
-              let val = interp.call_value(
-                callback,
-                this_arg,
-                [actual_arr.elements[i], Number(i.to_double()), Array(actual_arr)],
-                loc,
-              )
-              result.push(val)
-            }
-            Array({ elements: result })
-          })
+            return Array({ elements: result })
+          }
+        }
+        let result : Array[Value] = []
+        for i = 0; i < actual_arr.elements.length(); i = i + 1 {
+          let val = interp.call_value(
+            callback,
+            this_arg,
+            [actual_arr.elements[i], Number(i.to_double()), Array(actual_arr)],
+            loc,
+          )
+          result.push(val)
+        }
+        Array({ elements: result })
+      })
     }
     "filter" => {
       let _arr = data
       make_interp_method_func("filter", 1, fn(interp, this_val, args) raise {
-            let callback = if args.length() > 0 { args[0] } else { Undefined }
-            if not(is_callable(callback)) {
-              raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
-            }
-            let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-            let loc = @token.Loc::default()
-            let actual_arr : ArrayData = match this_val {
-              Array(a) => a
-              _ => {
-                let o = to_object(this_val, interp)
-                let len = to_array_like_length_interp(o, interp)
-                let result : Array[Value] = []
-                for i = 0; i < len; i = i + 1 {
-                  if has_array_like_element(o, i) {
-                    let elem = get_array_like_element_interp(interp, o, i)
-                    let val = interp.call_value(callback, this_arg, [elem, Number(i.to_double()), o], loc)
-                    if is_truthy(val) {
-                      result.push(elem)
-                    }
-                  }
-                }
-                return Array({ elements: result })
-              }
-            }
+        let callback = if args.length() > 0 { args[0] } else { Undefined }
+        if !is_callable(callback) {
+          raise @errors.TypeError(
+            message=to_js_string(callback) + " is not a function",
+          )
+        }
+        let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+        let loc = @token.Loc::default()
+        let actual_arr : ArrayData = match this_val {
+          Array(a) => a
+          _ => {
+            let o = to_object(this_val, interp)
+            let len = to_array_like_length_interp(o, interp)
             let result : Array[Value] = []
-            for i = 0; i < actual_arr.elements.length(); i = i + 1 {
-              let val = interp.call_value(
-                callback,
-                this_arg,
-                [actual_arr.elements[i], Number(i.to_double()), Array(actual_arr)],
-                loc,
-              )
-              if is_truthy(val) {
-                result.push(actual_arr.elements[i])
+            for i = 0; i < len; i = i + 1 {
+              if has_array_like_element(o, i) {
+                let elem = get_array_like_element_interp(interp, o, i)
+                let val = interp.call_value(
+                  callback,
+                  this_arg,
+                  [elem, Number(i.to_double()), o],
+                  loc,
+                )
+                if is_truthy(val) {
+                  result.push(elem)
+                }
               }
             }
-            Array({ elements: result })
-          })
+            return Array({ elements: result })
+          }
+        }
+        let result : Array[Value] = []
+        for i = 0; i < actual_arr.elements.length(); i = i + 1 {
+          let val = interp.call_value(
+            callback,
+            this_arg,
+            [actual_arr.elements[i], Number(i.to_double()), Array(actual_arr)],
+            loc,
+          )
+          if is_truthy(val) {
+            result.push(actual_arr.elements[i])
+          }
+        }
+        Array({ elements: result })
+      })
     }
     "reduce" => {
       let _arr = data
       make_interp_method_func("reduce", 1, fn(interp, this_val, args) raise {
-            // Use this_val's array data if it's the same array, otherwise delegate to generic
-            let actual_arr : ArrayData = match this_val {
-              Array(a) => a
-              _ => {
-                // this_val is not an array — delegate to generic Object path
-                let o = to_object(this_val, interp)
-                let callback = if args.length() > 0 { args[0] } else { Undefined }
-                if not(is_callable(callback)) {
-                  raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
-                }
-                let loc = @token.Loc::default()
-                let len = to_array_like_length_interp(o, interp)
-                let mut acc : Value = Undefined
-                let mut k = 0
-                if args.length() > 1 {
-                  acc = args[1]
-                } else {
-                  let mut k_present = false
-                  while k < len {
-                    if has_array_like_element(o, k) {
-                      acc = get_array_like_element_interp(interp, o, k)
-                      k = k + 1
-                      k_present = true
-                      break
-                    }
-                    k = k + 1
-                  }
-                  if not(k_present) {
-                    raise @errors.TypeError(message="Reduce of empty array with no initial value")
-                  }
-                }
-                while k < len {
-                  if has_array_like_element(o, k) {
-                    acc = interp.call_value(callback, Undefined, [acc, get_array_like_element_interp(interp, o, k), Number(k.to_double()), o], loc)
-                  }
-                  k = k + 1
-                }
-                return acc
-              }
-            }
+        // Use this_val's array data if it's the same array, otherwise delegate to generic
+        let actual_arr : ArrayData = match this_val {
+          Array(a) => a
+          _ => {
+            // this_val is not an array — delegate to generic Object path
+            let o = to_object(this_val, interp)
             let callback = if args.length() > 0 { args[0] } else { Undefined }
-            if not(is_callable(callback)) {
-              raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
+            if !is_callable(callback) {
+              raise @errors.TypeError(
+                message=to_js_string(callback) + " is not a function",
+              )
             }
             let loc = @token.Loc::default()
+            let len = to_array_like_length_interp(o, interp)
             let mut acc : Value = Undefined
-            let mut start = 0
+            let mut k = 0
             if args.length() > 1 {
               acc = args[1]
             } else {
-              if actual_arr.elements.length() == 0 {
+              let mut k_present = false
+              while k < len {
+                if has_array_like_element(o, k) {
+                  acc = get_array_like_element_interp(interp, o, k)
+                  k = k + 1
+                  k_present = true
+                  break
+                }
+                k = k + 1
+              }
+              if !k_present {
                 raise @errors.TypeError(
                   message="Reduce of empty array with no initial value",
                 )
               }
-              acc = actual_arr.elements[0]
-              start = 1
             }
-            for i = start; i < actual_arr.elements.length(); i = i + 1 {
-              acc = interp.call_value(
-                callback,
-                Undefined,
-                [acc, actual_arr.elements[i], Number(i.to_double()), Array(actual_arr)],
-                loc,
-              )
+            while k < len {
+              if has_array_like_element(o, k) {
+                acc = interp.call_value(
+                  callback,
+                  Undefined,
+                  [
+                    acc,
+                    get_array_like_element_interp(interp, o, k),
+                    Number(k.to_double()),
+                    o,
+                  ],
+                  loc,
+                )
+              }
+              k = k + 1
             }
-            acc
-          })
+            return acc
+          }
+        }
+        let callback = if args.length() > 0 { args[0] } else { Undefined }
+        if !is_callable(callback) {
+          raise @errors.TypeError(
+            message=to_js_string(callback) + " is not a function",
+          )
+        }
+        let loc = @token.Loc::default()
+        let mut acc : Value = Undefined
+        let mut start = 0
+        if args.length() > 1 {
+          acc = args[1]
+        } else {
+          if actual_arr.elements.length() == 0 {
+            raise @errors.TypeError(
+              message="Reduce of empty array with no initial value",
+            )
+          }
+          acc = actual_arr.elements[0]
+          start = 1
+        }
+        for i = start; i < actual_arr.elements.length(); i = i + 1 {
+          acc = interp.call_value(
+            callback,
+            Undefined,
+            [
+              acc,
+              actual_arr.elements[i],
+              Number(i.to_double()),
+              Array(actual_arr),
+            ],
+            loc,
+          )
+        }
+        acc
+      })
     }
     "reduceRight" => {
       let _arr = data
-      make_interp_method_func("reduceRight", 1, fn(interp, this_val, args) raise {
-            // Use this_val's array data if it's the same array, otherwise delegate to generic
-            let actual_arr : ArrayData = match this_val {
-              Array(a) => a
-              _ => {
-                let o = to_object(this_val, interp)
-                let callback = if args.length() > 0 { args[0] } else { Undefined }
-                if not(is_callable(callback)) {
-                  raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
-                }
-                let loc = @token.Loc::default()
-                let len = to_array_like_length_interp(o, interp)
-                let mut acc : Value = Undefined
-                let mut k = len - 1
-                if args.length() > 1 {
-                  acc = args[1]
-                } else {
-                  let mut k_present = false
-                  while k >= 0 {
-                    if has_array_like_element(o, k) {
-                      acc = get_array_like_element_interp(interp, o, k)
-                      k = k - 1
-                      k_present = true
-                      break
-                    }
-                    k = k - 1
-                  }
-                  if not(k_present) {
-                    raise @errors.TypeError(message="Reduce of empty array with no initial value")
-                  }
-                }
-                while k >= 0 {
-                  if has_array_like_element(o, k) {
-                    acc = interp.call_value(callback, Undefined, [acc, get_array_like_element_interp(interp, o, k), Number(k.to_double()), o], loc)
-                  }
-                  k = k - 1
-                }
-                return acc
-              }
-            }
+      make_interp_method_func("reduceRight", 1, fn(
+        interp,
+        this_val,
+        args,
+      ) raise {
+        // Use this_val's array data if it's the same array, otherwise delegate to generic
+        let actual_arr : ArrayData = match this_val {
+          Array(a) => a
+          _ => {
+            let o = to_object(this_val, interp)
             let callback = if args.length() > 0 { args[0] } else { Undefined }
-            if not(is_callable(callback)) {
-              raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
+            if !is_callable(callback) {
+              raise @errors.TypeError(
+                message=to_js_string(callback) + " is not a function",
+              )
             }
             let loc = @token.Loc::default()
+            let len = to_array_like_length_interp(o, interp)
             let mut acc : Value = Undefined
-            let mut start = actual_arr.elements.length() - 1
+            let mut k = len - 1
             if args.length() > 1 {
               acc = args[1]
             } else {
-              if actual_arr.elements.length() == 0 {
+              let mut k_present = false
+              while k >= 0 {
+                if has_array_like_element(o, k) {
+                  acc = get_array_like_element_interp(interp, o, k)
+                  k = k - 1
+                  k_present = true
+                  break
+                }
+                k = k - 1
+              }
+              if !k_present {
                 raise @errors.TypeError(
                   message="Reduce of empty array with no initial value",
                 )
               }
-              acc = actual_arr.elements[start]
-              start = start - 1
             }
-            for i = start; i >= 0; i = i - 1 {
-              acc = interp.call_value(
-                callback,
-                Undefined,
-                [acc, actual_arr.elements[i], Number(i.to_double()), Array(actual_arr)],
-                loc,
-              )
+            while k >= 0 {
+              if has_array_like_element(o, k) {
+                acc = interp.call_value(
+                  callback,
+                  Undefined,
+                  [
+                    acc,
+                    get_array_like_element_interp(interp, o, k),
+                    Number(k.to_double()),
+                    o,
+                  ],
+                  loc,
+                )
+              }
+              k = k - 1
             }
-            acc
-          })
+            return acc
+          }
+        }
+        let callback = if args.length() > 0 { args[0] } else { Undefined }
+        if !is_callable(callback) {
+          raise @errors.TypeError(
+            message=to_js_string(callback) + " is not a function",
+          )
+        }
+        let loc = @token.Loc::default()
+        let mut acc : Value = Undefined
+        let mut start = actual_arr.elements.length() - 1
+        if args.length() > 1 {
+          acc = args[1]
+        } else {
+          if actual_arr.elements.length() == 0 {
+            raise @errors.TypeError(
+              message="Reduce of empty array with no initial value",
+            )
+          }
+          acc = actual_arr.elements[start]
+          start = start - 1
+        }
+        for i = start; i >= 0; i = i - 1 {
+          acc = interp.call_value(
+            callback,
+            Undefined,
+            [
+              acc,
+              actual_arr.elements[i],
+              Number(i.to_double()),
+              Array(actual_arr),
+            ],
+            loc,
+          )
+        }
+        acc
+      })
     }
     "find" => {
       let _arr = data
       make_interp_method_func("find", 1, fn(interp, this_val, args) raise {
-            let callback = if args.length() > 0 { args[0] } else { Undefined }
-            if not(is_callable(callback)) {
-              raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
-            }
-            let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-            let loc = @token.Loc::default()
-            let actual_arr : ArrayData = match this_val {
-              Array(a) => a
-              _ => {
-                let o = to_object(this_val, interp)
-                let len = to_array_like_length_interp(o, interp)
-                for i = 0; i < len; i = i + 1 {
-                  let elem = get_array_like_element_interp(interp, o, i)
-                  let val = interp.call_value(callback, this_arg, [elem, Number(i.to_double()), o], loc)
-                  if is_truthy(val) {
-                    return elem
-                  }
-                }
-                return Undefined
-              }
-            }
-            for i = 0; i < actual_arr.elements.length(); i = i + 1 {
+        let callback = if args.length() > 0 { args[0] } else { Undefined }
+        if !is_callable(callback) {
+          raise @errors.TypeError(
+            message=to_js_string(callback) + " is not a function",
+          )
+        }
+        let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+        let loc = @token.Loc::default()
+        let actual_arr : ArrayData = match this_val {
+          Array(a) => a
+          _ => {
+            let o = to_object(this_val, interp)
+            let len = to_array_like_length_interp(o, interp)
+            for i = 0; i < len; i = i + 1 {
+              let elem = get_array_like_element_interp(interp, o, i)
               let val = interp.call_value(
                 callback,
                 this_arg,
-                [actual_arr.elements[i], Number(i.to_double()), Array(actual_arr)],
+                [elem, Number(i.to_double()), o],
                 loc,
               )
               if is_truthy(val) {
-                return actual_arr.elements[i]
+                return elem
               }
             }
-            Undefined
-          })
+            return Undefined
+          }
+        }
+        for i = 0; i < actual_arr.elements.length(); i = i + 1 {
+          let val = interp.call_value(
+            callback,
+            this_arg,
+            [actual_arr.elements[i], Number(i.to_double()), Array(actual_arr)],
+            loc,
+          )
+          if is_truthy(val) {
+            return actual_arr.elements[i]
+          }
+        }
+        Undefined
+      })
     }
     "findIndex" => {
       let _arr = data
       make_interp_method_func("findIndex", 1, fn(interp, this_val, args) raise {
-            let callback = if args.length() > 0 { args[0] } else { Undefined }
-            if not(is_callable(callback)) {
-              raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
-            }
-            let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-            let loc = @token.Loc::default()
-            let actual_arr : ArrayData = match this_val {
-              Array(a) => a
-              _ => {
-                let o = to_object(this_val, interp)
-                let len = to_array_like_length_interp(o, interp)
-                for i = 0; i < len; i = i + 1 {
-                  let elem = get_array_like_element_interp(interp, o, i)
-                  let val = interp.call_value(callback, this_arg, [elem, Number(i.to_double()), o], loc)
-                  if is_truthy(val) {
-                    return Number(i.to_double())
-                  }
-                }
-                return Number(-1.0)
-              }
-            }
-            for i = 0; i < actual_arr.elements.length(); i = i + 1 {
+        let callback = if args.length() > 0 { args[0] } else { Undefined }
+        if !is_callable(callback) {
+          raise @errors.TypeError(
+            message=to_js_string(callback) + " is not a function",
+          )
+        }
+        let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+        let loc = @token.Loc::default()
+        let actual_arr : ArrayData = match this_val {
+          Array(a) => a
+          _ => {
+            let o = to_object(this_val, interp)
+            let len = to_array_like_length_interp(o, interp)
+            for i = 0; i < len; i = i + 1 {
+              let elem = get_array_like_element_interp(interp, o, i)
               let val = interp.call_value(
                 callback,
                 this_arg,
-                [actual_arr.elements[i], Number(i.to_double()), Array(actual_arr)],
+                [elem, Number(i.to_double()), o],
                 loc,
               )
               if is_truthy(val) {
                 return Number(i.to_double())
               }
             }
-            Number(-1.0)
-          })
+            return Number(-1.0)
+          }
+        }
+        for i = 0; i < actual_arr.elements.length(); i = i + 1 {
+          let val = interp.call_value(
+            callback,
+            this_arg,
+            [actual_arr.elements[i], Number(i.to_double()), Array(actual_arr)],
+            loc,
+          )
+          if is_truthy(val) {
+            return Number(i.to_double())
+          }
+        }
+        Number(-1.0)
+      })
     }
     "every" => {
       let _arr = data
       make_interp_method_func("every", 1, fn(interp, this_val, args) raise {
-            let callback = if args.length() > 0 { args[0] } else { Undefined }
-            if not(is_callable(callback)) {
-              raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
-            }
-            let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-            let loc = @token.Loc::default()
-            let actual_arr : ArrayData = match this_val {
-              Array(a) => a
-              _ => {
-                let o = to_object(this_val, interp)
-                let len = to_array_like_length_interp(o, interp)
-                for i = 0; i < len; i = i + 1 {
-                  if has_array_like_element(o, i) {
-                    let elem = get_array_like_element_interp(interp, o, i)
-                    let val = interp.call_value(callback, this_arg, [elem, Number(i.to_double()), o], loc)
-                    if not(is_truthy(val)) {
-                      return Bool(false)
-                    }
-                  }
+        let callback = if args.length() > 0 { args[0] } else { Undefined }
+        if !is_callable(callback) {
+          raise @errors.TypeError(
+            message=to_js_string(callback) + " is not a function",
+          )
+        }
+        let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+        let loc = @token.Loc::default()
+        let actual_arr : ArrayData = match this_val {
+          Array(a) => a
+          _ => {
+            let o = to_object(this_val, interp)
+            let len = to_array_like_length_interp(o, interp)
+            for i = 0; i < len; i = i + 1 {
+              if has_array_like_element(o, i) {
+                let elem = get_array_like_element_interp(interp, o, i)
+                let val = interp.call_value(
+                  callback,
+                  this_arg,
+                  [elem, Number(i.to_double()), o],
+                  loc,
+                )
+                if !is_truthy(val) {
+                  return Bool(false)
                 }
-                return Bool(true)
               }
             }
-            for i = 0; i < actual_arr.elements.length(); i = i + 1 {
-              let val = interp.call_value(
-                callback,
-                this_arg,
-                [actual_arr.elements[i], Number(i.to_double()), Array(actual_arr)],
-                loc,
-              )
-              if not(is_truthy(val)) {
-                return Bool(false)
-              }
-            }
-            Bool(true)
-          })
+            return Bool(true)
+          }
+        }
+        for i = 0; i < actual_arr.elements.length(); i = i + 1 {
+          let val = interp.call_value(
+            callback,
+            this_arg,
+            [actual_arr.elements[i], Number(i.to_double()), Array(actual_arr)],
+            loc,
+          )
+          if !is_truthy(val) {
+            return Bool(false)
+          }
+        }
+        Bool(true)
+      })
     }
     "some" => {
       let _arr = data
       make_interp_method_func("some", 1, fn(interp, this_val, args) raise {
-            let callback = if args.length() > 0 { args[0] } else { Undefined }
-            if not(is_callable(callback)) {
-              raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
-            }
-            let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-            let loc = @token.Loc::default()
-            let actual_arr : ArrayData = match this_val {
-              Array(a) => a
-              _ => {
-                let o = to_object(this_val, interp)
-                let len = to_array_like_length_interp(o, interp)
-                for i = 0; i < len; i = i + 1 {
-                  if has_array_like_element(o, i) {
-                    let elem = get_array_like_element_interp(interp, o, i)
-                    let val = interp.call_value(callback, this_arg, [elem, Number(i.to_double()), o], loc)
-                    if is_truthy(val) {
-                      return Bool(true)
-                    }
-                  }
+        let callback = if args.length() > 0 { args[0] } else { Undefined }
+        if !is_callable(callback) {
+          raise @errors.TypeError(
+            message=to_js_string(callback) + " is not a function",
+          )
+        }
+        let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+        let loc = @token.Loc::default()
+        let actual_arr : ArrayData = match this_val {
+          Array(a) => a
+          _ => {
+            let o = to_object(this_val, interp)
+            let len = to_array_like_length_interp(o, interp)
+            for i = 0; i < len; i = i + 1 {
+              if has_array_like_element(o, i) {
+                let elem = get_array_like_element_interp(interp, o, i)
+                let val = interp.call_value(
+                  callback,
+                  this_arg,
+                  [elem, Number(i.to_double()), o],
+                  loc,
+                )
+                if is_truthy(val) {
+                  return Bool(true)
                 }
-                return Bool(false)
               }
             }
-            for i = 0; i < actual_arr.elements.length(); i = i + 1 {
-              let val = interp.call_value(
-                callback,
-                this_arg,
-                [actual_arr.elements[i], Number(i.to_double()), Array(actual_arr)],
-                loc,
-              )
-              if is_truthy(val) {
-                return Bool(true)
-              }
-            }
-            Bool(false)
-          })
+            return Bool(false)
+          }
+        }
+        for i = 0; i < actual_arr.elements.length(); i = i + 1 {
+          let val = interp.call_value(
+            callback,
+            this_arg,
+            [actual_arr.elements[i], Number(i.to_double()), Array(actual_arr)],
+            loc,
+          )
+          if is_truthy(val) {
+            return Bool(true)
+          }
+        }
+        Bool(false)
+      })
     }
     "findLast" => {
       let _arr = data
       make_interp_method_func("findLast", 1, fn(interp, this_val, args) raise {
-            let callback = if args.length() > 0 { args[0] } else { Undefined }
-            if not(is_callable(callback)) {
-              raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
-            }
-            let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-            let loc = @token.Loc::default()
-            let actual_arr : ArrayData = match this_val {
-              Array(a) => a
-              _ => {
-                let o = to_object(this_val, interp)
-                let len = to_array_like_length_interp(o, interp)
-                for i = len - 1; i >= 0; i = i - 1 {
-                  let elem = get_array_like_element_interp(interp, o, i)
-                  let val = interp.call_value(callback, this_arg, [elem, Number(i.to_double()), o], loc)
-                  if is_truthy(val) {
-                    return elem
-                  }
-                }
-                return Undefined
-              }
-            }
-            for i = actual_arr.elements.length() - 1; i >= 0; i = i - 1 {
+        let callback = if args.length() > 0 { args[0] } else { Undefined }
+        if !is_callable(callback) {
+          raise @errors.TypeError(
+            message=to_js_string(callback) + " is not a function",
+          )
+        }
+        let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+        let loc = @token.Loc::default()
+        let actual_arr : ArrayData = match this_val {
+          Array(a) => a
+          _ => {
+            let o = to_object(this_val, interp)
+            let len = to_array_like_length_interp(o, interp)
+            for i = len - 1; i >= 0; i = i - 1 {
+              let elem = get_array_like_element_interp(interp, o, i)
               let val = interp.call_value(
                 callback,
                 this_arg,
-                [actual_arr.elements[i], Number(i.to_double()), Array(actual_arr)],
+                [elem, Number(i.to_double()), o],
                 loc,
               )
               if is_truthy(val) {
-                return actual_arr.elements[i]
+                return elem
               }
             }
-            Undefined
-          })
+            return Undefined
+          }
+        }
+        for i = actual_arr.elements.length() - 1; i >= 0; i = i - 1 {
+          let val = interp.call_value(
+            callback,
+            this_arg,
+            [actual_arr.elements[i], Number(i.to_double()), Array(actual_arr)],
+            loc,
+          )
+          if is_truthy(val) {
+            return actual_arr.elements[i]
+          }
+        }
+        Undefined
+      })
     }
     "findLastIndex" => {
       let _arr = data
       make_interp_method_func("findLastIndex", 1, fn(
-            interp,
-            this_val,
-            args,
-          ) raise {
-            let callback = if args.length() > 0 { args[0] } else { Undefined }
-            if not(is_callable(callback)) {
-              raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
-            }
-            let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-            let loc = @token.Loc::default()
-            let actual_arr : ArrayData = match this_val {
-              Array(a) => a
-              _ => {
-                let o = to_object(this_val, interp)
-                let len = to_array_like_length_interp(o, interp)
-                for i = len - 1; i >= 0; i = i - 1 {
-                  let elem = get_array_like_element_interp(interp, o, i)
-                  let val = interp.call_value(callback, this_arg, [elem, Number(i.to_double()), o], loc)
-                  if is_truthy(val) {
-                    return Number(i.to_double())
-                  }
-                }
-                return Number(-1.0)
-              }
-            }
-            for i = actual_arr.elements.length() - 1; i >= 0; i = i - 1 {
+        interp,
+        this_val,
+        args,
+      ) raise {
+        let callback = if args.length() > 0 { args[0] } else { Undefined }
+        if !is_callable(callback) {
+          raise @errors.TypeError(
+            message=to_js_string(callback) + " is not a function",
+          )
+        }
+        let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+        let loc = @token.Loc::default()
+        let actual_arr : ArrayData = match this_val {
+          Array(a) => a
+          _ => {
+            let o = to_object(this_val, interp)
+            let len = to_array_like_length_interp(o, interp)
+            for i = len - 1; i >= 0; i = i - 1 {
+              let elem = get_array_like_element_interp(interp, o, i)
               let val = interp.call_value(
                 callback,
                 this_arg,
-                [actual_arr.elements[i], Number(i.to_double()), Array(actual_arr)],
+                [elem, Number(i.to_double()), o],
                 loc,
               )
               if is_truthy(val) {
                 return Number(i.to_double())
               }
             }
-            Number(-1.0)
-          })
+            return Number(-1.0)
+          }
+        }
+        for i = actual_arr.elements.length() - 1; i >= 0; i = i - 1 {
+          let val = interp.call_value(
+            callback,
+            this_arg,
+            [actual_arr.elements[i], Number(i.to_double()), Array(actual_arr)],
+            loc,
+          )
+          if is_truthy(val) {
+            return Number(i.to_double())
+          }
+        }
+        Number(-1.0)
+      })
     }
     "toReversed" => {
       let arr = data
@@ -981,92 +1088,17 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
     "toSorted" => {
       let arr = data
       make_interp_method_func("toSorted", 1, fn(interp, this_val, args) raise {
-            let _ = this_val
-            // Create a copy of the array
-            let result : Array[Value] = []
-            for el in arr.elements {
-              result.push(el)
-            }
-            // Sort the copy
-            if args.length() > 0 {
-              match args[0] {
-                Undefined =>
-                  // Default sort: undefined goes to end
-                  result.sort_by(fn(a, b) {
-                    if a is Undefined && b is Undefined {
-                      return 0
-                    }
-                    if a is Undefined {
-                      return 1
-                    }
-                    if b is Undefined {
-                      return -1
-                    }
-                    let sa = a.to_string()
-                    let sb = b.to_string()
-                    if sa < sb {
-                      -1
-                    } else if sa > sb {
-                      1
-                    } else {
-                      0
-                    }
-                  })
-                _ => {
-                  let comparefn = args[0]
-                  let loc = @token.Loc::default()
-                  // Store any exception to re-throw after sort (spec requires propagation)
-                  let mut caught_error : Error? = None
-                  result.sort_by(fn(a, b) {
-                    if a is Undefined && b is Undefined {
-                      return 0
-                    }
-                    if a is Undefined {
-                      return 1
-                    }
-                    if b is Undefined {
-                      return -1
-                    }
-                    // Skip comparisons if we already have an error
-                    if caught_error is Some(_) {
-                      return 0
-                    }
-                    let compare_result = interp.call_value(
-                      comparefn,
-                      Undefined,
-                      [a, b],
-                      loc,
-                    ) catch {
-                      e => {
-                        caught_error = Some(e)
-                        return 0
-                      }
-                    }
-                    // Use sign-based comparison to avoid truncating fractional values
-                    let cmp = to_number(compare_result) catch {
-                      e => {
-                        caught_error = Some(e)
-                        return 0
-                      }
-                    }
-                    if cmp.is_nan() {
-                      0
-                    } else if cmp < 0.0 {
-                      -1
-                    } else if cmp > 0.0 {
-                      1
-                    } else {
-                      0
-                    }
-                  })
-                  // Re-throw any caught exception per spec
-                  match caught_error {
-                    Some(e) => raise e
-                    None => ()
-                  }
-                }
-              }
-            } else {
+        let _ = this_val
+        // Create a copy of the array
+        let result : Array[Value] = []
+        for el in arr.elements {
+          result.push(el)
+        }
+        // Sort the copy
+        if args.length() > 0 {
+          match args[0] {
+            Undefined =>
+              // Default sort: undefined goes to end
               result.sort_by(fn(a, b) {
                 if a is Undefined && b is Undefined {
                   return 0
@@ -1087,9 +1119,84 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
                   0
                 }
               })
+            _ => {
+              let comparefn = args[0]
+              let loc = @token.Loc::default()
+              // Store any exception to re-throw after sort (spec requires propagation)
+              let mut caught_error : Error? = None
+              result.sort_by(fn(a, b) {
+                if a is Undefined && b is Undefined {
+                  return 0
+                }
+                if a is Undefined {
+                  return 1
+                }
+                if b is Undefined {
+                  return -1
+                }
+                // Skip comparisons if we already have an error
+                if caught_error is Some(_) {
+                  return 0
+                }
+                let compare_result = interp.call_value(
+                  comparefn,
+                  Undefined,
+                  [a, b],
+                  loc,
+                ) catch {
+                  e => {
+                    caught_error = Some(e)
+                    return 0
+                  }
+                }
+                // Use sign-based comparison to avoid truncating fractional values
+                let cmp = to_number(compare_result) catch {
+                  e => {
+                    caught_error = Some(e)
+                    return 0
+                  }
+                }
+                if cmp.is_nan() {
+                  0
+                } else if cmp < 0.0 {
+                  -1
+                } else if cmp > 0.0 {
+                  1
+                } else {
+                  0
+                }
+              })
+              // Re-throw any caught exception per spec
+              match caught_error {
+                Some(e) => raise e
+                None => ()
+              }
             }
-            Array({ elements: result })
+          }
+        } else {
+          result.sort_by(fn(a, b) {
+            if a is Undefined && b is Undefined {
+              return 0
+            }
+            if a is Undefined {
+              return 1
+            }
+            if b is Undefined {
+              return -1
+            }
+            let sa = a.to_string()
+            let sb = b.to_string()
+            if sa < sb {
+              -1
+            } else if sa > sb {
+              1
+            } else {
+              0
+            }
           })
+        }
+        Array({ elements: result })
+      })
     }
     "toSpliced" => {
       let arr = data
@@ -1180,151 +1287,83 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
     "flatMap" => {
       let _arr = data
       make_interp_method_func("flatMap", 1, fn(interp, this_val, args) raise {
-            let callback = if args.length() > 0 { args[0] } else { Undefined }
-            if not(is_callable(callback)) {
-              raise @errors.TypeError(message=to_js_string(callback) + " is not a function")
-            }
-            let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-            let loc = @token.Loc::default()
-            let actual_arr : ArrayData = match this_val {
-              Array(a) => a
-              _ => {
-                let o = to_object(this_val, interp)
-                let len = to_array_like_length_interp(o, interp)
-                let result : Array[Value] = []
-                for i = 0; i < len; i = i + 1 {
-                  if has_array_like_element(o, i) {
-                    let elem = get_array_like_element_interp(interp, o, i)
-                    let val = interp.call_value(callback, this_arg, [elem, Number(i.to_double()), o], loc)
-                    match val {
-                      Array(inner) =>
-                        for el in inner.elements {
-                          result.push(el)
-                        }
-                      _ => result.push(val)
-                    }
-                  }
-                }
-                return Array({ elements: result })
-              }
-            }
+        let callback = if args.length() > 0 { args[0] } else { Undefined }
+        if !is_callable(callback) {
+          raise @errors.TypeError(
+            message=to_js_string(callback) + " is not a function",
+          )
+        }
+        let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+        let loc = @token.Loc::default()
+        let actual_arr : ArrayData = match this_val {
+          Array(a) => a
+          _ => {
+            let o = to_object(this_val, interp)
+            let len = to_array_like_length_interp(o, interp)
             let result : Array[Value] = []
-            for i = 0; i < actual_arr.elements.length(); i = i + 1 {
-              let val = interp.call_value(
-                callback,
-                this_arg,
-                [actual_arr.elements[i], Number(i.to_double()), Array(actual_arr)],
-                loc,
-              )
-              match val {
-                Array(inner) =>
-                  for el in inner.elements {
-                    result.push(el)
-                  }
-                _ => result.push(val)
+            for i = 0; i < len; i = i + 1 {
+              if has_array_like_element(o, i) {
+                let elem = get_array_like_element_interp(interp, o, i)
+                let val = interp.call_value(
+                  callback,
+                  this_arg,
+                  [elem, Number(i.to_double()), o],
+                  loc,
+                )
+                match val {
+                  Array(inner) =>
+                    for el in inner.elements {
+                      result.push(el)
+                    }
+                  _ => result.push(val)
+                }
               }
             }
-            Array({ elements: result })
-          })
+            return Array({ elements: result })
+          }
+        }
+        let result : Array[Value] = []
+        for i = 0; i < actual_arr.elements.length(); i = i + 1 {
+          let val = interp.call_value(
+            callback,
+            this_arg,
+            [actual_arr.elements[i], Number(i.to_double()), Array(actual_arr)],
+            loc,
+          )
+          match val {
+            Array(inner) =>
+              for el in inner.elements {
+                result.push(el)
+              }
+            _ => result.push(val)
+          }
+        }
+        Array({ elements: result })
+      })
     }
     "sort" => {
       // Sort with optional compareFn needs InterpreterCallable
       let arr = data
       make_interp_method_func("sort", 1, fn(interp, this_val, args) raise {
-            let _ = this_val
-            // Validate comparefn before sorting
-            if args.length() > 0 {
-              let comparefn = args[0]
-              match comparefn {
-                Undefined => ()
-                _ =>
-                  if not(is_callable(comparefn)) {
-                    raise @errors.TypeError(message=to_js_string(comparefn) + " is not a function")
-                  }
+        let _ = this_val
+        // Validate comparefn before sorting
+        if args.length() > 0 {
+          let comparefn = args[0]
+          match comparefn {
+            Undefined => ()
+            _ =>
+              if !is_callable(comparefn) {
+                raise @errors.TypeError(
+                  message=to_js_string(comparefn) + " is not a function",
+                )
               }
-            }
-            if args.length() > 0 {
-              match args[0] {
-                Undefined =>
-                  // Default sort: undefined goes to end
-                  arr.elements.sort_by(fn(a, b) {
-                    if a is Undefined && b is Undefined {
-                      return 0
-                    }
-                    if a is Undefined {
-                      return 1
-                    }
-                    if b is Undefined {
-                      return -1
-                    }
-                    let sa = a.to_string()
-                    let sb = b.to_string()
-                    if sa < sb {
-                      -1
-                    } else if sa > sb {
-                      1
-                    } else {
-                      0
-                    }
-                  })
-                _ => {
-                  let comparefn = args[0]
-                  let loc = @token.Loc::default()
-                  // Store any exception to re-throw after sort (spec requires propagation)
-                  let mut caught_error : Error? = None
-                  arr.elements.sort_by(fn(a, b) {
-                    // Per spec: undefined sorts to end even with comparefn
-                    if a is Undefined && b is Undefined {
-                      return 0
-                    }
-                    if a is Undefined {
-                      return 1
-                    }
-                    if b is Undefined {
-                      return -1
-                    }
-                    // Skip comparisons if we already have an error
-                    if caught_error is Some(_) {
-                      return 0
-                    }
-                    let result = interp.call_value(
-                      comparefn,
-                      Undefined,
-                      [a, b],
-                      loc,
-                    ) catch {
-                      e => {
-                        caught_error = Some(e)
-                        return 0
-                      }
-                    }
-                    // Use sign-based comparison to avoid truncating fractional values
-                    let cmp = to_number(result) catch {
-                      e => {
-                        caught_error = Some(e)
-                        return 0
-                      }
-                    }
-                    if cmp.is_nan() {
-                      0
-                    } else if cmp < 0.0 {
-                      -1
-                    } else if cmp > 0.0 {
-                      1
-                    } else {
-                      0
-                    }
-                  })
-                  // Re-throw any caught exception per spec
-                  match caught_error {
-                    Some(e) => raise e
-                    None => ()
-                  }
-                }
-              }
-            } else {
+          }
+        }
+        if args.length() > 0 {
+          match args[0] {
+            Undefined =>
+              // Default sort: undefined goes to end
               arr.elements.sort_by(fn(a, b) {
-                // Per spec: undefined sorts to end
                 if a is Undefined && b is Undefined {
                   return 0
                 }
@@ -1344,9 +1383,86 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
                   0
                 }
               })
+            _ => {
+              let comparefn = args[0]
+              let loc = @token.Loc::default()
+              // Store any exception to re-throw after sort (spec requires propagation)
+              let mut caught_error : Error? = None
+              arr.elements.sort_by(fn(a, b) {
+                // Per spec: undefined sorts to end even with comparefn
+                if a is Undefined && b is Undefined {
+                  return 0
+                }
+                if a is Undefined {
+                  return 1
+                }
+                if b is Undefined {
+                  return -1
+                }
+                // Skip comparisons if we already have an error
+                if caught_error is Some(_) {
+                  return 0
+                }
+                let result = interp.call_value(
+                  comparefn,
+                  Undefined,
+                  [a, b],
+                  loc,
+                ) catch {
+                  e => {
+                    caught_error = Some(e)
+                    return 0
+                  }
+                }
+                // Use sign-based comparison to avoid truncating fractional values
+                let cmp = to_number(result) catch {
+                  e => {
+                    caught_error = Some(e)
+                    return 0
+                  }
+                }
+                if cmp.is_nan() {
+                  0
+                } else if cmp < 0.0 {
+                  -1
+                } else if cmp > 0.0 {
+                  1
+                } else {
+                  0
+                }
+              })
+              // Re-throw any caught exception per spec
+              match caught_error {
+                Some(e) => raise e
+                None => ()
+              }
             }
-            Array(arr)
+          }
+        } else {
+          arr.elements.sort_by(fn(a, b) {
+            // Per spec: undefined sorts to end
+            if a is Undefined && b is Undefined {
+              return 0
+            }
+            if a is Undefined {
+              return 1
+            }
+            if b is Undefined {
+              return -1
+            }
+            let sa = a.to_string()
+            let sb = b.to_string()
+            if sa < sb {
+              -1
+            } else if sa > sb {
+              1
+            } else {
+              0
+            }
           })
+        }
+        Array(arr)
+      })
     }
     "concat" => {
       let arr = data
@@ -1362,7 +1478,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
         for item in items {
           // Determine spreadability per ES2015 spec
           let spreadable = match item {
-            Object(od) => {
+            Object(od) =>
               match od.symbol_properties.get(concat_sym_id) {
                 Some(v) =>
                   match v {
@@ -1377,7 +1493,10 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
                     match cur {
                       Object(pd) =>
                         match pd.symbol_properties.get(concat_sym_id) {
-                          Some(v) => { found = v; break }
+                          Some(v) => {
+                            found = v
+                            break
+                          }
                           None => cur = pd.prototype
                         }
                       _ => break
@@ -1389,7 +1508,6 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
                   }
                 }
               }
-            }
             Array(arr_data) =>
               match get_array_symbol_prop(arr_data, concat_sym_id) {
                 Some(v) =>
@@ -1405,7 +1523,11 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
             let len = match item {
               Array(ad) => ad.elements.length()
               _ => {
-                let lv = interp.get_property(item, "length", @token.Loc::default())
+                let lv = interp.get_property(
+                  item,
+                  "length",
+                  @token.Loc::default(),
+                )
                 to_number(lv).to_int()
               }
             }

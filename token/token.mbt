@@ -3,7 +3,12 @@ pub(all) struct Loc {
   line : Int
   col : Int
   offset : Int
-} derive(Eq, Show)
+} derive(Eq, Debug)
+
+///|
+pub impl Show for Loc with output(self, logger) {
+  Debug::to_repr(self).output(logger)
+}
 
 ///|
 pub fn Loc::default() -> Loc {
@@ -137,14 +142,24 @@ pub(all) enum TokenKind {
   // Special
   Of
   EOF
-} derive(Eq, Show)
+} derive(Eq, Debug)
+
+///|
+pub impl Show for TokenKind with output(self, logger) {
+  Debug::to_repr(self).output(logger)
+}
 
 ///|
 pub(all) struct Token {
   kind : TokenKind
   loc : Loc
   raw : String
-} derive(Eq, Show)
+} derive(Eq, Debug)
+
+///|
+pub impl Show for Token with output(self, logger) {
+  Debug::to_repr(self).output(logger)
+}
 
 ///|
 pub fn Token::new(kind : TokenKind, loc : Loc, raw : String) -> Token {

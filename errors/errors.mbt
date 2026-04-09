@@ -39,7 +39,12 @@ pub(all) suberror JsError {
   AggregateError(message~ : String, errors~ : Array[Error])
   /// InternalError - Engine internal error (non-standard but useful for debugging)
   InternalError(message~ : String)
-} derive(Show)
+} derive(Debug)
+
+///|
+pub impl Show for JsError with output(self, logger) {
+  Debug::to_repr(self).output(logger)
+}
 
 //==============================================================================
 // Error helper methods

@@ -1,8 +1,10 @@
 ///|
 pub fn fib(n : Int) -> Int64 {
-  loop (n, 0L, 1L) {
-    (0, _, b) => b
-    (i, a, b) => continue (i - 1, b, a + b)
+  for i = n, a = 0L, b = 1L {
+    match (i, a, b) {
+      (0, _, b) => break b
+      (i, a, b) => continue i - 1, b, a + b
+    }
   }
 }
 

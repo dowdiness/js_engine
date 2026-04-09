@@ -115,129 +115,144 @@ pub fn setup_arraybuffer_builtins(env : Environment) -> Unit {
     configurable: true,
     getter: Some(
       make_method_func("get byteLength", 0, fn(this_val, _args) raise {
-            match this_val {
-              Object(data) =>
-                if data.class_name == "ArrayBuffer" {
-                  match data.properties.get("[[ArrayBufferID]]") {
-                    Some(Number(id_n)) =>
-                      if is_arraybuffer_detached(id_n.to_int()) {
-                        raise @errors.TypeError(
-                          message="Cannot perform get on a detached ArrayBuffer",
-                        )
-                      } else {
-                        match data.properties.get("[[ArrayBufferByteLength]]") {
-                          Some(n) => n
-                          None => Number(0.0)
-                        }
-                      }
-                    _ => Number(0.0)
+        match this_val {
+          Object(data) =>
+            if data.class_name == "ArrayBuffer" {
+              match data.properties.get("[[ArrayBufferID]]") {
+                Some(Number(id_n)) =>
+                  if is_arraybuffer_detached(id_n.to_int()) {
+                    raise @errors.TypeError(
+                      message="Cannot perform get on a detached ArrayBuffer",
+                    )
+                  } else {
+                    match data.properties.get("[[ArrayBufferByteLength]]") {
+                      Some(n) => n
+                      None => Number(0.0)
+                    }
                   }
-                } else {
-                  raise @errors.TypeError(
-                    message="get ArrayBuffer.prototype.byteLength called on incompatible receiver",
-                  )
-                }
-              _ =>
-                raise @errors.TypeError(
-                  message="get ArrayBuffer.prototype.byteLength called on incompatible receiver",
-                )
+                _ => Number(0.0)
+              }
+            } else {
+              raise @errors.TypeError(
+                message="get ArrayBuffer.prototype.byteLength called on incompatible receiver",
+              )
             }
-          })
+          _ =>
+            raise @errors.TypeError(
+              message="get ArrayBuffer.prototype.byteLength called on incompatible receiver",
+            )
+        }
+      }),
     ),
     setter: None,
   }
 
   // ArrayBuffer.prototype.slice(begin, end)
-  ab_proto_props["slice"] = make_method_func("slice", 2, fn(this_val, args) raise {
-        match this_val {
-          Object(data) =>
-            if data.class_name == "ArrayBuffer" {
-              let buf_id = match data.properties.get("[[ArrayBufferID]]") {
-                Some(Number(n)) => n.to_int()
-                _ =>
-                  raise @errors.TypeError(
-                    message="ArrayBuffer.prototype.slice called on non-ArrayBuffer",
-                  )
-              }
-              if is_arraybuffer_detached(buf_id) {
-                raise @errors.TypeError(
-                  message="Cannot perform slice on a detached ArrayBuffer",
-                )
-              }
-              let bytes = match get_arraybuffer_bytes(buf_id) {
-                Some(b) => b
-                None =>
-                  raise @errors.TypeError(
-                    message="Cannot perform slice on a detached ArrayBuffer",
-                  )
-              }
-              let len = bytes.length()
-              let relative_start = if args.length() > 0 {
-                to_number(args[0]).to_int()
-              } else {
-                0
-              }
-              let start = if relative_start < 0 {
-                let s = len + relative_start
-                if s < 0 {
-                  0
-                } else {
-                  s
-                }
-              } else if relative_start > len {
-                len
-              } else {
-                relative_start
-              }
-              let relative_end = if args.length() > 1 {
-                match args[1] {
-                  Undefined => len
-                  _ => to_number(args[1]).to_int()
-                }
-              } else {
-                len
-              }
-              let end = if relative_end < 0 {
-                let e = len + relative_end
-                if e < 0 {
-                  0
-                } else {
-                  e
-                }
-              } else if relative_end > len {
-                len
-              } else {
-                relative_end
-              }
-              let new_len = if end > start { end - start } else { 0 }
-              let ab_proto2 = env.get("[[ArrayBufferPrototype]]")
-              let new_buf = make_arraybuffer_object(new_len, ab_proto2)
-              let new_id = match get_buffer_id(new_buf) {
-                Some(id) => id
-                None => -1
-              }
-              match get_arraybuffer_bytes(new_id) {
-                Some(new_bytes) =>
-                  for i = 0; i < new_len; i = i + 1 {
-                    new_bytes[i] = bytes[start + i]
-                  }
-                None => ()
-              }
-              new_buf
-            } else {
+  ab_proto_props["slice"] = make_method_func("slice", 2, fn(
+    this_val,
+    args,
+  ) raise {
+    match this_val {
+      Object(data) =>
+        if data.class_name == "ArrayBuffer" {
+          let buf_id = match data.properties.get("[[ArrayBufferID]]") {
+            Some(Number(n)) => n.to_int()
+            _ =>
               raise @errors.TypeError(
                 message="ArrayBuffer.prototype.slice called on non-ArrayBuffer",
               )
-            }
-          _ =>
+          }
+          if is_arraybuffer_detached(buf_id) {
             raise @errors.TypeError(
-              message="ArrayBuffer.prototype.slice called on non-ArrayBuffer",
+              message="Cannot perform slice on a detached ArrayBuffer",
             )
+          }
+          let bytes = match get_arraybuffer_bytes(buf_id) {
+            Some(b) => b
+            None =>
+              raise @errors.TypeError(
+                message="Cannot perform slice on a detached ArrayBuffer",
+              )
+          }
+          let len = bytes.length()
+          let relative_start = if args.length() > 0 {
+            to_number(args[0]).to_int()
+          } else {
+            0
+          }
+          let start = if relative_start < 0 {
+            let s = len + relative_start
+            if s < 0 {
+              0
+            } else {
+              s
+            }
+          } else if relative_start > len {
+            len
+          } else {
+            relative_start
+          }
+          let relative_end = if args.length() > 1 {
+            match args[1] {
+              Undefined => len
+              _ => to_number(args[1]).to_int()
+            }
+          } else {
+            len
+          }
+          let end = if relative_end < 0 {
+            let e = len + relative_end
+            if e < 0 {
+              0
+            } else {
+              e
+            }
+          } else if relative_end > len {
+            len
+          } else {
+            relative_end
+          }
+          let new_len = if end > start { end - start } else { 0 }
+          let ab_proto2 = env.get("[[ArrayBufferPrototype]]")
+          let new_buf = make_arraybuffer_object(new_len, ab_proto2)
+          let new_id = match get_buffer_id(new_buf) {
+            Some(id) => id
+            None => -1
+          }
+          match get_arraybuffer_bytes(new_id) {
+            Some(new_bytes) =>
+              for i = 0; i < new_len; i = i + 1 {
+                new_bytes[i] = bytes[start + i]
+              }
+            None => ()
+          }
+          new_buf
+        } else {
+          raise @errors.TypeError(
+            message="ArrayBuffer.prototype.slice called on non-ArrayBuffer",
+          )
         }
-      })
+      _ =>
+        raise @errors.TypeError(
+          message="ArrayBuffer.prototype.slice called on non-ArrayBuffer",
+        )
+    }
+  })
 
-  ab_proto_descs["slice"] = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
-  ab_proto_descs["constructor"] = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+  ab_proto_descs["slice"] = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
+  ab_proto_descs["constructor"] = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
 
   // Add Symbol.toStringTag
   let tostringtag_sym = get_tostringtag_symbol()
@@ -301,7 +316,13 @@ pub fn setup_arraybuffer_builtins(env : Environment) -> Unit {
   }
   ab_ctor_descs["name"] = nf_desc
   ab_ctor_descs["length"] = nf_desc
-  ab_ctor_descs["isView"] = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+  ab_ctor_descs["isView"] = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
 
   let ab_ctor : Value = Object({
     properties: ab_ctor_props,
@@ -309,7 +330,7 @@ pub fn setup_arraybuffer_builtins(env : Environment) -> Unit {
     prototype: Null,
     callable: Some(
       NativeCallable("ArrayBuffer", fn(args) raise {
-        if not(is_constructing.val) {
+        if !is_constructing.val {
           raise @errors.TypeError(
             message="Constructor ArrayBuffer requires 'new'",
           )

@@ -32,20 +32,26 @@ fn Interpreter::make_async_function(
     symbol_properties: {},
     prototype: async_proto,
     callable: Some(
-      InterpreterCallable(
-        func_name,
-        fn(ip : Interpreter, this_val : Value, args : Array[Value]) -> Value {
-          run_async_body(
-            ip, this_val, args, name, params, None, rest_param, body, closure,
-          )
-        },
-      ),
+      InterpreterCallable(func_name, fn(
+        ip : Interpreter,
+        this_val : Value,
+        args : Array[Value],
+      ) -> Value {
+        run_async_body(
+          ip,
+          this_val,
+          args,
+          name,
+          params,
+          None,
+          rest_param,
+          body,
+          closure,
+        )
+      }),
     ),
     class_name: "AsyncFunction",
-    descriptors: {
-      "name": nf_desc,
-      "length": nf_desc,
-    },
+    descriptors: { "name": nf_desc, "length": nf_desc },
     symbol_descriptors: {},
     extensible: true,
   })
@@ -80,28 +86,26 @@ fn Interpreter::make_async_function_ext(
     symbol_properties: {},
     prototype: async_proto,
     callable: Some(
-      InterpreterCallable(
-        func_name,
-        fn(ip : Interpreter, this_val : Value, args : Array[Value]) -> Value {
-          run_async_body(
-            ip,
-            this_val,
-            args,
-            name,
-            [],
-            Some(params),
-            rest_param,
-            body,
-            closure,
-          )
-        },
-      ),
+      InterpreterCallable(func_name, fn(
+        ip : Interpreter,
+        this_val : Value,
+        args : Array[Value],
+      ) -> Value {
+        run_async_body(
+          ip,
+          this_val,
+          args,
+          name,
+          [],
+          Some(params),
+          rest_param,
+          body,
+          closure,
+        )
+      }),
     ),
     class_name: "AsyncFunction",
-    descriptors: {
-      "name": nf_desc,
-      "length": nf_desc,
-    },
+    descriptors: { "name": nf_desc, "length": nf_desc },
     symbol_descriptors: {},
     extensible: true,
   })
@@ -147,20 +151,9 @@ fn run_async_body(
     symbol_descriptors: {},
     extensible: true,
   })
-  let gen_val = try {
-    create_generator_instance(
-      ip,
-      this_val,
-      args,
-      name,
-      params,
-      params_ext,
-      rest_param,
-      body,
-      closure,
-      func_proto,
-    )
-  } catch {
+  let gen_val = create_generator_instance(
+    ip, this_val, args, name, params, params_ext, rest_param, body, closure, func_proto,
+  ) catch {
     JsException(e) => {
       // Parameter binding error rejects the promise
       let _ = ip.call_value(reject_fn, Undefined, [e], @token.Loc::default()) catch {
@@ -170,7 +163,12 @@ fn run_async_body(
     }
     e => {
       let err_val = String_(e.to_string())
-      let _ = ip.call_value(reject_fn, Undefined, [err_val], @token.Loc::default()) catch {
+      let _ = ip.call_value(
+        reject_fn,
+        Undefined,
+        [err_val],
+        @token.Loc::default(),
+      ) catch {
         _ => Undefined
       }
       return promise_val
@@ -218,14 +216,10 @@ fn async_step(
     }
   }
   // Extract { value, done } from result
-  let result_value = try {
-    ip.get_property(result, "value", loc)
-  } catch {
+  let result_value = ip.get_property(result, "value", loc) catch {
     _ => Undefined
   }
-  let result_done = try {
-    ip.get_property(result, "done", loc)
-  } catch {
+  let result_done = ip.get_property(result, "done", loc) catch {
     _ => Bool(false)
   }
   let is_done = match result_done {
@@ -237,9 +231,7 @@ fn async_step(
     // Do NOT call run_microtasks() here; the outer event loop
     // (run_microtasks in js_engine.mbt) uses index-based draining
     // and will process any newly enqueued reaction microtasks.
-    let _ = try {
-      ip.call_value(resolve_fn, Undefined, [result_value], loc)
-    } catch {
+    let _ = ip.call_value(resolve_fn, Undefined, [result_value], loc) catch {
       _ => Undefined
     }
   } else {
@@ -250,24 +242,24 @@ fn async_step(
     let gen = gen_val
     let res_fn = resolve_fn
     let rej_fn = reject_fn
-    let on_fulfill = make_interpreter_callable_with_length(
-      "",
-      1,
-      fn(i : Interpreter, _this : Value, args : Array[Value]) -> Value {
-        let v = if args.length() > 0 { args[0] } else { Undefined }
-        async_step(i, gen, v, res_fn, rej_fn, false)
-        Undefined
-      },
-    )
-    let on_reject = make_interpreter_callable_with_length(
-      "",
-      1,
-      fn(i : Interpreter, _this : Value, args : Array[Value]) -> Value {
-        let v = if args.length() > 0 { args[0] } else { Undefined }
-        async_step(i, gen, v, res_fn, rej_fn, true)
-        Undefined
-      },
-    )
+    let on_fulfill = make_interpreter_callable_with_length("", 1, fn(
+      i : Interpreter,
+      _this : Value,
+      args : Array[Value],
+    ) -> Value {
+      let v = if args.length() > 0 { args[0] } else { Undefined }
+      async_step(i, gen, v, res_fn, rej_fn, false)
+      Undefined
+    })
+    let on_reject = make_interpreter_callable_with_length("", 1, fn(
+      i : Interpreter,
+      _this : Value,
+      args : Array[Value],
+    ) -> Value {
+      let v = if args.length() > 0 { args[0] } else { Undefined }
+      async_step(i, gen, v, res_fn, rej_fn, true)
+      Undefined
+    })
     // Wrap the awaited value in Promise.resolve() then schedule .then()
     // This ensures all await continuations go through the microtask queue,
     // matching spec behavior and preventing stack overflow.
@@ -277,12 +269,7 @@ fn async_step(
         "resolve",
         loc,
       )
-      ip.call_value(
-        promise_ctor,
-        ip.global.get("Promise"),
-        [awaited],
-        loc,
-      )
+      ip.call_value(promise_ctor, ip.global.get("Promise"), [awaited], loc)
     } catch {
       _ => {
         // Fallback: Promise.resolve() unavailable; inspect awaited directly
@@ -292,13 +279,13 @@ fn async_step(
               Fulfilled => ip.enqueue_microtask(on_fulfill, [pd.result])
               Rejected => ip.enqueue_microtask(on_reject, [pd.result])
               Pending => {
-                let noop = make_interpreter_callable_with_length(
-                  "",
-                  0,
-                  fn(_i : Interpreter, _t : Value, _a : Array[Value]) -> Value {
-                    Undefined
-                  },
-                )
+                let noop = make_interpreter_callable_with_length("", 0, fn(
+                  _i : Interpreter,
+                  _t : Value,
+                  _a : Array[Value],
+                ) -> Value {
+                  Undefined
+                })
                 pd.fulfill_reactions.push({
                   handler: Some(on_fulfill),
                   resolve: noop,
@@ -322,18 +309,18 @@ fn async_step(
     // .then property and attach reactions directly via the internal record.
     // This avoids issues with overridden .then and matches spec PerformPromiseThen.
     match resolved_promise {
-      Promise(pd) => {
+      Promise(pd) =>
         match pd.state {
           Fulfilled => ip.enqueue_microtask(on_fulfill, [pd.result])
           Rejected => ip.enqueue_microtask(on_reject, [pd.result])
           Pending => {
-            let noop = make_interpreter_callable_with_length(
-              "",
-              0,
-              fn(_i : Interpreter, _t : Value, _a : Array[Value]) -> Value {
-                Undefined
-              },
-            )
+            let noop = make_interpreter_callable_with_length("", 0, fn(
+              _i : Interpreter,
+              _t : Value,
+              _a : Array[Value],
+            ) -> Value {
+              Undefined
+            })
             pd.fulfill_reactions.push({
               handler: Some(on_fulfill),
               resolve: noop,
@@ -348,12 +335,9 @@ fn async_step(
             })
           }
         }
-      }
       _ => {
         // Non-native promise: use JS-level .then() property
-        let then_method = try {
-          ip.get_property(resolved_promise, "then", loc)
-        } catch {
+        let then_method = ip.get_property(resolved_promise, "then", loc) catch {
           e => {
             // get_property threw — propagate to on_reject
             let err_val = js_error_to_value_with_env(e, Some(ip.global))
@@ -400,7 +384,15 @@ fn Interpreter::make_async_generator_function(
   body : Array[@ast.Stmt],
   closure : Environment,
 ) -> Value {
-  make_async_gen_function_inner(self, name, params, None, rest_param, body, closure)
+  make_async_gen_function_inner(
+    self,
+    name,
+    params,
+    None,
+    rest_param,
+    body,
+    closure,
+  )
 }
 
 ///|
@@ -413,7 +405,15 @@ fn Interpreter::make_async_generator_function_ext(
   body : Array[@ast.Stmt],
   closure : Environment,
 ) -> Value {
-  make_async_gen_function_inner(self, name, [], Some(params), rest_param, body, closure)
+  make_async_gen_function_inner(
+    self,
+    name,
+    [],
+    Some(params),
+    rest_param,
+    body,
+    closure,
+  )
 }
 
 ///|
@@ -458,15 +458,7 @@ fn make_async_gen_function_inner(
         },
         fn(ip, this_val, args) raise {
           create_generator_instance(
-            ip,
-            this_val,
-            args,
-            name,
-            params,
-            params_ext,
-            rest_param,
-            body,
-            closure,
+            ip, this_val, args, name, params, params_ext, rest_param, body, closure,
             func_prototype,
           )
         },
@@ -497,27 +489,36 @@ fn init_async_generator_prototype() -> Value {
 
   // .next(value) — returns Promise<{value, done}>
   props["next"] = make_interp_method_func("next", 1, fn(ip, this_val, args) {
-        let arg = if args.length() > 0 { args[0] } else { Undefined }
-        async_generator_resume(ip, this_val, Next(arg))
-      })
+    let arg = if args.length() > 0 { args[0] } else { Undefined }
+    async_generator_resume(ip, this_val, Next(arg))
+  })
   descs["next"] = non_enum
 
   // .throw(exception) — returns Promise<{value, done}>
   props["throw"] = make_interp_method_func("throw", 1, fn(ip, this_val, args) {
-        let arg = if args.length() > 0 { args[0] } else { Undefined }
-        async_generator_resume(ip, this_val, Throw(arg))
-      })
+    let arg = if args.length() > 0 { args[0] } else { Undefined }
+    async_generator_resume(ip, this_val, Throw(arg))
+  })
   descs["throw"] = non_enum
 
   // .return(value) — returns Promise<{value, done}>
-  props["return"] = make_interp_method_func("return", 1, fn(ip, this_val, args) {
-        let arg = if args.length() > 0 { args[0] } else { Undefined }
-        async_generator_resume(ip, this_val, Return(arg))
-      })
+  props["return"] = make_interp_method_func("return", 1, fn(
+    ip,
+    this_val,
+    args,
+  ) {
+    let arg = if args.length() > 0 { args[0] } else { Undefined }
+    async_generator_resume(ip, this_val, Return(arg))
+  })
   descs["return"] = non_enum
 
   // [Symbol.asyncIterator]() { return this; }
-  sym_props[async_iter_sym.id] = make_method_func("[Symbol.asyncIterator]", 0, fn(this_val, _args) { this_val })
+  sym_props[async_iter_sym.id] = make_method_func("[Symbol.asyncIterator]", 0, fn(
+    this_val,
+    _args,
+  ) {
+    this_val
+  })
 
   Object({
     properties: props,
@@ -540,9 +541,7 @@ fn async_generator_resume(
   this_val : Value,
   resume_kind : ResumeKind,
 ) -> Value {
-  let result = try {
-    generator_resume(ip, this_val, resume_kind)
-  } catch {
+  let result = generator_resume(ip, this_val, resume_kind) catch {
     JsException(e) => {
       let pd : PromiseData = {
         state: Rejected,

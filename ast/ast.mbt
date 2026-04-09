@@ -25,7 +25,7 @@ pub(all) enum BinOp {
   Exp
   In
   Instanceof
-} derive(Show, Eq)
+} derive(Debug, Eq)
 
 ///|
 pub(all) enum UnaryOp {
@@ -36,13 +36,13 @@ pub(all) enum UnaryOp {
   Void
   Delete
   BitNot
-} derive(Show, Eq)
+} derive(Debug, Eq)
 
 ///|
 pub(all) enum UpdateOp {
   Increment
   Decrement
-} derive(Show, Eq)
+} derive(Debug, Eq)
 
 ///|
 pub(all) enum CompoundOp {
@@ -61,14 +61,14 @@ pub(all) enum CompoundOp {
   LogicalAndAssign // &&=
   LogicalOrAssign // ||=
   NullishAssign // ??=
-} derive(Show, Eq)
+} derive(Debug, Eq)
 
 ///|
 pub(all) enum VarKind {
   LetKind
   ConstKind
   VarKind
-} derive(Show, Eq)
+} derive(Debug, Eq)
 
 ///|
 pub(all) enum PropKind {
@@ -76,7 +76,7 @@ pub(all) enum PropKind {
   Get // getter
   Set // setter
   Spread // spread property: { ...expr }
-} derive(Show, Eq)
+} derive(Debug, Eq)
 
 ///|
 pub(all) struct Property {
@@ -84,13 +84,13 @@ pub(all) struct Property {
   value : Expr
   kind : PropKind
   computed : Bool // true for [expr]: value syntax
-} derive(Show, Eq)
+} derive(Debug, Eq)
 
 ///|
 pub(all) struct SwitchCase {
   condition : Expr?
   body : Array[Stmt]
-} derive(Show, Eq)
+} derive(Debug, Eq)
 
 ///|
 pub(all) enum Expr {
@@ -151,14 +151,14 @@ pub(all) enum Expr {
   AsyncGeneratorExprExt(String?, Array[Param], String?, Array[Stmt], @token.Loc) // name, params, rest_param, body
   // Await expression
   AwaitExpr(Expr, @token.Loc) // argument
-} derive(Show, Eq)
+} derive(Debug, Eq)
 
 ///|
 pub(all) struct Param {
   name : String
   default_val : Expr?
   pattern : Pattern? // For destructuring parameters like ({x, y}) or ([a, b])
-} derive(Show, Eq)
+} derive(Debug, Eq)
 
 ///|
 pub(all) enum Pattern {
@@ -167,7 +167,7 @@ pub(all) enum Pattern {
   ObjectPat(Array[PropPat], Pattern?) // properties, rest pattern
   DefaultPat(Pattern, Expr) // pattern with default initializer: pat = expr
   AssignTarget(Expr) // member expression target for destructuring assignment: [obj.x] = [1]
-} derive(Show, Eq)
+} derive(Debug, Eq)
 
 ///|
 pub(all) struct PropPat {
@@ -175,19 +175,19 @@ pub(all) struct PropPat {
   value : Pattern
   default_val : Expr?
   computed_key : Expr? // For computed property keys: { [expr]: pattern }
-} derive(Show, Eq)
+} derive(Debug, Eq)
 
 ///|
 pub(all) struct ImportSpecifier {
   local_name : String // local binding name
   imported : String // name exported by the module
-} derive(Show, Eq)
+} derive(Debug, Eq)
 
 ///|
 pub(all) struct ExportSpecifier {
   local_name : String // local binding name
   exported : String // name to export as
-} derive(Show, Eq)
+} derive(Debug, Eq)
 
 ///|
 pub(all) struct ClassMethod {
@@ -196,7 +196,7 @@ pub(all) struct ClassMethod {
   kind : PropKind // Init for regular method, Get for getter, Set for setter
   computed : Bool // true for [expr]() syntax
   is_static : Bool // true for static methods
-} derive(Show, Eq)
+} derive(Debug, Eq)
 
 ///|
 pub(all) enum Stmt {
@@ -266,9 +266,96 @@ pub(all) enum Stmt {
     String, // source module
     @token.Loc
   )
-} derive(Show, Eq)
+} derive(Debug, Eq)
 
 ///|
 pub(all) struct Program {
   stmts : Array[Stmt]
-} derive(Show, Eq)
+} derive(Debug, Eq)
+
+// Show impls delegating to Debug (derive(Show) is deprecated in MoonBit v0.9)
+
+///|
+pub impl Show for BinOp with output(self, logger) {
+  Debug::to_repr(self).output(logger)
+}
+
+///|
+pub impl Show for UnaryOp with output(self, logger) {
+  Debug::to_repr(self).output(logger)
+}
+
+///|
+pub impl Show for UpdateOp with output(self, logger) {
+  Debug::to_repr(self).output(logger)
+}
+
+///|
+pub impl Show for CompoundOp with output(self, logger) {
+  Debug::to_repr(self).output(logger)
+}
+
+///|
+pub impl Show for VarKind with output(self, logger) {
+  Debug::to_repr(self).output(logger)
+}
+
+///|
+pub impl Show for PropKind with output(self, logger) {
+  Debug::to_repr(self).output(logger)
+}
+
+///|
+pub impl Show for Property with output(self, logger) {
+  Debug::to_repr(self).output(logger)
+}
+
+///|
+pub impl Show for SwitchCase with output(self, logger) {
+  Debug::to_repr(self).output(logger)
+}
+
+///|
+pub impl Show for Expr with output(self, logger) {
+  Debug::to_repr(self).output(logger)
+}
+
+///|
+pub impl Show for Param with output(self, logger) {
+  Debug::to_repr(self).output(logger)
+}
+
+///|
+pub impl Show for Pattern with output(self, logger) {
+  Debug::to_repr(self).output(logger)
+}
+
+///|
+pub impl Show for PropPat with output(self, logger) {
+  Debug::to_repr(self).output(logger)
+}
+
+///|
+pub impl Show for ImportSpecifier with output(self, logger) {
+  Debug::to_repr(self).output(logger)
+}
+
+///|
+pub impl Show for ExportSpecifier with output(self, logger) {
+  Debug::to_repr(self).output(logger)
+}
+
+///|
+pub impl Show for ClassMethod with output(self, logger) {
+  Debug::to_repr(self).output(logger)
+}
+
+///|
+pub impl Show for Stmt with output(self, logger) {
+  Debug::to_repr(self).output(logger)
+}
+
+///|
+pub impl Show for Program with output(self, logger) {
+  Debug::to_repr(self).output(logger)
+}

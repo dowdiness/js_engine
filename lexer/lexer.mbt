@@ -90,7 +90,7 @@ fn is_id_start_cp(cp : Int) -> Bool {
   if cp < 128 {
     is_alpha(cp.unsafe_to_char())
   } else {
-    not(is_whitespace_or_line_terminator_cp(cp))
+    !is_whitespace_or_line_terminator_cp(cp)
   }
 }
 
@@ -101,7 +101,7 @@ fn is_id_continue_cp(cp : Int) -> Bool {
   if cp < 128 {
     is_alnum(cp.unsafe_to_char())
   } else {
-    not(is_whitespace_or_line_terminator_cp(cp))
+    !is_whitespace_or_line_terminator_cp(cp)
   }
 }
 
@@ -244,7 +244,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       let hex_buf = StringBuilder::new()
       let mut count = 0
       while count < 4 {
-        if offset >= len || not(is_hex_digit(char_at(offset))) {
+        if offset >= len || !is_hex_digit(char_at(offset)) {
           raise @errors.SyntaxError(
             message="Invalid Unicode escape sequence at line \{line}, col \{col}",
           )
@@ -395,7 +395,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         // Single-line comment — terminates at any LineTerminator
         offset += 2
         col += 2
-        while offset < len && not(is_line_terminator(char_at(offset))) {
+        while offset < len && !is_line_terminator(char_at(offset)) {
           offset += 1
           col += 1
         }
@@ -505,7 +505,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           let mut in_class = false // inside [...]
           while offset < len {
             let rc = char_at(offset)
-            if rc == '/' && not(in_class) {
+            if rc == '/' && !in_class {
               break
             }
             // Line terminators are not allowed in regex literals
@@ -591,7 +591,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
               break
             }
           }
-          if not(has_digits) {
+          if !has_digits {
             raise @errors.SyntaxError(
               message="Missing hex digits after '0x' at line \{loc.line}, col \{loc.col}",
             )
@@ -640,7 +640,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
               break
             }
           }
-          if not(has_digits) {
+          if !has_digits {
             raise @errors.SyntaxError(
               message="Missing binary digits after '0b' at line \{loc.line}, col \{loc.col}",
             )
@@ -686,7 +686,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
               break
             }
           }
-          if not(has_digits) {
+          if !has_digits {
             raise @errors.SyntaxError(
               message="Missing octal digits after '0o' at line \{loc.line}, col \{loc.col}",
             )
@@ -818,7 +818,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           let num_str_so_far = buf.to_string()
           let last_is_dot = num_str_so_far.length() > 0 &&
             num_str_so_far.to_array()[num_str_so_far.length() - 1] == '.'
-          if not(last_is_dot) {
+          if !last_is_dot {
             raise @errors.SyntaxError(
               message="Numeric separator cannot appear at the end at line \{loc.line}, col \{col - 1}",
             )
@@ -866,7 +866,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             break
           }
         }
-        if not(has_exp_digits) {
+        if !has_exp_digits {
           raise @errors.SyntaxError(
             message="Missing exponent digits at line \{loc.line}, col \{col}",
           )
@@ -883,7 +883,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         col += 1
       }
       let raw = source.view()[start:offset].to_string()
-      let value = @strconv.parse_double(num_str)
+      let value = @string.parse_double(num_str)
       tokens.push({ kind: Number(value), loc, raw })
       continue
     }
@@ -898,7 +898,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         offset += 2 // skip \ and u
         col += 2
         let cp = parse_unicode_escape()
-        if not(is_id_start_cp(cp)) {
+        if !is_id_start_cp(cp) {
           raise @errors.SyntaxError(
             message="Invalid Unicode escape sequence at line \{line}, col \{col}",
           )
@@ -920,7 +920,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           offset += 2 // skip \ and u
           col += 2
           let cp = parse_unicode_escape()
-          if not(is_id_continue_cp(cp)) {
+          if !is_id_continue_cp(cp) {
             raise @errors.SyntaxError(
               message="Invalid Unicode escape sequence at line \{line}, col \{col}",
             )
@@ -1286,7 +1286,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
     if c == '?' && offset + 1 < len && char_at(offset + 1) == '.' {
       // Distinguish from ternary with number: x ? .5 : y
       // ?. is optional chaining only if NOT followed by a digit
-      if offset + 2 >= len || not(is_digit(char_at(offset + 2))) {
+      if offset + 2 >= len || !is_digit(char_at(offset + 2)) {
         tokens.push({ kind: QuestionDot, loc, raw: "?." })
         offset += 2
         col += 2
@@ -1326,7 +1326,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             (is_digit(char_at(offset)) || char_at(offset) == '_') {
         if char_at(offset) == '_' {
           // Numeric separator must be between digits
-          if offset + 1 >= len || not(is_digit(char_at(offset + 1))) {
+          if offset + 1 >= len || !is_digit(char_at(offset + 1)) {
             raise @errors.SyntaxError(
               message="Numeric separators are not allowed at the end of numeric literals at line \{line}, col \{col}",
             )
@@ -1348,7 +1348,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         while offset < len &&
               (is_digit(char_at(offset)) || char_at(offset) == '_') {
           if char_at(offset) == '_' {
-            if offset + 1 >= len || not(is_digit(char_at(offset + 1))) {
+            if offset + 1 >= len || !is_digit(char_at(offset + 1)) {
               raise @errors.SyntaxError(
                 message="Numeric separators are not allowed at the end of numeric literals at line \{line}, col \{col}",
               )
@@ -1375,7 +1375,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         }
       }
       let num_str = buf.to_string()
-      let value = @strconv.parse_double(num_str) catch {
+      let value = @string.parse_double(num_str) catch {
         _ =>
           raise @errors.SyntaxError(
             message="Invalid or unexpected token at line \{line}, col \{col}",

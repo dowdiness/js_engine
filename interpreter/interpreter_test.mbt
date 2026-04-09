@@ -1911,9 +1911,12 @@ test "bound function propagates runtime error" {
     @interpreter.JsException(val) => err_msg = error_display(val)
     _ => err_msg = "other error"
   }
-  inspect(err_msg.contains("Cannot read property"), content=(
-    #|false
-  ))
+  inspect(
+    err_msg.contains("Cannot read property"),
+    content=(
+      #|false
+    ),
+  )
 }
 
 // ====== Regression: hasOwnProperty on inherited objects ======
@@ -4996,9 +4999,12 @@ test "generator: new with generator throws TypeError" {
       #|}
     ),
   )
-  inspect(output, content=(
-    #|[]
-  ))
+  inspect(
+    output,
+    content=(
+      #|[]
+    ),
+  )
 }
 
 ///|
@@ -5129,9 +5135,12 @@ test "generator: yield inside for loop (range)" {
       #|console.log(it.next().done);
     ),
   )
-  inspect(output, content=(
-    #|["1", "2", "2", "false"]
-  ))
+  inspect(
+    output,
+    content=(
+      #|["1", "2", "2", "false"]
+    ),
+  )
 }
 
 ///|
@@ -5314,9 +5323,12 @@ test "generator: .throw() caught by try/catch in generator" {
       #|console.log(it.next().done);
     ),
   )
-  inspect(output, content=(
-    #|["1", "caught: boom", "caught: boom", "false"]
-  ))
+  inspect(
+    output,
+    content=(
+      #|["1", "caught: boom", "caught: boom", "false"]
+    ),
+  )
 }
 
 ///|
@@ -5423,9 +5435,12 @@ test "generator: .return() when finally yields" {
       #|console.log(r2.value, r2.done);
     ),
   )
-  inspect(output, content=(
-    #|["1", "from-finally false", "from-finally false"]
-  ))
+  inspect(
+    output,
+    content=(
+      #|["1", "from-finally false", "from-finally false"]
+    ),
+  )
 }
 
 ///|
@@ -5447,9 +5462,12 @@ test "generator: .throw() in try/catch/finally runs finally" {
       #|it.next();
     ),
   )
-  inspect(output, content=(
-    #|["1", "caught: err"]
-  ))
+  inspect(
+    output,
+    content=(
+      #|["1", "caught: err"]
+    ),
+  )
 }
 
 ///|
@@ -5471,9 +5489,12 @@ test "generator: multiple .throw() with try/catch" {
       #|it.throw(new Error("b"));
     ),
   )
-  inspect(output, content=(
-    #|["got: a"]
-  ))
+  inspect(
+    output,
+    content=(
+      #|["got: a"]
+    ),
+  )
 }
 
 // ================================================================
@@ -5498,9 +5519,12 @@ test "generator: yield inside while loop" {
       #|console.log(it.next().done);
     ),
   )
-  inspect(output, content=(
-    #|["0", "1", "1", "false"]
-  ))
+  inspect(
+    output,
+    content=(
+      #|["0", "1", "1", "false"]
+    ),
+  )
 }
 
 ///|
@@ -5521,9 +5545,12 @@ test "generator: yield inside for loop with return" {
       #|console.log(r.value, r.done);
     ),
   )
-  inspect(output, content=(
-    #|["0", "1", "1", "2 false"]
-  ))
+  inspect(
+    output,
+    content=(
+      #|["0", "1", "1", "2 false"]
+    ),
+  )
 }
 
 ///|
@@ -5549,9 +5576,12 @@ test "generator: yield in for loop preserves loop variable" {
       #|console.log(results.join(","));
     ),
   )
-  inspect(output, content=(
-    #|["0,1,1,1,1,2,2,3,3,5,5"]
-  ))
+  inspect(
+    output,
+    content=(
+      #|["0,1,1,1,1,2,2,3,3,5,5"]
+    ),
+  )
 }
 
 ///|
@@ -5573,9 +5603,12 @@ test "generator: yield in nested loops" {
       #|console.log(it.next().done);
     ),
   )
-  inspect(output, content=(
-    #|["0", "1", "1", "10", "false"]
-  ))
+  inspect(
+    output,
+    content=(
+      #|["0", "1", "1", "10", "false"]
+    ),
+  )
 }
 
 ///|
@@ -5597,9 +5630,12 @@ test "generator: break inside generator loop" {
       #|console.log(it.next().done);
     ),
   )
-  inspect(output, content=(
-    #|["0", "1", "1", "2", "false"]
-  ))
+  inspect(
+    output,
+    content=(
+      #|["0", "1", "1", "2", "false"]
+    ),
+  )
 }
 
 ///|
@@ -5618,9 +5654,12 @@ test "generator: yield inside for-of in generator" {
       #|console.log(it.next().done);
     ),
   )
-  inspect(output, content=(
-    #|["10", "20", "20", "false"]
-  ))
+  inspect(
+    output,
+    content=(
+      #|["10", "20", "20", "false"]
+    ),
+  )
 }
 
 ///|
@@ -5640,9 +5679,12 @@ test "generator: for-of consuming generator inside generator" {
       #|console.log(it.next().done);
     ),
   )
-  inspect(output, content=(
-    #|["2", "4", "4", "false"]
-  ))
+  inspect(
+    output,
+    content=(
+      #|["2", "4", "4", "false"]
+    ),
+  )
 }
 
 // ================================================================
@@ -5793,9 +5835,12 @@ test "generator: yield* forwards .throw() to delegate" {
       #|console.log(it.next().done);
     ),
   )
-  inspect(output, content=(
-    #|["1", "caught: err", "caught: err", "false"]
-  ))
+  inspect(
+    output,
+    content=(
+      #|["1", "caught: err", "caught: err", "false"]
+    ),
+  )
 }
 
 // ================================================================
@@ -5816,9 +5861,12 @@ test "generator: for-of consuming generator (integration)" {
       #|console.log(results.join(","));
     ),
   )
-  inspect(output, content=(
-    #|["0,1,1,2,2,3,3,4,4"]
-  ))
+  inspect(
+    output,
+    content=(
+      #|["0,1,1,2,2,3,3,4,4"]
+    ),
+  )
 }
 
 ///|
@@ -5906,9 +5954,12 @@ test "generator: generator with closures" {
       #|console.log(c.next().value);
     ),
   )
-  inspect(output, content=(
-    #|["1", "2", "2", "1", "1"]
-  ))
+  inspect(
+    output,
+    content=(
+      #|["1", "2", "2", "1", "1"]
+    ),
+  )
 }
 
 ///|
@@ -5932,9 +5983,12 @@ test "generator: infinite fibonacci generator" {
       #|console.log(results.join(","));
     ),
   )
-  inspect(output, content=(
-    #|["0,1,1,1,1,2,2,3"]
-  ))
+  inspect(
+    output,
+    content=(
+      #|["0,1,1,1,1,2,2,3"]
+    ),
+  )
 }
 
 ///|
@@ -5962,9 +6016,12 @@ test "generator: generator pipeline" {
       #|console.log([...squares].join(","));
     ),
   )
-  inspect(output, content=(
-    #|["1,4,4,4,4,9,9,9,9,16,16,16,16,25,25,25,25"]
-  ))
+  inspect(
+    output,
+    content=(
+      #|["1,4,4,4,4,9,9,9,9,16,16,16,16,25,25,25,25"]
+    ),
+  )
 }
 
 // ================================================================
@@ -5985,9 +6042,12 @@ test "generator: deep iteration stress test" {
       #|console.log(sum);
     ),
   )
-  inspect(output, content=(
-    #|["9900"]
-  ))
+  inspect(
+    output,
+    content=(
+      #|["9900"]
+    ),
+  )
 }
 
 ///|
@@ -6005,9 +6065,12 @@ test "generator: yield* chain stress" {
       #|console.log(sum);
     ),
   )
-  inspect(output, content=(
-    #|["2450"]
-  ))
+  inspect(
+    output,
+    content=(
+      #|["2450"]
+    ),
+  )
 }
 
 ///|
@@ -6426,9 +6489,12 @@ test "eval: strict mode isolates var declarations" {
       #|try { console.log(x); } catch(e) { console.log("not defined"); }
     ),
   )
-  inspect(output, content=(
-    #|["42"]
-  ))
+  inspect(
+    output,
+    content=(
+      #|["42"]
+    ),
+  )
 }
 
 ///|
@@ -6549,9 +6615,12 @@ test "eval: strict eval code with use strict in eval" {
       #|try { console.log(x); } catch(e) { console.log("not defined"); }
     ),
   )
-  inspect(output, content=(
-    #|["42"]
-  ))
+  inspect(
+    output,
+    content=(
+      #|["42"]
+    ),
+  )
 }
 
 ///|
@@ -7090,9 +7159,12 @@ test "sloppy: delete unqualified identifier is allowed" {
     #|var result = delete x;
     #|console.log(result);
   let output = run_output(src)
-  inspect(output, content=(
-    #|["false"]
-  ))
+  inspect(
+    output,
+    content=(
+      #|["false"]
+    ),
+  )
 }
 
 ///|

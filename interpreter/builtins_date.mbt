@@ -497,7 +497,7 @@ fn parse_date_string(s : String) -> Double {
 
   // Try to parse as ISO format
   let result = parse_iso_date(chars, len)
-  if not(result.is_nan()) {
+  if !result.is_nan() {
     return result
   }
   // Unable to parse
@@ -753,692 +753,923 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
   let date_proto_props : Map[String, Value] = {}
 
   // Date.prototype.getTime()
-  date_proto_props["getTime"] = make_method_func("getTime", 0, fn(this_val, _args) raise {
-        let t = get_date_value(this_val)
-        Number(t)
-      })
+  date_proto_props["getTime"] = make_method_func("getTime", 0, fn(
+    this_val,
+    _args,
+  ) raise {
+    let t = get_date_value(this_val)
+    Number(t)
+  })
 
   // Date.prototype.getFullYear()
-  date_proto_props["getFullYear"] = make_method_func("getFullYear", 0, fn(this_val, _args) raise {
-        let t = get_date_value(this_val)
-        if t.is_nan() {
-          return Number(0.0 / 0.0)
-        }
-        Number(year_from_time(t).to_double())
-      })
+  date_proto_props["getFullYear"] = make_method_func("getFullYear", 0, fn(
+    this_val,
+    _args,
+  ) raise {
+    let t = get_date_value(this_val)
+    if t.is_nan() {
+      return Number(0.0 / 0.0)
+    }
+    Number(year_from_time(t).to_double())
+  })
 
   // Date.prototype.getUTCFullYear()
-  date_proto_props["getUTCFullYear"] = make_method_func("getUTCFullYear", 0, fn(this_val, _args) raise {
-        let t = get_date_value(this_val)
-        if t.is_nan() {
-          return Number(0.0 / 0.0)
-        }
-        Number(year_from_time(t).to_double())
-      })
+  date_proto_props["getUTCFullYear"] = make_method_func("getUTCFullYear", 0, fn(
+    this_val,
+    _args,
+  ) raise {
+    let t = get_date_value(this_val)
+    if t.is_nan() {
+      return Number(0.0 / 0.0)
+    }
+    Number(year_from_time(t).to_double())
+  })
 
   // Date.prototype.getMonth()
-  date_proto_props["getMonth"] = make_method_func("getMonth", 0, fn(this_val, _args) raise {
-        let t = get_date_value(this_val)
-        if t.is_nan() {
-          return Number(0.0 / 0.0)
-        }
-        Number(month_from_time(t).to_double())
-      })
+  date_proto_props["getMonth"] = make_method_func("getMonth", 0, fn(
+    this_val,
+    _args,
+  ) raise {
+    let t = get_date_value(this_val)
+    if t.is_nan() {
+      return Number(0.0 / 0.0)
+    }
+    Number(month_from_time(t).to_double())
+  })
 
   // Date.prototype.getUTCMonth()
-  date_proto_props["getUTCMonth"] = make_method_func("getUTCMonth", 0, fn(this_val, _args) raise {
-        let t = get_date_value(this_val)
-        if t.is_nan() {
-          return Number(0.0 / 0.0)
-        }
-        Number(month_from_time(t).to_double())
-      })
+  date_proto_props["getUTCMonth"] = make_method_func("getUTCMonth", 0, fn(
+    this_val,
+    _args,
+  ) raise {
+    let t = get_date_value(this_val)
+    if t.is_nan() {
+      return Number(0.0 / 0.0)
+    }
+    Number(month_from_time(t).to_double())
+  })
 
   // Date.prototype.getDate()
-  date_proto_props["getDate"] = make_method_func("getDate", 0, fn(this_val, _args) raise {
-        let t = get_date_value(this_val)
-        if t.is_nan() {
-          return Number(0.0 / 0.0)
-        }
-        Number(date_from_time(t).to_double())
-      })
+  date_proto_props["getDate"] = make_method_func("getDate", 0, fn(
+    this_val,
+    _args,
+  ) raise {
+    let t = get_date_value(this_val)
+    if t.is_nan() {
+      return Number(0.0 / 0.0)
+    }
+    Number(date_from_time(t).to_double())
+  })
 
   // Date.prototype.getUTCDate()
-  date_proto_props["getUTCDate"] = make_method_func("getUTCDate", 0, fn(this_val, _args) raise {
-        let t = get_date_value(this_val)
-        if t.is_nan() {
-          return Number(0.0 / 0.0)
-        }
-        Number(date_from_time(t).to_double())
-      })
+  date_proto_props["getUTCDate"] = make_method_func("getUTCDate", 0, fn(
+    this_val,
+    _args,
+  ) raise {
+    let t = get_date_value(this_val)
+    if t.is_nan() {
+      return Number(0.0 / 0.0)
+    }
+    Number(date_from_time(t).to_double())
+  })
 
   // Date.prototype.getDay()
-  date_proto_props["getDay"] = make_method_func("getDay", 0, fn(this_val, _args) raise {
-        let t = get_date_value(this_val)
-        if t.is_nan() {
-          return Number(0.0 / 0.0)
-        }
-        Number(week_day(t).to_double())
-      })
+  date_proto_props["getDay"] = make_method_func("getDay", 0, fn(
+    this_val,
+    _args,
+  ) raise {
+    let t = get_date_value(this_val)
+    if t.is_nan() {
+      return Number(0.0 / 0.0)
+    }
+    Number(week_day(t).to_double())
+  })
 
   // Date.prototype.getUTCDay()
-  date_proto_props["getUTCDay"] = make_method_func("getUTCDay", 0, fn(this_val, _args) raise {
-        let t = get_date_value(this_val)
-        if t.is_nan() {
-          return Number(0.0 / 0.0)
-        }
-        Number(week_day(t).to_double())
-      })
+  date_proto_props["getUTCDay"] = make_method_func("getUTCDay", 0, fn(
+    this_val,
+    _args,
+  ) raise {
+    let t = get_date_value(this_val)
+    if t.is_nan() {
+      return Number(0.0 / 0.0)
+    }
+    Number(week_day(t).to_double())
+  })
 
   // Date.prototype.getHours()
-  date_proto_props["getHours"] = make_method_func("getHours", 0, fn(this_val, _args) raise {
-        let t = get_date_value(this_val)
-        if t.is_nan() {
-          return Number(0.0 / 0.0)
-        }
-        Number(hours_from_time(t).to_double())
-      })
+  date_proto_props["getHours"] = make_method_func("getHours", 0, fn(
+    this_val,
+    _args,
+  ) raise {
+    let t = get_date_value(this_val)
+    if t.is_nan() {
+      return Number(0.0 / 0.0)
+    }
+    Number(hours_from_time(t).to_double())
+  })
 
   // Date.prototype.getUTCHours()
-  date_proto_props["getUTCHours"] = make_method_func("getUTCHours", 0, fn(this_val, _args) raise {
-        let t = get_date_value(this_val)
-        if t.is_nan() {
-          return Number(0.0 / 0.0)
-        }
-        Number(hours_from_time(t).to_double())
-      })
+  date_proto_props["getUTCHours"] = make_method_func("getUTCHours", 0, fn(
+    this_val,
+    _args,
+  ) raise {
+    let t = get_date_value(this_val)
+    if t.is_nan() {
+      return Number(0.0 / 0.0)
+    }
+    Number(hours_from_time(t).to_double())
+  })
 
   // Date.prototype.getMinutes()
-  date_proto_props["getMinutes"] = make_method_func("getMinutes", 0, fn(this_val, _args) raise {
-        let t = get_date_value(this_val)
-        if t.is_nan() {
-          return Number(0.0 / 0.0)
-        }
-        Number(minutes_from_time(t).to_double())
-      })
+  date_proto_props["getMinutes"] = make_method_func("getMinutes", 0, fn(
+    this_val,
+    _args,
+  ) raise {
+    let t = get_date_value(this_val)
+    if t.is_nan() {
+      return Number(0.0 / 0.0)
+    }
+    Number(minutes_from_time(t).to_double())
+  })
 
   // Date.prototype.getUTCMinutes()
-  date_proto_props["getUTCMinutes"] = make_method_func("getUTCMinutes", 0, fn(this_val, _args) raise {
-        let t = get_date_value(this_val)
-        if t.is_nan() {
-          return Number(0.0 / 0.0)
-        }
-        Number(minutes_from_time(t).to_double())
-      })
+  date_proto_props["getUTCMinutes"] = make_method_func("getUTCMinutes", 0, fn(
+    this_val,
+    _args,
+  ) raise {
+    let t = get_date_value(this_val)
+    if t.is_nan() {
+      return Number(0.0 / 0.0)
+    }
+    Number(minutes_from_time(t).to_double())
+  })
 
   // Date.prototype.getSeconds()
-  date_proto_props["getSeconds"] = make_method_func("getSeconds", 0, fn(this_val, _args) raise {
-        let t = get_date_value(this_val)
-        if t.is_nan() {
-          return Number(0.0 / 0.0)
-        }
-        Number(seconds_from_time(t).to_double())
-      })
+  date_proto_props["getSeconds"] = make_method_func("getSeconds", 0, fn(
+    this_val,
+    _args,
+  ) raise {
+    let t = get_date_value(this_val)
+    if t.is_nan() {
+      return Number(0.0 / 0.0)
+    }
+    Number(seconds_from_time(t).to_double())
+  })
 
   // Date.prototype.getUTCSeconds()
-  date_proto_props["getUTCSeconds"] = make_method_func("getUTCSeconds", 0, fn(this_val, _args) raise {
-        let t = get_date_value(this_val)
-        if t.is_nan() {
-          return Number(0.0 / 0.0)
-        }
-        Number(seconds_from_time(t).to_double())
-      })
+  date_proto_props["getUTCSeconds"] = make_method_func("getUTCSeconds", 0, fn(
+    this_val,
+    _args,
+  ) raise {
+    let t = get_date_value(this_val)
+    if t.is_nan() {
+      return Number(0.0 / 0.0)
+    }
+    Number(seconds_from_time(t).to_double())
+  })
 
   // Date.prototype.getMilliseconds()
-  date_proto_props["getMilliseconds"] = make_method_func("getMilliseconds", 0, fn(this_val, _args) raise {
-        let t = get_date_value(this_val)
-        if t.is_nan() {
-          return Number(0.0 / 0.0)
-        }
-        Number(millis_from_time(t).to_double())
-      })
+  date_proto_props["getMilliseconds"] = make_method_func("getMilliseconds", 0, fn(
+    this_val,
+    _args,
+  ) raise {
+    let t = get_date_value(this_val)
+    if t.is_nan() {
+      return Number(0.0 / 0.0)
+    }
+    Number(millis_from_time(t).to_double())
+  })
 
   // Date.prototype.getUTCMilliseconds()
-  date_proto_props["getUTCMilliseconds"] = make_method_func("getUTCMilliseconds", 0, fn(this_val, _args) raise {
-        let t = get_date_value(this_val)
-        if t.is_nan() {
-          return Number(0.0 / 0.0)
-        }
-        Number(millis_from_time(t).to_double())
-      })
+  date_proto_props["getUTCMilliseconds"] = make_method_func(
+    "getUTCMilliseconds",
+    0,
+    fn(this_val, _args) raise {
+      let t = get_date_value(this_val)
+      if t.is_nan() {
+        return Number(0.0 / 0.0)
+      }
+      Number(millis_from_time(t).to_double())
+    },
+  )
 
   // Date.prototype.getTimezoneOffset() - always 0 (UTC)
-  date_proto_props["getTimezoneOffset"] = make_method_func("getTimezoneOffset", 0, fn(this_val, _args) raise {
-        let t = get_date_value(this_val)
-        if t.is_nan() {
-          return Number(0.0 / 0.0)
-        }
-        Number(0.0) // UTC timezone, offset is 0
-      })
+  date_proto_props["getTimezoneOffset"] = make_method_func(
+    "getTimezoneOffset",
+    0,
+    fn(this_val, _args) raise {
+      let t = get_date_value(this_val)
+      if t.is_nan() {
+        return Number(0.0 / 0.0)
+      }
+      Number(0.0) // UTC timezone, offset is 0
+    },
+  )
 
   // Date.prototype.getYear() (deprecated, but still in spec Annex B)
-  date_proto_props["getYear"] = make_method_func("getYear", 0, fn(this_val, _args) raise {
-        let t = get_date_value(this_val)
-        if t.is_nan() {
-          return Number(0.0 / 0.0)
-        }
-        Number((year_from_time(t) - 1900).to_double())
-      })
+  date_proto_props["getYear"] = make_method_func("getYear", 0, fn(
+    this_val,
+    _args,
+  ) raise {
+    let t = get_date_value(this_val)
+    if t.is_nan() {
+      return Number(0.0 / 0.0)
+    }
+    Number((year_from_time(t) - 1900).to_double())
+  })
 
   // Date.prototype.setTime(time)
-  date_proto_props["setTime"] = make_method_func("setTime", 1, fn(this_val, args) raise {
-        let _ = get_date_value(this_val) // validate this is Date
-        let v = if args.length() > 0 {
-          time_clip(to_number(args[0]))
-        } else {
-          0.0 / 0.0
-        }
-        set_date_value(this_val, v)
-        Number(v)
-      })
+  date_proto_props["setTime"] = make_method_func("setTime", 1, fn(
+    this_val,
+    args,
+  ) raise {
+    let _ = get_date_value(this_val) // validate this is Date
+    let v = if args.length() > 0 {
+      time_clip(to_number(args[0]))
+    } else {
+      0.0 / 0.0
+    }
+    set_date_value(this_val, v)
+    Number(v)
+  })
 
   // Date.prototype.setMilliseconds(ms)
-  date_proto_props["setMilliseconds"] = make_method_func("setMilliseconds", 1, fn(this_val, args) raise {
-        let t = get_date_value(this_val)
-        let ms = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
-        if t.is_nan() { return Number(0.0 / 0.0) }
-        let new_time = make_time(
-          hours_from_time(t).to_double(),
-          minutes_from_time(t).to_double(),
-          seconds_from_time(t).to_double(),
-          ms,
-        )
-        let v = time_clip(make_date_value(day(t), new_time))
-        set_date_value(this_val, v)
-        Number(v)
-      })
+  date_proto_props["setMilliseconds"] = make_method_func("setMilliseconds", 1, fn(
+    this_val,
+    args,
+  ) raise {
+    let t = get_date_value(this_val)
+    let ms = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+    if t.is_nan() {
+      return Number(0.0 / 0.0)
+    }
+    let new_time = make_time(
+      hours_from_time(t).to_double(),
+      minutes_from_time(t).to_double(),
+      seconds_from_time(t).to_double(),
+      ms,
+    )
+    let v = time_clip(make_date_value(day(t), new_time))
+    set_date_value(this_val, v)
+    Number(v)
+  })
 
   // Date.prototype.setUTCMilliseconds(ms)
-  date_proto_props["setUTCMilliseconds"] = make_method_func("setUTCMilliseconds", 1, fn(this_val, args) raise {
-        let t = get_date_value(this_val)
-        let ms = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
-        if t.is_nan() { return Number(0.0 / 0.0) }
-        let new_time = make_time(hours_from_time(t).to_double(), minutes_from_time(t).to_double(), seconds_from_time(t).to_double(), ms)
-        let v = time_clip(make_date_value(day(t), new_time))
-        set_date_value(this_val, v)
-        Number(v)
-      })
+  date_proto_props["setUTCMilliseconds"] = make_method_func(
+    "setUTCMilliseconds",
+    1,
+    fn(this_val, args) raise {
+      let t = get_date_value(this_val)
+      let ms = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+      if t.is_nan() {
+        return Number(0.0 / 0.0)
+      }
+      let new_time = make_time(
+        hours_from_time(t).to_double(),
+        minutes_from_time(t).to_double(),
+        seconds_from_time(t).to_double(),
+        ms,
+      )
+      let v = time_clip(make_date_value(day(t), new_time))
+      set_date_value(this_val, v)
+      Number(v)
+    },
+  )
 
   // Date.prototype.setSeconds(sec [, ms])
-  date_proto_props["setSeconds"] = make_method_func("setSeconds", 2, fn(this_val, args) raise {
-        let t = get_date_value(this_val)
-        let sec = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
-        let ms = if args.length() > 1 {
-          to_number(args[1])
-        } else {
-          millis_from_time(t).to_double()
-        }
-        if t.is_nan() { return Number(0.0 / 0.0) }
-        let new_time = make_time(
-          hours_from_time(t).to_double(),
-          minutes_from_time(t).to_double(),
-          sec,
-          ms,
-        )
-        let v = time_clip(make_date_value(day(t), new_time))
-        set_date_value(this_val, v)
-        Number(v)
-      })
+  date_proto_props["setSeconds"] = make_method_func("setSeconds", 2, fn(
+    this_val,
+    args,
+  ) raise {
+    let t = get_date_value(this_val)
+    let sec = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+    let ms = if args.length() > 1 {
+      to_number(args[1])
+    } else {
+      millis_from_time(t).to_double()
+    }
+    if t.is_nan() {
+      return Number(0.0 / 0.0)
+    }
+    let new_time = make_time(
+      hours_from_time(t).to_double(),
+      minutes_from_time(t).to_double(),
+      sec,
+      ms,
+    )
+    let v = time_clip(make_date_value(day(t), new_time))
+    set_date_value(this_val, v)
+    Number(v)
+  })
 
   // Date.prototype.setUTCSeconds(sec [, ms])
-  date_proto_props["setUTCSeconds"] = make_method_func("setUTCSeconds", 2, fn(this_val, args) raise {
-        let t = get_date_value(this_val)
-        let sec = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
-        let ms = if args.length() > 1 { to_number(args[1]) } else { millis_from_time(t).to_double() }
-        if t.is_nan() { return Number(0.0 / 0.0) }
-        let new_time = make_time(hours_from_time(t).to_double(), minutes_from_time(t).to_double(), sec, ms)
-        let v = time_clip(make_date_value(day(t), new_time))
-        set_date_value(this_val, v)
-        Number(v)
-      })
+  date_proto_props["setUTCSeconds"] = make_method_func("setUTCSeconds", 2, fn(
+    this_val,
+    args,
+  ) raise {
+    let t = get_date_value(this_val)
+    let sec = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+    let ms = if args.length() > 1 {
+      to_number(args[1])
+    } else {
+      millis_from_time(t).to_double()
+    }
+    if t.is_nan() {
+      return Number(0.0 / 0.0)
+    }
+    let new_time = make_time(
+      hours_from_time(t).to_double(),
+      minutes_from_time(t).to_double(),
+      sec,
+      ms,
+    )
+    let v = time_clip(make_date_value(day(t), new_time))
+    set_date_value(this_val, v)
+    Number(v)
+  })
 
   // Date.prototype.setMinutes(min [, sec [, ms]])
-  date_proto_props["setMinutes"] = make_method_func("setMinutes", 3, fn(this_val, args) raise {
-        let t = get_date_value(this_val)
-        let min = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
-        let sec = if args.length() > 1 {
-          to_number(args[1])
-        } else {
-          seconds_from_time(t).to_double()
-        }
-        let ms = if args.length() > 2 {
-          to_number(args[2])
-        } else {
-          millis_from_time(t).to_double()
-        }
-        if t.is_nan() { return Number(0.0 / 0.0) }
-        let new_time = make_time(hours_from_time(t).to_double(), min, sec, ms)
-        let v = time_clip(make_date_value(day(t), new_time))
-        set_date_value(this_val, v)
-        Number(v)
-      })
+  date_proto_props["setMinutes"] = make_method_func("setMinutes", 3, fn(
+    this_val,
+    args,
+  ) raise {
+    let t = get_date_value(this_val)
+    let min = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+    let sec = if args.length() > 1 {
+      to_number(args[1])
+    } else {
+      seconds_from_time(t).to_double()
+    }
+    let ms = if args.length() > 2 {
+      to_number(args[2])
+    } else {
+      millis_from_time(t).to_double()
+    }
+    if t.is_nan() {
+      return Number(0.0 / 0.0)
+    }
+    let new_time = make_time(hours_from_time(t).to_double(), min, sec, ms)
+    let v = time_clip(make_date_value(day(t), new_time))
+    set_date_value(this_val, v)
+    Number(v)
+  })
 
   // Date.prototype.setUTCMinutes(min [, sec [, ms]])
-  date_proto_props["setUTCMinutes"] = make_method_func("setUTCMinutes", 3, fn(this_val, args) raise {
-        let t = get_date_value(this_val)
-        let min = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
-        let sec = if args.length() > 1 { to_number(args[1]) } else { seconds_from_time(t).to_double() }
-        let ms = if args.length() > 2 { to_number(args[2]) } else { millis_from_time(t).to_double() }
-        if t.is_nan() { return Number(0.0 / 0.0) }
-        let new_time = make_time(hours_from_time(t).to_double(), min, sec, ms)
-        let v = time_clip(make_date_value(day(t), new_time))
-        set_date_value(this_val, v)
-        Number(v)
-      })
+  date_proto_props["setUTCMinutes"] = make_method_func("setUTCMinutes", 3, fn(
+    this_val,
+    args,
+  ) raise {
+    let t = get_date_value(this_val)
+    let min = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+    let sec = if args.length() > 1 {
+      to_number(args[1])
+    } else {
+      seconds_from_time(t).to_double()
+    }
+    let ms = if args.length() > 2 {
+      to_number(args[2])
+    } else {
+      millis_from_time(t).to_double()
+    }
+    if t.is_nan() {
+      return Number(0.0 / 0.0)
+    }
+    let new_time = make_time(hours_from_time(t).to_double(), min, sec, ms)
+    let v = time_clip(make_date_value(day(t), new_time))
+    set_date_value(this_val, v)
+    Number(v)
+  })
 
   // Date.prototype.setHours(hour [, min [, sec [, ms]]])
-  date_proto_props["setHours"] = make_method_func("setHours", 4, fn(this_val, args) raise {
-        let t = get_date_value(this_val)
-        let hour = if args.length() > 0 {
-          to_number(args[0])
-        } else {
-          0.0 / 0.0
-        }
-        let min = if args.length() > 1 {
-          to_number(args[1])
-        } else {
-          minutes_from_time(t).to_double()
-        }
-        let sec = if args.length() > 2 {
-          to_number(args[2])
-        } else {
-          seconds_from_time(t).to_double()
-        }
-        let ms = if args.length() > 3 {
-          to_number(args[3])
-        } else {
-          millis_from_time(t).to_double()
-        }
-        if t.is_nan() { return Number(0.0 / 0.0) }
-        let new_time = make_time(hour, min, sec, ms)
-        let v = time_clip(make_date_value(day(t), new_time))
-        set_date_value(this_val, v)
-        Number(v)
-      })
+  date_proto_props["setHours"] = make_method_func("setHours", 4, fn(
+    this_val,
+    args,
+  ) raise {
+    let t = get_date_value(this_val)
+    let hour = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+    let min = if args.length() > 1 {
+      to_number(args[1])
+    } else {
+      minutes_from_time(t).to_double()
+    }
+    let sec = if args.length() > 2 {
+      to_number(args[2])
+    } else {
+      seconds_from_time(t).to_double()
+    }
+    let ms = if args.length() > 3 {
+      to_number(args[3])
+    } else {
+      millis_from_time(t).to_double()
+    }
+    if t.is_nan() {
+      return Number(0.0 / 0.0)
+    }
+    let new_time = make_time(hour, min, sec, ms)
+    let v = time_clip(make_date_value(day(t), new_time))
+    set_date_value(this_val, v)
+    Number(v)
+  })
 
   // Date.prototype.setUTCHours(hour [, min [, sec [, ms]]])
-  date_proto_props["setUTCHours"] = make_method_func("setUTCHours", 4, fn(this_val, args) raise {
-        let t = get_date_value(this_val)
-        let hour = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
-        let min = if args.length() > 1 { to_number(args[1]) } else { minutes_from_time(t).to_double() }
-        let sec = if args.length() > 2 { to_number(args[2]) } else { seconds_from_time(t).to_double() }
-        let ms = if args.length() > 3 { to_number(args[3]) } else { millis_from_time(t).to_double() }
-        if t.is_nan() { return Number(0.0 / 0.0) }
-        let new_time = make_time(hour, min, sec, ms)
-        let v = time_clip(make_date_value(day(t), new_time))
-        set_date_value(this_val, v)
-        Number(v)
-      })
+  date_proto_props["setUTCHours"] = make_method_func("setUTCHours", 4, fn(
+    this_val,
+    args,
+  ) raise {
+    let t = get_date_value(this_val)
+    let hour = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+    let min = if args.length() > 1 {
+      to_number(args[1])
+    } else {
+      minutes_from_time(t).to_double()
+    }
+    let sec = if args.length() > 2 {
+      to_number(args[2])
+    } else {
+      seconds_from_time(t).to_double()
+    }
+    let ms = if args.length() > 3 {
+      to_number(args[3])
+    } else {
+      millis_from_time(t).to_double()
+    }
+    if t.is_nan() {
+      return Number(0.0 / 0.0)
+    }
+    let new_time = make_time(hour, min, sec, ms)
+    let v = time_clip(make_date_value(day(t), new_time))
+    set_date_value(this_val, v)
+    Number(v)
+  })
 
   // Date.prototype.setDate(date)
-  date_proto_props["setDate"] = make_method_func("setDate", 1, fn(this_val, args) raise {
-        let t = get_date_value(this_val)
-        let dt = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
-        if t.is_nan() { return Number(0.0 / 0.0) }
-        let new_day = make_day(
-          year_from_time(t).to_double(),
-          month_from_time(t).to_double(),
-          dt,
-        )
-        let v = time_clip(make_date_value(new_day, time_within_day(t)))
-        set_date_value(this_val, v)
-        Number(v)
-      })
+  date_proto_props["setDate"] = make_method_func("setDate", 1, fn(
+    this_val,
+    args,
+  ) raise {
+    let t = get_date_value(this_val)
+    let dt = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+    if t.is_nan() {
+      return Number(0.0 / 0.0)
+    }
+    let new_day = make_day(
+      year_from_time(t).to_double(),
+      month_from_time(t).to_double(),
+      dt,
+    )
+    let v = time_clip(make_date_value(new_day, time_within_day(t)))
+    set_date_value(this_val, v)
+    Number(v)
+  })
 
   // Date.prototype.setUTCDate(date)
-  date_proto_props["setUTCDate"] = make_method_func("setUTCDate", 1, fn(this_val, args) raise {
-        let t = get_date_value(this_val)
-        let dt = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
-        if t.is_nan() { return Number(0.0 / 0.0) }
-        let new_day = make_day(year_from_time(t).to_double(), month_from_time(t).to_double(), dt)
-        let v = time_clip(make_date_value(new_day, time_within_day(t)))
-        set_date_value(this_val, v)
-        Number(v)
-      })
+  date_proto_props["setUTCDate"] = make_method_func("setUTCDate", 1, fn(
+    this_val,
+    args,
+  ) raise {
+    let t = get_date_value(this_val)
+    let dt = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+    if t.is_nan() {
+      return Number(0.0 / 0.0)
+    }
+    let new_day = make_day(
+      year_from_time(t).to_double(),
+      month_from_time(t).to_double(),
+      dt,
+    )
+    let v = time_clip(make_date_value(new_day, time_within_day(t)))
+    set_date_value(this_val, v)
+    Number(v)
+  })
 
   // Date.prototype.setMonth(month [, date])
-  date_proto_props["setMonth"] = make_method_func("setMonth", 2, fn(this_val, args) raise {
-        let t = get_date_value(this_val)
-        let month = if args.length() > 0 {
-          to_number(args[0])
-        } else {
-          0.0 / 0.0
-        }
-        let dt = if args.length() > 1 {
-          to_number(args[1])
-        } else {
-          date_from_time(t).to_double()
-        }
-        if t.is_nan() { return Number(0.0 / 0.0) }
-        let new_day = make_day(year_from_time(t).to_double(), month, dt)
-        let v = time_clip(make_date_value(new_day, time_within_day(t)))
-        set_date_value(this_val, v)
-        Number(v)
-      })
+  date_proto_props["setMonth"] = make_method_func("setMonth", 2, fn(
+    this_val,
+    args,
+  ) raise {
+    let t = get_date_value(this_val)
+    let month = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+    let dt = if args.length() > 1 {
+      to_number(args[1])
+    } else {
+      date_from_time(t).to_double()
+    }
+    if t.is_nan() {
+      return Number(0.0 / 0.0)
+    }
+    let new_day = make_day(year_from_time(t).to_double(), month, dt)
+    let v = time_clip(make_date_value(new_day, time_within_day(t)))
+    set_date_value(this_val, v)
+    Number(v)
+  })
 
   // Date.prototype.setUTCMonth(month [, date])
-  date_proto_props["setUTCMonth"] = make_method_func("setUTCMonth", 2, fn(this_val, args) raise {
-        let t = get_date_value(this_val)
-        let month = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
-        let dt = if args.length() > 1 { to_number(args[1]) } else { date_from_time(t).to_double() }
-        if t.is_nan() { return Number(0.0 / 0.0) }
-        let new_day = make_day(year_from_time(t).to_double(), month, dt)
-        let v = time_clip(make_date_value(new_day, time_within_day(t)))
-        set_date_value(this_val, v)
-        Number(v)
-      })
+  date_proto_props["setUTCMonth"] = make_method_func("setUTCMonth", 2, fn(
+    this_val,
+    args,
+  ) raise {
+    let t = get_date_value(this_val)
+    let month = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+    let dt = if args.length() > 1 {
+      to_number(args[1])
+    } else {
+      date_from_time(t).to_double()
+    }
+    if t.is_nan() {
+      return Number(0.0 / 0.0)
+    }
+    let new_day = make_day(year_from_time(t).to_double(), month, dt)
+    let v = time_clip(make_date_value(new_day, time_within_day(t)))
+    set_date_value(this_val, v)
+    Number(v)
+  })
 
   // Date.prototype.setFullYear(year [, month [, date]])
-  date_proto_props["setFullYear"] = make_method_func("setFullYear", 3, fn(this_val, args) raise {
-        let mut t = get_date_value(this_val)
-        if t.is_nan() {
-          t = 0.0 // Use +0 if current value is NaN per spec
-        }
-        let year = if args.length() > 0 {
-          to_number(args[0])
-        } else {
-          0.0 / 0.0
-        }
-        let month = if args.length() > 1 {
-          to_number(args[1])
-        } else {
-          month_from_time(t).to_double()
-        }
-        let dt = if args.length() > 2 {
-          to_number(args[2])
-        } else {
-          date_from_time(t).to_double()
-        }
-        let new_day = make_day(year, month, dt)
-        let v = time_clip(make_date_value(new_day, time_within_day(t)))
-        set_date_value(this_val, v)
-        Number(v)
-      })
+  date_proto_props["setFullYear"] = make_method_func("setFullYear", 3, fn(
+    this_val,
+    args,
+  ) raise {
+    let mut t = get_date_value(this_val)
+    if t.is_nan() {
+      t = 0.0 // Use +0 if current value is NaN per spec
+    }
+    let year = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+    let month = if args.length() > 1 {
+      to_number(args[1])
+    } else {
+      month_from_time(t).to_double()
+    }
+    let dt = if args.length() > 2 {
+      to_number(args[2])
+    } else {
+      date_from_time(t).to_double()
+    }
+    let new_day = make_day(year, month, dt)
+    let v = time_clip(make_date_value(new_day, time_within_day(t)))
+    set_date_value(this_val, v)
+    Number(v)
+  })
 
   // Date.prototype.setUTCFullYear(year [, month [, date]])
-  date_proto_props["setUTCFullYear"] = make_method_func("setUTCFullYear", 3, fn(this_val, args) raise {
-        let mut t = get_date_value(this_val)
-        if t.is_nan() { t = 0.0 }
-        let year = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
-        let month = if args.length() > 1 { to_number(args[1]) } else { month_from_time(t).to_double() }
-        let dt = if args.length() > 2 { to_number(args[2]) } else { date_from_time(t).to_double() }
-        let new_day = make_day(year, month, dt)
-        let v = time_clip(make_date_value(new_day, time_within_day(t)))
-        set_date_value(this_val, v)
-        Number(v)
-      })
+  date_proto_props["setUTCFullYear"] = make_method_func("setUTCFullYear", 3, fn(
+    this_val,
+    args,
+  ) raise {
+    let mut t = get_date_value(this_val)
+    if t.is_nan() {
+      t = 0.0
+    }
+    let year = if args.length() > 0 { to_number(args[0]) } else { 0.0 / 0.0 }
+    let month = if args.length() > 1 {
+      to_number(args[1])
+    } else {
+      month_from_time(t).to_double()
+    }
+    let dt = if args.length() > 2 {
+      to_number(args[2])
+    } else {
+      date_from_time(t).to_double()
+    }
+    let new_day = make_day(year, month, dt)
+    let v = time_clip(make_date_value(new_day, time_within_day(t)))
+    set_date_value(this_val, v)
+    Number(v)
+  })
 
   // Date.prototype.setYear(year) - deprecated Annex B
-  date_proto_props["setYear"] = make_method_func("setYear", 1, fn(this_val, args) raise {
-        let mut t = get_date_value(this_val)
-        if t.is_nan() {
-          t = 0.0
-        }
-        let year_arg = if args.length() > 0 {
-          to_number(args[0])
-        } else {
-          0.0 / 0.0
-        }
-        if year_arg.is_nan() {
-          set_date_value(this_val, 0.0 / 0.0)
-          return Number(0.0 / 0.0)
-        }
-        let yr = year_arg.to_int()
-        let year = if yr >= 0 && yr <= 99 {
-          (1900 + yr).to_double()
-        } else {
-          year_arg
-        }
-        let new_day = make_day(
-          year,
-          month_from_time(t).to_double(),
-          date_from_time(t).to_double(),
-        )
-        let v = time_clip(make_date_value(new_day, time_within_day(t)))
-        set_date_value(this_val, v)
-        Number(v)
-      })
+  date_proto_props["setYear"] = make_method_func("setYear", 1, fn(
+    this_val,
+    args,
+  ) raise {
+    let mut t = get_date_value(this_val)
+    if t.is_nan() {
+      t = 0.0
+    }
+    let year_arg = if args.length() > 0 {
+      to_number(args[0])
+    } else {
+      0.0 / 0.0
+    }
+    if year_arg.is_nan() {
+      set_date_value(this_val, 0.0 / 0.0)
+      return Number(0.0 / 0.0)
+    }
+    let yr = year_arg.to_int()
+    let year = if yr >= 0 && yr <= 99 {
+      (1900 + yr).to_double()
+    } else {
+      year_arg
+    }
+    let new_day = make_day(
+      year,
+      month_from_time(t).to_double(),
+      date_from_time(t).to_double(),
+    )
+    let v = time_clip(make_date_value(new_day, time_within_day(t)))
+    set_date_value(this_val, v)
+    Number(v)
+  })
 
   // Date.prototype.toString()
-  date_proto_props["toString"] = make_method_func("toString", 0, fn(this_val, _args) raise {
-        let t = get_date_value(this_val)
-        String_(date_to_string(t))
-      })
+  date_proto_props["toString"] = make_method_func("toString", 0, fn(
+    this_val,
+    _args,
+  ) raise {
+    let t = get_date_value(this_val)
+    String_(date_to_string(t))
+  })
 
   // Date.prototype.toDateString()
-  date_proto_props["toDateString"] = make_method_func("toDateString", 0, fn(this_val, _args) raise {
-        let t = get_date_value(this_val)
-        String_(date_to_date_string(t))
-      })
+  date_proto_props["toDateString"] = make_method_func("toDateString", 0, fn(
+    this_val,
+    _args,
+  ) raise {
+    let t = get_date_value(this_val)
+    String_(date_to_date_string(t))
+  })
 
   // Date.prototype.toTimeString()
-  date_proto_props["toTimeString"] = make_method_func("toTimeString", 0, fn(this_val, _args) raise {
-        let t = get_date_value(this_val)
-        String_(date_to_time_string(t))
-      })
+  date_proto_props["toTimeString"] = make_method_func("toTimeString", 0, fn(
+    this_val,
+    _args,
+  ) raise {
+    let t = get_date_value(this_val)
+    String_(date_to_time_string(t))
+  })
 
   // Date.prototype.toISOString()
-  date_proto_props["toISOString"] = make_method_func("toISOString", 0, fn(this_val, _args) raise {
-        let t = get_date_value(this_val)
-        String_(date_to_iso_string(t))
-      })
+  date_proto_props["toISOString"] = make_method_func("toISOString", 0, fn(
+    this_val,
+    _args,
+  ) raise {
+    let t = get_date_value(this_val)
+    String_(date_to_iso_string(t))
+  })
 
   // Date.prototype.toUTCString()
-  date_proto_props["toUTCString"] = make_method_func("toUTCString", 0, fn(this_val, _args) raise {
-        let t = get_date_value(this_val)
-        String_(date_to_utc_string(t))
-      })
+  date_proto_props["toUTCString"] = make_method_func("toUTCString", 0, fn(
+    this_val,
+    _args,
+  ) raise {
+    let t = get_date_value(this_val)
+    String_(date_to_utc_string(t))
+  })
 
   // Date.prototype.toGMTString() - alias for toUTCString
   date_proto_props["toGMTString"] = date_proto_props["toUTCString"]
 
   // Date.prototype.toJSON() - generic per spec (works on any object with toISOString)
-  date_proto_props["toJSON"] = make_interp_method_func("toJSON", 1, fn(interp, this_val, _args) raise {
-        // Step 1: Let O = ToObject(this)
-        let o = match this_val {
-          Object(_) | Array(_) => this_val
-          _ => this_val // Primitives will be handled by ToPrimitive
-        }
-        // Step 2: Let tv = ToPrimitive(O, number)
-        let tv = match o {
-          Object(data) => {
-            // Try valueOf first (hint number)
-            let mut result : Value = o
-            match data.properties.get("valueOf") {
-              Some(Object(fn_data)) =>
-                match fn_data.callable {
-                  Some(_) => {
-                    let v = interp.call_value(Object(fn_data), o, [], @token.Loc::default())
-                    match v {
-                      Object(_) | Array(_) => () // Not primitive, try toString
-                      _ => result = v
-                    }
-                  }
-                  _ => ()
-                }
-              _ => {
-                // Walk prototype chain for valueOf
-                let mut cur = data.prototype
-                while true {
-                  match cur {
-                    Object(proto_data) =>
-                      match proto_data.properties.get("valueOf") {
-                        Some(Object(fn_data)) =>
-                          match fn_data.callable {
-                            Some(_) => {
-                              let v = interp.call_value(Object(fn_data), o, [], @token.Loc::default())
-                              match v {
-                                Object(_) | Array(_) => ()
-                                _ => result = v
-                              }
-                              break
-                            }
-                            _ => cur = proto_data.prototype
-                          }
-                        _ => cur = proto_data.prototype
-                      }
-                    _ => break
-                  }
-                }
-              }
-            }
-            result
-          }
-          _ => o
-        }
-        // Step 3: If tv is a Number and is not finite, return null
-        match tv {
-          Number(n) =>
-            if n.is_nan() || n.is_inf() {
-              return Null
-            }
-          _ => ()
-        }
-        // Step 4: Return Invoke(O, "toISOString")
-        // Look up toISOString on the object
-        let to_iso = match o {
-          Object(_) => {
-            let mut found : Value = Undefined
-            let mut cur : Value = o
-            while true {
-              match cur {
-                Object(cur_data) =>
-                  match cur_data.properties.get("toISOString") {
-                    Some(v) => { found = v; break }
-                    None => cur = cur_data.prototype
-                  }
-                _ => break
-              }
-            }
-            // Also check for getter if not found via properties
-            match found {
-              Undefined => {
-                let mut cur2 : Value = o
-                while true {
-                  match cur2 {
-                    Object(cur_data) =>
-                      match cur_data.descriptors.get("toISOString") {
-                        Some(desc) =>
-                          match desc.getter {
-                            Some(getter) => {
-                              found = interp.call_value(getter, o, [], @token.Loc::default())
-                              break
-                            }
-                            None => cur2 = cur_data.prototype
-                          }
-                        None => cur2 = cur_data.prototype
-                      }
-                    _ => break
-                  }
+  date_proto_props["toJSON"] = make_interp_method_func("toJSON", 1, fn(
+    interp,
+    this_val,
+    _args,
+  ) raise {
+    // Step 1: Let O = ToObject(this)
+    let o = match this_val {
+      Object(_) | Array(_) => this_val
+      _ => this_val // Primitives will be handled by ToPrimitive
+    }
+    // Step 2: Let tv = ToPrimitive(O, number)
+    let tv = match o {
+      Object(data) => {
+        // Try valueOf first (hint number)
+        let mut result : Value = o
+        match data.properties.get("valueOf") {
+          Some(Object(fn_data)) =>
+            match fn_data.callable {
+              Some(_) => {
+                let v = interp.call_value(
+                  Object(fn_data),
+                  o,
+                  [],
+                  @token.Loc::default(),
+                )
+                match v {
+                  Object(_) | Array(_) => () // Not primitive, try toString
+                  _ => result = v
                 }
               }
               _ => ()
             }
-            found
-          }
-          _ => Undefined
-        }
-        match to_iso {
-          Object(fn_data) =>
-            match fn_data.callable {
-              Some(_) =>
-                interp.call_value(to_iso, o, [], @token.Loc::default())
-              None =>
-                raise @errors.TypeError(message="toISOString is not a function")
+          _ => {
+            // Walk prototype chain for valueOf
+            let mut cur = data.prototype
+            while true {
+              match cur {
+                Object(proto_data) =>
+                  match proto_data.properties.get("valueOf") {
+                    Some(Object(fn_data)) =>
+                      match fn_data.callable {
+                        Some(_) => {
+                          let v = interp.call_value(
+                            Object(fn_data),
+                            o,
+                            [],
+                            @token.Loc::default(),
+                          )
+                          match v {
+                            Object(_) | Array(_) => ()
+                            _ => result = v
+                          }
+                          break
+                        }
+                        _ => cur = proto_data.prototype
+                      }
+                    _ => cur = proto_data.prototype
+                  }
+                _ => break
+              }
             }
-          _ =>
+          }
+        }
+        result
+      }
+      _ => o
+    }
+    // Step 3: If tv is a Number and is not finite, return null
+    match tv {
+      Number(n) => if n.is_nan() || n.is_inf() { return Null }
+      _ => ()
+    }
+    // Step 4: Return Invoke(O, "toISOString")
+    // Look up toISOString on the object
+    let to_iso = match o {
+      Object(_) => {
+        let mut found : Value = Undefined
+        let mut cur : Value = o
+        while true {
+          match cur {
+            Object(cur_data) =>
+              match cur_data.properties.get("toISOString") {
+                Some(v) => {
+                  found = v
+                  break
+                }
+                None => cur = cur_data.prototype
+              }
+            _ => break
+          }
+        }
+        // Also check for getter if not found via properties
+        match found {
+          Undefined => {
+            let mut cur2 : Value = o
+            while true {
+              match cur2 {
+                Object(cur_data) =>
+                  match cur_data.descriptors.get("toISOString") {
+                    Some(desc) =>
+                      match desc.getter {
+                        Some(getter) => {
+                          found = interp.call_value(
+                            getter,
+                            o,
+                            [],
+                            @token.Loc::default(),
+                          )
+                          break
+                        }
+                        None => cur2 = cur_data.prototype
+                      }
+                    None => cur2 = cur_data.prototype
+                  }
+                _ => break
+              }
+            }
+          }
+          _ => ()
+        }
+        found
+      }
+      _ => Undefined
+    }
+    match to_iso {
+      Object(fn_data) =>
+        match fn_data.callable {
+          Some(_) => interp.call_value(to_iso, o, [], @token.Loc::default())
+          None =>
             raise @errors.TypeError(message="toISOString is not a function")
         }
-      })
+      _ => raise @errors.TypeError(message="toISOString is not a function")
+    }
+  })
 
   // Date.prototype.valueOf()
-  date_proto_props["valueOf"] = make_method_func("valueOf", 0, fn(this_val, _args) raise {
-        let t = get_date_value(this_val)
-        Number(t)
-      })
+  date_proto_props["valueOf"] = make_method_func("valueOf", 0, fn(
+    this_val,
+    _args,
+  ) raise {
+    let t = get_date_value(this_val)
+    Number(t)
+  })
 
   // Date.prototype.toLocaleDateString() - simplified, same as toDateString
-  date_proto_props["toLocaleDateString"] = make_method_func("toLocaleDateString", 0, fn(this_val, _args) raise {
-        let t = get_date_value(this_val)
-        String_(date_to_date_string(t))
-      })
+  date_proto_props["toLocaleDateString"] = make_method_func(
+    "toLocaleDateString",
+    0,
+    fn(this_val, _args) raise {
+      let t = get_date_value(this_val)
+      String_(date_to_date_string(t))
+    },
+  )
 
   // Date.prototype.toLocaleTimeString() - simplified, same as toTimeString
-  date_proto_props["toLocaleTimeString"] = make_method_func("toLocaleTimeString", 0, fn(this_val, _args) raise {
-        let t = get_date_value(this_val)
-        String_(date_to_time_string(t))
-      })
+  date_proto_props["toLocaleTimeString"] = make_method_func(
+    "toLocaleTimeString",
+    0,
+    fn(this_val, _args) raise {
+      let t = get_date_value(this_val)
+      String_(date_to_time_string(t))
+    },
+  )
 
   // Date.prototype.toLocaleString() - simplified, same as toString
-  date_proto_props["toLocaleString"] = make_method_func("toLocaleString", 0, fn(this_val, _args) raise {
-        let t = get_date_value(this_val)
-        String_(date_to_string(t))
-      })
+  date_proto_props["toLocaleString"] = make_method_func("toLocaleString", 0, fn(
+    this_val,
+    _args,
+  ) raise {
+    let t = get_date_value(this_val)
+    String_(date_to_string(t))
+  })
 
   // Date.prototype[Symbol.toPrimitive]
-  let to_primitive_method = make_interp_method_func("[Symbol.toPrimitive]", 1, fn(interp, this_val, args) raise {
-        // Step 1: If Type(O) is not Object, throw a TypeError exception
-        match this_val {
+  let to_primitive_method = make_interp_method_func("[Symbol.toPrimitive]", 1, fn(
+    interp,
+    this_val,
+    args,
+  ) raise {
+    // Step 1: If Type(O) is not Object, throw a TypeError exception
+    match this_val {
+      Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => ()
+      _ =>
+        raise @errors.TypeError(
+          message="Date.prototype[Symbol.toPrimitive] requires that 'this' be an Object",
+        )
+    }
+    let hint = if args.length() > 0 { args[0].to_string() } else { "default" }
+    let try_first = match hint {
+      "string" | "default" => "string"
+      "number" => "number"
+      _ => raise @errors.TypeError(message="Invalid hint: " + hint)
+    }
+    let loc = @token.Loc::default()
+    // OrdinaryToPrimitive: try toString/valueOf based on hint
+    if try_first == "string" {
+      // Try toString first
+      let to_string_val = interp.get_property(this_val, "toString", loc)
+      if is_callable(to_string_val) {
+        let result = interp.call_value(to_string_val, this_val, [], loc)
+        match result {
           Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => ()
-          _ => raise @errors.TypeError(message="Date.prototype[Symbol.toPrimitive] requires that 'this' be an Object")
+          _ => return result
         }
-        let hint = if args.length() > 0 {
-          args[0].to_string()
-        } else {
-          "default"
+      }
+      // Then try valueOf
+      let value_of_val = interp.get_property(this_val, "valueOf", loc)
+      if is_callable(value_of_val) {
+        let result = interp.call_value(value_of_val, this_val, [], loc)
+        match result {
+          Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => ()
+          _ => return result
         }
-        let try_first = match hint {
-          "string" | "default" => "string"
-          "number" => "number"
-          _ => raise @errors.TypeError(message="Invalid hint: " + hint)
+      }
+      raise @errors.TypeError(
+        message="Cannot convert object to primitive value",
+      )
+    } else {
+      // Try valueOf first
+      let value_of_val = interp.get_property(this_val, "valueOf", loc)
+      if is_callable(value_of_val) {
+        let result = interp.call_value(value_of_val, this_val, [], loc)
+        match result {
+          Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => ()
+          _ => return result
         }
-        let loc = @token.Loc::default()
-        // OrdinaryToPrimitive: try toString/valueOf based on hint
-        if try_first == "string" {
-          // Try toString first
-          let to_string_val = interp.get_property(this_val, "toString", loc)
-          if is_callable(to_string_val) {
-            let result = interp.call_value(to_string_val, this_val, [], loc)
-            match result {
-              Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => ()
-              _ => return result
-            }
-          }
-          // Then try valueOf
-          let value_of_val = interp.get_property(this_val, "valueOf", loc)
-          if is_callable(value_of_val) {
-            let result = interp.call_value(value_of_val, this_val, [], loc)
-            match result {
-              Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => ()
-              _ => return result
-            }
-          }
-          raise @errors.TypeError(message="Cannot convert object to primitive value")
-        } else {
-          // Try valueOf first
-          let value_of_val = interp.get_property(this_val, "valueOf", loc)
-          if is_callable(value_of_val) {
-            let result = interp.call_value(value_of_val, this_val, [], loc)
-            match result {
-              Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => ()
-              _ => return result
-            }
-          }
-          // Then try toString
-          let to_string_val = interp.get_property(this_val, "toString", loc)
-          if is_callable(to_string_val) {
-            let result = interp.call_value(to_string_val, this_val, [], loc)
-            match result {
-              Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => ()
-              _ => return result
-            }
-          }
-          raise @errors.TypeError(message="Cannot convert object to primitive value")
+      }
+      // Then try toString
+      let to_string_val = interp.get_property(this_val, "toString", loc)
+      if is_callable(to_string_val) {
+        let result = interp.call_value(to_string_val, this_val, [], loc)
+        match result {
+          Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => ()
+          _ => return result
         }
-      })
+      }
+      raise @errors.TypeError(
+        message="Cannot convert object to primitive value",
+      )
+    }
+  })
 
   // Create descriptor map for Date.prototype methods (non-enumerable, writable, configurable)
-  let method_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+  let method_desc : PropDescriptor = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   let date_proto_descs : Map[String, PropDescriptor] = {}
   date_proto_descs["getTime"] = method_desc
   date_proto_descs["getFullYear"] = method_desc
@@ -1504,7 +1735,13 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     Object(data) => {
       let to_prim_sym = get_toprimitive_symbol()
       data.symbol_properties[to_prim_sym.id] = to_primitive_method
-      data.symbol_descriptors[to_prim_sym.id] = { writable: false, enumerable: false, configurable: true, getter: None, setter: None }
+      data.symbol_descriptors[to_prim_sym.id] = {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
       // Also store [[DateValue]] on proto for "Invalid Date" default
       data.properties["[[DateValue]]"] = Number(0.0 / 0.0)
     }
@@ -1569,7 +1806,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
         NativeCallable("Date", fn(args) raise {
           // Date() without new returns a string of the current date/time
           // new Date(...) returns a Date object
-          if not(is_constructing.val) {
+          if !is_constructing.val {
             return String_(date_to_string(current_time_ms().floor()))
           }
           let t = if args.length() == 0 {
@@ -1624,7 +1861,38 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
         }),
       ),
       class_name: "Function",
-      descriptors: { "name": nf_desc, "length": nf_desc, "prototype": { writable: false, enumerable: false, configurable: false, getter: None, setter: None }, "parse": { writable: true, enumerable: false, configurable: true, getter: None, setter: None }, "UTC": { writable: true, enumerable: false, configurable: true, getter: None, setter: None }, "now": { writable: true, enumerable: false, configurable: true, getter: None, setter: None } },
+      descriptors: {
+        "name": nf_desc,
+        "length": nf_desc,
+        "prototype": {
+          writable: false,
+          enumerable: false,
+          configurable: false,
+          getter: None,
+          setter: None,
+        },
+        "parse": {
+          writable: true,
+          enumerable: false,
+          configurable: true,
+          getter: None,
+          setter: None,
+        },
+        "UTC": {
+          writable: true,
+          enumerable: false,
+          configurable: true,
+          getter: None,
+          setter: None,
+        },
+        "now": {
+          writable: true,
+          enumerable: false,
+          configurable: true,
+          getter: None,
+          setter: None,
+        },
+      },
       symbol_descriptors: {},
       extensible: true,
     }),

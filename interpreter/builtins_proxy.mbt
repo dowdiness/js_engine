@@ -117,7 +117,11 @@ fn setup_proxy_builtins(env : Environment) -> Unit {
               message="Cannot create proxy with a non-object as target or handler",
             )
         }
-        Proxy({ target: Some(target), handler: Some(handler), is_callable: is_callable(target) })
+        Proxy({
+          target: Some(target),
+          handler: Some(handler),
+          is_callable: is_callable(target),
+        })
       }),
     ),
     class_name: "Function",
@@ -130,7 +134,13 @@ fn setup_proxy_builtins(env : Environment) -> Unit {
   let revocable_props : Map[String, Value] = {}
   revocable_props["name"] = String_("revocable")
   revocable_props["length"] = Number(2.0)
-  let nf_desc : PropDescriptor = { writable: false, enumerable: false, configurable: true, getter: None, setter: None }
+  let nf_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   let revocable_descs : Map[String, PropDescriptor] = {}
   revocable_descs["name"] = nf_desc
   revocable_descs["length"] = nf_desc
@@ -211,7 +221,13 @@ fn setup_proxy_builtins(env : Environment) -> Unit {
   match proxy_ctor {
     Object(data) => {
       data.properties["revocable"] = revocable_func
-      data.descriptors["revocable"] = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+      data.descriptors["revocable"] = {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
     }
     _ => ()
   }

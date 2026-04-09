@@ -1,6 +1,10 @@
 // Generated using `moon info`, DON'T EDIT IT
 package "dowdiness/js_engine/token"
 
+import {
+  "moonbitlang/core/debug",
+}
+
 // Values
 
 // Errors
@@ -10,19 +14,17 @@ pub(all) struct Loc {
   line : Int
   col : Int
   offset : Int
-}
+} derive(Eq, @debug.Debug)
 pub fn Loc::default() -> Self
-pub impl Eq for Loc
 pub impl Show for Loc
 
 pub(all) struct Token {
   kind : TokenKind
   loc : Loc
   raw : String
-}
+} derive(Eq, @debug.Debug)
 pub fn Token::eof(Loc) -> Self
 pub fn Token::new(TokenKind, Loc, String) -> Self
-pub impl Eq for Token
 pub impl Show for Token
 
 pub(all) enum TokenKind {
@@ -134,8 +136,7 @@ pub(all) enum TokenKind {
   Regex(String, String)
   Of
   EOF
-}
-pub impl Eq for TokenKind
+} derive(Eq, @debug.Debug)
 pub impl Show for TokenKind
 
 // Type aliases

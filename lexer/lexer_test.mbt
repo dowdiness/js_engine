@@ -7,7 +7,12 @@ fn tok_kinds(source : String) -> Array[@token.TokenKind] raise Error {
 ///|
 test "lex arithmetic expression" {
   let kinds = tok_kinds("1 + 2 * 3")
-  inspect(kinds, content="[Number(1), Plus, Number(2), Star, Number(3), EOF]")
+  inspect(
+    kinds,
+    content=(
+      #|[Number(1), Plus, Number(2), Star, Number(3), EOF]
+    ),
+  )
 }
 
 ///|
@@ -37,25 +42,45 @@ test "lex string with escape" {
 ///|
 test "lex comparison operators" {
   let kinds = tok_kinds("=== !== == != <= >=")
-  inspect(kinds, content="[EqEqEq, BangEqEq, EqEq, BangEq, LtEq, GtEq, EOF]")
+  inspect(
+    kinds,
+    content=(
+      #|[EqEqEq, BangEqEq, EqEq, BangEq, LtEq, GtEq, EOF]
+    ),
+  )
 }
 
 ///|
 test "lex logical operators" {
   let kinds = tok_kinds("&& ||")
-  inspect(kinds, content="[And, Or, EOF]")
+  inspect(
+    kinds,
+    content=(
+      #|[And, Or, EOF]
+    ),
+  )
 }
 
 ///|
 test "lex single-line comment" {
   let kinds = tok_kinds("1 // comment\n2")
-  inspect(kinds, content="[Number(1), Number(2), EOF]")
+  inspect(
+    kinds,
+    content=(
+      #|[Number(1), Number(2), EOF]
+    ),
+  )
 }
 
 ///|
 test "lex multi-line comment" {
   let kinds = tok_kinds("1 /* comment */ 2")
-  inspect(kinds, content="[Number(1), Number(2), EOF]")
+  inspect(
+    kinds,
+    content=(
+      #|[Number(1), Number(2), EOF]
+    ),
+  )
 }
 
 ///|
@@ -70,13 +95,23 @@ test "lex function" {
 ///|
 test "lex decimal number" {
   let kinds = tok_kinds("3.14")
-  inspect(kinds, content="[Number(3.14), EOF]")
+  inspect(
+    kinds,
+    content=(
+      #|[Number(3.14), EOF]
+    ),
+  )
 }
 
 ///|
 test "lex boolean and null" {
   let kinds = tok_kinds("true false null undefined")
-  inspect(kinds, content="[True, False, Null, Undefined, EOF]")
+  inspect(
+    kinds,
+    content=(
+      #|[True, False, Null, Undefined, EOF]
+    ),
+  )
 }
 
 ///|
@@ -103,19 +138,34 @@ test "lex typeof" {
 ///|
 test "lex new keywords" {
   let kinds = tok_kinds("throw try catch finally")
-  inspect(kinds, content="[Throw, Try, Catch, Finally, EOF]")
+  inspect(
+    kinds,
+    content=(
+      #|[Throw, Try, Catch, Finally, EOF]
+    ),
+  )
 }
 
 ///|
 test "lex new this switch" {
   let kinds = tok_kinds("new this switch case default")
-  inspect(kinds, content="[New, This, Switch, Case, Default, EOF]")
+  inspect(
+    kinds,
+    content=(
+      #|[New, This, Switch, Case, Default, EOF]
+    ),
+  )
 }
 
 ///|
 test "lex void delete do in instanceof" {
   let kinds = tok_kinds("void delete do in instanceof")
-  inspect(kinds, content="[Void, Delete, Do, In, Instanceof, EOF]")
+  inspect(
+    kinds,
+    content=(
+      #|[Void, Delete, Do, In, Instanceof, EOF]
+    ),
+  )
 }
 
 ///|
@@ -139,13 +189,23 @@ test "lex compound assignment" {
 ///|
 test "lex bitwise operators" {
   let kinds = tok_kinds("& | ^ ~")
-  inspect(kinds, content="[BitAnd, BitOr, BitXor, Tilde, EOF]")
+  inspect(
+    kinds,
+    content=(
+      #|[BitAnd, BitOr, BitXor, Tilde, EOF]
+    ),
+  )
 }
 
 ///|
 test "lex shift operators" {
   let kinds = tok_kinds("<< >> >>>")
-  inspect(kinds, content="[LShift, RShift, URShift, EOF]")
+  inspect(
+    kinds,
+    content=(
+      #|[LShift, RShift, URShift, EOF]
+    ),
+  )
 }
 
 ///|
@@ -288,23 +348,43 @@ test "lex unicode escape supplementary plane in string" {
 test "lex unicode escape invalid identifier start" {
   // \u0031 is '1' — not valid at identifier start
   let result = Ok(@lexer.tokenize("\\u0031")) catch { _ => Err(()) }
-  inspect(result, content="Err(())")
+  inspect(
+    result,
+    content=(
+      #|Err(())
+    ),
+  )
 }
 
 ///|
 test "lex unicode escape invalid hex digits" {
   let result = Ok(@lexer.tokenize("\"\\u00GZ\"")) catch { _ => Err(()) }
-  inspect(result, content="Err(())")
+  inspect(
+    result,
+    content=(
+      #|Err(())
+    ),
+  )
 }
 
 ///|
 test "lex unicode escape empty braces" {
   let result = Ok(@lexer.tokenize("\"\\u{}\"")) catch { _ => Err(()) }
-  inspect(result, content="Err(())")
+  inspect(
+    result,
+    content=(
+      #|Err(())
+    ),
+  )
 }
 
 ///|
 test "lex unicode escape code point too large" {
   let result = Ok(@lexer.tokenize("\"\\u{110000}\"")) catch { _ => Err(()) }
-  inspect(result, content="Err(())")
+  inspect(
+    result,
+    content=(
+      #|Err(())
+    ),
+  )
 }

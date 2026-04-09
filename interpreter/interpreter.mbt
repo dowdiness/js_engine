@@ -92,17 +92,13 @@ pub fn Interpreter::new(annex_b? : Bool = false) -> Interpreter {
   // Mirror global built-in functions onto the global object (globalThis.X)
   // so that this.isFinite, this.isNaN, etc. work correctly per the ES spec
   let global_func_names = [
-    "eval", "isFinite", "isNaN", "parseInt", "parseFloat",
-    "encodeURIComponent", "decodeURIComponent", "encodeURI", "decodeURI",
-    "escape", "unescape",
-    "String", "Number", "Boolean", "Object", "Array", "Function",
-    "RegExp", "Error", "TypeError", "RangeError", "ReferenceError",
-    "SyntaxError", "URIError", "EvalError", "Date", "Math", "JSON",
-    "Symbol", "Map", "Set", "WeakMap", "WeakSet", "Promise", "Proxy",
-    "Reflect", "ArrayBuffer", "DataView",
-    "Int8Array", "Uint8Array", "Uint8ClampedArray",
-    "Int16Array", "Uint16Array", "Int32Array", "Uint32Array",
-    "Float32Array", "Float64Array",
+    "eval", "isFinite", "isNaN", "parseInt", "parseFloat", "encodeURIComponent",
+    "decodeURIComponent", "encodeURI", "decodeURI", "escape", "unescape", "String",
+    "Number", "Boolean", "Object", "Array", "Function", "RegExp", "Error", "TypeError",
+    "RangeError", "ReferenceError", "SyntaxError", "URIError", "EvalError", "Date",
+    "Math", "JSON", "Symbol", "Map", "Set", "WeakMap", "WeakSet", "Promise", "Proxy",
+    "Reflect", "ArrayBuffer", "DataView", "Int8Array", "Uint8Array", "Uint8ClampedArray",
+    "Int16Array", "Uint16Array", "Int32Array", "Uint32Array", "Float32Array", "Float64Array",
   ]
   let builtin_desc : PropDescriptor = {
     writable: true,
@@ -179,7 +175,7 @@ fn has_use_strict(stmts : Array[@ast.Stmt]) -> Bool {
   for i = 0; i < stmts.length(); i = i + 1 {
     match stmts[i] {
       ExprStmt(StringLit(s, has_escape, _), _) =>
-        if s == "use strict" && not(has_escape) {
+        if s == "use strict" && !has_escape {
           return true
         }
       // Continue scanning — other string directives are part of the prologue
@@ -330,7 +326,7 @@ fn Interpreter::mirror_to_global(
   self : Interpreter,
   name : String,
   value : Value,
-  configurable~ : Bool = false,
+  configurable? : Bool = false,
 ) -> Unit {
   match self.global_this {
     Object(data) => {
@@ -501,7 +497,7 @@ fn Interpreter::exec_stmt(
       while true {
         if first_iteration {
           first_iteration = false
-        } else if not(is_truthy(self.eval_expr(cond, env))) {
+        } else if !is_truthy(self.eval_expr(cond, env)) {
           break
         }
         let body_signal = self.exec_stmt(body, env) catch {
@@ -594,7 +590,7 @@ fn Interpreter::exec_stmt(
           first_iteration = false
         } else {
           match cond {
-            Some(c) => if not(is_truthy(self.eval_expr(c, for_env))) { break }
+            Some(c) => if !is_truthy(self.eval_expr(c, for_env)) { break }
             None => ()
           }
         }
@@ -702,7 +698,7 @@ fn Interpreter::exec_stmt(
           env.def(name, func_val, VarBinding)
         }
         // Annex B.3.3: propagate block-level function to function scope's var binding
-        if self.annex_b && not(self.strict) && not(env.is_var_scope) {
+        if self.annex_b && !self.strict && !env.is_var_scope {
           let var_env = env.find_var_env()
           match var_env.bindings.get(name) {
             Some(binding) =>
@@ -830,9 +826,7 @@ fn Interpreter::exec_stmt(
             } else {
               return BreakSignal(bv, Some(l))
             }
-          ContinueSignal(v, None) => {
-            completion = v.unwrap_or(completion)
-          }
+          ContinueSignal(v, None) => completion = v.unwrap_or(completion)
           ContinueSignal(cv, Some(l)) =>
             if label == Some(l) {
               completion = cv.unwrap_or(completion)
@@ -840,7 +834,7 @@ fn Interpreter::exec_stmt(
               return ContinueSignal(cv, Some(l))
             }
         }
-        if not(is_truthy(self.eval_expr(cond, env))) {
+        if !is_truthy(self.eval_expr(cond, env)) {
           break
         }
       }
@@ -862,11 +856,9 @@ fn Interpreter::exec_stmt(
             body_env.def(name, String_(key), bk)
           }
           None =>
-            try {
-              env.assign(name, String_(key))
-            } catch {
+            env.assign(name, String_(key)) catch {
               @errors.ReferenceError(_) =>
-                if not(self.strict) {
+                if !self.strict {
                   self.global.def(name, String_(key), VarBinding)
                   self.mirror_to_global(name, String_(key), configurable=true)
                 } else {
@@ -1126,7 +1118,9 @@ fn Interpreter::exec_stmt(
               }
             } else {
               // Close iterator on exception (IteratorClose)
-              try { close_iterator(self, iterator, loc) } catch { _ => () }
+              close_iterator(self, iterator, loc) catch {
+                _ => ()
+              }
             }
             raise e
           }
@@ -1134,21 +1128,29 @@ fn Interpreter::exec_stmt(
         match body_signal {
           Normal(v) => completion = v
           ReturnSignal(v) => {
-            try { close_iterator(self, iterator, loc) } catch { _ => () }
+            close_iterator(self, iterator, loc) catch {
+              _ => ()
+            }
             return ReturnSignal(v)
           }
           BreakSignal(v, None) => {
-            try { close_iterator(self, iterator, loc) } catch { _ => () }
+            close_iterator(self, iterator, loc) catch {
+              _ => ()
+            }
             completion = v.unwrap_or(completion)
             break
           }
           BreakSignal(bv, Some(l)) =>
             if label == Some(l) {
-              try { close_iterator(self, iterator, loc) } catch { _ => () }
+              close_iterator(self, iterator, loc) catch {
+                _ => ()
+              }
               completion = bv.unwrap_or(completion)
               break
             } else {
-              try { close_iterator(self, iterator, loc) } catch { _ => () }
+              close_iterator(self, iterator, loc) catch {
+                _ => ()
+              }
               return BreakSignal(bv, Some(l))
             }
           ContinueSignal(v, None) => {
@@ -1160,7 +1162,9 @@ fn Interpreter::exec_stmt(
               completion = cv.unwrap_or(completion)
               continue
             } else {
-              try { close_iterator(self, iterator, loc) } catch { _ => () }
+              close_iterator(self, iterator, loc) catch {
+                _ => ()
+              }
               return ContinueSignal(cv, Some(l))
             }
         }
@@ -1326,28 +1330,38 @@ fn Interpreter::exec_stmt(
         }
         let body_signal = self.exec_stmt(body, body_env) catch {
           e => {
-            try { close_iterator(self, iterator, loc) } catch { _ => () }
+            close_iterator(self, iterator, loc) catch {
+              _ => ()
+            }
             raise e
           }
         }
         match body_signal {
           Normal(v) => completion = v
           ReturnSignal(v) => {
-            try { close_iterator(self, iterator, loc) } catch { _ => () }
+            close_iterator(self, iterator, loc) catch {
+              _ => ()
+            }
             return ReturnSignal(v)
           }
           BreakSignal(v, None) => {
-            try { close_iterator(self, iterator, loc) } catch { _ => () }
+            close_iterator(self, iterator, loc) catch {
+              _ => ()
+            }
             completion = v.unwrap_or(completion)
             break
           }
           BreakSignal(bv, Some(l)) =>
             if label == Some(l) {
-              try { close_iterator(self, iterator, loc) } catch { _ => () }
+              close_iterator(self, iterator, loc) catch {
+                _ => ()
+              }
               completion = bv.unwrap_or(completion)
               break
             } else {
-              try { close_iterator(self, iterator, loc) } catch { _ => () }
+              close_iterator(self, iterator, loc) catch {
+                _ => ()
+              }
               return BreakSignal(bv, Some(l))
             }
           ContinueSignal(v, None) => {
@@ -1359,7 +1373,9 @@ fn Interpreter::exec_stmt(
               completion = cv.unwrap_or(completion)
               continue
             } else {
-              try { close_iterator(self, iterator, loc) } catch { _ => () }
+              close_iterator(self, iterator, loc) catch {
+                _ => ()
+              }
               return ContinueSignal(cv, Some(l))
             }
         }
@@ -1559,7 +1575,7 @@ fn Interpreter::exec_stmt(
           env.def(name, func_val, VarBinding)
         }
         // Annex B.3.3: propagate block-level function to function scope's var binding
-        if self.annex_b && not(self.strict) && not(env.is_var_scope) {
+        if self.annex_b && !self.strict && !env.is_var_scope {
           let var_env = env.find_var_env()
           match var_env.bindings.get(name) {
             Some(binding) =>
@@ -1731,16 +1747,16 @@ fn Interpreter::exec_stmt(
       // Named default exports also bind the name locally
       match expr {
         FuncExpr(Some(name), _, _, _) | FuncExprExt(Some(name), _, _, _, _) =>
-          if not(env.bindings.contains(name)) {
+          if !env.bindings.contains(name) {
             env.def(name, value, LetBinding)
           }
         GeneratorExpr(Some(name), _, _, _)
         | GeneratorExprExt(Some(name), _, _, _, _) =>
-          if not(env.bindings.contains(name)) {
+          if !env.bindings.contains(name) {
             env.def(name, value, LetBinding)
           }
         ClassExpr(Some(name), _, _, _) =>
-          if not(env.bindings.contains(name)) {
+          if !env.bindings.contains(name) {
             env.def(name, value, LetBinding)
           }
         _ => ()
@@ -1863,7 +1879,7 @@ fn collect_for_in_keys(obj : Value) -> Array[String] raise Error {
           }
           for i = 0; i < ta_len; i = i + 1 {
             let k = i.to_string()
-            if not(seen.contains(k)) {
+            if !seen.contains(k) {
               seen[k] = true
               keys.push(k)
             }
@@ -1871,7 +1887,7 @@ fn collect_for_in_keys(obj : Value) -> Array[String] raise Error {
         }
         let sorted = sort_property_keys(data.properties)
         for k in sorted {
-          if not(seen.contains(k)) {
+          if !seen.contains(k) {
             // Skip internal slots (e.g., [[BooleanData]], [[NumberData]], [[StringData]])
             if k.has_prefix("[[") {
               continue
@@ -1891,7 +1907,7 @@ fn collect_for_in_keys(obj : Value) -> Array[String] raise Error {
       Array(data) => {
         for i = 0; i < data.elements.length(); i = i + 1 {
           let k = i.to_string()
-          if not(seen.contains(k)) {
+          if !seen.contains(k) {
             seen[k] = true
             keys.push(k)
           }
@@ -1938,7 +1954,7 @@ fn Interpreter::exec_stmts(
       Normal(v) =>
         // Per spec, declarations have empty completion values that don't update
         // the statement list's value. Only non-declaration statements update it.
-        if not(is_declaration_stmt(stmt)) {
+        if !is_declaration_stmt(stmt) {
           last = v
         }
       BreakSignal(v, label) => {
@@ -2069,10 +2085,8 @@ fn collect_block_lexical_decl_names_from_stmt(
     FuncDecl(name, _, _, _) =>
       if include_block_functions {
         if lexical_names.contains(name) {
-          if not(
-              allow_duplicate_block_functions &&
-              block_function_kinds.get(name) == Some(1),
-            ) {
+          if !(allow_duplicate_block_functions &&
+            block_function_kinds.get(name) == Some(1)) {
             raise @errors.SyntaxError(
               message="Identifier '\{name}' has already been declared",
             )
@@ -2085,10 +2099,8 @@ fn collect_block_lexical_decl_names_from_stmt(
     FuncDeclExt(name, _, _, _, _) =>
       if include_block_functions {
         if lexical_names.contains(name) {
-          if not(
-              allow_duplicate_block_functions &&
-              block_function_kinds.get(name) == Some(1),
-            ) {
+          if !(allow_duplicate_block_functions &&
+            block_function_kinds.get(name) == Some(1)) {
             raise @errors.SyntaxError(
               message="Identifier '\{name}' has already been declared",
             )
@@ -2627,7 +2639,7 @@ fn validate_block_early_errors_stmt(
       validate_block_statement_list_early_errors(
         stmts,
         include_block_functions=true,
-        allow_duplicate_block_functions=not(strict_context),
+        allow_duplicate_block_functions=!strict_context,
       )
       for inner in stmts {
         validate_block_early_errors_stmt(inner, strict_context)
@@ -2824,15 +2836,14 @@ fn collect_eval_var_names_from_stmt(
 ) -> Unit {
   match stmt {
     VarDecl(VarKind, name, _, _) => names.push(name)
-    FuncDecl(name, _, _, _) => if not(in_block) { names.push(name) }
-    FuncDeclExt(name, _, _, _, _) => if not(in_block) { names.push(name) }
-    GeneratorDecl(name, _, _, _) => if not(in_block) { names.push(name) }
-    GeneratorDeclExt(name, _, _, _, _) => if not(in_block) { names.push(name) }
-    AsyncFuncDecl(name, _, _, _) => if not(in_block) { names.push(name) }
-    AsyncFuncDeclExt(name, _, _, _, _) => if not(in_block) { names.push(name) }
-    AsyncGeneratorDecl(name, _, _, _) => if not(in_block) { names.push(name) }
-    AsyncGeneratorDeclExt(name, _, _, _, _) =>
-      if not(in_block) { names.push(name) }
+    FuncDecl(name, _, _, _) => if !in_block { names.push(name) }
+    FuncDeclExt(name, _, _, _, _) => if !in_block { names.push(name) }
+    GeneratorDecl(name, _, _, _) => if !in_block { names.push(name) }
+    GeneratorDeclExt(name, _, _, _, _) => if !in_block { names.push(name) }
+    AsyncFuncDecl(name, _, _, _) => if !in_block { names.push(name) }
+    AsyncFuncDeclExt(name, _, _, _, _) => if !in_block { names.push(name) }
+    AsyncGeneratorDecl(name, _, _, _) => if !in_block { names.push(name) }
+    AsyncGeneratorDeclExt(name, _, _, _, _) => if !in_block { names.push(name) }
     DestructureDecl(VarKind, pattern, _, _) =>
       collect_pattern_var_names(pattern, names)
     StmtList(inner_stmts, _) =>
@@ -2940,7 +2951,7 @@ fn collect_eval_var_names(stmts : Array[@ast.Stmt]) -> Array[String] {
 fn hoist_pattern(pattern : @ast.Pattern, env : Environment) -> Unit raise Error {
   match pattern {
     IdentPat(name) =>
-      if not(env.bindings.contains(name)) {
+      if !env.bindings.contains(name) {
         env.def(name, Undefined, VarBinding)
       }
     DefaultPat(inner_pat, _) => hoist_pattern(inner_pat, env)
@@ -2976,7 +2987,7 @@ fn hoist_var_declarations_from_stmt(
 ) -> Unit raise Error {
   match stmt {
     VarDecl(VarKind, name, _, _) =>
-      if not(env.bindings.contains(name)) {
+      if !env.bindings.contains(name) {
         env.def(name, Undefined, VarBinding)
       }
     DestructureDecl(VarKind, pattern, _, _) => hoist_pattern(pattern, env)
@@ -3005,13 +3016,13 @@ fn hoist_var_declarations_from_stmt(
       hoist_var_declarations_from_stmt(body, env)
     }
     ForInStmt(kind, name, _, body, _) => {
-      if kind == Some(VarKind) && not(env.bindings.contains(name)) {
+      if kind == Some(VarKind) && !env.bindings.contains(name) {
         env.def(name, Undefined, VarBinding)
       }
       hoist_var_declarations_from_stmt(body, env)
     }
     ForOfStmt(kind, name, _, body, _) => {
-      if kind == Some(VarKind) && not(env.bindings.contains(name)) {
+      if kind == Some(VarKind) && !env.bindings.contains(name) {
         env.def(name, Undefined, VarBinding)
       }
       hoist_var_declarations_from_stmt(body, env)
@@ -3079,7 +3090,7 @@ fn hoist_block_func_declarations(
       for inner in inner_stmts {
         match inner {
           FuncDecl(name, _, _, _) | FuncDeclExt(name, _, _, _, _) =>
-            if not(var_env.bindings.contains(name)) {
+            if !var_env.bindings.contains(name) {
               var_env.def(name, Undefined, VarBinding)
             }
           _ => ()
@@ -3090,7 +3101,7 @@ fn hoist_block_func_declarations(
       // Also handle bare function declarations in if/else branches
       match then_branch {
         FuncDecl(name, _, _, _) | FuncDeclExt(name, _, _, _, _) =>
-          if not(var_env.bindings.contains(name)) {
+          if !var_env.bindings.contains(name) {
             var_env.def(name, Undefined, VarBinding)
           }
         _ => ()
@@ -3100,7 +3111,7 @@ fn hoist_block_func_declarations(
         Some(eb) => {
           match eb {
             FuncDecl(name, _, _, _) | FuncDeclExt(name, _, _, _, _) =>
-              if not(var_env.bindings.contains(name)) {
+              if !var_env.bindings.contains(name) {
                 var_env.def(name, Undefined, VarBinding)
               }
             _ => ()
@@ -3126,7 +3137,7 @@ fn hoist_block_func_declarations(
       // Handle bare function declarations directly in with body (Annex B.3.3)
       match body {
         FuncDecl(name, _, _, _) | FuncDeclExt(name, _, _, _, _) =>
-          if not(var_env.bindings.contains(name)) {
+          if !var_env.bindings.contains(name) {
             var_env.def(name, Undefined, VarBinding)
           }
         _ => ()
@@ -3138,7 +3149,7 @@ fn hoist_block_func_declarations(
         for inner in case_.body {
           match inner {
             FuncDecl(name, _, _, _) | FuncDeclExt(name, _, _, _, _) =>
-              if not(var_env.bindings.contains(name)) {
+              if !var_env.bindings.contains(name) {
                 var_env.def(name, Undefined, VarBinding)
               }
             _ => ()
@@ -3150,7 +3161,7 @@ fn hoist_block_func_declarations(
       for inner in try_body {
         match inner {
           FuncDecl(name, _, _, _) | FuncDeclExt(name, _, _, _, _) =>
-            if not(var_env.bindings.contains(name)) {
+            if !var_env.bindings.contains(name) {
               var_env.def(name, Undefined, VarBinding)
             }
           _ => ()
@@ -3162,7 +3173,7 @@ fn hoist_block_func_declarations(
           for inner in cb {
             match inner {
               FuncDecl(name, _, _, _) | FuncDeclExt(name, _, _, _, _) =>
-                if not(var_env.bindings.contains(name)) {
+                if !var_env.bindings.contains(name) {
                   var_env.def(name, Undefined, VarBinding)
                 }
               _ => ()
@@ -3176,7 +3187,7 @@ fn hoist_block_func_declarations(
           for inner in fb {
             match inner {
               FuncDecl(name, _, _, _) | FuncDeclExt(name, _, _, _, _) =>
-                if not(var_env.bindings.contains(name)) {
+                if !var_env.bindings.contains(name) {
                   var_env.def(name, Undefined, VarBinding)
                 }
               _ => ()
@@ -3200,7 +3211,7 @@ fn Interpreter::hoist_declarations(
   for stmt in stmts {
     match stmt {
       VarDecl(VarKind, name, _, _) =>
-        if not(env.bindings.contains(name)) {
+        if !env.bindings.contains(name) {
           env.def(name, Undefined, VarBinding)
           // Mirror var declaration to global object per ES spec
           if is_global {
@@ -3376,7 +3387,7 @@ fn Interpreter::hoist_declarations(
         for inner in inner_stmts {
           match inner {
             VarDecl(VarKind, name, _, _) =>
-              if not(env.bindings.contains(name)) {
+              if !env.bindings.contains(name) {
                 env.def(name, Undefined, VarBinding)
               }
             DestructureDecl(VarKind, pattern, _, _) =>
@@ -3433,7 +3444,7 @@ fn Interpreter::hoist_declarations(
     // (e.g. var inside blocks still hoists to function/global var scope).
     hoist_var_declarations_from_stmt(stmt, env)
     // Annex B.3.3: Hoist block-level function declarations as var bindings
-    if _self.annex_b && not(_self.strict) {
+    if _self.annex_b && !_self.strict {
       hoist_block_func_declarations(stmt, env)
     }
   }
@@ -3448,11 +3459,11 @@ fn hoist_block_tdz(
   for stmt in stmts {
     match stmt {
       VarDecl(LetKind, name, _, _) =>
-        if not(env.bindings.contains(name)) {
+        if !env.bindings.contains(name) {
           env.def_tdz(name, LetBinding)
         }
       VarDecl(ConstKind, name, _, _) =>
-        if not(env.bindings.contains(name)) {
+        if !env.bindings.contains(name) {
           env.def_tdz(name, ConstBinding)
         }
       // DestructureDecl with let/const also needs TDZ
@@ -3462,7 +3473,7 @@ fn hoist_block_tdz(
         hoist_pattern_tdz(pattern, env, ConstBinding)
       // Class declarations have TDZ (similar to let)
       ClassDecl(name, _, _, _) =>
-        if not(env.bindings.contains(name)) {
+        if !env.bindings.contains(name) {
           env.def_tdz(name, LetBinding)
         }
       // Export with declaration: hoist let/const inner declarations with TDZ
@@ -3484,7 +3495,7 @@ fn hoist_pattern_tdz(
 ) -> Unit raise Error {
   match pattern {
     IdentPat(name) =>
-      if not(env.bindings.contains(name)) {
+      if !env.bindings.contains(name) {
         env.def_tdz(name, kind)
       }
     DefaultPat(inner_pat, _) => hoist_pattern_tdz(inner_pat, env, kind)
@@ -3522,7 +3533,7 @@ fn Interpreter::bind_pattern(
   bk : BindingKind,
 ) -> Unit raise Error {
   match pattern {
-    IdentPat(name) => {
+    IdentPat(name) =>
       if bk == VarBinding && env.bindings.contains(name) {
         env.assign(name, value)
       } else if (bk == LetBinding || bk == ConstBinding) &&
@@ -3532,7 +3543,6 @@ fn Interpreter::bind_pattern(
       } else {
         env.def(name, value, bk)
       }
-    }
     DefaultPat(inner_pat, default_expr) => {
       let final_val : Value = if value is Undefined {
         let v = self.eval_expr(default_expr, env)
@@ -3557,8 +3567,7 @@ fn Interpreter::bind_pattern(
       // Per spec, destructuring null/undefined must throw TypeError
       if value is (Null | Undefined) {
         raise @errors.TypeError(
-          message=value.to_string() +
-            " is not iterable (cannot destructure)",
+          message=value.to_string() + " is not iterable (cannot destructure)",
         )
       }
       // Per spec: ArrayBindingPattern : [ ] → no iteration occurs
@@ -3574,7 +3583,8 @@ fn Interpreter::bind_pattern(
         loc_dstr,
       )
       // Get iterator and next method
-      let (iterator, next_method) : (Value, Value) = match iterator_method_dstr {
+      let (iterator, next_method) : (Value, Value) = match
+        iterator_method_dstr {
         Object(data) =>
           match data.callable {
             Some(_) => {
@@ -3612,19 +3622,16 @@ fn Interpreter::bind_pattern(
               }
               (iter, next_fn)
             }
-            None => {
+            None =>
               raise @errors.TypeError(
                 message=value.to_string() +
                   " is not iterable (cannot destructure)",
               )
-            }
           }
-        _ => {
+        _ =>
           raise @errors.TypeError(
-            message=value.to_string() +
-              " is not iterable (cannot destructure)",
+            message=value.to_string() + " is not iterable (cannot destructure)",
           )
-        }
       }
       // Lazily consume iterator values per spec — one next() call per element
       let mut iter_done = match next_method {
@@ -3636,12 +3643,7 @@ fn Interpreter::bind_pattern(
         let val : Value = if iter_done {
           Undefined
         } else {
-          let iter_result = self.call_value(
-            next_method,
-            iterator,
-            [],
-            loc_dstr,
-          )
+          let iter_result = self.call_value(next_method, iterator, [], loc_dstr)
           match iter_result {
             Object(result_data) => {
               let done_val = match result_data.properties.get("done") {
@@ -3658,7 +3660,10 @@ fn Interpreter::bind_pattern(
                 }
               }
             }
-            _ => { iter_done = true; Undefined }
+            _ => {
+              iter_done = true
+              Undefined
+            }
           }
         }
         match elements[i] {
@@ -3682,13 +3687,11 @@ fn Interpreter::bind_pattern(
               )
               let (done, val) = match iter_result {
                 Object(result_data) => {
-                  let done_val = match
-                    result_data.properties.get("done") {
+                  let done_val = match result_data.properties.get("done") {
                     Some(v) => is_truthy(v)
                     None => false
                   }
-                  let value_val = match
-                    result_data.properties.get("value") {
+                  let value_val = match result_data.properties.get("value") {
                     Some(v) => v
                     None => Undefined
                   }
@@ -3709,7 +3712,7 @@ fn Interpreter::bind_pattern(
             bk,
           )
         }
-        None => {
+        None =>
           // Per spec: IteratorClose — call iterator.return() if not exhausted
           if iter_done == false {
             match iterator {
@@ -3717,28 +3720,20 @@ fn Interpreter::bind_pattern(
                 match iter_data.properties.get("return") {
                   Some(return_fn) =>
                     if is_callable(return_fn) {
-                      let _ = self.call_value(
-                        return_fn,
-                        iterator,
-                        [],
-                        loc_dstr,
-                      )
+                      let _ = self.call_value(return_fn, iterator, [], loc_dstr)
                     }
                   None => ()
                 }
               _ => ()
             }
           }
-        }
       }
     }
     ObjectPat(props, rest) => {
       // Per spec, destructuring null/undefined must throw TypeError
       if value is (Null | Undefined) {
         raise @errors.TypeError(
-          message="Cannot destructure " +
-            value.to_string() +
-            " value",
+          message="Cannot destructure " + value.to_string() + " value",
         )
       }
       let used_keys : Map[String, Bool] = {}
@@ -3752,7 +3747,11 @@ fn Interpreter::bind_pattern(
           None => prop.key
         }
         used_keys[key_str] = true
-        let val : Value = self.get_property(value, key_str, @token.Loc::default())
+        let val : Value = self.get_property(
+          value,
+          key_str,
+          @token.Loc::default(),
+        )
         let final_val : Value = if val is Undefined {
           match prop.default_val {
             Some(default_expr) => {
@@ -3786,7 +3785,7 @@ fn Interpreter::bind_pattern(
               data.properties.each(fn(k, _v) { all_keys[k] = true })
               data.descriptors.each(fn(k, _v) { all_keys[k] = true })
               all_keys.each(fn(k, _) raise {
-                if not(used_keys.contains(k)) {
+                if !used_keys.contains(k) {
                   let is_enumerable = match data.descriptors.get(k) {
                     Some(desc) => desc.enumerable
                     None => true
@@ -3841,18 +3840,14 @@ fn Interpreter::assign_pattern(
 ) -> Unit raise Error {
   match pattern {
     IdentPat(name) =>
-      try {
-        env.assign(name, value)
-      } catch {
+      env.assign(name, value) catch {
         @errors.ReferenceError(_) =>
-          if not(self.strict) {
+          if !self.strict {
             // Sloppy mode: implicit global creation
             self.global.def(name, value, VarBinding)
             self.mirror_to_global(name, value, configurable=true)
           } else {
-            raise @errors.ReferenceError(
-              message="\{name} is not defined",
-            )
+            raise @errors.ReferenceError(message="\{name} is not defined")
           }
         other => raise other
       }
@@ -3879,8 +3874,7 @@ fn Interpreter::assign_pattern(
       // Per spec, destructuring null/undefined must throw TypeError
       if value is (Null | Undefined) {
         raise @errors.TypeError(
-          message=value.to_string() +
-            " is not iterable (cannot destructure)",
+          message=value.to_string() + " is not iterable (cannot destructure)",
         )
       }
       // Per spec: ArrayBindingPattern : [ ] → no iteration occurs
@@ -3896,7 +3890,8 @@ fn Interpreter::assign_pattern(
         loc_dstr,
       )
       // Get iterator and next method
-      let (iterator_a, next_method_a) : (Value, Value) = match iterator_method_dstr {
+      let (iterator_a, next_method_a) : (Value, Value) = match
+        iterator_method_dstr {
         Object(data) =>
           match data.callable {
             Some(_) => {
@@ -3934,19 +3929,16 @@ fn Interpreter::assign_pattern(
               }
               (iter, next_fn)
             }
-            None => {
+            None =>
               raise @errors.TypeError(
                 message=value.to_string() +
                   " is not iterable (cannot destructure)",
               )
-            }
           }
-        _ => {
+        _ =>
           raise @errors.TypeError(
-            message=value.to_string() +
-              " is not iterable (cannot destructure)",
+            message=value.to_string() + " is not iterable (cannot destructure)",
           )
-        }
       }
       // Lazily consume iterator values per spec — one next() call per element
       let mut iter_done_a = match next_method_a {
@@ -3980,7 +3972,10 @@ fn Interpreter::assign_pattern(
                 }
               }
             }
-            _ => { iter_done_a = true; Undefined }
+            _ => {
+              iter_done_a = true
+              Undefined
+            }
           }
         }
         match elements[i] {
@@ -4004,13 +3999,11 @@ fn Interpreter::assign_pattern(
               )
               let (done, val) = match iter_result {
                 Object(result_data) => {
-                  let done_val = match
-                    result_data.properties.get("done") {
+                  let done_val = match result_data.properties.get("done") {
                     Some(v) => is_truthy(v)
                     None => false
                   }
-                  let value_val = match
-                    result_data.properties.get("value") {
+                  let value_val = match result_data.properties.get("value") {
                     Some(v) => v
                     None => Undefined
                   }
@@ -4026,7 +4019,7 @@ fn Interpreter::assign_pattern(
           }
           self.assign_pattern(rest_pat, Array({ elements: rest_elements }), env)
         }
-        None => {
+        None =>
           // Per spec: IteratorClose — call iterator.return() if not exhausted
           if iter_done_a == false {
             match iterator_a {
@@ -4046,16 +4039,13 @@ fn Interpreter::assign_pattern(
               _ => ()
             }
           }
-        }
       }
     }
     ObjectPat(props, rest) => {
       // Per spec, destructuring null/undefined must throw TypeError
       if value is (Null | Undefined) {
         raise @errors.TypeError(
-          message="Cannot destructure " +
-            value.to_string() +
-            " value",
+          message="Cannot destructure " + value.to_string() + " value",
         )
       }
       let used_keys : Map[String, Bool] = {}
@@ -4069,7 +4059,11 @@ fn Interpreter::assign_pattern(
           None => prop.key
         }
         used_keys[key_str] = true
-        let val : Value = self.get_property(value, key_str, @token.Loc::default())
+        let val : Value = self.get_property(
+          value,
+          key_str,
+          @token.Loc::default(),
+        )
         let final_val : Value = if val is Undefined {
           match prop.default_val {
             Some(default_expr) => {
@@ -4102,7 +4096,7 @@ fn Interpreter::assign_pattern(
               data.properties.each(fn(k, _v) { all_keys_a[k] = true })
               data.descriptors.each(fn(k, _v) { all_keys_a[k] = true })
               all_keys_a.each(fn(k, _) raise {
-                if not(used_keys.contains(k)) {
+                if !used_keys.contains(k) {
                   let is_enumerable = match data.descriptors.get(k) {
                     Some(desc) => desc.enumerable
                     None => true
@@ -4155,11 +4149,9 @@ fn Interpreter::assign_to_expr(
 ) -> Unit raise Error {
   match expr {
     Ident(name, _) =>
-      try {
-        env.assign(name, value)
-      } catch {
+      env.assign(name, value) catch {
         @errors.ReferenceError(_) =>
-          if not(self.strict) {
+          if !self.strict {
             // Implicit global creation in sloppy mode
             self.global.def(name, value, VarBinding)
             self.mirror_to_global(name, value, configurable=true)
@@ -4218,7 +4210,6 @@ fn close_iterator(
       }
       if is_callable(return_fn) {
         let _ = interp.call_value(return_fn, iterator, [], loc)
-
       }
     }
     _ => ()
@@ -4403,30 +4394,21 @@ fn Interpreter::eval_expr(
     BoolLit(b, _) => Bool(b)
     NullLit(_) => Null
     UndefinedLit(_) => Undefined
-    Ident(name, _) => {
-      try {
-        env.get(name)
-      } catch {
-        @errors.ReferenceError(_) => {
+    Ident(name, _) =>
+      env.get(name) catch {
+        @errors.ReferenceError(_) =>
           // Fallback: check global object (globalThis) for properties set via this.x = y
           match self.global_this {
             Object(data) =>
               match data.properties.get(name) {
                 Some(v) => v
                 None =>
-                  raise @errors.ReferenceError(
-                    message="\{name} is not defined",
-                  )
+                  raise @errors.ReferenceError(message="\{name} is not defined")
               }
-            _ =>
-              raise @errors.ReferenceError(
-                message="\{name} is not defined",
-              )
+            _ => raise @errors.ReferenceError(message="\{name} is not defined")
           }
-        }
         other => raise other
       }
-    }
     Grouping(e, _) => self.eval_expr(e, env)
     Binary(op, left, right, loc) => self.eval_binary(op, left, right, env, loc)
     Unary(op, operand, loc) => self.eval_unary(op, operand, env, loc)
@@ -4453,22 +4435,17 @@ fn Interpreter::eval_expr(
         }
         return value
       }
-      try {
-        env.assign(name, value)
-      } catch {
-        @errors.ReferenceError(_) => {
+      env.assign(name, value) catch {
+        @errors.ReferenceError(_) =>
           // In non-strict mode, assigning to an undeclared variable creates
           // a global property (sloppy mode implicit global).
-          if not(self.strict) {
+          if !self.strict {
             self.global.def(name, value, VarBinding)
             // Also mirror onto globalThis as a configurable, enumerable property
             self.mirror_to_global(name, value, configurable=true)
           } else {
-            raise @errors.ReferenceError(
-              message="\{name} is not defined",
-            )
+            raise @errors.ReferenceError(message="\{name} is not defined")
           }
-        }
         e => raise e
       }
       value
@@ -4511,7 +4488,13 @@ fn Interpreter::eval_expr(
       self.make_async_function(name, params, None, body, env)
     }
     AsyncFuncExprExt(name, params, rest_param, body, _) => {
-      validate_function_signature_ext(self.strict, name, params, rest_param, body)
+      validate_function_signature_ext(
+        self.strict,
+        name,
+        params,
+        rest_param,
+        body,
+      )
       self.make_async_function_ext(name, params, rest_param, body, env)
     }
     AsyncArrowFunc(params, body, _) => {
@@ -4519,7 +4502,13 @@ fn Interpreter::eval_expr(
       self.make_async_function(None, params, None, body, env)
     }
     AsyncArrowFuncExt(params, rest_param, body, _) => {
-      validate_function_signature_ext(self.strict, None, params, rest_param, body)
+      validate_function_signature_ext(
+        self.strict,
+        None,
+        params,
+        rest_param,
+        body,
+      )
       self.make_async_function_ext(None, params, rest_param, body, env)
     }
     AsyncGeneratorExpr(name, params, body, _) => {
@@ -4527,13 +4516,20 @@ fn Interpreter::eval_expr(
       self.make_async_generator_function(name, params, None, body, env)
     }
     AsyncGeneratorExprExt(name, params, rest_param, body, _) => {
-      validate_function_signature_ext(self.strict, name, params, rest_param, body)
-      self.make_async_generator_function_ext(name, params, rest_param, body, env)
+      validate_function_signature_ext(
+        self.strict,
+        name,
+        params,
+        rest_param,
+        body,
+      )
+      self.make_async_generator_function_ext(
+        name, params, rest_param, body, env,
+      )
     }
-    AwaitExpr(argument, _) => {
+    AwaitExpr(argument, _) =>
       // await acts like yield inside the generator that backs the async function
       self.eval_yield(Some(argument), false, env)
-    }
     YieldExpr(argument, delegate, _) => self.eval_yield(argument, delegate, env)
     ObjectLit(props, obj_loc) => {
       let properties : Map[String, Value] = {}
@@ -4628,7 +4624,7 @@ fn Interpreter::eval_expr(
                   }
                   set_function_name(getter, sym_name)
                   // Store accessor in descriptor, use Undefined as placeholder in properties
-                  if not(symbol_properties.contains(sym.id)) {
+                  if !symbol_properties.contains(sym.id) {
                     symbol_properties[sym.id] = Undefined
                   }
                   let existing = symbol_descriptors.get(sym.id)
@@ -4650,7 +4646,7 @@ fn Interpreter::eval_expr(
                     None => "set "
                   }
                   set_function_name(setter, sym_name)
-                  if not(symbol_properties.contains(sym.id)) {
+                  if !symbol_properties.contains(sym.id) {
                     symbol_properties[sym.id] = Undefined
                   }
                   let existing = symbol_descriptors.get(sym.id)
@@ -4679,7 +4675,7 @@ fn Interpreter::eval_expr(
                 Get => {
                   let getter = self.eval_expr(prop.value, method_env)
                   set_function_name(getter, "get " + key_str)
-                  if not(properties.contains(key_str)) {
+                  if !properties.contains(key_str) {
                     properties[key_str] = Undefined
                   }
                   let existing = descriptors.get(key_str)
@@ -4697,7 +4693,7 @@ fn Interpreter::eval_expr(
                 Set => {
                   let setter = self.eval_expr(prop.value, method_env)
                   set_function_name(setter, "set " + key_str)
-                  if not(properties.contains(key_str)) {
+                  if !properties.contains(key_str) {
                     properties[key_str] = Undefined
                   }
                   let existing = descriptors.get(key_str)
@@ -4720,17 +4716,25 @@ fn Interpreter::eval_expr(
           // Static key - extract from StringLit
           let key_str = match prop.key {
             StringLit(s, _, _) => s
-            _ => prop.key.to_string() // fallback
+            Ident(name, _) => name
+            NumberLit(n, _) => {
+              let i = n.to_int()
+              if i.to_double() == n {
+                i.to_string()
+              } else {
+                n.to_string()
+              }
+            }
+            _ => "" // fallback
           }
           match prop.kind {
-            Init => {
+            Init =>
               // Handle __proto__ as special syntax per B.3.1
               if key_str == "__proto__" {
                 let val = self.eval_expr(prop.value, method_env)
                 match val {
-                  Object(_) | Array(_) | Map(_) | Set(_) => {
+                  Object(_) | Array(_) | Map(_) | Set(_) =>
                     proto_override = Some(val)
-                  }
                   Null => proto_override = Some(Null)
                   _ => properties[key_str] = val // primitives don't set proto
                 }
@@ -4740,7 +4744,6 @@ fn Interpreter::eval_expr(
                 set_function_name(val, key_str)
                 properties[key_str] = val
               }
-            }
             Get => {
               let getter = self.eval_expr(prop.value, method_env)
               // Force set name with "get " prefix per spec
@@ -4748,7 +4751,7 @@ fn Interpreter::eval_expr(
                 Object(d) => d.properties["name"] = String_("get " + key_str)
                 _ => ()
               }
-              if not(properties.contains(key_str)) {
+              if !properties.contains(key_str) {
                 properties[key_str] = Undefined
               }
               let existing = descriptors.get(key_str)
@@ -4770,7 +4773,7 @@ fn Interpreter::eval_expr(
                 Object(d) => d.properties["name"] = String_("set " + key_str)
                 _ => ()
               }
-              if not(properties.contains(key_str)) {
+              if !properties.contains(key_str) {
                 properties[key_str] = Undefined
               }
               let existing = descriptors.get(key_str)
@@ -4840,10 +4843,8 @@ fn Interpreter::eval_expr(
     }
     NewExpr(callee_expr, arg_exprs, loc) =>
       self.eval_new(callee_expr, arg_exprs, env, loc)
-    ThisExpr(_) => {
-      try {
-        env.get("this")
-      } catch {
+    ThisExpr(_) =>
+      env.get("this") catch {
         @errors.ReferenceError(message~) => {
           // In derived class constructors, 'this' is in TDZ until super() is called
           if message.contains("before initialization") {
@@ -4856,7 +4857,6 @@ fn Interpreter::eval_expr(
         }
         other => raise other
       }
-    }
     UpdateExpr(op, operand, prefix, loc) =>
       self.eval_update(op, operand, prefix, env, loc)
     CompoundAssign(op, target, value_expr, loc) =>
@@ -5122,10 +5122,14 @@ fn Interpreter::eval_expr(
       } else {
         env
       }
-      let class_val = self.create_class(class_name, superclass, methods, class_env)
+      let class_val = self.create_class(
+        class_name, superclass, methods, class_env,
+      )
       // Set the class name binding in the inner scope
       if class_name != "" {
-        class_env.assign(class_name, class_val) catch { _ => () }
+        class_env.assign(class_name, class_val) catch {
+          _ => ()
+        }
       }
       class_val
     }
@@ -5204,7 +5208,9 @@ fn Interpreter::eval_expr(
                         | Promise(_)
                         | Proxy(_) => {
                           // Initialize 'this' (may be in TDZ for derived classes)
-                          try { env.initialize("this", v) } catch { _ => env.assign("this", v) }
+                          env.initialize("this", v) catch {
+                            _ => env.assign("this", v)
+                          }
                           return v
                         }
                         _ => ()
@@ -5215,7 +5221,9 @@ fn Interpreter::eval_expr(
                 None => ()
               }
               // Initialize 'this' in the calling env (may be TDZ for derived classes)
-              try { env.initialize("this", this_val) } catch { _ => try { env.assign("this", this_val) } catch { _ => () } }
+              env.initialize("this", this_val) catch {
+                _ => env.assign("this", this_val) catch { _ => () }
+              }
               env.get("this")
             }
             Some(_) => {
@@ -5227,22 +5235,25 @@ fn Interpreter::eval_expr(
                   // Per spec, OrdinaryCreateFromConstructor uses newTarget's prototype.
                   // Set the prototype from the subclass's pending this object.
                   match this_val {
-                    Object(this_data) => result_data.prototype = this_data.prototype
+                    Object(this_data) =>
+                      result_data.prototype = this_data.prototype
                     _ => ()
                   }
-                  try { env.initialize("this", super_result) } catch { _ => env.assign("this", super_result) }
+                  env.initialize("this", super_result) catch {
+                    _ => env.assign("this", super_result)
+                  }
                   super_result
                 }
-                Array(_)
-                | Map(_)
-                | Set(_)
-                | Promise(_)
-                | Proxy(_) => {
-                  try { env.initialize("this", super_result) } catch { _ => env.assign("this", super_result) }
+                Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => {
+                  env.initialize("this", super_result) catch {
+                    _ => env.assign("this", super_result)
+                  }
                   super_result
                 }
                 _ => {
-                  try { env.initialize("this", this_val) } catch { _ => try { env.assign("this", this_val) } catch { _ => () } }
+                  env.initialize("this", this_val) catch {
+                    _ => env.assign("this", this_val) catch { _ => () }
+                  }
                   env.get("this")
                 }
               }
@@ -5307,7 +5318,7 @@ fn Interpreter::eval_binary(
   match op {
     And => {
       let left = self.eval_expr(left_expr, env)
-      if not(is_truthy(left)) {
+      if !is_truthy(left) {
         return left
       }
       self.eval_expr(right_expr, env)
@@ -5516,9 +5527,9 @@ fn eval_binary_op(
     (GtEq, String_(a), String_(b)) => Bool(a >= b)
     // Equality
     (EqEqEq, l, r) => Bool(strict_equal(l, r))
-    (NotEqEq, l, r) => Bool(not(strict_equal(l, r)))
+    (NotEqEq, l, r) => Bool(!strict_equal(l, r))
     (EqEq, l, r) => Bool(loose_equal(l, r))
-    (NotEq, l, r) => Bool(not(loose_equal(l, r)))
+    (NotEq, l, r) => Bool(!loose_equal(l, r))
     // Exponentiation
     (Exp, Number(a), Number(b)) => Number(@math.pow(a, b))
     (Exp, l, r) => Number(@math.pow(to_number(l), to_number(r)))
@@ -5635,14 +5646,16 @@ fn eval_binary_op(
                     } else {
                       current = proto_data.prototype
                     }
-                  Null => {
+                  Null =>
                     // For function objects, fall back to Function.prototype once
-                    if not(func_fallback_used) {
+                    if !func_fallback_used {
                       match data.callable {
                         Some(_) =>
                           match current_interpreter.val {
                             Some(interp) => {
-                              let fp = interp.global.get("[[FunctionPrototype]]") catch {
+                              let fp = interp.global.get(
+                                "[[FunctionPrototype]]",
+                              ) catch {
                                 _ => break
                               }
                               func_fallback_used = true
@@ -5655,7 +5668,6 @@ fn eval_binary_op(
                     } else {
                       break
                     }
-                  }
                   _ => break
                 }
               }
@@ -5664,8 +5676,7 @@ fn eval_binary_op(
           }
         Array(data) =>
           match l {
-            Symbol(sym) =>
-              Bool(get_array_symbol_prop(data, sym.id) is Some(_))
+            Symbol(sym) => Bool(get_array_symbol_prop(data, sym.id) is Some(_))
             _ => {
               let key = to_js_string(l)
               if key == "length" {
@@ -5673,9 +5684,11 @@ fn eval_binary_op(
               }
               // Check numeric index
               try {
-                let n = @strconv.parse_double(key)
+                let n = @string.parse_double(key)
                 let idx = n.to_int()
-                if idx.to_double() == n && idx >= 0 && idx < data.elements.length() {
+                if idx.to_double() == n &&
+                  idx >= 0 &&
+                  idx < data.elements.length() {
                   return Bool(true)
                 }
               } catch {
@@ -5831,19 +5844,23 @@ fn loose_equal(a : Value, b : Value) -> Bool {
     // Object/Array == Number/String: try ToPrimitive
     (Object(data), Number(_)) | (Object(data), String_(_)) => {
       // Use ToPrimitive with "number" hint (default for ordinary objects)
-      let prim = try { to_primitive_number(a, data) } catch { _ => String_(a.to_string()) }
+      let prim = to_primitive_number(a, data) catch {
+        _ => String_(a.to_string())
+      }
       loose_equal(prim, b)
     }
     (Number(_), Object(data)) | (String_(_), Object(data)) => {
-      let prim = try { to_primitive_number(b, data) } catch { _ => String_(b.to_string()) }
+      let prim = to_primitive_number(b, data) catch {
+        _ => String_(b.to_string())
+      }
       loose_equal(a, prim)
     }
     (Array(_), Number(_)) | (Array(_), String_(_)) => {
-      let prim = try { String_(to_js_string(a)) } catch { _ => String_(a.to_string()) }
+      let prim = String_(to_js_string(a)) catch { _ => String_(a.to_string()) }
       loose_equal(prim, b)
     }
     (Number(_), Array(_)) | (String_(_), Array(_)) => {
-      let prim = try { String_(to_js_string(b)) } catch { _ => String_(b.to_string()) }
+      let prim = String_(to_js_string(b)) catch { _ => String_(b.to_string()) }
       loose_equal(a, prim)
     }
     // Symbols don't coerce - any comparison with Symbol and different type is false
@@ -5860,7 +5877,7 @@ fn Interpreter::is_immutable_global(self : Interpreter, name : String) -> Bool {
   match self.global_this {
     Object(data) =>
       match data.descriptors.get(name) {
-        Some(desc) => not(desc.writable)
+        Some(desc) => !desc.writable
         None => false
       }
     _ => false
@@ -5915,7 +5932,7 @@ fn Interpreter::eval_unary(
                     [target, String_(prop)],
                     loc,
                   )
-                  if not(is_truthy(result)) && self.strict {
+                  if !is_truthy(result) && self.strict {
                     raise @errors.TypeError(
                       message="'deleteProperty' on proxy: trap returned falsish for property '\{prop}'",
                     )
@@ -5928,7 +5945,7 @@ fn Interpreter::eval_unary(
                     Object(data) => {
                       match data.descriptors.get(prop) {
                         Some(desc) =>
-                          if not(desc.configurable) {
+                          if !desc.configurable {
                             if self.strict {
                               raise @errors.TypeError(
                                 message="Cannot delete property '\{prop}'",
@@ -5950,7 +5967,7 @@ fn Interpreter::eval_unary(
             Object(data) => {
               match data.descriptors.get(prop) {
                 Some(desc) =>
-                  if not(desc.configurable) {
+                  if !desc.configurable {
                     if self.strict {
                       raise @errors.TypeError(
                         message="Cannot delete property '\{prop}'",
@@ -5987,7 +6004,7 @@ fn Interpreter::eval_unary(
                     [target, prop_key],
                     loc,
                   )
-                  if not(is_truthy(result)) && self.strict {
+                  if !is_truthy(result) && self.strict {
                     raise @errors.TypeError(
                       message="'deleteProperty' on proxy: trap returned falsish",
                     )
@@ -6001,7 +6018,7 @@ fn Interpreter::eval_unary(
                       let k = to_js_string(key)
                       match data.descriptors.get(k) {
                         Some(desc) =>
-                          if not(desc.configurable) {
+                          if !desc.configurable {
                             if self.strict {
                               raise @errors.TypeError(
                                 message="Cannot delete property '\{k}'",
@@ -6026,7 +6043,7 @@ fn Interpreter::eval_unary(
                   // Delete a symbol-keyed property
                   match data.symbol_descriptors.get(sym.id) {
                     Some(desc) =>
-                      if not(desc.configurable) {
+                      if !desc.configurable {
                         if self.strict {
                           raise @errors.TypeError(
                             message="Cannot delete property",
@@ -6044,7 +6061,7 @@ fn Interpreter::eval_unary(
                   let k = to_js_string(key)
                   match data.descriptors.get(k) {
                     Some(desc) =>
-                      if not(desc.configurable) {
+                      if !desc.configurable {
                         if self.strict {
                           raise @errors.TypeError(
                             message="Cannot delete property '\{k}'",
@@ -6073,10 +6090,7 @@ fn Interpreter::eval_unary(
             match env.find_with_object(name) {
               Some(Object(with_data)) => {
                 match with_data.descriptors.get(name) {
-                  Some(desc) =>
-                    if not(desc.configurable) {
-                      return Bool(false)
-                    }
+                  Some(desc) => if !desc.configurable { return Bool(false) }
                   None => ()
                 }
                 let _ = with_data.properties.remove(name)
@@ -6090,7 +6104,7 @@ fn Interpreter::eval_unary(
                   Object(data) =>
                     match data.descriptors.get(name) {
                       Some(desc) =>
-                        if not(desc.configurable) {
+                        if !desc.configurable {
                           Bool(false)
                         } else {
                           let _ = data.properties.remove(name)
@@ -6110,7 +6124,7 @@ fn Interpreter::eval_unary(
       match op {
         Neg => Number(-to_number(val))
         Pos => Number(to_number(val))
-        Not => Bool(not(is_truthy(val)))
+        Not => Bool(!is_truthy(val))
         BitNot => Number(to_int32(to_number(val)).lnot().to_double())
         _ =>
           raise @errors.InternalError(
@@ -6363,7 +6377,7 @@ fn Interpreter::perform_eval(
       // This prevents eval("var x") from hoisting past a block-scoped let/const x.
       {
         let mut this_lex = caller_env
-        while not(this_lex.is_var_scope) {
+        while !this_lex.is_var_scope {
           for name in var_names {
             if this_lex.bindings.contains(name) {
               raise @errors.SyntaxError(
@@ -6389,7 +6403,7 @@ fn Interpreter::perform_eval(
       match self.exec_stmt(stmt, exec_env) {
         Normal(v) =>
           // Per spec, declarations have empty completion values
-          if not(is_declaration_stmt(stmt)) {
+          if !is_declaration_stmt(stmt) {
             last = v
           }
         ReturnSignal(_) =>
@@ -6528,7 +6542,7 @@ fn Interpreter::call_value(
           _ => false
         }
       }
-      if not(check_callable(target)) {
+      if !check_callable(target) {
         raise @errors.TypeError(message="proxy target is not a function")
       }
       let trap = get_proxy_trap(proxy_data, "apply")
@@ -6603,7 +6617,7 @@ fn Interpreter::call_value(
             self.hoist_declarations(data.body, func_env)
             match data.name {
               Some(name) =>
-                if not(func_env.bindings.contains(name)) {
+                if !func_env.bindings.contains(name) {
                   func_env.def(name, callee, LetBinding)
                 }
               None => ()
@@ -6716,7 +6730,7 @@ fn Interpreter::call_value(
                 continue
               }
               let val : Value = if effective_param_count < args.length() &&
-                not(args[effective_param_count] is Undefined) {
+                !(args[effective_param_count] is Undefined) {
                 args[effective_param_count]
               } else {
                 match param.default_val {
@@ -6771,7 +6785,7 @@ fn Interpreter::call_value(
             self.hoist_declarations(data.body, func_env)
             match data.name {
               Some(name) =>
-                if not(func_env.bindings.contains(name)) {
+                if !func_env.bindings.contains(name) {
                   func_env.def(name, callee, LetBinding)
                 }
               None => ()
@@ -6812,7 +6826,7 @@ fn Interpreter::call_value(
                 continue
               }
               let val : Value = if effective_param_count < args.length() &&
-                not(args[effective_param_count] is Undefined) {
+                !(args[effective_param_count] is Undefined) {
                 args[effective_param_count]
               } else {
                 match param.default_val {
@@ -7051,7 +7065,11 @@ fn get_func_length(callable : Callable) -> Int {
             Some(inner) => {
               let target_len = get_func_length(inner)
               let diff = target_len - bound_args.length()
-              if diff < 0 { 0 } else { diff }
+              if diff < 0 {
+                0
+              } else {
+                diff
+              }
             }
             None => 0
           }
@@ -7134,7 +7152,7 @@ fn Interpreter::get_property(
                   return Number(arr_data.elements.length().to_double())
                 }
                 // Check numeric index access on array elements
-                let num_idx = @strconv.parse_int(prop) catch { _ => -1 }
+                let num_idx = @string.parse_int(prop) catch { _ => -1 }
                 if num_idx >= 0 && num_idx < arr_data.elements.length() {
                   return arr_data.elements[num_idx]
                 }
@@ -7202,9 +7220,9 @@ fn Interpreter::get_property(
                   _ => return result
                 }
               }
-              Null => {
+              Null =>
                 // For function objects, fall back to Function.prototype (once)
-                if not(func_proto_checked) {
+                if !func_proto_checked {
                   match data.callable {
                     Some(_) => {
                       let fp = self.global.get("[[FunctionPrototype]]") catch {
@@ -7218,7 +7236,6 @@ fn Interpreter::get_property(
                 } else {
                   break
                 }
-              }
               _ => break
             }
           }
@@ -7263,7 +7280,11 @@ fn Interpreter::get_property(
                   let bound_name = get_bound_func_name(target)
                   let bound_length = {
                     let diff = target_length - bound_args.length()
-                    if diff < 0 { 0 } else { diff }
+                    if diff < 0 {
+                      0
+                    } else {
+                      diff
+                    }
                   }
                   let nf_desc : PropDescriptor = {
                     writable: false,
@@ -7358,7 +7379,7 @@ fn Interpreter::get_property(
                   | MethodCallable(_, _)
                   | InterpreterCallable(_, _) => false
                 }
-                if not(is_constructable) {
+                if !is_constructable {
                   return Undefined
                 }
                 // For constructable functions, check if prototype exists
@@ -7385,43 +7406,42 @@ fn Interpreter::get_property(
           }
           // Built-in Object methods (only for objects that inherit from Object.prototype)
           // Objects with null prototype (Object.create(null)) should NOT have these
-          if not(data.prototype is Null && data.callable is None) {
+          if !(data.prototype is Null && data.callable is None) {
             if prop == "hasOwnProperty" {
               return make_method_func("hasOwnProperty", 1, fn(this_val, args) {
-                    let key_val = if args.length() > 0 {
-                      args[0]
-                    } else {
-                      Undefined
+                let key_val = if args.length() > 0 {
+                  args[0]
+                } else {
+                  Undefined
+                }
+                match this_val {
+                  Object(d) =>
+                    match key_val {
+                      Symbol(sym) => Bool(d.symbol_properties.contains(sym.id))
+                      _ => Bool(d.properties.contains(key_val.to_string()))
                     }
-                    match this_val {
-                      Object(d) =>
-                        match key_val {
-                          Symbol(sym) =>
-                            Bool(d.symbol_properties.contains(sym.id))
-                          _ => Bool(d.properties.contains(key_val.to_string()))
+                  Array(ad) =>
+                    match key_val {
+                      Symbol(sym) =>
+                        Bool(get_array_symbol_prop(ad, sym.id) is Some(_))
+                      _ => {
+                        let k = key_val.to_string()
+                        if k == "length" {
+                          return Bool(true)
                         }
-                      Array(ad) =>
-                        match key_val {
-                          Symbol(sym) =>
-                            Bool(get_array_symbol_prop(ad, sym.id) is Some(_))
-                          _ => {
-                            let k = key_val.to_string()
-                            if k == "length" {
-                              return Bool(true)
-                            }
-                            let idx = @strconv.parse_int(k) catch { _ => -1 }
-                            if idx >= 0 &&
-                              idx.to_string() == k &&
-                              idx < ad.elements.length() {
-                              Bool(true)
-                            } else {
-                              Bool(get_array_named_prop(ad, k) is Some(_))
-                            }
-                          }
+                        let idx = @string.parse_int(k) catch { _ => -1 }
+                        if idx >= 0 &&
+                          idx.to_string() == k &&
+                          idx < ad.elements.length() {
+                          Bool(true)
+                        } else {
+                          Bool(get_array_named_prop(ad, k) is Some(_))
                         }
-                      _ => Bool(false)
+                      }
                     }
-                  })
+                  _ => Bool(false)
+                }
+              })
             }
             if prop == "toString" {
               return make_native_func("toString", fn(_args) {
@@ -7438,8 +7458,10 @@ fn Interpreter::get_property(
         Number(data.elements.length().to_double())
       } else {
         // Check numeric index access first
-        let num_idx = @strconv.parse_int(prop) catch { _ => -1 }
-        if num_idx >= 0 && num_idx < data.elements.length() && num_idx.to_string() == prop {
+        let num_idx = @string.parse_int(prop) catch { _ => -1 }
+        if num_idx >= 0 &&
+          num_idx < data.elements.length() &&
+          num_idx.to_string() == prop {
           data.elements[num_idx]
         } else {
           // Check named properties side table (e.g., index, input on exec results)
@@ -7657,28 +7679,28 @@ fn Interpreter::get_computed_property(
                   match data.properties.get("[[StringData]]") {
                     Some(String_(_)) =>
                       return make_method_func("[Symbol.iterator]", 0, fn(
-                            this_val,
-                            _args,
-                          ) raise {
-                            let str = match this_val {
-                              String_(sv) => sv
-                              Object(d) =>
-                                if d.class_name == "String" {
-                                  match d.properties.get("[[StringData]]") {
-                                    Some(String_(sv)) => sv
-                                    _ => this_val.to_string()
-                                  }
-                                } else {
-                                  this_val.to_string()
-                                }
-                              Null | Undefined =>
-                                raise @errors.TypeError(
-                                  message="Cannot convert undefined or null to object",
-                                )
-                              _ => this_val.to_string()
+                        this_val,
+                        _args,
+                      ) raise {
+                        let str = match this_val {
+                          String_(sv) => sv
+                          Object(d) =>
+                            if d.class_name == "String" {
+                              match d.properties.get("[[StringData]]") {
+                                Some(String_(sv)) => sv
+                                _ => this_val.to_string()
+                              }
+                            } else {
+                              this_val.to_string()
                             }
-                            make_string_iterator_value(str)
-                          })
+                          Null | Undefined =>
+                            raise @errors.TypeError(
+                              message="Cannot convert undefined or null to object",
+                            )
+                          _ => this_val.to_string()
+                        }
+                        make_string_iterator_value(str)
+                      })
                     _ => ()
                   }
                 } else if data.class_name == "Array" {
@@ -7695,9 +7717,12 @@ fn Interpreter::get_computed_property(
           let iterator_sym = get_iterator_symbol()
           if sym.id == iterator_sym.id {
             // Return a function that creates a string iterator
-            return make_method_func("[Symbol.iterator]", 0, fn(_this_val, _args) {
-                  make_string_iterator_value(s)
-                })
+            return make_method_func("[Symbol.iterator]", 0, fn(
+              _this_val,
+              _args,
+            ) {
+              make_string_iterator_value(s)
+            })
           }
           return Undefined
         }
@@ -7710,7 +7735,9 @@ fn Interpreter::get_computed_property(
           // Check Array.prototype for symbol properties (e.g. overridden Symbol.iterator)
           match current_interpreter.val {
             Some(interp) => {
-              let array_ctor = interp.global.get("Array") catch { _ => Undefined }
+              let array_ctor = interp.global.get("Array") catch {
+                _ => Undefined
+              }
               match array_ctor {
                 Object(ctor_data) =>
                   match ctor_data.properties.get("prototype") {
@@ -7753,9 +7780,12 @@ fn Interpreter::get_computed_property(
               None => ()
             }
             // Return default array iterator
-            return make_method_func("[Symbol.iterator]", 0, fn(_this_val, _args) {
-                  make_array_iterator_value(arr)
-                })
+            return make_method_func("[Symbol.iterator]", 0, fn(
+              _this_val,
+              _args,
+            ) {
+              make_array_iterator_value(arr)
+            })
           }
           return Undefined
         }
@@ -7842,7 +7872,7 @@ fn Interpreter::get_computed_property(
             // Canonical numeric index string check per spec
             // Note: "-0" is NOT canonical (ToString(ToNumber("-0")) === "0"), so it falls through
             try {
-              let n = @strconv.parse_double(s)
+              let n = @string.parse_double(s)
               // If string converts to a number and back to same string, it's a canonical numeric index
               if n.to_string() == s {
                 let idx = n.to_int()
@@ -7896,7 +7926,7 @@ fn Interpreter::get_computed_property(
                   return Number(arr_data.elements.length().to_double())
                 }
                 // Check numeric index access on array elements
-                let num_idx2 = @strconv.parse_int(prop) catch { _ => -1 }
+                let num_idx2 = @string.parse_int(prop) catch { _ => -1 }
                 if num_idx2 >= 0 && num_idx2 < arr_data.elements.length() {
                   return arr_data.elements[num_idx2]
                 }
@@ -8005,7 +8035,11 @@ fn Interpreter::get_computed_property(
                   let bound_name = get_bound_func_name(target)
                   let bound_length = {
                     let diff = target_length - bound_args.length()
-                    if diff < 0 { 0 } else { diff }
+                    if diff < 0 {
+                      0
+                    } else {
+                      diff
+                    }
                   }
                   let nf_desc : PropDescriptor = {
                     writable: false,
@@ -8100,7 +8134,7 @@ fn Interpreter::get_computed_property(
                   | MethodCallable(_, _)
                   | InterpreterCallable(_, _) => false
                 }
-                if not(is_constructable) {
+                if !is_constructable {
                   return Undefined
                 }
                 // For constructable functions, check if prototype exists
@@ -8126,43 +8160,42 @@ fn Interpreter::get_computed_property(
             None => ()
           }
           // Built-in Object methods (only for objects that inherit from Object.prototype)
-          if not(data.prototype is Null && data.callable is None) {
+          if !(data.prototype is Null && data.callable is None) {
             if prop == "hasOwnProperty" {
               return make_method_func("hasOwnProperty", 1, fn(this_val, args) {
-                    let key_val = if args.length() > 0 {
-                      args[0]
-                    } else {
-                      Undefined
+                let key_val = if args.length() > 0 {
+                  args[0]
+                } else {
+                  Undefined
+                }
+                match this_val {
+                  Object(d) =>
+                    match key_val {
+                      Symbol(sym) => Bool(d.symbol_properties.contains(sym.id))
+                      _ => Bool(d.properties.contains(key_val.to_string()))
                     }
-                    match this_val {
-                      Object(d) =>
-                        match key_val {
-                          Symbol(sym) =>
-                            Bool(d.symbol_properties.contains(sym.id))
-                          _ => Bool(d.properties.contains(key_val.to_string()))
+                  Array(ad) =>
+                    match key_val {
+                      Symbol(sym) =>
+                        Bool(get_array_symbol_prop(ad, sym.id) is Some(_))
+                      _ => {
+                        let k = key_val.to_string()
+                        if k == "length" {
+                          return Bool(true)
                         }
-                      Array(ad) =>
-                        match key_val {
-                          Symbol(sym) =>
-                            Bool(get_array_symbol_prop(ad, sym.id) is Some(_))
-                          _ => {
-                            let k = key_val.to_string()
-                            if k == "length" {
-                              return Bool(true)
-                            }
-                            let idx = @strconv.parse_int(k) catch { _ => -1 }
-                            if idx >= 0 &&
-                              idx.to_string() == k &&
-                              idx < ad.elements.length() {
-                              Bool(true)
-                            } else {
-                              Bool(get_array_named_prop(ad, k) is Some(_))
-                            }
-                          }
+                        let idx = @string.parse_int(k) catch { _ => -1 }
+                        if idx >= 0 &&
+                          idx.to_string() == k &&
+                          idx < ad.elements.length() {
+                          Bool(true)
+                        } else {
+                          Bool(get_array_named_prop(ad, k) is Some(_))
                         }
-                      _ => Bool(false)
+                      }
                     }
-                  })
+                  _ => Bool(false)
+                }
+              })
             }
             if prop == "toString" {
               return make_native_func("toString", fn(_args) {
@@ -8189,7 +8222,7 @@ fn Interpreter::get_computed_property(
           // Canonical numeric index string check: parseDouble(s).toString() === s
           let mut numeric_result : Value? = None
           try {
-            let n = @strconv.parse_double(s)
+            let n = @string.parse_double(s)
             if n.to_string() == s {
               let idx = n.to_int()
               if idx.to_double() == n &&
@@ -8304,7 +8337,7 @@ fn Interpreter::set_property(
             [target, String_(prop), value, obj],
             loc,
           )
-          if not(is_truthy(result)) {
+          if !is_truthy(result) {
             if self.strict {
               raise @errors.TypeError(
                 message="'set' on proxy: trap returned falsish for property '\{prop}'",
@@ -8325,7 +8358,7 @@ fn Interpreter::set_property(
         // Canonical numeric index string check per spec
         // Note: "-0" is NOT canonical (ToString(ToNumber("-0")) === "0"), so it falls through
         try {
-          let n = @strconv.parse_double(prop)
+          let n = @string.parse_double(prop)
           if n.to_string() == prop {
             let idx = n.to_int()
             if idx.to_double() == n && idx >= 0 {
@@ -8355,7 +8388,7 @@ fn Interpreter::set_property(
                   )
                 }
                 return value
-              } else if not(desc.writable) {
+              } else if !desc.writable {
                 if self.strict {
                   raise @errors.TypeError(
                     message="Cannot assign to read only property '\{prop}'",
@@ -8385,7 +8418,7 @@ fn Interpreter::set_property(
                             )
                           }
                           return value
-                        } else if not(desc.writable) {
+                        } else if !desc.writable {
                           // Inherited non-writable data property blocks assignment
                           if self.strict {
                             raise @errors.TypeError(
@@ -8405,7 +8438,7 @@ fn Interpreter::set_property(
         }
       }
       // Check extensible for new properties
-      if not(data.properties.contains(prop)) && not(data.extensible) {
+      if !data.properties.contains(prop) && !data.extensible {
         if self.strict {
           raise @errors.TypeError(
             message="Cannot add property \{prop}, object is not extensible",
@@ -8420,7 +8453,10 @@ fn Interpreter::set_property(
       if prop == "length" {
         let num = to_number(value)
         // Validate: length must be a non-negative integer <= 2^32-1
-        if num.is_nan() || num < 0.0 || num > 4294967295.0 || num != @math.floor(num) {
+        if num.is_nan() ||
+          num < 0.0 ||
+          num > 4294967295.0 ||
+          num != @math.floor(num) {
           raise @errors.RangeError(message="Invalid array length")
         }
         let n64 = num.to_int64()
@@ -8440,7 +8476,7 @@ fn Interpreter::set_property(
         // try numeric index
         let mut handled = false
         try {
-          let i = @strconv.parse_int(prop)
+          let i = @string.parse_int(prop)
           if i >= 0 {
             while data.elements.length() <= i {
               data.elements.push(Undefined)
@@ -8451,7 +8487,7 @@ fn Interpreter::set_property(
         } catch {
           _ => ()
         }
-        if not(handled) {
+        if !handled {
           // Store named properties in side table
           set_array_named_prop(data, prop, value)
         }
@@ -8474,7 +8510,7 @@ fn Interpreter::set_property(
                   )
                 }
                 return value
-              } else if not(desc.writable) {
+              } else if !desc.writable {
                 if self.strict {
                   raise @errors.TypeError(
                     message="Cannot assign to read only property '\{prop}'",
@@ -8534,7 +8570,7 @@ fn Interpreter::set_computed_property(
             [target, prop_key, value, obj],
             loc,
           )
-          if not(is_truthy(result)) {
+          if !is_truthy(result) {
             if self.strict {
               raise @errors.TypeError(
                 message="'set' on proxy: trap returned falsish",
@@ -8568,7 +8604,7 @@ fn Interpreter::set_computed_property(
                       )
                     }
                     return value
-                  } else if not(desc.writable) {
+                  } else if !desc.writable {
                     if self.strict {
                       raise @errors.TypeError(
                         message="Cannot assign to read only property",
@@ -8598,7 +8634,7 @@ fn Interpreter::set_computed_property(
                                 )
                               }
                               return value
-                            } else if not(desc.writable) {
+                            } else if !desc.writable {
                               if self.strict {
                                 raise @errors.TypeError(
                                   message="Cannot assign to read only property",
@@ -8616,8 +8652,7 @@ fn Interpreter::set_computed_property(
               }
             }
           }
-          if not(data.symbol_properties.contains(sym.id)) &&
-            not(data.extensible) {
+          if !data.symbol_properties.contains(sym.id) && !data.extensible {
             if self.strict {
               raise @errors.TypeError(
                 message="Cannot add property, object is not extensible",
@@ -8645,7 +8680,7 @@ fn Interpreter::set_computed_property(
                 // Canonical numeric index string check per spec
                 // Note: "-0" is NOT canonical (ToString(ToNumber("-0")) === "0"), so it falls through
                 try {
-                  let n = @strconv.parse_double(s)
+                  let n = @string.parse_double(s)
                   if n.to_string() == s {
                     let idx = n.to_int()
                     if idx.to_double() == n && idx >= 0 {
@@ -8677,7 +8712,7 @@ fn Interpreter::set_computed_property(
                       )
                     }
                     return value
-                  } else if not(desc.writable) {
+                  } else if !desc.writable {
                     if self.strict {
                       raise @errors.TypeError(
                         message="Cannot assign to read only property '\{prop}'",
@@ -8707,7 +8742,7 @@ fn Interpreter::set_computed_property(
                                 )
                               }
                               return value
-                            } else if not(desc.writable) {
+                            } else if !desc.writable {
                               if self.strict {
                                 raise @errors.TypeError(
                                   message="Cannot assign to read only property '\{prop}'",
@@ -8725,7 +8760,7 @@ fn Interpreter::set_computed_property(
               }
             }
           }
-          if not(data.properties.contains(prop)) && not(data.extensible) {
+          if !data.properties.contains(prop) && !data.extensible {
             if self.strict {
               raise @errors.TypeError(
                 message="Cannot add property \{prop}, object is not extensible",
@@ -8764,7 +8799,7 @@ fn Interpreter::set_computed_property(
             // Canonical numeric index string check: parseDouble(s).toString() === s
             let mut handled = false
             try {
-              let n = @strconv.parse_double(prop)
+              let n = @string.parse_double(prop)
               if n.to_string() == prop {
                 let idx = n.to_int()
                 if idx.to_double() == n && idx >= 0 {
@@ -8778,7 +8813,7 @@ fn Interpreter::set_computed_property(
             } catch {
               _ => ()
             }
-            if not(handled) {
+            if !handled {
               // Store named properties in side table
               set_array_named_prop(data, prop, value)
             }
@@ -8823,7 +8858,9 @@ fn Interpreter::set_computed_property(
     }
     _ =>
       if self.strict {
-        raise @errors.TypeError(message="Cannot set property of \{type_of(obj)}")
+        raise @errors.TypeError(
+          message="Cannot set property of \{type_of(obj)}",
+        )
       } else {
         value
       }
@@ -8892,7 +8929,7 @@ fn make_arguments_object(
     getter: None,
     setter: None,
   }
-  if not(strict) {
+  if !strict {
     new_args_props["callee"] = ctor
     new_args_descs["callee"] = {
       writable: true,
@@ -9049,7 +9086,7 @@ fn Interpreter::construct_value(
           _ => false
         }
       }
-      if not(is_constructible(target)) {
+      if !is_constructible(target) {
         raise @errors.TypeError(message="target is not a constructor")
       }
       let trap = get_proxy_trap(proxy_data, "construct")
@@ -9134,7 +9171,7 @@ fn Interpreter::construct_value(
             self.hoist_declarations(data.body, func_env)
             match data.name {
               Some(name) =>
-                if not(func_env.bindings.contains(name)) {
+                if !func_env.bindings.contains(name) {
                   func_env.def(name, ctor, LetBinding)
                 }
               None => ()
@@ -9219,7 +9256,7 @@ fn Interpreter::construct_value(
                 continue
               }
               let val : Value = if effective_param_count < args.length() &&
-                not(args[effective_param_count] is Undefined) {
+                !(args[effective_param_count] is Undefined) {
                 args[effective_param_count]
               } else {
                 match param.default_val {
@@ -9264,7 +9301,7 @@ fn Interpreter::construct_value(
             self.hoist_declarations(data.body, func_env)
             match data.name {
               Some(name) =>
-                if not(func_env.bindings.contains(name)) {
+                if !func_env.bindings.contains(name) {
                   func_env.def(name, ctor, LetBinding)
                 }
               None => ()
@@ -9328,11 +9365,9 @@ fn Interpreter::construct_value(
             Some(_) => true
             None => false
           }
-          if not(is_ctor) {
+          if !is_ctor {
             raise @errors.TypeError(
-              message=format_loc_context(
-                _name + " is not a constructor", loc,
-              ),
+              message=format_loc_context(_name + " is not a constructor", loc),
             )
           }
           is_constructing.val = true
@@ -9385,9 +9420,7 @@ fn Interpreter::construct_value(
                 // Store the new instance for super() to use
                 ctor_env.def_builtin("[[PendingThis]]", new_obj)
               }
-              None => {
-                ctor_env.def_builtin("this", new_obj)
-              }
+              None => ctor_env.def_builtin("this", new_obj)
             }
             ctor_env.def("<new.target>", ctor, LetBinding)
             // Execute the constructor if one was defined
@@ -9545,7 +9578,8 @@ fn Interpreter::construct_value(
                           | Some(InterpreterCallable(_, _)) => {
                             // Built-in constructors like Error, Map, Set, etc.
                             let super_result = self.construct_value(
-                              sc, args,
+                              sc,
+                              args,
                               @token.Loc::default(),
                             )
                             match super_result {
@@ -9553,17 +9587,17 @@ fn Interpreter::construct_value(
                                 // Set prototype to the subclass's prototype (newTarget semantics)
                                 result_data.prototype = new_obj
                                   |> fn(v) {
-                                      match v {
-                                        Object(d) => d.prototype
-                                        _ => Null
-                                      }
+                                    match v {
+                                      Object(d) => d.prototype
+                                      _ => Null
                                     }
+                                  }
                                 self.strict = saved_strict
                                 return maybe_set_promise_constructor(
                                   super_result, derived_ctor,
                                 )
                               }
-                              _ => {
+                              _ =>
                                 // For Map, Set, Promise, etc. that return non-Object values
                                 if is_object_like_for_constructor_return(
                                     super_result,
@@ -9573,7 +9607,6 @@ fn Interpreter::construct_value(
                                     super_result, derived_ctor,
                                   )
                                 }
-                              }
                             }
                           }
                           _ => ()
@@ -9695,7 +9728,7 @@ fn Interpreter::create_class(
       _ => to_js_string(key_val)
     }
     // Check if this is the constructor
-    if method_key_str == "constructor" && not(m.is_static) {
+    if method_key_str == "constructor" && !m.is_static {
       // Extract constructor params and body
       // Class bodies are always strict, so ensure constructor body has "use strict"
       match m.value {
@@ -9773,7 +9806,7 @@ fn Interpreter::create_class(
             } else {
               (proto_symbol_props, proto_symbol_descriptors)
             }
-            if not(props.contains(sym.id)) {
+            if !props.contains(sym.id) {
               props[sym.id] = Undefined
             }
             let existing = descs.get(sym.id)
@@ -9794,7 +9827,7 @@ fn Interpreter::create_class(
             } else {
               (proto_props, proto_descriptors)
             }
-            if not(props.contains(method_key_str)) {
+            if !props.contains(method_key_str) {
               props[method_key_str] = Undefined
             }
             let existing = descs.get(method_key_str)
@@ -9819,7 +9852,7 @@ fn Interpreter::create_class(
             } else {
               (proto_symbol_props, proto_symbol_descriptors)
             }
-            if not(props.contains(sym.id)) {
+            if !props.contains(sym.id) {
               props[sym.id] = Undefined
             }
             let existing = descs.get(sym.id)
@@ -9840,7 +9873,7 @@ fn Interpreter::create_class(
             } else {
               (proto_props, proto_descriptors)
             }
-            if not(props.contains(method_key_str)) {
+            if !props.contains(method_key_str) {
               props[method_key_str] = Undefined
             }
             let existing = descs.get(method_key_str)
@@ -9876,7 +9909,7 @@ fn Interpreter::create_class(
               proto_symbol_props[sym.id] = method_val
               proto_symbol_descriptors[sym.id] = method_descriptor
             }
-          _ => {
+          _ =>
             // String key - store in regular properties
             if m.is_static {
               static_props[method_key_str] = method_val
@@ -9885,7 +9918,6 @@ fn Interpreter::create_class(
               proto_props[method_key_str] = method_val
               proto_descriptors[method_key_str] = method_descriptor
             }
-          }
         }
       }
     }
@@ -10118,14 +10150,10 @@ fn Interpreter::eval_compound_assign(
       let key = self.eval_expr(key_expr, env)
       // Per ES5 11.2.1 step 5: CheckObjectCoercible(baseValue) before ToString
       if obj is Null {
-        raise @errors.TypeError(
-          message="Cannot read properties of null",
-        )
+        raise @errors.TypeError(message="Cannot read properties of null")
       }
       if obj is Undefined {
-        raise @errors.TypeError(
-          message="Cannot read properties of undefined",
-        )
+        raise @errors.TypeError(message="Cannot read properties of undefined")
       }
       // Convert key to property key once (ToPropertyKey), so toString/valueOf
       // is only called once per spec
@@ -10231,7 +10259,7 @@ fn Interpreter::eval_logical_assign_or(
         )
       }
       let current = env.get(name)
-      if not(is_truthy(current)) {
+      if !is_truthy(current) {
         let rhs = self.eval_expr(value_expr, env)
         if self.is_immutable_global(name) {
           if self.strict {
@@ -10250,7 +10278,7 @@ fn Interpreter::eval_logical_assign_or(
     Member(obj_expr, prop, mloc) => {
       let obj = self.eval_expr(obj_expr, env)
       let current = self.get_property(obj, prop, mloc)
-      if not(is_truthy(current)) {
+      if !is_truthy(current) {
         let rhs = self.eval_expr(value_expr, env)
         self.set_property(obj, prop, rhs, loc)
       } else {
@@ -10268,7 +10296,7 @@ fn Interpreter::eval_logical_assign_or(
         raise @errors.TypeError(message="Cannot read properties of undefined")
       }
       let current = self.get_computed_property(obj, key, mloc)
-      if not(is_truthy(current)) {
+      if !is_truthy(current) {
         let rhs = self.eval_expr(value_expr, env)
         self.set_computed_property(obj, key, rhs, loc)
       } else {

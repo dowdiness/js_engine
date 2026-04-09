@@ -96,7 +96,7 @@ fn Parser::parse_var_decl(self : Parser) -> @ast.Stmt raise Error {
     None
   }
   // Check for comma-separated declarations (e.g., var a, b, c;)
-  if not(self.at(Comma)) {
+  if !self.at(Comma) {
     self.eat_semicolon()
     return VarDecl(kind, name, init, tok.loc)
   }
@@ -239,7 +239,13 @@ fn Parser::parse_async_generator_decl(self : Parser) -> @ast.Stmt raise Error {
         let body = self.parse_block_body()
         self.pop_async_context()
         self.pop_generator_context()
-        return AsyncGeneratorDeclExt(name, ext_params, rest_param, body, tok.loc)
+        return AsyncGeneratorDeclExt(
+          name,
+          ext_params,
+          rest_param,
+          body,
+          tok.loc,
+        )
       } else {
         raise @errors.SyntaxError(message=msg)
       }
@@ -257,7 +263,7 @@ fn Parser::parse_async_generator_decl(self : Parser) -> @ast.Stmt raise Error {
 fn Parser::parse_params(self : Parser) -> Array[String] raise Error {
   let _ = self.expect(LParen)
   let params : Array[String] = []
-  if not(self.at(RParen)) {
+  if !self.at(RParen) {
     // Skip rest param in simple parse
     if self.at(DotDotDot) {
       // Let extended parse handle it
@@ -297,7 +303,7 @@ fn Parser::parse_params_ext(
   let params : Array[@ast.Param] = []
   let mut rest_param : String? = None
   let mut synth_idx = 0
-  if not(self.at(RParen)) {
+  if !self.at(RParen) {
     // Check for rest param
     if self.eat(DotDotDot) {
       if self.at(LBrace) || self.at(LBracket) {
@@ -378,7 +384,7 @@ fn Parser::parse_block_body(self : Parser) -> Array[@ast.Stmt] raise Error {
   let saved_allow = self.allow_import_export
   self.allow_import_export = false
   let stmts : Array[@ast.Stmt] = []
-  while not(self.at(RBrace)) && not(self.at(EOF)) {
+  while !self.at(RBrace) && !self.at(EOF) {
     stmts.push(self.parse_stmt())
   }
   let _ = self.expect(RBrace)
@@ -528,7 +534,7 @@ fn Parser::parse_for_stmt(self : Parser) -> @ast.Stmt raise Error {
   }
   // Check for for-in / for-of with bare expression (no let/var/const)
   // This handles: for (x of arr), for ({x} of arr), for ([x] of arr), for (a.b of arr), etc.
-  if not(self.at(Semicolon)) {
+  if !self.at(Semicolon) {
     let saved_pos = self.pos
     let try_expr : @ast.Expr? = Some(self.parse_call()) catch { _ => None }
     match try_expr {
@@ -727,25 +733,25 @@ fn Parser::parse_switch_stmt(self : Parser) -> @ast.Stmt raise Error {
   let _ = self.expect(RParen)
   let _ = self.expect(LBrace)
   let cases : Array[@ast.SwitchCase] = []
-  while not(self.at(RBrace)) && not(self.at(EOF)) {
+  while !self.at(RBrace) && !self.at(EOF) {
     if self.eat(Case) {
       let test_expr = self.parse_expr()
       let _ = self.expect(Colon)
       let body : Array[@ast.Stmt] = []
-      while not(self.at(Case)) &&
-            not(self.at(Default)) &&
-            not(self.at(RBrace)) &&
-            not(self.at(EOF)) {
+      while !self.at(Case) &&
+            !self.at(Default) &&
+            !self.at(RBrace) &&
+            !self.at(EOF) {
         body.push(self.parse_stmt())
       }
       cases.push({ condition: Some(test_expr), body })
     } else if self.eat(Default) {
       let _ = self.expect(Colon)
       let body : Array[@ast.Stmt] = []
-      while not(self.at(Case)) &&
-            not(self.at(Default)) &&
-            not(self.at(RBrace)) &&
-            not(self.at(EOF)) {
+      while !self.at(Case) &&
+            !self.at(Default) &&
+            !self.at(RBrace) &&
+            !self.at(EOF) {
         body.push(self.parse_stmt())
       }
       cases.push({ condition: None, body })
@@ -819,7 +825,7 @@ fn Parser::parse_array_pattern(self : Parser) -> @ast.Pattern raise Error {
   let _ = self.expect(LBracket)
   let elements : Array[@ast.Pattern?] = []
   let mut rest : @ast.Pattern? = None
-  while not(self.at(RBracket)) && not(self.at(EOF)) {
+  while !self.at(RBracket) && !self.at(EOF) {
     if self.at(Comma) {
       // Hole / elision
       elements.push(None)
@@ -839,7 +845,7 @@ fn Parser::parse_array_pattern(self : Parser) -> @ast.Pattern raise Error {
     } else {
       elements.push(Some(pat))
     }
-    if not(self.at(RBracket)) && not(self.at(DotDotDot)) {
+    if !self.at(RBracket) && !self.at(DotDotDot) {
       let _ = self.expect(Comma)
     }
   }
@@ -852,7 +858,7 @@ fn Parser::parse_object_pattern(self : Parser) -> @ast.Pattern raise Error {
   let _ = self.expect(LBrace)
   let props : Array[@ast.PropPat] = []
   let mut rest : @ast.Pattern? = None
-  while not(self.at(RBrace)) && not(self.at(EOF)) {
+  while !self.at(RBrace) && !self.at(EOF) {
     if self.at(DotDotDot) {
       let _ = self.advance()
       rest = Some(self.parse_pattern())
@@ -873,7 +879,11 @@ fn Parser::parse_object_pattern(self : Parser) -> @ast.Pattern raise Error {
       Number(n) => {
         let _ = self.advance()
         let i = n.to_int()
-        let name = if i.to_double() == n { i.to_string() } else { n.to_string() }
+        let name = if i.to_double() == n {
+          i.to_string()
+        } else {
+          n.to_string()
+        }
         (name, None)
       }
       _ => (self.expect_ident(), None)
@@ -897,7 +907,7 @@ fn Parser::parse_object_pattern(self : Parser) -> @ast.Pattern raise Error {
       (IdentPat(key), def)
     }
     props.push({ key, value, default_val, computed_key })
-    if not(self.at(RBrace)) {
+    if !self.at(RBrace) {
       let _ = self.expect(Comma)
     }
   }
@@ -1191,7 +1201,7 @@ fn Parser::parse_import_specifiers(
 ) -> Array[@ast.ImportSpecifier] raise Error {
   let _ = self.expect(LBrace)
   let specs : Array[@ast.ImportSpecifier] = []
-  while not(self.at(RBrace)) && not(self.at(EOF)) {
+  while !self.at(RBrace) && !self.at(EOF) {
     let imported = self.expect_module_export_name()
     let local_name = if self.at(As) {
       let _ = self.advance() // consume 'as'
@@ -1200,7 +1210,7 @@ fn Parser::parse_import_specifiers(
       imported
     }
     specs.push({ local_name, imported })
-    if not(self.at(RBrace)) {
+    if !self.at(RBrace) {
       let _ = self.expect(Comma)
     }
   }
@@ -1331,7 +1341,7 @@ fn Parser::parse_export_specifiers(
 ) -> Array[@ast.ExportSpecifier] raise Error {
   let _ = self.expect(LBrace)
   let specs : Array[@ast.ExportSpecifier] = []
-  while not(self.at(RBrace)) && not(self.at(EOF)) {
+  while !self.at(RBrace) && !self.at(EOF) {
     let local_name = self.expect_module_export_name()
     let exported = if self.at(As) {
       let _ = self.advance() // consume 'as'
@@ -1340,7 +1350,7 @@ fn Parser::parse_export_specifiers(
       local_name
     }
     specs.push({ local_name, exported })
-    if not(self.at(RBrace)) {
+    if !self.at(RBrace) {
       let _ = self.expect(Comma)
     }
   }

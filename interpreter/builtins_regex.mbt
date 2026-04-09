@@ -78,7 +78,7 @@ fn RegexParser::parse_sequence(self : RegexParser) -> RegexNode raise Error {
     let quantified = self.parse_quantifier(node)
     // Check for double quantifier (e.g., a**  a++  a{1}{1,})
     match quantified {
-      Quantified(_,_,_,_) =>
+      Quantified(_, _, _, _) =>
         if self.pos < self.pattern.length() {
           let next = self.pattern[self.pos]
           if next == '*' || next == '+' || next == '?' || next == '{' {
@@ -116,9 +116,8 @@ fn RegexParser::parse_atom(self : RegexParser) -> RegexNode raise Error {
     '[' => self.parse_char_class()
     '(' => self.parse_group()
     '\\' => self.parse_escape()
-    '*' | '+' | '?' => raise @errors.SyntaxError(
-      message="Invalid regex: nothing to repeat",
-    )
+    '*' | '+' | '?' =>
+      raise @errors.SyntaxError(message="Invalid regex: nothing to repeat")
     _ => {
       self.pos += 1
       Literal(ch)
@@ -485,7 +484,7 @@ fn char_eq_icase(a : Char, b : Char, icase : Bool) -> Bool {
   if a == b {
     return true
   }
-  if not(icase) {
+  if !icase {
     return false
   }
   // Compare lowercased
@@ -543,7 +542,7 @@ fn match_char_class_icase(
     }
   }
   if negated {
-    not(matched)
+    !matched
   } else {
     matched
   }
@@ -576,7 +575,7 @@ fn regex_exec_single(
       }
     Dot =>
       if pos < input.length() {
-        if flags.dot_all || not(is_line_terminator(input[pos])) {
+        if flags.dot_all || !is_line_terminator(input[pos]) {
           Some(pos + 1)
         } else {
           None
@@ -600,11 +599,9 @@ fn regex_exec_single(
             pos > 0 &&
             is_line_terminator(input[pos - 1]) &&
             // CRLF is a single line terminator — ^ matches after \n, not between \r and \n
-            not(
-              input[pos - 1] == '\r' &&
-              pos < input.length() &&
-              input[pos] == '\n',
-            ) {
+            !(input[pos - 1] == '\r' &&
+            pos < input.length() &&
+            input[pos] == '\n') {
             Some(pos)
           } else {
             None
@@ -616,7 +613,7 @@ fn regex_exec_single(
             pos < input.length() &&
             is_line_terminator(input[pos]) &&
             // CRLF is a single line terminator — $ matches before \r, not between \r and \n
-            not(input[pos] == '\n' && pos > 0 && input[pos - 1] == '\r') {
+            !(input[pos] == '\n' && pos > 0 && input[pos - 1] == '\r') {
             Some(pos)
           } else {
             None
@@ -686,7 +683,7 @@ fn regex_exec_single(
             if pos + cap_chars.length() <= input.length() {
               let mut matches = true
               for i = 0; i < cap_chars.length(); i = i + 1 {
-                if not(char_eq_icase(input[pos + i], cap_chars[i], flags.icase)) {
+                if !char_eq_icase(input[pos + i], cap_chars[i], flags.icase) {
                   matches = false
                   break
                 }
@@ -1039,12 +1036,15 @@ fn extract_regexp_source_flags(val : Value) -> (String, String) {
 // ---- RegExp Object Creation ----
 
 ///|
-pub fn make_regexp_object(pattern : String, flags : String) -> Value raise Error {
+pub fn make_regexp_object(
+  pattern : String,
+  flags : String,
+) -> Value raise Error {
   // Validate flags - check for invalid or duplicate flag characters
   let valid_flags = "gimsuy"
   let seen_flags : Map[Char, Bool] = {}
   for ch in flags {
-    if not(valid_flags.contains(ch.to_string())) {
+    if !valid_flags.contains(ch.to_string()) {
       raise @errors.SyntaxError(
         message="Invalid regular expression flags: " + flags,
       )
@@ -1060,12 +1060,17 @@ pub fn make_regexp_object(pattern : String, flags : String) -> Value raise Error
   let _valid : Unit = try {
     let _parsed = RegexParser::new(pattern).parse()
   } catch {
-    @errors.SyntaxError(message=msg) => raise @errors.SyntaxError(
-      message="Invalid regular expression: /" + pattern + "/: " + msg,
-    )
-    e => raise @errors.SyntaxError(
-      message="Invalid regular expression: /" + pattern + "/: " + e.to_string(),
-    )
+    @errors.SyntaxError(message=msg) =>
+      raise @errors.SyntaxError(
+        message="Invalid regular expression: /" + pattern + "/: " + msg,
+      )
+    e =>
+      raise @errors.SyntaxError(
+        message="Invalid regular expression: /" +
+          pattern +
+          "/: " +
+          e.to_string(),
+      )
   }
   let has_global = flags.contains("g")
   let has_ignore_case = flags.contains("i")
@@ -1085,91 +1090,95 @@ pub fn make_regexp_object(pattern : String, flags : String) -> Value raise Error
   props["lastIndex"] = Number(0.0)
   // test method
   props["test"] = make_method_func("test", 1, fn(this_val, args) {
-        let str = if args.length() > 0 { args[0].to_string() } else { "" }
-        let start = if has_sticky || has_global {
-          match this_val {
-            Object(d) =>
-              match d.properties.get("lastIndex") {
-                Some(Number(n)) => n.to_int()
-                _ => 0
-              }
+    let str = if args.length() > 0 { args[0].to_string() } else { "" }
+    let start = if has_sticky || has_global {
+      match this_val {
+        Object(d) =>
+          match d.properties.get("lastIndex") {
+            Some(Number(n)) => n.to_int()
             _ => 0
           }
-        } else {
-          0
-        }
-        let result = regex_search(pattern, flags, str, start_pos=start) catch {
-          _ => None
-        }
-        match result {
-          Some(m) => {
-            if has_sticky || has_global {
-              match this_val {
-                Object(d) =>
-                  d.properties["lastIndex"] = Number(m.end_.to_double())
-                _ => ()
-              }
-            }
-            Bool(true)
-          }
-          None => {
-            if has_sticky || has_global {
-              match this_val {
-                Object(d) => d.properties["lastIndex"] = Number(0.0)
-                _ => ()
-              }
-            }
-            Bool(false)
+        _ => 0
+      }
+    } else {
+      0
+    }
+    let result = regex_search(pattern, flags, str, start_pos=start) catch {
+      _ => None
+    }
+    match result {
+      Some(m) => {
+        if has_sticky || has_global {
+          match this_val {
+            Object(d) => d.properties["lastIndex"] = Number(m.end_.to_double())
+            _ => ()
           }
         }
-      })
+        Bool(true)
+      }
+      None => {
+        if has_sticky || has_global {
+          match this_val {
+            Object(d) => d.properties["lastIndex"] = Number(0.0)
+            _ => ()
+          }
+        }
+        Bool(false)
+      }
+    }
+  })
   // exec method
   props["exec"] = make_method_func("exec", 1, fn(this_val, args) {
-        let str = if args.length() > 0 { args[0].to_string() } else { "" }
-        let start = if has_sticky || has_global {
-          match this_val {
-            Object(d) =>
-              match d.properties.get("lastIndex") {
-                Some(Number(n)) => n.to_int()
-                _ => 0
-              }
+    let str = if args.length() > 0 { args[0].to_string() } else { "" }
+    let start = if has_sticky || has_global {
+      match this_val {
+        Object(d) =>
+          match d.properties.get("lastIndex") {
+            Some(Number(n)) => n.to_int()
             _ => 0
           }
-        } else {
-          0
-        }
-        let result = regex_search(pattern, flags, str, start_pos=start) catch {
-          _ => None
-        }
-        match result {
-          Some(m) => {
-            if has_sticky || has_global {
-              match this_val {
-                Object(d) =>
-                  d.properties["lastIndex"] = Number(m.end_.to_double())
-                _ => ()
-              }
-            }
-            make_regex_match_array(m, str)
-          }
-          None => {
-            if has_sticky || has_global {
-              match this_val {
-                Object(d) => d.properties["lastIndex"] = Number(0.0)
-                _ => ()
-              }
-            }
-            Null
+        _ => 0
+      }
+    } else {
+      0
+    }
+    let result = regex_search(pattern, flags, str, start_pos=start) catch {
+      _ => None
+    }
+    match result {
+      Some(m) => {
+        if has_sticky || has_global {
+          match this_val {
+            Object(d) => d.properties["lastIndex"] = Number(m.end_.to_double())
+            _ => ()
           }
         }
-      })
+        make_regex_match_array(m, str)
+      }
+      None => {
+        if has_sticky || has_global {
+          match this_val {
+            Object(d) => d.properties["lastIndex"] = Number(0.0)
+            _ => ()
+          }
+        }
+        Null
+      }
+    }
+  })
   // Symbol methods are now on RegExp.prototype (set up in builtins.mbt)
   // Instances inherit them via the prototype chain
   let sym_props : Map[Int, Value] = {}
 
   // Create descriptor maps for non-enumerable method properties
   let re_descs : Map[String, PropDescriptor] = {}
-  let re_method_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+  let re_method_desc : PropDescriptor = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   re_descs["source"] = re_method_desc
   re_descs["flags"] = re_method_desc
   re_descs["global"] = re_method_desc
@@ -1181,7 +1190,13 @@ pub fn make_regexp_object(pattern : String, flags : String) -> Value raise Error
   re_descs["test"] = re_method_desc
   re_descs["exec"] = re_method_desc
   // lastIndex per spec: writable but NOT enumerable and NOT configurable
-  re_descs["lastIndex"] = { writable: true, enumerable: false, configurable: false, getter: None, setter: None }
+  re_descs["lastIndex"] = {
+    writable: true,
+    enumerable: false,
+    configurable: false,
+    getter: None,
+    setter: None,
+  }
 
   let re_sym_descs : Map[Int, PropDescriptor] = {}
 
@@ -1341,9 +1356,11 @@ fn process_replacement(
       } else if next >= '1' && next <= '9' {
         // Check for two-digit group reference ($10-$99)
         let group_idx = next.to_int() - '0'.to_int()
-        if i + 2 < repl_chars.length() && repl_chars[i + 2] >= '0' &&
+        if i + 2 < repl_chars.length() &&
+          repl_chars[i + 2] >= '0' &&
           repl_chars[i + 2] <= '9' {
-          let two_digit = group_idx * 10 + (repl_chars[i + 2].to_int() - '0'.to_int())
+          let two_digit = group_idx * 10 +
+            (repl_chars[i + 2].to_int() - '0'.to_int())
           if two_digit - 1 < m.captures.length() {
             match m.captures[two_digit - 1] {
               Some(s) => buf.write_string(s)
@@ -1401,13 +1418,20 @@ pub fn get_regexp_string_iterator_proto() -> Value {
         setter: None,
       }
       // Add [Symbol.iterator] that returns the iterator itself
-      proto_sym_props[iterator_sym.id] = make_method_func("[Symbol.iterator]", 0, fn(this_val, _args) { this_val })
+      proto_sym_props[iterator_sym.id] = make_method_func(
+        "[Symbol.iterator]",
+        0,
+        fn(this_val, _args) { this_val },
+      )
       // Add a placeholder next method with correct name/length on prototype
-      proto_props["next"] = make_method_func("next", 0, fn(_this_val, _args) raise {
-            raise @errors.TypeError(
-              message="RegExp String Iterator.prototype.next requires that |this| be a RegExp String Iterator",
-            )
-          })
+      proto_props["next"] = make_method_func("next", 0, fn(
+        _this_val,
+        _args,
+      ) raise {
+        raise @errors.TypeError(
+          message="RegExp String Iterator.prototype.next requires that |this| be a RegExp String Iterator",
+        )
+      })
       let proto_descs : Map[String, PropDescriptor] = {}
       proto_descs["next"] = {
         writable: true,

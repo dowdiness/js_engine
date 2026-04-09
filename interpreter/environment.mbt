@@ -3,7 +3,12 @@ pub(all) enum BindingKind {
   LetBinding
   ConstBinding
   VarBinding
-} derive(Show, Eq)
+} derive(Debug, Eq)
+
+///|
+pub impl Show for BindingKind with output(self, logger) {
+  Debug::to_repr(self).output(logger)
+}
 
 ///|
 struct Binding {
@@ -107,10 +112,7 @@ pub fn Environment::def_builtin(
 pub fn Environment::has(self : Environment, name : String) -> Bool {
   // Check with_object first for 'with' statement environments
   match self.with_object {
-    Some(obj) =>
-      if with_object_has(obj, name) {
-        return true
-      }
+    Some(obj) => if with_object_has(obj, name) { return true }
     None => ()
   }
   match self.bindings.get(name) {
@@ -191,7 +193,7 @@ pub fn Environment::get(self : Environment, name : String) -> Value raise Error 
   }
   match self.bindings.get(name) {
     Some(binding) =>
-      if not(binding.initialized) {
+      if !binding.initialized {
         raise @errors.ReferenceError(
           message="Cannot access '\{name}' before initialization",
         )
@@ -223,7 +225,7 @@ pub fn Environment::assign(
   }
   match self.bindings.get(name) {
     Some(binding) =>
-      if not(binding.initialized) {
+      if !binding.initialized {
         raise @errors.ReferenceError(
           message="Cannot access '\{name}' before initialization",
         )
@@ -252,21 +254,17 @@ fn is_blocked_by_unscopables(obj : Value, name : String) -> Bool {
       let mut current : Value = Object(data)
       while true {
         match current {
-          Object(obj_data) => {
+          Object(obj_data) =>
             match obj_data.symbol_properties.get(unscopables_sym.id) {
-              Some(Object(unscopables_data)) => {
+              Some(Object(unscopables_data)) =>
                 // Check if the property name is truthy in the unscopables object
                 match unscopables_data.properties.get(name) {
                   Some(v) => return is_truthy(v)
                   None => return false
                 }
-              }
               Some(_) => return false
-              None => {
-                current = obj_data.prototype
-              }
+              None => current = obj_data.prototype
             }
-          }
           _ => break
         }
       }
@@ -337,13 +335,10 @@ fn with_object_set(obj : Value, name : String, value : Value) -> Unit {
 /// Find the with-object for a name (walking up env chain to find a with env containing this name)
 pub fn Environment::find_with_object(
   self : Environment,
-  name : String
+  name : String,
 ) -> Value? {
   match self.with_object {
-    Some(obj) =>
-      if with_object_has(obj, name) {
-        return Some(obj)
-      }
+    Some(obj) => if with_object_has(obj, name) { return Some(obj) }
     None => ()
   }
   match self.parent {

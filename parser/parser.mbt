@@ -186,7 +186,7 @@ fn Parser::expect_ident(self : Parser) -> String raise Error {
     }
     Yield =>
       // yield is only a keyword inside generator bodies; outside it's an identifier
-      if not(self.in_generator()) {
+      if !self.in_generator() {
         self.pos += 1
         "yield"
       } else {
@@ -317,7 +317,7 @@ pub fn parse(source : String) -> @ast.Program raise Error {
   let tokens = @lexer.tokenize(source)
   let parser = Parser::new(tokens)
   let stmts : Array[@ast.Stmt] = []
-  while not(parser.at(EOF)) {
+  while !parser.at(EOF) {
     stmts.push(parser.parse_stmt())
   }
   { stmts, }

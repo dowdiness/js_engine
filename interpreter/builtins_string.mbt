@@ -415,7 +415,13 @@ pub fn get_string_method(
             Undefined => slen
             _ => {
               let n = to_number(args[1])
-              if n.is_inf() && n > 0.0 { slen } else if n.is_nan() { 0 } else { n.to_int() }
+              if n.is_inf() && n > 0.0 {
+                slen
+              } else if n.is_nan() {
+                0
+              } else {
+                n.to_int()
+              }
             }
           }
         } else {
@@ -503,7 +509,9 @@ pub fn get_string_method(
     }
     "trimStart" => {
       let str = s
-      make_native_func("trimStart", fn(_args) { String_(string_trim_start(str)) })
+      make_native_func("trimStart", fn(_args) {
+        String_(string_trim_start(str))
+      })
     }
     "trimEnd" => {
       let str = s
@@ -512,7 +520,9 @@ pub fn get_string_method(
     "trimLeft" => {
       let str = s
       // Per spec, trimLeft.name === "trimStart"
-      make_native_func("trimStart", fn(_args) { String_(string_trim_start(str)) })
+      make_native_func("trimStart", fn(_args) {
+        String_(string_trim_start(str))
+      })
     }
     "trimRight" => {
       let str = s
@@ -531,16 +541,23 @@ pub fn get_string_method(
           match args[0] {
             Object(data) => {
               let split_sym = get_split_symbol()
-              let split_fn = lookup_symbol_property_chain(args[0], data, split_sym.id)
+              let split_fn = lookup_symbol_property_chain(
+                args[0],
+                data,
+                split_sym.id,
+              )
               match split_fn {
-                Some(Null) | Some(Undefined) => ()  // GetMethod: null/undefined means no method
+                Some(Null) | Some(Undefined) => () // GetMethod: null/undefined means no method
                 Some(fn_val) => {
                   let limit = if args.length() > 1 {
                     args[1]
                   } else {
                     Undefined
                   }
-                  let result = call_callable_direct(fn_val, args[0], [String_(str), limit])
+                  let result = call_callable_direct(fn_val, args[0], [
+                    String_(str),
+                    limit,
+                  ])
                   return result
                 }
                 _ => ()
@@ -647,16 +664,19 @@ pub fn get_string_method(
         match args[0] {
           Object(data) => {
             let replace_sym = get_replace_symbol()
-            let replace_fn = lookup_symbol_property_chain(args[0], data, replace_sym.id)
+            let replace_fn = lookup_symbol_property_chain(
+              args[0],
+              data,
+              replace_sym.id,
+            )
             match replace_fn {
-              Some(Null) | Some(Undefined) => ()  // GetMethod: null/undefined means no method
+              Some(Null) | Some(Undefined) => () // GetMethod: null/undefined means no method
               Some(fn_val) => {
-                let rep = if args.length() > 1 {
-                  args[1]
-                } else {
-                  Undefined
-                }
-                let result = call_callable_direct(fn_val, args[0], [String_(str), rep])
+                let rep = if args.length() > 1 { args[1] } else { Undefined }
+                let result = call_callable_direct(fn_val, args[0], [
+                  String_(str),
+                  rep,
+                ])
                 return result
               }
               _ => ()
@@ -687,11 +707,11 @@ pub fn get_string_method(
         let search_len = search.length()
         if search_len == 0 {
           let rep = if is_func {
-            let result = call_callable_direct(
-              replace_val,
-              Undefined,
-              [String_(""), Number(0.0), String_(str)],
-            )
+            let result = call_callable_direct(replace_val, Undefined, [
+              String_(""),
+              Number(0.0),
+              String_(str),
+            ])
             to_js_string(result)
           } else {
             get_substitution(to_js_string(replace_val), "", str, 0)
@@ -715,11 +735,11 @@ pub fn get_string_method(
               buf.write_char(s_chars[k])
             }
             let rep = if is_func {
-              let result = call_callable_direct(
-                replace_val,
-                Undefined,
-                [String_(search), Number(i.to_double()), String_(str)],
-              )
+              let result = call_callable_direct(replace_val, Undefined, [
+                String_(search),
+                Number(i.to_double()),
+                String_(str),
+              ])
               to_js_string(result)
             } else {
               get_substitution(to_js_string(replace_val), search, str, i)
@@ -744,11 +764,17 @@ pub fn get_string_method(
         match args[0] {
           Object(data) => {
             let match_sym = get_match_symbol()
-            let match_fn = lookup_symbol_property_chain(args[0], data, match_sym.id)
+            let match_fn = lookup_symbol_property_chain(
+              args[0],
+              data,
+              match_sym.id,
+            )
             match match_fn {
-              Some(Null) | Some(Undefined) => ()  // GetMethod: null/undefined means no method
+              Some(Null) | Some(Undefined) => () // GetMethod: null/undefined means no method
               Some(fn_val) => {
-                let result = call_callable_direct(fn_val, args[0], [String_(str)])
+                let result = call_callable_direct(fn_val, args[0], [
+                  String_(str),
+                ])
                 return result
               }
               _ => ()
@@ -789,7 +815,7 @@ pub fn get_string_method(
                 _ => ""
               }
               // matchAll requires global flag
-              if not(f.contains("g")) {
+              if !f.contains("g") {
                 raise @errors.TypeError(
                   message="matchAll requires a RegExp with global flag",
                 )
@@ -798,7 +824,11 @@ pub fn get_string_method(
             } else {
               // Check for Symbol.matchAll on the object
               let matchall_sym = get_matchall_symbol()
-              let matchall_fn = lookup_symbol_property_chain(arg, data, matchall_sym.id)
+              let matchall_fn = lookup_symbol_property_chain(
+                arg,
+                data,
+                matchall_sym.id,
+              )
               match matchall_fn {
                 Some(Null) | Some(Undefined) | None => {
                   // GetMethod: null/undefined means no method, fall through to string conversion
@@ -806,7 +836,9 @@ pub fn get_string_method(
                   (r, "g")
                 }
                 Some(matchall_method) => {
-                  let result = call_callable_direct(matchall_method, arg, [String_(str)])
+                  let result = call_callable_direct(matchall_method, arg, [
+                    String_(str),
+                  ])
                   return result
                 }
               }
@@ -826,9 +858,7 @@ pub fn get_string_method(
           }
         }
         // Get all matches
-        let matches = regex_search_all(pattern, flags, str) catch {
-          _ => []
-        }
+        let matches = regex_search_all(pattern, flags, str) catch { _ => [] }
         let input_chars = str.to_array()
         let index_ref : Ref[Int] = { val: 0 }
         // Create iterator with next() method
@@ -843,9 +873,7 @@ pub fn get_string_method(
                 let m = matches[idx]
                 index_ref.val = idx + 1
                 let elements : Array[Value] = []
-                elements.push(
-                  String_(substring(input_chars, m.start, m.end_)),
-                )
+                elements.push(String_(substring(input_chars, m.start, m.end_)))
                 for cap in m.captures {
                   match cap {
                     Some(c) => elements.push(String_(c))
@@ -912,11 +940,17 @@ pub fn get_string_method(
         match args[0] {
           Object(data) => {
             let search_sym = get_search_symbol()
-            let search_fn = lookup_symbol_property_chain(args[0], data, search_sym.id)
+            let search_fn = lookup_symbol_property_chain(
+              args[0],
+              data,
+              search_sym.id,
+            )
             match search_fn {
-              Some(Null) | Some(Undefined) => ()  // GetMethod: null/undefined means no method
+              Some(Null) | Some(Undefined) => () // GetMethod: null/undefined means no method
               Some(fn_val) => {
-                let result = call_callable_direct(fn_val, args[0], [String_(str)])
+                let result = call_callable_direct(fn_val, args[0], [
+                  String_(str),
+                ])
                 return result
               }
               _ => ()
@@ -1060,7 +1094,11 @@ pub fn get_string_method(
         } else {
           0
         }
-        let pad_str = if args.length() > 1 { to_js_string(args[1]) } else { " " }
+        let pad_str = if args.length() > 1 {
+          to_js_string(args[1])
+        } else {
+          " "
+        }
         let slen = str.length()
         if slen >= target_len || pad_str.length() == 0 {
           return String_(str)
@@ -1085,7 +1123,11 @@ pub fn get_string_method(
         } else {
           0
         }
-        let pad_str = if args.length() > 1 { to_js_string(args[1]) } else { " " }
+        let pad_str = if args.length() > 1 {
+          to_js_string(args[1])
+        } else {
+          " "
+        }
         let slen = str.length()
         if slen >= target_len || pad_str.length() == 0 {
           return String_(str)
@@ -1120,7 +1162,7 @@ pub fn get_string_method(
                 Some(String_(f)) => f
                 _ => ""
               }
-              if not(flags.to_array().contains('g')) {
+              if !flags.to_array().contains('g') {
                 raise @errors.TypeError(
                   message="replaceAll must be called with a global RegExp",
                 )
@@ -1132,16 +1174,19 @@ pub fn get_string_method(
         match args[0] {
           Object(data) => {
             let replace_sym = get_replace_symbol()
-            let replace_fn = lookup_symbol_property_chain(args[0], data, replace_sym.id)
+            let replace_fn = lookup_symbol_property_chain(
+              args[0],
+              data,
+              replace_sym.id,
+            )
             match replace_fn {
-              Some(Null) | Some(Undefined) => ()  // GetMethod: null/undefined means no method
+              Some(Null) | Some(Undefined) => () // GetMethod: null/undefined means no method
               Some(fn_val) => {
-                let rep = if args.length() > 1 {
-                  args[1]
-                } else {
-                  Undefined
-                }
-                let result = call_callable_direct(fn_val, args[0], [String_(str), rep])
+                let rep = if args.length() > 1 { args[1] } else { Undefined }
+                let result = call_callable_direct(fn_val, args[0], [
+                  String_(str),
+                  rep,
+                ])
                 return result
               }
               _ => ()
@@ -1181,11 +1226,11 @@ pub fn get_string_method(
           let s_chars = str.to_array()
           for i, c in s_chars {
             let rep = if is_func {
-              let result = call_callable_direct(
-                replace_val,
-                Undefined,
-                [String_(""), Number(i.to_double()), String_(str)],
-              )
+              let result = call_callable_direct(replace_val, Undefined, [
+                String_(""),
+                Number(i.to_double()),
+                String_(str),
+              ])
               to_js_string(result)
             } else {
               get_substitution(to_js_string(replace_val), "", str, i)
@@ -1194,18 +1239,19 @@ pub fn get_string_method(
             buf.write_char(c)
           }
           let rep_end = if is_func {
-            let result = call_callable_direct(
-              replace_val,
-              Undefined,
-              [
-                String_(""),
-                Number(s_chars.length().to_double()),
-                String_(str),
-              ],
-            )
+            let result = call_callable_direct(replace_val, Undefined, [
+              String_(""),
+              Number(s_chars.length().to_double()),
+              String_(str),
+            ])
             to_js_string(result)
           } else {
-            get_substitution(to_js_string(replace_val), "", str, s_chars.length())
+            get_substitution(
+              to_js_string(replace_val),
+              "",
+              str,
+              s_chars.length(),
+            )
           }
           buf.write_string(rep_end)
           return String_(buf.to_string())
@@ -1225,11 +1271,11 @@ pub fn get_string_method(
             }
             if matched {
               let rep = if is_func {
-                let result = call_callable_direct(
-                  replace_val,
-                  Undefined,
-                  [String_(search), Number(i.to_double()), String_(str)],
-                )
+                let result = call_callable_direct(replace_val, Undefined, [
+                  String_(search),
+                  Number(i.to_double()),
+                  String_(str),
+                ])
                 to_js_string(result)
               } else {
                 get_substitution(to_js_string(replace_val), search, str, i)
@@ -1349,7 +1395,7 @@ pub fn get_string_method(
     | "strike"
     | "sub"
     | "sup" =>
-      if not(annex_b) {
+      if !annex_b {
         Undefined
       } else {
         match prop {
@@ -1610,6 +1656,7 @@ fn string_trim_start(s : String) -> String {
   buf.to_string()
 }
 
+///|
 fn string_trim(s : String) -> String {
   let trimmed_left = string_trim_start(s)
   string_trim_end(trimmed_left)
@@ -1657,11 +1704,10 @@ pub fn setup_string_prototype(
       let methods : Array[String] = [
         "charAt", "charCodeAt", "at", "codePointAt", "indexOf", "lastIndexOf", "includes",
         "startsWith", "endsWith", "slice", "substring", "toUpperCase", "toLowerCase",
-        "toLocaleLowerCase", "toLocaleUpperCase",
-        "trim", "trimStart", "trimEnd", "trimLeft", "trimRight", "padStart", "padEnd",
-        "repeat", "replace", "replaceAll", "split", "search", "match", "matchAll",
-        "concat", "normalize", "isWellFormed", "toWellFormed", "localeCompare", "toLocaleString",
-        "toString", "valueOf",
+        "toLocaleLowerCase", "toLocaleUpperCase", "trim", "trimStart", "trimEnd",
+        "trimLeft", "trimRight", "padStart", "padEnd", "repeat", "replace", "replaceAll",
+        "split", "search", "match", "matchAll", "concat", "normalize", "isWellFormed",
+        "toWellFormed", "localeCompare", "toLocaleString", "toString", "valueOf",
       ]
       // Annex B HTML string methods — only when --annex-b is enabled
       if annex_b {
@@ -1692,7 +1738,10 @@ pub fn setup_string_prototype(
             }
           _ => 0
         }
-        data.properties[mname] = make_method_func(display_name, meth_length, fn(this_val, args) raise {
+        data.properties[mname] = make_method_func(display_name, meth_length, fn(
+          this_val,
+          args,
+        ) raise {
           let s = this_to_string(this_val)
           let meth_val = get_string_method(s, mname, annex_b~)
           match meth_val {
@@ -1725,6 +1774,7 @@ pub fn setup_string_prototype(
 }
 
 ///|
+
 ///|
 /// Check if a character is ECMAScript whitespace (WhiteSpace + LineTerminator)
 fn is_es_whitespace(c : Char) -> Bool {
@@ -1755,9 +1805,10 @@ fn is_es_whitespace(c : Char) -> Bool {
   code == 0x202F || // NARROW NO-BREAK SPACE
   code == 0x205F || // MEDIUM MATHEMATICAL SPACE
   code == 0x3000 || // IDEOGRAPHIC SPACE
-  code == 0xFEFF    // BOM
+  code == 0xFEFF // BOM
 }
 
+///|
 fn string_trim_end(s : String) -> String {
   let chars = s.to_array()
   let mut end = chars.length()

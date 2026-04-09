@@ -3,6 +3,7 @@ package "dowdiness/js_engine/errors"
 
 import {
   "dowdiness/js_engine/token",
+  "moonbitlang/core/debug",
 }
 
 // Values
@@ -36,7 +37,7 @@ pub(all) suberror JsError {
   EvalError(message~ : String)
   AggregateError(message~ : String, errors~ : Array[Error])
   InternalError(message~ : String)
-}
+} derive(@debug.Debug)
 pub fn JsError::debug(Self) -> String
 pub fn JsError::format(Self) -> String
 pub fn JsError::get_message(Self) -> String

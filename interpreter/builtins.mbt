@@ -6,7 +6,7 @@ fn func_body_has_use_strict(body : Array[@ast.Stmt]) -> Bool {
   for i = 0; i < body.length(); i = i + 1 {
     match body[i] {
       ExprStmt(StringLit(s, has_escape, _), _) =>
-        if s == "use strict" && not(has_escape) {
+        if s == "use strict" && !has_escape {
           return true
         }
       _ => break
@@ -74,7 +74,7 @@ pub fn setup_builtins(
     make_static_func_with_length("isFinite", 1, fn(args) raise {
       let val = if args.length() > 0 { args[0] } else { Undefined }
       let n = to_number(val)
-      Bool(not(n.is_nan()) && not(n.is_inf()))
+      Bool(!n.is_nan() && !n.is_inf())
     }),
   )
 
@@ -97,9 +97,13 @@ pub fn setup_builtins(
         sign = -1.0
         pos = pos + 1
       }
-      let radix_arg = if args.length() > 1 { to_int32(to_number(args[1])) } else { 0 }
+      let radix_arg = if args.length() > 1 {
+        to_int32(to_number(args[1]))
+      } else {
+        0
+      }
       let mut radix = if radix_arg == 0 {
-        10  // radix 0 defaults to 10
+        10 // radix 0 defaults to 10
       } else if radix_arg < 2 || radix_arg > 36 {
         return Number(0.0 / 0.0)
       } else {
@@ -126,7 +130,7 @@ pub fn setup_builtins(
         found = true
         pos = pos + 1
       }
-      if not(found) {
+      if !found {
         Number(0.0 / 0.0)
       } else {
         Number(sign * result)
@@ -184,7 +188,7 @@ pub fn setup_builtins(
           pos = pos + 1
         }
       }
-      if not(has_digits) {
+      if !has_digits {
         return Number(0.0 / 0.0)
       }
       // Exponent part
@@ -208,7 +212,7 @@ pub fn setup_builtins(
       for i = 0; i < pos; i = i + 1 {
         buf.write_char(chars[i])
       }
-      let result = @strconv.parse_double(buf.to_string()) catch {
+      let result = @string.parse_double(buf.to_string()) catch {
         _ => 0.0 / 0.0
       }
       Number(result)
@@ -300,7 +304,15 @@ pub fn setup_builtins(
     prototype: get_obj_proto(),
     callable: None,
     class_name: "String",
-    descriptors: { "length": { writable: false, enumerable: false, configurable: false, getter: None, setter: None } },
+    descriptors: {
+      "length": {
+        writable: false,
+        enumerable: false,
+        configurable: false,
+        getter: None,
+        setter: None,
+      },
+    },
     symbol_descriptors: {},
     extensible: true,
   })
@@ -311,7 +323,9 @@ pub fn setup_builtins(
         "prototype": string_proto,
         "name": String_("String"),
         "length": Number(1.0),
-        "fromCharCode": make_static_func_with_length("fromCharCode", 1, fn(args) raise {
+        "fromCharCode": make_static_func_with_length("fromCharCode", 1, fn(
+          args,
+        ) raise {
           let buf = StringBuilder::new()
           for arg in args {
             let code = to_number(arg).to_int()
@@ -321,7 +335,9 @@ pub fn setup_builtins(
           }
           String_(buf.to_string())
         }),
-        "fromCodePoint": make_static_func_with_length("fromCodePoint", 1, fn(args) raise {
+        "fromCodePoint": make_static_func_with_length("fromCodePoint", 1, fn(
+          args,
+        ) raise {
           // String.fromCodePoint() - accepts Unicode code points (not code units)
           let buf = StringBuilder::new()
           for arg in args {
@@ -479,11 +495,36 @@ pub fn setup_builtins(
       ),
       class_name: "Function",
       descriptors: {
-        "name": nf_desc, "length": nf_desc,
-        "prototype": { writable: false, enumerable: false, configurable: false, getter: None, setter: None },
-        "fromCharCode": { writable: true, enumerable: false, configurable: true, getter: None, setter: None },
-        "fromCodePoint": { writable: true, enumerable: false, configurable: true, getter: None, setter: None },
-        "raw": { writable: true, enumerable: false, configurable: true, getter: None, setter: None },
+        "name": nf_desc,
+        "length": nf_desc,
+        "prototype": {
+          writable: false,
+          enumerable: false,
+          configurable: false,
+          getter: None,
+          setter: None,
+        },
+        "fromCharCode": {
+          writable: true,
+          enumerable: false,
+          configurable: true,
+          getter: None,
+          setter: None,
+        },
+        "fromCodePoint": {
+          writable: true,
+          enumerable: false,
+          configurable: true,
+          getter: None,
+          setter: None,
+        },
+        "raw": {
+          writable: true,
+          enumerable: false,
+          configurable: true,
+          getter: None,
+          setter: None,
+        },
       },
       symbol_descriptors: {},
       extensible: true,
@@ -516,55 +557,67 @@ pub fn setup_builtins(
 
   // Boolean constructor with prototype
   let boolean_proto_props : Map[String, Value] = {}
-  boolean_proto_props["toString"] = make_method_func("toString", 0, fn(this_val, _args) raise {
-        match this_val {
-          Bool(b) => String_(b.to_string())
-          Object(data) =>
-            if data.class_name == "Boolean" {
-              match data.properties.get("[[BooleanData]]") {
-                Some(Bool(b)) => String_(b.to_string())
-                _ =>
-                  raise @errors.TypeError(
-                    message="Boolean.prototype.toString requires a Boolean",
-                  )
-              }
-            } else {
+  boolean_proto_props["toString"] = make_method_func("toString", 0, fn(
+    this_val,
+    _args,
+  ) raise {
+    match this_val {
+      Bool(b) => String_(b.to_string())
+      Object(data) =>
+        if data.class_name == "Boolean" {
+          match data.properties.get("[[BooleanData]]") {
+            Some(Bool(b)) => String_(b.to_string())
+            _ =>
               raise @errors.TypeError(
                 message="Boolean.prototype.toString requires a Boolean",
               )
-            }
-          _ =>
-            raise @errors.TypeError(
-              message="Boolean.prototype.toString requires a Boolean",
-            )
+          }
+        } else {
+          raise @errors.TypeError(
+            message="Boolean.prototype.toString requires a Boolean",
+          )
         }
-      })
-  boolean_proto_props["valueOf"] = make_method_func("valueOf", 0, fn(this_val, _args) raise {
-        match this_val {
-          Bool(b) => Bool(b)
-          Object(data) =>
-            if data.class_name == "Boolean" {
-              match data.properties.get("[[BooleanData]]") {
-                Some(Bool(b)) => Bool(b)
-                _ =>
-                  raise @errors.TypeError(
-                    message="Boolean.prototype.valueOf requires a Boolean",
-                  )
-              }
-            } else {
+      _ =>
+        raise @errors.TypeError(
+          message="Boolean.prototype.toString requires a Boolean",
+        )
+    }
+  })
+  boolean_proto_props["valueOf"] = make_method_func("valueOf", 0, fn(
+    this_val,
+    _args,
+  ) raise {
+    match this_val {
+      Bool(b) => Bool(b)
+      Object(data) =>
+        if data.class_name == "Boolean" {
+          match data.properties.get("[[BooleanData]]") {
+            Some(Bool(b)) => Bool(b)
+            _ =>
               raise @errors.TypeError(
                 message="Boolean.prototype.valueOf requires a Boolean",
               )
-            }
-          _ =>
-            raise @errors.TypeError(
-              message="Boolean.prototype.valueOf requires a Boolean",
-            )
+          }
+        } else {
+          raise @errors.TypeError(
+            message="Boolean.prototype.valueOf requires a Boolean",
+          )
         }
-      })
+      _ =>
+        raise @errors.TypeError(
+          message="Boolean.prototype.valueOf requires a Boolean",
+        )
+    }
+  })
   // Boolean.prototype has [[BooleanData]] internal slot with value false
   boolean_proto_props["[[BooleanData]]"] = Bool(false)
-  let method_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+  let method_desc : PropDescriptor = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   let boolean_proto_descs : Map[String, PropDescriptor] = {}
   boolean_proto_descs["toString"] = method_desc
   boolean_proto_descs["valueOf"] = method_desc
@@ -584,7 +637,11 @@ pub fn setup_builtins(
   env.def_builtin(
     "Boolean",
     Object({
-      properties: { "prototype": boolean_proto, "name": String_("Boolean"), "length": Number(1.0) },
+      properties: {
+        "prototype": boolean_proto,
+        "name": String_("Boolean"),
+        "length": Number(1.0),
+      },
       symbol_properties: {},
       prototype: Null,
       callable: Some(
@@ -609,7 +666,17 @@ pub fn setup_builtins(
         }),
       ),
       class_name: "Function",
-      descriptors: { "name": nf_desc, "length": nf_desc, "prototype": { writable: false, enumerable: false, configurable: false, getter: None, setter: None } },
+      descriptors: {
+        "name": nf_desc,
+        "length": nf_desc,
+        "prototype": {
+          writable: false,
+          enumerable: false,
+          configurable: false,
+          getter: None,
+          setter: None,
+        },
+      },
       symbol_descriptors: {},
       extensible: true,
     }),
@@ -648,26 +715,28 @@ pub fn setup_builtins(
   let error_ctor = env.get("Error") catch { _ => Undefined }
   match error_ctor {
     Object(error_data) => {
-      error_data.properties["isError"] = make_static_func_with_length("isError", 1, fn(
-        args,
-      ) {
-        let arg = if args.length() > 0 { args[0] } else { Undefined }
-        match arg {
-          Object(data) =>
-            // Check if the object's class_name is an error type
-            Bool(
-              data.class_name == "Error" ||
-              data.class_name == "TypeError" ||
-              data.class_name == "SyntaxError" ||
-              data.class_name == "RangeError" ||
-              data.class_name == "ReferenceError" ||
-              data.class_name == "URIError" ||
-              data.class_name == "EvalError" ||
-              data.class_name == "AggregateError",
-            )
-          _ => Bool(false)
-        }
-      })
+      error_data.properties["isError"] = make_static_func_with_length(
+        "isError",
+        1,
+        fn(args) {
+          let arg = if args.length() > 0 { args[0] } else { Undefined }
+          match arg {
+            Object(data) =>
+              // Check if the object's class_name is an error type
+              Bool(
+                data.class_name == "Error" ||
+                data.class_name == "TypeError" ||
+                data.class_name == "SyntaxError" ||
+                data.class_name == "RangeError" ||
+                data.class_name == "ReferenceError" ||
+                data.class_name == "URIError" ||
+                data.class_name == "EvalError" ||
+                data.class_name == "AggregateError",
+              )
+            _ => Bool(false)
+          }
+        },
+      )
       error_data.descriptors["isError"] = {
         writable: true,
         enumerable: false,
@@ -738,9 +807,9 @@ pub fn setup_builtins(
     Some(fp_binding) => {
       let func_proto = fp_binding.value
       let ctor_names = [
-        "Boolean", "String", "Number", "Error", "TypeError", "ReferenceError",
-        "SyntaxError", "RangeError", "URIError", "EvalError", "AggregateError",
-        "Array", "Object", "Function",
+        "Boolean", "String", "Number", "Error", "TypeError", "ReferenceError", "SyntaxError",
+        "RangeError", "URIError", "EvalError", "AggregateError", "Array", "Object",
+        "Function",
       ]
       for name in ctor_names {
         match env.bindings.get(name) {
@@ -761,8 +830,8 @@ pub fn setup_builtins(
     Some(err_binding) => {
       let error_ctor = err_binding.value
       let native_errors = [
-        "TypeError", "ReferenceError", "SyntaxError", "RangeError",
-        "URIError", "EvalError", "AggregateError",
+        "TypeError", "ReferenceError", "SyntaxError", "RangeError", "URIError", "EvalError",
+        "AggregateError",
       ]
       for name in native_errors {
         match env.bindings.get(name) {
@@ -858,11 +927,16 @@ pub fn setup_builtins(
       // Add RegExp.prototype methods
       // test() and exec() are placed on each instance by make_regexp_object
       // Here we add them to prototype so typeof checks work
-      regexp_proto_props["test"] = make_method_func("test", 1, fn(this_val, args) raise {
+      regexp_proto_props["test"] = make_method_func("test", 1, fn(
+        this_val,
+        args,
+      ) raise {
         match this_val {
           Object(data) => {
             if data.class_name != "RegExp" {
-              raise @errors.TypeError(message="Method RegExp.prototype.test called on incompatible receiver")
+              raise @errors.TypeError(
+                message="Method RegExp.prototype.test called on incompatible receiver",
+              )
             }
             let str = if args.length() > 0 { to_js_string(args[0]) } else { "" }
             let (pat, fl) = extract_regexp_source_flags(this_val)
@@ -894,14 +968,22 @@ pub fn setup_builtins(
               }
             }
           }
-          _ => raise @errors.TypeError(message="Method RegExp.prototype.test called on incompatible receiver")
+          _ =>
+            raise @errors.TypeError(
+              message="Method RegExp.prototype.test called on incompatible receiver",
+            )
         }
       })
-      regexp_proto_props["exec"] = make_method_func("exec", 1, fn(this_val, args) raise {
+      regexp_proto_props["exec"] = make_method_func("exec", 1, fn(
+        this_val,
+        args,
+      ) raise {
         match this_val {
           Object(data) => {
             if data.class_name != "RegExp" {
-              raise @errors.TypeError(message="Method RegExp.prototype.exec called on incompatible receiver")
+              raise @errors.TypeError(
+                message="Method RegExp.prototype.exec called on incompatible receiver",
+              )
             }
             let str = if args.length() > 0 { to_js_string(args[0]) } else { "" }
             let (pat, fl) = extract_regexp_source_flags(this_val)
@@ -933,24 +1015,38 @@ pub fn setup_builtins(
               }
             }
           }
-          _ => raise @errors.TypeError(message="Method RegExp.prototype.exec called on incompatible receiver")
+          _ =>
+            raise @errors.TypeError(
+              message="Method RegExp.prototype.exec called on incompatible receiver",
+            )
         }
       })
       // RegExp.prototype.compile (Annex B)
-      regexp_proto_props["compile"] = make_method_func("compile", 2, fn(this_val, args) raise {
+      regexp_proto_props["compile"] = make_method_func("compile", 2, fn(
+        this_val,
+        args,
+      ) raise {
         match this_val {
           Object(data) => {
             if data.class_name != "RegExp" {
-              raise @errors.TypeError(message="Method RegExp.prototype.compile called on incompatible receiver")
+              raise @errors.TypeError(
+                message="Method RegExp.prototype.compile called on incompatible receiver",
+              )
             }
-            let pattern_arg = if args.length() > 0 { args[0] } else { Undefined }
+            let pattern_arg = if args.length() > 0 {
+              args[0]
+            } else {
+              Undefined
+            }
             let flags_arg = if args.length() > 1 { args[1] } else { Undefined }
             let (source, flags) : (String, String) = match pattern_arg {
-              Object(re_data) => {
+              Object(re_data) =>
                 if re_data.class_name == "RegExp" {
                   // If pattern is a RegExp and flags is not undefined, throw TypeError
-                  if not(flags_arg is Undefined) {
-                    raise @errors.TypeError(message="Cannot supply flags when constructing one RegExp from another")
+                  if !(flags_arg is Undefined) {
+                    raise @errors.TypeError(
+                      message="Cannot supply flags when constructing one RegExp from another",
+                    )
                   }
                   let s = match re_data.properties.get("source") {
                     Some(String_(s)) => s
@@ -963,17 +1059,28 @@ pub fn setup_builtins(
                   (s, f)
                 } else {
                   let s = to_js_string(pattern_arg)
-                  let f = if flags_arg is Undefined { "" } else { to_js_string(flags_arg) }
+                  let f = if flags_arg is Undefined {
+                    ""
+                  } else {
+                    to_js_string(flags_arg)
+                  }
                   (s, f)
                 }
-              }
               Undefined => {
-                let f = if flags_arg is Undefined { "" } else { to_js_string(flags_arg) }
+                let f = if flags_arg is Undefined {
+                  ""
+                } else {
+                  to_js_string(flags_arg)
+                }
                 ("(?:)", f)
               }
               _ => {
                 let s = to_js_string(pattern_arg)
-                let f = if flags_arg is Undefined { "" } else { to_js_string(flags_arg) }
+                let f = if flags_arg is Undefined {
+                  ""
+                } else {
+                  to_js_string(flags_arg)
+                }
                 (s, f)
               }
             }
@@ -990,10 +1097,16 @@ pub fn setup_builtins(
             data.properties["sticky"] = Bool(flags.contains("y"))
             this_val
           }
-          _ => raise @errors.TypeError(message="Method RegExp.prototype.compile called on incompatible receiver")
+          _ =>
+            raise @errors.TypeError(
+              message="Method RegExp.prototype.compile called on incompatible receiver",
+            )
         }
       })
-      regexp_proto_props["toString"] = make_method_func("toString", 0, fn(this_val, _args) {
+      regexp_proto_props["toString"] = make_method_func("toString", 0, fn(
+        this_val,
+        _args,
+      ) {
         match this_val {
           Object(data) => {
             let source = match data.properties.get("source") {
@@ -1021,7 +1134,11 @@ pub fn setup_builtins(
                 if data.class_name == "Object" {
                   return Undefined
                 }
-                raise @errors.TypeError(message="Method get RegExp.prototype." + flag_char + " called on incompatible receiver")
+                raise @errors.TypeError(
+                  message="Method get RegExp.prototype." +
+                    flag_char +
+                    " called on incompatible receiver",
+                )
               }
               let flags_str = match data.properties.get("flags") {
                 Some(String_(f)) => f
@@ -1039,11 +1156,19 @@ pub fn setup_builtins(
                 _ => Undefined
               }
             }
-            _ => raise @errors.TypeError(message="Method get RegExp.prototype." + flag_char + " called on incompatible receiver")
+            _ =>
+              raise @errors.TypeError(
+                message="Method get RegExp.prototype." +
+                  flag_char +
+                  " called on incompatible receiver",
+              )
           }
         })
       }
-      let flag_names = ["global", "ignoreCase", "multiline", "dotAll", "unicode", "sticky", "unicodeSets", "hasIndices"]
+      let flag_names = [
+        "global", "ignoreCase", "multiline", "dotAll", "unicode", "sticky", "unicodeSets",
+        "hasIndices",
+      ]
       for flag_name in flag_names {
         let getter = make_flag_getter(flag_name)
         regexp_proto_props[flag_name] = Undefined
@@ -1056,15 +1181,21 @@ pub fn setup_builtins(
         }
       }
       // flags getter - computes flags string from individual flag getters
-      let flags_getter = make_method_func("get flags", 0, fn(this_val, _args) raise {
+      let flags_getter = make_method_func("get flags", 0, fn(
+        this_val,
+        _args,
+      ) raise {
         match this_val {
-          Object(data) => {
+          Object(data) =>
             // For actual RegExp instances, read the stored flags
             match data.properties.get("flags") {
               Some(String_(f)) => String_(f)
               _ => {
                 // Per spec, compute from individual flag getters
-                fn is_flag_set(props : Map[String, Value], name : String) -> Bool {
+                fn is_flag_set(
+                  props : Map[String, Value],
+                  name : String,
+                ) -> Bool {
                   match props.get(name) {
                     Some(Bool(true)) => true
                     _ => false
@@ -1072,19 +1203,37 @@ pub fn setup_builtins(
                 }
                 let p = data.properties
                 let mut result = ""
-                if is_flag_set(p, "hasIndices") { result = result + "d" }
-                if is_flag_set(p, "global") { result = result + "g" }
-                if is_flag_set(p, "ignoreCase") { result = result + "i" }
-                if is_flag_set(p, "multiline") { result = result + "m" }
-                if is_flag_set(p, "dotAll") { result = result + "s" }
-                if is_flag_set(p, "unicode") { result = result + "u" }
-                if is_flag_set(p, "unicodeSets") { result = result + "v" }
-                if is_flag_set(p, "sticky") { result = result + "y" }
+                if is_flag_set(p, "hasIndices") {
+                  result = result + "d"
+                }
+                if is_flag_set(p, "global") {
+                  result = result + "g"
+                }
+                if is_flag_set(p, "ignoreCase") {
+                  result = result + "i"
+                }
+                if is_flag_set(p, "multiline") {
+                  result = result + "m"
+                }
+                if is_flag_set(p, "dotAll") {
+                  result = result + "s"
+                }
+                if is_flag_set(p, "unicode") {
+                  result = result + "u"
+                }
+                if is_flag_set(p, "unicodeSets") {
+                  result = result + "v"
+                }
+                if is_flag_set(p, "sticky") {
+                  result = result + "y"
+                }
                 String_(result)
               }
             }
-          }
-          _ => raise @errors.TypeError(message="Method get RegExp.prototype.flags called on incompatible receiver")
+          _ =>
+            raise @errors.TypeError(
+              message="Method get RegExp.prototype.flags called on incompatible receiver",
+            )
         }
       })
       regexp_proto_props["flags"] = Undefined
@@ -1096,21 +1245,29 @@ pub fn setup_builtins(
         setter: None,
       }
       // source getter
-      let source_getter = make_method_func("get source", 0, fn(this_val, _args) raise {
+      let source_getter = make_method_func("get source", 0, fn(
+        this_val,
+        _args,
+      ) raise {
         match this_val {
           Object(data) => {
             if data.class_name != "RegExp" {
               if data.class_name == "Object" {
                 return String_("(?:)")
               }
-              raise @errors.TypeError(message="Method get RegExp.prototype.source called on incompatible receiver")
+              raise @errors.TypeError(
+                message="Method get RegExp.prototype.source called on incompatible receiver",
+              )
             }
             match data.properties.get("source") {
               Some(String_(s)) => String_(s)
               _ => String_("(?:)")
             }
           }
-          _ => raise @errors.TypeError(message="Method get RegExp.prototype.source called on incompatible receiver")
+          _ =>
+            raise @errors.TypeError(
+              message="Method get RegExp.prototype.source called on incompatible receiver",
+            )
         }
       })
       regexp_proto_props["source"] = Undefined
@@ -1121,7 +1278,13 @@ pub fn setup_builtins(
         getter: Some(source_getter),
         setter: None,
       }
-      let re_method_desc2 : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+      let re_method_desc2 : PropDescriptor = {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
       regexp_proto_descs["constructor"] = re_method_desc2
       regexp_proto_descs["exec"] = re_method_desc2
       regexp_proto_descs["test"] = re_method_desc2
@@ -1130,10 +1293,19 @@ pub fn setup_builtins(
       // Install well-known symbol methods on RegExp.prototype (not on instances)
       let regexp_sym_props : Map[Int, Value] = {}
       let regexp_sym_descs : Map[Int, PropDescriptor] = {}
-      let sym_method_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+      let sym_method_desc : PropDescriptor = {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
       // [Symbol.match]
       let match_sym = get_match_symbol()
-      regexp_sym_props[match_sym.id] = make_method_func("[Symbol.match]", 1, fn(this_val, args) {
+      regexp_sym_props[match_sym.id] = make_method_func("[Symbol.match]", 1, fn(
+        this_val,
+        args,
+      ) {
         let str = if args.length() > 0 { args[0].to_string() } else { "" }
         let (pat, fl) = extract_regexp_source_flags(this_val)
         string_match_regex(str, pat, fl)
@@ -1141,64 +1313,93 @@ pub fn setup_builtins(
       regexp_sym_descs[match_sym.id] = sym_method_desc
       // [Symbol.matchAll]
       let match_all_sym = get_matchall_symbol()
-      regexp_sym_props[match_all_sym.id] = make_method_func("[Symbol.matchAll]", 1, fn(this_val, args) {
-        let str = if args.length() > 0 { args[0].to_string() } else { "" }
-        let (pat, fl) = extract_regexp_source_flags(this_val)
-        let flags = if fl.contains("g") { fl } else { fl + "g" }
-        let matches = regex_search_all(pat, flags, str) catch { _ => [] }
-        let input_chars = str.to_array()
-        let index_ref : Ref[Int] = { val: 0 }
-        let next_method = Object({
-          properties: {},
-          symbol_properties: {},
-          prototype: Null,
-          callable: Some(NativeCallable("next", fn(_args) {
-            let idx = index_ref.val
-            if idx < matches.length() {
-              let m = matches[idx]
-              index_ref.val = idx + 1
-              let elements : Array[Value] = []
-              elements.push(String_(substring(input_chars, m.start, m.end_)))
-              for cap in m.captures {
-                match cap {
-                  Some(c) => elements.push(String_(c))
-                  None => elements.push(Undefined)
+      regexp_sym_props[match_all_sym.id] = make_method_func(
+        "[Symbol.matchAll]",
+        1,
+        fn(this_val, args) {
+          let str = if args.length() > 0 { args[0].to_string() } else { "" }
+          let (pat, fl) = extract_regexp_source_flags(this_val)
+          let flags = if fl.contains("g") { fl } else { fl + "g" }
+          let matches = regex_search_all(pat, flags, str) catch { _ => [] }
+          let input_chars = str.to_array()
+          let index_ref : Ref[Int] = { val: 0 }
+          let next_method = Object({
+            properties: {},
+            symbol_properties: {},
+            prototype: Null,
+            callable: Some(
+              NativeCallable("next", fn(_args) {
+                let idx = index_ref.val
+                if idx < matches.length() {
+                  let m = matches[idx]
+                  index_ref.val = idx + 1
+                  let elements : Array[Value] = []
+                  elements.push(
+                    String_(substring(input_chars, m.start, m.end_)),
+                  )
+                  for cap in m.captures {
+                    match cap {
+                      Some(c) => elements.push(String_(c))
+                      None => elements.push(Undefined)
+                    }
+                  }
+                  let match_array = Array({ elements, })
+                  let result_props : Map[String, Value] = {}
+                  result_props["value"] = match_array
+                  result_props["done"] = Bool(false)
+                  Object({
+                    properties: result_props,
+                    symbol_properties: {},
+                    prototype: Null,
+                    callable: None,
+                    class_name: "Object",
+                    descriptors: {},
+                    symbol_descriptors: {},
+                    extensible: true,
+                  })
+                } else {
+                  let result_props : Map[String, Value] = {}
+                  result_props["value"] = Undefined
+                  result_props["done"] = Bool(true)
+                  Object({
+                    properties: result_props,
+                    symbol_properties: {},
+                    prototype: Null,
+                    callable: None,
+                    class_name: "Object",
+                    descriptors: {},
+                    symbol_descriptors: {},
+                    extensible: true,
+                  })
                 }
-              }
-              let match_array = Array({ elements, })
-              let result_props : Map[String, Value] = {}
-              result_props["value"] = match_array
-              result_props["done"] = Bool(false)
-              Object({ properties: result_props, symbol_properties: {}, prototype: Null, callable: None, class_name: "Object", descriptors: {}, symbol_descriptors: {}, extensible: true })
-            } else {
-              let result_props : Map[String, Value] = {}
-              result_props["value"] = Undefined
-              result_props["done"] = Bool(true)
-              Object({ properties: result_props, symbol_properties: {}, prototype: Null, callable: None, class_name: "Object", descriptors: {}, symbol_descriptors: {}, extensible: true })
-            }
-          })),
-          class_name: "Function",
-          descriptors: {},
-          symbol_descriptors: {},
-          extensible: true,
-        })
-        let iter_props : Map[String, Value] = {}
-        iter_props["next"] = next_method
-        Object({
-          properties: iter_props,
-          symbol_properties: {},
-          prototype: get_regexp_string_iterator_proto(),
-          callable: None,
-          class_name: "RegExp String Iterator",
-          descriptors: {},
-          symbol_descriptors: {},
-          extensible: true,
-        })
-      })
+              }),
+            ),
+            class_name: "Function",
+            descriptors: {},
+            symbol_descriptors: {},
+            extensible: true,
+          })
+          let iter_props : Map[String, Value] = {}
+          iter_props["next"] = next_method
+          Object({
+            properties: iter_props,
+            symbol_properties: {},
+            prototype: get_regexp_string_iterator_proto(),
+            callable: None,
+            class_name: "RegExp String Iterator",
+            descriptors: {},
+            symbol_descriptors: {},
+            extensible: true,
+          })
+        },
+      )
       regexp_sym_descs[match_all_sym.id] = sym_method_desc
       // [Symbol.search]
       let search_sym = get_search_symbol()
-      regexp_sym_props[search_sym.id] = make_method_func("[Symbol.search]", 1, fn(this_val, args) {
+      regexp_sym_props[search_sym.id] = make_method_func("[Symbol.search]", 1, fn(
+        this_val,
+        args,
+      ) {
         let str = if args.length() > 0 { args[0].to_string() } else { "" }
         let (pat, fl) = extract_regexp_source_flags(this_val)
         string_search_regex(str, pat, fl)
@@ -1206,27 +1407,46 @@ pub fn setup_builtins(
       regexp_sym_descs[search_sym.id] = sym_method_desc
       // [Symbol.replace]
       let replace_sym = get_replace_symbol()
-      regexp_sym_props[replace_sym.id] = make_method_func("[Symbol.replace]", 2, fn(this_val, args) {
-        let str = if args.length() > 0 { args[0].to_string() } else { "" }
-        let replacement = if args.length() > 1 { args[1].to_string() } else { "undefined" }
-        let (pat, fl) = extract_regexp_source_flags(this_val)
-        string_replace_regex(str, pat, fl, replacement)
-      })
+      regexp_sym_props[replace_sym.id] = make_method_func(
+        "[Symbol.replace]",
+        2,
+        fn(this_val, args) {
+          let str = if args.length() > 0 { args[0].to_string() } else { "" }
+          let replacement = if args.length() > 1 {
+            args[1].to_string()
+          } else {
+            "undefined"
+          }
+          let (pat, fl) = extract_regexp_source_flags(this_val)
+          string_replace_regex(str, pat, fl, replacement)
+        },
+      )
       regexp_sym_descs[replace_sym.id] = sym_method_desc
       // [Symbol.split]
       let split_sym = get_split_symbol()
-      regexp_sym_props[split_sym.id] = make_method_func("[Symbol.split]", 0, fn(this_val, args) raise {
+      regexp_sym_props[split_sym.id] = make_method_func("[Symbol.split]", 0, fn(
+        this_val,
+        args,
+      ) raise {
         let str = if args.length() > 0 { args[0].to_string() } else { "" }
         let limit : Int64 = if args.length() > 1 {
           match args[1] {
             Undefined => 4294967295L
             _ => {
               let n = to_int32(to_number(args[1]))
-              if n < 0 { n.to_int64() + 4294967296L } else { n.to_int64() }
+              if n < 0 {
+                n.to_int64() + 4294967296L
+              } else {
+                n.to_int64()
+              }
             }
           }
-        } else { 4294967295L }
-        if limit == 0L { return Array({ elements: [] }) }
+        } else {
+          4294967295L
+        }
+        if limit == 0L {
+          return Array({ elements: [] })
+        }
         let (pat, fl) = extract_regexp_source_flags(this_val)
         let input_chars = str.to_array()
         let slen = str.length()
@@ -1250,23 +1470,35 @@ pub fn setup_builtins(
                 continue
               }
               let buf = StringBuilder::new()
-              for i = last_end; i < match_data.start; i = i + 1 { buf.write_char(input_chars[i]) }
+              for i = last_end; i < match_data.start; i = i + 1 {
+                buf.write_char(input_chars[i])
+              }
               results.push(String_(buf.to_string()))
-              if results.length().to_int64() >= limit { return Array({ elements: results }) }
+              if results.length().to_int64() >= limit {
+                return Array({ elements: results })
+              }
               for cap in match_data.captures {
                 match cap {
                   Some(c) => results.push(String_(c))
                   None => results.push(Undefined)
                 }
-                if results.length().to_int64() >= limit { return Array({ elements: results }) }
+                if results.length().to_int64() >= limit {
+                  return Array({ elements: results })
+                }
               }
               last_end = match_data.end_
-              pos = if match_data.end_ == match_data.start { match_data.end_ + 1 } else { match_data.end_ }
+              pos = if match_data.end_ == match_data.start {
+                match_data.end_ + 1
+              } else {
+                match_data.end_
+              }
             }
           }
         }
         let buf = StringBuilder::new()
-        for i = last_end; i < slen; i = i + 1 { buf.write_char(input_chars[i]) }
+        for i = last_end; i < slen; i = i + 1 {
+          buf.write_char(input_chars[i])
+        }
         results.push(String_(buf.to_string()))
         Array({ elements: results })
       })
@@ -1286,7 +1518,8 @@ pub fn setup_builtins(
       match env.bindings.get("RegExp") {
         Some(b) =>
           match b.value {
-            Object(ctor_data) => ctor_data.properties["prototype"] = regexp_proto
+            Object(ctor_data) =>
+              ctor_data.properties["prototype"] = regexp_proto
             _ => ()
           }
         None => ()
@@ -1332,8 +1565,8 @@ pub fn setup_builtins(
     Some(fp_binding) => {
       let func_proto = fp_binding.value
       let late_ctors = [
-        "Map", "Set", "WeakMap", "WeakSet", "Date", "RegExp", "Promise",
-        "Proxy", "ArrayBuffer", "DataView",
+        "Map", "Set", "WeakMap", "WeakSet", "Date", "RegExp", "Promise", "Proxy",
+        "ArrayBuffer", "DataView",
       ]
       for name in late_ctors {
         match env.bindings.get(name) {
@@ -1395,9 +1628,7 @@ pub fn setup_builtins(
     getter: Some(species_getter),
     setter: None,
   }
-  let ctors_to_add_species = [
-    "Array", "RegExp", "Map", "Set",
-  ]
+  let ctors_to_add_species = ["Array", "RegExp", "Map", "Set"]
   for ctor_name in ctors_to_add_species {
     let ctor_val = env.get(ctor_name) catch { _ => Undefined }
     match ctor_val {
@@ -1412,10 +1643,14 @@ pub fn setup_builtins(
 
   // Add Function.prototype[Symbol.hasInstance]
   let has_instance_sym = get_hasinstance_symbol()
-  let has_instance_fn = make_interp_method_func("[Symbol.hasInstance]", 1, fn(interp, this_val, args) raise {
+  let has_instance_fn = make_interp_method_func("[Symbol.hasInstance]", 1, fn(
+    interp,
+    this_val,
+    args,
+  ) raise {
     // OrdinaryHasInstance(C, O)
     let o = if args.length() > 0 { args[0] } else { Undefined }
-    if not(is_callable(this_val)) {
+    if !is_callable(this_val) {
       return Bool(false)
     }
     // Get C.prototype
@@ -1503,55 +1738,64 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
   // Symbol prototype
   let symbol_proto_props : Map[String, Value] = {}
   let symbol_proto_descs : Map[String, PropDescriptor] = {}
-  symbol_proto_props["toString"] = make_method_func("toString", 0, fn(this_val, _args) raise {
-        match this_val {
-          Symbol(sym) =>
+  symbol_proto_props["toString"] = make_method_func("toString", 0, fn(
+    this_val,
+    _args,
+  ) raise {
+    match this_val {
+      Symbol(sym) =>
+        match sym.description {
+          Some(desc) => String_("Symbol(\{desc})")
+          None => String_("Symbol()")
+        }
+      Object(data) =>
+        // Support Symbol wrapper objects (e.g. Object(sym).toString())
+        match data.properties.get("[[SymbolData]]") {
+          Some(Symbol(sym)) =>
             match sym.description {
               Some(desc) => String_("Symbol(\{desc})")
               None => String_("Symbol()")
-            }
-          Object(data) =>
-            // Support Symbol wrapper objects (e.g. Object(sym).toString())
-            match data.properties.get("[[SymbolData]]") {
-              Some(Symbol(sym)) =>
-                match sym.description {
-                  Some(desc) => String_("Symbol(\{desc})")
-                  None => String_("Symbol()")
-                }
-              _ =>
-                raise @errors.TypeError(
-                  message="Symbol.prototype.toString requires a Symbol",
-                )
             }
           _ =>
             raise @errors.TypeError(
               message="Symbol.prototype.toString requires a Symbol",
             )
         }
-      })
+      _ =>
+        raise @errors.TypeError(
+          message="Symbol.prototype.toString requires a Symbol",
+        )
+    }
+  })
   symbol_proto_descs["toString"] = method_desc
-  symbol_proto_props["valueOf"] = make_method_func("valueOf", 0, fn(this_val, _args) raise {
-        match this_val {
-          Symbol(_) => this_val
-          Object(data) =>
-            // Support Symbol wrapper objects
-            match data.properties.get("[[SymbolData]]") {
-              Some(sym) => sym
-              _ =>
-                raise @errors.TypeError(
-                  message="Symbol.prototype.valueOf requires a Symbol",
-                )
-            }
+  symbol_proto_props["valueOf"] = make_method_func("valueOf", 0, fn(
+    this_val,
+    _args,
+  ) raise {
+    match this_val {
+      Symbol(_) => this_val
+      Object(data) =>
+        // Support Symbol wrapper objects
+        match data.properties.get("[[SymbolData]]") {
+          Some(sym) => sym
           _ =>
             raise @errors.TypeError(
               message="Symbol.prototype.valueOf requires a Symbol",
             )
         }
-      })
+      _ =>
+        raise @errors.TypeError(
+          message="Symbol.prototype.valueOf requires a Symbol",
+        )
+    }
+  })
   symbol_proto_descs["valueOf"] = method_desc
   // Symbol.prototype.description - getter per ES spec
   // Stored as a getter descriptor (not a plain value)
-  let description_getter = make_method_func("get description", 0, fn(this_val, _args) raise {
+  let description_getter = make_method_func("get description", 0, fn(
+    this_val,
+    _args,
+  ) raise {
     match this_val {
       Symbol(sym) =>
         match sym.description {
@@ -1589,7 +1833,10 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
   // Symbol.prototype[@@toPrimitive](hint)
   let symbol_proto_sym_props : Map[Int, Value] = {}
   let symbol_proto_sym_descs : Map[Int, PropDescriptor] = {}
-  let toprimitive_method = make_method_func("[Symbol.toPrimitive]", 1, fn(this_val, _args) raise {
+  let toprimitive_method = make_method_func("[Symbol.toPrimitive]", 1, fn(
+    this_val,
+    _args,
+  ) raise {
     match this_val {
       Symbol(_) => this_val
       Object(data) =>
@@ -1607,7 +1854,10 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
     }
   })
   symbol_proto_sym_props[to_primitive_sym.id] = toprimitive_method
-  symbol_proto_sym_descs[to_primitive_sym.id] = { ..wks_desc, configurable: true }
+  symbol_proto_sym_descs[to_primitive_sym.id] = {
+    ..wks_desc,
+    configurable: true,
+  }
 
   // Symbol.prototype[@@toStringTag] = "Symbol"
   symbol_proto_sym_props[to_string_tag_sym.id] = String_("Symbol")
@@ -1688,7 +1938,9 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
   symbol_descs["for"] = method_desc
 
   // Symbol.keyFor(sym) - returns key for symbol in global registry (O(1) via reverse lookup)
-  symbol_props["keyFor"] = make_static_func_with_length("keyFor", 1, fn(args) raise {
+  symbol_props["keyFor"] = make_static_func_with_length("keyFor", 1, fn(
+    args,
+  ) raise {
     let sym = if args.length() > 0 { args[0] } else { Undefined }
     match sym {
       Symbol(sym_data) =>
@@ -1823,7 +2075,13 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
     let tostringtag_sym = get_tostringtag_symbol()
     iter_symbol_props[tostringtag_sym.id] = String_("Array Iterator")
     let iter_symbol_descs : Map[Int, PropDescriptor] = {}
-    iter_symbol_descs[tostringtag_sym.id] = { writable: false, enumerable: false, configurable: true, getter: None, setter: None }
+    iter_symbol_descs[tostringtag_sym.id] = {
+      writable: false,
+      enumerable: false,
+      configurable: true,
+      getter: None,
+      setter: None,
+    }
     let iter_obj = Object({
       properties: iter_props,
       symbol_properties: iter_symbol_props,
@@ -1838,7 +2096,11 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
     // Add [Symbol.iterator] that returns the iterator itself
     match iter_obj {
       Object(data) =>
-        data.symbol_properties[iterator_sym.id] = make_method_func("[Symbol.iterator]", 0, fn(this_val, _args) { this_val })
+        data.symbol_properties[iterator_sym.id] = make_method_func(
+          "[Symbol.iterator]",
+          0,
+          fn(this_val, _args) { this_val },
+        )
       _ => ()
     }
     iter_obj
@@ -1910,7 +2172,11 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
 
     match iter_obj {
       Object(data) =>
-        data.symbol_properties[iterator_sym.id] = make_method_func("[Symbol.iterator]", 0, fn(this_val, _args) { this_val })
+        data.symbol_properties[iterator_sym.id] = make_method_func(
+          "[Symbol.iterator]",
+          0,
+          fn(this_val, _args) { this_val },
+        )
       _ => ()
     }
     iter_obj
@@ -1923,174 +2189,185 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
       match array_ctor.properties.get("prototype") {
         Some(Object(proto_data)) => {
           // Add [Symbol.iterator] method that returns an array iterator
-          proto_data.symbol_properties[iterator_sym.id] = make_method_func("[Symbol.iterator]", 0, fn(this_val, _args) raise {
-                match this_val {
-                  Array(arr) => make_array_iterator(arr)
-                  _ => make_array_like_iterator(this_val)
-                }
-              })
+          proto_data.symbol_properties[iterator_sym.id] = make_method_func(
+            "[Symbol.iterator]",
+            0,
+            fn(this_val, _args) raise {
+              match this_val {
+                Array(arr) => make_array_iterator(arr)
+                _ => make_array_like_iterator(this_val)
+              }
+            },
+          )
 
           // Also add values() method (alias for [Symbol.iterator])
-          proto_data.properties["values"] = make_method_func("values", 0, fn(this_val, _args) raise {
-                match this_val {
-                  Array(arr) => make_array_iterator(arr)
-                  _ => make_array_like_iterator(this_val)
-                }
-              })
+          proto_data.properties["values"] = make_method_func("values", 0, fn(
+            this_val,
+            _args,
+          ) raise {
+            match this_val {
+              Array(arr) => make_array_iterator(arr)
+              _ => make_array_like_iterator(this_val)
+            }
+          })
 
           // Add keys() method that returns an iterator over indices
-          proto_data.properties["keys"] = make_method_func("keys", 0, fn(this_val, _args) raise {
-                let len = to_array_like_length(this_val)
-                let index_ref : Ref[Int] = { val: 0 }
-                let next_method = Object({
-                  properties: {},
-                  symbol_properties: {},
-                  prototype: Null,
-                  callable: Some(
-                    NativeCallable("next", fn(_args) {
-                      let idx = index_ref.val
-                      if idx < len {
-                        index_ref.val = idx + 1
-                        let result_props : Map[String, Value] = {}
-                        result_props["value"] = Number(idx.to_double())
-                        result_props["done"] = Bool(false)
-                        Object({
-                          properties: result_props,
-                          symbol_properties: {},
-                          prototype: Null,
-                          callable: None,
-                          class_name: "Object",
-                          descriptors: {},
-                          symbol_descriptors: {},
-                          extensible: true,
-                        })
-                      } else {
-                        let result_props : Map[String, Value] = {}
-                        result_props["value"] = Undefined
-                        result_props["done"] = Bool(true)
-                        Object({
-                          properties: result_props,
-                          symbol_properties: {},
-                          prototype: Null,
-                          callable: None,
-                          class_name: "Object",
-                          descriptors: {},
-                          symbol_descriptors: {},
-                          extensible: true,
-                        })
-                      }
-                    }),
-                  ),
-                  class_name: "Function",
-                  descriptors: {},
-                  symbol_descriptors: {},
-                  extensible: true,
-                })
-                let iter_props : Map[String, Value] = {}
-                iter_props["next"] = next_method
-                let iter_obj = Object({
-                  properties: iter_props,
-                  symbol_properties: {},
-                  prototype: Null,
-                  callable: None,
-                  class_name: "Array Iterator",
-                  descriptors: {},
-                  symbol_descriptors: {},
-                  extensible: true,
-                })
+          proto_data.properties["keys"] = make_method_func("keys", 0, fn(
+            this_val,
+            _args,
+          ) raise {
+            let len = to_array_like_length(this_val)
+            let index_ref : Ref[Int] = { val: 0 }
+            let next_method = Object({
+              properties: {},
+              symbol_properties: {},
+              prototype: Null,
+              callable: Some(
+                NativeCallable("next", fn(_args) {
+                  let idx = index_ref.val
+                  if idx < len {
+                    index_ref.val = idx + 1
+                    let result_props : Map[String, Value] = {}
+                    result_props["value"] = Number(idx.to_double())
+                    result_props["done"] = Bool(false)
+                    Object({
+                      properties: result_props,
+                      symbol_properties: {},
+                      prototype: Null,
+                      callable: None,
+                      class_name: "Object",
+                      descriptors: {},
+                      symbol_descriptors: {},
+                      extensible: true,
+                    })
+                  } else {
+                    let result_props : Map[String, Value] = {}
+                    result_props["value"] = Undefined
+                    result_props["done"] = Bool(true)
+                    Object({
+                      properties: result_props,
+                      symbol_properties: {},
+                      prototype: Null,
+                      callable: None,
+                      class_name: "Object",
+                      descriptors: {},
+                      symbol_descriptors: {},
+                      extensible: true,
+                    })
+                  }
+                }),
+              ),
+              class_name: "Function",
+              descriptors: {},
+              symbol_descriptors: {},
+              extensible: true,
+            })
+            let iter_props : Map[String, Value] = {}
+            iter_props["next"] = next_method
+            let iter_obj = Object({
+              properties: iter_props,
+              symbol_properties: {},
+              prototype: Null,
+              callable: None,
+              class_name: "Array Iterator",
+              descriptors: {},
+              symbol_descriptors: {},
+              extensible: true,
+            })
 
-                // Add [Symbol.iterator] to keys iterator
-                match iter_obj {
-                  Object(data) =>
-                    data.symbol_properties[iterator_sym.id] = make_method_func("[Symbol.iterator]", 0, fn(
-                          this_val,
-                          _args,
-                        ) {
-                          this_val
-                        })
-                  _ => ()
-                }
-                iter_obj
-              })
+            // Add [Symbol.iterator] to keys iterator
+            match iter_obj {
+              Object(data) =>
+                data.symbol_properties[iterator_sym.id] = make_method_func(
+                  "[Symbol.iterator]",
+                  0,
+                  fn(this_val, _args) { this_val },
+                )
+              _ => ()
+            }
+            iter_obj
+          })
 
           // Add entries() method that returns an iterator over [index, value] pairs
-          proto_data.properties["entries"] = make_method_func("entries", 0, fn(this_val, _args) raise {
-                let the_val = this_val
-                let len = to_array_like_length(the_val)
-                let index_ref : Ref[Int] = { val: 0 }
-                let next_method = Object({
-                  properties: {},
-                  symbol_properties: {},
-                  prototype: Null,
-                  callable: Some(
-                    NativeCallable("next", fn(_args) {
-                      let idx = index_ref.val
-                      if idx < len {
-                        let value = get_array_like_element(the_val, idx)
-                        index_ref.val = idx + 1
-                        let result_props : Map[String, Value] = {}
-                        result_props["value"] = Array({
-                          elements: [Number(idx.to_double()), value],
-                        })
-                        result_props["done"] = Bool(false)
-                        Object({
-                          properties: result_props,
-                          symbol_properties: {},
-                          prototype: Null,
-                          callable: None,
-                          class_name: "Object",
-                          descriptors: {},
-                          symbol_descriptors: {},
-                          extensible: true,
-                        })
-                      } else {
-                        let result_props : Map[String, Value] = {}
-                        result_props["value"] = Undefined
-                        result_props["done"] = Bool(true)
-                        Object({
-                          properties: result_props,
-                          symbol_properties: {},
-                          prototype: Null,
-                          callable: None,
-                          class_name: "Object",
-                          descriptors: {},
-                          symbol_descriptors: {},
-                          extensible: true,
-                        })
-                      }
-                    }),
-                  ),
-                  class_name: "Function",
-                  descriptors: {},
-                  symbol_descriptors: {},
-                  extensible: true,
-                })
-                let iter_props : Map[String, Value] = {}
-                iter_props["next"] = next_method
-                let iter_obj = Object({
-                  properties: iter_props,
-                  symbol_properties: {},
-                  prototype: Null,
-                  callable: None,
-                  class_name: "Array Iterator",
-                  descriptors: {},
-                  symbol_descriptors: {},
-                  extensible: true,
-                })
+          proto_data.properties["entries"] = make_method_func("entries", 0, fn(
+            this_val,
+            _args,
+          ) raise {
+            let the_val = this_val
+            let len = to_array_like_length(the_val)
+            let index_ref : Ref[Int] = { val: 0 }
+            let next_method = Object({
+              properties: {},
+              symbol_properties: {},
+              prototype: Null,
+              callable: Some(
+                NativeCallable("next", fn(_args) {
+                  let idx = index_ref.val
+                  if idx < len {
+                    let value = get_array_like_element(the_val, idx)
+                    index_ref.val = idx + 1
+                    let result_props : Map[String, Value] = {}
+                    result_props["value"] = Array({
+                      elements: [Number(idx.to_double()), value],
+                    })
+                    result_props["done"] = Bool(false)
+                    Object({
+                      properties: result_props,
+                      symbol_properties: {},
+                      prototype: Null,
+                      callable: None,
+                      class_name: "Object",
+                      descriptors: {},
+                      symbol_descriptors: {},
+                      extensible: true,
+                    })
+                  } else {
+                    let result_props : Map[String, Value] = {}
+                    result_props["value"] = Undefined
+                    result_props["done"] = Bool(true)
+                    Object({
+                      properties: result_props,
+                      symbol_properties: {},
+                      prototype: Null,
+                      callable: None,
+                      class_name: "Object",
+                      descriptors: {},
+                      symbol_descriptors: {},
+                      extensible: true,
+                    })
+                  }
+                }),
+              ),
+              class_name: "Function",
+              descriptors: {},
+              symbol_descriptors: {},
+              extensible: true,
+            })
+            let iter_props : Map[String, Value] = {}
+            iter_props["next"] = next_method
+            let iter_obj = Object({
+              properties: iter_props,
+              symbol_properties: {},
+              prototype: Null,
+              callable: None,
+              class_name: "Array Iterator",
+              descriptors: {},
+              symbol_descriptors: {},
+              extensible: true,
+            })
 
-                // Add [Symbol.iterator] to entries iterator
-                match iter_obj {
-                  Object(data) =>
-                    data.symbol_properties[iterator_sym.id] = make_method_func("[Symbol.iterator]", 0, fn(
-                          this_val,
-                          _args,
-                        ) {
-                          this_val
-                        })
-                  _ => ()
-                }
-                iter_obj
-              })
+            // Add [Symbol.iterator] to entries iterator
+            match iter_obj {
+              Object(data) =>
+                data.symbol_properties[iterator_sym.id] = make_method_func(
+                  "[Symbol.iterator]",
+                  0,
+                  fn(this_val, _args) { this_val },
+                )
+              _ => ()
+            }
+            iter_obj
+          })
           // Add @@unscopables to Array.prototype
           let unscopables_sym_data = match env.get("Symbol") {
             Object(s) =>
@@ -2149,17 +2426,25 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
   let string_proto = env.get("[[StringPrototype]]")
   match string_proto {
     Object(proto_data) => {
-      let iter_method = make_method_func("[Symbol.iterator]", 0, fn(this_val, _args) {
-            let s = this_val.to_string()
-            make_string_iterator_value(s)
-          })
+      let iter_method = make_method_func("[Symbol.iterator]", 0, fn(
+        this_val,
+        _args,
+      ) {
+        let s = this_val.to_string()
+        make_string_iterator_value(s)
+      })
       proto_data.symbol_properties[iterator_sym.id] = iter_method
-      let iter_method_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+      let iter_method_desc : PropDescriptor = {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
       proto_data.symbol_descriptors[iterator_sym.id] = iter_method_desc
     }
     _ => ()
   }
-
 }
 
 ///|
@@ -2449,26 +2734,36 @@ fn setup_math_builtins(env : Environment) -> Unit {
     }
   })
   // Math.sumPrecise(items) - sums iterable of numbers
-  math_props["sumPrecise"] = make_interp_method_func("sumPrecise", 1, fn(interp, _this_val, args) raise {
+  math_props["sumPrecise"] = make_interp_method_func("sumPrecise", 1, fn(
+    interp,
+    _this_val,
+    args,
+  ) raise {
     let items = if args.length() > 0 { args[0] } else { Undefined }
     // items must be an iterable
     let loc = @token.Loc::default()
     let mut sum = 0.0
     let mut count = 0
     match items {
-      Array(arr_data) => {
+      Array(arr_data) =>
         for elem in arr_data.elements {
           match elem {
             Number(n) => sum = sum + n
-            _ => raise @errors.TypeError(message="Math.sumPrecise: non-number value in iterable")
+            _ =>
+              raise @errors.TypeError(
+                message="Math.sumPrecise: non-number value in iterable",
+              )
           }
           count = count + 1
         }
-      }
       Object(_) => {
         // Try to use Symbol.iterator
         let iterator_sym = get_iterator_symbol()
-        let iter_fn = interp.get_computed_property(items, Symbol(iterator_sym), loc)
+        let iter_fn = interp.get_computed_property(
+          items,
+          Symbol(iterator_sym),
+          loc,
+        )
         if is_callable(iter_fn) {
           let iterator = interp.call_value(iter_fn, items, [], loc)
           let next_fn = interp.get_property(iterator, "next", loc)
@@ -2481,15 +2776,23 @@ fn setup_math_builtins(env : Environment) -> Unit {
             let value = interp.get_property(result, "value", loc)
             match value {
               Number(n) => sum = sum + n
-              _ => raise @errors.TypeError(message="Math.sumPrecise: non-number value in iterable")
+              _ =>
+                raise @errors.TypeError(
+                  message="Math.sumPrecise: non-number value in iterable",
+                )
             }
             count = count + 1
           }
         } else {
-          raise @errors.TypeError(message="Math.sumPrecise: argument is not iterable")
+          raise @errors.TypeError(
+            message="Math.sumPrecise: argument is not iterable",
+          )
         }
       }
-      _ => raise @errors.TypeError(message="Math.sumPrecise: argument is not iterable")
+      _ =>
+        raise @errors.TypeError(
+          message="Math.sumPrecise: argument is not iterable",
+        )
     }
     let _ = count
     Number(sum)
@@ -2520,11 +2823,10 @@ fn setup_math_builtins(env : Environment) -> Unit {
   }
   // Methods are writable, non-enumerable, configurable
   let math_methods = [
-    "abs", "floor", "ceil", "round", "trunc", "sqrt", "pow", "min", "max",
-    "random", "sign", "log", "log2", "log10", "sin", "cos", "tan", "asin",
-    "acos", "atan", "atan2", "sinh", "cosh", "tanh", "asinh", "acosh",
-    "atanh", "exp", "expm1", "log1p", "hypot", "cbrt", "clz32", "imul",
-    "fround", "sumPrecise",
+    "abs", "floor", "ceil", "round", "trunc", "sqrt", "pow", "min", "max", "random",
+    "sign", "log", "log2", "log10", "sin", "cos", "tan", "asin", "acos", "atan",
+    "atan2", "sinh", "cosh", "tanh", "asinh", "acosh", "atanh", "exp", "expm1", "log1p",
+    "hypot", "cbrt", "clz32", "imul", "fround", "sumPrecise",
   ]
   for m in math_methods {
     math_descs[m] = method_desc
@@ -2575,17 +2877,24 @@ fn register_error_ctor(
   let proto_props : Map[String, Value] = {}
   proto_props["name"] = String_(name)
   proto_props["message"] = String_("")
-  proto_props["toString"] = make_method_func("toString", 0, fn(this_val, _args) raise {
+  proto_props["toString"] = make_method_func("toString", 0, fn(
+    this_val,
+    _args,
+  ) raise {
     // Step 1: If this is not an Object, throw TypeError
     match this_val {
       Object(_) => ()
-      _ => raise @errors.TypeError(message="Error.prototype.toString requires that 'this' be an Object")
+      _ =>
+        raise @errors.TypeError(
+          message="Error.prototype.toString requires that 'this' be an Object",
+        )
     }
     let name_val = match this_val {
-      Object(data) => match data.properties.get("name") {
-        Some(v) => v
-        None => Undefined
-      }
+      Object(data) =>
+        match data.properties.get("name") {
+          Some(v) => v
+          None => Undefined
+        }
       _ => Undefined
     }
     let name_str = match name_val {
@@ -2594,10 +2903,11 @@ fn register_error_ctor(
       other => other.to_string()
     }
     let msg_val = match this_val {
-      Object(data) => match data.properties.get("message") {
-        Some(v) => v
-        None => Undefined
-      }
+      Object(data) =>
+        match data.properties.get("message") {
+          Some(v) => v
+          None => Undefined
+        }
       _ => Undefined
     }
     let msg_str = match msg_val {
@@ -2613,7 +2923,13 @@ fn register_error_ctor(
       String_(name_str + ": " + msg_str)
     }
   })
-  let proto_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+  let proto_desc : PropDescriptor = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   // Error.prototype class_name should be "Object" per spec (not error type name)
   let proto_obj : Value = Object({
     properties: proto_props,
@@ -2621,7 +2937,11 @@ fn register_error_ctor(
     prototype: parent_proto,
     callable: None,
     class_name: "Object",
-    descriptors: { "name": proto_desc, "message": proto_desc, "toString": proto_desc },
+    descriptors: {
+      "name": proto_desc,
+      "message": proto_desc,
+      "toString": proto_desc,
+    },
     symbol_descriptors: {},
     extensible: true,
   })
@@ -2636,16 +2956,26 @@ fn register_error_ctor(
       None => Null
     }
   }
-  let proto_nw_desc : PropDescriptor = { writable: false, enumerable: false, configurable: false, getter: None, setter: None }
+  let proto_nw_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: false,
+    getter: None,
+    setter: None,
+  }
   env.def_builtin(
     name,
     Object({
-      properties: { "prototype": proto_obj, "name": String_(name), "length": Number(1.0) },
+      properties: {
+        "prototype": proto_obj,
+        "name": String_(name),
+        "length": Number(1.0),
+      },
       symbol_properties: {},
       prototype: ctor_proto,
       callable: Some(
         NativeCallable(name, fn(args) {
-          let has_message = args.length() > 0 && not(args[0] is Undefined)
+          let has_message = args.length() > 0 && !(args[0] is Undefined)
           let message = if has_message {
             match args[0] {
               String_(s) => s
@@ -2659,7 +2989,13 @@ fn register_error_ctor(
             err_props["message"] = String_(message)
           }
           err_props["stack"] = String_(name + ": " + message)
-          let err_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+          let err_desc : PropDescriptor = {
+            writable: true,
+            enumerable: false,
+            configurable: true,
+            getter: None,
+            setter: None,
+          }
           let err_descs : Map[String, PropDescriptor] = { "stack": err_desc }
           if has_message {
             err_descs["message"] = err_desc
@@ -2667,12 +3003,11 @@ fn register_error_ctor(
           // Handle options parameter for cause
           if args.length() > 1 {
             match args[1] {
-              Object(opts_data) => {
+              Object(opts_data) =>
                 if opts_data.properties.contains("cause") {
                   err_props["cause"] = opts_data.properties["cause"]
                   err_descs["cause"] = err_desc
                 }
-              }
               _ => ()
             }
           }
@@ -2689,7 +3024,11 @@ fn register_error_ctor(
         }),
       ),
       class_name: "Function",
-      descriptors: { "name": nf_desc, "length": nf_desc, "prototype": proto_nw_desc },
+      descriptors: {
+        "name": nf_desc,
+        "length": nf_desc,
+        "prototype": proto_nw_desc,
+      },
       symbol_descriptors: {},
       extensible: true,
     }),
@@ -2728,16 +3067,23 @@ fn register_aggregate_error_ctor(
   let proto_props : Map[String, Value] = {}
   proto_props["name"] = String_(name)
   proto_props["message"] = String_("")
-  proto_props["toString"] = make_method_func("toString", 0, fn(this_val, _args) raise {
+  proto_props["toString"] = make_method_func("toString", 0, fn(
+    this_val,
+    _args,
+  ) raise {
     match this_val {
       Object(_) => ()
-      _ => raise @errors.TypeError(message="Error.prototype.toString requires that 'this' be an Object")
+      _ =>
+        raise @errors.TypeError(
+          message="Error.prototype.toString requires that 'this' be an Object",
+        )
     }
     let name_val = match this_val {
-      Object(data) => match data.properties.get("name") {
-        Some(v) => v
-        None => Undefined
-      }
+      Object(data) =>
+        match data.properties.get("name") {
+          Some(v) => v
+          None => Undefined
+        }
       _ => Undefined
     }
     let name_str = match name_val {
@@ -2746,10 +3092,11 @@ fn register_aggregate_error_ctor(
       other => other.to_string()
     }
     let msg_val = match this_val {
-      Object(data) => match data.properties.get("message") {
-        Some(v) => v
-        None => Undefined
-      }
+      Object(data) =>
+        match data.properties.get("message") {
+          Some(v) => v
+          None => Undefined
+        }
       _ => Undefined
     }
     let msg_str = match msg_val {
@@ -2765,14 +3112,24 @@ fn register_aggregate_error_ctor(
       String_(name_str + ": " + msg_str)
     }
   })
-  let proto_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+  let proto_desc : PropDescriptor = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   let proto_obj : Value = Object({
     properties: proto_props,
     symbol_properties: {},
     prototype: parent_proto,
     callable: None,
     class_name: "Object",
-    descriptors: { "name": proto_desc, "message": proto_desc, "toString": proto_desc },
+    descriptors: {
+      "name": proto_desc,
+      "message": proto_desc,
+      "toString": proto_desc,
+    },
     symbol_descriptors: {},
     extensible: true,
   })
@@ -2781,11 +3138,21 @@ fn register_aggregate_error_ctor(
     Some(binding) => binding.value
     None => Null
   }
-  let proto_nw_desc : PropDescriptor = { writable: false, enumerable: false, configurable: false, getter: None, setter: None }
+  let proto_nw_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: false,
+    getter: None,
+    setter: None,
+  }
   env.def_builtin(
     name,
     Object({
-      properties: { "prototype": proto_obj, "length": Number(2.0), "name": String_(name) },
+      properties: {
+        "prototype": proto_obj,
+        "length": Number(2.0),
+        "name": String_(name),
+      },
       symbol_properties: {},
       prototype: ctor_proto,
       callable: Some(
@@ -2812,16 +3179,25 @@ fn register_aggregate_error_ctor(
           // Handle options parameter for cause
           if args.length() > 2 {
             match args[2] {
-              Object(opts_data) => {
+              Object(opts_data) =>
                 if opts_data.properties.contains("cause") {
                   err_props["cause"] = opts_data.properties["cause"]
                 }
-              }
               _ => ()
             }
           }
-          let err_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
-          let err_descs : Map[String, PropDescriptor] = { "message": err_desc, "name": err_desc, "stack": err_desc }
+          let err_desc : PropDescriptor = {
+            writable: true,
+            enumerable: false,
+            configurable: true,
+            getter: None,
+            setter: None,
+          }
+          let err_descs : Map[String, PropDescriptor] = {
+            "message": err_desc,
+            "name": err_desc,
+            "stack": err_desc,
+          }
           if err_props.contains("cause") {
             err_descs["cause"] = err_desc
           }
@@ -2838,7 +3214,11 @@ fn register_aggregate_error_ctor(
         }),
       ),
       class_name: "Function",
-      descriptors: { "name": nf_desc, "length": nf_desc, "prototype": proto_nw_desc },
+      descriptors: {
+        "name": nf_desc,
+        "length": nf_desc,
+        "prototype": proto_nw_desc,
+      },
       symbol_descriptors: {},
       extensible: true,
     }),
@@ -2909,7 +3289,7 @@ fn is_parse_whitespace(c : Char) -> Bool {
   code == 0x202F || // NARROW NO-BREAK SPACE
   code == 0x205F || // MEDIUM MATHEMATICAL SPACE
   code == 0x3000 || // IDEOGRAPHIC SPACE
-  code == 0xFEFF    // BOM
+  code == 0xFEFF // BOM
 }
 
 ///|
@@ -2944,214 +3324,348 @@ fn setup_number_builtins(env : Environment) -> Unit {
     setter: None,
   }
   let number_proto_props : Map[String, Value] = {}
-  number_proto_props["toFixed"] = make_method_func("toFixed", 1, fn(this_val, args) raise {
-        let n : Double = match this_val {
-          Number(v) => v
-          Object(data) =>
-            if data.class_name == "Number" {
-              match data.properties.get("[[NumberData]]") {
-                Some(Number(v)) => v
-                _ =>
-                  raise @errors.TypeError(
-                    message="Number.prototype.toFixed requires that 'this' be a Number",
-                  )
-              }
-            } else {
+  number_proto_props["toFixed"] = make_method_func("toFixed", 1, fn(
+    this_val,
+    args,
+  ) raise {
+    let n : Double = match this_val {
+      Number(v) => v
+      Object(data) =>
+        if data.class_name == "Number" {
+          match data.properties.get("[[NumberData]]") {
+            Some(Number(v)) => v
+            _ =>
               raise @errors.TypeError(
                 message="Number.prototype.toFixed requires that 'this' be a Number",
               )
-            }
-          _ =>
-            raise @errors.TypeError(
-              message="Number.prototype.toFixed requires that 'this' be a Number",
-            )
-        }
-        let digits = if args.length() > 0 {
-          to_number(args[0]).to_int()
+          }
         } else {
-          0
-        }
-        if digits < 0 || digits > 100 {
-          raise @errors.RangeError(
-            message="toFixed() digits argument must be between 0 and 100",
+          raise @errors.TypeError(
+            message="Number.prototype.toFixed requires that 'this' be a Number",
           )
         }
-        if n.is_nan() {
-          return String_("NaN")
-        }
-        if n.is_inf() {
-          return String_(if n > 0.0 { "Infinity" } else { "-Infinity" })
-        }
-        // Simple implementation using multiplier approach
-        if digits == 0 {
-          let rounded = if n >= 0.0 {
-            (n + 0.5).floor()
-          } else {
-            -(-n + 0.5).floor()
-          }
-          return String_(rounded.to_int().to_string())
-        }
-        let multiplier = @math.pow(10.0, digits.to_double())
-        let shifted = n * multiplier
-        let rounded = if shifted >= 0.0 {
-          (shifted + 0.5).floor()
-        } else {
-          -(-shifted + 0.5).floor()
-        }
-        let rounded_abs = rounded.abs()
-        let int_part_abs = (rounded_abs / multiplier).floor()
-        let frac_abs = rounded_abs - int_part_abs * multiplier
-        let buf = StringBuilder::new()
-        if rounded < 0.0 || (n < 0.0 && rounded == 0.0) {
-          buf.write_string("-")
-        }
-        buf.write_string(int_part_abs.to_int().to_string())
-        buf.write_string(".")
-        let frac_str = frac_abs.to_int().to_string()
-        // Pad with leading zeros
-        for _i = 0; _i < digits - frac_str.length(); _i = _i + 1 {
-          buf.write_string("0")
-        }
-        buf.write_string(frac_str)
-        String_(buf.to_string())
-      })
-  number_proto_props["toString"] = make_method_func("toString", 1, fn(this_val, args) raise {
-        // Validate this is a number
-        let n : Double = match this_val {
-          Number(v) => v
-          Object(data) =>
-            if data.class_name == "Number" {
-              match data.properties.get("[[NumberData]]") {
-                Some(Number(v)) => v
-                _ =>
-                  raise @errors.TypeError(
-                    message="Number.prototype.toString requires that 'this' be a Number",
-                  )
-              }
-            } else {
+      _ =>
+        raise @errors.TypeError(
+          message="Number.prototype.toFixed requires that 'this' be a Number",
+        )
+    }
+    let digits = if args.length() > 0 { to_number(args[0]).to_int() } else { 0 }
+    if digits < 0 || digits > 100 {
+      raise @errors.RangeError(
+        message="toFixed() digits argument must be between 0 and 100",
+      )
+    }
+    if n.is_nan() {
+      return String_("NaN")
+    }
+    if n.is_inf() {
+      return String_(if n > 0.0 { "Infinity" } else { "-Infinity" })
+    }
+    // Simple implementation using multiplier approach
+    if digits == 0 {
+      let rounded = if n >= 0.0 {
+        (n + 0.5).floor()
+      } else {
+        -(-n + 0.5).floor()
+      }
+      return String_(rounded.to_int().to_string())
+    }
+    let multiplier = @math.pow(10.0, digits.to_double())
+    let shifted = n * multiplier
+    let rounded = if shifted >= 0.0 {
+      (shifted + 0.5).floor()
+    } else {
+      -(-shifted + 0.5).floor()
+    }
+    let rounded_abs = rounded.abs()
+    let int_part_abs = (rounded_abs / multiplier).floor()
+    let frac_abs = rounded_abs - int_part_abs * multiplier
+    let buf = StringBuilder::new()
+    if rounded < 0.0 || (n < 0.0 && rounded == 0.0) {
+      buf.write_string("-")
+    }
+    buf.write_string(int_part_abs.to_int().to_string())
+    buf.write_string(".")
+    let frac_str = frac_abs.to_int().to_string()
+    // Pad with leading zeros
+    for _i = 0; _i < digits - frac_str.length(); _i = _i + 1 {
+      buf.write_string("0")
+    }
+    buf.write_string(frac_str)
+    String_(buf.to_string())
+  })
+  number_proto_props["toString"] = make_method_func("toString", 1, fn(
+    this_val,
+    args,
+  ) raise {
+    // Validate this is a number
+    let n : Double = match this_val {
+      Number(v) => v
+      Object(data) =>
+        if data.class_name == "Number" {
+          match data.properties.get("[[NumberData]]") {
+            Some(Number(v)) => v
+            _ =>
               raise @errors.TypeError(
                 message="Number.prototype.toString requires that 'this' be a Number",
               )
-            }
-          _ =>
-            raise @errors.TypeError(
-              message="Number.prototype.toString requires that 'this' be a Number",
-            )
-        }
-        let radix = if args.length() > 0 && not(args[0] is Undefined) {
-          let r = to_number(args[0]).to_int()
-          if r < 2 || r > 36 {
-            raise @errors.RangeError(
-              message="toString() radix must be between 2 and 36",
-            )
           }
-          r
         } else {
-          10
+          raise @errors.TypeError(
+            message="Number.prototype.toString requires that 'this' be a Number",
+          )
         }
-        if n.is_nan() {
-          return String_("NaN")
-        }
-        if n.is_inf() {
-          return String_(if n > 0.0 { "Infinity" } else { "-Infinity" })
-        }
-        if radix == 10 {
-          return String_(n.to_string())
-        }
-        // Integer to string in given radix
-        let is_neg = n < 0.0
-        let mut val = n.abs().floor()
-        if val == 0.0 {
-          return String_("0")
-        }
-        let chars : Array[Char] = []
-        let digits = "0123456789abcdefghijklmnopqrstuvwxyz"
-        let digit_chars = digits.to_array()
-        while val > 0.0 {
-          let remainder = (val % radix.to_double()).to_int()
-          chars.push(digit_chars[remainder])
-          val = (val / radix.to_double()).floor()
-        }
-        chars.rev_in_place()
-        let buf = StringBuilder::new()
-        if is_neg {
-          buf.write_string("-")
-        }
-        for c in chars {
-          buf.write_char(c)
-        }
-        String_(buf.to_string())
-      })
-  number_proto_props["valueOf"] = make_method_func("valueOf", 0, fn(this_val, _args) raise {
-        match this_val {
-          Number(_) => this_val
-          Object(data) =>
-            if data.class_name == "Number" {
-              match data.properties.get("[[NumberData]]") {
-                Some(Number(v)) => Number(v)
-                _ =>
-                  raise @errors.TypeError(
-                    message="Number.prototype.valueOf requires that 'this' be a Number",
-                  )
-              }
-            } else {
+      _ =>
+        raise @errors.TypeError(
+          message="Number.prototype.toString requires that 'this' be a Number",
+        )
+    }
+    let radix = if args.length() > 0 && !(args[0] is Undefined) {
+      let r = to_number(args[0]).to_int()
+      if r < 2 || r > 36 {
+        raise @errors.RangeError(
+          message="toString() radix must be between 2 and 36",
+        )
+      }
+      r
+    } else {
+      10
+    }
+    if n.is_nan() {
+      return String_("NaN")
+    }
+    if n.is_inf() {
+      return String_(if n > 0.0 { "Infinity" } else { "-Infinity" })
+    }
+    if radix == 10 {
+      return String_(n.to_string())
+    }
+    // Integer to string in given radix
+    let is_neg = n < 0.0
+    let mut val = n.abs().floor()
+    if val == 0.0 {
+      return String_("0")
+    }
+    let chars : Array[Char] = []
+    let digits = "0123456789abcdefghijklmnopqrstuvwxyz"
+    let digit_chars = digits.to_array()
+    while val > 0.0 {
+      let remainder = (val % radix.to_double()).to_int()
+      chars.push(digit_chars[remainder])
+      val = (val / radix.to_double()).floor()
+    }
+    chars.rev_in_place()
+    let buf = StringBuilder::new()
+    if is_neg {
+      buf.write_string("-")
+    }
+    for c in chars {
+      buf.write_char(c)
+    }
+    String_(buf.to_string())
+  })
+  number_proto_props["valueOf"] = make_method_func("valueOf", 0, fn(
+    this_val,
+    _args,
+  ) raise {
+    match this_val {
+      Number(_) => this_val
+      Object(data) =>
+        if data.class_name == "Number" {
+          match data.properties.get("[[NumberData]]") {
+            Some(Number(v)) => Number(v)
+            _ =>
               raise @errors.TypeError(
                 message="Number.prototype.valueOf requires that 'this' be a Number",
               )
-            }
-          _ =>
-            raise @errors.TypeError(
-              message="Number.prototype.valueOf requires that 'this' be a Number",
-            )
-        }
-      })
-  number_proto_props["toPrecision"] = make_method_func("toPrecision", 1, fn(this_val, args) raise {
-        let n = to_number(this_val)
-        // If no argument or undefined, just return toString result
-        if args.length() == 0 {
-          return String_(n.to_string())
-        }
-        match args[0] {
-          Undefined => return String_(n.to_string())
-          _ => ()
-        }
-        let precision = to_number(args[0]).to_int()
-        if precision < 1 || precision > 100 {
-          raise @errors.RangeError(
-            message="toPrecision() argument must be between 1 and 100",
+          }
+        } else {
+          raise @errors.TypeError(
+            message="Number.prototype.valueOf requires that 'this' be a Number",
           )
         }
-        if n.is_nan() {
-          return String_("NaN")
-        }
-        if n.is_inf() {
-          return String_(if n > 0.0 { "Infinity" } else { "-Infinity" })
-        }
-        // Use exponential format when needed
-        let is_neg = n < 0.0
-        let abs_n = n.abs()
-        if abs_n == 0.0 {
-          let buf = StringBuilder::new()
-          if is_neg {
-            buf.write_string("-")
-          }
+      _ =>
+        raise @errors.TypeError(
+          message="Number.prototype.valueOf requires that 'this' be a Number",
+        )
+    }
+  })
+  number_proto_props["toPrecision"] = make_method_func("toPrecision", 1, fn(
+    this_val,
+    args,
+  ) raise {
+    let n = to_number(this_val)
+    // If no argument or undefined, just return toString result
+    if args.length() == 0 {
+      return String_(n.to_string())
+    }
+    match args[0] {
+      Undefined => return String_(n.to_string())
+      _ => ()
+    }
+    let precision = to_number(args[0]).to_int()
+    if precision < 1 || precision > 100 {
+      raise @errors.RangeError(
+        message="toPrecision() argument must be between 1 and 100",
+      )
+    }
+    if n.is_nan() {
+      return String_("NaN")
+    }
+    if n.is_inf() {
+      return String_(if n > 0.0 { "Infinity" } else { "-Infinity" })
+    }
+    // Use exponential format when needed
+    let is_neg = n < 0.0
+    let abs_n = n.abs()
+    if abs_n == 0.0 {
+      let buf = StringBuilder::new()
+      if is_neg {
+        buf.write_string("-")
+      }
+      buf.write_char('0')
+      if precision > 1 {
+        buf.write_char('.')
+        for _i = 1; _i < precision; _i = _i + 1 {
           buf.write_char('0')
-          if precision > 1 {
-            buf.write_char('.')
-            for _i = 1; _i < precision; _i = _i + 1 {
-              buf.write_char('0')
+        }
+      }
+      return String_(buf.to_string())
+    }
+    // Calculate exponent
+    let log_val = @math.log10(abs_n)
+    let mut exp = log_val.floor().to_int()
+    // If exponent >= precision or < -6, use exponential notation
+    if exp >= precision || exp < -6 {
+      // Use exponential notation
+      let mut mantissa = abs_n / @math.pow(10.0, exp.to_double())
+      // Round mantissa and check for overflow
+      let mult = @math.pow(10.0, (precision - 1).to_double())
+      let rounded_mantissa = (mantissa * mult + 0.5).floor() / mult
+      // If rounding caused overflow (mantissa >= 10), adjust
+      if rounded_mantissa >= 10.0 {
+        mantissa = rounded_mantissa / 10.0
+        exp = exp + 1
+      } else {
+        mantissa = rounded_mantissa
+      }
+      let buf = StringBuilder::new()
+      if is_neg {
+        buf.write_string("-")
+      }
+      // Format mantissa with precision-1 decimal places
+      let mantissa_str = format_number_precision(mantissa, precision)
+      buf.write_string(mantissa_str)
+      buf.write_char('e')
+      if exp >= 0 {
+        buf.write_char('+')
+      }
+      buf.write_string(exp.to_string())
+      return String_(buf.to_string())
+    }
+    // Use fixed notation
+    let decimal_places = precision - exp - 1
+    let buf = StringBuilder::new()
+    if is_neg {
+      buf.write_string("-")
+    }
+    if decimal_places >= 0 {
+      let multiplier = @math.pow(10.0, decimal_places.to_double())
+      let shifted = abs_n * multiplier
+      let rounded = (shifted + 0.5).floor()
+      let int_val = rounded.to_int64()
+      let int_str = int_val.to_string()
+      let int_len = int_str.length()
+      if int_len <= decimal_places {
+        buf.write_string("0.")
+        for _i = 0; _i < decimal_places - int_len; _i = _i + 1 {
+          buf.write_char('0')
+        }
+        buf.write_string(int_str)
+      } else {
+        let int_part_len = int_len - decimal_places
+        let chars = int_str.to_array()
+        for i = 0; i < int_part_len; i = i + 1 {
+          buf.write_char(chars[i])
+        }
+        if decimal_places > 0 {
+          buf.write_char('.')
+          for i = int_part_len; i < int_len; i = i + 1 {
+            buf.write_char(chars[i])
+          }
+        }
+      }
+    } else {
+      let multiplier = @math.pow(10.0, (-decimal_places).to_double())
+      let shifted = abs_n / multiplier
+      let rounded = (shifted + 0.5).floor()
+      buf.write_string((rounded * multiplier).to_int().to_string())
+    }
+    String_(buf.to_string())
+  })
+  number_proto_props["toExponential"] = make_method_func("toExponential", 1, fn(
+    this_val,
+    args,
+  ) raise {
+    let n = to_number(this_val)
+    if n.is_nan() {
+      return String_("NaN")
+    }
+    if n.is_inf() {
+      return String_(if n > 0.0 { "Infinity" } else { "-Infinity" })
+    }
+    let is_neg = n < 0.0
+    let abs_n = n.abs()
+    // Handle zero specially
+    if abs_n == 0.0 {
+      let buf = StringBuilder::new()
+      if is_neg {
+        buf.write_string("-")
+      }
+      buf.write_char('0')
+      if args.length() > 0 {
+        match args[0] {
+          Undefined => ()
+          _ => {
+            let frac_digits = to_number(args[0]).to_int()
+            if frac_digits < 0 || frac_digits > 100 {
+              raise @errors.RangeError(
+                message="toExponential() argument must be between 0 and 100",
+              )
+            }
+            if frac_digits > 0 {
+              buf.write_char('.')
+              for _i = 0; _i < frac_digits; _i = _i + 1 {
+                buf.write_char('0')
+              }
             }
           }
-          return String_(buf.to_string())
         }
-        // Calculate exponent
-        let log_val = @math.log10(abs_n)
-        let mut exp = log_val.floor().to_int()
-        // If exponent >= precision or < -6, use exponential notation
-        if exp >= precision || exp < -6 {
-          // Use exponential notation
-          let mut mantissa = abs_n / @math.pow(10.0, exp.to_double())
+      }
+      buf.write_string("e+0")
+      return String_(buf.to_string())
+    }
+    // Calculate exponent
+    let log_val = @math.log10(abs_n)
+    let mut exp = log_val.floor().to_int()
+    let mut mantissa = abs_n / @math.pow(10.0, exp.to_double())
+    let buf = StringBuilder::new()
+    if is_neg {
+      buf.write_string("-")
+    }
+    // Format mantissa
+    if args.length() > 0 {
+      match args[0] {
+        Undefined => buf.write_string(mantissa.to_string())
+        _ => {
+          let frac_digits = to_number(args[0]).to_int()
+          if frac_digits < 0 || frac_digits > 100 {
+            raise @errors.RangeError(
+              message="toExponential() argument must be between 0 and 100",
+            )
+          }
           // Round mantissa and check for overflow
+          let precision = frac_digits + 1
           let mult = @math.pow(10.0, (precision - 1).to_double())
           let rounded_mantissa = (mantissa * mult + 0.5).floor() / mult
           // If rounding caused overflow (mantissa >= 10), adjust
@@ -3161,173 +3675,59 @@ fn setup_number_builtins(env : Environment) -> Unit {
           } else {
             mantissa = rounded_mantissa
           }
-          let buf = StringBuilder::new()
-          if is_neg {
-            buf.write_string("-")
-          }
-          // Format mantissa with precision-1 decimal places
           let mantissa_str = format_number_precision(mantissa, precision)
           buf.write_string(mantissa_str)
-          buf.write_char('e')
-          if exp >= 0 {
-            buf.write_char('+')
-          }
-          buf.write_string(exp.to_string())
-          return String_(buf.to_string())
         }
-        // Use fixed notation
-        let decimal_places = precision - exp - 1
-        let buf = StringBuilder::new()
-        if is_neg {
-          buf.write_string("-")
-        }
-        if decimal_places >= 0 {
-          let multiplier = @math.pow(10.0, decimal_places.to_double())
-          let shifted = abs_n * multiplier
-          let rounded = (shifted + 0.5).floor()
-          let int_val = rounded.to_int64()
-          let int_str = int_val.to_string()
-          let int_len = int_str.length()
-          if int_len <= decimal_places {
-            buf.write_string("0.")
-            for _i = 0; _i < decimal_places - int_len; _i = _i + 1 {
-              buf.write_char('0')
-            }
-            buf.write_string(int_str)
-          } else {
-            let int_part_len = int_len - decimal_places
-            let chars = int_str.to_array()
-            for i = 0; i < int_part_len; i = i + 1 {
-              buf.write_char(chars[i])
-            }
-            if decimal_places > 0 {
-              buf.write_char('.')
-              for i = int_part_len; i < int_len; i = i + 1 {
-                buf.write_char(chars[i])
-              }
-            }
-          }
-        } else {
-          let multiplier = @math.pow(10.0, (-decimal_places).to_double())
-          let shifted = abs_n / multiplier
-          let rounded = (shifted + 0.5).floor()
-          buf.write_string((rounded * multiplier).to_int().to_string())
-        }
-        String_(buf.to_string())
-      })
-  number_proto_props["toExponential"] = make_method_func("toExponential", 1, fn(this_val, args) raise {
-        let n = to_number(this_val)
-        if n.is_nan() {
-          return String_("NaN")
-        }
-        if n.is_inf() {
-          return String_(if n > 0.0 { "Infinity" } else { "-Infinity" })
-        }
-        let is_neg = n < 0.0
-        let abs_n = n.abs()
-        // Handle zero specially
-        if abs_n == 0.0 {
-          let buf = StringBuilder::new()
-          if is_neg {
-            buf.write_string("-")
-          }
-          buf.write_char('0')
-          if args.length() > 0 {
-            match args[0] {
-              Undefined => ()
-              _ => {
-                let frac_digits = to_number(args[0]).to_int()
-                if frac_digits < 0 || frac_digits > 100 {
-                  raise @errors.RangeError(
-                    message="toExponential() argument must be between 0 and 100",
-                  )
-                }
-                if frac_digits > 0 {
-                  buf.write_char('.')
-                  for _i = 0; _i < frac_digits; _i = _i + 1 {
-                    buf.write_char('0')
-                  }
-                }
-              }
-            }
-          }
-          buf.write_string("e+0")
-          return String_(buf.to_string())
-        }
-        // Calculate exponent
-        let log_val = @math.log10(abs_n)
-        let mut exp = log_val.floor().to_int()
-        let mut mantissa = abs_n / @math.pow(10.0, exp.to_double())
-        let buf = StringBuilder::new()
-        if is_neg {
-          buf.write_string("-")
-        }
-        // Format mantissa
-        if args.length() > 0 {
-          match args[0] {
-            Undefined => buf.write_string(mantissa.to_string())
-            _ => {
-              let frac_digits = to_number(args[0]).to_int()
-              if frac_digits < 0 || frac_digits > 100 {
-                raise @errors.RangeError(
-                  message="toExponential() argument must be between 0 and 100",
-                )
-              }
-              // Round mantissa and check for overflow
-              let precision = frac_digits + 1
-              let mult = @math.pow(10.0, (precision - 1).to_double())
-              let rounded_mantissa = (mantissa * mult + 0.5).floor() / mult
-              // If rounding caused overflow (mantissa >= 10), adjust
-              if rounded_mantissa >= 10.0 {
-                mantissa = rounded_mantissa / 10.0
-                exp = exp + 1
-              } else {
-                mantissa = rounded_mantissa
-              }
-              let mantissa_str = format_number_precision(mantissa, precision)
-              buf.write_string(mantissa_str)
-            }
-          }
-        } else {
-          buf.write_string(mantissa.to_string())
-        }
-        buf.write_char('e')
-        if exp >= 0 {
-          buf.write_char('+')
-        }
-        buf.write_string(exp.to_string())
-        String_(buf.to_string())
-      })
-  number_proto_props["toLocaleString"] = make_method_func("toLocaleString", 0, fn(this_val, _args) raise {
-        // Extract numeric value (same pattern as toFixed/toString)
-        let n : Double = match this_val {
-          Number(v) => v
-          Object(data) =>
-            if data.class_name == "Number" {
-              match data.properties.get("[[NumberData]]") {
-                Some(Number(v)) => v
-                _ =>
-                  raise @errors.TypeError(
-                    message="Number.prototype.toLocaleString requires that 'this' be a Number",
-                  )
-              }
-            } else {
+      }
+    } else {
+      buf.write_string(mantissa.to_string())
+    }
+    buf.write_char('e')
+    if exp >= 0 {
+      buf.write_char('+')
+    }
+    buf.write_string(exp.to_string())
+    String_(buf.to_string())
+  })
+  number_proto_props["toLocaleString"] = make_method_func("toLocaleString", 0, fn(
+    this_val,
+    _args,
+  ) raise {
+    // Extract numeric value (same pattern as toFixed/toString)
+    let n : Double = match this_val {
+      Number(v) => v
+      Object(data) =>
+        if data.class_name == "Number" {
+          match data.properties.get("[[NumberData]]") {
+            Some(Number(v)) => v
+            _ =>
               raise @errors.TypeError(
                 message="Number.prototype.toLocaleString requires that 'this' be a Number",
               )
-            }
-          _ =>
-            raise @errors.TypeError(
-              message="Number.prototype.toLocaleString requires that 'this' be a Number",
-            )
+          }
+        } else {
+          raise @errors.TypeError(
+            message="Number.prototype.toLocaleString requires that 'this' be a Number",
+          )
         }
-        // Simple implementation: delegate to toString()
-        // Full locale support would require Intl.NumberFormat (out of scope)
-        String_(n.to_string())
-      })
+      _ =>
+        raise @errors.TypeError(
+          message="Number.prototype.toLocaleString requires that 'this' be a Number",
+        )
+    }
+    // Simple implementation: delegate to toString()
+    // Full locale support would require Intl.NumberFormat (out of scope)
+    String_(n.to_string())
+  })
   // Per ES spec, Number.prototype has [[NumberData]] internal slot with value +0
   number_proto_props["[[NumberData]]"] = Number(0.0)
-  let num_method_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+  let num_method_desc : PropDescriptor = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   let number_proto_descs : Map[String, PropDescriptor] = {}
   number_proto_descs["toString"] = num_method_desc
   number_proto_descs["toLocaleString"] = num_method_desc
@@ -3366,14 +3766,18 @@ fn setup_number_builtins(env : Environment) -> Unit {
       _ => Bool(false) // Number.isNaN does NOT coerce
     }
   })
-  number_props["isFinite"] = make_static_func_with_length("isFinite", 1, fn(args) {
+  number_props["isFinite"] = make_static_func_with_length("isFinite", 1, fn(
+    args,
+  ) {
     let val = if args.length() > 0 { args[0] } else { Undefined }
     match val {
-      Number(n) => Bool(not(n.is_nan()) && not(n.is_inf()))
+      Number(n) => Bool(!n.is_nan() && !n.is_inf())
       _ => Bool(false) // Number.isFinite does NOT coerce
     }
   })
-  number_props["isInteger"] = make_static_func_with_length("isInteger", 1, fn(args) {
+  number_props["isInteger"] = make_static_func_with_length("isInteger", 1, fn(
+    args,
+  ) {
     let val = if args.length() > 0 { args[0] } else { Undefined }
     match val {
       Number(n) =>
@@ -3385,23 +3789,27 @@ fn setup_number_builtins(env : Environment) -> Unit {
       _ => Bool(false)
     }
   })
-  number_props["isSafeInteger"] = make_static_func_with_length("isSafeInteger", 1, fn(args) {
-    // Number.isSafeInteger() - check if value is a safe integer
-    // Safe integers are integers in range -(2^53-1) to 2^53-1
-    let val = if args.length() > 0 { args[0] } else { Undefined }
-    match val {
-      Number(n) =>
-        if n.is_nan() || n.is_inf() {
-          Bool(false)
-        } else if n.floor() != n {
-          Bool(false)
-        } else {
-          let max_safe = 9007199254740991.0
-          Bool(n >= -max_safe && n <= max_safe)
-        }
-      _ => Bool(false)
-    }
-  })
+  number_props["isSafeInteger"] = make_static_func_with_length(
+    "isSafeInteger",
+    1,
+    fn(args) {
+      // Number.isSafeInteger() - check if value is a safe integer
+      // Safe integers are integers in range -(2^53-1) to 2^53-1
+      let val = if args.length() > 0 { args[0] } else { Undefined }
+      match val {
+        Number(n) =>
+          if n.is_nan() || n.is_inf() {
+            Bool(false)
+          } else if n.floor() != n {
+            Bool(false)
+          } else {
+            let max_safe = 9007199254740991.0
+            Bool(n >= -max_safe && n <= max_safe)
+          }
+        _ => Bool(false)
+      }
+    },
+  )
   number_props["parseInt"] = env.get("parseInt") catch { _ => Undefined }
   number_props["parseFloat"] = env.get("parseFloat") catch { _ => Undefined }
   number_props["name"] = String_("Number")
@@ -3425,8 +3833,20 @@ fn setup_number_builtins(env : Environment) -> Unit {
   number_descs["POSITIVE_INFINITY"] = const_desc
   number_descs["NEGATIVE_INFINITY"] = const_desc
   number_descs["NaN"] = const_desc
-  number_descs["prototype"] = { writable: false, enumerable: false, configurable: false, getter: None, setter: None }
-  let num_method_desc : PropDescriptor = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+  number_descs["prototype"] = {
+    writable: false,
+    enumerable: false,
+    configurable: false,
+    getter: None,
+    setter: None,
+  }
+  let num_method_desc : PropDescriptor = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   number_descs["isNaN"] = num_method_desc
   number_descs["isFinite"] = num_method_desc
   number_descs["isInteger"] = num_method_desc
@@ -3442,11 +3862,7 @@ fn setup_number_builtins(env : Environment) -> Unit {
       callable: Some(
         NativeCallable("Number", fn(args) raise {
           // Per spec: Number() with no args returns +0, not NaN
-          let n = if args.length() > 0 {
-            to_number(args[0])
-          } else {
-            0.0
-          }
+          let n = if args.length() > 0 { to_number(args[0]) } else { 0.0 }
           if is_constructing.val {
             // new Number(value) → boxed Number object
             Object({
@@ -3498,7 +3914,9 @@ fn setup_json_builtins(env : Environment) -> Unit {
     getter: None,
     setter: None,
   }
-  json_props["parse"] = make_static_func_with_length("parse", 2, fn(args) raise {
+  json_props["parse"] = make_static_func_with_length("parse", 2, fn(
+    args,
+  ) raise {
     let str = if args.length() > 0 { to_js_string(args[0]) } else { "" }
     let result = json_parse(str)
     // Handle reviver
@@ -3526,96 +3944,107 @@ fn setup_json_builtins(env : Environment) -> Unit {
     result
   })
   json_descs["parse"] = ne_desc
-  json_props["stringify"] = make_interp_method_func("stringify", 3, fn(interp, _this, args) raise {
-        let val = if args.length() > 0 { args[0] } else { Undefined }
-        let indent = if args.length() > 2 {
-          // Per spec: unwrap Number/String objects, cap at 10
-          let space_arg = match args[2] {
-            Object(data) =>
-              if data.class_name == "Number" {
-                match data.properties.get("[[NumberData]]") {
-                  Some(n) => n
-                  None => args[2]
-                }
-              } else if data.class_name == "String" {
-                match data.properties.get("[[StringData]]") {
-                  Some(s) => s
-                  None => args[2]
-                }
-              } else {
-                args[2]
-              }
-            _ => args[2]
-          }
-          match space_arg {
-            Number(n) => {
-              let spaces = if n.to_int() > 10 { 10 } else { n.to_int() }
-              if spaces > 0 {
-                let buf = StringBuilder::new()
-                for _i = 0; _i < spaces; _i = _i + 1 {
-                  buf.write_char(' ')
-                }
-                Some(buf.to_string())
-              } else {
-                None
-              }
+  json_props["stringify"] = make_interp_method_func("stringify", 3, fn(
+    interp,
+    _this,
+    args,
+  ) raise {
+    let val = if args.length() > 0 { args[0] } else { Undefined }
+    let indent = if args.length() > 2 {
+      // Per spec: unwrap Number/String objects, cap at 10
+      let space_arg = match args[2] {
+        Object(data) =>
+          if data.class_name == "Number" {
+            match data.properties.get("[[NumberData]]") {
+              Some(n) => n
+              None => args[2]
             }
-            String_(s) =>
-              if s.length() > 10 {
-                Some(s[:10].to_string())
-              } else if s.length() > 0 {
-                Some(s)
-              } else {
-                None
-              }
-            _ => None
-          }
-        } else {
-          None
-        }
-        let replacer : Value? = if args.length() > 1 && is_callable(args[1]) {
-          Some(args[1])
-        } else {
-          None
-        }
-        // Handle replacer array (property list filter)
-        let property_list : Array[String]? = if args.length() > 1 {
-          match args[1] {
-            Array(arr) => {
-              let keys : Array[String] = []
-              for elem in arr.elements {
-                match elem {
-                  String_(s) => keys.push(s)
-                  Number(n) => keys.push(n.to_string())
-                  _ => ()
-                }
-              }
-              Some(keys)
+          } else if data.class_name == "String" {
+            match data.properties.get("[[StringData]]") {
+              Some(s) => s
+              None => args[2]
             }
-            _ => None
+          } else {
+            args[2]
           }
-        } else {
-          None
+        _ => args[2]
+      }
+      match space_arg {
+        Number(n) => {
+          let spaces = if n.to_int() > 10 { 10 } else { n.to_int() }
+          if spaces > 0 {
+            let buf = StringBuilder::new()
+            for _i = 0; _i < spaces; _i = _i + 1 {
+              buf.write_char(' ')
+            }
+            Some(buf.to_string())
+          } else {
+            None
+          }
         }
-        // Wrap value in root holder for replacer
-        let root_props : Map[String, Value] = {}
-        root_props[""] = val
-        let root : Value = Object({
-          properties: root_props,
-          symbol_properties: {},
-          prototype: Null,
-          callable: None,
-          class_name: "Object",
-          descriptors: {},
-          symbol_descriptors: {},
-          extensible: true,
-        })
-        let seen : Array[Value] = []
-        json_stringify_value(
-          val, seen, indent, 0, Some(interp), replacer~, holder=root, key="",
-          property_list~,
-        )
-      })
+        String_(s) =>
+          if s.length() > 10 {
+            Some(s[:10].to_string())
+          } else if s.length() > 0 {
+            Some(s)
+          } else {
+            None
+          }
+        _ => None
+      }
+    } else {
+      None
+    }
+    let replacer : Value? = if args.length() > 1 && is_callable(args[1]) {
+      Some(args[1])
+    } else {
+      None
+    }
+    // Handle replacer array (property list filter)
+    let property_list : Array[String]? = if args.length() > 1 {
+      match args[1] {
+        Array(arr) => {
+          let keys : Array[String] = []
+          for elem in arr.elements {
+            match elem {
+              String_(s) => keys.push(s)
+              Number(n) => keys.push(n.to_string())
+              _ => ()
+            }
+          }
+          Some(keys)
+        }
+        _ => None
+      }
+    } else {
+      None
+    }
+    // Wrap value in root holder for replacer
+    let root_props : Map[String, Value] = {}
+    root_props[""] = val
+    let root : Value = Object({
+      properties: root_props,
+      symbol_properties: {},
+      prototype: Null,
+      callable: None,
+      class_name: "Object",
+      descriptors: {},
+      symbol_descriptors: {},
+      extensible: true,
+    })
+    let seen : Array[Value] = []
+    json_stringify_value(
+      val,
+      seen,
+      indent,
+      0,
+      Some(interp),
+      replacer~,
+      holder=root,
+      key="",
+      property_list~,
+    )
+  })
   json_descs["stringify"] = ne_desc
   // Symbol.toStringTag = "JSON"
   let tostringtag_sym = get_tostringtag_symbol()
@@ -3809,7 +4238,7 @@ fn json_parse(input : String) -> Value raise Error {
     for i = start; i < pos[0]; i = i + 1 {
       buf.write_char(chars[i])
     }
-    let n = @strconv.parse_double(buf.to_string()) catch {
+    let n = @string.parse_double(buf.to_string()) catch {
       _ => raise @errors.SyntaxError(message="Invalid number in JSON")
     }
     Number(n)
@@ -3929,7 +4358,7 @@ fn json_internalize(
         None => Undefined
       }
     Array(arr_data) => {
-      let idx = @strconv.parse_int(name) catch { _ => -1 }
+      let idx = @string.parse_int(name) catch { _ => -1 }
       if idx >= 0 && idx < arr_data.elements.length() {
         arr_data.elements[idx]
       } else {
@@ -3955,20 +4384,14 @@ fn json_internalize(
         }
       }
     }
-    Array(arr_data) => {
+    Array(arr_data) =>
       for i = 0; i < arr_data.elements.length(); i = i + 1 {
-        let new_val = json_internalize(
-          val,
-          i.to_string(),
-          reviver,
-          interp,
-        )
+        let new_val = json_internalize(val, i.to_string(), reviver, interp)
         match new_val {
           Undefined => arr_data.elements[i] = Undefined
           _ => arr_data.elements[i] = new_val
         }
       }
-    }
     _ => ()
   }
   // Call reviver with (holder, name, val)
@@ -4026,7 +4449,15 @@ fn json_stringify_value(
       // Unwrap proxy to its target and serialize that
       match proxy_data.target {
         Some(target) =>
-          json_stringify_value(target, seen, indent, depth, interp, replacer~, property_list~)
+          json_stringify_value(
+            target,
+            seen,
+            indent,
+            depth,
+            interp,
+            replacer~,
+            property_list~,
+          )
         None => String_("{}")
       }
     Array(data) => {
@@ -4049,12 +4480,19 @@ fn json_stringify_value(
       let mut first = true
       for idx, el in data.elements {
         let stringified = json_stringify_value(
-          el, seen, indent, new_depth, interp, replacer~,
-          holder=val, key=idx.to_string(), property_list~,
+          el,
+          seen,
+          indent,
+          new_depth,
+          interp,
+          replacer~,
+          holder=val,
+          key=idx.to_string(),
+          property_list~,
         )
         match stringified {
           Undefined => {
-            if not(first) {
+            if !first {
               buf.write_char(',')
               match indent {
                 Some(_) => ()
@@ -4074,7 +4512,7 @@ fn json_stringify_value(
             buf.write_string("null")
           }
           String_(s) => {
-            if not(first) {
+            if !first {
               buf.write_char(',')
             }
             first = false
@@ -4123,8 +4561,7 @@ fn json_stringify_value(
             }
           } else if data.class_name == "String" {
             match data.properties.get("[[StringData]]") {
-              Some(String_(s)) =>
-                return String_(json_escape_string(s))
+              Some(String_(s)) => return String_(json_escape_string(s))
               _ => ()
             }
           } else if data.class_name == "Boolean" {
@@ -4174,7 +4611,13 @@ fn json_stringify_value(
                   match json_val {
                     Some(v) =>
                       return json_stringify_value(
-                        v, seen, indent, depth, interp, replacer~, property_list~,
+                        v,
+                        seen,
+                        indent,
+                        depth,
+                        interp,
+                        replacer~,
+                        property_list~,
                       )
                     None => ()
                   }
@@ -4225,13 +4668,20 @@ fn json_stringify_value(
               None => continue
             }
             let stringified = json_stringify_value(
-              v, seen, indent, new_depth, interp, replacer~,
-              holder=val, key=k, property_list~,
+              v,
+              seen,
+              indent,
+              new_depth,
+              interp,
+              replacer~,
+              holder=val,
+              key=k,
+              property_list~,
             )
             match stringified {
               Undefined => () // Skip undefined values
               String_(s) => {
-                if not(first) {
+                if !first {
                   buf.write_char(',')
                 }
                 first = false
@@ -4257,7 +4707,7 @@ fn json_stringify_value(
           }
           match indent {
             Some(ind) =>
-              if not(first) {
+              if !first {
                 buf.write_char('\n')
                 for _i = 0; _i < depth; _i = _i + 1 {
                   buf.write_string(ind)
@@ -4280,146 +4730,264 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
   match prop {
     "toFixed" =>
       make_method_func("toFixed", 1, fn(this_val, args) raise {
-            let n = to_number(this_val)
-            let digits = if args.length() > 0 {
-              to_number(args[0]).to_int()
-            } else {
-              0
-            }
-            if digits < 0 || digits > 100 {
-              raise @errors.RangeError(
-                message="toFixed() digits argument must be between 0 and 100",
-              )
-            }
-            if n.is_nan() {
-              return String_("NaN")
-            }
-            if n.is_inf() {
-              return String_(if n > 0.0 { "Infinity" } else { "-Infinity" })
-            }
-            if digits == 0 {
-              let rounded = if n >= 0.0 {
-                (n + 0.5).floor()
-              } else {
-                -(-n + 0.5).floor()
-              }
-              return String_(rounded.to_int().to_string())
-            }
-            let multiplier = @math.pow(10.0, digits.to_double())
-            let shifted = n * multiplier
-            let rounded = if shifted >= 0.0 {
-              (shifted + 0.5).floor()
-            } else {
-              -(-shifted + 0.5).floor()
-            }
-            let rounded_abs = rounded.abs()
-            let int_part_abs = (rounded_abs / multiplier).floor()
-            let frac_abs = rounded_abs - int_part_abs * multiplier
-            let buf = StringBuilder::new()
-            if rounded < 0.0 || (n < 0.0 && rounded == 0.0) {
-              buf.write_string("-")
-            }
-            buf.write_string(int_part_abs.to_int().to_string())
-            buf.write_string(".")
-            let frac_str = frac_abs.to_int().to_string()
-            for _i = 0; _i < digits - frac_str.length(); _i = _i + 1 {
-              buf.write_string("0")
-            }
-            buf.write_string(frac_str)
-            String_(buf.to_string())
-          })
+        let n = to_number(this_val)
+        let digits = if args.length() > 0 {
+          to_number(args[0]).to_int()
+        } else {
+          0
+        }
+        if digits < 0 || digits > 100 {
+          raise @errors.RangeError(
+            message="toFixed() digits argument must be between 0 and 100",
+          )
+        }
+        if n.is_nan() {
+          return String_("NaN")
+        }
+        if n.is_inf() {
+          return String_(if n > 0.0 { "Infinity" } else { "-Infinity" })
+        }
+        if digits == 0 {
+          let rounded = if n >= 0.0 {
+            (n + 0.5).floor()
+          } else {
+            -(-n + 0.5).floor()
+          }
+          return String_(rounded.to_int().to_string())
+        }
+        let multiplier = @math.pow(10.0, digits.to_double())
+        let shifted = n * multiplier
+        let rounded = if shifted >= 0.0 {
+          (shifted + 0.5).floor()
+        } else {
+          -(-shifted + 0.5).floor()
+        }
+        let rounded_abs = rounded.abs()
+        let int_part_abs = (rounded_abs / multiplier).floor()
+        let frac_abs = rounded_abs - int_part_abs * multiplier
+        let buf = StringBuilder::new()
+        if rounded < 0.0 || (n < 0.0 && rounded == 0.0) {
+          buf.write_string("-")
+        }
+        buf.write_string(int_part_abs.to_int().to_string())
+        buf.write_string(".")
+        let frac_str = frac_abs.to_int().to_string()
+        for _i = 0; _i < digits - frac_str.length(); _i = _i + 1 {
+          buf.write_string("0")
+        }
+        buf.write_string(frac_str)
+        String_(buf.to_string())
+      })
     "toString" =>
       make_method_func("toString", 0, fn(this_val, args) raise {
-            let n = to_number(this_val)
-            let radix = if args.length() > 0 {
-              to_number(args[0]).to_int()
-            } else {
-              10
-            }
-            if radix < 2 || radix > 36 {
-              raise @errors.RangeError(
-                message="toString() radix must be between 2 and 36",
-              )
-            }
-            if n.is_nan() {
-              return String_("NaN")
-            }
-            if n.is_inf() {
-              return String_(if n > 0.0 { "Infinity" } else { "-Infinity" })
-            }
-            if radix == 10 {
-              return String_(num_val.to_string())
-            }
-            let is_neg = n < 0.0
-            let mut val = n.abs().floor()
-            if val == 0.0 {
-              return String_("0")
-            }
-            let digits_arr : Array[Char] = []
-            let digit_str = "0123456789abcdefghijklmnopqrstuvwxyz"
-            let digit_chars = digit_str.to_array()
-            while val > 0.0 {
-              let remainder = (val % radix.to_double()).to_int()
-              digits_arr.push(digit_chars[remainder])
-              val = (val / radix.to_double()).floor()
-            }
-            digits_arr.rev_in_place()
-            let buf = StringBuilder::new()
-            if is_neg {
-              buf.write_string("-")
-            }
-            for c in digits_arr {
-              buf.write_char(c)
-            }
-            String_(buf.to_string())
-          })
+        let n = to_number(this_val)
+        let radix = if args.length() > 0 {
+          to_number(args[0]).to_int()
+        } else {
+          10
+        }
+        if radix < 2 || radix > 36 {
+          raise @errors.RangeError(
+            message="toString() radix must be between 2 and 36",
+          )
+        }
+        if n.is_nan() {
+          return String_("NaN")
+        }
+        if n.is_inf() {
+          return String_(if n > 0.0 { "Infinity" } else { "-Infinity" })
+        }
+        if radix == 10 {
+          return String_(num_val.to_string())
+        }
+        let is_neg = n < 0.0
+        let mut val = n.abs().floor()
+        if val == 0.0 {
+          return String_("0")
+        }
+        let digits_arr : Array[Char] = []
+        let digit_str = "0123456789abcdefghijklmnopqrstuvwxyz"
+        let digit_chars = digit_str.to_array()
+        while val > 0.0 {
+          let remainder = (val % radix.to_double()).to_int()
+          digits_arr.push(digit_chars[remainder])
+          val = (val / radix.to_double()).floor()
+        }
+        digits_arr.rev_in_place()
+        let buf = StringBuilder::new()
+        if is_neg {
+          buf.write_string("-")
+        }
+        for c in digits_arr {
+          buf.write_char(c)
+        }
+        String_(buf.to_string())
+      })
     "valueOf" =>
       make_method_func("valueOf", 0, fn(this_val, _args) raise {
-            Number(to_number(this_val))
-          })
+        Number(to_number(this_val))
+      })
     "toPrecision" =>
       make_method_func("toPrecision", 1, fn(this_val, args) raise {
-            let n = to_number(this_val)
-            if args.length() == 0 {
-              return String_(n.to_string())
-            }
-            match args[0] {
-              Undefined => return String_(n.to_string())
-              _ => ()
-            }
-            let precision = to_number(args[0]).to_int()
-            if precision < 1 || precision > 100 {
-              raise @errors.RangeError(
-                message="toPrecision() argument must be between 1 and 100",
-              )
-            }
-            if n.is_nan() {
-              return String_("NaN")
-            }
-            if n.is_inf() {
-              return String_(if n > 0.0 { "Infinity" } else { "-Infinity" })
-            }
-            let is_neg = n < 0.0
-            let abs_n = n.abs()
-            if abs_n == 0.0 {
-              let buf = StringBuilder::new()
-              if is_neg {
-                buf.write_string("-")
-              }
+        let n = to_number(this_val)
+        if args.length() == 0 {
+          return String_(n.to_string())
+        }
+        match args[0] {
+          Undefined => return String_(n.to_string())
+          _ => ()
+        }
+        let precision = to_number(args[0]).to_int()
+        if precision < 1 || precision > 100 {
+          raise @errors.RangeError(
+            message="toPrecision() argument must be between 1 and 100",
+          )
+        }
+        if n.is_nan() {
+          return String_("NaN")
+        }
+        if n.is_inf() {
+          return String_(if n > 0.0 { "Infinity" } else { "-Infinity" })
+        }
+        let is_neg = n < 0.0
+        let abs_n = n.abs()
+        if abs_n == 0.0 {
+          let buf = StringBuilder::new()
+          if is_neg {
+            buf.write_string("-")
+          }
+          buf.write_char('0')
+          if precision > 1 {
+            buf.write_char('.')
+            for _i = 1; _i < precision; _i = _i + 1 {
               buf.write_char('0')
-              if precision > 1 {
-                buf.write_char('.')
-                for _i = 1; _i < precision; _i = _i + 1 {
-                  buf.write_char('0')
+            }
+          }
+          return String_(buf.to_string())
+        }
+        let log_val = @math.log10(abs_n)
+        let mut exp = log_val.floor().to_int()
+        if exp >= precision || exp < -6 {
+          let mut mantissa = abs_n / @math.pow(10.0, exp.to_double())
+          // Round mantissa and check for overflow
+          let mult = @math.pow(10.0, (precision - 1).to_double())
+          let rounded_mantissa = (mantissa * mult + 0.5).floor() / mult
+          if rounded_mantissa >= 10.0 {
+            mantissa = rounded_mantissa / 10.0
+            exp = exp + 1
+          } else {
+            mantissa = rounded_mantissa
+          }
+          let buf = StringBuilder::new()
+          if is_neg {
+            buf.write_string("-")
+          }
+          let mantissa_str = format_number_precision(mantissa, precision)
+          buf.write_string(mantissa_str)
+          buf.write_char('e')
+          if exp >= 0 {
+            buf.write_char('+')
+          }
+          buf.write_string(exp.to_string())
+          return String_(buf.to_string())
+        }
+        let decimal_places = precision - exp - 1
+        let buf = StringBuilder::new()
+        if is_neg {
+          buf.write_string("-")
+        }
+        if decimal_places >= 0 {
+          let multiplier = @math.pow(10.0, decimal_places.to_double())
+          let shifted = abs_n * multiplier
+          let rounded = (shifted + 0.5).floor()
+          let int_val = rounded.to_int64()
+          let int_str = int_val.to_string()
+          let int_len = int_str.length()
+          if int_len <= decimal_places {
+            buf.write_string("0.")
+            for _i = 0; _i < decimal_places - int_len; _i = _i + 1 {
+              buf.write_char('0')
+            }
+            buf.write_string(int_str)
+          } else {
+            let int_part_len = int_len - decimal_places
+            let chars = int_str.to_array()
+            for i = 0; i < int_part_len; i = i + 1 {
+              buf.write_char(chars[i])
+            }
+            if decimal_places > 0 {
+              buf.write_char('.')
+              for i = int_part_len; i < int_len; i = i + 1 {
+                buf.write_char(chars[i])
+              }
+            }
+          }
+        } else {
+          let multiplier = @math.pow(10.0, (-decimal_places).to_double())
+          let shifted = abs_n / multiplier
+          let rounded = (shifted + 0.5).floor()
+          buf.write_string((rounded * multiplier).to_int().to_string())
+        }
+        String_(buf.to_string())
+      })
+    "toExponential" =>
+      make_method_func("toExponential", 1, fn(this_val, args) raise {
+        let n = to_number(this_val)
+        if n.is_nan() {
+          return String_("NaN")
+        }
+        if n.is_inf() {
+          return String_(if n > 0.0 { "Infinity" } else { "-Infinity" })
+        }
+        let is_neg = n < 0.0
+        let abs_n = n.abs()
+        if abs_n == 0.0 {
+          let buf = StringBuilder::new()
+          if is_neg {
+            buf.write_string("-")
+          }
+          buf.write_char('0')
+          if args.length() > 0 {
+            match args[0] {
+              Undefined => ()
+              _ => {
+                let frac_digits = to_number(args[0]).to_int()
+                if frac_digits < 0 || frac_digits > 100 {
+                  raise @errors.RangeError(
+                    message="toExponential() argument must be between 0 and 100",
+                  )
+                }
+                if frac_digits > 0 {
+                  buf.write_char('.')
+                  for _i = 0; _i < frac_digits; _i = _i + 1 {
+                    buf.write_char('0')
+                  }
                 }
               }
-              return String_(buf.to_string())
             }
-            let log_val = @math.log10(abs_n)
-            let mut exp = log_val.floor().to_int()
-            if exp >= precision || exp < -6 {
-              let mut mantissa = abs_n / @math.pow(10.0, exp.to_double())
+          }
+          buf.write_string("e+0")
+          return String_(buf.to_string())
+        }
+        let log_val = @math.log10(abs_n)
+        let mut exp = log_val.floor().to_int()
+        let mut mantissa = abs_n / @math.pow(10.0, exp.to_double())
+        let buf = StringBuilder::new()
+        if is_neg {
+          buf.write_string("-")
+        }
+        if args.length() > 0 {
+          match args[0] {
+            Undefined => buf.write_string(mantissa.to_string())
+            _ => {
+              let frac_digits = to_number(args[0]).to_int()
+              if frac_digits < 0 || frac_digits > 100 {
+                raise @errors.RangeError(
+                  message="toExponential() argument must be between 0 and 100",
+                )
+              }
               // Round mantissa and check for overflow
+              let precision = frac_digits + 1
               let mult = @math.pow(10.0, (precision - 1).to_double())
               let rounded_mantissa = (mantissa * mult + 0.5).floor() / mult
               if rounded_mantissa >= 10.0 {
@@ -4428,140 +4996,20 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
               } else {
                 mantissa = rounded_mantissa
               }
-              let buf = StringBuilder::new()
-              if is_neg {
-                buf.write_string("-")
-              }
               let mantissa_str = format_number_precision(mantissa, precision)
               buf.write_string(mantissa_str)
-              buf.write_char('e')
-              if exp >= 0 {
-                buf.write_char('+')
-              }
-              buf.write_string(exp.to_string())
-              return String_(buf.to_string())
             }
-            let decimal_places = precision - exp - 1
-            let buf = StringBuilder::new()
-            if is_neg {
-              buf.write_string("-")
-            }
-            if decimal_places >= 0 {
-              let multiplier = @math.pow(10.0, decimal_places.to_double())
-              let shifted = abs_n * multiplier
-              let rounded = (shifted + 0.5).floor()
-              let int_val = rounded.to_int64()
-              let int_str = int_val.to_string()
-              let int_len = int_str.length()
-              if int_len <= decimal_places {
-                buf.write_string("0.")
-                for _i = 0; _i < decimal_places - int_len; _i = _i + 1 {
-                  buf.write_char('0')
-                }
-                buf.write_string(int_str)
-              } else {
-                let int_part_len = int_len - decimal_places
-                let chars = int_str.to_array()
-                for i = 0; i < int_part_len; i = i + 1 {
-                  buf.write_char(chars[i])
-                }
-                if decimal_places > 0 {
-                  buf.write_char('.')
-                  for i = int_part_len; i < int_len; i = i + 1 {
-                    buf.write_char(chars[i])
-                  }
-                }
-              }
-            } else {
-              let multiplier = @math.pow(10.0, (-decimal_places).to_double())
-              let shifted = abs_n / multiplier
-              let rounded = (shifted + 0.5).floor()
-              buf.write_string((rounded * multiplier).to_int().to_string())
-            }
-            String_(buf.to_string())
-          })
-    "toExponential" =>
-      make_method_func("toExponential", 1, fn(this_val, args) raise {
-            let n = to_number(this_val)
-            if n.is_nan() {
-              return String_("NaN")
-            }
-            if n.is_inf() {
-              return String_(if n > 0.0 { "Infinity" } else { "-Infinity" })
-            }
-            let is_neg = n < 0.0
-            let abs_n = n.abs()
-            if abs_n == 0.0 {
-              let buf = StringBuilder::new()
-              if is_neg {
-                buf.write_string("-")
-              }
-              buf.write_char('0')
-              if args.length() > 0 {
-                match args[0] {
-                  Undefined => ()
-                  _ => {
-                    let frac_digits = to_number(args[0]).to_int()
-                    if frac_digits < 0 || frac_digits > 100 {
-                      raise @errors.RangeError(
-                        message="toExponential() argument must be between 0 and 100",
-                      )
-                    }
-                    if frac_digits > 0 {
-                      buf.write_char('.')
-                      for _i = 0; _i < frac_digits; _i = _i + 1 {
-                        buf.write_char('0')
-                      }
-                    }
-                  }
-                }
-              }
-              buf.write_string("e+0")
-              return String_(buf.to_string())
-            }
-            let log_val = @math.log10(abs_n)
-            let mut exp = log_val.floor().to_int()
-            let mut mantissa = abs_n / @math.pow(10.0, exp.to_double())
-            let buf = StringBuilder::new()
-            if is_neg {
-              buf.write_string("-")
-            }
-            if args.length() > 0 {
-              match args[0] {
-                Undefined => buf.write_string(mantissa.to_string())
-                _ => {
-                  let frac_digits = to_number(args[0]).to_int()
-                  if frac_digits < 0 || frac_digits > 100 {
-                    raise @errors.RangeError(
-                      message="toExponential() argument must be between 0 and 100",
-                    )
-                  }
-                  // Round mantissa and check for overflow
-                  let precision = frac_digits + 1
-                  let mult = @math.pow(10.0, (precision - 1).to_double())
-                  let rounded_mantissa = (mantissa * mult + 0.5).floor() / mult
-                  if rounded_mantissa >= 10.0 {
-                    mantissa = rounded_mantissa / 10.0
-                    exp = exp + 1
-                  } else {
-                    mantissa = rounded_mantissa
-                  }
-                  let mantissa_str = format_number_precision(
-                    mantissa, precision,
-                  )
-                  buf.write_string(mantissa_str)
-                }
-              }
-            } else {
-              buf.write_string(mantissa.to_string())
-            }
-            buf.write_char('e')
-            if exp >= 0 {
-              buf.write_char('+')
-            }
-            buf.write_string(exp.to_string())
-            String_(buf.to_string())
-          })
+          }
+        } else {
+          buf.write_string(mantissa.to_string())
+        }
+        buf.write_char('e')
+        if exp >= 0 {
+          buf.write_char('+')
+        }
+        buf.write_string(exp.to_string())
+        String_(buf.to_string())
+      })
     _ => Undefined
   }
 }
@@ -4673,98 +5121,112 @@ fn setup_function_builtins(env : Environment) -> Unit {
   let func_proto_props : Map[String, Value] = {}
 
   // Function.prototype.toString - returns function source or [native code]
-  func_proto_props["toString"] = make_method_func("toString", 0, fn(this_val, _args) raise {
-        match this_val {
-          Object(data) =>
-            match data.callable {
-              Some(UserFunc(func_data)) => {
-                let name = func_data.name.unwrap_or("")
-                String_("function " + name + "() { [native code] }")
-              }
-              Some(UserFuncExt(func_data)) => {
-                let name = func_data.name.unwrap_or("")
-                String_("function " + name + "() { [native code] }")
-              }
-              Some(ArrowFunc(_)) => String_("() => { [native code] }")
-              Some(ArrowFuncExt(_)) => String_("() => { [native code] }")
-              Some(NativeCallable(name, _)) =>
-                String_("function " + name + "() { [native code] }")
-              Some(NonConstructableCallable(name, _)) =>
-                String_("function " + name + "() { [native code] }")
-              Some(BoundFunc(_, _, _)) =>
-                String_("function () { [native code] }")
-              Some(MethodCallable(name, _)) =>
-                String_("function " + name + "() { [native code] }")
-              Some(InterpreterCallable(name, _)) =>
-                String_("function " + name + "() { [native code] }")
-              Some(ConstructorOnlyCallable(name, _)) =>
-                String_("function " + name + "() { [native code] }")
-              Some(FuncCallMethod(_)) =>
-                String_("function call() { [native code] }")
-              Some(FuncApplyMethod(_)) =>
-                String_("function apply() { [native code] }")
-              Some(ClassConstructor(name, _, _, _, _, _)) =>
-                String_("class " + name + " { [native code] }")
-              None =>
-                raise @errors.TypeError(
-                  message="Function.prototype.toString requires a function",
-                )
-            }
-          _ =>
+  func_proto_props["toString"] = make_method_func("toString", 0, fn(
+    this_val,
+    _args,
+  ) raise {
+    match this_val {
+      Object(data) =>
+        match data.callable {
+          Some(UserFunc(func_data)) => {
+            let name = func_data.name.unwrap_or("")
+            String_("function " + name + "() { [native code] }")
+          }
+          Some(UserFuncExt(func_data)) => {
+            let name = func_data.name.unwrap_or("")
+            String_("function " + name + "() { [native code] }")
+          }
+          Some(ArrowFunc(_)) => String_("() => { [native code] }")
+          Some(ArrowFuncExt(_)) => String_("() => { [native code] }")
+          Some(NativeCallable(name, _)) =>
+            String_("function " + name + "() { [native code] }")
+          Some(NonConstructableCallable(name, _)) =>
+            String_("function " + name + "() { [native code] }")
+          Some(BoundFunc(_, _, _)) => String_("function () { [native code] }")
+          Some(MethodCallable(name, _)) =>
+            String_("function " + name + "() { [native code] }")
+          Some(InterpreterCallable(name, _)) =>
+            String_("function " + name + "() { [native code] }")
+          Some(ConstructorOnlyCallable(name, _)) =>
+            String_("function " + name + "() { [native code] }")
+          Some(FuncCallMethod(_)) =>
+            String_("function call() { [native code] }")
+          Some(FuncApplyMethod(_)) =>
+            String_("function apply() { [native code] }")
+          Some(ClassConstructor(name, _, _, _, _, _)) =>
+            String_("class " + name + " { [native code] }")
+          None =>
             raise @errors.TypeError(
               message="Function.prototype.toString requires a function",
             )
         }
-      })
+      _ =>
+        raise @errors.TypeError(
+          message="Function.prototype.toString requires a function",
+        )
+    }
+  })
 
   // Function.prototype.call - placeholder (actual implementation in interpreter)
-  func_proto_props["call"] = make_interp_method_func("call", 1, fn(interp, this_val, args) raise {
-        let loc = @token.Loc::default()
-        let call_this : Value = if args.length() > 0 { args[0] } else { Undefined }
-        let call_args : Array[Value] = []
-        for i = 1; i < args.length(); i = i + 1 {
-          call_args.push(args[i])
-        }
-        interp.call_value(this_val, call_this, call_args, loc)
-      })
+  func_proto_props["call"] = make_interp_method_func("call", 1, fn(
+    interp,
+    this_val,
+    args,
+  ) raise {
+    let loc = @token.Loc::default()
+    let call_this : Value = if args.length() > 0 { args[0] } else { Undefined }
+    let call_args : Array[Value] = []
+    for i = 1; i < args.length(); i = i + 1 {
+      call_args.push(args[i])
+    }
+    interp.call_value(this_val, call_this, call_args, loc)
+  })
 
   // Function.prototype.apply
-  func_proto_props["apply"] = make_interp_method_func("apply", 2, fn(interp, this_val, args) raise {
-        let loc = @token.Loc::default()
-        let call_this : Value = if args.length() > 0 { args[0] } else { Undefined }
-        let call_args : Array[Value] = []
-        if args.length() > 1 {
-          // Convert args[1] to array-like
-          match args[1] {
-            Array(data) =>
-              for el in data.elements {
-                call_args.push(el)
-              }
-            Object(data) => {
-              let len = match data.properties.get("length") {
-                Some(Number(n)) => n.to_int()
-                _ => 0
-              }
-              for i = 0; i < len; i = i + 1 {
-                let val = match data.properties.get(i.to_string()) {
-                  Some(v) => v
-                  None => Undefined
-                }
-                call_args.push(val)
-              }
+  func_proto_props["apply"] = make_interp_method_func("apply", 2, fn(
+    interp,
+    this_val,
+    args,
+  ) raise {
+    let loc = @token.Loc::default()
+    let call_this : Value = if args.length() > 0 { args[0] } else { Undefined }
+    let call_args : Array[Value] = []
+    if args.length() > 1 {
+      // Convert args[1] to array-like
+      match args[1] {
+        Array(data) =>
+          for el in data.elements {
+            call_args.push(el)
+          }
+        Object(data) => {
+          let len = match data.properties.get("length") {
+            Some(Number(n)) => n.to_int()
+            _ => 0
+          }
+          for i = 0; i < len; i = i + 1 {
+            let val = match data.properties.get(i.to_string()) {
+              Some(v) => v
+              None => Undefined
             }
-            Null | Undefined => ()
-            _ => ()
+            call_args.push(val)
           }
         }
-        interp.call_value(this_val, call_this, call_args, loc)
-      })
+        Null | Undefined => ()
+        _ => ()
+      }
+    }
+    interp.call_value(this_val, call_this, call_args, loc)
+  })
 
   // Function.prototype.bind - placeholder (actual implementation in interpreter)
-  func_proto_props["bind"] = make_interp_method_func("bind", 1, fn(_interp, this_val, args) raise {
+  func_proto_props["bind"] = make_interp_method_func("bind", 1, fn(
+    _interp,
+    this_val,
+    args,
+  ) raise {
     // Function.prototype.bind - §20.2.3.2
     // Step 1: If IsCallable(this) is false, throw a TypeError exception
-    if not(is_function_value(this_val)) {
+    if !is_function_value(this_val) {
       raise @errors.TypeError(
         message="Function.prototype.bind called on non-callable",
       )
@@ -4785,7 +5247,11 @@ fn setup_function_builtins(env : Environment) -> Unit {
     }
     let bound_length = {
       let diff = target_length - bound_args.length()
-      if diff < 0 { 0 } else { diff }
+      if diff < 0 {
+        0
+      } else {
+        diff
+      }
     }
     let nf_desc : PropDescriptor = {
       writable: false,
@@ -5039,7 +5505,13 @@ fn setup_function_builtins(env : Environment) -> Unit {
   match func_proto {
     Object(data) => {
       data.properties["constructor"] = func_ctor
-      data.descriptors["constructor"] = { writable: true, enumerable: false, configurable: true, getter: None, setter: None }
+      data.descriptors["constructor"] = {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
     }
     _ => ()
   }
@@ -5081,7 +5553,7 @@ fn uri_encode(s : String, encode_component : Bool) -> String {
       c == '(' ||
       c == ')' {
       false
-    } else if not(encode_component) &&
+    } else if !encode_component &&
       (
         c == ';' ||
         c == ',' ||
@@ -5449,81 +5921,88 @@ pub fn setup_harness_builtins(
   // and returns the new realm's $262 object. The returned object's methods
   // (evalScript, etc.) are bound to the new realm's interpreter via closures,
   // ensuring proper isolation.
-  dollar262_props["createRealm"] = make_interp_method_func("createRealm", 0, fn(_interp, _this_val, _args) {
-        let new_interp = Interpreter::new()
-        // Build a $262 object with methods bound to the new interpreter.
-        // Uses NativeCallable closures that capture new_interp so that
-        // evalScript executes in the new realm, not the caller's.
-        let realm_props : Map[String, Value] = {}
-        realm_props["global"] = new_interp.global_this
-        realm_props["gc"] = make_native_func("gc", fn(_a) { Undefined })
-        realm_props["evalScript"] = make_native_func("evalScript", fn(
-          es_args,
-        ) raise {
-          let code = if es_args.length() > 0 {
-            match es_args[0] {
-              String_(s) => s
-              _ => es_args[0].to_string()
-            }
-          } else {
-            ""
-          }
-          let prog = @parser.parse(code)
-          new_interp.run(prog.stmts)
-        })
-        realm_props["createRealm"] = make_native_func("createRealm", fn(_a) {
-          // Recursive: create yet another fresh realm
-          let inner = Interpreter::new()
-          inner.global.get("$262") catch {
-            _ => Undefined
-          }
-        })
-        realm_props["detachArrayBuffer"] = make_native_func(
-          "detachArrayBuffer",
-          fn(a) raise {
-            if a.length() == 0 {
-              raise @errors.TypeError(
-                message="$262.detachArrayBuffer requires an ArrayBuffer argument",
-              )
-            }
-            match get_buffer_id(a[0]) {
-              Some(id) => {
-                detach_arraybuffer(id)
-                Undefined
-              }
-              None =>
-                raise @errors.TypeError(
-                  message="$262.detachArrayBuffer requires an ArrayBuffer argument",
-                )
-            }
-          },
+  dollar262_props["createRealm"] = make_interp_method_func("createRealm", 0, fn(
+    _interp,
+    _this_val,
+    _args,
+  ) {
+    let new_interp = Interpreter::new()
+    // Build a $262 object with methods bound to the new interpreter.
+    // Uses NativeCallable closures that capture new_interp so that
+    // evalScript executes in the new realm, not the caller's.
+    let realm_props : Map[String, Value] = {}
+    realm_props["global"] = new_interp.global_this
+    realm_props["gc"] = make_native_func("gc", fn(_a) { Undefined })
+    realm_props["evalScript"] = make_native_func("evalScript", fn(
+      es_args,
+    ) raise {
+      let code = if es_args.length() > 0 {
+        match es_args[0] {
+          String_(s) => s
+          _ => es_args[0].to_string()
+        }
+      } else {
+        ""
+      }
+      let prog = @parser.parse(code)
+      new_interp.run(prog.stmts)
+    })
+    realm_props["createRealm"] = make_native_func("createRealm", fn(_a) {
+      // Recursive: create yet another fresh realm
+      let inner = Interpreter::new()
+      inner.global.get("$262") catch {
+        _ => Undefined
+      }
+    })
+    realm_props["detachArrayBuffer"] = make_native_func("detachArrayBuffer", fn(
+      a,
+    ) raise {
+      if a.length() == 0 {
+        raise @errors.TypeError(
+          message="$262.detachArrayBuffer requires an ArrayBuffer argument",
         )
-        Object({
-          properties: realm_props,
-          symbol_properties: {},
-          prototype: Null,
-          callable: None,
-          class_name: "Object",
-          descriptors: {},
-          symbol_descriptors: {},
-          extensible: true,
-        })
-      })
+      }
+      match get_buffer_id(a[0]) {
+        Some(id) => {
+          detach_arraybuffer(id)
+          Undefined
+        }
+        None =>
+          raise @errors.TypeError(
+            message="$262.detachArrayBuffer requires an ArrayBuffer argument",
+          )
+      }
+    })
+    Object({
+      properties: realm_props,
+      symbol_properties: {},
+      prototype: Null,
+      callable: None,
+      class_name: "Object",
+      descriptors: {},
+      symbol_descriptors: {},
+      extensible: true,
+    })
+  })
 
   // $262.evalScript(code) - parses and evaluates code as a script
   // in the current realm's global scope.
-  dollar262_props["evalScript"] = make_interp_method_func("evalScript", 0, fn(interp, _this_val, args) raise {
-        let code = if args.length() > 0 {
-          match args[0] {
-            String_(s) => s
-            _ => args[0].to_string()
-          }
-        } else {
-          ""
-        }
-        let prog = @parser.parse(code)
-        interp.run(prog.stmts)
-      })
+  dollar262_props["evalScript"] = make_interp_method_func("evalScript", 0, fn(
+    interp,
+    _this_val,
+    args,
+  ) raise {
+    let code = if args.length() > 0 {
+      match args[0] {
+        String_(s) => s
+        _ => args[0].to_string()
+      }
+    } else {
+      ""
+    }
+    let prog = @parser.parse(code)
+    interp.run(prog.stmts)
+  })
   dollar262_props["detachArrayBuffer"] = make_native_func("detachArrayBuffer", fn(
     args,
   ) raise {
