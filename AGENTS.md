@@ -2,21 +2,6 @@
 
 @~/.claude/moonbit-base.md
 
-## Project Structure
-
-Single module: `dowdiness/js_engine`
-
-| Package | Purpose |
-|---------|---------|
-| `./` | Root facade |
-| `ast/` | AST node types |
-| `lexer/` | Tokenizer |
-| `token/` | Token types |
-| `parser/` | Parser |
-| `interpreter/` | Tree-walk interpreter |
-| `errors/` | Error types |
-| `cmd/main/` | CLI entry point |
-
 ## Commands
 
 ```bash
@@ -24,12 +9,15 @@ moon check && moon test   # Lint + test
 moon info && moon fmt     # Before committing
 ```
 
+## Package Map
+
+The SessionStart hook runs `scripts/package-overview.sh` which provides a live package map at the start of every session. Use `moon ide outline <path>` to explore any package's public API. Read `moon.mod.json` for module dependencies.
+
 ## Documentation
 
-- `ROADMAP.md` — test262 pass rate, failure breakdown, next phase targets, architecture decisions
-- `docs/PHASE_HISTORY.md` — Archived implementation notes for completed phases
-- `README.md` — Project overview, usage, package structure
+Browse `docs/` for architecture, decisions, development guides, and performance snapshots. Key rules:
 
-## Key Facts
-
-**Tasks:** See `agent-todo.md` for small AI-friendly tasks
+- Architecture docs = principles only, never reference specific types/fields/lines
+- Code is the source of truth — if a doc and the code disagree, the doc is wrong
+- `ROADMAP.md` — test262 pass rate, failure breakdown, next phase targets
+- `agent-todo.md` — small AI-friendly tasks
