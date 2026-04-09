@@ -1,0 +1,1803 @@
+///|
+fn setup_array_builtins(
+  env : Environment,
+  nf_desc : PropDescriptor,
+  obj_proto : Value,
+  obj_method_desc : PropDescriptor,
+) -> Unit {
+  // Create Array.prototype with all array methods
+  let array_proto_props : Map[String, Value] = {}
+  let array_proto_descs : Map[String, PropDescriptor] = {}
+  let method_desc : PropDescriptor = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
+
+  // Non-callback methods (using MethodCallable for this-aware dispatch)
+  array_proto_props["push"] = make_interp_method_func("push", 1, fn(
+    interp,
+    this_val,
+    args,
+  ) raise {
+    let o = to_object(this_val, interp)
+    match o {
+      Array(arr) => {
+        for arg in args {
+          arr.elements.push(arg)
+        }
+        Number(arr.elements.length().to_double())
+      }
+      _ => {
+        let mut len = to_array_like_length_interp(o, interp)
+        for arg in args {
+          set_array_like_element(o, len, arg)
+          len = len + 1
+        }
+        set_array_like_length(o, len)
+        Number(len.to_double())
+      }
+    }
+  })
+  array_proto_props["pop"] = make_interp_method_func("pop", 0, fn(
+    interp,
+    this_val,
+    _args,
+  ) raise {
+    let o = to_object(this_val, interp)
+    match o {
+      Array(arr) =>
+        if arr.elements.length() == 0 {
+          Undefined
+        } else {
+          arr.elements.pop() |> Option::unwrap
+        }
+      _ => {
+        let len = to_array_like_length_interp(o, interp)
+        if len == 0 {
+          set_array_like_length(o, 0)
+          Undefined
+        } else {
+          let new_len = len - 1
+          let val = get_array_like_element_interp(interp, o, new_len)
+          delete_array_like_element(o, new_len)
+          set_array_like_length(o, new_len)
+          val
+        }
+      }
+    }
+  })
+  array_proto_props["shift"] = make_interp_method_func("shift", 0, fn(
+    interp,
+    this_val,
+    _args,
+  ) raise {
+    let o = to_object(this_val, interp)
+    match o {
+      Array(arr) => {
+        if arr.elements.length() == 0 {
+          return Undefined
+        }
+        let first = arr.elements[0]
+        let new_elems : Array[Value] = []
+        for i = 1; i < arr.elements.length(); i = i + 1 {
+          new_elems.push(arr.elements[i])
+        }
+        while arr.elements.length() > 0 {
+          let _ = arr.elements.pop()
+        }
+        for el in new_elems {
+          arr.elements.push(el)
+        }
+        first
+      }
+      _ => {
+        let len = to_array_like_length_interp(o, interp)
+        if len == 0 {
+          set_array_like_length(o, 0)
+          return Undefined
+        }
+        let first = get_array_like_element_interp(interp, o, 0)
+        for i = 1; i < len; i = i + 1 {
+          set_array_like_element(
+            o,
+            i - 1,
+            get_array_like_element_interp(interp, o, i),
+          )
+        }
+        delete_array_like_element(o, len - 1)
+        set_array_like_length(o, len - 1)
+        first
+      }
+    }
+  })
+  array_proto_props["unshift"] = make_interp_method_func("unshift", 1, fn(
+    interp,
+    this_val,
+    args,
+  ) raise {
+    let o = to_object(this_val, interp)
+    match o {
+      Array(arr) => {
+        let old : Array[Value] = []
+        for el in arr.elements {
+          old.push(el)
+        }
+        while arr.elements.length() > 0 {
+          let _ = arr.elements.pop()
+        }
+        for arg in args {
+          arr.elements.push(arg)
+        }
+        for el in old {
+          arr.elements.push(el)
+        }
+        Number(arr.elements.length().to_double())
+      }
+      _ => {
+        let len = to_array_like_length_interp(o, interp)
+        let argc = args.length()
+        // Shift existing elements up by argc
+        for i = len - 1; i >= 0; i = i - 1 {
+          set_array_like_element(
+            o,
+            i + argc,
+            get_array_like_element_interp(interp, o, i),
+          )
+        }
+        // Insert new elements at the beginning
+        for i = 0; i < argc; i = i + 1 {
+          set_array_like_element(o, i, args[i])
+        }
+        let new_len = len + argc
+        set_array_like_length(o, new_len)
+        Number(new_len.to_double())
+      }
+    }
+  })
+  array_proto_props["join"] = make_interp_method_func("join", 1, fn(
+    interp,
+    this_val,
+    args,
+  ) raise {
+    let o = to_object(this_val, interp)
+    let len = to_array_like_length_interp(o, interp)
+    let sep = if args.length() > 0 {
+      match args[0] {
+        Undefined => ","
+        v => v.to_string()
+      }
+    } else {
+      ","
+    }
+    let parts : Array[String] = []
+    for i = 0; i < len; i = i + 1 {
+      let v = get_array_like_element_interp(interp, o, i)
+      match v {
+        Null | Undefined => parts.push("")
+        _ => parts.push(v.to_string())
+      }
+    }
+    String_(parts.join(sep))
+  })
+  array_proto_props["indexOf"] = make_interp_method_func("indexOf", 1, fn(
+    interp,
+    this_val,
+    args,
+  ) raise {
+    let o = to_object(this_val, interp)
+    let len = to_array_like_length_interp(o, interp)
+    let search = if args.length() > 0 { args[0] } else { Undefined }
+    let from_idx = if args.length() > 1 {
+      to_number(args[1]).to_int()
+    } else {
+      0
+    }
+    let start = if from_idx < 0 {
+      let s = len + from_idx
+      if s < 0 {
+        0
+      } else {
+        s
+      }
+    } else {
+      from_idx
+    }
+    for i = start; i < len; i = i + 1 {
+      if has_array_like_element(o, i) {
+        if strict_equal_val(get_array_like_element_interp(interp, o, i), search) {
+          return Number(i.to_double())
+        }
+      }
+    }
+    Number(-1.0)
+  })
+  array_proto_props["lastIndexOf"] = make_interp_method_func("lastIndexOf", 1, fn(
+    interp,
+    this_val,
+    args,
+  ) raise {
+    let o = to_object(this_val, interp)
+    let len = to_array_like_length_interp(o, interp)
+    let search = if args.length() > 0 { args[0] } else { Undefined }
+    let start = if args.length() > 1 {
+      to_number(args[1]).to_int()
+    } else {
+      len - 1
+    }
+    let from = if start < 0 {
+      len + start
+    } else if start >= len {
+      len - 1
+    } else {
+      start
+    }
+    for i = from; i >= 0; i = i - 1 {
+      if has_array_like_element(o, i) {
+        if strict_equal_val(get_array_like_element_interp(interp, o, i), search) {
+          return Number(i.to_double())
+        }
+      }
+    }
+    Number(-1.0)
+  })
+  array_proto_props["includes"] = make_interp_method_func("includes", 1, fn(
+    interp,
+    this_val,
+    args,
+  ) raise {
+    let o = to_object(this_val, interp)
+    let len = to_array_like_length_interp(o, interp)
+    let search = if args.length() > 0 { args[0] } else { Undefined }
+    let from_idx = if args.length() > 1 {
+      to_number(args[1]).to_int()
+    } else {
+      0
+    }
+    let start = if from_idx < 0 {
+      let s = len + from_idx
+      if s < 0 {
+        0
+      } else {
+        s
+      }
+    } else {
+      from_idx
+    }
+    for i = start; i < len; i = i + 1 {
+      if same_value_zero(get_array_like_element_interp(interp, o, i), search) {
+        return Bool(true)
+      }
+    }
+    Bool(false)
+  })
+  array_proto_props["slice"] = make_interp_method_func("slice", 2, fn(
+    interp,
+    this_val,
+    args,
+  ) raise {
+    let o = to_object(this_val, interp)
+    let alen = to_array_like_length_interp(o, interp)
+    let mut start = if args.length() > 0 {
+      to_number(args[0]).to_int()
+    } else {
+      0
+    }
+    let mut end = if args.length() > 1 {
+      match args[1] {
+        Undefined => alen
+        _ => to_number(args[1]).to_int()
+      }
+    } else {
+      alen
+    }
+    if start < 0 {
+      start = alen + start
+      if start < 0 {
+        start = 0
+      }
+    }
+    if end < 0 {
+      end = alen + end
+      if end < 0 {
+        end = 0
+      }
+    }
+    if end > alen {
+      end = alen
+    }
+    let result : Array[Value] = []
+    for i = start; i < end; i = i + 1 {
+      result.push(get_array_like_element_interp(interp, o, i))
+    }
+    Array({ elements: result })
+  })
+  array_proto_props["concat"] = make_interp_method_func("concat", 1, fn(
+    interp,
+    this_val,
+    args,
+  ) raise {
+    let o = to_object(this_val, interp)
+    let result : Array[Value] = []
+    let concat_sym_id = get_isconcatspreadable_symbol().id
+    // Process this value and each argument per ES2015 concat spec
+    let items : Array[Value] = [o]
+    for a in args {
+      items.push(a)
+    }
+    for item in items {
+      // Determine spreadability: check @@isConcatSpreadable
+      let spreadable = match item {
+        Object(data) => {
+          // Check own symbol property, then walk prototype chain
+          let sym_val = match data.symbol_properties.get(concat_sym_id) {
+            Some(v) => v
+            None => {
+              let mut found : Value = Undefined
+              let mut cur = data.prototype
+              while true {
+                match cur {
+                  Object(pd) =>
+                    match pd.symbol_properties.get(concat_sym_id) {
+                      Some(v) => {
+                        found = v
+                        break
+                      }
+                      None => cur = pd.prototype
+                    }
+                  _ => break
+                }
+              }
+              found
+            }
+          }
+          match sym_val {
+            Undefined => data.class_name == "Array"
+            _ => is_truthy(sym_val)
+          }
+        }
+        Array(arr_data) =>
+          match get_array_symbol_prop(arr_data, concat_sym_id) {
+            Some(v) =>
+              match v {
+                Undefined => true // default: arrays are spreadable
+                _ => is_truthy(v)
+              }
+            None => true // default: arrays are spreadable
+          }
+        _ => false
+      }
+      if spreadable {
+        let len = to_array_like_length_interp(item, interp)
+        for i = 0; i < len; i = i + 1 {
+          if has_array_like_element(item, i) {
+            result.push(get_array_like_element_interp(interp, item, i))
+          } else {
+            result.push(Undefined)
+          }
+        }
+      } else {
+        result.push(item)
+      }
+    }
+    Array({ elements: result })
+  })
+  array_proto_props["reverse"] = make_interp_method_func("reverse", 0, fn(
+    interp,
+    this_val,
+    _args,
+  ) raise {
+    let o = to_object(this_val, interp)
+    match o {
+      Array(arr) => {
+        arr.elements.rev_in_place()
+        Array(arr)
+      }
+      _ => {
+        let len = to_array_like_length_interp(o, interp)
+        let mut lower = 0
+        let mut upper = len - 1
+        while lower < upper {
+          let lower_val = get_array_like_element_interp(interp, o, lower)
+          let upper_val = get_array_like_element_interp(interp, o, upper)
+          set_array_like_element(o, lower, upper_val)
+          set_array_like_element(o, upper, lower_val)
+          lower = lower + 1
+          upper = upper - 1
+        }
+        o
+      }
+    }
+  })
+  array_proto_props["fill"] = make_interp_method_func("fill", 1, fn(
+    interp,
+    this_val,
+    args,
+  ) raise {
+    let o = to_object(this_val, interp)
+    let fill_val = if args.length() > 0 { args[0] } else { Undefined }
+    let alen = to_array_like_length_interp(o, interp)
+    let mut start = if args.length() > 1 {
+      to_number(args[1]).to_int()
+    } else {
+      0
+    }
+    let mut end = if args.length() > 2 {
+      match args[2] {
+        Undefined => alen
+        _ => to_number(args[2]).to_int()
+      }
+    } else {
+      alen
+    }
+    if start < 0 {
+      start = alen + start
+      if start < 0 {
+        start = 0
+      }
+    }
+    if start > alen {
+      start = alen
+    }
+    if end < 0 {
+      end = alen + end
+      if end < 0 {
+        end = 0
+      }
+    }
+    if end > alen {
+      end = alen
+    }
+    for i = start; i < end; i = i + 1 {
+      set_array_like_element(o, i, fill_val)
+    }
+    o
+  })
+  array_proto_props["toString"] = make_interp_method_func("toString", 0, fn(
+    interp,
+    this_val,
+    _args,
+  ) raise {
+    let o = to_object(this_val, interp)
+    // Per spec, toString calls join if available, otherwise Object.prototype.toString
+    let join_fn = interp.get_property(o, "join", @token.Loc::default())
+    if is_callable(join_fn) {
+      interp.call_value(join_fn, o, [], @token.Loc::default())
+    } else {
+      let cls = match o {
+        Object(d) => d.class_name
+        _ => "Object"
+      }
+      String_("[object " + cls + "]")
+    }
+  })
+  array_proto_props["at"] = make_interp_method_func("at", 1, fn(
+    interp,
+    this_val,
+    args,
+  ) raise {
+    let o = to_object(this_val, interp)
+    let len = to_array_like_length_interp(o, interp)
+    let idx = if args.length() > 0 { to_number(args[0]).to_int() } else { 0 }
+    let actual_idx = if idx < 0 { len + idx } else { idx }
+    if actual_idx >= 0 && actual_idx < len {
+      get_array_like_element_interp(interp, o, actual_idx)
+    } else {
+      Undefined
+    }
+  })
+  array_proto_props["toLocaleString"] = make_interp_method_func(
+    "toLocaleString",
+    0,
+    fn(interp, this_val, _args) raise {
+      let o = to_object(this_val, interp)
+      let len = to_array_like_length_interp(o, interp)
+      let parts : Array[String] = []
+      for i = 0; i < len; i = i + 1 {
+        let v = get_array_like_element_interp(interp, o, i)
+        match v {
+          Null | Undefined => parts.push("")
+          _ => {
+            // Per spec, call toLocaleString on each element
+            let tls = interp.get_property(
+              v,
+              "toLocaleString",
+              @token.Loc::default(),
+            )
+            if is_callable(tls) {
+              let result = interp.call_value(tls, v, [], @token.Loc::default())
+              parts.push(to_js_string(result))
+            } else {
+              parts.push(v.to_string())
+            }
+          }
+        }
+      }
+      String_(parts.join(","))
+    },
+  )
+
+  // Callback-requiring methods (using InterpreterCallable)
+  array_proto_props["forEach"] = make_interp_method_func("forEach", 1, fn(
+    interp,
+    this_val,
+    args,
+  ) raise {
+    let o = to_object(this_val, interp)
+    let callback = if args.length() > 0 { args[0] } else { Undefined }
+    if !is_callable(callback) {
+      raise @errors.TypeError(
+        message=to_js_string(callback) + " is not a function",
+      )
+    }
+    let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+    let loc = @token.Loc::default()
+    let len = to_array_like_length_interp(o, interp)
+    for i = 0; i < len; i = i + 1 {
+      if has_array_like_element(o, i) {
+        let _ = interp.call_value(
+          callback,
+          this_arg,
+          [
+            get_array_like_element_interp(interp, o, i),
+            Number(i.to_double()),
+            o,
+          ],
+          loc,
+        )
+      }
+    }
+    Undefined
+  })
+  array_proto_props["map"] = make_interp_method_func("map", 1, fn(
+    interp,
+    this_val,
+    args,
+  ) raise {
+    let o = to_object(this_val, interp)
+    let callback = if args.length() > 0 { args[0] } else { Undefined }
+    if !is_callable(callback) {
+      raise @errors.TypeError(
+        message=to_js_string(callback) + " is not a function",
+      )
+    }
+    let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+    let loc = @token.Loc::default()
+    let len = to_array_like_length_interp(o, interp)
+    let result : Array[Value] = []
+    for i = 0; i < len; i = i + 1 {
+      if has_array_like_element(o, i) {
+        let val = interp.call_value(
+          callback,
+          this_arg,
+          [
+            get_array_like_element_interp(interp, o, i),
+            Number(i.to_double()),
+            o,
+          ],
+          loc,
+        )
+        result.push(val)
+      } else {
+        result.push(Undefined)
+      }
+    }
+    Array({ elements: result })
+  })
+  array_proto_props["filter"] = make_interp_method_func("filter", 1, fn(
+    interp,
+    this_val,
+    args,
+  ) raise {
+    let o = to_object(this_val, interp)
+    let callback = if args.length() > 0 { args[0] } else { Undefined }
+    if !is_callable(callback) {
+      raise @errors.TypeError(
+        message=to_js_string(callback) + " is not a function",
+      )
+    }
+    let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+    let loc = @token.Loc::default()
+    let len = to_array_like_length_interp(o, interp)
+    let result : Array[Value] = []
+    for i = 0; i < len; i = i + 1 {
+      if has_array_like_element(o, i) {
+        let el = get_array_like_element_interp(interp, o, i)
+        let val = interp.call_value(
+          callback,
+          this_arg,
+          [el, Number(i.to_double()), o],
+          loc,
+        )
+        if is_truthy(val) {
+          result.push(el)
+        }
+      }
+    }
+    Array({ elements: result })
+  })
+  array_proto_props["reduce"] = make_interp_method_func("reduce", 1, fn(
+    interp,
+    this_val,
+    args,
+  ) raise {
+    let o = to_object(this_val, interp)
+    let callback = if args.length() > 0 { args[0] } else { Undefined }
+    if !is_callable(callback) {
+      raise @errors.TypeError(
+        message=to_js_string(callback) + " is not a function",
+      )
+    }
+    let loc = @token.Loc::default()
+    let len = to_array_like_length_interp(o, interp)
+    let mut acc : Value = Undefined
+    let mut k = 0
+    if args.length() > 1 {
+      acc = args[1]
+    } else {
+      // Per spec: find first present element as initial value
+      let mut k_present = false
+      while k < len {
+        if has_array_like_element(o, k) {
+          acc = get_array_like_element_interp(interp, o, k)
+          k = k + 1
+          k_present = true
+          break
+        }
+        k = k + 1
+      }
+      if !k_present {
+        raise @errors.TypeError(
+          message="Reduce of empty array with no initial value",
+        )
+      }
+    }
+    while k < len {
+      if has_array_like_element(o, k) {
+        acc = interp.call_value(
+          callback,
+          Undefined,
+          [
+            acc,
+            get_array_like_element_interp(interp, o, k),
+            Number(k.to_double()),
+            o,
+          ],
+          loc,
+        )
+      }
+      k = k + 1
+    }
+    acc
+  })
+  array_proto_props["reduceRight"] = make_interp_method_func("reduceRight", 1, fn(
+    interp,
+    this_val,
+    args,
+  ) raise {
+    let o = to_object(this_val, interp)
+    let callback = if args.length() > 0 { args[0] } else { Undefined }
+    if !is_callable(callback) {
+      raise @errors.TypeError(
+        message=to_js_string(callback) + " is not a function",
+      )
+    }
+    let loc = @token.Loc::default()
+    let len = to_array_like_length_interp(o, interp)
+    let mut acc : Value = Undefined
+    let mut k = len - 1
+    if args.length() > 1 {
+      acc = args[1]
+    } else {
+      // Per spec: find last present element as initial value (searching right to left)
+      let mut k_present = false
+      while k >= 0 {
+        if has_array_like_element(o, k) {
+          acc = get_array_like_element_interp(interp, o, k)
+          k = k - 1
+          k_present = true
+          break
+        }
+        k = k - 1
+      }
+      if !k_present {
+        raise @errors.TypeError(
+          message="Reduce of empty array with no initial value",
+        )
+      }
+    }
+    while k >= 0 {
+      if has_array_like_element(o, k) {
+        acc = interp.call_value(
+          callback,
+          Undefined,
+          [
+            acc,
+            get_array_like_element_interp(interp, o, k),
+            Number(k.to_double()),
+            o,
+          ],
+          loc,
+        )
+      }
+      k = k - 1
+    }
+    acc
+  })
+  array_proto_props["find"] = make_interp_method_func("find", 1, fn(
+    interp,
+    this_val,
+    args,
+  ) raise {
+    let o = to_object(this_val, interp)
+    let callback = if args.length() > 0 { args[0] } else { Undefined }
+    if !is_callable(callback) {
+      raise @errors.TypeError(
+        message=to_js_string(callback) + " is not a function",
+      )
+    }
+    let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+    let loc = @token.Loc::default()
+    let len = to_array_like_length_interp(o, interp)
+    for i = 0; i < len; i = i + 1 {
+      let el = get_array_like_element_interp(interp, o, i)
+      let val = interp.call_value(
+        callback,
+        this_arg,
+        [el, Number(i.to_double()), o],
+        loc,
+      )
+      if is_truthy(val) {
+        return el
+      }
+    }
+    Undefined
+  })
+  array_proto_props["findIndex"] = make_interp_method_func("findIndex", 1, fn(
+    interp,
+    this_val,
+    args,
+  ) raise {
+    let o = to_object(this_val, interp)
+    let callback = if args.length() > 0 { args[0] } else { Undefined }
+    if !is_callable(callback) {
+      raise @errors.TypeError(
+        message=to_js_string(callback) + " is not a function",
+      )
+    }
+    let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+    let loc = @token.Loc::default()
+    let len = to_array_like_length_interp(o, interp)
+    for i = 0; i < len; i = i + 1 {
+      let el = get_array_like_element_interp(interp, o, i)
+      let val = interp.call_value(
+        callback,
+        this_arg,
+        [el, Number(i.to_double()), o],
+        loc,
+      )
+      if is_truthy(val) {
+        return Number(i.to_double())
+      }
+    }
+    Number(-1.0)
+  })
+  array_proto_props["findLast"] = make_interp_method_func("findLast", 1, fn(
+    interp,
+    this_val,
+    args,
+  ) raise {
+    let o = to_object(this_val, interp)
+    let callback = if args.length() > 0 { args[0] } else { Undefined }
+    if !is_callable(callback) {
+      raise @errors.TypeError(
+        message=to_js_string(callback) + " is not a function",
+      )
+    }
+    let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+    let loc = @token.Loc::default()
+    let len = to_array_like_length_interp(o, interp)
+    for i = len - 1; i >= 0; i = i - 1 {
+      let el = get_array_like_element_interp(interp, o, i)
+      let val = interp.call_value(
+        callback,
+        this_arg,
+        [el, Number(i.to_double()), o],
+        loc,
+      )
+      if is_truthy(val) {
+        return el
+      }
+    }
+    Undefined
+  })
+  array_proto_props["findLastIndex"] = make_interp_method_func(
+    "findLastIndex",
+    1,
+    fn(interp, this_val, args) raise {
+      let o = to_object(this_val, interp)
+      let callback = if args.length() > 0 { args[0] } else { Undefined }
+      if !is_callable(callback) {
+        raise @errors.TypeError(
+          message=to_js_string(callback) + " is not a function",
+        )
+      }
+      let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+      let loc = @token.Loc::default()
+      let len = to_array_like_length_interp(o, interp)
+      for i = len - 1; i >= 0; i = i - 1 {
+        let el = get_array_like_element_interp(interp, o, i)
+        let val = interp.call_value(
+          callback,
+          this_arg,
+          [el, Number(i.to_double()), o],
+          loc,
+        )
+        if is_truthy(val) {
+          return Number(i.to_double())
+        }
+      }
+      Number(-1.0)
+    },
+  )
+  array_proto_props["every"] = make_interp_method_func("every", 1, fn(
+    interp,
+    this_val,
+    args,
+  ) raise {
+    let o = to_object(this_val, interp)
+    let callback = if args.length() > 0 { args[0] } else { Undefined }
+    if !is_callable(callback) {
+      raise @errors.TypeError(
+        message=to_js_string(callback) + " is not a function",
+      )
+    }
+    let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+    let loc = @token.Loc::default()
+    let len = to_array_like_length_interp(o, interp)
+    for i = 0; i < len; i = i + 1 {
+      if has_array_like_element(o, i) {
+        let val = interp.call_value(
+          callback,
+          this_arg,
+          [
+            get_array_like_element_interp(interp, o, i),
+            Number(i.to_double()),
+            o,
+          ],
+          loc,
+        )
+        if !is_truthy(val) {
+          return Bool(false)
+        }
+      }
+    }
+    Bool(true)
+  })
+  array_proto_props["some"] = make_interp_method_func("some", 1, fn(
+    interp,
+    this_val,
+    args,
+  ) raise {
+    let o = to_object(this_val, interp)
+    let callback = if args.length() > 0 { args[0] } else { Undefined }
+    if !is_callable(callback) {
+      raise @errors.TypeError(
+        message=to_js_string(callback) + " is not a function",
+      )
+    }
+    let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+    let loc = @token.Loc::default()
+    let len = to_array_like_length_interp(o, interp)
+    for i = 0; i < len; i = i + 1 {
+      if has_array_like_element(o, i) {
+        let val = interp.call_value(
+          callback,
+          this_arg,
+          [
+            get_array_like_element_interp(interp, o, i),
+            Number(i.to_double()),
+            o,
+          ],
+          loc,
+        )
+        if is_truthy(val) {
+          return Bool(true)
+        }
+      }
+    }
+    Bool(false)
+  })
+  array_proto_props["sort"] = make_interp_method_func("sort", 1, fn(
+    interp,
+    this_val,
+    args,
+  ) raise {
+    // Step 1: Validate comparefn
+    if args.length() > 0 {
+      let comparefn = args[0]
+      match comparefn {
+        Undefined => ()
+        _ =>
+          if !is_callable(comparefn) {
+            raise @errors.TypeError(
+              message=to_js_string(comparefn) + " is not a function",
+            )
+          }
+      }
+    }
+    // Extract elements into a mutable array for sorting
+    let elements : Array[Value] = match this_val {
+      Array(arr) => arr.elements
+      _ => to_array_like_elements(this_val)
+    }
+    if args.length() > 0 {
+      match args[0] {
+        Undefined =>
+          elements.sort_by(fn(a, b) {
+            // Per spec: undefined sorts to end
+            if a is Undefined && b is Undefined {
+              return 0
+            }
+            if a is Undefined {
+              return 1
+            }
+            if b is Undefined {
+              return -1
+            }
+            let sa = a.to_string()
+            let sb = b.to_string()
+            if sa < sb {
+              -1
+            } else if sa > sb {
+              1
+            } else {
+              0
+            }
+          })
+        _ => {
+          let comparefn = args[0]
+          let loc = @token.Loc::default()
+          let mut caught_error : Error? = None
+          elements.sort_by(fn(a, b) {
+            // Per spec: undefined sorts to end even with comparefn
+            if a is Undefined && b is Undefined {
+              return 0
+            }
+            if a is Undefined {
+              return 1
+            }
+            if b is Undefined {
+              return -1
+            }
+            if caught_error is Some(_) {
+              return 0
+            }
+            let result = interp.call_value(comparefn, Undefined, [a, b], loc) catch {
+              e => {
+                caught_error = Some(e)
+                return 0
+              }
+            }
+            let cmp = to_number(result) catch {
+              e => {
+                caught_error = Some(e)
+                return 0
+              }
+            }
+            if cmp.is_nan() {
+              0
+            } else if cmp < 0.0 {
+              -1
+            } else if cmp > 0.0 {
+              1
+            } else {
+              0
+            }
+          })
+          match caught_error {
+            Some(e) => raise e
+            None => ()
+          }
+        }
+      }
+    } else {
+      elements.sort_by(fn(a, b) {
+        // Per spec: undefined sorts to end
+        if a is Undefined && b is Undefined {
+          return 0
+        }
+        if a is Undefined {
+          return 1
+        }
+        if b is Undefined {
+          return -1
+        }
+        let sa = a.to_string()
+        let sb = b.to_string()
+        if sa < sb {
+          -1
+        } else if sa > sb {
+          1
+        } else {
+          0
+        }
+      })
+    }
+    // For non-array objects, write sorted elements back
+    match this_val {
+      Array(arr) => Array(arr)
+      _ => {
+        for i = 0; i < elements.length(); i = i + 1 {
+          set_array_like_element(this_val, i, elements[i])
+        }
+        this_val
+      }
+    }
+  })
+  array_proto_props["flat"] = make_interp_method_func("flat", 0, fn(
+    interp,
+    this_val,
+    args,
+  ) raise {
+    let o = to_object(this_val, interp)
+    let depth = if args.length() > 0 {
+      match args[0] {
+        Undefined => 1
+        _ => to_number(args[0]).to_int()
+      }
+    } else {
+      1
+    }
+    let elements = to_array_like_elements(o)
+    let result : Array[Value] = []
+    flatten_array_val(elements, depth, result)
+    Array({ elements: result })
+  })
+  array_proto_props["flatMap"] = make_interp_method_func("flatMap", 1, fn(
+    interp,
+    this_val,
+    args,
+  ) raise {
+    let o = to_object(this_val, interp)
+    let callback = if args.length() > 0 { args[0] } else { Undefined }
+    if !is_callable(callback) {
+      raise @errors.TypeError(
+        message=to_js_string(callback) + " is not a function",
+      )
+    }
+    let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+    let loc = @token.Loc::default()
+    let len = to_array_like_length_interp(o, interp)
+    let result : Array[Value] = []
+    for i = 0; i < len; i = i + 1 {
+      let el = get_array_like_element_interp(interp, o, i)
+      let val = interp.call_value(
+        callback,
+        this_arg,
+        [el, Number(i.to_double()), o],
+        loc,
+      )
+      match val {
+        Array(inner) =>
+          for item in inner.elements {
+            result.push(item)
+          }
+        _ => result.push(val)
+      }
+    }
+    Array({ elements: result })
+  })
+  array_proto_props["splice"] = make_interp_method_func("splice", 2, fn(
+    interp,
+    this_val,
+    args,
+  ) raise {
+    let o = to_object(this_val, interp)
+    let alen = to_array_like_length_interp(o, interp)
+    let mut start = if args.length() > 0 {
+      to_number(args[0]).to_int()
+    } else {
+      0
+    }
+    if start < 0 {
+      start = alen + start
+      if start < 0 {
+        start = 0
+      }
+    }
+    if start > alen {
+      start = alen
+    }
+    let del_count = if args.length() > 1 {
+      let d_num = to_number(args[1])
+      if d_num.is_inf() || d_num >= (alen - start).to_double() {
+        alen - start
+      } else {
+        let d = d_num.to_int()
+        if d < 0 {
+          0
+        } else {
+          d
+        }
+      }
+    } else {
+      alen - start
+    }
+    let removed : Array[Value] = []
+    for i = start; i < start + del_count; i = i + 1 {
+      removed.push(get_array_like_element_interp(interp, o, i))
+    }
+    let new_items : Array[Value] = []
+    for i = 2; i < args.length(); i = i + 1 {
+      new_items.push(args[i])
+    }
+    let items_count = new_items.length()
+    // For Array type, use direct element manipulation
+    match o {
+      Array(arr) => {
+        let tail : Array[Value] = []
+        for i = start + del_count; i < alen; i = i + 1 {
+          tail.push(arr.elements[i])
+        }
+        while arr.elements.length() > start {
+          let _ = arr.elements.pop()
+        }
+        for item in new_items {
+          arr.elements.push(item)
+        }
+        for item in tail {
+          arr.elements.push(item)
+        }
+      }
+      _ => {
+        // For objects: shift elements appropriately
+        if items_count < del_count {
+          // Shift left
+          for i = start; i < alen - del_count; i = i + 1 {
+            set_array_like_element(
+              o,
+              i + items_count,
+              get_array_like_element_interp(interp, o, i + del_count),
+            )
+          }
+          // Delete trailing elements
+          let new_len = alen - del_count + items_count
+          for i = new_len; i < alen; i = i + 1 {
+            delete_array_like_element(o, i)
+          }
+          set_array_like_length(o, new_len)
+        } else if items_count > del_count {
+          // Shift right
+          let new_len = alen - del_count + items_count
+          for i = alen - 1; i >= start + del_count; i = i - 1 {
+            set_array_like_element(
+              o,
+              i + items_count - del_count,
+              get_array_like_element_interp(interp, o, i),
+            )
+          }
+          set_array_like_length(o, new_len)
+        }
+        // Insert new items
+        for i = 0; i < items_count; i = i + 1 {
+          set_array_like_element(o, start + i, new_items[i])
+        }
+        if items_count == del_count {
+          // Length stays the same, no need to change
+          ()
+        }
+      }
+    }
+    Array({ elements: removed })
+  })
+  array_proto_props["copyWithin"] = make_interp_method_func("copyWithin", 2, fn(
+    interp,
+    this_val,
+    args,
+  ) raise {
+    let o = to_object(this_val, interp)
+    let len = to_array_like_length_interp(o, interp)
+    let mut target = if args.length() > 0 {
+      to_number(args[0]).to_int()
+    } else {
+      0
+    }
+    let mut start = if args.length() > 1 {
+      to_number(args[1]).to_int()
+    } else {
+      0
+    }
+    let mut end = if args.length() > 2 {
+      match args[2] {
+        Undefined => len
+        _ => to_number(args[2]).to_int()
+      }
+    } else {
+      len
+    }
+    if target < 0 {
+      target = len + target
+      if target < 0 {
+        target = 0
+      }
+    }
+    if start < 0 {
+      start = len + start
+      if start < 0 {
+        start = 0
+      }
+    }
+    if end < 0 {
+      end = len + end
+      if end < 0 {
+        end = 0
+      }
+    }
+    if end > len {
+      end = len
+    }
+    let count = if end - start < len - target {
+      end - start
+    } else {
+      len - target
+    }
+    if count > 0 {
+      let temp : Array[Value] = []
+      for i = start; i < start + count; i = i + 1 {
+        temp.push(get_array_like_element_interp(interp, o, i))
+      }
+      for i = 0; i < count; i = i + 1 {
+        if target + i < len {
+          set_array_like_element(o, target + i, temp[i])
+        }
+      }
+    }
+    o
+  })
+  array_proto_props["entries"] = make_interp_method_func("entries", 0, fn(
+    interp,
+    this_val,
+    _args,
+  ) raise {
+    let o = to_object(this_val, interp)
+    let len = to_array_like_length_interp(o, interp)
+    let result : Array[Value] = []
+    for i = 0; i < len; i = i + 1 {
+      result.push(
+        Array({
+          elements: [
+            Number(i.to_double()),
+            get_array_like_element_interp(interp, o, i),
+          ],
+        }),
+      )
+    }
+    make_array_iterator_value({ elements: result })
+  })
+  array_proto_props["keys"] = make_interp_method_func("keys", 0, fn(
+    interp,
+    this_val,
+    _args,
+  ) raise {
+    let o = to_object(this_val, interp)
+    let len = to_array_like_length_interp(o, interp)
+    let result : Array[Value] = []
+    for i = 0; i < len; i = i + 1 {
+      result.push(Number(i.to_double()))
+    }
+    make_array_iterator_value({ elements: result })
+  })
+  array_proto_props["values"] = make_interp_method_func("values", 0, fn(
+    interp,
+    this_val,
+    _args,
+  ) raise {
+    let o = to_object(this_val, interp)
+    let len = to_array_like_length_interp(o, interp)
+    let result : Array[Value] = []
+    for i = 0; i < len; i = i + 1 {
+      result.push(get_array_like_element_interp(interp, o, i))
+    }
+    make_array_iterator_value({ elements: result })
+  })
+  array_proto_props["toReversed"] = make_interp_method_func("toReversed", 0, fn(
+    interp,
+    this_val,
+    _args,
+  ) raise {
+    let o = to_object(this_val, interp)
+    let len = to_array_like_length_interp(o, interp)
+    let result : Array[Value] = []
+    for i = len - 1; i >= 0; i = i - 1 {
+      result.push(get_array_like_element_interp(interp, o, i))
+    }
+    Array({ elements: result })
+  })
+  array_proto_props["toSorted"] = make_interp_method_func("toSorted", 1, fn(
+    interp,
+    this_val,
+    args,
+  ) raise {
+    // Step 1: Validate comparefn
+    if args.length() > 0 {
+      let comparefn = args[0]
+      match comparefn {
+        Undefined => ()
+        _ =>
+          if !is_callable(comparefn) {
+            raise @errors.TypeError(
+              message=to_js_string(comparefn) + " is not a function",
+            )
+          }
+      }
+    }
+    let result = to_array_like_elements(this_val)
+    if args.length() > 0 {
+      match args[0] {
+        Undefined =>
+          result.sort_by(fn(a, b) {
+            if a is Undefined && b is Undefined {
+              return 0
+            }
+            if a is Undefined {
+              return 1
+            }
+            if b is Undefined {
+              return -1
+            }
+            let sa = a.to_string()
+            let sb = b.to_string()
+            if sa < sb {
+              -1
+            } else if sa > sb {
+              1
+            } else {
+              0
+            }
+          })
+        _ => {
+          let comparefn = args[0]
+          let loc = @token.Loc::default()
+          let mut caught_error : Error? = None
+          result.sort_by(fn(a, b) {
+            if a is Undefined && b is Undefined {
+              return 0
+            }
+            if a is Undefined {
+              return 1
+            }
+            if b is Undefined {
+              return -1
+            }
+            if caught_error is Some(_) {
+              return 0
+            }
+            let cmp_result = interp.call_value(
+              comparefn,
+              Undefined,
+              [a, b],
+              loc,
+            ) catch {
+              e => {
+                caught_error = Some(e)
+                return 0
+              }
+            }
+            let cmp = to_number(cmp_result) catch {
+              e => {
+                caught_error = Some(e)
+                return 0
+              }
+            }
+            if cmp.is_nan() {
+              0
+            } else if cmp < 0.0 {
+              -1
+            } else if cmp > 0.0 {
+              1
+            } else {
+              0
+            }
+          })
+          match caught_error {
+            Some(e) => raise e
+            None => ()
+          }
+        }
+      }
+    } else {
+      result.sort_by(fn(a, b) {
+        if a is Undefined && b is Undefined {
+          return 0
+        }
+        if a is Undefined {
+          return 1
+        }
+        if b is Undefined {
+          return -1
+        }
+        let sa = a.to_string()
+        let sb = b.to_string()
+        if sa < sb {
+          -1
+        } else if sa > sb {
+          1
+        } else {
+          0
+        }
+      })
+    }
+    Array({ elements: result })
+  })
+  array_proto_props["toSpliced"] = make_interp_method_func("toSpliced", 2, fn(
+    interp,
+    this_val,
+    args,
+  ) raise {
+    let o = to_object(this_val, interp)
+    let len = to_array_like_length_interp(o, interp)
+    let mut start = if args.length() > 0 {
+      to_number(args[0]).to_int()
+    } else {
+      0
+    }
+    if start < 0 {
+      start = len + start
+      if start < 0 {
+        start = 0
+      }
+    }
+    if start > len {
+      start = len
+    }
+    let del_count = if args.length() > 1 {
+      let d = to_number(args[1]).to_int()
+      if d < 0 {
+        0
+      } else if d > len - start {
+        len - start
+      } else {
+        d
+      }
+    } else {
+      len - start
+    }
+    let result : Array[Value] = []
+    for i = 0; i < start; i = i + 1 {
+      result.push(get_array_like_element_interp(interp, o, i))
+    }
+    for i = 2; i < args.length(); i = i + 1 {
+      result.push(args[i])
+    }
+    for i = start + del_count; i < len; i = i + 1 {
+      result.push(get_array_like_element_interp(interp, o, i))
+    }
+    Array({ elements: result })
+  })
+  array_proto_props["with"] = make_interp_method_func("with", 2, fn(
+    interp,
+    this_val,
+    args,
+  ) raise {
+    let o = to_object(this_val, interp)
+    let idx = if args.length() > 0 { to_number(args[0]).to_int() } else { 0 }
+    let value = if args.length() > 1 { args[1] } else { Undefined }
+    let len = to_array_like_length_interp(o, interp)
+    let actual_idx = if idx < 0 { len + idx } else { idx }
+    if actual_idx < 0 || actual_idx >= len {
+      raise @errors.RangeError(message="Invalid index")
+    }
+    let result : Array[Value] = []
+    for i = 0; i < len; i = i + 1 {
+      if i == actual_idx {
+        result.push(value)
+      } else {
+        result.push(get_array_like_element_interp(interp, o, i))
+      }
+    }
+    Array({ elements: result })
+  })
+  array_proto_descs["push"] = method_desc
+  array_proto_descs["pop"] = method_desc
+  array_proto_descs["shift"] = method_desc
+  array_proto_descs["unshift"] = method_desc
+  array_proto_descs["join"] = method_desc
+  array_proto_descs["indexOf"] = method_desc
+  array_proto_descs["lastIndexOf"] = method_desc
+  array_proto_descs["includes"] = method_desc
+  array_proto_descs["slice"] = method_desc
+  array_proto_descs["concat"] = method_desc
+  array_proto_descs["reverse"] = method_desc
+  array_proto_descs["fill"] = method_desc
+  array_proto_descs["toString"] = method_desc
+  array_proto_descs["at"] = method_desc
+  array_proto_descs["toLocaleString"] = method_desc
+  array_proto_descs["forEach"] = method_desc
+  array_proto_descs["map"] = method_desc
+  array_proto_descs["filter"] = method_desc
+  array_proto_descs["reduce"] = method_desc
+  array_proto_descs["reduceRight"] = method_desc
+  array_proto_descs["find"] = method_desc
+  array_proto_descs["findIndex"] = method_desc
+  array_proto_descs["findLast"] = method_desc
+  array_proto_descs["findLastIndex"] = method_desc
+  array_proto_descs["every"] = method_desc
+  array_proto_descs["some"] = method_desc
+  array_proto_descs["sort"] = method_desc
+  array_proto_descs["flat"] = method_desc
+  array_proto_descs["flatMap"] = method_desc
+  array_proto_descs["splice"] = method_desc
+  array_proto_descs["copyWithin"] = method_desc
+  array_proto_descs["entries"] = method_desc
+  array_proto_descs["keys"] = method_desc
+  array_proto_descs["values"] = method_desc
+  array_proto_descs["toReversed"] = method_desc
+  array_proto_descs["toSorted"] = method_desc
+  array_proto_descs["toSpliced"] = method_desc
+  array_proto_descs["with"] = method_desc
+  // Array.prototype.length = 0 (per spec, Array.prototype is an Array with length 0)
+  array_proto_props["length"] = Number(0.0)
+  array_proto_descs["length"] = {
+    writable: true,
+    enumerable: false,
+    configurable: false,
+    getter: None,
+    setter: None,
+  }
+  let array_proto : Value = Object({
+    properties: array_proto_props,
+    symbol_properties: {},
+    prototype: obj_proto,
+    callable: None,
+    class_name: "Array",
+    descriptors: array_proto_descs,
+    symbol_descriptors: {},
+    extensible: true,
+  })
+
+  // Array constructor with Array.isArray, Array.from, Array.of
+  let array_props : Map[String, Value] = {}
+  array_props["prototype"] = array_proto
+  array_props["name"] = String_("Array")
+  array_props["length"] = Number(1.0)
+  array_props["isArray"] = make_static_func_with_length("isArray", 1, fn(args) {
+    let val = if args.length() > 0 { args[0] } else { Undefined }
+    // Spec: Array.isArray unwraps proxies recursively
+    let mut current = val
+    while true {
+      match current {
+        Array(_) => return Bool(true)
+        Object(data) =>
+          // Array.prototype is an Object with class_name "Array"
+          if data.class_name == "Array" {
+            return Bool(true)
+          } else {
+            return Bool(false)
+          }
+        Proxy(proxy_data) =>
+          match proxy_data.target {
+            Some(target) => current = target
+            None => return Bool(false)
+          }
+        _ => return Bool(false)
+      }
+    }
+    Bool(false)
+  })
+  array_props["of"] = make_static_func("of", fn(args) {
+    // Array.of() - creates array from arguments
+    Array({ elements: args })
+  })
+  // Array.from with mapFn support using InterpreterCallable
+  array_props["from"] = make_interp_method_func("from", 1, fn(
+    interp,
+    _this_val,
+    args,
+  ) raise {
+    let source = if args.length() > 0 { args[0] } else { Undefined }
+    // Per spec, items must not be null/undefined
+    if source is (Null | Undefined) {
+      raise @errors.TypeError(
+        message="Cannot read properties of " +
+          to_js_string(source) +
+          " (reading 'Symbol(Symbol.iterator)')",
+      )
+    }
+    let map_fn = if args.length() > 1 {
+      match args[1] {
+        Undefined => None
+        fn_val => {
+          if !is_callable(fn_val) {
+            raise @errors.TypeError(
+              message=to_js_string(fn_val) + " is not a function",
+            )
+          }
+          Some(fn_val)
+        }
+      }
+    } else {
+      None
+    }
+    let this_arg = if args.length() > 2 { args[2] } else { Undefined }
+    let loc = @token.Loc::default()
+    let elements : Array[Value] = []
+    // Per spec: first try Symbol.iterator (iterable protocol)
+    let iterator_sym = get_iterator_symbol()
+    let mut used_iterator = false
+    let iterator_method = interp.get_computed_property(
+      source,
+      Symbol(iterator_sym),
+      loc,
+    )
+    if is_callable(iterator_method) {
+      used_iterator = true
+      let iterator = interp.call_value(iterator_method, source, [], loc)
+      let mut k = 0
+      while true {
+        let next_fn = interp.get_property(iterator, "next", loc)
+        let next = interp.call_value(next_fn, iterator, [], loc)
+        let done = match next {
+          Object(d) =>
+            match d.properties.get("done") {
+              Some(v) => is_truthy(v)
+              _ => false
+            }
+          _ => true
+        }
+        if done {
+          break
+        }
+        let value = match next {
+          Object(d) =>
+            match d.properties.get("value") {
+              Some(v) => v
+              None => Undefined
+            }
+          _ => Undefined
+        }
+        let mapped = match map_fn {
+          Some(fn_val) =>
+            interp.call_value(
+              fn_val,
+              this_arg,
+              [value, Number(k.to_double())],
+              loc,
+            )
+          None => value
+        }
+        elements.push(mapped)
+        k = k + 1
+      }
+    }
+    if !used_iterator {
+      // Fallback: array-like behavior
+      match source {
+        Array(data) =>
+          for i = 0; i < data.elements.length(); i = i + 1 {
+            let el = data.elements[i]
+            let mapped = match map_fn {
+              Some(fn_val) =>
+                interp.call_value(
+                  fn_val,
+                  this_arg,
+                  [el, Number(i.to_double())],
+                  loc,
+                )
+              None => el
+            }
+            elements.push(mapped)
+          }
+        String_(s) => {
+          let chars = s.to_array()
+          for i = 0; i < chars.length(); i = i + 1 {
+            let el = String_(chars[i].to_string())
+            let mapped = match map_fn {
+              Some(fn_val) =>
+                interp.call_value(
+                  fn_val,
+                  this_arg,
+                  [el, Number(i.to_double())],
+                  loc,
+                )
+              None => el
+            }
+            elements.push(mapped)
+          }
+        }
+        _ => {
+          let o = to_object(source, interp)
+          let len = to_array_like_length_interp(o, interp)
+          for i = 0; i < len; i = i + 1 {
+            let el = interp.get_property(o, i.to_string(), loc)
+            let mapped = match map_fn {
+              Some(fn_val) =>
+                interp.call_value(
+                  fn_val,
+                  this_arg,
+                  [el, Number(i.to_double())],
+                  loc,
+                )
+              None => el
+            }
+            elements.push(mapped)
+          }
+        }
+      }
+    }
+    Array({ elements, })
+  })
+  env.def_builtin(
+    "Array",
+    Object({
+      properties: array_props,
+      symbol_properties: {},
+      prototype: Null,
+      callable: Some(
+        NativeCallable("Array", fn(args) raise {
+          // Array constructor behavior
+          if args.length() == 1 {
+            match args[0] {
+              Number(n) => {
+                // Array(n) creates an array with the given length.
+                // Validate using double to avoid int32 overflow
+                if n < 0.0 ||
+                  n > 4294967295.0 ||
+                  n != @math.floor(n) ||
+                  n.is_nan() {
+                  raise @errors.RangeError(message="Invalid array length")
+                }
+                let len = n.to_int64().to_int()
+                let elements : Array[Value] = []
+                // Cap pre-allocation to prevent hangs with very large lengths
+                if len >= 0 && len <= 100000 {
+                  for _i = 0; _i < len; _i = _i + 1 {
+                    elements.push(Undefined)
+                  }
+                }
+                Array({ elements, })
+              }
+              _ => Array({ elements: args })
+            }
+          } else {
+            Array({ elements: args })
+          }
+        }),
+      ),
+      class_name: "Function",
+      descriptors: {
+        "name": nf_desc,
+        "length": nf_desc,
+        "prototype": {
+          writable: false,
+          enumerable: false,
+          configurable: false,
+          getter: None,
+          setter: None,
+        },
+        "isArray": obj_method_desc,
+        "from": obj_method_desc,
+        "of": obj_method_desc,
+      },
+      symbol_descriptors: {},
+      extensible: true,
+    }),
+  )
+  // Set Array.prototype.constructor = Array
+  match array_proto {
+    Object(data) => {
+      let arr_ctor = env.get("Array") catch { _ => Undefined }
+      data.properties["constructor"] = arr_ctor
+      data.descriptors["constructor"] = {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
+    }
+    _ => ()
+  }
+}
