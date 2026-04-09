@@ -2055,25 +2055,28 @@ test "f.call is a function" {
 }
 
 ///|
-test "stored call method" {
+test "stored call method throws TypeError" {
+  // Detached .call: `c` is Function.prototype.call, but called with this=undefined
+  // which means .call tries to invoke undefined as a function → TypeError
   let src =
     #|function add(x) { return this.val + x; }
     #|var c = add.call;
     #|var obj = { val: 10 };
-    #|console.log(c(obj, 5));
+    #|try { c(obj, 5); } catch(e) { console.log(e instanceof TypeError); }
   let output = run_output(src)
-  inspect(output, content="[\"15\"]")
+  inspect(output, content="[\"true\"]")
 }
 
 ///|
-test "stored bind method" {
+test "stored bind method throws TypeError" {
+  // Detached .bind: `b` is Function.prototype.bind, but called with this=undefined
+  // which is not callable → TypeError
   let src =
     #|function greet() { return this.msg; }
     #|var b = greet.bind;
-    #|var bound = b({ msg: "hello" });
-    #|console.log(bound());
+    #|try { b({ msg: "hello" }); } catch(e) { console.log(e instanceof TypeError); }
   let output = run_output(src)
-  inspect(output, content="[\"hello\"]")
+  inspect(output, content="[\"true\"]")
 }
 
 ///|

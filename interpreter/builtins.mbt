@@ -1423,7 +1423,7 @@ pub fn setup_builtins(
     let p = interp.get_property(this_val, "prototype", loc)
     match p {
       Object(_) => instanceof_prototype_chain(o, p, interp.global)
-      _ => raise @errors.TypeError(message="Function has non-object prototype in instanceof check")
+      _ => Bool(false)
     }
   })
   match env.bindings.get("[[FunctionPrototype]]") {
