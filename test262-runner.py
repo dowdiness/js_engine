@@ -668,6 +668,8 @@ def main():
                         help="Print summary only (no individual failures)")
     parser.add_argument("--verbose", action="store_true",
                         help="Print each test result as it runs")
+    parser.add_argument("--mode", choices=["both", "strict", "non-strict"], default="both",
+                        help="Test mode: 'strict' only, 'non-strict' only, or 'both' (default: both)")
 
     args = parser.parse_args()
 
@@ -732,7 +734,8 @@ def main():
     # Build (test_file, mode) pairs
     # For tests with onlyStrict: run in strict mode
     # For tests with noStrict or raw or module: run in non-strict mode
-    # For other tests: run in both modes
+    # For other tests: run in both modes (or filtered by --mode)
+    run_mode = args.mode  # "both", "strict", or "non-strict"
     test_tasks = []
     for tf in test_files:
         # Quick-read metadata to determine modes
@@ -742,18 +745,25 @@ def main():
             meta = parse_metadata(source)
             flags = meta.flags
             if "raw" in flags or "module" in flags:
-                test_tasks.append((tf, "non-strict"))
+                if run_mode != "strict":
+                    test_tasks.append((tf, "non-strict"))
             elif "onlyStrict" in flags:
-                test_tasks.append((tf, "strict"))
+                if run_mode != "non-strict":
+                    test_tasks.append((tf, "strict"))
             elif "noStrict" in flags:
-                test_tasks.append((tf, "non-strict"))
+                if run_mode != "strict":
+                    test_tasks.append((tf, "non-strict"))
             else:
-                test_tasks.append((tf, "non-strict"))
-                test_tasks.append((tf, "strict"))
+                if run_mode in ("both", "non-strict"):
+                    test_tasks.append((tf, "non-strict"))
+                if run_mode in ("both", "strict"):
+                    test_tasks.append((tf, "strict"))
         except Exception:
-            test_tasks.append((tf, "non-strict"))
+            if run_mode != "strict":
+                test_tasks.append((tf, "non-strict"))
 
-    print(f"Running {len(test_tasks)} test tasks ({len(test_files)} files, strict+non-strict)")
+    mode_label = run_mode if run_mode != "both" else "strict+non-strict"
+    print(f"Running {len(test_tasks)} test tasks ({len(test_files)} files, {mode_label})")
     print(f"Using {args.threads} parallel worker(s) with {args.timeout}s timeout per test")
 
     # Run tests

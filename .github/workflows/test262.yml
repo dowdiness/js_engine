@@ -8,31 +8,45 @@ on:
   workflow_dispatch:
 
 jobs:
-  test262:
+  test:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 60
     permissions:
       contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [strict, non-strict]
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+
+      - name: Cache MoonBit toolchain
+        uses: actions/cache@v4
+        with:
+          path: ~/.moon
+          key: moonbit-${{ runner.os }}-${{ hashFiles('moon.mod.json') }}
+          restore-keys: moonbit-${{ runner.os }}-
 
       - name: Set up MoonBit
         run: |
           curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
           echo "$HOME/.moon/bin" >> $GITHUB_PATH
 
-      - name: Update MoonBit dependencies
+      - name: Install and build
         run: |
           moon version --all
           moon update
+          moon install
+          moon build --target js --release
 
-      - name: Install dependencies
-        run: moon install
-
-      - name: Build JS engine
-        run: moon build --target js --release
+      - name: Cache test262 suite
+        uses: actions/cache@v4
+        with:
+          path: test262
+          key: test262-v1
 
       - name: Download Test262
         run: |
@@ -45,33 +59,65 @@ jobs:
       - name: Install Python dependencies
         run: pip install pyyaml
 
-      - name: Run Test262 conformance tests
+      - name: Run Test262 (${{ matrix.mode }})
         run: |
           python3 test262-runner.py \
             --test262 ./test262 \
+            --mode ${{ matrix.mode }} \
             --threads 4 \
             --timeout 5 \
-            --output test262-results.json \
+            --output test262-${{ matrix.mode }}-results.json \
             --summary
         continue-on-error: true
 
       - name: Upload results
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test262-results
-          path: test262-results.json
+          name: test262-${{ matrix.mode }}-results
+          path: test262-${{ matrix.mode }}-results.json
           retention-days: 90
 
-      - name: Display conformance summary
-        if: always()
+  summary:
+    needs: test
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Download all results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: test262-*-results
+          merge-multiple: true
+
+      - name: Display combined summary
         run: |
-          if [ -f test262-results.json ]; then
-            python3 -c "
-          import json
-          with open('test262-results.json') as f:
-              data = json.load(f)
-          s = data['summary']
-          print(f\"Test262 Pass Rate: {s['pass_rate']}%\")
-          print(f\"Passed: {s['passed']}, Failed: {s['failed']}, Skipped: {s['skipped']}\")
-          "
-          fi
+          python3 << 'PYEOF'
+          import json, os
+
+          total_passed = 0
+          total_failed = 0
+          total_skipped = 0
+
+          for mode in ["non-strict", "strict"]:
+              f = f"test262-{mode}-results.json"
+              if not os.path.isfile(f):
+                  print(f"{mode}: MISSING (job may have failed)")
+                  continue
+              with open(f) as fh:
+                  data = json.load(fh)
+              s = data["summary"]
+              p, fa, sk = s["passed"], s["failed"], s["skipped"]
+              total_passed += p
+              total_failed += fa
+              total_skipped += sk
+              rate = (p / (p + fa) * 100) if (p + fa) > 0 else 0
+              print(f"{mode:>12}: {rate:5.1f}%  ({p} passed, {fa} failed, {sk} skipped)")
+
+          combined = total_passed + total_failed
+          if combined > 0:
+              combined_rate = total_passed / combined * 100
+              print()
+              print(f"    combined: {combined_rate:5.1f}%  ({total_passed} passed, {total_failed} failed, {total_skipped} skipped)")
+          PYEOF
