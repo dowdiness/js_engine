@@ -13,6 +13,14 @@ moon info && moon fmt     # Before committing
 
 The SessionStart hook runs `scripts/package-overview.sh` which provides a live package map at the start of every session. Use `moon ide outline <path>` to explore any package's public API. Read `moon.mod.json` for module dependencies.
 
+## ES Spec Discipline
+
+When implementing or debugging JavaScript built-in methods:
+
+1. **Verify against the spec, not against sibling methods.** Methods that look structurally similar (e.g., `forEach` vs `find`) often have deliberately different semantics. Never assume one method's behavior applies to another.
+2. **Read the spec algorithm for the specific method** before claiming it's buggy or before implementing a fix. The test262 `info` field quotes the exact spec steps — use it.
+3. **Do not copy-paste implementations between methods.** Start from the spec algorithm for each. ES5 methods (forEach, map, filter) and ES6+ methods (find, findIndex, includes) differ on hole handling, return values, and species usage by design.
+
 ## Documentation
 
 Browse `docs/` for architecture, decisions, development guides, and performance snapshots. Key rules:
