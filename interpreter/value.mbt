@@ -277,5 +277,3 @@ pub impl Show for Value with output(self, logger) {
     Proxy(_) => logger.write_string("[object Object]")
   }
 }
-
-

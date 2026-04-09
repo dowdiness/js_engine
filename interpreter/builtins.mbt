@@ -1994,177 +1994,6 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
 fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
   let iterator_sym = get_iterator_symbol()
 
-  // Helper to create an array iterator object
-  // Array iterator returns { value, done } for each element
-  fn make_array_iterator(arr : ArrayData) -> Value {
-    // Create mutable index state using a Ref
-    let index_ref : Ref[Int] = { val: 0 }
-
-    // Create the iterator next method
-    let next_method = Object({
-      properties: {},
-      symbol_properties: {},
-      prototype: Null,
-      callable: Some(
-        NativeCallable("next", fn(_args) {
-          let idx = index_ref.val
-          if idx < arr.elements.length() {
-            let value = arr.elements[idx]
-            index_ref.val = idx + 1
-            // Return { value: element, done: false }
-            let result_props : Map[String, Value] = {}
-            result_props["value"] = value
-            result_props["done"] = Bool(false)
-            Object({
-              properties: result_props,
-              symbol_properties: {},
-              prototype: Null,
-              callable: None,
-              class_name: "Object",
-              descriptors: {},
-              symbol_descriptors: {},
-              extensible: true,
-            })
-          } else {
-            // Return { value: undefined, done: true }
-            let result_props : Map[String, Value] = {}
-            result_props["value"] = Undefined
-            result_props["done"] = Bool(true)
-            Object({
-              properties: result_props,
-              symbol_properties: {},
-              prototype: Null,
-              callable: None,
-              class_name: "Object",
-              descriptors: {},
-              symbol_descriptors: {},
-              extensible: true,
-            })
-          }
-        }),
-      ),
-      class_name: "Function",
-      descriptors: {},
-      symbol_descriptors: {},
-      extensible: true,
-    })
-
-    // Create the iterator object
-    let iter_props : Map[String, Value] = {}
-    iter_props["next"] = next_method
-
-    // Iterator should also have Symbol.iterator returning itself
-    let iter_symbol_props : Map[Int, Value] = {}
-    let tostringtag_sym = get_tostringtag_symbol()
-    iter_symbol_props[tostringtag_sym.id] = String_("Array Iterator")
-    let iter_symbol_descs : Map[Int, PropDescriptor] = {}
-    iter_symbol_descs[tostringtag_sym.id] = {
-      writable: false,
-      enumerable: false,
-      configurable: true,
-      getter: None,
-      setter: None,
-    }
-    let iter_obj = Object({
-      properties: iter_props,
-      symbol_properties: iter_symbol_props,
-      prototype: Null,
-      callable: None,
-      class_name: "Array Iterator",
-      descriptors: {},
-      symbol_descriptors: iter_symbol_descs,
-      extensible: true,
-    })
-
-    // Add [Symbol.iterator] that returns the iterator itself
-    match iter_obj {
-      Object(data) =>
-        data.symbol_properties[iterator_sym.id] = make_method_func(
-          "[Symbol.iterator]",
-          0,
-          fn(this_val, _args) { this_val },
-        )
-      _ => ()
-    }
-    iter_obj
-  }
-
-  // Helper to create an array-like iterator for non-array objects
-  fn make_array_like_iterator(val : Value) -> Value raise {
-    let index_ref : Ref[Int] = { val: 0 }
-    let len = to_array_like_length(val)
-
-    let next_method = Object({
-      properties: {},
-      symbol_properties: {},
-      prototype: Null,
-      callable: Some(
-        NativeCallable("next", fn(_args) {
-          let idx = index_ref.val
-          if idx < len {
-            let value = get_array_like_element(val, idx)
-            index_ref.val = idx + 1
-            let result_props : Map[String, Value] = {}
-            result_props["value"] = value
-            result_props["done"] = Bool(false)
-            Object({
-              properties: result_props,
-              symbol_properties: {},
-              prototype: Null,
-              callable: None,
-              class_name: "Object",
-              descriptors: {},
-              symbol_descriptors: {},
-              extensible: true,
-            })
-          } else {
-            let result_props : Map[String, Value] = {}
-            result_props["value"] = Undefined
-            result_props["done"] = Bool(true)
-            Object({
-              properties: result_props,
-              symbol_properties: {},
-              prototype: Null,
-              callable: None,
-              class_name: "Object",
-              descriptors: {},
-              symbol_descriptors: {},
-              extensible: true,
-            })
-          }
-        }),
-      ),
-      class_name: "Function",
-      descriptors: {},
-      symbol_descriptors: {},
-      extensible: true,
-    })
-
-    let iter_props : Map[String, Value] = {}
-    iter_props["next"] = next_method
-    let iter_obj = Object({
-      properties: iter_props,
-      symbol_properties: {},
-      prototype: Null,
-      callable: None,
-      class_name: "Array Iterator",
-      descriptors: {},
-      symbol_descriptors: {},
-      extensible: true,
-    })
-
-    match iter_obj {
-      Object(data) =>
-        data.symbol_properties[iterator_sym.id] = make_method_func(
-          "[Symbol.iterator]",
-          0,
-          fn(this_val, _args) { this_val },
-        )
-      _ => ()
-    }
-    iter_obj
-  }
-
   // Get Array constructor and add Symbol.iterator to its prototype
   let array_val = env.get("Array")
   match array_val {
@@ -2177,8 +2006,8 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
             0,
             fn(this_val, _args) raise {
               match this_val {
-                Array(arr) => make_array_iterator(arr)
-                _ => make_array_like_iterator(this_val)
+                Array(arr) => make_array_iterator_value(arr)
+                _ => make_array_like_iterator_value(this_val)
               }
             },
           )
@@ -2189,8 +2018,8 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
             _args,
           ) raise {
             match this_val {
-              Array(arr) => make_array_iterator(arr)
-              _ => make_array_like_iterator(this_val)
+              Array(arr) => make_array_iterator_value(arr)
+              _ => make_array_like_iterator_value(this_val)
             }
           })
 

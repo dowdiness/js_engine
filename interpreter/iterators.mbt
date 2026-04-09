@@ -179,6 +179,90 @@ pub fn make_array_iterator_value(arr : ArrayData) -> Value {
 }
 
 ///|
+/// Create an array-like iterator for non-array objects with a `length` property.
+/// Uses `get_array_like_element` / `to_array_like_length` to read indexed values.
+pub fn make_array_like_iterator_value(val : Value) -> Value raise Error {
+  let arr_iter_proto = get_array_iterator_proto()
+  let index_ref : Ref[Int] = { val: 0 }
+  let len = to_array_like_length(val)
+
+  let next_method = Object({
+    properties: { "length": Number(0.0), "name": String_("next") },
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      NativeCallable("next", fn(_args) {
+        let idx = index_ref.val
+        if idx < len {
+          let value = get_array_like_element(val, idx)
+          index_ref.val = idx + 1
+          let result_props : Map[String, Value] = {}
+          result_props["value"] = value
+          result_props["done"] = Bool(false)
+          Object({
+            properties: result_props,
+            symbol_properties: {},
+            prototype: Null,
+            callable: None,
+            class_name: "Object",
+            descriptors: {},
+            symbol_descriptors: {},
+            extensible: true,
+          })
+        } else {
+          let result_props : Map[String, Value] = {}
+          result_props["value"] = Undefined
+          result_props["done"] = Bool(true)
+          Object({
+            properties: result_props,
+            symbol_properties: {},
+            prototype: Null,
+            callable: None,
+            class_name: "Object",
+            descriptors: {},
+            symbol_descriptors: {},
+            extensible: true,
+          })
+        }
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {
+      "length": {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      },
+      "name": {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      },
+    },
+    symbol_descriptors: {},
+    extensible: true,
+  })
+
+  let iter_props : Map[String, Value] = {}
+  iter_props["next"] = next_method
+
+  Object({
+    properties: iter_props,
+    symbol_properties: {},
+    prototype: arr_iter_proto,
+    callable: None,
+    class_name: "Array Iterator",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+}
+
+///|
 /// Shared %StringIteratorPrototype% - lazily initialized
 let string_iterator_proto_ref : Ref[Value?] = { val: None }
 
@@ -339,39 +423,4 @@ pub fn make_string_iterator_value(s : String) -> Value {
     symbol_descriptors: {},
     extensible: true,
   })
-}
-
-///|
-/// Sort property keys per OrdinaryOwnPropertyKeys spec order:
-/// 1. Integer indices in ascending numeric order
-/// 2. Other string keys in insertion order
-pub fn sort_property_keys(props : Map[String, Value]) -> Array[String] {
-  let int_keys : Array[String] = []
-  let str_keys : Array[String] = []
-  props.each(fn(k, _v) {
-    // Skip internal slots (e.g., [[BooleanData]], [[NumberData]], [[StringData]])
-    if k.has_prefix("[[") {
-      return
-    }
-    let idx = @string.parse_int(k) catch { _ => -1 }
-    if idx >= 0 && idx.to_string() == k {
-      int_keys.push(k)
-    } else {
-      str_keys.push(k)
-    }
-  })
-  // Sort integer keys by numeric value
-  int_keys.sort_by(fn(a, b) {
-    let na = @string.parse_int(a) catch { _ => 0 }
-    let nb = @string.parse_int(b) catch { _ => 0 }
-    na - nb
-  })
-  let result : Array[String] = []
-  for k in int_keys {
-    result.push(k)
-  }
-  for k in str_keys {
-    result.push(k)
-  }
-  result
 }
