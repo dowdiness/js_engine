@@ -312,7 +312,7 @@ fn setup_array_builtins(
     for i = start; i < end; i = i + 1 {
       result.push(get_array_like_element_interp(interp, o, i))
     }
-    Array({ elements: result })
+    array_species_create(interp, o, result)
   })
   array_proto_props["concat"] = make_interp_method_func("concat", 1, fn(
     interp,
@@ -382,7 +382,7 @@ fn setup_array_builtins(
         result.push(item)
       }
     }
-    Array({ elements: result })
+    array_species_create(interp, o, result)
   })
   array_proto_props["reverse"] = make_interp_method_func("reverse", 0, fn(
     interp,
@@ -584,7 +584,7 @@ fn setup_array_builtins(
         result.push(Undefined)
       }
     }
-    Array({ elements: result })
+    array_species_create(interp, o, result)
   })
   array_proto_props["filter"] = make_interp_method_func("filter", 1, fn(
     interp,
@@ -616,7 +616,7 @@ fn setup_array_builtins(
         }
       }
     }
-    Array({ elements: result })
+    array_species_create(interp, o, result)
   })
   array_proto_props["reduce"] = make_interp_method_func("reduce", 1, fn(
     interp,
@@ -1054,7 +1054,7 @@ fn setup_array_builtins(
     let elements = to_array_like_elements(o)
     let result : Array[Value] = []
     flatten_array_val(elements, depth, result)
-    Array({ elements: result })
+    array_species_create(interp, o, result)
   })
   array_proto_props["flatMap"] = make_interp_method_func("flatMap", 1, fn(
     interp,
@@ -1088,7 +1088,7 @@ fn setup_array_builtins(
         _ => result.push(val)
       }
     }
-    Array({ elements: result })
+    array_species_create(interp, o, result)
   })
   array_proto_props["splice"] = make_interp_method_func("splice", 2, fn(
     interp,
@@ -1191,7 +1191,7 @@ fn setup_array_builtins(
         }
       }
     }
-    Array({ elements: removed })
+    array_species_create(interp, o, removed)
   })
   array_proto_props["copyWithin"] = make_interp_method_func("copyWithin", 2, fn(
     interp,

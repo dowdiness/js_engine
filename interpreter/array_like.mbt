@@ -284,6 +284,82 @@ pub fn delete_array_like_element(val : Value, index : Int) -> Unit {
 }
 
 ///|
+/// ArraySpeciesCreate(originalArray, length) per ES spec 9.4.2.3
+/// Looks up Symbol.species on the original array's constructor to determine
+/// what constructor to use for the result. Returns a plain Array if no
+/// custom species is found.
+pub fn array_species_create(
+  interp : Interpreter,
+  original : Value,
+  elements : Array[Value],
+) -> Value raise Error {
+  // Step 1: If originalArray is not an Array, return a plain array
+  let is_array = match original {
+    Array(_) => true
+    Object(data) => data.class_name == "Array"
+    _ => false
+  }
+  if !is_array {
+    return Array({ elements, })
+  }
+  let loc = @token.Loc::default()
+  // Step 2: Get C = Get(originalArray, "constructor")
+  let c = interp.get_property(original, "constructor", loc)
+  // Step 4: If Type(C) is Object, set C = Get(C, @@species)
+  let species : Value = match c {
+    Object(_) => {
+      let species_sym = get_species_symbol()
+      let s = interp.get_computed_property(
+        c,
+        Symbol(species_sym),
+        loc,
+      )
+      // If species is null or undefined, use default
+      match s {
+        Null | Undefined => Undefined
+        _ => s
+      }
+    }
+    Undefined => Undefined
+    _ => Undefined
+  }
+  // Step 5: If C is undefined, return plain array
+  if species is Undefined {
+    return Array({ elements, })
+  }
+  // Step 6: If IsConstructor(C) is false, throw TypeError
+  if !is_constructor_value(species) {
+    raise @errors.TypeError(
+      message="Species constructor is not a constructor",
+    )
+  }
+  // Step 7: Construct(C, « length »)
+  let result = interp.construct_value(
+    species,
+    [Number(elements.length().to_double())],
+    loc,
+  )
+  // Copy elements into the constructed result
+  match result {
+    Array(data) => {
+      data.elements.clear()
+      for el in elements {
+        data.elements.push(el)
+      }
+      result
+    }
+    Object(data) => {
+      for i, el in elements {
+        data.properties[i.to_string()] = el
+      }
+      data.properties["length"] = Number(elements.length().to_double())
+      result
+    }
+    _ => Array({ elements, })
+  }
+}
+
+///|
 /// Convert array-like value to an Array of Values
 pub fn to_array_like_elements(val : Value) -> Array[Value] raise {
   let len = to_array_like_length(val)
