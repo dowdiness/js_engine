@@ -1,0 +1,954 @@
+///|
+/// Spread an iterable value into an array of values using the iterator protocol
+fn Interpreter::spread_iterable(
+  self : Interpreter,
+  val : Value,
+  loc : @token.Loc,
+) -> Array[Value] raise Error {
+  let result : Array[Value] = []
+
+  // Try to get the iterator via Symbol.iterator protocol
+  let iterator_sym = get_iterator_symbol()
+  let iterator_method = self.get_computed_property(
+    val,
+    Symbol(iterator_sym),
+    loc,
+  )
+
+  // Get the iterator object
+  let iterator = match iterator_method {
+    Object(data) =>
+      match data.callable {
+        Some(_) => self.call_value(iterator_method, val, [], loc)
+        None =>
+          raise @errors.TypeError(
+            message=type_of(val) +
+              " is not iterable (Symbol.iterator is not a function)",
+          )
+      }
+    Undefined =>
+      // No iterator method — fall back for arrays/strings which are built-in iterables
+      match val {
+        Array(arr) => {
+          for el in arr.elements {
+            result.push(el)
+          }
+          return result
+        }
+        String_(s) => {
+          let chars = s.to_array()
+          for c in chars {
+            let buf = StringBuilder::new()
+            buf.write_char(c)
+            result.push(String_(buf.to_string()))
+          }
+          return result
+        }
+        _ => raise @errors.TypeError(message=type_of(val) + " is not iterable")
+      }
+    _ => raise @errors.TypeError(message=type_of(val) + " is not iterable")
+  }
+
+  // Get the next method from the iterator (walk prototype chain)
+  let next_method = match iterator {
+    Object(iter_data) =>
+      // First check direct properties
+      match iter_data.properties.get("next") {
+        Some(next_fn) => next_fn
+        None => {
+          // Walk prototype chain
+          let mut found : Value = Undefined
+          let mut current = iter_data.prototype
+          while true {
+            match current {
+              Object(proto_data) =>
+                match proto_data.properties.get("next") {
+                  Some(next_fn) => {
+                    found = next_fn
+                    break
+                  }
+                  None => current = proto_data.prototype
+                }
+              _ => break
+            }
+          }
+          match found {
+            Undefined =>
+              raise @errors.TypeError(message="iterator.next is not a function")
+            _ => found
+          }
+        }
+      }
+    _ => raise @errors.TypeError(message="Iterator result is not an object")
+  }
+
+  // Iterate using the iterator protocol
+  while true {
+    let iter_result = self.call_value(next_method, iterator, [], loc)
+    let (done, value) = match iter_result {
+      Object(result_data) => {
+        let done_val = match result_data.properties.get("done") {
+          Some(v) => is_truthy(v)
+          None => false
+        }
+        let value_val = match result_data.properties.get("value") {
+          Some(v) => v
+          None => Undefined
+        }
+        (done_val, value_val)
+      }
+      _ => raise @errors.TypeError(message="Iterator result is not an object")
+    }
+    if done {
+      break
+    }
+    result.push(value)
+  }
+  result
+}
+
+///|
+fn Interpreter::eval_args_with_spread(
+  self : Interpreter,
+  arg_exprs : Array[@ast.Expr],
+  env : Environment,
+) -> Array[Value] raise Error {
+  let args : Array[Value] = []
+  for a in arg_exprs {
+    match a {
+      SpreadExpr(inner, loc) => {
+        let val = self.eval_expr(inner, env)
+        // Use iterator protocol for spreading
+        let spread_vals = self.spread_iterable(val, loc)
+        for v in spread_vals {
+          args.push(v)
+        }
+      }
+      _ => args.push(self.eval_expr(a, env))
+    }
+  }
+  args
+}
+
+///|
+/// Check if a value is the global eval function
+fn is_eval_function(val : Value) -> Bool {
+  match val {
+    Object(obj_data) =>
+      match obj_data.callable {
+        Some(NonConstructableCallable("eval", _)) => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+///|
+/// Recursively strip Grouping nodes from an expression.
+/// Per ES spec, grouping parentheses do not change the Reference type,
+/// so ((eval))("code") is still a direct eval call.
+fn unwrap_grouping(expr : @ast.Expr) -> @ast.Expr {
+  match expr {
+    Grouping(inner, _) => unwrap_grouping(inner)
+    _ => expr
+  }
+}
+
+///|
+/// Execute eval code in a given environment.
+/// If `direct` is true, executes in the caller's environment (direct eval).
+/// If `direct` is false, executes in the global environment (indirect eval).
+/// Handles strict mode isolation and var leaking per ES spec.
+///
+/// Per ES spec (18.2.1.1 PerformEval):
+/// - Strict eval: all declarations (var, let, const, function) are isolated in a new scope
+/// - Non-strict direct eval: var/function declarations leak to caller's variable environment,
+///   but let/const are isolated in a new eval lexical scope
+/// - Non-strict indirect eval: var/function declarations leak to global scope,
+///   but let/const are isolated in a new eval lexical scope
+fn Interpreter::perform_eval(
+  self : Interpreter,
+  code : String,
+  caller_env : Environment,
+  direct : Bool,
+) -> Value raise Error {
+  // Parse the code — syntax errors propagate as SyntaxError
+  let prog = @parser.parse(code)
+  let stmts = prog.stmts
+  if stmts.length() == 0 {
+    return Undefined
+  }
+  // Determine if eval code is strict.
+  // Direct eval inherits strictness from the caller OR its own "use strict" directive.
+  // Indirect eval is strict ONLY if the eval code itself has "use strict" — it does
+  // NOT inherit the caller's strict mode (it runs as a fresh global script).
+  let eval_strict = if direct {
+    self.strict || has_use_strict(stmts)
+  } else {
+    has_use_strict(stmts)
+  }
+  // Apply static block-scoped redeclaration checks before declaration instantiation.
+  self.validate_block_early_errors(stmts, eval_strict)
+  // Determine the variable environment (where var/function declarations leak to).
+  // For direct eval, walk up from the caller's env to find the function/global scope
+  // (the nearest is_var_scope environment). This ensures that eval("var x = 1")
+  // inside a block correctly hoists to the enclosing function scope, not the block.
+  let var_env : Environment = if direct {
+    caller_env.find_var_env()
+  } else {
+    self.global
+  }
+  // Always create a new scope for eval execution.
+  // This isolates let/const declarations from the caller.
+  // For strict eval, it also isolates var/function declarations.
+  // For direct eval, parent to caller_env so block-scoped bindings are visible:
+  //   { let x = 1; eval("x") } must see x.
+  // For indirect eval, parent to global scope since it runs as a fresh script.
+  let exec_parent = if direct { caller_env } else { self.global }
+  let exec_env = Environment::new(parent=Some(exec_parent))
+  // Save and set strict mode
+  let saved_strict = self.strict
+  if eval_strict {
+    self.strict = true
+  }
+  let result = try {
+    if eval_strict {
+      // Strict eval: all declarations stay in the eval scope (isolated)
+      self.hoist_declarations(stmts, exec_env)
+      hoist_block_tdz(stmts, exec_env)
+    } else {
+      // EvalDeclarationInstantiation steps 5.a and 5.d:
+      // Check for var/lexical conflicts before hoisting.
+      let var_names = collect_eval_var_names(stmts)
+      // Step 5.a: If var_env is the global Environment Record, check that
+      // var names don't conflict with global lexical (let/const) declarations.
+      if var_env.parent is None {
+        for name in var_names {
+          match var_env.bindings.get(name) {
+            Some(b) =>
+              if b.kind == LetBinding || b.kind == ConstBinding {
+                raise @errors.SyntaxError(
+                  message="Identifier '\{name}' has already been declared",
+                )
+              }
+            _ => ()
+          }
+        }
+      }
+      // Step 5.d: Walk from caller_env up to var_env (exclusive), checking
+      // that no intermediate scope has a binding that conflicts with a var name.
+      // This prevents eval("var x") from hoisting past a block-scoped let/const x.
+      {
+        let mut this_lex = caller_env
+        while !this_lex.is_var_scope {
+          for name in var_names {
+            if this_lex.bindings.contains(name) {
+              raise @errors.SyntaxError(
+                message="Identifier '\{name}' has already been declared",
+              )
+            }
+          }
+          match this_lex.parent {
+            Some(parent) => this_lex = parent
+            None => break
+          }
+        }
+      }
+      // Non-strict eval: hoist var/function to the variable environment (leak),
+      // then hoist let/const TDZ markers to the eval scope (isolated)
+      exec_env.def(eval_function_reconcile_marker, Bool(true), LetBinding)
+      self.hoist_declarations(stmts, var_env)
+      hoist_block_tdz(stmts, exec_env)
+    }
+    // Execute statements and collect result
+    let mut last : Value = Undefined
+    for stmt in stmts {
+      match self.exec_stmt(stmt, exec_env) {
+        Normal(v) =>
+          // Per spec, declarations have empty completion values
+          if !is_declaration_stmt(stmt) {
+            last = v
+          }
+        ReturnSignal(_) =>
+          raise @errors.SyntaxError(
+            message="return statement outside of function",
+          )
+        BreakSignal(_, _) =>
+          raise @errors.SyntaxError(message="break statement outside of loop")
+        ContinueSignal(_, _) =>
+          raise @errors.SyntaxError(
+            message="continue statement outside of loop",
+          )
+      }
+    }
+    last
+  } catch {
+    e => {
+      self.strict = saved_strict
+      raise e
+    }
+  }
+  self.strict = saved_strict
+  result
+}
+
+///|
+fn Interpreter::eval_call(
+  self : Interpreter,
+  callee_expr : @ast.Expr,
+  arg_exprs : Array[@ast.Expr],
+  env : Environment,
+  loc : @token.Loc,
+) -> Value raise Error {
+  // Detect direct eval: eval(...), (eval)(...), ((eval))(...) etc.
+  // Per ES spec, grouping parentheses do not change the Reference type,
+  // so any nesting of parens around eval is still a direct eval call.
+  match unwrap_grouping(callee_expr) {
+    Ident("eval", _) => {
+      // Check if this identifier actually resolves to the global eval function
+      let callee = env.get("eval") catch {
+        _ =>
+          // eval is not defined - throw ReferenceError
+          raise @errors.ReferenceError(message="eval is not defined")
+      }
+      if is_eval_function(callee) {
+        // Direct eval: parse and execute in caller's environment
+        let args = self.eval_args_with_spread(arg_exprs, env)
+        if args.length() == 0 {
+          return Undefined
+        }
+        match args[0] {
+          String_(code) => return self.perform_eval(code, env, true)
+          other => return other // non-string argument returns as-is
+        }
+      }
+      // eval has been shadowed by a non-eval binding — call normally
+      let args = self.eval_args_with_spread(arg_exprs, env)
+      self.call_value(callee, Undefined, args, loc)
+    }
+    _ =>
+      // Per ES spec (13.3.6.1), evaluate callee/receiver first, then arguments.
+      match callee_expr {
+        Member(obj_expr, prop, mloc) =>
+          match obj_expr {
+            Ident("console", _) => {
+              let callee = self.eval_member(obj_expr, prop, env, mloc)
+              let args = self.eval_args_with_spread(arg_exprs, env)
+              self.call_value(callee, Undefined, args, loc)
+            }
+            _ => {
+              let obj = self.eval_expr(obj_expr, env)
+              let func_val = self.get_property(obj, prop, mloc)
+              let args = self.eval_args_with_spread(arg_exprs, env)
+              self.call_value(func_val, obj, args, loc)
+            }
+          }
+        ComputedMember(obj_expr, key_expr, mloc) => {
+          let obj = self.eval_expr(obj_expr, env)
+          let key = self.eval_expr(key_expr, env)
+          let func_val = self.get_computed_property(obj, key, mloc)
+          let args = self.eval_args_with_spread(arg_exprs, env)
+          self.call_value(func_val, obj, args, loc)
+        }
+        SuperMember(prop, sloc) => {
+          // super.method() - look up on super prototype, call with current this
+          let super_proto = env.get("[[SuperPrototype]]")
+          let func_val = self.get_property(super_proto, prop, sloc)
+          let this_val = env.get("this") catch { _ => Undefined }
+          let args = self.eval_args_with_spread(arg_exprs, env)
+          self.call_value(func_val, this_val, args, loc)
+        }
+        SuperComputedMember(key_expr, sloc) => {
+          // super[expr]() - look up on super prototype, call with current this
+          let super_proto = env.get("[[SuperPrototype]]")
+          let key = self.eval_expr(key_expr, env)
+          let func_val = self.get_computed_property(super_proto, key, sloc)
+          let this_val = env.get("this") catch { _ => Undefined }
+          let args = self.eval_args_with_spread(arg_exprs, env)
+          self.call_value(func_val, this_val, args, loc)
+        }
+        _ => {
+          let callee = self.eval_expr(callee_expr, env)
+          let args = self.eval_args_with_spread(arg_exprs, env)
+          self.call_value(callee, Undefined, args, loc)
+        }
+      }
+  }
+}
+
+///|
+fn Interpreter::call_value(
+  self : Interpreter,
+  callee : Value,
+  this_val : Value,
+  args : Array[Value],
+  loc : @token.Loc,
+) -> Value raise Error {
+  let normalize_sloppy_this = fn(tv : Value) {
+    match tv {
+      Undefined | Null => self.global_this
+      _ => tv
+    }
+  }
+  match callee {
+    Proxy(proxy_data) => {
+      // Verify target chain is callable (recursively unwrap nested proxies)
+      let target = get_proxy_target(proxy_data)
+      fn check_callable(v : Value) -> Bool {
+        match v {
+          Object(t_data) => t_data.callable is Some(_)
+          Proxy(pd) =>
+            match pd.target {
+              Some(inner) => check_callable(inner)
+              None => false
+            }
+          _ => false
+        }
+      }
+      if !check_callable(target) {
+        raise @errors.TypeError(message="proxy target is not a function")
+      }
+      let trap = get_proxy_trap(proxy_data, "apply")
+      match trap {
+        Some(trap_fn) => {
+          let handler = get_proxy_handler(proxy_data)
+          let args_array : Value = Array({ elements: args.copy() })
+          return self.call_value(
+            trap_fn,
+            handler,
+            [target, this_val, args_array],
+            loc,
+          )
+        }
+        None => return self.call_value(target, this_val, args, loc)
+      }
+    }
+    Object(obj_data) =>
+      match obj_data.callable {
+        Some(UserFunc(data)) => {
+          let saved_strict = self.strict
+          let result = try {
+            let func_env = Environment::new(parent=Some(data.closure))
+            func_env.is_var_scope = true
+            let func_strict = data.strict
+            self.strict = func_strict
+            if func_strict {
+              // Strict mode: check for duplicate parameters
+              check_duplicate_params(data.params)
+              // Strict mode: validate parameter names
+              for p in data.params {
+                validate_strict_binding_name(p)
+              }
+            }
+            let effective_this = if func_strict {
+              this_val
+            } else {
+              normalize_sloppy_this(this_val)
+            }
+            func_env.def("this", effective_this, LetBinding)
+            func_env.def("<new.target>", Undefined, LetBinding)
+            for i = 0; i < data.params.length(); i = i + 1 {
+              let val : Value = if i < args.length() {
+                args[i]
+              } else {
+                Undefined
+              }
+              // In sloppy mode, duplicate params are allowed; last value wins
+              if func_env.bindings.contains(data.params[i]) {
+                func_env.assign(data.params[i], val)
+              } else {
+                func_env.def(data.params[i], val, LetBinding)
+              }
+            }
+            // Create arguments object
+            let tte_val : Value? = if func_env.has("[[ThrowTypeError]]") {
+              Some(func_env.get("[[ThrowTypeError]]"))
+            } else {
+              None
+            }
+            func_env.def(
+              "arguments",
+              make_arguments_object(
+                args,
+                callee,
+                func_strict,
+                throw_type_error=tte_val,
+              ),
+              VarBinding,
+            )
+            // Hoist var declarations and function declarations within function body
+            self.hoist_declarations(data.body, func_env)
+            match data.name {
+              Some(name) =>
+                if !func_env.bindings.contains(name) {
+                  func_env.def(name, callee, LetBinding)
+                }
+              None => ()
+            }
+            match self.exec_stmts(data.body, func_env) {
+              Normal(_) => Undefined
+              ReturnSignal(v) => v
+              BreakSignal(_, _) =>
+                raise @errors.SyntaxError(
+                  message="break statement outside of loop",
+                )
+              ContinueSignal(_, _) =>
+                raise @errors.SyntaxError(
+                  message="continue statement outside of loop",
+                )
+            }
+          } catch {
+            e => {
+              self.strict = saved_strict
+              raise e
+            }
+          }
+          self.strict = saved_strict
+          result
+        }
+        Some(ArrowFunc(data)) => {
+          let saved_strict = self.strict
+          let result = try {
+            self.strict = data.strict
+            let func_env = Environment::new(parent=Some(data.closure))
+            func_env.is_var_scope = true
+            // Arrow functions do NOT rebind this — use closure's this
+            for i = 0; i < data.params.length(); i = i + 1 {
+              let val : Value = if i < args.length() {
+                args[i]
+              } else {
+                Undefined
+              }
+              func_env.def(data.params[i], val, LetBinding)
+            }
+            self.hoist_declarations(data.body, func_env)
+            match self.exec_stmts(data.body, func_env) {
+              Normal(_) => Undefined
+              ReturnSignal(v) => v
+              BreakSignal(_, _) =>
+                raise @errors.SyntaxError(
+                  message="break statement outside of loop",
+                )
+              ContinueSignal(_, _) =>
+                raise @errors.SyntaxError(
+                  message="continue statement outside of loop",
+                )
+            }
+          } catch {
+            e => {
+              self.strict = saved_strict
+              raise e
+            }
+          }
+          self.strict = saved_strict
+          result
+        }
+        Some(UserFuncExt(data)) => {
+          let saved_strict = self.strict
+          let result = try {
+            let func_env = Environment::new(parent=Some(data.closure))
+            func_env.is_var_scope = true
+            let func_strict = data.strict
+            self.strict = func_strict
+            if func_strict {
+              // Strict mode: check for duplicate parameters and reserved names
+              check_duplicate_params_ext(data.params, data.rest_param)
+              for p in data.params {
+                validate_strict_binding_name(p.name)
+              }
+              match data.rest_param {
+                Some(rn) => validate_strict_binding_name(rn)
+                None => ()
+              }
+            }
+            let effective_this = if func_strict {
+              this_val
+            } else {
+              normalize_sloppy_this(this_val)
+            }
+            func_env.def("this", effective_this, LetBinding)
+            func_env.def("<new.target>", Undefined, LetBinding)
+            // Create arguments object BEFORE binding params so defaults can reference it
+            let tte_val2 : Value? = if func_env.has("[[ThrowTypeError]]") {
+              Some(func_env.get("[[ThrowTypeError]]"))
+            } else {
+              None
+            }
+            func_env.def(
+              "arguments",
+              make_arguments_object(
+                args,
+                callee,
+                func_strict,
+                throw_type_error=tte_val2,
+              ),
+              VarBinding,
+            )
+            // Bind params with defaults
+            let mut effective_param_count = 0
+            for i = 0; i < data.params.length(); i = i + 1 {
+              let param = data.params[i]
+              // Skip rest destructuring params - they're bound via rest_param
+              if data.rest_param is Some(rn) && param.name == rn {
+                continue
+              }
+              let val : Value = if effective_param_count < args.length() &&
+                !(args[effective_param_count] is Undefined) {
+                args[effective_param_count]
+              } else {
+                match param.default_val {
+                  Some(default_expr) => {
+                    let v = self.eval_expr(default_expr, func_env)
+                    // Set function name for anonymous function defaults
+                    if param.pattern is None &&
+                      is_anonymous_function_definition(default_expr) {
+                      set_function_name(v, param.name)
+                    }
+                    v
+                  }
+                  None =>
+                    if effective_param_count < args.length() {
+                      args[effective_param_count]
+                    } else {
+                      Undefined
+                    }
+                }
+              }
+              func_env.def(param.name, val, LetBinding)
+              // Destructure if pattern param
+              match param.pattern {
+                Some(pat) => self.bind_pattern(pat, val, func_env, LetBinding)
+                None => ()
+              }
+              effective_param_count = effective_param_count + 1
+            }
+            // Rest param
+            match data.rest_param {
+              Some(rest_name) => {
+                let rest_elements : Array[Value] = []
+                for i = effective_param_count; i < args.length(); i = i + 1 {
+                  rest_elements.push(args[i])
+                }
+                let rest_val = Array({ elements: rest_elements })
+                func_env.def(rest_name, rest_val, LetBinding)
+                // Apply destructuring pattern if present
+                for p in data.params {
+                  if p.name == rest_name {
+                    match p.pattern {
+                      Some(pat) =>
+                        self.bind_pattern(pat, rest_val, func_env, LetBinding)
+                      None => ()
+                    }
+                    break
+                  }
+                }
+              }
+              None => ()
+            }
+            self.hoist_declarations(data.body, func_env)
+            match data.name {
+              Some(name) =>
+                if !func_env.bindings.contains(name) {
+                  func_env.def(name, callee, LetBinding)
+                }
+              None => ()
+            }
+            match self.exec_stmts(data.body, func_env) {
+              Normal(_) => Undefined
+              ReturnSignal(v) => v
+              BreakSignal(_, _) =>
+                raise @errors.SyntaxError(
+                  message="break statement outside of loop",
+                )
+              ContinueSignal(_, _) =>
+                raise @errors.SyntaxError(
+                  message="continue statement outside of loop",
+                )
+            }
+          } catch {
+            e => {
+              self.strict = saved_strict
+              raise e
+            }
+          }
+          self.strict = saved_strict
+          result
+        }
+        Some(ArrowFuncExt(data)) => {
+          let saved_strict = self.strict
+          let result = try {
+            self.strict = data.strict
+            let func_env = Environment::new(parent=Some(data.closure))
+            func_env.is_var_scope = true
+            // Arrow functions do NOT rebind this
+            let mut effective_param_count = 0
+            for i = 0; i < data.params.length(); i = i + 1 {
+              let param = data.params[i]
+              // Skip rest destructuring params
+              if data.rest_param is Some(rn) && param.name == rn {
+                continue
+              }
+              let val : Value = if effective_param_count < args.length() &&
+                !(args[effective_param_count] is Undefined) {
+                args[effective_param_count]
+              } else {
+                match param.default_val {
+                  Some(default_expr) => {
+                    let v = self.eval_expr(default_expr, func_env)
+                    // Set function name for anonymous function defaults
+                    if param.pattern is None &&
+                      is_anonymous_function_definition(default_expr) {
+                      set_function_name(v, param.name)
+                    }
+                    v
+                  }
+                  None =>
+                    if effective_param_count < args.length() {
+                      args[effective_param_count]
+                    } else {
+                      Undefined
+                    }
+                }
+              }
+              func_env.def(param.name, val, LetBinding)
+              // Destructure if pattern param
+              match param.pattern {
+                Some(pat) => self.bind_pattern(pat, val, func_env, LetBinding)
+                None => ()
+              }
+              effective_param_count = effective_param_count + 1
+            }
+            // Rest param
+            match data.rest_param {
+              Some(rest_name) => {
+                let rest_elements : Array[Value] = []
+                for i = effective_param_count; i < args.length(); i = i + 1 {
+                  rest_elements.push(args[i])
+                }
+                let rest_val = Array({ elements: rest_elements })
+                func_env.def(rest_name, rest_val, LetBinding)
+                // Apply destructuring pattern if present
+                for p in data.params {
+                  if p.name == rest_name {
+                    match p.pattern {
+                      Some(pat) =>
+                        self.bind_pattern(pat, rest_val, func_env, LetBinding)
+                      None => ()
+                    }
+                    break
+                  }
+                }
+              }
+              None => ()
+            }
+            self.hoist_declarations(data.body, func_env)
+            match self.exec_stmts(data.body, func_env) {
+              Normal(_) => Undefined
+              ReturnSignal(v) => v
+              BreakSignal(_, _) =>
+                raise @errors.SyntaxError(
+                  message="break statement outside of loop",
+                )
+              ContinueSignal(_, _) =>
+                raise @errors.SyntaxError(
+                  message="continue statement outside of loop",
+                )
+            }
+          } catch {
+            e => {
+              self.strict = saved_strict
+              raise e
+            }
+          }
+          self.strict = saved_strict
+          result
+        }
+        Some(BoundFunc(target, bound_this, bound_args)) => {
+          let all_args : Array[Value] = []
+          for a in bound_args {
+            all_args.push(a)
+          }
+          for a in args {
+            all_args.push(a)
+          }
+          self.call_value(target, bound_this, all_args, loc)
+        }
+        Some(FuncCallMethod(target)) => {
+          let call_this = if args.length() > 0 { args[0] } else { Undefined }
+          let call_args : Array[Value] = []
+          for i = 1; i < args.length(); i = i + 1 {
+            call_args.push(args[i])
+          }
+          self.call_value(target, call_this, call_args, loc)
+        }
+        Some(FuncApplyMethod(target)) => {
+          let call_this = if args.length() > 0 { args[0] } else { Undefined }
+          let call_args : Array[Value] = []
+          if args.length() > 1 {
+            let arg_array = args[1]
+            match arg_array {
+              Undefined | Null => ()
+              _ => {
+                // apply accepts any array-like object (including `arguments`).
+                let arg_len = to_array_like_length(arg_array)
+                for i = 0; i < arg_len; i = i + 1 {
+                  let element = self.get_computed_property(
+                    arg_array,
+                    Number(i.to_double()),
+                    loc,
+                  )
+                  call_args.push(element)
+                }
+              }
+            }
+          }
+          self.call_value(target, call_this, call_args, loc)
+        }
+        Some(MethodCallable(_, func)) => func(this_val, args)
+        Some(NativeCallable(_, func)) => func(args)
+        Some(NonConstructableCallable(name, func)) =>
+          if name == "eval" {
+            // Indirect eval: route through perform_eval for interpreter access
+            if args.length() == 0 {
+              Undefined
+            } else {
+              match args[0] {
+                String_(code) => self.perform_eval(code, self.global, false)
+                other => other
+              }
+            }
+          } else {
+            func(args)
+          }
+        Some(InterpreterCallable(_, func)) => func(self, this_val, args)
+        Some(ConstructorOnlyCallable(name, _)) =>
+          raise @errors.TypeError(
+            message=name + " constructor cannot be invoked without 'new'",
+          )
+        Some(ClassConstructor(name, _, _, _, _, _)) =>
+          raise @errors.TypeError(
+            message="Class constructor " +
+              name +
+              " cannot be invoked without 'new'",
+          )
+        None => raise @errors.TypeError(message="is not a function")
+      }
+    _ => raise @errors.TypeError(message="is not a function")
+  }
+}
+
+///|
+fn Interpreter::eval_member(
+  self : Interpreter,
+  obj_expr : @ast.Expr,
+  prop : String,
+  env : Environment,
+  loc : @token.Loc,
+) -> Value raise Error {
+  // Special case: console.log
+  match obj_expr {
+    Ident("console", _) =>
+      if prop == "log" {
+        let output = self.output
+        make_native_func("log", fn(args) {
+          let parts : Array[String] = args.map(fn(a) { a.to_string() })
+          output.push(parts.join(" "))
+          Undefined
+        })
+      } else {
+        raise @errors.TypeError(message="console.\{prop} is not supported")
+      }
+    _ => {
+      let obj = self.eval_expr(obj_expr, env)
+      self.get_property(obj, prop, loc)
+    }
+  }
+}
+
+///|
+fn get_bound_func_name(target : Value) -> String {
+  match target {
+    Object(td) => {
+      // First check properties["name"] (set by Object.defineProperty or bind)
+      let prop_name = match td.properties.get("name") {
+        Some(String_(s)) => s
+        _ => ""
+      }
+      if prop_name != "" {
+        return "bound " + prop_name
+      }
+      match td.callable {
+        Some(UserFunc(fd)) => "bound " + fd.name.unwrap_or("")
+        Some(UserFuncExt(fd)) => "bound " + fd.name.unwrap_or("")
+        Some(NativeCallable(n, _)) => "bound " + n
+        Some(NonConstructableCallable(n, _)) => "bound " + n
+        Some(BoundFunc(inner, _, _)) => "bound " + get_bound_func_name(inner)
+        Some(ArrowFunc(fd)) => "bound " + fd.name.unwrap_or("")
+        Some(ArrowFuncExt(fd)) => "bound " + fd.name.unwrap_or("")
+        Some(ClassConstructor(n, _, _, _, _, _)) => "bound " + n
+        Some(MethodCallable(n, _)) => "bound " + n
+        Some(InterpreterCallable(n, _)) => "bound " + n
+        Some(_) => "bound "
+        None => "bound "
+      }
+    }
+    _ => "bound "
+  }
+}
+
+///|
+fn get_func_length(callable : Callable) -> Int {
+  match callable {
+    UserFunc(func_data) => func_data.params.length()
+    UserFuncExt(func_data) => {
+      let mut len = 0
+      for p in func_data.params {
+        if p.default_val is Some(_) {
+          break
+        }
+        len += 1
+      }
+      len
+    }
+    ArrowFunc(func_data) => func_data.params.length()
+    ArrowFuncExt(func_data) => {
+      let mut len = 0
+      for p in func_data.params {
+        if p.default_val is Some(_) {
+          break
+        }
+        len += 1
+      }
+      len
+    }
+    BoundFunc(target, _, bound_args) =>
+      match target {
+        Object(td) =>
+          match td.callable {
+            Some(inner) => {
+              let target_len = get_func_length(inner)
+              let diff = target_len - bound_args.length()
+              if diff < 0 {
+                0
+              } else {
+                diff
+              }
+            }
+            None => 0
+          }
+        _ => 0
+      }
+    NativeCallable(_, _) => 0
+    NonConstructableCallable(_, _) => 0
+    FuncCallMethod(_) => 1
+    FuncApplyMethod(_) => 2
+    MethodCallable(_, _) => 0
+    InterpreterCallable(_, _) => 0
+    ConstructorOnlyCallable(_, _) => 0
+    ClassConstructor(_, _, _, ctor, _, _) =>
+      match ctor {
+        Some((params, _)) => params.length()
+        None => 0
+      }
+  }
+}
