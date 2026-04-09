@@ -15,3 +15,5 @@ test262-*.txt
 test262_*.txt
 *-test262*.json
 promise.json
+# Baseline is tracked (negation must be after the glob)
+!test262-baseline.json

@@ -37,6 +37,7 @@ import os
 import re
 import subprocess
 import sys
+import shlex
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field, asdict
@@ -701,7 +702,7 @@ def main():
     # Ensure at least 1 thread
     args.threads = max(1, args.threads)
 
-    engine_cmd = args.engine.split()
+    engine_cmd = shlex.split(args.engine)
     test262_dir = os.path.abspath(args.test262)
 
     if not os.path.isdir(test262_dir):
@@ -759,8 +760,10 @@ def main():
                 if run_mode in ("both", "strict"):
                     test_tasks.append((tf, "strict"))
         except Exception:
-            if run_mode != "strict":
+            if run_mode in ("both", "non-strict"):
                 test_tasks.append((tf, "non-strict"))
+            if run_mode in ("both", "strict"):
+                test_tasks.append((tf, "strict"))
 
     mode_label = run_mode if run_mode != "both" else "strict+non-strict"
     print(f"Running {len(test_tasks)} test tasks ({len(test_files)} files, {mode_label})")

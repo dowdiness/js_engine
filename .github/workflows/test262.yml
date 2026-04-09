@@ -7,8 +7,33 @@ on:
     branches: [main]
   workflow_dispatch:
 
+env:
+  TEST262_COMMIT: "2b2ecead6e82"
+
 jobs:
-  test:
+  unit-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up MoonBit
+        run: |
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Install and test
+        run: |
+          moon update
+          moon install
+          moon check
+          moon test
+
+  test262:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -23,21 +48,26 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      - name: Cache MoonBit toolchain
-        uses: actions/cache@v4
-        with:
-          path: ~/.moon
-          key: moonbit-${{ runner.os }}-${{ hashFiles('moon.mod.json') }}
-          restore-keys: moonbit-${{ runner.os }}-
-
       - name: Set up MoonBit
         run: |
           curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
-          echo "$HOME/.moon/bin" >> $GITHUB_PATH
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Get MoonBit version
+        id: moonbit-version
+        run: echo "version=$(moon version 2>&1 | head -1)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache MoonBit dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.moon/registry
+            .mooncakes
+          key: moon-deps-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-${{ hashFiles('moon.mod.json') }}
+          restore-keys: moon-deps-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-
 
       - name: Install and build
         run: |
-          moon version --all
           moon update
           moon install
           moon build --target js --release
@@ -46,12 +76,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: test262
-          key: test262-v1
+          key: test262-${{ env.TEST262_COMMIT }}
 
       - name: Download Test262
         run: |
           if [ ! -d "test262/test" ]; then
-            curl -fsSL -L "https://api.github.com/repos/tc39/test262/tarball/main" -o /tmp/test262.tar.gz
+            curl -fsSL -L "https://api.github.com/repos/tc39/test262/tarball/${{ env.TEST262_COMMIT }}" -o /tmp/test262.tar.gz
             mkdir -p test262
             tar -xzf /tmp/test262.tar.gz -C test262 --strip-components=1
           fi
@@ -78,46 +108,94 @@ jobs:
           path: test262-${{ matrix.mode }}-results.json
           retention-days: 90
 
-  summary:
-    needs: test
+  regression-check:
+    needs: test262
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
     steps:
+      - name: Checkout baseline
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: test262-baseline.json
+          sparse-checkout-cone-mode: false
+
       - name: Download all results
         uses: actions/download-artifact@v4
         with:
           pattern: test262-*-results
           merge-multiple: true
 
-      - name: Display combined summary
+      - name: Check for regressions
         run: |
           python3 << 'PYEOF'
-          import json, os
+          import json, os, sys
+
+          # Load baseline
+          with open("test262-baseline.json") as f:
+              baseline = json.load(f)
 
           total_passed = 0
           total_failed = 0
           total_skipped = 0
+          total_timeouts = 0
+          missing = []
+          regressions = []
 
           for mode in ["non-strict", "strict"]:
               f = f"test262-{mode}-results.json"
               if not os.path.isfile(f):
                   print(f"{mode}: MISSING (job may have failed)")
+                  missing.append(mode)
                   continue
               with open(f) as fh:
                   data = json.load(fh)
               s = data["summary"]
               p, fa, sk = s["passed"], s["failed"], s["skipped"]
+              to = s.get("timeout", 0)
               total_passed += p
               total_failed += fa
               total_skipped += sk
-              rate = (p / (p + fa) * 100) if (p + fa) > 0 else 0
-              print(f"{mode:>12}: {rate:5.1f}%  ({p} passed, {fa} failed, {sk} skipped)")
+              total_timeouts += to
+              executed = p + fa
+              rate = (p / executed * 100) if executed > 0 else 0
 
-          combined = total_passed + total_failed
-          if combined > 0:
-              combined_rate = total_passed / combined * 100
+              # Per-mode baseline check
+              mode_min = baseline.get(mode, {}).get("passed_min", 0)
+              delta = p - mode_min
+              sign = "+" if delta >= 0 else ""
+              status = "OK" if p >= mode_min else "REGRESSION"
+              print(f"{mode:>12}: {rate:5.1f}%  ({p} passed, {fa} failed, {to} timeouts)  [{status}: {sign}{delta} vs {mode_min} min]")
+
+              if p < mode_min:
+                  regressions.append(f"{mode}: {p} passed < {mode_min} baseline ({mode_min - p} regressed)")
+
+          # Combined
+          combined_min = baseline.get("combined", {}).get("passed_min", 0)
+          combined_exec = total_passed + total_failed
+          if combined_exec > 0:
+              combined_rate = total_passed / combined_exec * 100
+              delta = total_passed - combined_min
+              sign = "+" if delta >= 0 else ""
               print()
-              print(f"    combined: {combined_rate:5.1f}%  ({total_passed} passed, {total_failed} failed, {total_skipped} skipped)")
+              print(f"    combined: {combined_rate:5.1f}%  ({total_passed} passed, {total_failed} failed)  [{sign}{delta} vs {combined_min} min]")
+
+          if total_passed < combined_min:
+              regressions.append(f"combined: {total_passed} passed < {combined_min} baseline")
+
+          # Verdict
+          failed = False
+          if missing:
+              print(f"\nERROR: Missing results for: {', '.join(missing)}", file=sys.stderr)
+              failed = True
+          if regressions:
+              for r in regressions:
+                  print(f"\nREGRESSION: {r}", file=sys.stderr)
+              failed = True
+          elif not missing:
+              print(f"\nAll baselines met.")
+
+          if failed:
+              sys.exit(1)
           PYEOF
