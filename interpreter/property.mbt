@@ -1774,3 +1774,119 @@ fn Interpreter::set_computed_property(
       }
   }
 }
+
+///|
+fn Interpreter::eval_member(
+  self : Interpreter,
+  obj_expr : @ast.Expr,
+  prop : String,
+  env : Environment,
+  loc : @token.Loc,
+) -> Value raise Error {
+  // Special case: console.log
+  match obj_expr {
+    Ident("console", _) =>
+      if prop == "log" {
+        let output = self.output
+        make_native_func("log", fn(args) {
+          let parts : Array[String] = args.map(fn(a) { a.to_string() })
+          output.push(parts.join(" "))
+          Undefined
+        })
+      } else {
+        raise @errors.TypeError(message="console.\{prop} is not supported")
+      }
+    _ => {
+      let obj = self.eval_expr(obj_expr, env)
+      self.get_property(obj, prop, loc)
+    }
+  }
+}
+
+///|
+fn get_bound_func_name(target : Value) -> String {
+  match target {
+    Object(td) => {
+      // First check properties["name"] (set by Object.defineProperty or bind)
+      let prop_name = match td.properties.get("name") {
+        Some(String_(s)) => s
+        _ => ""
+      }
+      if prop_name != "" {
+        return "bound " + prop_name
+      }
+      match td.callable {
+        Some(UserFunc(fd)) => "bound " + fd.name.unwrap_or("")
+        Some(UserFuncExt(fd)) => "bound " + fd.name.unwrap_or("")
+        Some(NativeCallable(n, _)) => "bound " + n
+        Some(NonConstructableCallable(n, _)) => "bound " + n
+        Some(BoundFunc(inner, _, _)) => "bound " + get_bound_func_name(inner)
+        Some(ArrowFunc(fd)) => "bound " + fd.name.unwrap_or("")
+        Some(ArrowFuncExt(fd)) => "bound " + fd.name.unwrap_or("")
+        Some(ClassConstructor(n, _, _, _, _, _)) => "bound " + n
+        Some(MethodCallable(n, _)) => "bound " + n
+        Some(InterpreterCallable(n, _)) => "bound " + n
+        Some(_) => "bound "
+        None => "bound "
+      }
+    }
+    _ => "bound "
+  }
+}
+
+///|
+fn get_func_length(callable : Callable) -> Int {
+  match callable {
+    UserFunc(func_data) => func_data.params.length()
+    UserFuncExt(func_data) => {
+      let mut len = 0
+      for p in func_data.params {
+        if p.default_val is Some(_) {
+          break
+        }
+        len += 1
+      }
+      len
+    }
+    ArrowFunc(func_data) => func_data.params.length()
+    ArrowFuncExt(func_data) => {
+      let mut len = 0
+      for p in func_data.params {
+        if p.default_val is Some(_) {
+          break
+        }
+        len += 1
+      }
+      len
+    }
+    BoundFunc(target, _, bound_args) =>
+      match target {
+        Object(td) =>
+          match td.callable {
+            Some(inner) => {
+              let target_len = get_func_length(inner)
+              let diff = target_len - bound_args.length()
+              if diff < 0 {
+                0
+              } else {
+                diff
+              }
+            }
+            None => 0
+          }
+        _ => 0
+      }
+    NativeCallable(_, _) => 0
+    NonConstructableCallable(_, _) => 0
+    FuncCallMethod(_) => 1
+    FuncApplyMethod(_) => 2
+    MethodCallable(_, _) => 0
+    InterpreterCallable(_, _) => 0
+    ConstructorOnlyCallable(_, _) => 0
+    ClassConstructor(_, _, _, ctor, _, _) =>
+      match ctor {
+        Some((params, _)) => params.length()
+        None => 0
+      }
+  }
+}

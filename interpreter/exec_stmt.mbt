@@ -1580,3 +1580,209 @@ fn Interpreter::exec_stmts(
   }
   Normal(last)
 }
+
+///|
+/// IteratorClose: call iterator.return() if it exists
+fn close_iterator(
+  interp : Interpreter,
+  iterator : Value,
+  loc : @token.Loc,
+) -> Unit raise Error {
+  match iterator {
+    Object(data) => {
+      // Look for 'return' method on iterator
+      let return_fn = match data.properties.get("return") {
+        Some(f) => f
+        None => {
+          // Walk prototype chain
+          let mut found : Value = Undefined
+          let mut current = data.prototype
+          while true {
+            match current {
+              Object(proto_data) =>
+                match proto_data.properties.get("return") {
+                  Some(f) => {
+                    found = f
+                    break
+                  }
+                  None => current = proto_data.prototype
+                }
+              _ => break
+            }
+          }
+          found
+        }
+      }
+      if is_callable(return_fn) {
+        let _ = interp.call_value(return_fn, iterator, [], loc)
+      }
+    }
+    _ => ()
+  }
+}
+
+///|
+fn Interpreter::exec_try_catch(
+  self : Interpreter,
+  try_body : Array[@ast.Stmt],
+  catch_param : @ast.Pattern?,
+  catch_body : Array[@ast.Stmt]?,
+  finally_body : Array[@ast.Stmt]?,
+  env : Environment,
+) -> Signal raise Error {
+  // Check if we're resuming inside a generator at a specific phase
+  let gen_opt = current_generator.val
+  let start_phase = match gen_opt {
+    Some(g) =>
+      if g.try_resume_phase >= 0 {
+        let p = g.try_resume_phase
+        g.try_resume_phase = -1 // consume it
+        p
+      } else {
+        0
+      }
+    _ => 0
+  }
+  let mut result : Signal = Normal(Undefined)
+  let mut pending_error : Error? = match gen_opt {
+    Some(g) =>
+      if start_phase == 2 {
+        // Resuming in finally — restore pending error and result
+        result = g.try_resume_result
+        g.try_resume_result = Normal(Undefined)
+        let pe = g.try_resume_pending_error
+        g.try_resume_pending_error = None
+        pe
+      } else {
+        None
+      }
+    _ => None
+  }
+  // Phase 0: Try body (skip if resuming at catch or finally)
+  if start_phase == 0 {
+    let try_env = Environment::new(parent=Some(env))
+    result = self.exec_stmts(try_body, try_env) catch {
+      e =>
+        if e is YieldSignal(_) {
+          // Yield inside try body — save phase for resume
+          match gen_opt {
+            Some(g) => g.try_resume_phase = 0
+            _ => ()
+          }
+          raise e
+        } else if e is GeneratorReturnSignal(_) {
+          // .return(v) injected at yield — save for finally
+          pending_error = Some(e)
+          Normal(Undefined)
+        } else if is_js_catchable_error(e) {
+          // JS exception caught — run catch body (phase 1)
+          match (catch_param, catch_body) {
+            (Some(param), Some(body)) => {
+              let catch_env = Environment::new(parent=Some(env))
+              let error_value = js_error_to_value_with_env(e, Some(env))
+              // Bind the catch parameter - supports simple identifier and destructuring
+              self.bind_pattern(param, error_value, catch_env, LetBinding)
+              self.exec_stmts(body, catch_env) catch {
+                ce =>
+                  if ce is YieldSignal(_) {
+                    // Yield inside catch body — save phase and error for resume
+                    match gen_opt {
+                      Some(g) => {
+                        g.try_resume_phase = 1
+                        g.try_resume_error = error_value
+                      }
+                      _ => ()
+                    }
+                    raise ce
+                  } else {
+                    raise ce
+                  }
+              }
+            }
+            _ => Normal(Undefined)
+          }
+        } else {
+          raise e
+        }
+    }
+  } else if start_phase == 1 {
+    // Resuming in catch body — skip try, go directly to catch
+    match (catch_param, catch_body) {
+      (Some(param), Some(body)) => {
+        let catch_env = Environment::new(parent=Some(env))
+        // Restore saved error value
+        let error_value = match gen_opt {
+          Some(g) => {
+            let ev = g.try_resume_error
+            g.try_resume_error = Undefined
+            ev
+          }
+          _ => Undefined
+        }
+        // Bind the catch parameter - supports simple identifier and destructuring
+        self.bind_pattern(param, error_value, catch_env, LetBinding)
+        result = self.exec_stmts(body, catch_env) catch {
+          ce =>
+            if ce is YieldSignal(_) {
+              // Yield inside catch body again — save phase
+              match gen_opt {
+                Some(g) => {
+                  g.try_resume_phase = 1
+                  g.try_resume_error = error_value
+                }
+                _ => ()
+              }
+              raise ce
+            } else {
+              raise ce
+            }
+        }
+      }
+      _ => result = Normal(Undefined)
+    }
+  }
+  // else start_phase == 2: skip try and catch, go to finally
+  // Phase 2: Finally body (always runs if present)
+  match finally_body {
+    Some(body) => {
+      let finally_result = self.exec_stmts(
+        body,
+        Environment::new(parent=Some(env)),
+      ) catch {
+        fe =>
+          if fe is YieldSignal(_) {
+            // Yield inside finally body — save phase and pending state for resume
+            match gen_opt {
+              Some(g) => {
+                g.try_resume_phase = 2
+                g.try_resume_result = result
+                g.try_resume_pending_error = pending_error
+              }
+              _ => ()
+            }
+            raise fe
+          } else {
+            raise fe
+          }
+      }
+      match pending_error {
+        Some(e) =>
+          match finally_result {
+            Normal(_) => raise e
+            ReturnSignal(_) => finally_result
+            _ => raise e
+          }
+        None =>
+          match finally_result {
+            Normal(_) => result
+            other => other
+          }
+      }
+    }
+    None =>
+      match pending_error {
+        Some(e) => raise e
+        None => result
+      }
+  }
+}

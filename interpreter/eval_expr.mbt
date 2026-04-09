@@ -1750,3 +1750,8 @@ fn Interpreter::eval_unary(
     }
   }
 }
+
+///|
+fn format_loc_context(message : String, loc : @token.Loc) -> String {
+  message + " at line \{loc.line}, col \{loc.col}"
+}

@@ -1,21 +1,4 @@
 ///|
-fn func_body_has_use_strict(body : Array[@ast.Stmt]) -> Bool {
-  // Scan the directive prologue: the longest sequence of ExpressionStatements
-  // consisting entirely of StringLiterals at the beginning of the body.
-  // Only the literal string "use strict" WITHOUT escape sequences activates strict mode.
-  for i = 0; i < body.length(); i = i + 1 {
-    match body[i] {
-      ExprStmt(StringLit(s, has_escape, _), _) =>
-        if s == "use strict" && !has_escape {
-          return true
-        }
-      _ => break
-    }
-  }
-  false
-}
-
-///|
 pub fn setup_builtins(
   env : Environment,
   output : Array[String],
@@ -5447,7 +5430,7 @@ fn setup_function_builtins(env : Environment) -> Unit {
                     params,
                     body,
                     closure: env,
-                    strict: func_body_has_use_strict(body),
+                    strict: has_use_strict(body),
                   }),
                 ),
                 class_name: "Function",
@@ -5470,7 +5453,7 @@ fn setup_function_builtins(env : Environment) -> Unit {
                     rest_param,
                     body,
                     closure: env,
-                    strict: func_body_has_use_strict(body),
+                    strict: has_use_strict(body),
                   }),
                 ),
                 class_name: "Function",
