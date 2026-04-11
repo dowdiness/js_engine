@@ -2426,7 +2426,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                           BoundFunc(_, _, _) => 0.0
                           FuncCallMethod(_) => 0.0
                           FuncApplyMethod(_) => 0.0
-                          ClassConstructor(_, _, _, _, _, _) => 0.0
+                          ClassConstructor(_) => 0.0
                         }
                         make_desc(Number(len), false, false, true)
                       } else if prop_name == "name" {
@@ -2459,7 +2459,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
                           BoundFunc(_, _, _) => "bound "
                           FuncCallMethod(_) => "call"
                           FuncApplyMethod(_) => "apply"
-                          ClassConstructor(n, _, _, _, _, _) => n
+                          ClassConstructor({ name: n, .. }) => n
                         }
                         make_desc(String_(name), false, false, true)
                       } else {

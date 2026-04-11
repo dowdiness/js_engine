@@ -765,14 +765,13 @@ fn Interpreter::eval_expr(
         Object(data) =>
           match data.callable {
             Some(
-              ClassConstructor(
-                _,
-                _,
-                _super_ctor,
+              ClassConstructor({
+                super_ctor: _super_ctor,
                 ctor_fn,
-                ctor_env,
-                super_proto
-              )
+                closure: ctor_env,
+                super_proto,
+                ..
+              })
             ) => {
               // Create new environment for the constructor call
               let call_env = Environment::new(parent=Some(ctor_env))

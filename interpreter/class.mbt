@@ -304,7 +304,7 @@ fn Interpreter::create_class(
     symbol_properties: static_symbol_props,
     prototype: class_proto,
     callable: Some(
-      ClassConstructor(name, proto, super_ctor, ctor_fn, env, super_proto),
+      ClassConstructor({ name, proto, super_ctor, ctor_fn, closure: env, super_proto }),
     ),
     class_name: "Function",
     descriptors: static_descriptors,

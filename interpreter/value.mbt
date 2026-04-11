@@ -37,16 +37,21 @@ pub(all) enum Callable {
     String,
     (Interpreter, Array[Value]) -> Value raise Error
   ) // like InterpreterCallable but throws on call without new
-  // Class constructor: (name, prototype, super_ctor, constructor_fn, closure, static_methods)
-  // constructor_fn is (params, body) tuple, or None if no explicit constructor
-  ClassConstructor(
-    String, // class name
-    Value, // prototype object
-    Value?, // super constructor (if extends)
-    (Array[String], Array[@ast.Stmt])?, // constructor params and body
-    Environment, // closure environment
-    Value
-  ) // prototype object reference for super
+  ClassConstructor(ClassConstructorData)
+}
+
+///|
+/// Named fields for a class constructor callable.
+/// Replaces the former anonymous 6-tuple so call sites are self-documenting
+/// and future fields (e.g. instance fields, private names) can be added
+/// without positional reasoning.
+pub(all) struct ClassConstructorData {
+  name : String // class name
+  proto : Value // prototype object given to new instances
+  super_ctor : Value? // super constructor when class uses `extends`
+  ctor_fn : (Array[String], Array[@ast.Stmt])? // constructor params + body; None = no explicit ctor
+  closure : Environment // lexical environment where the class was defined
+  super_proto : Value // super class's prototype (bound as [[SuperPrototype]])
 }
 
 ///|
@@ -227,7 +232,7 @@ pub impl Show for Value with output(self, logger) {
           logger.write_string("function \{name}() { [native code] }")
         Some(ConstructorOnlyCallable(name, _)) =>
           logger.write_string("function \{name}() { [native code] }")
-        Some(ClassConstructor(name, _, _, _, _, _)) =>
+        Some(ClassConstructor({ name, .. })) =>
           logger.write_string("class \{name} { [code] }")
         None =>
           // Boxed primitive objects: unwrap to primitive string representation

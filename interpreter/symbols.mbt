@@ -12,7 +12,7 @@ pub fn is_constructor_value(v : Value) -> Bool {
       match data.callable {
         Some(UserFunc(_)) | Some(UserFuncExt(_)) => true
         Some(NativeCallable(_, _)) => true
-        Some(ClassConstructor(_, _, _, _, _, _)) => true
+        Some(ClassConstructor(_)) => true
         Some(ConstructorOnlyCallable(_, _)) => true
         Some(BoundFunc(target, _, _)) => is_constructor_value(target)
         Some(NonConstructableCallable(_, _)) => false

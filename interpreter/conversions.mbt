@@ -41,7 +41,7 @@ fn call_callable_direct(
         | Some(ArrowFuncExt(_))
         | Some(BoundFunc(_, _, _))
         | Some(InterpreterCallable(_, _))
-        | Some(ClassConstructor(_, _, _, _, _, _)) =>
+        | Some(ClassConstructor(_)) =>
           // Use the current interpreter to call user-defined functions
           match current_interpreter.val {
             Some(interp) =>

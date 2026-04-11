@@ -234,7 +234,7 @@ fn Interpreter::get_property(
                   MethodCallable(n, _) => n
                   InterpreterCallable(n, _) => n
                   ConstructorOnlyCallable(n, _) => n
-                  ClassConstructor(n, _, _, _, _, _) => n
+                  ClassConstructor({ name: n, .. }) => n
                 }
                 return String_(func_name)
               } else if prop == "toString" {
@@ -263,7 +263,7 @@ fn Interpreter::get_property(
                     "function " + n + "() { [native code] }"
                   ConstructorOnlyCallable(n, _) =>
                     "function " + n + "() { [native code] }"
-                  ClassConstructor(n, _, _, _, _, _) =>
+                  ClassConstructor({ name: n, .. }) =>
                     "class " + n + " { [native code] }"
                 }
                 return make_native_func("toString", fn(_args) {
@@ -277,7 +277,7 @@ fn Interpreter::get_property(
                   | UserFuncExt(_)
                   | NativeCallable(_, _)
                   | ConstructorOnlyCallable(_, _)
-                  | ClassConstructor(_, _, _, _, _, _) => true
+                  | ClassConstructor(_) => true
                   ArrowFunc(_)
                   | ArrowFuncExt(_)
                   | BoundFunc(_, _, _)
@@ -989,7 +989,7 @@ fn Interpreter::get_computed_property(
                   MethodCallable(n, _) => n
                   InterpreterCallable(n, _) => n
                   ConstructorOnlyCallable(n, _) => n
-                  ClassConstructor(n, _, _, _, _, _) => n
+                  ClassConstructor({ name: n, .. }) => n
                 }
                 return String_(func_name)
               } else if prop == "toString" {
@@ -1018,7 +1018,7 @@ fn Interpreter::get_computed_property(
                     "function " + n + "() { [native code] }"
                   ConstructorOnlyCallable(n, _) =>
                     "function " + n + "() { [native code] }"
-                  ClassConstructor(n, _, _, _, _, _) =>
+                  ClassConstructor({ name: n, .. }) =>
                     "class " + n + " { [native code] }"
                 }
                 return make_native_func("toString", fn(_args) {
@@ -1032,7 +1032,7 @@ fn Interpreter::get_computed_property(
                   | UserFuncExt(_)
                   | NativeCallable(_, _)
                   | ConstructorOnlyCallable(_, _)
-                  | ClassConstructor(_, _, _, _, _, _) => true
+                  | ClassConstructor(_) => true
                   ArrowFunc(_)
                   | ArrowFuncExt(_)
                   | BoundFunc(_, _, _)
@@ -1823,7 +1823,7 @@ fn get_bound_func_name(target : Value) -> String {
         Some(BoundFunc(inner, _, _)) => "bound " + get_bound_func_name(inner)
         Some(ArrowFunc(fd)) => "bound " + fd.name.unwrap_or("")
         Some(ArrowFuncExt(fd)) => "bound " + fd.name.unwrap_or("")
-        Some(ClassConstructor(n, _, _, _, _, _)) => "bound " + n
+        Some(ClassConstructor({ name: n, .. })) => "bound " + n
         Some(MethodCallable(n, _)) => "bound " + n
         Some(InterpreterCallable(n, _)) => "bound " + n
         Some(_) => "bound "
@@ -1883,8 +1883,8 @@ fn get_func_length(callable : Callable) -> Int {
     MethodCallable(_, _) => 0
     InterpreterCallable(_, _) => 0
     ConstructorOnlyCallable(_, _) => 0
-    ClassConstructor(_, _, _, ctor, _, _) =>
-      match ctor {
+    ClassConstructor({ ctor_fn, .. }) =>
+      match ctor_fn {
         Some((params, _)) => params.length()
         None => 0
       }
