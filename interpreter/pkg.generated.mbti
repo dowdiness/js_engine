@@ -431,13 +431,14 @@ pub(all) struct Interpreter {
   module_registry : Map[String, Map[String, Value]]
   mut module_exports : Map[String, Value]
   mut module_export_bindings : Array[(String, String)]
+  module_loader : ModuleLoader?
   generator_objects : Map[Int, GeneratorObject]
   gen_id_counter : @ref.Ref[Int]
   mut current_generator : GeneratorObject?
 }
 pub fn Interpreter::enqueue_microtask(Self, Value, Array[Value]) -> Unit
 pub fn Interpreter::has_property(Self, Value, String) -> Bool
-pub fn Interpreter::new(annex_b? : Bool) -> Self
+pub fn Interpreter::new(annex_b? : Bool, module_loader? : ModuleLoader?) -> Self
 pub fn Interpreter::register_module(Self, String, Map[String, Value]) -> Unit
 pub fn Interpreter::run(Self, Array[@ast.Stmt]) -> Value raise
 pub fn Interpreter::run_microtasks(Self) -> Unit raise
@@ -455,6 +456,10 @@ pub(all) struct Microtask {
   callback : Value
   args : Array[Value]
 }
+
+pub(all) struct ModuleLoader((String) -> Map[String, Value] raise)
+#deprecated
+pub fn ModuleLoader::inner(Self) -> (String) -> Map[String, Value] raise
 
 pub(all) struct ObjectData {
   properties : Map[String, Value]

@@ -52,6 +52,12 @@ pub(all) struct TimerTask {
 }
 
 ///|
+/// Host-provided callback that resolves a module specifier to its exports.
+/// Called by exec_import when a specifier is not already in module_registry.
+/// Return a Map[String, Value] of exported names → values, or raise an error.
+pub(all) struct ModuleLoader((String) -> Map[String, Value] raise Error)
+
+///|
 pub(all) struct Interpreter {
   output : Array[String]
   global : Environment
@@ -67,6 +73,7 @@ pub(all) struct Interpreter {
   module_registry : Map[String, Map[String, Value]] // module specifier -> exports namespace
   mut module_exports : Map[String, Value] // current module's exports being built
   mut module_export_bindings : Array[(String, String)] // deferred: (export_name, local_binding_name)
+  module_loader : ModuleLoader? // optional host-provided dynamic module resolver
   // Generator runtime state (previously module-level globals)
   generator_objects : Map[Int, GeneratorObject] // live generator instances keyed by ID
   gen_id_counter : Ref[Int] // monotonically increasing ID for new generator instances
@@ -74,7 +81,10 @@ pub(all) struct Interpreter {
 }
 
 ///|
-pub fn Interpreter::new(annex_b? : Bool = false) -> Interpreter {
+pub fn Interpreter::new(
+  annex_b? : Bool = false,
+  module_loader? : ModuleLoader? = None,
+) -> Interpreter {
   let global = Environment::new()
   global.is_var_scope = true
   let output : Array[String] = []
@@ -168,6 +178,7 @@ pub fn Interpreter::new(annex_b? : Bool = false) -> Interpreter {
     module_registry: {},
     module_exports: {},
     module_export_bindings: [],
+    module_loader,
     generator_objects: {},
     gen_id_counter: { val: 0 },
     current_generator: None,
