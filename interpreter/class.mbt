@@ -400,6 +400,15 @@ fn Interpreter::create_class(
   }
   // Evaluate static field initializers (run once at class definition time)
   // Per ES2022 spec, static fields are initialized after the class object is created.
+  // We also bind the class name here so self-referential initializers like
+  // `class C { static self = C }` can resolve C during evaluation.
+  let static_init_base : Environment = if name != "" {
+    let e = Environment::new(parent=Some(static_method_env))
+    e.def_builtin(name, class_obj)
+    e
+  } else {
+    static_method_env
+  }
   for sf in static_fields {
     let key_str : String = match sf.key {
       String_(s) => s
@@ -408,8 +417,8 @@ fn Interpreter::create_class(
     }
     let value : Value = match sf.initializer {
       Some(expr) => {
-        // Evaluate initializer with `this` = class_obj
-        let field_env = Environment::new(parent=Some(sf.closure))
+        // Evaluate initializer with `this` = class_obj and class name in scope
+        let field_env = Environment::new(parent=Some(static_init_base))
         field_env.def_builtin("this", class_obj)
         self.eval_expr(expr, field_env)
       }

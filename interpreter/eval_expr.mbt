@@ -768,23 +768,33 @@ fn Interpreter::eval_expr(
               ClassConstructor(
                 {
                   super_ctor: _super_ctor,
+                  instance_fields: super_instance_fields,
                   ctor_fn,
-                  closure: ctor_env,
+                  closure: ctor_closure,
                   super_proto,
                   ..,
                 }
               )
             ) => {
-              // Create new environment for the constructor call
-              let call_env = Environment::new(parent=Some(ctor_env))
+              // Create new environment for the super constructor body
+              let call_env = Environment::new(parent=Some(ctor_closure))
               call_env.def_builtin("this", this_val)
-              // Set up super constructor chain if there's a grandparent
+              // Set up super chain and handle super's own instance fields
               match _super_ctor {
                 Some(grand_super) => {
                   call_env.def_builtin("[[SuperConstructor]]", grand_super)
                   call_env.def_builtin("[[SuperPrototype]]", super_proto)
+                  // Super is also derived: defer its fields until its own super() returns
+                  if super_instance_fields.length() > 0 {
+                    call_env.def_builtin(
+                      "[[InitInstanceFields]]",
+                      make_instance_fields_init(super_instance_fields),
+                    )
+                  }
                 }
-                None => ()
+                None =>
+                  // Super is a base class: initialize its fields before its body
+                  self.install_instance_fields(this_val, super_instance_fields)
               }
               // Bind parameters and execute constructor body
               match ctor_fn {
@@ -828,6 +838,11 @@ fn Interpreter::eval_expr(
                           env.initialize("this", v) catch {
                             _ => env.assign("this", v)
                           }
+                          // Apply calling class's instance fields to the override object
+                          if env.has("[[InitInstanceFields]]") {
+                            let init_fn = env.get("[[InitInstanceFields]]")
+                            let _ = self.call_value(init_fn, v, [], loc)
+                          }
                           return v
                         }
                         _ => ()
@@ -840,6 +855,12 @@ fn Interpreter::eval_expr(
               // Initialize 'this' in the calling env (may be TDZ for derived classes)
               env.initialize("this", this_val) catch {
                 _ => env.assign("this", this_val) catch { _ => () }
+              }
+              // Apply calling class's instance fields after super() establishes this
+              if env.has("[[InitInstanceFields]]") {
+                let init_fn = env.get("[[InitInstanceFields]]")
+                let actual_this = env.get("this")
+                let _ = self.call_value(init_fn, actual_this, [], loc)
               }
               env.get("this")
             }
@@ -859,17 +880,29 @@ fn Interpreter::eval_expr(
                   env.initialize("this", super_result) catch {
                     _ => env.assign("this", super_result)
                   }
+                  if env.has("[[InitInstanceFields]]") {
+                    let init_fn = env.get("[[InitInstanceFields]]")
+                    let _ = self.call_value(init_fn, super_result, [], loc)
+                  }
                   super_result
                 }
                 Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => {
                   env.initialize("this", super_result) catch {
                     _ => env.assign("this", super_result)
                   }
+                  if env.has("[[InitInstanceFields]]") {
+                    let init_fn = env.get("[[InitInstanceFields]]")
+                    let _ = self.call_value(init_fn, super_result, [], loc)
+                  }
                   super_result
                 }
                 _ => {
                   env.initialize("this", this_val) catch {
                     _ => env.assign("this", this_val) catch { _ => () }
+                  }
+                  if env.has("[[InitInstanceFields]]") {
+                    let init_fn = env.get("[[InitInstanceFields]]")
+                    let _ = self.call_value(init_fn, this_val, [], loc)
                   }
                   env.get("this")
                 }

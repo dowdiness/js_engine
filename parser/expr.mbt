@@ -2072,6 +2072,16 @@ fn Parser::parse_class_member(self : Parser) -> @ast.ClassMember raise Error {
           )
         _ => ()
       }
+      // Non-computed static 'prototype' field is also a SyntaxError
+      if is_static {
+        match key_expr {
+          StringLit("prototype", _, _) =>
+            raise @errors.SyntaxError(
+              message="Classes may not have a static field named 'prototype'",
+            )
+          _ => ()
+        }
+      }
     }
     let initializer : @ast.Expr? = if self.eat(Assign) {
       Some(self.parse_assignment())

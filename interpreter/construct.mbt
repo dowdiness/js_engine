@@ -20,6 +20,79 @@ fn is_object_like_for_constructor_return(value : Value) -> Bool {
 }
 
 ///|
+/// Install instance field initializers onto `this_arg`.
+/// Used for base-class construction (before constructor body) and for
+/// derived-class implicit constructors (after super() returns).
+fn Interpreter::install_instance_fields(
+  self : Interpreter,
+  this_arg : Value,
+  fields : Array[ClassFieldInit],
+) -> Unit raise Error {
+  let field_desc : PropDescriptor = {
+    writable: true,
+    enumerable: true,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
+  for field in fields {
+    let field_value : Value = match field.initializer {
+      Some(expr) => {
+        let init_env = Environment::new(parent=Some(field.closure))
+        init_env.def_builtin("this", this_arg)
+        self.eval_expr(expr, init_env)
+      }
+      None => Undefined
+    }
+    match this_arg {
+      Object(data) =>
+        match field.key {
+          Symbol(sym) => {
+            data.symbol_properties[sym.id] = field_value
+            data.symbol_descriptors[sym.id] = field_desc
+          }
+          String_(key_str) => {
+            data.properties[key_str] = field_value
+            data.descriptors[key_str] = field_desc
+          }
+          _ => {
+            let key_str = to_js_string(field.key)
+            data.properties[key_str] = field_value
+            data.descriptors[key_str] = field_desc
+          }
+        }
+      _ => ()
+    }
+  }
+}
+
+///|
+/// Create a deferred instance-field initializer Value.
+/// Stored as [[InitInstanceFields]] in the constructor env so the super()
+/// call site can apply the fields to the actual `this` after super() returns.
+fn make_instance_fields_init(fields : Array[ClassFieldInit]) -> Value {
+  Object({
+    properties: {},
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      InterpreterCallable("[[InitInstanceFields]]", fn(
+        interp,
+        this_arg,
+        _,
+      ) raise {
+        interp.install_instance_fields(this_arg, fields)
+        Undefined
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+}
+
+///|
 fn make_constructor_instance(proto : Value, class_name : String) -> Value {
   Object({
     properties: {},
@@ -548,51 +621,24 @@ fn Interpreter::construct_value(
                 ctor_env.def_builtin("[[SuperPrototype]]", super_proto)
                 // Store the new instance for super() to use
                 ctor_env.def_builtin("[[PendingThis]]", new_obj)
+                // For explicit constructors: fields are deferred; super() will
+                // call [[InitInstanceFields]] after establishing `this`.
+                // For implicit constructors (ctor_fn=None): fields are applied
+                // directly at each return/fallthrough site in the None arm below.
+                if ctor_fn is Some(_) && instance_fields.length() > 0 {
+                  ctor_env.def_builtin(
+                    "[[InitInstanceFields]]",
+                    make_instance_fields_init(instance_fields),
+                  )
+                }
               }
-              None => ctor_env.def_builtin("this", new_obj)
+              None => {
+                ctor_env.def_builtin("this", new_obj)
+                // Base class: initialize instance fields before constructor body
+                self.install_instance_fields(new_obj, instance_fields)
+              }
             }
             ctor_env.def("<new.target>", ctor, LetBinding)
-            // Install instance fields on new_obj before constructor body runs.
-            // For base classes 'this' is new_obj; for derived classes new_obj
-            // is [[PendingThis]] and will become 'this' after super() — same object.
-            // Per ES2022 §10.2.4 fields get {writable, enumerable, configurable: true}.
-            for field in instance_fields {
-              let field_value : Value = match field.initializer {
-                Some(expr) => {
-                  let init_env = Environment::new(parent=Some(field.closure))
-                  init_env.def_builtin("this", new_obj)
-                  self.eval_expr(expr, init_env)
-                }
-                None => Undefined
-              }
-              match new_obj {
-                Object(data) => {
-                  let field_desc : PropDescriptor = {
-                    writable: true,
-                    enumerable: true,
-                    configurable: true,
-                    getter: None,
-                    setter: None,
-                  }
-                  match field.key {
-                    Symbol(sym) => {
-                      data.symbol_properties[sym.id] = field_value
-                      data.symbol_descriptors[sym.id] = field_desc
-                    }
-                    String_(key_str) => {
-                      data.properties[key_str] = field_value
-                      data.descriptors[key_str] = field_desc
-                    }
-                    _ => {
-                      let key_str = to_js_string(field.key)
-                      data.properties[key_str] = field_value
-                      data.descriptors[key_str] = field_desc
-                    }
-                  }
-                }
-                _ => ()
-              }
-            }
             // Execute the constructor if one was defined
             match ctor_fn {
               Some((params, body)) => {
@@ -660,6 +706,7 @@ fn Interpreter::construct_value(
                             ClassConstructor(
                               {
                                 super_ctor: grand_super,
+                                instance_fields: super_instance_fields,
                                 ctor_fn: ctor,
                                 closure: senv,
                                 super_proto: sproto,
@@ -682,8 +729,21 @@ fn Interpreter::construct_value(
                                 super_env.def_builtin(
                                   "[[SuperPrototype]]", sproto,
                                 )
+                                // B is derived: defer B's fields to after B's own super()
+                                if super_instance_fields.length() > 0 {
+                                  super_env.def_builtin(
+                                    "[[InitInstanceFields]]",
+                                    make_instance_fields_init(
+                                      super_instance_fields,
+                                    ),
+                                  )
+                                }
                               }
-                              None => ()
+                              None =>
+                                // B is a base class: initialize B's fields before its body
+                                self.install_instance_fields(
+                                  new_obj, super_instance_fields,
+                                )
                             }
                             match ctor {
                               Some((params, body)) => {
@@ -720,9 +780,10 @@ fn Interpreter::construct_value(
                                 match exec_result {
                                   ReturnSignal(v) =>
                                     if is_object_like_for_constructor_return(v) {
-                                      // Must restore strict before early return —
-                                      // `return` exits eval_new entirely, bypassing
-                                      // the normal restore at the end of the try block.
+                                      // Apply C's instance fields to the override object
+                                      self.install_instance_fields(
+                                        v, instance_fields,
+                                      )
                                       self.strict = saved_strict
                                       return maybe_set_promise_constructor(
                                         v, derived_ctor,
@@ -739,6 +800,9 @@ fn Interpreter::construct_value(
                             if is_object_like_for_constructor_return(
                                 super_result,
                               ) {
+                              self.install_instance_fields(
+                                super_result, instance_fields,
+                              )
                               self.strict = saved_strict
                               return maybe_set_promise_constructor(
                                 super_result, derived_ctor,
@@ -763,6 +827,9 @@ fn Interpreter::construct_value(
                                       _ => Null
                                     }
                                   }
+                                self.install_instance_fields(
+                                  super_result, instance_fields,
+                                )
                                 self.strict = saved_strict
                                 return maybe_set_promise_constructor(
                                   super_result, derived_ctor,
@@ -773,6 +840,9 @@ fn Interpreter::construct_value(
                                 if is_object_like_for_constructor_return(
                                     super_result,
                                   ) {
+                                  self.install_instance_fields(
+                                    super_result, instance_fields,
+                                  )
                                   self.strict = saved_strict
                                   return maybe_set_promise_constructor(
                                     super_result, derived_ctor,
@@ -785,6 +855,10 @@ fn Interpreter::construct_value(
                       _ => ()
                     }
                   None => ()
+                }
+                // Apply derived class instance fields after implicit super() call
+                if super_ctor is Some(_) {
+                  self.install_instance_fields(new_obj, instance_fields)
                 }
                 new_obj
               }
