@@ -561,11 +561,15 @@ fn validate_block_early_errors_expr(
           @ast.ClassMember::Method(m) =>
             // Class bodies are always strict.
             validate_block_early_errors_expr(m.value, true)
-          @ast.ClassMember::Field(f) =>
+          @ast.ClassMember::Field(f) => {
+            if f.computed {
+              validate_block_early_errors_expr(f.key, true)
+            }
             match f.initializer {
               Some(expr) => validate_block_early_errors_expr(expr, true)
               None => ()
             }
+          }
         }
       }
     Binary(_, l, r, _) => {
@@ -822,11 +826,15 @@ fn validate_block_early_errors_stmt(
           @ast.ClassMember::Method(m) =>
             // Class bodies are always strict.
             validate_block_early_errors_expr(m.value, true)
-          @ast.ClassMember::Field(f) =>
+          @ast.ClassMember::Field(f) => {
+            if f.computed {
+              validate_block_early_errors_expr(f.key, true)
+            }
             match f.initializer {
               Some(expr) => validate_block_early_errors_expr(expr, true)
               None => ()
             }
+          }
         }
       }
     WithStmt(_, body, _) => {

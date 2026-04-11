@@ -1832,8 +1832,19 @@ fn Parser::parse_class_body(
 ///|
 /// Parse a class member (method or field)
 fn Parser::parse_class_member(self : Parser) -> @ast.ClassMember raise Error {
-  // Check for static modifier
-  let is_static = self.eat(Static)
+  // Check for static modifier — but only if the token after `static` would not
+  // make `static` itself a member name (e.g. `static() {}` or `static = 1`).
+  let is_static = if self.peek_kind() == Static {
+    match self.peek_kind_at(1) {
+      LParen | Assign | Semicolon | RBrace => false // `static` is the member name
+      _ => {
+        let _ = self.advance()
+        true
+      }
+    }
+  } else {
+    false
+  }
   // Check for async modifier: async method() {} or static async method() {}
   let is_async = if self.peek_kind() is Ident("async") {
     let async_line = self.tokens[self.pos].loc.line
@@ -2052,6 +2063,16 @@ fn Parser::parse_class_member(self : Parser) -> @ast.ClassMember raise Error {
   // Otherwise: if next token is NOT '(' -> it's a field
   if !is_async && !is_generator && method_kind == @ast.Init && !self.at(LParen) {
     // This is a class field
+    // Non-computed 'constructor' is not allowed as a field name (SyntaxError per spec)
+    if !computed {
+      match key_expr {
+        StringLit("constructor", _, _) =>
+          raise @errors.SyntaxError(
+            message="Classes may not have a field named 'constructor'",
+          )
+        _ => ()
+      }
+    }
     let initializer : @ast.Expr? = if self.eat(Assign) {
       Some(self.parse_assignment())
     } else {

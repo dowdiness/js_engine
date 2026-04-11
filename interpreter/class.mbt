@@ -91,7 +91,11 @@ fn Interpreter::create_class(
         let field_init : ClassFieldInit = {
           key: key_val,
           initializer: f.initializer,
-          closure: env,
+          closure: if f.is_static {
+            static_method_env
+          } else {
+            instance_method_env
+          },
         }
         if f.is_static {
           static_fields.push(field_init)
@@ -418,7 +422,7 @@ fn Interpreter::create_class(
             class_data.symbol_properties[sym.id] = value
             class_data.symbol_descriptors[sym.id] = {
               writable: true,
-              enumerable: false,
+              enumerable: true,
               configurable: true,
               getter: None,
               setter: None,
@@ -428,7 +432,7 @@ fn Interpreter::create_class(
             class_data.properties[key_str] = value
             class_data.descriptors[key_str] = {
               writable: true,
-              enumerable: false,
+              enumerable: true,
               configurable: true,
               getter: None,
               setter: None,
