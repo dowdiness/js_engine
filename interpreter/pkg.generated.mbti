@@ -454,6 +454,10 @@ pub fn Interpreter::to_primitive_default(Self, Value, ObjectData) -> Value raise
 
 pub(all) struct MapData {
   entries : Array[(Value, Value)]
+  properties : Map[String, Value]
+  descriptors : Map[String, PropDescriptor]
+  symbol_properties : Map[Int, Value]
+  symbol_descriptors : Map[Int, PropDescriptor]
 }
 
 pub(all) struct Microtask {
@@ -536,6 +540,10 @@ pub(all) enum ResumeKind {
 
 pub(all) struct SetData {
   values : Array[Value]
+  properties : Map[String, Value]
+  descriptors : Map[String, PropDescriptor]
+  symbol_properties : Map[Int, Value]
+  symbol_descriptors : Map[Int, PropDescriptor]
 }
 
 pub(all) enum Signal {
