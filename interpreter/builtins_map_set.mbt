@@ -392,7 +392,13 @@ fn setup_map_builtins(env : Environment) -> Unit {
     args,
   ) raise {
     // Create new Map instance
-    let new_map : Value = Map({ entries: [] })
+    let new_map : Value = Map({
+      entries: [],
+      properties: {},
+      descriptors: {},
+      symbol_properties: {},
+      symbol_descriptors: {},
+    })
     let loc = @token.Loc::default()
 
     // If iterable provided, populate map
@@ -529,7 +535,13 @@ fn setup_map_builtins(env : Environment) -> Unit {
           for i = 0; i < group_keys.length(); i = i + 1 {
             entries.push((group_keys[i], Array({ elements: group_arrays[i] })))
           }
-          Map({ entries, })
+          Map({
+            entries,
+            properties: {},
+            descriptors: {},
+            symbol_properties: {},
+            symbol_descriptors: {},
+          })
         },
       )
       ctor_data.descriptors["groupBy"] = {
@@ -802,7 +814,13 @@ fn setup_set_builtins(env : Environment) -> Unit {
     args,
   ) raise {
     // Create new Set instance
-    let new_set : Value = Set({ values: [] })
+    let new_set : Value = Set({
+      values: [],
+      properties: {},
+      descriptors: {},
+      symbol_properties: {},
+      symbol_descriptors: {},
+    })
     let loc = @token.Loc::default()
 
     // If iterable provided, populate set

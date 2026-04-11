@@ -103,6 +103,11 @@ pub(all) struct SymbolData {
 /// Uses SameValueZero for key comparison (NaN === NaN, +0 === -0)
 pub(all) struct MapData {
   entries : Array[(Value, Value)] // Array of (key, value) pairs
+  // Expando properties: stores instance fields from subclasses (class D extends Map)
+  properties : Map[String, Value]
+  descriptors : Map[String, PropDescriptor]
+  symbol_properties : Map[Int, Value]
+  symbol_descriptors : Map[Int, PropDescriptor]
 }
 
 ///|
@@ -110,6 +115,11 @@ pub(all) struct MapData {
 /// Uses SameValueZero for value comparison (NaN === NaN, +0 === -0)
 pub(all) struct SetData {
   values : Array[Value] // Array of unique values
+  // Expando properties: stores instance fields from subclasses (class D extends Set)
+  properties : Map[String, Value]
+  descriptors : Map[String, PropDescriptor]
+  symbol_properties : Map[Int, Value]
+  symbol_descriptors : Map[Int, PropDescriptor]
 }
 
 ///|

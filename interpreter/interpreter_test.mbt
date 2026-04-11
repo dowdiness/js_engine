@@ -9019,3 +9019,34 @@ test "test262: DataView constructor rejects detached ArrayBuffer" {
   )
   inspect(output, content="[\"true\"]")
 }
+
+///|
+test "class fields on Map subclass" {
+  let output = run_output(
+    (
+      #|class D extends Map {
+      #|  x = 1;
+      #|  constructor() { super(); }
+      #|}
+      #|const d = new D();
+      #|console.log(d.x);
+      #|console.log(d instanceof Map);
+    ),
+  )
+  inspect(output, content="[\"1\", \"true\"]")
+}
+
+///|
+test "class fields on Set subclass" {
+  let output = run_output(
+    (
+      #|class S extends Set {
+      #|  label = 'my-set';
+      #|}
+      #|const s = new S();
+      #|console.log(s.label);
+      #|console.log(s instanceof Set);
+    ),
+  )
+  inspect(output, content="[\"my-set\", \"true\"]")
+}

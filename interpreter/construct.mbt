@@ -158,9 +158,43 @@ fn Interpreter::install_instance_fields(
             }
           }
         }
+        Map(data) =>
+          // CreateDataPropertyOrThrow on Map expando properties
+          match field.key {
+            Symbol(sym) => {
+              data.symbol_properties[sym.id] = field_value
+              data.symbol_descriptors[sym.id] = field_desc
+            }
+            String_(key_str) => {
+              data.properties[key_str] = field_value
+              data.descriptors[key_str] = field_desc
+            }
+            _ => {
+              let key_str = to_js_string(field.key)
+              data.properties[key_str] = field_value
+              data.descriptors[key_str] = field_desc
+            }
+          }
+        Set(data) =>
+          // CreateDataPropertyOrThrow on Set expando properties
+          match field.key {
+            Symbol(sym) => {
+              data.symbol_properties[sym.id] = field_value
+              data.symbol_descriptors[sym.id] = field_desc
+            }
+            String_(key_str) => {
+              data.properties[key_str] = field_value
+              data.descriptors[key_str] = field_desc
+            }
+            _ => {
+              let key_str = to_js_string(field.key)
+              data.properties[key_str] = field_value
+              data.descriptors[key_str] = field_desc
+            }
+          }
         _ => {
-          // Array, Promise, Map, Set — set_computed_property already has
-          // define-own semantics for these (no prototype-chain setter lookup).
+          // Array, Promise — set_computed_property has define-own semantics
+          // for these (no prototype-chain setter lookup).
           let _ = self.set_computed_property(
             this_arg,
             field.key,

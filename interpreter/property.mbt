@@ -80,18 +80,46 @@ fn Interpreter::get_property(
       } else {
         lookup_builtin_proto(self, obj, "Symbol", prop, loc)
       }
-    Map(data) =>
+    Map(data) => {
+      // Check expando properties first (instance fields from subclasses)
+      match data.descriptors.get(prop) {
+        Some(desc) =>
+          match desc.getter {
+            Some(getter) => return self.call_value(getter, obj, [], loc)
+            None => ()
+          }
+        None => ()
+      }
+      match data.properties.get(prop) {
+        Some(v) => return v
+        None => ()
+      }
       if prop == "size" {
         Number(data.entries.length().to_double())
       } else {
         get_map_method(data, prop)
       }
-    Set(data) =>
+    }
+    Set(data) => {
+      // Check expando properties first (instance fields from subclasses)
+      match data.descriptors.get(prop) {
+        Some(desc) =>
+          match desc.getter {
+            Some(getter) => return self.call_value(getter, obj, [], loc)
+            None => ()
+          }
+        None => ()
+      }
+      match data.properties.get(prop) {
+        Some(v) => return v
+        None => ()
+      }
       if prop == "size" {
         Number(data.values.length().to_double())
       } else {
         get_set_method(data, prop)
       }
+    }
     Promise(data) =>
       // Check user-defined properties first, then prototype methods
       match data.descriptors.get(prop) {
@@ -692,17 +720,24 @@ fn Interpreter::get_computed_property(
           }
           return Undefined
         }
-        Map(_) => {
-          // Handle Symbol.iterator for Maps (delegates to entries)
+        Map(map_data) => {
+          // Check expando symbol properties first (instance fields from subclasses)
+          match map_data.symbol_descriptors.get(sym.id) {
+            Some(desc) =>
+              match desc.getter {
+                Some(getter) => return self.call_value(getter, obj, [], loc)
+                None => ()
+              }
+            None => ()
+          }
+          match map_data.symbol_properties.get(sym.id) {
+            Some(v) => return v
+            None => ()
+          }
+          // Well-known symbols
           let iterator_sym = get_iterator_symbol()
           if sym.id == iterator_sym.id {
-            return get_map_method(
-              match obj {
-                Map(data) => data
-                _ => abort("unreachable")
-              },
-              "entries",
-            )
+            return get_map_method(map_data, "entries")
           }
           let tostringtag_sym = get_tostringtag_symbol()
           if sym.id == tostringtag_sym.id {
@@ -710,17 +745,24 @@ fn Interpreter::get_computed_property(
           }
           return Undefined
         }
-        Set(_) => {
-          // Handle Symbol.iterator for Sets (delegates to values)
+        Set(set_data) => {
+          // Check expando symbol properties first (instance fields from subclasses)
+          match set_data.symbol_descriptors.get(sym.id) {
+            Some(desc) =>
+              match desc.getter {
+                Some(getter) => return self.call_value(getter, obj, [], loc)
+                None => ()
+              }
+            None => ()
+          }
+          match set_data.symbol_properties.get(sym.id) {
+            Some(v) => return v
+            None => ()
+          }
+          // Well-known symbols
           let iterator_sym = get_iterator_symbol()
           if sym.id == iterator_sym.id {
-            return get_set_method(
-              match obj {
-                Set(data) => data
-                _ => abort("unreachable")
-              },
-              "values",
-            )
+            return get_set_method(set_data, "values")
           }
           let tostringtag_sym = get_tostringtag_symbol()
           if sym.id == tostringtag_sym.id {
@@ -1672,6 +1714,30 @@ fn Interpreter::set_computed_property(
             return value
           }
           data.properties[prop] = value
+          value
+        }
+      }
+    Map(data) =>
+      // Write to expando properties bag (used for instance fields from subclasses)
+      match key {
+        Symbol(sym) => {
+          data.symbol_properties[sym.id] = value
+          value
+        }
+        _ => {
+          data.properties[to_js_string(key)] = value
+          value
+        }
+      }
+    Set(data) =>
+      // Write to expando properties bag (used for instance fields from subclasses)
+      match key {
+        Symbol(sym) => {
+          data.symbol_properties[sym.id] = value
+          value
+        }
+        _ => {
+          data.properties[to_js_string(key)] = value
           value
         }
       }
