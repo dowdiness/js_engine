@@ -82,8 +82,6 @@ pub fn get_string_method(String, String, annex_b? : Bool) -> Value
 
 pub fn get_string_proto() -> Value
 
-pub fn get_symbol_by_id(Int) -> SymbolData?
-
 pub fn get_symbol_proto() -> Value
 
 pub fn get_toprimitive_symbol() -> SymbolData
@@ -162,8 +160,6 @@ pub fn make_typedarray_object(String, Int, Value, Environment) -> Value
 
 pub fn new_promise_data() -> PromiseData
 
-pub fn new_symbol(String?) -> SymbolData
-
 pub let number_prototype_ref : @ref.Ref[Value?]
 
 pub let object_prototype_ref : @ref.Ref[Value?]
@@ -194,7 +190,7 @@ pub fn set_function_name(Value, String) -> Unit
 
 pub fn setup_arraybuffer_builtins(Environment) -> Unit
 
-pub fn setup_builtins(Environment, Array[String], annex_b? : Bool) -> Unit
+pub fn setup_builtins(Environment, Array[String], SymbolState, annex_b? : Bool) -> Unit
 
 pub fn setup_dataview_builtins(Environment) -> Unit
 
@@ -206,7 +202,7 @@ pub fn setup_harness_builtins(Environment, Array[String], Value) -> Unit
 
 pub fn setup_map_set_builtins(Environment) -> Unit
 
-pub fn setup_object_builtins(Environment) -> Unit
+pub fn setup_object_builtins(Environment, SymbolState) -> Unit
 
 pub fn setup_promise(Environment) -> Unit
 
@@ -435,6 +431,7 @@ pub(all) struct Interpreter {
   generator_objects : Map[Int, GeneratorObject]
   gen_id_counter : @ref.Ref[Int]
   mut current_generator : GeneratorObject?
+  symbols : SymbolState
 }
 pub fn Interpreter::enqueue_microtask(Self, Value, Array[Value]) -> Unit
 pub fn Interpreter::has_property(Self, Value, String) -> Bool
@@ -545,6 +542,16 @@ pub(all) struct SymbolData {
   id : Int
   description : String?
 }
+
+pub(all) struct SymbolState {
+  symbol_id_counter : @ref.Ref[Int]
+  all_symbols : Map[Int, SymbolData]
+  global_symbol_registry : Map[String, SymbolData]
+  symbol_registry_reverse : Map[Int, String]
+}
+pub fn SymbolState::get_symbol_by_id(Self, Int) -> SymbolData?
+pub fn SymbolState::new() -> Self
+pub fn SymbolState::new_symbol(Self, String?) -> SymbolData
 
 pub(all) struct TimerTask {
   id : Int

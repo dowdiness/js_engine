@@ -78,6 +78,8 @@ pub(all) struct Interpreter {
   generator_objects : Map[Int, GeneratorObject] // live generator instances keyed by ID
   gen_id_counter : Ref[Int] // monotonically increasing ID for new generator instances
   mut current_generator : GeneratorObject? // generator currently executing (None outside generator body)
+  // Per-interpreter symbol state (ID counter, all-symbols table, Symbol.for registry)
+  symbols : SymbolState
 }
 
 ///|
@@ -99,7 +101,8 @@ pub fn Interpreter::new(
     symbol_descriptors: {},
     extensible: true,
   })
-  setup_builtins(global, output, annex_b~)
+  let symbols = SymbolState::new()
+  setup_builtins(global, output, symbols, annex_b~)
   // Bind 'this' and 'globalThis' in global scope
   global.def_builtin("this", global_this)
   global.def_builtin("globalThis", global_this)
@@ -182,6 +185,7 @@ pub fn Interpreter::new(
     generator_objects: {},
     gen_id_counter: { val: 0 },
     current_generator: None,
+    symbols,
   }
 }
 

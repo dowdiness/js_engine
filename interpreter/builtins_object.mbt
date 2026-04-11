@@ -239,7 +239,10 @@ fn apply_property_descriptor(
 }
 
 ///|
-pub fn setup_object_builtins(env : Environment) -> Unit {
+pub fn setup_object_builtins(
+  env : Environment,
+  sym_state : SymbolState,
+) -> Unit {
   let nf_desc : PropDescriptor = {
     writable: false,
     enumerable: false,
@@ -1301,7 +1304,7 @@ pub fn setup_object_builtins(env : Environment) -> Unit {
               Object(data) => {
                 let symbols : Array[Value] = []
                 data.symbol_properties.each(fn(sym_id, _val) {
-                  match get_symbol_by_id(sym_id) {
+                  match sym_state.get_symbol_by_id(sym_id) {
                     Some(sym_data) => symbols.push(Symbol(sym_data))
                     None => () // Symbol no longer exists (shouldn't happen)
                   }

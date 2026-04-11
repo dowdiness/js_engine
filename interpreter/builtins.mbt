@@ -2,6 +2,7 @@
 pub fn setup_builtins(
   env : Environment,
   output : Array[String],
+  symbols : SymbolState,
   annex_b? : Bool = false,
 ) -> Unit {
   let _ = output
@@ -732,7 +733,7 @@ pub fn setup_builtins(
   }
 
   // Object, Array constructors and built-in methods
-  setup_object_builtins(env)
+  setup_object_builtins(env, symbols)
 
   // Now that Object.prototype and Function.prototype exist, patch built-in
   // prototype chains.  Boolean.prototype, String.prototype, Number.prototype
@@ -831,7 +832,7 @@ pub fn setup_builtins(
   }
 
   // Symbol constructor and well-known symbols (must be before Math for Symbol.toStringTag)
-  setup_symbol_builtins(env)
+  setup_symbol_builtins(env, symbols)
   // Patch Symbol.prototype.[[Prototype]] = Object.prototype
   match env.bindings.get("[[ObjectPrototype]]") {
     Some(binding) => {
@@ -1533,7 +1534,7 @@ pub fn setup_builtins(
   setup_proxy_builtins(env)
 
   // Set up Reflect global object
-  setup_reflect_builtins(env)
+  setup_reflect_builtins(env, symbols)
 
   // Set up ArrayBuffer, TypedArray, and DataView
   setup_arraybuffer_builtins(env)

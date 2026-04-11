@@ -44,36 +44,48 @@ pub fn is_function_value(v : Value) -> Bool {
 }
 
 ///|
-/// Global counter for generating unique symbol IDs
-let symbol_id_counter : Ref[Int] = { val: 0 }
+/// Per-interpreter symbol state: ID counter, all-symbols table,
+/// and the Symbol.for() / Symbol.keyFor() registry.
+/// Passed through setup functions so that closures can capture it
+/// without needing an Interpreter reference.
+pub(all) struct SymbolState {
+  symbol_id_counter : Ref[Int]
+  all_symbols : Map[Int, SymbolData]
+  global_symbol_registry : Map[String, SymbolData]
+  symbol_registry_reverse : Map[Int, String]
+}
 
 ///|
-/// Global map of all symbols by ID (for looking up symbols from property keys)
-let all_symbols : Map[Int, SymbolData] = {}
+pub fn SymbolState::new() -> SymbolState {
+  {
+    symbol_id_counter: { val: 0 },
+    all_symbols: {},
+    global_symbol_registry: {},
+    symbol_registry_reverse: {},
+  }
+}
 
 ///|
-/// Create a new symbol with a unique ID
-pub fn new_symbol(description : String?) -> SymbolData {
-  let id = symbol_id_counter.val
-  symbol_id_counter.val = id + 1
+/// Create a new symbol with a unique ID, registering it in this SymbolState.
+pub fn SymbolState::new_symbol(
+  self : SymbolState,
+  description : String?,
+) -> SymbolData {
+  let id = self.symbol_id_counter.val
+  self.symbol_id_counter.val = id + 1
   let sym : SymbolData = { id, description }
-  all_symbols[id] = sym
+  self.all_symbols[id] = sym
   sym
 }
 
 ///|
-/// Get a symbol by its ID
-pub fn get_symbol_by_id(id : Int) -> SymbolData? {
-  all_symbols.get(id)
+/// Get a symbol by its ID from this SymbolState.
+pub fn SymbolState::get_symbol_by_id(
+  self : SymbolState,
+  id : Int,
+) -> SymbolData? {
+  self.all_symbols.get(id)
 }
-
-///|
-/// Global symbol registry for Symbol.for() and Symbol.keyFor()
-let global_symbol_registry : Map[String, SymbolData] = {}
-
-///|
-/// Reverse lookup: symbol ID -> registry key (for O(1) Symbol.keyFor)
-let symbol_registry_reverse : Map[Int, String] = {}
 
 ///|
 /// Well-known Symbol.iterator - stored globally for iterator protocol support
