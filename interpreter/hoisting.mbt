@@ -555,10 +555,18 @@ fn validate_block_early_errors_expr(
     }
     AwaitExpr(inner, _) =>
       validate_block_early_errors_expr(inner, strict_context)
-    ClassExpr(_, _, methods, _) =>
-      for m in methods {
-        // Class bodies are always strict.
-        validate_block_early_errors_expr(m.value, true)
+    ClassExpr(_, _, members, _) =>
+      for mbr in members {
+        match mbr {
+          @ast.ClassMember::Method(m) =>
+            // Class bodies are always strict.
+            validate_block_early_errors_expr(m.value, true)
+          @ast.ClassMember::Field(f) =>
+            match f.initializer {
+              Some(expr) => validate_block_early_errors_expr(expr, true)
+              None => ()
+            }
+        }
       }
     Binary(_, l, r, _) => {
       validate_block_early_errors_expr(l, strict_context)
@@ -808,10 +816,18 @@ fn validate_block_early_errors_stmt(
         validate_block_early_errors_stmt(inner, child_strict)
       }
     }
-    ClassDecl(_, _, methods, _) =>
-      for m in methods {
-        // Class bodies are always strict.
-        validate_block_early_errors_expr(m.value, true)
+    ClassDecl(_, _, members, _) =>
+      for mbr in members {
+        match mbr {
+          @ast.ClassMember::Method(m) =>
+            // Class bodies are always strict.
+            validate_block_early_errors_expr(m.value, true)
+          @ast.ClassMember::Field(f) =>
+            match f.initializer {
+              Some(expr) => validate_block_early_errors_expr(expr, true)
+              None => ()
+            }
+        }
       }
     WithStmt(_, body, _) => {
       if strict_context {

@@ -23,7 +23,7 @@ fn Interpreter::create_class(
   self : Interpreter,
   name : String,
   superclass_expr : @ast.Expr?,
-  methods : Array[@ast.ClassMethod],
+  members : Array[@ast.ClassMember],
   env : Environment,
 ) -> Value raise Error {
   // Evaluate superclass if present
@@ -58,6 +58,10 @@ fn Interpreter::create_class(
   // Track constructor method
   let mut ctor_fn : (Array[String], Array[@ast.Stmt])? = None
   let mut ctor_param_count : Int = 0
+  // Collect instance field initializers (evaluated during construction)
+  let instance_fields : Array[ClassFieldInit] = []
+  // Collect static field initializers (evaluated after class object is created)
+  let static_fields : Array[ClassFieldInit] = []
   // Create method environments with [[SuperPrototype]] for super.method() support
   let instance_method_env : Environment = match super_ctor {
     Some(_) => {
@@ -75,212 +79,239 @@ fn Interpreter::create_class(
     }
     None => env
   }
-  // Process all methods
-  for m in methods {
-    // Get the method key - could be string or symbol
-    let key_val : Value = match m.key {
-      StringLit(s, _, _) => String_(s)
-      _ => self.eval_expr(m.key, env)
-    }
-    let method_key_str : String = match key_val {
-      Symbol(_) => key_val.to_string()
-      _ => to_js_string(key_val)
-    }
-    // Check if this is the constructor
-    if method_key_str == "constructor" && !m.is_static {
-      // Extract constructor params and body
-      // Class bodies are always strict, so ensure constructor body has "use strict"
-      match m.value {
-        FuncExpr(_, params, body, _) => {
-          let strict_body = ensure_strict_body(body)
-          validate_function_signature(true, None, params, strict_body)
-          ctor_fn = Some((params, strict_body))
-          ctor_param_count = params.length()
+  // Process all members (methods and fields)
+  for mbr in members {
+    match mbr {
+      @ast.ClassMember::Field(f) => {
+        // Evaluate key now (computed field keys are evaluated in order at class definition)
+        let key_val : Value = match f.key {
+          StringLit(s, _, _) => String_(s)
+          _ => self.eval_expr(f.key, env)
         }
-        FuncExprExt(_, params, rest, body, _) => {
-          let strict_body = ensure_strict_body(body)
-          validate_function_signature_ext(true, None, params, rest, strict_body)
-          // Convert Param array to String array (ignoring defaults for now)
-          let param_names = params.map(fn(p) { p.name })
-          ctor_fn = Some((param_names, strict_body))
-          ctor_param_count = params.length()
+        let field_init : ClassFieldInit = {
+          key: key_val,
+          initializer: f.initializer,
+          closure: env,
         }
-        _ => ()
+        if f.is_static {
+          static_fields.push(field_init)
+        } else {
+          instance_fields.push(field_init)
+        }
       }
-      continue
-    }
-    // Create the method function value
-    // Class methods are always strict — ensure body has "use strict"
-    // Use the appropriate method environment for super.method() support
-    let method_closure = if m.is_static {
-      static_method_env
-    } else {
-      instance_method_env
-    }
-    let method_val : Value = match m.value {
-      FuncExpr(fn_name, params, body, _) => {
-        let strict_body = ensure_strict_body(body)
-        validate_function_signature(true, fn_name, params, strict_body)
-        let func_data : FuncData = {
-          name: fn_name,
-          params,
-          body: strict_body,
-          closure: method_closure,
-          strict: true,
+      @ast.ClassMember::Method(m) => { // method branch
+        // Get the method key - could be string or symbol
+        let key_val : Value = match m.key {
+          StringLit(s, _, _) => String_(s)
+          _ => self.eval_expr(m.key, env)
         }
-        make_func(func_data)
-      }
-      FuncExprExt(fn_name, params, rest, body, _) => {
-        let strict_body = ensure_strict_body(body)
-        validate_function_signature_ext(
-          true, fn_name, params, rest, strict_body,
-        )
-        let func_data : FuncDataExt = {
-          name: fn_name,
-          params,
-          rest_param: rest,
-          body: strict_body,
-          closure: method_closure,
-          strict: true,
+        let method_key_str : String = match key_val {
+          Symbol(_) => key_val.to_string()
+          _ => to_js_string(key_val)
         }
-        make_func_ext(func_data)
-      }
-      _ => self.eval_expr(m.value, method_closure)
-    }
-    // Handle getter/setter vs regular method
-    // Class methods are non-enumerable per spec
-    // Set appropriate function name with get/set prefix
-    match m.kind {
-      Get => set_function_name(method_val, "get " + method_key_str)
-      Set => set_function_name(method_val, "set " + method_key_str)
-      _ => set_function_name(method_val, method_key_str)
-    }
-    match m.kind {
-      Get =>
-        // Getter method - store as accessor descriptor
-        match key_val {
-          Symbol(sym) => {
-            let (props, descs) = if m.is_static {
-              (static_symbol_props, static_symbol_descriptors)
-            } else {
-              (proto_symbol_props, proto_symbol_descriptors)
+        // Check if this is the constructor
+        if method_key_str == "constructor" && !m.is_static {
+          // Extract constructor params and body
+          // Class bodies are always strict, so ensure constructor body has "use strict"
+          match m.value {
+            FuncExpr(_, params, body, _) => {
+              let strict_body = ensure_strict_body(body)
+              validate_function_signature(true, None, params, strict_body)
+              ctor_fn = Some((params, strict_body))
+              ctor_param_count = params.length()
             }
-            if !props.contains(sym.id) {
-              props[sym.id] = Undefined
+            FuncExprExt(_, params, rest, body, _) => {
+              let strict_body = ensure_strict_body(body)
+              validate_function_signature_ext(
+                true,
+                None,
+                params,
+                rest,
+                strict_body,
+              )
+              // Convert Param array to String array (ignoring defaults for now)
+              let param_names = params.map(fn(p) { p.name })
+              ctor_fn = Some((param_names, strict_body))
+              ctor_param_count = params.length()
             }
-            let existing = descs.get(sym.id)
-            descs[sym.id] = {
-              writable: false,
-              enumerable: false,
-              configurable: true,
-              getter: Some(method_val),
-              setter: match existing {
-                Some(d) => d.setter
-                None => None
-              },
-            }
+            _ => ()
           }
+          continue
+        }
+        // Create the method function value
+        // Class methods are always strict — ensure body has "use strict"
+        // Use the appropriate method environment for super.method() support
+        let method_closure = if m.is_static {
+          static_method_env
+        } else {
+          instance_method_env
+        }
+        let method_val : Value = match m.value {
+          FuncExpr(fn_name, params, body, _) => {
+            let strict_body = ensure_strict_body(body)
+            validate_function_signature(true, fn_name, params, strict_body)
+            let func_data : FuncData = {
+              name: fn_name,
+              params,
+              body: strict_body,
+              closure: method_closure,
+              strict: true,
+            }
+            make_func(func_data)
+          }
+          FuncExprExt(fn_name, params, rest, body, _) => {
+            let strict_body = ensure_strict_body(body)
+            validate_function_signature_ext(
+              true, fn_name, params, rest, strict_body,
+            )
+            let func_data : FuncDataExt = {
+              name: fn_name,
+              params,
+              rest_param: rest,
+              body: strict_body,
+              closure: method_closure,
+              strict: true,
+            }
+            make_func_ext(func_data)
+          }
+          _ => self.eval_expr(m.value, method_closure)
+        }
+        // Handle getter/setter vs regular method
+        // Class methods are non-enumerable per spec
+        // Set appropriate function name with get/set prefix
+        match m.kind {
+          Get => set_function_name(method_val, "get " + method_key_str)
+          Set => set_function_name(method_val, "set " + method_key_str)
+          _ => set_function_name(method_val, method_key_str)
+        }
+        match m.kind {
+          Get =>
+            // Getter method - store as accessor descriptor
+            match key_val {
+              Symbol(sym) => {
+                let (props, descs) = if m.is_static {
+                  (static_symbol_props, static_symbol_descriptors)
+                } else {
+                  (proto_symbol_props, proto_symbol_descriptors)
+                }
+                if !props.contains(sym.id) {
+                  props[sym.id] = Undefined
+                }
+                let existing = descs.get(sym.id)
+                descs[sym.id] = {
+                  writable: false,
+                  enumerable: false,
+                  configurable: true,
+                  getter: Some(method_val),
+                  setter: match existing {
+                    Some(d) => d.setter
+                    None => None
+                  },
+                }
+              }
+              _ => {
+                let (props, descs) = if m.is_static {
+                  (static_props, static_descriptors)
+                } else {
+                  (proto_props, proto_descriptors)
+                }
+                if !props.contains(method_key_str) {
+                  props[method_key_str] = Undefined
+                }
+                let existing = descs.get(method_key_str)
+                descs[method_key_str] = {
+                  writable: false,
+                  enumerable: false,
+                  configurable: true,
+                  getter: Some(method_val),
+                  setter: match existing {
+                    Some(d) => d.setter
+                    None => None
+                  },
+                }
+              }
+            }
+          Set =>
+            // Setter method - store as accessor descriptor
+            match key_val {
+              Symbol(sym) => {
+                let (props, descs) = if m.is_static {
+                  (static_symbol_props, static_symbol_descriptors)
+                } else {
+                  (proto_symbol_props, proto_symbol_descriptors)
+                }
+                if !props.contains(sym.id) {
+                  props[sym.id] = Undefined
+                }
+                let existing = descs.get(sym.id)
+                descs[sym.id] = {
+                  writable: false,
+                  enumerable: false,
+                  configurable: true,
+                  getter: match existing {
+                    Some(d) => d.getter
+                    None => None
+                  },
+                  setter: Some(method_val),
+                }
+              }
+              _ => {
+                let (props, descs) = if m.is_static {
+                  (static_props, static_descriptors)
+                } else {
+                  (proto_props, proto_descriptors)
+                }
+                if !props.contains(method_key_str) {
+                  props[method_key_str] = Undefined
+                }
+                let existing = descs.get(method_key_str)
+                descs[method_key_str] = {
+                  writable: false,
+                  enumerable: false,
+                  configurable: true,
+                  getter: match existing {
+                    Some(d) => d.getter
+                    None => None
+                  },
+                  setter: Some(method_val),
+                }
+              }
+            }
           _ => {
-            let (props, descs) = if m.is_static {
-              (static_props, static_descriptors)
-            } else {
-              (proto_props, proto_descriptors)
-            }
-            if !props.contains(method_key_str) {
-              props[method_key_str] = Undefined
-            }
-            let existing = descs.get(method_key_str)
-            descs[method_key_str] = {
-              writable: false,
+            // Regular method or Init
+            let method_descriptor : PropDescriptor = {
+              writable: true,
               enumerable: false,
               configurable: true,
-              getter: Some(method_val),
-              setter: match existing {
-                Some(d) => d.setter
-                None => None
-              },
+              getter: None,
+              setter: None,
+            }
+            // Store method in appropriate map based on key type (string vs symbol)
+            match key_val {
+              Symbol(sym) =>
+                // Symbol key - store in symbol_properties
+                if m.is_static {
+                  static_symbol_props[sym.id] = method_val
+                  static_symbol_descriptors[sym.id] = method_descriptor
+                } else {
+                  proto_symbol_props[sym.id] = method_val
+                  proto_symbol_descriptors[sym.id] = method_descriptor
+                }
+              _ =>
+                // String key - store in regular properties
+                if m.is_static {
+                  static_props[method_key_str] = method_val
+                  static_descriptors[method_key_str] = method_descriptor
+                } else {
+                  proto_props[method_key_str] = method_val
+                  proto_descriptors[method_key_str] = method_descriptor
+                }
             }
           }
         }
-      Set =>
-        // Setter method - store as accessor descriptor
-        match key_val {
-          Symbol(sym) => {
-            let (props, descs) = if m.is_static {
-              (static_symbol_props, static_symbol_descriptors)
-            } else {
-              (proto_symbol_props, proto_symbol_descriptors)
-            }
-            if !props.contains(sym.id) {
-              props[sym.id] = Undefined
-            }
-            let existing = descs.get(sym.id)
-            descs[sym.id] = {
-              writable: false,
-              enumerable: false,
-              configurable: true,
-              getter: match existing {
-                Some(d) => d.getter
-                None => None
-              },
-              setter: Some(method_val),
-            }
-          }
-          _ => {
-            let (props, descs) = if m.is_static {
-              (static_props, static_descriptors)
-            } else {
-              (proto_props, proto_descriptors)
-            }
-            if !props.contains(method_key_str) {
-              props[method_key_str] = Undefined
-            }
-            let existing = descs.get(method_key_str)
-            descs[method_key_str] = {
-              writable: false,
-              enumerable: false,
-              configurable: true,
-              getter: match existing {
-                Some(d) => d.getter
-                None => None
-              },
-              setter: Some(method_val),
-            }
-          }
-        }
-      _ => {
-        // Regular method or Init
-        let method_descriptor : PropDescriptor = {
-          writable: true,
-          enumerable: false,
-          configurable: true,
-          getter: None,
-          setter: None,
-        }
-        // Store method in appropriate map based on key type (string vs symbol)
-        match key_val {
-          Symbol(sym) =>
-            // Symbol key - store in symbol_properties
-            if m.is_static {
-              static_symbol_props[sym.id] = method_val
-              static_symbol_descriptors[sym.id] = method_descriptor
-            } else {
-              proto_symbol_props[sym.id] = method_val
-              proto_symbol_descriptors[sym.id] = method_descriptor
-            }
-          _ =>
-            // String key - store in regular properties
-            if m.is_static {
-              static_props[method_key_str] = method_val
-              static_descriptors[method_key_str] = method_descriptor
-            } else {
-              proto_props[method_key_str] = method_val
-              proto_descriptors[method_key_str] = method_descriptor
-            }
-        }
-      }
-    }
-  }
+      } // end Method arm
+    } // end match member
+  } // end for member in members
   // Create prototype object
   let proto = Object({
     properties: proto_props,
@@ -311,6 +342,7 @@ fn Interpreter::create_class(
         ctor_fn,
         closure: env,
         super_proto,
+        instance_fields,
       }),
     ),
     class_name: "Function",
@@ -361,6 +393,50 @@ fn Interpreter::create_class(
       }
     }
     _ => ()
+  }
+  // Evaluate static field initializers (run once at class definition time)
+  // Per ES2022 spec, static fields are initialized after the class object is created.
+  for sf in static_fields {
+    let key_str : String = match sf.key {
+      String_(s) => s
+      Symbol(sym) => sym.id.to_string() // use id for symbol-keyed static fields
+      _ => to_js_string(sf.key)
+    }
+    let value : Value = match sf.initializer {
+      Some(expr) => {
+        // Evaluate initializer with `this` = class_obj
+        let field_env = Environment::new(parent=Some(sf.closure))
+        field_env.def_builtin("this", class_obj)
+        self.eval_expr(expr, field_env)
+      }
+      None => Undefined
+    }
+    match class_obj {
+      Object(class_data) =>
+        match sf.key {
+          Symbol(sym) => {
+            class_data.symbol_properties[sym.id] = value
+            class_data.symbol_descriptors[sym.id] = {
+              writable: true,
+              enumerable: false,
+              configurable: true,
+              getter: None,
+              setter: None,
+            }
+          }
+          _ => {
+            class_data.properties[key_str] = value
+            class_data.descriptors[key_str] = {
+              writable: true,
+              enumerable: false,
+              configurable: true,
+              getter: None,
+              setter: None,
+            }
+          }
+        }
+      _ => ()
+    }
   }
   class_obj
 }

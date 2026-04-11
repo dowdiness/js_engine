@@ -336,6 +336,13 @@ pub(all) struct ClassConstructorData {
   ctor_fn : (Array[String], Array[@ast.Stmt])?
   closure : Environment
   super_proto : Value
+  instance_fields : Array[ClassFieldInit]
+}
+
+pub(all) struct ClassFieldInit {
+  key : Value
+  initializer : @ast.Expr?
+  closure : Environment
 }
 
 pub(all) struct Environment {

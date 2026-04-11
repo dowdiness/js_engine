@@ -45,6 +45,16 @@ pub(all) enum Callable {
 /// Replaces the former anonymous 6-tuple so call sites are self-documenting
 /// and future fields (e.g. instance fields, private names) can be added
 /// without positional reasoning.
+
+///|
+/// A single instance field initializer, captured at class definition time.
+pub(all) struct ClassFieldInit {
+  key : Value // already-evaluated key (String_ for string keys, Symbol for symbol keys)
+  initializer : @ast.Expr? // None if no `= expr`; evaluated with `this` = new instance
+  closure : Environment // lexical closure for evaluating the initializer
+}
+
+///|
 pub(all) struct ClassConstructorData {
   name : String // class name
   proto : Value // prototype object given to new instances
@@ -52,6 +62,7 @@ pub(all) struct ClassConstructorData {
   ctor_fn : (Array[String], Array[@ast.Stmt])? // constructor params + body; None = no explicit ctor
   closure : Environment // lexical environment where the class was defined
   super_proto : Value // super class's prototype (bound as [[SuperPrototype]])
+  instance_fields : Array[ClassFieldInit] // instance field initializers, run before ctor body
 }
 
 ///|

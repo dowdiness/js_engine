@@ -526,6 +526,7 @@ fn Interpreter::construct_value(
               ctor_fn,
               closure,
               super_proto,
+              instance_fields,
             }
           )
         ) => {
@@ -551,6 +552,47 @@ fn Interpreter::construct_value(
               None => ctor_env.def_builtin("this", new_obj)
             }
             ctor_env.def("<new.target>", ctor, LetBinding)
+            // Install instance fields on new_obj before constructor body runs.
+            // For base classes 'this' is new_obj; for derived classes new_obj
+            // is [[PendingThis]] and will become 'this' after super() — same object.
+            // Per ES2022 §10.2.4 fields get {writable, enumerable, configurable: true}.
+            for field in instance_fields {
+              let field_value : Value = match field.initializer {
+                Some(expr) => {
+                  let init_env = Environment::new(parent=Some(field.closure))
+                  init_env.def_builtin("this", new_obj)
+                  self.eval_expr(expr, init_env)
+                }
+                None => Undefined
+              }
+              match new_obj {
+                Object(data) => {
+                  let field_desc : PropDescriptor = {
+                    writable: true,
+                    enumerable: true,
+                    configurable: true,
+                    getter: None,
+                    setter: None,
+                  }
+                  match field.key {
+                    Symbol(sym) => {
+                      data.symbol_properties[sym.id] = field_value
+                      data.symbol_descriptors[sym.id] = field_desc
+                    }
+                    String_(key_str) => {
+                      data.properties[key_str] = field_value
+                      data.descriptors[key_str] = field_desc
+                    }
+                    _ => {
+                      let key_str = to_js_string(field.key)
+                      data.properties[key_str] = field_value
+                      data.descriptors[key_str] = field_desc
+                    }
+                  }
+                }
+                _ => ()
+              }
+            }
             // Execute the constructor if one was defined
             match ctor_fn {
               Some((params, body)) => {
