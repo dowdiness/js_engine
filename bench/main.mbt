@@ -67,6 +67,9 @@ fn main {
       )
     }
   } catch {
-    e => println("FATAL: benchmark failed: \{e}")
+    e => {
+      println("FATAL: benchmark failed: \{e}")
+      abort("benchmark run failed")
+    }
   }
 }

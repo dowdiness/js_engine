@@ -290,6 +290,10 @@ test "exec/string_ops" (b : @bench.T) {
 /// each test individually. Use when profiling where time goes in typical
 /// workloads that mix these patterns.
 test "exec: component comparison" (b : @bench.T) {
+  expect(ARRAY_MAP_FILTER_SRC, "334")
+  expect(CLOSURE_FACTORY_SRC, "500500")
+  expect(OBJECT_CONSTRUCTION_SRC, "1000")
+  expect(STRING_OPS_SRC, "600")
   b.bench(
     name="array_map_filter",
     fn() {

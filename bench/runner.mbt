@@ -111,6 +111,15 @@ pub fn run_bench(
   config : BenchConfig,
   f : () -> Unit raise,
 ) -> BenchResult raise {
+  if config.iterations <= 0 {
+    abort("run_bench: iterations must be > 0")
+  }
+  if config.group_size <= 0 {
+    abort("run_bench: group_size must be > 0")
+  }
+  if config.warmup < 0 {
+    abort("run_bench: warmup must be >= 0")
+  }
   // Warmup — discarded
   for _ in 0..<config.warmup {
     for _ in 0..<config.group_size {
