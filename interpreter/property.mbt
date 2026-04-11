@@ -641,37 +641,30 @@ fn Interpreter::get_computed_property(
             None => ()
           }
           // Check Array.prototype for symbol properties (e.g. overridden Symbol.iterator)
-          match current_interpreter.val {
-            Some(interp) => {
-              let array_ctor = interp.global.get("Array") catch {
-                _ => Undefined
-              }
-              match array_ctor {
-                Object(ctor_data) =>
-                  match ctor_data.properties.get("prototype") {
-                    Some(Object(proto_data)) => {
-                      // Check symbol descriptors for getters
-                      match proto_data.symbol_descriptors.get(sym.id) {
-                        Some(desc) =>
-                          match desc.getter {
-                            Some(getter) =>
-                              return self.call_value(getter, obj, [], loc)
-                            None => ()
-                          }
+          let array_ctor = self.global.get("Array") catch { _ => Undefined }
+          match array_ctor {
+            Object(ctor_data) =>
+              match ctor_data.properties.get("prototype") {
+                Some(Object(proto_data)) => {
+                  // Check symbol descriptors for getters
+                  match proto_data.symbol_descriptors.get(sym.id) {
+                    Some(desc) =>
+                      match desc.getter {
+                        Some(getter) =>
+                          return self.call_value(getter, obj, [], loc)
                         None => ()
                       }
-                      // Check symbol properties
-                      match proto_data.symbol_properties.get(sym.id) {
-                        Some(v) => return v
-                        None => ()
-                      }
-                    }
-                    _ => ()
+                    None => ()
                   }
+                  // Check symbol properties
+                  match proto_data.symbol_properties.get(sym.id) {
+                    Some(v) => return v
+                    None => ()
+                  }
+                }
                 _ => ()
               }
-            }
-            None => ()
+            _ => ()
           }
           // Handle Symbol.iterator default for arrays
           let iterator_sym = get_iterator_symbol()

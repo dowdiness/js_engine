@@ -348,6 +348,7 @@ pub fn array_species_create(
     Object(_) => {
       let species_sym = get_species_symbol()
       let s = interp.get_computed_property(c, Symbol(species_sym), loc)
+      // If species is null or undefined, use default
       match s {
         Null | Undefined => Undefined
         _ => s

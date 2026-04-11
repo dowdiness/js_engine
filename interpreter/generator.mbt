@@ -92,7 +92,6 @@ fn get_generator_prototype(_interp : Interpreter) -> Value {
   init_generator_prototype()
 }
 
-
 ///|
 /// Mark generator as completed and remove from global map to free resources
 fn complete_generator(gen : GeneratorObject) -> Unit {
@@ -114,7 +113,6 @@ fn complete_generator(gen : GeneratorObject) -> Unit {
   gen.try_resume_result = Normal(Undefined)
   gen.try_resume_pending_error = None
 }
-
 
 ///|
 /// Initialize %GeneratorPrototype% with next, throw, return methods

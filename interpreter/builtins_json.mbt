@@ -9,32 +9,28 @@ fn setup_json_builtins(env : Environment) -> Unit {
     getter: None,
     setter: None,
   }
-  json_props["parse"] = make_static_func_with_length("parse", 2, fn(
+  json_props["parse"] = make_interp_static_func_with_length("parse", 2, fn(
+    interp,
     args,
   ) raise {
     let str = if args.length() > 0 { to_js_string(args[0]) } else { "" }
     let result = json_parse(str)
     // Handle reviver
     if args.length() > 1 && is_callable(args[1]) {
-      match current_interpreter.val {
-        Some(interp) => {
-          // Wrap in a root holder object
-          let root_props : Map[String, Value] = {}
-          root_props[""] = result
-          let root : Value = Object({
-            properties: root_props,
-            symbol_properties: {},
-            prototype: Null,
-            callable: None,
-            class_name: "Object",
-            descriptors: {},
-            symbol_descriptors: {},
-            extensible: true,
-          })
-          return json_internalize(root, "", args[1], interp)
-        }
-        None => ()
-      }
+      // Wrap in a root holder object
+      let root_props : Map[String, Value] = {}
+      root_props[""] = result
+      let root : Value = Object({
+        properties: root_props,
+        symbol_properties: {},
+        prototype: Null,
+        callable: None,
+        class_name: "Object",
+        descriptors: {},
+        symbol_descriptors: {},
+        extensible: true,
+      })
+      return json_internalize(root, "", args[1], interp)
     }
     result
   })

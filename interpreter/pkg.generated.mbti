@@ -8,11 +8,9 @@ import {
 }
 
 // Values
-pub fn array_species_create(Interpreter, Value, Int) -> Value raise
+pub fn array_species_create(Interpreter, Value, Array[Value]) -> Value raise
 
 pub let boolean_prototype_ref : @ref.Ref[Value?]
-
-pub let current_interpreter : @ref.Ref[Interpreter?]
 
 pub fn delete_array_like_element(Value, Int) -> Unit
 
@@ -104,7 +102,7 @@ pub fn get_weakset_method(ObjectData, String) -> Value
 
 pub fn has_array_like_element(Value, Int) -> Bool
 
-pub fn has_property(Value, String) -> Bool
+pub fn has_property(Value, String, interp? : Interpreter?) -> Bool
 
 pub fn is_arraybuffer_detached(Int) -> Bool
 
@@ -137,6 +135,8 @@ pub fn make_func(FuncData) -> Value
 pub fn make_func_ext(FuncDataExt) -> Value
 
 pub fn make_interp_method_func(String, Int, (Interpreter, Value, Array[Value]) -> Value raise) -> Value
+
+pub fn make_interp_static_func_with_length(String, Int, (Interpreter, Array[Value]) -> Value raise) -> Value
 
 pub fn make_method_func(String, Int, (Value, Array[Value]) -> Value raise) -> Value
 
@@ -246,11 +246,11 @@ pub fn to_index(Value) -> Int raise
 
 pub fn to_int32(Double) -> Int
 
-pub fn to_js_string(Value) -> String raise
+pub fn to_js_string(Value, interp? : Interpreter?) -> String raise
 
-pub fn to_number(Value) -> Double raise
+pub fn to_number(Value, interp? : Interpreter?) -> Double raise
 
-pub fn to_primitive_default(Value, ObjectData) -> Value raise
+pub fn to_primitive_default(Value, ObjectData, interp? : Interpreter?) -> Value raise
 
 pub fn type_of(Value) -> String
 
@@ -330,7 +330,16 @@ pub(all) enum Callable {
   MethodCallable(String, (Value, Array[Value]) -> Value raise)
   InterpreterCallable(String, (Interpreter, Value, Array[Value]) -> Value raise)
   ConstructorOnlyCallable(String, (Interpreter, Array[Value]) -> Value raise)
-  ClassConstructor(String, Value, Value?, (Array[String], Array[@ast.Stmt])?, Environment, Value)
+  ClassConstructor(ClassConstructorData)
+}
+
+pub(all) struct ClassConstructorData {
+  name : String
+  proto : Value
+  super_ctor : Value?
+  ctor_fn : (Array[String], Array[@ast.Stmt])?
+  closure : Environment
+  super_proto : Value
 }
 
 pub(all) struct Environment {
@@ -422,14 +431,21 @@ pub(all) struct Interpreter {
   module_registry : Map[String, Map[String, Value]]
   mut module_exports : Map[String, Value]
   mut module_export_bindings : Array[(String, String)]
+  generator_objects : Map[Int, GeneratorObject]
+  gen_id_counter : @ref.Ref[Int]
+  mut current_generator : GeneratorObject?
 }
 pub fn Interpreter::enqueue_microtask(Self, Value, Array[Value]) -> Unit
+pub fn Interpreter::has_property(Self, Value, String) -> Bool
 pub fn Interpreter::new(annex_b? : Bool) -> Self
 pub fn Interpreter::register_module(Self, String, Map[String, Value]) -> Unit
 pub fn Interpreter::run(Self, Array[@ast.Stmt]) -> Value raise
 pub fn Interpreter::run_microtasks(Self) -> Unit raise
 pub fn Interpreter::run_module(Self, Array[@ast.Stmt]) -> Map[String, Value] raise
 pub fn Interpreter::run_timers(Self) -> Unit raise
+pub fn Interpreter::to_js_string(Self, Value) -> String raise
+pub fn Interpreter::to_number(Self, Value) -> Double raise
+pub fn Interpreter::to_primitive_default(Self, Value, ObjectData) -> Value raise
 
 pub(all) struct MapData {
   entries : Array[(Value, Value)]

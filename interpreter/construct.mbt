@@ -518,14 +518,16 @@ fn Interpreter::construct_value(
             ),
           )
         Some(
-          ClassConstructor({
-            name: class_name,
-            proto,
-            super_ctor,
-            ctor_fn,
-            closure,
-            super_proto,
-          })
+          ClassConstructor(
+            {
+              name: class_name,
+              proto,
+              super_ctor,
+              ctor_fn,
+              closure,
+              super_proto,
+            }
+          )
         ) => {
           // Class bodies are always strict mode
           let saved_strict = self.strict
@@ -613,13 +615,15 @@ fn Interpreter::construct_value(
                       Object(super_data) =>
                         match super_data.callable {
                           Some(
-                            ClassConstructor({
-                              super_ctor: grand_super,
-                              ctor_fn: ctor,
-                              closure: senv,
-                              super_proto: sproto,
-                              ..
-                            })
+                            ClassConstructor(
+                              {
+                                super_ctor: grand_super,
+                                ctor_fn: ctor,
+                                closure: senv,
+                                super_proto: sproto,
+                                ..,
+                              }
+                            )
                           ) => {
                             let super_env = Environment::new(parent=Some(senv))
                             super_env.def_builtin("this", new_obj)

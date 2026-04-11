@@ -484,10 +484,10 @@ fn setup_map_builtins(env : Environment) -> Unit {
   // Add Map.groupBy static method
   match map_ctor {
     Object(ctor_data) => {
-      ctor_data.properties["groupBy"] = make_static_func_with_length(
+      ctor_data.properties["groupBy"] = make_interp_static_func_with_length(
         "groupBy",
         2,
-        fn(args) raise {
+        fn(interp, args) raise {
           // Map.groupBy(items, callbackFn)
           let items = if args.length() > 0 { args[0] } else { Undefined }
           let callback = if args.length() > 1 { args[1] } else { Undefined }
@@ -495,10 +495,6 @@ fn setup_map_builtins(env : Environment) -> Unit {
             raise @errors.TypeError(
               message=to_js_string(callback) + " is not a function",
             )
-          }
-          let interp = match current_interpreter.val {
-            Some(i) => i
-            None => abort("No interpreter")
           }
           let loc = @token.Loc::default()
           let o = to_object(items, interp)
