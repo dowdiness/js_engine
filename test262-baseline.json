@@ -3,12 +3,12 @@
   "updated": "2026-04-12",
   "test262_commit": "2b2ecead6e82",
   "non-strict": {
-    "passed_min": 23030
+    "passed_min": 23520
   },
   "strict": {
-    "passed_min": 21950
+    "passed_min": 22450
   },
   "combined": {
-    "passed_min": 44980
+    "passed_min": 45990
   }
 }
