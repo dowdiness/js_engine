@@ -8,6 +8,8 @@ import {
 }
 
 // Values
+pub fn array_species_create(Interpreter, Value, Int) -> Value raise
+
 pub let boolean_prototype_ref : @ref.Ref[Value?]
 
 pub let current_interpreter : @ref.Ref[Interpreter?]
@@ -125,6 +127,8 @@ pub fn js_error_to_value(Error) -> Value
 pub fn js_error_to_value_with_env(Error, Environment?) -> Value
 
 pub fn make_array_iterator_value(ArrayData) -> Value
+
+pub fn make_array_like_iterator_value(Value) -> Value raise
 
 pub fn make_arraybuffer_object(Int, Value) -> Value
 

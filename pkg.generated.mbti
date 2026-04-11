@@ -6,8 +6,6 @@ import {
 }
 
 // Values
-pub fn fib(Int) -> Int64
-
 pub fn has_pending_microtasks(@interpreter.Interpreter) -> Bool
 
 pub fn has_pending_timers(@interpreter.Interpreter) -> Bool
@@ -23,8 +21,6 @@ pub fn run_modules(Array[(String, String)], annex_b? : Bool) -> (Array[String], 
 pub fn run_timer_checkpoint(@interpreter.Interpreter) -> Unit raise
 
 pub fn run_with_event_loop(String, annex_b? : Bool) -> (@interpreter.Interpreter, @interpreter.Value) raise
-
-pub fn sum(data~ : Array[Int], start? : Int, length? : Int) -> Int
 
 // Errors
 
