@@ -268,6 +268,10 @@ pub fn set_array_like_element(val : Value, index : Int, value : Value) -> Unit {
 /// Set the length property on an array-like value
 pub fn set_array_like_length(val : Value, len : Int) -> Unit {
   match val {
+    Array(data) =>
+      while data.elements.length() < len {
+        data.elements.push(Undefined)
+      }
     Object(data) => data.properties["length"] = Number(len.to_double())
     _ => ()
   }

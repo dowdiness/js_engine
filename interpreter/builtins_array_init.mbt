@@ -600,6 +600,7 @@ fn setup_array_builtins(
         create_data_property_or_throw(interp, a, i, val)
       }
     }
+    set_array_like_length(a, len)
     a
   })
   array_proto_props["filter"] = make_interp_method_func("filter", 1, fn(
