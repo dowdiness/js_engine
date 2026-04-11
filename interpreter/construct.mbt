@@ -50,18 +50,62 @@ fn Interpreter::install_instance_fields(
       }
       match this_arg {
         Object(data) =>
-          // For plain Objects set both value and descriptor (writable/enumerable/configurable:true)
+          // CreateDataPropertyOrThrow semantics: check [[DefineOwnProperty]]
+          // invariants before writing (non-extensible objects, non-configurable
+          // existing properties must throw TypeError per spec).
           match field.key {
             Symbol(sym) => {
+              if !data.symbol_properties.contains(sym.id) && !data.extensible {
+                raise @errors.TypeError(
+                  message="Cannot define class field on non-extensible object",
+                )
+              }
+              match data.symbol_descriptors.get(sym.id) {
+                Some(d) =>
+                  if !d.configurable {
+                    raise @errors.TypeError(
+                      message="Cannot redefine non-configurable class field",
+                    )
+                  }
+                None => ()
+              }
               data.symbol_properties[sym.id] = field_value
               data.symbol_descriptors[sym.id] = field_desc
             }
             String_(key_str) => {
+              if !data.properties.contains(key_str) && !data.extensible {
+                raise @errors.TypeError(
+                  message="Cannot define class field on non-extensible object",
+                )
+              }
+              match data.descriptors.get(key_str) {
+                Some(d) =>
+                  if !d.configurable {
+                    raise @errors.TypeError(
+                      message="Cannot redefine non-configurable class field",
+                    )
+                  }
+                None => ()
+              }
               data.properties[key_str] = field_value
               data.descriptors[key_str] = field_desc
             }
             _ => {
               let key_str = to_js_string(field.key)
+              if !data.properties.contains(key_str) && !data.extensible {
+                raise @errors.TypeError(
+                  message="Cannot define class field on non-extensible object",
+                )
+              }
+              match data.descriptors.get(key_str) {
+                Some(d) =>
+                  if !d.configurable {
+                    raise @errors.TypeError(
+                      message="Cannot redefine non-configurable class field",
+                    )
+                  }
+                None => ()
+              }
               data.properties[key_str] = field_value
               data.descriptors[key_str] = field_desc
             }
@@ -90,12 +134,18 @@ fn Interpreter::install_instance_fields(
                 symbol_descriptors: {},
                 extensible: true,
               })
-              let _ = self.call_value(
+              let trap_result = self.call_value(
                 trap_fn,
                 handler,
                 [target, field.key, desc_obj],
                 @token.Loc::default(),
               )
+              // Per spec, if the trap returns a falsy value, throw TypeError
+              if !is_truthy(trap_result) {
+                raise @errors.TypeError(
+                  message="'defineProperty' on proxy: trap returned falsish for class field",
+                )
+              }
             }
             None => {
               // No defineProperty trap: define directly on the target
