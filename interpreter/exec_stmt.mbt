@@ -80,7 +80,7 @@ fn Interpreter::exec_stmt(
       }
     }
     WhileStmt(cond, body, _) => {
-      let gen_opt = current_generator.val
+      let gen_opt = self.current_generator
       let resuming_loop = match gen_opt {
         Some(g) => g.loop_env_stack.length() > 0
         _ => false
@@ -145,7 +145,7 @@ fn Interpreter::exec_stmt(
     }
     ForStmt(init, cond, update, body, _) => {
       // Check if we're resuming inside a generator loop
-      let gen_opt = current_generator.val
+      let gen_opt = self.current_generator
       let resuming_loop = match gen_opt {
         Some(g) => g.loop_env_stack.length() > 0
         _ => false
@@ -389,7 +389,7 @@ fn Interpreter::exec_stmt(
       Normal(completion)
     }
     DoWhileStmt(body, cond, _) => {
-      let gen_opt = current_generator.val
+      let gen_opt = self.current_generator
       let resuming_loop = match gen_opt {
         Some(g) => g.loop_env_stack.length() > 0
         _ => false
@@ -501,7 +501,7 @@ fn Interpreter::exec_stmt(
     }
     ForOfStmt(var_kind, name, iterable_expr, body, loc) => {
       // Check if we're resuming inside a generator for-of
-      let gen_opt = current_generator.val
+      let gen_opt = self.current_generator
       let resuming_for_of = match gen_opt {
         Some(g) => g.for_of_resume
         _ => false
@@ -1631,7 +1631,7 @@ fn Interpreter::exec_try_catch(
   env : Environment,
 ) -> Signal raise Error {
   // Check if we're resuming inside a generator at a specific phase
-  let gen_opt = current_generator.val
+  let gen_opt = self.current_generator
   let start_phase = match gen_opt {
     Some(g) =>
       if g.try_resume_phase >= 0 {

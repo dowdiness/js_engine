@@ -92,21 +92,6 @@ fn get_generator_prototype(_interp : Interpreter) -> Value {
   init_generator_prototype()
 }
 
-///|
-/// Global map: generator object ID -> GeneratorObject
-let generator_objects : Map[Int, GeneratorObject] = {}
-
-///|
-/// Counter for generator object IDs
-let gen_id_counter : Ref[Int] = { val: 0 }
-
-///|
-/// Allocate a new generator object ID
-fn next_gen_id() -> Int {
-  let id = gen_id_counter.val
-  gen_id_counter.val = id + 1
-  id
-}
 
 ///|
 /// Mark generator as completed and remove from global map to free resources
@@ -130,9 +115,6 @@ fn complete_generator(gen : GeneratorObject) -> Unit {
   gen.try_resume_pending_error = None
 }
 
-///|
-/// Global reference to currently executing generator (for eval_yield to access)
-let current_generator : Ref[GeneratorObject?] = { val: None }
 
 ///|
 /// Initialize %GeneratorPrototype% with next, throw, return methods
@@ -652,7 +634,8 @@ fn create_generator_instance(
   )
   // Hoist declarations eagerly too
   interp.hoist_declarations(body, func_env)
-  let gen_id = next_gen_id()
+  let gen_id = interp.gen_id_counter.val
+  interp.gen_id_counter.val = gen_id + 1
   let gen_obj : GeneratorObject = {
     id: gen_id,
     state: SuspendedStart,
@@ -684,7 +667,7 @@ fn create_generator_instance(
     yield_index: 0,
     resume_at_yield: 0,
   }
-  generator_objects[gen_id] = gen_obj
+  interp.generator_objects[gen_id] = gen_obj
   // Create the generator instance object with gen_id stored in a property
   let props : Map[String, Value] = {}
   props["<gen_id>"] = Number(gen_id.to_double())
@@ -702,11 +685,14 @@ fn create_generator_instance(
 
 ///|
 /// Get GeneratorObject from a generator instance Value
-fn get_generator_object(this_val : Value) -> GeneratorObject? {
+fn get_generator_object(
+  interp : Interpreter,
+  this_val : Value,
+) -> GeneratorObject? {
   match this_val {
     Object(data) =>
       match data.properties.get("<gen_id>") {
-        Some(Number(id)) => generator_objects.get(id.to_int())
+        Some(Number(id)) => interp.generator_objects.get(id.to_int())
         _ => None
       }
     _ => None
@@ -720,7 +706,7 @@ fn generator_resume(
   this_val : Value,
   resume_kind : ResumeKind,
 ) -> Value raise Error {
-  let gen = match get_generator_object(this_val) {
+  let gen = match get_generator_object(interp, this_val) {
     Some(g) => g
     None =>
       raise @errors.TypeError(
@@ -810,8 +796,8 @@ fn run_generator_body(
   env : Environment,
 ) -> Value raise Error {
   // Save and set the current generator context
-  let prev_gen = current_generator.val
-  current_generator.val = Some(gen)
+  let prev_gen = interp.current_generator
+  interp.current_generator = Some(gen)
   let result = try {
     while gen.pc < gen.body.length() {
       let i = gen.pc
@@ -821,14 +807,14 @@ fn run_generator_body(
         YieldSignal(yielded_value) => {
           // Statement yielded. DON'T advance pc — on resume we'll replay this stmt.
           gen.state = SuspendedYield
-          current_generator.val = prev_gen
+          interp.current_generator = prev_gen
           return make_iterator_result(yielded_value, false)
         }
         GeneratorReturnSignal(v) => {
           // .return(v) was injected at yield point and propagated up
           // (possibly through finally blocks). Complete the generator.
           complete_generator(gen)
-          current_generator.val = prev_gen
+          interp.current_generator = prev_gen
           return make_iterator_result(v, true)
         }
         e => raise e
@@ -839,7 +825,7 @@ fn run_generator_body(
         Normal(_) => ()
         ReturnSignal(v) => {
           complete_generator(gen)
-          current_generator.val = prev_gen
+          interp.current_generator = prev_gen
           return make_iterator_result(v, true)
         }
         BreakSignal(_, _) | ContinueSignal(_, _) => ()
@@ -851,11 +837,11 @@ fn run_generator_body(
   } catch {
     e => {
       complete_generator(gen)
-      current_generator.val = prev_gen
+      interp.current_generator = prev_gen
       raise e
     }
   }
-  current_generator.val = prev_gen
+  interp.current_generator = prev_gen
   result
 }
 
@@ -895,7 +881,7 @@ fn Interpreter::eval_yield(
   delegate : Bool,
   env : Environment,
 ) -> Value raise Error {
-  match current_generator.val {
+  match self.current_generator {
     Some(gen) => {
       let current_yield_index = gen.yield_index
       gen.yield_index = gen.yield_index + 1

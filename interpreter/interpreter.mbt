@@ -67,6 +67,10 @@ pub(all) struct Interpreter {
   module_registry : Map[String, Map[String, Value]] // module specifier -> exports namespace
   mut module_exports : Map[String, Value] // current module's exports being built
   mut module_export_bindings : Array[(String, String)] // deferred: (export_name, local_binding_name)
+  // Generator runtime state (previously module-level globals)
+  generator_objects : Map[Int, GeneratorObject] // live generator instances keyed by ID
+  gen_id_counter : Ref[Int] // monotonically increasing ID for new generator instances
+  mut current_generator : GeneratorObject? // generator currently executing (None outside generator body)
 }
 
 ///|
@@ -164,6 +168,9 @@ pub fn Interpreter::new(annex_b? : Bool = false) -> Interpreter {
     module_registry: {},
     module_exports: {},
     module_export_bindings: [],
+    generator_objects: {},
+    gen_id_counter: { val: 0 },
+    current_generator: None,
   }
 }
 
