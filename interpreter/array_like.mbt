@@ -268,6 +268,10 @@ pub fn set_array_like_element(val : Value, index : Int, value : Value) -> Unit {
 /// Set the length property on an array-like value
 pub fn set_array_like_length(val : Value, len : Int) -> Unit {
   match val {
+    Array(data) =>
+      while data.elements.length() < len {
+        data.elements.push(Undefined)
+      }
     Object(data) => data.properties["length"] = Number(len.to_double())
     _ => ()
   }
@@ -284,6 +288,40 @@ pub fn delete_array_like_element(val : Value, index : Int) -> Unit {
 }
 
 ///|
+/// CreateDataPropertyOrThrow(O, P, V) per ES spec 7.3.5
+/// Sets an indexed property on a species result value, using the fast path
+/// for plain Arrays and set_property for everything else.
+fn create_data_property_or_throw(
+  interp : Interpreter,
+  target : Value,
+  index : Int,
+  value : Value,
+) -> Unit raise {
+  match target {
+    Array(data) =>
+      if index == data.elements.length() {
+        data.elements.push(value)
+      } else if index >= 0 && index < data.elements.length() {
+        data.elements[index] = value
+      } else {
+        // Sparse case: pad with Undefined up to index, then set
+        while data.elements.length() < index {
+          data.elements.push(Undefined)
+        }
+        data.elements.push(value)
+      }
+    _ => {
+      let _ = interp.set_property(
+        target,
+        index.to_string(),
+        value,
+        @token.Loc::default(),
+      )
+    }
+  }
+}
+
+///|
 /// ArraySpeciesCreate(originalArray, length) per ES spec 9.4.2.3
 /// Looks up Symbol.species on the original array's constructor to determine
 /// what constructor to use for the result. Returns a plain Array if no
@@ -291,7 +329,7 @@ pub fn delete_array_like_element(val : Value, index : Int) -> Unit {
 pub fn array_species_create(
   interp : Interpreter,
   original : Value,
-  elements : Array[Value],
+  len : Int,
 ) -> Value raise Error {
   // Step 1: If originalArray is not an Array, return a plain array
   let is_array = match original {
@@ -300,7 +338,7 @@ pub fn array_species_create(
     _ => false
   }
   if !is_array {
-    return Array({ elements, })
+    return Array({ elements: [] })
   }
   let loc = @token.Loc::default()
   // Step 2: Get C = Get(originalArray, "constructor")
@@ -309,12 +347,7 @@ pub fn array_species_create(
   let species : Value = match c {
     Object(_) => {
       let species_sym = get_species_symbol()
-      let s = interp.get_computed_property(
-        c,
-        Symbol(species_sym),
-        loc,
-      )
-      // If species is null or undefined, use default
+      let s = interp.get_computed_property(c, Symbol(species_sym), loc)
       match s {
         Null | Undefined => Undefined
         _ => s
@@ -325,38 +358,14 @@ pub fn array_species_create(
   }
   // Step 5: If C is undefined, return plain array
   if species is Undefined {
-    return Array({ elements, })
+    return Array({ elements: [] })
   }
   // Step 6: If IsConstructor(C) is false, throw TypeError
   if !is_constructor_value(species) {
-    raise @errors.TypeError(
-      message="Species constructor is not a constructor",
-    )
+    raise @errors.TypeError(message="Species constructor is not a constructor")
   }
   // Step 7: Construct(C, « length »)
-  let result = interp.construct_value(
-    species,
-    [Number(elements.length().to_double())],
-    loc,
-  )
-  // Copy elements into the constructed result
-  match result {
-    Array(data) => {
-      data.elements.clear()
-      for el in elements {
-        data.elements.push(el)
-      }
-      result
-    }
-    Object(data) => {
-      for i, el in elements {
-        data.properties[i.to_string()] = el
-      }
-      data.properties["length"] = Number(elements.length().to_double())
-      result
-    }
-    _ => Array({ elements, })
-  }
+  interp.construct_value(species, [Number(len.to_double())], loc)
 }
 
 ///|

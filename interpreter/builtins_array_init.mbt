@@ -308,11 +308,22 @@ fn setup_array_builtins(
     if end > alen {
       end = alen
     }
-    let result : Array[Value] = []
+    let count = if end > start { end - start } else { 0 }
+    let a = array_species_create(interp, o, count)
+    let mut n = 0
     for i = start; i < end; i = i + 1 {
-      result.push(get_array_like_element_interp(interp, o, i))
+      if has_array_like_element(o, i) {
+        create_data_property_or_throw(
+          interp,
+          a,
+          n,
+          get_array_like_element_interp(interp, o, i),
+        )
+      }
+      n += 1
     }
-    array_species_create(interp, o, result)
+    set_array_like_length(a, n)
+    a
   })
   array_proto_props["concat"] = make_interp_method_func("concat", 1, fn(
     interp,
@@ -320,12 +331,13 @@ fn setup_array_builtins(
     args,
   ) raise {
     let o = to_object(this_val, interp)
-    let result : Array[Value] = []
+    let a = array_species_create(interp, o, 0)
+    let mut n = 0
     let concat_sym_id = get_isconcatspreadable_symbol().id
     // Process this value and each argument per ES2015 concat spec
     let items : Array[Value] = [o]
-    for a in args {
-      items.push(a)
+    for arg in args {
+      items.push(arg)
     }
     for item in items {
       // Determine spreadability: check @@isConcatSpreadable
@@ -373,16 +385,22 @@ fn setup_array_builtins(
         let len = to_array_like_length_interp(item, interp)
         for i = 0; i < len; i = i + 1 {
           if has_array_like_element(item, i) {
-            result.push(get_array_like_element_interp(interp, item, i))
-          } else {
-            result.push(Undefined)
+            create_data_property_or_throw(
+              interp,
+              a,
+              n,
+              get_array_like_element_interp(interp, item, i),
+            )
           }
+          n += 1
         }
       } else {
-        result.push(item)
+        create_data_property_or_throw(interp, a, n, item)
+        n += 1
       }
     }
-    array_species_create(interp, o, result)
+    set_array_like_length(a, n)
+    a
   })
   array_proto_props["reverse"] = make_interp_method_func("reverse", 0, fn(
     interp,
@@ -566,7 +584,7 @@ fn setup_array_builtins(
     let this_arg = if args.length() > 1 { args[1] } else { Undefined }
     let loc = @token.Loc::default()
     let len = to_array_like_length_interp(o, interp)
-    let result : Array[Value] = []
+    let a = array_species_create(interp, o, len)
     for i = 0; i < len; i = i + 1 {
       if has_array_like_element(o, i) {
         let val = interp.call_value(
@@ -579,12 +597,11 @@ fn setup_array_builtins(
           ],
           loc,
         )
-        result.push(val)
-      } else {
-        result.push(Undefined)
+        create_data_property_or_throw(interp, a, i, val)
       }
     }
-    array_species_create(interp, o, result)
+    set_array_like_length(a, len)
+    a
   })
   array_proto_props["filter"] = make_interp_method_func("filter", 1, fn(
     interp,
@@ -601,7 +618,8 @@ fn setup_array_builtins(
     let this_arg = if args.length() > 1 { args[1] } else { Undefined }
     let loc = @token.Loc::default()
     let len = to_array_like_length_interp(o, interp)
-    let result : Array[Value] = []
+    let a = array_species_create(interp, o, 0)
+    let mut to = 0
     for i = 0; i < len; i = i + 1 {
       if has_array_like_element(o, i) {
         let el = get_array_like_element_interp(interp, o, i)
@@ -612,11 +630,12 @@ fn setup_array_builtins(
           loc,
         )
         if is_truthy(val) {
-          result.push(el)
+          create_data_property_or_throw(interp, a, to, el)
+          to += 1
         }
       }
     }
-    array_species_create(interp, o, result)
+    a
   })
   array_proto_props["reduce"] = make_interp_method_func("reduce", 1, fn(
     interp,
@@ -1052,9 +1071,14 @@ fn setup_array_builtins(
       1
     }
     let elements = to_array_like_elements(o)
-    let result : Array[Value] = []
-    flatten_array_val(elements, depth, result)
-    array_species_create(interp, o, result)
+    let flat_result : Array[Value] = []
+    flatten_array_val(elements, depth, flat_result)
+    let a = array_species_create(interp, o, 0)
+    for i, val in flat_result {
+      create_data_property_or_throw(interp, a, i, val)
+    }
+    set_array_like_length(a, flat_result.length())
+    a
   })
   array_proto_props["flatMap"] = make_interp_method_func("flatMap", 1, fn(
     interp,
@@ -1071,7 +1095,8 @@ fn setup_array_builtins(
     let this_arg = if args.length() > 1 { args[1] } else { Undefined }
     let loc = @token.Loc::default()
     let len = to_array_like_length_interp(o, interp)
-    let result : Array[Value] = []
+    let a = array_species_create(interp, o, 0)
+    let mut n = 0
     for i = 0; i < len; i = i + 1 {
       let el = get_array_like_element_interp(interp, o, i)
       let val = interp.call_value(
@@ -1083,12 +1108,17 @@ fn setup_array_builtins(
       match val {
         Array(inner) =>
           for item in inner.elements {
-            result.push(item)
+            create_data_property_or_throw(interp, a, n, item)
+            n += 1
           }
-        _ => result.push(val)
+        _ => {
+          create_data_property_or_throw(interp, a, n, val)
+          n += 1
+        }
       }
     }
-    array_species_create(interp, o, result)
+    set_array_like_length(a, n)
+    a
   })
   array_proto_props["splice"] = make_interp_method_func("splice", 2, fn(
     interp,
@@ -1126,10 +1156,18 @@ fn setup_array_builtins(
     } else {
       alen - start
     }
-    let removed : Array[Value] = []
-    for i = start; i < start + del_count; i = i + 1 {
-      removed.push(get_array_like_element_interp(interp, o, i))
+    let removed = array_species_create(interp, o, del_count)
+    for i = 0; i < del_count; i = i + 1 {
+      if has_array_like_element(o, start + i) {
+        create_data_property_or_throw(
+          interp,
+          removed,
+          i,
+          get_array_like_element_interp(interp, o, start + i),
+        )
+      }
     }
+    set_array_like_length(removed, del_count)
     let new_items : Array[Value] = []
     for i = 2; i < args.length(); i = i + 1 {
       new_items.push(args[i])
@@ -1191,7 +1229,7 @@ fn setup_array_builtins(
         }
       }
     }
-    array_species_create(interp, o, removed)
+    removed
   })
   array_proto_props["copyWithin"] = make_interp_method_func("copyWithin", 2, fn(
     interp,
