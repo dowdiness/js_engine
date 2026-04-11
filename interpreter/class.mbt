@@ -417,47 +417,58 @@ fn Interpreter::create_class(
   } else {
     static_method_env
   }
-  for sf in static_fields {
-    let key_str : String = match sf.key {
-      String_(s) => s
-      Symbol(sym) => sym.id.to_string() // use id for symbol-keyed static fields
-      _ => to_js_string(sf.key)
-    }
-    let value : Value = match sf.initializer {
-      Some(expr) => {
-        // Evaluate initializer with `this` = class_obj and class name in scope
-        let field_env = Environment::new(parent=Some(static_init_base))
-        field_env.def_builtin("this", class_obj)
-        self.eval_expr(expr, field_env)
+  // Class bodies (including field initializers) are always strict per spec
+  let saved_strict = self.strict
+  self.strict = true
+  try {
+    for sf in static_fields {
+      let key_str : String = match sf.key {
+        String_(s) => s
+        Symbol(sym) => sym.id.to_string() // use id for symbol-keyed static fields
+        _ => to_js_string(sf.key)
       }
-      None => Undefined
-    }
-    match class_obj {
-      Object(class_data) =>
-        match sf.key {
-          Symbol(sym) => {
-            class_data.symbol_properties[sym.id] = value
-            class_data.symbol_descriptors[sym.id] = {
-              writable: true,
-              enumerable: true,
-              configurable: true,
-              getter: None,
-              setter: None,
-            }
-          }
-          _ => {
-            class_data.properties[key_str] = value
-            class_data.descriptors[key_str] = {
-              writable: true,
-              enumerable: true,
-              configurable: true,
-              getter: None,
-              setter: None,
-            }
-          }
+      let value : Value = match sf.initializer {
+        Some(expr) => {
+          // Evaluate initializer with `this` = class_obj and class name in scope
+          let field_env = Environment::new(parent=Some(static_init_base))
+          field_env.def_builtin("this", class_obj)
+          self.eval_expr(expr, field_env)
         }
-      _ => ()
+        None => Undefined
+      }
+      match class_obj {
+        Object(class_data) =>
+          match sf.key {
+            Symbol(sym) => {
+              class_data.symbol_properties[sym.id] = value
+              class_data.symbol_descriptors[sym.id] = {
+                writable: true,
+                enumerable: true,
+                configurable: true,
+                getter: None,
+                setter: None,
+              }
+            }
+            _ => {
+              class_data.properties[key_str] = value
+              class_data.descriptors[key_str] = {
+                writable: true,
+                enumerable: true,
+                configurable: true,
+                getter: None,
+                setter: None,
+              }
+            }
+          }
+        _ => ()
+      }
+    }
+  } catch {
+    e => {
+      self.strict = saved_strict
+      raise e
     }
   }
+  self.strict = saved_strict
   class_obj
 }

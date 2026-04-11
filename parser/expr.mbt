@@ -2088,8 +2088,19 @@ fn Parser::parse_class_member(self : Parser) -> @ast.ClassMember raise Error {
     } else {
       None
     }
-    // Consume optional semicolon
-    let _ = self.eat(Semicolon)
+    // Require explicit ';' or ASI boundary (line terminator or '}')
+    // to prevent `class C { x = 1 y(){} }` from being accepted.
+    let last_line = self.tokens[self.pos - 1].loc.line
+    if self.at(Semicolon) {
+      let _ = self.advance()
+    } else if !self.at(RBrace) &&
+      !self.at(EOF) &&
+      self.peek().loc.line == last_line {
+      let t = self.peek()
+      raise @errors.SyntaxError(
+        message="Expected ';' or line terminator after class field at line \{t.loc.line}, col \{t.loc.col}",
+      )
+    }
     return @ast.ClassMember::Field({
       key: key_expr,
       initializer,

@@ -28,6 +28,9 @@ fn Interpreter::install_instance_fields(
   this_arg : Value,
   fields : Array[ClassFieldInit],
 ) -> Unit raise Error {
+  // Class field initializers are always evaluated as strict code per spec
+  let saved_strict = self.strict
+  self.strict = true
   let field_desc : PropDescriptor = {
     writable: true,
     enumerable: true,
@@ -35,45 +38,95 @@ fn Interpreter::install_instance_fields(
     getter: None,
     setter: None,
   }
-  for field in fields {
-    let field_value : Value = match field.initializer {
-      Some(expr) => {
-        let init_env = Environment::new(parent=Some(field.closure))
-        init_env.def_builtin("this", this_arg)
-        self.eval_expr(expr, init_env)
+  try {
+    for field in fields {
+      let field_value : Value = match field.initializer {
+        Some(expr) => {
+          let init_env = Environment::new(parent=Some(field.closure))
+          init_env.def_builtin("this", this_arg)
+          self.eval_expr(expr, init_env)
+        }
+        None => Undefined
       }
-      None => Undefined
-    }
-    match this_arg {
-      Object(data) =>
-        // For plain Objects set both value and descriptor (writable/enumerable/configurable:true)
-        match field.key {
-          Symbol(sym) => {
-            data.symbol_properties[sym.id] = field_value
-            data.symbol_descriptors[sym.id] = field_desc
+      match this_arg {
+        Object(data) =>
+          // For plain Objects set both value and descriptor (writable/enumerable/configurable:true)
+          match field.key {
+            Symbol(sym) => {
+              data.symbol_properties[sym.id] = field_value
+              data.symbol_descriptors[sym.id] = field_desc
+            }
+            String_(key_str) => {
+              data.properties[key_str] = field_value
+              data.descriptors[key_str] = field_desc
+            }
+            _ => {
+              let key_str = to_js_string(field.key)
+              data.properties[key_str] = field_value
+              data.descriptors[key_str] = field_desc
+            }
           }
-          String_(key_str) => {
-            data.properties[key_str] = field_value
-            data.descriptors[key_str] = field_desc
-          }
-          _ => {
-            let key_str = to_js_string(field.key)
-            data.properties[key_str] = field_value
-            data.descriptors[key_str] = field_desc
+        Proxy(proxy_data) => {
+          // Use [[DefineOwnProperty]] semantics for Proxy: invoke the
+          // "defineProperty" trap so the proxy observes definition rather than
+          // [[Set]] (which would invoke the "set" trap instead).
+          let trap = get_proxy_trap(proxy_data, "defineProperty")
+          let target = get_proxy_target(proxy_data)
+          let handler = get_proxy_handler(proxy_data)
+          match trap {
+            Some(trap_fn) => {
+              let desc_obj = Object({
+                properties: {
+                  "value": field_value,
+                  "writable": Bool(true),
+                  "enumerable": Bool(true),
+                  "configurable": Bool(true),
+                },
+                symbol_properties: {},
+                prototype: Null,
+                callable: None,
+                class_name: "Object",
+                descriptors: {},
+                symbol_descriptors: {},
+                extensible: true,
+              })
+              let _ = self.call_value(
+                trap_fn,
+                handler,
+                [target, field.key, desc_obj],
+                @token.Loc::default(),
+              )
+            }
+            None => {
+              // No defineProperty trap: define directly on the target
+              let _ = self.set_computed_property(
+                target,
+                field.key,
+                field_value,
+                @token.Loc::default(),
+              )
+            }
           }
         }
-      _ => {
-        // For non-Object receivers (Array, Promise, Proxy, …) delegate to the
-        // computed property setter so subclasses of built-ins get their fields.
-        let _ = self.set_computed_property(
-          this_arg,
-          field.key,
-          field_value,
-          @token.Loc::default(),
-        )
+        _ => {
+          // Array, Promise, Map, Set — set_computed_property already has
+          // define-own semantics for these (no prototype-chain setter lookup).
+          let _ = self.set_computed_property(
+            this_arg,
+            field.key,
+            field_value,
+            @token.Loc::default(),
+          )
+        }
       }
     }
+  } catch {
+    e => {
+      self.strict = saved_strict
+      raise e
+    }
   }
+  self.strict = saved_strict
 }
 
 ///|
