@@ -17,3 +17,9 @@ extern "js" fn _perf_now() -> Double =
 pub fn now_ms() -> Double {
   _perf_now()
 }
+
+///|
+/// Returns true: performance.now() is available on the JS target.
+pub fn timer_supported() -> Bool {
+  true
+}

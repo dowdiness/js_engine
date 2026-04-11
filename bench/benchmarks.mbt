@@ -38,16 +38,16 @@
 // ---------------------------------------------------------------------------
 
 ///|
-fn expect(src : String, want : String) -> Unit {
+fn expect(name : String, src : String, want : String) -> Unit {
   try {
     let (_, got) = @lib.run(src)
     if got != want {
       abort(
-        "bench correctness check failed\n  expected: \{want}\n  got:      \{got}",
+        "[\{name}] bench correctness check failed\n  expected: \{want}\n  got:      \{got}",
       )
     }
   } catch {
-    _ => abort("bench correctness check: execution raised an error")
+    e => abort("[\{name}] bench correctness check raised: \{e}")
   }
 }
 
@@ -140,7 +140,7 @@ test "lexer: size scaling" (b : @bench.T) {
 /// Each outer run takes several seconds; total wall time per full run is ~30–60s.
 /// Expected result: "832040"
 test "exec/fibonacci_30" (b : @bench.T) {
-  expect(FIBONACCI_SRC, "832040")
+  expect("exec/fibonacci_30", FIBONACCI_SRC, "832040")
   // count is kept at the default (10 outer runs).
   // fib(30) takes several seconds per run; total wall time is ~30–60s.
   // This is acceptable for an explicit regression benchmark run.
@@ -170,7 +170,7 @@ test "exec/fibonacci_30" (b : @bench.T) {
 ///
 /// Expected result: "420000"  (10 000 × 42)
 test "exec/property_chain" (b : @bench.T) {
-  expect(PROPERTY_CHAIN_SRC, "420000")
+  expect("exec/property_chain", PROPERTY_CHAIN_SRC, "420000")
   b.bench(
     fn() {
       try {
@@ -199,7 +199,7 @@ test "exec/property_chain" (b : @bench.T) {
 ///
 /// Expected result: "334"
 test "exec/array_map_filter" (b : @bench.T) {
-  expect(ARRAY_MAP_FILTER_SRC, "334")
+  expect("exec/array_map_filter", ARRAY_MAP_FILTER_SRC, "334")
   b.bench(
     fn() {
       try {
@@ -223,7 +223,7 @@ test "exec/array_map_filter" (b : @bench.T) {
 ///
 /// Expected result: "500500"
 test "exec/closure_factory" (b : @bench.T) {
-  expect(CLOSURE_FACTORY_SRC, "500500")
+  expect("exec/closure_factory", CLOSURE_FACTORY_SRC, "500500")
   b.bench(
     fn() {
       try {
@@ -246,7 +246,7 @@ test "exec/closure_factory" (b : @bench.T) {
 ///
 /// Expected result: "1000"
 test "exec/object_construction" (b : @bench.T) {
-  expect(OBJECT_CONSTRUCTION_SRC, "1000")
+  expect("exec/object_construction", OBJECT_CONSTRUCTION_SRC, "1000")
   b.bench(
     fn() {
       try {
@@ -270,7 +270,7 @@ test "exec/object_construction" (b : @bench.T) {
 ///
 /// Expected result: "600"  (100 × len("HELLO ") = 100 × 6)
 test "exec/string_ops" (b : @bench.T) {
-  expect(STRING_OPS_SRC, "600")
+  expect("exec/string_ops", STRING_OPS_SRC, "600")
   b.bench(
     fn() {
       try {
@@ -290,10 +290,10 @@ test "exec/string_ops" (b : @bench.T) {
 /// each test individually. Use when profiling where time goes in typical
 /// workloads that mix these patterns.
 test "exec: component comparison" (b : @bench.T) {
-  expect(ARRAY_MAP_FILTER_SRC, "334")
-  expect(CLOSURE_FACTORY_SRC, "500500")
-  expect(OBJECT_CONSTRUCTION_SRC, "1000")
-  expect(STRING_OPS_SRC, "600")
+  expect("exec/array_map_filter", ARRAY_MAP_FILTER_SRC, "334")
+  expect("exec/closure_factory", CLOSURE_FACTORY_SRC, "500500")
+  expect("exec/object_construction", OBJECT_CONSTRUCTION_SRC, "1000")
+  expect("exec/string_ops", STRING_OPS_SRC, "600")
   b.bench(
     name="array_map_filter",
     fn() {
@@ -359,6 +359,12 @@ test "exec: component comparison" (b : @bench.T) {
 /// Note: parse time is typically a small fraction of total script cost
 /// but matters for REPL-style use and hot-module-reload scenarios.
 test "pipeline/parse_heavy" (b : @bench.T) {
+  // Pre-check: verify parse succeeds on this workload before timing begins.
+  try {
+    b.keep(@parser.parse(PARSER_HEAVY_SRC))
+  } catch {
+    _ => abort("pipeline/parse_heavy: pre-check raised")
+  }
   b.bench(
     fn() {
       try {

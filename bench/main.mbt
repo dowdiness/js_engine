@@ -22,6 +22,9 @@
 /// NOTE: Timing is only meaningful on the JS backend.
 ///       Other targets return 0.0 from now_ms() — see timer.*.mbt.
 fn main {
+  if timer_supported() == false {
+    abort("bench/main only produces meaningful results with --target js")
+  }
   let args = parse_bench_args()
   if args.list_only {
     println("Available benchmarks (name, category):")

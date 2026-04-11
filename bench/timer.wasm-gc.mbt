@@ -9,3 +9,9 @@
 pub fn now_ms() -> Double {
   0.0
 }
+
+///|
+/// Returns false: timing is unsupported on WASM-GC. Use --target js.
+pub fn timer_supported() -> Bool {
+  false
+}
