@@ -20,347 +20,7 @@ fn Interpreter::get_property(
         }
       }
     }
-    Object(data) => {
-      // Check for accessor descriptor (getter) on own property
-      match data.descriptors.get(prop) {
-        Some(desc) =>
-          match desc.getter {
-            Some(getter) => return self.call_value(getter, obj, [], loc)
-            None => ()
-          }
-        None => ()
-      }
-      match data.properties.get(prop) {
-        Some(v) => v
-        None => {
-          // Walk prototype chain
-          let mut current = data.prototype
-          let mut func_proto_checked = false
-          while true {
-            match current {
-              Object(proto_data) => {
-                // Check for accessor descriptor (getter) on prototype property
-                match proto_data.descriptors.get(prop) {
-                  Some(desc) =>
-                    match desc.getter {
-                      Some(getter) =>
-                        return self.call_value(getter, obj, [], loc)
-                      None => ()
-                    }
-                  None => ()
-                }
-                match proto_data.properties.get(prop) {
-                  Some(v) => return v
-                  None => current = proto_data.prototype
-                }
-              }
-              Array(arr_data) => {
-                // Handle Array values in the prototype chain
-                if prop == "length" {
-                  return Number(arr_data.elements.length().to_double())
-                }
-                // Check numeric index access on array elements
-                let num_idx = @string.parse_int(prop) catch { _ => -1 }
-                if num_idx >= 0 && num_idx < arr_data.elements.length() {
-                  return arr_data.elements[num_idx]
-                }
-                match get_array_named_prop(arr_data, prop) {
-                  Some(v) => return v
-                  None => {
-                    let result = get_array_method_with_interp(arr_data, prop)
-                    match result {
-                      Undefined => {
-                        // Continue to Array.prototype
-                        let ctor = self.global.get("Array") catch { _ => break }
-                        match ctor {
-                          Object(ctor_data) =>
-                            match ctor_data.properties.get("prototype") {
-                              Some(proto) => current = proto
-                              None => break
-                            }
-                          _ => break
-                        }
-                      }
-                      _ => return result
-                    }
-                  }
-                }
-              }
-              Map(map_data) => {
-                // Handle Map values in the prototype chain
-                if prop == "size" {
-                  return Number(map_data.entries.length().to_double())
-                }
-                let result = get_map_method(map_data, prop)
-                match result {
-                  Undefined => {
-                    let ctor = self.global.get("Map") catch { _ => break }
-                    match ctor {
-                      Object(ctor_data) =>
-                        match ctor_data.properties.get("prototype") {
-                          Some(proto) => current = proto
-                          None => break
-                        }
-                      _ => break
-                    }
-                  }
-                  _ => return result
-                }
-              }
-              Set(set_data) => {
-                // Handle Set values in the prototype chain
-                if prop == "size" {
-                  return Number(set_data.values.length().to_double())
-                }
-                let result = get_set_method(set_data, prop)
-                match result {
-                  Undefined => {
-                    let ctor = self.global.get("Set") catch { _ => break }
-                    match ctor {
-                      Object(ctor_data) =>
-                        match ctor_data.properties.get("prototype") {
-                          Some(proto) => current = proto
-                          None => break
-                        }
-                      _ => break
-                    }
-                  }
-                  _ => return result
-                }
-              }
-              Null =>
-                // For function objects, fall back to Function.prototype (once)
-                if !func_proto_checked {
-                  match data.callable {
-                    Some(_) => {
-                      let fp = self.global.get("[[FunctionPrototype]]") catch {
-                        _ => break
-                      }
-                      func_proto_checked = true
-                      current = fp
-                    }
-                    None => break
-                  }
-                } else {
-                  break
-                }
-              _ => break
-            }
-          }
-          // Built-in Function methods (for callable objects)
-          match data.callable {
-            Some(callable) =>
-              if prop == "call" {
-                return Object({
-                  properties: {},
-                  symbol_properties: {},
-                  prototype: Null,
-                  callable: Some(FuncCallMethod(obj)),
-                  class_name: "Function",
-                  descriptors: {},
-                  symbol_descriptors: {},
-                  extensible: true,
-                })
-              } else if prop == "apply" {
-                return Object({
-                  properties: {},
-                  symbol_properties: {},
-                  prototype: Null,
-                  callable: Some(FuncApplyMethod(obj)),
-                  class_name: "Function",
-                  descriptors: {},
-                  symbol_descriptors: {},
-                  extensible: true,
-                })
-              } else if prop == "bind" {
-                let target = obj
-                let target_length = get_func_length(callable)
-                return make_native_func("bind", fn(args) {
-                  let bind_this = if args.length() > 0 {
-                    args[0]
-                  } else {
-                    Undefined
-                  }
-                  let bound_args : Array[Value] = []
-                  for i = 1; i < args.length(); i = i + 1 {
-                    bound_args.push(args[i])
-                  }
-                  let bound_name = get_bound_func_name(target)
-                  let bound_length = {
-                    let diff = target_length - bound_args.length()
-                    if diff < 0 {
-                      0
-                    } else {
-                      diff
-                    }
-                  }
-                  let nf_desc : PropDescriptor = {
-                    writable: false,
-                    enumerable: false,
-                    configurable: true,
-                    getter: None,
-                    setter: None,
-                  }
-                  let bprops : Map[String, Value] = {}
-                  bprops["name"] = String_(bound_name)
-                  bprops["length"] = Number(bound_length.to_double())
-                  Object({
-                    properties: bprops,
-                    symbol_properties: {},
-                    prototype: get_func_proto(),
-                    callable: Some(BoundFunc(target, bind_this, bound_args)),
-                    class_name: "Function",
-                    descriptors: { "name": nf_desc, "length": nf_desc },
-                    symbol_descriptors: {},
-                    extensible: true,
-                  })
-                })
-              } else if prop == "length" {
-                // Return the number of formal parameters
-                let param_count = get_func_length(callable)
-                return Number(param_count.to_double())
-              } else if prop == "name" {
-                // Return the function name
-                let func_name : String = match callable {
-                  UserFunc(func_data) => func_data.name.unwrap_or("")
-                  UserFuncExt(func_data) => func_data.name.unwrap_or("")
-                  ArrowFunc(_) => ""
-                  ArrowFuncExt(_) => ""
-                  BoundFunc(target, _, _) => get_bound_func_name(target)
-                  NativeCallable(n, _) => n
-                  NonConstructableCallable(n, _) => n
-                  FuncCallMethod(_) => "call"
-                  FuncApplyMethod(_) => "apply"
-                  MethodCallable(n, _) => n
-                  InterpreterCallable(n, _) => n
-                  ConstructorOnlyCallable(n, _) => n
-                  ClassConstructor({ name: n, .. }) => n
-                }
-                return String_(func_name)
-              } else if prop == "toString" {
-                // Return function string representation
-                let func_str : String = match callable {
-                  UserFunc(func_data) => {
-                    let name = func_data.name.unwrap_or("")
-                    "function " + name + "() { [native code] }"
-                  }
-                  UserFuncExt(func_data) => {
-                    let name = func_data.name.unwrap_or("")
-                    "function " + name + "() { [native code] }"
-                  }
-                  ArrowFunc(_) => "() => { [native code] }"
-                  ArrowFuncExt(_) => "() => { [native code] }"
-                  BoundFunc(_, _, _) => "function () { [native code] }"
-                  NativeCallable(n, _) =>
-                    "function " + n + "() { [native code] }"
-                  NonConstructableCallable(n, _) =>
-                    "function " + n + "() { [native code] }"
-                  FuncCallMethod(_) => "function call() { [native code] }"
-                  FuncApplyMethod(_) => "function apply() { [native code] }"
-                  MethodCallable(n, _) =>
-                    "function " + n + "() { [native code] }"
-                  InterpreterCallable(n, _) =>
-                    "function " + n + "() { [native code] }"
-                  ConstructorOnlyCallable(n, _) =>
-                    "function " + n + "() { [native code] }"
-                  ClassConstructor({ name: n, .. }) =>
-                    "class " + n + " { [native code] }"
-                }
-                return make_native_func("toString", fn(_args) {
-                  String_(func_str)
-                })
-              } else if prop == "prototype" {
-                // Only constructable functions have a prototype property
-                // Non-constructable (arrow functions, bound functions, etc.) return undefined
-                let is_constructable = match callable {
-                  UserFunc(_)
-                  | UserFuncExt(_)
-                  | NativeCallable(_, _)
-                  | ConstructorOnlyCallable(_, _)
-                  | ClassConstructor(_) => true
-                  ArrowFunc(_)
-                  | ArrowFuncExt(_)
-                  | BoundFunc(_, _, _)
-                  | NonConstructableCallable(_, _)
-                  | FuncCallMethod(_)
-                  | FuncApplyMethod(_)
-                  | MethodCallable(_, _)
-                  | InterpreterCallable(_, _) => false
-                }
-                if !is_constructable {
-                  return Undefined
-                }
-                // For constructable functions, check if prototype exists
-                match data.properties.get("prototype") {
-                  Some(p) => return p
-                  None => {
-                    // Create and memoize default prototype
-                    let proto : Value = Object({
-                      properties: {},
-                      symbol_properties: {},
-                      prototype: get_obj_proto(),
-                      callable: None,
-                      class_name: "Object",
-                      descriptors: {},
-                      symbol_descriptors: {},
-                      extensible: true,
-                    })
-                    data.properties["prototype"] = proto
-                    return proto
-                  }
-                }
-              }
-            None => ()
-          }
-          // Built-in Object methods (only for objects that inherit from Object.prototype)
-          // Objects with null prototype (Object.create(null)) should NOT have these
-          if !(data.prototype is Null && data.callable is None) {
-            if prop == "hasOwnProperty" {
-              return make_method_func("hasOwnProperty", 1, fn(this_val, args) {
-                let key_val = if args.length() > 0 {
-                  args[0]
-                } else {
-                  Undefined
-                }
-                match this_val {
-                  Object(d) =>
-                    match key_val {
-                      Symbol(sym) => Bool(d.symbol_properties.contains(sym.id))
-                      _ => Bool(d.properties.contains(key_val.to_string()))
-                    }
-                  Array(ad) =>
-                    match key_val {
-                      Symbol(sym) =>
-                        Bool(get_array_symbol_prop(ad, sym.id) is Some(_))
-                      _ => {
-                        let k = key_val.to_string()
-                        if k == "length" {
-                          return Bool(true)
-                        }
-                        let idx = @string.parse_int(k) catch { _ => -1 }
-                        if idx >= 0 &&
-                          idx.to_string() == k &&
-                          idx < ad.elements.length() {
-                          Bool(true)
-                        } else {
-                          Bool(get_array_named_prop(ad, k) is Some(_))
-                        }
-                      }
-                    }
-                  _ => Bool(false)
-                }
-              })
-            }
-            if prop == "toString" {
-              return make_native_func("toString", fn(_args) {
-                String_("[object Object]")
-              })
-            }
-          }
-          Undefined
-        }
-      }
-    }
+    Object(data) => self.get_property_of_object(obj, data, prop, loc)
     Array(data) =>
       if prop == "length" {
         Number(data.elements.length().to_double())
@@ -458,6 +118,348 @@ fn Interpreter::get_property(
       raise @errors.TypeError(
         message="Cannot read properties of undefined (reading '\{prop}')",
       )
+  }
+}
+
+///|
+/// Property access for Object values: checks own properties, walks prototype chain,
+/// and falls back to built-in Function/Object methods for callable objects.
+fn Interpreter::get_property_of_object(
+  self : Interpreter,
+  obj : Value,
+  data : ObjectData,
+  prop : String,
+  loc : @token.Loc,
+) -> Value raise Error {
+  // Check for accessor descriptor (getter) on own property
+  match data.descriptors.get(prop) {
+    Some(desc) =>
+      match desc.getter {
+        Some(getter) => return self.call_value(getter, obj, [], loc)
+        None => ()
+      }
+    None => ()
+  }
+  match data.properties.get(prop) {
+    Some(v) => v
+    None => {
+      // Walk prototype chain
+      let mut current = data.prototype
+      let mut func_proto_checked = false
+      while true {
+        match current {
+          Object(proto_data) => {
+            // Check for accessor descriptor (getter) on prototype property
+            match proto_data.descriptors.get(prop) {
+              Some(desc) =>
+                match desc.getter {
+                  Some(getter) => return self.call_value(getter, obj, [], loc)
+                  None => ()
+                }
+              None => ()
+            }
+            match proto_data.properties.get(prop) {
+              Some(v) => return v
+              None => current = proto_data.prototype
+            }
+          }
+          Array(arr_data) => {
+            // Handle Array values in the prototype chain
+            if prop == "length" {
+              return Number(arr_data.elements.length().to_double())
+            }
+            // Check numeric index access on array elements
+            let num_idx = @string.parse_int(prop) catch { _ => -1 }
+            if num_idx >= 0 && num_idx < arr_data.elements.length() {
+              return arr_data.elements[num_idx]
+            }
+            match get_array_named_prop(arr_data, prop) {
+              Some(v) => return v
+              None => {
+                let result = get_array_method_with_interp(arr_data, prop)
+                match result {
+                  Undefined => {
+                    // Continue to Array.prototype
+                    let ctor = self.global.get("Array") catch { _ => break }
+                    match ctor {
+                      Object(ctor_data) =>
+                        match ctor_data.properties.get("prototype") {
+                          Some(proto) => current = proto
+                          None => break
+                        }
+                      _ => break
+                    }
+                  }
+                  _ => return result
+                }
+              }
+            }
+          }
+          Map(map_data) => {
+            // Handle Map values in the prototype chain
+            if prop == "size" {
+              return Number(map_data.entries.length().to_double())
+            }
+            let result = get_map_method(map_data, prop)
+            match result {
+              Undefined => {
+                let ctor = self.global.get("Map") catch { _ => break }
+                match ctor {
+                  Object(ctor_data) =>
+                    match ctor_data.properties.get("prototype") {
+                      Some(proto) => current = proto
+                      None => break
+                    }
+                  _ => break
+                }
+              }
+              _ => return result
+            }
+          }
+          Set(set_data) => {
+            // Handle Set values in the prototype chain
+            if prop == "size" {
+              return Number(set_data.values.length().to_double())
+            }
+            let result = get_set_method(set_data, prop)
+            match result {
+              Undefined => {
+                let ctor = self.global.get("Set") catch { _ => break }
+                match ctor {
+                  Object(ctor_data) =>
+                    match ctor_data.properties.get("prototype") {
+                      Some(proto) => current = proto
+                      None => break
+                    }
+                  _ => break
+                }
+              }
+              _ => return result
+            }
+          }
+          Null =>
+            // For function objects, fall back to Function.prototype (once)
+            if !func_proto_checked {
+              match data.callable {
+                Some(_) => {
+                  let fp = self.global.get("[[FunctionPrototype]]") catch {
+                    _ => break
+                  }
+                  func_proto_checked = true
+                  current = fp
+                }
+                None => break
+              }
+            } else {
+              break
+            }
+          _ => break
+        }
+      }
+      // Built-in Function methods (for callable objects)
+      match data.callable {
+        Some(callable) =>
+          if prop == "call" {
+            return Object({
+              properties: {},
+              symbol_properties: {},
+              prototype: Null,
+              callable: Some(FuncCallMethod(obj)),
+              class_name: "Function",
+              descriptors: {},
+              symbol_descriptors: {},
+              extensible: true,
+            })
+          } else if prop == "apply" {
+            return Object({
+              properties: {},
+              symbol_properties: {},
+              prototype: Null,
+              callable: Some(FuncApplyMethod(obj)),
+              class_name: "Function",
+              descriptors: {},
+              symbol_descriptors: {},
+              extensible: true,
+            })
+          } else if prop == "bind" {
+            let target = obj
+            let target_length = get_func_length(callable)
+            return make_native_func("bind", fn(args) {
+              let bind_this = if args.length() > 0 {
+                args[0]
+              } else {
+                Undefined
+              }
+              let bound_args : Array[Value] = []
+              for i = 1; i < args.length(); i = i + 1 {
+                bound_args.push(args[i])
+              }
+              let bound_name = get_bound_func_name(target)
+              let bound_length = {
+                let diff = target_length - bound_args.length()
+                if diff < 0 {
+                  0
+                } else {
+                  diff
+                }
+              }
+              let nf_desc : PropDescriptor = {
+                writable: false,
+                enumerable: false,
+                configurable: true,
+                getter: None,
+                setter: None,
+              }
+              let bprops : Map[String, Value] = {}
+              bprops["name"] = String_(bound_name)
+              bprops["length"] = Number(bound_length.to_double())
+              Object({
+                properties: bprops,
+                symbol_properties: {},
+                prototype: get_func_proto(),
+                callable: Some(BoundFunc(target, bind_this, bound_args)),
+                class_name: "Function",
+                descriptors: { "name": nf_desc, "length": nf_desc },
+                symbol_descriptors: {},
+                extensible: true,
+              })
+            })
+          } else if prop == "length" {
+            // Return the number of formal parameters
+            let param_count = get_func_length(callable)
+            return Number(param_count.to_double())
+          } else if prop == "name" {
+            // Return the function name
+            let func_name : String = match callable {
+              UserFunc(func_data) => func_data.name.unwrap_or("")
+              UserFuncExt(func_data) => func_data.name.unwrap_or("")
+              ArrowFunc(_) => ""
+              ArrowFuncExt(_) => ""
+              BoundFunc(target, _, _) => get_bound_func_name(target)
+              NativeCallable(n, _) => n
+              NonConstructableCallable(n, _) => n
+              FuncCallMethod(_) => "call"
+              FuncApplyMethod(_) => "apply"
+              MethodCallable(n, _) => n
+              InterpreterCallable(n, _) => n
+              ConstructorOnlyCallable(n, _) => n
+              ClassConstructor({ name: n, .. }) => n
+            }
+            return String_(func_name)
+          } else if prop == "toString" {
+            // Return function string representation
+            let func_str : String = match callable {
+              UserFunc(func_data) => {
+                let name = func_data.name.unwrap_or("")
+                "function " + name + "() { [native code] }"
+              }
+              UserFuncExt(func_data) => {
+                let name = func_data.name.unwrap_or("")
+                "function " + name + "() { [native code] }"
+              }
+              ArrowFunc(_) => "() => { [native code] }"
+              ArrowFuncExt(_) => "() => { [native code] }"
+              BoundFunc(_, _, _) => "function () { [native code] }"
+              NativeCallable(n, _) => "function " + n + "() { [native code] }"
+              NonConstructableCallable(n, _) =>
+                "function " + n + "() { [native code] }"
+              FuncCallMethod(_) => "function call() { [native code] }"
+              FuncApplyMethod(_) => "function apply() { [native code] }"
+              MethodCallable(n, _) => "function " + n + "() { [native code] }"
+              InterpreterCallable(n, _) =>
+                "function " + n + "() { [native code] }"
+              ConstructorOnlyCallable(n, _) =>
+                "function " + n + "() { [native code] }"
+              ClassConstructor({ name: n, .. }) =>
+                "class " + n + " { [native code] }"
+            }
+            return make_native_func("toString", fn(_args) { String_(func_str) })
+          } else if prop == "prototype" {
+            // Only constructable functions have a prototype property
+            // Non-constructable (arrow functions, bound functions, etc.) return undefined
+            let is_constructable = match callable {
+              UserFunc(_)
+              | UserFuncExt(_)
+              | NativeCallable(_, _)
+              | ConstructorOnlyCallable(_, _)
+              | ClassConstructor(_) => true
+              ArrowFunc(_)
+              | ArrowFuncExt(_)
+              | BoundFunc(_, _, _)
+              | NonConstructableCallable(_, _)
+              | FuncCallMethod(_)
+              | FuncApplyMethod(_)
+              | MethodCallable(_, _)
+              | InterpreterCallable(_, _) => false
+            }
+            if !is_constructable {
+              return Undefined
+            }
+            // For constructable functions, check if prototype exists
+            match data.properties.get("prototype") {
+              Some(p) => return p
+              None => {
+                // Create and memoize default prototype
+                let proto : Value = Object({
+                  properties: {},
+                  symbol_properties: {},
+                  prototype: get_obj_proto(),
+                  callable: None,
+                  class_name: "Object",
+                  descriptors: {},
+                  symbol_descriptors: {},
+                  extensible: true,
+                })
+                data.properties["prototype"] = proto
+                return proto
+              }
+            }
+          }
+        None => ()
+      }
+      // Built-in Object methods (only for objects that inherit from Object.prototype)
+      // Objects with null prototype (Object.create(null)) should NOT have these
+      if !(data.prototype is Null && data.callable is None) {
+        if prop == "hasOwnProperty" {
+          return make_method_func("hasOwnProperty", 1, fn(this_val, args) {
+            let key_val = if args.length() > 0 { args[0] } else { Undefined }
+            match this_val {
+              Object(d) =>
+                match key_val {
+                  Symbol(sym) => Bool(d.symbol_properties.contains(sym.id))
+                  _ => Bool(d.properties.contains(key_val.to_string()))
+                }
+              Array(ad) =>
+                match key_val {
+                  Symbol(sym) =>
+                    Bool(get_array_symbol_prop(ad, sym.id) is Some(_))
+                  _ => {
+                    let k = key_val.to_string()
+                    if k == "length" {
+                      return Bool(true)
+                    }
+                    let idx = @string.parse_int(k) catch { _ => -1 }
+                    if idx >= 0 &&
+                      idx.to_string() == k &&
+                      idx < ad.elements.length() {
+                      Bool(true)
+                    } else {
+                      Bool(get_array_named_prop(ad, k) is Some(_))
+                    }
+                  }
+                }
+              _ => Bool(false)
+            }
+          })
+        }
+        if prop == "toString" {
+          return make_native_func("toString", fn(_args) {
+            String_("[object Object]")
+          })
+        }
+      }
+      Undefined
+    }
   }
 }
 
