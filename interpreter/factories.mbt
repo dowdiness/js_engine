@@ -371,6 +371,40 @@ pub fn make_interp_method_func(
 }
 
 ///|
+/// Helper to create a non-constructable interpreter-aware static function with explicit length.
+/// The callback receives the Interpreter as its first argument; this_val is ignored.
+pub fn make_interp_static_func_with_length(
+  name : String,
+  length : Int,
+  func : (Interpreter, Array[Value]) -> Value raise Error,
+) -> Value {
+  let nf_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
+  let props : Map[String, Value] = {}
+  props["length"] = Number(length.to_double())
+  props["name"] = String_(name)
+  Object({
+    properties: props,
+    symbol_properties: {},
+    prototype: get_func_proto(),
+    callable: Some(
+      InterpreterCallable(name, fn(interp, _this, args) raise {
+        func(interp, args)
+      }),
+    ),
+    class_name: "Function",
+    descriptors: { "name": nf_desc, "length": nf_desc },
+    symbol_descriptors: {},
+    extensible: true,
+  })
+}
+
+///|
 /// Helper to create a basic object with default empty symbol maps
 pub fn make_object(
   properties : Map[String, Value],

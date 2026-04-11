@@ -55,9 +55,9 @@ SKIP_FEATURES = {
     "top-level-await",
 
     # Classes (advanced features not yet supported)
-    "class-fields-private", "class-fields-public",
+    "class-fields-private",
     "class-methods-private", "class-static-fields-private",
-    "class-static-fields-public", "class-static-methods-private",
+    "class-static-methods-private",
     "class-static-block",
 
     # Iteration / ordering

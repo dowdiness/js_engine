@@ -1814,33 +1814,42 @@ fn Parser::parse_class_heritage(self : Parser) -> @ast.Expr raise Error {
 /// Parse class body (methods and properties)
 fn Parser::parse_class_body(
   self : Parser,
-) -> Array[@ast.ClassMethod] raise Error {
+) -> Array[@ast.ClassMember] raise Error {
   let _ = self.expect(LBrace)
-  let methods : Array[@ast.ClassMethod] = []
+  let members : Array[@ast.ClassMember] = []
   while !self.at(RBrace) && !self.at(EOF) {
     // Skip semicolons (allowed in class bodies)
     if self.at(Semicolon) {
       let _ = self.advance()
       continue
     }
-    methods.push(self.parse_class_method())
+    members.push(self.parse_class_member())
   }
   let _ = self.expect(RBrace)
-  methods
+  members
 }
 
 ///|
-/// Parse a class method
-fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
-  // Check for static modifier
-  let is_static = self.eat(Static)
+/// Parse a class member (method or field)
+fn Parser::parse_class_member(self : Parser) -> @ast.ClassMember raise Error {
+  // Check for static modifier — but only if the token after `static` would not
+  // make `static` itself a member name (e.g. `static() {}` or `static = 1`).
+  let is_static = if self.peek_kind() == Static {
+    match self.peek_kind_at(1) {
+      LParen | Assign | Semicolon | RBrace => false // `static` is the member name
+      _ => {
+        let _ = self.advance()
+        true
+      }
+    }
+  } else {
+    false
+  }
   // Check for async modifier: async method() {} or static async method() {}
   let is_async = if self.peek_kind() is Ident("async") {
     let async_line = self.tokens[self.pos].loc.line
-    // async is a modifier if followed by a method name on the same line
-    // but NOT if followed by ( or : (meaning 'async' is itself the method name)
     match self.peek_kind_at(1) {
-      LParen | Colon | Comma | RBrace | Assign => false
+      LParen | Colon | Comma | RBrace | Assign | Semicolon => false
       _ =>
         if self.tokens[self.pos + 1].loc.line == async_line {
           self.pos += 1 // consume 'async'
@@ -1856,7 +1865,7 @@ fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
   let is_generator = self.eat(Star)
   // Check for getter/setter (not valid with generator *)
   let mut method_kind : @ast.PropKind = @ast.Init
-  if !is_generator {
+  if !is_generator && !is_async {
     match self.peek_kind() {
       Get =>
         match self.peek_kind_at(1) {
@@ -1864,7 +1873,6 @@ fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
           | String_(_)
           | Number(_)
           | LBracket
-          | LParen
           | Get
           | Set
           | From
@@ -1918,7 +1926,6 @@ fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
           | String_(_)
           | Number(_)
           | LBracket
-          | LParen
           | Get
           | Set
           | From
@@ -1969,7 +1976,7 @@ fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
       _ => ()
     }
   }
-  // Parse method name (keywords can be used as method names)
+  // Parse member name (keywords can be used as names)
   let (key_expr, computed) : (@ast.Expr, Bool) = match self.peek_kind() {
     Ident(name) => {
       let kloc = self.advance().loc
@@ -1992,7 +1999,6 @@ fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
       (expr, true)
     }
     _ => {
-      // Keywords can be used as method names in classes
       let kw_name : String? = match self.peek_kind() {
         Get => Some("get")
         Set => Some("set")
@@ -2046,13 +2052,63 @@ fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
         None => {
           let t = self.peek()
           raise @errors.SyntaxError(
-            message="Expected method name at line \{t.loc.line}, col \{t.loc.col}",
+            message="Expected class member name at line \{t.loc.line}, col \{t.loc.col}",
           )
         }
       }
     }
   }
-  // Parse method parameters and body
+  // After parsing the key: decide field vs method
+  // If async/generator/get/set modifiers were used -> must be a method
+  // Otherwise: if next token is NOT '(' -> it's a field
+  if !is_async && !is_generator && method_kind == @ast.Init && !self.at(LParen) {
+    // This is a class field
+    // Non-computed 'constructor' is not allowed as a field name (SyntaxError per spec)
+    if !computed {
+      match key_expr {
+        StringLit("constructor", _, _) =>
+          raise @errors.SyntaxError(
+            message="Classes may not have a field named 'constructor'",
+          )
+        _ => ()
+      }
+      // Non-computed static 'prototype' field is also a SyntaxError
+      if is_static {
+        match key_expr {
+          StringLit("prototype", _, _) =>
+            raise @errors.SyntaxError(
+              message="Classes may not have a static field named 'prototype'",
+            )
+          _ => ()
+        }
+      }
+    }
+    let initializer : @ast.Expr? = if self.eat(Assign) {
+      Some(self.parse_assignment())
+    } else {
+      None
+    }
+    // Require explicit ';' or ASI boundary (line terminator or '}')
+    // to prevent `class C { x = 1 y(){} }` from being accepted.
+    let last_line = self.tokens[self.pos - 1].loc.line
+    if self.at(Semicolon) {
+      let _ = self.advance()
+    } else if !self.at(RBrace) &&
+      !self.at(EOF) &&
+      self.peek().loc.line == last_line {
+      let t = self.peek()
+      raise @errors.SyntaxError(
+        message="Expected ';' or line terminator after class field at line \{t.loc.line}, col \{t.loc.col}",
+      )
+    }
+    return @ast.ClassMember::Field({
+      key: key_expr,
+      initializer,
+      computed,
+      is_static,
+    })
+  }
+  // It's a method - parse params and body
   let mloc = self.peek().loc
   let saved_pos = self.pos
   let params = self.parse_params() catch {
@@ -2091,13 +2147,13 @@ fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
         } else {
           FuncExprExt(None, ext_params, rest_param, body, mloc)
         }
-        return {
+        return @ast.ClassMember::Method({
           key: key_expr,
           value: func_val,
           kind: method_kind,
           computed,
           is_static,
-        }
+        })
       } else {
         raise @errors.SyntaxError(message=msg)
       }
@@ -2132,7 +2188,13 @@ fn Parser::parse_class_method(self : Parser) -> @ast.ClassMethod raise Error {
   } else {
     FuncExpr(None, params, body, mloc)
   }
-  { key: key_expr, value: func_val, kind: method_kind, computed, is_static }
+  @ast.ClassMember::Method({
+    key: key_expr,
+    value: func_val,
+    kind: method_kind,
+    computed,
+    is_static,
+  })
 }
 
 ///|

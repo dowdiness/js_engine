@@ -49,7 +49,7 @@ fn unwrap_proxy_target(val : Value) -> ObjectData? raise Error {
 }
 
 ///|
-fn setup_reflect_builtins(env : Environment) -> Unit {
+fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
   let reflect_props : Map[String, Value] = {}
   let nf_desc : PropDescriptor = {
     writable: false,
@@ -817,7 +817,7 @@ fn setup_reflect_builtins(env : Environment) -> Unit {
           let keys : Array[Value] = []
           data.properties.each(fn(k, _v) { keys.push(String_(k)) })
           data.symbol_properties.each(fn(id, _v) {
-            match get_symbol_by_id(id) {
+            match sym_state.get_symbol_by_id(id) {
               Some(sym) => keys.push(Symbol(sym))
               None => ()
             }

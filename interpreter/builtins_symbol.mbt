@@ -1,5 +1,5 @@
 ///|
-fn setup_symbol_builtins(env : Environment) -> Unit {
+fn setup_symbol_builtins(env : Environment, symbols : SymbolState) -> Unit {
   let nf_desc : PropDescriptor = {
     writable: false,
     enumerable: false,
@@ -24,33 +24,35 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
     setter: None,
   }
   // Create well-known symbols
-  let iterator_sym = new_symbol(Some("Symbol.iterator"))
+  let iterator_sym = symbols.new_symbol(Some("Symbol.iterator"))
   // Store globally for iterator protocol support
   well_known_iterator_sym.val = Some(iterator_sym)
-  let to_primitive_sym = new_symbol(Some("Symbol.toPrimitive"))
+  let to_primitive_sym = symbols.new_symbol(Some("Symbol.toPrimitive"))
   well_known_toprimitive_sym.val = Some(to_primitive_sym)
-  let to_string_tag_sym = new_symbol(Some("Symbol.toStringTag"))
+  let to_string_tag_sym = symbols.new_symbol(Some("Symbol.toStringTag"))
   well_known_tostringtag_sym.val = Some(to_string_tag_sym)
-  let has_instance_sym = new_symbol(Some("Symbol.hasInstance"))
+  let has_instance_sym = symbols.new_symbol(Some("Symbol.hasInstance"))
   // Store globally for instanceof operator support
   well_known_hasinstance_sym.val = Some(has_instance_sym)
-  let is_concat_spreadable_sym = new_symbol(Some("Symbol.isConcatSpreadable"))
+  let is_concat_spreadable_sym = symbols.new_symbol(
+    Some("Symbol.isConcatSpreadable"),
+  )
   well_known_isconcatspreadable_sym.val = Some(is_concat_spreadable_sym)
-  let species_sym = new_symbol(Some("Symbol.species"))
+  let species_sym = symbols.new_symbol(Some("Symbol.species"))
   well_known_species_sym.val = Some(species_sym)
-  let match_sym = new_symbol(Some("Symbol.match"))
+  let match_sym = symbols.new_symbol(Some("Symbol.match"))
   well_known_match_sym.val = Some(match_sym)
-  let match_all_sym = new_symbol(Some("Symbol.matchAll"))
+  let match_all_sym = symbols.new_symbol(Some("Symbol.matchAll"))
   well_known_matchall_sym.val = Some(match_all_sym)
-  let replace_sym = new_symbol(Some("Symbol.replace"))
+  let replace_sym = symbols.new_symbol(Some("Symbol.replace"))
   well_known_replace_sym.val = Some(replace_sym)
-  let search_sym = new_symbol(Some("Symbol.search"))
+  let search_sym = symbols.new_symbol(Some("Symbol.search"))
   well_known_search_sym.val = Some(search_sym)
-  let split_sym = new_symbol(Some("Symbol.split"))
+  let split_sym = symbols.new_symbol(Some("Symbol.split"))
   well_known_split_sym.val = Some(split_sym)
-  let unscopables_sym = new_symbol(Some("Symbol.unscopables"))
+  let unscopables_sym = symbols.new_symbol(Some("Symbol.unscopables"))
   well_known_unscopables_sym.val = Some(unscopables_sym)
-  let async_iterator_sym = new_symbol(Some("Symbol.asyncIterator"))
+  let async_iterator_sym = symbols.new_symbol(Some("Symbol.asyncIterator"))
   well_known_async_iterator_sym.val = Some(async_iterator_sym)
 
   // Symbol prototype
@@ -243,12 +245,12 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
         )
       _ => arg.to_string()
     }
-    match global_symbol_registry.get(key) {
+    match symbols.global_symbol_registry.get(key) {
       Some(sym) => Symbol(sym)
       None => {
-        let sym = new_symbol(Some(key))
-        global_symbol_registry[key] = sym
-        symbol_registry_reverse[sym.id] = key // O(1) reverse lookup
+        let sym = symbols.new_symbol(Some(key))
+        symbols.global_symbol_registry[key] = sym
+        symbols.symbol_registry_reverse[sym.id] = key // O(1) reverse lookup
         Symbol(sym)
       }
     }
@@ -262,7 +264,7 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
     let sym = if args.length() > 0 { args[0] } else { Undefined }
     match sym {
       Symbol(sym_data) =>
-        match symbol_registry_reverse.get(sym_data.id) {
+        match symbols.symbol_registry_reverse.get(sym_data.id) {
           Some(key) => String_(key)
           None => Undefined
         }
@@ -296,7 +298,7 @@ fn setup_symbol_builtins(env : Environment) -> Unit {
           } else {
             None
           }
-          Symbol(new_symbol(description))
+          Symbol(symbols.new_symbol(description))
         }),
       ),
       class_name: "Function",

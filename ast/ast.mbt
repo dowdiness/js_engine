@@ -129,7 +129,7 @@ pub(all) enum Expr {
   OptionalComputedMember(Expr, Expr, @token.Loc) // obj?.[expr]
   OptionalCall(Expr, Array[Expr], @token.Loc) // func?.(args)
   // Class expressions
-  ClassExpr(String?, Expr?, Array[ClassMethod], @token.Loc) // name, superclass, methods
+  ClassExpr(String?, Expr?, Array[ClassMember], @token.Loc) // name, superclass, members
   SuperCall(Array[Expr], @token.Loc) // super(args)
   SuperMember(String, @token.Loc) // super.prop
   SuperComputedMember(Expr, @token.Loc) // super[expr]
@@ -199,6 +199,20 @@ pub(all) struct ClassMethod {
 } derive(Debug, Eq)
 
 ///|
+pub(all) struct ClassField {
+  key : Expr // StringLit for string keys, any Expr for computed keys
+  initializer : Expr? // None if no `= expr`
+  computed : Bool // true for [expr] syntax
+  is_static : Bool // true for static fields
+} derive(Debug, Eq)
+
+///|
+pub(all) enum ClassMember {
+  Method(ClassMethod)
+  Field(ClassField)
+} derive(Debug, Eq)
+
+///|
 pub(all) enum Stmt {
   ExprStmt(Expr, @token.Loc)
   VarDecl(VarKind, String, Expr?, @token.Loc)
@@ -234,7 +248,7 @@ pub(all) enum Stmt {
   AsyncGeneratorDecl(String, Array[String], Array[Stmt], @token.Loc) // name, params, body
   AsyncGeneratorDeclExt(String, Array[Param], String?, Array[Stmt], @token.Loc) // name, params, rest_param, body
   // Class declaration
-  ClassDecl(String, Expr?, Array[ClassMethod], @token.Loc) // name, superclass, methods
+  ClassDecl(String, Expr?, Array[ClassMember], @token.Loc) // name, superclass, members
   // With statement (sloppy mode only)
   WithStmt(Expr, Stmt, @token.Loc) // with(expr) stmt
   // Module declarations
@@ -347,6 +361,16 @@ pub impl Show for ExportSpecifier with output(self, logger) {
 
 ///|
 pub impl Show for ClassMethod with output(self, logger) {
+  Debug::to_repr(self).output(logger)
+}
+
+///|
+pub impl Show for ClassField with output(self, logger) {
+  Debug::to_repr(self).output(logger)
+}
+
+///|
+pub impl Show for ClassMember with output(self, logger) {
   Debug::to_repr(self).output(logger)
 }
 

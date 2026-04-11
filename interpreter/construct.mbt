@@ -20,6 +20,226 @@ fn is_object_like_for_constructor_return(value : Value) -> Bool {
 }
 
 ///|
+/// Install instance field initializers onto `this_arg`.
+/// Used for base-class construction (before constructor body) and for
+/// derived-class implicit constructors (after super() returns).
+fn Interpreter::install_instance_fields(
+  self : Interpreter,
+  this_arg : Value,
+  fields : Array[ClassFieldInit],
+) -> Unit raise Error {
+  // Class field initializers are always evaluated as strict code per spec
+  let saved_strict = self.strict
+  self.strict = true
+  let field_desc : PropDescriptor = {
+    writable: true,
+    enumerable: true,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
+  try {
+    for field in fields {
+      let field_value : Value = match field.initializer {
+        Some(expr) => {
+          let init_env = Environment::new(parent=Some(field.closure))
+          init_env.def_builtin("this", this_arg)
+          self.eval_expr(expr, init_env)
+        }
+        None => Undefined
+      }
+      match this_arg {
+        Object(data) =>
+          // CreateDataPropertyOrThrow semantics: check [[DefineOwnProperty]]
+          // invariants before writing (non-extensible objects, non-configurable
+          // existing properties must throw TypeError per spec).
+          match field.key {
+            Symbol(sym) => {
+              if !data.symbol_properties.contains(sym.id) && !data.extensible {
+                raise @errors.TypeError(
+                  message="Cannot define class field on non-extensible object",
+                )
+              }
+              match data.symbol_descriptors.get(sym.id) {
+                Some(d) =>
+                  if !d.configurable {
+                    raise @errors.TypeError(
+                      message="Cannot redefine non-configurable class field",
+                    )
+                  }
+                None => ()
+              }
+              data.symbol_properties[sym.id] = field_value
+              data.symbol_descriptors[sym.id] = field_desc
+            }
+            String_(key_str) => {
+              if !data.properties.contains(key_str) && !data.extensible {
+                raise @errors.TypeError(
+                  message="Cannot define class field on non-extensible object",
+                )
+              }
+              match data.descriptors.get(key_str) {
+                Some(d) =>
+                  if !d.configurable {
+                    raise @errors.TypeError(
+                      message="Cannot redefine non-configurable class field",
+                    )
+                  }
+                None => ()
+              }
+              data.properties[key_str] = field_value
+              data.descriptors[key_str] = field_desc
+            }
+            _ => {
+              let key_str = to_js_string(field.key)
+              if !data.properties.contains(key_str) && !data.extensible {
+                raise @errors.TypeError(
+                  message="Cannot define class field on non-extensible object",
+                )
+              }
+              match data.descriptors.get(key_str) {
+                Some(d) =>
+                  if !d.configurable {
+                    raise @errors.TypeError(
+                      message="Cannot redefine non-configurable class field",
+                    )
+                  }
+                None => ()
+              }
+              data.properties[key_str] = field_value
+              data.descriptors[key_str] = field_desc
+            }
+          }
+        Proxy(proxy_data) => {
+          // Use [[DefineOwnProperty]] semantics for Proxy: invoke the
+          // "defineProperty" trap so the proxy observes definition rather than
+          // [[Set]] (which would invoke the "set" trap instead).
+          let trap = get_proxy_trap(proxy_data, "defineProperty")
+          let target = get_proxy_target(proxy_data)
+          let handler = get_proxy_handler(proxy_data)
+          match trap {
+            Some(trap_fn) => {
+              let desc_obj = Object({
+                properties: {
+                  "value": field_value,
+                  "writable": Bool(true),
+                  "enumerable": Bool(true),
+                  "configurable": Bool(true),
+                },
+                symbol_properties: {},
+                prototype: Null,
+                callable: None,
+                class_name: "Object",
+                descriptors: {},
+                symbol_descriptors: {},
+                extensible: true,
+              })
+              let trap_result = self.call_value(
+                trap_fn,
+                handler,
+                [target, field.key, desc_obj],
+                @token.Loc::default(),
+              )
+              // Per spec, if the trap returns a falsy value, throw TypeError
+              if !is_truthy(trap_result) {
+                raise @errors.TypeError(
+                  message="'defineProperty' on proxy: trap returned falsish for class field",
+                )
+              }
+            }
+            None => {
+              // No defineProperty trap: define directly on the target
+              let _ = self.set_computed_property(
+                target,
+                field.key,
+                field_value,
+                @token.Loc::default(),
+              )
+            }
+          }
+        }
+        Map(data) =>
+          // CreateDataPropertyOrThrow on Map expando properties
+          match field.key {
+            Symbol(sym) => {
+              data.symbol_properties[sym.id] = field_value
+              data.symbol_descriptors[sym.id] = field_desc
+            }
+            String_(key_str) => {
+              data.properties[key_str] = field_value
+              data.descriptors[key_str] = field_desc
+            }
+            _ => {
+              let key_str = to_js_string(field.key)
+              data.properties[key_str] = field_value
+              data.descriptors[key_str] = field_desc
+            }
+          }
+        Set(data) =>
+          // CreateDataPropertyOrThrow on Set expando properties
+          match field.key {
+            Symbol(sym) => {
+              data.symbol_properties[sym.id] = field_value
+              data.symbol_descriptors[sym.id] = field_desc
+            }
+            String_(key_str) => {
+              data.properties[key_str] = field_value
+              data.descriptors[key_str] = field_desc
+            }
+            _ => {
+              let key_str = to_js_string(field.key)
+              data.properties[key_str] = field_value
+              data.descriptors[key_str] = field_desc
+            }
+          }
+        _ => {
+          // Array, Promise — set_computed_property has define-own semantics
+          // for these (no prototype-chain setter lookup).
+          let _ = self.set_computed_property(
+            this_arg,
+            field.key,
+            field_value,
+            @token.Loc::default(),
+          )
+        }
+      }
+    }
+  } catch {
+    e => {
+      self.strict = saved_strict
+      raise e
+    }
+  }
+  self.strict = saved_strict
+}
+
+///|
+/// Create a deferred instance-field initializer Value.
+/// Stored as [[InitInstanceFields]] in the constructor env so the super()
+/// call site can apply the fields to the actual `this` after super() returns.
+fn make_instance_fields_init(fields : Array[ClassFieldInit]) -> Value {
+  Object({
+    properties: {},
+    symbol_properties: {},
+    prototype: Null,
+    callable: Some(
+      InterpreterCallable("[[InitInstanceFields]]", fn(
+        interp,
+        this_arg,
+        _,
+      ) raise {
+        interp.install_instance_fields(this_arg, fields)
+        Undefined
+      }),
+    ),
+    class_name: "Function",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+}
+
+///|
 fn make_constructor_instance(proto : Value, class_name : String) -> Value {
   Object({
     properties: {},
@@ -519,12 +739,15 @@ fn Interpreter::construct_value(
           )
         Some(
           ClassConstructor(
-            class_name,
-            proto,
-            super_ctor,
-            ctor_fn,
-            closure,
-            super_proto
+            {
+              name: class_name,
+              proto,
+              super_ctor,
+              ctor_fn,
+              closure,
+              super_proto,
+              instance_fields,
+            }
           )
         ) => {
           // Class bodies are always strict mode
@@ -545,8 +768,22 @@ fn Interpreter::construct_value(
                 ctor_env.def_builtin("[[SuperPrototype]]", super_proto)
                 // Store the new instance for super() to use
                 ctor_env.def_builtin("[[PendingThis]]", new_obj)
+                // For explicit constructors: fields are deferred; super() will
+                // call [[InitInstanceFields]] after establishing `this`.
+                // For implicit constructors (ctor_fn=None): fields are applied
+                // directly at each return/fallthrough site in the None arm below.
+                if ctor_fn is Some(_) && instance_fields.length() > 0 {
+                  ctor_env.def_builtin(
+                    "[[InitInstanceFields]]",
+                    make_instance_fields_init(instance_fields),
+                  )
+                }
               }
-              None => ctor_env.def_builtin("this", new_obj)
+              None => {
+                ctor_env.def_builtin("this", new_obj)
+                // Base class: initialize instance fields before constructor body
+                self.install_instance_fields(new_obj, instance_fields)
+              }
             }
             ctor_env.def("<new.target>", ctor, LetBinding)
             // Execute the constructor if one was defined
@@ -614,12 +851,14 @@ fn Interpreter::construct_value(
                         match super_data.callable {
                           Some(
                             ClassConstructor(
-                              _,
-                              _,
-                              grand_super,
-                              ctor,
-                              senv,
-                              sproto
+                              {
+                                super_ctor: grand_super,
+                                instance_fields: super_instance_fields,
+                                ctor_fn: ctor,
+                                closure: senv,
+                                super_proto: sproto,
+                                ..,
+                              }
                             )
                           ) => {
                             let super_env = Environment::new(parent=Some(senv))
@@ -637,8 +876,21 @@ fn Interpreter::construct_value(
                                 super_env.def_builtin(
                                   "[[SuperPrototype]]", sproto,
                                 )
+                                // B is derived: defer B's fields to after B's own super()
+                                if super_instance_fields.length() > 0 {
+                                  super_env.def_builtin(
+                                    "[[InitInstanceFields]]",
+                                    make_instance_fields_init(
+                                      super_instance_fields,
+                                    ),
+                                  )
+                                }
                               }
-                              None => ()
+                              None =>
+                                // B is a base class: initialize B's fields before its body
+                                self.install_instance_fields(
+                                  new_obj, super_instance_fields,
+                                )
                             }
                             match ctor {
                               Some((params, body)) => {
@@ -675,9 +927,10 @@ fn Interpreter::construct_value(
                                 match exec_result {
                                   ReturnSignal(v) =>
                                     if is_object_like_for_constructor_return(v) {
-                                      // Must restore strict before early return —
-                                      // `return` exits eval_new entirely, bypassing
-                                      // the normal restore at the end of the try block.
+                                      // Apply C's instance fields to the override object
+                                      self.install_instance_fields(
+                                        v, instance_fields,
+                                      )
                                       self.strict = saved_strict
                                       return maybe_set_promise_constructor(
                                         v, derived_ctor,
@@ -694,6 +947,9 @@ fn Interpreter::construct_value(
                             if is_object_like_for_constructor_return(
                                 super_result,
                               ) {
+                              self.install_instance_fields(
+                                super_result, instance_fields,
+                              )
                               self.strict = saved_strict
                               return maybe_set_promise_constructor(
                                 super_result, derived_ctor,
@@ -718,6 +974,9 @@ fn Interpreter::construct_value(
                                       _ => Null
                                     }
                                   }
+                                self.install_instance_fields(
+                                  super_result, instance_fields,
+                                )
                                 self.strict = saved_strict
                                 return maybe_set_promise_constructor(
                                   super_result, derived_ctor,
@@ -728,6 +987,9 @@ fn Interpreter::construct_value(
                                 if is_object_like_for_constructor_return(
                                     super_result,
                                   ) {
+                                  self.install_instance_fields(
+                                    super_result, instance_fields,
+                                  )
                                   self.strict = saved_strict
                                   return maybe_set_promise_constructor(
                                     super_result, derived_ctor,
@@ -740,6 +1002,10 @@ fn Interpreter::construct_value(
                       _ => ()
                     }
                   None => ()
+                }
+                // Apply derived class instance fields after implicit super() call
+                if super_ctor is Some(_) {
+                  self.install_instance_fields(new_obj, instance_fields)
                 }
                 new_obj
               }

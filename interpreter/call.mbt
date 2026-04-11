@@ -825,7 +825,7 @@ fn Interpreter::call_value(
           raise @errors.TypeError(
             message=name + " constructor cannot be invoked without 'new'",
           )
-        Some(ClassConstructor(name, _, _, _, _, _)) =>
+        Some(ClassConstructor({ name, .. })) =>
           raise @errors.TypeError(
             message="Class constructor " +
               name +

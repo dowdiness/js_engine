@@ -9,13 +9,22 @@ fn Interpreter::exec_import(
   env : Environment,
   loc : @token.Loc,
 ) -> Signal raise Error {
-  // Look up module in registry
+  // Look up module in registry; fall back to module_loader if provided
   let module_exports = match self.module_registry.get(source) {
     Some(exports) => exports
     None =>
-      raise @errors.SyntaxError(
-        message="Cannot find module '\{source}' at line \{loc.line}, col \{loc.col}",
-      )
+      match self.module_loader {
+        Some(ModuleLoader(load)) => {
+          let exports = load(source)
+          // Cache the result so repeated imports of the same specifier are free
+          self.module_registry[source] = exports
+          exports
+        }
+        None =>
+          raise @errors.SyntaxError(
+            message="Cannot find module '\{source}' at line \{loc.line}, col \{loc.col}",
+          )
+      }
   }
   // import defaultExport from 'source'
   match default_import {
@@ -102,9 +111,17 @@ fn Interpreter::exec_export_named(
       let src_exports = match self.module_registry.get(src) {
         Some(exports) => exports
         None =>
-          raise @errors.SyntaxError(
-            message="Cannot find module '\{src}' at line \{loc.line}, col \{loc.col}",
-          )
+          match self.module_loader {
+            Some(ModuleLoader(load)) => {
+              let exports = load(src)
+              self.module_registry[src] = exports
+              exports
+            }
+            None =>
+              raise @errors.SyntaxError(
+                message="Cannot find module '\{src}' at line \{loc.line}, col \{loc.col}",
+              )
+          }
       }
       for spec in specifiers {
         let value = match src_exports.get(spec.local_name) {
@@ -137,9 +154,17 @@ fn Interpreter::exec_export_all(
   let src_exports = match self.module_registry.get(source) {
     Some(exports) => exports
     None =>
-      raise @errors.SyntaxError(
-        message="Cannot find module '\{source}' at line \{loc.line}, col \{loc.col}",
-      )
+      match self.module_loader {
+        Some(ModuleLoader(load)) => {
+          let exports = load(source)
+          self.module_registry[source] = exports
+          exports
+        }
+        None =>
+          raise @errors.SyntaxError(
+            message="Cannot find module '\{source}' at line \{loc.line}, col \{loc.col}",
+          )
+      }
   }
   match ns_alias {
     Some(name) => {

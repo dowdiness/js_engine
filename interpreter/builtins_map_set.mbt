@@ -392,7 +392,13 @@ fn setup_map_builtins(env : Environment) -> Unit {
     args,
   ) raise {
     // Create new Map instance
-    let new_map : Value = Map({ entries: [] })
+    let new_map : Value = Map({
+      entries: [],
+      properties: {},
+      descriptors: {},
+      symbol_properties: {},
+      symbol_descriptors: {},
+    })
     let loc = @token.Loc::default()
 
     // If iterable provided, populate map
@@ -484,10 +490,10 @@ fn setup_map_builtins(env : Environment) -> Unit {
   // Add Map.groupBy static method
   match map_ctor {
     Object(ctor_data) => {
-      ctor_data.properties["groupBy"] = make_static_func_with_length(
+      ctor_data.properties["groupBy"] = make_interp_static_func_with_length(
         "groupBy",
         2,
-        fn(args) raise {
+        fn(interp, args) raise {
           // Map.groupBy(items, callbackFn)
           let items = if args.length() > 0 { args[0] } else { Undefined }
           let callback = if args.length() > 1 { args[1] } else { Undefined }
@@ -495,10 +501,6 @@ fn setup_map_builtins(env : Environment) -> Unit {
             raise @errors.TypeError(
               message=to_js_string(callback) + " is not a function",
             )
-          }
-          let interp = match current_interpreter.val {
-            Some(i) => i
-            None => abort("No interpreter")
           }
           let loc = @token.Loc::default()
           let o = to_object(items, interp)
@@ -533,7 +535,13 @@ fn setup_map_builtins(env : Environment) -> Unit {
           for i = 0; i < group_keys.length(); i = i + 1 {
             entries.push((group_keys[i], Array({ elements: group_arrays[i] })))
           }
-          Map({ entries, })
+          Map({
+            entries,
+            properties: {},
+            descriptors: {},
+            symbol_properties: {},
+            symbol_descriptors: {},
+          })
         },
       )
       ctor_data.descriptors["groupBy"] = {
@@ -806,7 +814,13 @@ fn setup_set_builtins(env : Environment) -> Unit {
     args,
   ) raise {
     // Create new Set instance
-    let new_set : Value = Set({ values: [] })
+    let new_set : Value = Set({
+      values: [],
+      properties: {},
+      descriptors: {},
+      symbol_properties: {},
+      symbol_descriptors: {},
+    })
     let loc = @token.Loc::default()
 
     // If iterable provided, populate set

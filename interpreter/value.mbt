@@ -37,16 +37,32 @@ pub(all) enum Callable {
     String,
     (Interpreter, Array[Value]) -> Value raise Error
   ) // like InterpreterCallable but throws on call without new
-  // Class constructor: (name, prototype, super_ctor, constructor_fn, closure, static_methods)
-  // constructor_fn is (params, body) tuple, or None if no explicit constructor
-  ClassConstructor(
-    String, // class name
-    Value, // prototype object
-    Value?, // super constructor (if extends)
-    (Array[String], Array[@ast.Stmt])?, // constructor params and body
-    Environment, // closure environment
-    Value
-  ) // prototype object reference for super
+  ClassConstructor(ClassConstructorData)
+}
+
+///|
+/// Named fields for a class constructor callable.
+/// Replaces the former anonymous 6-tuple so call sites are self-documenting
+/// and future fields (e.g. instance fields, private names) can be added
+/// without positional reasoning.
+
+///|
+/// A single instance field initializer, captured at class definition time.
+pub(all) struct ClassFieldInit {
+  key : Value // already-evaluated key (String_ for string keys, Symbol for symbol keys)
+  initializer : @ast.Expr? // None if no `= expr`; evaluated with `this` = new instance
+  closure : Environment // lexical closure for evaluating the initializer
+}
+
+///|
+pub(all) struct ClassConstructorData {
+  name : String // class name
+  proto : Value // prototype object given to new instances
+  super_ctor : Value? // super constructor when class uses `extends`
+  ctor_fn : (Array[String], Array[@ast.Stmt])? // constructor params + body; None = no explicit ctor
+  closure : Environment // lexical environment where the class was defined
+  super_proto : Value // super class's prototype (bound as [[SuperPrototype]])
+  instance_fields : Array[ClassFieldInit] // instance field initializers, run before ctor body
 }
 
 ///|
@@ -87,6 +103,11 @@ pub(all) struct SymbolData {
 /// Uses SameValueZero for key comparison (NaN === NaN, +0 === -0)
 pub(all) struct MapData {
   entries : Array[(Value, Value)] // Array of (key, value) pairs
+  // Expando properties: stores instance fields from subclasses (class D extends Map)
+  properties : Map[String, Value]
+  descriptors : Map[String, PropDescriptor]
+  symbol_properties : Map[Int, Value]
+  symbol_descriptors : Map[Int, PropDescriptor]
 }
 
 ///|
@@ -94,6 +115,11 @@ pub(all) struct MapData {
 /// Uses SameValueZero for value comparison (NaN === NaN, +0 === -0)
 pub(all) struct SetData {
   values : Array[Value] // Array of unique values
+  // Expando properties: stores instance fields from subclasses (class D extends Set)
+  properties : Map[String, Value]
+  descriptors : Map[String, PropDescriptor]
+  symbol_properties : Map[Int, Value]
+  symbol_descriptors : Map[Int, PropDescriptor]
 }
 
 ///|
@@ -227,7 +253,7 @@ pub impl Show for Value with output(self, logger) {
           logger.write_string("function \{name}() { [native code] }")
         Some(ConstructorOnlyCallable(name, _)) =>
           logger.write_string("function \{name}() { [native code] }")
-        Some(ClassConstructor(name, _, _, _, _, _)) =>
+        Some(ClassConstructor({ name, .. })) =>
           logger.write_string("class \{name} { [code] }")
         None =>
           // Boxed primitive objects: unwrap to primitive string representation
