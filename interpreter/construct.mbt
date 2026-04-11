@@ -46,6 +46,7 @@ fn Interpreter::install_instance_fields(
     }
     match this_arg {
       Object(data) =>
+        // For plain Objects set both value and descriptor (writable/enumerable/configurable:true)
         match field.key {
           Symbol(sym) => {
             data.symbol_properties[sym.id] = field_value
@@ -61,7 +62,16 @@ fn Interpreter::install_instance_fields(
             data.descriptors[key_str] = field_desc
           }
         }
-      _ => ()
+      _ => {
+        // For non-Object receivers (Array, Promise, Proxy, …) delegate to the
+        // computed property setter so subclasses of built-ins get their fields.
+        let _ = self.set_computed_property(
+          this_arg,
+          field.key,
+          field_value,
+          @token.Loc::default(),
+        )
+      }
     }
   }
 }

@@ -84,9 +84,17 @@ fn Interpreter::create_class(
     match mbr {
       @ast.ClassMember::Field(f) => {
         // Evaluate key now (computed field keys are evaluated in order at class definition)
+        // ToPropertyKey: keep Symbol as-is; coerce everything else to String once,
+        // so side-effectful toString/valueOf don't re-run per-construction.
         let key_val : Value = match f.key {
           StringLit(s, _, _) => String_(s)
-          _ => self.eval_expr(f.key, env)
+          _ => {
+            let v = self.eval_expr(f.key, env)
+            match v {
+              Symbol(_) => v
+              _ => String_(to_js_string(v))
+            }
+          }
         }
         let field_init : ClassFieldInit = {
           key: key_val,
