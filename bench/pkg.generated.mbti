@@ -1,0 +1,112 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "dowdiness/js_engine/bench"
+
+// Values
+pub const ARRAY_MAP_FILTER_SRC : String = "var arr = [];\nfor (var i = 0; i < 1000; i++) { arr.push(i); }\nvar result = arr\n  .map(function(x) { return x * 2; })\n  .filter(function(x) { return x % 6 === 0; });\nresult.length;"
+
+pub const CLOSURE_FACTORY_SRC : String = "function makeCounter(start) {\n  var count = start;\n  return function() {\n    count = count + 1;\n    return count;\n  };\n}\nvar counters = [];\nfor (var i = 0; i < 1000; i++) {\n  counters.push(makeCounter(i));\n}\nvar total = 0;\nfor (var i = 0; i < 1000; i++) {\n  total = total + counters[i]();\n}\ntotal;"
+
+pub const FIBONACCI_SMALL_SRC : String = "function fib(n) {\n  if (n <= 1) return n;\n  return fib(n - 1) + fib(n - 2);\n}\nfib(10);"
+
+pub const FIBONACCI_SRC : String = "function fib(n) {\n  if (n <= 1) return n;\n  return fib(n - 1) + fib(n - 2);\n}\nfib(30);"
+
+pub const LEXER_LARGE_SRC : String = "\"use strict\";\nvar MAX_ITEMS = 1000;\nvar MIN_VAL = 0;\nvar DEFAULT_NAME = \"unnamed\";\nvar VERSION = \"1.0.0\";\nvar SCALE = 2.718281828;\nfunction identity(x) { return x; }\nfunction negate(x) { return -x; }\nfunction add(a, b) { return a + b; }\nfunction sub(a, b) { return a - b; }\nfunction mul(a, b) { return a * b; }\nfunction clamp(n, lo, hi) { return n < lo ? lo : n > hi ? hi : n; }\nfunction sign(n) { return n > 0 ? 1 : n < 0 ? -1 : 0; }\nfunction abs(n) { return n < 0 ? -n : n; }\nfunction makePoint(x, y) {\n  return { x: x, y: y, dist: x * x + y * y };\n}\nfunction makeRange(start, end, step) {\n  var arr = [];\n  for (var i = start; i < end; i = i + step) { arr.push(i); }\n  return arr;\n}\nfunction forEach(arr, fn) {\n  for (var i = 0; i < arr.length; i++) { fn(arr[i], i); }\n}\nfunction map(arr, fn) {\n  var result = [];\n  for (var i = 0; i < arr.length; i++) { result.push(fn(arr[i])); }\n  return result;\n}\nfunction filter(arr, pred) {\n  var result = [];\n  for (var i = 0; i < arr.length; i++) {\n    if (pred(arr[i])) { result.push(arr[i]); }\n  }\n  return result;\n}\nfunction reduce(arr, fn, init) {\n  var acc = init;\n  for (var i = 0; i < arr.length; i++) { acc = fn(acc, arr[i]); }\n  return acc;\n}\nfunction find(arr, pred) {\n  for (var i = 0; i < arr.length; i++) {\n    if (pred(arr[i])) { return arr[i]; }\n  }\n  return null;\n}\nfunction every(arr, pred) {\n  for (var i = 0; i < arr.length; i++) {\n    if (!pred(arr[i])) { return false; }\n  }\n  return true;\n}\nfunction some(arr, pred) {\n  for (var i = 0; i < arr.length; i++) {\n    if (pred(arr[i])) { return true; }\n  }\n  return false;\n}\nfunction gcd(a, b) {\n  while (b !== 0) { var t = b; b = a % b; a = t; }\n  return a;\n}\nfunction lcm(a, b) { return abs(a * b) / gcd(a, b); }\nfunction isPrime(n) {\n  if (n < 2) return false;\n  for (var i = 2; i * i <= n; i++) {\n    if (n % i === 0) return false;\n  }\n  return true;\n}\nfunction fibIter(n) {\n  if (n <= 1) return n;\n  var a = 0;\n  var b = 1;\n  for (var i = 2; i <= n; i++) {\n    var c = a + b; a = b; b = c;\n  }\n  return b;\n}\nfunction factorial(n) {\n  var result = 1;\n  for (var i = 2; i <= n; i++) { result = result * i; }\n  return result;\n}\nfunction isEven(n) { return n % 2 === 0; }\nfunction isOdd(n) { return n % 2 !== 0; }\nfunction square(n) { return n * n; }\nfunction cube(n) { return n * n * n; }\nfunction compose(f, g) { return function(x) { return f(g(x)); }; }\nfunction memoize(fn) {\n  var cache = {};\n  return function(n) {\n    if (cache[n] !== undefined) { return cache[n]; }\n    var result = fn(n);\n    cache[n] = result;\n    return result;\n  };\n}\nvar nums = makeRange(1, 21, 1);\nvar doubled = map(nums, function(x) { return x * 2; });\nvar evens = filter(doubled, function(x) { return x % 4 === 0; });\nvar total = reduce(evens, add, 0);\nvar primes = filter(makeRange(2, 30, 1), isPrime);\nvar squares = map(nums, square);\nvar cubes = map(nums, cube);\nvar squaredOdds = filter(squares, isOdd);\nvar hasLarge = some(nums, function(x) { return x > 15; });\nvar allPos = every(nums, function(x) { return x > 0; });\nvar points = map(makeRange(0, 5, 1), function(i) {\n  return makePoint(i, i * SCALE);\n});\nvar memoFib = memoize(fibIter);\nvar facts = map(makeRange(1, 8, 1), factorial);\nvar sumFacts = reduce(facts, add, 0);\nvar squareOfOdd = compose(square, function(n) { return n * 2 + 1; });\nvar result = total + reduce(primes, add, 0) + sumFacts;\nresult;"
+
+pub const LEXER_LARGE_TOKEN_COUNT : Int = 1167
+
+pub const LEXER_SMALL_SRC : String = "// Small realistic JS snippet for lexer benchmarking\nvar counter = 0;\nvar limit = 100;\nvar message = \"hello world\";\nvar PI = 3.14159;\nfunction increment(n) {\n  return n + 1;\n}\nfunction clamp(n, lo, hi) {\n  if (n < lo) return lo;\n  if (n > hi) return hi;\n  return n;\n}\nfor (var i = 0; i < limit; i++) {\n  counter = increment(counter);\n}\nif (counter === limit) {\n  var result = clamp(counter, 0, 200);\n}\nresult;"
+
+pub const LEXER_SMALL_TOKEN_COUNT : Int = 110
+
+pub const OBJECT_CONSTRUCTION_SRC : String = "var objects = [];\nfor (var i = 0; i < 1000; i++) {\n  objects.push({\n    id: i,\n    value: i * 2,\n    label: \"item\" + i,\n    active: true,\n    score: i * i\n  });\n}\nobjects.length;"
+
+pub const PARSER_HEAVY_SRC : String = "function f0(x, y) { return (x > y) ? x * y + x : y - x / 2; }\nfunction f1(x, y) { return x * x - y * y + 2 * x * y; }\nfunction f2(x, y) { var t = x + y; return t * t - x * x - y * y; }\nfunction f3(x, y) { return (x > 0 && y > 0) ? x + y : x - y; }\nfunction f4(x, y) { return x > y ? (x > 0 ? x : -x) : (y > 0 ? y : -y); }\nfunction f5(x, y) { return ((x + 1) * (y + 1) - 1) % (x + y + 1); }\nfunction f6(x, y) { return x * x * x - 3 * x * y * y; }\nfunction f7(x, y) { return (x || y) && !(x && y) ? 1 : 0; }\nfunction f8(x, y) { var a = x + 1; var b = y - 1; return a * b + a - b; }\nfunction f9(x, y) { return x >= y ? x % (y || 1) : y % (x || 1); }\nfunction g0(a, b, c) { return a > b ? (b > c ? a + b + c : a - c) : b + c; }\nfunction g1(a, b, c) { return (a + b) * c - a * (b + c); }\nfunction g2(a, b, c) { return a * a + b * b + c * c - a * b - b * c - a * c; }\nfunction g3(a, b, c) { return (a !== b && b !== c && a !== c) ? 1 : 0; }\nfunction g4(a, b, c) { var p = a + b + c; return p * p - a * a - b * b - c * c; }\nfunction g5(a, b, c) { return a % 2 === 0 ? b + c : b - c; }\nfunction g6(a, b, c) { return (a > 0 ? a : -a) + (b > 0 ? b : -b) + (c > 0 ? c : -c); }\nfunction g7(a, b, c) { return a > b && b > c ? a * a : b * b + c * c; }\nfunction g8(a, b, c) { var q = a > b ? a : b; return q > c ? q : c; }\nfunction g9(a, b, c) { return ((a + b) % (c || 1) + (b + c) % (a || 1)) % 100; }\nvar r0 = f0(3, 7) + f1(2, 5) - f2(4, 1) * f3(6, 3);\nvar r1 = f4(8, 2) - f5(5, 4) + f6(1, 3) / (f7(1, 0) + 1);\nvar r2 = f8(9, 6) * f9(7, 5) - g0(2, 4, 6) + g1(1, 3, 5);\nvar r3 = g2(3, 5, 7) - g3(1, 2, 3) + g4(4, 6, 8) - g5(2, 3, 5);\nvar r4 = g6(1, 2, 3) + g7(5, 3, 1) - g8(7, 4, 2) * g9(3, 5, 7);\nvar r5 = f0(r0, r1) + f1(r1, r2) - f2(r2, r3) + f3(r3, r4);\nvar r6 = g0(r0, r2, r4) - g1(r1, r3, r5) + g2(r0, r3, r5);\nvar r7 = f4(r6, r5) + g3(r4, r5, r6) - f5(r3, r2) * g4(r1, r2, r3);\nvar r8 = g5(r7, r6, r5) + g6(r4, r3, r2) - g7(r1, r0, r7);\nvar r9 = f6(r8, r7) - f7(r6, r5) + f8(r4, r3) * f9(r2, r1);\nr9;"
+
+pub const PROPERTY_CHAIN_SRC : String = "var obj = { a: { b: { c: { d: { e: 42 } } } } };\nvar sum = 0;\nfor (var i = 0; i < 10000; i++) {\n  sum = sum + obj.a.b.c.d.e;\n}\nsum;"
+
+pub const STRING_OPS_SRC : String = "var result = \"\";\nfor (var i = 0; i < 100; i++) {\n  result = result + \"hello\".toUpperCase() + \" \";\n}\nresult.length;"
+
+pub fn all_bench_names() -> Array[(String, String)]
+
+pub fn bench_array_map_filter() -> BenchResult raise
+
+pub fn bench_closure_factory() -> BenchResult raise
+
+pub fn bench_fibonacci() -> BenchResult raise
+
+pub fn bench_lexer_large() -> BenchResult raise
+
+pub fn bench_lexer_small() -> BenchResult raise
+
+pub fn bench_object_construction() -> BenchResult raise
+
+pub fn bench_parse_heavy() -> BenchResult raise
+
+pub fn bench_property_chain() -> BenchResult raise
+
+pub fn bench_string_ops() -> BenchResult raise
+
+pub fn now_ms() -> Double
+
+pub fn parse_bench_args() -> BenchArgs
+
+pub fn print_csv_header() -> Unit
+
+pub fn print_result(BenchResult) -> Unit
+
+pub fn print_result_csv(BenchResult) -> Unit
+
+pub fn run_all() -> Array[BenchResult] raise
+
+pub fn run_bench(String, Category, BenchConfig, () -> Unit raise) -> BenchResult raise
+
+pub fn run_component() -> Array[BenchResult] raise
+
+pub fn run_regression() -> Array[BenchResult] raise
+
+pub fn run_workflow() -> Array[BenchResult] raise
+
+pub fn timer_supported() -> Bool
+
+pub fn verify(String, String) -> Unit raise
+
+// Errors
+
+// Types and methods
+pub struct BenchArgs {
+  run_all : Bool
+  csv : Bool
+  list_only : Bool
+}
+
+pub struct BenchConfig {
+  warmup : Int
+  iterations : Int
+  group_size : Int
+}
+
+pub struct BenchResult {
+  name : String
+  category : Category
+  warmup : Int
+  iterations : Int
+  group_size : Int
+  mean_ms : Double
+  min_ms : Double
+  max_ms : Double
+  stddev_ms : Double
+  cv_pct : Double
+  noisy : Bool
+}
+
+pub enum Category {
+  Regression
+  Component
+  Workflow
+}
+pub fn Category::label(Self) -> String
+
+// Type aliases
+
+// Traits
+
