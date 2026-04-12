@@ -76,7 +76,9 @@ jobs:
       # dated artifact so snapshots can be diffed across weeks.
       - name: Generate CSV baseline
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-        run: moon run bench --target js -- --all --csv | tee bench-results.csv
+        run: |
+          set -o pipefail
+          moon run bench --target js -- --all --csv | tee bench-results.csv
 
       - name: Upload CSV artifact
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'

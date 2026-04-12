@@ -20,8 +20,16 @@
 // Lexer workloads (tokenize() only — never executed)
 // ---------------------------------------------------------------------------
 
+/// Exact token count for LEXER_SMALL_SRC (including EOF token).
+/// Used by benchmarks.mbt to verify tokenizer correctness before timing.
+pub const LEXER_SMALL_TOKEN_COUNT : Int = 110
+
+/// Exact token count for LEXER_LARGE_SRC (including EOF token).
+/// Used by benchmarks.mbt to verify tokenizer correctness before timing.
+pub const LEXER_LARGE_TOKEN_COUNT : Int = 1167
+
 ///|
-/// Small lexer workload — ~130 tokens.
+/// Small lexer workload — 110 tokens (verified; see LEXER_SMALL_TOKEN_COUNT).
 ///
 /// Covers: keywords, identifiers, numeric literals, string literals,
 /// operators, delimiters, and single-line comments. Designed as a
@@ -49,7 +57,7 @@ pub const LEXER_SMALL_SRC : String =
   #|result;
 
 ///|
-/// Large lexer workload — ~1 100 tokens.
+/// Large lexer workload — 1 167 tokens (verified; see LEXER_LARGE_TOKEN_COUNT).
 ///
 /// A realistic utility-library style JS source: constants, pure functions,
 /// array helpers, algorithms, and usage code. Exercises the full range of

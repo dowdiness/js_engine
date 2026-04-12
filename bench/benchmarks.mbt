@@ -67,6 +67,16 @@ fn expect(name : String, src : String, want : String) -> Unit {
 ///
 /// The framework auto-detects batch size so each outer run is well-resolved.
 test "lexer/small" (b : @bench.T) {
+  try {
+    let n = @lexer.tokenize(LEXER_SMALL_SRC).length()
+    if n != LEXER_SMALL_TOKEN_COUNT {
+      abort(
+        "[lexer/small] token count mismatch\n  expected: \{LEXER_SMALL_TOKEN_COUNT}\n  got:      \{n}",
+      )
+    }
+  } catch {
+    e => abort("[lexer/small] pre-check raised: \{e}")
+  }
   b.bench(
     fn() {
       try {
@@ -87,6 +97,16 @@ test "lexer/small" (b : @bench.T) {
 ///                   count to detect super-linear (O(n²)) regressions.
 /// What it excludes: parsing, interpretation.
 test "lexer/large" (b : @bench.T) {
+  try {
+    let n = @lexer.tokenize(LEXER_LARGE_SRC).length()
+    if n != LEXER_LARGE_TOKEN_COUNT {
+      abort(
+        "[lexer/large] token count mismatch\n  expected: \{LEXER_LARGE_TOKEN_COUNT}\n  got:      \{n}",
+      )
+    }
+  } catch {
+    e => abort("[lexer/large] pre-check raised: \{e}")
+  }
   b.bench(
     fn() {
       try {
@@ -104,6 +124,17 @@ test "lexer/large" (b : @bench.T) {
 /// Batch output lets you read the throughput ratio directly without
 /// normalising manually. Use this when investigating lexer scaling.
 test "lexer: size scaling" (b : @bench.T) {
+  try {
+    let ns = @lexer.tokenize(LEXER_SMALL_SRC).length()
+    let nl = @lexer.tokenize(LEXER_LARGE_SRC).length()
+    if ns != LEXER_SMALL_TOKEN_COUNT || nl != LEXER_LARGE_TOKEN_COUNT {
+      abort(
+        "[lexer: size scaling] token count mismatch\n  small expected: \{LEXER_SMALL_TOKEN_COUNT} got: \{ns}\n  large expected: \{LEXER_LARGE_TOKEN_COUNT} got: \{nl}",
+      )
+    }
+  } catch {
+    e => abort("[lexer: size scaling] pre-check raised: \{e}")
+  }
   b.bench(
     name="small (~130 tok)",
     fn() {
