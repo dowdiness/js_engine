@@ -1,0 +1,115 @@
+name: Benchmarks
+
+# Trigger policy
+# ─────────────────────────────────────────────────────────────────────────────
+# push (main, relevant paths)
+#   Run the full @bench.T suite to catch correctness regressions whenever
+#   interpreter, lexer, parser, or bench code lands on main.
+#
+# schedule — Sundays 02:00 UTC
+#   Weekly timing snapshot: run the CLI runner with --all --csv, upload the
+#   CSV as a dated artifact, and post human-readable results to the job summary.
+#   Provides a lightweight performance trend without per-commit noise.
+#
+# workflow_dispatch
+#   On-demand: same as the scheduled run. Useful before/after a refactor or
+#   when investigating a suspected regression.
+# ─────────────────────────────────────────────────────────────────────────────
+on:
+  push:
+    branches: [main]
+    paths:
+      - "bench/**"
+      - "interpreter/**"
+      - "lexer/**"
+      - "parser/**"
+      - "ast/**"
+  schedule:
+    - cron: "0 2 * * 0" # every Sunday at 02:00 UTC
+  workflow_dispatch:
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up MoonBit
+        run: |
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Get MoonBit version
+        id: moonbit-version
+        run: echo "version=$(moon version 2>&1 | head -1)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache MoonBit dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.moon/registry
+            .mooncakes
+          key: moon-deps-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-${{ hashFiles('moon.mod.json') }}
+          restore-keys: moon-deps-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-
+
+      - name: Install dependencies
+        run: |
+          moon update
+          moon install
+
+      # ── Primary surface ────────────────────────────────────────────────────
+      # Runs all @bench.T test blocks (benchmarks.mbt).  Each block verifies
+      # expected output via expect() before the timed b.bench() loop, so a
+      # wrong result aborts with a clear diagnostic rather than producing fast-
+      # but-wrong timings.  Covers: lexer/small, lexer/large, exec/*, pipeline/*.
+      - name: Run @bench.T suite
+        run: moon test bench/ --target js
+
+      # ── CSV baseline snapshot (scheduled and manual runs only) ─────────────
+      # The CLI runner (bench/main.mbt) measures the same workloads with fixed
+      # iteration counts and emits machine-readable CSV rows.  Upload as a
+      # dated artifact so snapshots can be diffed across weeks.
+      - name: Generate CSV baseline
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: moon run bench --target js -- --all --csv | tee bench-results.csv
+
+      - name: Upload CSV artifact
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-results-${{ github.sha }}
+          path: bench-results.csv
+          retention-days: 90
+
+      # ── Job summary ────────────────────────────────────────────────────────
+      # On scheduled / manual runs append human-readable results from the CLI
+      # runner to the GitHub Actions step summary so they are visible in the
+      # Actions UI without downloading the CSV artifact.
+      - name: Post human-readable results to summary
+        if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && !cancelled()
+        run: |
+          {
+            echo "## Benchmark Results"
+            echo ""
+            echo "| | |"
+            echo "| --- | --- |"
+            echo "| Commit | \`${{ github.sha }}\` |"
+            echo "| Runner | \`${{ runner.name }}\` (${{ runner.os }}) |"
+            echo "| Trigger | \`${{ github.event_name }}\` |"
+            echo "| MoonBit | \`${{ steps.moonbit-version.outputs.version }}\` |"
+            echo ""
+            echo "| benchmark | category | mean | min | max | CV |"
+            echo "| --- | --- | --- | --- | --- | --- |"
+            tail -n +2 bench-results.csv | awk -F, '{
+              printf "| %s | %s | %.3f ms | %.3f ms | %.3f ms | %.1f%% |\n",
+                $1, $2, $6, $7, $8, $10
+            }'
+            echo ""
+            echo "Full CSV uploaded as artifact \`bench-results-${{ github.sha }}\`."
+            echo "To compare two baselines: \`diff old.csv new.csv\`"
+          } >> "$GITHUB_STEP_SUMMARY"
