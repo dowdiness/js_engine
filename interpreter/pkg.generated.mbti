@@ -8,7 +8,7 @@ import {
 }
 
 // Values
-pub fn array_species_create(Interpreter, Value, Array[Value]) -> Value raise
+pub fn array_species_create(Interpreter, Value, Int) -> Value raise
 
 pub let boolean_prototype_ref : @ref.Ref[Value?]
 
@@ -189,6 +189,8 @@ pub fn set_array_symbol_prop(ArrayData, Int, Value) -> Unit
 pub fn set_function_name(Value, String) -> Unit
 
 pub fn setup_arraybuffer_builtins(Environment) -> Unit
+
+pub fn setup_async_function_constructor(Environment, Value) -> Unit
 
 pub fn setup_builtins(Environment, Array[String], SymbolState, annex_b? : Bool) -> Unit
 
@@ -420,21 +422,25 @@ pub(all) struct GeneratorObject {
   mut resume_at_yield : Int
 }
 
-pub(all) struct Interpreter {
+pub(all) struct HostEnv {
   output : Array[String]
-  global : Environment
-  global_this : Value
-  mut strict : Bool
-  annex_b : Bool
   microtask_queue : Array[Microtask]
   timer_queue : Array[TimerTask]
   timer_id_counter : @ref.Ref[Int]
   timer_insertion_counter : @ref.Ref[Int]
   cancelled_timer_ids : Map[Int, Bool]
+  module_loader : ModuleLoader?
+}
+
+pub(all) struct Interpreter {
+  host : HostEnv
+  global : Environment
+  global_this : Value
+  mut strict : Bool
+  annex_b : Bool
   module_registry : Map[String, Map[String, Value]]
   mut module_exports : Map[String, Value]
   mut module_export_bindings : Array[(String, String)]
-  module_loader : ModuleLoader?
   generator_objects : Map[Int, GeneratorObject]
   gen_id_counter : @ref.Ref[Int]
   mut current_generator : GeneratorObject?

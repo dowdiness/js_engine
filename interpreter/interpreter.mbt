@@ -171,6 +171,8 @@ pub fn Interpreter::new(
   }
   // Set up GeneratorFunction constructor
   setup_generator_function_constructor(global, global_this)
+  // Set up AsyncFunction constructor
+  setup_async_function_constructor(global, global_this)
   // Set up test262 harness host functions (print, $262)
   setup_harness_builtins(global, output, global_this)
   let host : HostEnv = {
