@@ -49,9 +49,8 @@ from test262_utils import parse_yaml_frontmatter, as_list
 SKIP_FEATURES = {
     # Features this engine definitely doesn't support yet
 
-    # Async / Promises (async-functions and async-iteration still unsupported)
-    "async-functions", "async-iteration",
-    "promise-with-resolvers", "promise-try",
+    # Async / Promises (async-iteration still unsupported)
+    "async-iteration",
     "top-level-await",
 
     # Classes (advanced features not yet supported)
@@ -82,7 +81,7 @@ SKIP_FEATURES = {
 
     # RegExp advanced features
     "regexp-lookbehind", "regexp-named-groups", "regexp-unicode-property-escapes",
-    "regexp-match-indices", "regexp-v-flag", "regexp-dotall",
+    "regexp-match-indices", "regexp-v-flag",
     "regexp-modifiers",
     "RegExp.escape",
 
@@ -109,6 +108,8 @@ SKIP_FEATURES = {
     # Array.prototype.flatMap, Array.prototype.includes
     # Removed in Phase 3.6+4 (now supported): class, numeric-separator-literal,
     # logical-assignment-operators
+    # Removed in Phase 6 (now supported): regexp-dotall, async-functions,
+    # promise-with-resolvers, promise-try
     # Removed in Phase 5 (now supported): Promise, Promise.allSettled,
     # Promise.any, Promise.prototype.finally, Object.fromEntries, Object.is,
     # Object.hasOwn, Array.from, Array.prototype.at,

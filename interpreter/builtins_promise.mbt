@@ -938,6 +938,77 @@ pub fn setup_promise(env : Environment) -> Unit {
     promise
   })
 
+  // Promise.withResolvers()
+  // https://tc39.es/ecma262/#sec-promise.withresolvers
+  promise_ctor_props["withResolvers"] = make_interp_method_func(
+    "withResolvers",
+    0,
+    fn(interp, this_val, _args) raise {
+      let loc = @token.Loc::default()
+      let (promise, resolve, reject) = create_promise_capability_from_constructor(
+        interp, this_val, loc,
+      )
+      let props : Map[String, Value] = {}
+      props["promise"] = promise
+      props["resolve"] = resolve
+      props["reject"] = reject
+      Object({
+        properties: props,
+        symbol_properties: {},
+        prototype: get_obj_proto(),
+        callable: None,
+        class_name: "Object",
+        descriptors: {},
+        symbol_descriptors: {},
+        extensible: true,
+      })
+    },
+  )
+
+  // Promise.try(callbackFn, ...args)
+  // https://tc39.es/ecma262/#sec-promise.try
+  promise_ctor_props["try"] = make_interp_method_func("try", 1, fn(
+    interp,
+    this_val,
+    args,
+  ) raise {
+    let loc = @token.Loc::default()
+    // Step 1-3: NewPromiseCapability(C) — validates C is a constructor
+    let (promise, resolve, reject) = create_promise_capability_from_constructor(
+      interp, this_val, loc,
+    )
+    // Extract callbackFn and rest args
+    let callback = if args.length() > 0 { args[0] } else { Undefined }
+    let call_args : Array[Value] = if args.length() > 1 {
+      let a : Array[Value] = []
+      for i in 1..<args.length() {
+        a.push(args[i])
+      }
+      a
+    } else {
+      []
+    }
+    // Step 4: Call callback, capture completion
+    let status : Result[Value, _] = Ok(
+      interp.call_value(callback, Undefined, call_args, loc),
+    ) catch {
+      err => Err(err)
+    }
+    // Step 5-6: Resolve or reject based on completion.
+    // resolve/reject throws propagate outward per spec (? Call).
+    match status {
+      Ok(result) => {
+        let _ = interp.call_value(resolve, Undefined, [result], loc)
+      }
+      Err(err) => {
+        let error_val = js_error_to_value(err)
+        let _ = interp.call_value(reject, Undefined, [error_val], loc)
+      }
+    }
+    // Step 7
+    promise
+  })
+
   // Promise.all(iterable)
   // NOTE: PerformPromiseAll synchronously consumes the entire input iterator
   // before any promise settles. Iterator consumption is NOT lazy.
@@ -1495,6 +1566,20 @@ pub fn setup_promise(env : Environment) -> Unit {
         setter: None,
       },
       "any": {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      },
+      "withResolvers": {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      },
+      "try": {
         writable: true,
         enumerable: false,
         configurable: true,

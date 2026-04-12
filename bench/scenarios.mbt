@@ -45,10 +45,7 @@ pub fn bench_lexer_small() -> BenchResult raise {
     "lexer/small",
     Regression,
     { warmup: 3, iterations: 100, group_size: 100 },
-    fn() raise {
-      let _ = @lexer.tokenize(LEXER_SMALL_SRC)
-
-    },
+    fn() raise { let _ = @lexer.tokenize(LEXER_SMALL_SRC) },
   )
 }
 
@@ -58,10 +55,7 @@ pub fn bench_lexer_large() -> BenchResult raise {
     "lexer/large",
     Regression,
     { warmup: 3, iterations: 30, group_size: 10 },
-    fn() raise {
-      let _ = @lexer.tokenize(LEXER_LARGE_SRC)
-
-    },
+    fn() raise { let _ = @lexer.tokenize(LEXER_LARGE_SRC) },
   )
 }
 
@@ -72,10 +66,7 @@ pub fn bench_fibonacci() -> BenchResult raise {
     "exec/fibonacci_30",
     Regression,
     { warmup: 2, iterations: 5, group_size: 1 },
-    fn() raise {
-      let _ = @lib.run(FIBONACCI_SRC)
-
-    },
+    fn() raise { let _ = @lib.run(FIBONACCI_SRC) },
   )
 }
 
@@ -86,10 +77,7 @@ pub fn bench_property_chain() -> BenchResult raise {
     "exec/property_chain",
     Regression,
     { warmup: 2, iterations: 8, group_size: 1 },
-    fn() raise {
-      let _ = @lib.run(PROPERTY_CHAIN_SRC)
-
-    },
+    fn() raise { let _ = @lib.run(PROPERTY_CHAIN_SRC) },
   )
 }
 
@@ -100,10 +88,7 @@ pub fn bench_array_map_filter() -> BenchResult raise {
     "exec/array_map_filter",
     Component,
     { warmup: 2, iterations: 10, group_size: 1 },
-    fn() raise {
-      let _ = @lib.run(ARRAY_MAP_FILTER_SRC)
-
-    },
+    fn() raise { let _ = @lib.run(ARRAY_MAP_FILTER_SRC) },
   )
 }
 
@@ -114,10 +99,7 @@ pub fn bench_closure_factory() -> BenchResult raise {
     "exec/closure_factory",
     Component,
     { warmup: 2, iterations: 10, group_size: 1 },
-    fn() raise {
-      let _ = @lib.run(CLOSURE_FACTORY_SRC)
-
-    },
+    fn() raise { let _ = @lib.run(CLOSURE_FACTORY_SRC) },
   )
 }
 
@@ -128,10 +110,7 @@ pub fn bench_object_construction() -> BenchResult raise {
     "exec/object_construction",
     Component,
     { warmup: 2, iterations: 10, group_size: 1 },
-    fn() raise {
-      let _ = @lib.run(OBJECT_CONSTRUCTION_SRC)
-
-    },
+    fn() raise { let _ = @lib.run(OBJECT_CONSTRUCTION_SRC) },
   )
 }
 
@@ -142,10 +121,7 @@ pub fn bench_string_ops() -> BenchResult raise {
     "exec/string_ops",
     Component,
     { warmup: 2, iterations: 10, group_size: 1 },
-    fn() raise {
-      let _ = @lib.run(STRING_OPS_SRC)
-
-    },
+    fn() raise { let _ = @lib.run(STRING_OPS_SRC) },
   )
 }
 
@@ -155,10 +131,7 @@ pub fn bench_parse_heavy() -> BenchResult raise {
     "pipeline/parse_heavy",
     Workflow,
     { warmup: 3, iterations: 30, group_size: 50 },
-    fn() raise {
-      let _ = @parser.parse(PARSER_HEAVY_SRC)
-
-    },
+    fn() raise { let _ = @parser.parse(PARSER_HEAVY_SRC) },
   )
 }
 

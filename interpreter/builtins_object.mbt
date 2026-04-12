@@ -1243,4 +1243,3 @@ pub fn setup_object_builtins(
 
   setup_array_builtins(env, nf_desc, obj_proto, obj_method_desc)
 }
-

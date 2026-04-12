@@ -321,8 +321,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
   match prop {
     "forEach" | "map" | "filter" => Undefined // Delegated to Array.prototype
     "reduce" | "reduceRight" => Undefined // Delegated to Array.prototype
-    "find" | "findIndex" | "findLast" | "findLastIndex" =>
-      Undefined // Delegated to Array.prototype
+    "find" | "findIndex" | "findLast" | "findLastIndex" => Undefined // Delegated to Array.prototype
     "every" | "some" => Undefined // Delegated to Array.prototype
     "toReversed" => {
       let arr = data

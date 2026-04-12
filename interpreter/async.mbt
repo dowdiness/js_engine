@@ -588,11 +588,142 @@ fn async_generator_resume(
 
 ///|
 /// Get the function prototype for async function objects.
-/// Note: Uses the standard [[FunctionPrototype]] — there is no separate
-/// async-specific prototype in this engine.
 fn get_function_prototype(interp : Interpreter) -> Value {
-  match interp.global.bindings.get("[[FunctionPrototype]]") {
+  match interp.global.bindings.get("[[AsyncFunctionPrototype]]") {
+    Some(binding) => binding.value
+    None =>
+      match interp.global.bindings.get("[[FunctionPrototype]]") {
+        Some(binding) => binding.value
+        None => Null
+      }
+  }
+}
+
+///|
+/// Set up the AsyncFunction constructor and prototype chain.
+/// Mirrors setup_generator_function_constructor in generator.mbt.
+///
+/// Prototype chain (per ES spec):
+///   AsyncFunction.__proto__ === Function
+///   AsyncFunction.prototype.__proto__ === Function.prototype
+///   AsyncFunction.prototype[@@toStringTag] === "AsyncFunction"
+///   AsyncFunction.prototype.constructor === AsyncFunction
+pub fn setup_async_function_constructor(env : Environment) -> Unit {
+  // %AsyncFunction.prototype% inherits from Function.prototype
+  let func_proto : Value = match env.bindings.get("[[FunctionPrototype]]") {
     Some(binding) => binding.value
     None => Null
   }
+  let af_sym_props : Map[Int, Value] = {}
+  let af_sym_descs : Map[Int, PropDescriptor] = {}
+  let tostringtag_sym = get_tostringtag_symbol()
+  af_sym_props[tostringtag_sym.id] = String_("AsyncFunction")
+  af_sym_descs[tostringtag_sym.id] = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
+  let async_func_proto : Value = Object({
+    properties: {},
+    symbol_properties: af_sym_props,
+    prototype: func_proto,
+    callable: None,
+    class_name: "AsyncFunction",
+    descriptors: {},
+    symbol_descriptors: af_sym_descs,
+    extensible: true,
+  })
+  // AsyncFunction constructor: AsyncFunction(p1, p2, ..., body)
+  let async_func_ctor : Value = make_interp_method_func("AsyncFunction", 1, fn(
+    interp,
+    _this,
+    args,
+  ) raise {
+    if args.length() == 0 {
+      return interp.make_async_function(
+        Some("anonymous"),
+        [],
+        None,
+        [],
+        interp.global,
+      )
+    }
+    // Last arg is body, previous args are parameter names
+    let body_str = match args[args.length() - 1] {
+      String_(s) => s
+      _ => args[args.length() - 1].to_string()
+    }
+    let param_parts : Array[String] = []
+    for i = 0; i < args.length() - 1; i = i + 1 {
+      match args[i] {
+        String_(s) => param_parts.push(s)
+        _ => param_parts.push(args[i].to_string())
+      }
+    }
+    let params_str = param_parts.join(",")
+    let source = "async function anonymous(" +
+      params_str +
+      ") {\n" +
+      body_str +
+      "\n}"
+    let prog = @parser.parse(source)
+    if prog.stmts.length() > 0 {
+      match prog.stmts[0] {
+        AsyncFuncDecl(_, params, body, _) =>
+          return interp.make_async_function(
+            Some("anonymous"),
+            params,
+            None,
+            body,
+            interp.global,
+          )
+        AsyncFuncDeclExt(_, params, rest_param, body, _) =>
+          return interp.make_async_function_ext(
+            Some("anonymous"),
+            params,
+            rest_param,
+            body,
+            interp.global,
+          )
+        _ => ()
+      }
+    }
+    raise @errors.SyntaxError(
+      message="Invalid AsyncFunction constructor source",
+    )
+  })
+  // AsyncFunction.prototype.constructor = AsyncFunction
+  match async_func_proto {
+    Object(data) => {
+      data.properties["constructor"] = async_func_ctor
+      data.descriptors["constructor"] = {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
+    }
+    _ => ()
+  }
+  // AsyncFunction.prototype property on the constructor
+  match async_func_ctor {
+    Object(data) => {
+      data.properties["prototype"] = async_func_proto
+      data.descriptors["prototype"] = {
+        writable: false,
+        enumerable: false,
+        configurable: false,
+        getter: None,
+        setter: None,
+      }
+    }
+    _ => ()
+  }
+  // Note: AsyncFunction is NOT a global property per spec (section 19).
+  // It is only reachable via (async function(){}).constructor.
+  // We store it as an internal binding so async functions get the right prototype.
+  env.def_builtin("[[AsyncFunctionPrototype]]", async_func_proto)
 }
