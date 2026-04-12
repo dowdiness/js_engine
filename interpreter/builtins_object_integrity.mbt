@@ -265,7 +265,7 @@ fn make_from_entries_func() -> Value {
     Object({
       properties,
       symbol_properties: {},
-      prototype: Null,
+      prototype: get_obj_proto(),
       callable: None,
       class_name: "Object",
       descriptors: {},
@@ -327,10 +327,11 @@ fn make_group_by_func() -> Value {
 
 ///|
 fn make_has_own_func() -> Value {
-  make_static_func_with_length("hasOwn", 2, fn(args) {
-    // Object.hasOwn() - modern hasOwnProperty replacement
-    let obj = if args.length() > 0 { args[0] } else { Undefined }
+  make_interp_static_func_with_length("hasOwn", 2, fn(interp, args) raise {
+    // Object.hasOwn() - ES spec 20.1.2.14: Let obj be ? ToObject(O)
+    let raw = if args.length() > 0 { args[0] } else { Undefined }
     let key_val = if args.length() > 1 { args[1] } else { Undefined }
+    let obj = to_object(raw, interp)
     match obj {
       Object(data) =>
         // Handle Symbol keys

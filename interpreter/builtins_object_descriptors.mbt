@@ -52,9 +52,13 @@ fn make_get_own_property_symbols_func(sym_state : SymbolState) -> Value {
   make_static_func_with_length(
     "getOwnPropertySymbols",
     1,
-    fn(args) {
+    fn(args) raise {
       let obj = if args.length() > 0 { args[0] } else { Undefined }
       match obj {
+        Null | Undefined =>
+          raise @errors.TypeError(
+            message="Cannot convert undefined or null to object",
+          )
         Object(data) => {
           let symbols : Array[Value] = []
           data.symbol_properties.each(fn(sym_id, _val) {
@@ -76,9 +80,13 @@ fn make_get_own_property_descriptors_func() -> Value {
   make_static_func_with_length(
     "getOwnPropertyDescriptors",
     1,
-    fn(args) {
+    fn(args) raise {
       let obj = if args.length() > 0 { args[0] } else { Undefined }
       match obj {
+        Null | Undefined =>
+          raise @errors.TypeError(
+            message="Cannot convert undefined or null to object",
+          )
         Object(data) => {
           let descriptors_props : Map[String, Value] = {}
           data.properties.each(fn(key, val) {
@@ -1010,6 +1018,10 @@ fn make_get_own_property_descriptor_func() -> Value {
       }
 
       match obj {
+        Null | Undefined =>
+          raise @errors.TypeError(
+            message="Cannot convert undefined or null to object",
+          )
         Object(data) =>
           // Handle Symbol keys
           if is_symbol_key {
