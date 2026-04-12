@@ -20,10 +20,12 @@
 // Lexer workloads (tokenize() only — never executed)
 // ---------------------------------------------------------------------------
 
+///|
 /// Exact token count for LEXER_SMALL_SRC (including EOF token).
 /// Used by benchmarks.mbt to verify tokenizer correctness before timing.
 pub const LEXER_SMALL_TOKEN_COUNT : Int = 110
 
+///|
 /// Exact token count for LEXER_LARGE_SRC (including EOF token).
 /// Used by benchmarks.mbt to verify tokenizer correctness before timing.
 pub const LEXER_LARGE_TOKEN_COUNT : Int = 1167

@@ -77,15 +77,11 @@ test "lexer/small" (b : @bench.T) {
   } catch {
     e => abort("[lexer/small] pre-check raised: \{e}")
   }
-  b.bench(
-    fn() {
-      try {
-        b.keep(@lexer.tokenize(LEXER_SMALL_SRC))
-      } catch {
-        _ => abort("tokenize raised")
-      }
-    },
-  )
+  b.bench(fn() {
+    b.keep(@lexer.tokenize(LEXER_SMALL_SRC)) catch {
+      _ => abort("tokenize raised")
+    }
+  })
 }
 
 ///|
@@ -107,15 +103,11 @@ test "lexer/large" (b : @bench.T) {
   } catch {
     e => abort("[lexer/large] pre-check raised: \{e}")
   }
-  b.bench(
-    fn() {
-      try {
-        b.keep(@lexer.tokenize(LEXER_LARGE_SRC))
-      } catch {
-        _ => abort("tokenize raised")
-      }
-    },
-  )
+  b.bench(fn() {
+    b.keep(@lexer.tokenize(LEXER_LARGE_SRC)) catch {
+      _ => abort("tokenize raised")
+    }
+  })
 }
 
 ///|
@@ -135,26 +127,16 @@ test "lexer: size scaling" (b : @bench.T) {
   } catch {
     e => abort("[lexer: size scaling] pre-check raised: \{e}")
   }
-  b.bench(
-    name="small (~130 tok)",
-    fn() {
-      try {
-        b.keep(@lexer.tokenize(LEXER_SMALL_SRC))
-      } catch {
-        _ => abort("tokenize raised")
-      }
-    },
-  )
-  b.bench(
-    name="large (~1100 tok)",
-    fn() {
-      try {
-        b.keep(@lexer.tokenize(LEXER_LARGE_SRC))
-      } catch {
-        _ => abort("tokenize raised")
-      }
-    },
-  )
+  b.bench(name="small (~130 tok)", fn() {
+    b.keep(@lexer.tokenize(LEXER_SMALL_SRC)) catch {
+      _ => abort("tokenize raised")
+    }
+  })
+  b.bench(name="large (~1100 tok)", fn() {
+    b.keep(@lexer.tokenize(LEXER_LARGE_SRC)) catch {
+      _ => abort("tokenize raised")
+    }
+  })
 }
 
 ///|
@@ -175,16 +157,14 @@ test "exec/fibonacci_30" (b : @bench.T) {
   // count is kept at the default (10 outer runs).
   // fib(30) takes several seconds per run; total wall time is ~30–60s.
   // This is acceptable for an explicit regression benchmark run.
-  b.bench(
-    fn() {
-      try {
-        let (_, v) = @lib.run(FIBONACCI_SRC)
-        b.keep(v)
-      } catch {
-        _ => abort("run raised")
-      }
-    },
-  )
+  b.bench(fn() {
+    try {
+      let (_, v) = @lib.run(FIBONACCI_SRC)
+      b.keep(v)
+    } catch {
+      _ => abort("run raised")
+    }
+  })
 }
 
 ///|
@@ -202,16 +182,14 @@ test "exec/fibonacci_30" (b : @bench.T) {
 /// Expected result: "420000"  (10 000 × 42)
 test "exec/property_chain" (b : @bench.T) {
   expect("exec/property_chain", PROPERTY_CHAIN_SRC, "420000")
-  b.bench(
-    fn() {
-      try {
-        let (_, v) = @lib.run(PROPERTY_CHAIN_SRC)
-        b.keep(v)
-      } catch {
-        _ => abort("run raised")
-      }
-    },
-  )
+  b.bench(fn() {
+    try {
+      let (_, v) = @lib.run(PROPERTY_CHAIN_SRC)
+      b.keep(v)
+    } catch {
+      _ => abort("run raised")
+    }
+  })
 }
 
 // =============================================================================
@@ -231,16 +209,14 @@ test "exec/property_chain" (b : @bench.T) {
 /// Expected result: "334"
 test "exec/array_map_filter" (b : @bench.T) {
   expect("exec/array_map_filter", ARRAY_MAP_FILTER_SRC, "334")
-  b.bench(
-    fn() {
-      try {
-        let (_, v) = @lib.run(ARRAY_MAP_FILTER_SRC)
-        b.keep(v)
-      } catch {
-        _ => abort("run raised")
-      }
-    },
-  )
+  b.bench(fn() {
+    try {
+      let (_, v) = @lib.run(ARRAY_MAP_FILTER_SRC)
+      b.keep(v)
+    } catch {
+      _ => abort("run raised")
+    }
+  })
 }
 
 ///|
@@ -255,16 +231,14 @@ test "exec/array_map_filter" (b : @bench.T) {
 /// Expected result: "500500"
 test "exec/closure_factory" (b : @bench.T) {
   expect("exec/closure_factory", CLOSURE_FACTORY_SRC, "500500")
-  b.bench(
-    fn() {
-      try {
-        let (_, v) = @lib.run(CLOSURE_FACTORY_SRC)
-        b.keep(v)
-      } catch {
-        _ => abort("run raised")
-      }
-    },
-  )
+  b.bench(fn() {
+    try {
+      let (_, v) = @lib.run(CLOSURE_FACTORY_SRC)
+      b.keep(v)
+    } catch {
+      _ => abort("run raised")
+    }
+  })
 }
 
 ///|
@@ -278,16 +252,14 @@ test "exec/closure_factory" (b : @bench.T) {
 /// Expected result: "1000"
 test "exec/object_construction" (b : @bench.T) {
   expect("exec/object_construction", OBJECT_CONSTRUCTION_SRC, "1000")
-  b.bench(
-    fn() {
-      try {
-        let (_, v) = @lib.run(OBJECT_CONSTRUCTION_SRC)
-        b.keep(v)
-      } catch {
-        _ => abort("run raised")
-      }
-    },
-  )
+  b.bench(fn() {
+    try {
+      let (_, v) = @lib.run(OBJECT_CONSTRUCTION_SRC)
+      b.keep(v)
+    } catch {
+      _ => abort("run raised")
+    }
+  })
 }
 
 ///|
@@ -302,16 +274,14 @@ test "exec/object_construction" (b : @bench.T) {
 /// Expected result: "600"  (100 × len("HELLO ") = 100 × 6)
 test "exec/string_ops" (b : @bench.T) {
   expect("exec/string_ops", STRING_OPS_SRC, "600")
-  b.bench(
-    fn() {
-      try {
-        let (_, v) = @lib.run(STRING_OPS_SRC)
-        b.keep(v)
-      } catch {
-        _ => abort("run raised")
-      }
-    },
-  )
+  b.bench(fn() {
+    try {
+      let (_, v) = @lib.run(STRING_OPS_SRC)
+      b.keep(v)
+    } catch {
+      _ => abort("run raised")
+    }
+  })
 }
 
 ///|
@@ -325,50 +295,38 @@ test "exec: component comparison" (b : @bench.T) {
   expect("exec/closure_factory", CLOSURE_FACTORY_SRC, "500500")
   expect("exec/object_construction", OBJECT_CONSTRUCTION_SRC, "1000")
   expect("exec/string_ops", STRING_OPS_SRC, "600")
-  b.bench(
-    name="array_map_filter",
-    fn() {
-      try {
-        let (_, v) = @lib.run(ARRAY_MAP_FILTER_SRC)
-        b.keep(v)
-      } catch {
-        _ => abort("run raised")
-      }
-    },
-  )
-  b.bench(
-    name="closure_factory",
-    fn() {
-      try {
-        let (_, v) = @lib.run(CLOSURE_FACTORY_SRC)
-        b.keep(v)
-      } catch {
-        _ => abort("run raised")
-      }
-    },
-  )
-  b.bench(
-    name="object_construction",
-    fn() {
-      try {
-        let (_, v) = @lib.run(OBJECT_CONSTRUCTION_SRC)
-        b.keep(v)
-      } catch {
-        _ => abort("run raised")
-      }
-    },
-  )
-  b.bench(
-    name="string_ops",
-    fn() {
-      try {
-        let (_, v) = @lib.run(STRING_OPS_SRC)
-        b.keep(v)
-      } catch {
-        _ => abort("run raised")
-      }
-    },
-  )
+  b.bench(name="array_map_filter", fn() {
+    try {
+      let (_, v) = @lib.run(ARRAY_MAP_FILTER_SRC)
+      b.keep(v)
+    } catch {
+      _ => abort("run raised")
+    }
+  })
+  b.bench(name="closure_factory", fn() {
+    try {
+      let (_, v) = @lib.run(CLOSURE_FACTORY_SRC)
+      b.keep(v)
+    } catch {
+      _ => abort("run raised")
+    }
+  })
+  b.bench(name="object_construction", fn() {
+    try {
+      let (_, v) = @lib.run(OBJECT_CONSTRUCTION_SRC)
+      b.keep(v)
+    } catch {
+      _ => abort("run raised")
+    }
+  })
+  b.bench(name="string_ops", fn() {
+    try {
+      let (_, v) = @lib.run(STRING_OPS_SRC)
+      b.keep(v)
+    } catch {
+      _ => abort("run raised")
+    }
+  })
 }
 
 // =============================================================================
@@ -391,18 +349,12 @@ test "exec: component comparison" (b : @bench.T) {
 /// but matters for REPL-style use and hot-module-reload scenarios.
 test "pipeline/parse_heavy" (b : @bench.T) {
   // Pre-check: verify parse succeeds on this workload before timing begins.
-  try {
-    b.keep(@parser.parse(PARSER_HEAVY_SRC))
-  } catch {
+  b.keep(@parser.parse(PARSER_HEAVY_SRC)) catch {
     _ => abort("pipeline/parse_heavy: pre-check raised")
   }
-  b.bench(
-    fn() {
-      try {
-        b.keep(@parser.parse(PARSER_HEAVY_SRC))
-      } catch {
-        _ => abort("parse raised")
-      }
-    },
-  )
+  b.bench(fn() {
+    b.keep(@parser.parse(PARSER_HEAVY_SRC)) catch {
+      _ => abort("parse raised")
+    }
+  })
 }

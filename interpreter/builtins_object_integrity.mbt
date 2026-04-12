@@ -130,20 +130,16 @@ fn make_seal_func() -> Value {
 
 ///|
 fn make_prevent_extensions_func() -> Value {
-  make_static_func_with_length(
-    "preventExtensions",
-    1,
-    fn(args) {
-      let obj = if args.length() > 0 { args[0] } else { Undefined }
-      match obj {
-        Object(data) => {
-          data.extensible = false
-          obj
-        }
-        _ => obj
+  make_static_func_with_length("preventExtensions", 1, fn(args) {
+    let obj = if args.length() > 0 { args[0] } else { Undefined }
+    match obj {
+      Object(data) => {
+        data.extensible = false
+        obj
       }
-    },
-  )
+      _ => obj
+    }
+  })
 }
 
 ///|
@@ -347,9 +343,7 @@ fn make_has_own_func() -> Value {
         } else {
           let idx = @string.parse_int(key) catch { _ => -1 }
           Bool(
-            idx >= 0 &&
-            idx.to_string() == key &&
-            idx < data.elements.length(),
+            idx >= 0 && idx.to_string() == key && idx < data.elements.length(),
           )
         }
       }

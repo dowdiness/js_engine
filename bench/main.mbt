@@ -32,9 +32,7 @@ fn main {
       let (name, cat) = pair
       println("  \{name}  [\{cat}]")
     }
-    println(
-      "\nRun with --all to include component and workflow benchmarks.",
-    )
+    println("\nRun with --all to include component and workflow benchmarks.")
     return
   }
   if args.csv {
@@ -44,13 +42,9 @@ fn main {
     println("Primary interface: moon test bench/ --target js")
     println("")
     if args.run_all {
-      println(
-        "Running all benchmarks (regression + component + workflow)...",
-      )
+      println("Running all benchmarks (regression + component + workflow)...")
     } else {
-      println(
-        "Running regression benchmarks only. Use --all for full suite.",
-      )
+      println("Running regression benchmarks only. Use --all for full suite.")
     }
     println("")
   }
@@ -65,9 +59,7 @@ fn main {
     }
     if args.csv == false {
       println("")
-      println(
-        "Done. Run with --all --csv to produce a full baseline snapshot.",
-      )
+      println("Done. Run with --all --csv to produce a full baseline snapshot.")
     }
   } catch {
     e => {
