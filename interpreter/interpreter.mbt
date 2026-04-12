@@ -58,23 +58,34 @@ pub(all) struct TimerTask {
 pub(all) struct ModuleLoader((String) -> Map[String, Value] raise Error)
 
 ///|
+/// Host environment state — concerns that belong to the runtime container
+/// rather than the JavaScript execution model itself.
+///
+/// Separating these fields makes the engine/host boundary explicit and
+/// enables future host-environment variations (different I/O, timer
+/// semantics, or module resolution) without touching execution internals.
+pub(all) struct HostEnv {
+  output : Array[String] // console.log / print accumulator
+  microtask_queue : Array[Microtask] // Promise microtask queue (WHATWG spec)
+  timer_queue : Array[TimerTask] // setTimeout / setInterval task queue
+  timer_id_counter : Ref[Int] // Next timer ID (monotonically increasing)
+  timer_insertion_counter : Ref[Int] // Stable-sort tiebreaker for equal delays
+  cancelled_timer_ids : Map[Int, Bool] // IDs cancelled during an active callback
+  module_loader : ModuleLoader? // Optional host-provided module resolver
+}
+
+///|
 pub(all) struct Interpreter {
-  output : Array[String]
+  host : HostEnv // Host environment (I/O, event loop, module loading)
   global : Environment
   global_this : Value
   mut strict : Bool
   annex_b : Bool // Enable Annex B legacy features (--annex-b flag)
-  microtask_queue : Array[Microtask] // Event loop microtask queue
-  timer_queue : Array[TimerTask] // Timer task queue (WHATWG task queue)
-  timer_id_counter : Ref[Int] // Next timer ID
-  timer_insertion_counter : Ref[Int] // Insertion order counter
-  cancelled_timer_ids : Map[Int, Bool] // IDs cancelled during callback execution
   // ES Modules support
   module_registry : Map[String, Map[String, Value]] // module specifier -> exports namespace
   mut module_exports : Map[String, Value] // current module's exports being built
   mut module_export_bindings : Array[(String, String)] // deferred: (export_name, local_binding_name)
-  module_loader : ModuleLoader? // optional host-provided dynamic module resolver
-  // Generator runtime state (previously module-level globals)
+  // Generator runtime state
   generator_objects : Map[Int, GeneratorObject] // live generator instances keyed by ID
   gen_id_counter : Ref[Int] // monotonically increasing ID for new generator instances
   mut current_generator : GeneratorObject? // generator currently executing (None outside generator body)
@@ -162,26 +173,24 @@ pub fn Interpreter::new(
   setup_generator_function_constructor(global, global_this)
   // Set up test262 harness host functions (print, $262)
   setup_harness_builtins(global, output, global_this)
-  let microtask_queue : Array[Microtask] = []
-  let timer_queue : Array[TimerTask] = []
-  let timer_id_counter : Ref[Int] = { val: 1 }
-  let timer_insertion_counter : Ref[Int] = { val: 0 }
-  let cancelled_timer_ids : Map[Int, Bool] = {}
-  {
+  let host : HostEnv = {
     output,
+    microtask_queue: [],
+    timer_queue: [],
+    timer_id_counter: { val: 1 },
+    timer_insertion_counter: { val: 0 },
+    cancelled_timer_ids: {},
+    module_loader,
+  }
+  {
+    host,
     global,
     global_this,
     strict: false,
     annex_b,
-    microtask_queue,
-    timer_queue,
-    timer_id_counter,
-    timer_insertion_counter,
-    cancelled_timer_ids,
     module_registry: {},
     module_exports: {},
     module_export_bindings: [],
-    module_loader,
     generator_objects: {},
     gen_id_counter: { val: 0 },
     current_generator: None,

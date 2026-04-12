@@ -3,7 +3,7 @@ fn run_js(source : String) -> (Array[String], @interpreter.Value) raise Error {
   let interp = @interpreter.Interpreter::new()
   let prog = @parser.parse(source)
   let result = interp.run(prog.stmts)
-  (interp.output, result)
+  (interp.host.output, result)
 }
 
 ///|

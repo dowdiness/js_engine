@@ -39,7 +39,7 @@ pub fn Interpreter::enqueue_microtask(
   callback : Value,
   args : Array[Value],
 ) -> Unit {
-  self.microtask_queue.push({ callback, args })
+  self.host.microtask_queue.push({ callback, args })
 }
 
 ///|
@@ -51,8 +51,8 @@ pub fn Interpreter::run_microtasks(self : Interpreter) -> Unit raise Error {
   // Note: new microtasks can be enqueued during execution
   // Use index-based draining to avoid O(n²) from repeated remove(0)
   let mut head = 0
-  while head < self.microtask_queue.length() {
-    let task = self.microtask_queue[head]
+  while head < self.host.microtask_queue.length() {
+    let task = self.host.microtask_queue[head]
     head = head + 1
     // Call the callback with queued arguments
     match task.callback {
@@ -68,7 +68,7 @@ pub fn Interpreter::run_microtasks(self : Interpreter) -> Unit raise Error {
     }
   }
   // Clear processed microtasks
-  self.microtask_queue.clear()
+  self.host.microtask_queue.clear()
 }
 
 ///|
@@ -1629,11 +1629,11 @@ pub fn setup_timers(env : Environment) -> Unit {
       for i = 2; i < args.length(); i = i + 1 {
         extra_args.push(args[i])
       }
-      let id = interp.timer_id_counter.val
-      interp.timer_id_counter.val = id + 1
-      let order = interp.timer_insertion_counter.val
-      interp.timer_insertion_counter.val = order + 1
-      interp.timer_queue.push({
+      let id = interp.host.timer_id_counter.val
+      interp.host.timer_id_counter.val = id + 1
+      let order = interp.host.timer_insertion_counter.val
+      interp.host.timer_insertion_counter.val = order + 1
+      interp.host.timer_queue.push({
         id,
         callback,
         args: extra_args,
@@ -1660,7 +1660,7 @@ pub fn setup_timers(env : Environment) -> Unit {
         return Undefined
       }
       // Mark timer as cancelled in queue
-      for timer in interp.timer_queue {
+      for timer in interp.host.timer_queue {
         if timer.id == id {
           timer.cancelled = true
           break
@@ -1668,7 +1668,7 @@ pub fn setup_timers(env : Environment) -> Unit {
       }
       // Also record in cancelled set so run_timers won't re-enqueue
       // an interval whose callback called clearInterval on itself
-      interp.cancelled_timer_ids[id] = true
+      interp.host.cancelled_timer_ids[id] = true
       Undefined
     }),
   )
@@ -1711,11 +1711,11 @@ pub fn setup_timers(env : Environment) -> Unit {
       for i = 2; i < args.length(); i = i + 1 {
         extra_args.push(args[i])
       }
-      let id = interp.timer_id_counter.val
-      interp.timer_id_counter.val = id + 1
-      let order = interp.timer_insertion_counter.val
-      interp.timer_insertion_counter.val = order + 1
-      interp.timer_queue.push({
+      let id = interp.host.timer_id_counter.val
+      interp.host.timer_id_counter.val = id + 1
+      let order = interp.host.timer_insertion_counter.val
+      interp.host.timer_insertion_counter.val = order + 1
+      interp.host.timer_queue.push({
         id,
         callback,
         args: extra_args,
@@ -1741,7 +1741,7 @@ pub fn setup_timers(env : Environment) -> Unit {
       } else {
         return Undefined
       }
-      for timer in interp.timer_queue {
+      for timer in interp.host.timer_queue {
         if timer.id == id {
           timer.cancelled = true
           break
@@ -1749,7 +1749,7 @@ pub fn setup_timers(env : Environment) -> Unit {
       }
       // Also record in cancelled set so run_timers won't re-enqueue
       // an interval whose callback called clearInterval on itself
-      interp.cancelled_timer_ids[id] = true
+      interp.host.cancelled_timer_ids[id] = true
       Undefined
     }),
   )
@@ -1768,10 +1768,10 @@ pub fn Interpreter::run_timers(self : Interpreter) -> Unit raise Error {
   // Safety limit to prevent infinite loops from setInterval
   let max_iterations = 10000
   let mut iterations = 0
-  while self.timer_queue.length() > 0 && iterations < max_iterations {
+  while self.host.timer_queue.length() > 0 && iterations < max_iterations {
     iterations = iterations + 1
     // Sort timers by delay (ascending), then by insertion order (ascending)
-    self.timer_queue.sort_by(fn(a, b) {
+    self.host.timer_queue.sort_by(fn(a, b) {
       if a.delay != b.delay {
         a.delay - b.delay
       } else {
@@ -1779,7 +1779,7 @@ pub fn Interpreter::run_timers(self : Interpreter) -> Unit raise Error {
       }
     })
     // Take the first (soonest) timer
-    let timer = self.timer_queue.remove(0)
+    let timer = self.host.timer_queue.remove(0)
     if timer.cancelled {
       continue
     }
@@ -1794,10 +1794,10 @@ pub fn Interpreter::run_timers(self : Interpreter) -> Unit raise Error {
     // already-removed timer struct — it records in cancelled_timer_ids instead.
     if timer.is_interval &&
       !timer.cancelled &&
-      !self.cancelled_timer_ids.contains(timer.id) {
-      let order = self.timer_insertion_counter.val
-      self.timer_insertion_counter.val = order + 1
-      self.timer_queue.push({
+      !self.host.cancelled_timer_ids.contains(timer.id) {
+      let order = self.host.timer_insertion_counter.val
+      self.host.timer_insertion_counter.val = order + 1
+      self.host.timer_queue.push({
         id: timer.id,
         callback: timer.callback,
         args: timer.args,
@@ -1810,7 +1810,7 @@ pub fn Interpreter::run_timers(self : Interpreter) -> Unit raise Error {
     }
   }
   // Clear the cancelled set for this run
-  self.cancelled_timer_ids.clear()
+  self.host.cancelled_timer_ids.clear()
 }
 
 ///|
