@@ -973,12 +973,7 @@ pub fn setup_promise(env : Environment) -> Unit {
     args,
   ) raise {
     let loc = @token.Loc::default()
-    // Step 1-2: C must be an object
-    match this_val {
-      Object(_) | Promise(_) => ()
-      _ => raise @errors.TypeError(message="Promise.try called on non-object")
-    }
-    // Step 3: NewPromiseCapability(C)
+    // Step 1-3: NewPromiseCapability(C) — validates C is a constructor
     let (promise, resolve, reject) = create_promise_capability_from_constructor(
       interp, this_val, loc,
     )
@@ -993,12 +988,19 @@ pub fn setup_promise(env : Environment) -> Unit {
     } else {
       []
     }
-    // Step 4-6: Call callback, resolve on success, reject on throw
-    try {
-      let result = interp.call_value(callback, Undefined, call_args, loc)
-      let _ = interp.call_value(resolve, Undefined, [result], loc)
-    } catch {
-      err => {
+    // Step 4: Call callback, capture completion
+    let status : Result[Value, _] = Ok(
+      interp.call_value(callback, Undefined, call_args, loc),
+    ) catch {
+      err => Err(err)
+    }
+    // Step 5-6: Resolve or reject based on completion.
+    // resolve/reject throws propagate outward per spec (? Call).
+    match status {
+      Ok(result) => {
+        let _ = interp.call_value(resolve, Undefined, [result], loc)
+      }
+      Err(err) => {
         let error_val = js_error_to_value(err)
         let _ = interp.call_value(reject, Undefined, [error_val], loc)
       }
