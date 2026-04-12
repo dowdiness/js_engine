@@ -258,6 +258,7 @@ fn make_get_own_property_descriptors_func() -> Value {
             extensible: true,
           })
       }
+    },
   )
 }
 
