@@ -190,7 +190,7 @@ pub fn set_function_name(Value, String) -> Unit
 
 pub fn setup_arraybuffer_builtins(Environment) -> Unit
 
-pub fn setup_async_function_constructor(Environment, Value) -> Unit
+pub fn setup_async_function_constructor(Environment) -> Unit
 
 pub fn setup_builtins(Environment, Array[String], SymbolState, annex_b? : Bool) -> Unit
 

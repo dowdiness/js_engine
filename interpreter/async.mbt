@@ -608,10 +608,7 @@ fn get_function_prototype(interp : Interpreter) -> Value {
 ///   AsyncFunction.prototype.__proto__ === Function.prototype
 ///   AsyncFunction.prototype[@@toStringTag] === "AsyncFunction"
 ///   AsyncFunction.prototype.constructor === AsyncFunction
-pub fn setup_async_function_constructor(
-  env : Environment,
-  global_this : Value,
-) -> Unit {
+pub fn setup_async_function_constructor(env : Environment) -> Unit {
   // %AsyncFunction.prototype% inherits from Function.prototype
   let func_proto : Value = match env.bindings.get("[[FunctionPrototype]]") {
     Some(binding) => binding.value
@@ -693,8 +690,9 @@ pub fn setup_async_function_constructor(
         _ => ()
       }
     }
-    // Fallback: empty async function
-    interp.make_async_function(Some("anonymous"), [], None, [], interp.global)
+    raise @errors.SyntaxError(
+      message="Invalid AsyncFunction constructor source",
+    )
   })
   // AsyncFunction.prototype.constructor = AsyncFunction
   match async_func_proto {
@@ -710,12 +708,7 @@ pub fn setup_async_function_constructor(
     }
     _ => ()
   }
-  // Expose on globalThis (not required by spec, but useful for tests)
-  match global_this {
-    Object(data) => data.properties["AsyncFunction"] = async_func_ctor
-    _ => ()
-  }
-  // AsyncFunction.prototype property
+  // AsyncFunction.prototype property on the constructor
   match async_func_ctor {
     Object(data) => {
       data.properties["prototype"] = async_func_proto
@@ -729,6 +722,8 @@ pub fn setup_async_function_constructor(
     }
     _ => ()
   }
-  env.def_builtin("AsyncFunction", async_func_ctor)
+  // Note: AsyncFunction is NOT a global property per spec (section 19).
+  // It is only reachable via (async function(){}).constructor.
+  // We store it as an internal binding so async functions get the right prototype.
   env.def_builtin("[[AsyncFunctionPrototype]]", async_func_proto)
 }
