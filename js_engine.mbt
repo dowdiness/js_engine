@@ -11,7 +11,7 @@ pub fn run(
   interp.run_microtasks()
   // Process timer task queue with microtask checkpoints between each
   interp.run_timers()
-  (interp.output, result.to_string())
+  (interp.host.output, result.to_string())
 }
 
 ///|
@@ -31,13 +31,13 @@ pub fn run_with_event_loop(
 ///|
 /// Check if there are pending microtasks in the queue
 pub fn has_pending_microtasks(interp : @interpreter.Interpreter) -> Bool {
-  interp.microtask_queue.length() > 0
+  interp.host.microtask_queue.length() > 0
 }
 
 ///|
 /// Check if there are pending timers in the queue
 pub fn has_pending_timers(interp : @interpreter.Interpreter) -> Bool {
-  interp.timer_queue.length() > 0
+  interp.host.timer_queue.length() > 0
 }
 
 ///|
@@ -47,7 +47,7 @@ pub fn run_microtask_checkpoint(
   interp : @interpreter.Interpreter,
 ) -> Bool raise Error {
   interp.run_microtasks()
-  interp.microtask_queue.length() > 0
+  interp.host.microtask_queue.length() > 0
 }
 
 ///|
@@ -70,7 +70,7 @@ pub fn run_module(
   let exports = interp.run_module(prog.stmts)
   interp.run_microtasks()
   interp.run_timers()
-  (interp.output, exports)
+  (interp.host.output, exports)
 }
 
 ///|
@@ -93,5 +93,5 @@ pub fn run_modules(
   }
   interp.run_microtasks()
   interp.run_timers()
-  (interp.output, last_exports)
+  (interp.host.output, last_exports)
 }

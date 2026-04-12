@@ -1848,7 +1848,7 @@ fn Interpreter::eval_member(
   match obj_expr {
     Ident("console", _) =>
       if prop == "log" {
-        let output = self.output
+        let output = self.host.output
         make_native_func("log", fn(args) {
           let parts : Array[String] = args.map(fn(a) { a.to_string() })
           output.push(parts.join(" "))

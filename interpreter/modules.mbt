@@ -13,7 +13,7 @@ fn Interpreter::exec_import(
   let module_exports = match self.module_registry.get(source) {
     Some(exports) => exports
     None =>
-      match self.module_loader {
+      match self.host.module_loader {
         Some(ModuleLoader(load)) => {
           let exports = load(source)
           // Cache the result so repeated imports of the same specifier are free
@@ -111,7 +111,7 @@ fn Interpreter::exec_export_named(
       let src_exports = match self.module_registry.get(src) {
         Some(exports) => exports
         None =>
-          match self.module_loader {
+          match self.host.module_loader {
             Some(ModuleLoader(load)) => {
               let exports = load(src)
               self.module_registry[src] = exports
@@ -154,7 +154,7 @@ fn Interpreter::exec_export_all(
   let src_exports = match self.module_registry.get(source) {
     Some(exports) => exports
     None =>
-      match self.module_loader {
+      match self.host.module_loader {
         Some(ModuleLoader(load)) => {
           let exports = load(source)
           self.module_registry[source] = exports
