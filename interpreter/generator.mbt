@@ -293,13 +293,8 @@ pub fn setup_generator_function_constructor(
         _ => ()
       }
     }
-    // Fallback: empty generator function
-    interp.make_generator_function(
-      Some("anonymous"),
-      [],
-      None,
-      [],
-      interp.global,
+    raise @errors.SyntaxError(
+      message="Invalid GeneratorFunction constructor source",
     )
   })
   // Set up prototype chain: GeneratorFunction.prototype.constructor = GeneratorFunction

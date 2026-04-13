@@ -1,4 +1,14 @@
 ///|
+fn func_kind_prefix(class_name : String) -> String {
+  match class_name {
+    "AsyncFunction" => "async function "
+    "GeneratorFunction" => "function* "
+    "AsyncGeneratorFunction" => "async function* "
+    _ => "function "
+  }
+}
+
+///|
 fn setup_function_builtins(env : Environment) -> Unit {
   // Create Function.prototype
   let func_proto_props : Map[String, Value] = {}
@@ -9,33 +19,45 @@ fn setup_function_builtins(env : Environment) -> Unit {
     _args,
   ) raise {
     match this_val {
-      Object(data) =>
+      Object(data) => {
+        let prefix = func_kind_prefix(data.class_name)
         match data.callable {
           Some(UserFunc(func_data)) => {
             let name = func_data.name.unwrap_or("")
-            String_("function " + name + "() { [native code] }")
+            String_(prefix + name + "() { [native code] }")
           }
           Some(UserFuncExt(func_data)) => {
             let name = func_data.name.unwrap_or("")
-            String_("function " + name + "() { [native code] }")
+            String_(prefix + name + "() { [native code] }")
           }
-          Some(ArrowFunc(_)) => String_("() => { [native code] }")
-          Some(ArrowFuncExt(_)) => String_("() => { [native code] }")
+          Some(ArrowFunc(_)) =>
+            if data.class_name == "AsyncFunction" {
+              String_("async () => { [native code] }")
+            } else {
+              String_("() => { [native code] }")
+            }
+          Some(ArrowFuncExt(_)) =>
+            if data.class_name == "AsyncFunction" {
+              String_("async () => { [native code] }")
+            } else {
+              String_("() => { [native code] }")
+            }
           Some(NativeCallable(name, _)) =>
-            String_("function " + name + "() { [native code] }")
+            String_(prefix + name + "() { [native code] }")
           Some(NonConstructableCallable(name, _)) =>
-            String_("function " + name + "() { [native code] }")
-          Some(BoundFunc(_, _, _)) => String_("function () { [native code] }")
+            String_(prefix + name + "() { [native code] }")
+          Some(BoundFunc(_, _, _)) =>
+            String_(prefix + "() { [native code] }")
           Some(MethodCallable(name, _)) =>
-            String_("function " + name + "() { [native code] }")
+            String_(prefix + name + "() { [native code] }")
           Some(InterpreterCallable(name, _)) =>
-            String_("function " + name + "() { [native code] }")
+            String_(prefix + name + "() { [native code] }")
           Some(ConstructorOnlyCallable(name, _)) =>
-            String_("function " + name + "() { [native code] }")
+            String_(prefix + name + "() { [native code] }")
           Some(FuncCallMethod(_)) =>
-            String_("function call() { [native code] }")
+            String_(prefix + "call() { [native code] }")
           Some(FuncApplyMethod(_)) =>
-            String_("function apply() { [native code] }")
+            String_(prefix + "apply() { [native code] }")
           Some(ClassConstructor({ name, .. })) =>
             String_("class " + name + " { [native code] }")
           None =>
@@ -43,6 +65,7 @@ fn setup_function_builtins(env : Environment) -> Unit {
               message="Function.prototype.toString requires a function",
             )
         }
+      }
       _ =>
         raise @errors.TypeError(
           message="Function.prototype.toString requires a function",

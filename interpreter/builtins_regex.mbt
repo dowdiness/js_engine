@@ -1078,9 +1078,21 @@ pub fn make_regexp_object(
   let has_sticky = flags.contains("y")
   let has_unicode = flags.contains("u")
   let has_dotall = flags.contains("s")
+  // Normalize flag ordering per spec: alphabetical (dgimsuy)
+  let sorted_flags = {
+    let buf = StringBuilder::new()
+    if flags.contains("d") { buf.write_string("d") }
+    if has_global { buf.write_string("g") }
+    if has_ignore_case { buf.write_string("i") }
+    if has_multiline { buf.write_string("m") }
+    if has_dotall { buf.write_string("s") }
+    if has_unicode { buf.write_string("u") }
+    if has_sticky { buf.write_string("y") }
+    buf.to_string()
+  }
   let props : Map[String, Value] = {}
   props["source"] = String_(pattern)
-  props["flags"] = String_(flags)
+  props["flags"] = String_(sorted_flags)
   props["global"] = Bool(has_global)
   props["ignoreCase"] = Bool(has_ignore_case)
   props["multiline"] = Bool(has_multiline)
