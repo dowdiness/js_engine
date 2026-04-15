@@ -521,24 +521,24 @@ fn RegexParser::parse_group(self : RegexParser) -> RegexNode raise Error {
             )
           }
         }
-        // Parse group name
+        // Parse group name in a single pass
         self.pos += 2 // skip '?<'
-        let name_start = self.pos
-        // First char must be _, $, or alphabetic
         if self.pos >= self.pattern.length() {
           raise @errors.SyntaxError(
             message="Invalid regex: unterminated group name",
           )
         }
+        let name_buf = StringBuilder::new()
         let first = self.pattern[self.pos]
         if !is_id_start_char(first) {
           raise @errors.SyntaxError(message="Invalid regex: invalid group name")
         }
+        name_buf.write_char(first)
         self.pos += 1
-        // Subsequent chars: _, $, alphanumeric, ZWNJ (0x200C), ZWJ (0x200D)
         while self.pos < self.pattern.length() && self.pattern[self.pos] != '>' {
           let c = self.pattern[self.pos]
           if is_id_continue_char(c) {
+            name_buf.write_char(c)
             self.pos += 1
           } else {
             raise @errors.SyntaxError(
@@ -550,11 +550,6 @@ fn RegexParser::parse_group(self : RegexParser) -> RegexNode raise Error {
           raise @errors.SyntaxError(
             message="Invalid regex: unterminated group name",
           )
-        }
-        // Extract name
-        let name_buf = StringBuilder::new()
-        for i = name_start; i < self.pos; i = i + 1 {
-          name_buf.write_char(self.pattern[i])
         }
         let name = name_buf.to_string()
         self.pos += 1 // skip '>'
@@ -1775,9 +1770,8 @@ fn process_replacement(
           i += 2
           continue
         }
-        // Found '>' — look up name
+        // Found '>' — look up name and substitute
         let name = name_buf.to_string()
-        let mut found = false
         for pair in m.group_names {
           let (gname, gidx) = pair
           if gname == name {
@@ -1787,11 +1781,9 @@ fn process_replacement(
                 None => () // unmatched: empty string
               }
             }
-            found = true
             break
           }
         }
-        let _ = found
         i = j + 1 // skip past '>'
         continue
       } else if next == '$' {
