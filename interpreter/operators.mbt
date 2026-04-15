@@ -1,6 +1,7 @@
 ///|
 fn Interpreter::eval_update(
   self : Interpreter,
+  ctx : ExecContext,
   op : @ast.UpdateOp,
   operand : @ast.Expr,
   prefix : Bool,
@@ -10,7 +11,7 @@ fn Interpreter::eval_update(
   match operand {
     Ident(name, _) => {
       // Strict mode: update of eval/arguments is a SyntaxError
-      if self.strict && (name == "eval" || name == "arguments") {
+      if ctx.strict && (name == "eval" || name == "arguments") {
         raise @errors.SyntaxError(
           message="Unexpected eval or arguments in strict mode",
         )
@@ -22,7 +23,7 @@ fn Interpreter::eval_update(
         Decrement => Number(num - 1.0)
       }
       if self.is_immutable_global(name) {
-        if self.strict {
+        if ctx.strict {
           raise @errors.TypeError(
             message="Cannot assign to read only property '\{name}' of object '[object global]'",
           )
@@ -37,14 +38,14 @@ fn Interpreter::eval_update(
       }
     }
     Member(obj_expr, prop, mloc) => {
-      let obj = self.eval_expr(obj_expr, env)
+      let obj = self.eval_expr(ctx, obj_expr, env)
       let current = self.get_property(obj, prop, mloc)
       let num = to_number(current)
       let new_val : Value = match op {
         Increment => Number(num + 1.0)
         Decrement => Number(num - 1.0)
       }
-      let _ = self.set_property(obj, prop, new_val, loc)
+      let _ = self.set_property(obj, prop, new_val, loc, strict=ctx.strict)
       if prefix {
         new_val
       } else {
@@ -52,8 +53,8 @@ fn Interpreter::eval_update(
       }
     }
     ComputedMember(obj_expr, key_expr, mloc) => {
-      let obj = self.eval_expr(obj_expr, env)
-      let key = self.eval_expr(key_expr, env)
+      let obj = self.eval_expr(ctx, obj_expr, env)
+      let key = self.eval_expr(ctx, key_expr, env)
       // Convert key to property key once (ToPropertyKey)
       let prop_key : Value = match key {
         Symbol(_) => key
@@ -65,7 +66,7 @@ fn Interpreter::eval_update(
         Increment => Number(num + 1.0)
         Decrement => Number(num - 1.0)
       }
-      let _ = self.set_computed_property(obj, prop_key, new_val, loc)
+      let _ = self.set_computed_property(obj, prop_key, new_val, loc, strict=ctx.strict)
       if prefix {
         new_val
       } else {
@@ -82,6 +83,7 @@ fn Interpreter::eval_update(
 ///|
 fn Interpreter::eval_compound_assign(
   self : Interpreter,
+  ctx : ExecContext,
   op : @ast.CompoundOp,
   target : @ast.Expr,
   value_expr : @ast.Expr,
@@ -91,11 +93,11 @@ fn Interpreter::eval_compound_assign(
   // Handle logical assignment operators with short-circuit semantics
   match op {
     LogicalAndAssign =>
-      return self.eval_logical_assign_and(target, value_expr, env, loc)
+      return self.eval_logical_assign_and(ctx, target, value_expr, env, loc)
     LogicalOrAssign =>
-      return self.eval_logical_assign_or(target, value_expr, env, loc)
+      return self.eval_logical_assign_or(ctx, target, value_expr, env, loc)
     NullishAssign =>
-      return self.eval_nullish_assign(target, value_expr, env, loc)
+      return self.eval_nullish_assign(ctx, target, value_expr, env, loc)
     _ => ()
   }
   let bin_op : @ast.BinOp = match op {
@@ -116,17 +118,17 @@ fn Interpreter::eval_compound_assign(
   match target {
     Ident(name, _) => {
       // Strict mode: compound assignment to eval/arguments is a SyntaxError
-      if self.strict && (name == "eval" || name == "arguments") {
+      if ctx.strict && (name == "eval" || name == "arguments") {
         raise @errors.SyntaxError(
           message="Unexpected eval or arguments in strict mode",
         )
       }
       let current = env.get(name)
-      let rhs = self.eval_expr(value_expr, env)
+      let rhs = self.eval_expr(ctx, value_expr, env)
       let result = eval_binary_op(bin_op, current, rhs, loc)
       // Check if the target is a non-writable property on the global object
       if self.is_immutable_global(name) {
-        if self.strict {
+        if ctx.strict {
           raise @errors.TypeError(
             message="Cannot assign to read only property '\{name}' of object '[object global]'",
           )
@@ -137,16 +139,16 @@ fn Interpreter::eval_compound_assign(
       result
     }
     Member(obj_expr, prop, mloc) => {
-      let obj = self.eval_expr(obj_expr, env)
+      let obj = self.eval_expr(ctx, obj_expr, env)
       let current = self.get_property(obj, prop, mloc)
-      let rhs = self.eval_expr(value_expr, env)
+      let rhs = self.eval_expr(ctx, value_expr, env)
       let result = eval_binary_op(bin_op, current, rhs, loc)
-      let _ = self.set_property(obj, prop, result, loc)
+      let _ = self.set_property(obj, prop, result, loc, strict=ctx.strict)
       result
     }
     ComputedMember(obj_expr, key_expr, mloc) => {
-      let obj = self.eval_expr(obj_expr, env)
-      let key = self.eval_expr(key_expr, env)
+      let obj = self.eval_expr(ctx, obj_expr, env)
+      let key = self.eval_expr(ctx, key_expr, env)
       // Per ES5 11.2.1 step 5: CheckObjectCoercible(baseValue) before ToString
       if obj is Null {
         raise @errors.TypeError(message="Cannot read properties of null")
@@ -161,9 +163,9 @@ fn Interpreter::eval_compound_assign(
         _ => String_(to_js_string(key))
       }
       let current = self.get_computed_property(obj, prop_key, mloc)
-      let rhs = self.eval_expr(value_expr, env)
+      let rhs = self.eval_expr(ctx, value_expr, env)
       let result = eval_binary_op(bin_op, current, rhs, loc)
-      let _ = self.set_computed_property(obj, prop_key, result, loc)
+      let _ = self.set_computed_property(obj, prop_key, result, loc, strict=ctx.strict)
       result
     }
     _ =>
@@ -176,6 +178,7 @@ fn Interpreter::eval_compound_assign(
 ///|
 fn Interpreter::eval_logical_assign_and(
   self : Interpreter,
+  ctx : ExecContext,
   target : @ast.Expr,
   value_expr : @ast.Expr,
   env : Environment,
@@ -184,16 +187,16 @@ fn Interpreter::eval_logical_assign_and(
   // x &&= y: if x is truthy, assign y to x; return final value
   match target {
     Ident(name, _) => {
-      if self.strict && (name == "eval" || name == "arguments") {
+      if ctx.strict && (name == "eval" || name == "arguments") {
         raise @errors.SyntaxError(
           message="Unexpected eval or arguments in strict mode",
         )
       }
       let current = env.get(name)
       if is_truthy(current) {
-        let rhs = self.eval_expr(value_expr, env)
+        let rhs = self.eval_expr(ctx, value_expr, env)
         if self.is_immutable_global(name) {
-          if self.strict {
+          if ctx.strict {
             raise @errors.TypeError(
               message="Cannot assign to read only property '\{name}' of object '[object global]'",
             )
@@ -207,18 +210,18 @@ fn Interpreter::eval_logical_assign_and(
       }
     }
     Member(obj_expr, prop, mloc) => {
-      let obj = self.eval_expr(obj_expr, env)
+      let obj = self.eval_expr(ctx, obj_expr, env)
       let current = self.get_property(obj, prop, mloc)
       if is_truthy(current) {
-        let rhs = self.eval_expr(value_expr, env)
-        self.set_property(obj, prop, rhs, loc)
+        let rhs = self.eval_expr(ctx, value_expr, env)
+        self.set_property(obj, prop, rhs, loc, strict=ctx.strict)
       } else {
         current
       }
     }
     ComputedMember(obj_expr, key_expr, mloc) => {
-      let obj = self.eval_expr(obj_expr, env)
-      let key = self.eval_expr(key_expr, env)
+      let obj = self.eval_expr(ctx, obj_expr, env)
+      let key = self.eval_expr(ctx, key_expr, env)
       // Per ES5 11.2.1 step 5: CheckObjectCoercible(baseValue) before ToString
       if obj is Null {
         raise @errors.TypeError(message="Cannot read properties of null")
@@ -228,8 +231,8 @@ fn Interpreter::eval_logical_assign_and(
       }
       let current = self.get_computed_property(obj, key, mloc)
       if is_truthy(current) {
-        let rhs = self.eval_expr(value_expr, env)
-        self.set_computed_property(obj, key, rhs, loc)
+        let rhs = self.eval_expr(ctx, value_expr, env)
+        self.set_computed_property(obj, key, rhs, loc, strict=ctx.strict)
       } else {
         current
       }
@@ -244,6 +247,7 @@ fn Interpreter::eval_logical_assign_and(
 ///|
 fn Interpreter::eval_logical_assign_or(
   self : Interpreter,
+  ctx : ExecContext,
   target : @ast.Expr,
   value_expr : @ast.Expr,
   env : Environment,
@@ -252,16 +256,16 @@ fn Interpreter::eval_logical_assign_or(
   // x ||= y: if x is falsy, assign y to x; return final value
   match target {
     Ident(name, _) => {
-      if self.strict && (name == "eval" || name == "arguments") {
+      if ctx.strict && (name == "eval" || name == "arguments") {
         raise @errors.SyntaxError(
           message="Unexpected eval or arguments in strict mode",
         )
       }
       let current = env.get(name)
       if !is_truthy(current) {
-        let rhs = self.eval_expr(value_expr, env)
+        let rhs = self.eval_expr(ctx, value_expr, env)
         if self.is_immutable_global(name) {
-          if self.strict {
+          if ctx.strict {
             raise @errors.TypeError(
               message="Cannot assign to read only property '\{name}' of object '[object global]'",
             )
@@ -275,18 +279,18 @@ fn Interpreter::eval_logical_assign_or(
       }
     }
     Member(obj_expr, prop, mloc) => {
-      let obj = self.eval_expr(obj_expr, env)
+      let obj = self.eval_expr(ctx, obj_expr, env)
       let current = self.get_property(obj, prop, mloc)
       if !is_truthy(current) {
-        let rhs = self.eval_expr(value_expr, env)
-        self.set_property(obj, prop, rhs, loc)
+        let rhs = self.eval_expr(ctx, value_expr, env)
+        self.set_property(obj, prop, rhs, loc, strict=ctx.strict)
       } else {
         current
       }
     }
     ComputedMember(obj_expr, key_expr, mloc) => {
-      let obj = self.eval_expr(obj_expr, env)
-      let key = self.eval_expr(key_expr, env)
+      let obj = self.eval_expr(ctx, obj_expr, env)
+      let key = self.eval_expr(ctx, key_expr, env)
       // Per ES5 11.2.1 step 5: CheckObjectCoercible(baseValue) before ToString
       if obj is Null {
         raise @errors.TypeError(message="Cannot read properties of null")
@@ -296,8 +300,8 @@ fn Interpreter::eval_logical_assign_or(
       }
       let current = self.get_computed_property(obj, key, mloc)
       if !is_truthy(current) {
-        let rhs = self.eval_expr(value_expr, env)
-        self.set_computed_property(obj, key, rhs, loc)
+        let rhs = self.eval_expr(ctx, value_expr, env)
+        self.set_computed_property(obj, key, rhs, loc, strict=ctx.strict)
       } else {
         current
       }
@@ -312,6 +316,7 @@ fn Interpreter::eval_logical_assign_or(
 ///|
 fn Interpreter::eval_nullish_assign(
   self : Interpreter,
+  ctx : ExecContext,
   target : @ast.Expr,
   value_expr : @ast.Expr,
   env : Environment,
@@ -320,7 +325,7 @@ fn Interpreter::eval_nullish_assign(
   // x ??= y: if x is null or undefined, assign y to x; return final value
   match target {
     Ident(name, _) => {
-      if self.strict && (name == "eval" || name == "arguments") {
+      if ctx.strict && (name == "eval" || name == "arguments") {
         raise @errors.SyntaxError(
           message="Unexpected eval or arguments in strict mode",
         )
@@ -328,9 +333,9 @@ fn Interpreter::eval_nullish_assign(
       let current = env.get(name)
       match current {
         Null | Undefined => {
-          let rhs = self.eval_expr(value_expr, env)
+          let rhs = self.eval_expr(ctx, value_expr, env)
           if self.is_immutable_global(name) {
-            if self.strict {
+            if ctx.strict {
               raise @errors.TypeError(
                 message="Cannot assign to read only property '\{name}' of object '[object global]'",
               )
@@ -344,19 +349,19 @@ fn Interpreter::eval_nullish_assign(
       }
     }
     Member(obj_expr, prop, mloc) => {
-      let obj = self.eval_expr(obj_expr, env)
+      let obj = self.eval_expr(ctx, obj_expr, env)
       let current = self.get_property(obj, prop, mloc)
       match current {
         Null | Undefined => {
-          let rhs = self.eval_expr(value_expr, env)
-          self.set_property(obj, prop, rhs, loc)
+          let rhs = self.eval_expr(ctx, value_expr, env)
+          self.set_property(obj, prop, rhs, loc, strict=ctx.strict)
         }
         _ => current
       }
     }
     ComputedMember(obj_expr, key_expr, mloc) => {
-      let obj = self.eval_expr(obj_expr, env)
-      let key = self.eval_expr(key_expr, env)
+      let obj = self.eval_expr(ctx, obj_expr, env)
+      let key = self.eval_expr(ctx, key_expr, env)
       // Per ES5 11.2.1 step 5: CheckObjectCoercible(baseValue) before ToString
       if obj is Null {
         raise @errors.TypeError(message="Cannot read properties of null")
@@ -367,8 +372,8 @@ fn Interpreter::eval_nullish_assign(
       let current = self.get_computed_property(obj, key, mloc)
       match current {
         Null | Undefined => {
-          let rhs = self.eval_expr(value_expr, env)
-          self.set_computed_property(obj, key, rhs, loc)
+          let rhs = self.eval_expr(ctx, value_expr, env)
+          self.set_computed_property(obj, key, rhs, loc, strict=ctx.strict)
         }
         _ => current
       }

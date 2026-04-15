@@ -1268,6 +1268,7 @@ fn Interpreter::set_property(
   prop : String,
   value : Value,
   loc : @token.Loc,
+  strict~ : Bool = false,
 ) -> Value raise Error {
   match obj {
     Proxy(proxy_data) => {
@@ -1283,7 +1284,7 @@ fn Interpreter::set_property(
             loc,
           )
           if !is_truthy(result) {
-            if self.strict {
+            if strict {
               raise @errors.TypeError(
                 message="'set' on proxy: trap returned falsish for property '\{prop}'",
               )
@@ -1293,7 +1294,7 @@ fn Interpreter::set_property(
         }
         None => {
           let target = get_proxy_target(proxy_data)
-          self.set_property(target, prop, value, loc)
+          self.set_property(target, prop, value, loc, strict~)
         }
       }
     }
@@ -1327,14 +1328,14 @@ fn Interpreter::set_property(
             }
             None =>
               if desc.getter is Some(_) {
-                if self.strict {
+                if strict {
                   raise @errors.TypeError(
                     message="Cannot set property \{prop} which has only a getter",
                   )
                 }
                 return value
               } else if !desc.writable {
-                if self.strict {
+                if strict {
                   raise @errors.TypeError(
                     message="Cannot assign to read only property '\{prop}'",
                   )
@@ -1357,7 +1358,7 @@ fn Interpreter::set_property(
                       }
                       None =>
                         if desc.getter is Some(_) {
-                          if self.strict {
+                          if strict {
                             raise @errors.TypeError(
                               message="Cannot set property \{prop} which has only a getter",
                             )
@@ -1365,7 +1366,7 @@ fn Interpreter::set_property(
                           return value
                         } else if !desc.writable {
                           // Inherited non-writable data property blocks assignment
-                          if self.strict {
+                          if strict {
                             raise @errors.TypeError(
                               message="Cannot assign to read only property '\{prop}'",
                             )
@@ -1384,7 +1385,7 @@ fn Interpreter::set_property(
       }
       // Check extensible for new properties
       if !data.properties.contains(prop) && !data.extensible {
-        if self.strict {
+        if strict {
           raise @errors.TypeError(
             message="Cannot add property \{prop}, object is not extensible",
           )
@@ -1449,14 +1450,14 @@ fn Interpreter::set_property(
             }
             None =>
               if desc.getter is Some(_) {
-                if self.strict {
+                if strict {
                   raise @errors.TypeError(
                     message="Cannot set property \{prop} which has only a getter",
                   )
                 }
                 return value
               } else if !desc.writable {
-                if self.strict {
+                if strict {
                   raise @errors.TypeError(
                     message="Cannot assign to read only property '\{prop}'",
                   )
@@ -1480,7 +1481,7 @@ fn Interpreter::set_property(
     _ =>
       // In non-strict mode, setting a property on a primitive is silently ignored
       // (the temporary wrapper object is discarded). In strict mode, throw TypeError.
-      if self.strict {
+      if strict {
         raise @errors.TypeError(
           message="Cannot set property '\{prop}' of \{type_of(obj)}",
         )
@@ -1497,6 +1498,7 @@ fn Interpreter::set_computed_property(
   key : Value,
   value : Value,
   loc : @token.Loc,
+  strict~ : Bool = false,
 ) -> Value raise Error {
   match obj {
     Proxy(proxy_data) => {
@@ -1516,7 +1518,7 @@ fn Interpreter::set_computed_property(
             loc,
           )
           if !is_truthy(result) {
-            if self.strict {
+            if strict {
               raise @errors.TypeError(
                 message="'set' on proxy: trap returned falsish",
               )
@@ -1526,7 +1528,7 @@ fn Interpreter::set_computed_property(
         }
         None => {
           let target = get_proxy_target(proxy_data)
-          return self.set_computed_property(target, key, value, loc)
+          return self.set_computed_property(target, key, value, loc, strict~)
         }
       }
     }
@@ -1543,14 +1545,14 @@ fn Interpreter::set_computed_property(
                 }
                 None =>
                   if desc.getter is Some(_) {
-                    if self.strict {
+                    if strict {
                       raise @errors.TypeError(
                         message="Cannot set property which has only a getter",
                       )
                     }
                     return value
                   } else if !desc.writable {
-                    if self.strict {
+                    if strict {
                       raise @errors.TypeError(
                         message="Cannot assign to read only property",
                       )
@@ -1573,14 +1575,14 @@ fn Interpreter::set_computed_property(
                           }
                           None =>
                             if desc.getter is Some(_) {
-                              if self.strict {
+                              if strict {
                                 raise @errors.TypeError(
                                   message="Cannot set property which has only a getter",
                                 )
                               }
                               return value
                             } else if !desc.writable {
-                              if self.strict {
+                              if strict {
                                 raise @errors.TypeError(
                                   message="Cannot assign to read only property",
                                 )
@@ -1598,7 +1600,7 @@ fn Interpreter::set_computed_property(
             }
           }
           if !data.symbol_properties.contains(sym.id) && !data.extensible {
-            if self.strict {
+            if strict {
               raise @errors.TypeError(
                 message="Cannot add property, object is not extensible",
               )
@@ -1651,14 +1653,14 @@ fn Interpreter::set_computed_property(
                 }
                 None =>
                   if desc.getter is Some(_) {
-                    if self.strict {
+                    if strict {
                       raise @errors.TypeError(
                         message="Cannot set property \{prop} which has only a getter",
                       )
                     }
                     return value
                   } else if !desc.writable {
-                    if self.strict {
+                    if strict {
                       raise @errors.TypeError(
                         message="Cannot assign to read only property '\{prop}'",
                       )
@@ -1681,14 +1683,14 @@ fn Interpreter::set_computed_property(
                           }
                           None =>
                             if desc.getter is Some(_) {
-                              if self.strict {
+                              if strict {
                                 raise @errors.TypeError(
                                   message="Cannot set property \{prop} which has only a getter",
                                 )
                               }
                               return value
                             } else if !desc.writable {
-                              if self.strict {
+                              if strict {
                                 raise @errors.TypeError(
                                   message="Cannot assign to read only property '\{prop}'",
                                 )
@@ -1706,7 +1708,7 @@ fn Interpreter::set_computed_property(
             }
           }
           if !data.properties.contains(prop) && !data.extensible {
-            if self.strict {
+            if strict {
               raise @errors.TypeError(
                 message="Cannot add property \{prop}, object is not extensible",
               )
@@ -1826,7 +1828,7 @@ fn Interpreter::set_computed_property(
       )
     }
     _ =>
-      if self.strict {
+      if strict {
         raise @errors.TypeError(
           message="Cannot set property of \{type_of(obj)}",
         )
@@ -1839,6 +1841,7 @@ fn Interpreter::set_computed_property(
 ///|
 fn Interpreter::eval_member(
   self : Interpreter,
+  ctx : ExecContext,
   obj_expr : @ast.Expr,
   prop : String,
   env : Environment,
@@ -1858,7 +1861,7 @@ fn Interpreter::eval_member(
         raise @errors.TypeError(message="console.\{prop} is not supported")
       }
     _ => {
-      let obj = self.eval_expr(obj_expr, env)
+      let obj = self.eval_expr(ctx, obj_expr, env)
       self.get_property(obj, prop, loc)
     }
   }

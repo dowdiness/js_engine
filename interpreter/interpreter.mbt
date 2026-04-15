@@ -30,6 +30,15 @@ pub(all) enum Signal {
 }
 
 ///|
+/// Immutable per-call execution context passed through the evaluation pipeline.
+/// Replaces the mutable `strict` and `current_generator` fields that were
+/// previously on the Interpreter struct, eliminating fragile save/restore patterns.
+pub(all) struct ExecContext {
+  strict : Bool
+  current_generator : GeneratorObject?
+}
+
+///|
 /// Microtask record for the event loop microtask queue
 /// Stores a callback function and argument list to pass to it
 pub(all) struct Microtask {
@@ -79,7 +88,6 @@ pub(all) struct Interpreter {
   host : HostEnv // Host environment (I/O, event loop, module loading)
   global : Environment
   global_this : Value
-  mut strict : Bool
   annex_b : Bool // Enable Annex B legacy features (--annex-b flag)
   // ES Modules support
   module_registry : Map[String, Map[String, Value]] // module specifier -> exports namespace
@@ -88,7 +96,6 @@ pub(all) struct Interpreter {
   // Generator runtime state
   generator_objects : Map[Int, GeneratorObject] // live generator instances keyed by ID
   gen_id_counter : Ref[Int] // monotonically increasing ID for new generator instances
-  mut current_generator : GeneratorObject? // generator currently executing (None outside generator body)
   // Per-interpreter symbol state (ID counter, all-symbols table, Symbol.for registry)
   symbols : SymbolState
 }
@@ -188,14 +195,12 @@ pub fn Interpreter::new(
     host,
     global,
     global_this,
-    strict: false,
     annex_b,
     module_registry: {},
     module_exports: {},
     module_export_bindings: [],
     generator_objects: {},
     gen_id_counter: { val: 0 },
-    current_generator: None,
     symbols,
   }
 }
@@ -392,18 +397,16 @@ pub fn Interpreter::run(
 ) -> Value raise Error {
   // Store interpreter ref for ToPrimitive to use when calling user functions
   current_interpreter.val = Some(self)
+  let strict = has_use_strict(stmts)
+  let ctx : ExecContext = { strict, current_generator: None }
   try {
-    // Check for "use strict" directive
-    if has_use_strict(stmts) {
-      self.strict = true
-    }
     // Static block-scoped redeclaration checks (block lexical-vs-var conflicts).
-    self.validate_block_early_errors(stmts, self.strict)
+    self.validate_block_early_errors(stmts, strict)
     // Hoist var declarations and function declarations at global level
-    self.hoist_declarations(stmts, self.global)
+    self.hoist_declarations(stmts, self.global, strict~)
     let mut last : Value = Undefined
     for stmt in stmts {
-      match self.exec_stmt(stmt, self.global) {
+      match self.exec_stmt(ctx, stmt, self.global) {
         Normal(v) => last = v
         ReturnSignal(_) =>
           raise @errors.SyntaxError(

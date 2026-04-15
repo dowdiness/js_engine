@@ -1,13 +1,14 @@
 ///|
 fn Interpreter::eval_new(
   self : Interpreter,
+  ctx : ExecContext,
   callee_expr : @ast.Expr,
   arg_exprs : Array[@ast.Expr],
   env : Environment,
   _loc : @token.Loc,
 ) -> Value raise Error {
-  let ctor = self.eval_expr(callee_expr, env)
-  let args : Array[Value] = self.eval_args_with_spread(arg_exprs, env)
+  let ctor = self.eval_expr(ctx, callee_expr, env)
+  let args : Array[Value] = self.eval_args_with_spread(ctx, arg_exprs, env)
   self.construct_value(ctor, args, _loc)
 }
 
@@ -29,8 +30,7 @@ fn Interpreter::install_instance_fields(
   fields : Array[ClassFieldInit],
 ) -> Unit raise Error {
   // Class field initializers are always evaluated as strict code per spec
-  let saved_strict = self.strict
-  self.strict = true
+  let field_ctx : ExecContext = { strict: true, current_generator: None }
   let field_desc : PropDescriptor = {
     writable: true,
     enumerable: true,
@@ -38,16 +38,15 @@ fn Interpreter::install_instance_fields(
     getter: None,
     setter: None,
   }
-  try {
-    for field in fields {
-      let field_value : Value = match field.initializer {
-        Some(expr) => {
-          let init_env = Environment::new(parent=Some(field.closure))
-          init_env.def_builtin("this", this_arg)
-          self.eval_expr(expr, init_env)
-        }
-        None => Undefined
+  for field in fields {
+    let field_value : Value = match field.initializer {
+      Some(expr) => {
+        let init_env = Environment::new(parent=Some(field.closure))
+        init_env.def_builtin("this", this_arg)
+        self.eval_expr(field_ctx, expr, init_env)
       }
+      None => Undefined
+    }
       match this_arg {
         Object(data) =>
           // CreateDataPropertyOrThrow semantics: check [[DefineOwnProperty]]
@@ -204,13 +203,7 @@ fn Interpreter::install_instance_fields(
         }
       }
     }
-  } catch {
-    e => {
-      self.strict = saved_strict
-      raise e
-    }
   }
-  self.strict = saved_strict
 }
 
 ///|
@@ -461,223 +454,203 @@ fn Interpreter::construct_value(
     Object(obj_data) =>
       match obj_data.callable {
         Some(UserFunc(data)) => {
-          let saved_strict = self.strict
-          let result = try {
-            let func_strict = data.strict
-            self.strict = func_strict
-            if func_strict {
-              // Strict mode: check for duplicate parameters and reserved names
-              check_duplicate_params(data.params)
-              for p in data.params {
-                validate_strict_binding_name(p)
-              }
-            }
-            let proto = match proto_override {
-              Some(p) => p
-              None =>
-                match obj_data.properties.get("prototype") {
-                  Some(v) => v
-                  None => Null
-                }
-            }
-            let new_obj = make_constructor_instance(proto, "Object")
-            let func_env = Environment::new(parent=Some(data.closure))
-            func_env.is_var_scope = true
-            func_env.def("this", new_obj, LetBinding)
-            func_env.def("<new.target>", ctor, LetBinding)
-            for i = 0; i < data.params.length(); i = i + 1 {
-              let val : Value = if i < args.length() {
-                args[i]
-              } else {
-                Undefined
-              }
-              // In sloppy mode, duplicate params are allowed; last value wins
-              if func_env.bindings.contains(data.params[i]) {
-                func_env.assign(data.params[i], val)
-              } else {
-                func_env.def(data.params[i], val, LetBinding)
-              }
-            }
-            let tte : Value? = if func_env.has("[[ThrowTypeError]]") {
-              Some(func_env.get("[[ThrowTypeError]]"))
-            } else {
-              None
-            }
-            func_env.def(
-              "arguments",
-              make_arguments_object(
-                args,
-                ctor,
-                func_strict,
-                throw_type_error=tte,
-              ),
-              VarBinding,
-            )
-            // Hoist var declarations and function declarations
-            self.hoist_declarations(data.body, func_env)
-            match data.name {
-              Some(name) =>
-                if !func_env.bindings.contains(name) {
-                  func_env.def(name, ctor, LetBinding)
-                }
-              None => ()
-            }
-            let exec_result = self.exec_stmts(data.body, func_env)
-            match exec_result {
-              Normal(_) => new_obj
-              ReturnSignal(v) =>
-                if is_object_like_for_constructor_return(v) {
-                  v
-                } else {
-                  new_obj
-                }
-              BreakSignal(_, _) =>
-                raise @errors.SyntaxError(
-                  message="break statement outside of loop",
-                )
-              ContinueSignal(_, _) =>
-                raise @errors.SyntaxError(
-                  message="continue statement outside of loop",
-                )
-            }
-          } catch {
-            e => {
-              self.strict = saved_strict
-              raise e
+          let func_strict = data.strict
+          let func_ctx : ExecContext = { strict: func_strict, current_generator: None }
+          if func_strict {
+            // Strict mode: check for duplicate parameters and reserved names
+            check_duplicate_params(data.params)
+            for p in data.params {
+              validate_strict_binding_name(p)
             }
           }
-          self.strict = saved_strict
-          result
+          let proto = match proto_override {
+            Some(p) => p
+            None =>
+              match obj_data.properties.get("prototype") {
+                Some(v) => v
+                None => Null
+              }
+          }
+          let new_obj = make_constructor_instance(proto, "Object")
+          let func_env = Environment::new(parent=Some(data.closure))
+          func_env.is_var_scope = true
+          func_env.def("this", new_obj, LetBinding)
+          func_env.def("<new.target>", ctor, LetBinding)
+          for i = 0; i < data.params.length(); i = i + 1 {
+            let val : Value = if i < args.length() {
+              args[i]
+            } else {
+              Undefined
+            }
+            // In sloppy mode, duplicate params are allowed; last value wins
+            if func_env.bindings.contains(data.params[i]) {
+              func_env.assign(data.params[i], val)
+            } else {
+              func_env.def(data.params[i], val, LetBinding)
+            }
+          }
+          let tte : Value? = if func_env.has("[[ThrowTypeError]]") {
+            Some(func_env.get("[[ThrowTypeError]]"))
+          } else {
+            None
+          }
+          func_env.def(
+            "arguments",
+            make_arguments_object(
+              args,
+              ctor,
+              func_strict,
+              throw_type_error=tte,
+            ),
+            VarBinding,
+          )
+          // Hoist var declarations and function declarations
+          self.hoist_declarations(data.body, func_env, strict=func_strict)
+          match data.name {
+            Some(name) =>
+              if !func_env.bindings.contains(name) {
+                func_env.def(name, ctor, LetBinding)
+              }
+            None => ()
+          }
+          let exec_result = self.exec_stmts(func_ctx, data.body, func_env)
+          match exec_result {
+            Normal(_) => new_obj
+            ReturnSignal(v) =>
+              if is_object_like_for_constructor_return(v) {
+                v
+              } else {
+                new_obj
+              }
+            BreakSignal(_, _) =>
+              raise @errors.SyntaxError(
+                message="break statement outside of loop",
+              )
+            ContinueSignal(_, _) =>
+              raise @errors.SyntaxError(
+                message="continue statement outside of loop",
+              )
+          }
         }
         Some(UserFuncExt(data)) => {
-          let saved_strict = self.strict
-          let result = try {
-            let func_strict = data.strict
-            self.strict = func_strict
-            if func_strict {
-              // Strict mode: check for duplicate parameters and reserved names
-              check_duplicate_params_ext(data.params, data.rest_param)
-              for p in data.params {
-                validate_strict_binding_name(p.name)
-              }
-              match data.rest_param {
-                Some(rn) => validate_strict_binding_name(rn)
-                None => ()
-              }
-            }
-            let proto = match proto_override {
-              Some(p) => p
-              None =>
-                match obj_data.properties.get("prototype") {
-                  Some(v) => v
-                  None => Null
-                }
-            }
-            let new_obj = make_constructor_instance(proto, "Object")
-            let func_env = Environment::new(parent=Some(data.closure))
-            func_env.is_var_scope = true
-            func_env.def("this", new_obj, LetBinding)
-            func_env.def("<new.target>", ctor, LetBinding)
-            // Create arguments object BEFORE binding params so defaults can reference it
-            let tte2 : Value? = if func_env.has("[[ThrowTypeError]]") {
-              Some(func_env.get("[[ThrowTypeError]]"))
-            } else {
-              None
-            }
-            func_env.def(
-              "arguments",
-              make_arguments_object(
-                args,
-                ctor,
-                func_strict,
-                throw_type_error=tte2,
-              ),
-              VarBinding,
-            )
-            let mut effective_param_count = 0
-            for i = 0; i < data.params.length(); i = i + 1 {
-              let param = data.params[i]
-              // Skip rest destructuring params
-              if data.rest_param is Some(rn) && param.name == rn {
-                continue
-              }
-              let val : Value = if effective_param_count < args.length() &&
-                !(args[effective_param_count] is Undefined) {
-                args[effective_param_count]
-              } else {
-                match param.default_val {
-                  Some(default_expr) => self.eval_expr(default_expr, func_env)
-                  None =>
-                    if effective_param_count < args.length() {
-                      args[effective_param_count]
-                    } else {
-                      Undefined
-                    }
-                }
-              }
-              func_env.def(param.name, val, LetBinding)
-              match param.pattern {
-                Some(pat) => self.bind_pattern(pat, val, func_env, LetBinding)
-                None => ()
-              }
-              effective_param_count = effective_param_count + 1
+          let func_strict = data.strict
+          let func_ctx : ExecContext = { strict: func_strict, current_generator: None }
+          if func_strict {
+            // Strict mode: check for duplicate parameters and reserved names
+            check_duplicate_params_ext(data.params, data.rest_param)
+            for p in data.params {
+              validate_strict_binding_name(p.name)
             }
             match data.rest_param {
-              Some(rest_name) => {
-                let rest_elements : Array[Value] = []
-                for i = effective_param_count; i < args.length(); i = i + 1 {
-                  rest_elements.push(args[i])
-                }
-                let rest_val = Array({ elements: rest_elements })
-                func_env.def(rest_name, rest_val, LetBinding)
-                // Apply destructuring pattern if present
-                for p in data.params {
-                  if p.name == rest_name {
-                    match p.pattern {
-                      Some(pat) =>
-                        self.bind_pattern(pat, rest_val, func_env, LetBinding)
-                      None => ()
-                    }
-                    break
-                  }
-                }
-              }
+              Some(rn) => validate_strict_binding_name(rn)
               None => ()
-            }
-            self.hoist_declarations(data.body, func_env)
-            match data.name {
-              Some(name) =>
-                if !func_env.bindings.contains(name) {
-                  func_env.def(name, ctor, LetBinding)
-                }
-              None => ()
-            }
-            let exec_result = self.exec_stmts(data.body, func_env)
-            match exec_result {
-              Normal(_) => new_obj
-              ReturnSignal(v) =>
-                if is_object_like_for_constructor_return(v) {
-                  v
-                } else {
-                  new_obj
-                }
-              BreakSignal(_, _) =>
-                raise @errors.SyntaxError(
-                  message="break statement outside of loop",
-                )
-              ContinueSignal(_, _) =>
-                raise @errors.SyntaxError(
-                  message="continue statement outside of loop",
-                )
-            }
-          } catch {
-            e => {
-              self.strict = saved_strict
-              raise e
             }
           }
-          self.strict = saved_strict
-          result
+          let proto = match proto_override {
+            Some(p) => p
+            None =>
+              match obj_data.properties.get("prototype") {
+                Some(v) => v
+                None => Null
+              }
+          }
+          let new_obj = make_constructor_instance(proto, "Object")
+          let func_env = Environment::new(parent=Some(data.closure))
+          func_env.is_var_scope = true
+          func_env.def("this", new_obj, LetBinding)
+          func_env.def("<new.target>", ctor, LetBinding)
+          // Create arguments object BEFORE binding params so defaults can reference it
+          let tte2 : Value? = if func_env.has("[[ThrowTypeError]]") {
+            Some(func_env.get("[[ThrowTypeError]]"))
+          } else {
+            None
+          }
+          func_env.def(
+            "arguments",
+            make_arguments_object(
+              args,
+              ctor,
+              func_strict,
+              throw_type_error=tte2,
+            ),
+            VarBinding,
+          )
+          let mut effective_param_count = 0
+          for i = 0; i < data.params.length(); i = i + 1 {
+            let param = data.params[i]
+            // Skip rest destructuring params
+            if data.rest_param is Some(rn) && param.name == rn {
+              continue
+            }
+            let val : Value = if effective_param_count < args.length() &&
+              !(args[effective_param_count] is Undefined) {
+              args[effective_param_count]
+            } else {
+              match param.default_val {
+                Some(default_expr) => self.eval_expr(func_ctx, default_expr, func_env)
+                None =>
+                  if effective_param_count < args.length() {
+                    args[effective_param_count]
+                  } else {
+                    Undefined
+                  }
+              }
+            }
+            func_env.def(param.name, val, LetBinding)
+            match param.pattern {
+              Some(pat) => self.bind_pattern(pat, val, func_env, LetBinding)
+              None => ()
+            }
+            effective_param_count = effective_param_count + 1
+          }
+          match data.rest_param {
+            Some(rest_name) => {
+              let rest_elements : Array[Value] = []
+              for i = effective_param_count; i < args.length(); i = i + 1 {
+                rest_elements.push(args[i])
+              }
+              let rest_val = Array({ elements: rest_elements })
+              func_env.def(rest_name, rest_val, LetBinding)
+              // Apply destructuring pattern if present
+              for p in data.params {
+                if p.name == rest_name {
+                  match p.pattern {
+                    Some(pat) =>
+                      self.bind_pattern(pat, rest_val, func_env, LetBinding)
+                    None => ()
+                  }
+                  break
+                }
+              }
+            }
+            None => ()
+          }
+          self.hoist_declarations(data.body, func_env, strict=func_strict)
+          match data.name {
+            Some(name) =>
+              if !func_env.bindings.contains(name) {
+                func_env.def(name, ctor, LetBinding)
+              }
+            None => ()
+          }
+          let exec_result = self.exec_stmts(func_ctx, data.body, func_env)
+          match exec_result {
+            Normal(_) => new_obj
+            ReturnSignal(v) =>
+              if is_object_like_for_constructor_return(v) {
+                v
+              } else {
+                new_obj
+              }
+            BreakSignal(_, _) =>
+              raise @errors.SyntaxError(
+                message="break statement outside of loop",
+              )
+            ContinueSignal(_, _) =>
+              raise @errors.SyntaxError(
+                message="continue statement outside of loop",
+              )
+          }
         }
         Some(BoundFunc(target, _, bound_args)) => {
           // new BoundFunc(...args) delegates to new Target(...boundArgs, ...args)
@@ -751,9 +724,9 @@ fn Interpreter::construct_value(
           )
         ) => {
           // Class bodies are always strict mode
-          let saved_strict = self.strict
-          self.strict = true
-          let result = try {
+          let class_ctx : ExecContext = { strict: true, current_generator: None }
+          // Create the new instance with the class prototype
+          let result = {
             // Create the new instance with the class prototype
             let new_obj = make_constructor_instance(proto, class_name)
             // Set up the constructor environment
@@ -819,8 +792,8 @@ fn Interpreter::construct_value(
                   VarBinding,
                 )
                 // Hoist declarations and execute body
-                self.hoist_declarations(body, ctor_env)
-                let exec_result = self.exec_stmts(body, ctor_env)
+                self.hoist_declarations(body, ctor_env, strict=true)
+                let exec_result = self.exec_stmts(class_ctx, body, ctor_env)
                 let current_this = ctor_env.get("this")
                 match exec_result {
                   Normal(_) => current_this
@@ -919,9 +892,9 @@ fn Interpreter::construct_value(
                                   ),
                                   VarBinding,
                                 )
-                                self.hoist_declarations(body, super_env)
+                                self.hoist_declarations(body, super_env, strict=true)
                                 let exec_result = self.exec_stmts(
-                                  body, super_env,
+                                  class_ctx, body, super_env,
                                 )
                                 // If super constructor returns an object, use it
                                 match exec_result {
@@ -931,7 +904,6 @@ fn Interpreter::construct_value(
                                       self.install_instance_fields(
                                         v, instance_fields,
                                       )
-                                      self.strict = saved_strict
                                       return maybe_set_promise_constructor(
                                         v, derived_ctor,
                                       )
@@ -950,7 +922,6 @@ fn Interpreter::construct_value(
                               self.install_instance_fields(
                                 super_result, instance_fields,
                               )
-                              self.strict = saved_strict
                               return maybe_set_promise_constructor(
                                 super_result, derived_ctor,
                               )
@@ -977,7 +948,6 @@ fn Interpreter::construct_value(
                                 self.install_instance_fields(
                                   super_result, instance_fields,
                                 )
-                                self.strict = saved_strict
                                 return maybe_set_promise_constructor(
                                   super_result, derived_ctor,
                                 )
@@ -990,7 +960,6 @@ fn Interpreter::construct_value(
                                   self.install_instance_fields(
                                     super_result, instance_fields,
                                   )
-                                  self.strict = saved_strict
                                   return maybe_set_promise_constructor(
                                     super_result, derived_ctor,
                                   )
@@ -1010,13 +979,7 @@ fn Interpreter::construct_value(
                 new_obj
               }
             }
-          } catch {
-            e => {
-              self.strict = saved_strict
-              raise e
-            }
           }
-          self.strict = saved_strict
           maybe_set_promise_constructor(result, ctor)
         }
         _ =>

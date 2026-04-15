@@ -1,6 +1,7 @@
 ///|
 fn Interpreter::eval_expr(
   self : Interpreter,
+  ctx : ExecContext,
   expr : @ast.Expr,
   env : Environment,
 ) -> Value raise Error {
@@ -25,17 +26,17 @@ fn Interpreter::eval_expr(
           }
         other => raise other
       }
-    Grouping(e, _) => self.eval_expr(e, env)
-    Binary(op, left, right, loc) => self.eval_binary(op, left, right, env, loc)
-    Unary(op, operand, loc) => self.eval_unary(op, operand, env, loc)
+    Grouping(e, _) => self.eval_expr(ctx,e, env)
+    Binary(op, left, right, loc) => self.eval_binary(ctx, op, left, right, env, loc)
+    Unary(op, operand, loc) => self.eval_unary(ctx, op, operand, env, loc)
     Assign(name, value_expr, _) => {
       // Strict mode: assignment to eval/arguments is a SyntaxError
-      if self.strict && (name == "eval" || name == "arguments") {
+      if ctx.strict && (name == "eval" || name == "arguments") {
         raise @errors.SyntaxError(
           message="Unexpected eval or arguments in strict mode",
         )
       }
-      let value = self.eval_expr(value_expr, env)
+      let value = self.eval_expr(ctx,value_expr, env)
       // SetFunctionName for assignments: x = function() {} gives name "x"
       if is_anonymous_function_definition(value_expr) {
         set_function_name(value, name)
@@ -44,7 +45,7 @@ fn Interpreter::eval_expr(
       // (e.g. undefined, NaN, Infinity). In strict mode this is a TypeError;
       // in non-strict mode the assignment is silently ignored.
       if self.is_immutable_global(name) {
-        if self.strict {
+        if ctx.strict {
           raise @errors.TypeError(
             message="Cannot assign to read only property '\{name}' of object '[object global]'",
           )
@@ -55,7 +56,7 @@ fn Interpreter::eval_expr(
         @errors.ReferenceError(_) =>
           // In non-strict mode, assigning to an undeclared variable creates
           // a global property (sloppy mode implicit global).
-          if !self.strict {
+          if !ctx.strict {
             self.global.def(name, value, VarBinding)
             // Also mirror onto globalThis as a configurable, enumerable property
             self.mirror_to_global(name, value, configurable=true)
@@ -67,31 +68,31 @@ fn Interpreter::eval_expr(
       value
     }
     Ternary(cond, then_expr, else_expr, _) =>
-      if is_truthy(self.eval_expr(cond, env)) {
-        self.eval_expr(then_expr, env)
+      if is_truthy(self.eval_expr(ctx,cond, env)) {
+        self.eval_expr(ctx,then_expr, env)
       } else {
-        self.eval_expr(else_expr, env)
+        self.eval_expr(ctx,else_expr, env)
       }
-    Call(callee, args, loc) => self.eval_call(callee, args, env, loc)
-    Member(obj_expr, prop, loc) => self.eval_member(obj_expr, prop, env, loc)
+    Call(callee, args, loc) => self.eval_call(ctx, callee, args, env, loc)
+    Member(obj_expr, prop, loc) => self.eval_member(ctx, obj_expr, prop, env, loc)
     FuncExpr(name, params, body, _) => {
-      validate_function_signature(self.strict, name, params, body)
+      validate_function_signature(ctx.strict, name, params, body)
       let func_data : FuncData = {
         name,
         params,
         body,
         closure: env,
-        strict: is_function_strict(self.strict, body),
+        strict: is_function_strict(ctx.strict, body),
       }
       make_func(func_data)
     }
     GeneratorExpr(name, params, body, _) => {
-      validate_function_signature(self.strict, name, params, body)
+      validate_function_signature(ctx.strict, name, params, body)
       self.make_generator_function(name, params, None, body, env)
     }
     GeneratorExprExt(name, params, rest_param, body, _) => {
       validate_function_signature_ext(
-        self.strict,
+        ctx.strict,
         name,
         params,
         rest_param,
@@ -100,12 +101,12 @@ fn Interpreter::eval_expr(
       self.make_generator_function_ext(name, params, rest_param, body, env)
     }
     AsyncFuncExpr(name, params, body, _) => {
-      validate_function_signature(self.strict, name, params, body)
+      validate_function_signature(ctx.strict, name, params, body)
       self.make_async_function(name, params, None, body, env)
     }
     AsyncFuncExprExt(name, params, rest_param, body, _) => {
       validate_function_signature_ext(
-        self.strict,
+        ctx.strict,
         name,
         params,
         rest_param,
@@ -114,12 +115,12 @@ fn Interpreter::eval_expr(
       self.make_async_function_ext(name, params, rest_param, body, env)
     }
     AsyncArrowFunc(params, body, _) => {
-      validate_function_signature(self.strict, None, params, body)
+      validate_function_signature(ctx.strict, None, params, body)
       self.make_async_function(None, params, None, body, env)
     }
     AsyncArrowFuncExt(params, rest_param, body, _) => {
       validate_function_signature_ext(
-        self.strict,
+        ctx.strict,
         None,
         params,
         rest_param,
@@ -128,12 +129,12 @@ fn Interpreter::eval_expr(
       self.make_async_function_ext(None, params, rest_param, body, env)
     }
     AsyncGeneratorExpr(name, params, body, _) => {
-      validate_function_signature(self.strict, name, params, body)
+      validate_function_signature(ctx.strict, name, params, body)
       self.make_async_generator_function(name, params, None, body, env)
     }
     AsyncGeneratorExprExt(name, params, rest_param, body, _) => {
       validate_function_signature_ext(
-        self.strict,
+        ctx.strict,
         name,
         params,
         rest_param,
@@ -145,8 +146,8 @@ fn Interpreter::eval_expr(
     }
     AwaitExpr(argument, _) =>
       // await acts like yield inside the generator that backs the async function
-      self.eval_yield(Some(argument), false, env)
-    YieldExpr(argument, delegate, _) => self.eval_yield(argument, delegate, env)
+      self.eval_yield(ctx, Some(argument), false, env)
+    YieldExpr(argument, delegate, _) => self.eval_yield(ctx, argument, delegate, env)
     ObjectLit(props, obj_loc) => {
       let properties : Map[String, Value] = {}
       let symbol_properties : Map[Int, Value] = {}
@@ -163,7 +164,7 @@ fn Interpreter::eval_expr(
       for prop in props {
         // Handle spread property: { ...expr }
         if prop.kind == @ast.Spread {
-          let spread_val = self.eval_expr(prop.key, env)
+          let spread_val = self.eval_expr(ctx,prop.key, env)
           match spread_val {
             Object(data) => {
               // Copy all enumerable own properties
@@ -217,13 +218,13 @@ fn Interpreter::eval_expr(
         }
         if prop.computed {
           // Evaluate the computed key
-          let key_val = self.eval_expr(prop.key, env)
+          let key_val = self.eval_expr(ctx,prop.key, env)
           match key_val {
             Symbol(sym) =>
               // Symbol key - store in symbol_properties
               match prop.kind {
                 Init => {
-                  let val = self.eval_expr(prop.value, method_env)
+                  let val = self.eval_expr(ctx,prop.value, method_env)
                   // SetFunctionName with symbol description
                   let sym_name = match sym.description {
                     Some(d) => "[\{d}]"
@@ -233,7 +234,7 @@ fn Interpreter::eval_expr(
                   symbol_properties[sym.id] = val
                 }
                 Get => {
-                  let getter = self.eval_expr(prop.value, method_env)
+                  let getter = self.eval_expr(ctx,prop.value, method_env)
                   let sym_name = match sym.description {
                     Some(d) => "get [\{d}]"
                     None => "get "
@@ -256,7 +257,7 @@ fn Interpreter::eval_expr(
                   }
                 }
                 Set => {
-                  let setter = self.eval_expr(prop.value, method_env)
+                  let setter = self.eval_expr(ctx,prop.value, method_env)
                   let sym_name = match sym.description {
                     Some(d) => "set [\{d}]"
                     None => "set "
@@ -284,12 +285,12 @@ fn Interpreter::eval_expr(
               let key_str = to_js_string(key_val)
               match prop.kind {
                 Init => {
-                  let val = self.eval_expr(prop.value, method_env)
+                  let val = self.eval_expr(ctx,prop.value, method_env)
                   set_function_name(val, key_str)
                   properties[key_str] = val
                 }
                 Get => {
-                  let getter = self.eval_expr(prop.value, method_env)
+                  let getter = self.eval_expr(ctx,prop.value, method_env)
                   set_function_name(getter, "get " + key_str)
                   if !properties.contains(key_str) {
                     properties[key_str] = Undefined
@@ -307,7 +308,7 @@ fn Interpreter::eval_expr(
                   }
                 }
                 Set => {
-                  let setter = self.eval_expr(prop.value, method_env)
+                  let setter = self.eval_expr(ctx,prop.value, method_env)
                   set_function_name(setter, "set " + key_str)
                   if !properties.contains(key_str) {
                     properties[key_str] = Undefined
@@ -347,7 +348,7 @@ fn Interpreter::eval_expr(
             Init =>
               // Handle __proto__ as special syntax per B.3.1
               if key_str == "__proto__" {
-                let val = self.eval_expr(prop.value, method_env)
+                let val = self.eval_expr(ctx,prop.value, method_env)
                 match val {
                   Object(_) | Array(_) | Map(_) | Set(_) =>
                     proto_override = Some(val)
@@ -355,13 +356,13 @@ fn Interpreter::eval_expr(
                   _ => properties[key_str] = val // primitives don't set proto
                 }
               } else {
-                let val = self.eval_expr(prop.value, method_env)
+                let val = self.eval_expr(ctx,prop.value, method_env)
                 // SetFunctionName: infer name for anonymous functions
                 set_function_name(val, key_str)
                 properties[key_str] = val
               }
             Get => {
-              let getter = self.eval_expr(prop.value, method_env)
+              let getter = self.eval_expr(ctx,prop.value, method_env)
               // Force set name with "get " prefix per spec
               match getter {
                 Object(d) => d.properties["name"] = String_("get " + key_str)
@@ -383,7 +384,7 @@ fn Interpreter::eval_expr(
               }
             }
             Set => {
-              let setter = self.eval_expr(prop.value, method_env)
+              let setter = self.eval_expr(ctx,prop.value, method_env)
               // Force set name with "set " prefix per spec
               match setter {
                 Object(d) => d.properties["name"] = String_("set " + key_str)
@@ -429,36 +430,36 @@ fn Interpreter::eval_expr(
       for e in elements {
         match e {
           SpreadExpr(inner, spread_loc) => {
-            let val = self.eval_expr(inner, env)
+            let val = self.eval_expr(ctx,inner, env)
             // Use iterator protocol for spreading
             let spread_vals = self.spread_iterable(val, spread_loc)
             for v in spread_vals {
               vals.push(v)
             }
           }
-          _ => vals.push(self.eval_expr(e, env))
+          _ => vals.push(self.eval_expr(ctx,e, env))
         }
       }
       Array({ elements: vals })
     }
     ComputedMember(obj_expr, key_expr, loc) => {
-      let obj = self.eval_expr(obj_expr, env)
-      let key = self.eval_expr(key_expr, env)
+      let obj = self.eval_expr(ctx,obj_expr, env)
+      let key = self.eval_expr(ctx,key_expr, env)
       self.get_computed_property(obj, key, loc)
     }
     MemberAssign(obj_expr, prop, value_expr, loc) => {
-      let obj = self.eval_expr(obj_expr, env)
-      let value = self.eval_expr(value_expr, env)
-      self.set_property(obj, prop, value, loc)
+      let obj = self.eval_expr(ctx,obj_expr, env)
+      let value = self.eval_expr(ctx,value_expr, env)
+      self.set_property(obj, prop, value, loc, strict=ctx.strict)
     }
     ComputedAssign(obj_expr, key_expr, value_expr, loc) => {
-      let obj = self.eval_expr(obj_expr, env)
-      let key = self.eval_expr(key_expr, env)
-      let value = self.eval_expr(value_expr, env)
-      self.set_computed_property(obj, key, value, loc)
+      let obj = self.eval_expr(ctx,obj_expr, env)
+      let key = self.eval_expr(ctx,key_expr, env)
+      let value = self.eval_expr(ctx,value_expr, env)
+      self.set_computed_property(obj, key, value, loc, strict=ctx.strict)
     }
     NewExpr(callee_expr, arg_exprs, loc) =>
-      self.eval_new(callee_expr, arg_exprs, env, loc)
+      self.eval_new(ctx, callee_expr, arg_exprs, env, loc)
     ThisExpr(_) =>
       env.get("this") catch {
         @errors.ReferenceError(message~) => {
@@ -474,26 +475,26 @@ fn Interpreter::eval_expr(
         other => raise other
       }
     UpdateExpr(op, operand, prefix, loc) =>
-      self.eval_update(op, operand, prefix, env, loc)
+      self.eval_update(ctx, op, operand, prefix, env, loc)
     CompoundAssign(op, target, value_expr, loc) =>
-      self.eval_compound_assign(op, target, value_expr, env, loc)
+      self.eval_compound_assign(ctx, op, target, value_expr, env, loc)
     Comma(left, right, _) => {
-      let _ = self.eval_expr(left, env)
-      self.eval_expr(right, env)
+      let _ = self.eval_expr(ctx,left, env)
+      self.eval_expr(ctx,right, env)
     }
     TemplateLit(strings, exprs, _) => {
       let buf = StringBuilder::new()
       for i = 0; i < strings.length(); i = i + 1 {
         buf.write_string(strings[i])
         if i < exprs.length() {
-          let val = self.eval_expr(exprs[i], env)
+          let val = self.eval_expr(ctx,exprs[i], env)
           buf.write_string(to_js_string(val))
         }
       }
       String_(buf.to_string())
     }
     TaggedTemplate(tag_expr, strings, exprs, loc) => {
-      let tag = self.eval_expr(tag_expr, env)
+      let tag = self.eval_expr(ctx,tag_expr, env)
       // Build the raw array (same as cooked for now - raw doesn't process escapes)
       let raw_vals : Array[Value] = []
       for s in strings {
@@ -522,24 +523,24 @@ fn Interpreter::eval_expr(
       // Build args: [templateObj, ...substitutions]
       let args : Array[Value] = [template_obj]
       for e in exprs {
-        args.push(self.eval_expr(e, env))
+        args.push(self.eval_expr(ctx,e, env))
       }
       // Resolve this binding for member expression tags (e.g., String.raw`...`)
       let this_val : Value = match tag_expr {
         Member(obj_expr, _, _) | ComputedMember(obj_expr, _, _) =>
-          self.eval_expr(obj_expr, env)
+          self.eval_expr(ctx,obj_expr, env)
         _ => Undefined
       }
       self.call_value(tag, this_val, args, loc)
     }
     ArrowFunc(params, body, _) => {
-      validate_function_signature(self.strict, None, params, body)
+      validate_function_signature(ctx.strict, None, params, body)
       let func_data : FuncData = {
         name: None,
         params,
         body,
         closure: env,
-        strict: is_function_strict(self.strict, body),
+        strict: is_function_strict(ctx.strict, body),
       }
       let nf_desc : PropDescriptor = {
         writable: false,
@@ -564,7 +565,7 @@ fn Interpreter::eval_expr(
     }
     ArrowFuncExt(params, rest_param, body, _) => {
       validate_function_signature_ext(
-        self.strict,
+        ctx.strict,
         None,
         params,
         rest_param,
@@ -576,7 +577,7 @@ fn Interpreter::eval_expr(
         rest_param,
         body,
         closure: env,
-        strict: is_function_strict(self.strict, body),
+        strict: is_function_strict(ctx.strict, body),
       }
       let nf_desc : PropDescriptor = {
         writable: false,
@@ -609,7 +610,7 @@ fn Interpreter::eval_expr(
     }
     FuncExprExt(name, params, rest_param, body, _) => {
       validate_function_signature_ext(
-        self.strict,
+        ctx.strict,
         name,
         params,
         rest_param,
@@ -621,7 +622,7 @@ fn Interpreter::eval_expr(
         rest_param,
         body,
         closure: env,
-        strict: is_function_strict(self.strict, body),
+        strict: is_function_strict(ctx.strict, body),
       }
       make_func_ext(func_data)
     }
@@ -631,13 +632,13 @@ fn Interpreter::eval_expr(
         message="Spread expression used outside of call or array literal",
       )
     DestructureAssign(pattern, value_expr, _) => {
-      let value = self.eval_expr(value_expr, env)
-      self.assign_pattern(pattern, value, env)
+      let value = self.eval_expr(ctx,value_expr, env)
+      self.assign_pattern(ctx, pattern, value, env)
       value
     }
     OptionalMember(obj_expr, prop, loc) => {
       // obj?.prop - return undefined if obj is null/undefined
-      let obj = self.eval_expr(obj_expr, env)
+      let obj = self.eval_expr(ctx,obj_expr, env)
       match obj {
         Null | Undefined => Undefined
         _ => self.get_property(obj, prop, loc)
@@ -645,11 +646,11 @@ fn Interpreter::eval_expr(
     }
     OptionalComputedMember(obj_expr, key_expr, loc) => {
       // obj?.[key] - return undefined if obj is null/undefined
-      let obj = self.eval_expr(obj_expr, env)
+      let obj = self.eval_expr(ctx,obj_expr, env)
       match obj {
         Null | Undefined => Undefined
         _ => {
-          let key = self.eval_expr(key_expr, env)
+          let key = self.eval_expr(ctx,key_expr, env)
           self.get_computed_property(obj, key, loc)
         }
       }
@@ -660,7 +661,7 @@ fn Interpreter::eval_expr(
       // Need to preserve receiver for method calls
       match callee_expr {
         OptionalMember(obj_expr, prop, mloc) => {
-          let obj = self.eval_expr(obj_expr, env)
+          let obj = self.eval_expr(ctx,obj_expr, env)
           match obj {
             Null | Undefined => Undefined
             _ => {
@@ -668,7 +669,7 @@ fn Interpreter::eval_expr(
               match func_val {
                 Null | Undefined => Undefined
                 _ => {
-                  let args = self.eval_args_with_spread(arg_exprs, env)
+                  let args = self.eval_args_with_spread(ctx, arg_exprs, env)
                   self.call_value(func_val, obj, args, loc)
                 }
               }
@@ -676,16 +677,16 @@ fn Interpreter::eval_expr(
           }
         }
         OptionalComputedMember(obj_expr, key_expr, mloc) => {
-          let obj = self.eval_expr(obj_expr, env)
+          let obj = self.eval_expr(ctx,obj_expr, env)
           match obj {
             Null | Undefined => Undefined
             _ => {
-              let key = self.eval_expr(key_expr, env)
+              let key = self.eval_expr(ctx,key_expr, env)
               let func_val = self.get_computed_property(obj, key, mloc)
               match func_val {
                 Null | Undefined => Undefined
                 _ => {
-                  let args = self.eval_args_with_spread(arg_exprs, env)
+                  let args = self.eval_args_with_spread(ctx, arg_exprs, env)
                   self.call_value(func_val, obj, args, loc)
                 }
               }
@@ -693,34 +694,34 @@ fn Interpreter::eval_expr(
           }
         }
         Member(obj_expr, prop, mloc) => {
-          let obj = self.eval_expr(obj_expr, env)
+          let obj = self.eval_expr(ctx,obj_expr, env)
           let func_val = self.get_property(obj, prop, mloc)
           match func_val {
             Null | Undefined => Undefined
             _ => {
-              let args = self.eval_args_with_spread(arg_exprs, env)
+              let args = self.eval_args_with_spread(ctx, arg_exprs, env)
               self.call_value(func_val, obj, args, loc)
             }
           }
         }
         ComputedMember(obj_expr, key_expr, mloc) => {
-          let obj = self.eval_expr(obj_expr, env)
-          let key = self.eval_expr(key_expr, env)
+          let obj = self.eval_expr(ctx,obj_expr, env)
+          let key = self.eval_expr(ctx,key_expr, env)
           let func_val = self.get_computed_property(obj, key, mloc)
           match func_val {
             Null | Undefined => Undefined
             _ => {
-              let args = self.eval_args_with_spread(arg_exprs, env)
+              let args = self.eval_args_with_spread(ctx, arg_exprs, env)
               self.call_value(func_val, obj, args, loc)
             }
           }
         }
         _ => {
-          let callee = self.eval_expr(callee_expr, env)
+          let callee = self.eval_expr(ctx,callee_expr, env)
           match callee {
             Null | Undefined => Undefined
             _ => {
-              let args = self.eval_args_with_spread(arg_exprs, env)
+              let args = self.eval_args_with_spread(ctx, arg_exprs, env)
               self.call_value(callee, Undefined, args, loc)
             }
           }
@@ -739,7 +740,7 @@ fn Interpreter::eval_expr(
         env
       }
       let class_val = self.create_class(
-        class_name, superclass, methods, class_env,
+        ctx, class_name, superclass, methods, class_env,
       )
       // Set the class name binding in the inner scope
       if class_name != "" {
@@ -759,7 +760,7 @@ fn Interpreter::eval_expr(
       } else {
         env.get("this")
       }
-      let args = self.eval_args_with_spread(arg_exprs, env)
+      let args = self.eval_args_with_spread(ctx, arg_exprs, env)
       // Call the super constructor
       match super_ctor {
         Object(data) =>
@@ -822,8 +823,9 @@ fn Interpreter::eval_expr(
                     ),
                     VarBinding,
                   )
-                  self.hoist_declarations(ctor_body, call_env)
-                  let exec_result = self.exec_stmts(ctor_body, call_env)
+                  self.hoist_declarations(ctor_body, call_env, strict=true)
+                  let super_ctor_ctx : ExecContext = { strict: true, current_generator: None }
+                  let exec_result = self.exec_stmts(super_ctor_ctx, ctor_body, call_env)
                   // If super constructor returns an object, use it as the new 'this'
                   match exec_result {
                     ReturnSignal(v) =>
@@ -938,7 +940,7 @@ fn Interpreter::eval_expr(
     SuperComputedMember(key_expr, loc) => {
       // super[expr] - access parent prototype property with computed key
       let super_proto = env.get("[[SuperPrototype]]")
-      let key = self.eval_expr(key_expr, env)
+      let key = self.eval_expr(ctx,key_expr, env)
       match super_proto {
         Null | Undefined =>
           raise @errors.ReferenceError(
@@ -958,6 +960,7 @@ fn Interpreter::eval_expr(
 ///|
 fn Interpreter::eval_binary(
   self : Interpreter,
+  ctx : ExecContext,
   op : @ast.BinOp,
   left_expr : @ast.Expr,
   right_expr : @ast.Expr,
@@ -967,31 +970,31 @@ fn Interpreter::eval_binary(
   // Short-circuit for &&, ||, and ??
   match op {
     And => {
-      let left = self.eval_expr(left_expr, env)
+      let left = self.eval_expr(ctx,left_expr, env)
       if !is_truthy(left) {
         return left
       }
-      self.eval_expr(right_expr, env)
+      self.eval_expr(ctx,right_expr, env)
     }
     Or => {
-      let left = self.eval_expr(left_expr, env)
+      let left = self.eval_expr(ctx,left_expr, env)
       if is_truthy(left) {
         return left
       }
-      self.eval_expr(right_expr, env)
+      self.eval_expr(ctx,right_expr, env)
     }
     NullishCoalesce => {
       // ?? returns left if it's not null/undefined, otherwise right
-      let left = self.eval_expr(left_expr, env)
+      let left = self.eval_expr(ctx,left_expr, env)
       match left {
-        Null | Undefined => self.eval_expr(right_expr, env)
+        Null | Undefined => self.eval_expr(ctx,right_expr, env)
         _ => left
       }
     }
     Instanceof => {
       // instanceof - ES2015+ with Symbol.hasInstance support (spec: 7.3.21 OrdinaryHasInstance)
-      let l = self.eval_expr(left_expr, env)
-      let r = self.eval_expr(right_expr, env)
+      let l = self.eval_expr(ctx,left_expr, env)
+      let r = self.eval_expr(ctx,right_expr, env)
       match r {
         Object(r_data) => {
           // Step 1: Check for Symbol.hasInstance method via GetMethod (walks prototype chain)
@@ -1098,8 +1101,8 @@ fn Interpreter::eval_binary(
       }
     }
     In => {
-      let left = self.eval_expr(left_expr, env)
-      let right = self.eval_expr(right_expr, env)
+      let left = self.eval_expr(ctx,left_expr, env)
+      let right = self.eval_expr(ctx,right_expr, env)
       match right {
         Proxy(proxy_data) => {
           let trap = get_proxy_trap(proxy_data, "has")
@@ -1129,8 +1132,8 @@ fn Interpreter::eval_binary(
       }
     }
     _ => {
-      let left = self.eval_expr(left_expr, env)
-      let right = self.eval_expr(right_expr, env)
+      let left = self.eval_expr(ctx,left_expr, env)
+      let right = self.eval_expr(ctx,right_expr, env)
       eval_binary_op(op, left, right, loc)
     }
   }
@@ -1537,6 +1540,7 @@ fn Interpreter::is_immutable_global(self : Interpreter, name : String) -> Bool {
 ///|
 fn Interpreter::eval_unary(
   self : Interpreter,
+  ctx : ExecContext,
   op : @ast.UnaryOp,
   operand : @ast.Expr,
   env : Environment,
@@ -1559,16 +1563,16 @@ fn Interpreter::eval_unary(
               _ => String_("undefined")
             }
           }
-        _ => String_(type_of(self.eval_expr(operand, env)))
+        _ => String_(type_of(self.eval_expr(ctx,operand, env)))
       }
     Void => {
-      let _ = self.eval_expr(operand, env)
+      let _ = self.eval_expr(ctx,operand, env)
       Undefined
     }
     Delete =>
       match operand {
         Member(obj_expr, prop, _) => {
-          let obj = self.eval_expr(obj_expr, env)
+          let obj = self.eval_expr(ctx,obj_expr, env)
           match obj {
             Proxy(proxy_data) => {
               let trap = get_proxy_trap(proxy_data, "deleteProperty")
@@ -1582,7 +1586,7 @@ fn Interpreter::eval_unary(
                     [target, String_(prop)],
                     loc,
                   )
-                  if !is_truthy(result) && self.strict {
+                  if !is_truthy(result) && ctx.strict {
                     raise @errors.TypeError(
                       message="'deleteProperty' on proxy: trap returned falsish for property '\{prop}'",
                     )
@@ -1596,7 +1600,7 @@ fn Interpreter::eval_unary(
                       match data.descriptors.get(prop) {
                         Some(desc) =>
                           if !desc.configurable {
-                            if self.strict {
+                            if ctx.strict {
                               raise @errors.TypeError(
                                 message="Cannot delete property '\{prop}'",
                               )
@@ -1618,7 +1622,7 @@ fn Interpreter::eval_unary(
               match data.descriptors.get(prop) {
                 Some(desc) =>
                   if !desc.configurable {
-                    if self.strict {
+                    if ctx.strict {
                       raise @errors.TypeError(
                         message="Cannot delete property '\{prop}'",
                       )
@@ -1635,8 +1639,8 @@ fn Interpreter::eval_unary(
           }
         }
         ComputedMember(obj_expr, key_expr, _) => {
-          let obj = self.eval_expr(obj_expr, env)
-          let key = self.eval_expr(key_expr, env)
+          let obj = self.eval_expr(ctx,obj_expr, env)
+          let key = self.eval_expr(ctx,key_expr, env)
           match obj {
             Proxy(proxy_data) => {
               let trap = get_proxy_trap(proxy_data, "deleteProperty")
@@ -1654,7 +1658,7 @@ fn Interpreter::eval_unary(
                     [target, prop_key],
                     loc,
                   )
-                  if !is_truthy(result) && self.strict {
+                  if !is_truthy(result) && ctx.strict {
                     raise @errors.TypeError(
                       message="'deleteProperty' on proxy: trap returned falsish",
                     )
@@ -1669,7 +1673,7 @@ fn Interpreter::eval_unary(
                       match data.descriptors.get(k) {
                         Some(desc) =>
                           if !desc.configurable {
-                            if self.strict {
+                            if ctx.strict {
                               raise @errors.TypeError(
                                 message="Cannot delete property '\{k}'",
                               )
@@ -1694,7 +1698,7 @@ fn Interpreter::eval_unary(
                   match data.symbol_descriptors.get(sym.id) {
                     Some(desc) =>
                       if !desc.configurable {
-                        if self.strict {
+                        if ctx.strict {
                           raise @errors.TypeError(
                             message="Cannot delete property",
                           )
@@ -1712,7 +1716,7 @@ fn Interpreter::eval_unary(
                   match data.descriptors.get(k) {
                     Some(desc) =>
                       if !desc.configurable {
-                        if self.strict {
+                        if ctx.strict {
                           raise @errors.TypeError(
                             message="Cannot delete property '\{k}'",
                           )
@@ -1731,7 +1735,7 @@ fn Interpreter::eval_unary(
         }
         Ident(name, _) =>
           // delete of an unqualified identifier is a SyntaxError in strict mode
-          if self.strict {
+          if ctx.strict {
             raise @errors.SyntaxError(
               message="Delete of an unqualified identifier in strict mode.",
             )
@@ -1770,7 +1774,7 @@ fn Interpreter::eval_unary(
         _ => Bool(true)
       }
     _ => {
-      let val = self.eval_expr(operand, env)
+      let val = self.eval_expr(ctx,operand, env)
       match op {
         Neg => Number(-to_number(val))
         Pos => Number(to_number(val))

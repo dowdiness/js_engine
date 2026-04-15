@@ -1,15 +1,16 @@
 ///|
 fn Interpreter::exec_stmt(
   self : Interpreter,
+  ctx : ExecContext,
   stmt : @ast.Stmt,
   env : Environment,
   label? : String? = None,
 ) -> Signal raise Error {
   match stmt {
-    ExprStmt(expr, _) => Normal(self.eval_expr(expr, env))
+    ExprStmt(expr, _) => Normal(self.eval_expr(ctx, expr, env))
     VarDecl(kind, name, init, _) => {
       // Strict mode: cannot use eval/arguments as variable name
-      if self.strict {
+      if ctx.strict {
         validate_strict_binding_name(name)
       }
       let bk : BindingKind = match kind {
@@ -19,7 +20,7 @@ fn Interpreter::exec_stmt(
       }
       let value : Value = match init {
         Some(expr) => {
-          let v = self.eval_expr(expr, env)
+          let v = self.eval_expr(ctx, expr, env)
           // SetFunctionName for variable declarations
           // Per spec, only set name for IsAnonymousFunctionDefinition
           // Comma expressions, parenthesized expressions are NOT anonymous function definitions
@@ -62,25 +63,25 @@ fn Interpreter::exec_stmt(
       let block_env = Environment::new(parent=Some(env))
       // Hoist let/const with TDZ markers
       hoist_block_tdz(stmts, block_env)
-      self.exec_stmts(stmts, block_env)
+      self.exec_stmts(ctx, stmts, block_env)
     }
     StmtList(stmts, _) =>
       // Execute statements in same scope (no new environment)
       // Used for comma-separated declarations like: var a, b, c;
-      self.exec_stmts(stmts, env)
+      self.exec_stmts(ctx, stmts, env)
     IfStmt(cond, then_branch, else_branch, _) => {
-      let cond_val = self.eval_expr(cond, env)
+      let cond_val = self.eval_expr(ctx, cond, env)
       if is_truthy(cond_val) {
-        self.exec_stmt(then_branch, env)
+        self.exec_stmt(ctx, then_branch, env)
       } else {
         match else_branch {
-          Some(eb) => self.exec_stmt(eb, env)
+          Some(eb) => self.exec_stmt(ctx, eb, env)
           None => Normal(Undefined)
         }
       }
     }
     WhileStmt(cond, body, _) => {
-      let gen_opt = self.current_generator
+      let gen_opt = ctx.current_generator
       let resuming_loop = match gen_opt {
         Some(g) => g.loop_env_stack.length() > 0
         _ => false
@@ -100,10 +101,10 @@ fn Interpreter::exec_stmt(
       while true {
         if first_iteration {
           first_iteration = false
-        } else if !is_truthy(self.eval_expr(cond, env)) {
+        } else if !is_truthy(self.eval_expr(ctx, cond, env)) {
           break
         }
-        let body_signal = self.exec_stmt(body, env) catch {
+        let body_signal = self.exec_stmt(ctx, body, env) catch {
           e => {
             if e is YieldSignal(_) {
               match gen_opt {
@@ -145,7 +146,7 @@ fn Interpreter::exec_stmt(
     }
     ForStmt(init, cond, update, body, _) => {
       // Check if we're resuming inside a generator loop
-      let gen_opt = self.current_generator
+      let gen_opt = ctx.current_generator
       let resuming_loop = match gen_opt {
         Some(g) => g.loop_env_stack.length() > 0
         _ => false
@@ -180,7 +181,7 @@ fn Interpreter::exec_stmt(
         let e = Environment::new(parent=Some(env))
         match init {
           Some(init_stmt) => {
-            let _ = self.exec_stmt(init_stmt, e)
+            let _ = self.exec_stmt(ctx, init_stmt, e)
           }
           None => ()
         }
@@ -193,7 +194,7 @@ fn Interpreter::exec_stmt(
           first_iteration = false
         } else {
           match cond {
-            Some(c) => if !is_truthy(self.eval_expr(c, for_env)) { break }
+            Some(c) => if !is_truthy(self.eval_expr(ctx, c, for_env)) { break }
             None => ()
           }
         }
@@ -208,7 +209,7 @@ fn Interpreter::exec_stmt(
           for_env
         }
         let mut do_continue = false
-        let body_signal = self.exec_stmt(body, iter_env) catch {
+        let body_signal = self.exec_stmt(ctx, body, iter_env) catch {
           e => {
             if e is YieldSignal(_) {
               // Yield inside for loop body — save for_env for resume
@@ -255,7 +256,7 @@ fn Interpreter::exec_stmt(
         if do_continue {
           match update {
             Some(u) => {
-              let _ = self.eval_expr(u, for_env)
+              let _ = self.eval_expr(ctx, u, for_env)
             }
             None => ()
           }
@@ -263,7 +264,7 @@ fn Interpreter::exec_stmt(
         }
         match update {
           Some(u) => {
-            let _ = self.eval_expr(u, for_env)
+            let _ = self.eval_expr(ctx, u, for_env)
           }
           None => ()
         }
@@ -271,7 +272,7 @@ fn Interpreter::exec_stmt(
       Normal(completion)
     }
     FuncDecl(name, params, body, _) => {
-      validate_function_signature(self.strict, Some(name), params, body)
+      validate_function_signature(ctx.strict, Some(name), params, body)
       // Check if this was already hoisted - if so, don't re-create the function.
       // Function declarations at the top level (var scope) are fully handled
       // during hoisting and should be no-ops during execution.
@@ -288,7 +289,7 @@ fn Interpreter::exec_stmt(
           params,
           body,
           closure: env,
-          strict: is_function_strict(self.strict, body),
+          strict: is_function_strict(ctx.strict, body),
         }
         let func_val = make_func(func_data)
         // For non-strict eval execution, function declarations are hoisted into
@@ -301,7 +302,7 @@ fn Interpreter::exec_stmt(
           env.def(name, func_val, VarBinding)
         }
         // Annex B.3.3: propagate block-level function to function scope's var binding
-        if self.annex_b && !self.strict && !env.is_var_scope {
+        if self.annex_b && !ctx.strict && !env.is_var_scope {
           let var_env = env.find_var_env()
           match var_env.bindings.get(name) {
             Some(binding) =>
@@ -316,7 +317,7 @@ fn Interpreter::exec_stmt(
     }
     ReturnStmt(expr, _) => {
       let value : Value = match expr {
-        Some(e) => self.eval_expr(e, env)
+        Some(e) => self.eval_expr(ctx, e, env)
         None => Undefined
       }
       ReturnSignal(value)
@@ -324,20 +325,20 @@ fn Interpreter::exec_stmt(
     BreakStmt(label, _) => BreakSignal(None, label)
     ContinueStmt(label, _) => ContinueSignal(None, label)
     ThrowStmt(expr, _) => {
-      let value = self.eval_expr(expr, env)
+      let value = self.eval_expr(ctx, expr, env)
       raise JsException(value)
     }
     TryCatchStmt(try_body, catch_param, catch_body, finally_body, _) =>
-      self.exec_try_catch(try_body, catch_param, catch_body, finally_body, env)
+      self.exec_try_catch(ctx, try_body, catch_param, catch_body, finally_body, env)
     SwitchStmt(discriminant, cases, _) => {
-      let disc_val = self.eval_expr(discriminant, env)
+      let disc_val = self.eval_expr(ctx, discriminant, env)
       let mut match_idx = -1
       let mut default_idx = -1
       for i = 0; i < cases.length(); i = i + 1 {
         match cases[i].condition {
           Some(test_expr) =>
             if match_idx < 0 {
-              let test_val = self.eval_expr(test_expr, env)
+              let test_val = self.eval_expr(ctx, test_expr, env)
               if strict_equal(disc_val, test_val) {
                 match_idx = i
               }
@@ -358,7 +359,7 @@ fn Interpreter::exec_stmt(
       let mut completion : Value = Undefined
       for i = start; i < cases.length(); i = i + 1 {
         for stmt in cases[i].body {
-          match self.exec_stmt(stmt, switch_env) {
+          match self.exec_stmt(ctx, stmt, switch_env) {
             Normal(v) => completion = v
             BreakSignal(v, None) => {
               // UpdateEmpty: use break's carried value if non-empty, otherwise accumulated
@@ -389,7 +390,7 @@ fn Interpreter::exec_stmt(
       Normal(completion)
     }
     DoWhileStmt(body, cond, _) => {
-      let gen_opt = self.current_generator
+      let gen_opt = ctx.current_generator
       let resuming_loop = match gen_opt {
         Some(g) => g.loop_env_stack.length() > 0
         _ => false
@@ -404,7 +405,7 @@ fn Interpreter::exec_stmt(
       }
       let mut completion : Value = Undefined
       while true {
-        let body_signal = self.exec_stmt(body, env) catch {
+        let body_signal = self.exec_stmt(ctx, body, env) catch {
           e => {
             if e is YieldSignal(_) {
               match gen_opt {
@@ -437,14 +438,14 @@ fn Interpreter::exec_stmt(
               return ContinueSignal(cv, Some(l))
             }
         }
-        if !is_truthy(self.eval_expr(cond, env)) {
+        if !is_truthy(self.eval_expr(ctx, cond, env)) {
           break
         }
       }
       Normal(completion)
     }
     ForInStmt(var_kind, name, obj_expr, body, _) => {
-      let obj = self.eval_expr(obj_expr, env)
+      let obj = self.eval_expr(ctx, obj_expr, env)
       let keys = collect_for_in_keys(obj)
       let mut completion : Value = Undefined
       for key in keys {
@@ -461,7 +462,7 @@ fn Interpreter::exec_stmt(
           None =>
             env.assign(name, String_(key)) catch {
               @errors.ReferenceError(_) =>
-                if !self.strict {
+                if !ctx.strict {
                   self.global.def(name, String_(key), VarBinding)
                   self.mirror_to_global(name, String_(key), configurable=true)
                 } else {
@@ -470,7 +471,7 @@ fn Interpreter::exec_stmt(
               e => raise e
             }
         }
-        match self.exec_stmt(body, body_env) {
+        match self.exec_stmt(ctx, body, body_env) {
           Normal(v) => completion = v
           ReturnSignal(v) => return ReturnSignal(v)
           BreakSignal(v, None) => {
@@ -501,7 +502,7 @@ fn Interpreter::exec_stmt(
     }
     ForOfStmt(var_kind, name, iterable_expr, body, loc) => {
       // Check if we're resuming inside a generator for-of
-      let gen_opt = self.current_generator
+      let gen_opt = ctx.current_generator
       let resuming_for_of = match gen_opt {
         Some(g) => g.for_of_resume
         _ => false
@@ -520,7 +521,7 @@ fn Interpreter::exec_stmt(
           _ => abort("unreachable: for-of resume without generator")
         }
       } else {
-        let iterable = self.eval_expr(iterable_expr, env)
+        let iterable = self.eval_expr(ctx, iterable_expr, env)
 
         // Try to get the iterator via Symbol.iterator protocol
         let iterator_sym = get_iterator_symbol()
@@ -615,7 +616,7 @@ fn Interpreter::exec_stmt(
           } else {
             body_env
           }
-          let body_signal = self.exec_stmt(body, actual_body_env) catch {
+          let body_signal = self.exec_stmt(ctx, body, actual_body_env) catch {
             e => {
               if e is YieldSignal(_) {
                 match gen_opt {
@@ -706,7 +707,7 @@ fn Interpreter::exec_stmt(
         }
 
         // Execute the loop body
-        let body_signal = self.exec_stmt(body, body_env) catch {
+        let body_signal = self.exec_stmt(ctx, body, body_env) catch {
           e => {
             if e is YieldSignal(_) {
               // Save for-of state for resume
@@ -775,7 +776,7 @@ fn Interpreter::exec_stmt(
       Normal(completion)
     }
     ForInStmtPat(var_kind, pattern, obj_expr, body, _) => {
-      let obj = self.eval_expr(obj_expr, env)
+      let obj = self.eval_expr(ctx, obj_expr, env)
       let keys = collect_for_in_keys(obj)
       let mut completion : Value = Undefined
       for key in keys {
@@ -793,9 +794,9 @@ fn Interpreter::exec_stmt(
             }
             self.bind_pattern(pattern, String_(key), bind_env, bk)
           }
-          None => self.assign_pattern(pattern, String_(key), env)
+          None => self.assign_pattern(ctx, pattern, String_(key), env)
         }
-        match self.exec_stmt(body, body_env) {
+        match self.exec_stmt(ctx, body, body_env) {
           Normal(v) => completion = v
           ReturnSignal(v) => return ReturnSignal(v)
           BreakSignal(v, None) => {
@@ -825,7 +826,7 @@ fn Interpreter::exec_stmt(
       Normal(completion)
     }
     ForOfStmtPat(var_kind, pattern, iterable_expr, body, loc) => {
-      let iterable = self.eval_expr(iterable_expr, env)
+      let iterable = self.eval_expr(ctx, iterable_expr, env)
 
       // Try to get the iterator via Symbol.iterator protocol
       let iterator_sym = get_iterator_symbol()
@@ -929,9 +930,9 @@ fn Interpreter::exec_stmt(
             }
             self.bind_pattern(pattern, value, bind_env, bk)
           }
-          None => self.assign_pattern(pattern, value, env)
+          None => self.assign_pattern(ctx, pattern, value, env)
         }
-        let body_signal = self.exec_stmt(body, body_env) catch {
+        let body_signal = self.exec_stmt(ctx, body, body_env) catch {
           e => {
             close_iterator(self, iterator, loc) catch {
               _ => ()
@@ -986,13 +987,13 @@ fn Interpreter::exec_stmt(
       Normal(completion)
     }
     ForInExpr(lhs_expr, obj_expr, body, _) => {
-      let obj = self.eval_expr(obj_expr, env)
+      let obj = self.eval_expr(ctx, obj_expr, env)
       let keys = collect_for_in_keys(obj)
       let mut completion : Value = Undefined
       for key in keys {
         let body_env = Environment::new(parent=Some(env))
-        self.assign_to_expr(lhs_expr, String_(key), env)
-        match self.exec_stmt(body, body_env) {
+        self.assign_to_expr(ctx, lhs_expr, String_(key), env)
+        match self.exec_stmt(ctx, body, body_env) {
           Normal(v) => completion = v
           ReturnSignal(v) => return ReturnSignal(v)
           BreakSignal(v, None) => {
@@ -1022,7 +1023,7 @@ fn Interpreter::exec_stmt(
       Normal(completion)
     }
     ForOfExpr(lhs_expr, iterable_expr, body, loc) => {
-      let iterable = self.eval_expr(iterable_expr, env)
+      let iterable = self.eval_expr(ctx, iterable_expr, env)
       let iterator_sym = get_iterator_symbol()
       let iterator_method = self.get_computed_property(
         iterable,
@@ -1105,8 +1106,8 @@ fn Interpreter::exec_stmt(
           break
         }
         let body_env = Environment::new(parent=Some(env))
-        self.assign_to_expr(lhs_expr, value, env)
-        match self.exec_stmt(body, body_env) {
+        self.assign_to_expr(ctx, lhs_expr, value, env)
+        match self.exec_stmt(ctx, body, body_env) {
           Normal(v) => completion = v
           ReturnSignal(v) => return ReturnSignal(v)
           BreakSignal(v, None) => {
@@ -1141,13 +1142,13 @@ fn Interpreter::exec_stmt(
         ConstKind => ConstBinding
         VarKind => VarBinding
       }
-      let value = self.eval_expr(init_expr, env)
+      let value = self.eval_expr(ctx, init_expr, env)
       self.bind_pattern(pattern, value, env, bk)
       Normal(Undefined)
     }
     FuncDeclExt(name, params, rest_param, body, _) => {
       validate_function_signature_ext(
-        self.strict,
+        ctx.strict,
         Some(name),
         params,
         rest_param,
@@ -1167,7 +1168,7 @@ fn Interpreter::exec_stmt(
           rest_param,
           body,
           closure: env,
-          strict: is_function_strict(self.strict, body),
+          strict: is_function_strict(ctx.strict, body),
         }
         let func_val = make_func_ext(func_data)
         if env.bindings.contains(name) {
@@ -1178,7 +1179,7 @@ fn Interpreter::exec_stmt(
           env.def(name, func_val, VarBinding)
         }
         // Annex B.3.3: propagate block-level function to function scope's var binding
-        if self.annex_b && !self.strict && !env.is_var_scope {
+        if self.annex_b && !ctx.strict && !env.is_var_scope {
           let var_env = env.find_var_env()
           match var_env.bindings.get(name) {
             Some(binding) =>
@@ -1192,7 +1193,7 @@ fn Interpreter::exec_stmt(
       }
     }
     GeneratorDecl(name, params, body, _) => {
-      validate_function_signature(self.strict, Some(name), params, body)
+      validate_function_signature(ctx.strict, Some(name), params, body)
       let gen_func = self.make_generator_function(
         Some(name),
         params,
@@ -1211,7 +1212,7 @@ fn Interpreter::exec_stmt(
     }
     GeneratorDeclExt(name, params, rest_param, body, _) => {
       validate_function_signature_ext(
-        self.strict,
+        ctx.strict,
         Some(name),
         params,
         rest_param,
@@ -1234,7 +1235,7 @@ fn Interpreter::exec_stmt(
       Normal(Undefined)
     }
     AsyncFuncDecl(name, params, body, _) => {
-      validate_function_signature(self.strict, Some(name), params, body)
+      validate_function_signature(ctx.strict, Some(name), params, body)
       let async_func = self.make_async_function(
         Some(name),
         params,
@@ -1253,7 +1254,7 @@ fn Interpreter::exec_stmt(
     }
     AsyncFuncDeclExt(name, params, rest_param, body, _) => {
       validate_function_signature_ext(
-        self.strict,
+        ctx.strict,
         Some(name),
         params,
         rest_param,
@@ -1276,7 +1277,7 @@ fn Interpreter::exec_stmt(
       Normal(Undefined)
     }
     AsyncGeneratorDecl(name, params, body, _) => {
-      validate_function_signature(self.strict, Some(name), params, body)
+      validate_function_signature(ctx.strict, Some(name), params, body)
       let gen_func = self.make_async_generator_function(
         Some(name),
         params,
@@ -1295,7 +1296,7 @@ fn Interpreter::exec_stmt(
     }
     AsyncGeneratorDeclExt(name, params, rest_param, body, _) => {
       validate_function_signature_ext(
-        self.strict,
+        ctx.strict,
         Some(name),
         params,
         rest_param,
@@ -1318,7 +1319,7 @@ fn Interpreter::exec_stmt(
       Normal(Undefined)
     }
     LabeledStmt(lbl, body, _) =>
-      match self.exec_stmt(body, env, label=Some(lbl)) {
+      match self.exec_stmt(ctx, body, env, label=Some(lbl)) {
         BreakSignal(v, Some(l)) =>
           if l == lbl {
             Normal(v.unwrap_or(Undefined))
@@ -1328,7 +1329,7 @@ fn Interpreter::exec_stmt(
         other => other
       }
     ClassDecl(name, superclass, methods, _) => {
-      let class_val = self.create_class(name, superclass, methods, env)
+      let class_val = self.create_class(ctx, name, superclass, methods, env)
       // Class was hoisted with TDZ, initialize it now
       if env.bindings.contains(name) {
         env.initialize(name, class_val)
@@ -1343,9 +1344,9 @@ fn Interpreter::exec_stmt(
         default_import, specifiers, namespace_import, source, env, loc,
       )
     ExportNamedDecl(decl, specifiers, source, loc) =>
-      self.exec_export_named(decl, specifiers, source, env, loc)
+      self.exec_export_named(ctx, decl, specifiers, source, env, loc)
     ExportDefaultDecl(expr, _) => {
-      let value = self.eval_expr(expr, env)
+      let value = self.eval_expr(ctx, expr, env)
       self.module_exports["default"] = value
       // Named default exports also bind the name locally
       match expr {
@@ -1370,12 +1371,12 @@ fn Interpreter::exec_stmt(
       self.exec_export_all(ns_alias, source, loc)
     WithStmt(expr, body, _) => {
       // In strict mode, 'with' is always a SyntaxError
-      if self.strict {
+      if ctx.strict {
         raise @errors.SyntaxError(
           message="Strict mode code may not include a with statement",
         )
       }
-      let raw_obj = self.eval_expr(expr, env)
+      let raw_obj = self.eval_expr(ctx, expr, env)
       // Per spec: ToObject() the expression result. Throw TypeError for null/undefined.
       let obj = match raw_obj {
         Null => raise @errors.TypeError(message="Cannot convert null to object")
@@ -1448,7 +1449,7 @@ fn Interpreter::exec_stmt(
       // Property lookups/assignments go directly through the object
       let with_env = Environment::new(parent=Some(env))
       with_env.with_object = Some(obj)
-      self.exec_stmt(body, with_env)
+      self.exec_stmt(ctx, body, with_env)
     }
   }
 }
@@ -1548,12 +1549,13 @@ fn is_declaration_stmt(stmt : @ast.Stmt) -> Bool {
 ///|
 fn Interpreter::exec_stmts(
   self : Interpreter,
+  ctx : ExecContext,
   stmts : Array[@ast.Stmt],
   env : Environment,
 ) -> Signal raise Error {
   let mut last : Value = Undefined
   for stmt in stmts {
-    match self.exec_stmt(stmt, env) {
+    match self.exec_stmt(ctx, stmt, env) {
       Normal(v) =>
         // Per spec, declarations have empty completion values that don't update
         // the statement list's value. Only non-declaration statements update it.
@@ -1624,6 +1626,7 @@ fn close_iterator(
 ///|
 fn Interpreter::exec_try_catch(
   self : Interpreter,
+  ctx : ExecContext,
   try_body : Array[@ast.Stmt],
   catch_param : @ast.Pattern?,
   catch_body : Array[@ast.Stmt]?,
@@ -1631,7 +1634,7 @@ fn Interpreter::exec_try_catch(
   env : Environment,
 ) -> Signal raise Error {
   // Check if we're resuming inside a generator at a specific phase
-  let gen_opt = self.current_generator
+  let gen_opt = ctx.current_generator
   let start_phase = match gen_opt {
     Some(g) =>
       if g.try_resume_phase >= 0 {
@@ -1661,7 +1664,7 @@ fn Interpreter::exec_try_catch(
   // Phase 0: Try body (skip if resuming at catch or finally)
   if start_phase == 0 {
     let try_env = Environment::new(parent=Some(env))
-    result = self.exec_stmts(try_body, try_env) catch {
+    result = self.exec_stmts(ctx, try_body, try_env) catch {
       e =>
         if e is YieldSignal(_) {
           // Yield inside try body — save phase for resume
@@ -1682,7 +1685,7 @@ fn Interpreter::exec_try_catch(
               let error_value = js_error_to_value_with_env(e, Some(env))
               // Bind the catch parameter - supports simple identifier and destructuring
               self.bind_pattern(param, error_value, catch_env, LetBinding)
-              self.exec_stmts(body, catch_env) catch {
+              self.exec_stmts(ctx, body, catch_env) catch {
                 ce =>
                   if ce is YieldSignal(_) {
                     // Yield inside catch body — save phase and error for resume
@@ -1721,7 +1724,7 @@ fn Interpreter::exec_try_catch(
         }
         // Bind the catch parameter - supports simple identifier and destructuring
         self.bind_pattern(param, error_value, catch_env, LetBinding)
-        result = self.exec_stmts(body, catch_env) catch {
+        result = self.exec_stmts(ctx, body, catch_env) catch {
           ce =>
             if ce is YieldSignal(_) {
               // Yield inside catch body again — save phase
@@ -1746,6 +1749,7 @@ fn Interpreter::exec_try_catch(
   match finally_body {
     Some(body) => {
       let finally_result = self.exec_stmts(
+        ctx,
         body,
         Environment::new(parent=Some(env)),
       ) catch {

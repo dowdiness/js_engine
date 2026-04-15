@@ -21,15 +21,18 @@ fn ensure_strict_body(body : Array[@ast.Stmt]) -> Array[@ast.Stmt] {
 ///|
 fn Interpreter::create_class(
   self : Interpreter,
+  ctx : ExecContext,
   name : String,
   superclass_expr : @ast.Expr?,
   members : Array[@ast.ClassMember],
   env : Environment,
 ) -> Value raise Error {
+  // Class bodies are always strict per spec
+  let class_ctx : ExecContext = { strict: true, current_generator: None }
   // Evaluate superclass if present
   let (super_ctor, super_proto) : (Value?, Value) = match superclass_expr {
     Some(expr) => {
-      let super_val = self.eval_expr(expr, env)
+      let super_val = self.eval_expr(ctx, expr, env)
       match super_val {
         Object(super_data) =>
           match super_data.properties.get("prototype") {
@@ -82,19 +85,16 @@ fn Interpreter::create_class(
   // Process all members (methods and fields)
   // Class bodies are always strict — computed property keys and method keys
   // must be evaluated as strict code per ES2022 §15.7.
-  let saved_strict_cls = self.strict
-  self.strict = true
-  try {
-    for mbr in members {
-      match mbr {
-        @ast.ClassMember::Field(f) => {
-          // Evaluate key now (computed field keys are evaluated in order at class definition)
-          // ToPropertyKey: keep Symbol as-is; coerce everything else to String once,
-          // so side-effectful toString/valueOf don't re-run per-construction.
-          let key_val : Value = match f.key {
-            StringLit(s, _, _) => String_(s)
-            _ => {
-              let v = self.eval_expr(f.key, env)
+  for mbr in members {
+    match mbr {
+      @ast.ClassMember::Field(f) => {
+        // Evaluate key now (computed field keys are evaluated in order at class definition)
+        // ToPropertyKey: keep Symbol as-is; coerce everything else to String once,
+        // so side-effectful toString/valueOf don't re-run per-construction.
+        let key_val : Value = match f.key {
+          StringLit(s, _, _) => String_(s)
+          _ => {
+            let v = self.eval_expr(class_ctx, f.key, env)
               match v {
                 Symbol(_) => v
                 _ => String_(to_js_string(v))
@@ -191,7 +191,7 @@ fn Interpreter::create_class(
               }
               make_func_ext(func_data)
             }
-            _ => self.eval_expr(m.value, method_closure)
+            _ => self.eval_expr(class_ctx, m.value, method_closure)
           }
           // Handle getter/setter vs regular method
           // Class methods are non-enumerable per spec
@@ -326,16 +326,9 @@ fn Interpreter::create_class(
               }
             }
           }
-        } // end Method arm
-      } // end match member
-    } // end for member in members
-  } catch {
-    e => {
-      self.strict = saved_strict_cls
-      raise e
-    }
-  }
-  self.strict = saved_strict_cls
+      } // end Method arm
+    } // end match member
+  } // end for member in members
   // Create prototype object
   let proto = Object({
     properties: proto_props,
@@ -430,24 +423,21 @@ fn Interpreter::create_class(
     static_method_env
   }
   // Class bodies (including field initializers) are always strict per spec
-  let saved_strict = self.strict
-  self.strict = true
-  try {
-    for sf in static_fields {
-      let key_str : String = match sf.key {
-        String_(s) => s
-        Symbol(sym) => sym.id.to_string() // use id for symbol-keyed static fields
-        _ => to_js_string(sf.key)
+  for sf in static_fields {
+    let key_str : String = match sf.key {
+      String_(s) => s
+      Symbol(sym) => sym.id.to_string() // use id for symbol-keyed static fields
+      _ => to_js_string(sf.key)
+    }
+    let value : Value = match sf.initializer {
+      Some(expr) => {
+        // Evaluate initializer with `this` = class_obj and class name in scope
+        let field_env = Environment::new(parent=Some(static_init_base))
+        field_env.def_builtin("this", class_obj)
+        self.eval_expr(class_ctx, expr, field_env)
       }
-      let value : Value = match sf.initializer {
-        Some(expr) => {
-          // Evaluate initializer with `this` = class_obj and class name in scope
-          let field_env = Environment::new(parent=Some(static_init_base))
-          field_env.def_builtin("this", class_obj)
-          self.eval_expr(expr, field_env)
-        }
-        None => Undefined
-      }
+      None => Undefined
+    }
       match class_obj {
         Object(class_data) =>
           match sf.key {
@@ -505,12 +495,6 @@ fn Interpreter::create_class(
         _ => ()
       }
     }
-  } catch {
-    e => {
-      self.strict = saved_strict
-      raise e
-    }
   }
-  self.strict = saved_strict
   class_obj
 }

@@ -88,6 +88,7 @@ fn Interpreter::exec_import(
 /// Execute a named export declaration
 fn Interpreter::exec_export_named(
   self : Interpreter,
+  ctx : ExecContext,
   decl : @ast.Stmt?,
   specifiers : Array[@ast.ExportSpecifier],
   source : String?,
@@ -97,7 +98,7 @@ fn Interpreter::exec_export_named(
   // export let/const/var/function/class ...
   match decl {
     Some(inner_decl) => {
-      let signal = self.exec_stmt(inner_decl, env)
+      let signal = self.exec_stmt(ctx, inner_decl, env)
       // Record declared names for deferred resolution (live bindings)
       self.extract_export_names(inner_decl)
       return signal
@@ -291,22 +292,21 @@ pub fn Interpreter::run_module(
   // Save and reset module exports for this module
   let saved_exports = self.module_exports
   let saved_bindings = self.module_export_bindings
-  let saved_strict = self.strict
   self.module_exports = {}
   self.module_export_bindings = []
   // Create a module-scoped environment that inherits from global
   let module_env = Environment::new(parent=Some(self.global))
+  // Modules are always strict mode per ES2022 §16.2.1
+  let module_ctx : ExecContext = { strict: true, current_generator: None }
   try {
-    // Modules are always strict mode
-    self.strict = true
     // Static block-scoped redeclaration checks (applies to module code too).
     self.validate_block_early_errors(stmts, true)
     // Hoist var declarations and function declarations
-    self.hoist_declarations(stmts, module_env)
+    self.hoist_declarations(stmts, module_env, strict=true)
     // Also hoist block-scoped (let/const/class) with TDZ
     hoist_block_tdz(stmts, module_env)
     for stmt in stmts {
-      match self.exec_stmt(stmt, module_env) {
+      match self.exec_stmt(module_ctx, stmt, module_env) {
         Normal(_) => ()
         ReturnSignal(_) =>
           raise @errors.SyntaxError(
@@ -320,7 +320,6 @@ pub fn Interpreter::run_module(
           )
       }
     }
-    self.strict = saved_strict
     // Resolve deferred export bindings from module environment (live bindings)
     for pair in self.module_export_bindings {
       let (export_name, local_name) = pair
@@ -332,7 +331,6 @@ pub fn Interpreter::run_module(
     exports
   } catch {
     e => {
-      self.strict = saved_strict
       self.module_exports = saved_exports
       self.module_export_bindings = saved_bindings
       raise e

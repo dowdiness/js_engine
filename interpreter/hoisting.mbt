@@ -1250,6 +1250,7 @@ fn Interpreter::hoist_declarations(
   _self : Interpreter,
   stmts : Array[@ast.Stmt],
   env : Environment,
+  strict~ : Bool = false,
 ) -> Unit raise Error {
   let is_global = physical_equal(env, _self.global)
   for stmt in stmts {
@@ -1263,13 +1264,13 @@ fn Interpreter::hoist_declarations(
           }
         }
       FuncDecl(name, params, body, _) => {
-        validate_function_signature(_self.strict, Some(name), params, body)
+        validate_function_signature(strict, Some(name), params, body)
         let func_data : FuncData = {
           name: Some(name),
           params,
           body,
           closure: env,
-          strict: is_function_strict(_self.strict, body),
+          strict: is_function_strict(strict, body),
         }
         let func_val = make_func(func_data)
         if env.bindings.contains(name) {
@@ -1284,7 +1285,7 @@ fn Interpreter::hoist_declarations(
       }
       FuncDeclExt(name, params, rest_param, body, _) => {
         validate_function_signature_ext(
-          _self.strict,
+          strict,
           Some(name),
           params,
           rest_param,
@@ -1296,7 +1297,7 @@ fn Interpreter::hoist_declarations(
           rest_param,
           body,
           closure: env,
-          strict: is_function_strict(_self.strict, body),
+          strict: is_function_strict(strict, body),
         }
         let func_val = make_func_ext(func_data)
         if env.bindings.contains(name) {
@@ -1310,7 +1311,7 @@ fn Interpreter::hoist_declarations(
         }
       }
       GeneratorDecl(name, params, body, _) => {
-        validate_function_signature(_self.strict, Some(name), params, body)
+        validate_function_signature(strict, Some(name), params, body)
         let gen_func = _self.make_generator_function(
           Some(name),
           params,
@@ -1330,7 +1331,7 @@ fn Interpreter::hoist_declarations(
       }
       GeneratorDeclExt(name, params, rest_param, body, _) => {
         validate_function_signature_ext(
-          _self.strict,
+          strict,
           Some(name),
           params,
           rest_param,
@@ -1354,7 +1355,7 @@ fn Interpreter::hoist_declarations(
         }
       }
       AsyncFuncDecl(name, params, body, _) => {
-        validate_function_signature(_self.strict, Some(name), params, body)
+        validate_function_signature(strict, Some(name), params, body)
         let async_func = _self.make_async_function(
           Some(name),
           params,
@@ -1370,7 +1371,7 @@ fn Interpreter::hoist_declarations(
       }
       AsyncFuncDeclExt(name, params, rest_param, body, _) => {
         validate_function_signature_ext(
-          _self.strict,
+          strict,
           Some(name),
           params,
           rest_param,
@@ -1390,7 +1391,7 @@ fn Interpreter::hoist_declarations(
         }
       }
       AsyncGeneratorDecl(name, params, body, _) => {
-        validate_function_signature(_self.strict, Some(name), params, body)
+        validate_function_signature(strict, Some(name), params, body)
         let gen_func = _self.make_async_generator_function(
           Some(name),
           params,
@@ -1406,7 +1407,7 @@ fn Interpreter::hoist_declarations(
       }
       AsyncGeneratorDeclExt(name, params, rest_param, body, _) => {
         validate_function_signature_ext(
-          _self.strict,
+          strict,
           Some(name),
           params,
           rest_param,
@@ -1442,17 +1443,17 @@ fn Interpreter::hoist_declarations(
       // Export with declaration: hoist the inner declaration
       ExportNamedDecl(Some(decl), _, _, _) => {
         let inner_stmts : Array[@ast.Stmt] = [decl]
-        _self.hoist_declarations(inner_stmts, env)
+        _self.hoist_declarations(inner_stmts, env, strict~)
       }
       // export default function name() {} - hoist the named function
       ExportDefaultDecl(FuncExpr(Some(name), params, body, _), _) => {
-        validate_function_signature(_self.strict, Some(name), params, body)
+        validate_function_signature(strict, Some(name), params, body)
         let func_data : FuncData = {
           name: Some(name),
           params,
           body,
           closure: env,
-          strict: is_function_strict(_self.strict, body),
+          strict: is_function_strict(strict, body),
         }
         if env.bindings.contains(name) {
           env.assign(name, make_func(func_data))
@@ -1462,7 +1463,7 @@ fn Interpreter::hoist_declarations(
       }
       ExportDefaultDecl(FuncExprExt(Some(name), params, rest_param, body, _), _) => {
         validate_function_signature_ext(
-          _self.strict,
+          strict,
           Some(name),
           params,
           rest_param,
@@ -1474,7 +1475,7 @@ fn Interpreter::hoist_declarations(
           rest_param,
           body,
           closure: env,
-          strict: is_function_strict(_self.strict, body),
+          strict: is_function_strict(strict, body),
         }
         if env.bindings.contains(name) {
           env.assign(name, make_func_ext(func_data))
@@ -1488,7 +1489,7 @@ fn Interpreter::hoist_declarations(
     // (e.g. var inside blocks still hoists to function/global var scope).
     hoist_var_declarations_from_stmt(stmt, env)
     // Annex B.3.3: Hoist block-level function declarations as var bindings
-    if _self.annex_b && !_self.strict {
+    if _self.annex_b && !strict {
       hoist_block_func_declarations(stmt, env)
     }
   }

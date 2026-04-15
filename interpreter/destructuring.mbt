@@ -5,6 +5,7 @@ fn Interpreter::bind_pattern(
   value : Value,
   env : Environment,
   bk : BindingKind,
+  ctx? : ExecContext = { strict: false, current_generator: None },
 ) -> Unit raise Error {
   match pattern {
     IdentPat(name) =>
@@ -19,7 +20,7 @@ fn Interpreter::bind_pattern(
       }
     DefaultPat(inner_pat, default_expr) => {
       let final_val : Value = if value is Undefined {
-        let v = self.eval_expr(default_expr, env)
+        let v = self.eval_expr(ctx, default_expr, env)
         // Per spec, if default is anonymous function and target is identifier, set name
         if is_anonymous_function_definition(default_expr) {
           match inner_pat {
@@ -31,12 +32,12 @@ fn Interpreter::bind_pattern(
       } else {
         value
       }
-      self.bind_pattern(inner_pat, final_val, env, bk)
+      self.bind_pattern(inner_pat, final_val, env, bk, ctx~)
     }
     AssignTarget(expr) =>
       // Member expression targets are only valid in assignment destructuring,
       // not in binding declarations (let/const/var). Delegate to assign_to_expr.
-      self.assign_to_expr(expr, value, env)
+      self.assign_to_expr(ctx, expr, value, env)
     ArrayPat(elements, rest) => {
       // Per spec, destructuring null/undefined must throw TypeError
       if value is (Null | Undefined) {
@@ -141,7 +142,7 @@ fn Interpreter::bind_pattern(
           }
         }
         match elements[i] {
-          Some(pat) => self.bind_pattern(pat, val, env, bk)
+          Some(pat) => self.bind_pattern(pat, val, env, bk, ctx~)
           None => () // elision — value consumed above, just discard
         }
       }
@@ -184,6 +185,7 @@ fn Interpreter::bind_pattern(
             Array({ elements: rest_elements }),
             env,
             bk,
+            ctx~,
           )
         }
         None =>
@@ -215,7 +217,7 @@ fn Interpreter::bind_pattern(
         // Evaluate computed key if present, otherwise use static key
         let key_str : String = match prop.computed_key {
           Some(key_expr) => {
-            let key_val = self.eval_expr(key_expr, env)
+            let key_val = self.eval_expr(ctx, key_expr, env)
             to_js_string(key_val)
           }
           None => prop.key
@@ -229,7 +231,7 @@ fn Interpreter::bind_pattern(
         let final_val : Value = if val is Undefined {
           match prop.default_val {
             Some(default_expr) => {
-              let v = self.eval_expr(default_expr, env)
+              let v = self.eval_expr(ctx, default_expr, env)
               // Per spec, SingleNameBinding: if IsAnonymousFunctionDefinition(Initializer), SetFunctionName
               if is_anonymous_function_definition(default_expr) {
                 match prop.value {
@@ -244,7 +246,7 @@ fn Interpreter::bind_pattern(
         } else {
           val
         }
-        self.bind_pattern(prop.value, final_val, env, bk)
+        self.bind_pattern(prop.value, final_val, env, bk, ctx~)
       }
       match rest {
         Some(rest_pat) => {
@@ -297,6 +299,7 @@ fn Interpreter::bind_pattern(
             }),
             env,
             bk,
+            ctx~,
           )
         }
         None => ()
@@ -308,6 +311,7 @@ fn Interpreter::bind_pattern(
 ///|
 fn Interpreter::assign_pattern(
   self : Interpreter,
+  ctx : ExecContext,
   pattern : @ast.Pattern,
   value : Value,
   env : Environment,
@@ -316,7 +320,7 @@ fn Interpreter::assign_pattern(
     IdentPat(name) =>
       env.assign(name, value) catch {
         @errors.ReferenceError(_) =>
-          if !self.strict {
+          if !ctx.strict {
             // Sloppy mode: implicit global creation
             self.global.def(name, value, VarBinding)
             self.mirror_to_global(name, value, configurable=true)
@@ -327,7 +331,7 @@ fn Interpreter::assign_pattern(
       }
     DefaultPat(inner_pat, default_expr) => {
       let final_val : Value = if value is Undefined {
-        let v = self.eval_expr(default_expr, env)
+        let v = self.eval_expr(ctx, default_expr, env)
         // Per spec, if default is anonymous function and target is identifier, set name
         if is_anonymous_function_definition(default_expr) {
           match inner_pat {
@@ -339,11 +343,11 @@ fn Interpreter::assign_pattern(
       } else {
         value
       }
-      self.assign_pattern(inner_pat, final_val, env)
+      self.assign_pattern(ctx, inner_pat, final_val, env)
     }
     AssignTarget(expr) =>
       // Member expression assignment target: [obj.x] = [1]
-      self.assign_to_expr(expr, value, env)
+      self.assign_to_expr(ctx, expr, value, env)
     ArrayPat(elements, rest) => {
       // Per spec, destructuring null/undefined must throw TypeError
       if value is (Null | Undefined) {
@@ -453,7 +457,7 @@ fn Interpreter::assign_pattern(
           }
         }
         match elements[i] {
-          Some(pat) => self.assign_pattern(pat, val, env)
+          Some(pat) => self.assign_pattern(ctx, pat, val, env)
           None => () // elision — value consumed above, just discard
         }
       }
@@ -491,7 +495,7 @@ fn Interpreter::assign_pattern(
               rest_elements.push(val)
             }
           }
-          self.assign_pattern(rest_pat, Array({ elements: rest_elements }), env)
+          self.assign_pattern(ctx, rest_pat, Array({ elements: rest_elements }), env)
         }
         None =>
           // Per spec: IteratorClose — call iterator.return() if not exhausted
@@ -527,7 +531,7 @@ fn Interpreter::assign_pattern(
         // Evaluate computed key if present, otherwise use static key
         let key_str : String = match prop.computed_key {
           Some(key_expr) => {
-            let key_val = self.eval_expr(key_expr, env)
+            let key_val = self.eval_expr(ctx, key_expr, env)
             to_js_string(key_val)
           }
           None => prop.key
@@ -541,7 +545,7 @@ fn Interpreter::assign_pattern(
         let final_val : Value = if val is Undefined {
           match prop.default_val {
             Some(default_expr) => {
-              let v = self.eval_expr(default_expr, env)
+              let v = self.eval_expr(ctx, default_expr, env)
               // Per spec, SingleNameBinding: if IsAnonymousFunctionDefinition(Initializer), SetFunctionName
               if is_anonymous_function_definition(default_expr) {
                 match prop.value {
@@ -556,7 +560,7 @@ fn Interpreter::assign_pattern(
         } else {
           val
         }
-        self.assign_pattern(prop.value, final_val, env)
+        self.assign_pattern(ctx, prop.value, final_val, env)
       }
       match rest {
         Some(rest_pat) => {
@@ -594,6 +598,7 @@ fn Interpreter::assign_pattern(
             _ => ()
           }
           self.assign_pattern(
+            ctx,
             rest_pat,
             Object({
               properties: rest_props,
@@ -617,6 +622,7 @@ fn Interpreter::assign_pattern(
 ///|
 fn Interpreter::assign_to_expr(
   self : Interpreter,
+  ctx : ExecContext,
   expr : @ast.Expr,
   value : Value,
   env : Environment,
@@ -625,7 +631,7 @@ fn Interpreter::assign_to_expr(
     Ident(name, _) =>
       env.assign(name, value) catch {
         @errors.ReferenceError(_) =>
-          if !self.strict {
+          if !ctx.strict {
             // Implicit global creation in sloppy mode
             self.global.def(name, value, VarBinding)
             self.mirror_to_global(name, value, configurable=true)
@@ -635,13 +641,13 @@ fn Interpreter::assign_to_expr(
         e => raise e
       }
     Member(obj_expr, prop, loc) => {
-      let obj = self.eval_expr(obj_expr, env)
-      let _ = self.set_property(obj, prop, value, loc)
+      let obj = self.eval_expr(ctx, obj_expr, env)
+      let _ = self.set_property(obj, prop, value, loc, strict=ctx.strict)
     }
     ComputedMember(obj_expr, key_expr, loc) => {
-      let obj = self.eval_expr(obj_expr, env)
-      let key = self.eval_expr(key_expr, env)
-      let _ = self.set_computed_property(obj, key, value, loc)
+      let obj = self.eval_expr(ctx, obj_expr, env)
+      let key = self.eval_expr(ctx, key_expr, env)
+      let _ = self.set_computed_property(obj, key, value, loc, strict=ctx.strict)
     }
     _ =>
       raise @errors.ReferenceError(

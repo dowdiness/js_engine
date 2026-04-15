@@ -532,6 +532,8 @@ fn create_generator_instance(
 ) -> Value raise Error {
   // Per spec, FunctionDeclarationInstantiation runs eagerly when generator is called,
   // NOT when .next() is called. This means parameter binding errors throw immediately.
+  let gen_strict = has_use_strict(body)
+  let setup_ctx : ExecContext = { strict: gen_strict, current_generator: None }
   let func_env = Environment::new(parent=Some(closure))
   func_env.is_var_scope = true
   func_env.def("this", this_val, LetBinding)
@@ -550,7 +552,7 @@ fn create_generator_instance(
           args[effective_count]
         } else {
           match param.default_val {
-            Some(d) => interp.eval_expr(d, func_env)
+            Some(d) => interp.eval_expr(setup_ctx, d, func_env)
             None =>
               if effective_count < args.length() {
                 args[effective_count]
@@ -788,26 +790,26 @@ fn run_generator_body(
   gen : GeneratorObject,
   env : Environment,
 ) -> Value raise Error {
-  // Save and set the current generator context
-  let prev_gen = interp.current_generator
-  interp.current_generator = Some(gen)
+  // Build per-execution context with this generator as the current generator
+  let gen_ctx : ExecContext = {
+    strict: has_use_strict(gen.body),
+    current_generator: Some(gen),
+  }
   let result = try {
     while gen.pc < gen.body.length() {
       let i = gen.pc
       let stmt = gen.body[i]
       gen.yield_index = 0 // Reset yield counter for each statement
-      let signal = interp.exec_stmt(stmt, env) catch {
+      let signal = interp.exec_stmt(gen_ctx, stmt, env) catch {
         YieldSignal(yielded_value) => {
           // Statement yielded. DON'T advance pc — on resume we'll replay this stmt.
           gen.state = SuspendedYield
-          interp.current_generator = prev_gen
           return make_iterator_result(yielded_value, false)
         }
         GeneratorReturnSignal(v) => {
           // .return(v) was injected at yield point and propagated up
           // (possibly through finally blocks). Complete the generator.
           complete_generator(gen)
-          interp.current_generator = prev_gen
           return make_iterator_result(v, true)
         }
         e => raise e
@@ -818,7 +820,6 @@ fn run_generator_body(
         Normal(_) => ()
         ReturnSignal(v) => {
           complete_generator(gen)
-          interp.current_generator = prev_gen
           return make_iterator_result(v, true)
         }
         BreakSignal(_, _) | ContinueSignal(_, _) => ()
@@ -830,11 +831,9 @@ fn run_generator_body(
   } catch {
     e => {
       complete_generator(gen)
-      interp.current_generator = prev_gen
       raise e
     }
   }
-  interp.current_generator = prev_gen
   result
 }
 
@@ -870,11 +869,12 @@ fn generator_continue(
 /// When delegate is true (yield*), iterates the delegate and yields each value.
 fn Interpreter::eval_yield(
   self : Interpreter,
+  ctx : ExecContext,
   argument : @ast.Expr?,
   delegate : Bool,
   env : Environment,
 ) -> Value raise Error {
-  match self.current_generator {
+  match ctx.current_generator {
     Some(gen) => {
       let current_yield_index = gen.yield_index
       gen.yield_index = gen.yield_index + 1
@@ -895,7 +895,7 @@ fn Interpreter::eval_yield(
       } else if delegate {
         // yield* expr — delegate to another iterable
         let iterable = match argument {
-          Some(expr) => self.eval_expr(expr, env)
+          Some(expr) => self.eval_expr(ctx, expr, env)
           None => Undefined
         }
         // Get iterator from iterable
@@ -946,7 +946,7 @@ fn Interpreter::eval_yield(
       } else {
         // Normal yield: evaluate argument and suspend
         let yielded_value = match argument {
-          Some(expr) => self.eval_expr(expr, env)
+          Some(expr) => self.eval_expr(ctx, expr, env)
           None => Undefined
         }
         gen.resume_at_yield = current_yield_index
