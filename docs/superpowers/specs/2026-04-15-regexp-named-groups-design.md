@@ -24,7 +24,7 @@ Primary changes in `interpreter/builtins_regex.mbt`. Additional changes in `inte
 
 **`RegexNode::Group`** — Add optional name field:
 
-```
+```moonbit
 Group(Array[RegexNode], Int, String?)  // children, group_index, name
 ```
 
@@ -32,7 +32,7 @@ Unnamed capturing groups pass `None`. Non-capturing groups keep `group_index = 0
 
 **`RegexParser`** — Add field:
 
-```
+```moonbit
 group_names : Map[String, Int]  // name -> group_index
 ```
 
@@ -42,7 +42,7 @@ Used during parsing to:
 
 **`RegexMatch`** — Add field:
 
-```
+```moonbit
 group_names : Array[(String, Int)]  // (name, group_index) pairs in source order
 ```
 
@@ -128,7 +128,7 @@ The groups object uses the same null-prototype construction as section 5.
 
 ## Test Coverage
 
-Primary: `test262/test/built-ins/RegExp/named-groups/` (~36 tests)
+Primary: `test262/test/built-ins/RegExp/named-groups/` (~70 tests)
 Additional: `test262/test/language/literals/regexp/named-groups/`
 Annex B: `test262/test/annexB/built-ins/RegExp/named-groups/`
 
