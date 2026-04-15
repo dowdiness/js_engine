@@ -1655,7 +1655,7 @@ fn setup_array_builtins(
   // Array.from with mapFn support using InterpreterCallable
   array_props["from"] = @runtime.make_interp_method_func("from", 1, fn(
     interp,
-    _this_val,
+    this_val,
     args,
   ) raise {
     let source = if args.length() > 0 { args[0] } else { Undefined }
@@ -1788,7 +1788,28 @@ fn setup_array_builtins(
         }
       }
     }
-    Value::Array({ elements, })
+    // Per ES §23.1.2.1 step 3–4: if `this` is a constructor, construct through
+    // it so that subclasses (class MyArray extends Array) work correctly.
+    // Otherwise fall back to a plain array.
+    let n = elements.length()
+    if @runtime.is_constructor_value(this_val) {
+      let result = interp.construct_value(
+        this_val,
+        [Value::Number(n.to_double())],
+        loc,
+      )
+      for i = 0; i < n; i = i + 1 {
+        let _ = interp.set_property(
+          result, i.to_string(), elements[i], loc, strict=true,
+        )
+      }
+      let _ = interp.set_property(
+        result, "length", Value::Number(n.to_double()), loc, strict=true,
+      )
+      result
+    } else {
+      Value::Array({ elements, })
+    }
   })
   env.def_builtin(
     "Array",
