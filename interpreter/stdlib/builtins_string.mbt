@@ -1,0 +1,1877 @@
+///|
+/// GetSubstitution - handles replacement patterns like $&, $`, $', $$, $<n> for string replace.
+fn get_substitution(
+  replacement : String,
+  matched : String,
+  str : String,
+  position : Int,
+) -> String {
+  let repl_chars = replacement.to_array()
+  let buf = StringBuilder::new()
+  let mut i = 0
+  while i < repl_chars.length() {
+    if repl_chars[i] == '$' && i + 1 < repl_chars.length() {
+      let next = repl_chars[i + 1]
+      if next == '$' {
+        buf.write_char('$')
+        i += 2
+        continue
+      } else if next == '&' {
+        buf.write_string(matched)
+        i += 2
+        continue
+      } else if next == '`' {
+        // $` = portion of str before matched
+        let s_chars = str.to_array()
+        for k = 0; k < position && k < s_chars.length(); k = k + 1 {
+          buf.write_char(s_chars[k])
+        }
+        i += 2
+        continue
+      } else if next == '\'' {
+        // $' = portion of str after matched
+        let s_chars = str.to_array()
+        let after = position + matched.length()
+        for k = after; k < s_chars.length(); k = k + 1 {
+          buf.write_char(s_chars[k])
+        }
+        i += 2
+        continue
+      } else if next >= '0' && next <= '9' {
+        // $1-$99 group references - for string replace these are undefined
+        // (only relevant for regex replace, not string replace)
+        buf.write_char('$')
+        buf.write_char(next)
+        i += 2
+        continue
+      }
+    }
+    buf.write_char(repl_chars[i])
+    i += 1
+  }
+  buf.to_string()
+}
+
+///|
+/// Convert a MoonBit string (sequence of Unicode code points) to an array
+/// of UTF-16 code units.  Supplementary characters (code point > 0xFFFF) are
+/// split into a surrogate pair (high surrogate + low surrogate).
+fn string_to_utf16(s : String) -> Array[Int] {
+  let units : Array[Int] = []
+  let cps = s.to_array()
+  for ch in cps {
+    let cp = ch.to_int()
+    if cp > 0xFFFF {
+      // Encode as surrogate pair
+      let adjusted = cp - 0x10000
+      let high = 0xD800 + (adjusted >> 10)
+      let low = 0xDC00 + (adjusted & 0x3FF)
+      units.push(high)
+      units.push(low)
+    } else {
+      units.push(cp)
+    }
+  }
+  units
+}
+
+///|
+/// Get the UTF-16 length of a string (counting code units, not code points).
+pub fn utf16_length(s : String) -> Int {
+  let cps = s.to_array()
+  let mut len = 0
+  for ch in cps {
+    let cp = ch.to_int()
+    if cp > 0xFFFF {
+      len += 2
+    } else {
+      len += 1
+    }
+  }
+  len
+}
+
+///|
+pub fn get_string_method(
+  s : String,
+  prop : String,
+  annex_b? : Bool = false,
+) -> Value {
+  let chars = s.to_array()
+  match prop {
+    "charAt" =>
+      @runtime.make_native_func_with_length("charAt", 1, fn(args) raise {
+        let idx = if args.length() > 0 {
+          @runtime.to_number(args[0]).to_int()
+        } else {
+          0
+        }
+        if idx >= 0 && idx < chars.length() {
+          let buf = StringBuilder::new()
+          buf.write_char(chars[idx])
+          Value::String_(buf.to_string())
+        } else {
+          Value::String_("")
+        }
+      })
+    "charCodeAt" =>
+      @runtime.make_native_func_with_length("charCodeAt", 1, fn(args) raise {
+        let idx = if args.length() > 0 {
+          @runtime.to_number(args[0]).to_int()
+        } else {
+          0
+        }
+        // charCodeAt returns UTF-16 code units, not Unicode code points
+        let units = string_to_utf16(s)
+        if idx >= 0 && idx < units.length() {
+          Value::Number(units[idx].to_double())
+        } else {
+          Value::Number(0.0 / 0.0)
+        }
+      })
+    "at" =>
+      @runtime.make_native_func_with_length("at", 1, fn(args) raise {
+        // String.prototype.at() - access character at index (supports negative)
+        let idx = if args.length() > 0 {
+          @runtime.to_number(args[0]).to_int()
+        } else {
+          0
+        }
+        let len = chars.length()
+        let actual_idx = if idx < 0 { len + idx } else { idx }
+        if actual_idx >= 0 && actual_idx < len {
+          let buf = StringBuilder::new()
+          buf.write_char(chars[actual_idx])
+          Value::String_(buf.to_string())
+        } else {
+          Undefined
+        }
+      })
+    "codePointAt" =>
+      @runtime.make_native_func_with_length("codePointAt", 1, fn(args) raise {
+        // String.prototype.codePointAt() - get code point at index
+        let idx = if args.length() > 0 {
+          @runtime.to_number(args[0]).to_int()
+        } else {
+          0
+        }
+        if idx >= 0 && idx < chars.length() {
+          let code = chars[idx].to_int()
+          // Check for high surrogate
+          if code >= 0xD800 && code <= 0xDBFF && idx + 1 < chars.length() {
+            let next = chars[idx + 1].to_int()
+            // Check for low surrogate
+            if next >= 0xDC00 && next <= 0xDFFF {
+              // Combine surrogate pair to get code point
+              let cp = (code - 0xD800) * 0x400 + (next - 0xDC00) + 0x10000
+              return Value::Number(cp.to_double())
+            }
+          }
+          Value::Number(code.to_double())
+        } else {
+          Undefined
+        }
+      })
+    "concat" => {
+      let str = s
+      @runtime.make_native_func_with_length("concat", 1, fn(args) raise {
+        let buf = StringBuilder::new()
+        buf.write_string(str)
+        for arg in args {
+          buf.write_string(@runtime.to_js_string(arg))
+        }
+        Value::String_(buf.to_string())
+      })
+    }
+    "indexOf" => {
+      let str = s
+      @runtime.make_native_func_with_length("indexOf", 1, fn(args) raise {
+        let search = if args.length() > 0 {
+          @runtime.to_js_string(args[0])
+        } else {
+          "undefined"
+        }
+        let from_idx = if args.length() > 1 {
+          @runtime.to_number(args[1]).to_int()
+        } else {
+          0
+        }
+        let start = if from_idx < 0 { 0 } else { from_idx }
+        let slen = str.length()
+        let search_len = search.length()
+        if search_len == 0 {
+          let empty_result = if start > slen { slen } else { start }
+          return Value::Number(empty_result.to_double())
+        }
+        let s_chars = str.to_array()
+        let search_chars = search.to_array()
+        for i = start; i <= slen - search_len; i = i + 1 {
+          let mut found = true
+          for j = 0; j < search_len; j = j + 1 {
+            if s_chars[i + j] != search_chars[j] {
+              found = false
+              break
+            }
+          }
+          if found {
+            return Value::Number(i.to_double())
+          }
+        }
+        Value::Number(-1.0)
+      })
+    }
+    "lastIndexOf" => {
+      let str = s
+      @runtime.make_native_func_with_length("lastIndexOf", 1, fn(args) raise {
+        let search = if args.length() > 0 {
+          @runtime.to_js_string(args[0])
+        } else {
+          "undefined"
+        }
+        let slen = str.length()
+        let search_len = search.length()
+        let from_idx = if args.length() > 1 {
+          @runtime.to_number(args[1]).to_int()
+        } else {
+          slen
+        }
+        let from = if from_idx < 0 {
+          0
+        } else if from_idx > slen {
+          slen
+        } else {
+          from_idx
+        }
+        if search_len == 0 {
+          return Value::Number(from.to_double())
+        }
+        let max_start = slen - search_len
+        if max_start < 0 {
+          return Value::Number(-1.0)
+        }
+        let start = if from > max_start { max_start } else { from }
+        let s_chars = str.to_array()
+        let search_chars = search.to_array()
+        for i = start; i >= 0; i = i - 1 {
+          let mut found = true
+          for j = 0; j < search_len; j = j + 1 {
+            if i + j >= slen || s_chars[i + j] != search_chars[j] {
+              found = false
+              break
+            }
+          }
+          if found {
+            return Value::Number(i.to_double())
+          }
+        }
+        Value::Number(-1.0)
+      })
+    }
+    "includes" => {
+      let str = s
+      @runtime.make_native_func_with_length("includes", 1, fn(args) raise {
+        // Per spec: throw TypeError if searchString is a RegExp
+        if args.length() > 0 {
+          match args[0] {
+            Object(data) =>
+              if data.class_name == "RegExp" {
+                raise @errors.TypeError(
+                  message="First argument to String.prototype.includes must not be a regular expression",
+                )
+              }
+            _ => ()
+          }
+        }
+        let search = if args.length() > 0 {
+          @runtime.to_js_string(args[0])
+        } else {
+          "undefined"
+        }
+        let from_idx = if args.length() > 1 {
+          @runtime.to_number(args[1]).to_int()
+        } else {
+          0
+        }
+        let start = if from_idx < 0 { 0 } else { from_idx }
+        let slen = str.length()
+        let search_len = search.length()
+        if search_len == 0 {
+          return Value::Bool(true)
+        }
+        let s_chars = str.to_array()
+        let search_chars = search.to_array()
+        for i = start; i <= slen - search_len; i = i + 1 {
+          let mut found = true
+          for j = 0; j < search_len; j = j + 1 {
+            if s_chars[i + j] != search_chars[j] {
+              found = false
+              break
+            }
+          }
+          if found {
+            return Value::Bool(true)
+          }
+        }
+        Value::Bool(false)
+      })
+    }
+    "slice" => {
+      let str = s
+      @runtime.make_native_func_with_length("slice", 2, fn(args) raise {
+        let slen = str.length()
+        let mut start = if args.length() > 0 {
+          @runtime.to_number(args[0]).to_int()
+        } else {
+          0
+        }
+        let mut end = if args.length() > 1 {
+          match args[1] {
+            Undefined => slen
+            _ => @runtime.to_number(args[1]).to_int()
+          }
+        } else {
+          slen
+        }
+        if start < 0 {
+          start = slen + start
+          if start < 0 {
+            start = 0
+          }
+        }
+        if end < 0 {
+          end = slen + end
+          if end < 0 {
+            end = 0
+          }
+        }
+        if end > slen {
+          end = slen
+        }
+        if start >= end {
+          return Value::String_("")
+        }
+        let s_chars = str.to_array()
+        let buf = StringBuilder::new()
+        for i = start; i < end; i = i + 1 {
+          buf.write_char(s_chars[i])
+        }
+        Value::String_(buf.to_string())
+      })
+    }
+    "substring" => {
+      let str = s
+      @runtime.make_native_func_with_length("substring", 2, fn(args) raise {
+        let slen = str.length()
+        let mut start = if args.length() > 0 {
+          @runtime.to_number(args[0]).to_int()
+        } else {
+          0
+        }
+        let mut end = if args.length() > 1 {
+          match args[1] {
+            Undefined => slen
+            _ => @runtime.to_number(args[1]).to_int()
+          }
+        } else {
+          slen
+        }
+        if start < 0 {
+          start = 0
+        }
+        if end < 0 {
+          end = 0
+        }
+        if start > slen {
+          start = slen
+        }
+        if end > slen {
+          end = slen
+        }
+        if start > end {
+          let tmp = start
+          start = end
+          end = tmp
+        }
+        let s_chars = str.to_array()
+        let buf = StringBuilder::new()
+        for i = start; i < end; i = i + 1 {
+          buf.write_char(s_chars[i])
+        }
+        Value::String_(buf.to_string())
+      })
+    }
+    "substr" => {
+      // Annex B: String.prototype.substr(start, length)
+      let str = s
+      @runtime.make_native_func_with_length("substr", 2, fn(args) raise {
+        let slen = str.length()
+        let mut start = if args.length() > 0 {
+          @runtime.to_number(args[0]).to_int()
+        } else {
+          0
+        }
+        let length = if args.length() > 1 {
+          match args[1] {
+            Undefined => slen
+            _ => {
+              let n = @runtime.to_number(args[1])
+              if n.is_inf() && n > 0.0 {
+                slen
+              } else if n.is_nan() {
+                0
+              } else {
+                n.to_int()
+              }
+            }
+          }
+        } else {
+          slen
+        }
+        // Handle negative start
+        if start < 0 {
+          start = slen + start
+          if start < 0 {
+            start = 0
+          }
+        }
+        if start >= slen || length <= 0 {
+          return Value::String_("")
+        }
+        let mut end = start + length
+        if end > slen {
+          end = slen
+        }
+        let s_chars = str.to_array()
+        let buf = StringBuilder::new()
+        for i = start; i < end; i = i + 1 {
+          buf.write_char(s_chars[i])
+        }
+        Value::String_(buf.to_string())
+      })
+    }
+    "toLowerCase" => {
+      let str = s
+      @runtime.make_native_func("toLowerCase", fn(_args) {
+        let s_chars = str.to_array()
+        let buf = StringBuilder::new()
+        for c in s_chars {
+          let code = c.to_int()
+          let lower = unicode_to_lower(code)
+          buf.write_char(lower.unsafe_to_char())
+        }
+        Value::String_(buf.to_string())
+      })
+    }
+    "toUpperCase" => {
+      let str = s
+      @runtime.make_native_func("toUpperCase", fn(_args) {
+        let s_chars = str.to_array()
+        let buf = StringBuilder::new()
+        for c in s_chars {
+          let code = c.to_int()
+          let upper = unicode_to_upper(code)
+          buf.write_char(upper.unsafe_to_char())
+        }
+        Value::String_(buf.to_string())
+      })
+    }
+    "toLocaleLowerCase" => {
+      // Locale-specific lowercase (currently uses same Unicode mapping)
+      let str = s
+      @runtime.make_native_func("toLocaleLowerCase", fn(_args) {
+        let s_chars = str.to_array()
+        let buf = StringBuilder::new()
+        for c in s_chars {
+          let code = c.to_int()
+          let lower = unicode_to_lower(code)
+          buf.write_char(lower.unsafe_to_char())
+        }
+        Value::String_(buf.to_string())
+      })
+    }
+    "toLocaleUpperCase" => {
+      // Locale-specific uppercase (currently uses same Unicode mapping)
+      let str = s
+      @runtime.make_native_func("toLocaleUpperCase", fn(_args) {
+        let s_chars = str.to_array()
+        let buf = StringBuilder::new()
+        for c in s_chars {
+          let code = c.to_int()
+          let upper = unicode_to_upper(code)
+          buf.write_char(upper.unsafe_to_char())
+        }
+        Value::String_(buf.to_string())
+      })
+    }
+    "trim" => {
+      let str = s
+      @runtime.make_native_func("trim", fn(_args) {
+        Value::String_(string_trim(str))
+      })
+    }
+    "trimStart" => {
+      let str = s
+      @runtime.make_native_func("trimStart", fn(_args) {
+        Value::String_(string_trim_start(str))
+      })
+    }
+    "trimEnd" => {
+      let str = s
+      @runtime.make_native_func("trimEnd", fn(_args) {
+        Value::String_(string_trim_end(str))
+      })
+    }
+    "trimLeft" => {
+      let str = s
+      // Per spec, trimLeft.name === "trimStart"
+      @runtime.make_native_func("trimStart", fn(_args) {
+        Value::String_(string_trim_start(str))
+      })
+    }
+    "trimRight" => {
+      let str = s
+      // Per spec, trimRight.name === "trimEnd"
+      @runtime.make_native_func("trimEnd", fn(_args) {
+        Value::String_(string_trim_end(str))
+      })
+    }
+    "toLocaleString" => {
+      let str = s
+      @runtime.make_native_func("toLocaleString", fn(_args) {
+        Value::String_(str)
+      })
+    }
+    "split" => {
+      let str = s
+      @runtime.make_native_func_with_length("split", 2, fn(args) raise {
+        // Per spec: check for [Symbol.split] method on the argument first
+        if args.length() > 0 {
+          match args[0] {
+            Object(data) => {
+              let split_sym = @runtime.get_split_symbol()
+              let split_fn = @runtime.lookup_symbol_property_chain(
+                args[0],
+                data,
+                split_sym.id,
+              )
+              match split_fn {
+                Some(Null) | Some(Undefined) => () // GetMethod: null/undefined means no method
+                Some(fn_val) => {
+                  let limit = if args.length() > 1 {
+                    args[1]
+                  } else {
+                    Undefined
+                  }
+                  let result = @runtime.call_callable_direct(fn_val, args[0], [
+                    Value::String_(str),
+                    limit,
+                  ])
+                  return result
+                }
+                _ => ()
+              }
+            }
+            _ => ()
+          }
+        }
+        // Get limit parameter (default: 2^32 - 1 per ES spec)
+        let limit : Int64 = if args.length() > 1 {
+          match args[1] {
+            Undefined => 4294967295L // 2^32 - 1
+            _ => {
+              let lim = @runtime.to_number(args[1]).to_int64()
+              if lim < 0L {
+                0L
+              } else {
+                lim
+              }
+            }
+          }
+        } else {
+          4294967295L
+        }
+        // If limit is 0, return empty array
+        if limit == 0L {
+          return Value::Array({ elements: [] })
+        }
+        // Handle undefined separator - return array with whole string
+        if args.length() == 0 {
+          return Value::Array({ elements: [Value::String_(str)] })
+        }
+        match args[0] {
+          Undefined => return Value::Array({ elements: [Value::String_(str)] })
+          _ => ()
+        }
+        let sep = @runtime.to_js_string(args[0])
+        // Empty separator splits into individual characters
+        if sep.length() == 0 {
+          let result : Array[Value] = []
+          let chars = str.to_array()
+          let chars_len = chars.length().to_int64()
+          let count = if chars_len < limit {
+            chars.length()
+          } else {
+            limit.to_int()
+          }
+          for i = 0; i < count; i = i + 1 {
+            let buf = StringBuilder::new()
+            buf.write_char(chars[i])
+            result.push(Value::String_(buf.to_string()))
+          }
+          return Value::Array({ elements: result })
+        }
+        let result : Array[Value] = []
+        let s_chars = str.to_array()
+        let sep_chars = sep.to_array()
+        let slen = str.length()
+        let sep_len = sep.length()
+        let mut last = 0
+        let mut i = 0
+        while i <= slen - sep_len {
+          let mut matched = true
+          for j = 0; j < sep_len; j = j + 1 {
+            if s_chars[i + j] != sep_chars[j] {
+              matched = false
+              break
+            }
+          }
+          if matched {
+            let buf = StringBuilder::new()
+            for k = last; k < i; k = k + 1 {
+              buf.write_char(s_chars[k])
+            }
+            result.push(Value::String_(buf.to_string()))
+            // Per spec: if we've reached the limit, return immediately
+            if result.length().to_int64() >= limit {
+              return Value::Array({ elements: result })
+            }
+            last = i + sep_len
+            i = i + sep_len
+          } else {
+            i = i + 1
+          }
+        }
+        // Add remaining part if we haven't hit the limit
+        if result.length().to_int64() < limit {
+          let buf = StringBuilder::new()
+          for k = last; k < slen; k = k + 1 {
+            buf.write_char(s_chars[k])
+          }
+          result.push(Value::String_(buf.to_string()))
+        }
+        Value::Array({ elements: result })
+      })
+    }
+    "replace" => {
+      let str = s
+      @runtime.make_native_func_with_length("replace", 2, fn(args) raise {
+        if args.length() == 0 {
+          return Value::String_(str)
+        }
+        // Per spec: check for [Symbol.replace] method on the argument
+        match args[0] {
+          Object(data) => {
+            let replace_sym = @runtime.get_replace_symbol()
+            let replace_fn = @runtime.lookup_symbol_property_chain(
+              args[0],
+              data,
+              replace_sym.id,
+            )
+            match replace_fn {
+              Some(Null) | Some(Undefined) => () // GetMethod: null/undefined means no method
+              Some(fn_val) => {
+                let rep = if args.length() > 1 { args[1] } else { Undefined }
+                let result = @runtime.call_callable_direct(fn_val, args[0], [
+                  Value::String_(str),
+                  rep,
+                ])
+                return result
+              }
+              _ => ()
+            }
+            if data.class_name == "RegExp" {
+              let pattern = match data.properties.get("source") {
+                Some(Value::String_(s)) => s
+                _ => ""
+              }
+              let flags = match data.properties.get("flags") {
+                Some(Value::String_(s)) => s
+                _ => ""
+              }
+              let replacement = if args.length() > 1 {
+                @runtime.to_js_string(args[1])
+              } else {
+                "undefined"
+              }
+              return string_replace_regex(str, pattern, flags, replacement)
+            }
+          }
+          _ => ()
+        }
+        let search = @runtime.to_js_string(args[0])
+        let replace_val = if args.length() > 1 { args[1] } else { Undefined }
+        let is_func = @runtime.is_callable(replace_val)
+        let slen = str.length()
+        let search_len = search.length()
+        if search_len == 0 {
+          let rep = if is_func {
+            let result = @runtime.call_callable_direct(replace_val, Undefined, [
+              Value::String_(""),
+              Value::Number(0.0),
+              Value::String_(str),
+            ])
+            @runtime.to_js_string(result)
+          } else {
+            get_substitution(@runtime.to_js_string(replace_val), "", str, 0)
+          }
+          return Value::String_(rep + str)
+        }
+        let s_chars = str.to_array()
+        let search_chars = search.to_array()
+        // Find first occurrence
+        for i = 0; i <= slen - search_len; i = i + 1 {
+          let mut matched = true
+          for j = 0; j < search_len; j = j + 1 {
+            if s_chars[i + j] != search_chars[j] {
+              matched = false
+              break
+            }
+          }
+          if matched {
+            let buf = StringBuilder::new()
+            for k = 0; k < i; k = k + 1 {
+              buf.write_char(s_chars[k])
+            }
+            let rep = if is_func {
+              let result = @runtime.call_callable_direct(
+                replace_val,
+                Undefined,
+                [
+                  Value::String_(search),
+                  Value::Number(i.to_double()),
+                  Value::String_(str),
+                ],
+              )
+              @runtime.to_js_string(result)
+            } else {
+              get_substitution(
+                @runtime.to_js_string(replace_val),
+                search,
+                str,
+                i,
+              )
+            }
+            buf.write_string(rep)
+            for k = i + search_len; k < slen; k = k + 1 {
+              buf.write_char(s_chars[k])
+            }
+            return Value::String_(buf.to_string())
+          }
+        }
+        Value::String_(str)
+      })
+    }
+    "match" => {
+      let str = s
+      @runtime.make_native_func_with_length("match", 1, fn(args) raise {
+        if args.length() == 0 {
+          return Null
+        }
+        // Per spec: check for [Symbol.match] method on the argument
+        match args[0] {
+          Object(data) => {
+            let match_sym = @runtime.get_match_symbol()
+            let match_fn = @runtime.lookup_symbol_property_chain(
+              args[0],
+              data,
+              match_sym.id,
+            )
+            match match_fn {
+              Some(Null) | Some(Undefined) => () // GetMethod: null/undefined means no method
+              Some(fn_val) => {
+                let result = @runtime.call_callable_direct(fn_val, args[0], [
+                  Value::String_(str),
+                ])
+                return result
+              }
+              _ => ()
+            }
+            if data.class_name == "RegExp" {
+              let pattern = match data.properties.get("source") {
+                Some(Value::String_(s)) => s
+                _ => ""
+              }
+              let flags = match data.properties.get("flags") {
+                Some(Value::String_(s)) => s
+                _ => ""
+              }
+              return string_match_regex(str, pattern, flags)
+            }
+          }
+          _ => ()
+        }
+        // If not a RegExp, treat as string pattern
+        let pattern = @runtime.to_js_string(args[0])
+        string_match_regex(str, pattern, "")
+      })
+    }
+    "matchAll" => {
+      let str = s
+      @runtime.make_native_func_with_length("matchAll", 1, fn(args) raise {
+        let arg = if args.length() > 0 { args[0] } else { Undefined }
+        // Step 2: If regexp is neither undefined nor null, check for @@matchAll
+        let (pattern, flags) = match arg {
+          Object(data) =>
+            if data.class_name == "RegExp" {
+              let p = match data.properties.get("source") {
+                Some(Value::String_(s)) => s
+                _ => ""
+              }
+              let f = match data.properties.get("flags") {
+                Some(Value::String_(s)) => s
+                _ => ""
+              }
+              // matchAll requires global flag
+              if !f.contains("g") {
+                raise @errors.TypeError(
+                  message="matchAll requires a RegExp with global flag",
+                )
+              }
+              (p, f)
+            } else {
+              // Check for Symbol.matchAll on the object
+              let matchall_sym = @runtime.get_matchall_symbol()
+              let matchall_fn = @runtime.lookup_symbol_property_chain(
+                arg,
+                data,
+                matchall_sym.id,
+              )
+              match matchall_fn {
+                Some(Null) | Some(Undefined) | None => {
+                  // GetMethod: null/undefined means no method, fall through to string conversion
+                  let r = arg.to_string()
+                  (r, "g")
+                }
+                Some(matchall_method) => {
+                  let result = @runtime.call_callable_direct(
+                    matchall_method,
+                    arg,
+                    [Value::String_(str)],
+                  )
+                  return result
+                }
+              }
+            }
+          Undefined | Null => {
+            // Step 3-5: Convert to string, create RegExp with "g" flag
+            let r = if arg is Undefined { "" } else { arg.to_string() }
+            (r, "g")
+          }
+          Value::String_(_) | Value::Number(_) | Bool(_) => {
+            let r = arg.to_string()
+            (r, "g")
+          }
+          _ => {
+            let r = arg.to_string()
+            (r, "g")
+          }
+        }
+        // Get all matches
+        let matches = regex_search_all(pattern, flags, str) catch { _ => [] }
+        let input_chars = str.to_array()
+        let index_ref : Ref[Int] = { val: 0 }
+        // Create iterator with next() method
+        let next_method = Value::Object({
+          properties: {},
+          symbol_properties: {},
+          prototype: Null,
+          callable: Some(
+            NativeCallable("next", fn(_args) {
+              let idx = index_ref.val
+              if idx < matches.length() {
+                let m = matches[idx]
+                index_ref.val = idx + 1
+                let elements : Array[Value] = []
+                elements.push(
+                  Value::String_(substring(input_chars, m.start, m.end_)),
+                )
+                for cap in m.captures {
+                  match cap {
+                    Some(c) => elements.push(Value::String_(c))
+                    None => elements.push(Undefined)
+                  }
+                }
+                let match_array = Value::Array({ elements, })
+                let result_props : Map[String, Value] = {}
+                result_props["value"] = match_array
+                result_props["done"] = Value::Bool(false)
+                Value::Object({
+                  properties: result_props,
+                  symbol_properties: {},
+                  prototype: Null,
+                  callable: None,
+                  class_name: "Object",
+                  descriptors: {},
+                  symbol_descriptors: {},
+                  extensible: true,
+                })
+              } else {
+                let result_props : Map[String, Value] = {}
+                result_props["value"] = Undefined
+                result_props["done"] = Value::Bool(true)
+                Value::Object({
+                  properties: result_props,
+                  symbol_properties: {},
+                  prototype: Null,
+                  callable: None,
+                  class_name: "Object",
+                  descriptors: {},
+                  symbol_descriptors: {},
+                  extensible: true,
+                })
+              }
+            }),
+          ),
+          class_name: "Function",
+          descriptors: {},
+          symbol_descriptors: {},
+          extensible: true,
+        })
+        let iter_props : Map[String, Value] = {}
+        iter_props["next"] = next_method
+        Value::Object({
+          properties: iter_props,
+          symbol_properties: {},
+          prototype: get_regexp_string_iterator_proto(),
+          callable: None,
+          class_name: "RegExp String Iterator",
+          descriptors: {},
+          symbol_descriptors: {},
+          extensible: true,
+        })
+      })
+    }
+    "search" => {
+      let str = s
+      @runtime.make_native_func_with_length("search", 1, fn(args) raise {
+        if args.length() == 0 {
+          return Value::Number(0.0)
+        }
+        // Per spec: check for [Symbol.search] method on the argument
+        match args[0] {
+          Object(data) => {
+            let search_sym = @runtime.get_search_symbol()
+            let search_fn = @runtime.lookup_symbol_property_chain(
+              args[0],
+              data,
+              search_sym.id,
+            )
+            match search_fn {
+              Some(Null) | Some(Undefined) => () // GetMethod: null/undefined means no method
+              Some(fn_val) => {
+                let result = @runtime.call_callable_direct(fn_val, args[0], [
+                  Value::String_(str),
+                ])
+                return result
+              }
+              _ => ()
+            }
+            if data.class_name == "RegExp" {
+              let pattern = match data.properties.get("source") {
+                Some(Value::String_(s)) => s
+                _ => ""
+              }
+              let flags = match data.properties.get("flags") {
+                Some(Value::String_(s)) => s
+                _ => ""
+              }
+              return string_search_regex(str, pattern, flags)
+            }
+          }
+          _ => ()
+        }
+        let pattern = @runtime.to_js_string(args[0])
+        string_search_regex(str, pattern, "")
+      })
+    }
+    "startsWith" => {
+      let str = s
+      @runtime.make_native_func_with_length("startsWith", 1, fn(args) raise {
+        // Per spec: throw TypeError if searchString is a RegExp
+        if args.length() > 0 {
+          match args[0] {
+            Object(data) =>
+              if data.class_name == "RegExp" {
+                raise @errors.TypeError(
+                  message="First argument to String.prototype.startsWith must not be a regular expression",
+                )
+              }
+            _ => ()
+          }
+        }
+        let search = if args.length() > 0 {
+          @runtime.to_js_string(args[0])
+        } else {
+          "undefined"
+        }
+        let raw_pos = if args.length() > 1 {
+          @runtime.to_number(args[1]).to_int()
+        } else {
+          0
+        }
+        let slen = str.length()
+        let pos = if raw_pos < 0 {
+          0
+        } else if raw_pos > slen {
+          slen
+        } else {
+          raw_pos
+        }
+        let search_chars = search.to_array()
+        let s_chars = str.to_array()
+        if pos + search_chars.length() > s_chars.length() {
+          return Value::Bool(false)
+        }
+        for i = 0; i < search_chars.length(); i = i + 1 {
+          if s_chars[pos + i] != search_chars[i] {
+            return Value::Bool(false)
+          }
+        }
+        Value::Bool(true)
+      })
+    }
+    "endsWith" => {
+      let str = s
+      @runtime.make_native_func_with_length("endsWith", 1, fn(args) raise {
+        // Per spec: throw TypeError if searchString is a RegExp
+        if args.length() > 0 {
+          match args[0] {
+            Object(data) =>
+              if data.class_name == "RegExp" {
+                raise @errors.TypeError(
+                  message="First argument to String.prototype.endsWith must not be a regular expression",
+                )
+              }
+            _ => ()
+          }
+        }
+        let search = if args.length() > 0 {
+          @runtime.to_js_string(args[0])
+        } else {
+          "undefined"
+        }
+        let slen = str.length()
+        let raw_end = if args.length() > 1 {
+          @runtime.to_number(args[1]).to_int()
+        } else {
+          slen
+        }
+        let end_pos = if raw_end < 0 {
+          0
+        } else if raw_end > slen {
+          slen
+        } else {
+          raw_end
+        }
+        let search_len = search.length()
+        let start = end_pos - search_len
+        if start < 0 {
+          return Value::Bool(false)
+        }
+        let s_chars = str.to_array()
+        let search_chars = search.to_array()
+        for i = 0; i < search_len; i = i + 1 {
+          if s_chars[start + i] != search_chars[i] {
+            return Value::Bool(false)
+          }
+        }
+        Value::Bool(true)
+      })
+    }
+    "repeat" => {
+      let str = s
+      @runtime.make_native_func_with_length("repeat", 1, fn(args) raise {
+        let count_num = if args.length() > 0 {
+          @runtime.to_number(args[0])
+        } else {
+          0.0
+        }
+        // Check for negative or infinite count
+        if count_num < 0.0 || count_num.is_inf() {
+          raise @errors.RangeError(message="Invalid repeat count")
+        }
+        let count = count_num.to_int()
+        if count == 0 {
+          return Value::String_("")
+        }
+        let buf = StringBuilder::new()
+        for _i = 0; _i < count; _i = _i + 1 {
+          buf.write_string(str)
+        }
+        Value::String_(buf.to_string())
+      })
+    }
+    "padStart" => {
+      let str = s
+      @runtime.make_native_func_with_length("padStart", 1, fn(args) raise {
+        let target_len = if args.length() > 0 {
+          @runtime.to_number(args[0]).to_int()
+        } else {
+          0
+        }
+        let pad_str = if args.length() > 1 {
+          @runtime.to_js_string(args[1])
+        } else {
+          " "
+        }
+        let slen = str.length()
+        if slen >= target_len || pad_str.length() == 0 {
+          return Value::String_(str)
+        }
+        let buf = StringBuilder::new()
+        let pad_chars = pad_str.to_array()
+        let mut filled = 0
+        let needed = target_len - slen
+        while filled < needed {
+          buf.write_char(pad_chars[filled % pad_chars.length()])
+          filled = filled + 1
+        }
+        buf.write_string(str)
+        Value::String_(buf.to_string())
+      })
+    }
+    "padEnd" => {
+      let str = s
+      @runtime.make_native_func_with_length("padEnd", 1, fn(args) raise {
+        let target_len = if args.length() > 0 {
+          @runtime.to_number(args[0]).to_int()
+        } else {
+          0
+        }
+        let pad_str = if args.length() > 1 {
+          @runtime.to_js_string(args[1])
+        } else {
+          " "
+        }
+        let slen = str.length()
+        if slen >= target_len || pad_str.length() == 0 {
+          return Value::String_(str)
+        }
+        let buf = StringBuilder::new()
+        buf.write_string(str)
+        let pad_chars = pad_str.to_array()
+        let mut filled = 0
+        let needed = target_len - slen
+        while filled < needed {
+          buf.write_char(pad_chars[filled % pad_chars.length()])
+          filled = filled + 1
+        }
+        Value::String_(buf.to_string())
+      })
+    }
+    "toString" | "valueOf" => {
+      let str = s
+      @runtime.make_native_func(prop, fn(_args) { Value::String_(str) })
+    }
+    "replaceAll" => {
+      let str = s
+      @runtime.make_native_func_with_length("replaceAll", 2, fn(args) raise {
+        if args.length() == 0 {
+          return Value::String_(str)
+        }
+        // Per spec §22.1.3.19: if searchValue is a RegExp, require global flag FIRST
+        match args[0] {
+          Object(data) =>
+            if data.class_name == "RegExp" {
+              let flags = match data.properties.get("flags") {
+                Some(Value::String_(f)) => f
+                _ => ""
+              }
+              if !flags.to_array().contains('g') {
+                raise @errors.TypeError(
+                  message="replaceAll must be called with a global RegExp",
+                )
+              }
+            }
+          _ => ()
+        }
+        // Per spec: check for [Symbol.replace] method on the argument
+        match args[0] {
+          Object(data) => {
+            let replace_sym = @runtime.get_replace_symbol()
+            let replace_fn = @runtime.lookup_symbol_property_chain(
+              args[0],
+              data,
+              replace_sym.id,
+            )
+            match replace_fn {
+              Some(Null) | Some(Undefined) => () // GetMethod: null/undefined means no method
+              Some(fn_val) => {
+                let rep = if args.length() > 1 { args[1] } else { Undefined }
+                let result = @runtime.call_callable_direct(fn_val, args[0], [
+                  Value::String_(str),
+                  rep,
+                ])
+                return result
+              }
+              _ => ()
+            }
+          }
+          _ => ()
+        }
+        // Fallback for RegExp without Symbol.replace
+        match args[0] {
+          Object(data) =>
+            if data.class_name == "RegExp" {
+              let flags = match data.properties.get("flags") {
+                Some(Value::String_(f)) => f
+                _ => ""
+              }
+              let pattern = match data.properties.get("source") {
+                Some(Value::String_(s)) => s
+                _ => ""
+              }
+              let replacement = if args.length() > 1 {
+                @runtime.to_js_string(args[1])
+              } else {
+                "undefined"
+              }
+              return string_replace_regex(str, pattern, flags, replacement)
+            }
+          _ => ()
+        }
+        let search = @runtime.to_js_string(args[0])
+        let replace_val = if args.length() > 1 { args[1] } else { Undefined }
+        let is_func = @runtime.is_callable(replace_val)
+        let slen = str.length()
+        let search_len = search.length()
+        if search_len == 0 {
+          // Empty string: insert replacement before each char and at end
+          let buf = StringBuilder::new()
+          let s_chars = str.to_array()
+          for i, c in s_chars {
+            let rep = if is_func {
+              let result = @runtime.call_callable_direct(
+                replace_val,
+                Undefined,
+                [
+                  Value::String_(""),
+                  Value::Number(i.to_double()),
+                  Value::String_(str),
+                ],
+              )
+              @runtime.to_js_string(result)
+            } else {
+              get_substitution(@runtime.to_js_string(replace_val), "", str, i)
+            }
+            buf.write_string(rep)
+            buf.write_char(c)
+          }
+          let rep_end = if is_func {
+            let result = @runtime.call_callable_direct(replace_val, Undefined, [
+              Value::String_(""),
+              Value::Number(s_chars.length().to_double()),
+              Value::String_(str),
+            ])
+            @runtime.to_js_string(result)
+          } else {
+            get_substitution(
+              @runtime.to_js_string(replace_val),
+              "",
+              str,
+              s_chars.length(),
+            )
+          }
+          buf.write_string(rep_end)
+          return Value::String_(buf.to_string())
+        }
+        let s_chars = str.to_array()
+        let search_chars = search.to_array()
+        let buf = StringBuilder::new()
+        let mut i = 0
+        while i < slen {
+          if i <= slen - search_len {
+            let mut matched = true
+            for j = 0; j < search_len; j = j + 1 {
+              if s_chars[i + j] != search_chars[j] {
+                matched = false
+                break
+              }
+            }
+            if matched {
+              let rep = if is_func {
+                let result = @runtime.call_callable_direct(
+                  replace_val,
+                  Undefined,
+                  [
+                    Value::String_(search),
+                    Value::Number(i.to_double()),
+                    Value::String_(str),
+                  ],
+                )
+                @runtime.to_js_string(result)
+              } else {
+                get_substitution(
+                  @runtime.to_js_string(replace_val),
+                  search,
+                  str,
+                  i,
+                )
+              }
+              buf.write_string(rep)
+              i = i + search_len
+              continue
+            }
+          }
+          buf.write_char(s_chars[i])
+          i = i + 1
+        }
+        Value::String_(buf.to_string())
+      })
+    }
+    "localeCompare" => {
+      let str = s
+      @runtime.make_native_func_with_length("localeCompare", 1, fn(args) raise {
+        // Basic lexicographic comparison (no locale support)
+        let other = if args.length() > 0 {
+          @runtime.to_js_string(args[0])
+        } else {
+          "undefined"
+        }
+        if str < other {
+          Value::Number(-1.0)
+        } else if str > other {
+          Value::Number(1.0)
+        } else {
+          Value::Number(0.0)
+        }
+      })
+    }
+    "normalize" => {
+      let str = s
+      @runtime.make_native_func("normalize", fn(_args) {
+        // STUB: Unicode normalization (NFC, NFD, NFKC, NFKD) is not implemented.
+        // Returns the input string unchanged. Full implementation requires
+        // Unicode normalization tables and algorithms.
+        Value::String_(str)
+      })
+    }
+    "isWellFormed" => {
+      let str = s
+      @runtime.make_native_func("isWellFormed", fn(_args) {
+        // Check if string is well-formed UTF-16 (no lone surrogates)
+        let c = str.to_array()
+        let mut i = 0
+        while i < c.length() {
+          let code = c[i].to_int()
+          if code >= 0xD800 && code <= 0xDBFF {
+            // High surrogate - must be followed by low surrogate
+            if i + 1 >= c.length() {
+              return Value::Bool(false)
+            }
+            let next = c[i + 1].to_int()
+            if next < 0xDC00 || next > 0xDFFF {
+              return Value::Bool(false)
+            }
+            // Valid surrogate pair - skip the low surrogate
+            i = i + 2
+            continue
+          } else if code >= 0xDC00 && code <= 0xDFFF {
+            // Lone low surrogate
+            return Value::Bool(false)
+          }
+          i = i + 1
+        }
+        Value::Bool(true)
+      })
+    }
+    "toWellFormed" => {
+      let str = s
+      @runtime.make_native_func("toWellFormed", fn(_args) {
+        // Replace lone surrogates with U+FFFD
+        let c = str.to_array()
+        let buf = StringBuilder::new()
+        let mut i = 0
+        while i < c.length() {
+          let code = c[i].to_int()
+          if code >= 0xD800 && code <= 0xDBFF {
+            if i + 1 < c.length() {
+              let next = c[i + 1].to_int()
+              if next >= 0xDC00 && next <= 0xDFFF {
+                // Valid surrogate pair - write both and skip ahead
+                buf.write_char(c[i])
+                buf.write_char(c[i + 1])
+                i = i + 2
+                continue
+              } else {
+                buf.write_char('\u{FFFD}')
+              }
+            } else {
+              buf.write_char('\u{FFFD}')
+            }
+          } else if code >= 0xDC00 && code <= 0xDFFF {
+            buf.write_char('\u{FFFD}')
+          } else {
+            buf.write_char(c[i])
+          }
+          i = i + 1
+        }
+        Value::String_(buf.to_string())
+      })
+    }
+    // Annex B HTML string methods (B.2.2.2 - B.2.2.14) — only when --annex-b
+    "anchor"
+    | "big"
+    | "blink"
+    | "bold"
+    | "fixed"
+    | "fontcolor"
+    | "fontsize"
+    | "italics"
+    | "link"
+    | "small"
+    | "strike"
+    | "sub"
+    | "sup" =>
+      if !annex_b {
+        Undefined
+      } else {
+        match prop {
+          "anchor" =>
+            @runtime.make_native_func_with_length("anchor", 1, fn(args) raise {
+              let name = if args.length() > 0 {
+                @runtime.to_js_string(args[0])
+              } else {
+                "undefined"
+              }
+              String_(
+                "<a name=\"" + escape_html_attr(name) + "\">" + s + "</a>",
+              )
+            })
+          "big" =>
+            @runtime.make_native_func("big", fn(_args) {
+              Value::String_("<big>" + s + "</big>")
+            })
+          "blink" =>
+            @runtime.make_native_func("blink", fn(_args) {
+              Value::String_("<blink>" + s + "</blink>")
+            })
+          "bold" =>
+            @runtime.make_native_func("bold", fn(_args) {
+              Value::String_("<b>" + s + "</b>")
+            })
+          "fixed" =>
+            @runtime.make_native_func("fixed", fn(_args) {
+              Value::String_("<tt>" + s + "</tt>")
+            })
+          "fontcolor" =>
+            @runtime.make_native_func_with_length("fontcolor", 1, fn(
+              args,
+            ) raise {
+              let color = if args.length() > 0 {
+                @runtime.to_js_string(args[0])
+              } else {
+                "undefined"
+              }
+              String_(
+                "<font color=\"" +
+                escape_html_attr(color) +
+                "\">" +
+                s +
+                "</font>",
+              )
+            })
+          "fontsize" =>
+            @runtime.make_native_func_with_length("fontsize", 1, fn(
+              args,
+            ) raise {
+              let size = if args.length() > 0 {
+                @runtime.to_js_string(args[0])
+              } else {
+                "undefined"
+              }
+              String_(
+                "<font size=\"" + escape_html_attr(size) + "\">" + s + "</font>",
+              )
+            })
+          "italics" =>
+            @runtime.make_native_func("italics", fn(_args) {
+              Value::String_("<i>" + s + "</i>")
+            })
+          "link" =>
+            @runtime.make_native_func_with_length("link", 1, fn(args) raise {
+              let url = if args.length() > 0 {
+                @runtime.to_js_string(args[0])
+              } else {
+                "undefined"
+              }
+              Value::String_(
+                "<a href=\"" + escape_html_attr(url) + "\">" + s + "</a>",
+              )
+            })
+          "small" =>
+            @runtime.make_native_func("small", fn(_args) {
+              Value::String_("<small>" + s + "</small>")
+            })
+          "strike" =>
+            @runtime.make_native_func("strike", fn(_args) {
+              Value::String_("<strike>" + s + "</strike>")
+            })
+          "sub" =>
+            @runtime.make_native_func("sub", fn(_args) {
+              Value::String_("<sub>" + s + "</sub>")
+            })
+          "sup" =>
+            @runtime.make_native_func("sup", fn(_args) {
+              Value::String_("<sup>" + s + "</sup>")
+            })
+          _ => Undefined
+        }
+      }
+    _ => Undefined
+  }
+}
+
+///|
+/// Escape double-quotes in attribute values per CreateHTML (ECMA-262 Annex B)
+fn escape_html_attr(value : String) -> String {
+  let chars = value.to_array()
+  let buf = StringBuilder::new()
+  for c in chars {
+    if c == '"' {
+      buf.write_string("&quot;")
+    } else {
+      buf.write_char(c)
+    }
+  }
+  buf.to_string()
+}
+
+///|
+/// Unicode-aware character to lowercase conversion
+fn unicode_to_lower(code : Int) -> Int {
+  // ASCII uppercase (A-Z)
+  if code >= 65 && code <= 90 {
+    return code + 32
+  }
+  // Latin-1 Supplement (U+00C0-U+00DE, excluding U+00D7 multiplication sign)
+  if code >= 0xC0 && code <= 0xDE && code != 0xD7 {
+    return code + 32
+  }
+  // Latin Extended-A (U+0100-U+017F) - even codes are uppercase
+  if code >= 0x100 && code <= 0x12E {
+    if (code & 1) == 0 {
+      return code + 1
+    }
+  }
+  if code >= 0x132 && code <= 0x136 {
+    if (code & 1) == 0 {
+      return code + 1
+    }
+  }
+  if code >= 0x139 && code <= 0x147 {
+    if (code & 1) == 1 {
+      return code + 1
+    }
+  }
+  if code >= 0x14A && code <= 0x176 {
+    if (code & 1) == 0 {
+      return code + 1
+    }
+  }
+  // Greek uppercase (U+0391-U+03A9, U+03AA-U+03AB)
+  if code >= 0x391 && code <= 0x3A9 {
+    return code + 32
+  }
+  if code >= 0x3AA && code <= 0x3AB {
+    return code + 32
+  }
+  // Cyrillic uppercase (U+0410-U+042F)
+  if code >= 0x410 && code <= 0x42F {
+    return code + 32
+  }
+  // Special cases
+  match code {
+    0x178 => 0xFF // Ÿ -> ÿ
+    0x179 => 0x17A // Ź -> ź
+    0x17B => 0x17C // Ż -> ż
+    0x17D => 0x17E // Ž -> ž
+    0x181 => 0x253 // Ɓ -> ɓ
+    0x186 => 0x254 // Ɔ -> ɔ
+    0x189 => 0x256 // Ɖ -> ɖ
+    0x18A => 0x257 // Ɗ -> ɗ
+    0x18E => 0x1DD // Ǝ -> ǝ
+    0x18F => 0x259 // Ə -> ə
+    0x190 => 0x25B // Ɛ -> ɛ
+    0x193 => 0x260 // Ɠ -> ɠ
+    0x194 => 0x263 // Ɣ -> ɣ
+    0x197 => 0x268 // Ɨ -> ɨ
+    0x196 => 0x269 // Ɩ -> ɩ
+    0x19C => 0x26F // Ɯ -> ɯ
+    0x19D => 0x272 // Ɲ -> ɲ
+    0x19F => 0x275 // Ɵ -> ɵ
+    _ => code
+  }
+}
+
+///|
+/// Unicode-aware character to uppercase conversion
+fn unicode_to_upper(code : Int) -> Int {
+  // ASCII lowercase (a-z)
+  if code >= 97 && code <= 122 {
+    return code - 32
+  }
+  // Latin-1 Supplement lowercase (U+00E0-U+00FE, excluding U+00F7 division sign)
+  if code >= 0xE0 && code <= 0xFE && code != 0xF7 {
+    return code - 32
+  }
+  // Latin Extended-A (U+0100-U+017F) - odd codes are lowercase
+  if code >= 0x101 && code <= 0x12F {
+    if (code & 1) == 1 {
+      return code - 1
+    }
+  }
+  if code >= 0x133 && code <= 0x137 {
+    if (code & 1) == 1 {
+      return code - 1
+    }
+  }
+  if code >= 0x13A && code <= 0x148 {
+    if (code & 1) == 0 {
+      return code - 1
+    }
+  }
+  if code >= 0x14B && code <= 0x177 {
+    if (code & 1) == 1 {
+      return code - 1
+    }
+  }
+  // Greek lowercase (U+03B1-U+03C9, U+03CA-U+03CB)
+  if code >= 0x3B1 && code <= 0x3C9 {
+    return code - 32
+  }
+  if code >= 0x3CA && code <= 0x3CB {
+    return code - 32
+  }
+  // Cyrillic lowercase (U+0430-U+044F)
+  if code >= 0x430 && code <= 0x44F {
+    return code - 32
+  }
+  // Special cases
+  match code {
+    0xFF => 0x178 // ÿ -> Ÿ
+    0x17A => 0x179 // ź -> Ź
+    0x17C => 0x17B // ż -> Ż
+    0x17E => 0x17D // ž -> Ž
+    0x253 => 0x181 // ɓ -> Ɓ
+    0x254 => 0x186 // ɔ -> Ɔ
+    0x256 => 0x189 // ɖ -> Ɖ
+    0x257 => 0x18A // ɗ -> Ɗ
+    0x1DD => 0x18E // ǝ -> Ǝ
+    0x259 => 0x18F // ə -> Ə
+    0x25B => 0x190 // ɛ -> Ɛ
+    0x260 => 0x193 // ɠ -> Ɠ
+    0x263 => 0x194 // ɣ -> Ɣ
+    0x268 => 0x197 // ɨ -> Ɨ
+    0x269 => 0x196 // ɩ -> Ɩ
+    0x26F => 0x19C // ɯ -> Ɯ
+    0x272 => 0x19D // ɲ -> Ɲ
+    0x275 => 0x19F // ɵ -> Ɵ
+    _ => code
+  }
+}
+
+///|
+fn string_trim_start(s : String) -> String {
+  let chars = s.to_array()
+  let mut start = 0
+  while start < chars.length() {
+    if is_es_whitespace(chars[start]) {
+      start = start + 1
+    } else {
+      break
+    }
+  }
+  if start == 0 {
+    return s
+  }
+  let buf = StringBuilder::new()
+  for i = start; i < chars.length(); i = i + 1 {
+    buf.write_char(chars[i])
+  }
+  buf.to_string()
+}
+
+///|
+fn string_trim(s : String) -> String {
+  let trimmed_left = string_trim_start(s)
+  string_trim_end(trimmed_left)
+}
+
+///|
+/// Extract string from a this value (for String.prototype methods called via .call())
+pub fn this_to_string(this_val : Value) -> String raise Error {
+  match this_val {
+    Value::String_(s) => s
+    Value::Number(n) => n.to_string()
+    Value::Bool(b) => if b { "true" } else { "false" }
+    Null =>
+      raise @errors.TypeError(message="String.prototype method called on null")
+    Undefined =>
+      raise @errors.TypeError(
+        message="String.prototype method called on undefined",
+      )
+    Symbol(_) =>
+      raise @errors.TypeError(
+        message="Cannot convert a Symbol value to a string",
+      )
+    Object(data) =>
+      // Check if it's a boxed String wrapper object
+      if data.class_name == "String" {
+        match data.properties.get("[[StringData]]") {
+          Some(Value::String_(s)) => s
+          _ => @runtime.to_js_string(this_val)
+        }
+      } else {
+        @runtime.to_js_string(this_val)
+      }
+    _ => @runtime.to_js_string(this_val)
+  }
+}
+
+///|
+/// Populate String.prototype with all string methods
+pub fn setup_string_prototype(
+  string_proto : Value,
+  annex_b? : Bool = false,
+) -> Unit {
+  match string_proto {
+    Object(data) => {
+      let methods : Array[String] = [
+        "charAt", "charCodeAt", "at", "codePointAt", "indexOf", "lastIndexOf", "includes",
+        "startsWith", "endsWith", "slice", "substring", "toUpperCase", "toLowerCase",
+        "toLocaleLowerCase", "toLocaleUpperCase", "trim", "trimStart", "trimEnd",
+        "trimLeft", "trimRight", "padStart", "padEnd", "repeat", "replace", "replaceAll",
+        "split", "search", "match", "matchAll", "concat", "normalize", "isWellFormed",
+        "toWellFormed", "localeCompare", "toLocaleString", "toString", "valueOf",
+      ]
+      // Annex B HTML string methods — only when --annex-b is enabled
+      if annex_b {
+        let annex_b_methods = [
+          "anchor", "big", "blink", "bold", "fixed", "fontcolor", "fontsize", "italics",
+          "link", "small", "strike", "sub", "sup", "substr",
+        ]
+        for m in annex_b_methods {
+          methods.push(m)
+        }
+      }
+      for method_name in methods {
+        let mname = method_name
+        // Per spec, trimLeft.name === "trimStart", trimRight.name === "trimEnd"
+        let display_name = if mname == "trimLeft" {
+          "trimStart"
+        } else if mname == "trimRight" {
+          "trimEnd"
+        } else {
+          mname
+        }
+        // Look up the length from the underlying native method
+        let meth_length = match get_string_method("", mname, annex_b~) {
+          Object(fdata) =>
+            match fdata.properties.get("length") {
+              Some(Value::Number(n)) => n.to_int()
+              _ => 0
+            }
+          _ => 0
+        }
+        data.properties[mname] = @runtime.make_method_func(
+          display_name,
+          meth_length,
+          fn(this_val, args) raise {
+            let s = this_to_string(this_val)
+            let meth_val = get_string_method(s, mname, annex_b~)
+            match meth_val {
+              Object(fdata) =>
+                match fdata.callable {
+                  Some(NativeCallable(_, f)) => f(args)
+                  Some(NonConstructableCallable(_, f)) => f(args)
+                  _ => Undefined
+                }
+              _ => Undefined
+            }
+          },
+        )
+        // Make methods non-enumerable
+        data.descriptors[mname] = {
+          writable: true,
+          enumerable: false,
+          configurable: true,
+          getter: None,
+          setter: None,
+        }
+      }
+      // Per spec, trimLeft === trimStart and trimRight === trimEnd (same object)
+      data.properties["trimLeft"] = data.properties["trimStart"]
+      data.properties["trimRight"] = data.properties["trimEnd"]
+      // Add constructor back-reference placeholder
+      data.properties["constructor"] = Undefined
+    }
+    _ => ()
+  }
+}
+
+///|
+
+///|
+/// Check if a character is ECMAScript whitespace (WhiteSpace + LineTerminator)
+fn is_es_whitespace(c : Char) -> Bool {
+  let code = c.to_int()
+  // WhiteSpace: TAB, VT, FF, SP, NBSP, BOM, USP category
+  // LineTerminator: LF, CR, LS, PS
+  code == 0x0009 || // TAB
+  code == 0x000A || // LF
+  code == 0x000B || // VT
+  code == 0x000C || // FF
+  code == 0x000D || // CR
+  code == 0x0020 || // SPACE
+  code == 0x00A0 || // NBSP
+  code == 0x1680 || // OGHAM SPACE MARK
+  code == 0x2000 || // EN QUAD
+  code == 0x2001 || // EM QUAD
+  code == 0x2002 || // EN SPACE
+  code == 0x2003 || // EM SPACE
+  code == 0x2004 || // THREE-PER-EM SPACE
+  code == 0x2005 || // FOUR-PER-EM SPACE
+  code == 0x2006 || // SIX-PER-EM SPACE
+  code == 0x2007 || // FIGURE SPACE
+  code == 0x2008 || // PUNCTUATION SPACE
+  code == 0x2009 || // THIN SPACE
+  code == 0x200A || // HAIR SPACE
+  code == 0x2028 || // LINE SEPARATOR
+  code == 0x2029 || // PARAGRAPH SEPARATOR
+  code == 0x202F || // NARROW NO-BREAK SPACE
+  code == 0x205F || // MEDIUM MATHEMATICAL SPACE
+  code == 0x3000 || // IDEOGRAPHIC SPACE
+  code == 0xFEFF // BOM
+}
+
+///|
+fn string_trim_end(s : String) -> String {
+  let chars = s.to_array()
+  let mut end = chars.length()
+  while end > 0 {
+    if is_es_whitespace(chars[end - 1]) {
+      end = end - 1
+    } else {
+      break
+    }
+  }
+  if end == chars.length() {
+    return s
+  }
+  let buf = StringBuilder::new()
+  for i = 0; i < end; i = i + 1 {
+    buf.write_char(chars[i])
+  }
+  buf.to_string()
+}

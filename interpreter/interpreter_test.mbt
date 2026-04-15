@@ -1,6 +1,9 @@
 ///|
-fn run_js(source : String) -> (Array[String], @interpreter.Value) raise Error {
-  let interp = @interpreter.Interpreter::new()
+using @runtime {type Value}
+
+///|
+fn run_js(source : String) -> (Array[String], Value) raise Error {
+  let interp = new_interpreter()
   let prog = @parser.parse(source)
   let result = interp.run(prog.stmts)
   (interp.host.output, result)
@@ -13,9 +16,9 @@ fn run_output(source : String) -> Array[String] raise Error {
 }
 
 ///|
-fn error_display(val : @interpreter.Value) -> String {
+fn error_display(val : Value) -> String {
   match val {
-    @interpreter.Object(data) => {
+    Object(data) => {
       let name = match data.properties.get("name") {
         Some(n) => n.to_string()
         None => ""
@@ -172,7 +175,7 @@ test "const assignment error" {
   try {
     let _ = run_js("const x = 5; x = 10")
   } catch {
-    @interpreter.JsException(val) => err_msg = error_display(val)
+    @runtime.JsException(val) => err_msg = error_display(val)
     _ => err_msg = "unexpected error"
   }
   inspect(err_msg, content="TypeError: Assignment to constant variable 'x'")
@@ -397,7 +400,7 @@ test "uncaught throw is error" {
   try {
     let _ = run_js("throw \"uncaught\"")
   } catch {
-    @interpreter.JsException(val) => err_msg = error_display(val)
+    @runtime.JsException(val) => err_msg = error_display(val)
     _ => err_msg = "unexpected"
   }
   inspect(err_msg, content="uncaught")
@@ -1908,7 +1911,7 @@ test "bound function propagates runtime error" {
       "function bad() { return null.x; } var b = bad.bind(null); b();",
     )
   } catch {
-    @interpreter.JsException(val) => err_msg = error_display(val)
+    @runtime.JsException(val) => err_msg = error_display(val)
     _ => err_msg = "other error"
   }
   inspect(
@@ -6996,7 +6999,7 @@ test "block: lexical and var redeclaration throws SyntaxError" {
   try {
     let _ = run_js("{ const f = 0; var f; }")
   } catch {
-    @interpreter.JsException(val) => err_msg = error_display(val)
+    @runtime.JsException(val) => err_msg = error_display(val)
     _ => err_msg = "unexpected"
   }
   inspect(
@@ -7011,7 +7014,7 @@ test "script: let and function redeclaration throws SyntaxError" {
   try {
     let _ = run_js("let f = 0; function f() {}")
   } catch {
-    @interpreter.JsException(val) => err_msg = error_display(val)
+    @runtime.JsException(val) => err_msg = error_display(val)
     _ => err_msg = "unexpected"
   }
   inspect(
@@ -7034,7 +7037,7 @@ test "block: function body lexical and nested var redeclaration throws SyntaxErr
       ),
     )
   } catch {
-    @interpreter.JsException(val) => err_msg = error_display(val)
+    @runtime.JsException(val) => err_msg = error_display(val)
     _ => err_msg = "unexpected"
   }
   inspect(
@@ -7068,7 +7071,7 @@ test "syntax: function declaration as while body throws SyntaxError" {
     let _ = run_js("while (false) function f() {}")
   } catch {
     @errors.SyntaxError(message=msg) => err_msg = "SyntaxError: " + msg
-    @interpreter.JsException(val) => err_msg = error_display(val)
+    @runtime.JsException(val) => err_msg = error_display(val)
     _ => err_msg = "unexpected"
   }
   inspect(
@@ -7084,7 +7087,7 @@ test "syntax: function declaration as for body throws SyntaxError" {
     let _ = run_js("for (; false; ) function f() {}")
   } catch {
     @errors.SyntaxError(message=msg) => err_msg = "SyntaxError: " + msg
-    @interpreter.JsException(val) => err_msg = error_display(val)
+    @runtime.JsException(val) => err_msg = error_display(val)
     _ => err_msg = "unexpected"
   }
   inspect(
@@ -7100,7 +7103,7 @@ test "syntax: function declaration as do-while body throws SyntaxError" {
     let _ = run_js("do function f() {} while (false)")
   } catch {
     @errors.SyntaxError(message=msg) => err_msg = "SyntaxError: " + msg
-    @interpreter.JsException(val) => err_msg = error_display(val)
+    @runtime.JsException(val) => err_msg = error_display(val)
     _ => err_msg = "unexpected"
   }
   inspect(
@@ -7353,7 +7356,7 @@ test "strict: duplicate parameters abort script before later statements" {
   try {
     let _ = run_output(src)
   } catch {
-    @interpreter.JsException(val) => err_msg = error_display(val)
+    @runtime.JsException(val) => err_msg = error_display(val)
     _ => err_msg = "unexpected"
   }
   inspect(

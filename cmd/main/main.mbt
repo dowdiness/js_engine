@@ -1,4 +1,7 @@
 ///|
+using @runtime {type Value, type Callable}
+
+///|
 fn main {
   let args = @env.args()
   let (is_module, annex_b, source) = parse_args(args)
@@ -24,7 +27,7 @@ fn main {
           }
         }
       } catch {
-        @interpreter.JsException(value) => {
+        @runtime.JsException(value) => {
           match value {
             Object(data) if data.class_name.has_suffix("Error") => {
               let name : String = match data.properties.get("name") {

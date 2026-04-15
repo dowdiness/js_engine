@@ -1,0 +1,585 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "dowdiness/js_engine/interpreter/runtime"
+
+import {
+  "dowdiness/js_engine/ast",
+  "dowdiness/js_engine/token",
+  "moonbitlang/core/debug",
+  "moonbitlang/core/ref",
+}
+
+// Values
+pub fn array_species_create(Interpreter, Value, Int) -> Value raise
+
+pub let boolean_prototype_ref : @ref.Ref[Value?]
+
+pub fn call_callable_direct(Value, Value, Array[Value], interp? : Interpreter?) -> Value raise
+
+pub fn create_data_property_or_throw(Interpreter, Value, Int, Value) -> Unit raise
+
+pub fn create_resolving_functions(Interpreter, PromiseData) -> (Value, Value)
+
+pub fn default_stdlib_hooks() -> StdlibHooks
+
+pub fn delete_array_like_element(Value, Int) -> Unit
+
+pub fn enqueue_promise_reaction_job(Interpreter, PromiseReaction, Value) -> Unit
+
+pub fn flatten_array_val(Array[Value], Int, Array[Value]) -> Unit
+
+pub fn fulfill_promise(Interpreter, PromiseData, Value) -> Unit
+
+pub let function_prototype_ref : @ref.Ref[Value?]
+
+pub fn get_array_iterator_override(ArrayData) -> (Value?, Value?)
+
+pub fn get_array_iterator_proto() -> Value
+
+pub fn get_array_like_element(Value, Int) -> Value
+
+pub fn get_array_like_element_interp(Interpreter, Value, Int) -> Value raise
+
+pub fn get_array_named_prop(ArrayData, String) -> Value?
+
+pub fn get_array_symbol_prop(ArrayData, Int) -> Value?
+
+pub fn get_async_iterator_symbol() -> SymbolData
+
+pub fn get_boolean_proto() -> Value
+
+pub fn get_bound_func_name(Value) -> String
+
+pub fn get_constructor_prototype(Environment, String) -> Value
+
+pub fn get_func_length(Callable) -> Int
+
+pub fn get_func_proto() -> Value
+
+pub fn get_hasinstance_symbol() -> SymbolData
+
+pub fn get_isconcatspreadable_symbol() -> SymbolData
+
+pub fn get_iterator_proto() -> Value
+
+pub fn get_iterator_symbol() -> SymbolData
+
+pub fn get_match_symbol() -> SymbolData
+
+pub fn get_matchall_symbol() -> SymbolData
+
+pub fn get_number_proto() -> Value
+
+pub fn get_obj_proto() -> Value
+
+pub fn get_proxy_handler(ProxyData) -> Value raise
+
+pub fn get_proxy_target(ProxyData) -> Value raise
+
+pub fn get_proxy_trap(ProxyData, String) -> Value? raise
+
+pub fn get_replace_symbol() -> SymbolData
+
+pub fn get_search_symbol() -> SymbolData
+
+pub fn get_species_symbol() -> SymbolData
+
+pub fn get_split_symbol() -> SymbolData
+
+pub fn get_string_iterator_proto() -> Value
+
+pub fn get_string_proto() -> Value
+
+pub fn get_symbol_proto() -> Value
+
+pub fn get_toprimitive_symbol() -> SymbolData
+
+pub fn get_tostringtag_symbol() -> SymbolData
+
+pub fn get_tostringtag_value(ObjectData) -> String? raise
+
+pub fn get_unscopables_symbol() -> SymbolData
+
+pub fn has_array_like_element(Value, Int) -> Bool
+
+pub fn has_property(Value, String, interp? : Interpreter?) -> Bool
+
+pub fn has_use_strict(Array[@ast.Stmt]) -> Bool
+
+pub fn instanceof_prototype_chain(Value, Value, Environment) -> Value
+
+pub fn is_callable(Value) -> Bool
+
+pub let is_constructing : @ref.Ref[Bool]
+
+pub fn is_constructor_value(Value) -> Bool
+
+pub fn is_function_value(Value) -> Bool
+
+pub fn is_js_catchable_error(Error) -> Bool
+
+pub fn is_thenable_object_candidate(Value) -> Bool
+
+pub fn is_truthy(Value) -> Bool
+
+pub fn is_typedarray_class(String) -> Bool
+
+pub fn js_error_to_throw_value(Error) -> Value
+
+pub fn js_error_to_value(Error) -> Value
+
+pub fn js_error_to_value_with_env(Error, Environment?) -> Value
+
+pub fn lookup_symbol_property_chain(Value, ObjectData, Int, interp? : Interpreter?) -> Value? raise
+
+pub fn make_array_iterator_value(ArrayData) -> Value
+
+pub fn make_array_like_iterator_value(Value) -> Value raise
+
+pub fn make_func(FuncData) -> Value
+
+pub fn make_func_ext(FuncDataExt) -> Value
+
+pub fn make_interp_method_func(String, Int, (Interpreter, Value, Array[Value]) -> Value raise) -> Value
+
+pub fn make_interp_static_func_with_length(String, Int, (Interpreter, Array[Value]) -> Value raise) -> Value
+
+pub fn make_interpreter_callable_with_length(String, Int, (Interpreter, Value, Array[Value]) -> Value raise) -> Value
+
+pub fn make_method_func(String, Int, (Value, Array[Value]) -> Value raise) -> Value
+
+pub fn make_native_func(String, (Array[Value]) -> Value raise) -> Value
+
+pub fn make_native_func_with_length(String, Int, (Array[Value]) -> Value raise) -> Value
+
+pub fn make_object(Map[String, Value], Value, Callable?, String, Map[String, PropDescriptor], Bool) -> Value
+
+pub fn make_plain_object() -> Value
+
+pub fn make_static_func(String, (Array[Value]) -> Value raise) -> Value
+
+pub fn make_static_func_with_length(String, Int, (Array[Value]) -> Value raise) -> Value
+
+pub fn make_string_iterator_value(String) -> Value
+
+pub fn new_promise_data() -> PromiseData
+
+pub let number_prototype_ref : @ref.Ref[Value?]
+
+pub let object_prototype_ref : @ref.Ref[Value?]
+
+pub fn raise_js_exception(Value) -> Unit raise
+
+pub fn reject_promise(Interpreter, PromiseData, Value) -> Unit
+
+pub fn set_array_iterator_override(ArrayData, Value?, Value?) -> Unit
+
+pub fn set_array_like_element(Value, Int, Value) -> Unit
+
+pub fn set_array_like_length(Value, Int) -> Unit
+
+pub fn set_array_named_prop(ArrayData, String, Value) -> Unit
+
+pub fn set_array_symbol_prop(ArrayData, Int, Value) -> Unit
+
+pub fn set_function_name(Value, String) -> Unit
+
+pub fn setup_async_function_constructor(Environment) -> Unit
+
+pub fn setup_generator_function_constructor(Environment, Value) -> Unit
+
+pub fn sort_property_keys(Map[String, Value]) -> Array[String]
+
+pub fn strict_equal(Value, Value) -> Bool
+
+pub let string_prototype_ref : @ref.Ref[Value?]
+
+pub fn string_to_utf16(String) -> Array[Int]
+
+pub let symbol_prototype_ref : @ref.Ref[Value?]
+
+pub fn to_array_like_elements(Value) -> Array[Value] raise
+
+pub fn to_array_like_length(Value) -> Int raise
+
+pub fn to_array_like_length_interp(Value, Interpreter) -> Int raise
+
+pub fn to_index(Value) -> Int raise
+
+pub fn to_int32(Double) -> Int
+
+pub fn to_js_string(Value, interp? : Interpreter?) -> String raise
+
+pub fn to_number(Value, interp? : Interpreter?) -> Double raise
+
+pub fn to_primitive_default(Value, ObjectData, interp? : Interpreter?) -> Value raise
+
+pub fn type_of(Value) -> String
+
+pub fn utf16_length(String) -> Int
+
+pub let well_known_async_iterator_sym : @ref.Ref[SymbolData?]
+
+pub let well_known_hasinstance_sym : @ref.Ref[SymbolData?]
+
+pub let well_known_isconcatspreadable_sym : @ref.Ref[SymbolData?]
+
+pub let well_known_iterator_sym : @ref.Ref[SymbolData?]
+
+pub let well_known_match_sym : @ref.Ref[SymbolData?]
+
+pub let well_known_matchall_sym : @ref.Ref[SymbolData?]
+
+pub let well_known_replace_sym : @ref.Ref[SymbolData?]
+
+pub let well_known_search_sym : @ref.Ref[SymbolData?]
+
+pub let well_known_species_sym : @ref.Ref[SymbolData?]
+
+pub let well_known_split_sym : @ref.Ref[SymbolData?]
+
+pub let well_known_toprimitive_sym : @ref.Ref[SymbolData?]
+
+pub let well_known_tostringtag_sym : @ref.Ref[SymbolData?]
+
+pub let well_known_unscopables_sym : @ref.Ref[SymbolData?]
+
+// Errors
+pub suberror GeneratorReturnSignal {
+  GeneratorReturnSignal(Value)
+}
+
+pub suberror JsException {
+  JsException(Value)
+}
+
+pub suberror YieldSignal {
+  YieldSignal(Value)
+}
+
+// Types and methods
+pub(all) struct ArrayData {
+  elements : Array[Value]
+}
+
+pub(all) struct Binding {
+  mut value : Value
+  kind : BindingKind
+  mut initialized : Bool
+}
+
+pub(all) enum BindingKind {
+  LetBinding
+  ConstBinding
+  VarBinding
+} derive(Eq, @debug.Debug)
+pub impl Show for BindingKind
+
+pub(all) enum Callable {
+  UserFunc(FuncData)
+  ArrowFunc(FuncData)
+  UserFuncExt(FuncDataExt)
+  ArrowFuncExt(FuncDataExt)
+  NativeCallable(String, (Array[Value]) -> Value raise)
+  NonConstructableCallable(String, (Array[Value]) -> Value raise)
+  BoundFunc(Value, Value, Array[Value])
+  FuncCallMethod(Value)
+  FuncApplyMethod(Value)
+  MethodCallable(String, (Value, Array[Value]) -> Value raise)
+  InterpreterCallable(String, (Interpreter, Value, Array[Value]) -> Value raise)
+  ConstructorOnlyCallable(String, (Interpreter, Array[Value]) -> Value raise)
+  ClassConstructor(ClassConstructorData)
+}
+
+pub(all) struct ClassConstructorData {
+  name : String
+  proto : Value
+  super_ctor : Value?
+  ctor_fn : (Array[String], Array[@ast.Stmt])?
+  closure : Environment
+  super_proto : Value
+  instance_fields : Array[ClassFieldInit]
+}
+
+pub(all) struct ClassFieldInit {
+  key : Value
+  initializer : @ast.Expr?
+  closure : Environment
+}
+
+pub(all) struct Environment {
+  bindings : Map[String, Binding]
+  parent : Environment?
+  mut is_var_scope : Bool
+  mut with_object : Value?
+}
+pub fn Environment::assign(Self, String, Value) -> Unit raise
+pub fn Environment::assign_var(Self, String, Value) -> Unit raise
+pub fn Environment::def(Self, String, Value, BindingKind) -> Unit raise
+pub fn Environment::def_builtin(Self, String, Value) -> Unit
+pub fn Environment::def_tdz(Self, String, BindingKind) -> Unit raise
+pub fn Environment::find_var_env(Self) -> Self
+pub fn Environment::find_with_object(Self, String) -> Value?
+pub fn Environment::get(Self, String) -> Value raise
+pub fn Environment::has(Self, String) -> Bool
+pub fn Environment::has_var(Self, String) -> Bool
+pub fn Environment::initialize(Self, String, Value) -> Unit raise
+pub fn Environment::new(parent? : Self?) -> Self
+
+pub(all) struct ExecContext {
+  strict : Bool
+  current_generator : GeneratorObject?
+}
+
+pub(all) struct FuncData {
+  name : String?
+  params : Array[String]
+  body : Array[@ast.Stmt]
+  closure : Environment
+  strict : Bool
+}
+
+pub(all) struct FuncDataExt {
+  name : String?
+  params : Array[@ast.Param]
+  rest_param : String?
+  body : Array[@ast.Stmt]
+  closure : Environment
+  strict : Bool
+}
+
+pub(all) enum GenState {
+  SuspendedStart
+  Executing
+  SuspendedYield
+  Completed
+}
+
+pub(all) struct GeneratorObject {
+  id : Int
+  mut state : GenState
+  body : Array[@ast.Stmt]
+  params : Array[String]
+  params_ext : Array[@ast.Param]?
+  rest_param : String?
+  closure : Environment
+  name : String?
+  interpreter : Interpreter
+  args : Array[Value]
+  this_val : Value
+  mut env : Environment?
+  mut pc : Int
+  mut yield_value : Value
+  mut resuming : Bool
+  mut resume_action : ResumeAction
+  mut try_resume_phase : Int
+  mut try_resume_error : Value
+  mut try_resume_result : Signal
+  mut try_resume_pending_error : Error?
+  loop_env_stack : Array[Environment]
+  mut for_of_iterator : Value
+  mut for_of_next : Value
+  mut for_of_resume : Bool
+  mut delegate_iterator : Value
+  mut delegate_next : Value
+  mut delegating : Bool
+  mut yield_index : Int
+  mut resume_at_yield : Int
+}
+
+pub(all) struct HostEnv {
+  output : Array[String]
+  microtask_queue : Array[Microtask]
+  timer_queue : Array[TimerTask]
+  timer_id_counter : @ref.Ref[Int]
+  timer_insertion_counter : @ref.Ref[Int]
+  cancelled_timer_ids : Map[Int, Bool]
+  module_loader : ModuleLoader?
+}
+
+pub(all) struct Interpreter {
+  host : HostEnv
+  global : Environment
+  global_this : Value
+  annex_b : Bool
+  module_registry : Map[String, Map[String, Value]]
+  mut module_exports : Map[String, Value]
+  mut module_export_bindings : Array[(String, String)]
+  generator_objects : Map[Int, GeneratorObject]
+  gen_id_counter : @ref.Ref[Int]
+  symbols : SymbolState
+  mut stdlib_hooks : StdlibHooks
+}
+pub fn Interpreter::call_value(Self, Value, Value, Array[Value], @token.Loc) -> Value raise
+pub fn Interpreter::construct_value(Self, Value, Array[Value], @token.Loc, proto_override? : Value?) -> Value raise
+pub fn Interpreter::enqueue_microtask(Self, Value, Array[Value]) -> Unit
+pub fn Interpreter::get_computed_property(Self, Value, Value, @token.Loc) -> Value raise
+pub fn Interpreter::get_property(Self, Value, String, @token.Loc) -> Value raise
+pub fn Interpreter::has_property(Self, Value, String) -> Bool
+pub fn Interpreter::new(annex_b? : Bool, module_loader? : ModuleLoader?, setup_builtins? : (Environment, Array[String], SymbolState, Bool) -> Unit, setup_harness? : (Environment, Array[String], Value) -> Unit, stdlib_hooks? : StdlibHooks) -> Self
+pub fn Interpreter::register_module(Self, String, Map[String, Value]) -> Unit
+pub fn Interpreter::run(Self, Array[@ast.Stmt]) -> Value raise
+pub fn Interpreter::run_microtasks(Self) -> Unit raise
+pub fn Interpreter::run_module(Self, Array[@ast.Stmt]) -> Map[String, Value] raise
+pub fn Interpreter::run_timers(Self) -> Unit raise
+pub fn Interpreter::set_property(Self, Value, String, Value, @token.Loc, strict? : Bool) -> Value raise
+pub fn Interpreter::to_js_string(Self, Value) -> String raise
+pub fn Interpreter::to_number(Self, Value) -> Double raise
+pub fn Interpreter::to_primitive_default(Self, Value, ObjectData) -> Value raise
+
+pub(all) struct MapData {
+  entries : Array[(Value, Value)]
+  properties : Map[String, Value]
+  descriptors : Map[String, PropDescriptor]
+  symbol_properties : Map[Int, Value]
+  symbol_descriptors : Map[Int, PropDescriptor]
+}
+
+pub(all) struct Microtask {
+  callback : Value
+  args : Array[Value]
+}
+
+pub(all) struct ModuleLoader((String) -> Map[String, Value] raise)
+#deprecated
+pub fn ModuleLoader::inner(Self) -> (String) -> Map[String, Value] raise
+
+pub(all) struct ObjectData {
+  properties : Map[String, Value]
+  symbol_properties : Map[Int, Value]
+  mut prototype : Value
+  callable : Callable?
+  class_name : String
+  descriptors : Map[String, PropDescriptor]
+  symbol_descriptors : Map[Int, PropDescriptor]
+  mut extensible : Bool
+}
+
+pub(all) struct PromiseData {
+  mut state : PromiseState
+  mut result : Value
+  fulfill_reactions : Array[PromiseReaction]
+  reject_reactions : Array[PromiseReaction]
+  mut is_handled : Bool
+  properties : Map[String, Value]
+  symbol_properties : Map[Int, Value]
+  descriptors : Map[String, PropDescriptor]
+  symbol_descriptors : Map[Int, PropDescriptor]
+}
+
+pub(all) struct PromiseReaction {
+  handler : Value?
+  resolve : Value
+  reject : Value
+  reaction_type : PromiseReactionType
+}
+
+pub(all) enum PromiseReactionType {
+  Fulfill
+  Reject
+}
+
+pub(all) enum PromiseState {
+  Pending
+  Fulfilled
+  Rejected
+}
+
+pub(all) struct PropDescriptor {
+  mut writable : Bool
+  mut enumerable : Bool
+  mut configurable : Bool
+  mut getter : Value?
+  mut setter : Value?
+}
+
+pub(all) struct ProxyData {
+  mut target : Value?
+  mut handler : Value?
+  is_callable : Bool
+}
+
+pub(all) enum ResumeAction {
+  NextAction
+  ThrowAction(Value)
+  ReturnAction(Value)
+}
+
+pub(all) enum ResumeKind {
+  Next(Value)
+  Throw(Value)
+  Return(Value)
+}
+
+pub(all) struct SetData {
+  values : Array[Value]
+  properties : Map[String, Value]
+  descriptors : Map[String, PropDescriptor]
+  symbol_properties : Map[Int, Value]
+  symbol_descriptors : Map[Int, PropDescriptor]
+}
+
+pub(all) enum Signal {
+  Normal(Value)
+  ReturnSignal(Value)
+  BreakSignal(Value?, String?)
+  ContinueSignal(Value?, String?)
+}
+
+pub(all) struct StdlibHooks {
+  get_string_method : (String, String, Bool) -> Value
+  get_number_method : (Value, String) -> Value
+  get_array_method_with_interp : (ArrayData, String) -> Value
+  get_map_method : (MapData, String) -> Value
+  get_set_method : (SetData, String) -> Value
+  get_promise_method : (PromiseData, String) -> Value
+  make_regexp_object : (String, String) -> Value raise
+  typedarray_get_index : (ObjectData, Int) -> Value
+  typedarray_set_index : (ObjectData, Int, Double) -> Unit
+}
+
+pub(all) struct SymbolData {
+  id : Int
+  description : String?
+}
+
+pub(all) struct SymbolState {
+  symbol_id_counter : @ref.Ref[Int]
+  all_symbols : Map[Int, SymbolData]
+  global_symbol_registry : Map[String, SymbolData]
+  symbol_registry_reverse : Map[Int, String]
+}
+pub fn SymbolState::get_symbol_by_id(Self, Int) -> SymbolData?
+pub fn SymbolState::new() -> Self
+pub fn SymbolState::new_symbol(Self, String?) -> SymbolData
+
+pub(all) struct TimerTask {
+  id : Int
+  callback : Value
+  args : Array[Value]
+  delay : Int
+  period : Int
+  mut cancelled : Bool
+  is_interval : Bool
+  insertion_order : Int
+}
+
+pub(all) enum Value {
+  Number(Double)
+  String_(String)
+  Bool(Bool)
+  Null
+  Undefined
+  Object(ObjectData)
+  Array(ArrayData)
+  Symbol(SymbolData)
+  Map(MapData)
+  Set(SetData)
+  Promise(PromiseData)
+  Proxy(ProxyData)
+}
+pub impl Show for Value
+
+// Type aliases
+
+// Traits
+
