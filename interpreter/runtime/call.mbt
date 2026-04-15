@@ -593,7 +593,8 @@ pub fn Interpreter::call_value(
             func_env.def(param.name, val, LetBinding)
             // Destructure if pattern param
             match param.pattern {
-              Some(pat) => self.bind_pattern(pat, val, func_env, LetBinding)
+              Some(pat) =>
+                self.bind_pattern(pat, val, func_env, LetBinding, ctx=func_ctx)
               None => ()
             }
             effective_param_count = effective_param_count + 1
@@ -612,7 +613,13 @@ pub fn Interpreter::call_value(
                 if p.name == rest_name {
                   match p.pattern {
                     Some(pat) =>
-                      self.bind_pattern(pat, rest_val, func_env, LetBinding)
+                      self.bind_pattern(
+                        pat,
+                        rest_val,
+                        func_env,
+                        LetBinding,
+                        ctx=func_ctx,
+                      )
                     None => ()
                   }
                   break
@@ -682,7 +689,8 @@ pub fn Interpreter::call_value(
             func_env.def(param.name, val, LetBinding)
             // Destructure if pattern param
             match param.pattern {
-              Some(pat) => self.bind_pattern(pat, val, func_env, LetBinding)
+              Some(pat) =>
+                self.bind_pattern(pat, val, func_env, LetBinding, ctx=func_ctx)
               None => ()
             }
             effective_param_count = effective_param_count + 1
@@ -701,7 +709,13 @@ pub fn Interpreter::call_value(
                 if p.name == rest_name {
                   match p.pattern {
                     Some(pat) =>
-                      self.bind_pattern(pat, rest_val, func_env, LetBinding)
+                      self.bind_pattern(
+                        pat,
+                        rest_val,
+                        func_env,
+                        LetBinding,
+                        ctx=func_ctx,
+                      )
                     None => ()
                   }
                   break

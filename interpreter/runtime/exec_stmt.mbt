@@ -794,7 +794,7 @@ fn Interpreter::exec_stmt(
               VarKind => env
               _ => body_env
             }
-            self.bind_pattern(pattern, String_(key), bind_env, bk)
+            self.bind_pattern(pattern, String_(key), bind_env, bk, ctx~)
           }
           None => self.assign_pattern(ctx, pattern, String_(key), env)
         }
@@ -930,7 +930,7 @@ fn Interpreter::exec_stmt(
               VarKind => env
               _ => body_env
             }
-            self.bind_pattern(pattern, value, bind_env, bk)
+            self.bind_pattern(pattern, value, bind_env, bk, ctx~)
           }
           None => self.assign_pattern(ctx, pattern, value, env)
         }
@@ -1145,7 +1145,7 @@ fn Interpreter::exec_stmt(
         VarKind => VarBinding
       }
       let value = self.eval_expr(ctx, init_expr, env)
-      self.bind_pattern(pattern, value, env, bk)
+      self.bind_pattern(pattern, value, env, bk, ctx~)
       Normal(Undefined)
     }
     FuncDeclExt(name, params, rest_param, body, _) => {
@@ -1686,7 +1686,7 @@ fn Interpreter::exec_try_catch(
               let catch_env = Environment::new(parent=Some(env))
               let error_value = js_error_to_value_with_env(e, Some(env))
               // Bind the catch parameter - supports simple identifier and destructuring
-              self.bind_pattern(param, error_value, catch_env, LetBinding)
+              self.bind_pattern(param, error_value, catch_env, LetBinding, ctx~)
               self.exec_stmts(ctx, body, catch_env) catch {
                 ce =>
                   if ce is YieldSignal(_) {
@@ -1725,7 +1725,7 @@ fn Interpreter::exec_try_catch(
           _ => Undefined
         }
         // Bind the catch parameter - supports simple identifier and destructuring
-        self.bind_pattern(param, error_value, catch_env, LetBinding)
+        self.bind_pattern(param, error_value, catch_env, LetBinding, ctx~)
         result = self.exec_stmts(ctx, body, catch_env) catch {
           ce =>
             if ce is YieldSignal(_) {

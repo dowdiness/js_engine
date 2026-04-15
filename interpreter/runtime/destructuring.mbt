@@ -5,7 +5,7 @@ fn Interpreter::bind_pattern(
   value : Value,
   env : Environment,
   bk : BindingKind,
-  ctx? : ExecContext = { strict: false, current_generator: None },
+  ctx~ : ExecContext,
 ) -> Unit raise Error {
   match pattern {
     IdentPat(name) =>

@@ -563,7 +563,14 @@ fn create_generator_instance(
         }
         func_env.def(param.name, val, LetBinding)
         match param.pattern {
-          Some(pat) => interp.bind_pattern(pat, val, func_env, LetBinding)
+          Some(pat) =>
+            interp.bind_pattern(
+              pat,
+              val,
+              func_env,
+              LetBinding,
+              ctx=setup_ctx,
+            )
           None => ()
         }
         effective_count = effective_count + 1
@@ -580,7 +587,13 @@ fn create_generator_instance(
             if p.name == rp {
               match p.pattern {
                 Some(pat) =>
-                  interp.bind_pattern(pat, rest_val, func_env, LetBinding)
+                  interp.bind_pattern(
+                    pat,
+                    rest_val,
+                    func_env,
+                    LetBinding,
+                    ctx=setup_ctx,
+                  )
                 None => ()
               }
               break
