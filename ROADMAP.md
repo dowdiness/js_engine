@@ -785,7 +785,7 @@ Current: **24,519 / 27,599 executed (88.8%)**. Need **~341 more passing tests** 
 | **1a** | **String escape sequences** (`\r`, `\b`, `\v`, `\f`, `\0`, `\xHH`) | ~90-120 tests | ✅ DONE (P22) | Also added line continuation support |
 | **1b** | **`%ThrowTypeError%` intrinsic** | ~13 tests | ✅ DONE (P22) | Strict arguments.callee/caller, Function.prototype.caller/arguments |
 | **1c** | **Annex B HTML string methods** | +13 tests | ✅ DONE (P21) | `get_string_method` gated behind `annex_b~` param |
-| **1d** | **`RegExpStringIteratorPrototype`** (for `String.prototype.matchAll`) | ~17 tests | Remaining | Proper iterator prototype with `[Symbol.toStringTag]` |
+| **1d** | **`RegExpStringIteratorPrototype`** (for `String.prototype.matchAll`) | ~17 tests | ✅ Mostly DONE (2026-04-16) | Prototype, brand check, proper match arrays; 20/34 passing |
 | **1e** | **Import syntax validation** (reject escaped keywords, duplicate bound names) | ~10 tests | ✅ DONE (P22) | Escaped reserved words in binding positions |
 
 **Details:**
@@ -796,7 +796,7 @@ Current: **24,519 / 27,599 executed (88.8%)**. Need **~341 more passing tests** 
 
 **1c — Annex B HTML string methods.** ✅ DONE (P21). `get_string_method` gated behind `annex_b~` parameter.
 
-**1d — `RegExpStringIteratorPrototype`.** All 17 `built-ins/RegExpStringIteratorPrototype` tests still fail (0%). `String.prototype.matchAll` is partially implemented but needs a proper iterator prototype with `[Symbol.toStringTag]` set to `"RegExp String Iterator"`, and `next` method with correct `name`/`length` descriptors. Follows the same pattern used for Map/Set/Array/String iterator prototypes in Phase 20.
+**1d — `RegExpStringIteratorPrototype`.** ✅ Mostly DONE (2026-04-16). Rewrote `[Symbol.matchAll]` to use `make_regex_match_array` for proper `index`/`input`/`groups` properties. Added brand check, non-global done-after-first-match semantics, `String.prototype.matchAll` delegation to `Symbol.matchAll`. Also added regex callback replace support in `[Symbol.replace]`. `RegExpStringIteratorPrototype`: 0/34 → **20/34** (58.8%). `String.prototype.matchAll`: 4/48 → **44/48** (91.7%). Remaining 14 failures require lazy `exec()` calls through prototype chain (RegExp subclass exec forwarding).
 
 ### Tier 2 — Medium Wins (~650-800 tests, medium effort) — ✅ DONE (P22)
 
@@ -820,25 +820,16 @@ These are major missing language features. Each unlocks a large batch of current
 
 | # | Feature | Skipped Tests | Effort | Notes |
 |---|---------|---------------|--------|-------|
-| **3a** | **Class public fields** | ~723 | Medium | `class C { x = 1; static y = 2; }` field initializer syntax |
-| **3b** | **async/await** | ~500+ executing + ~3,500 skipped | High | Syntactic sugar over Promises + generator-like suspension |
+| **3a** | **Class public fields** | — | — | ✅ DONE (pre-2026-04-16). Feature flags removed, ~97% pass rate |
+| **3b** | **async/await** | — | — | ✅ DONE (PR #45, 2026-04-12). Feature flag removed |
 | **3c** | **Class private fields/methods** | ~2,437 | High | `#private` syntax with brand-check semantics |
-| **3d** | **RegExp named groups & lookbehind** | ~679+ skipped | Medium | `(?<name>...)` capture groups and `(?<=...)`/`(?<!...)` assertions |
+| **3d** | **RegExp named groups & lookbehind** | ~679+ skipped | Medium | Named groups ✅ DONE (PR #47). Lookbehind remaining |
 
 **Details:**
 
-**3a — Class public fields.** Currently all tests with the `class-fields-public` and `class-static-fields-public` features are skipped (~723 tests). Implementation requires:
-1. Parser: recognize field declarations in class bodies (`x = expr;` and `static x = expr;`).
-2. New AST nodes for `ClassField(name, initializer, is_static)`.
-3. Interpreter: evaluate field initializers in `[[Construct]]` (instance fields) or class definition time (static fields).
-4. Field initializers run with `this` bound to the new instance (or the constructor for static).
-5. The initializer expression is evaluated per the `[[Define]]` semantics (not `[[Set]]`), meaning it bypasses setters.
+**3a — Class public fields.** ✅ DONE. `ClassField` AST node, parser field detection, instance field installation in `construct.mbt`, static field evaluation at class definition time. Feature flags `class-fields-public` and `class-static-fields-public` removed from skip list. Computed property name tests at ~97% pass rate.
 
-**3b — async/await.** The generator infrastructure (Phase 8) and Promise system (Phase 13, 99.4%) provide the foundation. Implementation requires:
-1. Parser: `async function`, `async () =>`, `await expr` syntax.
-2. Interpreter: async functions return Promises; `await` suspends and resumes via microtask queue (similar to `yield` in generators).
-3. Test runner: remove `async-functions` from `SKIP_FEATURES` in `test262-runner.py`.
-4. Unblocks `async-iteration` as a follow-up (~3,731 skipped tests).
+**3b — async/await.** ✅ DONE (PR #45, 2026-04-12). `async function`, `async () =>`, `await expr` all parse and execute. Feature flag `async-functions` removed. Remaining: `async-iteration` (`for await`) still skipped (~3,731 tests).
 
 **3c — Class private fields/methods.** The largest single batch of skipped tests (~2,437 across `class-fields-private`, `class-methods-private`, `class-static-fields-private`, `class-static-methods-private`). Requires:
 1. Parser: `#name` syntax for fields, methods, accessors, and static variants.
@@ -846,10 +837,7 @@ These are major missing language features. Each unlocks a large batch of current
 3. Private name resolution: lexical scope model where `#name` resolves to a per-class WeakMap-like storage slot.
 4. This is the most complex single feature due to the interaction between brand checks, inheritance, and static private members.
 
-**3d — RegExp named groups & lookbehind.** Currently skipped via `regexp-named-groups`, `regexp-lookbehind`, and `regexp-unicode-property-escapes` features. Implementation:
-1. Named groups `(?<name>...)`: extend `RegexNode` enum with `NamedGroup(name, inner)`, populate `groups` object on match result.
-2. Lookbehind `(?<=...)` / `(?<!...)`: requires backward matching from the current position (more complex than lookahead).
-3. Unicode property escapes `\p{Letter}` / `\P{Script=Greek}`: requires Unicode property tables (large data dependency).
+**3d — RegExp named groups & lookbehind.** Named groups ✅ DONE (PR #47, 2026-04-15). Lookbehind `(?<=...)` / `(?<!...)` still skipped via `regexp-lookbehind` feature flag. Requires backward matching from the current position. Unicode property escapes `\p{Letter}` / `\P{Script=Greek}` still skipped — requires Unicode property tables (large data dependency).
 
 ### Tier 4 — Polish & Edge Cases (~200-300 tests, varied effort) — ✅ Mostly DONE (P23)
 
@@ -888,32 +876,28 @@ Targeted fixes for specific failing subcategories within otherwise high-performi
 | Pre-P22 baseline | — | 23,875 | **86.5%** |
 | Tier 1+2 (P22) | +587 | 24,462 | **88.1%** |
 | Tier 4 (P23) | +57 | 24,519 | **88.8%** |
-| Remaining Tier 1 (1d) | ~17 | ~24,536 | **88.9%** |
-| Remaining Tier 4 (4g modules) | ~50-100 | ~24,600 | **~89.2%** |
-| Tier 3a (class public fields) | ~723 unskipped | ~25,000* | **~89%*** |
-| Tier 3b (async/await) | ~500+ unskipped | ~25,500* | **~89%*** |
-| All tiers | ~1,500+ fixed + ~4,000+ unskipped | ~28,000+* | **~90%+*** |
+| Tier 1d + regex replace (2026-04-16) | ~+60 | ~24,579 | **~89.0%** |
+| Remaining Tier 4 (4g modules) | ~50-100 | ~24,650 | **~89.3%** |
+| Proxy trap invariant fixes | ~50-100 | ~24,750 | **~89.7%** |
 
-\* Projected rates for Tier 3 account for both newly-passing and newly-executed (denominator increases).
+**Note**: Tier 3a (class public fields) and Tier 3b (async/await) were already implemented and unlocked prior to 2026-04-16. The `class-fields-public` and `async-functions` feature flags are no longer in the skip list. Remaining gains come from fixing many small issues across categories.
 
-### Root Cause Clustering of Remaining 3,080 Failures
+### Root Cause Clustering of Remaining Failures (updated 2026-04-16)
 
-| Root Cause | Est. Failures | % of Total | Key Categories Affected |
-|------------|---------------|------------|-------------------------|
-| Language expression/statement edge cases | ~1,237 | 40.2% | `language/expressions` (568), `language/statements` (669) |
-| Built-ins/Array edge cases | ~351 | 11.4% | `built-ins/Array` |
-| Module system gaps | ~280 | 9.1% | `language/module-code` (198), `language/import` (82) |
-| Annex B remaining (built-ins, language edge cases) | ~164 | 5.3% | `annexB/built-ins` (58), `annexB/language` (106) |
-| Built-ins/Object edge cases | ~133 | 4.3% | `built-ins/Object` |
-| RegExp remaining gaps (named groups, lookbehind, edge cases) | ~128 | 4.2% | `built-ins/RegExp` (111), `built-ins/RegExpStringIteratorPrototype` (17) |
-| Eval-code edge cases | ~97 | 3.2% | `language/eval-code` |
-| Language/literals (octal, numeric, template) | ~89 | 2.9% | `language/literals` |
-| Built-ins/Function edge cases | ~69 | 2.2% | `built-ins/Function` |
-| Built-ins/String edge cases | ~58 | 1.9% | `built-ins/String` |
-| Built-ins/Number edge cases | ~48 | 1.6% | `built-ins/Number` |
-| Language/identifiers (Unicode) | ~44 | 1.4% | `language/identifiers` |
-| Generator conformance | ~7 | 0.2% | `built-ins/GeneratorPrototype` (7 remaining) |
-| Assorted spec edge cases | ~375 | 12.2% | Spread across all categories |
+Failures are now widely distributed. No single fix unlocks 300+ tests. Progress requires many small, targeted fixes.
+
+| Category | Pass | Fail | Rate | Top Failure Causes |
+|----------|------|------|------|--------------------|
+| `built-ins/Array` | 4,664 | 1,157 | 80.1% | Species, sparse arrays, iteration model |
+| `language/expressions` | ~10,810 | ~1,018 | ~91.4% | Scattered; class-private skipped |
+| `language/statements` | ~7,615 | ~647 | ~89.8% | Scattered; class-private skipped |
+| `built-ins/RegExp` | ~1,148 | ~628 | ~64.6% | No lookbehind, subclass exec forwarding |
+| `built-ins/Proxy` | 229 | 305 | 42.9% | All 13 traps have gaps (ownKeys 48, getOwnPropertyDescriptor 32, setPrototypeOf 30, getPrototypeOf 28, has 23, set 22, isExtensible 20, defineProperty 20, revocable 20) |
+| `built-ins/Object` | ~5,658 | ~1,092 | ~83.8% | Descriptor edge cases |
+| `built-ins/String` | ~2,405 | ~216 | ~91.6% | Improved 2026-04-16 |
+| `built-ins/Function` | 608 | 206 | 74.7% | Constructor edge cases, prototype descriptors |
+| `language/eval-code` | 283 | 169 | 62.6% | Strict scoping, var hoisting edge cases |
+| `built-ins/RegExpStringIteratorPrototype` | 20 | 14 | 58.8% | Improved 2026-04-16; remaining need lazy exec() |
 
 ### Previously Completed
 
@@ -926,14 +910,15 @@ Targeted fixes for specific failing subcategories within otherwise high-performi
 - **String escape sequences** — ✅ DONE (Phase 22). `\r`, `\b`, `\v`, `\f`, `\0`, `\xHH`, line continuation.
 - **`%ThrowTypeError%` intrinsic** — ✅ DONE (Phase 22). Strict arguments/Function.prototype caller/arguments.
 - **DataView** — ✅ DONE (Phase 16+22). 377/377 (100%).
+- **Class public fields** — ✅ DONE (pre-2026-04-16). Feature flags removed, ~97% pass rate.
+- **async/await** — ✅ DONE (PR #45, 2026-04-12). Feature flag removed.
+- **RegExp named groups** — ✅ DONE (PR #47, 2026-04-15). 28/70 named-groups tests pass.
+- **RegExpStringIteratorPrototype** — ✅ Mostly done (2026-04-16). 20/34 passing. matchAll 44/48.
+- **Regex callback replace** — ✅ DONE (2026-04-16). `[Symbol.replace]` supports function replacements.
 
 ---
 
 ## Phase 12+ Targets
-
-### async/await (~500 tests)
-
-Syntactic sugar over Promises + generator-like suspension. Now unblocked by generator implementation.
 
 ### Other Features
 
@@ -941,11 +926,13 @@ Syntactic sugar over Promises + generator-like suspension. Now unblocked by gene
 |---------|--------|-------|
 | TypedArray prototype chain | — | ✅ Done (Phase 17-19) — TypedArray 726/777 (93.4%), TypedArrayConstructors 342/359 (95.3%) |
 | Boxed primitives | — | ✅ Done (Phase 18-19) — Object 3,234/3,373 (95.9%), String 1,137/1,195 (95.1%), Number 287/335 (85.7%) |
-| RegExp improvements | ~111 fail | Named groups, lookbehind; Symbol methods ✅ Done (P22), 86.8% |
+| RegExp improvements | — | Named groups ✅ Done (PR #47), lookbehind remaining; Symbol methods ✅ Done (P22) |
 | WeakMap/WeakSet | — | ✅ Done (Phase 20) — WeakMap 139/139 (100%), WeakSet 84/84 (100%) |
-| Class public fields | ~723 skip | `class C { x = 1; static y = 2; }` field declarations |
+| Class public fields | — | ✅ Done (pre-2026-04-16) — feature flags removed, ~97% pass rate |
 | Class private fields/methods | ~2,437 skip | `#private` syntax across fields, methods, static members |
-| async/await | ~500+ | Syntactic sugar over Promises; unblocked by generators |
+| async/await | — | ✅ Done (PR #45) — feature flag removed; `async-iteration` still skipped |
+| RegExpStringIteratorPrototype | — | ✅ Mostly done (2026-04-16) — 20/34 passing, matchAll 44/48 |
+| Regex callback replace | — | ✅ Done (2026-04-16) — `[Symbol.replace]` supports function replacements |
 | Date object | — | ✅ Done (8C+9) — 560/583 pass (96.1%) |
 | eval() | — | ✅ Done (P5) — 224/330 pass (67.9%) |
 | Proxy/Reflect | — | ✅ Done (Phase 15-19) — Proxy 262/272 (96.3%), Reflect 153/153 (100.0%) |

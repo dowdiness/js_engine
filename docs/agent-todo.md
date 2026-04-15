@@ -180,12 +180,9 @@ Cross-cutting issues discovered during PR #47 that affect more than just named g
 
 **Fix**: Make `getOwnPropertyDescriptor` for `Array` values check the side table. Also consider migrating match arrays to `Object` with indexed elements instead of `Array` with named prop side table.
 
-### 2. Regex callback replace not implemented
+### ~~2. Regex callback replace not implemented~~ — DONE (2026-04-16)
 
-**Impact**: 4 named-groups tests + many `String.prototype.replace` tests
-**File**: `interpreter/builtins.mbt:1392-1407`, `interpreter/builtins_string.mbt:684-698`
-
-Both `[Symbol.replace]` and `String.prototype.replace` stringify the replacement value before calling `string_replace_regex`. When the second argument is a function, it should be called per match with `(match, ...captures, offset, string, groups)` arguments.
+`[Symbol.replace]` now supports function replacements via `string_replace_regex_func` and `call_replace_fn`. Callback receives `(match, ...captures, offset, string, groups)` per spec. `String.prototype.replace` delegates to `Symbol.replace` for RegExp arguments, which handles the function case.
 
 ### 3. JS lexer rejects non-ASCII identifiers
 
@@ -226,3 +223,66 @@ All four stages shipped. See [docs/architecture-redesign-2026-04-15.md](architec
 ~~**Stage 2 — Timer API**~~: `Interpreter::schedule_timer` / `cancel_timer` replace 14 direct field accesses. ✅
 ~~**Stage 3 — Package boundary**~~: `interpreter/runtime/` and `interpreter/stdlib/` sub-packages created; compiler enforces the boundary. ✅
 ~~**Stage 4 — Descriptor consolidation**~~: `validate_non_configurable` moved to `runtime/property.mbt`; shared helpers extracted. ✅
+
+---
+
+## Recommended Next Targets (2026-04-16 analysis)
+
+Remaining failures are widely distributed — no single fix unlocks 300+ tests. Progress requires many small, targeted fixes. Ordered by estimated ROI.
+
+### Quick wins (1-session each, 10-50 tests each)
+
+#### 1. Proxy trap invariant checks
+
+**Impact**: ~50-100 of 305 Proxy failures
+**Files**: `interpreter/stdlib/builtins_proxy.mbt`, `interpreter/stdlib/builtins_reflect.mbt`
+
+Many Proxy trap handlers are missing the spec's **invariant validation** — the post-condition checks that throw TypeError when a trap's result contradicts the target's state. Breakdown by trap:
+
+| Trap | Failures | Key missing invariants |
+|------|----------|----------------------|
+| ownKeys | 48 | Must include all non-configurable own keys; no duplicates |
+| getOwnPropertyDescriptor | 32 | Result must match target for non-configurable props |
+| setPrototypeOf | 30 | Must throw if target is non-extensible and proto differs |
+| getPrototypeOf | 28 | Must return target proto if target is non-extensible |
+| has | 23 | Must return true for non-configurable own properties |
+| set | 22 | Must throw for non-writable, non-configurable data props |
+| isExtensible | 20 | Must match `Reflect.isExtensible(target)` |
+| defineProperty | 20 | Non-configurable checks |
+| revocable | 20 | Various edge cases |
+| preventExtensions | 17 | Must match `Reflect.isExtensible(target)` |
+| construct | 14 | Result must be an Object |
+| deleteProperty | 13 | Cannot delete non-configurable own properties |
+| get | 12 | Must match value for non-writable, non-configurable data props |
+
+Start with `ownKeys` (48 failures) and `isExtensible` (20 failures) — both have simple, well-defined invariant checks.
+
+#### 2. Iterator close on abrupt completion
+
+**Impact**: ~20-30 tests across `language/statements/for-of`
+**Files**: `interpreter/runtime/exec_stmt.mbt`
+
+For-of body errors (`body-dstr-assign-error`, `body-put-error`) show `IteratorClose` not being called when the body throws. The spec requires calling `iterator.return()` when for-of exits early (break, throw, return).
+
+#### 3. Mapped arguments object
+
+**Impact**: 3+ for-of tests + sloppy-mode function tests broadly
+**Files**: `interpreter/runtime/construct.mbt`
+
+`make_arguments_object` creates a plain copy, not a spec-compliant mapped arguments object where mutations to `arguments[i]` reflect in named parameters and vice versa. Known issue #11 from PR #45.
+
+### Medium effort (multi-session)
+
+#### 4. Proxy internal operation forwarding
+
+**Impact**: Subset of 305 Proxy failures
+**Files**: `interpreter/runtime/property.mbt`, `interpreter/runtime/eval_expr.mbt`, `interpreter/runtime/exec_stmt.mbt`
+
+6 deferred items from Phase 15: `for-in` doesn't invoke `ownKeys` trap, `instanceof` doesn't invoke `getPrototypeOf` trap, `Object.getPrototypeOf` doesn't invoke the trap, `create_list_from_array_like` bypasses Proxy, `Reflect.construct` rewires newTarget prototype after construction instead of before, `unwrap_proxy_target` fails for non-Object types.
+
+#### 5. RegExp lookbehind assertions
+
+**Impact**: Unlocks `regexp-lookbehind` feature flag (currently skipped)
+**Files**: `interpreter/stdlib/builtins_regex.mbt`
+
+`(?<=...)` positive lookbehind and `(?<!...)` negative lookbehind. Requires backward matching from current position — more complex than lookahead which is already implemented.
