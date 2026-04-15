@@ -310,6 +310,74 @@ fn RegexParser::parse_group(self : RegexParser) -> RegexNode raise Error {
           _ => [inner]
         }
         return Group(children, 0, None)
+      } else if next == '<' {
+        // Named capture group (?<name>...) or lookbehind (not supported)
+        if self.pos + 2 < self.pattern.length() {
+          let after_lt = self.pattern[self.pos + 2]
+          if after_lt == '=' || after_lt == '!' {
+            raise @errors.SyntaxError(
+              message="Invalid regex: lookbehind assertions are not supported",
+            )
+          }
+        }
+        // Parse group name
+        self.pos += 2 // skip '?<'
+        let name_start = self.pos
+        // First char must be _, $, or alphabetic
+        if self.pos >= self.pattern.length() {
+          raise @errors.SyntaxError(
+            message="Invalid regex: unterminated group name",
+          )
+        }
+        let first = self.pattern[self.pos]
+        if first != '_' && first != '$' && !((first >= 'a' && first <= 'z') || (first >= 'A' && first <= 'Z')) {
+          raise @errors.SyntaxError(
+            message="Invalid regex: invalid group name",
+          )
+        }
+        self.pos += 1
+        // Subsequent chars: _, $, alphanumeric, ZWNJ (0x200C), ZWJ (0x200D)
+        while self.pos < self.pattern.length() && self.pattern[self.pos] != '>' {
+          let c = self.pattern[self.pos]
+          let cp = c.to_int()
+          if c == '_' || c == '$' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || cp == 0x200C || cp == 0x200D {
+            self.pos += 1
+          } else {
+            raise @errors.SyntaxError(
+              message="Invalid regex: invalid group name",
+            )
+          }
+        }
+        if self.pos >= self.pattern.length() || self.pattern[self.pos] != '>' {
+          raise @errors.SyntaxError(
+            message="Invalid regex: unterminated group name",
+          )
+        }
+        // Extract name
+        let name_buf = StringBuilder::new()
+        for i = name_start; i < self.pos; i = i + 1 {
+          name_buf.write_char(self.pattern[i])
+        }
+        let name = name_buf.to_string()
+        self.pos += 1 // skip '>'
+        // Duplicate check
+        if self.group_names.contains(name) {
+          raise @errors.SyntaxError(
+            message="Invalid regex: duplicate group name",
+          )
+        }
+        self.group_count += 1
+        let group_idx = self.group_count
+        self.group_names[name] = group_idx
+        let inner = self.parse_alternation()
+        if self.pos < self.pattern.length() && self.pattern[self.pos] == ')' {
+          self.pos += 1
+        }
+        let children = match inner {
+          Sequence(nodes) => nodes
+          _ => [inner]
+        }
+        return Group(children, group_idx, Some(name))
       } else if next == '=' {
         // Positive lookahead (?=...)
         self.pos += 2
