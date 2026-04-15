@@ -46,8 +46,7 @@ fn setup_function_builtins(env : Environment) -> Unit {
             String_(prefix + name + "() { [native code] }")
           Some(NonConstructableCallable(name, _)) =>
             String_(prefix + name + "() { [native code] }")
-          Some(BoundFunc(_, _, _)) =>
-            String_(prefix + "() { [native code] }")
+          Some(BoundFunc(_, _, _)) => String_(prefix + "() { [native code] }")
           Some(MethodCallable(name, _)) =>
             String_(prefix + name + "() { [native code] }")
           Some(InterpreterCallable(name, _)) =>

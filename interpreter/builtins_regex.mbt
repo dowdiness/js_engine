@@ -40,8 +40,14 @@ priv struct RegexParser {
 }
 
 ///|
-fn RegexParser::new(pattern : String, unicode~ : Bool = false) -> RegexParser {
-  { pattern: pattern.to_array(), pos: 0, group_count: 0, unicode, group_names: {} }
+fn RegexParser::new(pattern : String, unicode? : Bool = false) -> RegexParser {
+  {
+    pattern: pattern.to_array(),
+    pos: 0,
+    group_count: 0,
+    unicode,
+    group_names: {},
+  }
 }
 
 ///|
@@ -60,24 +66,24 @@ fn desugar_named_backrefs_to_literals(node : RegexNode) -> RegexNode {
       Sequence(chars)
     }
     Group(children, idx, name) => {
-      let resolved = children.map(
-        (child) => desugar_named_backrefs_to_literals(child),
-      )
+      let resolved = children.map(child => {
+        desugar_named_backrefs_to_literals(child)
+      })
       Group(resolved, idx, name)
     }
     Sequence(nodes) => {
-      let resolved = nodes.map(
-        (child) => desugar_named_backrefs_to_literals(child),
-      )
+      let resolved = nodes.map(child => {
+        desugar_named_backrefs_to_literals(child)
+      })
       Sequence(resolved)
     }
     Alternation(left, right) => {
-      let resolved_left = left.map(
-        (child) => desugar_named_backrefs_to_literals(child),
-      )
-      let resolved_right = right.map(
-        (child) => desugar_named_backrefs_to_literals(child),
-      )
+      let resolved_left = left.map(child => {
+        desugar_named_backrefs_to_literals(child)
+      })
+      let resolved_right = right.map(child => {
+        desugar_named_backrefs_to_literals(child)
+      })
       Alternation(resolved_left, resolved_right)
     }
     Quantified(inner, min, max, greedy) => {
@@ -85,13 +91,17 @@ fn desugar_named_backrefs_to_literals(node : RegexNode) -> RegexNode {
       Quantified(resolved, min, max, greedy)
     }
     Lookahead(children, positive) => {
-      let resolved = children.map(
-        (child) => desugar_named_backrefs_to_literals(child),
-      )
+      let resolved = children.map(child => {
+        desugar_named_backrefs_to_literals(child)
+      })
       Lookahead(resolved, positive)
     }
-    Literal(_) | Dot | CharClass(_, _) | Anchor(_) | WordBoundary(_) |
-    Backreference(_) => node
+    Literal(_)
+    | Dot
+    | CharClass(_, _)
+    | Anchor(_)
+    | WordBoundary(_)
+    | Backreference(_) => node
   }
 }
 
@@ -112,7 +122,7 @@ fn resolve_named_backreferences(
           )
       }
     Group(children, idx, name) => {
-      let resolved = children.map((child) => {
+      let resolved = children.map(child => {
         resolve_named_backreferences(child, group_names) catch {
           e => raise e
         }
@@ -120,7 +130,7 @@ fn resolve_named_backreferences(
       Group(resolved, idx, name)
     }
     Sequence(nodes) => {
-      let resolved = nodes.map((child) => {
+      let resolved = nodes.map(child => {
         resolve_named_backreferences(child, group_names) catch {
           e => raise e
         }
@@ -128,12 +138,12 @@ fn resolve_named_backreferences(
       Sequence(resolved)
     }
     Alternation(left, right) => {
-      let resolved_left = left.map((child) => {
+      let resolved_left = left.map(child => {
         resolve_named_backreferences(child, group_names) catch {
           e => raise e
         }
       })
-      let resolved_right = right.map((child) => {
+      let resolved_right = right.map(child => {
         resolve_named_backreferences(child, group_names) catch {
           e => raise e
         }
@@ -145,7 +155,7 @@ fn resolve_named_backreferences(
       Quantified(resolved, min, max, greedy)
     }
     Lookahead(children, positive) => {
-      let resolved = children.map((child) => {
+      let resolved = children.map(child => {
         resolve_named_backreferences(child, group_names) catch {
           e => raise e
         }
@@ -153,8 +163,12 @@ fn resolve_named_backreferences(
       Lookahead(resolved, positive)
     }
     // Leaf nodes
-    Literal(_) | Dot | CharClass(_, _) | Anchor(_) | WordBoundary(_) |
-    Backreference(_) => node
+    Literal(_)
+    | Dot
+    | CharClass(_, _)
+    | Anchor(_)
+    | WordBoundary(_)
+    | Backreference(_) => node
   }
 }
 
@@ -518,9 +532,7 @@ fn RegexParser::parse_group(self : RegexParser) -> RegexNode raise Error {
         }
         let first = self.pattern[self.pos]
         if !is_id_start_char(first) {
-          raise @errors.SyntaxError(
-            message="Invalid regex: invalid group name",
-          )
+          raise @errors.SyntaxError(message="Invalid regex: invalid group name")
         }
         self.pos += 1
         // Subsequent chars: _, $, alphanumeric, ZWNJ (0x200C), ZWJ (0x200D)
@@ -1159,7 +1171,7 @@ priv struct ParsedRegex {
 ///|
 fn parse_regex(
   pattern : String,
-  unicode~ : Bool = false,
+  unicode? : Bool = false,
 ) -> ParsedRegex raise Error {
   let parser = RegexParser::new(pattern, unicode~)
   let node = parser.parse()
@@ -1195,14 +1207,12 @@ pub fn regex_match_at(
   let captures : Array[String?] = Array::make(parsed.num_groups, None)
   match regex_exec(parsed.node, input_chars, start_pos, captures, rflags) {
     Some(end_pos) =>
-      Some(
-        {
-          start: start_pos,
-          end_: end_pos,
-          captures,
-          group_names: parsed.group_names,
-        },
-      )
+      Some({
+        start: start_pos,
+        end_: end_pos,
+        captures,
+        group_names: parsed.group_names,
+      })
     None => None
   }
 }
@@ -1226,14 +1236,12 @@ pub fn regex_search(
     let captures : Array[String?] = Array::make(parsed.num_groups, None)
     match regex_exec(parsed.node, input_chars, start_pos, captures, rflags) {
       Some(end_pos) =>
-        return Some(
-          {
-            start: start_pos,
-            end_: end_pos,
-            captures,
-            group_names: parsed.group_names,
-          },
-        )
+        return Some({
+          start: start_pos,
+          end_: end_pos,
+          captures,
+          group_names: parsed.group_names,
+        })
       None => return None
     }
   }
@@ -1241,14 +1249,12 @@ pub fn regex_search(
     let captures : Array[String?] = Array::make(parsed.num_groups, None)
     match regex_exec(parsed.node, input_chars, i, captures, rflags) {
       Some(end_pos) =>
-        return Some(
-          {
-            start: i,
-            end_: end_pos,
-            captures,
-            group_names: parsed.group_names,
-          },
-        )
+        return Some({
+          start: i,
+          end_: end_pos,
+          captures,
+          group_names: parsed.group_names,
+        })
       None => continue
     }
   }
@@ -1270,14 +1276,12 @@ pub fn regex_search_all(
     let captures : Array[String?] = Array::make(parsed.num_groups, None)
     match regex_exec(parsed.node, input_chars, i, captures, rflags) {
       Some(end_pos) => {
-        results.push(
-          {
-            start: i,
-            end_: end_pos,
-            captures,
-            group_names: parsed.group_names,
-          },
-        )
+        results.push({
+          start: i,
+          end_: end_pos,
+          captures,
+          group_names: parsed.group_names,
+        })
         if end_pos == i {
           i += 1
         } else {
@@ -1341,18 +1345,16 @@ pub fn make_regex_match_array(m : RegexMatch, input : String) -> Value {
         setter: None,
       }
     }
-    Object(
-      {
-        properties: groups_props,
-        symbol_properties: {},
-        prototype: Null,
-        callable: None,
-        class_name: "Object",
-        descriptors: groups_descs,
-        symbol_descriptors: {},
-        extensible: true,
-      },
-    )
+    Object({
+      properties: groups_props,
+      symbol_properties: {},
+      prototype: Null,
+      callable: None,
+      class_name: "Object",
+      descriptors: groups_descs,
+      symbol_descriptors: {},
+      extensible: true,
+    })
   } else {
     Undefined
   }
@@ -1427,13 +1429,27 @@ pub fn make_regexp_object(
   // Normalize flag ordering per spec: alphabetical (dgimsuy)
   let sorted_flags = {
     let buf = StringBuilder::new()
-    if flags.contains("d") { buf.write_string("d") }
-    if has_global { buf.write_string("g") }
-    if has_ignore_case { buf.write_string("i") }
-    if has_multiline { buf.write_string("m") }
-    if has_dotall { buf.write_string("s") }
-    if has_unicode { buf.write_string("u") }
-    if has_sticky { buf.write_string("y") }
+    if flags.contains("d") {
+      buf.write_string("d")
+    }
+    if has_global {
+      buf.write_string("g")
+    }
+    if has_ignore_case {
+      buf.write_string("i")
+    }
+    if has_multiline {
+      buf.write_string("m")
+    }
+    if has_dotall {
+      buf.write_string("s")
+    }
+    if has_unicode {
+      buf.write_string("u")
+    }
+    if has_sticky {
+      buf.write_string("y")
+    }
     buf.to_string()
   }
   let props : Map[String, Value] = {}

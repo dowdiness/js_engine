@@ -9054,10 +9054,12 @@ test "class fields on Set subclass" {
 ///|
 test "regex flag ordering is normalized to alphabetical" {
   let output = run_output(
-    #|console.log(new RegExp("x", "smig").flags);
-    #|console.log(new RegExp("x", "yg").flags);
-    #|console.log(new RegExp("x", "igsm").flags);
-    #|console.log(/abc/gi.flags);
+    (
+      #|console.log(new RegExp("x", "smig").flags);
+      #|console.log(new RegExp("x", "yg").flags);
+      #|console.log(new RegExp("x", "igsm").flags);
+      #|console.log(/abc/gi.flags);
+    ),
   )
   inspect(output, content="[\"gims\", \"gy\", \"gims\", \"gi\"]")
 }
@@ -9065,9 +9067,11 @@ test "regex flag ordering is normalized to alphabetical" {
 ///|
 test "GeneratorFunction constructor throws SyntaxError on bad source" {
   let output = run_output(
-    #|var GF = Object.getPrototypeOf(function*(){}).constructor;
-    #|try { GF("???"); } catch(e) { console.log(e instanceof SyntaxError); }
-    #|try { GF("a", "???"); } catch(e) { console.log(e instanceof SyntaxError); }
+    (
+      #|var GF = Object.getPrototypeOf(function*(){}).constructor;
+      #|try { GF("???"); } catch(e) { console.log(e instanceof SyntaxError); }
+      #|try { GF("a", "???"); } catch(e) { console.log(e instanceof SyntaxError); }
+    ),
   )
   inspect(output, content="[\"true\", \"true\"]")
 }
@@ -9078,5 +9082,8 @@ test "Function.prototype.toString distinguishes async functions" {
     #|console.log((function foo(){}).toString());
     #|console.log((async function bar(){}).toString());
   let output = run_output(src)
-  inspect(output, content="[\"function foo() { [native code] }\", \"async function bar() { [native code] }\"]")
+  inspect(
+    output,
+    content="[\"function foo() { [native code] }\", \"async function bar() { [native code] }\"]",
+  )
 }
