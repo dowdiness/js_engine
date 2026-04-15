@@ -2041,6 +2041,68 @@ fn js_unescape(s : String) -> String {
 }
 
 ///|
+/// Build a $262 handle object whose methods are bound to `ri` via NativeCallable
+/// closures. Uses NativeCallable (not InterpreterCallable) so that evalScript
+/// always executes in ri's global scope, not the caller's realm.
+/// Recursive createRealm calls go through ri.stdlib_hooks.create_realm()
+/// so all nested realms are also fully wired.
+fn make_realm_dollar262(ri : Interpreter) -> Value raise Error {
+  let realm_props : Map[String, Value] = {}
+  realm_props["global"] = ri.global_this
+  realm_props["gc"] = @runtime.make_native_func("gc", fn(_a) { Undefined })
+  realm_props["evalScript"] = @runtime.make_native_func("evalScript", fn(
+    es_args,
+  ) raise {
+    let code = if es_args.length() > 0 {
+      match es_args[0] {
+        Value::String_(s) => s
+        _ => es_args[0].to_string()
+      }
+    } else {
+      ""
+    }
+    let prog = @parser.parse(code)
+    ri.run(prog.stmts)
+  })
+  realm_props["createRealm"] = @runtime.make_native_func("createRealm", fn(
+    _a,
+  ) raise {
+    let inner = (ri.stdlib_hooks.create_realm)()
+    make_realm_dollar262(inner)
+  })
+  realm_props["detachArrayBuffer"] = @runtime.make_native_func(
+    "detachArrayBuffer",
+    fn(a) raise {
+      if a.length() == 0 {
+        raise @errors.TypeError(
+          message="$262.detachArrayBuffer requires an ArrayBuffer argument",
+        )
+      }
+      match get_buffer_id(a[0]) {
+        Some(id) => {
+          detach_arraybuffer(id)
+          Undefined
+        }
+        None =>
+          raise @errors.TypeError(
+            message="$262.detachArrayBuffer requires an ArrayBuffer argument",
+          )
+      }
+    },
+  )
+  Value::Object({
+    properties: realm_props,
+    symbol_properties: {},
+    prototype: Null,
+    callable: None,
+    class_name: "Object",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+}
+
+///|
 /// Set up test262 harness functions that require host-level support.
 /// These are functions the test262 test suite expects the host environment
 /// to provide. Unsupported operations throw TypeError with a descriptive message.
@@ -2102,73 +2164,15 @@ pub fn setup_harness_builtins(
   })
 
   // $262.createRealm() - creates a fresh realm with its own global environment
-  // and returns the new realm's $262 object. The returned object's methods
-  // (evalScript, etc.) are bound to the new realm's interpreter via closures,
-  // ensuring proper isolation.
+  // and returns a $262 handle bound to the new realm. Uses NativeCallable
+  // closures (not InterpreterCallable) so that evalScript always runs in the
+  // new realm regardless of which interpreter invokes the method.
   dollar262_props["createRealm"] = @runtime.make_interp_method_func(
     "createRealm",
     0,
-    fn(_interp, _this_val, _args) {
-      let new_interp = Interpreter::new()
-      // Build a $262 object with methods bound to the new interpreter.
-      // Uses NativeCallable closures that capture new_interp so that
-      // evalScript executes in the new realm, not the caller's.
-      let realm_props : Map[String, Value] = {}
-      realm_props["global"] = new_interp.global_this
-      realm_props["gc"] = @runtime.make_native_func("gc", fn(_a) { Undefined })
-      realm_props["evalScript"] = @runtime.make_native_func("evalScript", fn(
-        es_args,
-      ) raise {
-        let code = if es_args.length() > 0 {
-          match es_args[0] {
-            Value::String_(s) => s
-            _ => es_args[0].to_string()
-          }
-        } else {
-          ""
-        }
-        let prog = @parser.parse(code)
-        new_interp.run(prog.stmts)
-      })
-      realm_props["createRealm"] = @runtime.make_native_func("createRealm", fn(
-        _a,
-      ) {
-        // Recursive: create yet another fresh realm
-        let inner = Interpreter::new()
-        inner.global.get("$262") catch {
-          _ => Undefined
-        }
-      })
-      realm_props["detachArrayBuffer"] = @runtime.make_native_func(
-        "detachArrayBuffer",
-        fn(a) raise {
-          if a.length() == 0 {
-            raise @errors.TypeError(
-              message="$262.detachArrayBuffer requires an ArrayBuffer argument",
-            )
-          }
-          match get_buffer_id(a[0]) {
-            Some(id) => {
-              detach_arraybuffer(id)
-              Undefined
-            }
-            None =>
-              raise @errors.TypeError(
-                message="$262.detachArrayBuffer requires an ArrayBuffer argument",
-              )
-          }
-        },
-      )
-      Value::Object({
-        properties: realm_props,
-        symbol_properties: {},
-        prototype: Null,
-        callable: None,
-        class_name: "Object",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      })
+    fn(interp, _this_val, _args) raise {
+      let new_interp = (interp.stdlib_hooks.create_realm)()
+      make_realm_dollar262(new_interp)
     },
   )
 

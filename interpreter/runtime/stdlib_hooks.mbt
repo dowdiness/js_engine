@@ -12,6 +12,9 @@ pub(all) struct StdlibHooks {
   make_regexp_object : (String, String) -> Value raise Error
   typedarray_get_index : (ObjectData, Int) -> Value
   typedarray_set_index : (ObjectData, Int, Double) -> Unit
+  // Factory for creating a fully-wired realm (builtins + harness + hooks).
+  // Populated by the wiring layer; the default produces a bare interpreter.
+  create_realm : () -> Interpreter
 }
 
 ///|
@@ -27,5 +30,6 @@ pub fn default_stdlib_hooks() -> StdlibHooks {
     make_regexp_object: fn(_pattern, _flags) { Undefined },
     typedarray_get_index: fn(_data, _idx) { Undefined },
     typedarray_set_index: fn(_data, _idx, _val) { () },
+    create_realm: fn() { Interpreter::new() },
   }
 }
