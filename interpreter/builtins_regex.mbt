@@ -619,28 +619,107 @@ fn is_non_identifier_codepoint(cp : Int) -> Bool {
 }
 
 ///|
+/// Check if a code point is a combining mark or modifier — valid in
+/// ID_Continue but NOT in ID_Start position.
+fn is_combining_or_modifier(cp : Int) -> Bool {
+  (cp >= 0x0300 && cp <= 0x036F) || // Combining Diacritical Marks
+  (cp >= 0x0483 && cp <= 0x0489) || // Cyrillic combining marks
+  (cp >= 0x0591 && cp <= 0x05C7 && cp != 0x05BF && cp != 0x05C1 && cp != 0x05C2 && cp != 0x05C4 && cp != 0x05C5) || // Hebrew marks (subset)
+  (cp >= 0x0610 && cp <= 0x061A) || // Arabic combining
+  (cp >= 0x064B && cp <= 0x065F) || // Arabic marks
+  (cp >= 0x0670 && cp == 0x0670) || // Arabic superscript alef
+  (cp >= 0x06D6 && cp <= 0x06ED) || // Arabic marks
+  (cp >= 0x0730 && cp <= 0x074A) || // Syriac marks
+  (cp >= 0x07A6 && cp <= 0x07B0) || // Thaana marks
+  (cp >= 0x07EB && cp <= 0x07F3) || // NKo combining
+  (cp >= 0x0816 && cp <= 0x0823) || // Samaritan marks
+  (cp >= 0x0825 && cp <= 0x0827) || // Samaritan marks
+  (cp >= 0x0829 && cp <= 0x082D) || // Samaritan marks
+  (cp >= 0x0859 && cp <= 0x085B) || // Mandaic marks
+  (cp >= 0x0900 && cp <= 0x0903) || // Devanagari marks
+  (cp >= 0x093A && cp <= 0x094F) || // Devanagari vowel marks
+  (cp >= 0x0951 && cp <= 0x0957) || // Devanagari stress marks
+  (cp >= 0x0962 && cp <= 0x0963) || // Devanagari vowel signs
+  (cp >= 0x0981 && cp <= 0x0983) || // Bengali marks
+  (cp >= 0x09BE && cp <= 0x09CD) || // Bengali vowel marks
+  (cp >= 0x0A01 && cp <= 0x0A03) || // Gurmukhi marks
+  (cp >= 0x0A3C && cp <= 0x0A4D) || // Gurmukhi marks
+  (cp >= 0x0B01 && cp <= 0x0B03) || // Oriya marks
+  (cp >= 0x0B3C && cp <= 0x0B4D) || // Oriya marks
+  (cp >= 0x0B82 && cp == 0x0B82) || // Tamil mark
+  (cp >= 0x0BBE && cp <= 0x0BCD) || // Tamil vowel marks
+  (cp >= 0x0C00 && cp <= 0x0C04) || // Telugu marks
+  (cp >= 0x0C3E && cp <= 0x0C4D) || // Telugu vowel marks
+  (cp >= 0x0C82 && cp <= 0x0C83) || // Kannada marks
+  (cp >= 0x0CBC && cp <= 0x0CCD) || // Kannada marks
+  (cp >= 0x0D00 && cp <= 0x0D03) || // Malayalam marks
+  (cp >= 0x0D3B && cp <= 0x0D4D) || // Malayalam vowel marks
+  (cp >= 0x0DCA && cp <= 0x0DDF) || // Sinhala marks
+  (cp >= 0x0E31 && cp == 0x0E31) || // Thai mark
+  (cp >= 0x0E34 && cp <= 0x0E3A) || // Thai vowel marks
+  (cp >= 0x0E47 && cp <= 0x0E4E) || // Thai marks
+  (cp >= 0x0EB1 && cp == 0x0EB1) || // Lao mark
+  (cp >= 0x0EB4 && cp <= 0x0EBC) || // Lao vowel marks
+  (cp >= 0x0EC8 && cp <= 0x0ECD) || // Lao marks
+  (cp >= 0x0F18 && cp <= 0x0F19) || // Tibetan marks
+  (cp >= 0x0F35 && cp <= 0x0F39) || // Tibetan marks
+  (cp >= 0x0F71 && cp <= 0x0F84) || // Tibetan vowel marks
+  (cp >= 0x0F86 && cp <= 0x0F87) || // Tibetan marks
+  (cp >= 0x0F8D && cp <= 0x0FBC) || // Tibetan subjoined
+  (cp >= 0x102B && cp <= 0x103E) || // Myanmar combining
+  (cp >= 0x1056 && cp <= 0x1059) || // Myanmar marks
+  (cp >= 0x105E && cp <= 0x1060) || // Myanmar marks
+  (cp >= 0x1062 && cp <= 0x1064) || // Myanmar marks
+  (cp >= 0x1067 && cp <= 0x106D) || // Myanmar marks
+  (cp >= 0x1071 && cp <= 0x1074) || // Myanmar marks
+  (cp >= 0x1082 && cp <= 0x108D) || // Myanmar marks
+  (cp >= 0x135D && cp <= 0x135F) || // Ethiopic combining
+  (cp >= 0x1712 && cp <= 0x1714) || // Tagalog marks
+  (cp >= 0x1732 && cp <= 0x1734) || // Hanunoo marks
+  (cp >= 0x17B4 && cp <= 0x17D3) || // Khmer marks
+  (cp >= 0x180B && cp <= 0x180D) || // Mongolian marks
+  (cp >= 0x1920 && cp <= 0x192B) || // Limbu marks
+  (cp >= 0x1930 && cp <= 0x193B) || // Limbu marks
+  (cp >= 0x1A17 && cp <= 0x1A1B) || // Buginese marks
+  (cp >= 0x1A55 && cp <= 0x1A5E) || // Tai Tham marks
+  (cp >= 0x1A60 && cp <= 0x1A7C) || // Tai Tham marks
+  (cp >= 0x1AB0 && cp <= 0x1ACE) || // Combining Diacritical Marks Extended
+  (cp >= 0x1B00 && cp <= 0x1B04) || // Balinese marks
+  (cp >= 0x1B34 && cp <= 0x1B44) || // Balinese marks
+  (cp >= 0x1B80 && cp <= 0x1B82) || // Sundanese marks
+  (cp >= 0x1BA1 && cp <= 0x1BAD) || // Sundanese marks
+  (cp >= 0x1BE6 && cp <= 0x1BF3) || // Batak marks
+  (cp >= 0x1C24 && cp <= 0x1C37) || // Lepcha marks
+  (cp >= 0x1CD0 && cp <= 0x1CE8) || // Vedic extensions
+  (cp >= 0x1CF7 && cp <= 0x1CF9) || // Vedic marks
+  (cp >= 0x1DC0 && cp <= 0x1DFF) || // Combining Diacritical Marks Supplement
+  (cp >= 0x20D0 && cp <= 0x20F0) || // Combining Marks for Symbols
+  (cp >= 0xFE20 && cp <= 0xFE2F) // Combining Half Marks
+}
+
+///|
 /// Approximate Unicode ID_Start check for regex group names.
 /// Uses a blocklist approach: accepts $, _, ASCII letters, and any Unicode
-/// code point not in known non-identifier ranges (symbols, punctuation,
-/// emoji, control chars). This covers all major scripts without needing
-/// the full Unicode ID_Start table.
+/// code point not in known non-identifier or combining-mark ranges.
 fn is_id_start_char(c : Char) -> Bool {
   let cp = c.to_int()
   c == '_' ||
   c == '$' ||
   (c >= 'a' && c <= 'z') ||
   (c >= 'A' && c <= 'Z') ||
-  (cp >= 0xC0 && !is_non_identifier_codepoint(cp))
+  (cp >= 0xC0 && !is_non_identifier_codepoint(cp) && !is_combining_or_modifier(cp))
 }
 
 ///|
 /// Approximate Unicode ID_Continue check for regex group names.
-/// Same as ID_Start plus digits and ZWNJ/ZWJ.
+/// Same as ID_Start plus digits, combining marks, and ZWNJ/ZWJ.
 fn is_id_continue_char(c : Char) -> Bool {
+  let cp = c.to_int()
   is_id_start_char(c) ||
   (c >= '0' && c <= '9') ||
-  c.to_int() == 0x200C || // ZWNJ
-  c.to_int() == 0x200D // ZWJ
+  is_combining_or_modifier(cp) ||
+  cp == 0x200C || // ZWNJ
+  cp == 0x200D // ZWJ
 }
 
 ///|
