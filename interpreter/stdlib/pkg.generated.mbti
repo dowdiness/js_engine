@@ -39,7 +39,11 @@ pub fn is_arraybuffer_detached(Int) -> Bool
 
 pub fn is_typedarray_class(String) -> Bool
 
+pub fn make_accessor_desc_obj(@runtime.Value, @runtime.Value, Bool, Bool) -> @runtime.Value
+
 pub fn make_arraybuffer_object(Int, @runtime.Value) -> @runtime.Value
+
+pub fn make_data_desc_obj(@runtime.Value, Bool, Bool, Bool) -> @runtime.Value
 
 pub fn make_regex_match_array(RegexMatch, String) -> @runtime.Value
 
