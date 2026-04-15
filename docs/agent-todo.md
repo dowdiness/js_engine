@@ -145,23 +145,25 @@ Same file and pattern as `withResolvers`. After implementing: remove `"promise-t
 
 ---
 
-## Later PR: `regexp-named-groups`
+## ~~`regexp-named-groups`~~ — DONE (2026-04-15)
 
-**Feature flag**: `"regexp-named-groups"` in `SKIP_FEATURES`
-**Estimated tests**: ~100+
+**Branch**: `worktree-regexp-named-groups`
+**Result**: Unlocked `regexp-named-groups` feature flag. 28/70 named-groups tests pass, 112/112 language literal tests pass. Annex B 100%.
 
-**Current state**: Fails with `SyntaxError: Invalid regex: nothing to repeat` when parsing `(?<name>...)`.
-The issue is in the regex parser in `interpreter/builtins_regex.mbt` — it doesn't recognize
-`(?<name>` as a named capture group; it tries to parse `<` as something else and fails.
+**Implemented**:
+- `(?<name>...)` named capture group parsing with Unicode identifier support
+- `\k<name>` named backreferences with deferred resolution (forward refs work)
+- `.groups` null-prototype object on match results
+- `$<name>` in replacement strings
+- Duplicate group name rejection (ES2018 SyntaxError)
+- Annex B `\k` literal fallback in non-unicode mode
 
-**What needs to happen**:
-1. In the regex parser, handle `(?<name>...)` syntax — parse the group name and store it
-2. After a match, populate `match.groups` object with named captures
-3. `String.prototype.replace(regex, fn)` with named groups passes named keys to the callback
-4. `String.prototype.matchAll` with named groups
-
-This is a self-contained regex engine change. Study the existing capture group handling in
-`builtins_regex.mbt` before starting.
+**Remaining failures (42, all pre-existing or out-of-scope)**:
+- 20: Duplicate named groups (ES2024 — distinct from ES2018 rejection, allows same name in alternation branches)
+- 4: Functional replace callback for regex (not implemented)
+- 6: `verifyProperty`/`getOwnPropertyDescriptor` on array named props (side table not visible)
+- 4: RegExp subclass exec/match forwarding
+- 8: Unicode identifiers (`π`, `𝑓`) in JS lexer (lexer can't parse non-ASCII identifiers)
 
 ---
 
