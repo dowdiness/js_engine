@@ -565,7 +565,39 @@ fn RegexParser::parse_unicode_escape_in_name(
       cp = cp * 16 + hex_digit_value(self.pattern[self.pos])
       self.pos += 1
     }
-    cp.unsafe_to_char()
+    // Surrogate pair: if high surrogate, check for \uDCxx low surrogate
+    if cp >= 0xD800 && cp <= 0xDBFF {
+      if self.pos + 5 < self.pattern.length() &&
+        self.pattern[self.pos] == '\\' &&
+        self.pattern[self.pos + 1] == 'u' {
+        let saved = self.pos
+        self.pos += 2 // skip \u
+        let mut low = 0
+        let mut ok = true
+        for i = 0; i < 4; i = i + 1 {
+          if self.pos >= self.pattern.length() ||
+            !is_hex_digit(self.pattern[self.pos]) {
+            ok = false
+            break
+          }
+          low = low * 16 + hex_digit_value(self.pattern[self.pos])
+          self.pos += 1
+        }
+        if ok && low >= 0xDC00 && low <= 0xDFFF {
+          // Valid surrogate pair — combine
+          let combined = (cp - 0xD800) * 0x400 + (low - 0xDC00) + 0x10000
+          combined.unsafe_to_char()
+        } else {
+          // Not a valid low surrogate — backtrack
+          self.pos = saved
+          cp.unsafe_to_char()
+        }
+      } else {
+        cp.unsafe_to_char()
+      }
+    } else {
+      cp.unsafe_to_char()
+    }
   }
 }
 
