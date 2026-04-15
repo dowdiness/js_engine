@@ -176,9 +176,14 @@ fn resolve_named_backreferences(
 fn RegexParser::parse(self : RegexParser) -> RegexNode raise Error {
   let result = self.parse_alternation()
   if !self.group_names.is_empty() {
+    // Resolve \k<name> to Backreference(idx) using known group names
     resolve_named_backreferences(result, self.group_names)
-  } else {
+  } else if !self.unicode {
+    // Annex B: convert \k<name> to literal chars in non-unicode mode
     desugar_named_backrefs_to_literals(result)
+  } else {
+    // Unicode mode with no named groups: any \k<name> is invalid
+    resolve_named_backreferences(result, self.group_names)
   }
 }
 

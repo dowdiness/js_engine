@@ -145,7 +145,7 @@ Same file and pattern as `withResolvers`. After implementing: remove `"promise-t
 
 ---
 
-## ~~`regexp-named-groups`~~ — DONE (2026-04-15)
+## ~~`regexp-named-groups`~~ — DONE (2026-04-15, PR #47)
 
 **Branch**: `worktree-regexp-named-groups`
 **Result**: Unlocked `regexp-named-groups` feature flag. 28/70 named-groups tests pass, 112/112 language literal tests pass. Annex B 100%.
