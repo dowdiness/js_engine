@@ -1057,6 +1057,27 @@ fn count_groups(node : RegexNode) -> Int {
 // ---- Public API ----
 
 ///|
+priv struct ParsedRegex {
+  node : RegexNode
+  num_groups : Int
+  group_names : Array[(String, Int)]
+}
+
+///|
+fn parse_regex(
+  pattern : String,
+  unicode~ : Bool = false,
+) -> ParsedRegex raise Error {
+  let parser = RegexParser::new(pattern, unicode~)
+  let node = parser.parse()
+  let num_groups = count_groups(node)
+  let names : Array[(String, Int)] = []
+  for name, idx in parser.group_names {
+    names.push((name, idx))
+  }
+  names.sort_by(fn(a, b) { a.1.compare(b.1) })
+  { node, num_groups, group_names: names }
+}
 
 ///|
 fn make_regex_flags(flags : String) -> RegexFlags {
@@ -1075,14 +1096,20 @@ pub fn regex_match_at(
   input : String,
   start_pos : Int,
 ) -> RegexMatch? raise Error {
-  let node = RegexParser::new(pattern).parse()
+  let parsed = parse_regex(pattern, unicode=flags.contains("u"))
   let input_chars = input.to_array()
-  let num_groups = count_groups(node)
   let rflags = make_regex_flags(flags)
-  let captures : Array[String?] = Array::make(num_groups, None)
-  match regex_exec(node, input_chars, start_pos, captures, rflags) {
+  let captures : Array[String?] = Array::make(parsed.num_groups, None)
+  match regex_exec(parsed.node, input_chars, start_pos, captures, rflags) {
     Some(end_pos) =>
-        Some({ start: start_pos, end_: end_pos, captures, group_names: [] })
+      Some(
+        {
+          start: start_pos,
+          end_: end_pos,
+          captures,
+          group_names: parsed.group_names,
+        },
+      )
     None => None
   }
 }
@@ -1094,9 +1121,8 @@ pub fn regex_search(
   input : String,
   start_pos? : Int = 0,
 ) -> RegexMatch? raise Error {
-  let node = RegexParser::new(pattern).parse()
+  let parsed = parse_regex(pattern, unicode=flags.contains("u"))
   let input_chars = input.to_array()
-  let num_groups = count_groups(node)
   let rflags = make_regex_flags(flags)
   let is_sticky = flags.contains("y")
   if is_sticky {
@@ -1104,22 +1130,32 @@ pub fn regex_search(
     if start_pos > input_chars.length() {
       return None
     }
-    let captures : Array[String?] = Array::make(num_groups, None)
-    match regex_exec(node, input_chars, start_pos, captures, rflags) {
+    let captures : Array[String?] = Array::make(parsed.num_groups, None)
+    match regex_exec(parsed.node, input_chars, start_pos, captures, rflags) {
       Some(end_pos) =>
-        return Some({
-          start: start_pos,
-          end_: end_pos,
-          captures,
-          group_names: [],
-        })
+        return Some(
+          {
+            start: start_pos,
+            end_: end_pos,
+            captures,
+            group_names: parsed.group_names,
+          },
+        )
       None => return None
     }
   }
   for i = start_pos; i <= input_chars.length(); i = i + 1 {
-    let captures : Array[String?] = Array::make(num_groups, None)
-    match regex_exec(node, input_chars, i, captures, rflags) {
-      Some(end_pos) => return Some({ start: i, end_: end_pos, captures, group_names: [] })
+    let captures : Array[String?] = Array::make(parsed.num_groups, None)
+    match regex_exec(parsed.node, input_chars, i, captures, rflags) {
+      Some(end_pos) =>
+        return Some(
+          {
+            start: i,
+            end_: end_pos,
+            captures,
+            group_names: parsed.group_names,
+          },
+        )
       None => continue
     }
   }
@@ -1132,17 +1168,23 @@ pub fn regex_search_all(
   flags : String,
   input : String,
 ) -> Array[RegexMatch] raise Error {
-  let node = RegexParser::new(pattern).parse()
+  let parsed = parse_regex(pattern, unicode=flags.contains("u"))
   let input_chars = input.to_array()
-  let num_groups = count_groups(node)
   let rflags = make_regex_flags(flags)
   let results : Array[RegexMatch] = []
   let mut i = 0
   while i <= input_chars.length() {
-    let captures : Array[String?] = Array::make(num_groups, None)
-    match regex_exec(node, input_chars, i, captures, rflags) {
+    let captures : Array[String?] = Array::make(parsed.num_groups, None)
+    match regex_exec(parsed.node, input_chars, i, captures, rflags) {
       Some(end_pos) => {
-        results.push({ start: i, end_: end_pos, captures, group_names: [] })
+        results.push(
+          {
+            start: i,
+            end_: end_pos,
+            captures,
+            group_names: parsed.group_names,
+          },
+        )
         if end_pos == i {
           i += 1
         } else {
@@ -1183,7 +1225,45 @@ pub fn make_regex_match_array(m : RegexMatch, input : String) -> Value {
   // Set named properties on the result
   set_array_named_prop(arr_data, "index", Number(m.start.to_double()))
   set_array_named_prop(arr_data, "input", String_(input))
-  set_array_named_prop(arr_data, "groups", Undefined)
+  // Build groups object if named groups exist
+  let groups_val : Value = if m.group_names.length() > 0 {
+    let groups_props : Map[String, Value] = {}
+    let groups_descs : Map[String, PropDescriptor] = {}
+    for pair in m.group_names {
+      let (name, idx) = pair
+      let val : Value = if idx - 1 < m.captures.length() {
+        match m.captures[idx - 1] {
+          Some(s) => String_(s)
+          None => Undefined
+        }
+      } else {
+        Undefined
+      }
+      groups_props[name] = val
+      groups_descs[name] = {
+        writable: true,
+        enumerable: true,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
+    }
+    Object(
+      {
+        properties: groups_props,
+        symbol_properties: {},
+        prototype: Null,
+        callable: None,
+        class_name: "Object",
+        descriptors: groups_descs,
+        symbol_descriptors: {},
+        extensible: true,
+      },
+    )
+  } else {
+    Undefined
+  }
+  set_array_named_prop(arr_data, "groups", groups_val)
   Array(arr_data)
 }
 
@@ -1231,7 +1311,7 @@ pub fn make_regexp_object(
   }
   // Validate pattern by attempting to parse it
   let _valid : Unit = try {
-    let _parsed = RegexParser::new(pattern).parse()
+    let _parsed = RegexParser::new(pattern, unicode=flags.contains("u")).parse()
   } catch {
     @errors.SyntaxError(message=msg) =>
       raise @errors.SyntaxError(
@@ -1562,6 +1642,48 @@ fn process_replacement(
           }
         }
         i += 2
+        continue
+      } else if next == '<' {
+        // $<name> - named group substitution
+        if m.group_names.length() == 0 {
+          // No named groups: $< is literal
+          buf.write_char('$')
+          buf.write_char('<')
+          i += 2
+          continue
+        }
+        // Parse name until '>'
+        let name_buf = StringBuilder::new()
+        let mut j = i + 2
+        while j < repl_chars.length() && repl_chars[j] != '>' {
+          name_buf.write_char(repl_chars[j])
+          j += 1
+        }
+        if j >= repl_chars.length() {
+          // No closing '>' — treat $< as literal
+          buf.write_char('$')
+          buf.write_char('<')
+          i += 2
+          continue
+        }
+        // Found '>' — look up name
+        let name = name_buf.to_string()
+        let mut found = false
+        for pair in m.group_names {
+          let (gname, gidx) = pair
+          if gname == name {
+            if gidx - 1 < m.captures.length() {
+              match m.captures[gidx - 1] {
+                Some(s) => buf.write_string(s)
+                None => () // unmatched: empty string
+              }
+            }
+            found = true
+            break
+          }
+        }
+        let _ = found
+        i = j + 1 // skip past '>'
         continue
       } else if next == '$' {
         buf.write_char('$')
