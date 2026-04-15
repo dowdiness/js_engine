@@ -1336,68 +1336,44 @@ pub fn setup_builtins(
         fn(this_val, args) {
           let str = if args.length() > 0 { args[0].to_string() } else { "" }
           let (pat, fl) = extract_regexp_source_flags(this_val)
-          let flags = if fl.contains("g") { fl } else { fl + "g" }
-          let matches = regex_search_all(pat, flags, str) catch { _ => [] }
-          let input_chars = str.to_array()
+          let global = fl.contains("g")
+          let matches = regex_search_all(pat, fl, str) catch { _ => [] }
           let index_ref : Ref[Int] = { val: 0 }
-          let next_method = Value::Object({
-            properties: {},
-            symbol_properties: {},
-            prototype: Null,
-            callable: Some(
-              NativeCallable("next", fn(_args) {
-                let idx = index_ref.val
-                if idx < matches.length() {
-                  let m = matches[idx]
-                  index_ref.val = idx + 1
-                  let elements : Array[Value] = []
-                  elements.push(
-                    Value::String_(substring(input_chars, m.start, m.end_)),
-                  )
-                  for cap in m.captures {
-                    match cap {
-                      Some(c) => elements.push(Value::String_(c))
-                      None => elements.push(Undefined)
-                    }
-                  }
-                  let match_array = Value::Array({ elements, })
-                  let result_props : Map[String, Value] = {}
-                  result_props["value"] = match_array
-                  result_props["done"] = Value::Bool(false)
-                  Value::Object({
-                    properties: result_props,
-                    symbol_properties: {},
-                    prototype: Null,
-                    callable: None,
-                    class_name: "Object",
-                    descriptors: {},
-                    symbol_descriptors: {},
-                    extensible: true,
-                  })
-                } else {
-                  let result_props : Map[String, Value] = {}
-                  result_props["value"] = Undefined
-                  result_props["done"] = Value::Bool(true)
-                  Value::Object({
-                    properties: result_props,
-                    symbol_properties: {},
-                    prototype: Null,
-                    callable: None,
-                    class_name: "Object",
-                    descriptors: {},
-                    symbol_descriptors: {},
-                    extensible: true,
-                  })
-                }
-              }),
-            ),
-            class_name: "Function",
-            descriptors: {},
-            symbol_descriptors: {},
-            extensible: true,
+          let done_ref : Ref[Bool] = { val: false }
+          let next_method = @runtime.make_method_func("next", 0, fn(
+            this_val,
+            _args,
+          ) raise {
+            // Brand check: verify this is a RegExp String Iterator
+            let has_brand = match this_val {
+              Object(data) =>
+                data.properties.contains("[[RegExpStringIterator]]")
+              _ => false
+            }
+            if !has_brand {
+              raise @errors.TypeError(
+                message="%RegExpStringIteratorPrototype%.next requires that |this| be a RegExp String Iterator",
+              )
+            }
+            if done_ref.val {
+              return @runtime.create_iter_result(Undefined, true)
+            }
+            if index_ref.val >= matches.length() {
+              done_ref.val = true
+              return @runtime.create_iter_result(Undefined, true)
+            }
+            let m = matches[index_ref.val]
+            index_ref.val = index_ref.val + 1
+            let match_array = make_regex_match_array(m, str)
+            if !global {
+              done_ref.val = true
+            }
+            @runtime.create_iter_result(match_array, false)
           })
           let iter_props : Map[String, Value] = {}
           iter_props["next"] = next_method
+          // Brand marker for internal slot check
+          iter_props["[[RegExpStringIterator]]"] = Value::Bool(true)
           Value::Object({
             properties: iter_props,
             symbol_properties: {},
@@ -1430,13 +1406,14 @@ pub fn setup_builtins(
         2,
         fn(this_val, args) {
           let str = if args.length() > 0 { args[0].to_string() } else { "" }
-          let replacement = if args.length() > 1 {
-            args[1].to_string()
-          } else {
-            "undefined"
-          }
+          let replace_val = if args.length() > 1 { args[1] } else { Undefined }
           let (pat, fl) = extract_regexp_source_flags(this_val)
-          string_replace_regex(str, pat, fl, replacement)
+          if @runtime.is_callable(replace_val) {
+            string_replace_regex_func(str, pat, fl, replace_val)
+          } else {
+            let replacement = @runtime.to_js_string(replace_val)
+            string_replace_regex(str, pat, fl, replacement)
+          }
         },
       )
       regexp_sym_descs[replace_sym.id] = sym_method_desc

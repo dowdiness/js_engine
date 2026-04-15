@@ -819,136 +819,75 @@ pub fn get_string_method(
       let str = s
       @runtime.make_native_func_with_length("matchAll", 1, fn(args) raise {
         let arg = if args.length() > 0 { args[0] } else { Undefined }
-        // Step 2: If regexp is neither undefined nor null, check for @@matchAll
-        let (pattern, flags) = match arg {
-          Object(data) =>
+        // Step 2: If regexp is not null/undefined, check for @@matchAll
+        match arg {
+          Object(data) => {
             if data.class_name == "RegExp" {
-              let p = match data.properties.get("source") {
-                Some(Value::String_(s)) => s
-                _ => ""
-              }
+              // matchAll requires global flag per spec
               let f = match data.properties.get("flags") {
                 Some(Value::String_(s)) => s
                 _ => ""
               }
-              // matchAll requires global flag
               if !f.contains("g") {
                 raise @errors.TypeError(
-                  message="matchAll requires a RegExp with global flag",
+                  message="String.prototype.matchAll called with a non-global RegExp argument",
                 )
-              }
-              (p, f)
-            } else {
-              // Check for Symbol.matchAll on the object
-              let matchall_sym = @runtime.get_matchall_symbol()
-              let matchall_fn = @runtime.lookup_symbol_property_chain(
-                arg,
-                data,
-                matchall_sym.id,
-              )
-              match matchall_fn {
-                Some(Null) | Some(Undefined) | None => {
-                  // GetMethod: null/undefined means no method, fall through to string conversion
-                  let r = arg.to_string()
-                  (r, "g")
-                }
-                Some(matchall_method) => {
-                  let result = @runtime.call_callable_direct(
-                    matchall_method,
-                    arg,
-                    [Value::String_(str)],
-                  )
-                  return result
-                }
               }
             }
-          Undefined | Null => {
-            // Step 3-5: Convert to string, create RegExp with "g" flag
-            let r = if arg is Undefined { "" } else { arg.to_string() }
-            (r, "g")
-          }
-          Value::String_(_) | Value::Number(_) | Bool(_) => {
-            let r = arg.to_string()
-            (r, "g")
-          }
-          _ => {
-            let r = arg.to_string()
-            (r, "g")
-          }
-        }
-        // Get all matches
-        let matches = regex_search_all(pattern, flags, str) catch { _ => [] }
-        let input_chars = str.to_array()
-        let index_ref : Ref[Int] = { val: 0 }
-        // Create iterator with next() method
-        let next_method = Value::Object({
-          properties: {},
-          symbol_properties: {},
-          prototype: Null,
-          callable: Some(
-            NativeCallable("next", fn(_args) {
-              let idx = index_ref.val
-              if idx < matches.length() {
-                let m = matches[idx]
-                index_ref.val = idx + 1
-                let elements : Array[Value] = []
-                elements.push(
-                  Value::String_(substring(input_chars, m.start, m.end_)),
+            // Check for Symbol.matchAll on the object
+            let matchall_sym = @runtime.get_matchall_symbol()
+            let matchall_fn = @runtime.lookup_symbol_property_chain(
+              arg,
+              data,
+              matchall_sym.id,
+            )
+            match matchall_fn {
+              Some(Null) | Some(Undefined) | None => ()
+              Some(matchall_method) => {
+                let result = @runtime.call_callable_direct(
+                  matchall_method,
+                  arg,
+                  [Value::String_(str)],
                 )
-                for cap in m.captures {
-                  match cap {
-                    Some(c) => elements.push(Value::String_(c))
-                    None => elements.push(Undefined)
-                  }
-                }
-                let match_array = Value::Array({ elements, })
-                let result_props : Map[String, Value] = {}
-                result_props["value"] = match_array
-                result_props["done"] = Value::Bool(false)
-                Value::Object({
-                  properties: result_props,
-                  symbol_properties: {},
-                  prototype: Null,
-                  callable: None,
-                  class_name: "Object",
-                  descriptors: {},
-                  symbol_descriptors: {},
-                  extensible: true,
-                })
-              } else {
-                let result_props : Map[String, Value] = {}
-                result_props["value"] = Undefined
-                result_props["done"] = Value::Bool(true)
-                Value::Object({
-                  properties: result_props,
-                  symbol_properties: {},
-                  prototype: Null,
-                  callable: None,
-                  class_name: "Object",
-                  descriptors: {},
-                  symbol_descriptors: {},
-                  extensible: true,
-                })
+                return result
               }
-            }),
-          ),
-          class_name: "Function",
-          descriptors: {},
-          symbol_descriptors: {},
-          extensible: true,
-        })
-        let iter_props : Map[String, Value] = {}
-        iter_props["next"] = next_method
-        Value::Object({
-          properties: iter_props,
-          symbol_properties: {},
-          prototype: get_regexp_string_iterator_proto(),
-          callable: None,
-          class_name: "RegExp String Iterator",
-          descriptors: {},
-          symbol_descriptors: {},
-          extensible: true,
-        })
+            }
+          }
+          _ => ()
+        }
+        // Step 3-5: Create a RegExp from arg with "g" flag, then call [Symbol.matchAll]
+        let pattern = match arg {
+          Undefined => ""
+          _ => arg.to_string()
+        }
+        let regexp = make_regexp_object(pattern, "g")
+        // Call [Symbol.matchAll] on the new RegExp
+        let matchall_sym = @runtime.get_matchall_symbol()
+        match regexp {
+          Object(data) => {
+            let matchall_fn = @runtime.lookup_symbol_property_chain(
+              regexp,
+              data,
+              matchall_sym.id,
+            )
+            match matchall_fn {
+              Some(matchall_method) =>
+                @runtime.call_callable_direct(
+                  matchall_method,
+                  regexp,
+                  [Value::String_(str)],
+                )
+              _ =>
+                raise @errors.TypeError(
+                  message="RegExp.prototype[Symbol.matchAll] is not a function",
+                )
+            }
+          }
+          _ =>
+            raise @errors.TypeError(
+              message="RegExp.prototype[Symbol.matchAll] is not a function",
+            )
+        }
       })
     }
     "search" => {

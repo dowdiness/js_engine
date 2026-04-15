@@ -427,6 +427,24 @@ pub fn make_object(
 }
 
 ///|
+/// Create an iterator result object { value, done }
+pub fn create_iter_result(value : Value, done : Bool) -> Value {
+  let props : Map[String, Value] = {}
+  props["value"] = value
+  props["done"] = Bool(done)
+  Object({
+    properties: props,
+    symbol_properties: {},
+    prototype: Null,
+    callable: None,
+    class_name: "Object",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+}
+
+///|
 /// Helper to create a plain object
 pub fn make_plain_object() -> Value {
   Object({

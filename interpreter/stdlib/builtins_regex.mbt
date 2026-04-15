@@ -1996,6 +1996,111 @@ pub fn string_replace_regex(
 }
 
 ///|
+/// Replace regex matches using a callback function per ES spec
+/// Callback receives: (match, ...captures, offset, string, groups?)
+pub fn string_replace_regex_func(
+  s : String,
+  pattern : String,
+  flags : String,
+  replace_fn : Value,
+) -> Value raise {
+  let input_chars = s.to_array()
+  if flags.contains("g") {
+    // Replace all matches
+    let matches = regex_search_all(pattern, flags, s) catch { _ => [] }
+    if matches.length() == 0 {
+      return Value::String_(s)
+    }
+    let buf = StringBuilder::new()
+    let mut last_end = 0
+    for m in matches {
+      for i = last_end; i < m.start; i = i + 1 {
+        buf.write_char(input_chars[i])
+      }
+      let repl = call_replace_fn(replace_fn, m, input_chars, s)
+      buf.write_string(repl)
+      last_end = m.end_
+    }
+    for i = last_end; i < input_chars.length(); i = i + 1 {
+      buf.write_char(input_chars[i])
+    }
+    Value::String_(buf.to_string())
+  } else {
+    // Replace first match only
+    let result = regex_search(pattern, flags, s) catch { _ => None }
+    match result {
+      Some(m) => {
+        let buf = StringBuilder::new()
+        for i = 0; i < m.start; i = i + 1 {
+          buf.write_char(input_chars[i])
+        }
+        let repl = call_replace_fn(replace_fn, m, input_chars, s)
+        buf.write_string(repl)
+        for i = m.end_; i < input_chars.length(); i = i + 1 {
+          buf.write_char(input_chars[i])
+        }
+        Value::String_(buf.to_string())
+      }
+      None => Value::String_(s)
+    }
+  }
+}
+
+///|
+/// Call the replacement function with (match, ...captures, offset, string, groups?)
+fn call_replace_fn(
+  replace_fn : Value,
+  m : RegexMatch,
+  input_chars : Array[Char],
+  input : String,
+) -> String raise {
+  let args : Array[Value] = []
+  // First arg: full match string
+  args.push(Value::String_(substring(input_chars, m.start, m.end_)))
+  // Capture groups
+  for cap in m.captures {
+    match cap {
+      Some(c) => args.push(Value::String_(c))
+      None => args.push(Undefined)
+    }
+  }
+  // offset (index of match)
+  args.push(Value::Number(m.start.to_double()))
+  // input string
+  args.push(Value::String_(input))
+  // groups object (if named groups exist)
+  if m.group_names.length() > 0 {
+    let groups_props : Map[String, Value] = {}
+    for pair in m.group_names {
+      let (name, idx) = pair
+      let val : Value = if idx - 1 < m.captures.length() {
+        match m.captures[idx - 1] {
+          Some(s) => Value::String_(s)
+          None => Undefined
+        }
+      } else {
+        Undefined
+      }
+      groups_props[name] = val
+    }
+    args.push(
+      Value::Object({
+        properties: groups_props,
+        symbol_properties: {},
+        prototype: Null,
+        callable: None,
+        class_name: "Object",
+        descriptors: {},
+        symbol_descriptors: {},
+        extensible: true,
+      }),
+    )
+  }
+  let result = @runtime.call_callable_direct(replace_fn, Undefined, args)
+  @runtime.to_js_string(result)
+}
+
+///|
 fn process_replacement(
   replacement : String,
   input_chars : Array[Char],
