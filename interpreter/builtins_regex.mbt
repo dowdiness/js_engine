@@ -340,15 +340,36 @@ fn RegexParser::parse_escape(self : RegexParser) -> RegexNode raise Error {
     '0' => Literal('\u0000') // null
     'k' =>
       if self.pos < self.pattern.length() && self.pattern[self.pos] == '<' {
-        // Named backreference \k<name>
+        // Named backreference \k<name> — interpret \u escapes in name
         let saved_pos = self.pos
         self.pos += 1 // skip '<'
-        let name_start = self.pos
+        let name_buf = StringBuilder::new()
+        let mut valid = true
+        // Try to parse the name with Unicode escape interpretation
         while self.pos < self.pattern.length() && self.pattern[self.pos] != '>' {
-          self.pos += 1
+          if self.pattern[self.pos] == '\\' &&
+            self.pos + 1 < self.pattern.length() &&
+            self.pattern[self.pos + 1] == 'u' {
+            let escape_pos = self.pos
+            self.pos += 2 // skip \u
+            try {
+              let c = self.parse_unicode_escape_in_name()
+              name_buf.write_char(c)
+            } catch {
+              _ => {
+                // Invalid escape — can't parse this name
+                valid = false
+                self.pos = escape_pos
+                break
+              }
+            }
+          } else {
+            name_buf.write_char(self.pattern[self.pos])
+            self.pos += 1
+          }
         }
-        if self.pos >= self.pattern.length() {
-          // No closing '>'
+        if !valid || self.pos >= self.pattern.length() {
+          // No closing '>' or invalid escape in name
           if self.unicode {
             raise @errors.SyntaxError(
               message="Invalid regex: unterminated named backreference",
@@ -359,10 +380,6 @@ fn RegexParser::parse_escape(self : RegexParser) -> RegexNode raise Error {
             Literal('k')
           }
         } else {
-          let name_buf = StringBuilder::new()
-          for i = name_start; i < self.pos; i = i + 1 {
-            name_buf.write_char(self.pattern[i])
-          }
           self.pos += 1 // skip '>'
           NamedBackreference(name_buf.to_string())
         }
@@ -479,6 +496,73 @@ fn RegexParser::parse_char_class(self : RegexParser) -> RegexNode raise Error {
 }
 
 ///|
+fn hex_digit_value(c : Char) -> Int {
+  if c >= '0' && c <= '9' {
+    c.to_int() - '0'.to_int()
+  } else if c >= 'a' && c <= 'f' {
+    c.to_int() - 'a'.to_int() + 10
+  } else if c >= 'A' && c <= 'F' {
+    c.to_int() - 'A'.to_int() + 10
+  } else {
+    -1
+  }
+}
+
+///|
+fn is_hex_digit(c : Char) -> Bool {
+  hex_digit_value(c) >= 0
+}
+
+///|
+/// Parse a Unicode escape sequence (\uXXXX or \u{XXXXX}) from self.pattern
+/// starting at self.pos (which should point just past the 'u').
+/// Returns the decoded character and advances self.pos past the escape.
+fn RegexParser::parse_unicode_escape_in_name(
+  self : RegexParser,
+) -> Char raise Error {
+  if self.pos < self.pattern.length() && self.pattern[self.pos] == '{' {
+    // \u{XXXXX} extended form
+    self.pos += 1
+    let mut cp = 0
+    let mut count = 0
+    while self.pos < self.pattern.length() && is_hex_digit(self.pattern[self.pos]) {
+      cp = cp * 16 + hex_digit_value(self.pattern[self.pos])
+      self.pos += 1
+      count += 1
+    }
+    if count == 0 ||
+      count > 6 ||
+      self.pos >= self.pattern.length() ||
+      self.pattern[self.pos] != '}' {
+      raise @errors.SyntaxError(
+        message="Invalid regex: invalid Unicode escape in group name",
+      )
+    }
+    self.pos += 1 // skip '}'
+    if cp > 0x10FFFF {
+      raise @errors.SyntaxError(
+        message="Invalid regex: Unicode code point out of range in group name",
+      )
+    }
+    cp.unsafe_to_char()
+  } else {
+    // \uXXXX — exactly 4 hex digits
+    let mut cp = 0
+    for i = 0; i < 4; i = i + 1 {
+      if self.pos >= self.pattern.length() ||
+        !is_hex_digit(self.pattern[self.pos]) {
+        raise @errors.SyntaxError(
+          message="Invalid regex: invalid Unicode escape in group name",
+        )
+      }
+      cp = cp * 16 + hex_digit_value(self.pattern[self.pos])
+      self.pos += 1
+    }
+    cp.unsafe_to_char()
+  }
+}
+
+///|
 /// Approximate Unicode ID_Start check for regex group names.
 /// Accepts ASCII letters, _, $, and common Unicode letter ranges.
 /// Rejects emoji, symbols, and other non-identifier characters.
@@ -541,7 +625,7 @@ fn RegexParser::parse_group(self : RegexParser) -> RegexNode raise Error {
             )
           }
         }
-        // Parse group name in a single pass
+        // Parse group name, interpreting \uXXXX / \u{XXXXX} escapes
         self.pos += 2 // skip '?<'
         if self.pos >= self.pattern.length() {
           raise @errors.SyntaxError(
@@ -549,17 +633,35 @@ fn RegexParser::parse_group(self : RegexParser) -> RegexNode raise Error {
           )
         }
         let name_buf = StringBuilder::new()
-        let first = self.pattern[self.pos]
+        // First char: must be ID_Start (or \u escape that resolves to ID_Start)
+        let first = if self.pattern[self.pos] == '\\' &&
+          self.pos + 1 < self.pattern.length() &&
+          self.pattern[self.pos + 1] == 'u' {
+          self.pos += 2 // skip \u
+          self.parse_unicode_escape_in_name()
+        } else {
+          let c = self.pattern[self.pos]
+          self.pos += 1
+          c
+        }
         if !is_id_start_char(first) {
           raise @errors.SyntaxError(message="Invalid regex: invalid group name")
         }
         name_buf.write_char(first)
-        self.pos += 1
+        // Subsequent chars: ID_Continue or \u escape
         while self.pos < self.pattern.length() && self.pattern[self.pos] != '>' {
-          let c = self.pattern[self.pos]
+          let c = if self.pattern[self.pos] == '\\' &&
+            self.pos + 1 < self.pattern.length() &&
+            self.pattern[self.pos + 1] == 'u' {
+            self.pos += 2 // skip \u
+            self.parse_unicode_escape_in_name()
+          } else {
+            let ch = self.pattern[self.pos]
+            self.pos += 1
+            ch
+          }
           if is_id_continue_char(c) {
             name_buf.write_char(c)
-            self.pos += 1
           } else {
             raise @errors.SyntaxError(
               message="Invalid regex: invalid group name",
