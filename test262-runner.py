@@ -80,7 +80,7 @@ SKIP_FEATURES = {
     "source-phase-imports", "source-phase-imports-module-source",
 
     # RegExp advanced features
-    "regexp-lookbehind", "regexp-named-groups", "regexp-unicode-property-escapes",
+    "regexp-lookbehind", "regexp-unicode-property-escapes",
     "regexp-match-indices", "regexp-v-flag",
     "regexp-modifiers",
     "RegExp.escape",
