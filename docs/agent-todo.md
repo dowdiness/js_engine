@@ -218,27 +218,11 @@ those first.
 
 ---
 
-## Later PR: Stage 3/4 Sub-package Extraction
+## ~~Later PR: Stage 3/4 Sub-package Extraction~~ — DONE (2026-04-15, branch `claude/restructure-architecture-VkLTl`)
 
-**Now unblocked** — `moon` is installed at `~/.moon/bin/moon`.
+All four stages shipped. See [docs/architecture-redesign-2026-04-15.md](architecture-redesign-2026-04-15.md) for the full analysis.
 
-**Context**: The previous architectural PR extracted `HostEnv` and split `builtins_object.mbt`
-into four files, all within the `interpreter/` package (no import changes needed).
-
-Stage 3/4 would create actual MoonBit sub-packages with their own `moon.pkg` files,
-requiring import declarations. This is a larger change and should be its own PR.
-
-**Proposed split**:
-- `interpreter/runtime/` — core execution types: `Value`, `Environment`, `Interpreter` struct, `HostEnv`
-- `interpreter/stdlib/` — built-in method implementations: all `builtins_*.mbt` files
-
-**Prerequisites**:
-1. Run the stdlib coupling audit: grep all `builtins_*.mbt` for direct access to
-   `interp.generator_objects`, `interp.module_registry`, `interp.module_exports`,
-   `interp.host.timer_queue`, `interp.host.microtask_queue` — these cross-package
-   accesses would need to become public API
-2. Decide what goes in `runtime/` vs `stdlib/` vs stays in the root `interpreter/` package
-3. Plan the `moon.pkg` dependency graph (no cycles allowed)
-
-The MoonBit sub-package mechanism works: each directory under `interpreter/` with a
-`moon.pkg` file becomes an independent package that other packages can import.
+~~**Stage 1 — ExecContext**~~: `ExecContext` struct replaces `mut strict` / `mut current_generator`. ✅
+~~**Stage 2 — Timer API**~~: `Interpreter::schedule_timer` / `cancel_timer` replace 14 direct field accesses. ✅
+~~**Stage 3 — Package boundary**~~: `interpreter/runtime/` and `interpreter/stdlib/` sub-packages created; compiler enforces the boundary. ✅
+~~**Stage 4 — Descriptor consolidation**~~: `validate_non_configurable` moved to `runtime/property.mbt`; shared helpers extracted. ✅

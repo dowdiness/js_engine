@@ -1,0 +1,120 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "dowdiness/js_engine/interpreter/stdlib"
+
+import {
+  "dowdiness/js_engine/interpreter/runtime",
+  "moonbitlang/core/ref",
+}
+
+// Values
+pub fn detach_arraybuffer(Int) -> Unit
+
+pub fn get_array_method(@runtime.ArrayData, String) -> @runtime.Value
+
+pub fn get_array_method_with_interp(@runtime.ArrayData, String) -> @runtime.Value
+
+pub fn get_arraybuffer_bytes(Int) -> Array[Int]?
+
+pub fn get_buffer_id(@runtime.Value) -> Int?
+
+pub fn get_map_method(@runtime.MapData, String) -> @runtime.Value
+
+pub fn get_number_method(@runtime.Value, String) -> @runtime.Value
+
+pub fn get_promise_method(@runtime.PromiseData, String) -> @runtime.Value
+
+pub fn get_regexp_string_iterator_proto() -> @runtime.Value
+
+pub fn get_set_method(@runtime.SetData, String) -> @runtime.Value
+
+pub fn get_string_method(String, String, annex_b? : Bool) -> @runtime.Value
+
+pub fn get_typedarray_prop(@runtime.ObjectData, String) -> @runtime.Value
+
+pub fn get_weakmap_method(@runtime.ObjectData, String) -> @runtime.Value
+
+pub fn get_weakset_method(@runtime.ObjectData, String) -> @runtime.Value
+
+pub fn is_arraybuffer_detached(Int) -> Bool
+
+pub fn is_typedarray_class(String) -> Bool
+
+pub fn make_accessor_desc_obj(@runtime.Value, @runtime.Value, Bool, Bool) -> @runtime.Value
+
+pub fn make_arraybuffer_object(Int, @runtime.Value) -> @runtime.Value
+
+pub fn make_data_desc_obj(@runtime.Value, Bool, Bool, Bool) -> @runtime.Value
+
+pub fn make_regex_match_array(RegexMatch, String) -> @runtime.Value
+
+pub fn make_regexp_object(String, String) -> @runtime.Value raise
+
+pub fn make_typedarray_object(String, Int, @runtime.Value, @runtime.Environment) -> @runtime.Value
+
+pub fn regex_match_at(String, String, String, Int) -> RegexMatch? raise
+
+pub fn regex_search(String, String, String, start_pos? : Int) -> RegexMatch? raise
+
+pub fn regex_search_all(String, String, String) -> Array[RegexMatch] raise
+
+pub let regexp_prototype_ref : @ref.Ref[@runtime.Value?]
+
+pub fn same_value(@runtime.Value, @runtime.Value) -> Bool
+
+pub fn same_value_zero(@runtime.Value, @runtime.Value) -> Bool
+
+pub fn setup_arraybuffer_builtins(@runtime.Environment) -> Unit
+
+pub fn setup_builtins(@runtime.Environment, Array[String], @runtime.SymbolState, annex_b? : Bool) -> Unit
+
+pub fn setup_dataview_builtins(@runtime.Environment) -> Unit
+
+pub fn setup_date_builtins(@runtime.Environment) -> Unit
+
+pub fn setup_harness_builtins(@runtime.Environment, Array[String], @runtime.Value) -> Unit
+
+pub fn setup_map_set_builtins(@runtime.Environment) -> Unit
+
+pub fn setup_object_builtins(@runtime.Environment, @runtime.SymbolState) -> Unit
+
+pub fn setup_promise(@runtime.Environment) -> Unit
+
+pub fn setup_string_prototype(@runtime.Value, annex_b? : Bool) -> Unit
+
+pub fn setup_timers(@runtime.Environment) -> Unit
+
+pub fn setup_typedarray_builtins(@runtime.Environment) -> Unit
+
+pub fn setup_weakmap_set_builtins(@runtime.Environment) -> Unit
+
+pub fn strict_equal_val(@runtime.Value, @runtime.Value) -> Bool
+
+pub fn string_match_regex(String, String, String) -> @runtime.Value
+
+pub fn string_replace_regex(String, String, String, String) -> @runtime.Value
+
+pub fn string_search_regex(String, String, String) -> @runtime.Value
+
+pub fn substring(Array[Char], Int, Int) -> String
+
+pub fn this_to_string(@runtime.Value) -> String raise
+
+pub fn typed_array_bytes_per_element(String) -> Int
+
+pub fn typedarray_get_index(@runtime.ObjectData, Int) -> @runtime.Value
+
+pub fn typedarray_set_index(@runtime.ObjectData, Int, Double) -> Unit
+
+pub fn utf16_length(String) -> Int
+
+pub fn validate_typedarray_buffer(@runtime.ObjectData) -> Unit raise
+
+// Errors
+
+// Types and methods
+type RegexMatch
+
+// Type aliases
+
+// Traits
+

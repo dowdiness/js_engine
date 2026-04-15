@@ -2,25 +2,25 @@
 package "dowdiness/js_engine"
 
 import {
-  "dowdiness/js_engine/interpreter",
+  "dowdiness/js_engine/interpreter/runtime",
 }
 
 // Values
-pub fn has_pending_microtasks(@interpreter.Interpreter) -> Bool
+pub fn has_pending_microtasks(@runtime.Interpreter) -> Bool
 
-pub fn has_pending_timers(@interpreter.Interpreter) -> Bool
+pub fn has_pending_timers(@runtime.Interpreter) -> Bool
 
 pub fn run(String, annex_b? : Bool) -> (Array[String], String) raise
 
-pub fn run_microtask_checkpoint(@interpreter.Interpreter) -> Bool raise
+pub fn run_microtask_checkpoint(@runtime.Interpreter) -> Bool raise
 
-pub fn run_module(String, annex_b? : Bool) -> (Array[String], Map[String, @interpreter.Value]) raise
+pub fn run_module(String, annex_b? : Bool) -> (Array[String], Map[String, @runtime.Value]) raise
 
-pub fn run_modules(Array[(String, String)], annex_b? : Bool) -> (Array[String], Map[String, @interpreter.Value]) raise
+pub fn run_modules(Array[(String, String)], annex_b? : Bool) -> (Array[String], Map[String, @runtime.Value]) raise
 
-pub fn run_timer_checkpoint(@interpreter.Interpreter) -> Unit raise
+pub fn run_timer_checkpoint(@runtime.Interpreter) -> Unit raise
 
-pub fn run_with_event_loop(String, annex_b? : Bool) -> (@interpreter.Interpreter, @interpreter.Value) raise
+pub fn run_with_event_loop(String, annex_b? : Bool) -> (@runtime.Interpreter, @runtime.Value) raise
 
 // Errors
 
