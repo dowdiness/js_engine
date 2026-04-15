@@ -13,12 +13,13 @@ priv enum RegexNode {
   CharClass(Array[(Char, Char)], Bool) // ranges, negated
   Anchor(AnchorKind)
   Quantified(RegexNode, Int, Int?, Bool) // node, min, max(None=infinity), greedy
-  Group(Array[RegexNode], Int) // children, group_index
+  Group(Array[RegexNode], Int, String?) // children, group_index, name
   Alternation(Array[RegexNode], Array[RegexNode]) // left, right
   Sequence(Array[RegexNode])
   WordBoundary(Bool) // true = \b, false = \B
   Lookahead(Array[RegexNode], Bool) // children, positive (true=(?=...), false=(?!...))
   Backreference(Int) // group number (1-based)
+  NamedBackreference(String) // group name (resolved to Backreference after parsing)
 }
 
 ///|
@@ -34,11 +35,13 @@ priv struct RegexParser {
   pattern : Array[Char]
   mut pos : Int
   mut group_count : Int
+  unicode : Bool
+  group_names : Map[String, Int]
 }
 
 ///|
-fn RegexParser::new(pattern : String) -> RegexParser {
-  { pattern: pattern.to_array(), pos: 0, group_count: 0 }
+fn RegexParser::new(pattern : String, unicode~ : Bool = false) -> RegexParser {
+  { pattern: pattern.to_array(), pos: 0, group_count: 0, unicode, group_names: {} }
 }
 
 ///|
@@ -306,7 +309,7 @@ fn RegexParser::parse_group(self : RegexParser) -> RegexNode raise Error {
           Sequence(nodes) => nodes
           _ => [inner]
         }
-        return Group(children, 0)
+        return Group(children, 0, None)
       } else if next == '=' {
         // Positive lookahead (?=...)
         self.pos += 2
@@ -345,7 +348,7 @@ fn RegexParser::parse_group(self : RegexParser) -> RegexNode raise Error {
     Sequence(nodes) => nodes
     _ => [inner]
   }
-  Group(children, group_idx)
+  Group(children, group_idx, None)
 }
 
 ///|
@@ -463,6 +466,7 @@ struct RegexMatch {
   start : Int
   end_ : Int
   captures : Array[String?]
+  group_names : Array[(String, Int)]
 }
 
 ///|
@@ -629,7 +633,7 @@ fn regex_exec_single(
         None
       }
     }
-    Group(children, group_idx) => {
+    Group(children, group_idx, _) => {
       let result = match_sequence(children, 0, input, pos, captures, flags)
       match result {
         Some(end_pos) => {
@@ -702,6 +706,7 @@ fn regex_exec_single(
       } else {
         Some(pos) // Invalid group: matches empty string
       }
+    NamedBackreference(_) => None // Should be resolved before execution
   }
 }
 
@@ -826,7 +831,8 @@ fn count_groups(node : RegexNode) -> Int {
     | CharClass(_, _)
     | Anchor(_)
     | WordBoundary(_)
-    | Backreference(_) => 0
+    | Backreference(_)
+    | NamedBackreference(_) => 0
     Lookahead(children, _) =>
       children.fold(init=0, fn(acc, child) {
         let cg = count_groups(child)
@@ -837,7 +843,7 @@ fn count_groups(node : RegexNode) -> Int {
         }
       })
     Quantified(inner, _, _, _) => count_groups(inner)
-    Group(children, group_idx) => {
+    Group(children, group_idx, _) => {
       let max_child = children.fold(init=0, fn(acc, child) {
         let cg = count_groups(child)
         if cg > acc {
@@ -914,7 +920,8 @@ pub fn regex_match_at(
   let rflags = make_regex_flags(flags)
   let captures : Array[String?] = Array::make(num_groups, None)
   match regex_exec(node, input_chars, start_pos, captures, rflags) {
-    Some(end_pos) => Some({ start: start_pos, end_: end_pos, captures })
+    Some(end_pos) =>
+        Some({ start: start_pos, end_: end_pos, captures, group_names: [] })
     None => None
   }
 }
@@ -939,14 +946,19 @@ pub fn regex_search(
     let captures : Array[String?] = Array::make(num_groups, None)
     match regex_exec(node, input_chars, start_pos, captures, rflags) {
       Some(end_pos) =>
-        return Some({ start: start_pos, end_: end_pos, captures })
+        return Some({
+          start: start_pos,
+          end_: end_pos,
+          captures,
+          group_names: [],
+        })
       None => return None
     }
   }
   for i = start_pos; i <= input_chars.length(); i = i + 1 {
     let captures : Array[String?] = Array::make(num_groups, None)
     match regex_exec(node, input_chars, i, captures, rflags) {
-      Some(end_pos) => return Some({ start: i, end_: end_pos, captures })
+      Some(end_pos) => return Some({ start: i, end_: end_pos, captures, group_names: [] })
       None => continue
     }
   }
@@ -969,7 +981,7 @@ pub fn regex_search_all(
     let captures : Array[String?] = Array::make(num_groups, None)
     match regex_exec(node, input_chars, i, captures, rflags) {
       Some(end_pos) => {
-        results.push({ start: i, end_: end_pos, captures })
+        results.push({ start: i, end_: end_pos, captures, group_names: [] })
         if end_pos == i {
           i += 1
         } else {
