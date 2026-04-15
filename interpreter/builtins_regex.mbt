@@ -37,6 +37,7 @@ priv struct RegexParser {
   mut group_count : Int
   unicode : Bool
   group_names : Map[String, Int]
+  mut has_unterminated_k_backref : Bool
 }
 
 ///|
@@ -47,6 +48,7 @@ fn RegexParser::new(pattern : String, unicode? : Bool = false) -> RegexParser {
     group_count: 0,
     unicode,
     group_names: {},
+    has_unterminated_k_backref: false,
   }
 }
 
@@ -188,6 +190,12 @@ fn resolve_named_backreferences(
 fn RegexParser::parse(self : RegexParser) -> RegexNode raise Error {
   let result = self.parse_alternation()
   if !self.group_names.is_empty() {
+    // Pattern has named groups — reject unterminated \k< that was backtracked
+    if self.has_unterminated_k_backref {
+      raise @errors.SyntaxError(
+        message="Invalid regex: unterminated named backreference in pattern with named groups",
+      )
+    }
     // Resolve \k<name> to Backreference(idx) using known group names
     resolve_named_backreferences(result, self.group_names)
   } else if !self.unicode {
@@ -375,7 +383,10 @@ fn RegexParser::parse_escape(self : RegexParser) -> RegexNode raise Error {
               message="Invalid regex: unterminated named backreference",
             )
           } else {
-            // Annex B: backtrack and treat \k as literal 'k'
+            // Annex B: backtrack and treat \k as literal 'k'.
+            // Record for post-parse validation — if named groups exist,
+            // unterminated \k< is a SyntaxError.
+            self.has_unterminated_k_backref = true
             self.pos = saved_pos
             Literal('k')
           }
