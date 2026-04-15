@@ -660,6 +660,10 @@ fn RegexParser::parse_group(self : RegexParser) -> RegexNode raise Error {
         let inner = self.parse_alternation()
         if self.pos < self.pattern.length() && self.pattern[self.pos] == ')' {
           self.pos += 1
+        } else {
+          raise @errors.SyntaxError(
+            message="Invalid regex: unterminated non-capturing group",
+          )
         }
         let children = match inner {
           Sequence(nodes) => nodes
@@ -754,6 +758,10 @@ fn RegexParser::parse_group(self : RegexParser) -> RegexNode raise Error {
         let inner = self.parse_alternation()
         if self.pos < self.pattern.length() && self.pattern[self.pos] == ')' {
           self.pos += 1
+        } else {
+          raise @errors.SyntaxError(
+            message="Invalid regex: unterminated lookahead",
+          )
         }
         let children = match inner {
           Sequence(nodes) => nodes
@@ -766,6 +774,10 @@ fn RegexParser::parse_group(self : RegexParser) -> RegexNode raise Error {
         let inner = self.parse_alternation()
         if self.pos < self.pattern.length() && self.pattern[self.pos] == ')' {
           self.pos += 1
+        } else {
+          raise @errors.SyntaxError(
+            message="Invalid regex: unterminated lookahead",
+          )
         }
         let children = match inner {
           Sequence(nodes) => nodes
@@ -781,6 +793,10 @@ fn RegexParser::parse_group(self : RegexParser) -> RegexNode raise Error {
   let inner = self.parse_alternation()
   if self.pos < self.pattern.length() && self.pattern[self.pos] == ')' {
     self.pos += 1
+  } else {
+    raise @errors.SyntaxError(
+      message="Invalid regex: unterminated capturing group",
+    )
   }
   let children = match inner {
     Sequence(nodes) => nodes
