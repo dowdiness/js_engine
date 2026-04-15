@@ -38,6 +38,7 @@ priv struct RegexParser {
   unicode : Bool
   group_names : Map[String, Int]
   mut has_unterminated_k_backref : Bool
+  mut has_bare_k : Bool
 }
 
 ///|
@@ -49,6 +50,7 @@ fn RegexParser::new(pattern : String, unicode? : Bool = false) -> RegexParser {
     unicode,
     group_names: {},
     has_unterminated_k_backref: false,
+    has_bare_k: false,
   }
 }
 
@@ -58,20 +60,16 @@ fn RegexParser::new(pattern : String, unicode? : Bool = false) -> RegexParser {
 /// matching the text "k<name>" (the backslash was already consumed).
 fn desugar_named_backrefs_to_literals(node : RegexNode) -> RegexNode {
   match node {
-    NamedBackreference(name) =>
-      if name.length() == 0 {
-        // Bare \k (no <) — just literal 'k'
-        Literal('k')
-      } else {
-        // \k<name> — literal "k<name>"
-        let chars : Array[RegexNode] = [Literal('k'), Literal('<')]
-        let name_chars = name.to_array()
-        for c in name_chars {
-          chars.push(Literal(c))
-        }
-        chars.push(Literal('>'))
-        Sequence(chars)
+    NamedBackreference(name) => {
+      // \k<name> or \k<> — literal "k<name>" or "k<>"
+      let chars : Array[RegexNode] = [Literal('k'), Literal('<')]
+      let name_chars = name.to_array()
+      for c in name_chars {
+        chars.push(Literal(c))
       }
+      chars.push(Literal('>'))
+      Sequence(chars)
+    }
     Group(children, idx, name) => {
       let resolved = children.map(child => {
         desugar_named_backrefs_to_literals(child)
@@ -119,21 +117,14 @@ fn resolve_named_backreferences(
 ) -> RegexNode raise Error {
   match node {
     NamedBackreference(name) =>
-      if name.length() == 0 {
-        // Bare \k in a pattern with named groups
-        raise @errors.SyntaxError(
-          message="Invalid regex: invalid escape \\k in pattern with named groups",
-        )
-      } else {
-        match group_names.get(name) {
-          Some(idx) => Backreference(idx)
-          None =>
-            raise @errors.SyntaxError(
-              message="Invalid regex: undefined named backreference \\k<" +
-                name +
-                ">",
-            )
-        }
+      match group_names.get(name) {
+        Some(idx) => Backreference(idx)
+        None =>
+          raise @errors.SyntaxError(
+            message="Invalid regex: undefined named backreference \\k<" +
+              name +
+              ">",
+          )
       }
     Group(children, idx, name) => {
       let resolved = children.map(child => {
@@ -190,10 +181,15 @@ fn resolve_named_backreferences(
 fn RegexParser::parse(self : RegexParser) -> RegexNode raise Error {
   let result = self.parse_alternation()
   if !self.group_names.is_empty() {
-    // Pattern has named groups — reject unterminated \k< that was backtracked
+    // Pattern has named groups — reject malformed \k forms
     if self.has_unterminated_k_backref {
       raise @errors.SyntaxError(
         message="Invalid regex: unterminated named backreference in pattern with named groups",
+      )
+    }
+    if self.has_bare_k {
+      raise @errors.SyntaxError(
+        message="Invalid regex: invalid escape \\k in pattern with named groups",
       )
     }
     // Resolve \k<name> to Backreference(idx) using known group names
@@ -399,10 +395,10 @@ fn RegexParser::parse_escape(self : RegexParser) -> RegexNode raise Error {
           message="Invalid regex: invalid escape in unicode mode",
         )
       } else {
-        // Annex B: \k without < — emit sentinel for post-parse validation.
-        // If named groups exist, this is a SyntaxError.
-        // If no named groups, desugar converts to literal 'k'.
-        NamedBackreference("")
+        // Annex B: \k without < — literal 'k' in non-unicode mode.
+        // Record for post-parse: if named groups exist, this is a SyntaxError.
+        self.has_bare_k = true
+        Literal('k')
       }
     _ =>
       if ch >= '1' && ch <= '9' {
