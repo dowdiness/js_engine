@@ -1051,35 +1051,34 @@ are not yet enforced by package boundaries:
 | Core execution | `interpreter.mbt`, `eval_expr.mbt`, `exec_stmt.mbt`, `call.mbt`, `property.mbt`, `class.mbt`, `construct.mbt`, `hoisting.mbt`, `destructuring.mbt`, `operators.mbt`, `modules.mbt`, `generator.mbt`, `async.mbt` |
 | Stdlib | `builtins.mbt` + 24 `builtins_*.mbt` files |
 
-### Planned Restructuring (Stage 3/4)
+### Restructuring — COMPLETE (2026-04-15)
 
-Status: **pending** — prerequisites complete as of 2026-04-15.
+All four stages shipped on branch `claude/restructure-architecture-VkLTl`.
 
-The coupling audit (see architecture doc §2.3) found that only `builtins_promise.mbt`
-directly accesses interpreter internals (14 timer-queue call sites). All other stdlib
-files use only the `Interpreter` method surface. The package split is cheaper than
-previously estimated.
-
-**Stage 1 — Per-call execution context** (next)
-Replace `mut strict: Bool` and `mut current_generator: GeneratorObject?` on the
+**Stage 1 — Per-call execution context** ✅
+Replaced `mut strict: Bool` and `mut current_generator: GeneratorObject?` on the
 `Interpreter` struct with a value-type `ExecContext` passed through `eval_expr`,
-`exec_stmt`, and `call_value`. Fixes agent-todo #10 (sloppy-mode `this` in async
-functions). Compiler-guided change: removing the struct fields makes all missing
-updates compile errors.
+`exec_stmt`, and `call_value`. Fixes correctness bugs including sloppy-mode `this`
+in async functions (agent-todo #10). Compiler-guided: removing the fields makes all
+missing updates compile errors.
 
-**Stage 2 — Timer API on HostEnv** (prerequisite for Stage 3)
-Add explicit timer methods to `HostEnv` / `Interpreter` to replace the 14 direct
-`interp.host.*` field accesses in `builtins_promise.mbt`. Eliminates the one real
-coupling violation before the package split.
+**Stage 2 — Timer API on HostEnv** ✅
+Added `Interpreter::schedule_timer` and `Interpreter::cancel_timer` to replace the 14
+direct `interp.host.*` field accesses in `builtins_promise.mbt`. Eliminates the only
+real coupling violation in the codebase.
 
-**Stage 3 — runtime/stdlib package boundary**
-Create `interpreter/runtime/moon.pkg.json` and `interpreter/stdlib/moon.pkg.json`.
-Move core execution files to `runtime/`, builtin files to `stdlib/`. The compiler
-enforces the boundary statically after this stage.
+**Stage 3 — runtime/stdlib package boundary** ✅
+Split the flat `interpreter/` package into `interpreter/runtime/` (execution engine)
+and `interpreter/stdlib/` (JS standard library). The compiler now statically enforces
+the `stdlib → runtime` dependency rule. A `StdlibHooks` struct breaks the one
+legitimate callback cycle (stdlib registering methods the runtime needs to call).
 
-**Stage 4 — Descriptor authority consolidation**
-Designate `property.mbt` as the sole authority for descriptor validation primitives.
-`builtins_object_descriptors.mbt` becomes a public-facing delegation layer.
+**Stage 4 — Descriptor authority consolidation** ✅
+Moved `validate_non_configurable` from `stdlib/builtins_object_helpers.mbt` to
+`runtime/property.mbt` — the runtime is now the sole authority for
+`[[DefineOwnProperty]]` constraint checks. Also extracted 4 inlined
+`PropDescriptor → JS object` conversions into shared `make_data_desc_obj` /
+`make_accessor_desc_obj` helpers, eliminating ~100 lines of duplication.
 
 ### Key Design Decisions
 
