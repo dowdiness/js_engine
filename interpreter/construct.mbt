@@ -204,7 +204,6 @@ fn Interpreter::install_instance_fields(
       }
     }
   }
-}
 
 ///|
 /// Create a deferred instance-field initializer Value.

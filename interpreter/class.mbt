@@ -120,7 +120,7 @@ fn Interpreter::create_class(
           // Get the method key - could be string or symbol
           let key_val : Value = match m.key {
             StringLit(s, _, _) => String_(s)
-            _ => self.eval_expr(m.key, env)
+            _ => self.eval_expr(class_ctx, m.key, env)
           }
           let method_key_str : String = match key_val {
             Symbol(_) => key_val.to_string()
@@ -495,6 +495,6 @@ fn Interpreter::create_class(
         _ => ()
       }
     }
-  }
   class_obj
 }
+
