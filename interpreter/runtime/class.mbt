@@ -69,22 +69,26 @@ fn Interpreter::create_class(
   let instance_fields : Array[ClassFieldInit] = []
   // Collect static field initializers (evaluated after class object is created)
   let static_fields : Array[ClassFieldInit] = []
-  // Create method environments with [[SuperPrototype]] for super.method() support
-  let instance_method_env : Environment = match super_ctor {
-    Some(_) => {
-      let menv = Environment::new(parent=Some(env))
-      menv.def_builtin("[[SuperPrototype]]", super_proto)
-      menv
+  // Create method environments with [[SuperPrototype]] for super.method() support.
+  // Base classes (no extends) still need these bindings: instance methods resolve
+  // super against Object.prototype; static methods against Function.prototype.
+  let instance_method_env : Environment = {
+    let menv = Environment::new(parent=Some(env))
+    let instance_super : Value = match super_ctor {
+      Some(_) => super_proto
+      None => self.global.get("[[ObjectPrototype]]") catch { _ => Null }
     }
-    None => env
+    menv.def_builtin("[[SuperPrototype]]", instance_super)
+    menv
   }
-  let static_method_env : Environment = match super_ctor {
-    Some(sc) => {
-      let menv = Environment::new(parent=Some(env))
-      menv.def_builtin("[[SuperPrototype]]", sc)
-      menv
+  let static_method_env : Environment = {
+    let menv = Environment::new(parent=Some(env))
+    let static_super : Value = match super_ctor {
+      Some(sc) => sc
+      None => self.global.get("[[FunctionPrototype]]") catch { _ => Null }
     }
-    None => env
+    menv.def_builtin("[[SuperPrototype]]", static_super)
+    menv
   }
   // Process all members (methods and fields)
   // Class bodies are always strict — computed property keys and method keys
