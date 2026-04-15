@@ -153,6 +153,7 @@ fn Interpreter::install_instance_fields(
               field.key,
               field_value,
               @token.Loc::default(),
+              strict=true,
             )
           }
         }
@@ -199,6 +200,7 @@ fn Interpreter::install_instance_fields(
           field.key,
           field_value,
           @token.Loc::default(),
+          strict=true,
         )
       }
     }
