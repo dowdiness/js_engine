@@ -1036,13 +1036,60 @@ Low. These features are not required for modern JavaScript usage. Implement only
 
 ## Architecture
 
-### Key Decisions
+Full analysis: [docs/architecture-redesign-2026-04-15.md](docs/architecture-redesign-2026-04-15.md)
+
+### Current Structure
+
+The interpreter is a single flat MoonBit package (`interpreter/`) with 48 focused files
+produced by the structural refactoring (April 2026, archived in
+`docs/archive/2026-04-09-structural-refactoring.md`). Three conceptual groups exist but
+are not yet enforced by package boundaries:
+
+| Group | Files |
+|-------|-------|
+| Core types | `value.mbt`, `environment.mbt`, `errors.mbt`, `symbols.mbt`, `conversions.mbt`, `factories.mbt`, `iterators.mbt`, `array_side_tables.mbt` |
+| Core execution | `interpreter.mbt`, `eval_expr.mbt`, `exec_stmt.mbt`, `call.mbt`, `property.mbt`, `class.mbt`, `construct.mbt`, `hoisting.mbt`, `destructuring.mbt`, `operators.mbt`, `modules.mbt`, `generator.mbt`, `async.mbt` |
+| Stdlib | `builtins.mbt` + 24 `builtins_*.mbt` files |
+
+### Planned Restructuring (Stage 3/4)
+
+Status: **pending** — prerequisites complete as of 2026-04-15.
+
+The coupling audit (see architecture doc §2.3) found that only `builtins_promise.mbt`
+directly accesses interpreter internals (14 timer-queue call sites). All other stdlib
+files use only the `Interpreter` method surface. The package split is cheaper than
+previously estimated.
+
+**Stage 1 — Per-call execution context** (next)
+Replace `mut strict: Bool` and `mut current_generator: GeneratorObject?` on the
+`Interpreter` struct with a value-type `ExecContext` passed through `eval_expr`,
+`exec_stmt`, and `call_value`. Fixes agent-todo #10 (sloppy-mode `this` in async
+functions). Compiler-guided change: removing the struct fields makes all missing
+updates compile errors.
+
+**Stage 2 — Timer API on HostEnv** (prerequisite for Stage 3)
+Add explicit timer methods to `HostEnv` / `Interpreter` to replace the 14 direct
+`interp.host.*` field accesses in `builtins_promise.mbt`. Eliminates the one real
+coupling violation before the package split.
+
+**Stage 3 — runtime/stdlib package boundary**
+Create `interpreter/runtime/moon.pkg.json` and `interpreter/stdlib/moon.pkg.json`.
+Move core execution files to `runtime/`, builtin files to `stdlib/`. The compiler
+enforces the boundary statically after this stage.
+
+**Stage 4 — Descriptor authority consolidation**
+Designate `property.mbt` as the sole authority for descriptor validation primitives.
+`builtins_object_descriptors.mbt` becomes a public-facing delegation layer.
+
+### Key Design Decisions
 
 1. **Functions are objects** — `Object` with `callable` field, enabling property assignment on functions
 2. **Exception propagation** — MoonBit's native `raise` with `JsException(Value)` suberror
 3. **Property descriptors** — `ObjectData.descriptors` map alongside `properties`
 4. **Array storage** — Dedicated `Array(ArrayData)` variant with `elements: Array[Value]`
 5. **Builtin organization** — Split into `builtins_object.mbt`, `builtins_array.mbt`, `builtins_string.mbt`, `builtins_typedarray.mbt`, `builtins_arraybuffer.mbt`, `builtins_dataview.mbt`, etc.
+6. **Signal enum for control flow** — `Normal(Value)`, `ReturnSignal(Value)`, `BreakSignal(String?)`, `ContinueSignal(String?)` propagate return/break/continue without exceptions
+7. **Generator replay model** — Generator bodies are re-executed from the start on each `.next()`, replaying past statements and resuming at the saved PC. Avoids a separate frame stack.
 
 ### Value Variants
 

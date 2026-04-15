@@ -184,25 +184,27 @@ those first.
 
 ## Later PR: Stage 3/4 Sub-package Extraction
 
-**Now unblocked** — `moon` is installed at `~/.moon/bin/moon`.
+**Status**: Coupling audit complete (2026-04-15). See
+[docs/architecture-redesign-2026-04-15.md](architecture-redesign-2026-04-15.md) for
+full analysis and migration plan.
 
-**Context**: The previous architectural PR extracted `HostEnv` and split `builtins_object.mbt`
-into four files, all within the `interpreter/` package (no import changes needed).
+**Audit result**: Only `builtins_promise.mbt` has direct internal access (14 timer-queue
+call sites). All other stdlib files use the `Interpreter` method surface only. The split
+is cheaper than previously estimated.
 
-Stage 3/4 would create actual MoonBit sub-packages with their own `moon.pkg` files,
-requiring import declarations. This is a larger change and should be its own PR.
+**Ordered stages** (see architecture doc §6):
 
-**Proposed split**:
-- `interpreter/runtime/` — core execution types: `Value`, `Environment`, `Interpreter` struct, `HostEnv`
-- `interpreter/stdlib/` — built-in method implementations: all `builtins_*.mbt` files
+1. **Stage 1 — ExecContext** (fix correctness bugs first): Replace `mut strict` and
+   `mut current_generator` on `Interpreter` with a per-call `ExecContext` struct.
+   Fixes agent-todo #10. Compiler-guided change.
 
-**Prerequisites**:
-1. Run the stdlib coupling audit: grep all `builtins_*.mbt` for direct access to
-   `interp.generator_objects`, `interp.module_registry`, `interp.module_exports`,
-   `interp.host.timer_queue`, `interp.host.microtask_queue` — these cross-package
-   accesses would need to become public API
-2. Decide what goes in `runtime/` vs `stdlib/` vs stays in the root `interpreter/` package
-3. Plan the `moon.pkg` dependency graph (no cycles allowed)
+2. **Stage 2 — Timer API** (prerequisite for boundary): Add explicit timer methods to
+   `HostEnv`/`Interpreter`, replacing the 14 direct field accesses in
+   `builtins_promise.mbt`.
 
-The MoonBit sub-package mechanism works: each directory under `interpreter/` with a
-`moon.pkg` file becomes an independent package that other packages can import.
+3. **Stage 3 — Package boundary**: Create `interpreter/runtime/` and
+   `interpreter/stdlib/` sub-packages with `moon.pkg.json`. Move files. Fix visibility.
+   Compiler enforces the boundary after this step.
+
+4. **Stage 4 — Descriptor consolidation** (lowest urgency): Make `property.mbt` the
+   sole authority for descriptor validation primitives.
