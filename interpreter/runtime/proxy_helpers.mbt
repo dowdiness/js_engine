@@ -1,9 +1,12 @@
 ///|
 /// Get a trap function from the proxy handler, or None if the trap is not defined.
 /// Throws TypeError if the proxy has been revoked.
+/// Uses the engine's ordinary Get path (interp.get_property) so accessor traps
+/// and proxy-handler proxies are resolved with full language semantics.
 pub fn get_proxy_trap(
   proxy_data : ProxyData,
   trap_name : String,
+  interp : Interpreter,
 ) -> Value? raise Error {
   let handler = match proxy_data.handler {
     Some(h) => h
@@ -19,39 +22,21 @@ pub fn get_proxy_trap(
         message="Cannot perform '\{trap_name}' on a proxy that has been revoked",
       )
   }
-  // Walk handler's prototype chain to find trap (per spec GetMethod)
-  fn find_trap(obj : Value, name : String) -> Value? raise Error {
-    match obj {
-      Object(data) =>
-        match data.properties.get(name) {
-          Some(trap) =>
-            match trap {
-              Undefined => None
-              Null => None
-              Object(td) =>
-                match td.callable {
-                  Some(_) => Some(trap)
-                  None =>
-                    raise @errors.TypeError(
-                      message="'\{name}' on proxy: trap is not a function",
-                    )
-                }
-              _ =>
-                raise @errors.TypeError(
-                  message="'\{name}' on proxy: trap is not a function",
-                )
-            }
-          None =>
-            // Walk prototype chain
-            match data.prototype {
-              Object(_) => find_trap(data.prototype, name)
-              _ => None
-            }
-        }
-      _ => None
-    }
+  // Use engine-level Get (GetMethod semantics per ES §10.5): this traverses
+  // the prototype chain, invokes accessor getters, and handles proxy handlers
+  // that are themselves proxies.
+  let trap = interp.get_property(handler, trap_name, @token.Loc::default())
+  match trap {
+    Undefined | Null => None
+    _ =>
+      if is_callable(trap) {
+        Some(trap)
+      } else {
+        raise @errors.TypeError(
+          message="'\{trap_name}' on proxy: trap is not a function",
+        )
+      }
   }
-  find_trap(handler, trap_name)
 }
 
 ///|

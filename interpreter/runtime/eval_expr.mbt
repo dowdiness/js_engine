@@ -1122,7 +1122,7 @@ fn Interpreter::eval_binary(
       let right = self.eval_expr(ctx, right_expr, env)
       match right {
         Proxy(proxy_data) => {
-          let trap = get_proxy_trap(proxy_data, "has")
+          let trap = get_proxy_trap(proxy_data, "has", self)
           match trap {
             Some(trap_fn) => {
               let target = get_proxy_target(proxy_data)
@@ -1595,7 +1595,7 @@ fn Interpreter::eval_unary(
           let obj = self.eval_expr(ctx, obj_expr, env)
           match obj {
             Proxy(proxy_data) => {
-              let trap = get_proxy_trap(proxy_data, "deleteProperty")
+              let trap = get_proxy_trap(proxy_data, "deleteProperty", self)
               match trap {
                 Some(trap_fn) => {
                   let target = get_proxy_target(proxy_data)
@@ -1663,7 +1663,7 @@ fn Interpreter::eval_unary(
           let key = self.eval_expr(ctx, key_expr, env)
           match obj {
             Proxy(proxy_data) => {
-              let trap = get_proxy_trap(proxy_data, "deleteProperty")
+              let trap = get_proxy_trap(proxy_data, "deleteProperty", self)
               match trap {
                 Some(trap_fn) => {
                   let target = get_proxy_target(proxy_data)

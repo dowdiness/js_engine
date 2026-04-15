@@ -7,7 +7,7 @@ pub fn Interpreter::get_property(
 ) -> Value raise Error {
   match obj {
     Proxy(proxy_data) => {
-      let trap = get_proxy_trap(proxy_data, "get")
+      let trap = get_proxy_trap(proxy_data, "get", self)
       match trap {
         Some(trap_fn) => {
           let target = get_proxy_target(proxy_data)
@@ -561,7 +561,7 @@ pub fn Interpreter::get_computed_property(
   // Handle Proxy objects first
   match obj {
     Proxy(proxy_data) => {
-      let trap = get_proxy_trap(proxy_data, "get")
+      let trap = get_proxy_trap(proxy_data, "get", self)
       match trap {
         Some(trap_fn) => {
           let target = get_proxy_target(proxy_data)
@@ -1287,7 +1287,7 @@ pub fn Interpreter::set_property(
 ) -> Value raise Error {
   match obj {
     Proxy(proxy_data) => {
-      let trap = get_proxy_trap(proxy_data, "set")
+      let trap = get_proxy_trap(proxy_data, "set", self)
       match trap {
         Some(trap_fn) => {
           let target = get_proxy_target(proxy_data)
@@ -1524,7 +1524,7 @@ fn Interpreter::set_computed_property(
 ) -> Value raise Error {
   match obj {
     Proxy(proxy_data) => {
-      let trap = get_proxy_trap(proxy_data, "set")
+      let trap = get_proxy_trap(proxy_data, "set", self)
       match trap {
         Some(trap_fn) => {
           let target = get_proxy_target(proxy_data)

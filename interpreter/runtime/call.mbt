@@ -397,7 +397,7 @@ pub fn Interpreter::call_value(
       if !check_callable(target) {
         raise @errors.TypeError(message="proxy target is not a function")
       }
-      let trap = get_proxy_trap(proxy_data, "apply")
+      let trap = get_proxy_trap(proxy_data, "apply", self)
       match trap {
         Some(trap_fn) => {
           let handler = get_proxy_handler(proxy_data)

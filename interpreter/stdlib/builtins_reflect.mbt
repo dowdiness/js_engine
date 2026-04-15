@@ -773,7 +773,7 @@ fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
     match target {
       Value::Proxy(proxy_data) => {
         // Check for ownKeys trap
-        let trap = @runtime.get_proxy_trap(proxy_data, "ownKeys")
+        let trap = @runtime.get_proxy_trap(proxy_data, "ownKeys", interp)
         match trap {
           Some(trap_fn) => {
             let proxy_target = @runtime.get_proxy_target(proxy_data)

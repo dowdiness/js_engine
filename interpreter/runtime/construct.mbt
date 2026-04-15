@@ -113,7 +113,7 @@ fn Interpreter::install_instance_fields(
         // Use [[DefineOwnProperty]] semantics for Proxy: invoke the
         // "defineProperty" trap so the proxy observes definition rather than
         // [[Set]] (which would invoke the "set" trap instead).
-        let trap = get_proxy_trap(proxy_data, "defineProperty")
+        let trap = get_proxy_trap(proxy_data, "defineProperty", self)
         let target = get_proxy_target(proxy_data)
         let handler = get_proxy_handler(proxy_data)
         match trap {
@@ -429,7 +429,7 @@ pub fn Interpreter::construct_value(
       if !is_constructible(target) {
         raise @errors.TypeError(message="target is not a constructor")
       }
-      let trap = get_proxy_trap(proxy_data, "construct")
+      let trap = get_proxy_trap(proxy_data, "construct", self)
       match trap {
         Some(trap_fn) => {
           let handler = get_proxy_handler(proxy_data)
