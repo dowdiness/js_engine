@@ -316,6 +316,7 @@ pub fn create_data_property_or_throw(
         index.to_string(),
         value,
         @token.Loc::default(),
+        strict=true,
       )
     }
   }
