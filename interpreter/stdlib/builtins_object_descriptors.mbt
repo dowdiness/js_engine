@@ -91,73 +91,22 @@ fn make_get_own_property_descriptors_func() -> Value {
             None => false
           }
           if is_accessor {
-            let getter_val : Value = match desc {
-              Some(d) =>
-                match d.getter {
-                  Some(g) => g
-                  None => Undefined
-                }
+            let getter_val = match desc {
+              Some(d) => match d.getter { Some(g) => g; None => Undefined }
               None => Undefined
             }
-            let setter_val : Value = match desc {
-              Some(d) =>
-                match d.setter {
-                  Some(s) => s
-                  None => Undefined
-                }
+            let setter_val = match desc {
+              Some(d) => match d.setter { Some(s) => s; None => Undefined }
               None => Undefined
             }
-            let enumerable = match desc {
-              Some(d) => d.enumerable
-              None => true
-            }
-            let configurable = match desc {
-              Some(d) => d.configurable
-              None => true
-            }
-            descriptors_props[key] = Value::Object({
-              properties: {
-                "get": getter_val,
-                "set": setter_val,
-                "enumerable": Bool(enumerable),
-                "configurable": Bool(configurable),
-              },
-              symbol_properties: {},
-              prototype: @runtime.get_obj_proto(),
-              callable: None,
-              class_name: "Object",
-              descriptors: {},
-              symbol_descriptors: {},
-              extensible: true,
-            })
+            let enumerable = match desc { Some(d) => d.enumerable; None => true }
+            let configurable = match desc { Some(d) => d.configurable; None => true }
+            descriptors_props[key] = make_accessor_desc_obj(getter_val, setter_val, enumerable, configurable)
           } else {
-            let writable = match desc {
-              Some(d) => d.writable
-              None => true
-            }
-            let enumerable = match desc {
-              Some(d) => d.enumerable
-              None => true
-            }
-            let configurable = match desc {
-              Some(d) => d.configurable
-              None => true
-            }
-            descriptors_props[key] = Value::Object({
-              properties: {
-                "value": val,
-                "writable": Bool(writable),
-                "enumerable": Bool(enumerable),
-                "configurable": Bool(configurable),
-              },
-              symbol_properties: {},
-              prototype: @runtime.get_obj_proto(),
-              callable: None,
-              class_name: "Object",
-              descriptors: {},
-              symbol_descriptors: {},
-              extensible: true,
-            })
+            let writable = match desc { Some(d) => d.writable; None => true }
+            let enumerable = match desc { Some(d) => d.enumerable; None => true }
+            let configurable = match desc { Some(d) => d.configurable; None => true }
+            descriptors_props[key] = make_data_desc_obj(val, writable, enumerable, configurable)
           }
         })
         // Also include symbol-keyed property descriptors
@@ -169,73 +118,22 @@ fn make_get_own_property_descriptors_func() -> Value {
             None => false
           }
           if is_accessor {
-            let getter_val : Value = match desc {
-              Some(d) =>
-                match d.getter {
-                  Some(g) => g
-                  None => Undefined
-                }
+            let getter_val = match desc {
+              Some(d) => match d.getter { Some(g) => g; None => Undefined }
               None => Undefined
             }
-            let setter_val : Value = match desc {
-              Some(d) =>
-                match d.setter {
-                  Some(s) => s
-                  None => Undefined
-                }
+            let setter_val = match desc {
+              Some(d) => match d.setter { Some(s) => s; None => Undefined }
               None => Undefined
             }
-            let enumerable = match desc {
-              Some(d) => d.enumerable
-              None => true
-            }
-            let configurable = match desc {
-              Some(d) => d.configurable
-              None => true
-            }
-            sym_descs[sym_id] = Value::Object({
-              properties: {
-                "get": getter_val,
-                "set": setter_val,
-                "enumerable": Bool(enumerable),
-                "configurable": Bool(configurable),
-              },
-              symbol_properties: {},
-              prototype: @runtime.get_obj_proto(),
-              callable: None,
-              class_name: "Object",
-              descriptors: {},
-              symbol_descriptors: {},
-              extensible: true,
-            })
+            let enumerable = match desc { Some(d) => d.enumerable; None => true }
+            let configurable = match desc { Some(d) => d.configurable; None => true }
+            sym_descs[sym_id] = make_accessor_desc_obj(getter_val, setter_val, enumerable, configurable)
           } else {
-            let writable = match desc {
-              Some(d) => d.writable
-              None => true
-            }
-            let enumerable = match desc {
-              Some(d) => d.enumerable
-              None => true
-            }
-            let configurable = match desc {
-              Some(d) => d.configurable
-              None => true
-            }
-            sym_descs[sym_id] = Value::Object({
-              properties: {
-                "value": val,
-                "writable": Bool(writable),
-                "enumerable": Bool(enumerable),
-                "configurable": Bool(configurable),
-              },
-              symbol_properties: {},
-              prototype: @runtime.get_obj_proto(),
-              callable: None,
-              class_name: "Object",
-              descriptors: {},
-              symbol_descriptors: {},
-              extensible: true,
-            })
+            let writable = match desc { Some(d) => d.writable; None => true }
+            let enumerable = match desc { Some(d) => d.enumerable; None => true }
+            let configurable = match desc { Some(d) => d.configurable; None => true }
+            sym_descs[sym_id] = make_data_desc_obj(val, writable, enumerable, configurable)
           }
         })
         Value::Object({
@@ -421,7 +319,7 @@ fn make_define_property_func() -> Value {
         // Validate non-configurable constraints or extensibility
         match existing_desc {
           Some(existing) =>
-            validate_non_configurable(
+            @runtime.validate_non_configurable(
               existing,
               prop_display,
               is_accessor,
@@ -788,7 +686,7 @@ fn make_define_property_func() -> Value {
                 } else {
                   prop_name
                 }
-                validate_non_configurable(
+                @runtime.validate_non_configurable(
                   existing,
                   prop_display,
                   is_accessor,
@@ -959,52 +857,6 @@ fn make_get_own_property_descriptor_func() -> Value {
       _ => 0
     }
     let prop_name = prop_key.to_string()
-    fn make_desc(
-      val : Value,
-      writable : Bool,
-      enumerable : Bool,
-      configurable : Bool,
-    ) -> Value {
-      Value::Object({
-        properties: {
-          "value": val,
-          "writable": Bool(writable),
-          "enumerable": Bool(enumerable),
-          "configurable": Bool(configurable),
-        },
-        symbol_properties: {},
-        prototype: @runtime.get_obj_proto(),
-        callable: None,
-        class_name: "Object",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      })
-    }
-
-    fn make_accessor_desc(
-      getter_val : Value,
-      setter_val : Value,
-      enumerable : Bool,
-      configurable : Bool,
-    ) -> Value {
-      Value::Object({
-        properties: {
-          "get": getter_val,
-          "set": setter_val,
-          "enumerable": Bool(enumerable),
-          "configurable": Bool(configurable),
-        },
-        symbol_properties: {},
-        prototype: @runtime.get_obj_proto(),
-        callable: None,
-        class_name: "Object",
-        descriptors: {},
-        symbol_descriptors: {},
-        extensible: true,
-      })
-    }
-
     match obj {
       Null | Undefined =>
         raise @errors.TypeError(
@@ -1048,7 +900,7 @@ fn make_get_own_property_descriptor_func() -> Value {
                 Some(d) => d.configurable
                 None => true
               }
-              make_accessor_desc(
+              make_accessor_desc_obj(
                 getter_val, setter_val, enumerable, configurable,
               )
             } else {
@@ -1064,7 +916,7 @@ fn make_get_own_property_descriptor_func() -> Value {
                 Some(d) => d.configurable
                 None => true
               }
-              make_desc(val, writable, enumerable, configurable)
+              make_data_desc_obj(val, writable, enumerable, configurable)
             }
           } else {
             Undefined
@@ -1107,7 +959,7 @@ fn make_get_own_property_descriptor_func() -> Value {
               Some(d) => d.configurable
               None => true
             }
-            make_accessor_desc(getter_val, setter_val, enumerable, configurable)
+            make_accessor_desc_obj(getter_val, setter_val, enumerable, configurable)
           } else {
             let writable = match desc {
               Some(d) => d.writable
@@ -1121,7 +973,7 @@ fn make_get_own_property_descriptor_func() -> Value {
               Some(d) => d.configurable
               None => true
             }
-            make_desc(val, writable, enumerable, configurable)
+            make_data_desc_obj(val, writable, enumerable, configurable)
           }
         } else if data.descriptors.contains(prop_name) {
           // Check for accessor-only properties in descriptors (e.g., strict mode arguments.callee)
@@ -1155,7 +1007,7 @@ fn make_get_own_property_descriptor_func() -> Value {
               Some(d) => d.configurable
               None => true
             }
-            make_accessor_desc(getter_val, setter_val, enumerable, configurable)
+            make_accessor_desc_obj(getter_val, setter_val, enumerable, configurable)
           } else {
             // Data descriptor without a value in properties
             let writable = match desc {
@@ -1170,7 +1022,7 @@ fn make_get_own_property_descriptor_func() -> Value {
               Some(d) => d.configurable
               None => true
             }
-            make_desc(Undefined, writable, enumerable, configurable)
+            make_data_desc_obj(Undefined, writable, enumerable, configurable)
           }
         } else {
           // Check for built-in function properties (length, name)
@@ -1192,7 +1044,7 @@ fn make_get_own_property_descriptor_func() -> Value {
                   FuncApplyMethod(_) => 0.0
                   ClassConstructor(_) => 0.0
                 }
-                make_desc(Value::Number(len), false, false, true)
+                make_data_desc_obj(Value::Number(len), false, false, true)
               } else if prop_name == "name" {
                 let name : String = match callable {
                   UserFunc(f) =>
@@ -1225,7 +1077,7 @@ fn make_get_own_property_descriptor_func() -> Value {
                   FuncApplyMethod(_) => "apply"
                   ClassConstructor({ name: n, .. }) => n
                 }
-                make_desc(Value::String_(name), false, false, true)
+                make_data_desc_obj(Value::String_(name), false, false, true)
               } else {
                 Undefined
               }
@@ -1234,7 +1086,7 @@ fn make_get_own_property_descriptor_func() -> Value {
         }
       Value::Array(data) =>
         if prop_name == "length" {
-          make_desc(
+          make_data_desc_obj(
             Value::Number(data.elements.length().to_double()),
             true,
             false,
@@ -1246,21 +1098,21 @@ fn make_get_own_property_descriptor_func() -> Value {
           if idx >= 0 &&
             idx.to_string() == prop_name &&
             idx < data.elements.length() {
-            make_desc(data.elements[idx], true, true, true)
+            make_data_desc_obj(data.elements[idx], true, true, true)
           } else {
             Undefined
           }
         }
       Value::String_(s) =>
         if prop_name == "length" {
-          make_desc(Value::Number(s.length().to_double()), false, false, false)
+          make_data_desc_obj(Value::Number(s.length().to_double()), false, false, false)
         } else {
           let idx = @string.parse_int(prop_name) catch { _ => -1 }
           if idx >= 0 && idx.to_string() == prop_name && idx < s.length() {
             let chars = s.to_array()
             let buf = StringBuilder::new()
             buf.write_char(chars[idx])
-            make_desc(Value::String_(buf.to_string()), false, true, false)
+            make_data_desc_obj(Value::String_(buf.to_string()), false, true, false)
           } else {
             Undefined
           }
@@ -1308,7 +1160,7 @@ fn make_get_own_property_descriptor_func() -> Value {
                         Some(d) => d.configurable
                         None => true
                       }
-                      make_accessor_desc(
+                      make_accessor_desc_obj(
                         getter_val, setter_val, enumerable, configurable,
                       )
                     } else {
@@ -1324,7 +1176,7 @@ fn make_get_own_property_descriptor_func() -> Value {
                         Some(d) => d.configurable
                         None => true
                       }
-                      make_desc(val, writable, enumerable, configurable)
+                      make_data_desc_obj(val, writable, enumerable, configurable)
                     }
                   } else {
                     Undefined
@@ -1365,7 +1217,7 @@ fn make_get_own_property_descriptor_func() -> Value {
                       Some(d) => d.configurable
                       None => true
                     }
-                    make_accessor_desc(
+                    make_accessor_desc_obj(
                       getter_val, setter_val, enumerable, configurable,
                     )
                   } else {
@@ -1381,7 +1233,7 @@ fn make_get_own_property_descriptor_func() -> Value {
                       Some(d) => d.configurable
                       None => true
                     }
-                    make_desc(val, writable, enumerable, configurable)
+                    make_data_desc_obj(val, writable, enumerable, configurable)
                   }
                 } else {
                   Undefined
@@ -1543,7 +1395,7 @@ fn make_define_properties_func() -> Value {
               // Validate non-configurable constraints or extensibility
               match existing_desc {
                 Some(existing) =>
-                  validate_non_configurable(
+                  @runtime.validate_non_configurable(
                     existing,
                     prop_name,
                     is_accessor,
@@ -1705,7 +1557,7 @@ fn make_define_properties_func() -> Value {
                   // Non-configurable validation
                   match data.descriptors.get(prop_name) {
                     Some(existing) =>
-                      validate_non_configurable(
+                      @runtime.validate_non_configurable(
                         existing,
                         prop_name,
                         is_accessor,

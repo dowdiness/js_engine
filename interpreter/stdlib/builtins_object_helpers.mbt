@@ -239,96 +239,52 @@ fn apply_property_descriptor(
 }
 
 ///|
-/// Validate non-configurable property constraints.
-/// Throws TypeError if the proposed descriptor change violates invariants.
-fn validate_non_configurable(
-  existing : PropDescriptor,
-  prop_display : String,
-  is_accessor : Bool,
-  is_data : Bool,
-  has_value : Bool,
-  new_writable : Bool?,
-  new_enumerable : Bool?,
-  new_configurable : Bool?,
-  new_getter : Value?,
-  new_setter : Value?,
-  get_old_value : () -> Value,
-  get_new_value : () -> Value?,
-) -> Unit raise Error {
-  if existing.configurable {
-    return
-  }
-  let existing_is_accessor = existing.getter is Some(_) ||
-    existing.setter is Some(_)
-  // Cannot change between accessor and data
-  if existing_is_accessor && is_data {
-    raise @errors.TypeError(
-      message="Cannot redefine non-configurable property: \{prop_display}",
-    )
-  }
-  if !existing_is_accessor && is_accessor {
-    raise @errors.TypeError(
-      message="Cannot redefine non-configurable property: \{prop_display}",
-    )
-  }
-  let enumerable_ok = match new_enumerable {
-    Some(e) => e == existing.enumerable
-    None => true
-  }
-  let configurable_ok = match new_configurable {
-    Some(c) => c == existing.configurable
-    None => true
-  }
-  // Non-configurable accessor: validate getter/setter identity
-  if existing_is_accessor && is_accessor {
-    let getter_ok = match new_getter {
-      Some(g) =>
-        match existing.getter {
-          Some(eg) => strict_equal_val(g, eg)
-          None => g is Undefined
-        }
-      None => true
-    }
-    let setter_ok = match new_setter {
-      Some(s) =>
-        match existing.setter {
-          Some(es) => strict_equal_val(s, es)
-          None => s is Undefined
-        }
-      None => true
-    }
-    if !(enumerable_ok && configurable_ok && getter_ok && setter_ok) {
-      raise @errors.TypeError(
-        message="Cannot redefine non-configurable property: \{prop_display}",
-      )
-    }
-  }
-  // Non-configurable data: validate writable/value
-  if !existing_is_accessor && !is_accessor {
-    let writable_ok = match new_writable {
-      Some(w) => if !existing.writable && w { false } else { true }
-      None => true
-    }
-    let value_ok = if !existing.writable && has_value {
-      match get_new_value() {
-        Some(v) => strict_equal_val(v, get_old_value())
-        None => true
-      }
-    } else {
-      true
-    }
-    if !(writable_ok && enumerable_ok && configurable_ok && value_ok) {
-      raise @errors.TypeError(
-        message="Cannot redefine non-configurable property: \{prop_display}",
-      )
-    }
-  }
-  // Generic descriptor (no accessor/data fields)
-  if !is_accessor && !is_data {
-    if !(enumerable_ok && configurable_ok) {
-      raise @errors.TypeError(
-        message="Cannot redefine non-configurable property: \{prop_display}",
-      )
-    }
-  }
+/// Build a data property descriptor object {value, writable, enumerable, configurable}.
+pub fn make_data_desc_obj(
+  value : Value,
+  writable : Bool,
+  enumerable : Bool,
+  configurable : Bool,
+) -> Value {
+  Value::Object({
+    properties: {
+      "value": value,
+      "writable": Value::Bool(writable),
+      "enumerable": Value::Bool(enumerable),
+      "configurable": Value::Bool(configurable),
+    },
+    symbol_properties: {},
+    prototype: @runtime.get_obj_proto(),
+    callable: None,
+    class_name: "Object",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
 }
+
+///|
+/// Build an accessor property descriptor object {get, set, enumerable, configurable}.
+pub fn make_accessor_desc_obj(
+  getter_val : Value,
+  setter_val : Value,
+  enumerable : Bool,
+  configurable : Bool,
+) -> Value {
+  Value::Object({
+    properties: {
+      "get": getter_val,
+      "set": setter_val,
+      "enumerable": Value::Bool(enumerable),
+      "configurable": Value::Bool(configurable),
+    },
+    symbol_properties: {},
+    prototype: @runtime.get_obj_proto(),
+    callable: None,
+    class_name: "Object",
+    descriptors: {},
+    symbol_descriptors: {},
+    extensible: true,
+  })
+}
+
