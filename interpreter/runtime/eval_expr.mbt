@@ -1127,28 +1127,11 @@ fn Interpreter::eval_binary(
       let right = self.eval_expr(ctx, right_expr, env)
       match right {
         Proxy(proxy_data) => {
-          let trap = get_proxy_trap(proxy_data, "has", self)
-          match trap {
-            Some(trap_fn) => {
-              let target = get_proxy_target(proxy_data)
-              let handler = get_proxy_handler(proxy_data)
-              let prop_key = match left {
-                Symbol(_) => left
-                _ => String_(left.to_string())
-              }
-              let result = self.call_value(
-                trap_fn,
-                handler,
-                [target, prop_key],
-                loc,
-              )
-              Bool(is_truthy(result))
-            }
-            None => {
-              let target = get_proxy_target(proxy_data)
-              eval_binary_op(In, left, target, loc)
-            }
+          let key = match left {
+            Symbol(_) => left.to_string()
+            _ => left.to_string()
           }
+          Bool(proxy_has_property(self, proxy_data, key))
         }
         _ => eval_binary_op(In, left, right, loc)
       }
@@ -1600,48 +1583,13 @@ fn Interpreter::eval_unary(
           let obj = self.eval_expr(ctx, obj_expr, env)
           match obj {
             Proxy(proxy_data) => {
-              let trap = get_proxy_trap(proxy_data, "deleteProperty", self)
-              match trap {
-                Some(trap_fn) => {
-                  let target = get_proxy_target(proxy_data)
-                  let handler = get_proxy_handler(proxy_data)
-                  let result = self.call_value(
-                    trap_fn,
-                    handler,
-                    [target, String_(prop)],
-                    loc,
-                  )
-                  if !is_truthy(result) && ctx.strict {
-                    raise @errors.TypeError(
-                      message="'deleteProperty' on proxy: trap returned falsish for property '\{prop}'",
-                    )
-                  }
-                  Bool(is_truthy(result))
-                }
-                None => {
-                  let target = get_proxy_target(proxy_data)
-                  match target {
-                    Object(data) => {
-                      match data.descriptors.get(prop) {
-                        Some(desc) =>
-                          if !desc.configurable {
-                            if ctx.strict {
-                              raise @errors.TypeError(
-                                message="Cannot delete property '\{prop}'",
-                              )
-                            }
-                            return Bool(false)
-                          }
-                        None => ()
-                      }
-                      let _ = data.properties.remove(prop)
-                      let _ = data.descriptors.remove(prop)
-                      Bool(true)
-                    }
-                    _ => Bool(true)
-                  }
-                }
+              let result = proxy_delete_property(self, proxy_data, prop)
+              if !result && ctx.strict {
+                raise @errors.TypeError(
+                  message="Cannot delete property '\{prop}'",
+                )
               }
+              Bool(result)
             }
             Object(data) => {
               match data.descriptors.get(prop) {
@@ -1668,53 +1616,14 @@ fn Interpreter::eval_unary(
           let key = self.eval_expr(ctx, key_expr, env)
           match obj {
             Proxy(proxy_data) => {
-              let trap = get_proxy_trap(proxy_data, "deleteProperty", self)
-              match trap {
-                Some(trap_fn) => {
-                  let target = get_proxy_target(proxy_data)
-                  let handler = get_proxy_handler(proxy_data)
-                  let prop_key = match key {
-                    Symbol(_) => key
-                    _ => String_(to_js_string(key))
-                  }
-                  let result = self.call_value(
-                    trap_fn,
-                    handler,
-                    [target, prop_key],
-                    loc,
-                  )
-                  if !is_truthy(result) && ctx.strict {
-                    raise @errors.TypeError(
-                      message="'deleteProperty' on proxy: trap returned falsish",
-                    )
-                  }
-                  Bool(is_truthy(result))
-                }
-                None => {
-                  let target = get_proxy_target(proxy_data)
-                  match target {
-                    Object(data) => {
-                      let k = to_js_string(key)
-                      match data.descriptors.get(k) {
-                        Some(desc) =>
-                          if !desc.configurable {
-                            if ctx.strict {
-                              raise @errors.TypeError(
-                                message="Cannot delete property '\{k}'",
-                              )
-                            }
-                            return Bool(false)
-                          }
-                        None => ()
-                      }
-                      let _ = data.properties.remove(k)
-                      let _ = data.descriptors.remove(k)
-                      Bool(true)
-                    }
-                    _ => Bool(true)
-                  }
-                }
+              let k = to_js_string(key)
+              let result = proxy_delete_property(self, proxy_data, k)
+              if !result && ctx.strict {
+                raise @errors.TypeError(
+                  message="Cannot delete property '\{k}'",
+                )
               }
+              Bool(result)
             }
             Object(data) =>
               match key {

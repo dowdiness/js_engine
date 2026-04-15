@@ -6,20 +6,7 @@ pub fn Interpreter::get_property(
   loc : @token.Loc,
 ) -> Value raise Error {
   match obj {
-    Proxy(proxy_data) => {
-      let trap = get_proxy_trap(proxy_data, "get", self)
-      match trap {
-        Some(trap_fn) => {
-          let target = get_proxy_target(proxy_data)
-          let handler = get_proxy_handler(proxy_data)
-          self.call_value(trap_fn, handler, [target, String_(prop), obj], loc)
-        }
-        None => {
-          let target = get_proxy_target(proxy_data)
-          self.get_property(target, prop, loc)
-        }
-      }
-    }
+    Proxy(proxy_data) => proxy_get(self, proxy_data, prop, obj)
     Object(data) => self.get_property_of_object(obj, data, prop, loc)
     Array(data) =>
       if prop == "length" {
@@ -561,21 +548,28 @@ pub fn Interpreter::get_computed_property(
   // Handle Proxy objects first
   match obj {
     Proxy(proxy_data) => {
-      let trap = get_proxy_trap(proxy_data, "get", self)
-      match trap {
-        Some(trap_fn) => {
-          let target = get_proxy_target(proxy_data)
-          let handler = get_proxy_handler(proxy_data)
-          let prop_key = match key {
-            Symbol(_) => key
-            _ => String_(to_js_string(key))
+      // For string keys, use proxy_get with invariant checks
+      // For symbol keys, call the trap directly (invariant checks TODO)
+      let key_str = match key {
+        Symbol(_) => ""
+        _ => to_js_string(key)
+      }
+      match key {
+        Symbol(_) => {
+          let trap = get_proxy_trap(proxy_data, "get", self)
+          match trap {
+            Some(trap_fn) => {
+              let target = get_proxy_target(proxy_data)
+              let handler = get_proxy_handler(proxy_data)
+              return self.call_value(trap_fn, handler, [target, key, obj], loc)
+            }
+            None => {
+              let target = get_proxy_target(proxy_data)
+              return self.get_computed_property(target, key, loc)
+            }
           }
-          return self.call_value(trap_fn, handler, [target, prop_key, obj], loc)
         }
-        None => {
-          let target = get_proxy_target(proxy_data)
-          return self.get_computed_property(target, key, loc)
-        }
+        _ => return proxy_get(self, proxy_data, key_str, obj)
       }
     }
     _ => ()
@@ -1286,33 +1280,8 @@ pub fn Interpreter::set_property(
   strict? : Bool = false,
 ) -> Value raise Error {
   match obj {
-    Proxy(proxy_data) => {
-      let trap = get_proxy_trap(proxy_data, "set", self)
-      match trap {
-        Some(trap_fn) => {
-          let target = get_proxy_target(proxy_data)
-          let handler = get_proxy_handler(proxy_data)
-          let result = self.call_value(
-            trap_fn,
-            handler,
-            [target, String_(prop), value, obj],
-            loc,
-          )
-          if !is_truthy(result) {
-            if strict {
-              raise @errors.TypeError(
-                message="'set' on proxy: trap returned falsish for property '\{prop}'",
-              )
-            }
-          }
-          value
-        }
-        None => {
-          let target = get_proxy_target(proxy_data)
-          self.set_property(target, prop, value, loc, strict~)
-        }
-      }
-    }
+    Proxy(proxy_data) =>
+      proxy_set(self, proxy_data, prop, value, obj, strict)
     Object(data) => {
       // TypedArray indexed write via dot notation (numeric string prop)
       if is_typedarray_class(data.class_name) {

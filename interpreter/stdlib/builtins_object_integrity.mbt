@@ -130,9 +130,16 @@ fn make_seal_func() -> Value {
 
 ///|
 fn make_prevent_extensions_func() -> Value {
-  @runtime.make_static_func_with_length("preventExtensions", 1, fn(args) {
+  @runtime.make_interp_static_func_with_length("preventExtensions", 1, fn(
+    interp,
+    args,
+  ) raise {
     let obj = if args.length() > 0 { args[0] } else { Undefined }
     match obj {
+      Value::Proxy(proxy_data) => {
+        let _ = @runtime.proxy_prevent_extensions(interp, proxy_data)
+        obj
+      }
       Object(data) => {
         data.extensible = false
         obj

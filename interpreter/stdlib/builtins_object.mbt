@@ -1035,10 +1035,10 @@ pub fn setup_object_builtins(
             _ => target
           }
         }),
-        "getPrototypeOf": @runtime.make_static_func_with_length(
+        "getPrototypeOf": @runtime.make_interp_static_func_with_length(
           "getPrototypeOf",
           1,
-          fn(args) raise {
+          fn(interp, args) raise {
             let obj = if args.length() > 0 { args[0] } else { Undefined }
             fn get_ctor_proto(name : String) -> Value {
               let ctor = env.get(name) catch { _ => return Null }
@@ -1066,17 +1066,7 @@ pub fn setup_object_builtins(
               Set(_) => get_ctor_proto("Set")
               Promise(_) => get_ctor_proto("Promise")
               Value::Proxy(proxy_data) =>
-                match proxy_data.target {
-                  Some(target) =>
-                    match target {
-                      Object(data) => data.prototype
-                      _ => Null
-                    }
-                  None =>
-                    raise @errors.TypeError(
-                      message="Cannot perform 'getPrototypeOf' on a proxy that has been revoked",
-                    )
-                }
+                @runtime.proxy_get_prototype_of(interp, proxy_data)
             }
           },
         ),
@@ -1095,15 +1085,13 @@ pub fn setup_object_builtins(
         "fromEntries": make_from_entries_func(),
         "groupBy": make_group_by_func(),
         "hasOwn": make_has_own_func(),
-        "setPrototypeOf": @runtime.make_static_func_with_length(
+        "setPrototypeOf": @runtime.make_interp_static_func_with_length(
           "setPrototypeOf",
           2,
-          fn(args) raise {
+          fn(interp, args) raise {
             // Object.setPrototypeOf(obj, prototype)
-            // Sets the prototype of the specified object
             let obj = if args.length() > 0 { args[0] } else { Undefined }
             let proto = if args.length() > 1 { args[1] } else { Null }
-            // Validate proto is Object or null
             match proto {
               Object(_) | Null => ()
               _ =>
@@ -1111,10 +1099,18 @@ pub fn setup_object_builtins(
                   message="Object prototype may only be an Object or null",
                 )
             }
-            // Set the prototype if obj is an Object (return primitives unchanged)
             match obj {
+              Value::Proxy(proxy_data) => {
+                let success = @runtime.proxy_set_prototype_of(
+                  interp, proxy_data, proto,
+                )
+                if !success {
+                  raise @errors.TypeError(
+                    message="Cannot set prototype of non-extensible object",
+                  )
+                }
+              }
               Object(data) => {
-                // Check if object is extensible (frozen/sealed objects can't change prototype)
                 if !data.extensible {
                   raise @errors.TypeError(
                     message="Cannot set prototype of non-extensible object",
@@ -1122,7 +1118,6 @@ pub fn setup_object_builtins(
                 }
                 data.prototype = proto
               }
-              // Per ECMAScript spec, primitives are returned unchanged
               _ => ()
             }
             obj

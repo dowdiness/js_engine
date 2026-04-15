@@ -365,51 +365,36 @@ fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
   })
 
   // Reflect.deleteProperty(target, propertyKey)
-  reflect_props["deleteProperty"] = Value::Object({
-    properties: {
-      "name": Value::String_("deleteProperty"),
-      "length": Value::Number(2.0),
-    },
-    symbol_properties: {},
-    prototype: @runtime.get_func_proto(),
-    callable: Some(
-      NativeCallable("deleteProperty", fn(args) raise {
-        if args.length() < 2 {
+  reflect_props["deleteProperty"] = @runtime.make_interp_method_func(
+    "deleteProperty",
+    2,
+    fn(interp, _this_val, args) raise {
+      if args.length() < 2 {
+        raise @errors.TypeError(
+          message="Reflect.deleteProperty requires 2 arguments",
+        )
+      }
+      let target = args[0]
+      let prop = args[1].to_string()
+      match target {
+        Value::Proxy(proxy_data) =>
+          Bool(@runtime.proxy_delete_property(interp, proxy_data, prop))
+        Object(data) => {
+          match data.descriptors.get(prop) {
+            Some(desc) => if !desc.configurable { return Value::Bool(false) }
+            None => ()
+          }
+          let _ = data.properties.remove(prop)
+          let _ = data.descriptors.remove(prop)
+          Value::Bool(true)
+        }
+        _ =>
           raise @errors.TypeError(
-            message="Reflect.deleteProperty requires 2 arguments",
+            message="Reflect.deleteProperty called on non-object",
           )
-        }
-        let target = args[0]
-        let prop = args[1].to_string()
-        let data : ObjectData = match target {
-          Object(data) => data
-          Proxy(_) =>
-            match unwrap_proxy_target(target) {
-              Some(data) => data
-              None =>
-                raise @errors.TypeError(
-                  message="Reflect.deleteProperty called on non-object",
-                )
-            }
-          _ =>
-            raise @errors.TypeError(
-              message="Reflect.deleteProperty called on non-object",
-            )
-        }
-        match data.descriptors.get(prop) {
-          Some(desc) => if !desc.configurable { return Value::Bool(false) }
-          None => ()
-        }
-        let _ = data.properties.remove(prop)
-        let _ = data.descriptors.remove(prop)
-        Value::Bool(true)
-      }),
-    ),
-    class_name: "Function",
-    descriptors: { "name": nf_desc, "length": nf_desc },
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      }
+    },
+  )
 
   // Reflect.get(target, propertyKey, receiver?)
   reflect_props["get"] = @runtime.make_interp_method_func("get", 2, fn(
@@ -606,123 +591,45 @@ fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
   })
 
   // Reflect.getPrototypeOf(target)
-  reflect_props["getPrototypeOf"] = Value::Object({
-    properties: {
-      "name": Value::String_("getPrototypeOf"),
-      "length": Value::Number(1.0),
-    },
-    symbol_properties: {},
-    prototype: @runtime.get_func_proto(),
-    callable: Some(
-      NativeCallable("getPrototypeOf", fn(args) raise {
-        if args.length() < 1 {
+  reflect_props["getPrototypeOf"] = @runtime.make_interp_method_func(
+    "getPrototypeOf",
+    1,
+    fn(interp, _this_val, args) raise {
+      if args.length() < 1 {
+        raise @errors.TypeError(
+          message="Reflect.getPrototypeOf requires 1 argument",
+        )
+      }
+      match args[0] {
+        Object(data) => data.prototype
+        Value::Proxy(proxy_data) =>
+          @runtime.proxy_get_prototype_of(interp, proxy_data)
+        _ =>
           raise @errors.TypeError(
-            message="Reflect.getPrototypeOf requires 1 argument",
+            message="Reflect.getPrototypeOf called on non-object",
           )
-        }
-        match args[0] {
-          Object(data) => data.prototype
-          Proxy(_) =>
-            match unwrap_proxy_target(args[0]) {
-              Some(data) => data.prototype
-              None => Null
-            }
-          _ =>
-            raise @errors.TypeError(
-              message="Reflect.getPrototypeOf called on non-object",
-            )
-        }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: { "name": nf_desc, "length": nf_desc },
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      }
+    },
+  )
 
   // Reflect.has(target, propertyKey)
-  reflect_props["has"] = Value::Object({
-    properties: { "name": Value::String_("has"), "length": Value::Number(2.0) },
-    symbol_properties: {},
-    prototype: @runtime.get_func_proto(),
-    callable: Some(
-      NativeCallable("has", fn(args) raise {
-        if args.length() < 2 {
-          raise @errors.TypeError(message="Reflect.has requires 2 arguments")
-        }
-        let target = args[0]
-        let prop = args[1].to_string()
-        match target {
-          Object(data) => {
-            if data.properties.contains(prop) || data.descriptors.contains(prop) {
-              return Value::Bool(true)
-            }
-            // Walk prototype chain
-            let mut current = data.prototype
-            while true {
-              match current {
-                Object(proto_data) =>
-                  if proto_data.properties.contains(prop) ||
-                    proto_data.descriptors.contains(prop) {
-                    return Value::Bool(true)
-                  } else {
-                    current = proto_data.prototype
-                  }
-                _ => break
-              }
-            }
-            Value::Bool(false)
-          }
-          Value::Array(data) => {
-            let key = prop
-            // Check numeric index
-            try {
-              let idx = @string.parse_int(key)
-              if idx >= 0 && idx < data.elements.length() {
-                return Value::Bool(true)
-              }
-            } catch {
-              _ => ()
-            }
-            if key == "length" {
-              return Value::Bool(true)
-            }
-            Value::Bool(false)
-          }
-          Proxy(_) =>
-            // Unwrap proxy and check the target
-            match unwrap_proxy_target(target) {
-              Some(data) => {
-                if data.properties.contains(prop) ||
-                  data.descriptors.contains(prop) {
-                  return Value::Bool(true)
-                }
-                let mut current = data.prototype
-                while true {
-                  match current {
-                    Object(proto_data) =>
-                      if proto_data.properties.contains(prop) ||
-                        proto_data.descriptors.contains(prop) {
-                        return Value::Bool(true)
-                      } else {
-                        current = proto_data.prototype
-                      }
-                    _ => break
-                  }
-                }
-                Value::Bool(false)
-              }
-              None => Value::Bool(false)
-            }
-          _ =>
-            raise @errors.TypeError(message="Reflect.has called on non-object")
-        }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: { "name": nf_desc, "length": nf_desc },
-    symbol_descriptors: {},
-    extensible: true,
+  reflect_props["has"] = @runtime.make_interp_method_func("has", 2, fn(
+    interp,
+    _this_val,
+    args,
+  ) raise {
+    if args.length() < 2 {
+      raise @errors.TypeError(message="Reflect.has requires 2 arguments")
+    }
+    let target = args[0]
+    let prop = args[1].to_string()
+    match target {
+      Value::Proxy(proxy_data) =>
+        Bool(@runtime.proxy_has_property(interp, proxy_data, prop))
+      Object(_) | Array(_) => Bool(interp.has_property(target, prop))
+      _ =>
+        raise @errors.TypeError(message="Reflect.has called on non-object")
+    }
   })
 
   // Reflect.isExtensible(target)
@@ -772,45 +679,29 @@ fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
   })
 
   // Reflect.preventExtensions(target)
-  reflect_props["preventExtensions"] = Value::Object({
-    properties: {
-      "name": Value::String_("preventExtensions"),
-      "length": Value::Number(1.0),
-    },
-    symbol_properties: {},
-    prototype: @runtime.get_func_proto(),
-    callable: Some(
-      NativeCallable("preventExtensions", fn(args) raise {
-        if args.length() < 1 {
+  reflect_props["preventExtensions"] = @runtime.make_interp_method_func(
+    "preventExtensions",
+    1,
+    fn(interp, _this_val, args) raise {
+      if args.length() < 1 {
+        raise @errors.TypeError(
+          message="Reflect.preventExtensions requires 1 argument",
+        )
+      }
+      match args[0] {
+        Object(data) => {
+          data.extensible = false
+          Value::Bool(true)
+        }
+        Value::Proxy(proxy_data) =>
+          Bool(@runtime.proxy_prevent_extensions(interp, proxy_data))
+        _ =>
           raise @errors.TypeError(
-            message="Reflect.preventExtensions requires 1 argument",
+            message="Reflect.preventExtensions called on non-object",
           )
-        }
-        match args[0] {
-          Object(data) => {
-            data.extensible = false
-            Value::Bool(true)
-          }
-          Proxy(_) =>
-            match unwrap_proxy_target(args[0]) {
-              Some(data) => {
-                data.extensible = false
-                Value::Bool(true)
-              }
-              None => Value::Bool(false)
-            }
-          _ =>
-            raise @errors.TypeError(
-              message="Reflect.preventExtensions called on non-object",
-            )
-        }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: { "name": nf_desc, "length": nf_desc },
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      }
+    },
+  )
 
   // Reflect.set(target, propertyKey, value, receiver?)
   reflect_props["set"] = @runtime.make_interp_method_func("set", 3, fn(
@@ -866,58 +757,42 @@ fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
   })
 
   // Reflect.setPrototypeOf(target, proto)
-  reflect_props["setPrototypeOf"] = Value::Object({
-    properties: {
-      "name": Value::String_("setPrototypeOf"),
-      "length": Value::Number(2.0),
-    },
-    symbol_properties: {},
-    prototype: @runtime.get_func_proto(),
-    callable: Some(
-      NativeCallable("setPrototypeOf", fn(args) raise {
-        if args.length() < 2 {
+  reflect_props["setPrototypeOf"] = @runtime.make_interp_method_func(
+    "setPrototypeOf",
+    2,
+    fn(interp, _this_val, args) raise {
+      if args.length() < 2 {
+        raise @errors.TypeError(
+          message="Reflect.setPrototypeOf requires 2 arguments",
+        )
+      }
+      let target = args[0]
+      let proto = args[1]
+      match proto {
+        Object(_) | Null => ()
+        _ =>
           raise @errors.TypeError(
-            message="Reflect.setPrototypeOf requires 2 arguments",
+            message="Object prototype may only be an Object or null",
           )
-        }
-        let target = args[0]
-        let proto = args[1]
-        let data : ObjectData = match target {
-          Object(data) => data
-          Proxy(_) =>
-            match unwrap_proxy_target(target) {
-              Some(data) => data
-              None =>
-                raise @errors.TypeError(
-                  message="Reflect.setPrototypeOf called on non-object",
-                )
-            }
-          _ =>
-            raise @errors.TypeError(
-              message="Reflect.setPrototypeOf called on non-object",
-            )
-        }
-        match proto {
-          Object(_) | Null => {
-            // Non-extensible objects cannot change prototype
-            if !data.extensible && !strict_equal_val(proto, data.prototype) {
-              return Value::Bool(false)
-            }
-            data.prototype = proto
-            Value::Bool(true)
+      }
+      match target {
+        Value::Proxy(proxy_data) =>
+          Bool(@runtime.proxy_set_prototype_of(interp, proxy_data, proto))
+        Object(data) => {
+          if !data.extensible &&
+            !@runtime.strict_equal(proto, data.prototype) {
+            return Value::Bool(false)
           }
-          _ =>
-            raise @errors.TypeError(
-              message="Object prototype may only be an Object or null",
-            )
+          data.prototype = proto
+          Value::Bool(true)
         }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: { "name": nf_desc, "length": nf_desc },
-    symbol_descriptors: {},
-    extensible: true,
-  })
+        _ =>
+          raise @errors.TypeError(
+            message="Reflect.setPrototypeOf called on non-object",
+          )
+      }
+    },
+  )
 
   // Create the Reflect object
   let tostringtag_sym = @runtime.get_tostringtag_symbol()
