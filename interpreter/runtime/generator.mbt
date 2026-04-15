@@ -651,7 +651,7 @@ fn create_generator_instance(
     VarBinding,
   )
   // Hoist declarations eagerly too
-  interp.hoist_declarations(body, func_env)
+  interp.hoist_declarations(body, func_env, strict=gen_strict)
   let gen_id = interp.gen_id_counter.val
   interp.gen_id_counter.val = gen_id + 1
   let gen_obj : GeneratorObject = {

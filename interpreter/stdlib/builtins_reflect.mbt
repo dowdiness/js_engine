@@ -960,7 +960,7 @@ fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
     }
     let loc = @token.Loc::default()
     try {
-      let _ = interp.set_property(target, prop, value, loc)
+      let _ = interp.set_property(target, prop, value, loc, strict=true)
       Value::Bool(true)
     } catch {
       @errors.TypeError(_) => Value::Bool(false)
