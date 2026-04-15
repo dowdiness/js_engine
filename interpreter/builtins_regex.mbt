@@ -310,22 +310,31 @@ fn RegexParser::parse_escape(self : RegexParser) -> RegexNode raise Error {
     'k' =>
       if self.pos < self.pattern.length() && self.pattern[self.pos] == '<' {
         // Named backreference \k<name>
+        let saved_pos = self.pos
         self.pos += 1 // skip '<'
         let name_start = self.pos
         while self.pos < self.pattern.length() && self.pattern[self.pos] != '>' {
           self.pos += 1
         }
         if self.pos >= self.pattern.length() {
-          raise @errors.SyntaxError(
-            message="Invalid regex: unterminated named backreference",
-          )
+          // No closing '>'
+          if self.unicode {
+            raise @errors.SyntaxError(
+              message="Invalid regex: unterminated named backreference",
+            )
+          } else {
+            // Annex B: backtrack and treat \k as literal 'k'
+            self.pos = saved_pos
+            Literal('k')
+          }
+        } else {
+          let name_buf = StringBuilder::new()
+          for i = name_start; i < self.pos; i = i + 1 {
+            name_buf.write_char(self.pattern[i])
+          }
+          self.pos += 1 // skip '>'
+          NamedBackreference(name_buf.to_string())
         }
-        let name_buf = StringBuilder::new()
-        for i = name_start; i < self.pos; i = i + 1 {
-          name_buf.write_char(self.pattern[i])
-        }
-        self.pos += 1 // skip '>'
-        NamedBackreference(name_buf.to_string())
       } else if self.unicode {
         raise @errors.SyntaxError(
           message="Invalid regex: invalid escape in unicode mode",
