@@ -112,14 +112,24 @@ Same file and pattern as `withResolvers`. After implementing: remove `"promise-t
 
 ---
 
-## Known Issues (discovered 2026-04-12, PR #45)
+## ~~Known Issues Quick Fixes~~ — DONE (2026-04-14, PR #46)
+
+**Branch**: `claude/known-issues-quick-fixes`
+**Result**: Fixed 3 known issues from PR #45 compliance audit
+
+### ~~Issue #4 — Flag ordering not normalized~~ ✓
+### ~~Issue #9 — GeneratorFunction fallback returns empty function~~ ✓
+### ~~Issue #12 — `Function.prototype.toString` doesn't distinguish async~~ ✓
+
+---
+
+## Known Issues (remaining, discovered 2026-04-12, PR #45)
 
 ### RegExp pre-existing gaps (not dotall-specific)
 
 1. **Supplementary plane `.` matching** — `/^.$/.test("\u{10300}")` returns `true` without `u` flag (should be `false`). `.` without `u` should not match surrogate pairs as a single character.
 2. **`dotAll` getter on plain objects** — `Object.getOwnPropertyDescriptor(RegExp.prototype, 'dotAll').get.call({})` does not throw TypeError (should throw). Same issue affects other flag getters.
 3. **`flags` getter doesn't coerce from plain objects** — `Object.getOwnPropertyDescriptor(RegExp.prototype, 'flags').get.call({dotAll: true})` should include `"s"` but doesn't. The getter only reads internal slots, not properties.
-4. **Flag ordering not normalized** — `new RegExp("x", "smig").flags` returns `"smig"` instead of `"gims"`. Spec requires alphabetical order: `dgimsuy`.
 
 ### Dynamic constructor shared gaps (Function, GeneratorFunction, AsyncFunction)
 
@@ -127,13 +137,11 @@ Same file and pattern as `withResolvers`. After implementing: remove `"promise-t
 6. **Body coerced before parameters** — `CreateDynamicFunction` requires left-to-right coercion (`p1`, `p2`, ..., `body`). Our impl converts body first, reversing observable side-effect ordering.
 7. **Constructor `[[Prototype]]` is `Function.prototype`** — Spec says `AsyncFunction.__proto__ === Function` (the constructor), not `Function.prototype`. Same for `GeneratorFunction`. Affects static property inheritance.
 8. **`js_error_to_value` creates null-prototype errors** — When `Promise.try` rejects with an engine error, the rejection value lacks proper prototype chain (`instanceof TypeError` fails).
-9. **GeneratorFunction fallback returns empty function** — Same silent-fallback bug we fixed for AsyncFunction. `GeneratorFunction` constructor in `generator.mbt:296` should throw `SyntaxError` instead.
 
 ### Async function edge cases
 
 10. **Sloppy-mode `this` coercion** — Async functions called without a receiver get `undefined` as `this` instead of `globalThis`. This is a general interpreter issue, not async-specific.
 11. **Mapped arguments not implemented** — `make_arguments_object` in `construct.mbt` creates a plain copy, not a spec-compliant mapped arguments object. Affects both sync and async functions in sloppy mode.
-12. **`Function.prototype.toString` doesn't distinguish async** — All `InterpreterCallable` values produce `"function name() { [native code] }"`. Async functions should produce `"async function name() { [native code] }"`.
 
 ---
 
