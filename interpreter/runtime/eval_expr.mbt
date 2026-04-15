@@ -935,6 +935,11 @@ fn Interpreter::eval_expr(
                 ),
               )
           }
+        Null =>
+          // `extends null`: super() attempts Construct(null, ...) → TypeError
+          raise @errors.TypeError(
+            message=format_loc_context("null is not a constructor", loc),
+          )
         _ =>
           raise @errors.ReferenceError(
             message=format_loc_context(

@@ -1090,7 +1090,14 @@ pub fn Interpreter::construct_value(
                           }
                           _ => ()
                         }
-                      _ => ()
+                      _ => {
+                        // Non-Object super (e.g. `extends null`): attempt
+                        // Construct(sc, args) — construct_value throws TypeError
+                        // for non-constructors like null, matching spec behaviour.
+                        let _ = self.construct_value(
+                          sc, args, @token.Loc::default(),
+                        )
+                      }
                     }
                   None => ()
                 }

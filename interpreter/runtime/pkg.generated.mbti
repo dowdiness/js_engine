@@ -15,6 +15,8 @@ pub let boolean_prototype_ref : @ref.Ref[Value?]
 
 pub fn call_callable_direct(Value, Value, Array[Value], interp? : Interpreter?) -> Value raise
 
+pub fn clear_array_length_override(ArrayData) -> Unit
+
 pub fn create_data_property_or_throw(Interpreter, Value, Int, Value) -> Unit raise
 
 pub fn create_resolving_functions(Interpreter, PromiseData) -> (Value, Value)
@@ -34,6 +36,8 @@ pub let function_prototype_ref : @ref.Ref[Value?]
 pub fn get_array_iterator_override(ArrayData) -> (Value?, Value?)
 
 pub fn get_array_iterator_proto() -> Value
+
+pub fn get_array_length_override(ArrayData) -> Int64?
 
 pub fn get_array_like_element(Value, Int) -> Value
 
@@ -75,7 +79,7 @@ pub fn get_proxy_handler(ProxyData) -> Value raise
 
 pub fn get_proxy_target(ProxyData) -> Value raise
 
-pub fn get_proxy_trap(ProxyData, String) -> Value? raise
+pub fn get_proxy_trap(ProxyData, String, Interpreter) -> Value? raise
 
 pub fn get_replace_symbol() -> SymbolData
 
@@ -173,6 +177,8 @@ pub fn reject_promise(Interpreter, PromiseData, Value) -> Unit
 
 pub fn set_array_iterator_override(ArrayData, Value?, Value?) -> Unit
 
+pub fn set_array_length_override(ArrayData, Int64) -> Unit
+
 pub fn set_array_like_element(Value, Int, Value) -> Unit
 
 pub fn set_array_like_length(Value, Int) -> Unit
@@ -216,6 +222,8 @@ pub fn to_primitive_default(Value, ObjectData, interp? : Interpreter?) -> Value 
 pub fn type_of(Value) -> String
 
 pub fn utf16_length(String) -> Int
+
+pub fn validate_non_configurable(PropDescriptor, String, Bool, Bool, Bool, Bool?, Bool?, Bool?, Value?, Value?, () -> Value, () -> Value?) -> Unit raise
 
 pub let well_known_async_iterator_sym : @ref.Ref[SymbolData?]
 
@@ -294,7 +302,7 @@ pub(all) struct ClassConstructorData {
   name : String
   proto : Value
   super_ctor : Value?
-  ctor_fn : (Array[String], Array[@ast.Stmt])?
+  ctor_fn : (Array[@ast.Param], String?, Array[@ast.Stmt])?
   closure : Environment
   super_proto : Value
   instance_fields : Array[ClassFieldInit]
@@ -358,6 +366,7 @@ pub(all) struct GeneratorObject {
   id : Int
   mut state : GenState
   body : Array[@ast.Stmt]
+  strict : Bool
   params : Array[String]
   params_ext : Array[@ast.Param]?
   rest_param : String?
@@ -535,6 +544,7 @@ pub(all) struct StdlibHooks {
   make_regexp_object : (String, String) -> Value raise
   typedarray_get_index : (ObjectData, Int) -> Value
   typedarray_set_index : (ObjectData, Int, Double) -> Unit
+  create_realm : () -> Interpreter
 }
 
 pub(all) struct SymbolData {

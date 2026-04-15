@@ -35,9 +35,11 @@ fn Interpreter::create_class(
       let super_val = self.eval_expr(ctx, expr, env)
       match super_val {
         Null =>
-          // `class C extends null {}` — legal per spec; no super constructor,
-          // prototype chain ends at null.
-          (None, Null)
+          // `class C extends null {}` — legal per spec; the class is derived
+          // (ConstructorKind "derived") so super() is required, but calling it
+          // tries Construct(null, ...) which throws TypeError.  Represent this
+          // as Some(Null) so construct_value follows the derived-class path.
+          (Some(Null), Null)
         Object(super_data) =>
           match super_data.properties.get("prototype") {
             Some(sp) => (Some(super_val), sp)
@@ -360,9 +362,13 @@ fn Interpreter::create_class(
   })
   // Add constructor back-reference to prototype
   // (will be set after class object is created)
+  // The class function's [[Prototype]] is always the super class constructor
+  // so that static inheritance works.  For `extends null` (super_ctor = Some(Null))
+  // and for base classes (None), the class function inherits from Function.prototype.
   let class_proto = match super_ctor {
+    Some(Null) | None =>
+      self.global.get("[[FunctionPrototype]]") catch { _ => Null }
     Some(super_class) => super_class
-    None => self.global.get("[[FunctionPrototype]]") catch { _ => Null }
   }
   // Create the class constructor function
   let class_obj = Object({
