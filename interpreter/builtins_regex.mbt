@@ -56,15 +56,20 @@ fn RegexParser::new(pattern : String, unicode? : Bool = false) -> RegexParser {
 /// matching the text "k<name>" (the backslash was already consumed).
 fn desugar_named_backrefs_to_literals(node : RegexNode) -> RegexNode {
   match node {
-    NamedBackreference(name) => {
-      let chars : Array[RegexNode] = [Literal('k'), Literal('<')]
-      let name_chars = name.to_array()
-      for c in name_chars {
-        chars.push(Literal(c))
+    NamedBackreference(name) =>
+      if name.length() == 0 {
+        // Bare \k (no <) — just literal 'k'
+        Literal('k')
+      } else {
+        // \k<name> — literal "k<name>"
+        let chars : Array[RegexNode] = [Literal('k'), Literal('<')]
+        let name_chars = name.to_array()
+        for c in name_chars {
+          chars.push(Literal(c))
+        }
+        chars.push(Literal('>'))
+        Sequence(chars)
       }
-      chars.push(Literal('>'))
-      Sequence(chars)
-    }
     Group(children, idx, name) => {
       let resolved = children.map(child => {
         desugar_named_backrefs_to_literals(child)
@@ -112,14 +117,21 @@ fn resolve_named_backreferences(
 ) -> RegexNode raise Error {
   match node {
     NamedBackreference(name) =>
-      match group_names.get(name) {
-        Some(idx) => Backreference(idx)
-        None =>
-          raise @errors.SyntaxError(
-            message="Invalid regex: undefined named backreference \\k<" +
-              name +
-              ">",
-          )
+      if name.length() == 0 {
+        // Bare \k in a pattern with named groups
+        raise @errors.SyntaxError(
+          message="Invalid regex: invalid escape \\k in pattern with named groups",
+        )
+      } else {
+        match group_names.get(name) {
+          Some(idx) => Backreference(idx)
+          None =>
+            raise @errors.SyntaxError(
+              message="Invalid regex: undefined named backreference \\k<" +
+                name +
+                ">",
+            )
+        }
       }
     Group(children, idx, name) => {
       let resolved = children.map(child => {
@@ -359,7 +371,10 @@ fn RegexParser::parse_escape(self : RegexParser) -> RegexNode raise Error {
           message="Invalid regex: invalid escape in unicode mode",
         )
       } else {
-        Literal('k') // Annex B: literal 'k' in non-unicode mode
+        // Annex B: \k without < — emit sentinel for post-parse validation.
+        // If named groups exist, this is a SyntaxError.
+        // If no named groups, desugar converts to literal 'k'.
+        NamedBackreference("")
       }
     _ =>
       if ch >= '1' && ch <= '9' {
