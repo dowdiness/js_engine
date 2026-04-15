@@ -61,7 +61,7 @@ fn resolve_named_backreferences(
           )
       }
     Group(children, idx, name) => {
-      let resolved = children.map(fn(child) {
+      let resolved = children.map((child) => {
         resolve_named_backreferences(child, group_names) catch {
           e => raise e
         }
@@ -69,7 +69,7 @@ fn resolve_named_backreferences(
       Group(resolved, idx, name)
     }
     Sequence(nodes) => {
-      let resolved = nodes.map(fn(child) {
+      let resolved = nodes.map((child) => {
         resolve_named_backreferences(child, group_names) catch {
           e => raise e
         }
@@ -77,12 +77,12 @@ fn resolve_named_backreferences(
       Sequence(resolved)
     }
     Alternation(left, right) => {
-      let resolved_left = left.map(fn(child) {
+      let resolved_left = left.map((child) => {
         resolve_named_backreferences(child, group_names) catch {
           e => raise e
         }
       })
-      let resolved_right = right.map(fn(child) {
+      let resolved_right = right.map((child) => {
         resolve_named_backreferences(child, group_names) catch {
           e => raise e
         }
@@ -94,7 +94,7 @@ fn resolve_named_backreferences(
       Quantified(resolved, min, max, greedy)
     }
     Lookahead(children, positive) => {
-      let resolved = children.map(fn(child) {
+      let resolved = children.map((child) => {
         resolve_named_backreferences(child, group_names) catch {
           e => raise e
         }
@@ -423,7 +423,7 @@ fn RegexParser::parse_group(self : RegexParser) -> RegexNode raise Error {
           )
         }
         let first = self.pattern[self.pos]
-        if first != '_' && first != '$' && !((first >= 'a' && first <= 'z') || (first >= 'A' && first <= 'Z')) {
+        if first != '_' && first != '$' && !((first >= 'a' && first <= 'z') || (first >= 'A' && first <= 'Z') || first.to_int() > 127) {
           raise @errors.SyntaxError(
             message="Invalid regex: invalid group name",
           )
@@ -433,7 +433,7 @@ fn RegexParser::parse_group(self : RegexParser) -> RegexNode raise Error {
         while self.pos < self.pattern.length() && self.pattern[self.pos] != '>' {
           let c = self.pattern[self.pos]
           let cp = c.to_int()
-          if c == '_' || c == '$' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || cp == 0x200C || cp == 0x200D {
+          if c == '_' || c == '$' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || cp > 127 {
             self.pos += 1
           } else {
             raise @errors.SyntaxError(
