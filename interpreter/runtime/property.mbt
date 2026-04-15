@@ -23,7 +23,10 @@ pub fn Interpreter::get_property(
     Object(data) => self.get_property_of_object(obj, data, prop, loc)
     Array(data) =>
       if prop == "length" {
-        Number(data.elements.length().to_double())
+        match get_array_length_override(data) {
+          Some(n64) => Number(n64.to_double())
+          None => Number(data.elements.length().to_double())
+        }
       } else {
         // Check numeric index access first
         let num_idx = @string.parse_int(prop) catch { _ => -1 }
@@ -1418,17 +1421,24 @@ pub fn Interpreter::set_property(
           raise @errors.RangeError(message="Invalid array length")
         }
         let n64 = num.to_int64()
-        let cur_len = data.elements.length().to_int64()
         // Truncate array if new length is shorter
         while data.elements.length().to_int64() > n64 {
           let _ = data.elements.pop()
         }
-        // Expand array if new length is longer (capped to prevent hangs)
-        if n64 > cur_len && n64 - cur_len <= 100000L {
+        let cur_elem_len = data.elements.length().to_int64()
+        // Expand elements if the gap is small enough to materialise
+        if n64 > cur_elem_len && n64 - cur_elem_len <= 100000L {
           let target = n64.to_int()
           while data.elements.length() < target {
             data.elements.push(Undefined)
           }
+        }
+        // Keep the length override in sync: set it when the logical length
+        // exceeds elements.length(), clear it when they match.
+        if n64 > data.elements.length().to_int64() {
+          set_array_length_override(data, n64)
+        } else {
+          clear_array_length_override(data)
         }
       } else {
         // try numeric index

@@ -9,6 +9,46 @@ let array_iterator_overrides : Array[(ArrayData, Value?, Value?)] = []
 let array_named_props : Array[(ArrayData, Map[String, Value])] = []
 
 ///|
+/// Sparse-length overrides for arrays whose logical length differs from
+/// elements.length() (e.g. new Array(n) where n > allocation cap).
+/// Stored as Int64 to cover the full valid range 0..2^32-1.
+let array_length_overrides : Array[(ArrayData, Int64)] = []
+
+///|
+pub fn set_array_length_override(arr : ArrayData, len : Int64) -> Unit {
+  for i = 0; i < array_length_overrides.length(); i = i + 1 {
+    let (existing, _) = array_length_overrides[i]
+    if physical_equal(existing, arr) {
+      array_length_overrides[i] = (arr, len)
+      return
+    }
+  }
+  array_length_overrides.push((arr, len))
+}
+
+///|
+pub fn get_array_length_override(arr : ArrayData) -> Int64? {
+  for i = 0; i < array_length_overrides.length(); i = i + 1 {
+    let (existing, len) = array_length_overrides[i]
+    if physical_equal(existing, arr) {
+      return Some(len)
+    }
+  }
+  None
+}
+
+///|
+pub fn clear_array_length_override(arr : ArrayData) -> Unit {
+  for i = 0; i < array_length_overrides.length(); i = i + 1 {
+    let (existing, _) = array_length_overrides[i]
+    if physical_equal(existing, arr) {
+      let _ = array_length_overrides.remove(i)
+      return
+    }
+  }
+}
+
+///|
 pub fn set_array_named_prop(
   arr : ArrayData,
   key : String,

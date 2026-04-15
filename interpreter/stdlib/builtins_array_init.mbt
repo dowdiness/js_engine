@@ -1831,16 +1831,21 @@ fn setup_array_builtins(
                   n.is_nan() {
                   raise @errors.RangeError(message="Invalid array length")
                 }
-                let len = n.to_int64().to_int()
+                let len64 = n.to_int64()
                 // Use Array::make for a fast single allocation. Cap at 10M to
-                // avoid OOM for pathological inputs; lengths above the cap still
-                // report as the full len via the side-table below.
-                let elements : Array[Value] = if len <= 10000000 {
-                  Array::make(len, Undefined)
+                // avoid OOM for pathological inputs; lengths above the cap are
+                // tracked in the length-override side table so arr.length still
+                // reports the correct value.
+                let elements : Array[Value] = if len64 <= 10000000L {
+                  Array::make(len64.to_int(), Undefined)
                 } else {
                   []
                 }
-                Value::Array({ elements, })
+                let arr_data : ArrayData = { elements, }
+                if len64 > arr_data.elements.length().to_int64() {
+                  @runtime.set_array_length_override(arr_data, len64)
+                }
+                Value::Array(arr_data)
               }
               _ => Value::Array({ elements: args })
             }
