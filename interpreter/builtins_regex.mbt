@@ -13,12 +13,13 @@ priv enum RegexNode {
   CharClass(Array[(Char, Char)], Bool) // ranges, negated
   Anchor(AnchorKind)
   Quantified(RegexNode, Int, Int?, Bool) // node, min, max(None=infinity), greedy
-  Group(Array[RegexNode], Int) // children, group_index
+  Group(Array[RegexNode], Int, String?) // children, group_index, name
   Alternation(Array[RegexNode], Array[RegexNode]) // left, right
   Sequence(Array[RegexNode])
   WordBoundary(Bool) // true = \b, false = \B
   Lookahead(Array[RegexNode], Bool) // children, positive (true=(?=...), false=(?!...))
   Backreference(Int) // group number (1-based)
+  NamedBackreference(String) // group name (resolved to Backreference after parsing)
 }
 
 ///|
@@ -34,17 +35,172 @@ priv struct RegexParser {
   pattern : Array[Char]
   mut pos : Int
   mut group_count : Int
+  unicode : Bool
+  group_names : Map[String, Int]
+  mut has_unterminated_k_backref : Bool
+  mut has_bare_k : Bool
 }
 
 ///|
-fn RegexParser::new(pattern : String) -> RegexParser {
-  { pattern: pattern.to_array(), pos: 0, group_count: 0 }
+fn RegexParser::new(pattern : String, unicode? : Bool = false) -> RegexParser {
+  {
+    pattern: pattern.to_array(),
+    pos: 0,
+    group_count: 0,
+    unicode,
+    group_names: {},
+    has_unterminated_k_backref: false,
+    has_bare_k: false,
+  }
+}
+
+///|
+/// Annex B: When no named groups exist in the pattern, convert
+/// NamedBackreference("name") nodes to literal char sequences
+/// matching the text "k<name>" (the backslash was already consumed).
+fn desugar_named_backrefs_to_literals(node : RegexNode) -> RegexNode {
+  match node {
+    NamedBackreference(name) => {
+      // \k<name> or \k<> — literal "k<name>" or "k<>"
+      let chars : Array[RegexNode] = [Literal('k'), Literal('<')]
+      let name_chars = name.to_array()
+      for c in name_chars {
+        chars.push(Literal(c))
+      }
+      chars.push(Literal('>'))
+      Sequence(chars)
+    }
+    Group(children, idx, name) => {
+      let resolved = children.map(child => {
+        desugar_named_backrefs_to_literals(child)
+      })
+      Group(resolved, idx, name)
+    }
+    Sequence(nodes) => {
+      let resolved = nodes.map(child => {
+        desugar_named_backrefs_to_literals(child)
+      })
+      Sequence(resolved)
+    }
+    Alternation(left, right) => {
+      let resolved_left = left.map(child => {
+        desugar_named_backrefs_to_literals(child)
+      })
+      let resolved_right = right.map(child => {
+        desugar_named_backrefs_to_literals(child)
+      })
+      Alternation(resolved_left, resolved_right)
+    }
+    Quantified(inner, min, max, greedy) => {
+      let resolved = desugar_named_backrefs_to_literals(inner)
+      Quantified(resolved, min, max, greedy)
+    }
+    Lookahead(children, positive) => {
+      let resolved = children.map(child => {
+        desugar_named_backrefs_to_literals(child)
+      })
+      Lookahead(resolved, positive)
+    }
+    Literal(_)
+    | Dot
+    | CharClass(_, _)
+    | Anchor(_)
+    | WordBoundary(_)
+    | Backreference(_) => node
+  }
+}
+
+///|
+fn resolve_named_backreferences(
+  node : RegexNode,
+  group_names : Map[String, Int],
+) -> RegexNode raise Error {
+  match node {
+    NamedBackreference(name) =>
+      match group_names.get(name) {
+        Some(idx) => Backreference(idx)
+        None =>
+          raise @errors.SyntaxError(
+            message="Invalid regex: undefined named backreference \\k<" +
+              name +
+              ">",
+          )
+      }
+    Group(children, idx, name) => {
+      let resolved = children.map(child => {
+        resolve_named_backreferences(child, group_names) catch {
+          e => raise e
+        }
+      })
+      Group(resolved, idx, name)
+    }
+    Sequence(nodes) => {
+      let resolved = nodes.map(child => {
+        resolve_named_backreferences(child, group_names) catch {
+          e => raise e
+        }
+      })
+      Sequence(resolved)
+    }
+    Alternation(left, right) => {
+      let resolved_left = left.map(child => {
+        resolve_named_backreferences(child, group_names) catch {
+          e => raise e
+        }
+      })
+      let resolved_right = right.map(child => {
+        resolve_named_backreferences(child, group_names) catch {
+          e => raise e
+        }
+      })
+      Alternation(resolved_left, resolved_right)
+    }
+    Quantified(inner, min, max, greedy) => {
+      let resolved = resolve_named_backreferences(inner, group_names)
+      Quantified(resolved, min, max, greedy)
+    }
+    Lookahead(children, positive) => {
+      let resolved = children.map(child => {
+        resolve_named_backreferences(child, group_names) catch {
+          e => raise e
+        }
+      })
+      Lookahead(resolved, positive)
+    }
+    // Leaf nodes
+    Literal(_)
+    | Dot
+    | CharClass(_, _)
+    | Anchor(_)
+    | WordBoundary(_)
+    | Backreference(_) => node
+  }
 }
 
 ///|
 fn RegexParser::parse(self : RegexParser) -> RegexNode raise Error {
   let result = self.parse_alternation()
-  result
+  if !self.group_names.is_empty() {
+    // Pattern has named groups — reject malformed \k forms
+    if self.has_unterminated_k_backref {
+      raise @errors.SyntaxError(
+        message="Invalid regex: unterminated named backreference in pattern with named groups",
+      )
+    }
+    if self.has_bare_k {
+      raise @errors.SyntaxError(
+        message="Invalid regex: invalid escape \\k in pattern with named groups",
+      )
+    }
+    // Resolve \k<name> to Backreference(idx) using known group names
+    resolve_named_backreferences(result, self.group_names)
+  } else if !self.unicode {
+    // Annex B: convert \k<name> to literal chars in non-unicode mode
+    desugar_named_backrefs_to_literals(result)
+  } else {
+    // Unicode mode with no named groups: any \k<name> is invalid
+    resolve_named_backreferences(result, self.group_names)
+  }
 }
 
 ///|
@@ -186,6 +342,64 @@ fn RegexParser::parse_escape(self : RegexParser) -> RegexNode raise Error {
     'f' => Literal('\u000C') // form feed
     'v' => Literal('\u000B') // vertical tab
     '0' => Literal('\u0000') // null
+    'k' =>
+      if self.pos < self.pattern.length() && self.pattern[self.pos] == '<' {
+        // Named backreference \k<name> — interpret \u escapes in name
+        let saved_pos = self.pos
+        self.pos += 1 // skip '<'
+        let name_buf = StringBuilder::new()
+        let mut valid = true
+        // Try to parse the name with Unicode escape interpretation
+        while self.pos < self.pattern.length() && self.pattern[self.pos] != '>' {
+          if self.pattern[self.pos] == '\\' &&
+            self.pos + 1 < self.pattern.length() &&
+            self.pattern[self.pos + 1] == 'u' {
+            let escape_pos = self.pos
+            self.pos += 2 // skip \u
+            try {
+              let c = self.parse_unicode_escape_in_name()
+              name_buf.write_char(c)
+            } catch {
+              _ => {
+                // Invalid escape — can't parse this name
+                valid = false
+                self.pos = escape_pos
+                break
+              }
+            }
+          } else {
+            name_buf.write_char(self.pattern[self.pos])
+            self.pos += 1
+          }
+        }
+        if !valid || self.pos >= self.pattern.length() {
+          // No closing '>' or invalid escape in name
+          if self.unicode {
+            raise @errors.SyntaxError(
+              message="Invalid regex: unterminated named backreference",
+            )
+          } else {
+            // Annex B: backtrack and treat \k as literal 'k'.
+            // Record for post-parse validation — if named groups exist,
+            // unterminated \k< is a SyntaxError.
+            self.has_unterminated_k_backref = true
+            self.pos = saved_pos
+            Literal('k')
+          }
+        } else {
+          self.pos += 1 // skip '>'
+          NamedBackreference(name_buf.to_string())
+        }
+      } else if self.unicode {
+        raise @errors.SyntaxError(
+          message="Invalid regex: invalid escape in unicode mode",
+        )
+      } else {
+        // Annex B: \k without < — literal 'k' in non-unicode mode.
+        // Record for post-parse: if named groups exist, this is a SyntaxError.
+        self.has_bare_k = true
+        Literal('k')
+      }
     _ =>
       if ch >= '1' && ch <= '9' {
         // Backreference \1-\9
@@ -289,6 +503,258 @@ fn RegexParser::parse_char_class(self : RegexParser) -> RegexNode raise Error {
 }
 
 ///|
+fn hex_digit_value(c : Char) -> Int {
+  if c >= '0' && c <= '9' {
+    c.to_int() - '0'.to_int()
+  } else if c >= 'a' && c <= 'f' {
+    c.to_int() - 'a'.to_int() + 10
+  } else if c >= 'A' && c <= 'F' {
+    c.to_int() - 'A'.to_int() + 10
+  } else {
+    -1
+  }
+}
+
+///|
+fn is_hex_digit(c : Char) -> Bool {
+  hex_digit_value(c) >= 0
+}
+
+///|
+/// Parse a Unicode escape sequence (\uXXXX or \u{XXXXX}) from self.pattern
+/// starting at self.pos (which should point just past the 'u').
+/// Returns the decoded character and advances self.pos past the escape.
+fn RegexParser::parse_unicode_escape_in_name(
+  self : RegexParser,
+) -> Char raise Error {
+  if self.pos < self.pattern.length() && self.pattern[self.pos] == '{' {
+    // \u{XXXXX} extended form
+    self.pos += 1
+    let mut cp = 0
+    let mut count = 0
+    while self.pos < self.pattern.length() && is_hex_digit(self.pattern[self.pos]) {
+      cp = cp * 16 + hex_digit_value(self.pattern[self.pos])
+      self.pos += 1
+      count += 1
+    }
+    if count == 0 ||
+      count > 6 ||
+      self.pos >= self.pattern.length() ||
+      self.pattern[self.pos] != '}' {
+      raise @errors.SyntaxError(
+        message="Invalid regex: invalid Unicode escape in group name",
+      )
+    }
+    self.pos += 1 // skip '}'
+    if cp > 0x10FFFF {
+      raise @errors.SyntaxError(
+        message="Invalid regex: Unicode code point out of range in group name",
+      )
+    }
+    cp.unsafe_to_char()
+  } else {
+    // \uXXXX — exactly 4 hex digits
+    let mut cp = 0
+    for i = 0; i < 4; i = i + 1 {
+      if self.pos >= self.pattern.length() ||
+        !is_hex_digit(self.pattern[self.pos]) {
+        raise @errors.SyntaxError(
+          message="Invalid regex: invalid Unicode escape in group name",
+        )
+      }
+      cp = cp * 16 + hex_digit_value(self.pattern[self.pos])
+      self.pos += 1
+    }
+    // Surrogate pair: if high surrogate, check for \uDCxx low surrogate
+    if cp >= 0xD800 && cp <= 0xDBFF {
+      if self.pos + 5 < self.pattern.length() &&
+        self.pattern[self.pos] == '\\' &&
+        self.pattern[self.pos + 1] == 'u' {
+        let saved = self.pos
+        self.pos += 2 // skip \u
+        let mut low = 0
+        let mut ok = true
+        for i = 0; i < 4; i = i + 1 {
+          if self.pos >= self.pattern.length() ||
+            !is_hex_digit(self.pattern[self.pos]) {
+            ok = false
+            break
+          }
+          low = low * 16 + hex_digit_value(self.pattern[self.pos])
+          self.pos += 1
+        }
+        if ok && low >= 0xDC00 && low <= 0xDFFF {
+          // Valid surrogate pair — combine
+          let combined = (cp - 0xD800) * 0x400 + (low - 0xDC00) + 0x10000
+          combined.unsafe_to_char()
+        } else {
+          // Not a valid low surrogate — backtrack
+          self.pos = saved
+          cp.unsafe_to_char()
+        }
+      } else {
+        cp.unsafe_to_char()
+      }
+    } else {
+      cp.unsafe_to_char()
+    }
+  }
+}
+
+///|
+/// Check if a code point is in a known non-identifier Unicode range
+/// (symbols, punctuation, emoji, control, formatting, surrogates).
+fn is_non_identifier_codepoint(cp : Int) -> Bool {
+  // ASCII non-identifier (handled separately by callers for $, _)
+  (cp >= 0x00 && cp <= 0x23) || // Control + space + !"#
+  (cp == 0x25 || cp == 0x26) || // %, &
+  (cp >= 0x28 && cp <= 0x2F) || // ()*+,-./
+  (cp >= 0x3A && cp <= 0x40) || // :;<=>?@
+  (cp >= 0x5B && cp <= 0x5E) || // [\]^
+  cp == 0x60 || // `
+  (cp >= 0x7B && cp <= 0x7F) || // {|}~ DEL
+  // C1 controls + Latin-1 punctuation/symbols
+  (cp >= 0x80 && cp <= 0xBF) ||
+  // General punctuation, super/subscripts, currency, combining marks for symbols
+  (cp >= 0x2000 && cp <= 0x20CF) ||
+  // Letterlike symbols — mixed; reject the block (overly conservative for ℝ etc.)
+  (cp >= 0x2100 && cp <= 0x214F) ||
+  // Number forms
+  (cp >= 0x2150 && cp <= 0x218F) ||
+  // Arrows, math operators, misc technical, control pictures, box drawing,
+  // block elements, geometric shapes, misc symbols, dingbats
+  (cp >= 0x2190 && cp <= 0x27BF) ||
+  // Braille, supplemental arrows, misc math, CJK symbols
+  (cp >= 0x2800 && cp <= 0x2BFF) ||
+  // Supplemental punctuation
+  (cp >= 0x2E00 && cp <= 0x2E7F) ||
+  // CJK symbols and punctuation
+  (cp >= 0x3000 && cp <= 0x303F) ||
+  // Variation selectors
+  (cp >= 0xFE00 && cp <= 0xFE0F) ||
+  // Half/fullwidth forms (symbols portion)
+  (cp >= 0xFF01 && cp <= 0xFF0F) ||
+  (cp >= 0xFF1A && cp <= 0xFF20) ||
+  (cp >= 0xFF3B && cp <= 0xFF40) ||
+  (cp >= 0xFF5B && cp <= 0xFF65) ||
+  // Specials
+  (cp >= 0xFFF0 && cp <= 0xFFFF) ||
+  // Surrogates (invalid as identifiers)
+  (cp >= 0xD800 && cp <= 0xDFFF) ||
+  // Supplementary: emoji and symbols (U+1F000-1FFFF), except math alphanumerics
+  (cp >= 0x1F000 && cp <= 0x1F9FF) ||
+  (cp >= 0x1FA00 && cp <= 0x1FFFF) ||
+  // Musical symbols, playing cards, mahjong
+  (cp >= 0x1F000 && cp <= 0x1F02F) ||
+  // Tags
+  (cp >= 0xE0000 && cp <= 0xE007F)
+}
+
+///|
+/// Check if a code point is a combining mark or modifier — valid in
+/// ID_Continue but NOT in ID_Start position.
+fn is_combining_or_modifier(cp : Int) -> Bool {
+  (cp >= 0x0300 && cp <= 0x036F) || // Combining Diacritical Marks
+  (cp >= 0x0483 && cp <= 0x0489) || // Cyrillic combining marks
+  (cp >= 0x0591 && cp <= 0x05C7 && cp != 0x05BF && cp != 0x05C1 && cp != 0x05C2 && cp != 0x05C4 && cp != 0x05C5) || // Hebrew marks (subset)
+  (cp >= 0x0610 && cp <= 0x061A) || // Arabic combining
+  (cp >= 0x064B && cp <= 0x065F) || // Arabic marks
+  (cp >= 0x0670 && cp == 0x0670) || // Arabic superscript alef
+  (cp >= 0x06D6 && cp <= 0x06ED) || // Arabic marks
+  (cp >= 0x0730 && cp <= 0x074A) || // Syriac marks
+  (cp >= 0x07A6 && cp <= 0x07B0) || // Thaana marks
+  (cp >= 0x07EB && cp <= 0x07F3) || // NKo combining
+  (cp >= 0x0816 && cp <= 0x0823) || // Samaritan marks
+  (cp >= 0x0825 && cp <= 0x0827) || // Samaritan marks
+  (cp >= 0x0829 && cp <= 0x082D) || // Samaritan marks
+  (cp >= 0x0859 && cp <= 0x085B) || // Mandaic marks
+  (cp >= 0x0900 && cp <= 0x0903) || // Devanagari marks
+  (cp >= 0x093A && cp <= 0x094F) || // Devanagari vowel marks
+  (cp >= 0x0951 && cp <= 0x0957) || // Devanagari stress marks
+  (cp >= 0x0962 && cp <= 0x0963) || // Devanagari vowel signs
+  (cp >= 0x0981 && cp <= 0x0983) || // Bengali marks
+  (cp >= 0x09BE && cp <= 0x09CD) || // Bengali vowel marks
+  (cp >= 0x0A01 && cp <= 0x0A03) || // Gurmukhi marks
+  (cp >= 0x0A3C && cp <= 0x0A4D) || // Gurmukhi marks
+  (cp >= 0x0B01 && cp <= 0x0B03) || // Oriya marks
+  (cp >= 0x0B3C && cp <= 0x0B4D) || // Oriya marks
+  (cp >= 0x0B82 && cp == 0x0B82) || // Tamil mark
+  (cp >= 0x0BBE && cp <= 0x0BCD) || // Tamil vowel marks
+  (cp >= 0x0C00 && cp <= 0x0C04) || // Telugu marks
+  (cp >= 0x0C3E && cp <= 0x0C4D) || // Telugu vowel marks
+  (cp >= 0x0C82 && cp <= 0x0C83) || // Kannada marks
+  (cp >= 0x0CBC && cp <= 0x0CCD) || // Kannada marks
+  (cp >= 0x0D00 && cp <= 0x0D03) || // Malayalam marks
+  (cp >= 0x0D3B && cp <= 0x0D4D) || // Malayalam vowel marks
+  (cp >= 0x0DCA && cp <= 0x0DDF) || // Sinhala marks
+  (cp >= 0x0E31 && cp == 0x0E31) || // Thai mark
+  (cp >= 0x0E34 && cp <= 0x0E3A) || // Thai vowel marks
+  (cp >= 0x0E47 && cp <= 0x0E4E) || // Thai marks
+  (cp >= 0x0EB1 && cp == 0x0EB1) || // Lao mark
+  (cp >= 0x0EB4 && cp <= 0x0EBC) || // Lao vowel marks
+  (cp >= 0x0EC8 && cp <= 0x0ECD) || // Lao marks
+  (cp >= 0x0F18 && cp <= 0x0F19) || // Tibetan marks
+  (cp >= 0x0F35 && cp <= 0x0F39) || // Tibetan marks
+  (cp >= 0x0F71 && cp <= 0x0F84) || // Tibetan vowel marks
+  (cp >= 0x0F86 && cp <= 0x0F87) || // Tibetan marks
+  (cp >= 0x0F8D && cp <= 0x0FBC) || // Tibetan subjoined
+  (cp >= 0x102B && cp <= 0x103E) || // Myanmar combining
+  (cp >= 0x1056 && cp <= 0x1059) || // Myanmar marks
+  (cp >= 0x105E && cp <= 0x1060) || // Myanmar marks
+  (cp >= 0x1062 && cp <= 0x1064) || // Myanmar marks
+  (cp >= 0x1067 && cp <= 0x106D) || // Myanmar marks
+  (cp >= 0x1071 && cp <= 0x1074) || // Myanmar marks
+  (cp >= 0x1082 && cp <= 0x108D) || // Myanmar marks
+  (cp >= 0x135D && cp <= 0x135F) || // Ethiopic combining
+  (cp >= 0x1712 && cp <= 0x1714) || // Tagalog marks
+  (cp >= 0x1732 && cp <= 0x1734) || // Hanunoo marks
+  (cp >= 0x17B4 && cp <= 0x17D3) || // Khmer marks
+  (cp >= 0x180B && cp <= 0x180D) || // Mongolian marks
+  (cp >= 0x1920 && cp <= 0x192B) || // Limbu marks
+  (cp >= 0x1930 && cp <= 0x193B) || // Limbu marks
+  (cp >= 0x1A17 && cp <= 0x1A1B) || // Buginese marks
+  (cp >= 0x1A55 && cp <= 0x1A5E) || // Tai Tham marks
+  (cp >= 0x1A60 && cp <= 0x1A7C) || // Tai Tham marks
+  (cp >= 0x1AB0 && cp <= 0x1ACE) || // Combining Diacritical Marks Extended
+  (cp >= 0x1B00 && cp <= 0x1B04) || // Balinese marks
+  (cp >= 0x1B34 && cp <= 0x1B44) || // Balinese marks
+  (cp >= 0x1B80 && cp <= 0x1B82) || // Sundanese marks
+  (cp >= 0x1BA1 && cp <= 0x1BAD) || // Sundanese marks
+  (cp >= 0x1BE6 && cp <= 0x1BF3) || // Batak marks
+  (cp >= 0x1C24 && cp <= 0x1C37) || // Lepcha marks
+  (cp >= 0x1CD0 && cp <= 0x1CE8) || // Vedic extensions
+  (cp >= 0x1CF7 && cp <= 0x1CF9) || // Vedic marks
+  (cp >= 0x1DC0 && cp <= 0x1DFF) || // Combining Diacritical Marks Supplement
+  (cp >= 0x20D0 && cp <= 0x20F0) || // Combining Marks for Symbols
+  (cp >= 0xFE20 && cp <= 0xFE2F) // Combining Half Marks
+}
+
+///|
+/// Approximate Unicode ID_Start check for regex group names.
+/// Uses a blocklist approach: accepts $, _, ASCII letters, and any Unicode
+/// code point not in known non-identifier or combining-mark ranges.
+fn is_id_start_char(c : Char) -> Bool {
+  let cp = c.to_int()
+  c == '_' ||
+  c == '$' ||
+  (c >= 'a' && c <= 'z') ||
+  (c >= 'A' && c <= 'Z') ||
+  (cp >= 0xC0 && !is_non_identifier_codepoint(cp) && !is_combining_or_modifier(cp))
+}
+
+///|
+/// Approximate Unicode ID_Continue check for regex group names.
+/// Same as ID_Start plus digits, combining marks, and ZWNJ/ZWJ.
+fn is_id_continue_char(c : Char) -> Bool {
+  let cp = c.to_int()
+  is_id_start_char(c) ||
+  (c >= '0' && c <= '9') ||
+  is_combining_or_modifier(cp) ||
+  cp == 0x200C || // ZWNJ
+  cp == 0x200D // ZWJ
+}
+
+///|
 fn RegexParser::parse_group(self : RegexParser) -> RegexNode raise Error {
   self.pos += 1 // skip '('
   // Check for special group syntax
@@ -301,18 +767,108 @@ fn RegexParser::parse_group(self : RegexParser) -> RegexNode raise Error {
         let inner = self.parse_alternation()
         if self.pos < self.pattern.length() && self.pattern[self.pos] == ')' {
           self.pos += 1
+        } else {
+          raise @errors.SyntaxError(
+            message="Invalid regex: unterminated non-capturing group",
+          )
         }
         let children = match inner {
           Sequence(nodes) => nodes
           _ => [inner]
         }
-        return Group(children, 0)
+        return Group(children, 0, None)
+      } else if next == '<' {
+        // Named capture group (?<name>...) or lookbehind (not supported)
+        if self.pos + 2 < self.pattern.length() {
+          let after_lt = self.pattern[self.pos + 2]
+          if after_lt == '=' || after_lt == '!' {
+            raise @errors.SyntaxError(
+              message="Invalid regex: lookbehind assertions are not supported",
+            )
+          }
+        }
+        // Parse group name, interpreting \uXXXX / \u{XXXXX} escapes
+        self.pos += 2 // skip '?<'
+        if self.pos >= self.pattern.length() {
+          raise @errors.SyntaxError(
+            message="Invalid regex: unterminated group name",
+          )
+        }
+        let name_buf = StringBuilder::new()
+        // First char: must be ID_Start (or \u escape that resolves to ID_Start)
+        let first = if self.pattern[self.pos] == '\\' &&
+          self.pos + 1 < self.pattern.length() &&
+          self.pattern[self.pos + 1] == 'u' {
+          self.pos += 2 // skip \u
+          self.parse_unicode_escape_in_name()
+        } else {
+          let c = self.pattern[self.pos]
+          self.pos += 1
+          c
+        }
+        if !is_id_start_char(first) {
+          raise @errors.SyntaxError(message="Invalid regex: invalid group name")
+        }
+        name_buf.write_char(first)
+        // Subsequent chars: ID_Continue or \u escape
+        while self.pos < self.pattern.length() && self.pattern[self.pos] != '>' {
+          let c = if self.pattern[self.pos] == '\\' &&
+            self.pos + 1 < self.pattern.length() &&
+            self.pattern[self.pos + 1] == 'u' {
+            self.pos += 2 // skip \u
+            self.parse_unicode_escape_in_name()
+          } else {
+            let ch = self.pattern[self.pos]
+            self.pos += 1
+            ch
+          }
+          if is_id_continue_char(c) {
+            name_buf.write_char(c)
+          } else {
+            raise @errors.SyntaxError(
+              message="Invalid regex: invalid group name",
+            )
+          }
+        }
+        if self.pos >= self.pattern.length() || self.pattern[self.pos] != '>' {
+          raise @errors.SyntaxError(
+            message="Invalid regex: unterminated group name",
+          )
+        }
+        let name = name_buf.to_string()
+        self.pos += 1 // skip '>'
+        // Duplicate check
+        if self.group_names.contains(name) {
+          raise @errors.SyntaxError(
+            message="Invalid regex: duplicate group name",
+          )
+        }
+        self.group_count += 1
+        let group_idx = self.group_count
+        self.group_names[name] = group_idx
+        let inner = self.parse_alternation()
+        if self.pos < self.pattern.length() && self.pattern[self.pos] == ')' {
+          self.pos += 1
+        } else {
+          raise @errors.SyntaxError(
+            message="Invalid regex: unterminated named capture group",
+          )
+        }
+        let children = match inner {
+          Sequence(nodes) => nodes
+          _ => [inner]
+        }
+        return Group(children, group_idx, Some(name))
       } else if next == '=' {
         // Positive lookahead (?=...)
         self.pos += 2
         let inner = self.parse_alternation()
         if self.pos < self.pattern.length() && self.pattern[self.pos] == ')' {
           self.pos += 1
+        } else {
+          raise @errors.SyntaxError(
+            message="Invalid regex: unterminated lookahead",
+          )
         }
         let children = match inner {
           Sequence(nodes) => nodes
@@ -325,6 +881,10 @@ fn RegexParser::parse_group(self : RegexParser) -> RegexNode raise Error {
         let inner = self.parse_alternation()
         if self.pos < self.pattern.length() && self.pattern[self.pos] == ')' {
           self.pos += 1
+        } else {
+          raise @errors.SyntaxError(
+            message="Invalid regex: unterminated lookahead",
+          )
         }
         let children = match inner {
           Sequence(nodes) => nodes
@@ -340,12 +900,16 @@ fn RegexParser::parse_group(self : RegexParser) -> RegexNode raise Error {
   let inner = self.parse_alternation()
   if self.pos < self.pattern.length() && self.pattern[self.pos] == ')' {
     self.pos += 1
+  } else {
+    raise @errors.SyntaxError(
+      message="Invalid regex: unterminated capturing group",
+    )
   }
   let children = match inner {
     Sequence(nodes) => nodes
     _ => [inner]
   }
-  Group(children, group_idx)
+  Group(children, group_idx, None)
 }
 
 ///|
@@ -463,6 +1027,7 @@ struct RegexMatch {
   start : Int
   end_ : Int
   captures : Array[String?]
+  group_names : Array[(String, Int)]
 }
 
 ///|
@@ -629,7 +1194,7 @@ fn regex_exec_single(
         None
       }
     }
-    Group(children, group_idx) => {
+    Group(children, group_idx, _) => {
       let result = match_sequence(children, 0, input, pos, captures, flags)
       match result {
         Some(end_pos) => {
@@ -702,6 +1267,7 @@ fn regex_exec_single(
       } else {
         Some(pos) // Invalid group: matches empty string
       }
+    NamedBackreference(_) => None // Should be resolved before execution
   }
 }
 
@@ -826,7 +1392,8 @@ fn count_groups(node : RegexNode) -> Int {
     | CharClass(_, _)
     | Anchor(_)
     | WordBoundary(_)
-    | Backreference(_) => 0
+    | Backreference(_)
+    | NamedBackreference(_) => 0
     Lookahead(children, _) =>
       children.fold(init=0, fn(acc, child) {
         let cg = count_groups(child)
@@ -837,7 +1404,7 @@ fn count_groups(node : RegexNode) -> Int {
         }
       })
     Quantified(inner, _, _, _) => count_groups(inner)
-    Group(children, group_idx) => {
+    Group(children, group_idx, _) => {
       let max_child = children.fold(init=0, fn(acc, child) {
         let cg = count_groups(child)
         if cg > acc {
@@ -890,6 +1457,27 @@ fn count_groups(node : RegexNode) -> Int {
 // ---- Public API ----
 
 ///|
+priv struct ParsedRegex {
+  node : RegexNode
+  num_groups : Int
+  group_names : Array[(String, Int)]
+}
+
+///|
+fn parse_regex(
+  pattern : String,
+  unicode? : Bool = false,
+) -> ParsedRegex raise Error {
+  let parser = RegexParser::new(pattern, unicode~)
+  let node = parser.parse()
+  let num_groups = count_groups(node)
+  let names : Array[(String, Int)] = []
+  for name, idx in parser.group_names {
+    names.push((name, idx))
+  }
+  names.sort_by(fn(a, b) { a.1.compare(b.1) })
+  { node, num_groups, group_names: names }
+}
 
 ///|
 fn make_regex_flags(flags : String) -> RegexFlags {
@@ -908,13 +1496,18 @@ pub fn regex_match_at(
   input : String,
   start_pos : Int,
 ) -> RegexMatch? raise Error {
-  let node = RegexParser::new(pattern).parse()
+  let parsed = parse_regex(pattern, unicode=flags.contains("u"))
   let input_chars = input.to_array()
-  let num_groups = count_groups(node)
   let rflags = make_regex_flags(flags)
-  let captures : Array[String?] = Array::make(num_groups, None)
-  match regex_exec(node, input_chars, start_pos, captures, rflags) {
-    Some(end_pos) => Some({ start: start_pos, end_: end_pos, captures })
+  let captures : Array[String?] = Array::make(parsed.num_groups, None)
+  match regex_exec(parsed.node, input_chars, start_pos, captures, rflags) {
+    Some(end_pos) =>
+      Some({
+        start: start_pos,
+        end_: end_pos,
+        captures,
+        group_names: parsed.group_names,
+      })
     None => None
   }
 }
@@ -926,9 +1519,8 @@ pub fn regex_search(
   input : String,
   start_pos? : Int = 0,
 ) -> RegexMatch? raise Error {
-  let node = RegexParser::new(pattern).parse()
+  let parsed = parse_regex(pattern, unicode=flags.contains("u"))
   let input_chars = input.to_array()
-  let num_groups = count_groups(node)
   let rflags = make_regex_flags(flags)
   let is_sticky = flags.contains("y")
   if is_sticky {
@@ -936,17 +1528,28 @@ pub fn regex_search(
     if start_pos > input_chars.length() {
       return None
     }
-    let captures : Array[String?] = Array::make(num_groups, None)
-    match regex_exec(node, input_chars, start_pos, captures, rflags) {
+    let captures : Array[String?] = Array::make(parsed.num_groups, None)
+    match regex_exec(parsed.node, input_chars, start_pos, captures, rflags) {
       Some(end_pos) =>
-        return Some({ start: start_pos, end_: end_pos, captures })
+        return Some({
+          start: start_pos,
+          end_: end_pos,
+          captures,
+          group_names: parsed.group_names,
+        })
       None => return None
     }
   }
   for i = start_pos; i <= input_chars.length(); i = i + 1 {
-    let captures : Array[String?] = Array::make(num_groups, None)
-    match regex_exec(node, input_chars, i, captures, rflags) {
-      Some(end_pos) => return Some({ start: i, end_: end_pos, captures })
+    let captures : Array[String?] = Array::make(parsed.num_groups, None)
+    match regex_exec(parsed.node, input_chars, i, captures, rflags) {
+      Some(end_pos) =>
+        return Some({
+          start: i,
+          end_: end_pos,
+          captures,
+          group_names: parsed.group_names,
+        })
       None => continue
     }
   }
@@ -959,17 +1562,21 @@ pub fn regex_search_all(
   flags : String,
   input : String,
 ) -> Array[RegexMatch] raise Error {
-  let node = RegexParser::new(pattern).parse()
+  let parsed = parse_regex(pattern, unicode=flags.contains("u"))
   let input_chars = input.to_array()
-  let num_groups = count_groups(node)
   let rflags = make_regex_flags(flags)
   let results : Array[RegexMatch] = []
   let mut i = 0
   while i <= input_chars.length() {
-    let captures : Array[String?] = Array::make(num_groups, None)
-    match regex_exec(node, input_chars, i, captures, rflags) {
+    let captures : Array[String?] = Array::make(parsed.num_groups, None)
+    match regex_exec(parsed.node, input_chars, i, captures, rflags) {
       Some(end_pos) => {
-        results.push({ start: i, end_: end_pos, captures })
+        results.push({
+          start: i,
+          end_: end_pos,
+          captures,
+          group_names: parsed.group_names,
+        })
         if end_pos == i {
           i += 1
         } else {
@@ -1010,7 +1617,43 @@ pub fn make_regex_match_array(m : RegexMatch, input : String) -> Value {
   // Set named properties on the result
   set_array_named_prop(arr_data, "index", Number(m.start.to_double()))
   set_array_named_prop(arr_data, "input", String_(input))
-  set_array_named_prop(arr_data, "groups", Undefined)
+  // Build groups object if named groups exist
+  let groups_val : Value = if m.group_names.length() > 0 {
+    let groups_props : Map[String, Value] = {}
+    let groups_descs : Map[String, PropDescriptor] = {}
+    for pair in m.group_names {
+      let (name, idx) = pair
+      let val : Value = if idx - 1 < m.captures.length() {
+        match m.captures[idx - 1] {
+          Some(s) => String_(s)
+          None => Undefined
+        }
+      } else {
+        Undefined
+      }
+      groups_props[name] = val
+      groups_descs[name] = {
+        writable: true,
+        enumerable: true,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
+    }
+    Object({
+      properties: groups_props,
+      symbol_properties: {},
+      prototype: Null,
+      callable: None,
+      class_name: "Object",
+      descriptors: groups_descs,
+      symbol_descriptors: {},
+      extensible: true,
+    })
+  } else {
+    Undefined
+  }
+  set_array_named_prop(arr_data, "groups", groups_val)
   Array(arr_data)
 }
 
@@ -1058,7 +1701,7 @@ pub fn make_regexp_object(
   }
   // Validate pattern by attempting to parse it
   let _valid : Unit = try {
-    let _parsed = RegexParser::new(pattern).parse()
+    let _parsed = RegexParser::new(pattern, unicode=flags.contains("u")).parse()
   } catch {
     @errors.SyntaxError(message=msg) =>
       raise @errors.SyntaxError(
@@ -1081,13 +1724,27 @@ pub fn make_regexp_object(
   // Normalize flag ordering per spec: alphabetical (dgimsuy)
   let sorted_flags = {
     let buf = StringBuilder::new()
-    if flags.contains("d") { buf.write_string("d") }
-    if has_global { buf.write_string("g") }
-    if has_ignore_case { buf.write_string("i") }
-    if has_multiline { buf.write_string("m") }
-    if has_dotall { buf.write_string("s") }
-    if has_unicode { buf.write_string("u") }
-    if has_sticky { buf.write_string("y") }
+    if flags.contains("d") {
+      buf.write_string("d")
+    }
+    if has_global {
+      buf.write_string("g")
+    }
+    if has_ignore_case {
+      buf.write_string("i")
+    }
+    if has_multiline {
+      buf.write_string("m")
+    }
+    if has_dotall {
+      buf.write_string("s")
+    }
+    if has_unicode {
+      buf.write_string("u")
+    }
+    if has_sticky {
+      buf.write_string("y")
+    }
     buf.to_string()
   }
   let props : Map[String, Value] = {}
@@ -1389,6 +2046,45 @@ fn process_replacement(
           }
         }
         i += 2
+        continue
+      } else if next == '<' {
+        // $<name> - named group substitution
+        if m.group_names.length() == 0 {
+          // No named groups: $< is literal
+          buf.write_char('$')
+          buf.write_char('<')
+          i += 2
+          continue
+        }
+        // Parse name until '>'
+        let name_buf = StringBuilder::new()
+        let mut j = i + 2
+        while j < repl_chars.length() && repl_chars[j] != '>' {
+          name_buf.write_char(repl_chars[j])
+          j += 1
+        }
+        if j >= repl_chars.length() {
+          // No closing '>' — treat $< as literal
+          buf.write_char('$')
+          buf.write_char('<')
+          i += 2
+          continue
+        }
+        // Found '>' — look up name and substitute
+        let name = name_buf.to_string()
+        for pair in m.group_names {
+          let (gname, gidx) = pair
+          if gname == name {
+            if gidx - 1 < m.captures.length() {
+              match m.captures[gidx - 1] {
+                Some(s) => buf.write_string(s)
+                None => () // unmatched: empty string
+              }
+            }
+            break
+          }
+        }
+        i = j + 1 // skip past '>'
         continue
       } else if next == '$' {
         buf.write_char('$')
