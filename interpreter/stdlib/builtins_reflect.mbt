@@ -726,39 +726,26 @@ fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
   })
 
   // Reflect.isExtensible(target)
-  reflect_props["isExtensible"] = Value::Object({
-    properties: {
-      "name": Value::String_("isExtensible"),
-      "length": Value::Number(1.0),
-    },
-    symbol_properties: {},
-    prototype: @runtime.get_func_proto(),
-    callable: Some(
-      NativeCallable("isExtensible", fn(args) raise {
-        if args.length() < 1 {
+  reflect_props["isExtensible"] = @runtime.make_interp_method_func(
+    "isExtensible",
+    1,
+    fn(interp, _this_val, args) raise {
+      if args.length() < 1 {
+        raise @errors.TypeError(
+          message="Reflect.isExtensible requires 1 argument",
+        )
+      }
+      match args[0] {
+        Object(data) => Bool(data.extensible)
+        Value::Proxy(proxy_data) =>
+          Bool(@runtime.proxy_is_extensible(interp, proxy_data))
+        _ =>
           raise @errors.TypeError(
-            message="Reflect.isExtensible requires 1 argument",
+            message="Reflect.isExtensible called on non-object",
           )
-        }
-        match args[0] {
-          Object(data) => Bool(data.extensible)
-          Proxy(_) =>
-            match unwrap_proxy_target(args[0]) {
-              Some(data) => Bool(data.extensible)
-              None => Value::Bool(false)
-            }
-          _ =>
-            raise @errors.TypeError(
-              message="Reflect.isExtensible called on non-object",
-            )
-        }
-      }),
-    ),
-    class_name: "Function",
-    descriptors: { "name": nf_desc, "length": nf_desc },
-    symbol_descriptors: {},
-    extensible: true,
-  })
+      }
+    },
+  )
 
   // Reflect.ownKeys(target)
   reflect_props["ownKeys"] = @runtime.make_interp_method_func("ownKeys", 1, fn(
@@ -771,106 +758,16 @@ fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
     }
     let target = args[0]
     match target {
-      Value::Proxy(proxy_data) => {
-        // Check for ownKeys trap
-        let trap = @runtime.get_proxy_trap(proxy_data, "ownKeys", interp)
-        match trap {
-          Some(trap_fn) => {
-            let proxy_target = @runtime.get_proxy_target(proxy_data)
-            let handler = @runtime.get_proxy_handler(proxy_data)
-            let loc = @token.Loc::default()
-            let result = interp.call_value(
-              trap_fn,
-              handler,
-              [proxy_target],
-              loc,
-            )
-            // Convert result array to Array[Value]
-            match result {
-              Value::Array(data) =>
-                Value::Array({ elements: data.elements.copy() })
-              _ =>
-                raise @errors.TypeError(
-                  message="'ownKeys' on proxy: trap result is not an Array",
-                )
-            }
-          }
-          None => {
-            // No trap, delegate to target
-            let proxy_target = @runtime.get_proxy_target(proxy_data)
-            let loc = @token.Loc::default()
-            interp.call_value(
-              Value::Object({
-                properties: {},
-                symbol_properties: {},
-                prototype: Null,
-                callable: Some(
-                  InterpreterCallable("ownKeys_inner", fn(
-                    inner_interp,
-                    _tv,
-                    inner_args,
-                  ) raise {
-                    // Recursively call Reflect.ownKeys on the proxy target
-                    let reflect_obj = inner_interp.global.get("Reflect") catch {
-                      _ => Undefined
-                    }
-                    let own_keys_fn = inner_interp.get_property(
-                      reflect_obj, "ownKeys", loc,
-                    )
-                    inner_interp.call_value(
-                      own_keys_fn,
-                      Undefined,
-                      inner_args,
-                      loc,
-                    )
-                  }),
-                ),
-                class_name: "Function",
-                descriptors: {},
-                symbol_descriptors: {},
-                extensible: true,
-              }),
-              Undefined,
-              [proxy_target],
-              loc,
-            )
-          }
-        }
-      }
-      _ => {
-        fn collect_own_keys(data : ObjectData) -> Value {
-          let keys : Array[Value] = []
-          data.properties.each(fn(k, _v) { keys.push(Value::String_(k)) })
-          data.symbol_properties.each(fn(id, _v) {
-            match sym_state.get_symbol_by_id(id) {
-              Some(sym) => keys.push(Value::Symbol(sym))
-              None => ()
-            }
-          })
-          // Also include keys from descriptors not in properties
-          data.descriptors.each(fn(k, _v) {
-            if !data.properties.contains(k) {
-              keys.push(Value::String_(k))
-            }
-          })
-          Value::Array({ elements: keys })
-        }
-        match target {
-          Object(data) => collect_own_keys(data)
-          Value::Array(data) => {
-            let keys : Array[Value] = []
-            for i = 0; i < data.elements.length(); i = i + 1 {
-              keys.push(Value::String_(i.to_string()))
-            }
-            keys.push(Value::String_("length"))
-            Value::Array({ elements: keys })
-          }
-          _ =>
-            raise @errors.TypeError(
-              message="Reflect.ownKeys called on non-object",
-            )
-        }
-      }
+      Value::Proxy(proxy_data) =>
+        @runtime.proxy_own_property_keys(interp, proxy_data)
+      Object(_) | Value::Array(_) =>
+        Value::Array({
+          elements: @runtime.collect_target_own_keys(target, interp.symbols),
+        })
+      _ =>
+        raise @errors.TypeError(
+          message="Reflect.ownKeys called on non-object",
+        )
     }
   })
 

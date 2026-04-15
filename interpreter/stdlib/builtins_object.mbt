@@ -458,7 +458,8 @@ pub fn setup_object_builtins(
         "prototype": obj_proto,
         "name": Value::String_("Object"),
         "length": Value::Number(1.0),
-        "keys": @runtime.make_static_func_with_length("keys", 1, fn(
+        "keys": @runtime.make_interp_static_func_with_length("keys", 1, fn(
+          interp,
           args,
         ) raise {
           let obj = if args.length() > 0 { args[0] } else { Undefined }
@@ -467,6 +468,22 @@ pub fn setup_object_builtins(
               raise @errors.TypeError(
                 message="Cannot convert undefined or null to object",
               )
+            Value::Proxy(proxy_data) => {
+              // Call [[OwnPropertyKeys]] via proxy trap, then filter to enumerable strings
+              let all_keys = @runtime.proxy_own_property_keys(interp, proxy_data)
+              let result : Array[Value] = []
+              match all_keys {
+                Value::Array(arr) =>
+                  for key in arr.elements {
+                    match key {
+                      Value::String_(_) => result.push(key)
+                      _ => () // Object.keys only returns strings
+                    }
+                  }
+                _ => ()
+              }
+              Value::Array({ elements: result })
+            }
             Object(data) => {
               let keys : Array[Value] = []
               let sorted = @runtime.sort_property_keys(data.properties)

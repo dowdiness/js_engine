@@ -6,7 +6,8 @@
 
 ///|
 fn make_get_own_property_names_func() -> Value {
-  @runtime.make_static_func_with_length("getOwnPropertyNames", 1, fn(
+  @runtime.make_interp_static_func_with_length("getOwnPropertyNames", 1, fn(
+    interp,
     args,
   ) raise {
     let obj = if args.length() > 0 { args[0] } else { Undefined }
@@ -15,6 +16,21 @@ fn make_get_own_property_names_func() -> Value {
         raise @errors.TypeError(
           message="Cannot convert undefined or null to object",
         )
+      Value::Proxy(proxy_data) => {
+        let all_keys = @runtime.proxy_own_property_keys(interp, proxy_data)
+        let result : Array[Value] = []
+        match all_keys {
+          Value::Array(arr) =>
+            for key in arr.elements {
+              match key {
+                Value::String_(_) => result.push(key)
+                _ => () // getOwnPropertyNames only returns strings
+              }
+            }
+          _ => ()
+        }
+        Value::Array({ elements: result })
+      }
       Object(data) => {
         let keys : Array[Value] = []
         let sorted = @runtime.sort_property_keys(data.properties)
@@ -47,7 +63,8 @@ fn make_get_own_property_names_func() -> Value {
 
 ///|
 fn make_get_own_property_symbols_func(sym_state : SymbolState) -> Value {
-  @runtime.make_static_func_with_length("getOwnPropertySymbols", 1, fn(
+  @runtime.make_interp_static_func_with_length("getOwnPropertySymbols", 1, fn(
+    interp,
     args,
   ) raise {
     let obj = if args.length() > 0 { args[0] } else { Undefined }
@@ -56,12 +73,27 @@ fn make_get_own_property_symbols_func(sym_state : SymbolState) -> Value {
         raise @errors.TypeError(
           message="Cannot convert undefined or null to object",
         )
+      Value::Proxy(proxy_data) => {
+        let all_keys = @runtime.proxy_own_property_keys(interp, proxy_data)
+        let result : Array[Value] = []
+        match all_keys {
+          Value::Array(arr) =>
+            for key in arr.elements {
+              match key {
+                Value::Symbol(_) => result.push(key)
+                _ => () // getOwnPropertySymbols only returns symbols
+              }
+            }
+          _ => ()
+        }
+        Value::Array({ elements: result })
+      }
       Object(data) => {
         let symbols : Array[Value] = []
         data.symbol_properties.each(fn(sym_id, _val) {
           match sym_state.get_symbol_by_id(sym_id) {
             Some(sym_data) => symbols.push(Symbol(sym_data))
-            None => () // Symbol no longer exists (shouldn't happen)
+            None => ()
           }
         })
         Value::Array({ elements: symbols })

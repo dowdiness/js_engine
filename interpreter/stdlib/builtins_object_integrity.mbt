@@ -190,10 +190,15 @@ fn make_is_sealed_func() -> Value {
 
 ///|
 fn make_is_extensible_func() -> Value {
-  @runtime.make_static_func_with_length("isExtensible", 1, fn(args) {
+  @runtime.make_interp_static_func_with_length("isExtensible", 1, fn(
+    interp,
+    args,
+  ) raise {
     let obj = if args.length() > 0 { args[0] } else { Undefined }
     match obj {
       Object(data) => Bool(data.extensible)
+      Value::Proxy(proxy_data) =>
+        Bool(@runtime.proxy_is_extensible(interp, proxy_data))
       _ => Value::Bool(false)
     }
   })
