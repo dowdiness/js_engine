@@ -45,6 +45,57 @@ fn RegexParser::new(pattern : String, unicode~ : Bool = false) -> RegexParser {
 }
 
 ///|
+/// Annex B: When no named groups exist in the pattern, convert
+/// NamedBackreference("name") nodes to literal char sequences
+/// matching the text "k<name>" (the backslash was already consumed).
+fn desugar_named_backrefs_to_literals(node : RegexNode) -> RegexNode {
+  match node {
+    NamedBackreference(name) => {
+      let chars : Array[RegexNode] = [Literal('k'), Literal('<')]
+      let name_chars = name.to_array()
+      for c in name_chars {
+        chars.push(Literal(c))
+      }
+      chars.push(Literal('>'))
+      Sequence(chars)
+    }
+    Group(children, idx, name) => {
+      let resolved = children.map(
+        (child) => desugar_named_backrefs_to_literals(child),
+      )
+      Group(resolved, idx, name)
+    }
+    Sequence(nodes) => {
+      let resolved = nodes.map(
+        (child) => desugar_named_backrefs_to_literals(child),
+      )
+      Sequence(resolved)
+    }
+    Alternation(left, right) => {
+      let resolved_left = left.map(
+        (child) => desugar_named_backrefs_to_literals(child),
+      )
+      let resolved_right = right.map(
+        (child) => desugar_named_backrefs_to_literals(child),
+      )
+      Alternation(resolved_left, resolved_right)
+    }
+    Quantified(inner, min, max, greedy) => {
+      let resolved = desugar_named_backrefs_to_literals(inner)
+      Quantified(resolved, min, max, greedy)
+    }
+    Lookahead(children, positive) => {
+      let resolved = children.map(
+        (child) => desugar_named_backrefs_to_literals(child),
+      )
+      Lookahead(resolved, positive)
+    }
+    Literal(_) | Dot | CharClass(_, _) | Anchor(_) | WordBoundary(_) |
+    Backreference(_) => node
+  }
+}
+
+///|
 fn resolve_named_backreferences(
   node : RegexNode,
   group_names : Map[String, Int],
@@ -113,7 +164,7 @@ fn RegexParser::parse(self : RegexParser) -> RegexNode raise Error {
   if !self.group_names.is_empty() {
     resolve_named_backreferences(result, self.group_names)
   } else {
-    result
+    desugar_named_backrefs_to_literals(result)
   }
 }
 
@@ -385,6 +436,40 @@ fn RegexParser::parse_char_class(self : RegexParser) -> RegexNode raise Error {
 }
 
 ///|
+/// Approximate Unicode ID_Start check for regex group names.
+/// Accepts ASCII letters, _, $, and common Unicode letter ranges.
+/// Rejects emoji, symbols, and other non-identifier characters.
+fn is_id_start_char(c : Char) -> Bool {
+  let cp = c.to_int()
+  (c >= 'a' && c <= 'z') ||
+  (c >= 'A' && c <= 'Z') ||
+  c == '_' ||
+  c == '$' ||
+  (cp >= 0x00C0 && cp <= 0x024F) || // Latin Extended
+  (cp >= 0x0370 && cp <= 0x03FF) || // Greek
+  (cp >= 0x0400 && cp <= 0x04FF) || // Cyrillic
+  (cp >= 0x0500 && cp <= 0x052F) || // Cyrillic Supplement
+  (cp >= 0x0590 && cp <= 0x05FF) || // Hebrew
+  (cp >= 0x0600 && cp <= 0x06FF) || // Arabic
+  (cp >= 0x0900 && cp <= 0x097F) || // Devanagari
+  (cp >= 0x1E00 && cp <= 0x1EFF) || // Latin Extended Additional
+  (cp >= 0x3040 && cp <= 0x30FF) || // Japanese Hiragana/Katakana
+  (cp >= 0x4E00 && cp <= 0x9FFF) || // CJK Unified Ideographs
+  (cp >= 0xAC00 && cp <= 0xD7AF) || // Korean Hangul
+  (cp >= 0x1D400 && cp <= 0x1D7FF) // Mathematical Alphanumeric Symbols
+}
+
+///|
+/// Approximate Unicode ID_Continue check for regex group names.
+/// Same as ID_Start plus digits and ZWNJ/ZWJ.
+fn is_id_continue_char(c : Char) -> Bool {
+  is_id_start_char(c) ||
+  (c >= '0' && c <= '9') ||
+  c.to_int() == 0x200C || // ZWNJ
+  c.to_int() == 0x200D // ZWJ
+}
+
+///|
 fn RegexParser::parse_group(self : RegexParser) -> RegexNode raise Error {
   self.pos += 1 // skip '('
   // Check for special group syntax
@@ -423,7 +508,7 @@ fn RegexParser::parse_group(self : RegexParser) -> RegexNode raise Error {
           )
         }
         let first = self.pattern[self.pos]
-        if first != '_' && first != '$' && !((first >= 'a' && first <= 'z') || (first >= 'A' && first <= 'Z') || first.to_int() > 127) {
+        if !is_id_start_char(first) {
           raise @errors.SyntaxError(
             message="Invalid regex: invalid group name",
           )
@@ -432,8 +517,7 @@ fn RegexParser::parse_group(self : RegexParser) -> RegexNode raise Error {
         // Subsequent chars: _, $, alphanumeric, ZWNJ (0x200C), ZWJ (0x200D)
         while self.pos < self.pattern.length() && self.pattern[self.pos] != '>' {
           let c = self.pattern[self.pos]
-          let cp = c.to_int()
-          if c == '_' || c == '$' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || cp > 127 {
+          if is_id_continue_char(c) {
             self.pos += 1
           } else {
             raise @errors.SyntaxError(
