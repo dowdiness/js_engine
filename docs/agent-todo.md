@@ -167,6 +167,42 @@ Same file and pattern as `withResolvers`. After implementing: remove `"promise-t
 
 ---
 
+## Pre-existing gaps exposed by named-groups (2026-04-15)
+
+Cross-cutting issues discovered during PR #47 that affect more than just named groups.
+
+### 1. Array named props invisible to `getOwnPropertyDescriptor`
+
+**Impact**: ~6 named-groups tests + many regex/array tests across the suite
+**File**: `interpreter/array_side_tables.mbt`, `interpreter/builtins_object_descriptors.mbt`
+
+`set_array_named_prop` stores properties (like `index`, `input`, `groups` on regex match arrays) in a side table (`array_named_props`). `Object.getOwnPropertyDescriptor` doesn't check this side table, so these properties are invisible to descriptor inspection. The `verifyProperty` test262 helper fails for all array named props.
+
+**Fix**: Make `getOwnPropertyDescriptor` for `Array` values check the side table. Also consider migrating match arrays to `Object` with indexed elements instead of `Array` with named prop side table.
+
+### 2. Regex callback replace not implemented
+
+**Impact**: 4 named-groups tests + many `String.prototype.replace` tests
+**File**: `interpreter/builtins.mbt:1392-1407`, `interpreter/builtins_string.mbt:684-698`
+
+Both `[Symbol.replace]` and `String.prototype.replace` stringify the replacement value before calling `string_replace_regex`. When the second argument is a function, it should be called per match with `(match, ...captures, offset, string, groups)` arguments.
+
+### 3. JS lexer rejects non-ASCII identifiers
+
+**Impact**: 8 named-groups tests + general Unicode identifier support
+**File**: `lexer/lexer.mbt`
+
+The lexer's identifier scanning only accepts ASCII `[a-zA-Z_$]` starts. Unicode letters like `π` (U+03C0) or mathematical italics like `𝑓` (U+1D453) are rejected as unexpected characters. These are valid JS identifiers and appear in test262 as regex literal group names like `/(?<π>x)/`.
+
+### 4. RegExp subclass exec/match forwarding
+
+**Impact**: 4 named-groups tests
+**File**: `interpreter/builtins_regex.mbt`
+
+RegExp subclass tests expect `exec()` to be called on the subclass instance (which may override `exec`), but the engine calls internal regex functions directly. Needs `Symbol.match` / `Symbol.replace` to call `this.exec()` through the prototype chain.
+
+---
+
 ## Later PR: `for-await` / `async-iteration`
 
 **Feature flag**: `"async-iteration"` in `SKIP_FEATURES`
