@@ -877,8 +877,8 @@ Targeted fixes for specific failing subcategories within otherwise high-performi
 | Tier 1+2 (P22) | +587 | 24,462 | **88.1%** |
 | Tier 4 (P23) | +57 | 24,519 | **88.8%** |
 | Tier 1d + regex replace (2026-04-16) | ~+60 | ~24,579 | **~89.0%** |
-| Remaining Tier 4 (4g modules) | ~50-100 | ~24,650 | **~89.3%** |
-| Proxy trap invariant fixes | ~50-100 | ~24,750 | **~89.7%** |
+| Proxy trap invariants (2026-04-16) | +136 | ~24,715 | **~89.5%** |
+| Remaining Tier 4 (4g modules) | ~50-100 | ~24,815 | **~89.9%** |
 
 **Note**: Tier 3a (class public fields) and Tier 3b (async/await) were already implemented and unlocked prior to 2026-04-16. The `class-fields-public` and `async-functions` feature flags are no longer in the skip list. Remaining gains come from fixing many small issues across categories.
 
@@ -892,7 +892,7 @@ Failures are now widely distributed. No single fix unlocks 300+ tests. Progress 
 | `language/expressions` | ~10,810 | ~1,018 | ~91.4% | Scattered; class-private skipped |
 | `language/statements` | ~7,615 | ~647 | ~89.8% | Scattered; class-private skipped |
 | `built-ins/RegExp` | ~1,148 | ~628 | ~64.6% | No lookbehind, subclass exec forwarding |
-| `built-ins/Proxy` | 229 | 305 | 42.9% | All 13 traps have gaps (ownKeys 48, getOwnPropertyDescriptor 32, setPrototypeOf 30, getPrototypeOf 28, has 23, set 22, isExtensible 20, defineProperty 20, revocable 20) |
+| `built-ins/Proxy` | 366 | 170 | 68.3% | Improved 2026-04-16: ownKeys 100%, isExtensible 91%, +7 traps with invariant checks. Remaining: set receiver forwarding (36), setPrototypeOf (12), getOwnPropertyDescriptor (8) |
 | `built-ins/Object` | ~5,658 | ~1,092 | ~83.8% | Descriptor edge cases |
 | `built-ins/String` | ~2,405 | ~216 | ~91.6% | Improved 2026-04-16 |
 | `built-ins/Function` | 608 | 206 | 74.7% | Constructor edge cases, prototype descriptors |
@@ -915,6 +915,7 @@ Failures are now widely distributed. No single fix unlocks 300+ tests. Progress 
 - **RegExp named groups** — ✅ DONE (PR #47, 2026-04-15). 28/70 named-groups tests pass.
 - **RegExpStringIteratorPrototype** — ✅ Mostly done (2026-04-16). 20/34 passing. matchAll 44/48.
 - **Regex callback replace** — ✅ DONE (2026-04-16). `[Symbol.replace]` supports function replacements.
+- **Proxy trap invariants** — ✅ Mostly done (2026-04-16). 9 traps with full invariant validation in centralized `proxy_helpers.mbt`. ownKeys 50/50 (100%), isExtensible 20/22, overall Proxy 366/536 (68.3%, was 42.9%). Remaining: set receiver forwarding, getOwnPropertyDescriptor descriptor comparison.
 
 ---
 
