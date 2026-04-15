@@ -574,27 +574,67 @@ fn RegexParser::parse_unicode_escape_in_name(
 }
 
 ///|
+/// Check if a code point is in a known non-identifier Unicode range
+/// (symbols, punctuation, emoji, control, formatting, surrogates).
+fn is_non_identifier_codepoint(cp : Int) -> Bool {
+  // ASCII non-identifier (handled separately by callers for $, _)
+  (cp >= 0x00 && cp <= 0x23) || // Control + space + !"#
+  (cp == 0x25 || cp == 0x26) || // %, &
+  (cp >= 0x28 && cp <= 0x2F) || // ()*+,-./
+  (cp >= 0x3A && cp <= 0x40) || // :;<=>?@
+  (cp >= 0x5B && cp <= 0x5E) || // [\]^
+  cp == 0x60 || // `
+  (cp >= 0x7B && cp <= 0x7F) || // {|}~ DEL
+  // C1 controls + Latin-1 punctuation/symbols
+  (cp >= 0x80 && cp <= 0xBF) ||
+  // General punctuation, super/subscripts, currency, combining marks for symbols
+  (cp >= 0x2000 && cp <= 0x20CF) ||
+  // Letterlike symbols — mixed; reject the block (overly conservative for ℝ etc.)
+  (cp >= 0x2100 && cp <= 0x214F) ||
+  // Number forms
+  (cp >= 0x2150 && cp <= 0x218F) ||
+  // Arrows, math operators, misc technical, control pictures, box drawing,
+  // block elements, geometric shapes, misc symbols, dingbats
+  (cp >= 0x2190 && cp <= 0x27BF) ||
+  // Braille, supplemental arrows, misc math, CJK symbols
+  (cp >= 0x2800 && cp <= 0x2BFF) ||
+  // Supplemental punctuation
+  (cp >= 0x2E00 && cp <= 0x2E7F) ||
+  // CJK symbols and punctuation
+  (cp >= 0x3000 && cp <= 0x303F) ||
+  // Variation selectors
+  (cp >= 0xFE00 && cp <= 0xFE0F) ||
+  // Half/fullwidth forms (symbols portion)
+  (cp >= 0xFF01 && cp <= 0xFF0F) ||
+  (cp >= 0xFF1A && cp <= 0xFF20) ||
+  (cp >= 0xFF3B && cp <= 0xFF40) ||
+  (cp >= 0xFF5B && cp <= 0xFF65) ||
+  // Specials
+  (cp >= 0xFFF0 && cp <= 0xFFFF) ||
+  // Surrogates (invalid as identifiers)
+  (cp >= 0xD800 && cp <= 0xDFFF) ||
+  // Supplementary: emoji and symbols (U+1F000-1FFFF), except math alphanumerics
+  (cp >= 0x1F000 && cp <= 0x1F9FF) ||
+  (cp >= 0x1FA00 && cp <= 0x1FFFF) ||
+  // Musical symbols, playing cards, mahjong
+  (cp >= 0x1F000 && cp <= 0x1F02F) ||
+  // Tags
+  (cp >= 0xE0000 && cp <= 0xE007F)
+}
+
+///|
 /// Approximate Unicode ID_Start check for regex group names.
-/// Accepts ASCII letters, _, $, and common Unicode letter ranges.
-/// Rejects emoji, symbols, and other non-identifier characters.
+/// Uses a blocklist approach: accepts $, _, ASCII letters, and any Unicode
+/// code point not in known non-identifier ranges (symbols, punctuation,
+/// emoji, control chars). This covers all major scripts without needing
+/// the full Unicode ID_Start table.
 fn is_id_start_char(c : Char) -> Bool {
   let cp = c.to_int()
-  (c >= 'a' && c <= 'z') ||
-  (c >= 'A' && c <= 'Z') ||
   c == '_' ||
   c == '$' ||
-  (cp >= 0x00C0 && cp <= 0x024F) || // Latin Extended
-  (cp >= 0x0370 && cp <= 0x03FF) || // Greek
-  (cp >= 0x0400 && cp <= 0x04FF) || // Cyrillic
-  (cp >= 0x0500 && cp <= 0x052F) || // Cyrillic Supplement
-  (cp >= 0x0590 && cp <= 0x05FF) || // Hebrew
-  (cp >= 0x0600 && cp <= 0x06FF) || // Arabic
-  (cp >= 0x0900 && cp <= 0x097F) || // Devanagari
-  (cp >= 0x1E00 && cp <= 0x1EFF) || // Latin Extended Additional
-  (cp >= 0x3040 && cp <= 0x30FF) || // Japanese Hiragana/Katakana
-  (cp >= 0x4E00 && cp <= 0x9FFF) || // CJK Unified Ideographs
-  (cp >= 0xAC00 && cp <= 0xD7AF) || // Korean Hangul
-  (cp >= 0x1D400 && cp <= 0x1D7FF) // Mathematical Alphanumeric Symbols
+  (c >= 'a' && c <= 'z') ||
+  (c >= 'A' && c <= 'Z') ||
+  (cp >= 0xC0 && !is_non_identifier_codepoint(cp))
 }
 
 ///|
