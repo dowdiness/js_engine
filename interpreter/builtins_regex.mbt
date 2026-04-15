@@ -45,9 +45,76 @@ fn RegexParser::new(pattern : String, unicode~ : Bool = false) -> RegexParser {
 }
 
 ///|
+fn resolve_named_backreferences(
+  node : RegexNode,
+  group_names : Map[String, Int],
+) -> RegexNode raise Error {
+  match node {
+    NamedBackreference(name) =>
+      match group_names.get(name) {
+        Some(idx) => Backreference(idx)
+        None =>
+          raise @errors.SyntaxError(
+            message="Invalid regex: undefined named backreference \\k<" +
+              name +
+              ">",
+          )
+      }
+    Group(children, idx, name) => {
+      let resolved = children.map(fn(child) {
+        resolve_named_backreferences(child, group_names) catch {
+          e => raise e
+        }
+      })
+      Group(resolved, idx, name)
+    }
+    Sequence(nodes) => {
+      let resolved = nodes.map(fn(child) {
+        resolve_named_backreferences(child, group_names) catch {
+          e => raise e
+        }
+      })
+      Sequence(resolved)
+    }
+    Alternation(left, right) => {
+      let resolved_left = left.map(fn(child) {
+        resolve_named_backreferences(child, group_names) catch {
+          e => raise e
+        }
+      })
+      let resolved_right = right.map(fn(child) {
+        resolve_named_backreferences(child, group_names) catch {
+          e => raise e
+        }
+      })
+      Alternation(resolved_left, resolved_right)
+    }
+    Quantified(inner, min, max, greedy) => {
+      let resolved = resolve_named_backreferences(inner, group_names)
+      Quantified(resolved, min, max, greedy)
+    }
+    Lookahead(children, positive) => {
+      let resolved = children.map(fn(child) {
+        resolve_named_backreferences(child, group_names) catch {
+          e => raise e
+        }
+      })
+      Lookahead(resolved, positive)
+    }
+    // Leaf nodes
+    Literal(_) | Dot | CharClass(_, _) | Anchor(_) | WordBoundary(_) |
+    Backreference(_) => node
+  }
+}
+
+///|
 fn RegexParser::parse(self : RegexParser) -> RegexNode raise Error {
   let result = self.parse_alternation()
-  result
+  if !self.group_names.is_empty() {
+    resolve_named_backreferences(result, self.group_names)
+  } else {
+    result
+  }
 }
 
 ///|
@@ -189,6 +256,32 @@ fn RegexParser::parse_escape(self : RegexParser) -> RegexNode raise Error {
     'f' => Literal('\u000C') // form feed
     'v' => Literal('\u000B') // vertical tab
     '0' => Literal('\u0000') // null
+    'k' =>
+      if self.pos < self.pattern.length() && self.pattern[self.pos] == '<' {
+        // Named backreference \k<name>
+        self.pos += 1 // skip '<'
+        let name_start = self.pos
+        while self.pos < self.pattern.length() && self.pattern[self.pos] != '>' {
+          self.pos += 1
+        }
+        if self.pos >= self.pattern.length() {
+          raise @errors.SyntaxError(
+            message="Invalid regex: unterminated named backreference",
+          )
+        }
+        let name_buf = StringBuilder::new()
+        for i = name_start; i < self.pos; i = i + 1 {
+          name_buf.write_char(self.pattern[i])
+        }
+        self.pos += 1 // skip '>'
+        NamedBackreference(name_buf.to_string())
+      } else if self.unicode {
+        raise @errors.SyntaxError(
+          message="Invalid regex: invalid escape in unicode mode",
+        )
+      } else {
+        Literal('k') // Annex B: literal 'k' in non-unicode mode
+      }
     _ =>
       if ch >= '1' && ch <= '9' {
         // Backreference \1-\9
