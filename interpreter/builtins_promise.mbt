@@ -1670,6 +1670,48 @@ pub fn setup_promise(env : Environment) -> Unit {
 }
 
 ///|
+/// Schedule a timer and return its ID.
+/// `period` is 0 for one-shot timers (setTimeout) and the repeat interval
+/// in virtual ms for repeating timers (setInterval).
+/// `is_interval` must be true for setInterval even when delay=0.
+fn Interpreter::schedule_timer(
+  self : Interpreter,
+  callback : Value,
+  extra_args : Array[Value],
+  delay : Int,
+  period : Int,
+  is_interval : Bool,
+) -> Int {
+  let id = self.host.timer_id_counter.val
+  self.host.timer_id_counter.val = id + 1
+  let order = self.host.timer_insertion_counter.val
+  self.host.timer_insertion_counter.val = order + 1
+  self.host.timer_queue.push({
+    id,
+    callback,
+    args: extra_args,
+    delay,
+    period,
+    cancelled: false,
+    is_interval,
+    insertion_order: order,
+  })
+  id
+}
+
+///|
+/// Cancel a pending setTimeout or setInterval by ID.
+fn Interpreter::cancel_timer(self : Interpreter, id : Int) -> Unit {
+  for timer in self.host.timer_queue {
+    if timer.id == id {
+      timer.cancelled = true
+      break
+    }
+  }
+  self.host.cancelled_timer_ids[id] = true
+}
+
+///|
 /// Setup timer builtins: setTimeout, clearTimeout, setInterval, clearInterval
 /// These implement the WHATWG Timer APIs
 /// Reference: https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#timers
@@ -1714,20 +1756,7 @@ pub fn setup_timers(env : Environment) -> Unit {
       for i = 2; i < args.length(); i = i + 1 {
         extra_args.push(args[i])
       }
-      let id = interp.host.timer_id_counter.val
-      interp.host.timer_id_counter.val = id + 1
-      let order = interp.host.timer_insertion_counter.val
-      interp.host.timer_insertion_counter.val = order + 1
-      interp.host.timer_queue.push({
-        id,
-        callback,
-        args: extra_args,
-        delay,
-        period: 0,
-        cancelled: false,
-        is_interval: false,
-        insertion_order: order,
-      })
+      let id = interp.schedule_timer(callback, extra_args, delay, 0, false)
       Number(id.to_double())
     }),
   )
@@ -1744,16 +1773,7 @@ pub fn setup_timers(env : Environment) -> Unit {
       } else {
         return Undefined
       }
-      // Mark timer as cancelled in queue
-      for timer in interp.host.timer_queue {
-        if timer.id == id {
-          timer.cancelled = true
-          break
-        }
-      }
-      // Also record in cancelled set so run_timers won't re-enqueue
-      // an interval whose callback called clearInterval on itself
-      interp.host.cancelled_timer_ids[id] = true
+      interp.cancel_timer(id)
       Undefined
     }),
   )
@@ -1796,20 +1816,7 @@ pub fn setup_timers(env : Environment) -> Unit {
       for i = 2; i < args.length(); i = i + 1 {
         extra_args.push(args[i])
       }
-      let id = interp.host.timer_id_counter.val
-      interp.host.timer_id_counter.val = id + 1
-      let order = interp.host.timer_insertion_counter.val
-      interp.host.timer_insertion_counter.val = order + 1
-      interp.host.timer_queue.push({
-        id,
-        callback,
-        args: extra_args,
-        delay,
-        period: delay,
-        cancelled: false,
-        is_interval: true,
-        insertion_order: order,
-      })
+      let id = interp.schedule_timer(callback, extra_args, delay, delay, true)
       Number(id.to_double())
     }),
   )
@@ -1826,15 +1833,7 @@ pub fn setup_timers(env : Environment) -> Unit {
       } else {
         return Undefined
       }
-      for timer in interp.host.timer_queue {
-        if timer.id == id {
-          timer.cancelled = true
-          break
-        }
-      }
-      // Also record in cancelled set so run_timers won't re-enqueue
-      // an interval whose callback called clearInterval on itself
-      interp.host.cancelled_timer_ids[id] = true
+      interp.cancel_timer(id)
       Undefined
     }),
   )
