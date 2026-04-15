@@ -182,29 +182,11 @@ those first.
 
 ---
 
-## Later PR: Stage 3/4 Sub-package Extraction
+## ~~Later PR: Stage 3/4 Sub-package Extraction~~ — DONE (2026-04-15, branch `claude/restructure-architecture-VkLTl`)
 
-**Status**: Coupling audit complete (2026-04-15). See
-[docs/architecture-redesign-2026-04-15.md](architecture-redesign-2026-04-15.md) for
-full analysis and migration plan.
+All four stages shipped. See [docs/architecture-redesign-2026-04-15.md](architecture-redesign-2026-04-15.md) for the full analysis.
 
-**Audit result**: Only `builtins_promise.mbt` has direct internal access (14 timer-queue
-call sites). All other stdlib files use the `Interpreter` method surface only. The split
-is cheaper than previously estimated.
-
-**Ordered stages** (see architecture doc §6):
-
-1. **Stage 1 — ExecContext** (fix correctness bugs first): Replace `mut strict` and
-   `mut current_generator` on `Interpreter` with a per-call `ExecContext` struct.
-   Fixes agent-todo #10. Compiler-guided change.
-
-2. **Stage 2 — Timer API** (prerequisite for boundary): Add explicit timer methods to
-   `HostEnv`/`Interpreter`, replacing the 14 direct field accesses in
-   `builtins_promise.mbt`.
-
-3. **Stage 3 — Package boundary**: Create `interpreter/runtime/` and
-   `interpreter/stdlib/` sub-packages with `moon.pkg.json`. Move files. Fix visibility.
-   Compiler enforces the boundary after this step.
-
-4. **Stage 4 — Descriptor consolidation** (lowest urgency): Make `property.mbt` the
-   sole authority for descriptor validation primitives.
+~~**Stage 1 — ExecContext**~~: `ExecContext` struct replaces `mut strict` / `mut current_generator`. ✅
+~~**Stage 2 — Timer API**~~: `Interpreter::schedule_timer` / `cancel_timer` replace 14 direct field accesses. ✅
+~~**Stage 3 — Package boundary**~~: `interpreter/runtime/` and `interpreter/stdlib/` sub-packages created; compiler enforces the boundary. ✅
+~~**Stage 4 — Descriptor consolidation**~~: `validate_non_configurable` moved to `runtime/property.mbt`; shared helpers extracted. ✅
