@@ -10,6 +10,7 @@ fn Interpreter::make_async_function(
   params : Array[String],
   rest_param : String?,
   body : Array[@ast.Stmt],
+  strict : Bool,
   closure : Environment,
 ) -> Value {
   let func_name = match name {
@@ -46,6 +47,7 @@ fn Interpreter::make_async_function(
           None,
           rest_param,
           body,
+          strict,
           closure,
         )
       }),
@@ -64,6 +66,7 @@ fn Interpreter::make_async_function_ext(
   params : Array[@ast.Param],
   rest_param : String?,
   body : Array[@ast.Stmt],
+  strict : Bool,
   closure : Environment,
 ) -> Value {
   let func_name = match name {
@@ -100,6 +103,7 @@ fn Interpreter::make_async_function_ext(
           Some(params),
           rest_param,
           body,
+          strict,
           closure,
         )
       }),
@@ -123,6 +127,7 @@ fn run_async_body(
   params_ext : Array[@ast.Param]?,
   rest_param : String?,
   body : Array[@ast.Stmt],
+  strict : Bool,
   closure : Environment,
 ) -> Value {
   // Create a Promise for the result
@@ -152,7 +157,7 @@ fn run_async_body(
     extensible: true,
   })
   let gen_val = create_generator_instance(
-    ip, this_val, args, name, params, params_ext, rest_param, body, closure, func_proto,
+    ip, this_val, args, name, params, params_ext, rest_param, body, strict, closure, func_proto,
   ) catch {
     JsException(e) => {
       // Parameter binding error rejects the promise
@@ -382,6 +387,7 @@ fn Interpreter::make_async_generator_function(
   params : Array[String],
   rest_param : String?,
   body : Array[@ast.Stmt],
+  strict : Bool,
   closure : Environment,
 ) -> Value {
   make_async_gen_function_inner(
@@ -391,6 +397,7 @@ fn Interpreter::make_async_generator_function(
     None,
     rest_param,
     body,
+    strict,
     closure,
   )
 }
@@ -403,6 +410,7 @@ fn Interpreter::make_async_generator_function_ext(
   params : Array[@ast.Param],
   rest_param : String?,
   body : Array[@ast.Stmt],
+  strict : Bool,
   closure : Environment,
 ) -> Value {
   make_async_gen_function_inner(
@@ -412,6 +420,7 @@ fn Interpreter::make_async_generator_function_ext(
     Some(params),
     rest_param,
     body,
+    strict,
     closure,
   )
 }
@@ -426,6 +435,7 @@ fn make_async_gen_function_inner(
   params_ext : Array[@ast.Param]?,
   rest_param : String?,
   body : Array[@ast.Stmt],
+  strict : Bool,
   closure : Environment,
 ) -> Value {
   let async_gen_proto = init_async_generator_prototype()
@@ -458,7 +468,7 @@ fn make_async_gen_function_inner(
         },
         fn(ip, this_val, args) raise {
           create_generator_instance(
-            ip, this_val, args, name, params, params_ext, rest_param, body, closure,
+            ip, this_val, args, name, params, params_ext, rest_param, body, strict, closure,
             func_prototype,
           )
         },
@@ -647,6 +657,7 @@ pub fn setup_async_function_constructor(env : Environment) -> Unit {
         [],
         None,
         [],
+        false,
         interp.global,
       )
     }
@@ -677,6 +688,7 @@ pub fn setup_async_function_constructor(env : Environment) -> Unit {
             params,
             None,
             body,
+            has_use_strict(body),
             interp.global,
           )
         AsyncFuncDeclExt(_, params, rest_param, body, _) =>
@@ -685,6 +697,7 @@ pub fn setup_async_function_constructor(env : Environment) -> Unit {
             params,
             rest_param,
             body,
+            has_use_strict(body),
             interp.global,
           )
         _ => ()

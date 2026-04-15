@@ -774,20 +774,80 @@ pub fn Interpreter::construct_value(
             ctor_env.def("<new.target>", ctor, LetBinding)
             // Execute the constructor if one was defined
             match ctor_fn {
-              Some((params, body)) => {
+              Some((params, rest_param, body)) => {
                 // Class constructors are always strict — validate params
-                check_duplicate_params(params)
+                check_duplicate_params_ext(params, rest_param)
                 for p in params {
-                  validate_strict_binding_name(p)
+                  validate_strict_binding_name(p.name)
                 }
-                // Bind parameters
+                match rest_param {
+                  Some(rn) => validate_strict_binding_name(rn)
+                  None => ()
+                }
+                // Bind parameters with defaults (mirrors UserFuncExt path in call.mbt)
+                let mut effective_param_count = 0
                 for i = 0; i < params.length(); i = i + 1 {
-                  let val : Value = if i < args.length() {
-                    args[i]
-                  } else {
-                    Undefined
+                  let param = params[i]
+                  // Skip rest destructuring params — handled separately below
+                  if rest_param is Some(rn) && param.name == rn {
+                    continue
                   }
-                  ctor_env.def(params[i], val, LetBinding)
+                  let val : Value = if effective_param_count < args.length() &&
+                    !(args[effective_param_count] is Undefined) {
+                    args[effective_param_count]
+                  } else {
+                    match param.default_val {
+                      Some(default_expr) =>
+                        self.eval_expr(class_ctx, default_expr, ctor_env)
+                      None =>
+                        if effective_param_count < args.length() {
+                          args[effective_param_count]
+                        } else {
+                          Undefined
+                        }
+                    }
+                  }
+                  ctor_env.def(param.name, val, LetBinding)
+                  match param.pattern {
+                    Some(pat) =>
+                      self.bind_pattern(
+                        pat,
+                        val,
+                        ctor_env,
+                        LetBinding,
+                        ctx=class_ctx,
+                      )
+                    None => ()
+                  }
+                  effective_param_count += 1
+                }
+                // Rest parameter
+                match rest_param {
+                  Some(rest_name) => {
+                    let rest_elements : Array[Value] = []
+                    for i = effective_param_count; i < args.length(); i = i + 1 {
+                      rest_elements.push(args[i])
+                    }
+                    let rest_val = Array({ elements: rest_elements })
+                    ctor_env.def(rest_name, rest_val, LetBinding)
+                    for p in params {
+                      if p.name == rest_name {
+                        match p.pattern {
+                          Some(pat) =>
+                            self.bind_pattern(
+                              pat,
+                              rest_val,
+                              ctor_env,
+                              LetBinding,
+                              ctx=class_ctx,
+                            )
+                          None => ()
+                        }
+                        break
+                      }
+                    }
+                  }
+                  None => ()
                 }
                 let ctor_tte : Value? = if ctor_env.has("[[ThrowTypeError]]") {
                   Some(ctor_env.get("[[ThrowTypeError]]"))
@@ -879,14 +939,59 @@ pub fn Interpreter::construct_value(
                                 )
                             }
                             match ctor {
-                              Some((params, body)) => {
+                              Some((params, rest_param, body)) => {
+                                let mut eff_count = 0
                                 for i = 0; i < params.length(); i = i + 1 {
-                                  let val : Value = if i < args.length() {
-                                    args[i]
-                                  } else {
-                                    Undefined
+                                  let p = params[i]
+                                  if rest_param is Some(rn) && p.name == rn {
+                                    continue
                                   }
-                                  super_env.def(params[i], val, LetBinding)
+                                  let val : Value = if eff_count < args.length() &&
+                                    !(args[eff_count] is Undefined) {
+                                    args[eff_count]
+                                  } else {
+                                    match p.default_val {
+                                      Some(de) =>
+                                        self.eval_expr(
+                                          class_ctx, de, super_env,
+                                        )
+                                      None =>
+                                        if eff_count < args.length() {
+                                          args[eff_count]
+                                        } else {
+                                          Undefined
+                                        }
+                                    }
+                                  }
+                                  super_env.def(p.name, val, LetBinding)
+                                  match p.pattern {
+                                    Some(pat) =>
+                                      self.bind_pattern(
+                                        pat,
+                                        val,
+                                        super_env,
+                                        LetBinding,
+                                        ctx=class_ctx,
+                                      )
+                                    None => ()
+                                  }
+                                  eff_count += 1
+                                }
+                                match rest_param {
+                                  Some(rn) => {
+                                    let re : Array[Value] = []
+                                    for i = eff_count
+                                        i < args.length()
+                                        i = i + 1 {
+                                      re.push(args[i])
+                                    }
+                                    super_env.def(
+                                      rn,
+                                      Array({ elements: re }),
+                                      LetBinding,
+                                    )
+                                  }
+                                  None => ()
                                 }
                                 let super_tte : Value? = if super_env.has(
                                     "[[ThrowTypeError]]",

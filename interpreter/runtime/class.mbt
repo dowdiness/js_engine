@@ -34,6 +34,10 @@ fn Interpreter::create_class(
     Some(expr) => {
       let super_val = self.eval_expr(ctx, expr, env)
       match super_val {
+        Null =>
+          // `class C extends null {}` — legal per spec; no super constructor,
+          // prototype chain ends at null.
+          (None, Null)
         Object(super_data) =>
           match super_data.properties.get("prototype") {
             Some(sp) => (Some(super_val), sp)
@@ -59,7 +63,7 @@ fn Interpreter::create_class(
   let static_symbol_props : Map[Int, Value] = {}
   let static_symbol_descriptors : Map[Int, PropDescriptor] = {}
   // Track constructor method
-  let mut ctor_fn : (Array[String], Array[@ast.Stmt])? = None
+  let mut ctor_fn : (Array[@ast.Param], String?, Array[@ast.Stmt])? = None
   let mut ctor_param_count : Int = 0
   // Collect instance field initializers (evaluated during construction)
   let instance_fields : Array[ClassFieldInit] = []
@@ -131,11 +135,15 @@ fn Interpreter::create_class(
           // Extract constructor params and body
           // Class bodies are always strict, so ensure constructor body has "use strict"
           match m.value {
-            FuncExpr(_, params, body, _) => {
+            FuncExpr(_, param_names, body, _) => {
               let strict_body = ensure_strict_body(body)
-              validate_function_signature(true, None, params, strict_body)
-              ctor_fn = Some((params, strict_body))
-              ctor_param_count = params.length()
+              validate_function_signature(true, None, param_names, strict_body)
+              // Wrap plain names as Param objects (no defaults/rest/patterns)
+              let params : Array[@ast.Param] = param_names.map(fn(n) {
+                ({ name: n, default_val: None, pattern: None } : @ast.Param)
+              })
+              ctor_fn = Some((params, None, strict_body))
+              ctor_param_count = param_names.length()
             }
             FuncExprExt(_, params, rest, body, _) => {
               let strict_body = ensure_strict_body(body)
@@ -146,10 +154,16 @@ fn Interpreter::create_class(
                 rest,
                 strict_body,
               )
-              // Convert Param array to String array (ignoring defaults for now)
-              let param_names = params.map(fn(p) { p.name })
-              ctor_fn = Some((param_names, strict_body))
-              ctor_param_count = params.length()
+              ctor_fn = Some((params, rest, strict_body))
+              // Length = number of params before the first one with a default
+              let mut count = 0
+              for p in params {
+                if p.default_val is Some(_) {
+                  break
+                }
+                count += 1
+              }
+              ctor_param_count = count
             }
             _ => ()
           }

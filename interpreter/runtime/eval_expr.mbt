@@ -90,7 +90,8 @@ fn Interpreter::eval_expr(
     }
     GeneratorExpr(name, params, body, _) => {
       validate_function_signature(ctx.strict, name, params, body)
-      self.make_generator_function(name, params, None, body, env)
+      let strict = is_function_strict(ctx.strict, body)
+      self.make_generator_function(name, params, None, body, strict, env)
     }
     GeneratorExprExt(name, params, rest_param, body, _) => {
       validate_function_signature_ext(
@@ -100,11 +101,13 @@ fn Interpreter::eval_expr(
         rest_param,
         body,
       )
-      self.make_generator_function_ext(name, params, rest_param, body, env)
+      let strict = is_function_strict(ctx.strict, body)
+      self.make_generator_function_ext(name, params, rest_param, body, strict, env)
     }
     AsyncFuncExpr(name, params, body, _) => {
       validate_function_signature(ctx.strict, name, params, body)
-      self.make_async_function(name, params, None, body, env)
+      let strict = is_function_strict(ctx.strict, body)
+      self.make_async_function(name, params, None, body, strict, env)
     }
     AsyncFuncExprExt(name, params, rest_param, body, _) => {
       validate_function_signature_ext(
@@ -114,11 +117,13 @@ fn Interpreter::eval_expr(
         rest_param,
         body,
       )
-      self.make_async_function_ext(name, params, rest_param, body, env)
+      let strict = is_function_strict(ctx.strict, body)
+      self.make_async_function_ext(name, params, rest_param, body, strict, env)
     }
     AsyncArrowFunc(params, body, _) => {
       validate_function_signature(ctx.strict, None, params, body)
-      self.make_async_function(None, params, None, body, env)
+      let strict = is_function_strict(ctx.strict, body)
+      self.make_async_function(None, params, None, body, strict, env)
     }
     AsyncArrowFuncExt(params, rest_param, body, _) => {
       validate_function_signature_ext(
@@ -128,11 +133,13 @@ fn Interpreter::eval_expr(
         rest_param,
         body,
       )
-      self.make_async_function_ext(None, params, rest_param, body, env)
+      let strict = is_function_strict(ctx.strict, body)
+      self.make_async_function_ext(None, params, rest_param, body, strict, env)
     }
     AsyncGeneratorExpr(name, params, body, _) => {
       validate_function_signature(ctx.strict, name, params, body)
-      self.make_async_generator_function(name, params, None, body, env)
+      let strict = is_function_strict(ctx.strict, body)
+      self.make_async_generator_function(name, params, None, body, strict, env)
     }
     AsyncGeneratorExprExt(name, params, rest_param, body, _) => {
       validate_function_signature_ext(
@@ -142,8 +149,9 @@ fn Interpreter::eval_expr(
         rest_param,
         body,
       )
+      let strict = is_function_strict(ctx.strict, body)
       self.make_async_generator_function_ext(
-        name, params, rest_param, body, env,
+        name, params, rest_param, body, strict, env,
       )
     }
     AwaitExpr(argument, _) =>
@@ -803,14 +811,14 @@ fn Interpreter::eval_expr(
               }
               // Bind parameters and execute constructor body
               match ctor_fn {
-                Some((ctor_params, ctor_body)) => {
+                Some((ctor_params, _rest_param, ctor_body)) => {
                   for i = 0; i < ctor_params.length(); i = i + 1 {
                     let val : Value = if i < args.length() {
                       args[i]
                     } else {
                       Undefined
                     }
-                    call_env.def(ctor_params[i], val, LetBinding)
+                    call_env.def(ctor_params[i].name, val, LetBinding)
                   }
                   let tte : Value? = if call_env.has("[[ThrowTypeError]]") {
                     Some(call_env.get("[[ThrowTypeError]]"))

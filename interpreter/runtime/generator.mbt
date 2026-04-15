@@ -30,6 +30,7 @@ pub(all) struct GeneratorObject {
   mut state : GenState
   // The interpreter, body, params, closure, etc. needed to execute
   body : Array[@ast.Stmt]
+  strict : Bool // strict mode flag captured from the defining function
   params : Array[String] // simple params
   params_ext : Array[@ast.Param]? // extended params (with defaults)
   rest_param : String?
@@ -250,6 +251,7 @@ pub fn setup_generator_function_constructor(
         [],
         None,
         [],
+        false,
         interp.global,
       )
     }
@@ -280,6 +282,7 @@ pub fn setup_generator_function_constructor(
             params,
             None,
             body,
+            has_use_strict(body),
             interp.global,
           )
         GeneratorDeclExt(_, params, rest_param, body, _) =>
@@ -288,6 +291,7 @@ pub fn setup_generator_function_constructor(
             params,
             rest_param,
             body,
+            has_use_strict(body),
             interp.global,
           )
         _ => ()
@@ -355,6 +359,7 @@ fn Interpreter::make_generator_function(
   params : Array[String],
   rest_param : String?,
   body : Array[@ast.Stmt],
+  strict : Bool,
   closure : Environment,
 ) -> Value {
   let interp = self
@@ -406,6 +411,7 @@ fn Interpreter::make_generator_function(
           None,
           rest_param,
           body,
+          strict,
           closure,
           func_prototype,
         )
@@ -436,6 +442,7 @@ fn Interpreter::make_generator_function_ext(
   params : Array[@ast.Param],
   rest_param : String?,
   body : Array[@ast.Stmt],
+  strict : Bool,
   closure : Environment,
 ) -> Value {
   let interp = self
@@ -494,6 +501,7 @@ fn Interpreter::make_generator_function_ext(
           Some(params),
           rest_param,
           body,
+          strict,
           closure,
           func_prototype,
         )
@@ -527,12 +535,14 @@ fn create_generator_instance(
   params_ext : Array[@ast.Param]?,
   rest_param : String?,
   body : Array[@ast.Stmt],
+  strict : Bool,
   closure : Environment,
   func_prototype : Value,
 ) -> Value raise Error {
   // Per spec, FunctionDeclarationInstantiation runs eagerly when generator is called,
   // NOT when .next() is called. This means parameter binding errors throw immediately.
-  let gen_strict = has_use_strict(body)
+  // Use the stored strict flag instead of re-scanning the body.
+  let gen_strict = strict
   let setup_ctx : ExecContext = { strict: gen_strict, current_generator: None }
   let func_env = Environment::new(parent=Some(closure))
   func_env.is_var_scope = true
@@ -648,6 +658,7 @@ fn create_generator_instance(
     id: gen_id,
     state: SuspendedStart,
     body,
+    strict: gen_strict,
     params,
     params_ext,
     rest_param,
@@ -803,9 +814,10 @@ fn run_generator_body(
   gen : GeneratorObject,
   env : Environment,
 ) -> Value raise Error {
-  // Build per-execution context with this generator as the current generator
+  // Build per-execution context with this generator as the current generator.
+  // Use the stored strict flag rather than re-scanning the body on every resume.
   let gen_ctx : ExecContext = {
-    strict: has_use_strict(gen.body),
+    strict: gen.strict,
     current_generator: Some(gen),
   }
   let result = try {

@@ -9,20 +9,9 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
     Object(array_ctor) =>
       match array_ctor.properties.get("prototype") {
         Some(Object(proto_data)) => {
-          // Add [Symbol.iterator] method that returns an array iterator
-          proto_data.symbol_properties[iterator_sym.id] = @runtime.make_method_func(
-            "[Symbol.iterator]",
-            0,
-            fn(this_val, _args) raise {
-              match this_val {
-                Value::Array(arr) => @runtime.make_array_iterator_value(arr)
-                _ => @runtime.make_array_like_iterator_value(this_val)
-              }
-            },
-          )
-
-          // Also add values() method (alias for [Symbol.iterator])
-          proto_data.properties["values"] = @runtime.make_method_func(
+          // values() and [Symbol.iterator] are the same function object per spec
+          // (Array.prototype.values === Array.prototype[Symbol.iterator]).
+          let values_fn = @runtime.make_method_func(
             "values",
             0,
             fn(this_val, _args) raise {
@@ -32,13 +21,15 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
               }
             },
           )
+          proto_data.symbol_properties[iterator_sym.id] = values_fn
+          proto_data.properties["values"] = values_fn
 
           // Add keys() method that returns an iterator over indices
           proto_data.properties["keys"] = @runtime.make_method_func("keys", 0, fn(
             this_val,
             _args,
           ) raise {
-            let len = @runtime.to_array_like_length(this_val)
+            let the_val = this_val
             let index_ref : Ref[Int] = { val: 0 }
             let next_method = Value::Object({
               properties: {},
@@ -47,6 +38,8 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
               callable: Some(
                 NativeCallable("next", fn(_args) {
                   let idx = index_ref.val
+                  // Read live length each call so mutations during iteration are observed
+                  let len = @runtime.to_array_like_length(the_val)
                   if idx < len {
                     index_ref.val = idx + 1
                     let result_props : Map[String, Value] = {}
@@ -116,7 +109,6 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
             0,
             fn(this_val, _args) raise {
               let the_val = this_val
-              let len = @runtime.to_array_like_length(the_val)
               let index_ref : Ref[Int] = { val: 0 }
               let next_method = Value::Object({
                 properties: {},
@@ -125,6 +117,8 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
                 callable: Some(
                   NativeCallable("next", fn(_args) {
                     let idx = index_ref.val
+                    // Read live length each call so mutations during iteration are observed
+                    let len = @runtime.to_array_like_length(the_val)
                     if idx < len {
                       let value = @runtime.get_array_like_element(the_val, idx)
                       index_ref.val = idx + 1

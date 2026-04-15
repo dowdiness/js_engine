@@ -410,7 +410,10 @@ pub fn Interpreter::run(
   self : Interpreter,
   stmts : Array[@ast.Stmt],
 ) -> Value raise Error {
-  // Store interpreter ref for ToPrimitive to use when calling user functions
+  // Store interpreter ref for ToPrimitive to use when calling user functions.
+  // Save and restore so nested run() calls (e.g. $262.evalScript) don't clobber
+  // the outer interpreter.
+  let prev_interpreter = current_interpreter.val
   current_interpreter.val = Some(self)
   let strict = has_use_strict(stmts)
   let ctx : ExecContext = { strict, current_generator: None }
@@ -435,13 +438,16 @@ pub fn Interpreter::run(
           )
       }
     }
+    current_interpreter.val = prev_interpreter
     last
   } catch {
-    e =>
+    e => {
+      current_interpreter.val = prev_interpreter
       if is_js_catchable_error(e) {
         raise JsException(js_error_to_value_with_env(e, Some(self.global)))
       } else {
         raise e
       }
+    }
   }
 }

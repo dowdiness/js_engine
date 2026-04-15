@@ -667,7 +667,7 @@ pub fn strict_equal_val(a : Value, b : Value) -> Bool {
   match (a, b) {
     (Value::Number(a), Value::Number(b)) => a == b
     (Value::String_(a), Value::String_(b)) => a == b
-    (Bool(a), Value::Bool(b)) => a == b
+    (Value::Bool(a), Value::Bool(b)) => a == b
     (Null, Null) => true
     (Undefined, Undefined) => true
     (Object(a), Object(b)) => physical_equal(a, b)

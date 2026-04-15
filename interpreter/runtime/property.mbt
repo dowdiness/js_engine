@@ -1961,7 +1961,7 @@ pub fn get_func_length(callable : Callable) -> Int {
     ConstructorOnlyCallable(_, _) => 0
     ClassConstructor({ ctor_fn, .. }) =>
       match ctor_fn {
-        Some((params, _)) => params.length()
+        Some((params, _, _)) => params.length()
         None => 0
       }
   }

@@ -403,6 +403,11 @@ fn setup_map_builtins(env : Environment) -> Unit {
     _this_val,
     args,
   ) raise {
+    if !@runtime.is_constructing.val {
+      raise @errors.TypeError(
+        message="Constructor Map cannot be invoked without 'new'",
+      )
+    }
     // Create new Map instance
     let new_map : Value = Value::Map({
       entries: [],
@@ -833,6 +838,11 @@ fn setup_set_builtins(env : Environment) -> Unit {
     _this_val,
     args,
   ) raise {
+    if !@runtime.is_constructing.val {
+      raise @errors.TypeError(
+        message="Constructor Set cannot be invoked without 'new'",
+      )
+    }
     // Create new Set instance
     let new_set : Value = Value::Set({
       values: [],

@@ -1201,6 +1201,7 @@ fn Interpreter::exec_stmt(
         params,
         None,
         body,
+        is_function_strict(ctx.strict, body),
         env,
       )
       if env.bindings.contains(name) {
@@ -1225,6 +1226,7 @@ fn Interpreter::exec_stmt(
         params,
         rest_param,
         body,
+        is_function_strict(ctx.strict, body),
         env,
       )
       if env.bindings.contains(name) {
@@ -1243,6 +1245,7 @@ fn Interpreter::exec_stmt(
         params,
         None,
         body,
+        is_function_strict(ctx.strict, body),
         env,
       )
       if env.bindings.contains(name) {
@@ -1267,6 +1270,7 @@ fn Interpreter::exec_stmt(
         params,
         rest_param,
         body,
+        is_function_strict(ctx.strict, body),
         env,
       )
       if env.bindings.contains(name) {
@@ -1285,6 +1289,7 @@ fn Interpreter::exec_stmt(
         params,
         None,
         body,
+        is_function_strict(ctx.strict, body),
         env,
       )
       if env.bindings.contains(name) {
@@ -1309,6 +1314,7 @@ fn Interpreter::exec_stmt(
         params,
         rest_param,
         body,
+        is_function_strict(ctx.strict, body),
         env,
       )
       if env.bindings.contains(name) {

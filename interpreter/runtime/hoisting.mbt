@@ -1317,6 +1317,7 @@ fn Interpreter::hoist_declarations(
           params,
           None,
           body,
+          is_function_strict(strict, body),
           env,
         )
         if env.bindings.contains(name) {
@@ -1342,6 +1343,7 @@ fn Interpreter::hoist_declarations(
           params,
           rest_param,
           body,
+          is_function_strict(strict, body),
           env,
         )
         if env.bindings.contains(name) {
@@ -1361,6 +1363,7 @@ fn Interpreter::hoist_declarations(
           params,
           None,
           body,
+          is_function_strict(strict, body),
           env,
         )
         if env.bindings.contains(name) {
@@ -1382,6 +1385,7 @@ fn Interpreter::hoist_declarations(
           params,
           rest_param,
           body,
+          is_function_strict(strict, body),
           env,
         )
         if env.bindings.contains(name) {
@@ -1397,6 +1401,7 @@ fn Interpreter::hoist_declarations(
           params,
           None,
           body,
+          is_function_strict(strict, body),
           env,
         )
         if env.bindings.contains(name) {
@@ -1418,6 +1423,7 @@ fn Interpreter::hoist_declarations(
           params,
           rest_param,
           body,
+          is_function_strict(strict, body),
           env,
         )
         if env.bindings.contains(name) {

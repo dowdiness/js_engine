@@ -59,7 +59,7 @@ pub(all) struct ClassConstructorData {
   name : String // class name
   proto : Value // prototype object given to new instances
   super_ctor : Value? // super constructor when class uses `extends`
-  ctor_fn : (Array[String], Array[@ast.Stmt])? // constructor params + body; None = no explicit ctor
+  ctor_fn : (Array[@ast.Param], String?, Array[@ast.Stmt])? // (params, rest_name, body); None = no explicit ctor
   closure : Environment // lexical environment where the class was defined
   super_proto : Value // super class's prototype (bound as [[SuperPrototype]])
   instance_fields : Array[ClassFieldInit] // instance field initializers, run before ctor body

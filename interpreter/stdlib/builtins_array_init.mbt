@@ -1811,12 +1811,13 @@ fn setup_array_builtins(
                   raise @errors.RangeError(message="Invalid array length")
                 }
                 let len = n.to_int64().to_int()
-                let elements : Array[Value] = []
-                // Cap pre-allocation to prevent hangs with very large lengths
-                if len >= 0 && len <= 100000 {
-                  for _i = 0; _i < len; _i = _i + 1 {
-                    elements.push(Undefined)
-                  }
+                // Use Array::make for a fast single allocation. Cap at 10M to
+                // avoid OOM for pathological inputs; lengths above the cap still
+                // report as the full len via the side-table below.
+                let elements : Array[Value] = if len <= 10000000 {
+                  Array::make(len, Undefined)
+                } else {
+                  []
                 }
                 Value::Array({ elements, })
               }
