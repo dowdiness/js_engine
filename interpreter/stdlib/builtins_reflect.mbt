@@ -489,14 +489,13 @@ fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
               _ => break
             }
           }
-          // Fall back to regular property access if receiver == target
-          if @runtime.strict_equal(receiver, target) {
-            match key {
-              Symbol(_) => interp.get_computed_property(target, key, loc)
-              _ => interp.get_property(target, key_str, loc)
-            }
-          } else {
-            Undefined
+          // Fall back to regular property access unconditionally.
+          // Accessor getters with receiver were already handled in
+          // try_get_with_receiver above; remaining cases are data reads
+          // or absent properties, neither of which depends on receiver equality.
+          match key {
+            Symbol(_) => interp.get_computed_property(target, key, loc)
+            _ => interp.get_property(target, key_str, loc)
           }
         }
       }
@@ -633,7 +632,8 @@ fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
       match target {
         Value::Proxy(proxy_data) =>
           Bool(@runtime.proxy_has_property(interp, proxy_data, prop))
-        Object(_) | Array(_) => Bool(interp.has_property(target, prop))
+        Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) =>
+          Bool(interp.has_property(target, prop))
         _ => raise @errors.TypeError(message="Reflect.has called on non-object")
       }
     },
@@ -725,36 +725,67 @@ fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
         Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => ()
         _ => raise @errors.TypeError(message="Reflect.set called on non-object")
       }
-      let prop = args[1].to_string()
+      let key = args[1]
+      let key_str = match key {
+        Symbol(_) => ""
+        _ => key.to_string()
+      }
       let value = args[2]
       // Check for write failures before attempting set
       match target {
-        Object(data) => {
-          match data.bag.descriptors.get(prop) {
-            Some(desc) => {
-              // Accessor with getter-only: write fails
-              if desc.getter is Some(_) && desc.setter is None {
-                return Value::Bool(false)
+        Object(data) =>
+          match key {
+            Symbol(sym) => {
+              // Check symbol descriptor for getter-only or non-writable
+              match data.bag.symbol_descriptors.get(sym.id) {
+                Some(desc) => {
+                  if desc.getter is Some(_) && desc.setter is None {
+                    return Value::Bool(false)
+                  }
+                  if desc.getter is None && !desc.writable {
+                    return Value::Bool(false)
+                  }
+                }
+                None => ()
               }
-              // Non-writable data property: write fails
-              if desc.getter is None && !desc.writable {
+              // Non-extensible and symbol property doesn't exist: write fails
+              if !data.extensible &&
+                !data.bag.symbol_properties.contains(sym.id) &&
+                !data.bag.symbol_descriptors.contains(sym.id) {
                 return Value::Bool(false)
               }
             }
-            None => ()
+            _ => {
+              match data.bag.descriptors.get(key_str) {
+                Some(desc) => {
+                  // Accessor with getter-only: write fails
+                  if desc.getter is Some(_) && desc.setter is None {
+                    return Value::Bool(false)
+                  }
+                  // Non-writable data property: write fails
+                  if desc.getter is None && !desc.writable {
+                    return Value::Bool(false)
+                  }
+                }
+                None => ()
+              }
+              // Non-extensible and property doesn't exist: write fails
+              if !data.extensible &&
+                !data.bag.properties.contains(key_str) &&
+                !data.bag.descriptors.contains(key_str) {
+                return Value::Bool(false)
+              }
+            }
           }
-          // Non-extensible and property doesn't exist: write fails
-          if !data.extensible &&
-            !data.bag.properties.contains(prop) &&
-            !data.bag.descriptors.contains(prop) {
-            return Value::Bool(false)
-          }
-        }
         _ => ()
       }
       let loc = @token.Loc::default()
       try {
-        let _ = interp.set_property(target, prop, value, loc, strict=true)
+        let _ = match key {
+          Symbol(_) =>
+            interp.set_computed_property(target, key, value, loc, strict=true)
+          _ => interp.set_property(target, key_str, value, loc, strict=true)
+        }
         Value::Bool(true)
       } catch {
         @errors.TypeError(_) => Value::Bool(false)
