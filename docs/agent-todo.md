@@ -348,9 +348,30 @@ Remaining deferred items from Phase 15 (3 of 6 now done):
 
 `(?<=...)` positive lookbehind and `(?<!...)` negative lookbehind. Requires backward matching from current position — more complex than lookahead which is already implemented.
 
-#### 6. Consolidate `make_*_func` factory variants
+#### ~~6. Consolidate `make_*_func` factory variants~~ — DONE (2026-04-18)
 
-**Impact**: ~150 LoC of near-duplicate function-object construction in `interpreter/runtime/factories.mbt` — `make_native_func`, `make_native_func_with_length`, `make_static_func`, `make_static_func_with_length`, `make_method_func`, `make_interp_method_func`, `make_interp_static_func_with_length` all share the same ~25 LoC body (name/length descriptor, function-proto, `class_name: "Function"`) and differ only in the `Callable` variant and whether length is explicit. Extract a private `build_func_object(name, length, callable) -> Value` helper and reduce each public wrapper to a one-liner. Do this when no other work is in flight near `factories.mbt`. Surfaced by Stage A simplify review (2026-04-17).
+Branch: `claude/factory-consolidation`. 8 factories (+ `make_interpreter_callable_with_length`) collapsed into 4 with labeled/optional `name~`/`length?` params plus a shared private `build_func_object(name, length, callable)` helper. 474 call sites migrated across 27 files via regex script; 1 manual fix for a concatenated-name case. Net: ~130 LoC removed from factories.mbt; public API contracted from 8 → 4 symbols. 884/884 unit tests pass; no test262 delta (no runtime semantics changed). Naturally absorbs agent-todo #9 (interpreter-callable prototype bug) via `build_func_object` → `get_func_proto()`.
+
+**Deleted**: `make_native_func_with_length`, `make_static_func`, `make_static_func_with_length`, `make_interp_static_func_with_length`, `make_interpreter_callable_with_length`. **Kept** (with labeled params): `make_native_func`, `make_method_func`, `make_interp_method_func`, `make_interp_static_func`.
+
+#### 12. PropertyDescriptor typestate builder (exploratory)
+
+**Motivation**: The ES spec says a descriptor is *either* a data descriptor (has `writable`, optionally `value`) *or* an accessor descriptor (has `get`/`set`) — never both. Currently `PropDescriptor` is a struct with all five fields, so every combination compiles and invariants are enforced only by runtime checks scattered across `builtins_object_descriptors.mbt`. Stage A's CodeRabbit review surfaced two bugs rooted in this weakness: #10 (`revocable_descs` built but never wired into the object) and #7 (hasOwnProperty missing descriptor-only own props). A typestate builder would make data-vs-accessor a compile-time exclusion and could catch "built but not wired" patterns.
+
+**Sketch**:
+```moonbit
+DescriptorBuilder::new(enumerable=false, configurable=true)
+  .data(writable=true)                // → DataDescState; .getter/.setter not available
+  .build()
+// vs
+DescriptorBuilder::new(configurable=true)
+  .accessor(get=g, set=s)             // → AccessorDescState; .writable not available
+  .build()
+```
+
+**Scope of exploration**: Prototype in a small sub-package; measure call-site ergonomics at a handful of representative sites (`builtins_error.mbt`, `builtins_proxy.mbt`, `builtins.mbt`); decide if full migration is worth the type-theoretic overhead. Not chosen for the 4-factory `make_*_func` consolidation (labeled params were sufficient) because that case had no "mutually-exclusive config" invariant for typestate to enforce. This *does*.
+
+**Why not today**: Adds a non-trivial type-level construct to a codebase whose idiom is direct struct construction. Needs a design doc before implementation, with examples of which current bugs would have been caught. Surfaced 2026-04-18 during #6 consolidation brainstorm.
 
 ---
 
