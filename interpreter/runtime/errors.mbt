@@ -42,11 +42,17 @@ fn make_error_value_with_env(
     }
     None => Null
   }
-  // Fallback: if no prototype could be resolved (e.g. InternalError has no
-  // registered constructor, or env is None), attach `name` as an own data
-  // property so diagnostic accessors like `err.name` still report a useful
-  // string instead of `undefined`.
-  if proto is Null {
+  // Fallback: attach `name` as an own data property whenever the resolved
+  // prototype cannot be trusted to carry it. Covers three cases:
+  //   1. Env is None or the binding is missing (e.g. InternalError has no
+  //      registered constructor).
+  //   2. The binding was rebound by user code (`TypeError = function(){}`),
+  //      so `proto` is some user-owned object whose `name` is empty/unrelated.
+  //   3. The resolved prototype is missing its own `name` entry for any other
+  //      reason.
+  // Without this, engine-thrown errors would report `err.name === undefined`
+  // after user rebinding — a user-visible regression of internal error shape.
+  if !proto_has_name(proto, name) {
     err_props["name"] = String_(name)
     err_descs["name"] = err_desc
   }
@@ -62,6 +68,22 @@ fn make_error_value_with_env(
     class_name: name,
     extensible: true,
   })
+}
+
+///|
+/// True when `proto` is an object whose own `name` property matches `expected`.
+/// Used to decide whether engine-thrown errors can rely on the prototype chain
+/// for `err.name` (genuine native error prototype) or must carry `name` as an
+/// own property (rebound constructor, missing binding).
+fn proto_has_name(proto : Value, expected : String) -> Bool {
+  match proto {
+    Object(proto_data) =>
+      match proto_data.bag.properties.get("name") {
+        Some(String_(s)) => s == expected
+        _ => false
+      }
+    _ => false
+  }
 }
 
 ///|
@@ -106,9 +128,10 @@ fn make_aggregate_error_value(
     }
     None => Null
   }
-  // Same fallback as make_error_value_with_env: if prototype lookup fails,
+  // Same fallback as make_error_value_with_env: if the resolved prototype
+  // cannot be trusted (missing binding, rebound constructor, missing `name`),
   // attach `name` as an own property so `err.name` is still defined.
-  if proto is Null {
+  if !proto_has_name(proto, "AggregateError") {
     err_props["name"] = String_("AggregateError")
     err_descs["name"] = err_desc
   }
