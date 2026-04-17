@@ -13,10 +13,20 @@ fn make_error_value_with_env(
   msg : String,
   env : Environment?,
 ) -> Value {
+  let err_desc : PropDescriptor = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   let err_props : Map[String, Value] = {}
   err_props["message"] = String_(msg)
-  err_props["name"] = String_(name)
   err_props["stack"] = String_(name + ": " + msg)
+  let err_descs : Map[String, PropDescriptor] = {
+    "message": err_desc,
+    "stack": err_desc,
+  }
   // Try to look up the proper prototype from the environment
   let proto : Value = match env {
     Some(e) => {
@@ -36,7 +46,7 @@ fn make_error_value_with_env(
     bag: {
       properties: err_props,
       symbol_properties: {},
-      descriptors: {},
+      descriptors: err_descs,
       symbol_descriptors: {},
     },
     prototype: proto,
@@ -53,15 +63,26 @@ fn make_aggregate_error_value(
   errors : Array[Error],
   env : Environment?,
 ) -> Value {
+  let err_desc : PropDescriptor = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   let err_props : Map[String, Value] = {}
   err_props["message"] = String_(msg)
-  err_props["name"] = String_("AggregateError")
   err_props["stack"] = String_("AggregateError: " + msg)
   // Convert errors array to JavaScript array
   let js_errors : Array[Value] = errors.map(fn(e) {
     js_error_to_value_with_env(e, env)
   })
   err_props["errors"] = make_array(js_errors)
+  let err_descs : Map[String, PropDescriptor] = {
+    "message": err_desc,
+    "stack": err_desc,
+    "errors": err_desc,
+  }
   // Try to look up the proper prototype from the environment
   let proto : Value = match env {
     Some(e) => {
@@ -81,7 +102,7 @@ fn make_aggregate_error_value(
     bag: {
       properties: err_props,
       symbol_properties: {},
-      descriptors: {},
+      descriptors: err_descs,
       symbol_descriptors: {},
     },
     prototype: proto,

@@ -107,9 +107,17 @@ pub fn setup_object_builtins(
         Object(data) =>
           match key_val {
             Value::Symbol(sym) =>
-              Bool(data.bag.symbol_properties.contains(sym.id))
-            _ =>
-              Bool(data.bag.properties.contains(@runtime.to_js_string(key_val)))
+              Bool(
+                data.bag.symbol_properties.contains(sym.id) ||
+                data.bag.symbol_descriptors.contains(sym.id),
+              )
+            _ => {
+              let key = @runtime.to_js_string(key_val)
+              Bool(
+                data.bag.properties.contains(key) ||
+                data.bag.descriptors.contains(key),
+              )
+            }
           }
         Value::Array(data) =>
           match key_val {
