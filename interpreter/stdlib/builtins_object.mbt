@@ -106,8 +106,10 @@ pub fn setup_object_builtins(
       match this_val {
         Object(data) =>
           match key_val {
-            Value::Symbol(sym) => Bool(data.symbol_properties.contains(sym.id))
-            _ => Bool(data.properties.contains(@runtime.to_js_string(key_val)))
+            Value::Symbol(sym) =>
+              Bool(data.bag.symbol_properties.contains(sym.id))
+            _ =>
+              Bool(data.bag.properties.contains(@runtime.to_js_string(key_val)))
           }
         Value::Array(data) =>
           match key_val {
@@ -162,10 +164,10 @@ pub fn setup_object_builtins(
         Value::Symbol(sym) =>
           match this_val {
             Object(data) =>
-              match data.symbol_descriptors.get(sym.id) {
+              match data.bag.symbol_descriptors.get(sym.id) {
                 Some(d) => return Bool(d.enumerable)
                 None =>
-                  if data.symbol_properties.contains(sym.id) {
+                  if data.bag.symbol_properties.contains(sym.id) {
                     return Value::Bool(true)
                   } else {
                     return Value::Bool(false)
@@ -178,8 +180,8 @@ pub fn setup_object_builtins(
       let key = @runtime.to_js_string(key_val)
       match this_val {
         Object(data) =>
-          if data.properties.contains(key) {
-            match data.descriptors.get(key) {
+          if data.bag.properties.contains(key) {
+            match data.bag.descriptors.get(key) {
               Some(d) => Bool(d.enumerable)
               None => Value::Bool(true)
             }
@@ -252,7 +254,7 @@ pub fn setup_object_builtins(
     fn(this_val, _args) raise {
       match this_val {
         Object(data) =>
-          match data.properties.get("toString") {
+          match data.bag.properties.get("toString") {
             Some(Object(fn_data)) =>
               match fn_data.callable {
                 Some(MethodCallable(_, f)) => f(this_val, [])
@@ -282,7 +284,7 @@ pub fn setup_object_builtins(
       match o {
         Object(data) => {
           // Check if property exists and is non-configurable
-          match data.descriptors.get(prop) {
+          match data.bag.descriptors.get(prop) {
             Some(d) =>
               if !d.configurable {
                 raise @errors.TypeError(
@@ -291,23 +293,23 @@ pub fn setup_object_builtins(
               }
             None => ()
           }
-          if !data.extensible && !data.properties.contains(prop) {
+          if !data.extensible && !data.bag.properties.contains(prop) {
             raise @errors.TypeError(
               message="Cannot define property on a non-extensible object",
             )
           }
-          let existing_setter : Value? = match data.descriptors.get(prop) {
+          let existing_setter : Value? = match data.bag.descriptors.get(prop) {
             Some(d) => d.setter
             None => None
           }
-          data.descriptors[prop] = {
+          data.bag.descriptors[prop] = {
             writable: false,
             enumerable: true,
             configurable: true,
             getter: Some(getter),
             setter: existing_setter,
           }
-          data.properties[prop] = Undefined
+          data.bag.properties[prop] = Undefined
         }
         _ => ()
       }
@@ -330,7 +332,7 @@ pub fn setup_object_builtins(
       }
       match o {
         Object(data) => {
-          match data.descriptors.get(prop) {
+          match data.bag.descriptors.get(prop) {
             Some(d) =>
               if !d.configurable {
                 raise @errors.TypeError(
@@ -339,23 +341,23 @@ pub fn setup_object_builtins(
               }
             None => ()
           }
-          if !data.extensible && !data.properties.contains(prop) {
+          if !data.extensible && !data.bag.properties.contains(prop) {
             raise @errors.TypeError(
               message="Cannot define property on a non-extensible object",
             )
           }
-          let existing_getter : Value? = match data.descriptors.get(prop) {
+          let existing_getter : Value? = match data.bag.descriptors.get(prop) {
             Some(d) => d.getter
             None => None
           }
-          data.descriptors[prop] = {
+          data.bag.descriptors[prop] = {
             writable: false,
             enumerable: true,
             configurable: true,
             getter: existing_getter,
             setter: Some(setter),
           }
-          data.properties[prop] = Undefined
+          data.bag.properties[prop] = Undefined
         }
         _ => ()
       }
@@ -375,7 +377,7 @@ pub fn setup_object_builtins(
       while true {
         match current {
           Object(data) => {
-            match data.descriptors.get(prop) {
+            match data.bag.descriptors.get(prop) {
               Some(desc) =>
                 match desc.getter {
                   Some(getter) => return getter
@@ -404,7 +406,7 @@ pub fn setup_object_builtins(
       while true {
         match current {
           Object(data) => {
-            match data.descriptors.get(prop) {
+            match data.bag.descriptors.get(prop) {
               Some(desc) =>
                 match desc.setter {
                   Some(setter) => return setter
@@ -439,13 +441,15 @@ pub fn setup_object_builtins(
   obj_proto_descs["__lookupGetter__"] = obj_method_desc
   obj_proto_descs["__lookupSetter__"] = obj_method_desc
   let obj_proto : Value = Value::Object({
-    properties: obj_proto_props,
-    symbol_properties: {},
+    bag: {
+      properties: obj_proto_props,
+      symbol_properties: {},
+      descriptors: obj_proto_descs,
+      symbol_descriptors: {},
+    },
     prototype: Null,
     callable: None,
     class_name: "Object",
-    descriptors: obj_proto_descs,
-    symbol_descriptors: {},
     extensible: true,
   })
   // Store Object.prototype so plain objects {} can link to it
@@ -454,425 +458,388 @@ pub fn setup_object_builtins(
   env.def_builtin(
     "Object",
     Value::Object({
-      properties: {
-        "prototype": obj_proto,
-        "name": Value::String_("Object"),
-        "length": Value::Number(1.0),
-        "keys": @runtime.make_interp_static_func_with_length("keys", 1, fn(
-          interp,
-          args,
-        ) raise {
-          let obj = if args.length() > 0 { args[0] } else { Undefined }
-          match obj {
-            Null | Undefined =>
-              raise @errors.TypeError(
-                message="Cannot convert undefined or null to object",
-              )
-            Value::Proxy(proxy_data) => {
-              // Call [[OwnPropertyKeys]] via proxy trap, then filter to enumerable strings
-              let all_keys = @runtime.proxy_own_property_keys(interp, proxy_data)
-              let result : Array[Value] = []
-              match all_keys {
-                Value::Array(arr) =>
-                  for key in arr.elements {
-                    match key {
-                      Value::String_(_) => result.push(key)
-                      _ => () // Object.keys only returns strings
+      bag: {
+        properties: {
+          "prototype": obj_proto,
+          "name": Value::String_("Object"),
+          "length": Value::Number(1.0),
+          "keys": @runtime.make_interp_static_func_with_length("keys", 1, fn(
+            interp,
+            args,
+          ) raise {
+            let obj = if args.length() > 0 { args[0] } else { Undefined }
+            match obj {
+              Null | Undefined =>
+                raise @errors.TypeError(
+                  message="Cannot convert undefined or null to object",
+                )
+              Value::Proxy(proxy_data) => {
+                // Call [[OwnPropertyKeys]] via proxy trap, then filter to enumerable strings
+                let all_keys = @runtime.proxy_own_property_keys(
+                  interp, proxy_data,
+                )
+                let result : Array[Value] = []
+                match all_keys {
+                  Value::Array(arr) =>
+                    for key in arr.elements {
+                      match key {
+                        Value::String_(_) => result.push(key)
+                        _ => () // Object.keys only returns strings
+                      }
+                    }
+                  _ => ()
+                }
+                @runtime.make_array(result)
+              }
+              Object(data) => {
+                let keys : Array[Value] = []
+                let sorted = @runtime.sort_property_keys(data.bag.properties)
+                for k in sorted {
+                  let enumerable = match data.bag.descriptors.get(k) {
+                    Some(d) => d.enumerable
+                    None => true
+                  }
+                  if enumerable {
+                    keys.push(Value::String_(k))
+                  }
+                }
+                @runtime.make_array(keys)
+              }
+              Value::String_(s) => {
+                // String objects have enumerable indexed properties
+                let keys : Array[Value] = []
+                let len = s.length()
+                for i = 0; i < len; i = i + 1 {
+                  keys.push(Value::String_(i.to_string()))
+                }
+                @runtime.make_array(keys)
+              }
+              Value::Array(data) => {
+                // Array objects have enumerable indexed properties
+                let keys : Array[Value] = []
+                for i = 0; i < data.elements.length(); i = i + 1 {
+                  keys.push(Value::String_(i.to_string()))
+                }
+                @runtime.make_array(keys)
+              }
+              _ => @runtime.make_array([])
+            }
+          }),
+          "values": @runtime.make_static_func_with_length("values", 1, fn(
+            args,
+          ) raise {
+            let obj = if args.length() > 0 { args[0] } else { Undefined }
+            match obj {
+              Null | Undefined =>
+                raise @errors.TypeError(
+                  message="Cannot convert undefined or null to object",
+                )
+              Object(data) => {
+                let vals : Array[Value] = []
+                let sorted = @runtime.sort_property_keys(data.bag.properties)
+                for k in sorted {
+                  let enumerable = match data.bag.descriptors.get(k) {
+                    Some(d) => d.enumerable
+                    None => true
+                  }
+                  if enumerable {
+                    match data.bag.properties.get(k) {
+                      Some(v) => vals.push(v)
+                      None => ()
                     }
                   }
-                _ => ()
-              }
-              Value::Array({ elements: result })
-            }
-            Object(data) => {
-              let keys : Array[Value] = []
-              let sorted = @runtime.sort_property_keys(data.properties)
-              for k in sorted {
-                let enumerable = match data.descriptors.get(k) {
-                  Some(d) => d.enumerable
-                  None => true
                 }
-                if enumerable {
-                  keys.push(Value::String_(k))
+                @runtime.make_array(vals)
+              }
+              Value::String_(s) => {
+                // String objects have enumerable indexed properties
+                let vals : Array[Value] = []
+                let chars = s.to_array()
+                for ch in chars {
+                  vals.push(Value::String_(ch.to_string()))
                 }
+                @runtime.make_array(vals)
               }
-              Value::Array({ elements: keys })
-            }
-            Value::String_(s) => {
-              // String objects have enumerable indexed properties
-              let keys : Array[Value] = []
-              let len = s.length()
-              for i = 0; i < len; i = i + 1 {
-                keys.push(Value::String_(i.to_string()))
-              }
-              Value::Array({ elements: keys })
-            }
-            Value::Array(data) => {
-              // Array objects have enumerable indexed properties
-              let keys : Array[Value] = []
-              for i = 0; i < data.elements.length(); i = i + 1 {
-                keys.push(Value::String_(i.to_string()))
-              }
-              Value::Array({ elements: keys })
-            }
-            _ => Value::Array({ elements: [] })
-          }
-        }),
-        "values": @runtime.make_static_func_with_length("values", 1, fn(
-          args,
-        ) raise {
-          let obj = if args.length() > 0 { args[0] } else { Undefined }
-          match obj {
-            Null | Undefined =>
-              raise @errors.TypeError(
-                message="Cannot convert undefined or null to object",
-              )
-            Object(data) => {
-              let vals : Array[Value] = []
-              let sorted = @runtime.sort_property_keys(data.properties)
-              for k in sorted {
-                let enumerable = match data.descriptors.get(k) {
-                  Some(d) => d.enumerable
-                  None => true
+              Value::Array(data) => {
+                // Array objects - return array elements (defensive copy)
+                let vals : Array[Value] = []
+                for elem in data.elements {
+                  vals.push(elem)
                 }
-                if enumerable {
-                  match data.properties.get(k) {
-                    Some(v) => vals.push(v)
-                    None => ()
+                @runtime.make_array(vals)
+              }
+              _ => @runtime.make_array([])
+            }
+          }),
+          "entries": @runtime.make_static_func_with_length("entries", 1, fn(
+            args,
+          ) raise {
+            let obj = if args.length() > 0 { args[0] } else { Undefined }
+            match obj {
+              Null | Undefined =>
+                raise @errors.TypeError(
+                  message="Cannot convert undefined or null to object",
+                )
+              Object(data) => {
+                let entries : Array[Value] = []
+                let sorted = @runtime.sort_property_keys(data.bag.properties)
+                for k in sorted {
+                  let enumerable = match data.bag.descriptors.get(k) {
+                    Some(d) => d.enumerable
+                    None => true
+                  }
+                  if enumerable {
+                    match data.bag.properties.get(k) {
+                      Some(v) =>
+                        entries.push(
+                          @runtime.make_array([Value::String_(k), v]),
+                        )
+                      None => ()
+                    }
                   }
                 }
+                @runtime.make_array(entries)
               }
-              Value::Array({ elements: vals })
-            }
-            Value::String_(s) => {
-              // String objects have enumerable indexed properties
-              let vals : Array[Value] = []
-              let chars = s.to_array()
-              for ch in chars {
-                vals.push(Value::String_(ch.to_string()))
-              }
-              Value::Array({ elements: vals })
-            }
-            Value::Array(data) => {
-              // Array objects - return array elements (defensive copy)
-              let vals : Array[Value] = []
-              for elem in data.elements {
-                vals.push(elem)
-              }
-              Value::Array({ elements: vals })
-            }
-            _ => Value::Array({ elements: [] })
-          }
-        }),
-        "entries": @runtime.make_static_func_with_length("entries", 1, fn(
-          args,
-        ) raise {
-          let obj = if args.length() > 0 { args[0] } else { Undefined }
-          match obj {
-            Null | Undefined =>
-              raise @errors.TypeError(
-                message="Cannot convert undefined or null to object",
-              )
-            Object(data) => {
-              let entries : Array[Value] = []
-              let sorted = @runtime.sort_property_keys(data.properties)
-              for k in sorted {
-                let enumerable = match data.descriptors.get(k) {
-                  Some(d) => d.enumerable
-                  None => true
-                }
-                if enumerable {
-                  match data.properties.get(k) {
-                    Some(v) =>
-                      entries.push(
-                        Value::Array({ elements: [Value::String_(k), v] }),
-                      )
-                    None => ()
-                  }
-                }
-              }
-              Value::Array({ elements: entries })
-            }
-            Value::String_(s) => {
-              // String objects have enumerable indexed properties
-              let entries : Array[Value] = []
-              let chars = s.to_array()
-              for i = 0; i < chars.length(); i = i + 1 {
-                entries.push(
-                  Value::Array({
-                    elements: [
+              Value::String_(s) => {
+                // String objects have enumerable indexed properties
+                let entries : Array[Value] = []
+                let chars = s.to_array()
+                for i = 0; i < chars.length(); i = i + 1 {
+                  entries.push(
+                    @runtime.make_array([
                       Value::String_(i.to_string()),
                       Value::String_(chars[i].to_string()),
-                    ],
-                  }),
-                )
-              }
-              Value::Array({ elements: entries })
-            }
-            Value::Array(data) => {
-              // Array objects - keys must be strings per spec
-              let entries : Array[Value] = []
-              for i = 0; i < data.elements.length(); i = i + 1 {
-                entries.push(
-                  Value::Array({
-                    elements: [Value::String_(i.to_string()), data.elements[i]],
-                  }),
-                )
-              }
-              Value::Array({ elements: entries })
-            }
-            _ => Value::Array({ elements: [] })
-          }
-        }),
-        "create": @runtime.make_static_func_with_length("create", 2, fn(
-          args,
-        ) raise {
-          let proto = if args.length() > 0 { args[0] } else { Null }
-          // Per spec, first argument must be Object or null
-          match proto {
-            Object(_)
-            | Array(_)
-            | Map(_)
-            | Set(_)
-            | Promise(_)
-            | Proxy(_)
-            | Null => ()
-            _ =>
-              raise @errors.TypeError(
-                message="Object prototype may only be an Object or null: " +
-                  @runtime.type_of(proto),
-              )
-          }
-          let obj = Value::Object({
-            properties: {},
-            symbol_properties: {},
-            prototype: proto,
-            callable: None,
-            class_name: "Object",
-            descriptors: {},
-            symbol_descriptors: {},
-            extensible: true,
-          })
-          // Handle optional second argument (property descriptors)
-          if args.length() > 1 {
-            match args[1] {
-              Undefined => ()
-              // Per ECMAScript spec, only Object with properties field accepted
-              // Arrays, Maps, Sets don't have properties field in our implementation
-              Value::Proxy(proxy_data) =>
-                // Unwrap Proxy and use target's properties as descriptors
-                match proxy_data.target {
-                  Some(Object(desc_obj)) =>
-                    match obj {
-                      Object(data) =>
-                        desc_obj.properties.each(fn(prop_name, desc_val) raise {
-                          match desc_val {
-                            Object(desc) =>
-                              apply_property_descriptor(data, prop_name, desc)
-                            _ => ()
-                          }
-                        })
-                      _ => ()
-                    }
-                  _ =>
-                    raise @errors.TypeError(
-                      message="Property descriptors must be an object",
-                    )
+                    ]),
+                  )
                 }
-              Null
-              | Value::String_(_)
-              | Value::Number(_)
-              | Bool(_)
-              | Symbol(_)
+                @runtime.make_array(entries)
+              }
+              Value::Array(data) => {
+                // Array objects - keys must be strings per spec
+                let entries : Array[Value] = []
+                for i = 0; i < data.elements.length(); i = i + 1 {
+                  entries.push(
+                    @runtime.make_array([
+                      Value::String_(i.to_string()),
+                      data.elements[i],
+                    ]),
+                  )
+                }
+                @runtime.make_array(entries)
+              }
+              _ => @runtime.make_array([])
+            }
+          }),
+          "create": @runtime.make_static_func_with_length("create", 2, fn(
+            args,
+          ) raise {
+            let proto = if args.length() > 0 { args[0] } else { Null }
+            // Per spec, first argument must be Object or null
+            match proto {
+              Object(_)
               | Array(_)
               | Map(_)
-              | Set(_) =>
+              | Set(_)
+              | Promise(_)
+              | Proxy(_)
+              | Null => ()
+              _ =>
                 raise @errors.TypeError(
-                  message="Property descriptors must be an object",
+                  message="Object prototype may only be an Object or null: " +
+                    @runtime.type_of(proto),
                 )
-              Object(desc_obj) =>
-                match obj {
-                  Object(data) =>
-                    desc_obj.properties.each(fn(prop_name, desc_val) raise {
-                      match desc_val {
-                        Object(desc) =>
-                          apply_property_descriptor(data, prop_name, desc)
-                        _ => ()
-                      }
-                    })
-                  _ => ()
-                }
-              Promise(desc_obj) =>
-                match obj {
-                  Object(data) =>
-                    desc_obj.properties.each(fn(prop_name, desc_val) raise {
-                      match desc_val {
-                        Object(desc) =>
-                          apply_property_descriptor(data, prop_name, desc)
-                        _ => ()
-                      }
-                    })
-                  _ => ()
-                }
             }
-          }
-          obj
-        }),
-        "assign": @runtime.make_static_func_with_length("assign", 2, fn(
-          args,
-        ) raise {
-          let raw_target = if args.length() > 0 { args[0] } else { Undefined }
-          // Step 1: ToObject(target) — throw for null/undefined, wrap primitives
-          let target : Value = match raw_target {
-            Null | Undefined =>
-              raise @errors.TypeError(
-                message="Cannot convert undefined or null to object",
-              )
-            Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) =>
-              raw_target
-            Value::Number(n) =>
-              Value::Object({
-                properties: { "[[NumberData]]": Value::Number(n) },
-                symbol_properties: {},
-                prototype: @runtime.get_number_proto(),
-                callable: None,
-                class_name: "Number",
-                descriptors: {},
-                symbol_descriptors: {},
-                extensible: true,
-              })
-            Value::Bool(b) =>
-              Value::Object({
-                properties: { "[[BooleanData]]": Value::Bool(b) },
-                symbol_properties: {},
-                prototype: @runtime.get_boolean_proto(),
-                callable: None,
-                class_name: "Boolean",
-                descriptors: {},
-                symbol_descriptors: {},
-                extensible: true,
-              })
-            Value::String_(s) => {
-              let props : Map[String, Value] = {}
-              props["[[StringData]]"] = Value::String_(s)
-              props["length"] = Value::Number(s.length().to_double())
-              let chars = s.to_array()
-              for i = 0; i < chars.length(); i = i + 1 {
-                let buf = StringBuilder::new()
-                buf.write_char(chars[i])
-                props[i.to_string()] = Value::String_(buf.to_string())
+            let obj = Value::Object({
+              bag: @runtime.new_property_bag(),
+              prototype: proto,
+              callable: None,
+              class_name: "Object",
+              extensible: true,
+            })
+            // Handle optional second argument (property descriptors)
+            if args.length() > 1 {
+              match args[1] {
+                Undefined => ()
+                // Per ECMAScript spec, only Object with properties field accepted
+                // Arrays, Maps, Sets don't have properties field in our implementation
+                Value::Proxy(proxy_data) =>
+                  // Unwrap Proxy and use target's properties as descriptors
+                  match proxy_data.target {
+                    Some(Object(desc_obj)) =>
+                      match obj {
+                        Object(data) =>
+                          desc_obj.bag.properties.each(fn(
+                            prop_name,
+                            desc_val,
+                          ) raise {
+                            match desc_val {
+                              Object(desc) =>
+                                apply_property_descriptor(data, prop_name, desc)
+                              _ => ()
+                            }
+                          })
+                        _ => ()
+                      }
+                    _ =>
+                      raise @errors.TypeError(
+                        message="Property descriptors must be an object",
+                      )
+                  }
+                Null
+                | Value::String_(_)
+                | Value::Number(_)
+                | Bool(_)
+                | Symbol(_)
+                | Array(_)
+                | Map(_)
+                | Set(_) =>
+                  raise @errors.TypeError(
+                    message="Property descriptors must be an object",
+                  )
+                Object(desc_obj) =>
+                  match obj {
+                    Object(data) =>
+                      desc_obj.bag.properties.each(fn(
+                        prop_name,
+                        desc_val,
+                      ) raise {
+                        match desc_val {
+                          Object(desc) =>
+                            apply_property_descriptor(data, prop_name, desc)
+                          _ => ()
+                        }
+                      })
+                    _ => ()
+                  }
+                Promise(desc_obj) =>
+                  match obj {
+                    Object(data) =>
+                      desc_obj.bag.properties.each(fn(
+                        prop_name,
+                        desc_val,
+                      ) raise {
+                        match desc_val {
+                          Object(desc) =>
+                            apply_property_descriptor(data, prop_name, desc)
+                          _ => ()
+                        }
+                      })
+                    _ => ()
+                  }
               }
-              let descs : Map[String, PropDescriptor] = {}
-              descs["length"] = {
-                writable: false,
-                enumerable: false,
-                configurable: false,
-                getter: None,
-                setter: None,
-              }
-              for i = 0; i < chars.length(); i = i + 1 {
-                descs[i.to_string()] = {
+            }
+            obj
+          }),
+          "assign": @runtime.make_static_func_with_length("assign", 2, fn(
+            args,
+          ) raise {
+            let raw_target = if args.length() > 0 { args[0] } else { Undefined }
+            // Step 1: ToObject(target) — throw for null/undefined, wrap primitives
+            let target : Value = match raw_target {
+              Null | Undefined =>
+                raise @errors.TypeError(
+                  message="Cannot convert undefined or null to object",
+                )
+              Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) =>
+                raw_target
+              Value::Number(n) =>
+                Value::Object({
+                  bag: {
+                    properties: { "[[NumberData]]": Value::Number(n) },
+                    symbol_properties: {},
+                    descriptors: {},
+                    symbol_descriptors: {},
+                  },
+                  prototype: @runtime.get_number_proto(),
+                  callable: None,
+                  class_name: "Number",
+                  extensible: true,
+                })
+              Value::Bool(b) =>
+                Value::Object({
+                  bag: {
+                    properties: { "[[BooleanData]]": Value::Bool(b) },
+                    symbol_properties: {},
+                    descriptors: {},
+                    symbol_descriptors: {},
+                  },
+                  prototype: @runtime.get_boolean_proto(),
+                  callable: None,
+                  class_name: "Boolean",
+                  extensible: true,
+                })
+              Value::String_(s) => {
+                let props : Map[String, Value] = {}
+                props["[[StringData]]"] = Value::String_(s)
+                props["length"] = Value::Number(s.length().to_double())
+                let chars = s.to_array()
+                for i = 0; i < chars.length(); i = i + 1 {
+                  let buf = StringBuilder::new()
+                  buf.write_char(chars[i])
+                  props[i.to_string()] = Value::String_(buf.to_string())
+                }
+                let descs : Map[String, PropDescriptor] = {}
+                descs["length"] = {
                   writable: false,
-                  enumerable: true,
+                  enumerable: false,
                   configurable: false,
                   getter: None,
                   setter: None,
                 }
-              }
-              Value::Object({
-                properties: props,
-                symbol_properties: {},
-                prototype: @runtime.get_string_proto(),
-                callable: None,
-                class_name: "String",
-                descriptors: descs,
-                symbol_descriptors: {},
-                extensible: true,
-              })
-            }
-            Symbol(_) =>
-              Value::Object({
-                properties: { "[[SymbolData]]": raw_target },
-                symbol_properties: {},
-                prototype: @runtime.get_symbol_proto(),
-                callable: None,
-                class_name: "Symbol",
-                descriptors: {},
-                symbol_descriptors: {},
-                extensible: true,
-              })
-          }
-          match target {
-            Object(data) => {
-              for i = 1; i < args.length(); i = i + 1 {
-                match args[i] {
-                  // ToObject conversion: skip null and undefined
-                  Null | Undefined => ()
-                  // ToObject conversion: String primitives enumerate characters
-                  Value::String_(s) => {
-                    let chars = s.to_array()
-                    for idx = 0; idx < chars.length(); idx = idx + 1 {
-                      let k = idx.to_string()
-                      let v = Value::String_(chars[idx].to_string())
-                      // Check writable on target property
-                      let can_write = match data.descriptors.get(k) {
-                        Some(d) => d.writable
-                        None => true
-                      }
-                      let exists = data.properties.contains(k)
-                      if !can_write {
-                        raise @errors.TypeError(
-                          message="Cannot assign to read-only property '\{k}'",
-                        )
-                      }
-                      if !exists && !data.extensible {
-                        raise @errors.TypeError(
-                          message="Cannot add property '\{k}' to non-extensible object",
-                        )
-                      }
-                      data.properties[k] = v
-                    }
+                for i = 0; i < chars.length(); i = i + 1 {
+                  descs[i.to_string()] = {
+                    writable: false,
+                    enumerable: true,
+                    configurable: false,
+                    getter: None,
+                    setter: None,
                   }
-                  // ToObject conversion: Arrays enumerate elements as indexed properties
-                  Array(src) =>
-                    // Copy array elements as indexed properties
-                    for idx = 0; idx < src.elements.length(); idx = idx + 1 {
-                      let k = idx.to_string()
-                      let v = src.elements[idx]
-                      let can_write = match data.descriptors.get(k) {
-                        Some(d) => d.writable
-                        None => true
-                      }
-                      let exists = data.properties.contains(k)
-                      if !can_write {
-                        raise @errors.TypeError(
-                          message="Cannot assign to read-only property '\{k}'",
-                        )
-                      }
-                      if !exists && !data.extensible {
-                        raise @errors.TypeError(
-                          message="Cannot add property '\{k}' to non-extensible object",
-                        )
-                      }
-                      data.properties[k] = v
-                    }
-                  // Regular objects have properties and descriptors
-                  Object(src) => {
-                    // Copy enumerable string properties
-                    src.properties.each(fn(k, v) raise {
-                      let enumerable = match src.descriptors.get(k) {
-                        Some(d) => d.enumerable
-                        None => true
-                      }
-                      if enumerable {
+                }
+                Value::Object({
+                  bag: {
+                    properties: props,
+                    symbol_properties: {},
+                    descriptors: descs,
+                    symbol_descriptors: {},
+                  },
+                  prototype: @runtime.get_string_proto(),
+                  callable: None,
+                  class_name: "String",
+                  extensible: true,
+                })
+              }
+              Symbol(_) =>
+                Value::Object({
+                  bag: {
+                    properties: { "[[SymbolData]]": raw_target },
+                    symbol_properties: {},
+                    descriptors: {},
+                    symbol_descriptors: {},
+                  },
+                  prototype: @runtime.get_symbol_proto(),
+                  callable: None,
+                  class_name: "Symbol",
+                  extensible: true,
+                })
+            }
+            match target {
+              Object(data) => {
+                for i = 1; i < args.length(); i = i + 1 {
+                  match args[i] {
+                    // ToObject conversion: skip null and undefined
+                    Null | Undefined => ()
+                    // ToObject conversion: String primitives enumerate characters
+                    Value::String_(s) => {
+                      let chars = s.to_array()
+                      for idx = 0; idx < chars.length(); idx = idx + 1 {
+                        let k = idx.to_string()
+                        let v = Value::String_(chars[idx].to_string())
                         // Check writable on target property
-                        let can_write = match data.descriptors.get(k) {
+                        let can_write = match data.bag.descriptors.get(k) {
                           Some(d) => d.writable
                           None => true
                         }
-                        // Check extensibility if property doesn't exist
-                        let exists = data.properties.contains(k)
-                        // Per ECMAScript spec, Object.assign throws TypeError on Set failure
+                        let exists = data.bag.properties.contains(k)
                         if !can_write {
                           raise @errors.TypeError(
                             message="Cannot assign to read-only property '\{k}'",
@@ -883,26 +850,124 @@ pub fn setup_object_builtins(
                             message="Cannot add property '\{k}' to non-extensible object",
                           )
                         }
-                        data.properties[k] = v
+                        data.bag.properties[k] = v
                       }
-                    })
-                    // Copy enumerable symbol properties
-                    src.symbol_properties.each(fn(sym_id, v) raise {
-                      let enumerable = match
-                        src.symbol_descriptors.get(sym_id) {
-                        Some(d) => d.enumerable
-                        None => true
-                      }
-                      if enumerable {
-                        // Check writable on target property
-                        let can_write = match
-                          data.symbol_descriptors.get(sym_id) {
+                    }
+                    // ToObject conversion: Arrays enumerate elements as indexed properties
+                    Array(src) =>
+                      // Copy array elements as indexed properties
+                      for idx = 0; idx < src.elements.length(); idx = idx + 1 {
+                        let k = idx.to_string()
+                        let v = src.elements[idx]
+                        let can_write = match data.bag.descriptors.get(k) {
                           Some(d) => d.writable
                           None => true
                         }
-                        // Check extensibility if property doesn't exist
-                        let exists = data.symbol_properties.contains(sym_id)
-                        // Per ECMAScript spec, Object.assign throws TypeError on Set failure
+                        let exists = data.bag.properties.contains(k)
+                        if !can_write {
+                          raise @errors.TypeError(
+                            message="Cannot assign to read-only property '\{k}'",
+                          )
+                        }
+                        if !exists && !data.extensible {
+                          raise @errors.TypeError(
+                            message="Cannot add property '\{k}' to non-extensible object",
+                          )
+                        }
+                        data.bag.properties[k] = v
+                      }
+                    // Regular objects have properties and descriptors
+                    Object(src) => {
+                      // Copy enumerable string properties
+                      src.bag.properties.each(fn(k, v) raise {
+                        let enumerable = match src.bag.descriptors.get(k) {
+                          Some(d) => d.enumerable
+                          None => true
+                        }
+                        if enumerable {
+                          // Check writable on target property
+                          let can_write = match data.bag.descriptors.get(k) {
+                            Some(d) => d.writable
+                            None => true
+                          }
+                          // Check extensibility if property doesn't exist
+                          let exists = data.bag.properties.contains(k)
+                          // Per ECMAScript spec, Object.assign throws TypeError on Set failure
+                          if !can_write {
+                            raise @errors.TypeError(
+                              message="Cannot assign to read-only property '\{k}'",
+                            )
+                          }
+                          if !exists && !data.extensible {
+                            raise @errors.TypeError(
+                              message="Cannot add property '\{k}' to non-extensible object",
+                            )
+                          }
+                          data.bag.properties[k] = v
+                        }
+                      })
+                      // Copy enumerable symbol properties
+                      src.bag.symbol_properties.each(fn(sym_id, v) raise {
+                        let enumerable = match
+                          src.bag.symbol_descriptors.get(sym_id) {
+                          Some(d) => d.enumerable
+                          None => true
+                        }
+                        if enumerable {
+                          // Check writable on target property
+                          let can_write = match
+                            data.bag.symbol_descriptors.get(sym_id) {
+                            Some(d) => d.writable
+                            None => true
+                          }
+                          // Check extensibility if property doesn't exist
+                          let exists = data.bag.symbol_properties.contains(
+                            sym_id,
+                          )
+                          // Per ECMAScript spec, Object.assign throws TypeError on Set failure
+                          if !can_write {
+                            raise @errors.TypeError(
+                              message="Cannot assign to read-only symbol property",
+                            )
+                          }
+                          if !exists && !data.extensible {
+                            raise @errors.TypeError(
+                              message="Cannot add symbol property to non-extensible object",
+                            )
+                          }
+                          data.bag.symbol_properties[sym_id] = v
+                        }
+                      })
+                    }
+                    // Promises have properties but no descriptors
+                    Promise(src) => {
+                      // Copy all string properties (no descriptors to check)
+                      src.bag.properties.each(fn(k, v) raise {
+                        let can_write = match data.bag.descriptors.get(k) {
+                          Some(d) => d.writable
+                          None => true
+                        }
+                        let exists = data.bag.properties.contains(k)
+                        if !can_write {
+                          raise @errors.TypeError(
+                            message="Cannot assign to read-only property '\{k}'",
+                          )
+                        }
+                        if !exists && !data.extensible {
+                          raise @errors.TypeError(
+                            message="Cannot add property '\{k}' to non-extensible object",
+                          )
+                        }
+                        data.bag.properties[k] = v
+                      })
+                      // Copy symbol properties
+                      src.bag.symbol_properties.each(fn(sym_id, v) raise {
+                        let can_write = match
+                          data.bag.symbol_descriptors.get(sym_id) {
+                          Some(d) => d.writable
+                          None => true
+                        }
+                        let exists = data.bag.symbol_properties.contains(sym_id)
                         if !can_write {
                           raise @errors.TypeError(
                             message="Cannot assign to read-only symbol property",
@@ -913,219 +978,218 @@ pub fn setup_object_builtins(
                             message="Cannot add symbol property to non-extensible object",
                           )
                         }
-                        data.symbol_properties[sym_id] = v
-                      }
-                    })
-                  }
-                  // Promises have properties but no descriptors
-                  Promise(src) => {
-                    // Copy all string properties (no descriptors to check)
-                    src.properties.each(fn(k, v) raise {
-                      let can_write = match data.descriptors.get(k) {
-                        Some(d) => d.writable
-                        None => true
-                      }
-                      let exists = data.properties.contains(k)
-                      if !can_write {
-                        raise @errors.TypeError(
-                          message="Cannot assign to read-only property '\{k}'",
-                        )
-                      }
-                      if !exists && !data.extensible {
-                        raise @errors.TypeError(
-                          message="Cannot add property '\{k}' to non-extensible object",
-                        )
-                      }
-                      data.properties[k] = v
-                    })
-                    // Copy symbol properties
-                    src.symbol_properties.each(fn(sym_id, v) raise {
-                      let can_write = match
-                        data.symbol_descriptors.get(sym_id) {
-                        Some(d) => d.writable
-                        None => true
-                      }
-                      let exists = data.symbol_properties.contains(sym_id)
-                      if !can_write {
-                        raise @errors.TypeError(
-                          message="Cannot assign to read-only symbol property",
-                        )
-                      }
-                      if !exists && !data.extensible {
-                        raise @errors.TypeError(
-                          message="Cannot add symbol property to non-extensible object",
-                        )
-                      }
-                      data.symbol_properties[sym_id] = v
-                    })
-                  }
-                  // Proxy sources: unwrap to target and copy enumerable properties
-                  Value::Proxy(proxy_data) =>
-                    match proxy_data.target {
-                      Some(target) =>
-                        match target {
-                          Object(src) => {
-                            src.properties.each(fn(k, v) raise {
-                              let enumerable = match src.descriptors.get(k) {
-                                Some(d) => d.enumerable
-                                None => true
-                              }
-                              if enumerable {
-                                let can_write = match data.descriptors.get(k) {
-                                  Some(d) => d.writable
-                                  None => true
-                                }
-                                let exists = data.properties.contains(k)
-                                if !can_write {
-                                  raise @errors.TypeError(
-                                    message="Cannot assign to read-only property '\{k}'",
-                                  )
-                                }
-                                if !exists && !data.extensible {
-                                  raise @errors.TypeError(
-                                    message="Cannot add property '\{k}' to non-extensible object",
-                                  )
-                                }
-                                data.properties[k] = v
-                              }
-                            })
-                            // Copy enumerable symbol properties from Proxy target
-                            src.symbol_properties.each(fn(sym_id, v) raise {
-                              let enumerable = match
-                                src.symbol_descriptors.get(sym_id) {
-                                Some(d) => d.enumerable
-                                None => true
-                              }
-                              if enumerable {
-                                let can_write = match
-                                  data.symbol_descriptors.get(sym_id) {
-                                  Some(d) => d.writable
-                                  None => true
-                                }
-                                let exists = data.symbol_properties.contains(
-                                  sym_id,
-                                )
-                                if !can_write {
-                                  raise @errors.TypeError(
-                                    message="Cannot assign to read-only symbol property",
-                                  )
-                                }
-                                if !exists && !data.extensible {
-                                  raise @errors.TypeError(
-                                    message="Cannot add symbol property to non-extensible object",
-                                  )
-                                }
-                                data.symbol_properties[sym_id] = v
-                              }
-                            })
-                          }
-                          _ => ()
-                        }
-                      None =>
-                        raise @errors.TypeError(
-                          message="Cannot perform 'ownKeys' on a proxy that has been revoked",
-                        )
+                        data.bag.symbol_properties[sym_id] = v
+                      })
                     }
-                  // ToObject conversion: Map, Set, Number, Bool, Symbol have no enumerable own string properties
-                  Map(_) | Set(_) | Value::Number(_) | Bool(_) | Symbol(_) => ()
-                }
-              }
-              target
-            }
-            _ => target
-          }
-        }),
-        "getPrototypeOf": @runtime.make_interp_static_func_with_length(
-          "getPrototypeOf",
-          1,
-          fn(interp, args) raise {
-            let obj = if args.length() > 0 { args[0] } else { Undefined }
-            fn get_ctor_proto(name : String) -> Value {
-              let ctor = env.get(name) catch { _ => return Null }
-              match ctor {
-                Object(ctor_data) =>
-                  match ctor_data.properties.get("prototype") {
-                    Some(proto) => proto
-                    None => Null
+                    // Proxy sources: unwrap to target and copy enumerable properties
+                    Value::Proxy(proxy_data) =>
+                      match proxy_data.target {
+                        Some(target) =>
+                          match target {
+                            Object(src) => {
+                              src.bag.properties.each(fn(k, v) raise {
+                                let enumerable = match
+                                  src.bag.descriptors.get(k) {
+                                  Some(d) => d.enumerable
+                                  None => true
+                                }
+                                if enumerable {
+                                  let can_write = match
+                                    data.bag.descriptors.get(k) {
+                                    Some(d) => d.writable
+                                    None => true
+                                  }
+                                  let exists = data.bag.properties.contains(k)
+                                  if !can_write {
+                                    raise @errors.TypeError(
+                                      message="Cannot assign to read-only property '\{k}'",
+                                    )
+                                  }
+                                  if !exists && !data.extensible {
+                                    raise @errors.TypeError(
+                                      message="Cannot add property '\{k}' to non-extensible object",
+                                    )
+                                  }
+                                  data.bag.properties[k] = v
+                                }
+                              })
+                              // Copy enumerable symbol properties from Proxy target
+                              src.bag.symbol_properties.each(fn(
+                                sym_id,
+                                v,
+                              ) raise {
+                                let enumerable = match
+                                  src.bag.symbol_descriptors.get(sym_id) {
+                                  Some(d) => d.enumerable
+                                  None => true
+                                }
+                                if enumerable {
+                                  let can_write = match
+                                    data.bag.symbol_descriptors.get(sym_id) {
+                                    Some(d) => d.writable
+                                    None => true
+                                  }
+                                  let exists = data.bag.symbol_properties.contains(
+                                    sym_id,
+                                  )
+                                  if !can_write {
+                                    raise @errors.TypeError(
+                                      message="Cannot assign to read-only symbol property",
+                                    )
+                                  }
+                                  if !exists && !data.extensible {
+                                    raise @errors.TypeError(
+                                      message="Cannot add symbol property to non-extensible object",
+                                    )
+                                  }
+                                  data.bag.symbol_properties[sym_id] = v
+                                }
+                              })
+                            }
+                            _ => ()
+                          }
+                        None =>
+                          raise @errors.TypeError(
+                            message="Cannot perform 'ownKeys' on a proxy that has been revoked",
+                          )
+                      }
+                    // ToObject conversion: Map, Set, Number, Bool, Symbol have no enumerable own string properties
+                    Map(_) | Set(_) | Value::Number(_) | Bool(_) | Symbol(_) =>
+                      ()
                   }
-                _ => Null
+                }
+                target
               }
+              _ => target
             }
-            match obj {
-              Null | Undefined =>
-                raise @errors.TypeError(
-                  message="Cannot convert undefined or null to object",
-                )
-              Object(data) => data.prototype
-              Array(_) => get_ctor_proto("Array")
-              Value::String_(_) => get_ctor_proto("String")
-              Value::Number(_) => get_ctor_proto("Number")
-              Bool(_) => get_ctor_proto("Boolean")
-              Symbol(_) => get_ctor_proto("Symbol")
-              Map(_) => get_ctor_proto("Map")
-              Set(_) => get_ctor_proto("Set")
-              Promise(_) => get_ctor_proto("Promise")
-              Value::Proxy(proxy_data) =>
-                @runtime.proxy_get_prototype_of(interp, proxy_data)
-            }
-          },
-        ),
-        "getOwnPropertyNames": make_get_own_property_names_func(),
-        "getOwnPropertySymbols": make_get_own_property_symbols_func(sym_state),
-        "getOwnPropertyDescriptors": make_get_own_property_descriptors_func(),
-        "defineProperty": make_define_property_func(),
-        "getOwnPropertyDescriptor": make_get_own_property_descriptor_func(),
-        "freeze": make_freeze_func(),
-        "seal": make_seal_func(),
-        "preventExtensions": make_prevent_extensions_func(),
-        "isFrozen": make_is_frozen_func(),
-        "isSealed": make_is_sealed_func(),
-        "isExtensible": make_is_extensible_func(),
-        "is": make_is_func(),
-        "fromEntries": make_from_entries_func(),
-        "groupBy": make_group_by_func(),
-        "hasOwn": make_has_own_func(),
-        "setPrototypeOf": @runtime.make_interp_static_func_with_length(
-          "setPrototypeOf",
-          2,
-          fn(interp, args) raise {
-            // Object.setPrototypeOf(obj, prototype)
-            let obj = if args.length() > 0 { args[0] } else { Undefined }
-            let proto = if args.length() > 1 { args[1] } else { Null }
-            match proto {
-              Object(_) | Null => ()
-              _ =>
-                raise @errors.TypeError(
-                  message="Object prototype may only be an Object or null",
-                )
-            }
-            match obj {
-              Value::Proxy(proxy_data) => {
-                let success = @runtime.proxy_set_prototype_of(
-                  interp, proxy_data, proto,
-                )
-                if !success {
-                  raise @errors.TypeError(
-                    message="Cannot set prototype of non-extensible object",
-                  )
+          }),
+          "getPrototypeOf": @runtime.make_interp_static_func_with_length(
+            "getPrototypeOf",
+            1,
+            fn(interp, args) raise {
+              let obj = if args.length() > 0 { args[0] } else { Undefined }
+              fn get_ctor_proto(name : String) -> Value {
+                let ctor = env.get(name) catch { _ => return Null }
+                match ctor {
+                  Object(ctor_data) =>
+                    match ctor_data.bag.properties.get("prototype") {
+                      Some(proto) => proto
+                      None => Null
+                    }
+                  _ => Null
                 }
               }
-              Object(data) => {
-                if !data.extensible {
+              match obj {
+                Null | Undefined =>
                   raise @errors.TypeError(
-                    message="Cannot set prototype of non-extensible object",
+                    message="Cannot convert undefined or null to object",
                   )
-                }
-                data.prototype = proto
+                Object(data) => data.prototype
+                Array(_) => get_ctor_proto("Array")
+                Value::String_(_) => get_ctor_proto("String")
+                Value::Number(_) => get_ctor_proto("Number")
+                Bool(_) => get_ctor_proto("Boolean")
+                Symbol(_) => get_ctor_proto("Symbol")
+                Map(_) => get_ctor_proto("Map")
+                Set(_) => get_ctor_proto("Set")
+                Promise(_) => get_ctor_proto("Promise")
+                Value::Proxy(proxy_data) =>
+                  @runtime.proxy_get_prototype_of(interp, proxy_data)
               }
-              _ => ()
-            }
-            obj
+            },
+          ),
+          "getOwnPropertyNames": make_get_own_property_names_func(),
+          "getOwnPropertySymbols": make_get_own_property_symbols_func(sym_state),
+          "getOwnPropertyDescriptors": make_get_own_property_descriptors_func(),
+          "defineProperty": make_define_property_func(),
+          "getOwnPropertyDescriptor": make_get_own_property_descriptor_func(),
+          "freeze": make_freeze_func(),
+          "seal": make_seal_func(),
+          "preventExtensions": make_prevent_extensions_func(),
+          "isFrozen": make_is_frozen_func(),
+          "isSealed": make_is_sealed_func(),
+          "isExtensible": make_is_extensible_func(),
+          "is": make_is_func(),
+          "fromEntries": make_from_entries_func(),
+          "groupBy": make_group_by_func(),
+          "hasOwn": make_has_own_func(),
+          "setPrototypeOf": @runtime.make_interp_static_func_with_length(
+            "setPrototypeOf",
+            2,
+            fn(interp, args) raise {
+              // Object.setPrototypeOf(obj, prototype)
+              let obj = if args.length() > 0 { args[0] } else { Undefined }
+              let proto = if args.length() > 1 { args[1] } else { Null }
+              match proto {
+                Object(_) | Null => ()
+                _ =>
+                  raise @errors.TypeError(
+                    message="Object prototype may only be an Object or null",
+                  )
+              }
+              match obj {
+                Value::Proxy(proxy_data) => {
+                  let success = @runtime.proxy_set_prototype_of(
+                    interp, proxy_data, proto,
+                  )
+                  if !success {
+                    raise @errors.TypeError(
+                      message="Cannot set prototype of non-extensible object",
+                    )
+                  }
+                }
+                Object(data) => {
+                  if !data.extensible {
+                    raise @errors.TypeError(
+                      message="Cannot set prototype of non-extensible object",
+                    )
+                  }
+                  data.prototype = proto
+                }
+                _ => ()
+              }
+              obj
+            },
+          ),
+          "defineProperties": make_define_properties_func(),
+        },
+        symbol_properties: {},
+        descriptors: {
+          "name": nf_desc,
+          "length": nf_desc,
+          "prototype": {
+            writable: false,
+            enumerable: false,
+            configurable: false,
+            getter: None,
+            setter: None,
           },
-        ),
-        "defineProperties": make_define_properties_func(),
+          "keys": obj_method_desc,
+          "values": obj_method_desc,
+          "entries": obj_method_desc,
+          "create": obj_method_desc,
+          "assign": obj_method_desc,
+          "getPrototypeOf": obj_method_desc,
+          "setPrototypeOf": obj_method_desc,
+          "getOwnPropertyNames": obj_method_desc,
+          "getOwnPropertyDescriptor": obj_method_desc,
+          "getOwnPropertyDescriptors": obj_method_desc,
+          "getOwnPropertySymbols": obj_method_desc,
+          "defineProperty": obj_method_desc,
+          "defineProperties": obj_method_desc,
+          "freeze": obj_method_desc,
+          "seal": obj_method_desc,
+          "isFrozen": obj_method_desc,
+          "isSealed": obj_method_desc,
+          "is": obj_method_desc,
+          "isExtensible": obj_method_desc,
+          "preventExtensions": obj_method_desc,
+          "fromEntries": obj_method_desc,
+          "hasOwn": obj_method_desc,
+          "groupBy": obj_method_desc,
+        },
+        symbol_descriptors: {},
       },
-      symbol_properties: {},
       prototype: Null,
       callable: Some(
         NativeCallable("Object", fn(args) {
@@ -1135,13 +1199,10 @@ pub fn setup_object_builtins(
               val
             Undefined | Null =>
               Value::Object({
-                properties: {},
-                symbol_properties: {},
+                bag: @runtime.new_property_bag(),
                 prototype: obj_proto,
                 callable: None,
                 class_name: "Object",
-                descriptors: {},
-                symbol_descriptors: {},
                 extensible: true,
               })
             Value::String_(s) => {
@@ -1173,13 +1234,15 @@ pub fn setup_object_builtins(
                 }
               }
               Value::Object({
-                properties: props,
-                symbol_properties: {},
+                bag: {
+                  properties: props,
+                  symbol_properties: {},
+                  descriptors: descs,
+                  symbol_descriptors: {},
+                },
                 prototype: string_proto,
                 callable: None,
                 class_name: "String",
-                descriptors: descs,
-                symbol_descriptors: {},
                 extensible: true,
               })
             }
@@ -1189,13 +1252,15 @@ pub fn setup_object_builtins(
                 _ => Null
               }
               Value::Object({
-                properties: { "[[NumberData]]": Value::Number(n) },
-                symbol_properties: {},
+                bag: {
+                  properties: { "[[NumberData]]": Value::Number(n) },
+                  symbol_properties: {},
+                  descriptors: {},
+                  symbol_descriptors: {},
+                },
                 prototype: number_proto,
                 callable: None,
                 class_name: "Number",
-                descriptors: {},
-                symbol_descriptors: {},
                 extensible: true,
               })
             }
@@ -1205,13 +1270,15 @@ pub fn setup_object_builtins(
                 _ => Null
               }
               Value::Object({
-                properties: { "[[BooleanData]]": Value::Bool(b) },
-                symbol_properties: {},
+                bag: {
+                  properties: { "[[BooleanData]]": Value::Bool(b) },
+                  symbol_properties: {},
+                  descriptors: {},
+                  symbol_descriptors: {},
+                },
                 prototype: boolean_proto,
                 callable: None,
                 class_name: "Boolean",
-                descriptors: {},
-                symbol_descriptors: {},
                 extensible: true,
               })
             }
@@ -1221,13 +1288,15 @@ pub fn setup_object_builtins(
                 _ => Null
               }
               Value::Object({
-                properties: { "[[SymbolData]]": val },
-                symbol_properties: {},
+                bag: {
+                  properties: { "[[SymbolData]]": val },
+                  symbol_properties: {},
+                  descriptors: {},
+                  symbol_descriptors: {},
+                },
                 prototype: symbol_proto,
                 callable: None,
                 class_name: "Symbol",
-                descriptors: {},
-                symbol_descriptors: {},
                 extensible: true,
               })
             }
@@ -1235,41 +1304,6 @@ pub fn setup_object_builtins(
         }),
       ),
       class_name: "Function",
-      descriptors: {
-        "name": nf_desc,
-        "length": nf_desc,
-        "prototype": {
-          writable: false,
-          enumerable: false,
-          configurable: false,
-          getter: None,
-          setter: None,
-        },
-        "keys": obj_method_desc,
-        "values": obj_method_desc,
-        "entries": obj_method_desc,
-        "create": obj_method_desc,
-        "assign": obj_method_desc,
-        "getPrototypeOf": obj_method_desc,
-        "setPrototypeOf": obj_method_desc,
-        "getOwnPropertyNames": obj_method_desc,
-        "getOwnPropertyDescriptor": obj_method_desc,
-        "getOwnPropertyDescriptors": obj_method_desc,
-        "getOwnPropertySymbols": obj_method_desc,
-        "defineProperty": obj_method_desc,
-        "defineProperties": obj_method_desc,
-        "freeze": obj_method_desc,
-        "seal": obj_method_desc,
-        "isFrozen": obj_method_desc,
-        "isSealed": obj_method_desc,
-        "is": obj_method_desc,
-        "isExtensible": obj_method_desc,
-        "preventExtensions": obj_method_desc,
-        "fromEntries": obj_method_desc,
-        "hasOwn": obj_method_desc,
-        "groupBy": obj_method_desc,
-      },
-      symbol_descriptors: {},
       extensible: true,
     }),
   )
@@ -1278,8 +1312,8 @@ pub fn setup_object_builtins(
   match obj_proto {
     Object(data) => {
       let obj_ctor = env.get("Object") catch { _ => Undefined }
-      data.properties["constructor"] = obj_ctor
-      data.descriptors["constructor"] = {
+      data.bag.properties["constructor"] = obj_ctor
+      data.bag.descriptors["constructor"] = {
         writable: true,
         enumerable: false,
         configurable: true,

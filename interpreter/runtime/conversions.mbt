@@ -74,12 +74,12 @@ pub fn set_function_name(val : Value, name : String) -> Unit {
       match data.callable {
         Some(_) =>
           // Only set if current name is empty (anonymous)
-          match data.properties.get("name") {
+          match data.bag.properties.get("name") {
             Some(String_(s)) =>
               if s == "" {
-                data.properties["name"] = String_(name)
+                data.bag.properties["name"] = String_(name)
               }
-            None => data.properties["name"] = String_(name)
+            None => data.bag.properties["name"] = String_(name)
             _ => ()
           }
         None => ()
@@ -137,7 +137,7 @@ pub fn has_property(
           let ctor = ip.global.get("Array") catch { _ => return false }
           match ctor {
             Object(ctor_data) =>
-              match ctor_data.properties.get("prototype") {
+              match ctor_data.bag.properties.get("prototype") {
                 Some(Object(proto_data)) =>
                   lookup_property_chain(proto_data, name, interp~) is Some(_)
                 _ => false
@@ -159,7 +159,7 @@ fn lookup_property_chain(
   interp? : Interpreter? = None,
 ) -> Value? {
   // Check own properties first
-  match data.properties.get(name) {
+  match data.bag.properties.get(name) {
     Some(v) => return Some(v)
     None => ()
   }
@@ -169,7 +169,7 @@ fn lookup_property_chain(
   while true {
     match current {
       Object(proto_data) =>
-        match proto_data.properties.get(name) {
+        match proto_data.bag.properties.get(name) {
           Some(v) => return Some(v)
           None => current = proto_data.prototype
         }
@@ -214,7 +214,7 @@ pub fn lookup_symbol_property_chain(
   interp? : Interpreter? = None,
 ) -> Value? raise Error {
   // Check own symbol descriptors for getter first
-  match data.symbol_descriptors.get(sym_id) {
+  match data.bag.symbol_descriptors.get(sym_id) {
     Some(desc) =>
       match desc.getter {
         Some(getter_fn) => {
@@ -226,7 +226,7 @@ pub fn lookup_symbol_property_chain(
     None => ()
   }
   // Check own symbol properties
-  match data.symbol_properties.get(sym_id) {
+  match data.bag.symbol_properties.get(sym_id) {
     Some(v) => return Some(v)
     None => ()
   }
@@ -236,7 +236,7 @@ pub fn lookup_symbol_property_chain(
     match current {
       Object(proto_data) => {
         // Check symbol descriptors for getter
-        match proto_data.symbol_descriptors.get(sym_id) {
+        match proto_data.bag.symbol_descriptors.get(sym_id) {
           Some(desc) =>
             match desc.getter {
               Some(getter_fn) => {
@@ -252,7 +252,7 @@ pub fn lookup_symbol_property_chain(
             }
           None => ()
         }
-        match proto_data.symbol_properties.get(sym_id) {
+        match proto_data.bag.symbol_properties.get(sym_id) {
           Some(v) => return Some(v)
           None => current = proto_data.prototype
         }

@@ -68,13 +68,15 @@ fn Interpreter::exec_import(
         }
       })
       let ns_obj : Value = Object({
-        properties: ns_props,
-        symbol_properties: {},
+        bag: {
+          properties: ns_props,
+          symbol_properties: {},
+          descriptors: ns_descs,
+          symbol_descriptors: {},
+        },
         prototype: Null,
         callable: None,
         class_name: "Module",
-        descriptors: ns_descs,
-        symbol_descriptors: {},
         extensible: false,
       })
       env.def(name, ns_obj, ConstBinding)
@@ -183,13 +185,15 @@ fn Interpreter::exec_export_all(
         }
       })
       let ns_obj : Value = Object({
-        properties: ns_props,
-        symbol_properties: {},
+        bag: {
+          properties: ns_props,
+          symbol_properties: {},
+          descriptors: ns_descs,
+          symbol_descriptors: {},
+        },
         prototype: Null,
         callable: None,
         class_name: "Module",
-        descriptors: ns_descs,
-        symbol_descriptors: {},
         extensible: false,
       })
       self.module_exports[name] = ns_obj

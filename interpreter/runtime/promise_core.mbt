@@ -65,13 +65,15 @@ pub fn make_interpreter_callable_with_length(
     setter: None,
   }
   Object({
-    properties: props,
-    symbol_properties: {},
+    bag: {
+      properties: props,
+      symbol_properties: {},
+      descriptors,
+      symbol_descriptors: {},
+    },
     prototype: Null,
     callable: Some(InterpreterCallable(name, body)),
     class_name: "Function",
-    descriptors,
-    symbol_descriptors: {},
     extensible: true,
   })
 }

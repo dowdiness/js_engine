@@ -565,16 +565,18 @@ fn setup_math_builtins(env : Environment) -> Unit {
   env.def_builtin(
     "Math",
     Value::Object({
-      properties: math_props,
-      symbol_properties: math_symbol_props,
+      bag: {
+        properties: math_props,
+        symbol_properties: math_symbol_props,
+        descriptors: math_descs,
+        symbol_descriptors: math_symbol_descs,
+      },
       prototype: match env.bindings.get("[[ObjectPrototype]]") {
         Some(binding) => binding.value
         None => Null
       },
       callable: None,
       class_name: "Math",
-      descriptors: math_descs,
-      symbol_descriptors: math_symbol_descs,
       extensible: true,
     }),
   )

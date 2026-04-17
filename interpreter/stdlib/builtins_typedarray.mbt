@@ -294,13 +294,15 @@ pub fn make_typedarray_object(
     }
   }
   Value::Object({
-    properties: props,
-    symbol_properties: {},
+    bag: {
+      properties: props,
+      symbol_properties: {},
+      descriptors: descs,
+      symbol_descriptors: {},
+    },
     prototype: proto,
     callable: None,
     class_name: type_name,
-    descriptors: descs,
-    symbol_descriptors: {},
     extensible: true,
   })
 }
@@ -342,13 +344,15 @@ fn make_typedarray_from_buffer(
     }
   }
   Value::Object({
-    properties: props,
-    symbol_properties: {},
+    bag: {
+      properties: props,
+      symbol_properties: {},
+      descriptors: descs,
+      symbol_descriptors: {},
+    },
     prototype: proto,
     callable: None,
     class_name: type_name,
-    descriptors: descs,
-    symbol_descriptors: {},
     extensible: true,
   })
 }
@@ -356,21 +360,21 @@ fn make_typedarray_from_buffer(
 ///|
 /// Get a typed element from a TypedArray object at the given index.
 pub fn typedarray_get_index(data : ObjectData, index : Int) -> Value {
-  let length = match data.properties.get("[[ArrayLength]]") {
+  let length = match data.bag.properties.get("[[ArrayLength]]") {
     Some(Value::Number(n)) => n.to_int()
     _ => 0
   }
   if index < 0 || index >= length {
     return Undefined
   }
-  let buf_id = match data.properties.get("[[ArrayBufferID]]") {
+  let buf_id = match data.bag.properties.get("[[ArrayBufferID]]") {
     Some(Value::Number(n)) => n.to_int()
     _ => return Undefined
   }
   if is_arraybuffer_detached(buf_id) {
     return Undefined
   }
-  let byte_offset = match data.properties.get("[[ByteOffset]]") {
+  let byte_offset = match data.bag.properties.get("[[ByteOffset]]") {
     Some(Value::Number(n)) => n.to_int()
     _ => 0
   }
@@ -389,21 +393,21 @@ pub fn typedarray_set_index(
   index : Int,
   value : Double,
 ) -> Unit {
-  let length = match data.properties.get("[[ArrayLength]]") {
+  let length = match data.bag.properties.get("[[ArrayLength]]") {
     Some(Value::Number(n)) => n.to_int()
     _ => 0
   }
   if index < 0 || index >= length {
     return
   }
-  let buf_id = match data.properties.get("[[ArrayBufferID]]") {
+  let buf_id = match data.bag.properties.get("[[ArrayBufferID]]") {
     Some(Value::Number(n)) => n.to_int()
     _ => return
   }
   if is_arraybuffer_detached(buf_id) {
     return
   }
-  let byte_offset = match data.properties.get("[[ByteOffset]]") {
+  let byte_offset = match data.bag.properties.get("[[ByteOffset]]") {
     Some(Value::Number(n)) => n.to_int()
     _ => 0
   }
@@ -421,29 +425,29 @@ pub fn typedarray_set_index(
 pub fn get_typedarray_prop(data : ObjectData, prop : String) -> Value {
   match prop {
     "length" =>
-      match data.properties.get("[[ArrayLength]]") {
+      match data.bag.properties.get("[[ArrayLength]]") {
         Some(n) => n
         None => Value::Number(0.0)
       }
     "byteLength" =>
-      match data.properties.get("[[ByteLength]]") {
+      match data.bag.properties.get("[[ByteLength]]") {
         Some(n) => n
         None => Value::Number(0.0)
       }
     "byteOffset" =>
-      match data.properties.get("[[ByteOffset]]") {
+      match data.bag.properties.get("[[ByteOffset]]") {
         Some(n) => n
         None => Value::Number(0.0)
       }
     "buffer" =>
-      match data.properties.get("[[ViewedArrayBuffer]]") {
+      match data.bag.properties.get("[[ViewedArrayBuffer]]") {
         Some(buf) => buf
         None => Undefined
       }
     "BYTES_PER_ELEMENT" =>
       Value::Number(typed_array_bytes_per_element(data.class_name).to_double())
     "constructor" =>
-      match data.properties.get("constructor") {
+      match data.bag.properties.get("constructor") {
         Some(v) => v
         None => Undefined
       }
@@ -493,7 +497,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
           match this_val {
             Object(data) =>
               if is_typedarray_class(data.class_name) {
-                match data.properties.get(internal_slot) {
+                match data.bag.properties.get(internal_slot) {
                   Some(n) => n
                   None => Value::Number(0.0)
                 }
@@ -524,7 +528,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
-              match data.properties.get("[[ViewedArrayBuffer]]") {
+              match data.bag.properties.get("[[ViewedArrayBuffer]]") {
                 Some(buf) => buf
                 None => Undefined
               }
@@ -563,14 +567,15 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
           } else {
             0
           }
-          let ta_length = match data.properties.get("[[ArrayLength]]") {
+          let ta_length = match data.bag.properties.get("[[ArrayLength]]") {
             Some(Value::Number(n)) => n.to_int()
             _ => 0
           }
           match args[0] {
             // Source is a TypedArray
             Object(src_data) if is_typedarray_class(src_data.class_name) => {
-              let src_len = match src_data.properties.get("[[ArrayLength]]") {
+              let src_len = match
+                src_data.bag.properties.get("[[ArrayLength]]") {
                 Some(Value::Number(n)) => n.to_int()
                 _ => 0
               }
@@ -608,7 +613,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
               // Generic array-like with length property
               let src_len = match src {
                 Object(src_obj) =>
-                  match src_obj.properties.get("length") {
+                  match src_obj.bag.properties.get("length") {
                     Some(v) => @runtime.to_number(v).to_int()
                     _ => 0
                   }
@@ -620,7 +625,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
               for i = 0; i < src_len; i = i + 1 {
                 let val = match src {
                   Object(src_obj) =>
-                    match src_obj.properties.get(i.to_string()) {
+                    match src_obj.bag.properties.get(i.to_string()) {
                       Some(v) => v
                       _ => Undefined
                     }
@@ -652,7 +657,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     match this_val {
       Object(data) =>
         if is_typedarray_class(data.class_name) {
-          let ta_length = match data.properties.get("[[ArrayLength]]") {
+          let ta_length = match data.bag.properties.get("[[ArrayLength]]") {
             Some(Value::Number(n)) => n.to_int()
             _ => 0
           }
@@ -698,11 +703,11 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
           } else {
             0
           }
-          let buffer = match data.properties.get("[[ViewedArrayBuffer]]") {
+          let buffer = match data.bag.properties.get("[[ViewedArrayBuffer]]") {
             Some(buf) => buf
             None => raise @errors.TypeError(message="TypedArray has no buffer")
           }
-          let cur_offset = match data.properties.get("[[ByteOffset]]") {
+          let cur_offset = match data.bag.properties.get("[[ByteOffset]]") {
             Some(Value::Number(n)) => n.to_int()
             _ => 0
           }
@@ -732,7 +737,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     match this_val {
       Object(data) =>
         if is_typedarray_class(data.class_name) {
-          let ta_length = match data.properties.get("[[ArrayLength]]") {
+          let ta_length = match data.bag.properties.get("[[ArrayLength]]") {
             Some(Value::Number(n)) => n.to_int()
             _ => 0
           }
@@ -813,7 +818,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     match this_val {
       Object(data) =>
         if is_typedarray_class(data.class_name) {
-          let len = match data.properties.get("[[ArrayLength]]") {
+          let len = match data.bag.properties.get("[[ArrayLength]]") {
             Some(Value::Number(n)) => n.to_int()
             _ => 0
           }
@@ -913,7 +918,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     match this_val {
       Object(data) =>
         if is_typedarray_class(data.class_name) {
-          let len = match data.properties.get("[[ArrayLength]]") {
+          let len = match data.bag.properties.get("[[ArrayLength]]") {
             Some(Value::Number(n)) => n.to_int()
             _ => 0
           }
@@ -980,7 +985,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     match this_val {
       Object(data) =>
         if is_typedarray_class(data.class_name) {
-          let len = match data.properties.get("[[ArrayLength]]") {
+          let len = match data.bag.properties.get("[[ArrayLength]]") {
             Some(Value::Number(n)) => n.to_int()
             _ => 0
           }
@@ -1029,7 +1034,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     match this_val {
       Object(data) =>
         if is_typedarray_class(data.class_name) {
-          let len = match data.properties.get("[[ArrayLength]]") {
+          let len = match data.bag.properties.get("[[ArrayLength]]") {
             Some(Value::Number(n)) => n.to_int()
             _ => 0
           }
@@ -1075,7 +1080,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     match this_val {
       Object(data) =>
         if is_typedarray_class(data.class_name) {
-          let len = match data.properties.get("[[ArrayLength]]") {
+          let len = match data.bag.properties.get("[[ArrayLength]]") {
             Some(Value::Number(n)) => n.to_int()
             _ => 0
           }
@@ -1124,7 +1129,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     match this_val {
       Object(data) =>
         if is_typedarray_class(data.class_name) {
-          let len = match data.properties.get("[[ArrayLength]]") {
+          let len = match data.bag.properties.get("[[ArrayLength]]") {
             Some(Value::Number(n)) => n.to_int()
             _ => 0
           }
@@ -1160,7 +1165,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     match this_val {
       Object(data) =>
         if is_typedarray_class(data.class_name) {
-          let len = match data.properties.get("[[ArrayLength]]") {
+          let len = match data.bag.properties.get("[[ArrayLength]]") {
             Some(Value::Number(n)) => n.to_int()
             _ => 0
           }
@@ -1188,7 +1193,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     match this_val {
       Object(data) =>
         if is_typedarray_class(data.class_name) {
-          let len = match data.properties.get("[[ArrayLength]]") {
+          let len = match data.bag.properties.get("[[ArrayLength]]") {
             Some(Value::Number(n)) => n.to_int()
             _ => 0
           }
@@ -1227,7 +1232,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     match this_val {
       Object(data) =>
         if is_typedarray_class(data.class_name) {
-          let len = match data.properties.get("[[ArrayLength]]") {
+          let len = match data.bag.properties.get("[[ArrayLength]]") {
             Some(Value::Number(n)) => n.to_int()
             _ => 0
           }
@@ -1333,7 +1338,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     match this_val {
       Object(data) =>
         if is_typedarray_class(data.class_name) {
-          let len = match data.properties.get("[[ArrayLength]]") {
+          let len = match data.bag.properties.get("[[ArrayLength]]") {
             Some(Value::Number(n)) => n.to_int()
             _ => 0
           }
@@ -1366,7 +1371,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
           let index_ref : Ref[Int] = { val: 0 }
           let next_method = @runtime.make_native_func("next", fn(_a) raise {
             // Re-check detachment and length on each next() call per spec
-            let buf_id = match data.properties.get("[[ArrayBufferID]]") {
+            let buf_id = match data.bag.properties.get("[[ArrayBufferID]]") {
               Some(Value::Number(n)) => n.to_int()
               _ => -1
             }
@@ -1375,7 +1380,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
                 message="Cannot iterate over a detached ArrayBuffer",
               )
             }
-            let len = match data.properties.get("[[ArrayLength]]") {
+            let len = match data.bag.properties.get("[[ArrayLength]]") {
               Some(Value::Number(n)) => n.to_int()
               _ => 0
             }
@@ -1383,20 +1388,23 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
             if idx < len {
               let value = typedarray_get_index(data, idx)
               index_ref.val = idx + 1
-              let pair = Value::Array({
-                elements: [Value::Number(idx.to_double()), value],
-              })
+              let pair = @runtime.make_array([
+                Value::Number(idx.to_double()),
+                value,
+              ])
               let result_props : Map[String, Value] = {}
               result_props["value"] = pair
               result_props["done"] = Value::Bool(false)
               Value::Object({
-                properties: result_props,
-                symbol_properties: {},
+                bag: {
+                  properties: result_props,
+                  symbol_properties: {},
+                  descriptors: {},
+                  symbol_descriptors: {},
+                },
                 prototype: Null,
                 callable: None,
                 class_name: "Object",
-                descriptors: {},
-                symbol_descriptors: {},
                 extensible: true,
               })
             } else {
@@ -1404,13 +1412,15 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
               result_props["value"] = Undefined
               result_props["done"] = Value::Bool(true)
               Value::Object({
-                properties: result_props,
-                symbol_properties: {},
+                bag: {
+                  properties: result_props,
+                  symbol_properties: {},
+                  descriptors: {},
+                  symbol_descriptors: {},
+                },
                 prototype: Null,
                 callable: None,
                 class_name: "Object",
-                descriptors: {},
-                symbol_descriptors: {},
                 extensible: true,
               })
             }
@@ -1419,25 +1429,24 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
           iter_props["next"] = next_method
           let iter_sym_props : Map[Int, Value] = {}
           iter_sym_props[iterator_sym.id] = Value::Object({
-            properties: {},
-            symbol_properties: {},
+            bag: @runtime.new_property_bag(),
             prototype: Null,
             callable: Some(
               MethodCallable("[Symbol.iterator]", fn(tv, _a) { tv }),
             ),
             class_name: "Function",
-            descriptors: {},
-            symbol_descriptors: {},
             extensible: true,
           })
           Value::Object({
-            properties: iter_props,
-            symbol_properties: iter_sym_props,
+            bag: {
+              properties: iter_props,
+              symbol_properties: iter_sym_props,
+              descriptors: {},
+              symbol_descriptors: {},
+            },
             prototype: Null,
             callable: None,
             class_name: "Array Iterator",
-            descriptors: {},
-            symbol_descriptors: {},
             extensible: true,
           })
         } else {
@@ -1458,7 +1467,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
           let index_ref : Ref[Int] = { val: 0 }
           let next_method = @runtime.make_native_func("next", fn(_a) raise {
             // Re-check detachment and length on each next() call per spec
-            let buf_id = match data.properties.get("[[ArrayBufferID]]") {
+            let buf_id = match data.bag.properties.get("[[ArrayBufferID]]") {
               Some(Value::Number(n)) => n.to_int()
               _ => -1
             }
@@ -1467,7 +1476,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
                 message="Cannot iterate over a detached ArrayBuffer",
               )
             }
-            let len = match data.properties.get("[[ArrayLength]]") {
+            let len = match data.bag.properties.get("[[ArrayLength]]") {
               Some(Value::Number(n)) => n.to_int()
               _ => 0
             }
@@ -1478,13 +1487,15 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
               result_props["value"] = Value::Number(idx.to_double())
               result_props["done"] = Value::Bool(false)
               Value::Object({
-                properties: result_props,
-                symbol_properties: {},
+                bag: {
+                  properties: result_props,
+                  symbol_properties: {},
+                  descriptors: {},
+                  symbol_descriptors: {},
+                },
                 prototype: Null,
                 callable: None,
                 class_name: "Object",
-                descriptors: {},
-                symbol_descriptors: {},
                 extensible: true,
               })
             } else {
@@ -1492,13 +1503,15 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
               result_props["value"] = Undefined
               result_props["done"] = Value::Bool(true)
               Value::Object({
-                properties: result_props,
-                symbol_properties: {},
+                bag: {
+                  properties: result_props,
+                  symbol_properties: {},
+                  descriptors: {},
+                  symbol_descriptors: {},
+                },
                 prototype: Null,
                 callable: None,
                 class_name: "Object",
-                descriptors: {},
-                symbol_descriptors: {},
                 extensible: true,
               })
             }
@@ -1507,25 +1520,24 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
           iter_props["next"] = next_method
           let iter_sym_props : Map[Int, Value] = {}
           iter_sym_props[iterator_sym.id] = Value::Object({
-            properties: {},
-            symbol_properties: {},
+            bag: @runtime.new_property_bag(),
             prototype: Null,
             callable: Some(
               MethodCallable("[Symbol.iterator]", fn(tv, _a) { tv }),
             ),
             class_name: "Function",
-            descriptors: {},
-            symbol_descriptors: {},
             extensible: true,
           })
           Value::Object({
-            properties: iter_props,
-            symbol_properties: iter_sym_props,
+            bag: {
+              properties: iter_props,
+              symbol_properties: iter_sym_props,
+              descriptors: {},
+              symbol_descriptors: {},
+            },
             prototype: Null,
             callable: None,
             class_name: "Array Iterator",
-            descriptors: {},
-            symbol_descriptors: {},
             extensible: true,
           })
         } else {
@@ -1543,7 +1555,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
           let index_ref : Ref[Int] = { val: 0 }
           let next_method = @runtime.make_native_func("next", fn(_a) raise {
             // Re-check detachment and length on each next() call per spec
-            let buf_id = match data.properties.get("[[ArrayBufferID]]") {
+            let buf_id = match data.bag.properties.get("[[ArrayBufferID]]") {
               Some(Value::Number(n)) => n.to_int()
               _ => -1
             }
@@ -1552,7 +1564,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
                 message="Cannot iterate over a detached ArrayBuffer",
               )
             }
-            let len = match data.properties.get("[[ArrayLength]]") {
+            let len = match data.bag.properties.get("[[ArrayLength]]") {
               Some(Value::Number(n)) => n.to_int()
               _ => 0
             }
@@ -1564,13 +1576,15 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
               result_props["value"] = value
               result_props["done"] = Value::Bool(false)
               Value::Object({
-                properties: result_props,
-                symbol_properties: {},
+                bag: {
+                  properties: result_props,
+                  symbol_properties: {},
+                  descriptors: {},
+                  symbol_descriptors: {},
+                },
                 prototype: Null,
                 callable: None,
                 class_name: "Object",
-                descriptors: {},
-                symbol_descriptors: {},
                 extensible: true,
               })
             } else {
@@ -1578,13 +1592,15 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
               result_props["value"] = Undefined
               result_props["done"] = Value::Bool(true)
               Value::Object({
-                properties: result_props,
-                symbol_properties: {},
+                bag: {
+                  properties: result_props,
+                  symbol_properties: {},
+                  descriptors: {},
+                  symbol_descriptors: {},
+                },
                 prototype: Null,
                 callable: None,
                 class_name: "Object",
-                descriptors: {},
-                symbol_descriptors: {},
                 extensible: true,
               })
             }
@@ -1593,25 +1609,24 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
           iter_props["next"] = next_method
           let iter_sym_props : Map[Int, Value] = {}
           iter_sym_props[iterator_sym.id] = Value::Object({
-            properties: {},
-            symbol_properties: {},
+            bag: @runtime.new_property_bag(),
             prototype: Null,
             callable: Some(
               MethodCallable("[Symbol.iterator]", fn(tv, _a) { tv }),
             ),
             class_name: "Function",
-            descriptors: {},
-            symbol_descriptors: {},
             extensible: true,
           })
           Value::Object({
-            properties: iter_props,
-            symbol_properties: iter_sym_props,
+            bag: {
+              properties: iter_props,
+              symbol_properties: iter_sym_props,
+              descriptors: {},
+              symbol_descriptors: {},
+            },
             prototype: Null,
             callable: None,
             class_name: "Array Iterator",
-            descriptors: {},
-            symbol_descriptors: {},
             extensible: true,
           })
         } else {
@@ -1639,7 +1654,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
           }
           let callback = args[0]
           let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-          let len = match data.properties.get("[[ArrayLength]]") {
+          let len = match data.bag.properties.get("[[ArrayLength]]") {
             Some(Value::Number(n)) => n.to_int()
             _ => 0
           }
@@ -1676,7 +1691,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
           }
           let callback = args[0]
           let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-          let len = match data.properties.get("[[ArrayLength]]") {
+          let len = match data.bag.properties.get("[[ArrayLength]]") {
             Some(Value::Number(n)) => n.to_int()
             _ => 0
           }
@@ -1727,7 +1742,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
           }
           let callback = args[0]
           let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-          let len = match data.properties.get("[[ArrayLength]]") {
+          let len = match data.bag.properties.get("[[ArrayLength]]") {
             Some(Value::Number(n)) => n.to_int()
             _ => 0
           }
@@ -1785,7 +1800,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
             )
           }
           let callback = args[0]
-          let len = match data.properties.get("[[ArrayLength]]") {
+          let len = match data.bag.properties.get("[[ArrayLength]]") {
             Some(Value::Number(n)) => n.to_int()
             _ => 0
           }
@@ -1835,7 +1850,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
               )
             }
             let callback = args[0]
-            let len = match data.properties.get("[[ArrayLength]]") {
+            let len = match data.bag.properties.get("[[ArrayLength]]") {
               Some(Value::Number(n)) => n.to_int()
               _ => 0
             }
@@ -1893,7 +1908,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
           }
           let callback = args[0]
           let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-          let len = match data.properties.get("[[ArrayLength]]") {
+          let len = match data.bag.properties.get("[[ArrayLength]]") {
             Some(Value::Number(n)) => n.to_int()
             _ => 0
           }
@@ -1933,7 +1948,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
           }
           let callback = args[0]
           let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-          let len = match data.properties.get("[[ArrayLength]]") {
+          let len = match data.bag.properties.get("[[ArrayLength]]") {
             Some(Value::Number(n)) => n.to_int()
             _ => 0
           }
@@ -1973,7 +1988,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
           }
           let callback = args[0]
           let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-          let len = match data.properties.get("[[ArrayLength]]") {
+          let len = match data.bag.properties.get("[[ArrayLength]]") {
             Some(Value::Number(n)) => n.to_int()
             _ => 0
           }
@@ -2014,7 +2029,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
             }
             let callback = args[0]
             let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-            let len = match data.properties.get("[[ArrayLength]]") {
+            let len = match data.bag.properties.get("[[ArrayLength]]") {
               Some(Value::Number(n)) => n.to_int()
               _ => 0
             }
@@ -2054,7 +2069,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     match this_val {
       Object(data) =>
         if is_typedarray_class(data.class_name) {
-          let len = match data.properties.get("[[ArrayLength]]") {
+          let len = match data.bag.properties.get("[[ArrayLength]]") {
             Some(Value::Number(n)) => n.to_int()
             _ => 0
           }
@@ -2088,7 +2103,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
       match this_val {
         Object(data) =>
           if is_typedarray_class(data.class_name) {
-            let len = match data.properties.get("[[ArrayLength]]") {
+            let len = match data.bag.properties.get("[[ArrayLength]]") {
               Some(Value::Number(n)) => n.to_int()
               _ => 0
             }
@@ -2125,7 +2140,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     match this_val {
       Object(data) =>
         if is_typedarray_class(data.class_name) {
-          let len = match data.properties.get("[[ArrayLength]]") {
+          let len = match data.bag.properties.get("[[ArrayLength]]") {
             Some(Value::Number(n)) => n.to_int()
             _ => 0
           }
@@ -2167,7 +2182,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     match this_val {
       Object(data) =>
         if is_typedarray_class(data.class_name) {
-          let len = match data.properties.get("[[ArrayLength]]") {
+          let len = match data.bag.properties.get("[[ArrayLength]]") {
             Some(Value::Number(n)) => n.to_int()
             _ => 0
           }
@@ -2241,7 +2256,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     match this_val {
       Object(data) =>
         if is_typedarray_class(data.class_name) {
-          let len = match data.properties.get("[[ArrayLength]]") {
+          let len = match data.bag.properties.get("[[ArrayLength]]") {
             Some(Value::Number(n)) => n.to_int()
             _ => 0
           }
@@ -2354,13 +2369,15 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
   }
 
   let ta_proto : Value = Value::Object({
-    properties: ta_proto_props,
-    symbol_properties: ta_proto_sym_props,
+    bag: {
+      properties: ta_proto_props,
+      symbol_properties: ta_proto_sym_props,
+      descriptors: ta_proto_descs,
+      symbol_descriptors: ta_proto_sym_descs,
+    },
     prototype: obj_proto,
     callable: None,
     class_name: "Object",
-    descriptors: ta_proto_descs,
-    symbol_descriptors: ta_proto_sym_descs,
     extensible: true,
   })
   env.def_builtin("[[TypedArrayPrototype]]", ta_proto)
@@ -2398,8 +2415,12 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     setter: None,
   }
   let ta_ctor : Value = Value::Object({
-    properties: ta_ctor_props,
-    symbol_properties: {},
+    bag: {
+      properties: ta_ctor_props,
+      symbol_properties: {},
+      descriptors: ta_ctor_descs,
+      symbol_descriptors: {},
+    },
     prototype: func_proto,
     callable: Some(
       NativeCallable("TypedArray", fn(_args) raise {
@@ -2409,15 +2430,13 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
       }),
     ),
     class_name: "Function",
-    descriptors: ta_ctor_descs,
-    symbol_descriptors: {},
     extensible: true,
   })
   // Set ta_proto.constructor = %TypedArray%
   match ta_proto {
     Object(proto_data) => {
-      proto_data.properties["constructor"] = ta_ctor
-      proto_data.descriptors["constructor"] = {
+      proto_data.bag.properties["constructor"] = ta_ctor
+      proto_data.bag.descriptors["constructor"] = {
         writable: true,
         enumerable: false,
         configurable: true,
@@ -2451,13 +2470,15 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     }
 
     let per_proto : Value = Value::Object({
-      properties: per_proto_props,
-      symbol_properties: {},
+      bag: {
+        properties: per_proto_props,
+        symbol_properties: {},
+        descriptors: per_proto_descs,
+        symbol_descriptors: {},
+      },
       prototype: ta_proto,
       callable: None,
       class_name: "Object",
-      descriptors: per_proto_descs,
-      symbol_descriptors: {},
       extensible: true,
     })
 
@@ -2492,7 +2513,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
           }
         Object(src_data) =>
           if is_typedarray_class(src_data.class_name) {
-            let src_len = match src_data.properties.get("[[ArrayLength]]") {
+            let src_len = match src_data.bag.properties.get("[[ArrayLength]]") {
               Some(Value::Number(n)) => n.to_int()
               _ => 0
             }
@@ -2501,11 +2522,11 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
             }
           } else {
             // Try length property
-            match src_data.properties.get("length") {
+            match src_data.bag.properties.get("length") {
               Some(Value::Number(len_n)) => {
                 let len = len_n.to_int()
                 for i = 0; i < len; i = i + 1 {
-                  match src_data.properties.get(i.to_string()) {
+                  match src_data.bag.properties.get(i.to_string()) {
                     Some(v) => source_values.push(v)
                     None => source_values.push(Undefined)
                   }
@@ -2551,8 +2572,12 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
 
     // Static of(...items)
     ctor_props["of"] = Value::Object({
-      properties: { "length": Value::Number(0.0) },
-      symbol_properties: {},
+      bag: {
+        properties: { "length": Value::Number(0.0) },
+        symbol_properties: {},
+        descriptors: {},
+        symbol_descriptors: {},
+      },
       prototype: Null,
       callable: Some(
         NativeCallable("of", fn(args) raise {
@@ -2574,8 +2599,6 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
         }),
       ),
       class_name: "Function",
-      descriptors: {},
-      symbol_descriptors: {},
       extensible: true,
     })
 
@@ -2610,8 +2633,12 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     }
 
     let ctor : Value = Value::Object({
-      properties: ctor_props,
-      symbol_properties: {},
+      bag: {
+        properties: ctor_props,
+        symbol_properties: {},
+        descriptors: ctor_descs,
+        symbol_descriptors: {},
+      },
       prototype: ta_ctor,
       callable: Some(
         NativeCallable(type_name, fn(args) raise {
@@ -2636,7 +2663,8 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
             }
             // From another TypedArray
             Object(src_data) if is_typedarray_class(src_data.class_name) => {
-              let src_len = match src_data.properties.get("[[ArrayLength]]") {
+              let src_len = match
+                src_data.bag.properties.get("[[ArrayLength]]") {
                 Some(Value::Number(ln)) => ln.to_int()
                 _ => 0
               }
@@ -2661,7 +2689,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
             Object(buf_data) if buf_data.class_name == "ArrayBuffer" => {
               // Check for detached buffer
               let check_buf_id = match
-                buf_data.properties.get("[[ArrayBufferID]]") {
+                buf_data.bag.properties.get("[[ArrayBufferID]]") {
                 Some(Value::Number(n)) => n.to_int()
                 _ => -1
               }
@@ -2671,7 +2699,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
                 )
               }
               let buf_byte_length = match
-                buf_data.properties.get("[[ArrayBufferByteLength]]") {
+                buf_data.bag.properties.get("[[ArrayBufferByteLength]]") {
                 Some(Value::Number(n)) => n.to_int()
                 _ => 0
               }
@@ -2742,7 +2770,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
             }
             // From generic object with length
             Object(src_data) =>
-              match src_data.properties.get("length") {
+              match src_data.bag.properties.get("length") {
                 Some(Value::Number(len_n)) => {
                   let len = len_n.to_int()
                   let result = make_typedarray_object(
@@ -2751,7 +2779,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
                   match result {
                     Object(result_data) =>
                       for i = 0; i < len; i = i + 1 {
-                        match src_data.properties.get(i.to_string()) {
+                        match src_data.bag.properties.get(i.to_string()) {
                           Some(v) => {
                             let num = @runtime.to_number(v)
                             typedarray_set_index(result_data, i, num)
@@ -2770,16 +2798,14 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
         }),
       ),
       class_name: "Function",
-      descriptors: ctor_descs,
-      symbol_descriptors: {},
       extensible: true,
     })
 
     // Link constructor
     match per_proto {
       Object(proto_data) => {
-        proto_data.properties["constructor"] = ctor
-        proto_data.descriptors["constructor"] = {
+        proto_data.bag.properties["constructor"] = ctor
+        proto_data.bag.descriptors["constructor"] = {
           writable: true,
           enumerable: false,
           configurable: true,

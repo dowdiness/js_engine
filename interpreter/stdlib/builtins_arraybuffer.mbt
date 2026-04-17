@@ -54,7 +54,7 @@ pub fn get_buffer_id(obj : Value) -> Int? {
   match obj {
     Object(data) =>
       if data.class_name == "ArrayBuffer" {
-        match data.properties.get("[[ArrayBufferID]]") {
+        match data.bag.properties.get("[[ArrayBufferID]]") {
           Some(Value::Number(n)) => Some(n.to_int())
           _ => None
         }
@@ -88,13 +88,15 @@ pub fn make_arraybuffer_object(byte_length : Int, proto : Value) -> Value {
     setter: None,
   }
   Value::Object({
-    properties: props,
-    symbol_properties: {},
+    bag: {
+      properties: props,
+      symbol_properties: {},
+      descriptors: descs,
+      symbol_descriptors: {},
+    },
     prototype: proto,
     callable: None,
     class_name: "ArrayBuffer",
-    descriptors: descs,
-    symbol_descriptors: {},
     extensible: true,
   })
 }
@@ -118,14 +120,14 @@ pub fn setup_arraybuffer_builtins(env : Environment) -> Unit {
         match this_val {
           Object(data) =>
             if data.class_name == "ArrayBuffer" {
-              match data.properties.get("[[ArrayBufferID]]") {
+              match data.bag.properties.get("[[ArrayBufferID]]") {
                 Some(Value::Number(id_n)) =>
                   if is_arraybuffer_detached(id_n.to_int()) {
                     raise @errors.TypeError(
                       message="Cannot perform get on a detached ArrayBuffer",
                     )
                   } else {
-                    match data.properties.get("[[ArrayBufferByteLength]]") {
+                    match data.bag.properties.get("[[ArrayBufferByteLength]]") {
                       Some(n) => n
                       None => Value::Number(0.0)
                     }
@@ -155,7 +157,7 @@ pub fn setup_arraybuffer_builtins(env : Environment) -> Unit {
     match this_val {
       Object(data) =>
         if data.class_name == "ArrayBuffer" {
-          let buf_id = match data.properties.get("[[ArrayBufferID]]") {
+          let buf_id = match data.bag.properties.get("[[ArrayBufferID]]") {
             Some(Value::Number(n)) => n.to_int()
             _ =>
               raise @errors.TypeError(
@@ -268,13 +270,15 @@ pub fn setup_arraybuffer_builtins(env : Environment) -> Unit {
   }
 
   let ab_proto : Value = Value::Object({
-    properties: ab_proto_props,
-    symbol_properties: ab_proto_sym_props,
+    bag: {
+      properties: ab_proto_props,
+      symbol_properties: ab_proto_sym_props,
+      descriptors: ab_proto_descs,
+      symbol_descriptors: ab_proto_sym_descs,
+    },
     prototype: obj_proto,
     callable: None,
     class_name: "Object",
-    descriptors: ab_proto_descs,
-    symbol_descriptors: ab_proto_sym_descs,
     extensible: true,
   })
   env.def_builtin("[[ArrayBufferPrototype]]", ab_proto)
@@ -327,8 +331,12 @@ pub fn setup_arraybuffer_builtins(env : Environment) -> Unit {
   }
 
   let ab_ctor : Value = Value::Object({
-    properties: ab_ctor_props,
-    symbol_properties: {},
+    bag: {
+      properties: ab_ctor_props,
+      symbol_properties: {},
+      descriptors: ab_ctor_descs,
+      symbol_descriptors: {},
+    },
     prototype: Null,
     callable: Some(
       NativeCallable("ArrayBuffer", fn(args) raise {
@@ -350,16 +358,14 @@ pub fn setup_arraybuffer_builtins(env : Environment) -> Unit {
       }),
     ),
     class_name: "Function",
-    descriptors: ab_ctor_descs,
-    symbol_descriptors: {},
     extensible: true,
   })
 
   // Link constructor
   match ab_proto {
     Object(data) => {
-      data.properties["constructor"] = ab_ctor
-      data.descriptors["constructor"] = {
+      data.bag.properties["constructor"] = ab_ctor
+      data.bag.descriptors["constructor"] = {
         writable: true,
         enumerable: false,
         configurable: true,
@@ -394,7 +400,7 @@ pub fn is_typedarray_class(name : String) -> Bool {
 /// Validate that a TypedArray's underlying buffer is not detached.
 /// Throws TypeError if detached. Per spec, iteration methods must check this.
 pub fn validate_typedarray_buffer(data : ObjectData) -> Unit raise Error {
-  let buf_id = match data.properties.get("[[ArrayBufferID]]") {
+  let buf_id = match data.bag.properties.get("[[ArrayBufferID]]") {
     Some(Value::Number(n)) => n.to_int()
     _ => -1
   }

@@ -41,7 +41,7 @@ fn Interpreter::create_class(
           // as Some(Null) so construct_value follows the derived-class path.
           (Some(Null), Null)
         Object(super_data) =>
-          match super_data.properties.get("prototype") {
+          match super_data.bag.properties.get("prototype") {
             Some(sp) => (Some(super_val), sp)
             None => (Some(super_val), Null)
           }
@@ -351,13 +351,15 @@ fn Interpreter::create_class(
   } // end for member in members
   // Create prototype object
   let proto = Object({
-    properties: proto_props,
-    symbol_properties: proto_symbol_props,
+    bag: {
+      properties: proto_props,
+      symbol_properties: proto_symbol_props,
+      descriptors: proto_descriptors,
+      symbol_descriptors: proto_symbol_descriptors,
+    },
     prototype: super_proto,
     callable: None,
     class_name: name,
-    descriptors: proto_descriptors,
-    symbol_descriptors: proto_symbol_descriptors,
     extensible: true,
   })
   // Add constructor back-reference to prototype
@@ -367,13 +369,19 @@ fn Interpreter::create_class(
   // and for base classes (None), the class function inherits from Function.prototype.
   let class_proto = match super_ctor {
     Some(Null) | None =>
-      self.global.get("[[FunctionPrototype]]") catch { _ => Null }
+      self.global.get("[[FunctionPrototype]]") catch {
+        _ => Null
+      }
     Some(super_class) => super_class
   }
   // Create the class constructor function
   let class_obj = Object({
-    properties: static_props,
-    symbol_properties: static_symbol_props,
+    bag: {
+      properties: static_props,
+      symbol_properties: static_symbol_props,
+      descriptors: static_descriptors,
+      symbol_descriptors: static_symbol_descriptors,
+    },
     prototype: class_proto,
     callable: Some(
       ClassConstructor({
@@ -387,15 +395,13 @@ fn Interpreter::create_class(
       }),
     ),
     class_name: "Function",
-    descriptors: static_descriptors,
-    symbol_descriptors: static_symbol_descriptors,
     extensible: true,
   })
   // Set prototype.constructor to point to the class (non-enumerable per spec)
   match proto {
     Object(proto_data) => {
-      proto_data.properties["constructor"] = class_obj
-      proto_data.descriptors["constructor"] = {
+      proto_data.bag.properties["constructor"] = class_obj
+      proto_data.bag.descriptors["constructor"] = {
         writable: true,
         enumerable: false,
         configurable: true,
@@ -416,16 +422,16 @@ fn Interpreter::create_class(
   match class_obj {
     Object(class_data) => {
       // Add length (formal parameter count) - non-writable, non-enumerable, configurable
-      class_data.properties["length"] = Number(ctor_param_count.to_double())
-      class_data.descriptors["length"] = non_enum_configurable
+      class_data.bag.properties["length"] = Number(ctor_param_count.to_double())
+      class_data.bag.descriptors["length"] = non_enum_configurable
       // Add name - non-writable, non-enumerable, configurable
       if name != "" {
-        class_data.properties["name"] = String_(name)
-        class_data.descriptors["name"] = non_enum_configurable
+        class_data.bag.properties["name"] = String_(name)
+        class_data.bag.descriptors["name"] = non_enum_configurable
       }
       // Add prototype - non-writable, non-enumerable, non-configurable
-      class_data.properties["prototype"] = proto
-      class_data.descriptors["prototype"] = {
+      class_data.bag.properties["prototype"] = proto
+      class_data.bag.descriptors["prototype"] = {
         writable: false,
         enumerable: false,
         configurable: false,
@@ -466,13 +472,13 @@ fn Interpreter::create_class(
       Object(class_data) =>
         match sf.key {
           Symbol(sym) => {
-            if !class_data.symbol_properties.contains(sym.id) &&
+            if !class_data.bag.symbol_properties.contains(sym.id) &&
               !class_data.extensible {
               raise @errors.TypeError(
                 message="Cannot define static field on non-extensible object",
               )
             }
-            match class_data.symbol_descriptors.get(sym.id) {
+            match class_data.bag.symbol_descriptors.get(sym.id) {
               Some(d) =>
                 if !d.configurable {
                   raise @errors.TypeError(
@@ -481,8 +487,8 @@ fn Interpreter::create_class(
                 }
               None => ()
             }
-            class_data.symbol_properties[sym.id] = value
-            class_data.symbol_descriptors[sym.id] = {
+            class_data.bag.symbol_properties[sym.id] = value
+            class_data.bag.symbol_descriptors[sym.id] = {
               writable: true,
               enumerable: true,
               configurable: true,
@@ -491,13 +497,13 @@ fn Interpreter::create_class(
             }
           }
           _ => {
-            if !class_data.properties.contains(key_str) &&
+            if !class_data.bag.properties.contains(key_str) &&
               !class_data.extensible {
               raise @errors.TypeError(
                 message="Cannot define static field on non-extensible object",
               )
             }
-            match class_data.descriptors.get(key_str) {
+            match class_data.bag.descriptors.get(key_str) {
               Some(d) =>
                 if !d.configurable {
                   raise @errors.TypeError(
@@ -506,8 +512,8 @@ fn Interpreter::create_class(
                 }
               None => ()
             }
-            class_data.properties[key_str] = value
-            class_data.descriptors[key_str] = {
+            class_data.bag.properties[key_str] = value
+            class_data.bag.descriptors[key_str] = {
               writable: true,
               enumerable: true,
               configurable: true,

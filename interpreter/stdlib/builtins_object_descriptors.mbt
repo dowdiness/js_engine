@@ -29,15 +29,15 @@ fn make_get_own_property_names_func() -> Value {
             }
           _ => ()
         }
-        Value::Array({ elements: result })
+        @runtime.make_array(result)
       }
       Object(data) => {
         let keys : Array[Value] = []
-        let sorted = @runtime.sort_property_keys(data.properties)
+        let sorted = @runtime.sort_property_keys(data.bag.properties)
         for k in sorted {
           keys.push(Value::String_(k))
         }
-        Value::Array({ elements: keys })
+        @runtime.make_array(keys)
       }
       Value::Array(data) => {
         let keys : Array[Value] = []
@@ -45,7 +45,7 @@ fn make_get_own_property_names_func() -> Value {
           keys.push(Value::String_(i.to_string()))
         }
         keys.push(Value::String_("length"))
-        Value::Array({ elements: keys })
+        @runtime.make_array(keys)
       }
       Value::String_(s) => {
         let keys : Array[Value] = []
@@ -54,9 +54,9 @@ fn make_get_own_property_names_func() -> Value {
           keys.push(Value::String_(i.to_string()))
         }
         keys.push(Value::String_("length"))
-        Value::Array({ elements: keys })
+        @runtime.make_array(keys)
       }
-      _ => Value::Array({ elements: [] })
+      _ => @runtime.make_array([])
     }
   })
 }
@@ -86,19 +86,19 @@ fn make_get_own_property_symbols_func(sym_state : SymbolState) -> Value {
             }
           _ => ()
         }
-        Value::Array({ elements: result })
+        @runtime.make_array(result)
       }
       Object(data) => {
         let symbols : Array[Value] = []
-        data.symbol_properties.each(fn(sym_id, _val) {
+        data.bag.symbol_properties.each(fn(sym_id, _val) {
           match sym_state.get_symbol_by_id(sym_id) {
             Some(sym_data) => symbols.push(Symbol(sym_data))
             None => ()
           }
         })
-        Value::Array({ elements: symbols })
+        @runtime.make_array(symbols)
       }
-      _ => Value::Array({ elements: [] })
+      _ => @runtime.make_array([])
     }
   })
 }
@@ -116,78 +116,131 @@ fn make_get_own_property_descriptors_func() -> Value {
         )
       Object(data) => {
         let descriptors_props : Map[String, Value] = {}
-        data.properties.each(fn(key, val) {
-          let desc = data.descriptors.get(key)
+        data.bag.properties.each(fn(key, val) {
+          let desc = data.bag.descriptors.get(key)
           let is_accessor = match desc {
             Some(d) => d.getter is Some(_) || d.setter is Some(_)
             None => false
           }
           if is_accessor {
             let getter_val = match desc {
-              Some(d) => match d.getter { Some(g) => g; None => Undefined }
+              Some(d) =>
+                match d.getter {
+                  Some(g) => g
+                  None => Undefined
+                }
               None => Undefined
             }
             let setter_val = match desc {
-              Some(d) => match d.setter { Some(s) => s; None => Undefined }
+              Some(d) =>
+                match d.setter {
+                  Some(s) => s
+                  None => Undefined
+                }
               None => Undefined
             }
-            let enumerable = match desc { Some(d) => d.enumerable; None => true }
-            let configurable = match desc { Some(d) => d.configurable; None => true }
-            descriptors_props[key] = make_accessor_desc_obj(getter_val, setter_val, enumerable, configurable)
+            let enumerable = match desc {
+              Some(d) => d.enumerable
+              None => true
+            }
+            let configurable = match desc {
+              Some(d) => d.configurable
+              None => true
+            }
+            descriptors_props[key] = make_accessor_desc_obj(
+              getter_val, setter_val, enumerable, configurable,
+            )
           } else {
-            let writable = match desc { Some(d) => d.writable; None => true }
-            let enumerable = match desc { Some(d) => d.enumerable; None => true }
-            let configurable = match desc { Some(d) => d.configurable; None => true }
-            descriptors_props[key] = make_data_desc_obj(val, writable, enumerable, configurable)
+            let writable = match desc {
+              Some(d) => d.writable
+              None => true
+            }
+            let enumerable = match desc {
+              Some(d) => d.enumerable
+              None => true
+            }
+            let configurable = match desc {
+              Some(d) => d.configurable
+              None => true
+            }
+            descriptors_props[key] = make_data_desc_obj(
+              val, writable, enumerable, configurable,
+            )
           }
         })
         // Also include symbol-keyed property descriptors
         let sym_descs : Map[Int, Value] = {}
-        data.symbol_properties.each(fn(sym_id, val) {
-          let desc = data.symbol_descriptors.get(sym_id)
+        data.bag.symbol_properties.each(fn(sym_id, val) {
+          let desc = data.bag.symbol_descriptors.get(sym_id)
           let is_accessor = match desc {
             Some(d) => d.getter is Some(_) || d.setter is Some(_)
             None => false
           }
           if is_accessor {
             let getter_val = match desc {
-              Some(d) => match d.getter { Some(g) => g; None => Undefined }
+              Some(d) =>
+                match d.getter {
+                  Some(g) => g
+                  None => Undefined
+                }
               None => Undefined
             }
             let setter_val = match desc {
-              Some(d) => match d.setter { Some(s) => s; None => Undefined }
+              Some(d) =>
+                match d.setter {
+                  Some(s) => s
+                  None => Undefined
+                }
               None => Undefined
             }
-            let enumerable = match desc { Some(d) => d.enumerable; None => true }
-            let configurable = match desc { Some(d) => d.configurable; None => true }
-            sym_descs[sym_id] = make_accessor_desc_obj(getter_val, setter_val, enumerable, configurable)
+            let enumerable = match desc {
+              Some(d) => d.enumerable
+              None => true
+            }
+            let configurable = match desc {
+              Some(d) => d.configurable
+              None => true
+            }
+            sym_descs[sym_id] = make_accessor_desc_obj(
+              getter_val, setter_val, enumerable, configurable,
+            )
           } else {
-            let writable = match desc { Some(d) => d.writable; None => true }
-            let enumerable = match desc { Some(d) => d.enumerable; None => true }
-            let configurable = match desc { Some(d) => d.configurable; None => true }
-            sym_descs[sym_id] = make_data_desc_obj(val, writable, enumerable, configurable)
+            let writable = match desc {
+              Some(d) => d.writable
+              None => true
+            }
+            let enumerable = match desc {
+              Some(d) => d.enumerable
+              None => true
+            }
+            let configurable = match desc {
+              Some(d) => d.configurable
+              None => true
+            }
+            sym_descs[sym_id] = make_data_desc_obj(
+              val, writable, enumerable, configurable,
+            )
           }
         })
         Value::Object({
-          properties: descriptors_props,
-          symbol_properties: sym_descs,
+          bag: {
+            properties: descriptors_props,
+            symbol_properties: sym_descs,
+            descriptors: {},
+            symbol_descriptors: {},
+          },
           prototype: @runtime.get_obj_proto(),
           callable: None,
           class_name: "Object",
-          descriptors: {},
-          symbol_descriptors: {},
           extensible: true,
         })
       }
       _ =>
         Value::Object({
-          properties: {},
-          symbol_properties: {},
+          bag: @runtime.new_property_bag(),
           prototype: @runtime.get_obj_proto(),
           callable: None,
           class_name: "Object",
-          descriptors: {},
-          symbol_descriptors: {},
           extensible: true,
         })
     }
@@ -329,16 +382,16 @@ fn make_define_property_func() -> Value {
 
         // Check if property exists (using symbol or string storage)
         let prop_exists = if is_symbol_key {
-          data.symbol_properties.contains(sym_id)
+          data.bag.symbol_properties.contains(sym_id)
         } else {
-          data.properties.contains(prop_name)
+          data.bag.properties.contains(prop_name)
         }
 
         // Get existing descriptor
         let existing_desc : PropDescriptor? = if is_symbol_key {
-          data.symbol_descriptors.get(sym_id)
+          data.bag.symbol_descriptors.get(sym_id)
         } else {
-          data.descriptors.get(prop_name)
+          data.bag.descriptors.get(prop_name)
         }
 
         // Property key display name for error messages
@@ -364,12 +417,12 @@ fn make_define_property_func() -> Value {
               new_setter,
               fn() {
                 if is_symbol_key {
-                  match data.symbol_properties.get(sym_id) {
+                  match data.bag.symbol_properties.get(sym_id) {
                     Some(v) => v
                     None => Undefined
                   }
                 } else {
-                  match data.properties.get(prop_name) {
+                  match data.bag.properties.get(prop_name) {
                     Some(v) => v
                     None => Undefined
                   }
@@ -389,11 +442,11 @@ fn make_define_property_func() -> Value {
           // Accessor descriptor
           // Set a placeholder in properties if not present
           if is_symbol_key {
-            if !data.symbol_properties.contains(sym_id) {
-              data.symbol_properties[sym_id] = Undefined
+            if !data.bag.symbol_properties.contains(sym_id) {
+              data.bag.symbol_properties[sym_id] = Undefined
             }
-          } else if !data.properties.contains(prop_name) {
-            data.properties[prop_name] = Undefined
+          } else if !data.bag.properties.contains(prop_name) {
+            data.bag.properties[prop_name] = Undefined
           }
           let enumerable = match new_enumerable {
             Some(e) => e
@@ -443,9 +496,9 @@ fn make_define_property_func() -> Value {
             setter,
           }
           if is_symbol_key {
-            data.symbol_descriptors[sym_id] = final_desc
+            data.bag.symbol_descriptors[sym_id] = final_desc
           } else {
-            data.descriptors[prop_name] = final_desc
+            data.bag.descriptors[prop_name] = final_desc
           }
         } else {
           // Data descriptor
@@ -453,17 +506,17 @@ fn make_define_property_func() -> Value {
           match desc_props.get("value") {
             Some(v) =>
               if is_symbol_key {
-                data.symbol_properties[sym_id] = v
+                data.bag.symbol_properties[sym_id] = v
               } else {
-                data.properties[prop_name] = v
+                data.bag.properties[prop_name] = v
               }
             None =>
               if is_symbol_key {
-                if !data.symbol_properties.contains(sym_id) {
-                  data.symbol_properties[sym_id] = Undefined
+                if !data.bag.symbol_properties.contains(sym_id) {
+                  data.bag.symbol_properties[sym_id] = Undefined
                 }
-              } else if !data.properties.contains(prop_name) {
-                data.properties[prop_name] = Undefined
+              } else if !data.bag.properties.contains(prop_name) {
+                data.bag.properties[prop_name] = Undefined
               }
           }
           // Build final descriptor using new values or existing defaults
@@ -501,9 +554,9 @@ fn make_define_property_func() -> Value {
             setter: None,
           }
           if is_symbol_key {
-            data.symbol_descriptors[sym_id] = final_desc
+            data.bag.symbol_descriptors[sym_id] = final_desc
           } else {
-            data.descriptors[prop_name] = final_desc
+            data.bag.descriptors[prop_name] = final_desc
           }
         }
       }
@@ -575,10 +628,10 @@ fn make_define_property_func() -> Value {
       }
       Value::Promise(data) => {
         let prop_name = @runtime.to_js_string(prop_val)
-        let existing_desc = data.descriptors.get(prop_name)
+        let existing_desc = data.bag.descriptors.get(prop_name)
         if is_accessor {
-          if !data.properties.contains(prop_name) {
-            data.properties[prop_name] = Undefined
+          if !data.bag.properties.contains(prop_name) {
+            data.bag.properties[prop_name] = Undefined
           }
           let enumerable = match new_enumerable {
             Some(e) => e
@@ -620,7 +673,7 @@ fn make_define_property_func() -> Value {
                 None => None
               }
           }
-          data.descriptors[prop_name] = {
+          data.bag.descriptors[prop_name] = {
             writable: false,
             enumerable,
             configurable,
@@ -629,10 +682,10 @@ fn make_define_property_func() -> Value {
           }
         } else {
           match desc_props.get("value") {
-            Some(v) => data.properties[prop_name] = v
+            Some(v) => data.bag.properties[prop_name] = v
             None =>
-              if !data.properties.contains(prop_name) {
-                data.properties[prop_name] = Undefined
+              if !data.bag.properties.contains(prop_name) {
+                data.bag.properties[prop_name] = Undefined
               }
           }
           let writable = match new_writable {
@@ -659,7 +712,7 @@ fn make_define_property_func() -> Value {
                 None => false
               }
           }
-          data.descriptors[prop_name] = {
+          data.bag.descriptors[prop_name] = {
             writable,
             enumerable,
             configurable,
@@ -686,19 +739,19 @@ fn make_define_property_func() -> Value {
             }
             let prop_name = @runtime.to_js_string(prop_val)
             let prop_exists = if is_symbol_key {
-              data.symbol_properties.contains(sym_id)
+              data.bag.symbol_properties.contains(sym_id)
             } else {
-              data.properties.contains(prop_name)
+              data.bag.properties.contains(prop_name)
             }
             let existing_desc : PropDescriptor? = if is_symbol_key {
-              data.symbol_descriptors.get(sym_id)
+              data.bag.symbol_descriptors.get(sym_id)
             } else {
-              data.descriptors.get(prop_name)
+              data.bag.descriptors.get(prop_name)
             }
             let prop_also_in_desc = if is_symbol_key {
-              data.symbol_descriptors.contains(sym_id)
+              data.bag.symbol_descriptors.contains(sym_id)
             } else {
-              data.descriptors.contains(prop_name)
+              data.bag.descriptors.contains(prop_name)
             }
             if !prop_exists && !prop_also_in_desc && !data.extensible {
               let prop_display = if is_symbol_key {
@@ -731,12 +784,12 @@ fn make_define_property_func() -> Value {
                   new_setter,
                   fn() {
                     if is_symbol_key {
-                      match data.symbol_properties.get(sym_id) {
+                      match data.bag.symbol_properties.get(sym_id) {
                         Some(v) => v
                         None => Undefined
                       }
                     } else {
-                      match data.properties.get(prop_name) {
+                      match data.bag.properties.get(prop_name) {
                         Some(v) => v
                         None => Undefined
                       }
@@ -754,11 +807,11 @@ fn make_define_property_func() -> Value {
             }
             if is_accessor {
               if is_symbol_key {
-                if !data.symbol_properties.contains(sym_id) {
-                  data.symbol_properties[sym_id] = Undefined
+                if !data.bag.symbol_properties.contains(sym_id) {
+                  data.bag.symbol_properties[sym_id] = Undefined
                 }
-              } else if !data.properties.contains(prop_name) {
-                data.properties[prop_name] = Undefined
+              } else if !data.bag.properties.contains(prop_name) {
+                data.bag.properties[prop_name] = Undefined
               }
               let enumerable = match new_enumerable {
                 Some(e) => e
@@ -808,25 +861,25 @@ fn make_define_property_func() -> Value {
                 setter,
               }
               if is_symbol_key {
-                data.symbol_descriptors[sym_id] = final_desc
+                data.bag.symbol_descriptors[sym_id] = final_desc
               } else {
-                data.descriptors[prop_name] = final_desc
+                data.bag.descriptors[prop_name] = final_desc
               }
             } else {
               match desc_props.get("value") {
                 Some(v) =>
                   if is_symbol_key {
-                    data.symbol_properties[sym_id] = v
+                    data.bag.symbol_properties[sym_id] = v
                   } else {
-                    data.properties[prop_name] = v
+                    data.bag.properties[prop_name] = v
                   }
                 None =>
                   if is_symbol_key {
-                    if !data.symbol_properties.contains(sym_id) {
-                      data.symbol_properties[sym_id] = Undefined
+                    if !data.bag.symbol_properties.contains(sym_id) {
+                      data.bag.symbol_properties[sym_id] = Undefined
                     }
-                  } else if !data.properties.contains(prop_name) {
-                    data.properties[prop_name] = Undefined
+                  } else if !data.bag.properties.contains(prop_name) {
+                    data.bag.properties[prop_name] = Undefined
                   }
               }
               let writable = match new_writable {
@@ -861,9 +914,9 @@ fn make_define_property_func() -> Value {
                 setter: None,
               }
               if is_symbol_key {
-                data.symbol_descriptors[sym_id] = final_desc
+                data.bag.symbol_descriptors[sym_id] = final_desc
               } else {
-                data.descriptors[prop_name] = final_desc
+                data.bag.descriptors[prop_name] = final_desc
               }
             }
           }
@@ -897,12 +950,12 @@ fn make_get_own_property_descriptor_func() -> Value {
       Object(data) =>
         // Handle Symbol keys
         if is_symbol_key {
-          if data.symbol_properties.contains(sym_id) {
-            let val = match data.symbol_properties.get(sym_id) {
+          if data.bag.symbol_properties.contains(sym_id) {
+            let val = match data.bag.symbol_properties.get(sym_id) {
               Some(v) => v
               None => Undefined
             }
-            let desc = data.symbol_descriptors.get(sym_id)
+            let desc = data.bag.symbol_descriptors.get(sym_id)
             let is_accessor = match desc {
               Some(d) => d.getter is Some(_) || d.setter is Some(_)
               None => false
@@ -953,13 +1006,13 @@ fn make_get_own_property_descriptor_func() -> Value {
           } else {
             Undefined
           }
-        } else if data.properties.contains(prop_name) &&
+        } else if data.bag.properties.contains(prop_name) &&
           !prop_name.has_prefix("[[") {
-          let val = match data.properties.get(prop_name) {
+          let val = match data.bag.properties.get(prop_name) {
             Some(v) => v
             None => Undefined
           }
-          let desc = data.descriptors.get(prop_name)
+          let desc = data.bag.descriptors.get(prop_name)
           // Check if this is an accessor descriptor
           let is_accessor = match desc {
             Some(d) => d.getter is Some(_) || d.setter is Some(_)
@@ -991,7 +1044,9 @@ fn make_get_own_property_descriptor_func() -> Value {
               Some(d) => d.configurable
               None => true
             }
-            make_accessor_desc_obj(getter_val, setter_val, enumerable, configurable)
+            make_accessor_desc_obj(
+              getter_val, setter_val, enumerable, configurable,
+            )
           } else {
             let writable = match desc {
               Some(d) => d.writable
@@ -1007,9 +1062,9 @@ fn make_get_own_property_descriptor_func() -> Value {
             }
             make_data_desc_obj(val, writable, enumerable, configurable)
           }
-        } else if data.descriptors.contains(prop_name) {
+        } else if data.bag.descriptors.contains(prop_name) {
           // Check for accessor-only properties in descriptors (e.g., strict mode arguments.callee)
-          let desc = data.descriptors.get(prop_name)
+          let desc = data.bag.descriptors.get(prop_name)
           let is_accessor = match desc {
             Some(d) => d.getter is Some(_) || d.setter is Some(_)
             None => false
@@ -1039,7 +1094,9 @@ fn make_get_own_property_descriptor_func() -> Value {
               Some(d) => d.configurable
               None => true
             }
-            make_accessor_desc_obj(getter_val, setter_val, enumerable, configurable)
+            make_accessor_desc_obj(
+              getter_val, setter_val, enumerable, configurable,
+            )
           } else {
             // Data descriptor without a value in properties
             let writable = match desc {
@@ -1137,14 +1194,24 @@ fn make_get_own_property_descriptor_func() -> Value {
         }
       Value::String_(s) =>
         if prop_name == "length" {
-          make_data_desc_obj(Value::Number(s.length().to_double()), false, false, false)
+          make_data_desc_obj(
+            Value::Number(s.length().to_double()),
+            false,
+            false,
+            false,
+          )
         } else {
           let idx = @string.parse_int(prop_name) catch { _ => -1 }
           if idx >= 0 && idx.to_string() == prop_name && idx < s.length() {
             let chars = s.to_array()
             let buf = StringBuilder::new()
             buf.write_char(chars[idx])
-            make_data_desc_obj(Value::String_(buf.to_string()), false, true, false)
+            make_data_desc_obj(
+              Value::String_(buf.to_string()),
+              false,
+              true,
+              false,
+            )
           } else {
             Undefined
           }
@@ -1156,13 +1223,13 @@ fn make_get_own_property_descriptor_func() -> Value {
             match target {
               Object(data) =>
                 if is_symbol_key {
-                  if data.symbol_properties.contains(sym_id) ||
-                    data.symbol_descriptors.contains(sym_id) {
-                    let val = match data.symbol_properties.get(sym_id) {
+                  if data.bag.symbol_properties.contains(sym_id) ||
+                    data.bag.symbol_descriptors.contains(sym_id) {
+                    let val = match data.bag.symbol_properties.get(sym_id) {
                       Some(v) => v
                       None => Undefined
                     }
-                    let desc = data.symbol_descriptors.get(sym_id)
+                    let desc = data.bag.symbol_descriptors.get(sym_id)
                     let is_acc = match desc {
                       Some(d) => d.getter is Some(_) || d.setter is Some(_)
                       None => false
@@ -1208,18 +1275,20 @@ fn make_get_own_property_descriptor_func() -> Value {
                         Some(d) => d.configurable
                         None => true
                       }
-                      make_data_desc_obj(val, writable, enumerable, configurable)
+                      make_data_desc_obj(
+                        val, writable, enumerable, configurable,
+                      )
                     }
                   } else {
                     Undefined
                   }
-                } else if data.properties.contains(prop_name) ||
-                  data.descriptors.contains(prop_name) {
-                  let val = match data.properties.get(prop_name) {
+                } else if data.bag.properties.contains(prop_name) ||
+                  data.bag.descriptors.contains(prop_name) {
+                  let val = match data.bag.properties.get(prop_name) {
                     Some(v) => v
                     None => Undefined
                   }
-                  let desc = data.descriptors.get(prop_name)
+                  let desc = data.bag.descriptors.get(prop_name)
                   let is_acc = match desc {
                     Some(d) => d.getter is Some(_) || d.setter is Some(_)
                     None => false
@@ -1312,12 +1381,12 @@ fn make_define_properties_func() -> Value {
       (Object(data), Object(desc_obj)) =>
         // Only iterate enumerable own properties of descriptors object
         // Use get_property to invoke getters on the Properties object
-        desc_obj.properties.each(fn(prop_name, _raw_val) raise {
+        desc_obj.bag.properties.each(fn(prop_name, _raw_val) raise {
           // Skip internal slots
           if prop_name.has_prefix("[[") {
             return
           }
-          let desc_enumerable = match desc_obj.descriptors.get(prop_name) {
+          let desc_enumerable = match desc_obj.bag.descriptors.get(prop_name) {
             Some(d) => d.enumerable
             None => true
           }
@@ -1338,8 +1407,8 @@ fn make_define_properties_func() -> Value {
                   message="Invalid property descriptor. Cannot both specify accessors and a value or writable attribute, #<Object>",
                 )
               }
-              let prop_exists = data.properties.contains(prop_name)
-              let existing_desc = data.descriptors.get(prop_name)
+              let prop_exists = data.bag.properties.contains(prop_name)
+              let existing_desc = data.bag.descriptors.get(prop_name)
 
               // Validate getter/setter - use get_property for prototype chain
               let new_getter : Value? = if has_get {
@@ -1439,7 +1508,7 @@ fn make_define_properties_func() -> Value {
                     new_getter,
                     new_setter,
                     fn() {
-                      match data.properties.get(prop_name) {
+                      match data.bag.properties.get(prop_name) {
                         Some(v) => v
                         None => Undefined
                       }
@@ -1454,8 +1523,8 @@ fn make_define_properties_func() -> Value {
                   }
               }
               if is_accessor {
-                if !data.properties.contains(prop_name) {
-                  data.properties[prop_name] = Undefined
+                if !data.bag.properties.contains(prop_name) {
+                  data.bag.properties[prop_name] = Undefined
                 }
                 let enumerable = match new_enumerable {
                   Some(e) => e
@@ -1497,7 +1566,7 @@ fn make_define_properties_func() -> Value {
                       None => None
                     }
                 }
-                data.descriptors[prop_name] = {
+                data.bag.descriptors[prop_name] = {
                   writable: false,
                   enumerable,
                   configurable,
@@ -1506,10 +1575,10 @@ fn make_define_properties_func() -> Value {
                 }
               } else {
                 match new_desc_value {
-                  Some(v) => data.properties[prop_name] = v
+                  Some(v) => data.bag.properties[prop_name] = v
                   None =>
-                    if !data.properties.contains(prop_name) {
-                      data.properties[prop_name] = Undefined
+                    if !data.bag.properties.contains(prop_name) {
+                      data.bag.properties[prop_name] = Undefined
                     }
                 }
                 let writable = match new_writable {
@@ -1536,7 +1605,7 @@ fn make_define_properties_func() -> Value {
                       None => false
                     }
                 }
-                data.descriptors[prop_name] = {
+                data.bag.descriptors[prop_name] = {
                   writable,
                   enumerable,
                   configurable,
@@ -1557,8 +1626,9 @@ fn make_define_properties_func() -> Value {
         // Handle defineProperties on Proxy targets by delegating to target
         match proxy_data.target {
           Some(Object(data)) =>
-            desc_obj.properties.each(fn(prop_name, desc_val) raise {
-              let desc_enumerable = match desc_obj.descriptors.get(prop_name) {
+            desc_obj.bag.properties.each(fn(prop_name, desc_val) raise {
+              let desc_enumerable = match
+                desc_obj.bag.descriptors.get(prop_name) {
                 Some(d) => d.enumerable
                 None => true
               }
@@ -1567,10 +1637,10 @@ fn make_define_properties_func() -> Value {
               }
               match desc_val {
                 Object(desc) => {
-                  let has_get = desc.properties.contains("get")
-                  let has_set = desc.properties.contains("set")
-                  let has_value = desc.properties.contains("value")
-                  let has_writable = desc.properties.contains("writable")
+                  let has_get = desc.bag.properties.contains("get")
+                  let has_set = desc.bag.properties.contains("set")
+                  let has_value = desc.bag.properties.contains("value")
+                  let has_writable = desc.bag.properties.contains("writable")
                   let is_accessor = has_get || has_set
                   let is_data = has_value || has_writable
                   if is_accessor && is_data {
@@ -1579,15 +1649,15 @@ fn make_define_properties_func() -> Value {
                     )
                   }
                   // Extensibility check
-                  let prop_exists = data.properties.contains(prop_name) ||
-                    data.descriptors.contains(prop_name)
+                  let prop_exists = data.bag.properties.contains(prop_name) ||
+                    data.bag.descriptors.contains(prop_name)
                   if !prop_exists && !data.extensible {
                     raise @errors.TypeError(
                       message="Cannot add property \{prop_name}, object is not extensible",
                     )
                   }
                   // Non-configurable validation
-                  match data.descriptors.get(prop_name) {
+                  match data.bag.descriptors.get(prop_name) {
                     Some(existing) =>
                       @runtime.validate_non_configurable(
                         existing,
@@ -1595,34 +1665,34 @@ fn make_define_properties_func() -> Value {
                         is_accessor,
                         is_data,
                         has_value,
-                        match desc.properties.get("writable") {
+                        match desc.bag.properties.get("writable") {
                           Some(v) => Some(@runtime.is_truthy(v))
                           None => None
                         },
-                        match desc.properties.get("enumerable") {
+                        match desc.bag.properties.get("enumerable") {
                           Some(v) => Some(@runtime.is_truthy(v))
                           None => None
                         },
-                        match desc.properties.get("configurable") {
+                        match desc.bag.properties.get("configurable") {
                           Some(v) => Some(@runtime.is_truthy(v))
                           None => None
                         },
-                        match desc.properties.get("get") {
+                        match desc.bag.properties.get("get") {
                           Some(v) => Some(v)
                           None => None
                         },
-                        match desc.properties.get("set") {
+                        match desc.bag.properties.get("set") {
                           Some(v) => Some(v)
                           None => None
                         },
                         fn() {
-                          match data.properties.get(prop_name) {
+                          match data.bag.properties.get(prop_name) {
                             Some(v) => v
                             None => Undefined
                           }
                         },
                         fn() {
-                          match desc.properties.get("value") {
+                          match desc.bag.properties.get("value") {
                             Some(v) => Some(v)
                             None => None
                           }
@@ -1632,10 +1702,10 @@ fn make_define_properties_func() -> Value {
                   }
                   if is_accessor {
                     // Accessor descriptor
-                    if !data.properties.contains(prop_name) {
-                      data.properties[prop_name] = Undefined
+                    if !data.bag.properties.contains(prop_name) {
+                      data.bag.properties[prop_name] = Undefined
                     }
-                    let getter : Value? = match desc.properties.get("get") {
+                    let getter : Value? = match desc.bag.properties.get("get") {
                       Some(v) =>
                         match v {
                           Undefined => None
@@ -1643,7 +1713,7 @@ fn make_define_properties_func() -> Value {
                         }
                       None => None
                     }
-                    let setter : Value? = match desc.properties.get("set") {
+                    let setter : Value? = match desc.bag.properties.get("set") {
                       Some(v) =>
                         match v {
                           Undefined => None
@@ -1678,16 +1748,17 @@ fn make_define_properties_func() -> Value {
                           message="Setter must be a function: \{setter.unwrap().to_string()}",
                         )
                     }
-                    let enumerable = match desc.properties.get("enumerable") {
+                    let enumerable = match
+                      desc.bag.properties.get("enumerable") {
                       Some(v) => @runtime.is_truthy(v)
                       None => false
                     }
                     let configurable = match
-                      desc.properties.get("configurable") {
+                      desc.bag.properties.get("configurable") {
                       Some(v) => @runtime.is_truthy(v)
                       None => false
                     }
-                    data.descriptors[prop_name] = {
+                    data.bag.descriptors[prop_name] = {
                       writable: false,
                       enumerable,
                       configurable,
@@ -1697,28 +1768,29 @@ fn make_define_properties_func() -> Value {
                   } else {
                     // Data descriptor
                     if has_value {
-                      data.properties[prop_name] = match
-                        desc.properties.get("value") {
+                      data.bag.properties[prop_name] = match
+                        desc.bag.properties.get("value") {
                         Some(v) => v
                         None => Undefined
                       }
-                    } else if !data.properties.contains(prop_name) {
-                      data.properties[prop_name] = Undefined
+                    } else if !data.bag.properties.contains(prop_name) {
+                      data.bag.properties[prop_name] = Undefined
                     }
-                    let writable = match desc.properties.get("writable") {
+                    let writable = match desc.bag.properties.get("writable") {
                       Some(v) => @runtime.is_truthy(v)
                       None => false
                     }
-                    let enumerable = match desc.properties.get("enumerable") {
+                    let enumerable = match
+                      desc.bag.properties.get("enumerable") {
                       Some(v) => @runtime.is_truthy(v)
                       None => false
                     }
                     let configurable = match
-                      desc.properties.get("configurable") {
+                      desc.bag.properties.get("configurable") {
                       Some(v) => @runtime.is_truthy(v)
                       None => false
                     }
-                    data.descriptors[prop_name] = {
+                    data.bag.descriptors[prop_name] = {
                       writable,
                       enumerable,
                       configurable,
@@ -1738,8 +1810,8 @@ fn make_define_properties_func() -> Value {
         }
       (Array(arr_data), Object(desc_obj)) =>
         // Handle defineProperties on Array targets
-        desc_obj.properties.each(fn(prop_name, desc_val) raise {
-          let desc_enumerable = match desc_obj.descriptors.get(prop_name) {
+        desc_obj.bag.properties.each(fn(prop_name, desc_val) raise {
+          let desc_enumerable = match desc_obj.bag.descriptors.get(prop_name) {
             Some(d) => d.enumerable
             None => true
           }
@@ -1749,7 +1821,7 @@ fn make_define_properties_func() -> Value {
           match desc_val {
             Object(desc) =>
               if prop_name == "length" {
-                match desc.properties.get("value") {
+                match desc.bag.properties.get("value") {
                   Some(val) => {
                     let n = @runtime.to_number(val)
                     let new_len = n.to_int()
@@ -1769,7 +1841,7 @@ fn make_define_properties_func() -> Value {
                 let idx = @string.parse_int(prop_name) catch { _ => -1 }
                 if idx >= 0 && idx.to_string() == prop_name {
                   // Only write value if descriptor specifies one
-                  match desc.properties.get("value") {
+                  match desc.bag.properties.get("value") {
                     Some(v) => {
                       while arr_data.elements.length() <= idx {
                         arr_data.elements.push(Undefined)

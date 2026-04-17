@@ -124,13 +124,10 @@ pub fn Interpreter::new(
   let output : Array[String] = []
   // Create global object for 'this' in global context
   let global_this : Value = Object({
-    properties: {},
-    symbol_properties: {},
+    bag: new_property_bag(),
     prototype: Null,
     callable: None,
     class_name: "global",
-    descriptors: {},
-    symbol_descriptors: {},
     extensible: true,
   })
   let symbols = SymbolState::new()
@@ -161,8 +158,8 @@ pub fn Interpreter::new(
       for name in global_func_names {
         match global.bindings.get(name) {
           Some(binding) => {
-            data.properties[name] = binding.value
-            data.descriptors[name] = { ..builtin_desc }
+            data.bag.properties[name] = binding.value
+            data.bag.descriptors[name] = { ..builtin_desc }
           }
           None => ()
         }
@@ -173,9 +170,9 @@ pub fn Interpreter::new(
   // with correct property descriptors per ES spec §19.1
   match global_this {
     Object(data) => {
-      data.properties["undefined"] = Undefined
-      data.properties["NaN"] = Number(0.0 / 0.0)
-      data.properties["Infinity"] = Number(1.0 / 0.0)
+      data.bag.properties["undefined"] = Undefined
+      data.bag.properties["NaN"] = Number(0.0 / 0.0)
+      data.bag.properties["Infinity"] = Number(1.0 / 0.0)
       // All three are { writable: false, enumerable: false, configurable: false }
       let frozen_desc : PropDescriptor = {
         writable: false,
@@ -184,9 +181,9 @@ pub fn Interpreter::new(
         getter: None,
         setter: None,
       }
-      data.descriptors["undefined"] = { ..frozen_desc }
-      data.descriptors["NaN"] = { ..frozen_desc }
-      data.descriptors["Infinity"] = { ..frozen_desc }
+      data.bag.descriptors["undefined"] = { ..frozen_desc }
+      data.bag.descriptors["NaN"] = { ..frozen_desc }
+      data.bag.descriptors["Infinity"] = { ..frozen_desc }
     }
     _ => ()
   }
@@ -383,16 +380,16 @@ fn Interpreter::mirror_to_global(
 ) -> Unit {
   match self.global_this {
     Object(data) => {
-      data.properties[name] = value
+      data.bag.properties[name] = value
       // Only set descriptor if not already set (preserve existing non-configurable)
-      match data.descriptors.get(name) {
+      match data.bag.descriptors.get(name) {
         Some(existing) =>
           if existing.configurable {
             // Update value via property, descriptor stays
             ()
           }
         None =>
-          data.descriptors[name] = {
+          data.bag.descriptors[name] = {
             writable: true,
             enumerable: true,
             configurable,

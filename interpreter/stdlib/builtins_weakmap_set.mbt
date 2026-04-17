@@ -105,7 +105,7 @@ fn weak_key_equal(a : Value, b : Value) -> Bool {
 /// Get WeakMap.prototype method for a WeakMap instance
 pub fn get_weakmap_method(data : ObjectData, prop : String) -> Value {
   // Check own properties first
-  match data.properties.get(prop) {
+  match data.bag.properties.get(prop) {
     Some(v) => return v
     None => ()
   }
@@ -113,7 +113,7 @@ pub fn get_weakmap_method(data : ObjectData, prop : String) -> Value {
     Some(proto) =>
       match proto {
         Object(proto_data) =>
-          match proto_data.properties.get(prop) {
+          match proto_data.bag.properties.get(prop) {
             Some(m) => m
             None => Undefined
           }
@@ -127,7 +127,7 @@ pub fn get_weakmap_method(data : ObjectData, prop : String) -> Value {
 /// Get WeakSet.prototype method for a WeakSet instance
 pub fn get_weakset_method(data : ObjectData, prop : String) -> Value {
   // Check own properties first
-  match data.properties.get(prop) {
+  match data.bag.properties.get(prop) {
     Some(v) => return v
     None => ()
   }
@@ -135,7 +135,7 @@ pub fn get_weakset_method(data : ObjectData, prop : String) -> Value {
     Some(proto) =>
       match proto {
         Object(proto_data) =>
-          match proto_data.properties.get(prop) {
+          match proto_data.bag.properties.get(prop) {
             Some(m) => m
             None => Undefined
           }
@@ -485,13 +485,15 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
     setter: None,
   }
   let wm_proto : Value = Value::Object({
-    properties: wm_proto_props,
-    symbol_properties: wm_proto_sym_props,
+    bag: {
+      properties: wm_proto_props,
+      symbol_properties: wm_proto_sym_props,
+      descriptors: wm_proto_descs,
+      symbol_descriptors: wm_proto_sym_descs,
+    },
     prototype: @runtime.get_obj_proto(),
     callable: None,
     class_name: "WeakMap",
-    descriptors: wm_proto_descs,
-    symbol_descriptors: wm_proto_sym_descs,
     extensible: true,
   })
 
@@ -513,13 +515,10 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
     let entries : Array[(Value, Value)] = []
     weakmap_storage[id] = entries
     let wm_data : ObjectData = {
-      properties: {},
-      symbol_properties: {},
+      bag: @runtime.new_property_bag(),
       prototype: wm_proto,
       callable: None,
       class_name: "WeakMap",
-      descriptors: {},
-      symbol_descriptors: {},
       extensible: true,
     }
     set_weakmap_id(wm_data, id)
@@ -602,8 +601,8 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
   // Add prototype property to WeakMap constructor
   match wm_ctor {
     Object(data) => {
-      data.properties["prototype"] = wm_proto
-      data.descriptors["prototype"] = {
+      data.bag.properties["prototype"] = wm_proto
+      data.bag.descriptors["prototype"] = {
         writable: false,
         enumerable: false,
         configurable: false,
@@ -618,8 +617,8 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
   // Set WeakMap.prototype.constructor = WeakMap
   match wm_proto {
     Object(data) => {
-      data.properties["constructor"] = wm_ctor
-      data.descriptors["constructor"] = {
+      data.bag.properties["constructor"] = wm_ctor
+      data.bag.descriptors["constructor"] = {
         writable: true,
         enumerable: false,
         configurable: true,
@@ -774,13 +773,15 @@ fn setup_weakset_builtins(env : Environment) -> Unit {
     setter: None,
   }
   let ws_proto : Value = Value::Object({
-    properties: ws_proto_props,
-    symbol_properties: ws_proto_sym_props,
+    bag: {
+      properties: ws_proto_props,
+      symbol_properties: ws_proto_sym_props,
+      descriptors: ws_proto_descs,
+      symbol_descriptors: ws_proto_sym_descs,
+    },
     prototype: @runtime.get_obj_proto(),
     callable: None,
     class_name: "WeakSet",
-    descriptors: ws_proto_descs,
-    symbol_descriptors: ws_proto_sym_descs,
     extensible: true,
   })
 
@@ -802,13 +803,10 @@ fn setup_weakset_builtins(env : Environment) -> Unit {
     let values : Array[Value] = []
     weakset_storage[id] = values
     let ws_data : ObjectData = {
-      properties: {},
-      symbol_properties: {},
+      bag: @runtime.new_property_bag(),
       prototype: ws_proto,
       callable: None,
       class_name: "WeakSet",
-      descriptors: {},
-      symbol_descriptors: {},
       extensible: true,
     }
     set_weakset_id(ws_data, id)
@@ -876,8 +874,8 @@ fn setup_weakset_builtins(env : Environment) -> Unit {
   // Add prototype property to WeakSet constructor
   match ws_ctor {
     Object(data) => {
-      data.properties["prototype"] = ws_proto
-      data.descriptors["prototype"] = {
+      data.bag.properties["prototype"] = ws_proto
+      data.bag.descriptors["prototype"] = {
         writable: false,
         enumerable: false,
         configurable: false,
@@ -892,8 +890,8 @@ fn setup_weakset_builtins(env : Environment) -> Unit {
   // Set WeakSet.prototype.constructor = WeakSet
   match ws_proto {
     Object(data) => {
-      data.properties["constructor"] = ws_ctor
-      data.descriptors["constructor"] = {
+      data.bag.properties["constructor"] = ws_ctor
+      data.bag.descriptors["constructor"] = {
         writable: true,
         enumerable: false,
         configurable: true,

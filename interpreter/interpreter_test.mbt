@@ -19,11 +19,11 @@ fn run_output(source : String) -> Array[String] raise Error {
 fn error_display(val : Value) -> String {
   match val {
     Object(data) => {
-      let name = match data.properties.get("name") {
+      let name = match data.bag.properties.get("name") {
         Some(n) => n.to_string()
         None => ""
       }
-      let message = match data.properties.get("message") {
+      let message = match data.bag.properties.get("message") {
         Some(m) => m.to_string()
         None => ""
       }

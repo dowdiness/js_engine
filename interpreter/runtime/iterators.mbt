@@ -19,13 +19,15 @@ pub fn get_iterator_proto() -> Value {
         fn(this_val, _args) { this_val },
       )
       let proto : Value = Object({
-        properties: {},
-        symbol_properties: proto_sym_props,
+        bag: {
+          properties: {},
+          symbol_properties: proto_sym_props,
+          descriptors: {},
+          symbol_descriptors: {},
+        },
         prototype: Null,
         callable: None,
         class_name: "Iterator",
-        descriptors: {},
-        symbol_descriptors: {},
         extensible: true,
       })
       iterator_proto_ref.val = Some(proto)
@@ -79,13 +81,15 @@ pub fn get_array_iterator_proto() -> Value {
         setter: None,
       }
       let proto = Object({
-        properties: proto_props,
-        symbol_properties: proto_sym_props,
+        bag: {
+          properties: proto_props,
+          symbol_properties: proto_sym_props,
+          descriptors: proto_descs,
+          symbol_descriptors: proto_sym_descs,
+        },
         prototype: get_iterator_proto(),
         callable: None,
         class_name: "Array Iterator",
-        descriptors: proto_descs,
-        symbol_descriptors: proto_sym_descs,
         extensible: true,
       })
       array_iterator_proto_ref.val = Some(proto)
@@ -102,8 +106,27 @@ pub fn make_array_iterator_value(arr : ArrayData) -> Value {
 
   // Create the next method
   let next_method = Object({
-    properties: { "length": Number(0.0), "name": String_("next") },
-    symbol_properties: {},
+    bag: {
+      properties: { "length": Number(0.0), "name": String_("next") },
+      symbol_properties: {},
+      descriptors: {
+        "length": {
+          writable: false,
+          enumerable: false,
+          configurable: true,
+          getter: None,
+          setter: None,
+        },
+        "name": {
+          writable: false,
+          enumerable: false,
+          configurable: true,
+          getter: None,
+          setter: None,
+        },
+      },
+      symbol_descriptors: {},
+    },
     prototype: Null,
     callable: Some(
       NativeCallable("next", fn(_args) {
@@ -115,13 +138,15 @@ pub fn make_array_iterator_value(arr : ArrayData) -> Value {
           result_props["value"] = value
           result_props["done"] = Bool(false)
           Object({
-            properties: result_props,
-            symbol_properties: {},
+            bag: {
+              properties: result_props,
+              symbol_properties: {},
+              descriptors: {},
+              symbol_descriptors: {},
+            },
             prototype: Null,
             callable: None,
             class_name: "Object",
-            descriptors: {},
-            symbol_descriptors: {},
             extensible: true,
           })
         } else {
@@ -129,36 +154,21 @@ pub fn make_array_iterator_value(arr : ArrayData) -> Value {
           result_props["value"] = Undefined
           result_props["done"] = Bool(true)
           Object({
-            properties: result_props,
-            symbol_properties: {},
+            bag: {
+              properties: result_props,
+              symbol_properties: {},
+              descriptors: {},
+              symbol_descriptors: {},
+            },
             prototype: Null,
             callable: None,
             class_name: "Object",
-            descriptors: {},
-            symbol_descriptors: {},
             extensible: true,
           })
         }
       }),
     ),
     class_name: "Function",
-    descriptors: {
-      "length": {
-        writable: false,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-      "name": {
-        writable: false,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-    },
-    symbol_descriptors: {},
     extensible: true,
   })
 
@@ -167,13 +177,15 @@ pub fn make_array_iterator_value(arr : ArrayData) -> Value {
   iter_props["next"] = next_method
 
   Object({
-    properties: iter_props,
-    symbol_properties: {},
+    bag: {
+      properties: iter_props,
+      symbol_properties: {},
+      descriptors: {},
+      symbol_descriptors: {},
+    },
     prototype: arr_iter_proto,
     callable: None,
     class_name: "Array Iterator",
-    descriptors: {},
-    symbol_descriptors: {},
     extensible: true,
   })
 }
@@ -187,8 +199,27 @@ pub fn make_array_like_iterator_value(val : Value) -> Value raise Error {
   let len = to_array_like_length(val)
 
   let next_method = Object({
-    properties: { "length": Number(0.0), "name": String_("next") },
-    symbol_properties: {},
+    bag: {
+      properties: { "length": Number(0.0), "name": String_("next") },
+      symbol_properties: {},
+      descriptors: {
+        "length": {
+          writable: false,
+          enumerable: false,
+          configurable: true,
+          getter: None,
+          setter: None,
+        },
+        "name": {
+          writable: false,
+          enumerable: false,
+          configurable: true,
+          getter: None,
+          setter: None,
+        },
+      },
+      symbol_descriptors: {},
+    },
     prototype: Null,
     callable: Some(
       NativeCallable("next", fn(_args) {
@@ -200,13 +231,15 @@ pub fn make_array_like_iterator_value(val : Value) -> Value raise Error {
           result_props["value"] = value
           result_props["done"] = Bool(false)
           Object({
-            properties: result_props,
-            symbol_properties: {},
+            bag: {
+              properties: result_props,
+              symbol_properties: {},
+              descriptors: {},
+              symbol_descriptors: {},
+            },
             prototype: Null,
             callable: None,
             class_name: "Object",
-            descriptors: {},
-            symbol_descriptors: {},
             extensible: true,
           })
         } else {
@@ -214,36 +247,21 @@ pub fn make_array_like_iterator_value(val : Value) -> Value raise Error {
           result_props["value"] = Undefined
           result_props["done"] = Bool(true)
           Object({
-            properties: result_props,
-            symbol_properties: {},
+            bag: {
+              properties: result_props,
+              symbol_properties: {},
+              descriptors: {},
+              symbol_descriptors: {},
+            },
             prototype: Null,
             callable: None,
             class_name: "Object",
-            descriptors: {},
-            symbol_descriptors: {},
             extensible: true,
           })
         }
       }),
     ),
     class_name: "Function",
-    descriptors: {
-      "length": {
-        writable: false,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-      "name": {
-        writable: false,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-    },
-    symbol_descriptors: {},
     extensible: true,
   })
 
@@ -251,13 +269,15 @@ pub fn make_array_like_iterator_value(val : Value) -> Value raise Error {
   iter_props["next"] = next_method
 
   Object({
-    properties: iter_props,
-    symbol_properties: {},
+    bag: {
+      properties: iter_props,
+      symbol_properties: {},
+      descriptors: {},
+      symbol_descriptors: {},
+    },
     prototype: arr_iter_proto,
     callable: None,
     class_name: "Array Iterator",
-    descriptors: {},
-    symbol_descriptors: {},
     extensible: true,
   })
 }
@@ -307,13 +327,15 @@ pub fn get_string_iterator_proto() -> Value {
         setter: None,
       }
       let proto = Object({
-        properties: proto_props,
-        symbol_properties: proto_sym_props,
+        bag: {
+          properties: proto_props,
+          symbol_properties: proto_sym_props,
+          descriptors: str_proto_descs,
+          symbol_descriptors: proto_sym_descs,
+        },
         prototype: get_iterator_proto(),
         callable: None,
         class_name: "String Iterator",
-        descriptors: str_proto_descs,
-        symbol_descriptors: proto_sym_descs,
         extensible: true,
       })
       string_iterator_proto_ref.val = Some(proto)
@@ -330,8 +352,27 @@ pub fn make_string_iterator_value(s : String) -> Value {
   let chars = s.to_array()
   let index_ref : Ref[Int] = { val: 0 }
   let next_method = Object({
-    properties: { "length": Number(0.0), "name": String_("next") },
-    symbol_properties: {},
+    bag: {
+      properties: { "length": Number(0.0), "name": String_("next") },
+      symbol_properties: {},
+      descriptors: {
+        "length": {
+          writable: false,
+          enumerable: false,
+          configurable: true,
+          getter: None,
+          setter: None,
+        },
+        "name": {
+          writable: false,
+          enumerable: false,
+          configurable: true,
+          getter: None,
+          setter: None,
+        },
+      },
+      symbol_descriptors: {},
+    },
     prototype: Null,
     callable: Some(
       NativeCallable("next", fn(_args) {
@@ -365,13 +406,15 @@ pub fn make_string_iterator_value(s : String) -> Value {
           result_props["value"] = value
           result_props["done"] = Bool(false)
           Object({
-            properties: result_props,
-            symbol_properties: {},
+            bag: {
+              properties: result_props,
+              symbol_properties: {},
+              descriptors: {},
+              symbol_descriptors: {},
+            },
             prototype: Null,
             callable: None,
             class_name: "Object",
-            descriptors: {},
-            symbol_descriptors: {},
             extensible: true,
           })
         } else {
@@ -379,48 +422,35 @@ pub fn make_string_iterator_value(s : String) -> Value {
           result_props["value"] = Undefined
           result_props["done"] = Bool(true)
           Object({
-            properties: result_props,
-            symbol_properties: {},
+            bag: {
+              properties: result_props,
+              symbol_properties: {},
+              descriptors: {},
+              symbol_descriptors: {},
+            },
             prototype: Null,
             callable: None,
             class_name: "Object",
-            descriptors: {},
-            symbol_descriptors: {},
             extensible: true,
           })
         }
       }),
     ),
     class_name: "Function",
-    descriptors: {
-      "length": {
-        writable: false,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-      "name": {
-        writable: false,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-    },
-    symbol_descriptors: {},
     extensible: true,
   })
   let iter_props : Map[String, Value] = {}
   iter_props["next"] = next_method
   Object({
-    properties: iter_props,
-    symbol_properties: {},
+    bag: {
+      properties: iter_props,
+      symbol_properties: {},
+      descriptors: {},
+      symbol_descriptors: {},
+    },
     prototype: str_iter_proto,
     callable: None,
     class_name: "String Iterator",
-    descriptors: {},
-    symbol_descriptors: {},
     extensible: true,
   })
 }

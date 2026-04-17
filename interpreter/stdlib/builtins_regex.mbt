@@ -532,7 +532,8 @@ fn RegexParser::parse_unicode_escape_in_name(
     self.pos += 1
     let mut cp = 0
     let mut count = 0
-    while self.pos < self.pattern.length() && is_hex_digit(self.pattern[self.pos]) {
+    while self.pos < self.pattern.length() &&
+          is_hex_digit(self.pattern[self.pos]) {
       cp = cp * 16 + hex_digit_value(self.pattern[self.pos])
       self.pos += 1
       count += 1
@@ -656,7 +657,15 @@ fn is_non_identifier_codepoint(cp : Int) -> Bool {
 fn is_combining_or_modifier(cp : Int) -> Bool {
   (cp >= 0x0300 && cp <= 0x036F) || // Combining Diacritical Marks
   (cp >= 0x0483 && cp <= 0x0489) || // Cyrillic combining marks
-  (cp >= 0x0591 && cp <= 0x05C7 && cp != 0x05BF && cp != 0x05C1 && cp != 0x05C2 && cp != 0x05C4 && cp != 0x05C5) || // Hebrew marks (subset)
+  (
+    cp >= 0x0591 &&
+    cp <= 0x05C7 &&
+    cp != 0x05BF &&
+    cp != 0x05C1 &&
+    cp != 0x05C2 &&
+    cp != 0x05C4 &&
+    cp != 0x05C5
+  ) || // Hebrew marks (subset)
   (cp >= 0x0610 && cp <= 0x061A) || // Arabic combining
   (cp >= 0x064B && cp <= 0x065F) || // Arabic marks
   (cp >= 0x0670 && cp == 0x0670) || // Arabic superscript alef
@@ -739,7 +748,11 @@ fn is_id_start_char(c : Char) -> Bool {
   c == '$' ||
   (c >= 'a' && c <= 'z') ||
   (c >= 'A' && c <= 'Z') ||
-  (cp >= 0xC0 && !is_non_identifier_codepoint(cp) && !is_combining_or_modifier(cp))
+  (
+    cp >= 0xC0 &&
+    !is_non_identifier_codepoint(cp) &&
+    !is_combining_or_modifier(cp)
+  )
 }
 
 ///|
@@ -1613,7 +1626,7 @@ pub fn make_regex_match_array(m : RegexMatch, input : String) -> Value {
       None => elements.push(Undefined)
     }
   }
-  let arr_data : ArrayData = { elements, }
+  let arr_data : ArrayData = { elements, bag: @runtime.new_property_bag() }
   // Set named properties on the result
   @runtime.set_array_named_prop(
     arr_data,
@@ -1645,13 +1658,15 @@ pub fn make_regex_match_array(m : RegexMatch, input : String) -> Value {
       }
     }
     Object({
-      properties: groups_props,
-      symbol_properties: {},
+      bag: {
+        properties: groups_props,
+        symbol_properties: {},
+        descriptors: groups_descs,
+        symbol_descriptors: {},
+      },
       prototype: Null,
       callable: None,
       class_name: "Object",
-      descriptors: groups_descs,
-      symbol_descriptors: {},
       extensible: true,
     })
   } else {
@@ -1666,11 +1681,11 @@ pub fn make_regex_match_array(m : RegexMatch, input : String) -> Value {
 fn extract_regexp_source_flags(val : Value) -> (String, String) {
   match val {
     Object(data) => {
-      let pat = match data.properties.get("source") {
+      let pat = match data.bag.properties.get("source") {
         Some(Value::String_(s)) => s
         _ => ""
       }
-      let fl = match data.properties.get("flags") {
+      let fl = match data.bag.properties.get("flags") {
         Some(Value::String_(s)) => s
         _ => ""
       }
@@ -1767,7 +1782,7 @@ pub fn make_regexp_object(
     let start = if has_sticky || has_global {
       match this_val {
         Object(d) =>
-          match d.properties.get("lastIndex") {
+          match d.bag.properties.get("lastIndex") {
             Some(Value::Number(n)) => n.to_int()
             _ => 0
           }
@@ -1784,7 +1799,7 @@ pub fn make_regexp_object(
         if has_sticky || has_global {
           match this_val {
             Object(d) =>
-              d.properties["lastIndex"] = Value::Number(m.end_.to_double())
+              d.bag.properties["lastIndex"] = Value::Number(m.end_.to_double())
             _ => ()
           }
         }
@@ -1793,7 +1808,7 @@ pub fn make_regexp_object(
       None => {
         if has_sticky || has_global {
           match this_val {
-            Object(d) => d.properties["lastIndex"] = Value::Number(0.0)
+            Object(d) => d.bag.properties["lastIndex"] = Value::Number(0.0)
             _ => ()
           }
         }
@@ -1807,7 +1822,7 @@ pub fn make_regexp_object(
     let start = if has_sticky || has_global {
       match this_val {
         Object(d) =>
-          match d.properties.get("lastIndex") {
+          match d.bag.properties.get("lastIndex") {
             Some(Value::Number(n)) => n.to_int()
             _ => 0
           }
@@ -1824,7 +1839,7 @@ pub fn make_regexp_object(
         if has_sticky || has_global {
           match this_val {
             Object(d) =>
-              d.properties["lastIndex"] = Value::Number(m.end_.to_double())
+              d.bag.properties["lastIndex"] = Value::Number(m.end_.to_double())
             _ => ()
           }
         }
@@ -1833,7 +1848,7 @@ pub fn make_regexp_object(
       None => {
         if has_sticky || has_global {
           match this_val {
-            Object(d) => d.properties["lastIndex"] = Value::Number(0.0)
+            Object(d) => d.bag.properties["lastIndex"] = Value::Number(0.0)
             _ => ()
           }
         }
@@ -1880,13 +1895,15 @@ pub fn make_regexp_object(
     None => Null
   }
   Value::Object({
-    properties: props,
-    symbol_properties: sym_props,
+    bag: {
+      properties: props,
+      symbol_properties: sym_props,
+      descriptors: re_descs,
+      symbol_descriptors: re_sym_descs,
+    },
     prototype: proto,
     callable: None,
     class_name: "RegExp",
-    descriptors: re_descs,
-    symbol_descriptors: re_sym_descs,
     extensible: true,
   })
 }
@@ -1919,7 +1936,7 @@ pub fn string_match_regex(
     if elements.length() == 0 {
       return Null
     }
-    Value::Array({ elements, })
+    @runtime.make_array(elements)
   } else {
     // Non-global: return first match with captures (includes index, input, groups)
     let result = regex_search(pattern, flags, s) catch { _ => None }
@@ -2085,13 +2102,15 @@ fn call_replace_fn(
     }
     args.push(
       Value::Object({
-        properties: groups_props,
-        symbol_properties: {},
+        bag: {
+          properties: groups_props,
+          symbol_properties: {},
+          descriptors: {},
+          symbol_descriptors: {},
+        },
         prototype: Null,
         callable: None,
         class_name: "Object",
-        descriptors: {},
-        symbol_descriptors: {},
         extensible: true,
       }),
     )
@@ -2262,13 +2281,15 @@ pub fn get_regexp_string_iterator_proto() -> Value {
         setter: None,
       }
       let proto : Value = Value::Object({
-        properties: proto_props,
-        symbol_properties: proto_sym_props,
+        bag: {
+          properties: proto_props,
+          symbol_properties: proto_sym_props,
+          descriptors: proto_descs,
+          symbol_descriptors: proto_sym_descs,
+        },
         prototype: @runtime.get_iterator_proto(),
         callable: None,
         class_name: "RegExp String Iterator",
-        descriptors: proto_descs,
-        symbol_descriptors: proto_sym_descs,
         extensible: true,
       })
       regexp_string_iterator_proto_ref.val = Some(proto)

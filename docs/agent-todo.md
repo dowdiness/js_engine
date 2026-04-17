@@ -292,3 +292,7 @@ Remaining deferred items from Phase 15 (3 of 6 now done):
 **Files**: `interpreter/stdlib/builtins_regex.mbt`
 
 `(?<=...)` positive lookbehind and `(?<!...)` negative lookbehind. Requires backward matching from current position — more complex than lookahead which is already implemented.
+
+#### 6. Consolidate `make_*_func` factory variants
+
+**Impact**: ~150 LoC of near-duplicate function-object construction in `interpreter/runtime/factories.mbt` — `make_native_func`, `make_native_func_with_length`, `make_static_func`, `make_static_func_with_length`, `make_method_func`, `make_interp_method_func`, `make_interp_static_func_with_length` all share the same ~25 LoC body (name/length descriptor, function-proto, `class_name: "Function"`) and differ only in the `Callable` variant and whether length is explicit. Extract a private `build_func_object(name, length, callable) -> Value` helper and reduce each public wrapper to a one-liner. Do this when no other work is in flight near `factories.mbt`. Surfaced by Stage A simplify review (2026-04-17).

@@ -258,7 +258,7 @@ fn validate_dataview_access(
       message="Method called on incompatible receiver: not a DataView",
     )
   }
-  let buf_id = match data.properties.get("[[ArrayBufferID]]") {
+  let buf_id = match data.bag.properties.get("[[ArrayBufferID]]") {
     Some(Value::Number(n)) => n.to_int()
     _ => raise @errors.TypeError(message="DataView access on invalid object")
   }
@@ -267,11 +267,11 @@ fn validate_dataview_access(
       message="Cannot perform DataView operation on a detached ArrayBuffer",
     )
   }
-  let dv_offset = match data.properties.get("[[ByteOffset]]") {
+  let dv_offset = match data.bag.properties.get("[[ByteOffset]]") {
     Some(Value::Number(n)) => n.to_int()
     _ => 0
   }
-  let dv_byte_length = match data.properties.get("[[ByteLength]]") {
+  let dv_byte_length = match data.bag.properties.get("[[ByteLength]]") {
     Some(Value::Number(n)) => n.to_int()
     _ => 0
   }
@@ -320,7 +320,7 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
           match this_val {
             Object(data) =>
               if data.class_name == "DataView" {
-                match data.properties.get(internal_slot) {
+                match data.bag.properties.get(internal_slot) {
                   Some(n) => n
                   None => Value::Number(0.0)
                 }
@@ -746,13 +746,15 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
   }
 
   let dv_proto : Value = Value::Object({
-    properties: dv_proto_props,
-    symbol_properties: dv_proto_sym_props,
+    bag: {
+      properties: dv_proto_props,
+      symbol_properties: dv_proto_sym_props,
+      descriptors: dv_proto_descs,
+      symbol_descriptors: dv_proto_sym_descs,
+    },
     prototype: obj_proto,
     callable: None,
     class_name: "Object",
-    descriptors: dv_proto_descs,
-    symbol_descriptors: dv_proto_sym_descs,
     extensible: true,
   })
   env.def_builtin("[[DataViewPrototype]]", dv_proto)
@@ -781,8 +783,12 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
   dv_ctor_descs["length"] = nf_desc
 
   let dv_ctor : Value = Value::Object({
-    properties: dv_ctor_props,
-    symbol_properties: {},
+    bag: {
+      properties: dv_ctor_props,
+      symbol_properties: {},
+      descriptors: dv_ctor_descs,
+      symbol_descriptors: {},
+    },
     prototype: Null,
     callable: Some(
       NativeCallable("DataView", fn(args) raise {
@@ -809,7 +815,7 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
         }
         let buf_byte_length = match buffer {
           Object(buf_data) =>
-            match buf_data.properties.get("[[ArrayBufferByteLength]]") {
+            match buf_data.bag.properties.get("[[ArrayBufferByteLength]]") {
               Some(Value::Number(n)) => n.to_int()
               _ => 0
             }
@@ -864,28 +870,28 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
           }
         }
         Value::Object({
-          properties: props,
-          symbol_properties: {},
+          bag: {
+            properties: props,
+            symbol_properties: {},
+            descriptors: descs,
+            symbol_descriptors: {},
+          },
           prototype: dv_proto,
           callable: None,
           class_name: "DataView",
-          descriptors: descs,
-          symbol_descriptors: {},
           extensible: true,
         })
       }),
     ),
     class_name: "Function",
-    descriptors: dv_ctor_descs,
-    symbol_descriptors: {},
     extensible: true,
   })
 
   // Link constructor
   match dv_proto {
     Object(data) => {
-      data.properties["constructor"] = dv_ctor
-      data.descriptors["constructor"] = {
+      data.bag.properties["constructor"] = dv_ctor
+      data.bag.descriptors["constructor"] = {
         writable: true,
         enumerable: false,
         configurable: true,

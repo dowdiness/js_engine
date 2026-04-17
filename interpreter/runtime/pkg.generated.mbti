@@ -17,7 +17,11 @@ pub fn call_callable_direct(Value, Value, Array[Value], interp? : Interpreter?) 
 
 pub fn clear_array_length_override(ArrayData) -> Unit
 
+pub fn collect_target_own_keys(Value, SymbolState) -> Array[Value]
+
 pub fn create_data_property_or_throw(Interpreter, Value, Int, Value) -> Unit raise
+
+pub fn create_iter_result(Value, Bool) -> Value
 
 pub fn create_resolving_functions(Interpreter, PromiseData) -> (Value, Value)
 
@@ -135,6 +139,8 @@ pub fn js_error_to_value_with_env(Error, Environment?) -> Value
 
 pub fn lookup_symbol_property_chain(Value, ObjectData, Int, interp? : Interpreter?) -> Value? raise
 
+pub fn make_array(Array[Value]) -> Value
+
 pub fn make_array_iterator_value(ArrayData) -> Value
 
 pub fn make_array_like_iterator_value(Value) -> Value raise
@@ -149,6 +155,8 @@ pub fn make_interp_static_func_with_length(String, Int, (Interpreter, Array[Valu
 
 pub fn make_interpreter_callable_with_length(String, Int, (Interpreter, Value, Array[Value]) -> Value raise) -> Value
 
+pub fn make_map_data(Array[(Value, Value)]) -> MapData
+
 pub fn make_method_func(String, Int, (Value, Array[Value]) -> Value raise) -> Value
 
 pub fn make_native_func(String, (Array[Value]) -> Value raise) -> Value
@@ -159,6 +167,8 @@ pub fn make_object(Map[String, Value], Value, Callable?, String, Map[String, Pro
 
 pub fn make_plain_object() -> Value
 
+pub fn make_set_data(Array[Value]) -> SetData
+
 pub fn make_static_func(String, (Array[Value]) -> Value raise) -> Value
 
 pub fn make_static_func_with_length(String, Int, (Array[Value]) -> Value raise) -> Value
@@ -167,9 +177,29 @@ pub fn make_string_iterator_value(String) -> Value
 
 pub fn new_promise_data() -> PromiseData
 
+pub fn new_property_bag() -> PropertyBag
+
 pub let number_prototype_ref : @ref.Ref[Value?]
 
 pub let object_prototype_ref : @ref.Ref[Value?]
+
+pub fn proxy_delete_property(Interpreter, ProxyData, String) -> Bool raise
+
+pub fn proxy_get(Interpreter, ProxyData, String, Value) -> Value raise
+
+pub fn proxy_get_prototype_of(Interpreter, ProxyData) -> Value raise
+
+pub fn proxy_has_property(Interpreter, ProxyData, String) -> Bool raise
+
+pub fn proxy_is_extensible(Interpreter, ProxyData) -> Bool raise
+
+pub fn proxy_own_property_keys(Interpreter, ProxyData) -> Value raise
+
+pub fn proxy_prevent_extensions(Interpreter, ProxyData) -> Bool raise
+
+pub fn proxy_set(Interpreter, ProxyData, String, Value, Value, Bool) -> Value raise
+
+pub fn proxy_set_prototype_of(Interpreter, ProxyData, Value) -> Bool raise
 
 pub fn raise_js_exception(Value) -> Unit raise
 
@@ -267,6 +297,7 @@ pub suberror YieldSignal {
 // Types and methods
 pub(all) struct ArrayData {
   elements : Array[Value]
+  bag : PropertyBag
 }
 
 pub(all) struct Binding {
@@ -437,10 +468,7 @@ pub fn Interpreter::to_primitive_default(Self, Value, ObjectData) -> Value raise
 
 pub(all) struct MapData {
   entries : Array[(Value, Value)]
-  properties : Map[String, Value]
-  descriptors : Map[String, PropDescriptor]
-  symbol_properties : Map[Int, Value]
-  symbol_descriptors : Map[Int, PropDescriptor]
+  bag : PropertyBag
 }
 
 pub(all) struct Microtask {
@@ -453,13 +481,10 @@ pub(all) struct ModuleLoader((String) -> Map[String, Value] raise)
 pub fn ModuleLoader::inner(Self) -> (String) -> Map[String, Value] raise
 
 pub(all) struct ObjectData {
-  properties : Map[String, Value]
-  symbol_properties : Map[Int, Value]
+  bag : PropertyBag
   mut prototype : Value
   callable : Callable?
   class_name : String
-  descriptors : Map[String, PropDescriptor]
-  symbol_descriptors : Map[Int, PropDescriptor]
   mut extensible : Bool
 }
 
@@ -469,10 +494,7 @@ pub(all) struct PromiseData {
   fulfill_reactions : Array[PromiseReaction]
   reject_reactions : Array[PromiseReaction]
   mut is_handled : Bool
-  properties : Map[String, Value]
-  symbol_properties : Map[Int, Value]
-  descriptors : Map[String, PropDescriptor]
-  symbol_descriptors : Map[Int, PropDescriptor]
+  bag : PropertyBag
 }
 
 pub(all) struct PromiseReaction {
@@ -501,6 +523,13 @@ pub(all) struct PropDescriptor {
   mut setter : Value?
 }
 
+pub(all) struct PropertyBag {
+  properties : Map[String, Value]
+  symbol_properties : Map[Int, Value]
+  descriptors : Map[String, PropDescriptor]
+  symbol_descriptors : Map[Int, PropDescriptor]
+}
+
 pub(all) struct ProxyData {
   mut target : Value?
   mut handler : Value?
@@ -521,10 +550,7 @@ pub(all) enum ResumeKind {
 
 pub(all) struct SetData {
   values : Array[Value]
-  properties : Map[String, Value]
-  descriptors : Map[String, PropDescriptor]
-  symbol_properties : Map[Int, Value]
-  symbol_descriptors : Map[Int, PropDescriptor]
+  bag : PropertyBag
 }
 
 pub(all) enum Signal {

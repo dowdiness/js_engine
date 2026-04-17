@@ -25,13 +25,15 @@ fn setup_json_builtins(env : Environment) -> Unit {
         let root_props : Map[String, Value] = {}
         root_props[""] = result
         let root : Value = Value::Object({
-          properties: root_props,
-          symbol_properties: {},
+          bag: {
+            properties: root_props,
+            symbol_properties: {},
+            descriptors: {},
+            symbol_descriptors: {},
+          },
           prototype: Null,
           callable: None,
           class_name: "Object",
-          descriptors: {},
-          symbol_descriptors: {},
           extensible: true,
         })
         return json_internalize(root, "", args[1], interp)
@@ -51,12 +53,12 @@ fn setup_json_builtins(env : Environment) -> Unit {
       let space_arg = match args[2] {
         Object(data) =>
           if data.class_name == "Number" {
-            match data.properties.get("[[NumberData]]") {
+            match data.bag.properties.get("[[NumberData]]") {
               Some(n) => n
               None => args[2]
             }
           } else if data.class_name == "String" {
-            match data.properties.get("[[StringData]]") {
+            match data.bag.properties.get("[[StringData]]") {
               Some(s) => s
               None => args[2]
             }
@@ -120,13 +122,15 @@ fn setup_json_builtins(env : Environment) -> Unit {
     let root_props : Map[String, Value] = {}
     root_props[""] = val
     let root : Value = Value::Object({
-      properties: root_props,
-      symbol_properties: {},
+      bag: {
+        properties: root_props,
+        symbol_properties: {},
+        descriptors: {},
+        symbol_descriptors: {},
+      },
       prototype: Null,
       callable: None,
       class_name: "Object",
-      descriptors: {},
-      symbol_descriptors: {},
       extensible: true,
     })
     let seen : Array[Value] = []
@@ -162,13 +166,15 @@ fn setup_json_builtins(env : Environment) -> Unit {
   env.def_builtin(
     "JSON",
     Value::Object({
-      properties: json_props,
-      symbol_properties: json_sym_props,
+      bag: {
+        properties: json_props,
+        symbol_properties: json_sym_props,
+        descriptors: json_descs,
+        symbol_descriptors: json_sym_descs,
+      },
       prototype: obj_proto,
       callable: None,
       class_name: "JSON",
-      descriptors: json_descs,
-      symbol_descriptors: json_sym_descs,
       extensible: true,
     }),
   )
@@ -347,13 +353,15 @@ fn json_parse(input : String) -> Value raise Error {
     if pos[0] < len && chars[pos[0]] == '}' {
       pos[0] += 1
       return Value::Object({
-        properties,
-        symbol_properties: {},
+        bag: {
+          properties,
+          symbol_properties: {},
+          descriptors: {},
+          symbol_descriptors: {},
+        },
         prototype: Null,
         callable: None,
         class_name: "Object",
-        descriptors: {},
-        symbol_descriptors: {},
         extensible: true,
       })
     }
@@ -392,13 +400,15 @@ fn json_parse(input : String) -> Value raise Error {
     }
     pos[0] += 1
     Value::Object({
-      properties,
-      symbol_properties: {},
+      bag: {
+        properties,
+        symbol_properties: {},
+        descriptors: {},
+        symbol_descriptors: {},
+      },
       prototype: Null,
       callable: None,
       class_name: "Object",
-      descriptors: {},
-      symbol_descriptors: {},
       extensible: true,
     })
   }
@@ -408,7 +418,7 @@ fn json_parse(input : String) -> Value raise Error {
     skip_ws()
     if pos[0] < len && chars[pos[0]] == ']' {
       pos[0] += 1
-      return Value::Array({ elements, })
+      return @runtime.make_array(elements)
     }
     while true {
       let val = parse_value()
@@ -427,7 +437,7 @@ fn json_parse(input : String) -> Value raise Error {
       )
     }
     pos[0] += 1
-    Value::Array({ elements, })
+    @runtime.make_array(elements)
   }
 
   let result = parse_value()
@@ -450,7 +460,7 @@ fn json_internalize(
 ) -> Value raise Error {
   let val = match holder {
     Object(data) =>
-      match data.properties.get(name) {
+      match data.bag.properties.get(name) {
         Some(v) => v
         None => Undefined
       }
@@ -468,7 +478,7 @@ fn json_internalize(
   match val {
     Object(data) => {
       let keys : Array[String] = []
-      for key, _ in data.properties {
+      for key, _ in data.bag.properties {
         keys.push(key)
       }
       for key in keys {
@@ -476,8 +486,8 @@ fn json_internalize(
         match new_val {
           Undefined =>
             // Delete the property
-            data.properties.remove(key)
-          _ => data.properties[key] = new_val
+            data.bag.properties.remove(key)
+          _ => data.bag.properties[key] = new_val
         }
       }
     }
@@ -647,7 +657,7 @@ fn json_stringify_value(
         None => {
           // Unwrap boxed primitives per spec (SerializeJSONProperty step 4)
           if data.class_name == "Number" {
-            match data.properties.get("[[NumberData]]") {
+            match data.bag.properties.get("[[NumberData]]") {
               Some(Value::Number(n)) =>
                 return if n.is_nan() || n.is_inf() {
                   Value::String_("null")
@@ -657,13 +667,13 @@ fn json_stringify_value(
               _ => ()
             }
           } else if data.class_name == "String" {
-            match data.properties.get("[[StringData]]") {
+            match data.bag.properties.get("[[StringData]]") {
               Some(Value::String_(s)) =>
                 return Value::String_(json_escape_string(s))
               _ => ()
             }
           } else if data.class_name == "Boolean" {
-            match data.properties.get("[[BooleanData]]") {
+            match data.bag.properties.get("[[BooleanData]]") {
               Some(Value::Bool(b)) => return Value::String_(b.to_string())
               _ => ()
             }
@@ -674,7 +684,7 @@ fn json_stringify_value(
           while to_json_fn is None {
             match cur {
               Some(Object(obj_data)) =>
-                match obj_data.properties.get("toJSON") {
+                match obj_data.bag.properties.get("toJSON") {
                   Some(v) => to_json_fn = Some(v)
                   None => cur = Some(obj_data.prototype)
                 }
@@ -745,11 +755,11 @@ fn json_stringify_value(
           let keys_to_iterate : Array[String] = match property_list {
             Some(pl) => pl
             None => {
-              let sorted = @runtime.sort_property_keys(data.properties)
+              let sorted = @runtime.sort_property_keys(data.bag.properties)
               let filtered : Array[String] = []
               for k in sorted {
                 // Skip non-enumerable properties
-                let enumerable = match data.descriptors.get(k) {
+                let enumerable = match data.bag.descriptors.get(k) {
                   Some(d) => d.enumerable
                   None => true
                 }
@@ -761,7 +771,7 @@ fn json_stringify_value(
             }
           }
           for k in keys_to_iterate {
-            let v = match data.properties.get(k) {
+            let v = match data.bag.properties.get(k) {
               Some(v) => v
               None => continue
             }

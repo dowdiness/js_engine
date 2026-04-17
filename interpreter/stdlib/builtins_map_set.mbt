@@ -22,7 +22,7 @@ pub fn get_map_method(_data : MapData, prop : String) -> Value {
     Some(proto) =>
       match proto {
         Object(proto_data) =>
-          match proto_data.properties.get(prop) {
+          match proto_data.bag.properties.get(prop) {
             Some(m) => m
             None => Undefined
           }
@@ -39,7 +39,7 @@ pub fn get_set_method(_data : SetData, prop : String) -> Value {
     Some(proto) =>
       match proto {
         Object(proto_data) =>
-          match proto_data.properties.get(prop) {
+          match proto_data.bag.properties.get(prop) {
             Some(m) => m
             None => Undefined
           }
@@ -365,13 +365,15 @@ fn setup_map_builtins(env : Environment) -> Unit {
   }
 
   let map_proto : Value = Value::Object({
-    properties: map_proto_props,
-    symbol_properties: {},
+    bag: {
+      properties: map_proto_props,
+      symbol_properties: {},
+      descriptors: map_proto_descs,
+      symbol_descriptors: {},
+    },
     prototype: @runtime.get_obj_proto(),
     callable: None,
     class_name: "Map",
-    descriptors: map_proto_descs,
-    symbol_descriptors: {},
     extensible: true,
   })
 
@@ -381,12 +383,12 @@ fn setup_map_builtins(env : Environment) -> Unit {
   // Add Map.prototype[Symbol.iterator] = Map.prototype.entries
   match map_proto {
     Object(data) => {
-      data.symbol_properties[iterator_sym.id] = map_proto_props["entries"]
-      data.symbol_descriptors[iterator_sym.id] = method_desc
+      data.bag.symbol_properties[iterator_sym.id] = map_proto_props["entries"]
+      data.bag.symbol_descriptors[iterator_sym.id] = method_desc
       // Add Symbol.toStringTag = "Map"
       let tostringtag_sym = @runtime.get_tostringtag_symbol()
-      data.symbol_properties[tostringtag_sym.id] = Value::String_("Map")
-      data.symbol_descriptors[tostringtag_sym.id] = {
+      data.bag.symbol_properties[tostringtag_sym.id] = Value::String_("Map")
+      data.bag.symbol_descriptors[tostringtag_sym.id] = {
         writable: false,
         enumerable: false,
         configurable: true,
@@ -408,14 +410,7 @@ fn setup_map_builtins(env : Environment) -> Unit {
         message="Constructor Map cannot be invoked without 'new'",
       )
     }
-    // Create new Map instance
-    let new_map : Value = Value::Map({
-      entries: [],
-      properties: {},
-      descriptors: {},
-      symbol_properties: {},
-      symbol_descriptors: {},
-    })
+    let new_map : Value = Value::Map(@runtime.make_map_data([]))
     let loc = @token.Loc::default()
 
     // If iterable provided, populate map
@@ -493,8 +488,8 @@ fn setup_map_builtins(env : Environment) -> Unit {
   // Add prototype property to Map constructor
   match map_ctor {
     Object(data) => {
-      data.properties["prototype"] = map_proto
-      data.descriptors["prototype"] = {
+      data.bag.properties["prototype"] = map_proto
+      data.bag.descriptors["prototype"] = {
         writable: false,
         enumerable: false,
         configurable: false,
@@ -507,7 +502,7 @@ fn setup_map_builtins(env : Environment) -> Unit {
   // Add Map.groupBy static method
   match map_ctor {
     Object(ctor_data) => {
-      ctor_data.properties["groupBy"] = @runtime.make_interp_static_func_with_length(
+      ctor_data.bag.properties["groupBy"] = @runtime.make_interp_static_func_with_length(
         "groupBy",
         2,
         fn(interp, args) raise {
@@ -550,20 +545,12 @@ fn setup_map_builtins(env : Environment) -> Unit {
           // Build result Map
           let entries : Array[(Value, Value)] = []
           for i = 0; i < group_keys.length(); i = i + 1 {
-            entries.push(
-              (group_keys[i], Value::Array({ elements: group_arrays[i] })),
-            )
+            entries.push((group_keys[i], @runtime.make_array(group_arrays[i])))
           }
-          Value::Map({
-            entries,
-            properties: {},
-            descriptors: {},
-            symbol_properties: {},
-            symbol_descriptors: {},
-          })
+          Value::Map(@runtime.make_map_data(entries))
         },
       )
-      ctor_data.descriptors["groupBy"] = {
+      ctor_data.bag.descriptors["groupBy"] = {
         writable: true,
         enumerable: false,
         configurable: true,
@@ -577,8 +564,8 @@ fn setup_map_builtins(env : Environment) -> Unit {
   // Set Map.prototype.constructor = Map
   match map_proto {
     Object(data) => {
-      data.properties["constructor"] = map_ctor
-      data.descriptors["constructor"] = {
+      data.bag.properties["constructor"] = map_ctor
+      data.bag.descriptors["constructor"] = {
         writable: true,
         enumerable: false,
         configurable: true,
@@ -800,13 +787,15 @@ fn setup_set_builtins(env : Environment) -> Unit {
   }
 
   let set_proto : Value = Value::Object({
-    properties: set_proto_props,
-    symbol_properties: {},
+    bag: {
+      properties: set_proto_props,
+      symbol_properties: {},
+      descriptors: set_proto_descs,
+      symbol_descriptors: {},
+    },
     prototype: @runtime.get_obj_proto(),
     callable: None,
     class_name: "Set",
-    descriptors: set_proto_descs,
-    symbol_descriptors: {},
     extensible: true,
   })
 
@@ -816,12 +805,12 @@ fn setup_set_builtins(env : Environment) -> Unit {
   // Add Set.prototype[Symbol.iterator] = Set.prototype.values
   match set_proto {
     Object(data) => {
-      data.symbol_properties[iterator_sym.id] = set_proto_props["values"]
-      data.symbol_descriptors[iterator_sym.id] = method_desc
+      data.bag.symbol_properties[iterator_sym.id] = set_proto_props["values"]
+      data.bag.symbol_descriptors[iterator_sym.id] = method_desc
       // Add Symbol.toStringTag = "Set"
       let tostringtag_sym = @runtime.get_tostringtag_symbol()
-      data.symbol_properties[tostringtag_sym.id] = Value::String_("Set")
-      data.symbol_descriptors[tostringtag_sym.id] = {
+      data.bag.symbol_properties[tostringtag_sym.id] = Value::String_("Set")
+      data.bag.symbol_descriptors[tostringtag_sym.id] = {
         writable: false,
         enumerable: false,
         configurable: true,
@@ -843,14 +832,7 @@ fn setup_set_builtins(env : Environment) -> Unit {
         message="Constructor Set cannot be invoked without 'new'",
       )
     }
-    // Create new Set instance
-    let new_set : Value = Value::Set({
-      values: [],
-      properties: {},
-      descriptors: {},
-      symbol_properties: {},
-      symbol_descriptors: {},
-    })
+    let new_set : Value = Value::Set(@runtime.make_set_data([]))
     let loc = @token.Loc::default()
 
     // If iterable provided, populate set
@@ -918,8 +900,8 @@ fn setup_set_builtins(env : Environment) -> Unit {
   // Add prototype property to Set constructor
   match set_ctor {
     Object(data) => {
-      data.properties["prototype"] = set_proto
-      data.descriptors["prototype"] = {
+      data.bag.properties["prototype"] = set_proto
+      data.bag.descriptors["prototype"] = {
         writable: false,
         enumerable: false,
         configurable: false,
@@ -933,8 +915,8 @@ fn setup_set_builtins(env : Environment) -> Unit {
   // Set Set.prototype.constructor = Set
   match set_proto {
     Object(data) => {
-      data.properties["constructor"] = set_ctor
-      data.descriptors["constructor"] = {
+      data.bag.properties["constructor"] = set_ctor
+      data.bag.descriptors["constructor"] = {
         writable: true,
         enumerable: false,
         configurable: true,
@@ -985,21 +967,23 @@ fn get_map_iterator_proto() -> Value {
         )
       })
       let proto = Value::Object({
-        properties: proto_props,
-        symbol_properties: proto_sym_props,
+        bag: {
+          properties: proto_props,
+          symbol_properties: proto_sym_props,
+          descriptors: {
+            "next": {
+              writable: true,
+              enumerable: false,
+              configurable: true,
+              getter: None,
+              setter: None,
+            },
+          },
+          symbol_descriptors: proto_sym_descs,
+        },
         prototype: @runtime.get_iterator_proto(),
         callable: None,
         class_name: "Map Iterator",
-        descriptors: {
-          "next": {
-            writable: true,
-            enumerable: false,
-            configurable: true,
-            getter: None,
-            setter: None,
-          },
-        },
-        symbol_descriptors: proto_sym_descs,
         extensible: true,
       })
       map_iterator_proto_ref.val = Some(proto)
@@ -1014,8 +998,30 @@ fn make_map_keys_iterator(map_data : MapData) -> Value {
   let map_iter_proto = get_map_iterator_proto()
   let index_ref : Ref[Int] = { val: 0 }
   let next_method = Value::Object({
-    properties: { "length": Value::Number(0.0), "name": Value::String_("next") },
-    symbol_properties: {},
+    bag: {
+      properties: {
+        "length": Value::Number(0.0),
+        "name": Value::String_("next"),
+      },
+      symbol_properties: {},
+      descriptors: {
+        "length": {
+          writable: false,
+          enumerable: false,
+          configurable: true,
+          getter: None,
+          setter: None,
+        },
+        "name": {
+          writable: false,
+          enumerable: false,
+          configurable: true,
+          getter: None,
+          setter: None,
+        },
+      },
+      symbol_descriptors: {},
+    },
     prototype: Null,
     callable: Some(
       NativeCallable("next", fn(_args) {
@@ -1027,13 +1033,15 @@ fn make_map_keys_iterator(map_data : MapData) -> Value {
           result_props["value"] = key
           result_props["done"] = Value::Bool(false)
           Value::Object({
-            properties: result_props,
-            symbol_properties: {},
+            bag: {
+              properties: result_props,
+              symbol_properties: {},
+              descriptors: {},
+              symbol_descriptors: {},
+            },
             prototype: Null,
             callable: None,
             class_name: "Object",
-            descriptors: {},
-            symbol_descriptors: {},
             extensible: true,
           })
         } else {
@@ -1041,48 +1049,35 @@ fn make_map_keys_iterator(map_data : MapData) -> Value {
           result_props["value"] = Undefined
           result_props["done"] = Value::Bool(true)
           Value::Object({
-            properties: result_props,
-            symbol_properties: {},
+            bag: {
+              properties: result_props,
+              symbol_properties: {},
+              descriptors: {},
+              symbol_descriptors: {},
+            },
             prototype: Null,
             callable: None,
             class_name: "Object",
-            descriptors: {},
-            symbol_descriptors: {},
             extensible: true,
           })
         }
       }),
     ),
     class_name: "Function",
-    descriptors: {
-      "length": {
-        writable: false,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-      "name": {
-        writable: false,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-    },
-    symbol_descriptors: {},
     extensible: true,
   })
   let iter_props : Map[String, Value] = {}
   iter_props["next"] = next_method
   Value::Object({
-    properties: iter_props,
-    symbol_properties: {},
+    bag: {
+      properties: iter_props,
+      symbol_properties: {},
+      descriptors: {},
+      symbol_descriptors: {},
+    },
     prototype: map_iter_proto,
     callable: None,
     class_name: "Map Iterator",
-    descriptors: {},
-    symbol_descriptors: {},
     extensible: true,
   })
 }
@@ -1093,8 +1088,30 @@ fn make_map_values_iterator(map_data : MapData) -> Value {
   let map_iter_proto = get_map_iterator_proto()
   let index_ref : Ref[Int] = { val: 0 }
   let next_method = Value::Object({
-    properties: { "length": Value::Number(0.0), "name": Value::String_("next") },
-    symbol_properties: {},
+    bag: {
+      properties: {
+        "length": Value::Number(0.0),
+        "name": Value::String_("next"),
+      },
+      symbol_properties: {},
+      descriptors: {
+        "length": {
+          writable: false,
+          enumerable: false,
+          configurable: true,
+          getter: None,
+          setter: None,
+        },
+        "name": {
+          writable: false,
+          enumerable: false,
+          configurable: true,
+          getter: None,
+          setter: None,
+        },
+      },
+      symbol_descriptors: {},
+    },
     prototype: Null,
     callable: Some(
       NativeCallable("next", fn(_args) {
@@ -1106,13 +1123,15 @@ fn make_map_values_iterator(map_data : MapData) -> Value {
           result_props["value"] = value
           result_props["done"] = Value::Bool(false)
           Value::Object({
-            properties: result_props,
-            symbol_properties: {},
+            bag: {
+              properties: result_props,
+              symbol_properties: {},
+              descriptors: {},
+              symbol_descriptors: {},
+            },
             prototype: Null,
             callable: None,
             class_name: "Object",
-            descriptors: {},
-            symbol_descriptors: {},
             extensible: true,
           })
         } else {
@@ -1120,48 +1139,35 @@ fn make_map_values_iterator(map_data : MapData) -> Value {
           result_props["value"] = Undefined
           result_props["done"] = Value::Bool(true)
           Value::Object({
-            properties: result_props,
-            symbol_properties: {},
+            bag: {
+              properties: result_props,
+              symbol_properties: {},
+              descriptors: {},
+              symbol_descriptors: {},
+            },
             prototype: Null,
             callable: None,
             class_name: "Object",
-            descriptors: {},
-            symbol_descriptors: {},
             extensible: true,
           })
         }
       }),
     ),
     class_name: "Function",
-    descriptors: {
-      "length": {
-        writable: false,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-      "name": {
-        writable: false,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-    },
-    symbol_descriptors: {},
     extensible: true,
   })
   let iter_props : Map[String, Value] = {}
   iter_props["next"] = next_method
   Value::Object({
-    properties: iter_props,
-    symbol_properties: {},
+    bag: {
+      properties: iter_props,
+      symbol_properties: {},
+      descriptors: {},
+      symbol_descriptors: {},
+    },
     prototype: map_iter_proto,
     callable: None,
     class_name: "Map Iterator",
-    descriptors: {},
-    symbol_descriptors: {},
     extensible: true,
   })
 }
@@ -1172,8 +1178,30 @@ fn make_map_entries_iterator(map_data : MapData) -> Value {
   let map_iter_proto = get_map_iterator_proto()
   let index_ref : Ref[Int] = { val: 0 }
   let next_method = Value::Object({
-    properties: { "length": Value::Number(0.0), "name": Value::String_("next") },
-    symbol_properties: {},
+    bag: {
+      properties: {
+        "length": Value::Number(0.0),
+        "name": Value::String_("next"),
+      },
+      symbol_properties: {},
+      descriptors: {
+        "length": {
+          writable: false,
+          enumerable: false,
+          configurable: true,
+          getter: None,
+          setter: None,
+        },
+        "name": {
+          writable: false,
+          enumerable: false,
+          configurable: true,
+          getter: None,
+          setter: None,
+        },
+      },
+      symbol_descriptors: {},
+    },
     prototype: Null,
     callable: Some(
       NativeCallable("next", fn(_args) {
@@ -1182,18 +1210,20 @@ fn make_map_entries_iterator(map_data : MapData) -> Value {
           let (key, value) = map_data.entries[idx]
           index_ref.val = idx + 1
           // Return [key, value] array
-          let entry_array = Value::Array({ elements: [key, value] })
+          let entry_array = @runtime.make_array([key, value])
           let result_props : Map[String, Value] = {}
           result_props["value"] = entry_array
           result_props["done"] = Value::Bool(false)
           Value::Object({
-            properties: result_props,
-            symbol_properties: {},
+            bag: {
+              properties: result_props,
+              symbol_properties: {},
+              descriptors: {},
+              symbol_descriptors: {},
+            },
             prototype: Null,
             callable: None,
             class_name: "Object",
-            descriptors: {},
-            symbol_descriptors: {},
             extensible: true,
           })
         } else {
@@ -1201,48 +1231,35 @@ fn make_map_entries_iterator(map_data : MapData) -> Value {
           result_props["value"] = Undefined
           result_props["done"] = Value::Bool(true)
           Value::Object({
-            properties: result_props,
-            symbol_properties: {},
+            bag: {
+              properties: result_props,
+              symbol_properties: {},
+              descriptors: {},
+              symbol_descriptors: {},
+            },
             prototype: Null,
             callable: None,
             class_name: "Object",
-            descriptors: {},
-            symbol_descriptors: {},
             extensible: true,
           })
         }
       }),
     ),
     class_name: "Function",
-    descriptors: {
-      "length": {
-        writable: false,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-      "name": {
-        writable: false,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-    },
-    symbol_descriptors: {},
     extensible: true,
   })
   let iter_props : Map[String, Value] = {}
   iter_props["next"] = next_method
   Value::Object({
-    properties: iter_props,
-    symbol_properties: {},
+    bag: {
+      properties: iter_props,
+      symbol_properties: {},
+      descriptors: {},
+      symbol_descriptors: {},
+    },
     prototype: map_iter_proto,
     callable: None,
     class_name: "Map Iterator",
-    descriptors: {},
-    symbol_descriptors: {},
     extensible: true,
   })
 }
@@ -1284,21 +1301,23 @@ fn get_set_iterator_proto() -> Value {
         )
       })
       let proto = Value::Object({
-        properties: proto_props,
-        symbol_properties: proto_sym_props,
+        bag: {
+          properties: proto_props,
+          symbol_properties: proto_sym_props,
+          descriptors: {
+            "next": {
+              writable: true,
+              enumerable: false,
+              configurable: true,
+              getter: None,
+              setter: None,
+            },
+          },
+          symbol_descriptors: proto_sym_descs,
+        },
         prototype: @runtime.get_iterator_proto(),
         callable: None,
         class_name: "Set Iterator",
-        descriptors: {
-          "next": {
-            writable: true,
-            enumerable: false,
-            configurable: true,
-            getter: None,
-            setter: None,
-          },
-        },
-        symbol_descriptors: proto_sym_descs,
         extensible: true,
       })
       set_iterator_proto_ref.val = Some(proto)
@@ -1313,8 +1332,30 @@ fn make_set_values_iterator(set_data : SetData) -> Value {
   let set_iter_proto = get_set_iterator_proto()
   let index_ref : Ref[Int] = { val: 0 }
   let next_method = Value::Object({
-    properties: { "length": Value::Number(0.0), "name": Value::String_("next") },
-    symbol_properties: {},
+    bag: {
+      properties: {
+        "length": Value::Number(0.0),
+        "name": Value::String_("next"),
+      },
+      symbol_properties: {},
+      descriptors: {
+        "length": {
+          writable: false,
+          enumerable: false,
+          configurable: true,
+          getter: None,
+          setter: None,
+        },
+        "name": {
+          writable: false,
+          enumerable: false,
+          configurable: true,
+          getter: None,
+          setter: None,
+        },
+      },
+      symbol_descriptors: {},
+    },
     prototype: Null,
     callable: Some(
       NativeCallable("next", fn(_args) {
@@ -1326,13 +1367,15 @@ fn make_set_values_iterator(set_data : SetData) -> Value {
           result_props["value"] = value
           result_props["done"] = Value::Bool(false)
           Value::Object({
-            properties: result_props,
-            symbol_properties: {},
+            bag: {
+              properties: result_props,
+              symbol_properties: {},
+              descriptors: {},
+              symbol_descriptors: {},
+            },
             prototype: Null,
             callable: None,
             class_name: "Object",
-            descriptors: {},
-            symbol_descriptors: {},
             extensible: true,
           })
         } else {
@@ -1340,48 +1383,35 @@ fn make_set_values_iterator(set_data : SetData) -> Value {
           result_props["value"] = Undefined
           result_props["done"] = Value::Bool(true)
           Value::Object({
-            properties: result_props,
-            symbol_properties: {},
+            bag: {
+              properties: result_props,
+              symbol_properties: {},
+              descriptors: {},
+              symbol_descriptors: {},
+            },
             prototype: Null,
             callable: None,
             class_name: "Object",
-            descriptors: {},
-            symbol_descriptors: {},
             extensible: true,
           })
         }
       }),
     ),
     class_name: "Function",
-    descriptors: {
-      "length": {
-        writable: false,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-      "name": {
-        writable: false,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-    },
-    symbol_descriptors: {},
     extensible: true,
   })
   let iter_props : Map[String, Value] = {}
   iter_props["next"] = next_method
   Value::Object({
-    properties: iter_props,
-    symbol_properties: {},
+    bag: {
+      properties: iter_props,
+      symbol_properties: {},
+      descriptors: {},
+      symbol_descriptors: {},
+    },
     prototype: set_iter_proto,
     callable: None,
     class_name: "Set Iterator",
-    descriptors: {},
-    symbol_descriptors: {},
     extensible: true,
   })
 }
@@ -1392,8 +1422,30 @@ fn make_set_entries_iterator(set_data : SetData) -> Value {
   let set_iter_proto = get_set_iterator_proto()
   let index_ref : Ref[Int] = { val: 0 }
   let next_method = Value::Object({
-    properties: { "length": Value::Number(0.0), "name": Value::String_("next") },
-    symbol_properties: {},
+    bag: {
+      properties: {
+        "length": Value::Number(0.0),
+        "name": Value::String_("next"),
+      },
+      symbol_properties: {},
+      descriptors: {
+        "length": {
+          writable: false,
+          enumerable: false,
+          configurable: true,
+          getter: None,
+          setter: None,
+        },
+        "name": {
+          writable: false,
+          enumerable: false,
+          configurable: true,
+          getter: None,
+          setter: None,
+        },
+      },
+      symbol_descriptors: {},
+    },
     prototype: Null,
     callable: Some(
       NativeCallable("next", fn(_args) {
@@ -1402,18 +1454,20 @@ fn make_set_entries_iterator(set_data : SetData) -> Value {
           let value = set_data.values[idx]
           index_ref.val = idx + 1
           // Return [value, value] array (Set entries are [value, value] pairs)
-          let entry_array = Value::Array({ elements: [value, value] })
+          let entry_array = @runtime.make_array([value, value])
           let result_props : Map[String, Value] = {}
           result_props["value"] = entry_array
           result_props["done"] = Value::Bool(false)
           Value::Object({
-            properties: result_props,
-            symbol_properties: {},
+            bag: {
+              properties: result_props,
+              symbol_properties: {},
+              descriptors: {},
+              symbol_descriptors: {},
+            },
             prototype: Null,
             callable: None,
             class_name: "Object",
-            descriptors: {},
-            symbol_descriptors: {},
             extensible: true,
           })
         } else {
@@ -1421,48 +1475,35 @@ fn make_set_entries_iterator(set_data : SetData) -> Value {
           result_props["value"] = Undefined
           result_props["done"] = Value::Bool(true)
           Value::Object({
-            properties: result_props,
-            symbol_properties: {},
+            bag: {
+              properties: result_props,
+              symbol_properties: {},
+              descriptors: {},
+              symbol_descriptors: {},
+            },
             prototype: Null,
             callable: None,
             class_name: "Object",
-            descriptors: {},
-            symbol_descriptors: {},
             extensible: true,
           })
         }
       }),
     ),
     class_name: "Function",
-    descriptors: {
-      "length": {
-        writable: false,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-      "name": {
-        writable: false,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-    },
-    symbol_descriptors: {},
     extensible: true,
   })
   let iter_props : Map[String, Value] = {}
   iter_props["next"] = next_method
   Value::Object({
-    properties: iter_props,
-    symbol_properties: {},
+    bag: {
+      properties: iter_props,
+      symbol_properties: {},
+      descriptors: {},
+      symbol_descriptors: {},
+    },
     prototype: set_iter_proto,
     callable: None,
     class_name: "Set Iterator",
-    descriptors: {},
-    symbol_descriptors: {},
     extensible: true,
   })
 }

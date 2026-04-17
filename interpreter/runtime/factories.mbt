@@ -1,13 +1,10 @@
 ///|
 pub fn make_func(data : FuncData) -> Value {
   let proto = Object({
-    properties: {},
-    symbol_properties: {},
+    bag: new_property_bag(),
     prototype: get_obj_proto(),
     callable: None,
     class_name: "Object",
-    descriptors: {},
-    symbol_descriptors: {},
     extensible: true,
   })
   let func_name = match data.name {
@@ -23,33 +20,35 @@ pub fn make_func(data : FuncData) -> Value {
     setter: None,
   }
   let func_obj = Object({
-    properties: {
-      "prototype": proto,
-      "name": String_(func_name),
-      "length": Number(func_length),
+    bag: {
+      properties: {
+        "prototype": proto,
+        "name": String_(func_name),
+        "length": Number(func_length),
+      },
+      symbol_properties: {},
+      descriptors: {
+        "prototype": {
+          writable: true,
+          enumerable: false,
+          configurable: false,
+          getter: None,
+          setter: None,
+        },
+        "name": nf_desc,
+        "length": nf_desc,
+      },
+      symbol_descriptors: {},
     },
-    symbol_properties: {},
     prototype: get_func_proto(),
     callable: Some(UserFunc(data)),
     class_name: "Function",
-    descriptors: {
-      "prototype": {
-        writable: true,
-        enumerable: false,
-        configurable: false,
-        getter: None,
-        setter: None,
-      },
-      "name": nf_desc,
-      "length": nf_desc,
-    },
-    symbol_descriptors: {},
     extensible: true,
   })
   match proto {
     Object(proto_data) => {
-      proto_data.properties["constructor"] = func_obj
-      proto_data.descriptors["constructor"] = {
+      proto_data.bag.properties["constructor"] = func_obj
+      proto_data.bag.descriptors["constructor"] = {
         writable: true,
         enumerable: false,
         configurable: true,
@@ -65,13 +64,10 @@ pub fn make_func(data : FuncData) -> Value {
 ///|
 pub fn make_func_ext(data : FuncDataExt) -> Value {
   let proto = Object({
-    properties: {},
-    symbol_properties: {},
+    bag: new_property_bag(),
     prototype: get_obj_proto(),
     callable: None,
     class_name: "Object",
-    descriptors: {},
-    symbol_descriptors: {},
     extensible: true,
   })
   let func_name = match data.name {
@@ -94,33 +90,35 @@ pub fn make_func_ext(data : FuncDataExt) -> Value {
     setter: None,
   }
   let func_obj = Object({
-    properties: {
-      "prototype": proto,
-      "name": String_(func_name),
-      "length": Number(func_length.to_double()),
+    bag: {
+      properties: {
+        "prototype": proto,
+        "name": String_(func_name),
+        "length": Number(func_length.to_double()),
+      },
+      symbol_properties: {},
+      descriptors: {
+        "prototype": {
+          writable: true,
+          enumerable: false,
+          configurable: false,
+          getter: None,
+          setter: None,
+        },
+        "name": nf_desc,
+        "length": nf_desc,
+      },
+      symbol_descriptors: {},
     },
-    symbol_properties: {},
     prototype: get_func_proto(),
     callable: Some(UserFuncExt(data)),
     class_name: "Function",
-    descriptors: {
-      "prototype": {
-        writable: true,
-        enumerable: false,
-        configurable: false,
-        getter: None,
-        setter: None,
-      },
-      "name": nf_desc,
-      "length": nf_desc,
-    },
-    symbol_descriptors: {},
     extensible: true,
   })
   match proto {
     Object(proto_data) => {
-      proto_data.properties["constructor"] = func_obj
-      proto_data.descriptors["constructor"] = {
+      proto_data.bag.properties["constructor"] = func_obj
+      proto_data.bag.descriptors["constructor"] = {
         writable: true,
         enumerable: false,
         configurable: true,
@@ -218,13 +216,15 @@ pub fn make_native_func(
     setter: None,
   }
   Object({
-    properties: { "name": String_(name), "length": Number(0.0) },
-    symbol_properties: {},
+    bag: {
+      properties: { "name": String_(name), "length": Number(0.0) },
+      symbol_properties: {},
+      descriptors: { "name": nf_desc, "length": nf_desc },
+      symbol_descriptors: {},
+    },
     prototype: get_func_proto(),
     callable: Some(NonConstructableCallable(name, func)),
     class_name: "Function",
-    descriptors: { "name": nf_desc, "length": nf_desc },
-    symbol_descriptors: {},
     extensible: true,
   })
 }
@@ -247,13 +247,15 @@ pub fn make_native_func_with_length(
   props["length"] = Number(length.to_double())
   props["name"] = String_(name)
   Object({
-    properties: props,
-    symbol_properties: {},
+    bag: {
+      properties: props,
+      symbol_properties: {},
+      descriptors: { "name": nf_desc, "length": nf_desc },
+      symbol_descriptors: {},
+    },
     prototype: get_func_proto(),
     callable: Some(NonConstructableCallable(name, func)),
     class_name: "Function",
-    descriptors: { "name": nf_desc, "length": nf_desc },
-    symbol_descriptors: {},
     extensible: true,
   })
 }
@@ -272,13 +274,15 @@ pub fn make_static_func(
     setter: None,
   }
   Object({
-    properties: { "name": String_(name), "length": Number(0.0) },
-    symbol_properties: {},
+    bag: {
+      properties: { "name": String_(name), "length": Number(0.0) },
+      symbol_properties: {},
+      descriptors: { "name": nf_desc, "length": nf_desc },
+      symbol_descriptors: {},
+    },
     prototype: get_func_proto(),
     callable: Some(NonConstructableCallable(name, func)),
     class_name: "Function",
-    descriptors: { "name": nf_desc, "length": nf_desc },
-    symbol_descriptors: {},
     extensible: true,
   })
 }
@@ -301,13 +305,15 @@ pub fn make_static_func_with_length(
   props["length"] = Number(length.to_double())
   props["name"] = String_(name)
   Object({
-    properties: props,
-    symbol_properties: {},
+    bag: {
+      properties: props,
+      symbol_properties: {},
+      descriptors: { "name": nf_desc, "length": nf_desc },
+      symbol_descriptors: {},
+    },
     prototype: get_func_proto(),
     callable: Some(NonConstructableCallable(name, func)),
     class_name: "Function",
-    descriptors: { "name": nf_desc, "length": nf_desc },
-    symbol_descriptors: {},
     extensible: true,
   })
 }
@@ -330,13 +336,15 @@ pub fn make_method_func(
   props["length"] = Number(length.to_double())
   props["name"] = String_(name)
   Object({
-    properties: props,
-    symbol_properties: {},
+    bag: {
+      properties: props,
+      symbol_properties: {},
+      descriptors: { "name": nf_desc, "length": nf_desc },
+      symbol_descriptors: {},
+    },
     prototype: get_func_proto(),
     callable: Some(MethodCallable(name, func)),
     class_name: "Function",
-    descriptors: { "name": nf_desc, "length": nf_desc },
-    symbol_descriptors: {},
     extensible: true,
   })
 }
@@ -359,13 +367,15 @@ pub fn make_interp_method_func(
   props["length"] = Number(length.to_double())
   props["name"] = String_(name)
   Object({
-    properties: props,
-    symbol_properties: {},
+    bag: {
+      properties: props,
+      symbol_properties: {},
+      descriptors: { "name": nf_desc, "length": nf_desc },
+      symbol_descriptors: {},
+    },
     prototype: get_func_proto(),
     callable: Some(InterpreterCallable(name, func)),
     class_name: "Function",
-    descriptors: { "name": nf_desc, "length": nf_desc },
-    symbol_descriptors: {},
     extensible: true,
   })
 }
@@ -389,8 +399,12 @@ pub fn make_interp_static_func_with_length(
   props["length"] = Number(length.to_double())
   props["name"] = String_(name)
   Object({
-    properties: props,
-    symbol_properties: {},
+    bag: {
+      properties: props,
+      symbol_properties: {},
+      descriptors: { "name": nf_desc, "length": nf_desc },
+      symbol_descriptors: {},
+    },
     prototype: get_func_proto(),
     callable: Some(
       InterpreterCallable(name, fn(interp, _this, args) raise {
@@ -398,8 +412,6 @@ pub fn make_interp_static_func_with_length(
       }),
     ),
     class_name: "Function",
-    descriptors: { "name": nf_desc, "length": nf_desc },
-    symbol_descriptors: {},
     extensible: true,
   })
 }
@@ -415,13 +427,15 @@ pub fn make_object(
   extensible : Bool,
 ) -> Value {
   Object({
-    properties,
-    symbol_properties: {},
+    bag: {
+      properties,
+      symbol_properties: {},
+      descriptors,
+      symbol_descriptors: {},
+    },
     prototype,
     callable,
     class_name,
-    descriptors,
-    symbol_descriptors: {},
     extensible,
   })
 }
@@ -433,13 +447,15 @@ pub fn create_iter_result(value : Value, done : Bool) -> Value {
   props["value"] = value
   props["done"] = Bool(done)
   Object({
-    properties: props,
-    symbol_properties: {},
+    bag: {
+      properties: props,
+      symbol_properties: {},
+      descriptors: {},
+      symbol_descriptors: {},
+    },
     prototype: Null,
     callable: None,
     class_name: "Object",
-    descriptors: {},
-    symbol_descriptors: {},
     extensible: true,
   })
 }
@@ -448,13 +464,29 @@ pub fn create_iter_result(value : Value, done : Bool) -> Value {
 /// Helper to create a plain object
 pub fn make_plain_object() -> Value {
   Object({
-    properties: {},
-    symbol_properties: {},
+    bag: new_property_bag(),
     prototype: Null,
     callable: None,
     class_name: "Object",
-    descriptors: {},
-    symbol_descriptors: {},
     extensible: true,
   })
+}
+
+///|
+/// Wrap an Array[Value] in an Array Value with an empty property bag.
+/// Dense-only arrays (no named props, no sparse length overrides) build via this.
+pub fn make_array(elements : Array[Value]) -> Value {
+  Array({ elements, bag: new_property_bag() })
+}
+
+///|
+/// Construct MapData with entries and an empty property bag (no expando properties).
+pub fn make_map_data(entries : Array[(Value, Value)]) -> MapData {
+  { entries, bag: new_property_bag() }
+}
+
+///|
+/// Construct SetData with values and an empty property bag (no expando properties).
+pub fn make_set_data(values : Array[Value]) -> SetData {
+  { values, bag: new_property_bag() }
 }

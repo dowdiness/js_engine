@@ -72,7 +72,7 @@ fn setup_symbol_builtins(env : Environment, symbols : SymbolState) -> Unit {
         }
       Object(data) =>
         // Support Symbol wrapper objects (e.g. Object(sym).toString())
-        match data.properties.get("[[SymbolData]]") {
+        match data.bag.properties.get("[[SymbolData]]") {
           Some(Value::Symbol(sym)) =>
             match sym.description {
               Some(desc) => Value::String_("Symbol(\{desc})")
@@ -98,7 +98,7 @@ fn setup_symbol_builtins(env : Environment, symbols : SymbolState) -> Unit {
       Symbol(_) => this_val
       Object(data) =>
         // Support Symbol wrapper objects
-        match data.properties.get("[[SymbolData]]") {
+        match data.bag.properties.get("[[SymbolData]]") {
           Some(sym) => sym
           _ =>
             raise @errors.TypeError(
@@ -125,7 +125,7 @@ fn setup_symbol_builtins(env : Environment, symbols : SymbolState) -> Unit {
           None => Undefined
         }
       Object(data) =>
-        match data.properties.get("[[SymbolData]]") {
+        match data.bag.properties.get("[[SymbolData]]") {
           Some(Value::Symbol(sym)) =>
             match sym.description {
               Some(desc) => Value::String_(desc)
@@ -162,7 +162,7 @@ fn setup_symbol_builtins(env : Environment, symbols : SymbolState) -> Unit {
       match this_val {
         Symbol(_) => this_val
         Object(data) =>
-          match data.properties.get("[[SymbolData]]") {
+          match data.bag.properties.get("[[SymbolData]]") {
             Some(sym) => sym
             _ =>
               raise @errors.TypeError(
@@ -187,13 +187,15 @@ fn setup_symbol_builtins(env : Environment, symbols : SymbolState) -> Unit {
   symbol_proto_sym_descs[to_string_tag_sym.id] = nf_desc
 
   let symbol_proto : Value = Value::Object({
-    properties: symbol_proto_props,
-    symbol_properties: symbol_proto_sym_props,
+    bag: {
+      properties: symbol_proto_props,
+      symbol_properties: symbol_proto_sym_props,
+      descriptors: symbol_proto_descs,
+      symbol_descriptors: symbol_proto_sym_descs,
+    },
     prototype: @runtime.get_obj_proto(),
     callable: None,
     class_name: "Symbol",
-    descriptors: symbol_proto_descs,
-    symbol_descriptors: symbol_proto_sym_descs,
     extensible: true,
   })
 
@@ -286,8 +288,12 @@ fn setup_symbol_builtins(env : Environment, symbols : SymbolState) -> Unit {
   env.def_builtin(
     "Symbol",
     Value::Object({
-      properties: symbol_props,
-      symbol_properties: {},
+      bag: {
+        properties: symbol_props,
+        symbol_properties: {},
+        descriptors: symbol_descs,
+        symbol_descriptors: {},
+      },
       prototype: Null,
       callable: Some(
         NonConstructableCallable("Symbol", fn(args) raise {
@@ -307,8 +313,6 @@ fn setup_symbol_builtins(env : Environment, symbols : SymbolState) -> Unit {
         }),
       ),
       class_name: "Function",
-      descriptors: symbol_descs,
-      symbol_descriptors: {},
       extensible: true,
     }),
   )
@@ -318,8 +322,8 @@ fn setup_symbol_builtins(env : Environment, symbols : SymbolState) -> Unit {
   match symbol_proto {
     Object(data) => {
       let ctor = env.get("Symbol") catch { _ => Undefined }
-      data.properties["constructor"] = ctor
-      data.descriptors["constructor"] = {
+      data.bag.properties["constructor"] = ctor
+      data.bag.descriptors["constructor"] = {
         writable: true,
         enumerable: false,
         configurable: true,

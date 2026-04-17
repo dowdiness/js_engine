@@ -20,7 +20,7 @@ pub fn is_constructor_value(v : Value) -> Bool {
         Some(InterpreterCallable(_, _)) =>
           // InterpreterCallable is a constructor if it has a prototype property
           // (builtin constructors like Map, Set, Promise have prototype)
-          data.properties.contains("prototype")
+          data.bag.properties.contains("prototype")
         Some(ArrowFunc(_)) | Some(ArrowFuncExt(_)) => false
         Some(FuncCallMethod(_)) | Some(FuncApplyMethod(_)) => false
         None => false
@@ -267,7 +267,7 @@ pub fn get_tostringtag_value(data : ObjectData) -> String? raise Error {
     match current {
       Object(obj_data) => {
         // Check for getter descriptor on symbol property
-        match obj_data.symbol_descriptors.get(sym.id) {
+        match obj_data.bag.symbol_descriptors.get(sym.id) {
           Some(desc) =>
             match desc.getter {
               Some(getter_fn) =>
@@ -299,7 +299,7 @@ pub fn get_tostringtag_value(data : ObjectData) -> String? raise Error {
           None => ()
         }
         // Check direct symbol property value
-        match obj_data.symbol_properties.get(sym.id) {
+        match obj_data.bag.symbol_properties.get(sym.id) {
           Some(String_(s)) => return Some(s)
           Some(_) => return None // non-string toStringTag, short-circuit per spec
           None => ()

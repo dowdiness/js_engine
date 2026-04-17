@@ -93,6 +93,8 @@ pub fn string_match_regex(String, String, String) -> @runtime.Value
 
 pub fn string_replace_regex(String, String, String, String) -> @runtime.Value
 
+pub fn string_replace_regex_func(String, String, String, @runtime.Value) -> @runtime.Value raise
+
 pub fn string_search_regex(String, String, String) -> @runtime.Value
 
 pub fn substring(Array[Char], Int, Int) -> String

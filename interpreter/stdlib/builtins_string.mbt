@@ -592,14 +592,14 @@ pub fn get_string_method(
         }
         // If limit is 0, return empty array
         if limit == 0L {
-          return Value::Array({ elements: [] })
+          return @runtime.make_array([])
         }
         // Handle undefined separator - return array with whole string
         if args.length() == 0 {
-          return Value::Array({ elements: [Value::String_(str)] })
+          return @runtime.make_array([Value::String_(str)])
         }
         match args[0] {
-          Undefined => return Value::Array({ elements: [Value::String_(str)] })
+          Undefined => return @runtime.make_array([Value::String_(str)])
           _ => ()
         }
         let sep = @runtime.to_js_string(args[0])
@@ -618,7 +618,7 @@ pub fn get_string_method(
             buf.write_char(chars[i])
             result.push(Value::String_(buf.to_string()))
           }
-          return Value::Array({ elements: result })
+          return @runtime.make_array(result)
         }
         let result : Array[Value] = []
         let s_chars = str.to_array()
@@ -643,7 +643,7 @@ pub fn get_string_method(
             result.push(Value::String_(buf.to_string()))
             // Per spec: if we've reached the limit, return immediately
             if result.length().to_int64() >= limit {
-              return Value::Array({ elements: result })
+              return @runtime.make_array(result)
             }
             last = i + sep_len
             i = i + sep_len
@@ -659,7 +659,7 @@ pub fn get_string_method(
           }
           result.push(Value::String_(buf.to_string()))
         }
-        Value::Array({ elements: result })
+        @runtime.make_array(result)
       })
     }
     "replace" => {
@@ -690,11 +690,11 @@ pub fn get_string_method(
               _ => ()
             }
             if data.class_name == "RegExp" {
-              let pattern = match data.properties.get("source") {
+              let pattern = match data.bag.properties.get("source") {
                 Some(Value::String_(s)) => s
                 _ => ""
               }
-              let flags = match data.properties.get("flags") {
+              let flags = match data.bag.properties.get("flags") {
                 Some(Value::String_(s)) => s
                 _ => ""
               }
@@ -797,11 +797,11 @@ pub fn get_string_method(
               _ => ()
             }
             if data.class_name == "RegExp" {
-              let pattern = match data.properties.get("source") {
+              let pattern = match data.bag.properties.get("source") {
                 Some(Value::String_(s)) => s
                 _ => ""
               }
-              let flags = match data.properties.get("flags") {
+              let flags = match data.bag.properties.get("flags") {
                 Some(Value::String_(s)) => s
                 _ => ""
               }
@@ -824,7 +824,7 @@ pub fn get_string_method(
           Object(data) => {
             if data.class_name == "RegExp" {
               // matchAll requires global flag per spec
-              let f = match data.properties.get("flags") {
+              let f = match data.bag.properties.get("flags") {
                 Some(Value::String_(s)) => s
                 _ => ""
               }
@@ -872,11 +872,9 @@ pub fn get_string_method(
             )
             match matchall_fn {
               Some(matchall_method) =>
-                @runtime.call_callable_direct(
-                  matchall_method,
-                  regexp,
-                  [Value::String_(str)],
-                )
+                @runtime.call_callable_direct(matchall_method, regexp, [
+                  Value::String_(str),
+                ])
               _ =>
                 raise @errors.TypeError(
                   message="RegExp.prototype[Symbol.matchAll] is not a function",
@@ -916,11 +914,11 @@ pub fn get_string_method(
               _ => ()
             }
             if data.class_name == "RegExp" {
-              let pattern = match data.properties.get("source") {
+              let pattern = match data.bag.properties.get("source") {
                 Some(Value::String_(s)) => s
                 _ => ""
               }
-              let flags = match data.properties.get("flags") {
+              let flags = match data.bag.properties.get("flags") {
                 Some(Value::String_(s)) => s
                 _ => ""
               }
@@ -1122,7 +1120,7 @@ pub fn get_string_method(
         match args[0] {
           Object(data) =>
             if data.class_name == "RegExp" {
-              let flags = match data.properties.get("flags") {
+              let flags = match data.bag.properties.get("flags") {
                 Some(Value::String_(f)) => f
                 _ => ""
               }
@@ -1162,11 +1160,11 @@ pub fn get_string_method(
         match args[0] {
           Object(data) =>
             if data.class_name == "RegExp" {
-              let flags = match data.properties.get("flags") {
+              let flags = match data.bag.properties.get("flags") {
                 Some(Value::String_(f)) => f
                 _ => ""
               }
-              let pattern = match data.properties.get("source") {
+              let pattern = match data.bag.properties.get("source") {
                 Some(Value::String_(s)) => s
                 _ => ""
               }
@@ -1667,7 +1665,7 @@ pub fn this_to_string(this_val : Value) -> String raise Error {
     Object(data) =>
       // Check if it's a boxed String wrapper object
       if data.class_name == "String" {
-        match data.properties.get("[[StringData]]") {
+        match data.bag.properties.get("[[StringData]]") {
           Some(Value::String_(s)) => s
           _ => @runtime.to_js_string(this_val)
         }
@@ -1717,13 +1715,13 @@ pub fn setup_string_prototype(
         // Look up the length from the underlying native method
         let meth_length = match get_string_method("", mname, annex_b~) {
           Object(fdata) =>
-            match fdata.properties.get("length") {
+            match fdata.bag.properties.get("length") {
               Some(Value::Number(n)) => n.to_int()
               _ => 0
             }
           _ => 0
         }
-        data.properties[mname] = @runtime.make_method_func(
+        data.bag.properties[mname] = @runtime.make_method_func(
           display_name,
           meth_length,
           fn(this_val, args) raise {
@@ -1741,7 +1739,7 @@ pub fn setup_string_prototype(
           },
         )
         // Make methods non-enumerable
-        data.descriptors[mname] = {
+        data.bag.descriptors[mname] = {
           writable: true,
           enumerable: false,
           configurable: true,
@@ -1750,10 +1748,10 @@ pub fn setup_string_prototype(
         }
       }
       // Per spec, trimLeft === trimStart and trimRight === trimEnd (same object)
-      data.properties["trimLeft"] = data.properties["trimStart"]
-      data.properties["trimRight"] = data.properties["trimEnd"]
+      data.bag.properties["trimLeft"] = data.bag.properties["trimStart"]
+      data.bag.properties["trimRight"] = data.bag.properties["trimEnd"]
       // Add constructor back-reference placeholder
-      data.properties["constructor"] = Undefined
+      data.bag.properties["constructor"] = Undefined
     }
     _ => ()
   }

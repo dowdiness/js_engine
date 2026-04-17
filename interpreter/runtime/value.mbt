@@ -75,20 +75,40 @@ pub(all) struct PropDescriptor {
 }
 
 ///|
-pub(all) struct ObjectData {
-  properties : Map[String, Value]
+/// Unified named/symbol property + descriptor storage embedded in every
+/// exotic Value variant. Consolidates what used to be four parallel fields
+/// so descriptor invariants are enforced in one place.
+pub(all) struct PropertyBag {
+  properties : Map[String, Value] // User-defined string-keyed properties
   symbol_properties : Map[Int, Value] // Symbol-keyed properties (key is symbol ID)
+  descriptors : Map[String, PropDescriptor]
+  symbol_descriptors : Map[Int, PropDescriptor] // Descriptors for symbol properties
+}
+
+///|
+/// Construct an empty PropertyBag.
+pub fn new_property_bag() -> PropertyBag {
+  {
+    properties: {},
+    symbol_properties: {},
+    descriptors: {},
+    symbol_descriptors: {},
+  }
+}
+
+///|
+pub(all) struct ObjectData {
+  bag : PropertyBag
   mut prototype : Value // Mutable to support Object.setPrototypeOf()
   callable : Callable?
   class_name : String
-  descriptors : Map[String, PropDescriptor]
-  symbol_descriptors : Map[Int, PropDescriptor] // Descriptors for symbol properties
   mut extensible : Bool
 }
 
 ///|
 pub(all) struct ArrayData {
   elements : Array[Value]
+  bag : PropertyBag
 }
 
 ///|
@@ -104,10 +124,7 @@ pub(all) struct SymbolData {
 pub(all) struct MapData {
   entries : Array[(Value, Value)] // Array of (key, value) pairs
   // Expando properties: stores instance fields from subclasses (class D extends Map)
-  properties : Map[String, Value]
-  descriptors : Map[String, PropDescriptor]
-  symbol_properties : Map[Int, Value]
-  symbol_descriptors : Map[Int, PropDescriptor]
+  bag : PropertyBag
 }
 
 ///|
@@ -116,10 +133,7 @@ pub(all) struct MapData {
 pub(all) struct SetData {
   values : Array[Value] // Array of unique values
   // Expando properties: stores instance fields from subclasses (class D extends Set)
-  properties : Map[String, Value]
-  descriptors : Map[String, PropDescriptor]
-  symbol_properties : Map[Int, Value]
-  symbol_descriptors : Map[Int, PropDescriptor]
+  bag : PropertyBag
 }
 
 ///|
@@ -156,10 +170,7 @@ pub(all) struct PromiseData {
   fulfill_reactions : Array[PromiseReaction] // Called when fulfilled
   reject_reactions : Array[PromiseReaction] // Called when rejected
   mut is_handled : Bool // Whether .catch or second arg to .then was provided
-  properties : Map[String, Value] // User-defined properties (p.foo = 1)
-  symbol_properties : Map[Int, Value] // Symbol-keyed properties (p[Symbol()] = 1)
-  descriptors : Map[String, PropDescriptor]
-  symbol_descriptors : Map[Int, PropDescriptor]
+  bag : PropertyBag
 }
 
 ///|
@@ -171,10 +182,7 @@ pub fn new_promise_data() -> PromiseData {
     fulfill_reactions: [],
     reject_reactions: [],
     is_handled: false,
-    properties: {},
-    symbol_properties: {},
-    descriptors: {},
-    symbol_descriptors: {},
+    bag: new_property_bag(),
   }
 }
 
@@ -258,26 +266,26 @@ pub impl Show for Value with output(self, logger) {
         None =>
           // Boxed primitive objects: unwrap to primitive string representation
           if data.class_name == "String" {
-            match data.properties.get("[[StringData]]") {
+            match data.bag.properties.get("[[StringData]]") {
               Some(String_(s)) => logger.write_string(s)
               _ => logger.write_string("[object String]")
             }
           } else if data.class_name == "Number" {
-            match data.properties.get("[[NumberData]]") {
+            match data.bag.properties.get("[[NumberData]]") {
               Some(n) => n.output(logger)
               _ => logger.write_string("[object Number]")
             }
           } else if data.class_name == "Boolean" {
-            match data.properties.get("[[BooleanData]]") {
+            match data.bag.properties.get("[[BooleanData]]") {
               Some(Bool(b)) => logger.write_string(b.to_string())
               _ => logger.write_string("[object Boolean]")
             }
           } else if data.class_name.has_suffix("Error") {
-            let name = match data.properties.get("name") {
+            let name = match data.bag.properties.get("name") {
               Some(String_(s)) => s
               _ => data.class_name
             }
-            let msg = match data.properties.get("message") {
+            let msg = match data.bag.properties.get("message") {
               Some(String_(s)) => s
               _ => ""
             }
