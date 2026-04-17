@@ -175,13 +175,13 @@ fn setup_function_builtins(env : Environment) -> Unit {
         setter: None,
       }
       let bprops : Map[String, Value] = {}
-      bprops["name"] = Value::String_(bound_name)
       bprops["length"] = Value::Number(bound_length.to_double())
+      bprops["name"] = Value::String_(bound_name)
       Value::Object({
         bag: {
           properties: bprops,
           symbol_properties: {},
-          descriptors: { "name": nf_desc, "length": nf_desc },
+          descriptors: { "length": nf_desc, "name": nf_desc },
           symbol_descriptors: {},
         },
         prototype: @runtime.get_func_proto(),
