@@ -444,26 +444,11 @@ Surfaced in PR #52/#53 review comment.
 
 Swap the two `bprops[...] = ...` lines and reverse the `descriptors` map to `{ "length": nf_desc, "name": nf_desc }`. Same class of bug as #14 (user functions) and `build_func_object` (fixed in #51); the bind path was missed because it builds the object inline.
 
-### 17. `Reflect.set` stringifies Symbol keys
+### ~~17. `Reflect.set` stringifies Symbol keys~~ — DONE (2026-04-18, PR #60)
 
-**Impact**: `Reflect.set(obj, sym, value)` coerces `sym` via `args[1].to_string()`, dropping the Symbol and hitting a stringified key like `"Symbol(foo)"`. Symbol-keyed sets silently land on the wrong slot.
-**File**: `interpreter/stdlib/builtins_reflect.mbt:727-761`
+### ~~18. `Reflect.get` skips plain data reads on non-Object targets~~ — DONE (2026-04-18, PR #60)
 
-Preserve the raw `args[1]` value (bind once to `let key = args[1]`); pre-check lookups against `data.bag.symbol_descriptors` / `data.bag.symbol_properties` when `key is Symbol`, else against the string variants; pass the original key into `interp.set_property` so computed-property dispatch handles Symbol routing.
-
-### 18. `Reflect.get` skips plain data reads on non-Object targets
-
-**Impact**: `try_get_with_receiver` only matches `Object(data)`. For non-Object targets (Array, Map, Set, Promise) the helper returns `None`, and when `receiver != target` the code returns `Undefined` without ever reading the property. Receiver should only gate *accessor* fallback, not data reads.
-**File**: `interpreter/stdlib/builtins_reflect.mbt:428-502`
-
-After the prototype walk, when `try_get_with_receiver` hasn't yielded a value, fall through to `interp.get_computed_property(target, key, loc)` (Symbol) or `interp.get_property(target, key_str, loc)` (string) unconditionally for data lookups; reserve the `Undefined` short-circuit for the accessor path.
-
-### 19. `Reflect.has` rejects Map/Set/Promise and other object variants
-
-**Impact**: `Reflect.has(target, key)` currently matches only `Object(_) | Array(_) | Proxy(_)`, raising `TypeError` for `Map`, `Set`, `Promise`, and any other object-like variant. `Reflect.has(new Map(), "size")` throws where it should return `true`.
-**File**: `interpreter/stdlib/builtins_reflect.mbt:634-640`
-
-Add `Map(_) | Set(_) | Promise(_)` (and any other object variants) to the non-Proxy arm that calls `interp.has_property`, or collapse the object-like variants into a single arm.
+### ~~19. `Reflect.has` rejects Map/Set/Promise and other object variants~~ — DONE (2026-04-18, PR #60)
 
 ### 20. `Number.prototype.toString` (lookup-path): `length` and `undefined` radix
 
@@ -501,3 +486,16 @@ Two options: (a) add a `NonConstructableInterpreterCallable(name, func)` variant
 The proper fix is to maintain a registry: at each `register_error_ctor` call site, record the class name in a set (e.g., `error_class_names : Set[String]`) on the environment or a module-level ref. `Error.isError` then checks `error_class_names.contains(data.class_name)`. New error types (SuppressedError from ES2024, future adds) become automatically recognized.
 
 **Why not today**: The refactor crosses file boundaries (registry needs to be accessible from `register_error_ctor` in `builtins_error.mbt` and `Error.isError` in `builtins.mbt`) and touches an intrinsic's implementation. Tracked as a follow-up because the allowlist will keep drifting otherwise. Surfaced 2026-04-17 during PR #59 review.
+
+### 25. `lookup_property_chain` ignores `bag.descriptors` (accessor + non-data blind spot)
+
+**Impact**: `lookup_property_chain` walks `bag.properties` on the target and every prototype step but never consults `bag.descriptors`. Any property that lives only in the descriptor map — accessors (getter/setter), or data descriptors registered without a mirror in `bag.properties` — is invisible to the chain walk. This makes all six callers subtly spec-wrong for accessor-only properties.
+**File**: `interpreter/runtime/conversions.mbt:156-200` (definition); callers at lines 113, 142 (presence checks) and 307, 336, 613, 642 (value retrieval).
+
+**Two failure shapes**:
+
+1. *Presence checks* (lines 113, 142) — used by the free `has_property` → `Interpreter::has_property` for Object/Array. A getter-only property on `Object.prototype` returns `false` from `"x" in obj`, violating ES §7.3.11 step 3 (`OrdinaryHasProperty` must inspect both data and accessor descriptors). PR #60 worked around this for Map/Set/Promise by duplicating the prototype-walk in `Interpreter::has_bag_or_builtin_proto` (explicitly checks both `properties` and `descriptors` at each step). That helper is the reference shape for the fix — backport it to `lookup_property_chain` and drop the duplication.
+
+2. *Value retrieval* (lines 307, 336, 613, 642) — `to_primitive` / `to_string` / `to_number` look up `toString` / `valueOf`. If either is defined as an accessor on a user-defined prototype, the lookup misses, fallback kicks in, and coercion uses the default `Object.prototype.toString` instead of the user getter's return value. Observable when `({ get toString() { return () => "x"; } }).toString()` returns `"[object Object]"` instead of `"x"`. Fix requires: on a descriptor hit with `getter`, invoke the getter with the current value as receiver and return its result; fall back to `properties` only when neither descriptor nor direct property exists.
+
+**Why not today**: touches coercion fast paths; each caller has distinct receiver and error-handling semantics. A survey pass is needed before unifying — some callers want Some/None (presence), others want the resolved value-or-callable. Likely unlocks a scattered handful of accessor-related test262 tests. Surfaced 2026-04-18 during PR #60 cleanup — the agent bypassed it cleanly within its scope, which is how it got flagged explicitly rather than silently propagating.
