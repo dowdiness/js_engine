@@ -4,16 +4,26 @@ using @runtime {type Value, type Callable}
 ///|
 fn main {
   let args = @env.args()
-  let (is_module, annex_b, source) = parse_args(args)
+  let (is_module, annex_b, fixtures, source) = parse_args(args)
   match source {
     None => {
-      println("Usage: js_engine [--module] [--annex-b] <javascript-code>")
+      println(
+        "Usage: js_engine [--module] [--annex-b] [--fixture <spec> <src>]... <javascript-code>",
+      )
       println("Example: js_engine 'console.log(1 + 2)'")
     }
     Some(src) =>
       try {
         if is_module {
-          let (output, _) = @lib.run_module(src, annex_b~)
+          // Run any fixture modules first (in dep order), then the main module.
+          // run_modules registers each module's exports under its specifier so
+          // the main test's `import` lookups succeed.
+          let modules : Array[(String, String)] = []
+          for f in fixtures {
+            modules.push(f)
+          }
+          modules.push(("<test>", src))
+          let (output, _) = @lib.run_modules(modules, annex_b~)
           for line in output {
             println(line)
           }
