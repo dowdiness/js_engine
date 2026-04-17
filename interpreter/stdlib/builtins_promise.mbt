@@ -1399,7 +1399,7 @@ pub fn setup_promise(env : Environment) -> Unit {
   // Part of the Web Platform APIs, used for scheduling microtasks directly
   env.def_builtin(
     "queueMicrotask",
-    @runtime.make_interp_method_func(name="queueMicrotask", length=0, fn(
+    @runtime.make_interp_method_func(name="queueMicrotask", length=1, fn(
       interp,
       _this,
       args,
@@ -1476,7 +1476,7 @@ pub fn setup_timers(env : Environment) -> Unit {
   // setTimeout(callback, delay, ...args) -> timerId
   env.def_builtin(
     "setTimeout",
-    @runtime.make_interp_method_func(name="setTimeout", length=0, fn(
+    @runtime.make_interp_method_func(name="setTimeout", length=1, fn(
       interp,
       _this,
       args,
@@ -1525,7 +1525,7 @@ pub fn setup_timers(env : Environment) -> Unit {
   // clearTimeout(id)
   env.def_builtin(
     "clearTimeout",
-    @runtime.make_interp_method_func(name="clearTimeout", length=0, fn(
+    @runtime.make_interp_method_func(name="clearTimeout", length=1, fn(
       interp,
       _this,
       args,
@@ -1546,7 +1546,7 @@ pub fn setup_timers(env : Environment) -> Unit {
   // setInterval(callback, delay, ...args) -> timerId
   env.def_builtin(
     "setInterval",
-    @runtime.make_interp_method_func(name="setInterval", length=0, fn(
+    @runtime.make_interp_method_func(name="setInterval", length=1, fn(
       interp,
       _this,
       args,
@@ -1593,7 +1593,7 @@ pub fn setup_timers(env : Environment) -> Unit {
   // clearInterval(id) - same semantics as clearTimeout
   env.def_builtin(
     "clearInterval",
-    @runtime.make_interp_method_func(name="clearInterval", length=0, fn(
+    @runtime.make_interp_method_func(name="clearInterval", length=1, fn(
       interp,
       _this,
       args,
