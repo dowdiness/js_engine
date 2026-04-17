@@ -492,3 +492,12 @@ Add `length=1` to each one-arg helper's `make_native_func` / `make_interp_method
 **File**: `interpreter/runtime/factories.mbt:277-289`
 
 Two options: (a) add a `NonConstructableInterpreterCallable(name, func)` variant and update the call-site match arms (construction dispatch, `to_string`, etc.); (b) extend `InterpreterCallable` with a `constructible: Bool` flag and check it at the `new` site. Either way update `make_interp_static_func` to produce a non-constructable variant and audit existing `make_method_func`-based static methods (e.g. `Object.preventExtensions`, `Object.keys`) for the same class of bug.
+
+### 24. `Error.isError` uses a hardcoded class-name allowlist (structural)
+
+**Impact**: `Error.isError` in `interpreter/stdlib/builtins.mbt:737` checks `data.class_name` against a literal OR chain of error type names ("Error", "TypeError", "SyntaxError", ..., "AggregateError", "InternalError"). Every new native error requires updating two places in sync — the constructor registration AND the allowlist. PR #59 review caught this: adding `InternalError` as a constructor left `Error.isError(new InternalError())` returning `false` until the allowlist was patched.
+**File**: `interpreter/stdlib/builtins.mbt:737-758`
+
+The proper fix is to maintain a registry: at each `register_error_ctor` call site, record the class name in a set (e.g., `error_class_names : Set[String]`) on the environment or a module-level ref. `Error.isError` then checks `error_class_names.contains(data.class_name)`. New error types (SuppressedError from ES2024, future adds) become automatically recognized.
+
+**Why not today**: The refactor crosses file boundaries (registry needs to be accessible from `register_error_ctor` in `builtins_error.mbt` and `Error.isError` in `builtins.mbt`) and touches an intrinsic's implementation. Tracked as a follow-up because the allowlist will keep drifting otherwise. Surfaced 2026-04-17 during PR #59 review.
