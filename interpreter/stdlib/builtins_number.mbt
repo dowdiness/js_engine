@@ -746,12 +746,12 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
         Value::String_(buf.to_string())
       })
     "toString" =>
-      @runtime.make_method_func(name="toString", length=0, fn(
+      @runtime.make_method_func(name="toString", length=1, fn(
         this_val,
         args,
       ) raise {
         let n = @runtime.to_number(this_val)
-        let radix = if args.length() > 0 {
+        let radix = if args.length() > 0 && !(args[0] is Undefined) {
           @runtime.to_number(args[0]).to_int()
         } else {
           10
