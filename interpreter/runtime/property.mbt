@@ -1478,7 +1478,7 @@ pub fn Interpreter::set_property(
 }
 
 ///|
-fn Interpreter::set_computed_property(
+pub fn Interpreter::set_computed_property(
   self : Interpreter,
   obj : Value,
   key : Value,

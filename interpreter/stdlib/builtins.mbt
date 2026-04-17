@@ -2064,20 +2064,22 @@ fn make_realm_dollar262(ri : Interpreter) -> Value raise Error {
   let realm_props : Map[String, Value] = {}
   realm_props["global"] = ri.global_this
   realm_props["gc"] = @runtime.make_native_func(name="gc", fn(_a) { Undefined })
-  realm_props["evalScript"] = @runtime.make_native_func(name="evalScript", length=1, fn(
-    es_args,
-  ) raise {
-    let code = if es_args.length() > 0 {
-      match es_args[0] {
-        Value::String_(s) => s
-        _ => es_args[0].to_string()
+  realm_props["evalScript"] = @runtime.make_native_func(
+    name="evalScript",
+    length=1,
+    fn(es_args) raise {
+      let code = if es_args.length() > 0 {
+        match es_args[0] {
+          Value::String_(s) => s
+          _ => es_args[0].to_string()
+        }
+      } else {
+        ""
       }
-    } else {
-      ""
-    }
-    let prog = @parser.parse(code)
-    ri.run(prog.stmts)
-  })
+      let prog = @parser.parse(code)
+      ri.run(prog.stmts)
+    },
+  )
   realm_props["createRealm"] = @runtime.make_native_func(name="createRealm", fn(
     _a,
   ) raise {
