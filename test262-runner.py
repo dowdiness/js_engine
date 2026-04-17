@@ -315,8 +315,10 @@ def resolve_fixtures(test_path: str, source: str) -> list:
         try:
             with open(abs_path, "r", encoding="utf-8") as f:
                 fixture_src = f.read()
-        except Exception:
-            return
+        except OSError as e:
+            # Permission/encoding errors are real bugs, not module-resolution
+            # misses — surface them so they don't silently skew test attribution.
+            raise RuntimeError(f"Failed to read fixture {abs_path}: {e}") from e
         stack.add(abs_path)
         # Recurse into this fixture's own relative imports first
         for nested_spec in IMPORT_RELATIVE_RE.findall(fixture_src):
