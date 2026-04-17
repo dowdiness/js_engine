@@ -82,179 +82,182 @@ fn setup_number_builtins(env : Environment) -> Unit {
     setter: None,
   }
   let number_proto_props : Map[String, Value] = {}
-  number_proto_props["toFixed"] = @runtime.make_method_func("toFixed", 1, fn(
-    this_val,
-    args,
-  ) raise {
-    let n : Double = match this_val {
-      Value::Number(v) => v
-      Object(data) =>
-        if data.class_name == "Number" {
-          match data.bag.properties.get("[[NumberData]]") {
-            Some(Value::Number(v)) => v
-            _ =>
-              raise @errors.TypeError(
-                message="Number.prototype.toFixed requires that 'this' be a Number",
-              )
+  number_proto_props["toFixed"] = @runtime.make_method_func(
+    name="toFixed",
+    length=1,
+    fn(this_val, args) raise {
+      let n : Double = match this_val {
+        Value::Number(v) => v
+        Object(data) =>
+          if data.class_name == "Number" {
+            match data.bag.properties.get("[[NumberData]]") {
+              Some(Value::Number(v)) => v
+              _ =>
+                raise @errors.TypeError(
+                  message="Number.prototype.toFixed requires that 'this' be a Number",
+                )
+            }
+          } else {
+            raise @errors.TypeError(
+              message="Number.prototype.toFixed requires that 'this' be a Number",
+            )
           }
-        } else {
+        _ =>
           raise @errors.TypeError(
             message="Number.prototype.toFixed requires that 'this' be a Number",
           )
-        }
-      _ =>
-        raise @errors.TypeError(
-          message="Number.prototype.toFixed requires that 'this' be a Number",
-        )
-    }
-    let digits = if args.length() > 0 {
-      @runtime.to_number(args[0]).to_int()
-    } else {
-      0
-    }
-    if digits < 0 || digits > 100 {
-      raise @errors.RangeError(
-        message="toFixed() digits argument must be between 0 and 100",
-      )
-    }
-    if n.is_nan() {
-      return Value::String_("NaN")
-    }
-    if n.is_inf() {
-      return Value::String_(if n > 0.0 { "Infinity" } else { "-Infinity" })
-    }
-    // Simple implementation using multiplier approach
-    if digits == 0 {
-      let rounded = if n >= 0.0 {
-        (n + 0.5).floor()
-      } else {
-        -(-n + 0.5).floor()
       }
-      return Value::String_(rounded.to_int().to_string())
-    }
-    let multiplier = @math.pow(10.0, digits.to_double())
-    let shifted = n * multiplier
-    let rounded = if shifted >= 0.0 {
-      (shifted + 0.5).floor()
-    } else {
-      -(-shifted + 0.5).floor()
-    }
-    let rounded_abs = rounded.abs()
-    let int_part_abs = (rounded_abs / multiplier).floor()
-    let frac_abs = rounded_abs - int_part_abs * multiplier
-    let buf = StringBuilder::new()
-    if rounded < 0.0 || (n < 0.0 && rounded == 0.0) {
-      buf.write_string("-")
-    }
-    buf.write_string(int_part_abs.to_int().to_string())
-    buf.write_string(".")
-    let frac_str = frac_abs.to_int().to_string()
-    // Pad with leading zeros
-    for _i = 0; _i < digits - frac_str.length(); _i = _i + 1 {
-      buf.write_string("0")
-    }
-    buf.write_string(frac_str)
-    Value::String_(buf.to_string())
-  })
-  number_proto_props["toString"] = @runtime.make_method_func("toString", 1, fn(
-    this_val,
-    args,
-  ) raise {
-    // Validate this is a number
-    let n : Double = match this_val {
-      Value::Number(v) => v
-      Object(data) =>
-        if data.class_name == "Number" {
-          match data.bag.properties.get("[[NumberData]]") {
-            Some(Value::Number(v)) => v
-            _ =>
-              raise @errors.TypeError(
-                message="Number.prototype.toString requires that 'this' be a Number",
-              )
-          }
+      let digits = if args.length() > 0 {
+        @runtime.to_number(args[0]).to_int()
+      } else {
+        0
+      }
+      if digits < 0 || digits > 100 {
+        raise @errors.RangeError(
+          message="toFixed() digits argument must be between 0 and 100",
+        )
+      }
+      if n.is_nan() {
+        return Value::String_("NaN")
+      }
+      if n.is_inf() {
+        return Value::String_(if n > 0.0 { "Infinity" } else { "-Infinity" })
+      }
+      // Simple implementation using multiplier approach
+      if digits == 0 {
+        let rounded = if n >= 0.0 {
+          (n + 0.5).floor()
         } else {
+          -(-n + 0.5).floor()
+        }
+        return Value::String_(rounded.to_int().to_string())
+      }
+      let multiplier = @math.pow(10.0, digits.to_double())
+      let shifted = n * multiplier
+      let rounded = if shifted >= 0.0 {
+        (shifted + 0.5).floor()
+      } else {
+        -(-shifted + 0.5).floor()
+      }
+      let rounded_abs = rounded.abs()
+      let int_part_abs = (rounded_abs / multiplier).floor()
+      let frac_abs = rounded_abs - int_part_abs * multiplier
+      let buf = StringBuilder::new()
+      if rounded < 0.0 || (n < 0.0 && rounded == 0.0) {
+        buf.write_string("-")
+      }
+      buf.write_string(int_part_abs.to_int().to_string())
+      buf.write_string(".")
+      let frac_str = frac_abs.to_int().to_string()
+      // Pad with leading zeros
+      for _i = 0; _i < digits - frac_str.length(); _i = _i + 1 {
+        buf.write_string("0")
+      }
+      buf.write_string(frac_str)
+      Value::String_(buf.to_string())
+    },
+  )
+  number_proto_props["toString"] = @runtime.make_method_func(
+    name="toString",
+    length=1,
+    fn(this_val, args) raise {
+      // Validate this is a number
+      let n : Double = match this_val {
+        Value::Number(v) => v
+        Object(data) =>
+          if data.class_name == "Number" {
+            match data.bag.properties.get("[[NumberData]]") {
+              Some(Value::Number(v)) => v
+              _ =>
+                raise @errors.TypeError(
+                  message="Number.prototype.toString requires that 'this' be a Number",
+                )
+            }
+          } else {
+            raise @errors.TypeError(
+              message="Number.prototype.toString requires that 'this' be a Number",
+            )
+          }
+        _ =>
           raise @errors.TypeError(
             message="Number.prototype.toString requires that 'this' be a Number",
           )
-        }
-      _ =>
-        raise @errors.TypeError(
-          message="Number.prototype.toString requires that 'this' be a Number",
-        )
-    }
-    let radix = if args.length() > 0 && !(args[0] is Undefined) {
-      let r = @runtime.to_number(args[0]).to_int()
-      if r < 2 || r > 36 {
-        raise @errors.RangeError(
-          message="toString() radix must be between 2 and 36",
-        )
       }
-      r
-    } else {
-      10
-    }
-    if n.is_nan() {
-      return Value::String_("NaN")
-    }
-    if n.is_inf() {
-      return Value::String_(if n > 0.0 { "Infinity" } else { "-Infinity" })
-    }
-    if radix == 10 {
-      return Value::String_(n.to_string())
-    }
-    // Integer to string in given radix
-    let is_neg = n < 0.0
-    let mut val = n.abs().floor()
-    if val == 0.0 {
-      return Value::String_("0")
-    }
-    let chars : Array[Char] = []
-    let digits = "0123456789abcdefghijklmnopqrstuvwxyz"
-    let digit_chars = digits.to_array()
-    while val > 0.0 {
-      let remainder = (val % radix.to_double()).to_int()
-      chars.push(digit_chars[remainder])
-      val = (val / radix.to_double()).floor()
-    }
-    chars.rev_in_place()
-    let buf = StringBuilder::new()
-    if is_neg {
-      buf.write_string("-")
-    }
-    for c in chars {
-      buf.write_char(c)
-    }
-    Value::String_(buf.to_string())
-  })
-  number_proto_props["valueOf"] = @runtime.make_method_func("valueOf", 0, fn(
-    this_val,
-    _args,
-  ) raise {
-    match this_val {
-      Value::Number(_) => this_val
-      Object(data) =>
-        if data.class_name == "Number" {
-          match data.bag.properties.get("[[NumberData]]") {
-            Some(Value::Number(v)) => Value::Number(v)
-            _ =>
-              raise @errors.TypeError(
-                message="Number.prototype.valueOf requires that 'this' be a Number",
-              )
+      let radix = if args.length() > 0 && !(args[0] is Undefined) {
+        let r = @runtime.to_number(args[0]).to_int()
+        if r < 2 || r > 36 {
+          raise @errors.RangeError(
+            message="toString() radix must be between 2 and 36",
+          )
+        }
+        r
+      } else {
+        10
+      }
+      if n.is_nan() {
+        return Value::String_("NaN")
+      }
+      if n.is_inf() {
+        return Value::String_(if n > 0.0 { "Infinity" } else { "-Infinity" })
+      }
+      if radix == 10 {
+        return Value::String_(n.to_string())
+      }
+      // Integer to string in given radix
+      let is_neg = n < 0.0
+      let mut val = n.abs().floor()
+      if val == 0.0 {
+        return Value::String_("0")
+      }
+      let chars : Array[Char] = []
+      let digits = "0123456789abcdefghijklmnopqrstuvwxyz"
+      let digit_chars = digits.to_array()
+      while val > 0.0 {
+        let remainder = (val % radix.to_double()).to_int()
+        chars.push(digit_chars[remainder])
+        val = (val / radix.to_double()).floor()
+      }
+      chars.rev_in_place()
+      let buf = StringBuilder::new()
+      if is_neg {
+        buf.write_string("-")
+      }
+      for c in chars {
+        buf.write_char(c)
+      }
+      Value::String_(buf.to_string())
+    },
+  )
+  number_proto_props["valueOf"] = @runtime.make_method_func(
+    name="valueOf",
+    length=0,
+    fn(this_val, _args) raise {
+      match this_val {
+        Value::Number(_) => this_val
+        Object(data) =>
+          if data.class_name == "Number" {
+            match data.bag.properties.get("[[NumberData]]") {
+              Some(Value::Number(v)) => Value::Number(v)
+              _ =>
+                raise @errors.TypeError(
+                  message="Number.prototype.valueOf requires that 'this' be a Number",
+                )
+            }
+          } else {
+            raise @errors.TypeError(
+              message="Number.prototype.valueOf requires that 'this' be a Number",
+            )
           }
-        } else {
+        _ =>
           raise @errors.TypeError(
             message="Number.prototype.valueOf requires that 'this' be a Number",
           )
-        }
-      _ =>
-        raise @errors.TypeError(
-          message="Number.prototype.valueOf requires that 'this' be a Number",
-        )
-    }
-  })
+      }
+    },
+  )
   number_proto_props["toPrecision"] = @runtime.make_method_func(
-    "toPrecision",
-    1,
+    name="toPrecision",
+    length=1,
     fn(this_val, args) raise {
       let n = @runtime.to_number(this_val)
       // If no argument or undefined, just return toString result
@@ -367,8 +370,8 @@ fn setup_number_builtins(env : Environment) -> Unit {
     },
   )
   number_proto_props["toExponential"] = @runtime.make_method_func(
-    "toExponential",
-    1,
+    name="toExponential",
+    length=1,
     fn(this_val, args) raise {
       let n = @runtime.to_number(this_val)
       if n.is_nan() {
@@ -454,8 +457,8 @@ fn setup_number_builtins(env : Environment) -> Unit {
     },
   )
   number_proto_props["toLocaleString"] = @runtime.make_method_func(
-    "toLocaleString",
-    0,
+    name="toLocaleString",
+    length=0,
     fn(this_val, _args) raise {
       // Extract numeric value (same pattern as toFixed/toString)
       let n : Double = match this_val {
@@ -526,7 +529,7 @@ fn setup_number_builtins(env : Environment) -> Unit {
   number_props["POSITIVE_INFINITY"] = Value::Number(1.0 / 0.0)
   number_props["NEGATIVE_INFINITY"] = Value::Number(-1.0 / 0.0)
   number_props["NaN"] = Value::Number(0.0 / 0.0)
-  number_props["isNaN"] = @runtime.make_static_func_with_length("isNaN", 1, fn(
+  number_props["isNaN"] = @runtime.make_native_func(name="isNaN", length=1, fn(
     args,
   ) {
     let val = if args.length() > 0 { args[0] } else { Undefined }
@@ -535,9 +538,9 @@ fn setup_number_builtins(env : Environment) -> Unit {
       _ => Value::Bool(false) // Number.isNaN does NOT coerce
     }
   })
-  number_props["isFinite"] = @runtime.make_static_func_with_length(
-    "isFinite",
-    1,
+  number_props["isFinite"] = @runtime.make_native_func(
+    name="isFinite",
+    length=1,
     fn(args) {
       let val = if args.length() > 0 { args[0] } else { Undefined }
       match val {
@@ -546,9 +549,9 @@ fn setup_number_builtins(env : Environment) -> Unit {
       }
     },
   )
-  number_props["isInteger"] = @runtime.make_static_func_with_length(
-    "isInteger",
-    1,
+  number_props["isInteger"] = @runtime.make_native_func(
+    name="isInteger",
+    length=1,
     fn(args) {
       let val = if args.length() > 0 { args[0] } else { Undefined }
       match val {
@@ -562,9 +565,9 @@ fn setup_number_builtins(env : Environment) -> Unit {
       }
     },
   )
-  number_props["isSafeInteger"] = @runtime.make_static_func_with_length(
-    "isSafeInteger",
-    1,
+  number_props["isSafeInteger"] = @runtime.make_native_func(
+    name="isSafeInteger",
+    length=1,
     fn(args) {
       // Number.isSafeInteger() - check if value is a safe integer
       // Safe integers are integers in range -(2^53-1) to 2^53-1
@@ -690,7 +693,10 @@ fn setup_number_builtins(env : Environment) -> Unit {
 pub fn get_number_method(num_val : Value, prop : String) -> Value {
   match prop {
     "toFixed" =>
-      @runtime.make_method_func("toFixed", 1, fn(this_val, args) raise {
+      @runtime.make_method_func(name="toFixed", length=1, fn(
+        this_val,
+        args,
+      ) raise {
         let n = @runtime.to_number(this_val)
         let digits = if args.length() > 0 {
           @runtime.to_number(args[0]).to_int()
@@ -740,7 +746,10 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
         Value::String_(buf.to_string())
       })
     "toString" =>
-      @runtime.make_method_func("toString", 0, fn(this_val, args) raise {
+      @runtime.make_method_func(name="toString", length=0, fn(
+        this_val,
+        args,
+      ) raise {
         let n = @runtime.to_number(this_val)
         let radix = if args.length() > 0 {
           @runtime.to_number(args[0]).to_int()
@@ -785,11 +794,17 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
         Value::String_(buf.to_string())
       })
     "valueOf" =>
-      @runtime.make_method_func("valueOf", 0, fn(this_val, _args) raise {
+      @runtime.make_method_func(name="valueOf", length=0, fn(
+        this_val,
+        _args,
+      ) raise {
         Value::Number(@runtime.to_number(this_val))
       })
     "toPrecision" =>
-      @runtime.make_method_func("toPrecision", 1, fn(this_val, args) raise {
+      @runtime.make_method_func(name="toPrecision", length=1, fn(
+        this_val,
+        args,
+      ) raise {
         let n = @runtime.to_number(this_val)
         if args.length() == 0 {
           return Value::String_(n.to_string())
@@ -892,7 +907,10 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
         Value::String_(buf.to_string())
       })
     "toExponential" =>
-      @runtime.make_method_func("toExponential", 1, fn(this_val, args) raise {
+      @runtime.make_method_func(name="toExponential", length=1, fn(
+        this_val,
+        args,
+      ) raise {
         let n = @runtime.to_number(this_val)
         if n.is_nan() {
           return Value::String_("NaN")

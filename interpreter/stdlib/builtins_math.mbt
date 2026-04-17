@@ -9,7 +9,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
   math_props["LOG10E"] = Value::Number(0.4342944819032518)
   math_props["SQRT2"] = Value::Number(1.4142135623730951)
   math_props["SQRT1_2"] = Value::Number(0.7071067811865476)
-  math_props["abs"] = @runtime.make_static_func_with_length("abs", 1, fn(
+  math_props["abs"] = @runtime.make_native_func(name="abs", length=1, fn(
     args,
   ) raise {
     let n = if args.length() > 0 {
@@ -19,7 +19,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     }
     Value::Number(n.abs())
   })
-  math_props["floor"] = @runtime.make_static_func_with_length("floor", 1, fn(
+  math_props["floor"] = @runtime.make_native_func(name="floor", length=1, fn(
     args,
   ) raise {
     let n = if args.length() > 0 {
@@ -29,7 +29,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     }
     Value::Number(n.floor())
   })
-  math_props["ceil"] = @runtime.make_static_func_with_length("ceil", 1, fn(
+  math_props["ceil"] = @runtime.make_native_func(name="ceil", length=1, fn(
     args,
   ) raise {
     let n = if args.length() > 0 {
@@ -39,7 +39,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     }
     Value::Number(n.ceil())
   })
-  math_props["round"] = @runtime.make_static_func_with_length("round", 1, fn(
+  math_props["round"] = @runtime.make_native_func(name="round", length=1, fn(
     args,
   ) raise {
     let n = if args.length() > 0 {
@@ -58,7 +58,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
       }
     }
   })
-  math_props["trunc"] = @runtime.make_static_func_with_length("trunc", 1, fn(
+  math_props["trunc"] = @runtime.make_native_func(name="trunc", length=1, fn(
     args,
   ) raise {
     let n = if args.length() > 0 {
@@ -72,7 +72,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
       Value::Number(-(-n).floor())
     }
   })
-  math_props["sqrt"] = @runtime.make_static_func_with_length("sqrt", 1, fn(
+  math_props["sqrt"] = @runtime.make_native_func(name="sqrt", length=1, fn(
     args,
   ) raise {
     let n = if args.length() > 0 {
@@ -82,7 +82,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     }
     Value::Number(n.sqrt())
   })
-  math_props["pow"] = @runtime.make_static_func_with_length("pow", 2, fn(
+  math_props["pow"] = @runtime.make_native_func(name="pow", length=2, fn(
     args,
   ) raise {
     let base = if args.length() > 0 {
@@ -97,7 +97,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     }
     Value::Number(@math.pow(base, exp))
   })
-  math_props["min"] = @runtime.make_static_func_with_length("min", 2, fn(
+  math_props["min"] = @runtime.make_native_func(name="min", length=2, fn(
     args,
   ) raise {
     if args.length() == 0 {
@@ -115,7 +115,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     }
     Value::Number(result)
   })
-  math_props["max"] = @runtime.make_static_func_with_length("max", 2, fn(
+  math_props["max"] = @runtime.make_native_func(name="max", length=2, fn(
     args,
   ) raise {
     if args.length() == 0 {
@@ -134,7 +134,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     Value::Number(result)
   })
   let rng_state : Array[Int] = [123456789]
-  math_props["random"] = @runtime.make_static_func_with_length("random", 0, fn(
+  math_props["random"] = @runtime.make_native_func(name="random", length=0, fn(
     _args,
   ) {
     let mut s = rng_state[0]
@@ -145,7 +145,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     let normalized = (s & 0x7FFFFFFF).to_double() / 2147483648.0
     Value::Number(normalized)
   })
-  math_props["sign"] = @runtime.make_static_func_with_length("sign", 1, fn(
+  math_props["sign"] = @runtime.make_native_func(name="sign", length=1, fn(
     args,
   ) raise {
     let n = if args.length() > 0 {
@@ -163,7 +163,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
       Value::Number(n) // preserves +0/-0
     }
   })
-  math_props["log"] = @runtime.make_static_func_with_length("log", 1, fn(
+  math_props["log"] = @runtime.make_native_func(name="log", length=1, fn(
     args,
   ) raise {
     let n = if args.length() > 0 {
@@ -173,7 +173,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     }
     Value::Number(@math.ln(n))
   })
-  math_props["log2"] = @runtime.make_static_func_with_length("log2", 1, fn(
+  math_props["log2"] = @runtime.make_native_func(name="log2", length=1, fn(
     args,
   ) raise {
     let n = if args.length() > 0 {
@@ -183,7 +183,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     }
     Value::Number(@math.log2(n))
   })
-  math_props["log10"] = @runtime.make_static_func_with_length("log10", 1, fn(
+  math_props["log10"] = @runtime.make_native_func(name="log10", length=1, fn(
     args,
   ) raise {
     let n = if args.length() > 0 {
@@ -193,7 +193,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     }
     Value::Number(@math.log10(n))
   })
-  math_props["sin"] = @runtime.make_static_func_with_length("sin", 1, fn(
+  math_props["sin"] = @runtime.make_native_func(name="sin", length=1, fn(
     args,
   ) raise {
     let n = if args.length() > 0 {
@@ -203,7 +203,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     }
     Value::Number(@math.sin(n))
   })
-  math_props["cos"] = @runtime.make_static_func_with_length("cos", 1, fn(
+  math_props["cos"] = @runtime.make_native_func(name="cos", length=1, fn(
     args,
   ) raise {
     let n = if args.length() > 0 {
@@ -213,7 +213,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     }
     Value::Number(@math.cos(n))
   })
-  math_props["tan"] = @runtime.make_static_func_with_length("tan", 1, fn(
+  math_props["tan"] = @runtime.make_native_func(name="tan", length=1, fn(
     args,
   ) raise {
     let n = if args.length() > 0 {
@@ -223,7 +223,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     }
     Value::Number(@math.tan(n))
   })
-  math_props["asin"] = @runtime.make_static_func_with_length("asin", 1, fn(
+  math_props["asin"] = @runtime.make_native_func(name="asin", length=1, fn(
     args,
   ) raise {
     let n = if args.length() > 0 {
@@ -233,7 +233,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     }
     Value::Number(@math.asin(n))
   })
-  math_props["acos"] = @runtime.make_static_func_with_length("acos", 1, fn(
+  math_props["acos"] = @runtime.make_native_func(name="acos", length=1, fn(
     args,
   ) raise {
     let n = if args.length() > 0 {
@@ -243,7 +243,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     }
     Value::Number(@math.acos(n))
   })
-  math_props["atan"] = @runtime.make_static_func_with_length("atan", 1, fn(
+  math_props["atan"] = @runtime.make_native_func(name="atan", length=1, fn(
     args,
   ) raise {
     let n = if args.length() > 0 {
@@ -253,7 +253,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     }
     Value::Number(@math.atan(n))
   })
-  math_props["atan2"] = @runtime.make_static_func_with_length("atan2", 2, fn(
+  math_props["atan2"] = @runtime.make_native_func(name="atan2", length=2, fn(
     args,
   ) raise {
     let y = if args.length() > 0 {
@@ -268,7 +268,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     }
     Value::Number(@math.atan2(y, x))
   })
-  math_props["sinh"] = @runtime.make_static_func_with_length("sinh", 1, fn(
+  math_props["sinh"] = @runtime.make_native_func(name="sinh", length=1, fn(
     args,
   ) raise {
     let n = if args.length() > 0 {
@@ -278,7 +278,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     }
     Value::Number(@math.sinh(n))
   })
-  math_props["cosh"] = @runtime.make_static_func_with_length("cosh", 1, fn(
+  math_props["cosh"] = @runtime.make_native_func(name="cosh", length=1, fn(
     args,
   ) raise {
     let n = if args.length() > 0 {
@@ -288,7 +288,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     }
     Value::Number(@math.cosh(n))
   })
-  math_props["tanh"] = @runtime.make_static_func_with_length("tanh", 1, fn(
+  math_props["tanh"] = @runtime.make_native_func(name="tanh", length=1, fn(
     args,
   ) raise {
     let n = if args.length() > 0 {
@@ -298,7 +298,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     }
     Value::Number(@math.tanh(n))
   })
-  math_props["asinh"] = @runtime.make_static_func_with_length("asinh", 1, fn(
+  math_props["asinh"] = @runtime.make_native_func(name="asinh", length=1, fn(
     args,
   ) raise {
     let n = if args.length() > 0 {
@@ -308,7 +308,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     }
     Value::Number(@math.asinh(n))
   })
-  math_props["acosh"] = @runtime.make_static_func_with_length("acosh", 1, fn(
+  math_props["acosh"] = @runtime.make_native_func(name="acosh", length=1, fn(
     args,
   ) raise {
     let n = if args.length() > 0 {
@@ -318,7 +318,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     }
     Value::Number(@math.acosh(n))
   })
-  math_props["atanh"] = @runtime.make_static_func_with_length("atanh", 1, fn(
+  math_props["atanh"] = @runtime.make_native_func(name="atanh", length=1, fn(
     args,
   ) raise {
     let n = if args.length() > 0 {
@@ -328,7 +328,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     }
     Value::Number(@math.atanh(n))
   })
-  math_props["exp"] = @runtime.make_static_func_with_length("exp", 1, fn(
+  math_props["exp"] = @runtime.make_native_func(name="exp", length=1, fn(
     args,
   ) raise {
     let n = if args.length() > 0 {
@@ -338,7 +338,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     }
     Value::Number(@math.exp(n))
   })
-  math_props["expm1"] = @runtime.make_static_func_with_length("expm1", 1, fn(
+  math_props["expm1"] = @runtime.make_native_func(name="expm1", length=1, fn(
     args,
   ) raise {
     let n = if args.length() > 0 {
@@ -348,7 +348,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     }
     Value::Number(@math.expm1(n))
   })
-  math_props["log1p"] = @runtime.make_static_func_with_length("log1p", 1, fn(
+  math_props["log1p"] = @runtime.make_native_func(name="log1p", length=1, fn(
     args,
   ) raise {
     let n = if args.length() > 0 {
@@ -367,7 +367,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
       Value::Number(@math.ln(1.0 + n))
     }
   })
-  math_props["hypot"] = @runtime.make_static_func_with_length("hypot", 2, fn(
+  math_props["hypot"] = @runtime.make_native_func(name="hypot", length=2, fn(
     args,
   ) raise {
     if args.length() == 0 {
@@ -386,7 +386,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     }
     Value::Number(sum.sqrt())
   })
-  math_props["cbrt"] = @runtime.make_static_func_with_length("cbrt", 1, fn(
+  math_props["cbrt"] = @runtime.make_native_func(name="cbrt", length=1, fn(
     args,
   ) raise {
     let n = if args.length() > 0 {
@@ -401,7 +401,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
       Value::Number(sign * @math.pow(n.abs(), 1.0 / 3.0))
     }
   })
-  math_props["clz32"] = @runtime.make_static_func_with_length("clz32", 1, fn(
+  math_props["clz32"] = @runtime.make_native_func(name="clz32", length=1, fn(
     args,
   ) raise {
     let n = if args.length() > 0 { @runtime.to_number(args[0]) } else { 0.0 }
@@ -418,7 +418,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     }
     Value::Number(count.to_double())
   })
-  math_props["imul"] = @runtime.make_static_func_with_length("imul", 2, fn(
+  math_props["imul"] = @runtime.make_native_func(name="imul", length=2, fn(
     args,
   ) raise {
     let a = if args.length() > 0 { @runtime.to_number(args[0]) } else { 0.0 }
@@ -436,7 +436,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     }
     Value::Number(result.to_double())
   })
-  math_props["fround"] = @runtime.make_static_func_with_length("fround", 1, fn(
+  math_props["fround"] = @runtime.make_native_func(name="fround", length=1, fn(
     args,
   ) raise {
     let n = if args.length() > 0 {
@@ -453,47 +453,19 @@ fn setup_math_builtins(env : Environment) -> Unit {
     }
   })
   // Math.sumPrecise(items) - sums iterable of numbers
-  math_props["sumPrecise"] = @runtime.make_interp_method_func("sumPrecise", 1, fn(
-    interp,
-    _this_val,
-    args,
-  ) raise {
-    let items = if args.length() > 0 { args[0] } else { Undefined }
-    // items must be an iterable
-    let loc = @token.Loc::default()
-    let mut sum = 0.0
-    let mut count = 0
-    match items {
-      Array(arr_data) =>
-        for elem in arr_data.elements {
-          match elem {
-            Value::Number(n) => sum = sum + n
-            _ =>
-              raise @errors.TypeError(
-                message="Math.sumPrecise: non-number value in iterable",
-              )
-          }
-          count = count + 1
-        }
-      Object(_) => {
-        // Try to use Symbol.iterator
-        let iterator_sym = @runtime.get_iterator_symbol()
-        let iter_fn = interp.get_computed_property(
-          items,
-          Symbol(iterator_sym),
-          loc,
-        )
-        if @runtime.is_callable(iter_fn) {
-          let iterator = interp.call_value(iter_fn, items, [], loc)
-          let next_fn = interp.get_property(iterator, "next", loc)
-          while true {
-            let result = interp.call_value(next_fn, iterator, [], loc)
-            let done = interp.get_property(result, "done", loc)
-            if @runtime.is_truthy(done) {
-              break
-            }
-            let value = interp.get_property(result, "value", loc)
-            match value {
+  math_props["sumPrecise"] = @runtime.make_interp_method_func(
+    name="sumPrecise",
+    length=1,
+    fn(interp, _this_val, args) raise {
+      let items = if args.length() > 0 { args[0] } else { Undefined }
+      // items must be an iterable
+      let loc = @token.Loc::default()
+      let mut sum = 0.0
+      let mut count = 0
+      match items {
+        Array(arr_data) =>
+          for elem in arr_data.elements {
+            match elem {
               Value::Number(n) => sum = sum + n
               _ =>
                 raise @errors.TypeError(
@@ -502,20 +474,48 @@ fn setup_math_builtins(env : Environment) -> Unit {
             }
             count = count + 1
           }
-        } else {
+        Object(_) => {
+          // Try to use Symbol.iterator
+          let iterator_sym = @runtime.get_iterator_symbol()
+          let iter_fn = interp.get_computed_property(
+            items,
+            Symbol(iterator_sym),
+            loc,
+          )
+          if @runtime.is_callable(iter_fn) {
+            let iterator = interp.call_value(iter_fn, items, [], loc)
+            let next_fn = interp.get_property(iterator, "next", loc)
+            while true {
+              let result = interp.call_value(next_fn, iterator, [], loc)
+              let done = interp.get_property(result, "done", loc)
+              if @runtime.is_truthy(done) {
+                break
+              }
+              let value = interp.get_property(result, "value", loc)
+              match value {
+                Value::Number(n) => sum = sum + n
+                _ =>
+                  raise @errors.TypeError(
+                    message="Math.sumPrecise: non-number value in iterable",
+                  )
+              }
+              count = count + 1
+            }
+          } else {
+            raise @errors.TypeError(
+              message="Math.sumPrecise: argument is not iterable",
+            )
+          }
+        }
+        _ =>
           raise @errors.TypeError(
             message="Math.sumPrecise: argument is not iterable",
           )
-        }
       }
-      _ =>
-        raise @errors.TypeError(
-          message="Math.sumPrecise: argument is not iterable",
-        )
-    }
-    let _ = count
-    Value::Number(sum)
-  })
+      let _ = count
+      Value::Number(sum)
+    },
+  )
 
   // Set up descriptors for Math properties
   let math_descs : Map[String, PropDescriptor] = {}

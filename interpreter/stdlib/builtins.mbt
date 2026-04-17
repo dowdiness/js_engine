@@ -50,7 +50,7 @@ pub fn setup_builtins(
   // isNaN(value)
   env.def_builtin(
     "isNaN",
-    @runtime.make_static_func_with_length("isNaN", 1, fn(args) raise {
+    @runtime.make_native_func(name="isNaN", length=1, fn(args) raise {
       let val = if args.length() > 0 { args[0] } else { Undefined }
       let n = @runtime.to_number(val)
       Bool(n.is_nan())
@@ -60,7 +60,7 @@ pub fn setup_builtins(
   // isFinite(value)
   env.def_builtin(
     "isFinite",
-    @runtime.make_static_func_with_length("isFinite", 1, fn(args) raise {
+    @runtime.make_native_func(name="isFinite", length=1, fn(args) raise {
       let val = if args.length() > 0 { args[0] } else { Undefined }
       let n = @runtime.to_number(val)
       Bool(!n.is_nan() && !n.is_inf())
@@ -70,7 +70,7 @@ pub fn setup_builtins(
   // parseInt(string, radix?)
   env.def_builtin(
     "parseInt",
-    @runtime.make_static_func_with_length("parseInt", 2, fn(args) raise {
+    @runtime.make_native_func(name="parseInt", length=2, fn(args) raise {
       let str_val = if args.length() > 0 { args[0] } else { Undefined }
       let s = @runtime.to_js_string(str_val)
       let trimmed = trim_start(s)
@@ -130,7 +130,7 @@ pub fn setup_builtins(
   // parseFloat(string)
   env.def_builtin(
     "parseFloat",
-    @runtime.make_static_func_with_length("parseFloat", 1, fn(args) raise {
+    @runtime.make_native_func(name="parseFloat", length=1, fn(args) raise {
       let str_val = if args.length() > 0 { args[0] } else { Undefined }
       let s = @runtime.to_js_string(str_val)
       let trimmed = trim_start(s)
@@ -211,7 +211,7 @@ pub fn setup_builtins(
   // encodeURIComponent(string)
   env.def_builtin(
     "encodeURIComponent",
-    @runtime.make_static_func_with_length("encodeURIComponent", 1, fn(
+    @runtime.make_native_func(name="encodeURIComponent", length=1, fn(
       args,
     ) raise {
       let str = if args.length() > 0 {
@@ -226,7 +226,7 @@ pub fn setup_builtins(
   // decodeURIComponent(string) - decodes everything
   env.def_builtin(
     "decodeURIComponent",
-    @runtime.make_static_func_with_length("decodeURIComponent", 1, fn(
+    @runtime.make_native_func(name="decodeURIComponent", length=1, fn(
       args,
     ) raise {
       let str = if args.length() > 0 {
@@ -241,7 +241,7 @@ pub fn setup_builtins(
   // encodeURI(string)
   env.def_builtin(
     "encodeURI",
-    @runtime.make_static_func_with_length("encodeURI", 1, fn(args) raise {
+    @runtime.make_native_func(name="encodeURI", length=1, fn(args) raise {
       let str = if args.length() > 0 {
         @runtime.to_js_string(args[0])
       } else {
@@ -254,7 +254,7 @@ pub fn setup_builtins(
   // decodeURI(string) - preserves reserved characters (; , / ? : @ & = + $ #)
   env.def_builtin(
     "decodeURI",
-    @runtime.make_static_func_with_length("decodeURI", 1, fn(args) raise {
+    @runtime.make_native_func(name="decodeURI", length=1, fn(args) raise {
       let str = if args.length() > 0 {
         @runtime.to_js_string(args[0])
       } else {
@@ -267,7 +267,7 @@ pub fn setup_builtins(
   // escape(string) — Annex B
   env.def_builtin(
     "escape",
-    @runtime.make_static_func_with_length("escape", 1, fn(args) raise {
+    @runtime.make_native_func(name="escape", length=1, fn(args) raise {
       let str = if args.length() > 0 {
         @runtime.to_js_string(args[0])
       } else {
@@ -280,7 +280,7 @@ pub fn setup_builtins(
   // unescape(string) — Annex B
   env.def_builtin(
     "unescape",
-    @runtime.make_static_func_with_length("unescape", 1, fn(args) raise {
+    @runtime.make_native_func(name="unescape", length=1, fn(args) raise {
       let str = if args.length() > 0 {
         @runtime.to_js_string(args[0])
       } else {
@@ -322,9 +322,9 @@ pub fn setup_builtins(
           "prototype": string_proto,
           "name": Value::String_("String"),
           "length": Value::Number(1.0),
-          "fromCharCode": @runtime.make_static_func_with_length(
-            "fromCharCode",
-            1,
+          "fromCharCode": @runtime.make_native_func(
+            name="fromCharCode",
+            length=1,
             fn(args) raise {
               let buf = StringBuilder::new()
               for arg in args {
@@ -336,9 +336,9 @@ pub fn setup_builtins(
               Value::String_(buf.to_string())
             },
           ),
-          "fromCodePoint": @runtime.make_static_func_with_length(
-            "fromCodePoint",
-            1,
+          "fromCodePoint": @runtime.make_native_func(
+            name="fromCodePoint",
+            length=1,
             fn(args) raise {
               // String.fromCodePoint() - accepts Unicode code points (not code units)
               let buf = StringBuilder::new()
@@ -375,7 +375,7 @@ pub fn setup_builtins(
               Value::String_(buf.to_string())
             },
           ),
-          "raw": @runtime.make_static_func_with_length("raw", 1, fn(
+          "raw": @runtime.make_native_func(name="raw", length=1, fn(
             args,
           ) raise {
             // String.raw(template, ...substitutions)
@@ -568,58 +568,60 @@ pub fn setup_builtins(
 
   // Boolean constructor with prototype
   let boolean_proto_props : Map[String, Value] = {}
-  boolean_proto_props["toString"] = @runtime.make_method_func("toString", 0, fn(
-    this_val,
-    _args,
-  ) raise {
-    match this_val {
-      Value::Bool(b) => Value::String_(b.to_string())
-      Object(data) =>
-        if data.class_name == "Boolean" {
-          match data.bag.properties.get("[[BooleanData]]") {
-            Some(Value::Bool(b)) => Value::String_(b.to_string())
-            _ =>
-              raise @errors.TypeError(
-                message="Boolean.prototype.toString requires a Boolean",
-              )
+  boolean_proto_props["toString"] = @runtime.make_method_func(
+    name="toString",
+    length=0,
+    fn(this_val, _args) raise {
+      match this_val {
+        Value::Bool(b) => Value::String_(b.to_string())
+        Object(data) =>
+          if data.class_name == "Boolean" {
+            match data.bag.properties.get("[[BooleanData]]") {
+              Some(Value::Bool(b)) => Value::String_(b.to_string())
+              _ =>
+                raise @errors.TypeError(
+                  message="Boolean.prototype.toString requires a Boolean",
+                )
+            }
+          } else {
+            raise @errors.TypeError(
+              message="Boolean.prototype.toString requires a Boolean",
+            )
           }
-        } else {
+        _ =>
           raise @errors.TypeError(
             message="Boolean.prototype.toString requires a Boolean",
           )
-        }
-      _ =>
-        raise @errors.TypeError(
-          message="Boolean.prototype.toString requires a Boolean",
-        )
-    }
-  })
-  boolean_proto_props["valueOf"] = @runtime.make_method_func("valueOf", 0, fn(
-    this_val,
-    _args,
-  ) raise {
-    match this_val {
-      Value::Bool(b) => Value::Bool(b)
-      Object(data) =>
-        if data.class_name == "Boolean" {
-          match data.bag.properties.get("[[BooleanData]]") {
-            Some(Value::Bool(b)) => Value::Bool(b)
-            _ =>
-              raise @errors.TypeError(
-                message="Boolean.prototype.valueOf requires a Boolean",
-              )
+      }
+    },
+  )
+  boolean_proto_props["valueOf"] = @runtime.make_method_func(
+    name="valueOf",
+    length=0,
+    fn(this_val, _args) raise {
+      match this_val {
+        Value::Bool(b) => Value::Bool(b)
+        Object(data) =>
+          if data.class_name == "Boolean" {
+            match data.bag.properties.get("[[BooleanData]]") {
+              Some(Value::Bool(b)) => Value::Bool(b)
+              _ =>
+                raise @errors.TypeError(
+                  message="Boolean.prototype.valueOf requires a Boolean",
+                )
+            }
+          } else {
+            raise @errors.TypeError(
+              message="Boolean.prototype.valueOf requires a Boolean",
+            )
           }
-        } else {
+        _ =>
           raise @errors.TypeError(
             message="Boolean.prototype.valueOf requires a Boolean",
           )
-        }
-      _ =>
-        raise @errors.TypeError(
-          message="Boolean.prototype.valueOf requires a Boolean",
-        )
-    }
-  })
+      }
+    },
+  )
   // Boolean.prototype has [[BooleanData]] internal slot with value false
   boolean_proto_props["[[BooleanData]]"] = Value::Bool(false)
   let method_desc : PropDescriptor = {
@@ -732,9 +734,9 @@ pub fn setup_builtins(
   let error_ctor = env.get("Error") catch { _ => Undefined }
   match error_ctor {
     Object(error_data) => {
-      error_data.bag.properties["isError"] = @runtime.make_static_func_with_length(
-        "isError",
-        1,
+      error_data.bag.properties["isError"] = @runtime.make_native_func(
+        name="isError",
+        length=1,
         fn(args) {
           let arg = if args.length() > 0 { args[0] } else { Undefined }
           match arg {
@@ -949,149 +951,172 @@ pub fn setup_builtins(
       // Add RegExp.prototype methods
       // test() and exec() are placed on each instance by make_regexp_object
       // Here we add them to prototype so typeof checks work
-      regexp_proto_props["test"] = @runtime.make_method_func("test", 1, fn(
-        this_val,
-        args,
-      ) raise {
-        match this_val {
-          Object(data) => {
-            if data.class_name != "RegExp" {
+      regexp_proto_props["test"] = @runtime.make_method_func(
+        name="test",
+        length=1,
+        fn(this_val, args) raise {
+          match this_val {
+            Object(data) => {
+              if data.class_name != "RegExp" {
+                raise @errors.TypeError(
+                  message="Method RegExp.prototype.test called on incompatible receiver",
+                )
+              }
+              let str = if args.length() > 0 {
+                @runtime.to_js_string(args[0])
+              } else {
+                ""
+              }
+              let (pat, fl) = extract_regexp_source_flags(this_val)
+              let has_global = fl.contains("g")
+              let has_sticky = fl.contains("y")
+              let start = if has_sticky || has_global {
+                match data.bag.properties.get("lastIndex") {
+                  Some(li) => @runtime.to_int32(@runtime.to_number(li))
+                  _ => 0
+                }
+              } else {
+                0
+              }
+              let result = regex_search(pat, fl, str, start_pos=start) catch {
+                _ => None
+              }
+              match result {
+                Some(m) => {
+                  if has_sticky || has_global {
+                    data.bag.properties["lastIndex"] = Value::Number(
+                      m.end_.to_double(),
+                    )
+                  }
+                  Value::Bool(true)
+                }
+                None => {
+                  if has_sticky || has_global {
+                    data.bag.properties["lastIndex"] = Value::Number(0.0)
+                  }
+                  Value::Bool(false)
+                }
+              }
+            }
+            _ =>
               raise @errors.TypeError(
                 message="Method RegExp.prototype.test called on incompatible receiver",
               )
-            }
-            let str = if args.length() > 0 {
-              @runtime.to_js_string(args[0])
-            } else {
-              ""
-            }
-            let (pat, fl) = extract_regexp_source_flags(this_val)
-            let has_global = fl.contains("g")
-            let has_sticky = fl.contains("y")
-            let start = if has_sticky || has_global {
-              match data.bag.properties.get("lastIndex") {
-                Some(li) => @runtime.to_int32(@runtime.to_number(li))
-                _ => 0
-              }
-            } else {
-              0
-            }
-            let result = regex_search(pat, fl, str, start_pos=start) catch {
-              _ => None
-            }
-            match result {
-              Some(m) => {
-                if has_sticky || has_global {
-                  data.bag.properties["lastIndex"] = Value::Number(
-                    m.end_.to_double(),
-                  )
-                }
-                Value::Bool(true)
-              }
-              None => {
-                if has_sticky || has_global {
-                  data.bag.properties["lastIndex"] = Value::Number(0.0)
-                }
-                Value::Bool(false)
-              }
-            }
           }
-          _ =>
-            raise @errors.TypeError(
-              message="Method RegExp.prototype.test called on incompatible receiver",
-            )
-        }
-      })
-      regexp_proto_props["exec"] = @runtime.make_method_func("exec", 1, fn(
-        this_val,
-        args,
-      ) raise {
-        match this_val {
-          Object(data) => {
-            if data.class_name != "RegExp" {
+        },
+      )
+      regexp_proto_props["exec"] = @runtime.make_method_func(
+        name="exec",
+        length=1,
+        fn(this_val, args) raise {
+          match this_val {
+            Object(data) => {
+              if data.class_name != "RegExp" {
+                raise @errors.TypeError(
+                  message="Method RegExp.prototype.exec called on incompatible receiver",
+                )
+              }
+              let str = if args.length() > 0 {
+                @runtime.to_js_string(args[0])
+              } else {
+                ""
+              }
+              let (pat, fl) = extract_regexp_source_flags(this_val)
+              let has_global = fl.contains("g")
+              let has_sticky = fl.contains("y")
+              let start = if has_sticky || has_global {
+                match data.bag.properties.get("lastIndex") {
+                  Some(li) => @runtime.to_int32(@runtime.to_number(li))
+                  _ => 0
+                }
+              } else {
+                0
+              }
+              let result = regex_search(pat, fl, str, start_pos=start) catch {
+                _ => None
+              }
+              match result {
+                Some(m) => {
+                  if has_sticky || has_global {
+                    data.bag.properties["lastIndex"] = Value::Number(
+                      m.end_.to_double(),
+                    )
+                  }
+                  make_regex_match_array(m, str)
+                }
+                None => {
+                  if has_sticky || has_global {
+                    data.bag.properties["lastIndex"] = Value::Number(0.0)
+                  }
+                  Null
+                }
+              }
+            }
+            _ =>
               raise @errors.TypeError(
                 message="Method RegExp.prototype.exec called on incompatible receiver",
               )
-            }
-            let str = if args.length() > 0 {
-              @runtime.to_js_string(args[0])
-            } else {
-              ""
-            }
-            let (pat, fl) = extract_regexp_source_flags(this_val)
-            let has_global = fl.contains("g")
-            let has_sticky = fl.contains("y")
-            let start = if has_sticky || has_global {
-              match data.bag.properties.get("lastIndex") {
-                Some(li) => @runtime.to_int32(@runtime.to_number(li))
-                _ => 0
-              }
-            } else {
-              0
-            }
-            let result = regex_search(pat, fl, str, start_pos=start) catch {
-              _ => None
-            }
-            match result {
-              Some(m) => {
-                if has_sticky || has_global {
-                  data.bag.properties["lastIndex"] = Value::Number(
-                    m.end_.to_double(),
-                  )
-                }
-                make_regex_match_array(m, str)
-              }
-              None => {
-                if has_sticky || has_global {
-                  data.bag.properties["lastIndex"] = Value::Number(0.0)
-                }
-                Null
-              }
-            }
           }
-          _ =>
-            raise @errors.TypeError(
-              message="Method RegExp.prototype.exec called on incompatible receiver",
-            )
-        }
-      })
+        },
+      )
       // RegExp.prototype.compile (Annex B)
-      regexp_proto_props["compile"] = @runtime.make_method_func("compile", 2, fn(
-        this_val,
-        args,
-      ) raise {
-        match this_val {
-          Object(data) => {
-            if data.class_name != "RegExp" {
-              raise @errors.TypeError(
-                message="Method RegExp.prototype.compile called on incompatible receiver",
-              )
-            }
-            let pattern_arg = if args.length() > 0 {
-              args[0]
-            } else {
-              Undefined
-            }
-            let flags_arg = if args.length() > 1 { args[1] } else { Undefined }
-            let (source, flags) : (String, String) = match pattern_arg {
-              Object(re_data) =>
-                if re_data.class_name == "RegExp" {
-                  // If pattern is a RegExp and flags is not undefined, throw TypeError
-                  if !(flags_arg is Undefined) {
-                    raise @errors.TypeError(
-                      message="Cannot supply flags when constructing one RegExp from another",
-                    )
+      regexp_proto_props["compile"] = @runtime.make_method_func(
+        name="compile",
+        length=2,
+        fn(this_val, args) raise {
+          match this_val {
+            Object(data) => {
+              if data.class_name != "RegExp" {
+                raise @errors.TypeError(
+                  message="Method RegExp.prototype.compile called on incompatible receiver",
+                )
+              }
+              let pattern_arg = if args.length() > 0 {
+                args[0]
+              } else {
+                Undefined
+              }
+              let flags_arg = if args.length() > 1 {
+                args[1]
+              } else {
+                Undefined
+              }
+              let (source, flags) : (String, String) = match pattern_arg {
+                Object(re_data) =>
+                  if re_data.class_name == "RegExp" {
+                    // If pattern is a RegExp and flags is not undefined, throw TypeError
+                    if !(flags_arg is Undefined) {
+                      raise @errors.TypeError(
+                        message="Cannot supply flags when constructing one RegExp from another",
+                      )
+                    }
+                    let s = match re_data.bag.properties.get("source") {
+                      Some(Value::String_(s)) => s
+                      _ => ""
+                    }
+                    let f = match re_data.bag.properties.get("flags") {
+                      Some(Value::String_(f)) => f
+                      _ => ""
+                    }
+                    (s, f)
+                  } else {
+                    let s = @runtime.to_js_string(pattern_arg)
+                    let f = if flags_arg is Undefined {
+                      ""
+                    } else {
+                      @runtime.to_js_string(flags_arg)
+                    }
+                    (s, f)
                   }
-                  let s = match re_data.bag.properties.get("source") {
-                    Some(Value::String_(s)) => s
-                    _ => ""
+                Undefined => {
+                  let f = if flags_arg is Undefined {
+                    ""
+                  } else {
+                    @runtime.to_js_string(flags_arg)
                   }
-                  let f = match re_data.bag.properties.get("flags") {
-                    Some(Value::String_(f)) => f
-                    _ => ""
-                  }
-                  (s, f)
-                } else {
+                  ("(?:)", f)
+                }
+                _ => {
                   let s = @runtime.to_js_string(pattern_arg)
                   let f = if flags_arg is Undefined {
                     ""
@@ -1100,46 +1125,30 @@ pub fn setup_builtins(
                   }
                   (s, f)
                 }
-              Undefined => {
-                let f = if flags_arg is Undefined {
-                  ""
-                } else {
-                  @runtime.to_js_string(flags_arg)
-                }
-                ("(?:)", f)
               }
-              _ => {
-                let s = @runtime.to_js_string(pattern_arg)
-                let f = if flags_arg is Undefined {
-                  ""
-                } else {
-                  @runtime.to_js_string(flags_arg)
-                }
-                (s, f)
-              }
+              // Update the RegExp object in place
+              data.bag.properties["source"] = Value::String_(source)
+              data.bag.properties["flags"] = Value::String_(flags)
+              data.bag.properties["lastIndex"] = Value::Number(0.0)
+              // Update flag booleans
+              data.bag.properties["global"] = Bool(flags.contains("g"))
+              data.bag.properties["ignoreCase"] = Bool(flags.contains("i"))
+              data.bag.properties["multiline"] = Bool(flags.contains("m"))
+              data.bag.properties["dotAll"] = Bool(flags.contains("s"))
+              data.bag.properties["unicode"] = Bool(flags.contains("u"))
+              data.bag.properties["sticky"] = Bool(flags.contains("y"))
+              this_val
             }
-            // Update the RegExp object in place
-            data.bag.properties["source"] = Value::String_(source)
-            data.bag.properties["flags"] = Value::String_(flags)
-            data.bag.properties["lastIndex"] = Value::Number(0.0)
-            // Update flag booleans
-            data.bag.properties["global"] = Bool(flags.contains("g"))
-            data.bag.properties["ignoreCase"] = Bool(flags.contains("i"))
-            data.bag.properties["multiline"] = Bool(flags.contains("m"))
-            data.bag.properties["dotAll"] = Bool(flags.contains("s"))
-            data.bag.properties["unicode"] = Bool(flags.contains("u"))
-            data.bag.properties["sticky"] = Bool(flags.contains("y"))
-            this_val
+            _ =>
+              raise @errors.TypeError(
+                message="Method RegExp.prototype.compile called on incompatible receiver",
+              )
           }
-          _ =>
-            raise @errors.TypeError(
-              message="Method RegExp.prototype.compile called on incompatible receiver",
-            )
-        }
-      })
+        },
+      )
       regexp_proto_props["toString"] = @runtime.make_method_func(
-        "toString",
-        0,
+        name="toString",
+        length=0,
         fn(this_val, _args) {
           match this_val {
             Object(data) => {
@@ -1161,7 +1170,7 @@ pub fn setup_builtins(
       let regexp_proto_descs : Map[String, PropDescriptor] = {}
       // Helper: create a getter that reads a flag from the regexp's flags string
       fn make_flag_getter(flag_char : String) -> Value {
-        @runtime.make_method_func("get " + flag_char, 0, fn(
+        @runtime.make_method_func(name="get " + flag_char, length=0, fn(
           this_val,
           _args,
         ) raise {
@@ -1219,7 +1228,7 @@ pub fn setup_builtins(
         }
       }
       // flags getter - computes flags string from individual flag getters
-      let flags_getter = @runtime.make_method_func("get flags", 0, fn(
+      let flags_getter = @runtime.make_method_func(name="get flags", length=0, fn(
         this_val,
         _args,
       ) raise {
@@ -1283,31 +1292,32 @@ pub fn setup_builtins(
         setter: None,
       }
       // source getter
-      let source_getter = @runtime.make_method_func("get source", 0, fn(
-        this_val,
-        _args,
-      ) raise {
-        match this_val {
-          Object(data) => {
-            if data.class_name != "RegExp" {
-              if data.class_name == "Object" {
-                return Value::String_("(?:)")
+      let source_getter = @runtime.make_method_func(
+        name="get source",
+        length=0,
+        fn(this_val, _args) raise {
+          match this_val {
+            Object(data) => {
+              if data.class_name != "RegExp" {
+                if data.class_name == "Object" {
+                  return Value::String_("(?:)")
+                }
+                raise @errors.TypeError(
+                  message="Method get RegExp.prototype.source called on incompatible receiver",
+                )
               }
+              match data.bag.properties.get("source") {
+                Some(Value::String_(s)) => Value::String_(s)
+                _ => Value::String_("(?:)")
+              }
+            }
+            _ =>
               raise @errors.TypeError(
                 message="Method get RegExp.prototype.source called on incompatible receiver",
               )
-            }
-            match data.bag.properties.get("source") {
-              Some(Value::String_(s)) => Value::String_(s)
-              _ => Value::String_("(?:)")
-            }
           }
-          _ =>
-            raise @errors.TypeError(
-              message="Method get RegExp.prototype.source called on incompatible receiver",
-            )
-        }
-      })
+        },
+      )
       regexp_proto_props["source"] = Undefined
       regexp_proto_descs["source"] = {
         writable: false,
@@ -1341,8 +1351,8 @@ pub fn setup_builtins(
       // [Symbol.match]
       let match_sym = @runtime.get_match_symbol()
       regexp_sym_props[match_sym.id] = @runtime.make_method_func(
-        "[Symbol.match]",
-        1,
+        name="[Symbol.match]",
+        length=1,
         fn(this_val, args) {
           let str = if args.length() > 0 { args[0].to_string() } else { "" }
           let (pat, fl) = extract_regexp_source_flags(this_val)
@@ -1353,8 +1363,8 @@ pub fn setup_builtins(
       // [Symbol.matchAll]
       let match_all_sym = @runtime.get_matchall_symbol()
       regexp_sym_props[match_all_sym.id] = @runtime.make_method_func(
-        "[Symbol.matchAll]",
-        1,
+        name="[Symbol.matchAll]",
+        length=1,
         fn(this_val, args) {
           let str = if args.length() > 0 { args[0].to_string() } else { "" }
           let (pat, fl) = extract_regexp_source_flags(this_val)
@@ -1362,7 +1372,7 @@ pub fn setup_builtins(
           let matches = regex_search_all(pat, fl, str) catch { _ => [] }
           let index_ref : Ref[Int] = { val: 0 }
           let done_ref : Ref[Bool] = { val: false }
-          let next_method = @runtime.make_method_func("next", 0, fn(
+          let next_method = @runtime.make_method_func(name="next", length=0, fn(
             this_val,
             _args,
           ) raise {
@@ -1414,8 +1424,8 @@ pub fn setup_builtins(
       // [Symbol.search]
       let search_sym = @runtime.get_search_symbol()
       regexp_sym_props[search_sym.id] = @runtime.make_method_func(
-        "[Symbol.search]",
-        1,
+        name="[Symbol.search]",
+        length=1,
         fn(this_val, args) {
           let str = if args.length() > 0 { args[0].to_string() } else { "" }
           let (pat, fl) = extract_regexp_source_flags(this_val)
@@ -1426,8 +1436,8 @@ pub fn setup_builtins(
       // [Symbol.replace]
       let replace_sym = @runtime.get_replace_symbol()
       regexp_sym_props[replace_sym.id] = @runtime.make_method_func(
-        "[Symbol.replace]",
-        2,
+        name="[Symbol.replace]",
+        length=2,
         fn(this_val, args) {
           let str = if args.length() > 0 { args[0].to_string() } else { "" }
           let replace_val = if args.length() > 1 { args[1] } else { Undefined }
@@ -1444,8 +1454,8 @@ pub fn setup_builtins(
       // [Symbol.split]
       let split_sym = @runtime.get_split_symbol()
       regexp_sym_props[split_sym.id] = @runtime.make_method_func(
-        "[Symbol.split]",
-        0,
+        name="[Symbol.split]",
+        length=0,
         fn(this_val, args) raise {
           let str = if args.length() > 0 { args[0].to_string() } else { "" }
           let limit : Int64 = if args.length() > 1 {
@@ -1639,12 +1649,11 @@ pub fn setup_builtins(
 
   // Add Symbol.species getter to built-in constructors (Array, RegExp, Map, Set)
   // Per spec: static get [Symbol.species]() { return this; }
-  let species_getter = @runtime.make_method_func("get [Symbol.species]", 0, fn(
-    this_val,
-    _args,
-  ) {
-    this_val
-  })
+  let species_getter = @runtime.make_method_func(
+    name="get [Symbol.species]",
+    length=0,
+    fn(this_val, _args) { this_val },
+  )
   let species_desc : PropDescriptor = {
     writable: false,
     enumerable: false,
@@ -1668,8 +1677,8 @@ pub fn setup_builtins(
   // Add Function.prototype[Symbol.hasInstance]
   let has_instance_sym = @runtime.get_hasinstance_symbol()
   let has_instance_fn = @runtime.make_interp_method_func(
-    "[Symbol.hasInstance]",
-    1,
+    name="[Symbol.hasInstance]",
+    length=1,
     fn(interp, this_val, args) raise {
       // OrdinaryHasInstance(C, O)
       let o = if args.length() > 0 { args[0] } else { Undefined }
@@ -2052,8 +2061,8 @@ fn js_unescape(s : String) -> String {
 fn make_realm_dollar262(ri : Interpreter) -> Value raise Error {
   let realm_props : Map[String, Value] = {}
   realm_props["global"] = ri.global_this
-  realm_props["gc"] = @runtime.make_native_func("gc", fn(_a) { Undefined })
-  realm_props["evalScript"] = @runtime.make_native_func("evalScript", fn(
+  realm_props["gc"] = @runtime.make_native_func(name="gc", fn(_a) { Undefined })
+  realm_props["evalScript"] = @runtime.make_native_func(name="evalScript", fn(
     es_args,
   ) raise {
     let code = if es_args.length() > 0 {
@@ -2067,14 +2076,14 @@ fn make_realm_dollar262(ri : Interpreter) -> Value raise Error {
     let prog = @parser.parse(code)
     ri.run(prog.stmts)
   })
-  realm_props["createRealm"] = @runtime.make_native_func("createRealm", fn(
+  realm_props["createRealm"] = @runtime.make_native_func(name="createRealm", fn(
     _a,
   ) raise {
     let inner = (ri.stdlib_hooks.create_realm)()
     make_realm_dollar262(inner)
   })
   realm_props["detachArrayBuffer"] = @runtime.make_native_func(
-    "detachArrayBuffer",
+    name="detachArrayBuffer",
     fn(a) raise {
       if a.length() == 0 {
         raise @errors.TypeError(
@@ -2118,7 +2127,7 @@ pub fn setup_harness_builtins(
 ) -> Unit {
   // print() - host-provided print function for test262 harness compatibility.
   // Joins arguments with spaces and appends to output (like console.log).
-  let print_func = @runtime.make_native_func("print", fn(args) {
+  let print_func = @runtime.make_native_func(name="print", fn(args) {
     let parts : Array[String] = args.map(fn(a) { a.to_string() })
     output.push(parts.join(" "))
     Undefined
@@ -2128,23 +2137,27 @@ pub fn setup_harness_builtins(
   // $262.agent - stub object for agent/worker testing (Atomics/SharedArrayBuffer).
   // All methods throw because the engine has no multi-agent support.
   let agent_props : Map[String, Value] = {}
-  agent_props["start"] = @runtime.make_native_func("start", fn(_args) raise {
+  agent_props["start"] = @runtime.make_native_func(name="start", fn(
+    _args,
+  ) raise {
     raise @errors.TypeError(message="$262.agent.start is not supported")
   })
-  agent_props["broadcast"] = @runtime.make_native_func("broadcast", fn(
+  agent_props["broadcast"] = @runtime.make_native_func(name="broadcast", fn(
     _args,
   ) raise {
     raise @errors.TypeError(message="$262.agent.broadcast is not supported")
   })
-  agent_props["getReport"] = @runtime.make_native_func("getReport", fn(
+  agent_props["getReport"] = @runtime.make_native_func(name="getReport", fn(
     _args,
   ) raise {
     raise @errors.TypeError(message="$262.agent.getReport is not supported")
   })
-  agent_props["sleep"] = @runtime.make_native_func("sleep", fn(_args) raise {
+  agent_props["sleep"] = @runtime.make_native_func(name="sleep", fn(
+    _args,
+  ) raise {
     raise @errors.TypeError(message="$262.agent.sleep is not supported")
   })
-  agent_props["monotonicNow"] = @runtime.make_native_func("monotonicNow", fn(
+  agent_props["monotonicNow"] = @runtime.make_native_func(name="monotonicNow", fn(
     _args,
   ) raise {
     raise @errors.TypeError(message="$262.agent.monotonicNow is not supported")
@@ -2166,7 +2179,7 @@ pub fn setup_harness_builtins(
   let dollar262_props : Map[String, Value] = {}
   dollar262_props["global"] = global_this
   dollar262_props["agent"] = agent
-  dollar262_props["gc"] = @runtime.make_native_func("gc", fn(_args) {
+  dollar262_props["gc"] = @runtime.make_native_func(name="gc", fn(_args) {
     Undefined
   })
 
@@ -2175,8 +2188,8 @@ pub fn setup_harness_builtins(
   // closures (not InterpreterCallable) so that evalScript always runs in the
   // new realm regardless of which interpreter invokes the method.
   dollar262_props["createRealm"] = @runtime.make_interp_method_func(
-    "createRealm",
-    0,
+    name="createRealm",
+    length=0,
     fn(interp, _this_val, _args) raise {
       let new_interp = (interp.stdlib_hooks.create_realm)()
       make_realm_dollar262(new_interp)
@@ -2186,8 +2199,8 @@ pub fn setup_harness_builtins(
   // $262.evalScript(code) - parses and evaluates code as a script
   // in the current realm's global scope.
   dollar262_props["evalScript"] = @runtime.make_interp_method_func(
-    "evalScript",
-    0,
+    name="evalScript",
+    length=0,
     fn(interp, _this_val, args) raise {
       let code = if args.length() > 0 {
         match args[0] {
@@ -2202,7 +2215,7 @@ pub fn setup_harness_builtins(
     },
   )
   dollar262_props["detachArrayBuffer"] = @runtime.make_native_func(
-    "detachArrayBuffer",
+    name="detachArrayBuffer",
     fn(args) raise {
       if args.length() == 0 {
         raise @errors.TypeError(

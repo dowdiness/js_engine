@@ -1777,7 +1777,10 @@ pub fn make_regexp_object(
   props["dotAll"] = Bool(has_dotall)
   props["lastIndex"] = Value::Number(0.0)
   // test method
-  props["test"] = @runtime.make_method_func("test", 1, fn(this_val, args) {
+  props["test"] = @runtime.make_method_func(name="test", length=1, fn(
+    this_val,
+    args,
+  ) {
     let str = if args.length() > 0 { args[0].to_string() } else { "" }
     let start = if has_sticky || has_global {
       match this_val {
@@ -1817,7 +1820,10 @@ pub fn make_regexp_object(
     }
   })
   // exec method
-  props["exec"] = @runtime.make_method_func("exec", 1, fn(this_val, args) {
+  props["exec"] = @runtime.make_method_func(name="exec", length=1, fn(
+    this_val,
+    args,
+  ) {
     let str = if args.length() > 0 { args[0].to_string() } else { "" }
     let start = if has_sticky || has_global {
       match this_val {
@@ -2259,12 +2265,12 @@ pub fn get_regexp_string_iterator_proto() -> Value {
       }
       // Add [Symbol.iterator] that returns the iterator itself
       proto_sym_props[iterator_sym.id] = @runtime.make_method_func(
-        "[Symbol.iterator]",
-        0,
+        name="[Symbol.iterator]",
+        length=0,
         fn(this_val, _args) { this_val },
       )
       // Add a placeholder next method with correct name/length on prototype
-      proto_props["next"] = @runtime.make_method_func("next", 0, fn(
+      proto_props["next"] = @runtime.make_method_func(name="next", length=0, fn(
         _this_val,
         _args,
       ) raise {

@@ -6,7 +6,7 @@
 
 ///|
 fn make_get_own_property_names_func() -> Value {
-  @runtime.make_interp_static_func_with_length("getOwnPropertyNames", 1, fn(
+  @runtime.make_interp_static_func(name="getOwnPropertyNames", length=1, fn(
     interp,
     args,
   ) raise {
@@ -63,7 +63,7 @@ fn make_get_own_property_names_func() -> Value {
 
 ///|
 fn make_get_own_property_symbols_func(sym_state : SymbolState) -> Value {
-  @runtime.make_interp_static_func_with_length("getOwnPropertySymbols", 1, fn(
+  @runtime.make_interp_static_func(name="getOwnPropertySymbols", length=1, fn(
     interp,
     args,
   ) raise {
@@ -105,7 +105,7 @@ fn make_get_own_property_symbols_func(sym_state : SymbolState) -> Value {
 
 ///|
 fn make_get_own_property_descriptors_func() -> Value {
-  @runtime.make_static_func_with_length("getOwnPropertyDescriptors", 1, fn(
+  @runtime.make_native_func(name="getOwnPropertyDescriptors", length=1, fn(
     args,
   ) raise {
     let obj = if args.length() > 0 { args[0] } else { Undefined }
@@ -249,7 +249,7 @@ fn make_get_own_property_descriptors_func() -> Value {
 
 ///|
 fn make_define_property_func() -> Value {
-  @runtime.make_interp_static_func_with_length("defineProperty", 3, fn(
+  @runtime.make_interp_static_func(name="defineProperty", length=3, fn(
     interp,
     args,
   ) raise {
@@ -931,7 +931,7 @@ fn make_define_property_func() -> Value {
 
 ///|
 fn make_get_own_property_descriptor_func() -> Value {
-  @runtime.make_static_func_with_length("getOwnPropertyDescriptor", 2, fn(
+  @runtime.make_native_func(name="getOwnPropertyDescriptor", length=2, fn(
     args,
   ) raise {
     let obj = if args.length() > 0 { args[0] } else { Undefined }
@@ -1353,7 +1353,7 @@ fn make_get_own_property_descriptor_func() -> Value {
 
 ///|
 fn make_define_properties_func() -> Value {
-  @runtime.make_interp_static_func_with_length("defineProperties", 2, fn(
+  @runtime.make_interp_static_func(name="defineProperties", length=2, fn(
     interp,
     args,
   ) raise {

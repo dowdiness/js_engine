@@ -60,88 +60,91 @@ fn setup_symbol_builtins(env : Environment, symbols : SymbolState) -> Unit {
   // Symbol prototype
   let symbol_proto_props : Map[String, Value] = {}
   let symbol_proto_descs : Map[String, PropDescriptor] = {}
-  symbol_proto_props["toString"] = @runtime.make_method_func("toString", 0, fn(
-    this_val,
-    _args,
-  ) raise {
-    match this_val {
-      Value::Symbol(sym) =>
-        match sym.description {
-          Some(desc) => Value::String_("Symbol(\{desc})")
-          None => Value::String_("Symbol()")
-        }
-      Object(data) =>
-        // Support Symbol wrapper objects (e.g. Object(sym).toString())
-        match data.bag.properties.get("[[SymbolData]]") {
-          Some(Value::Symbol(sym)) =>
-            match sym.description {
-              Some(desc) => Value::String_("Symbol(\{desc})")
-              None => Value::String_("Symbol()")
-            }
-          _ =>
-            raise @errors.TypeError(
-              message="Symbol.prototype.toString requires a Symbol",
-            )
-        }
-      _ =>
-        raise @errors.TypeError(
-          message="Symbol.prototype.toString requires a Symbol",
-        )
-    }
-  })
+  symbol_proto_props["toString"] = @runtime.make_method_func(
+    name="toString",
+    length=0,
+    fn(this_val, _args) raise {
+      match this_val {
+        Value::Symbol(sym) =>
+          match sym.description {
+            Some(desc) => Value::String_("Symbol(\{desc})")
+            None => Value::String_("Symbol()")
+          }
+        Object(data) =>
+          // Support Symbol wrapper objects (e.g. Object(sym).toString())
+          match data.bag.properties.get("[[SymbolData]]") {
+            Some(Value::Symbol(sym)) =>
+              match sym.description {
+                Some(desc) => Value::String_("Symbol(\{desc})")
+                None => Value::String_("Symbol()")
+              }
+            _ =>
+              raise @errors.TypeError(
+                message="Symbol.prototype.toString requires a Symbol",
+              )
+          }
+        _ =>
+          raise @errors.TypeError(
+            message="Symbol.prototype.toString requires a Symbol",
+          )
+      }
+    },
+  )
   symbol_proto_descs["toString"] = method_desc
-  symbol_proto_props["valueOf"] = @runtime.make_method_func("valueOf", 0, fn(
-    this_val,
-    _args,
-  ) raise {
-    match this_val {
-      Symbol(_) => this_val
-      Object(data) =>
-        // Support Symbol wrapper objects
-        match data.bag.properties.get("[[SymbolData]]") {
-          Some(sym) => sym
-          _ =>
-            raise @errors.TypeError(
-              message="Symbol.prototype.valueOf requires a Symbol",
-            )
-        }
-      _ =>
-        raise @errors.TypeError(
-          message="Symbol.prototype.valueOf requires a Symbol",
-        )
-    }
-  })
+  symbol_proto_props["valueOf"] = @runtime.make_method_func(
+    name="valueOf",
+    length=0,
+    fn(this_val, _args) raise {
+      match this_val {
+        Symbol(_) => this_val
+        Object(data) =>
+          // Support Symbol wrapper objects
+          match data.bag.properties.get("[[SymbolData]]") {
+            Some(sym) => sym
+            _ =>
+              raise @errors.TypeError(
+                message="Symbol.prototype.valueOf requires a Symbol",
+              )
+          }
+        _ =>
+          raise @errors.TypeError(
+            message="Symbol.prototype.valueOf requires a Symbol",
+          )
+      }
+    },
+  )
   symbol_proto_descs["valueOf"] = method_desc
   // Symbol.prototype.description - getter per ES spec
   // Stored as a getter descriptor (not a plain value)
-  let description_getter = @runtime.make_method_func("get description", 0, fn(
-    this_val,
-    _args,
-  ) raise {
-    match this_val {
-      Value::Symbol(sym) =>
-        match sym.description {
-          Some(desc) => Value::String_(desc)
-          None => Undefined
-        }
-      Object(data) =>
-        match data.bag.properties.get("[[SymbolData]]") {
-          Some(Value::Symbol(sym)) =>
-            match sym.description {
-              Some(desc) => Value::String_(desc)
-              None => Undefined
-            }
-          _ =>
-            raise @errors.TypeError(
-              message="Symbol.prototype.description requires a Symbol",
-            )
-        }
-      _ =>
-        raise @errors.TypeError(
-          message="Symbol.prototype.description requires a Symbol",
-        )
-    }
-  })
+  let description_getter = @runtime.make_method_func(
+    name="get description",
+    length=0,
+    fn(this_val, _args) raise {
+      match this_val {
+        Value::Symbol(sym) =>
+          match sym.description {
+            Some(desc) => Value::String_(desc)
+            None => Undefined
+          }
+        Object(data) =>
+          match data.bag.properties.get("[[SymbolData]]") {
+            Some(Value::Symbol(sym)) =>
+              match sym.description {
+                Some(desc) => Value::String_(desc)
+                None => Undefined
+              }
+            _ =>
+              raise @errors.TypeError(
+                message="Symbol.prototype.description requires a Symbol",
+              )
+          }
+        _ =>
+          raise @errors.TypeError(
+            message="Symbol.prototype.description requires a Symbol",
+          )
+      }
+    },
+  )
   // Set a placeholder in properties so hasOwnProperty returns true
   symbol_proto_props["description"] = Undefined
   symbol_proto_descs["description"] = {
@@ -156,8 +159,8 @@ fn setup_symbol_builtins(env : Environment, symbols : SymbolState) -> Unit {
   let symbol_proto_sym_props : Map[Int, Value] = {}
   let symbol_proto_sym_descs : Map[Int, PropDescriptor] = {}
   let toprimitive_method = @runtime.make_method_func(
-    "[Symbol.toPrimitive]",
-    1,
+    name="[Symbol.toPrimitive]",
+    length=1,
     fn(this_val, _args) raise {
       match this_val {
         Symbol(_) => this_val
@@ -241,7 +244,7 @@ fn setup_symbol_builtins(env : Environment, symbols : SymbolState) -> Unit {
 
   // Symbol.for(key) - returns symbol from global registry
   // Spec: 1. Let stringKey be ? ToString(key).  (throws TypeError for symbols)
-  symbol_props["for"] = @runtime.make_static_func_with_length("for", 1, fn(
+  symbol_props["for"] = @runtime.make_native_func(name="for", length=1, fn(
     args,
   ) raise {
     let arg = if args.length() > 0 { args[0] } else { Undefined }
@@ -265,7 +268,7 @@ fn setup_symbol_builtins(env : Environment, symbols : SymbolState) -> Unit {
   symbol_descs["for"] = method_desc
 
   // Symbol.keyFor(sym) - returns key for symbol in global registry (O(1) via reverse lookup)
-  symbol_props["keyFor"] = @runtime.make_static_func_with_length("keyFor", 1, fn(
+  symbol_props["keyFor"] = @runtime.make_native_func(name="keyFor", length=1, fn(
     args,
   ) raise {
     let sym = if args.length() > 0 { args[0] } else { Undefined }

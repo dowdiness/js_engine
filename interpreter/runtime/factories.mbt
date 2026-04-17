@@ -204,216 +204,83 @@ pub fn get_symbol_proto() -> Value {
 }
 
 ///|
+/// Build a Function-object shell: `name` and `length` own-data properties
+/// with non-enumerable/non-writable/configurable descriptors, `[[Prototype]]`
+/// set to `Function.prototype`, `class_name: "Function"`. Shared by all
+/// `make_*_func` factories below.
+fn build_func_object(name : String, length : Int, callable : Callable) -> Value {
+  let nf_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
+  Object({
+    bag: {
+      properties: {
+        "name": String_(name),
+        "length": Number(length.to_double()),
+      },
+      symbol_properties: {},
+      descriptors: { "name": nf_desc, "length": nf_desc },
+      symbol_descriptors: {},
+    },
+    prototype: get_func_proto(),
+    callable: Some(callable),
+    class_name: "Function",
+    extensible: true,
+  })
+}
+
+///|
+/// Non-constructable native function: callback is `(Array[Value]) -> Value raise Error`.
+/// Use for built-in free functions and static methods.
 pub fn make_native_func(
-  name : String,
+  name~ : String,
+  length? : Int = 0,
   func : (Array[Value]) -> Value raise Error,
 ) -> Value {
-  let nf_desc : PropDescriptor = {
-    writable: false,
-    enumerable: false,
-    configurable: true,
-    getter: None,
-    setter: None,
-  }
-  Object({
-    bag: {
-      properties: { "name": String_(name), "length": Number(0.0) },
-      symbol_properties: {},
-      descriptors: { "name": nf_desc, "length": nf_desc },
-      symbol_descriptors: {},
-    },
-    prototype: get_func_proto(),
-    callable: Some(NonConstructableCallable(name, func)),
-    class_name: "Function",
-    extensible: true,
-  })
+  build_func_object(name, length, NonConstructableCallable(name, func))
 }
 
 ///|
-/// Helper to create a native function with explicit length property
-pub fn make_native_func_with_length(
-  name : String,
-  length : Int,
-  func : (Array[Value]) -> Value raise Error,
-) -> Value {
-  let nf_desc : PropDescriptor = {
-    writable: false,
-    enumerable: false,
-    configurable: true,
-    getter: None,
-    setter: None,
-  }
-  let props : Map[String, Value] = {}
-  props["length"] = Number(length.to_double())
-  props["name"] = String_(name)
-  Object({
-    bag: {
-      properties: props,
-      symbol_properties: {},
-      descriptors: { "name": nf_desc, "length": nf_desc },
-      symbol_descriptors: {},
-    },
-    prototype: get_func_proto(),
-    callable: Some(NonConstructableCallable(name, func)),
-    class_name: "Function",
-    extensible: true,
-  })
-}
-
-///|
-/// Helper to create a non-constructable native function (for static methods)
-pub fn make_static_func(
-  name : String,
-  func : (Array[Value]) -> Value raise Error,
-) -> Value {
-  let nf_desc : PropDescriptor = {
-    writable: false,
-    enumerable: false,
-    configurable: true,
-    getter: None,
-    setter: None,
-  }
-  Object({
-    bag: {
-      properties: { "name": String_(name), "length": Number(0.0) },
-      symbol_properties: {},
-      descriptors: { "name": nf_desc, "length": nf_desc },
-      symbol_descriptors: {},
-    },
-    prototype: get_func_proto(),
-    callable: Some(NonConstructableCallable(name, func)),
-    class_name: "Function",
-    extensible: true,
-  })
-}
-
-///|
-/// Helper to create a non-constructable native function with explicit length (for static methods)
-pub fn make_static_func_with_length(
-  name : String,
-  length : Int,
-  func : (Array[Value]) -> Value raise Error,
-) -> Value {
-  let nf_desc : PropDescriptor = {
-    writable: false,
-    enumerable: false,
-    configurable: true,
-    getter: None,
-    setter: None,
-  }
-  let props : Map[String, Value] = {}
-  props["length"] = Number(length.to_double())
-  props["name"] = String_(name)
-  Object({
-    bag: {
-      properties: props,
-      symbol_properties: {},
-      descriptors: { "name": nf_desc, "length": nf_desc },
-      symbol_descriptors: {},
-    },
-    prototype: get_func_proto(),
-    callable: Some(NonConstructableCallable(name, func)),
-    class_name: "Function",
-    extensible: true,
-  })
-}
-
-///|
-/// Helper to create a method function (MethodCallable) with name/length properties
+/// Method function: callback receives `this`. Signature
+/// `(Value, Array[Value]) -> Value raise Error`.
 pub fn make_method_func(
-  name : String,
-  length : Int,
+  name~ : String,
+  length? : Int = 0,
   func : (Value, Array[Value]) -> Value raise Error,
 ) -> Value {
-  let nf_desc : PropDescriptor = {
-    writable: false,
-    enumerable: false,
-    configurable: true,
-    getter: None,
-    setter: None,
-  }
-  let props : Map[String, Value] = {}
-  props["length"] = Number(length.to_double())
-  props["name"] = String_(name)
-  Object({
-    bag: {
-      properties: props,
-      symbol_properties: {},
-      descriptors: { "name": nf_desc, "length": nf_desc },
-      symbol_descriptors: {},
-    },
-    prototype: get_func_proto(),
-    callable: Some(MethodCallable(name, func)),
-    class_name: "Function",
-    extensible: true,
-  })
+  build_func_object(name, length, MethodCallable(name, func))
 }
 
 ///|
-/// Helper to create an interpreter method function (InterpreterCallable) with name/length properties
+/// Interpreter-aware method function: callback receives interpreter and `this`.
+/// Signature `(Interpreter, Value, Array[Value]) -> Value raise Error`.
 pub fn make_interp_method_func(
-  name : String,
-  length : Int,
+  name~ : String,
+  length? : Int = 0,
   func : (Interpreter, Value, Array[Value]) -> Value raise Error,
 ) -> Value {
-  let nf_desc : PropDescriptor = {
-    writable: false,
-    enumerable: false,
-    configurable: true,
-    getter: None,
-    setter: None,
-  }
-  let props : Map[String, Value] = {}
-  props["length"] = Number(length.to_double())
-  props["name"] = String_(name)
-  Object({
-    bag: {
-      properties: props,
-      symbol_properties: {},
-      descriptors: { "name": nf_desc, "length": nf_desc },
-      symbol_descriptors: {},
-    },
-    prototype: get_func_proto(),
-    callable: Some(InterpreterCallable(name, func)),
-    class_name: "Function",
-    extensible: true,
-  })
+  build_func_object(name, length, InterpreterCallable(name, func))
 }
 
 ///|
-/// Helper to create a non-constructable interpreter-aware static function with explicit length.
-/// The callback receives the Interpreter as its first argument; this_val is ignored.
-pub fn make_interp_static_func_with_length(
-  name : String,
-  length : Int,
+/// Interpreter-aware static function: callback receives interpreter but not `this`.
+/// Signature `(Interpreter, Array[Value]) -> Value raise Error`.
+pub fn make_interp_static_func(
+  name~ : String,
+  length? : Int = 0,
   func : (Interpreter, Array[Value]) -> Value raise Error,
 ) -> Value {
-  let nf_desc : PropDescriptor = {
-    writable: false,
-    enumerable: false,
-    configurable: true,
-    getter: None,
-    setter: None,
-  }
-  let props : Map[String, Value] = {}
-  props["length"] = Number(length.to_double())
-  props["name"] = String_(name)
-  Object({
-    bag: {
-      properties: props,
-      symbol_properties: {},
-      descriptors: { "name": nf_desc, "length": nf_desc },
-      symbol_descriptors: {},
-    },
-    prototype: get_func_proto(),
-    callable: Some(
-      InterpreterCallable(name, fn(interp, _this, args) raise {
-        func(interp, args)
-      }),
-    ),
-    class_name: "Function",
-    extensible: true,
-  })
+  build_func_object(
+    name,
+    length,
+    InterpreterCallable(name, fn(interp, _this, args) raise {
+      func(interp, args)
+    }),
+  )
 }
 
 ///|

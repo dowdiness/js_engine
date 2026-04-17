@@ -8,7 +8,7 @@
 
 ///|
 fn make_freeze_func() -> Value {
-  @runtime.make_static_func_with_length("freeze", 1, fn(args) {
+  @runtime.make_native_func(name="freeze", length=1, fn(args) {
     let obj = if args.length() > 0 { args[0] } else { Undefined }
     match obj {
       Object(data) => {
@@ -66,7 +66,7 @@ fn make_freeze_func() -> Value {
 
 ///|
 fn make_seal_func() -> Value {
-  @runtime.make_static_func_with_length("seal", 1, fn(args) {
+  @runtime.make_native_func(name="seal", length=1, fn(args) {
     let obj = if args.length() > 0 { args[0] } else { Undefined }
     match obj {
       Object(data) => {
@@ -130,7 +130,7 @@ fn make_seal_func() -> Value {
 
 ///|
 fn make_prevent_extensions_func() -> Value {
-  @runtime.make_interp_static_func_with_length("preventExtensions", 1, fn(
+  @runtime.make_interp_static_func(name="preventExtensions", length=1, fn(
     interp,
     args,
   ) raise {
@@ -151,7 +151,7 @@ fn make_prevent_extensions_func() -> Value {
 
 ///|
 fn make_is_frozen_func() -> Value {
-  @runtime.make_static_func_with_length("isFrozen", 1, fn(args) {
+  @runtime.make_native_func(name="isFrozen", length=1, fn(args) {
     let obj = if args.length() > 0 { args[0] } else { Undefined }
     match obj {
       Object(data) => {
@@ -174,7 +174,7 @@ fn make_is_frozen_func() -> Value {
 
 ///|
 fn make_is_sealed_func() -> Value {
-  @runtime.make_static_func_with_length("isSealed", 1, fn(args) {
+  @runtime.make_native_func(name="isSealed", length=1, fn(args) {
     let obj = if args.length() > 0 { args[0] } else { Undefined }
     match obj {
       Object(data) => {
@@ -197,7 +197,7 @@ fn make_is_sealed_func() -> Value {
 
 ///|
 fn make_is_extensible_func() -> Value {
-  @runtime.make_interp_static_func_with_length("isExtensible", 1, fn(
+  @runtime.make_interp_static_func(name="isExtensible", length=1, fn(
     interp,
     args,
   ) raise {
@@ -213,7 +213,7 @@ fn make_is_extensible_func() -> Value {
 
 ///|
 fn make_is_func() -> Value {
-  @runtime.make_static_func_with_length("is", 2, fn(args) {
+  @runtime.make_native_func(name="is", length=2, fn(args) {
     // Object.is() - SameValue algorithm
     let x = if args.length() > 0 { args[0] } else { Undefined }
     let y = if args.length() > 1 { args[1] } else { Undefined }
@@ -223,7 +223,7 @@ fn make_is_func() -> Value {
 
 ///|
 fn make_from_entries_func() -> Value {
-  @runtime.make_static_func_with_length("fromEntries", 1, fn(args) raise {
+  @runtime.make_native_func(name="fromEntries", length=1, fn(args) raise {
     // Object.fromEntries() - create object from iterable of key-value pairs
     let iterable = if args.length() > 0 { args[0] } else { Undefined }
     let properties : Map[String, Value] = {}
@@ -287,7 +287,7 @@ fn make_from_entries_func() -> Value {
 
 ///|
 fn make_group_by_func() -> Value {
-  @runtime.make_interp_static_func_with_length("groupBy", 2, fn(
+  @runtime.make_interp_static_func(name="groupBy", length=2, fn(
     interp,
     args,
   ) raise {
@@ -342,7 +342,7 @@ fn make_group_by_func() -> Value {
 
 ///|
 fn make_has_own_func() -> Value {
-  @runtime.make_interp_static_func_with_length("hasOwn", 2, fn(
+  @runtime.make_interp_static_func(name="hasOwn", length=2, fn(
     interp,
     args,
   ) raise {

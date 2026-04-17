@@ -161,7 +161,7 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
   let wm_proto_props : Map[String, Value] = {}
 
   // WeakMap.prototype.get(key)
-  wm_proto_props["get"] = @runtime.make_method_func("get", 1, fn(
+  wm_proto_props["get"] = @runtime.make_method_func(name="get", length=1, fn(
     this_val,
     args,
   ) raise {
@@ -196,7 +196,7 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
   })
 
   // WeakMap.prototype.set(key, value)
-  wm_proto_props["set"] = @runtime.make_method_func("set", 2, fn(
+  wm_proto_props["set"] = @runtime.make_method_func(name="set", length=2, fn(
     this_val,
     args,
   ) raise {
@@ -243,7 +243,7 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
   })
 
   // WeakMap.prototype.has(key)
-  wm_proto_props["has"] = @runtime.make_method_func("has", 1, fn(
+  wm_proto_props["has"] = @runtime.make_method_func(name="has", length=1, fn(
     this_val,
     args,
   ) raise {
@@ -278,92 +278,94 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
   })
 
   // WeakMap.prototype.delete(key)
-  wm_proto_props["delete"] = @runtime.make_method_func("delete", 1, fn(
-    this_val,
-    args,
-  ) raise {
-    match this_val {
-      Object(data) =>
-        match get_weakmap_id(data) {
-          Some(id) => {
-            let key = if args.length() > 0 { args[0] } else { Undefined }
-            match weakmap_storage.get(id) {
-              Some(entries) => {
-                for i = 0; i < entries.length(); i = i + 1 {
-                  let (k, _) = entries[i]
-                  if weak_key_equal(k, key) {
-                    let _ = entries.remove(i)
-                    return Value::Bool(true)
+  wm_proto_props["delete"] = @runtime.make_method_func(
+    name="delete",
+    length=1,
+    fn(this_val, args) raise {
+      match this_val {
+        Object(data) =>
+          match get_weakmap_id(data) {
+            Some(id) => {
+              let key = if args.length() > 0 { args[0] } else { Undefined }
+              match weakmap_storage.get(id) {
+                Some(entries) => {
+                  for i = 0; i < entries.length(); i = i + 1 {
+                    let (k, _) = entries[i]
+                    if weak_key_equal(k, key) {
+                      let _ = entries.remove(i)
+                      return Value::Bool(true)
+                    }
                   }
+                  Value::Bool(false)
                 }
-                Value::Bool(false)
+                None => Value::Bool(false)
               }
-              None => Value::Bool(false)
             }
+            None =>
+              raise @errors.TypeError(
+                message="Method WeakMap.prototype.delete called on incompatible receiver",
+              )
           }
-          None =>
-            raise @errors.TypeError(
-              message="Method WeakMap.prototype.delete called on incompatible receiver",
-            )
-        }
-      _ =>
-        raise @errors.TypeError(
-          message="Method WeakMap.prototype.delete called on incompatible receiver",
-        )
-    }
-  })
+        _ =>
+          raise @errors.TypeError(
+            message="Method WeakMap.prototype.delete called on incompatible receiver",
+          )
+      }
+    },
+  )
 
   // WeakMap.prototype.getOrInsert(key, value)
-  wm_proto_props["getOrInsert"] = @runtime.make_method_func("getOrInsert", 2, fn(
-    this_val,
-    args,
-  ) raise {
-    match this_val {
-      Object(data) =>
-        match get_weakmap_id(data) {
-          Some(id) => {
-            let key = if args.length() > 0 { args[0] } else { Undefined }
-            let value = if args.length() > 1 { args[1] } else { Undefined }
-            if !is_valid_weak_key(key) {
-              raise @errors.TypeError(
-                message="Invalid value used as weak map key",
-              )
-            }
-            match weakmap_storage.get(id) {
-              Some(entries) => {
-                // If key exists, return existing value
-                for i = 0; i < entries.length(); i = i + 1 {
-                  let (k, v) = entries[i]
-                  if weak_key_equal(k, key) {
-                    return v
+  wm_proto_props["getOrInsert"] = @runtime.make_method_func(
+    name="getOrInsert",
+    length=2,
+    fn(this_val, args) raise {
+      match this_val {
+        Object(data) =>
+          match get_weakmap_id(data) {
+            Some(id) => {
+              let key = if args.length() > 0 { args[0] } else { Undefined }
+              let value = if args.length() > 1 { args[1] } else { Undefined }
+              if !is_valid_weak_key(key) {
+                raise @errors.TypeError(
+                  message="Invalid value used as weak map key",
+                )
+              }
+              match weakmap_storage.get(id) {
+                Some(entries) => {
+                  // If key exists, return existing value
+                  for i = 0; i < entries.length(); i = i + 1 {
+                    let (k, v) = entries[i]
+                    if weak_key_equal(k, key) {
+                      return v
+                    }
                   }
+                  // Key not found, insert and return value
+                  entries.push((key, value))
+                  value
                 }
-                // Key not found, insert and return value
-                entries.push((key, value))
-                value
-              }
-              None => {
-                weakmap_storage[id] = [(key, value)]
-                value
+                None => {
+                  weakmap_storage[id] = [(key, value)]
+                  value
+                }
               }
             }
+            None =>
+              raise @errors.TypeError(
+                message="Method WeakMap.prototype.getOrInsert called on incompatible receiver",
+              )
           }
-          None =>
-            raise @errors.TypeError(
-              message="Method WeakMap.prototype.getOrInsert called on incompatible receiver",
-            )
-        }
-      _ =>
-        raise @errors.TypeError(
-          message="Method WeakMap.prototype.getOrInsert called on incompatible receiver",
-        )
-    }
-  })
+        _ =>
+          raise @errors.TypeError(
+            message="Method WeakMap.prototype.getOrInsert called on incompatible receiver",
+          )
+      }
+    },
+  )
 
   // WeakMap.prototype.getOrInsertComputed(key, callbackfn)
   wm_proto_props["getOrInsertComputed"] = @runtime.make_interp_method_func(
-    "getOrInsertComputed",
-    2,
+    name="getOrInsertComputed",
+    length=2,
     fn(interp, this_val, args) raise {
       match this_val {
         Object(data) =>
@@ -501,7 +503,7 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
   weakmap_prototype_ref.val = Some(wm_proto)
 
   // WeakMap constructor
-  let wm_ctor = @runtime.make_interp_method_func("WeakMap", 0, fn(
+  let wm_ctor = @runtime.make_interp_method_func(name="WeakMap", length=0, fn(
     interp,
     _this_val,
     args,
@@ -639,7 +641,7 @@ fn setup_weakset_builtins(env : Environment) -> Unit {
   let ws_proto_props : Map[String, Value] = {}
 
   // WeakSet.prototype.add(value)
-  ws_proto_props["add"] = @runtime.make_method_func("add", 1, fn(
+  ws_proto_props["add"] = @runtime.make_method_func(name="add", length=1, fn(
     this_val,
     args,
   ) raise {
@@ -680,7 +682,7 @@ fn setup_weakset_builtins(env : Environment) -> Unit {
   })
 
   // WeakSet.prototype.has(value)
-  ws_proto_props["has"] = @runtime.make_method_func("has", 1, fn(
+  ws_proto_props["has"] = @runtime.make_method_func(name="has", length=1, fn(
     this_val,
     args,
   ) raise {
@@ -714,39 +716,40 @@ fn setup_weakset_builtins(env : Environment) -> Unit {
   })
 
   // WeakSet.prototype.delete(value)
-  ws_proto_props["delete"] = @runtime.make_method_func("delete", 1, fn(
-    this_val,
-    args,
-  ) raise {
-    match this_val {
-      Object(data) =>
-        match get_weakset_id(data) {
-          Some(id) => {
-            let value = if args.length() > 0 { args[0] } else { Undefined }
-            match weakset_storage.get(id) {
-              Some(values) => {
-                for i = 0; i < values.length(); i = i + 1 {
-                  if weak_key_equal(values[i], value) {
-                    let _ = values.remove(i)
-                    return Value::Bool(true)
+  ws_proto_props["delete"] = @runtime.make_method_func(
+    name="delete",
+    length=1,
+    fn(this_val, args) raise {
+      match this_val {
+        Object(data) =>
+          match get_weakset_id(data) {
+            Some(id) => {
+              let value = if args.length() > 0 { args[0] } else { Undefined }
+              match weakset_storage.get(id) {
+                Some(values) => {
+                  for i = 0; i < values.length(); i = i + 1 {
+                    if weak_key_equal(values[i], value) {
+                      let _ = values.remove(i)
+                      return Value::Bool(true)
+                    }
                   }
+                  Value::Bool(false)
                 }
-                Value::Bool(false)
+                None => Value::Bool(false)
               }
-              None => Value::Bool(false)
             }
+            None =>
+              raise @errors.TypeError(
+                message="Method WeakSet.prototype.delete called on incompatible receiver",
+              )
           }
-          None =>
-            raise @errors.TypeError(
-              message="Method WeakSet.prototype.delete called on incompatible receiver",
-            )
-        }
-      _ =>
-        raise @errors.TypeError(
-          message="Method WeakSet.prototype.delete called on incompatible receiver",
-        )
-    }
-  })
+        _ =>
+          raise @errors.TypeError(
+            message="Method WeakSet.prototype.delete called on incompatible receiver",
+          )
+      }
+    },
+  )
 
   // Create descriptor map for WeakSet prototype methods
   let ws_proto_descs : Map[String, PropDescriptor] = {}
@@ -789,7 +792,7 @@ fn setup_weakset_builtins(env : Environment) -> Unit {
   weakset_prototype_ref.val = Some(ws_proto)
 
   // WeakSet constructor
-  let ws_ctor = @runtime.make_interp_method_func("WeakSet", 0, fn(
+  let ws_ctor = @runtime.make_interp_method_func(name="WeakSet", length=0, fn(
     interp,
     _this_val,
     args,

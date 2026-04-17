@@ -67,7 +67,7 @@ pub fn Interpreter::get_property(
           None => Undefined
         }
       } else if prop == "toString" {
-        make_native_func("toString", fn(_args) {
+        make_native_func(name="toString", fn(_args) {
           match sym.description {
             Some(desc) => String_("Symbol(\{desc})")
             None => String_("Symbol()")
@@ -304,7 +304,7 @@ fn Interpreter::get_property_of_object(
           } else if prop == "bind" {
             let target = obj
             let target_length = get_func_length(callable)
-            return make_native_func("bind", fn(args) {
+            return make_native_func(name="bind", fn(args) {
               let bind_this = if args.length() > 0 {
                 args[0]
               } else {
@@ -395,7 +395,9 @@ fn Interpreter::get_property_of_object(
               ClassConstructor({ name: n, .. }) =>
                 "class " + n + " { [native code] }"
             }
-            return make_native_func("toString", fn(_args) { String_(func_str) })
+            return make_native_func(name="toString", fn(_args) {
+              String_(func_str)
+            })
           } else if prop == "prototype" {
             // Only constructable functions have a prototype property
             // Non-constructable (arrow functions, bound functions, etc.) return undefined
@@ -440,7 +442,10 @@ fn Interpreter::get_property_of_object(
       // Objects with null prototype (Object.create(null)) should NOT have these
       if !(data.prototype is Null && data.callable is None) {
         if prop == "hasOwnProperty" {
-          return make_method_func("hasOwnProperty", 1, fn(this_val, args) {
+          return make_method_func(name="hasOwnProperty", length=1, fn(
+            this_val,
+            args,
+          ) {
             let key_val = if args.length() > 0 { args[0] } else { Undefined }
             match this_val {
               Object(d) =>
@@ -472,7 +477,7 @@ fn Interpreter::get_property_of_object(
           })
         }
         if prop == "toString" {
-          return make_native_func("toString", fn(_args) {
+          return make_native_func(name="toString", fn(_args) {
             String_("[object Object]")
           })
         }
@@ -614,29 +619,30 @@ pub fn Interpreter::get_computed_property(
                 if data.class_name == "String" {
                   match data.bag.properties.get("[[StringData]]") {
                     Some(String_(_)) =>
-                      return make_method_func("[Symbol.iterator]", 0, fn(
-                        this_val,
-                        _args,
-                      ) raise {
-                        let str = match this_val {
-                          String_(sv) => sv
-                          Object(d) =>
-                            if d.class_name == "String" {
-                              match d.bag.properties.get("[[StringData]]") {
-                                Some(String_(sv)) => sv
-                                _ => this_val.to_string()
+                      return make_method_func(
+                        name="[Symbol.iterator]",
+                        length=0,
+                        fn(this_val, _args) raise {
+                          let str = match this_val {
+                            String_(sv) => sv
+                            Object(d) =>
+                              if d.class_name == "String" {
+                                match d.bag.properties.get("[[StringData]]") {
+                                  Some(String_(sv)) => sv
+                                  _ => this_val.to_string()
+                                }
+                              } else {
+                                this_val.to_string()
                               }
-                            } else {
-                              this_val.to_string()
-                            }
-                          Null | Undefined =>
-                            raise @errors.TypeError(
-                              message="Cannot convert undefined or null to object",
-                            )
-                          _ => this_val.to_string()
-                        }
-                        make_string_iterator_value(str)
-                      })
+                            Null | Undefined =>
+                              raise @errors.TypeError(
+                                message="Cannot convert undefined or null to object",
+                              )
+                            _ => this_val.to_string()
+                          }
+                          make_string_iterator_value(str)
+                        },
+                      )
                     _ => ()
                   }
                 } else if data.class_name == "Array" {
@@ -653,7 +659,7 @@ pub fn Interpreter::get_computed_property(
           let iterator_sym = get_iterator_symbol()
           if sym.id == iterator_sym.id {
             // Return a function that creates a string iterator
-            return make_method_func("[Symbol.iterator]", 0, fn(
+            return make_method_func(name="[Symbol.iterator]", length=0, fn(
               _this_val,
               _args,
             ) {
@@ -709,7 +715,7 @@ pub fn Interpreter::get_computed_property(
               None => ()
             }
             // Return default array iterator
-            return make_method_func("[Symbol.iterator]", 0, fn(
+            return make_method_func(name="[Symbol.iterator]", length=0, fn(
               _this_val,
               _args,
             ) {
@@ -961,7 +967,7 @@ pub fn Interpreter::get_computed_property(
               } else if prop == "bind" {
                 let target = obj
                 let target_length = get_func_length(callable)
-                return make_native_func("bind", fn(args) {
+                return make_native_func(name="bind", fn(args) {
                   let bind_this = if args.length() > 0 {
                     args[0]
                   } else {
@@ -1054,7 +1060,7 @@ pub fn Interpreter::get_computed_property(
                   ClassConstructor({ name: n, .. }) =>
                     "class " + n + " { [native code] }"
                 }
-                return make_native_func("toString", fn(_args) {
+                return make_native_func(name="toString", fn(_args) {
                   String_(func_str)
                 })
               } else if prop == "prototype" {
@@ -1100,7 +1106,10 @@ pub fn Interpreter::get_computed_property(
           // Built-in Object methods (only for objects that inherit from Object.prototype)
           if !(data.prototype is Null && data.callable is None) {
             if prop == "hasOwnProperty" {
-              return make_method_func("hasOwnProperty", 1, fn(this_val, args) {
+              return make_method_func(name="hasOwnProperty", length=1, fn(
+                this_val,
+                args,
+              ) {
                 let key_val = if args.length() > 0 {
                   args[0]
                 } else {
@@ -1137,7 +1146,7 @@ pub fn Interpreter::get_computed_property(
               })
             }
             if prop == "toString" {
-              return make_native_func("toString", fn(_args) {
+              return make_native_func(name="toString", fn(_args) {
                 String_("[object Object]")
               })
             }
@@ -1829,7 +1838,7 @@ fn Interpreter::eval_member(
     Ident("console", _) =>
       if prop == "log" {
         let output = self.host.output
-        make_native_func("log", fn(args) {
+        make_native_func(name="log", fn(args) {
           let parts : Array[String] = args.map(fn(a) { a.to_string() })
           output.push(parts.join(" "))
           Undefined

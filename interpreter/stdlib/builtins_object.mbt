@@ -25,74 +25,73 @@ pub fn setup_object_builtins(
   // Object.keys, Object.values, Object.entries, Object.create, Object.assign,
   // Object.getPrototypeOf, Object.getOwnPropertyNames
   let obj_proto_props : Map[String, Value] = {}
-  obj_proto_props["toString"] = @runtime.make_method_func("toString", 0, fn(
-    this_val,
-    _args,
-  ) raise {
-    match this_val {
-      Undefined => Value::String_("[object Undefined]")
-      Null => Value::String_("[object Null]")
-      Bool(_) => Value::String_("[object Boolean]")
-      Value::Number(_) => Value::String_("[object Number]")
-      Value::String_(_) => Value::String_("[object String]")
-      Array(_) => Value::String_("[object Array]")
-      Symbol(_) => Value::String_("[object Symbol]")
-      Map(_) => Value::String_("[object Map]")
-      Set(_) => Value::String_("[object Set]")
-      Promise(_) => Value::String_("[object Promise]")
-      Proxy(_) => Value::String_("[object Object]")
-      Object(data) => {
-        // Per spec, always check Symbol.toStringTag first (it overrides built-in tags)
-        let tag = @runtime.get_tostringtag_value(data)
-        match tag {
-          Some(t) => Value::String_("[object \{t}]")
-          None =>
-            if data.class_name == "Function" {
-              Value::String_("[object Function]")
-            } else if data.class_name == "RegExp" {
-              Value::String_("[object RegExp]")
-            } else if data.class_name == "Error" ||
-              data.class_name == "TypeError" ||
-              data.class_name == "ReferenceError" ||
-              data.class_name == "SyntaxError" ||
-              data.class_name == "RangeError" ||
-              data.class_name == "URIError" ||
-              data.class_name == "EvalError" ||
-              data.class_name == "AggregateError" {
-              Value::String_("[object Error]")
-            } else if data.class_name == "Date" {
-              Value::String_("[object Date]")
-            } else if data.class_name == "Map" {
-              Value::String_("[object Map]")
-            } else if data.class_name == "Set" {
-              Value::String_("[object Set]")
-            } else if data.class_name == "Promise" {
-              Value::String_("[object Promise]")
-            } else if data.class_name == "Arguments" {
-              Value::String_("[object Arguments]")
-            } else if data.class_name == "Number" {
-              Value::String_("[object Number]")
-            } else if data.class_name == "String" {
-              Value::String_("[object String]")
-            } else if data.class_name == "Boolean" {
-              Value::String_("[object Boolean]")
-            } else {
-              Value::String_("[object Object]")
-            }
+  obj_proto_props["toString"] = @runtime.make_method_func(
+    name="toString",
+    length=0,
+    fn(this_val, _args) raise {
+      match this_val {
+        Undefined => Value::String_("[object Undefined]")
+        Null => Value::String_("[object Null]")
+        Bool(_) => Value::String_("[object Boolean]")
+        Value::Number(_) => Value::String_("[object Number]")
+        Value::String_(_) => Value::String_("[object String]")
+        Array(_) => Value::String_("[object Array]")
+        Symbol(_) => Value::String_("[object Symbol]")
+        Map(_) => Value::String_("[object Map]")
+        Set(_) => Value::String_("[object Set]")
+        Promise(_) => Value::String_("[object Promise]")
+        Proxy(_) => Value::String_("[object Object]")
+        Object(data) => {
+          // Per spec, always check Symbol.toStringTag first (it overrides built-in tags)
+          let tag = @runtime.get_tostringtag_value(data)
+          match tag {
+            Some(t) => Value::String_("[object \{t}]")
+            None =>
+              if data.class_name == "Function" {
+                Value::String_("[object Function]")
+              } else if data.class_name == "RegExp" {
+                Value::String_("[object RegExp]")
+              } else if data.class_name == "Error" ||
+                data.class_name == "TypeError" ||
+                data.class_name == "ReferenceError" ||
+                data.class_name == "SyntaxError" ||
+                data.class_name == "RangeError" ||
+                data.class_name == "URIError" ||
+                data.class_name == "EvalError" ||
+                data.class_name == "AggregateError" {
+                Value::String_("[object Error]")
+              } else if data.class_name == "Date" {
+                Value::String_("[object Date]")
+              } else if data.class_name == "Map" {
+                Value::String_("[object Map]")
+              } else if data.class_name == "Set" {
+                Value::String_("[object Set]")
+              } else if data.class_name == "Promise" {
+                Value::String_("[object Promise]")
+              } else if data.class_name == "Arguments" {
+                Value::String_("[object Arguments]")
+              } else if data.class_name == "Number" {
+                Value::String_("[object Number]")
+              } else if data.class_name == "String" {
+                Value::String_("[object String]")
+              } else if data.class_name == "Boolean" {
+                Value::String_("[object Boolean]")
+              } else {
+                Value::String_("[object Object]")
+              }
+          }
         }
       }
-    }
-  })
-  obj_proto_props["valueOf"] = @runtime.make_interp_method_func("valueOf", 0, fn(
-    interp,
-    this_val,
-    _args,
-  ) raise {
-    to_object(this_val, interp)
-  })
+    },
+  )
+  obj_proto_props["valueOf"] = @runtime.make_interp_method_func(
+    name="valueOf",
+    length=0,
+    fn(interp, this_val, _args) raise { to_object(this_val, interp) },
+  )
   obj_proto_props["hasOwnProperty"] = @runtime.make_method_func(
-    "hasOwnProperty",
-    1,
+    name="hasOwnProperty",
+    length=1,
     fn(this_val, args) raise {
       // RequireObjectCoercible(this) - throw TypeError for null/undefined
       match this_val {
@@ -155,8 +154,8 @@ pub fn setup_object_builtins(
     },
   )
   obj_proto_props["propertyIsEnumerable"] = @runtime.make_method_func(
-    "propertyIsEnumerable",
-    1,
+    name="propertyIsEnumerable",
+    length=1,
     fn(this_val, args) raise {
       // RequireObjectCoercible(this) - throw TypeError for null/undefined
       match this_val {
@@ -217,8 +216,8 @@ pub fn setup_object_builtins(
     },
   )
   obj_proto_props["isPrototypeOf"] = @runtime.make_interp_method_func(
-    "isPrototypeOf",
-    1,
+    name="isPrototypeOf",
+    length=1,
     fn(interp, this_val, args) raise {
       // RequireObjectCoercible(this) - throw TypeError for null/undefined
       match this_val {
@@ -257,8 +256,8 @@ pub fn setup_object_builtins(
     },
   )
   obj_proto_props["toLocaleString"] = @runtime.make_method_func(
-    "toLocaleString",
-    0,
+    name="toLocaleString",
+    length=0,
     fn(this_val, _args) raise {
       match this_val {
         Object(data) =>
@@ -276,8 +275,8 @@ pub fn setup_object_builtins(
   )
   // Annex B: __defineGetter__, __defineSetter__, __lookupGetter__, __lookupSetter__
   obj_proto_props["__defineGetter__"] = @runtime.make_interp_method_func(
-    "__defineGetter__",
-    2,
+    name="__defineGetter__",
+    length=2,
     fn(interp, this_val, args) raise {
       let o = to_object(this_val, interp)
       let getter = if args.length() > 1 { args[1] } else { Undefined }
@@ -325,8 +324,8 @@ pub fn setup_object_builtins(
     },
   )
   obj_proto_props["__defineSetter__"] = @runtime.make_interp_method_func(
-    "__defineSetter__",
-    2,
+    name="__defineSetter__",
+    length=2,
     fn(interp, this_val, args) raise {
       let o = to_object(this_val, interp)
       let setter = if args.length() > 1 { args[1] } else { Undefined }
@@ -373,8 +372,8 @@ pub fn setup_object_builtins(
     },
   )
   obj_proto_props["__lookupGetter__"] = @runtime.make_interp_method_func(
-    "__lookupGetter__",
-    1,
+    name="__lookupGetter__",
+    length=1,
     fn(interp, this_val, args) raise {
       let prop = if args.length() > 0 {
         @runtime.to_js_string(args[0])
@@ -402,8 +401,8 @@ pub fn setup_object_builtins(
     },
   )
   obj_proto_props["__lookupSetter__"] = @runtime.make_interp_method_func(
-    "__lookupSetter__",
-    1,
+    name="__lookupSetter__",
+    length=1,
     fn(interp, this_val, args) raise {
       let prop = if args.length() > 0 {
         @runtime.to_js_string(args[0])
@@ -471,7 +470,7 @@ pub fn setup_object_builtins(
           "prototype": obj_proto,
           "name": Value::String_("Object"),
           "length": Value::Number(1.0),
-          "keys": @runtime.make_interp_static_func_with_length("keys", 1, fn(
+          "keys": @runtime.make_interp_static_func(name="keys", length=1, fn(
             interp,
             args,
           ) raise {
@@ -533,7 +532,7 @@ pub fn setup_object_builtins(
               _ => @runtime.make_array([])
             }
           }),
-          "values": @runtime.make_static_func_with_length("values", 1, fn(
+          "values": @runtime.make_native_func(name="values", length=1, fn(
             args,
           ) raise {
             let obj = if args.length() > 0 { args[0] } else { Undefined }
@@ -579,7 +578,7 @@ pub fn setup_object_builtins(
               _ => @runtime.make_array([])
             }
           }),
-          "entries": @runtime.make_static_func_with_length("entries", 1, fn(
+          "entries": @runtime.make_native_func(name="entries", length=1, fn(
             args,
           ) raise {
             let obj = if args.length() > 0 { args[0] } else { Undefined }
@@ -638,7 +637,7 @@ pub fn setup_object_builtins(
               _ => @runtime.make_array([])
             }
           }),
-          "create": @runtime.make_static_func_with_length("create", 2, fn(
+          "create": @runtime.make_native_func(name="create", length=2, fn(
             args,
           ) raise {
             let proto = if args.length() > 0 { args[0] } else { Null }
@@ -738,7 +737,7 @@ pub fn setup_object_builtins(
             }
             obj
           }),
-          "assign": @runtime.make_static_func_with_length("assign", 2, fn(
+          "assign": @runtime.make_native_func(name="assign", length=2, fn(
             args,
           ) raise {
             let raw_target = if args.length() > 0 { args[0] } else { Undefined }
@@ -1071,9 +1070,9 @@ pub fn setup_object_builtins(
               _ => target
             }
           }),
-          "getPrototypeOf": @runtime.make_interp_static_func_with_length(
-            "getPrototypeOf",
-            1,
+          "getPrototypeOf": @runtime.make_interp_static_func(
+            name="getPrototypeOf",
+            length=1,
             fn(interp, args) raise {
               let obj = if args.length() > 0 { args[0] } else { Undefined }
               fn get_ctor_proto(name : String) -> Value {
@@ -1121,9 +1120,9 @@ pub fn setup_object_builtins(
           "fromEntries": make_from_entries_func(),
           "groupBy": make_group_by_func(),
           "hasOwn": make_has_own_func(),
-          "setPrototypeOf": @runtime.make_interp_static_func_with_length(
-            "setPrototypeOf",
-            2,
+          "setPrototypeOf": @runtime.make_interp_static_func(
+            name="setPrototypeOf",
+            length=2,
             fn(interp, args) raise {
               // Object.setPrototypeOf(obj, prototype)
               let obj = if args.length() > 0 { args[0] } else { Undefined }

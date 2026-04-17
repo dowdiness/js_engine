@@ -3,7 +3,7 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
   match prop {
     "push" => {
       let arr = data
-      @runtime.make_native_func("push", fn(args) {
+      @runtime.make_native_func(name="push", fn(args) {
         for arg in args {
           arr.elements.push(arg)
         }
@@ -12,7 +12,7 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
     }
     "pop" => {
       let arr = data
-      @runtime.make_native_func("pop", fn(_args) {
+      @runtime.make_native_func(name="pop", fn(_args) {
         if arr.elements.length() == 0 {
           Undefined
         } else {
@@ -22,7 +22,7 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
     }
     "shift" => {
       let arr = data
-      @runtime.make_native_func("shift", fn(_args) {
+      @runtime.make_native_func(name="shift", fn(_args) {
         if arr.elements.length() == 0 {
           return Undefined
         }
@@ -42,7 +42,7 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
     }
     "unshift" => {
       let arr = data
-      @runtime.make_native_func("unshift", fn(args) {
+      @runtime.make_native_func(name="unshift", fn(args) {
         let old : Array[Value] = []
         for el in arr.elements {
           old.push(el)
@@ -61,7 +61,7 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
     }
     "join" => {
       let arr = data
-      @runtime.make_native_func("join", fn(args) {
+      @runtime.make_native_func(name="join", fn(args) {
         let sep = if args.length() > 0 {
           match args[0] {
             Undefined => ","
@@ -82,7 +82,7 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
     "indexOf" | "lastIndexOf" => Undefined // Delegated to Array.prototype (hole handling)
     "includes" => {
       let arr = data
-      @runtime.make_native_func("includes", fn(args) raise {
+      @runtime.make_native_func(name="includes", fn(args) raise {
         let search = if args.length() > 0 { args[0] } else { Undefined }
         let from_idx = if args.length() > 1 {
           @runtime.to_number(args[1]).to_int()
@@ -111,14 +111,14 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
     "slice" | "concat" => Undefined // Delegated to Array.prototype (species support)
     "reverse" => {
       let arr = data
-      @runtime.make_native_func("reverse", fn(_args) {
+      @runtime.make_native_func(name="reverse", fn(_args) {
         arr.elements.rev_in_place()
         Value::Array(arr)
       })
     }
     "fill" => {
       let arr = data
-      @runtime.make_native_func("fill", fn(args) raise {
+      @runtime.make_native_func(name="fill", fn(args) raise {
         let fill_val = if args.length() > 0 { args[0] } else { Undefined }
         let alen = arr.elements.length()
         let mut start = if args.length() > 1 {
@@ -164,7 +164,7 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
     }
     "toString" => {
       let arr = data
-      @runtime.make_native_func("toString", fn(_args) {
+      @runtime.make_native_func(name="toString", fn(_args) {
         let parts : Array[String] = arr.elements.map(fn(v) {
           match v {
             Null | Undefined => ""
@@ -176,7 +176,7 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
     }
     "at" => {
       let arr = data
-      @runtime.make_native_func("at", fn(args) raise {
+      @runtime.make_native_func(name="at", fn(args) raise {
         // Array.prototype.at() - access element at index (supports negative)
         let idx = if args.length() > 0 {
           @runtime.to_number(args[0]).to_int()
@@ -194,7 +194,7 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
     }
     "copyWithin" => {
       let arr = data
-      @runtime.make_native_func("copyWithin", fn(args) raise {
+      @runtime.make_native_func(name="copyWithin", fn(args) raise {
         // Array.prototype.copyWithin(target, start, end?)
         let len = arr.elements.length()
         let mut target = if args.length() > 0 {
@@ -260,7 +260,7 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
     }
     "entries" => {
       let arr = data
-      @runtime.make_native_func("entries", fn(_args) {
+      @runtime.make_native_func(name="entries", fn(_args) {
         let result : Array[Value] = []
         for i = 0; i < arr.elements.length(); i = i + 1 {
           result.push(
@@ -275,7 +275,7 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
     }
     "keys" => {
       let arr = data
-      @runtime.make_native_func("keys", fn(_args) {
+      @runtime.make_native_func(name="keys", fn(_args) {
         let result : Array[Value] = []
         for i = 0; i < arr.elements.length(); i = i + 1 {
           result.push(Value::Number(i.to_double()))
@@ -288,14 +288,14 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
     }
     "values" => {
       let arr = data
-      @runtime.make_native_func("values", fn(_args) {
+      @runtime.make_native_func(name="values", fn(_args) {
         @runtime.make_array_iterator_value(arr)
       })
     }
     "splice" => Undefined // Delegated to Array.prototype (species support)
     "sort" => {
       let arr = data
-      @runtime.make_native_func("sort", fn(_args) {
+      @runtime.make_native_func(name="sort", fn(_args) {
         // Default sort: undefined goes to end, then compare as strings
         arr.elements.sort_by(fn(a, b) {
           if a is Undefined && b is Undefined {
@@ -333,7 +333,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
     "every" | "some" => Undefined // Delegated to Array.prototype
     "toReversed" => {
       let arr = data
-      @runtime.make_native_func("toReversed", fn(_args) {
+      @runtime.make_native_func(name="toReversed", fn(_args) {
         // Non-mutating reverse
         let result : Array[Value] = []
         for i = arr.elements.length() - 1; i >= 0; i = i - 1 {
@@ -344,7 +344,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
     }
     "toSorted" => {
       let arr = data
-      @runtime.make_interp_method_func("toSorted", 1, fn(
+      @runtime.make_interp_method_func(name="toSorted", length=1, fn(
         interp,
         this_val,
         args,
@@ -461,7 +461,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
     }
     "toSpliced" => {
       let arr = data
-      @runtime.make_native_func("toSpliced", fn(args) raise {
+      @runtime.make_native_func(name="toSpliced", fn(args) raise {
         // Non-mutating splice
         let len = arr.elements.length()
         let mut start = if args.length() > 0 {
@@ -508,7 +508,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
     }
     "with" => {
       let arr = data
-      @runtime.make_native_func("with", fn(args) raise {
+      @runtime.make_native_func(name="with", fn(args) raise {
         // Non-mutating element replacement
         let idx = if args.length() > 0 {
           @runtime.to_number(args[0]).to_int()
@@ -536,7 +536,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
     "sort" => {
       // Sort with optional compareFn needs InterpreterCallable
       let arr = data
-      @runtime.make_interp_method_func("sort", 1, fn(
+      @runtime.make_interp_method_func(name="sort", length=1, fn(
         interp,
         this_val,
         args,

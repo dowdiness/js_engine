@@ -9,9 +9,9 @@ fn setup_json_builtins(env : Environment) -> Unit {
     getter: None,
     setter: None,
   }
-  json_props["parse"] = @runtime.make_interp_static_func_with_length(
-    "parse",
-    2,
+  json_props["parse"] = @runtime.make_interp_static_func(
+    name="parse",
+    length=2,
     fn(interp, args) raise {
       let str = if args.length() > 0 {
         @runtime.to_js_string(args[0])
@@ -42,110 +42,110 @@ fn setup_json_builtins(env : Environment) -> Unit {
     },
   )
   json_descs["parse"] = ne_desc
-  json_props["stringify"] = @runtime.make_interp_method_func("stringify", 3, fn(
-    interp,
-    _this,
-    args,
-  ) raise {
-    let val = if args.length() > 0 { args[0] } else { Undefined }
-    let indent = if args.length() > 2 {
-      // Per spec: unwrap Number/String objects, cap at 10
-      let space_arg = match args[2] {
-        Object(data) =>
-          if data.class_name == "Number" {
-            match data.bag.properties.get("[[NumberData]]") {
-              Some(n) => n
-              None => args[2]
+  json_props["stringify"] = @runtime.make_interp_method_func(
+    name="stringify",
+    length=3,
+    fn(interp, _this, args) raise {
+      let val = if args.length() > 0 { args[0] } else { Undefined }
+      let indent = if args.length() > 2 {
+        // Per spec: unwrap Number/String objects, cap at 10
+        let space_arg = match args[2] {
+          Object(data) =>
+            if data.class_name == "Number" {
+              match data.bag.properties.get("[[NumberData]]") {
+                Some(n) => n
+                None => args[2]
+              }
+            } else if data.class_name == "String" {
+              match data.bag.properties.get("[[StringData]]") {
+                Some(s) => s
+                None => args[2]
+              }
+            } else {
+              args[2]
             }
-          } else if data.class_name == "String" {
-            match data.bag.properties.get("[[StringData]]") {
-              Some(s) => s
-              None => args[2]
-            }
-          } else {
-            args[2]
-          }
-        _ => args[2]
-      }
-      match space_arg {
-        Value::Number(n) => {
-          let spaces = if n.to_int() > 10 { 10 } else { n.to_int() }
-          if spaces > 0 {
-            let buf = StringBuilder::new()
-            for _i = 0; _i < spaces; _i = _i + 1 {
-              buf.write_char(' ')
-            }
-            Some(buf.to_string())
-          } else {
-            None
-          }
+          _ => args[2]
         }
-        Value::String_(s) =>
-          if s.length() > 10 {
-            Some(s[:10].to_string())
-          } else if s.length() > 0 {
-            Some(s)
-          } else {
-            None
-          }
-        _ => None
-      }
-    } else {
-      None
-    }
-    let replacer : Value? = if args.length() > 1 &&
-      @runtime.is_callable(args[1]) {
-      Some(args[1])
-    } else {
-      None
-    }
-    // Handle replacer array (property list filter)
-    let property_list : Array[String]? = if args.length() > 1 {
-      match args[1] {
-        Value::Array(arr) => {
-          let keys : Array[String] = []
-          for elem in arr.elements {
-            match elem {
-              Value::String_(s) => keys.push(s)
-              Value::Number(n) => keys.push(n.to_string())
-              _ => ()
+        match space_arg {
+          Value::Number(n) => {
+            let spaces = if n.to_int() > 10 { 10 } else { n.to_int() }
+            if spaces > 0 {
+              let buf = StringBuilder::new()
+              for _i = 0; _i < spaces; _i = _i + 1 {
+                buf.write_char(' ')
+              }
+              Some(buf.to_string())
+            } else {
+              None
             }
           }
-          Some(keys)
+          Value::String_(s) =>
+            if s.length() > 10 {
+              Some(s[:10].to_string())
+            } else if s.length() > 0 {
+              Some(s)
+            } else {
+              None
+            }
+          _ => None
         }
-        _ => None
+      } else {
+        None
       }
-    } else {
-      None
-    }
-    // Wrap value in root holder for replacer
-    let root_props : Map[String, Value] = {}
-    root_props[""] = val
-    let root : Value = Value::Object({
-      bag: {
-        properties: root_props,
-        symbol_properties: {},
-        descriptors: {},
-        symbol_descriptors: {},
-      },
-      prototype: Null,
-      callable: None,
-      class_name: "Object",
-      extensible: true,
-    })
-    let seen : Array[Value] = []
-    json_stringify_value(
-      val,
-      seen,
-      indent,
-      0,
-      Some(interp),
-      replacer~,
-      holder=root,
-      key="",
-      property_list~,
-    )
-  })
+      let replacer : Value? = if args.length() > 1 &&
+        @runtime.is_callable(args[1]) {
+        Some(args[1])
+      } else {
+        None
+      }
+      // Handle replacer array (property list filter)
+      let property_list : Array[String]? = if args.length() > 1 {
+        match args[1] {
+          Value::Array(arr) => {
+            let keys : Array[String] = []
+            for elem in arr.elements {
+              match elem {
+                Value::String_(s) => keys.push(s)
+                Value::Number(n) => keys.push(n.to_string())
+                _ => ()
+              }
+            }
+            Some(keys)
+          }
+          _ => None
+        }
+      } else {
+        None
+      }
+      // Wrap value in root holder for replacer
+      let root_props : Map[String, Value] = {}
+      root_props[""] = val
+      let root : Value = Value::Object({
+        bag: {
+          properties: root_props,
+          symbol_properties: {},
+          descriptors: {},
+          symbol_descriptors: {},
+        },
+        prototype: Null,
+        callable: None,
+        class_name: "Object",
+        extensible: true,
+      })
+      let seen : Array[Value] = []
+      json_stringify_value(
+        val,
+        seen,
+        indent,
+        0,
+        Some(interp),
+        replacer~,
+        holder=root,
+        key="",
+        property_list~,
+      )
+    },
+  )
   json_descs["stringify"] = ne_desc
   // Symbol.toStringTag = "JSON"
   let tostringtag_sym = @runtime.get_tostringtag_symbol()

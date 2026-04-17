@@ -65,7 +65,7 @@ fn setup_map_builtins(env : Environment) -> Unit {
   let map_proto_props : Map[String, Value] = {}
 
   // Map.prototype.get(key)
-  map_proto_props["get"] = @runtime.make_method_func("get", 1, fn(
+  map_proto_props["get"] = @runtime.make_method_func(name="get", length=1, fn(
     this_val,
     args,
   ) raise {
@@ -89,7 +89,7 @@ fn setup_map_builtins(env : Environment) -> Unit {
   })
 
   // Map.prototype.set(key, value)
-  map_proto_props["set"] = @runtime.make_method_func("set", 2, fn(
+  map_proto_props["set"] = @runtime.make_method_func(name="set", length=2, fn(
     this_val,
     args,
   ) raise {
@@ -118,7 +118,7 @@ fn setup_map_builtins(env : Environment) -> Unit {
   })
 
   // Map.prototype.has(key)
-  map_proto_props["has"] = @runtime.make_method_func("has", 1, fn(
+  map_proto_props["has"] = @runtime.make_method_func(name="has", length=1, fn(
     this_val,
     args,
   ) raise {
@@ -142,32 +142,33 @@ fn setup_map_builtins(env : Environment) -> Unit {
   })
 
   // Map.prototype.delete(key)
-  map_proto_props["delete"] = @runtime.make_method_func("delete", 1, fn(
-    this_val,
-    args,
-  ) raise {
-    match this_val {
-      Value::Map(data) => {
-        let key = if args.length() > 0 { args[0] } else { Undefined }
-        // Find and remove key using SameValueZero
-        for i = 0; i < data.entries.length(); i = i + 1 {
-          let (k, _) = data.entries[i]
-          if same_value_zero(k, key) {
-            let _ = data.entries.remove(i)
-            return Value::Bool(true)
+  map_proto_props["delete"] = @runtime.make_method_func(
+    name="delete",
+    length=1,
+    fn(this_val, args) raise {
+      match this_val {
+        Value::Map(data) => {
+          let key = if args.length() > 0 { args[0] } else { Undefined }
+          // Find and remove key using SameValueZero
+          for i = 0; i < data.entries.length(); i = i + 1 {
+            let (k, _) = data.entries[i]
+            if same_value_zero(k, key) {
+              let _ = data.entries.remove(i)
+              return Value::Bool(true)
+            }
           }
+          Value::Bool(false)
         }
-        Value::Bool(false)
+        _ =>
+          raise @errors.TypeError(
+            message="Method Map.prototype.delete called on incompatible receiver",
+          )
       }
-      _ =>
-        raise @errors.TypeError(
-          message="Method Map.prototype.delete called on incompatible receiver",
-        )
-    }
-  })
+    },
+  )
 
   // Map.prototype.clear()
-  map_proto_props["clear"] = @runtime.make_method_func("clear", 0, fn(
+  map_proto_props["clear"] = @runtime.make_method_func(name="clear", length=0, fn(
     this_val,
     _args,
   ) raise {
@@ -184,38 +185,38 @@ fn setup_map_builtins(env : Environment) -> Unit {
   })
 
   // Map.prototype.forEach(callback, thisArg?)
-  map_proto_props["forEach"] = @runtime.make_interp_method_func("forEach", 1, fn(
-    interp,
-    this_val,
-    args,
-  ) raise {
-    match this_val {
-      Value::Map(data) => {
-        let callback = if args.length() > 0 { args[0] } else { Undefined }
-        let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-        let loc = @token.Loc::default()
-        // Iterate over entries
-        for i = 0; i < data.entries.length(); i = i + 1 {
-          let (key, value) = data.entries[i]
-          // Call callback(value, key, map)
-          let _ = interp.call_value(
-            callback,
-            this_arg,
-            [value, key, this_val],
-            loc,
-          )
+  map_proto_props["forEach"] = @runtime.make_interp_method_func(
+    name="forEach",
+    length=1,
+    fn(interp, this_val, args) raise {
+      match this_val {
+        Value::Map(data) => {
+          let callback = if args.length() > 0 { args[0] } else { Undefined }
+          let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+          let loc = @token.Loc::default()
+          // Iterate over entries
+          for i = 0; i < data.entries.length(); i = i + 1 {
+            let (key, value) = data.entries[i]
+            // Call callback(value, key, map)
+            let _ = interp.call_value(
+              callback,
+              this_arg,
+              [value, key, this_val],
+              loc,
+            )
+          }
+          Undefined
         }
-        Undefined
+        _ =>
+          raise @errors.TypeError(
+            message="Method Map.prototype.forEach called on incompatible receiver",
+          )
       }
-      _ =>
-        raise @errors.TypeError(
-          message="Method Map.prototype.forEach called on incompatible receiver",
-        )
-    }
-  })
+    },
+  )
 
   // Map.prototype.keys() - returns iterator of keys
-  map_proto_props["keys"] = @runtime.make_method_func("keys", 0, fn(
+  map_proto_props["keys"] = @runtime.make_method_func(name="keys", length=0, fn(
     this_val,
     _args,
   ) raise {
@@ -229,64 +230,67 @@ fn setup_map_builtins(env : Environment) -> Unit {
   })
 
   // Map.prototype.values() - returns iterator of values
-  map_proto_props["values"] = @runtime.make_method_func("values", 0, fn(
-    this_val,
-    _args,
-  ) raise {
-    match this_val {
-      Value::Map(data) => make_map_values_iterator(data)
-      _ =>
-        raise @errors.TypeError(
-          message="Method Map.prototype.values called on incompatible receiver",
-        )
-    }
-  })
+  map_proto_props["values"] = @runtime.make_method_func(
+    name="values",
+    length=0,
+    fn(this_val, _args) raise {
+      match this_val {
+        Value::Map(data) => make_map_values_iterator(data)
+        _ =>
+          raise @errors.TypeError(
+            message="Method Map.prototype.values called on incompatible receiver",
+          )
+      }
+    },
+  )
 
   // Map.prototype.entries() - returns iterator of [key, value] pairs
-  map_proto_props["entries"] = @runtime.make_method_func("entries", 0, fn(
-    this_val,
-    _args,
-  ) raise {
-    match this_val {
-      Value::Map(data) => make_map_entries_iterator(data)
-      _ =>
-        raise @errors.TypeError(
-          message="Method Map.prototype.entries called on incompatible receiver",
-        )
-    }
-  })
+  map_proto_props["entries"] = @runtime.make_method_func(
+    name="entries",
+    length=0,
+    fn(this_val, _args) raise {
+      match this_val {
+        Value::Map(data) => make_map_entries_iterator(data)
+        _ =>
+          raise @errors.TypeError(
+            message="Method Map.prototype.entries called on incompatible receiver",
+          )
+      }
+    },
+  )
 
   // Map.prototype.getOrInsert(key, value)
-  map_proto_props["getOrInsert"] = @runtime.make_method_func("getOrInsert", 2, fn(
-    this_val,
-    args,
-  ) raise {
-    match this_val {
-      Value::Map(data) => {
-        let key = if args.length() > 0 { args[0] } else { Undefined }
-        let value = if args.length() > 1 { args[1] } else { Undefined }
-        // If key exists, return existing value
-        for i = 0; i < data.entries.length(); i = i + 1 {
-          let (k, v) = data.entries[i]
-          if same_value_zero(k, key) {
-            return v
+  map_proto_props["getOrInsert"] = @runtime.make_method_func(
+    name="getOrInsert",
+    length=2,
+    fn(this_val, args) raise {
+      match this_val {
+        Value::Map(data) => {
+          let key = if args.length() > 0 { args[0] } else { Undefined }
+          let value = if args.length() > 1 { args[1] } else { Undefined }
+          // If key exists, return existing value
+          for i = 0; i < data.entries.length(); i = i + 1 {
+            let (k, v) = data.entries[i]
+            if same_value_zero(k, key) {
+              return v
+            }
           }
+          // Key not found, insert and return value
+          data.entries.push((key, value))
+          value
         }
-        // Key not found, insert and return value
-        data.entries.push((key, value))
-        value
+        _ =>
+          raise @errors.TypeError(
+            message="Method Map.prototype.getOrInsert called on incompatible receiver",
+          )
       }
-      _ =>
-        raise @errors.TypeError(
-          message="Method Map.prototype.getOrInsert called on incompatible receiver",
-        )
-    }
-  })
+    },
+  )
 
   // Map.prototype.getOrInsertComputed(key, callbackfn)
   map_proto_props["getOrInsertComputed"] = @runtime.make_interp_method_func(
-    "getOrInsertComputed",
-    2,
+    name="getOrInsertComputed",
+    length=2,
     fn(interp, this_val, args) raise {
       match this_val {
         Value::Map(data) => {
@@ -344,7 +348,7 @@ fn setup_map_builtins(env : Environment) -> Unit {
   map_proto_descs["getOrInsertComputed"] = method_desc
 
   // Create size getter for Map.prototype (per spec, size is an accessor property)
-  let size_getter = @runtime.make_method_func("get size", 0, fn(
+  let size_getter = @runtime.make_method_func(name="get size", length=0, fn(
     this_val,
     _args,
   ) raise {
@@ -400,7 +404,7 @@ fn setup_map_builtins(env : Environment) -> Unit {
   }
 
   // Map constructor
-  let map_ctor = @runtime.make_interp_method_func("Map", 0, fn(
+  let map_ctor = @runtime.make_interp_method_func(name="Map", length=0, fn(
     interp,
     _this_val,
     args,
@@ -502,9 +506,9 @@ fn setup_map_builtins(env : Environment) -> Unit {
   // Add Map.groupBy static method
   match map_ctor {
     Object(ctor_data) => {
-      ctor_data.bag.properties["groupBy"] = @runtime.make_interp_static_func_with_length(
-        "groupBy",
-        2,
+      ctor_data.bag.properties["groupBy"] = @runtime.make_interp_static_func(
+        name="groupBy",
+        length=2,
         fn(interp, args) raise {
           // Map.groupBy(items, callbackFn)
           let items = if args.length() > 0 { args[0] } else { Undefined }
@@ -586,7 +590,7 @@ fn setup_set_builtins(env : Environment) -> Unit {
   let set_proto_props : Map[String, Value] = {}
 
   // Set.prototype.add(value)
-  set_proto_props["add"] = @runtime.make_method_func("add", 1, fn(
+  set_proto_props["add"] = @runtime.make_method_func(name="add", length=1, fn(
     this_val,
     args,
   ) raise {
@@ -611,7 +615,7 @@ fn setup_set_builtins(env : Environment) -> Unit {
   })
 
   // Set.prototype.has(value)
-  set_proto_props["has"] = @runtime.make_method_func("has", 1, fn(
+  set_proto_props["has"] = @runtime.make_method_func(name="has", length=1, fn(
     this_val,
     args,
   ) raise {
@@ -634,31 +638,32 @@ fn setup_set_builtins(env : Environment) -> Unit {
   })
 
   // Set.prototype.delete(value)
-  set_proto_props["delete"] = @runtime.make_method_func("delete", 1, fn(
-    this_val,
-    args,
-  ) raise {
-    match this_val {
-      Value::Set(data) => {
-        let value = if args.length() > 0 { args[0] } else { Undefined }
-        // Find and remove value using SameValueZero
-        for i = 0; i < data.values.length(); i = i + 1 {
-          if same_value_zero(data.values[i], value) {
-            let _ = data.values.remove(i)
-            return Value::Bool(true)
+  set_proto_props["delete"] = @runtime.make_method_func(
+    name="delete",
+    length=1,
+    fn(this_val, args) raise {
+      match this_val {
+        Value::Set(data) => {
+          let value = if args.length() > 0 { args[0] } else { Undefined }
+          // Find and remove value using SameValueZero
+          for i = 0; i < data.values.length(); i = i + 1 {
+            if same_value_zero(data.values[i], value) {
+              let _ = data.values.remove(i)
+              return Value::Bool(true)
+            }
           }
+          Value::Bool(false)
         }
-        Value::Bool(false)
+        _ =>
+          raise @errors.TypeError(
+            message="Method Set.prototype.delete called on incompatible receiver",
+          )
       }
-      _ =>
-        raise @errors.TypeError(
-          message="Method Set.prototype.delete called on incompatible receiver",
-        )
-    }
-  })
+    },
+  )
 
   // Set.prototype.clear()
-  set_proto_props["clear"] = @runtime.make_method_func("clear", 0, fn(
+  set_proto_props["clear"] = @runtime.make_method_func(name="clear", length=0, fn(
     this_val,
     _args,
   ) raise {
@@ -675,38 +680,38 @@ fn setup_set_builtins(env : Environment) -> Unit {
   })
 
   // Set.prototype.forEach(callback, thisArg?)
-  set_proto_props["forEach"] = @runtime.make_interp_method_func("forEach", 1, fn(
-    interp,
-    this_val,
-    args,
-  ) raise {
-    match this_val {
-      Value::Set(data) => {
-        let callback = if args.length() > 0 { args[0] } else { Undefined }
-        let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-        let loc = @token.Loc::default()
-        // Iterate over values
-        for i = 0; i < data.values.length(); i = i + 1 {
-          let value = data.values[i]
-          // Call callback(value, value, set) - note: Set forEach passes value twice
-          let _ = interp.call_value(
-            callback,
-            this_arg,
-            [value, value, this_val],
-            loc,
-          )
+  set_proto_props["forEach"] = @runtime.make_interp_method_func(
+    name="forEach",
+    length=1,
+    fn(interp, this_val, args) raise {
+      match this_val {
+        Value::Set(data) => {
+          let callback = if args.length() > 0 { args[0] } else { Undefined }
+          let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+          let loc = @token.Loc::default()
+          // Iterate over values
+          for i = 0; i < data.values.length(); i = i + 1 {
+            let value = data.values[i]
+            // Call callback(value, value, set) - note: Set forEach passes value twice
+            let _ = interp.call_value(
+              callback,
+              this_arg,
+              [value, value, this_val],
+              loc,
+            )
+          }
+          Undefined
         }
-        Undefined
+        _ =>
+          raise @errors.TypeError(
+            message="Method Set.prototype.forEach called on incompatible receiver",
+          )
       }
-      _ =>
-        raise @errors.TypeError(
-          message="Method Set.prototype.forEach called on incompatible receiver",
-        )
-    }
-  })
+    },
+  )
 
   // Set.prototype.keys() - returns iterator of values (same as values())
-  set_proto_props["keys"] = @runtime.make_method_func("keys", 0, fn(
+  set_proto_props["keys"] = @runtime.make_method_func(name="keys", length=0, fn(
     this_val,
     _args,
   ) raise {
@@ -720,32 +725,34 @@ fn setup_set_builtins(env : Environment) -> Unit {
   })
 
   // Set.prototype.values() - returns iterator of values
-  set_proto_props["values"] = @runtime.make_method_func("values", 0, fn(
-    this_val,
-    _args,
-  ) raise {
-    match this_val {
-      Value::Set(data) => make_set_values_iterator(data)
-      _ =>
-        raise @errors.TypeError(
-          message="Method Set.prototype.values called on incompatible receiver",
-        )
-    }
-  })
+  set_proto_props["values"] = @runtime.make_method_func(
+    name="values",
+    length=0,
+    fn(this_val, _args) raise {
+      match this_val {
+        Value::Set(data) => make_set_values_iterator(data)
+        _ =>
+          raise @errors.TypeError(
+            message="Method Set.prototype.values called on incompatible receiver",
+          )
+      }
+    },
+  )
 
   // Set.prototype.entries() - returns iterator of [value, value] pairs
-  set_proto_props["entries"] = @runtime.make_method_func("entries", 0, fn(
-    this_val,
-    _args,
-  ) raise {
-    match this_val {
-      Value::Set(data) => make_set_entries_iterator(data)
-      _ =>
-        raise @errors.TypeError(
-          message="Method Set.prototype.entries called on incompatible receiver",
-        )
-    }
-  })
+  set_proto_props["entries"] = @runtime.make_method_func(
+    name="entries",
+    length=0,
+    fn(this_val, _args) raise {
+      match this_val {
+        Value::Set(data) => make_set_entries_iterator(data)
+        _ =>
+          raise @errors.TypeError(
+            message="Method Set.prototype.entries called on incompatible receiver",
+          )
+      }
+    },
+  )
 
   // Non-enumerable descriptors for Set.prototype methods
   let method_desc : PropDescriptor = {
@@ -766,7 +773,7 @@ fn setup_set_builtins(env : Environment) -> Unit {
   set_proto_descs["entries"] = method_desc
 
   // Create size getter for Set.prototype (per spec, size is an accessor property)
-  let set_size_getter = @runtime.make_method_func("get size", 0, fn(
+  let set_size_getter = @runtime.make_method_func(name="get size", length=0, fn(
     this_val,
     _args,
   ) raise {
@@ -822,7 +829,7 @@ fn setup_set_builtins(env : Environment) -> Unit {
   }
 
   // Set constructor
-  let set_ctor = @runtime.make_interp_method_func("Set", 0, fn(
+  let set_ctor = @runtime.make_interp_method_func(name="Set", length=0, fn(
     interp,
     _this_val,
     args,
@@ -953,12 +960,12 @@ fn get_map_iterator_proto() -> Value {
       }
       // Add [Symbol.iterator] that returns the iterator itself
       proto_sym_props[iterator_sym.id] = @runtime.make_method_func(
-        "[Symbol.iterator]",
-        0,
+        name="[Symbol.iterator]",
+        length=0,
         fn(this_val, _args) { this_val },
       )
       // Add a placeholder next method with correct name/length on prototype
-      proto_props["next"] = @runtime.make_method_func("next", 0, fn(
+      proto_props["next"] = @runtime.make_method_func(name="next", length=0, fn(
         _this_val,
         _args,
       ) raise {
@@ -1288,11 +1295,11 @@ fn get_set_iterator_proto() -> Value {
         setter: None,
       }
       proto_sym_props[iterator_sym.id] = @runtime.make_method_func(
-        "[Symbol.iterator]",
-        0,
+        name="[Symbol.iterator]",
+        length=0,
         fn(this_val, _args) { this_val },
       )
-      proto_props["next"] = @runtime.make_method_func("next", 0, fn(
+      proto_props["next"] = @runtime.make_method_func(name="next", length=0, fn(
         _this_val,
         _args,
       ) raise {

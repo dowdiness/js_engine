@@ -116,7 +116,10 @@ pub fn setup_arraybuffer_builtins(env : Environment) -> Unit {
     enumerable: false,
     configurable: true,
     getter: Some(
-      @runtime.make_method_func("get byteLength", 0, fn(this_val, _args) raise {
+      @runtime.make_method_func(name="get byteLength", length=0, fn(
+        this_val,
+        _args,
+      ) raise {
         match this_val {
           Object(data) =>
             if data.class_name == "ArrayBuffer" {
@@ -150,7 +153,7 @@ pub fn setup_arraybuffer_builtins(env : Environment) -> Unit {
   }
 
   // ArrayBuffer.prototype.slice(begin, end)
-  ab_proto_props["slice"] = @runtime.make_method_func("slice", 2, fn(
+  ab_proto_props["slice"] = @runtime.make_method_func(name="slice", length=2, fn(
     this_val,
     args,
   ) raise {
@@ -290,7 +293,7 @@ pub fn setup_arraybuffer_builtins(env : Environment) -> Unit {
   ab_ctor_props["length"] = Value::Number(1.0)
 
   // ArrayBuffer.isView(arg)
-  ab_ctor_props["isView"] = @runtime.make_native_func_with_length("isView", 1, fn(
+  ab_ctor_props["isView"] = @runtime.make_native_func(name="isView", length=1, fn(
     args,
   ) {
     if args.length() == 0 {

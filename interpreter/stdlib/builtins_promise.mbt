@@ -253,8 +253,8 @@ fn create_promise_capability_from_constructor(
   let resolve_ref : Ref[Value] = { val: Undefined }
   let reject_ref : Ref[Value] = { val: Undefined }
   let executor = @runtime.make_interp_method_func(
-    "promiseCapabilityExecutor",
-    2,
+    name="promiseCapabilityExecutor",
+    length=2,
     fn(_i, _this, args) raise {
       let resolve_fn = if args.length() > 0 { args[0] } else { Undefined }
       let reject_fn = if args.length() > 1 { args[1] } else { Undefined }
@@ -357,115 +357,115 @@ pub fn setup_promise(env : Environment) -> Unit {
   let promise_proto_props : Map[String, Value] = {}
 
   // Promise.prototype.then(onFulfilled, onRejected)
-  promise_proto_props["then"] = @runtime.make_interp_method_func("then", 2, fn(
-    interp,
-    this_val,
-    args,
-  ) raise {
-    match this_val {
-      Value::Promise(promise_data) => {
-        let loc = @token.Loc::default()
-        let ctor = get_promise_species_constructor(interp, this_val, loc)
-        let (result_promise, resolve, reject) = create_promise_capability_from_constructor(
-          interp, ctor, loc,
-        )
-        let on_fulfilled = if args.length() > 0 {
-          match args[0] {
-            Object(od) =>
-              match od.callable {
-                Some(_) => Some(args[0])
-                None => None
-              }
-            _ => None
-          }
-        } else {
-          None
-        }
-        let on_rejected = if args.length() > 1 {
-          match args[1] {
-            Object(od) =>
-              match od.callable {
-                Some(_) => Some(args[1])
-                None => None
-              }
-            _ => None
-          }
-        } else {
-          None
-        }
-
-        // Mark as handled if onRejected is provided
-        if on_rejected is Some(_) {
-          promise_data.is_handled = true
-        }
-
-        // Create reactions
-        let fulfill_reaction : PromiseReaction = {
-          handler: on_fulfilled,
-          resolve,
-          reject,
-          reaction_type: Fulfill,
-        }
-        let reject_reaction : PromiseReaction = {
-          handler: on_rejected,
-          resolve,
-          reject,
-          reaction_type: Reject,
-        }
-
-        // Depending on promise state, either queue reactions or enqueue jobs
-        match promise_data.state {
-          Pending => {
-            promise_data.fulfill_reactions.push(fulfill_reaction)
-            promise_data.reject_reactions.push(reject_reaction)
-          }
-          Fulfilled =>
-            @runtime.enqueue_promise_reaction_job(
-              interp,
-              fulfill_reaction,
-              promise_data.result,
-            )
-          Rejected => {
-            if on_rejected is Some(_) {
-              promise_data.is_handled = true
+  promise_proto_props["then"] = @runtime.make_interp_method_func(
+    name="then",
+    length=2,
+    fn(interp, this_val, args) raise {
+      match this_val {
+        Value::Promise(promise_data) => {
+          let loc = @token.Loc::default()
+          let ctor = get_promise_species_constructor(interp, this_val, loc)
+          let (result_promise, resolve, reject) = create_promise_capability_from_constructor(
+            interp, ctor, loc,
+          )
+          let on_fulfilled = if args.length() > 0 {
+            match args[0] {
+              Object(od) =>
+                match od.callable {
+                  Some(_) => Some(args[0])
+                  None => None
+                }
+              _ => None
             }
-            @runtime.enqueue_promise_reaction_job(
-              interp,
-              reject_reaction,
-              promise_data.result,
-            )
+          } else {
+            None
           }
+          let on_rejected = if args.length() > 1 {
+            match args[1] {
+              Object(od) =>
+                match od.callable {
+                  Some(_) => Some(args[1])
+                  None => None
+                }
+              _ => None
+            }
+          } else {
+            None
+          }
+
+          // Mark as handled if onRejected is provided
+          if on_rejected is Some(_) {
+            promise_data.is_handled = true
+          }
+
+          // Create reactions
+          let fulfill_reaction : PromiseReaction = {
+            handler: on_fulfilled,
+            resolve,
+            reject,
+            reaction_type: Fulfill,
+          }
+          let reject_reaction : PromiseReaction = {
+            handler: on_rejected,
+            resolve,
+            reject,
+            reaction_type: Reject,
+          }
+
+          // Depending on promise state, either queue reactions or enqueue jobs
+          match promise_data.state {
+            Pending => {
+              promise_data.fulfill_reactions.push(fulfill_reaction)
+              promise_data.reject_reactions.push(reject_reaction)
+            }
+            Fulfilled =>
+              @runtime.enqueue_promise_reaction_job(
+                interp,
+                fulfill_reaction,
+                promise_data.result,
+              )
+            Rejected => {
+              if on_rejected is Some(_) {
+                promise_data.is_handled = true
+              }
+              @runtime.enqueue_promise_reaction_job(
+                interp,
+                reject_reaction,
+                promise_data.result,
+              )
+            }
+          }
+          result_promise
         }
-        result_promise
+        _ =>
+          raise @errors.TypeError(
+            message="Promise.prototype.then requires a Promise",
+          )
       }
-      _ =>
-        raise @errors.TypeError(
-          message="Promise.prototype.then requires a Promise",
-        )
-    }
-  })
+    },
+  )
 
   // Promise.prototype.catch(onRejected)
-  promise_proto_props["catch"] = @runtime.make_interp_method_func("catch", 1, fn(
-    interp,
-    this_val,
-    args,
-  ) raise {
-    // catch(onRejected) is just then(undefined, onRejected)
-    let then_method = interp.get_property(
-      this_val,
-      "then",
-      @token.Loc::default(),
-    )
-    let loc = @token.Loc::default()
-    let on_rejected = if args.length() > 0 { args[0] } else { Undefined }
-    interp.call_value(then_method, this_val, [Undefined, on_rejected], loc)
-  })
+  promise_proto_props["catch"] = @runtime.make_interp_method_func(
+    name="catch",
+    length=1,
+    fn(interp, this_val, args) raise {
+      // catch(onRejected) is just then(undefined, onRejected)
+      let then_method = interp.get_property(
+        this_val,
+        "then",
+        @token.Loc::default(),
+      )
+      let loc = @token.Loc::default()
+      let on_rejected = if args.length() > 0 { args[0] } else { Undefined }
+      interp.call_value(then_method, this_val, [Undefined, on_rejected], loc)
+    },
+  )
 
   // Promise.prototype.finally(onFinally)
   promise_proto_props["finally"] = @runtime.make_interp_method_func(
-    "finally",
-    1,
+    name="finally",
+    length=1,
     fn(interp, this_val, args) raise {
       let loc = @token.Loc::default()
       let ctor = get_promise_species_constructor(interp, this_val, loc)
@@ -621,8 +621,8 @@ pub fn setup_promise(env : Environment) -> Unit {
 
   // Promise.resolve(value)
   promise_ctor_props["resolve"] = @runtime.make_interp_method_func(
-    "resolve",
-    1,
+    name="resolve",
+    length=1,
     fn(interp, this_val, args) raise {
       let value = if args.length() > 0 { args[0] } else { Undefined }
       let loc = @token.Loc::default()
@@ -647,25 +647,25 @@ pub fn setup_promise(env : Environment) -> Unit {
   )
 
   // Promise.reject(reason)
-  promise_ctor_props["reject"] = @runtime.make_interp_method_func("reject", 1, fn(
-    interp,
-    this_val,
-    args,
-  ) raise {
-    let reason = if args.length() > 0 { args[0] } else { Undefined }
-    let loc = @token.Loc::default()
-    let (promise, _resolve, reject) = create_promise_capability_from_constructor(
-      interp, this_val, loc,
-    )
-    let _ = interp.call_value(reject, Undefined, [reason], loc)
-    promise
-  })
+  promise_ctor_props["reject"] = @runtime.make_interp_method_func(
+    name="reject",
+    length=1,
+    fn(interp, this_val, args) raise {
+      let reason = if args.length() > 0 { args[0] } else { Undefined }
+      let loc = @token.Loc::default()
+      let (promise, _resolve, reject) = create_promise_capability_from_constructor(
+        interp, this_val, loc,
+      )
+      let _ = interp.call_value(reject, Undefined, [reason], loc)
+      promise
+    },
+  )
 
   // Promise.withResolvers()
   // https://tc39.es/ecma262/#sec-promise.withresolvers
   promise_ctor_props["withResolvers"] = @runtime.make_interp_method_func(
-    "withResolvers",
-    0,
+    name="withResolvers",
+    length=0,
     fn(interp, this_val, _args) raise {
       let loc = @token.Loc::default()
       let (promise, resolve, reject) = create_promise_capability_from_constructor(
@@ -692,240 +692,54 @@ pub fn setup_promise(env : Environment) -> Unit {
 
   // Promise.try(callbackFn, ...args)
   // https://tc39.es/ecma262/#sec-promise.try
-  promise_ctor_props["try"] = @runtime.make_interp_method_func("try", 1, fn(
-    interp,
-    this_val,
-    args,
-  ) raise {
-    let loc = @token.Loc::default()
-    // Step 1-3: NewPromiseCapability(C) — validates C is a constructor
-    let (promise, resolve, reject) = create_promise_capability_from_constructor(
-      interp, this_val, loc,
-    )
-    // Extract callbackFn and rest args
-    let callback = if args.length() > 0 { args[0] } else { Undefined }
-    let call_args : Array[Value] = if args.length() > 1 {
-      let a : Array[Value] = []
-      for i in 1..<args.length() {
-        a.push(args[i])
+  promise_ctor_props["try"] = @runtime.make_interp_method_func(
+    name="try",
+    length=1,
+    fn(interp, this_val, args) raise {
+      let loc = @token.Loc::default()
+      // Step 1-3: NewPromiseCapability(C) — validates C is a constructor
+      let (promise, resolve, reject) = create_promise_capability_from_constructor(
+        interp, this_val, loc,
+      )
+      // Extract callbackFn and rest args
+      let callback = if args.length() > 0 { args[0] } else { Undefined }
+      let call_args : Array[Value] = if args.length() > 1 {
+        let a : Array[Value] = []
+        for i in 1..<args.length() {
+          a.push(args[i])
+        }
+        a
+      } else {
+        []
       }
-      a
-    } else {
-      []
-    }
-    // Step 4: Call callback, capture completion
-    let status : Result[Value, _] = Ok(
-      interp.call_value(callback, Undefined, call_args, loc),
-    ) catch {
-      err => Err(err)
-    }
-    // Step 5-6: Resolve or reject based on completion.
-    // resolve/reject throws propagate outward per spec (? Call).
-    match status {
-      Ok(result) => {
-        let _ = interp.call_value(resolve, Undefined, [result], loc)
+      // Step 4: Call callback, capture completion
+      let status : Result[Value, _] = Ok(
+        interp.call_value(callback, Undefined, call_args, loc),
+      ) catch {
+        err => Err(err)
       }
-      Err(err) => {
-        let error_val = @runtime.js_error_to_value(err)
-        let _ = interp.call_value(reject, Undefined, [error_val], loc)
+      // Step 5-6: Resolve or reject based on completion.
+      // resolve/reject throws propagate outward per spec (? Call).
+      match status {
+        Ok(result) => {
+          let _ = interp.call_value(resolve, Undefined, [result], loc)
+        }
+        Err(err) => {
+          let error_val = @runtime.js_error_to_value(err)
+          let _ = interp.call_value(reject, Undefined, [error_val], loc)
+        }
       }
-    }
-    // Step 7
-    promise
-  })
+      // Step 7
+      promise
+    },
+  )
 
   // Promise.all(iterable)
   // NOTE: PerformPromiseAll synchronously consumes the entire input iterator
   // before any promise settles. Iterator consumption is NOT lazy.
-  promise_ctor_props["all"] = @runtime.make_interp_method_func("all", 1, fn(
-    interp,
-    _this,
-    args,
-  ) raise {
-    let iterable = if args.length() > 0 { args[0] } else { Undefined }
-    let loc = @token.Loc::default()
-    let (result_promise, resolve, reject) = create_promise_capability_from_constructor(
-      interp, _this, loc,
-    )
-    let results : Array[Value] = []
-    let remaining : Ref[Int] = { val: 1 }
-    let mut iterator : Value = Undefined
-    let mut has_iterator = false
-    let mut iterator_done = false
-
-    try {
-      let promise_resolve = get_promise_resolve_method(interp, _this, loc)
-      let (iter, next_method) = get_promise_iterator_record(
-        interp, iterable, loc,
-      )
-      iterator = iter
-      has_iterator = true
-      while true {
-        let next_result = interp.call_value(next_method, iterator, [], loc) catch {
-          e => {
-            iterator_done = true
-            raise e
-          }
-        }
-        let done = match next_result {
-          Object(_) => {
-            let done_value = interp.get_property(next_result, "done", loc) catch {
-              e => {
-                iterator_done = true
-                raise e
-              }
-            }
-            @runtime.is_truthy(done_value)
-          }
-          _ => {
-            iterator_done = true
-            raise @errors.TypeError(message="Iterator result is not an object")
-          }
-        }
-        if done {
-          iterator_done = true
-          break
-        }
-        let next_value = interp.get_property(next_result, "value", loc) catch {
-          e => {
-            iterator_done = true
-            raise e
-          }
-        }
-        let index = results.length()
-        results.push(Undefined)
-        remaining.val = remaining.val + 1
-
-        let next_promise = call_promise_resolve_method(
-          interp, promise_resolve, _this, next_value, loc,
-        )
-        let already_called : Ref[Bool] = { val: false }
-        let resolve_element = @runtime.make_interpreter_callable_with_length(
-          "allResolveElement",
-          1,
-          fn(i2, _t2, args2) raise {
-            if already_called.val {
-              return Undefined
-            }
-            already_called.val = true
-            let value = if args2.length() > 0 { args2[0] } else { Undefined }
-            results[index] = value
-            remaining.val = remaining.val - 1
-            if remaining.val == 0 {
-              resolve_combinator_result(
-                i2,
-                resolve,
-                reject,
-                @runtime.make_array(results),
-                loc,
-              )
-            }
-            Undefined
-          },
-        )
-        invoke_then_method(interp, next_promise, resolve_element, reject, loc)
-      }
-    } catch {
-      e =>
-        return reject_combinator_abrupt(
-          interp, result_promise, reject, iterator, has_iterator, iterator_done,
-          e, loc,
-        )
-    }
-    remaining.val = remaining.val - 1
-    if remaining.val == 0 {
-      resolve_combinator_result(
-        interp,
-        resolve,
-        reject,
-        @runtime.make_array(results),
-        loc,
-      )
-    }
-    result_promise
-  })
-
-  // Promise.race(iterable)
-  // NOTE: PerformPromiseRace synchronously consumes the ENTIRE iterator before
-  // any promise settles. IteratorClose is only invoked for abrupt completion
-  // during iteration (e.g., next() throws), NOT when a promise settles first.
-  promise_ctor_props["race"] = @runtime.make_interp_method_func("race", 1, fn(
-    interp,
-    _this,
-    args,
-  ) raise {
-    let iterable = if args.length() > 0 { args[0] } else { Undefined }
-    let loc = @token.Loc::default()
-    let (result_promise, resolve, reject) = create_promise_capability_from_constructor(
-      interp, _this, loc,
-    )
-    let mut iterator : Value = Undefined
-    let mut has_iterator = false
-    let mut iterator_done = false
-
-    try {
-      let promise_resolve = get_promise_resolve_method(interp, _this, loc)
-      let (iter, next_method) = get_promise_iterator_record(
-        interp, iterable, loc,
-      )
-      iterator = iter
-      has_iterator = true
-      // Per PerformPromiseRace, iteration is synchronous and continues until
-      // iterator completion or abrupt completion. We do not stop consuming
-      // the iterator when one already-enqueued promise settles.
-      while true {
-        let next_result = interp.call_value(next_method, iterator, [], loc) catch {
-          e => {
-            iterator_done = true
-            raise e
-          }
-        }
-        let done = match next_result {
-          Object(_) => {
-            let done_value = interp.get_property(next_result, "done", loc) catch {
-              e => {
-                iterator_done = true
-                raise e
-              }
-            }
-            @runtime.is_truthy(done_value)
-          }
-          _ => {
-            iterator_done = true
-            raise @errors.TypeError(message="Iterator result is not an object")
-          }
-        }
-        if done {
-          iterator_done = true
-          break
-        }
-        let next_value = interp.get_property(next_result, "value", loc) catch {
-          e => {
-            iterator_done = true
-            raise e
-          }
-        }
-        let next_promise = call_promise_resolve_method(
-          interp, promise_resolve, _this, next_value, loc,
-        )
-        invoke_then_method(interp, next_promise, resolve, reject, loc)
-      }
-    } catch {
-      e =>
-        return reject_combinator_abrupt(
-          interp, result_promise, reject, iterator, has_iterator, iterator_done,
-          e, loc,
-        )
-    }
-    result_promise
-  })
-
-  // Promise.allSettled(iterable)
-  // NOTE: PerformPromiseAllSettled synchronously consumes the entire input
-  // iterator. Never rejects - waits for all promises to settle.
-  promise_ctor_props["allSettled"] = @runtime.make_interp_method_func(
-    "allSettled",
-    1,
+  promise_ctor_props["all"] = @runtime.make_interp_method_func(
+    name="all",
+    length=1,
     fn(interp, _this, args) raise {
       let iterable = if args.length() > 0 { args[0] } else { Undefined }
       let loc = @token.Loc::default()
@@ -987,9 +801,199 @@ pub fn setup_promise(env : Environment) -> Unit {
             interp, promise_resolve, _this, next_value, loc,
           )
           let already_called : Ref[Bool] = { val: false }
-          let on_fulfilled = @runtime.make_interpreter_callable_with_length(
-            "allSettledOnFulfilled",
-            1,
+          let resolve_element = @runtime.make_interp_method_func(
+            name="allResolveElement",
+            length=1,
+            fn(i2, _t2, args2) raise {
+              if already_called.val {
+                return Undefined
+              }
+              already_called.val = true
+              let value = if args2.length() > 0 { args2[0] } else { Undefined }
+              results[index] = value
+              remaining.val = remaining.val - 1
+              if remaining.val == 0 {
+                resolve_combinator_result(
+                  i2,
+                  resolve,
+                  reject,
+                  @runtime.make_array(results),
+                  loc,
+                )
+              }
+              Undefined
+            },
+          )
+          invoke_then_method(interp, next_promise, resolve_element, reject, loc)
+        }
+      } catch {
+        e =>
+          return reject_combinator_abrupt(
+            interp, result_promise, reject, iterator, has_iterator, iterator_done,
+            e, loc,
+          )
+      }
+      remaining.val = remaining.val - 1
+      if remaining.val == 0 {
+        resolve_combinator_result(
+          interp,
+          resolve,
+          reject,
+          @runtime.make_array(results),
+          loc,
+        )
+      }
+      result_promise
+    },
+  )
+
+  // Promise.race(iterable)
+  // NOTE: PerformPromiseRace synchronously consumes the ENTIRE iterator before
+  // any promise settles. IteratorClose is only invoked for abrupt completion
+  // during iteration (e.g., next() throws), NOT when a promise settles first.
+  promise_ctor_props["race"] = @runtime.make_interp_method_func(
+    name="race",
+    length=1,
+    fn(interp, _this, args) raise {
+      let iterable = if args.length() > 0 { args[0] } else { Undefined }
+      let loc = @token.Loc::default()
+      let (result_promise, resolve, reject) = create_promise_capability_from_constructor(
+        interp, _this, loc,
+      )
+      let mut iterator : Value = Undefined
+      let mut has_iterator = false
+      let mut iterator_done = false
+
+      try {
+        let promise_resolve = get_promise_resolve_method(interp, _this, loc)
+        let (iter, next_method) = get_promise_iterator_record(
+          interp, iterable, loc,
+        )
+        iterator = iter
+        has_iterator = true
+        // Per PerformPromiseRace, iteration is synchronous and continues until
+        // iterator completion or abrupt completion. We do not stop consuming
+        // the iterator when one already-enqueued promise settles.
+        while true {
+          let next_result = interp.call_value(next_method, iterator, [], loc) catch {
+            e => {
+              iterator_done = true
+              raise e
+            }
+          }
+          let done = match next_result {
+            Object(_) => {
+              let done_value = interp.get_property(next_result, "done", loc) catch {
+                e => {
+                  iterator_done = true
+                  raise e
+                }
+              }
+              @runtime.is_truthy(done_value)
+            }
+            _ => {
+              iterator_done = true
+              raise @errors.TypeError(
+                message="Iterator result is not an object",
+              )
+            }
+          }
+          if done {
+            iterator_done = true
+            break
+          }
+          let next_value = interp.get_property(next_result, "value", loc) catch {
+            e => {
+              iterator_done = true
+              raise e
+            }
+          }
+          let next_promise = call_promise_resolve_method(
+            interp, promise_resolve, _this, next_value, loc,
+          )
+          invoke_then_method(interp, next_promise, resolve, reject, loc)
+        }
+      } catch {
+        e =>
+          return reject_combinator_abrupt(
+            interp, result_promise, reject, iterator, has_iterator, iterator_done,
+            e, loc,
+          )
+      }
+      result_promise
+    },
+  )
+
+  // Promise.allSettled(iterable)
+  // NOTE: PerformPromiseAllSettled synchronously consumes the entire input
+  // iterator. Never rejects - waits for all promises to settle.
+  promise_ctor_props["allSettled"] = @runtime.make_interp_method_func(
+    name="allSettled",
+    length=1,
+    fn(interp, _this, args) raise {
+      let iterable = if args.length() > 0 { args[0] } else { Undefined }
+      let loc = @token.Loc::default()
+      let (result_promise, resolve, reject) = create_promise_capability_from_constructor(
+        interp, _this, loc,
+      )
+      let results : Array[Value] = []
+      let remaining : Ref[Int] = { val: 1 }
+      let mut iterator : Value = Undefined
+      let mut has_iterator = false
+      let mut iterator_done = false
+
+      try {
+        let promise_resolve = get_promise_resolve_method(interp, _this, loc)
+        let (iter, next_method) = get_promise_iterator_record(
+          interp, iterable, loc,
+        )
+        iterator = iter
+        has_iterator = true
+        while true {
+          let next_result = interp.call_value(next_method, iterator, [], loc) catch {
+            e => {
+              iterator_done = true
+              raise e
+            }
+          }
+          let done = match next_result {
+            Object(_) => {
+              let done_value = interp.get_property(next_result, "done", loc) catch {
+                e => {
+                  iterator_done = true
+                  raise e
+                }
+              }
+              @runtime.is_truthy(done_value)
+            }
+            _ => {
+              iterator_done = true
+              raise @errors.TypeError(
+                message="Iterator result is not an object",
+              )
+            }
+          }
+          if done {
+            iterator_done = true
+            break
+          }
+          let next_value = interp.get_property(next_result, "value", loc) catch {
+            e => {
+              iterator_done = true
+              raise e
+            }
+          }
+          let index = results.length()
+          results.push(Undefined)
+          remaining.val = remaining.val + 1
+
+          let next_promise = call_promise_resolve_method(
+            interp, promise_resolve, _this, next_value, loc,
+          )
+          let already_called : Ref[Bool] = { val: false }
+          let on_fulfilled = @runtime.make_interp_method_func(
+            name="allSettledOnFulfilled",
+            length=1,
             fn(i2, _t2, args2) raise {
               if already_called.val {
                 return Undefined
@@ -1024,9 +1028,9 @@ pub fn setup_promise(env : Environment) -> Unit {
               Undefined
             },
           )
-          let on_rejected = @runtime.make_interpreter_callable_with_length(
-            "allSettledOnRejected",
-            1,
+          let on_rejected = @runtime.make_interp_method_func(
+            name="allSettledOnRejected",
+            length=1,
             fn(i2, _t2, args2) raise {
               if already_called.val {
                 return Undefined
@@ -1089,122 +1093,126 @@ pub fn setup_promise(env : Environment) -> Unit {
   // Promise.any(iterable)
   // NOTE: PerformPromiseAny synchronously consumes the entire input iterator.
   // Rejects with AggregateError only if ALL promises reject.
-  promise_ctor_props["any"] = @runtime.make_interp_method_func("any", 1, fn(
-    interp,
-    _this,
-    args,
-  ) raise {
-    let iterable = if args.length() > 0 { args[0] } else { Undefined }
-    let loc = @token.Loc::default()
-    let (result_promise, resolve, reject) = create_promise_capability_from_constructor(
-      interp, _this, loc,
-    )
-    let errors : Array[Value] = []
-    let remaining : Ref[Int] = { val: 1 }
-    let mut iterator : Value = Undefined
-    let mut has_iterator = false
-    let mut iterator_done = false
-
-    try {
-      let promise_resolve = get_promise_resolve_method(interp, _this, loc)
-      let (iter, next_method) = get_promise_iterator_record(
-        interp, iterable, loc,
+  promise_ctor_props["any"] = @runtime.make_interp_method_func(
+    name="any",
+    length=1,
+    fn(interp, _this, args) raise {
+      let iterable = if args.length() > 0 { args[0] } else { Undefined }
+      let loc = @token.Loc::default()
+      let (result_promise, resolve, reject) = create_promise_capability_from_constructor(
+        interp, _this, loc,
       )
-      iterator = iter
-      has_iterator = true
-      // As in the spec algorithm, this loop consumes the iterator
-      // synchronously; resolving early does not short-circuit iteration.
-      while true {
-        let next_result = interp.call_value(next_method, iterator, [], loc) catch {
-          e => {
-            iterator_done = true
-            raise e
+      let errors : Array[Value] = []
+      let remaining : Ref[Int] = { val: 1 }
+      let mut iterator : Value = Undefined
+      let mut has_iterator = false
+      let mut iterator_done = false
+
+      try {
+        let promise_resolve = get_promise_resolve_method(interp, _this, loc)
+        let (iter, next_method) = get_promise_iterator_record(
+          interp, iterable, loc,
+        )
+        iterator = iter
+        has_iterator = true
+        // As in the spec algorithm, this loop consumes the iterator
+        // synchronously; resolving early does not short-circuit iteration.
+        while true {
+          let next_result = interp.call_value(next_method, iterator, [], loc) catch {
+            e => {
+              iterator_done = true
+              raise e
+            }
           }
-        }
-        let done = match next_result {
-          Object(_) => {
-            let done_value = interp.get_property(next_result, "done", loc) catch {
-              e => {
-                iterator_done = true
-                raise e
+          let done = match next_result {
+            Object(_) => {
+              let done_value = interp.get_property(next_result, "done", loc) catch {
+                e => {
+                  iterator_done = true
+                  raise e
+                }
               }
+              @runtime.is_truthy(done_value)
             }
-            @runtime.is_truthy(done_value)
-          }
-          _ => {
-            iterator_done = true
-            raise @errors.TypeError(message="Iterator result is not an object")
-          }
-        }
-        if done {
-          iterator_done = true
-          break
-        }
-        let next_value = interp.get_property(next_result, "value", loc) catch {
-          e => {
-            iterator_done = true
-            raise e
-          }
-        }
-        let index = errors.length()
-        errors.push(Undefined)
-        remaining.val = remaining.val + 1
-
-        let next_promise = call_promise_resolve_method(
-          interp, promise_resolve, _this, next_value, loc,
-        )
-        let already_called : Ref[Bool] = { val: false }
-        let on_fulfilled = @runtime.make_interpreter_callable_with_length(
-          "anyOnFulfilled",
-          1,
-          fn(i2, _t2, args2) raise {
-            if already_called.val {
-              return Undefined
-            }
-            already_called.val = true
-            let value = if args2.length() > 0 { args2[0] } else { Undefined }
-            let _ = i2.call_value(resolve, Undefined, [value], loc)
-            Undefined
-          },
-        )
-        let on_rejected = @runtime.make_interpreter_callable_with_length(
-          "anyOnRejected",
-          1,
-          fn(i2, _t2, args2) raise {
-            if already_called.val {
-              return Undefined
-            }
-            already_called.val = true
-            let reason = if args2.length() > 0 { args2[0] } else { Undefined }
-            errors[index] = reason
-            remaining.val = remaining.val - 1
-            if remaining.val == 0 {
-              let agg_error = make_aggregate_error(
-                interp, "All promises were rejected", errors,
+            _ => {
+              iterator_done = true
+              raise @errors.TypeError(
+                message="Iterator result is not an object",
               )
-              let _ = i2.call_value(reject, Undefined, [agg_error], loc)
             }
-            Undefined
-          },
-        )
-        invoke_then_method(interp, next_promise, on_fulfilled, on_rejected, loc)
+          }
+          if done {
+            iterator_done = true
+            break
+          }
+          let next_value = interp.get_property(next_result, "value", loc) catch {
+            e => {
+              iterator_done = true
+              raise e
+            }
+          }
+          let index = errors.length()
+          errors.push(Undefined)
+          remaining.val = remaining.val + 1
+
+          let next_promise = call_promise_resolve_method(
+            interp, promise_resolve, _this, next_value, loc,
+          )
+          let already_called : Ref[Bool] = { val: false }
+          let on_fulfilled = @runtime.make_interp_method_func(
+            name="anyOnFulfilled",
+            length=1,
+            fn(i2, _t2, args2) raise {
+              if already_called.val {
+                return Undefined
+              }
+              already_called.val = true
+              let value = if args2.length() > 0 { args2[0] } else { Undefined }
+              let _ = i2.call_value(resolve, Undefined, [value], loc)
+              Undefined
+            },
+          )
+          let on_rejected = @runtime.make_interp_method_func(
+            name="anyOnRejected",
+            length=1,
+            fn(i2, _t2, args2) raise {
+              if already_called.val {
+                return Undefined
+              }
+              already_called.val = true
+              let reason = if args2.length() > 0 { args2[0] } else { Undefined }
+              errors[index] = reason
+              remaining.val = remaining.val - 1
+              if remaining.val == 0 {
+                let agg_error = make_aggregate_error(
+                  interp, "All promises were rejected", errors,
+                )
+                let _ = i2.call_value(reject, Undefined, [agg_error], loc)
+              }
+              Undefined
+            },
+          )
+          invoke_then_method(
+            interp, next_promise, on_fulfilled, on_rejected, loc,
+          )
+        }
+      } catch {
+        e =>
+          return reject_combinator_abrupt(
+            interp, result_promise, reject, iterator, has_iterator, iterator_done,
+            e, loc,
+          )
       }
-    } catch {
-      e =>
-        return reject_combinator_abrupt(
-          interp, result_promise, reject, iterator, has_iterator, iterator_done,
-          e, loc,
+      remaining.val = remaining.val - 1
+      if remaining.val == 0 {
+        let agg_error = make_aggregate_error(
+          interp, "All promises were rejected", errors,
         )
-    }
-    remaining.val = remaining.val - 1
-    if remaining.val == 0 {
-      let agg_error = make_aggregate_error(
-        interp, "All promises were rejected", errors,
-      )
-      let _ = interp.call_value(reject, Undefined, [agg_error], loc)
-    }
-    result_promise
-  })
+        let _ = interp.call_value(reject, Undefined, [agg_error], loc)
+      }
+      result_promise
+    },
+  )
 
   // Promise constructor itself - requires 'new' keyword
   let promise_ctor = Value::Object({
@@ -1332,12 +1340,11 @@ pub fn setup_promise(env : Environment) -> Unit {
   })
 
   // Promise[Symbol.species] getter returns `this` (used by SpeciesConstructor).
-  let species_getter = @runtime.make_method_func("get [Symbol.species]", 0, fn(
-    this_val,
-    _args,
-  ) {
-    this_val
-  })
+  let species_getter = @runtime.make_method_func(
+    name="get [Symbol.species]",
+    length=0,
+    fn(this_val, _args) { this_val },
+  )
   let species_symbol_val = env.get("Symbol") catch { _ => Undefined }
   match species_symbol_val {
     Object(symbol_data) =>
@@ -1386,7 +1393,7 @@ pub fn setup_promise(env : Environment) -> Unit {
   // Part of the Web Platform APIs, used for scheduling microtasks directly
   env.def_builtin(
     "queueMicrotask",
-    @runtime.make_interp_method_func("queueMicrotask", 0, fn(
+    @runtime.make_interp_method_func(name="queueMicrotask", length=0, fn(
       interp,
       _this,
       args,
@@ -1463,7 +1470,7 @@ pub fn setup_timers(env : Environment) -> Unit {
   // setTimeout(callback, delay, ...args) -> timerId
   env.def_builtin(
     "setTimeout",
-    @runtime.make_interp_method_func("setTimeout", 0, fn(
+    @runtime.make_interp_method_func(name="setTimeout", length=0, fn(
       interp,
       _this,
       args,
@@ -1512,7 +1519,7 @@ pub fn setup_timers(env : Environment) -> Unit {
   // clearTimeout(id)
   env.def_builtin(
     "clearTimeout",
-    @runtime.make_interp_method_func("clearTimeout", 0, fn(
+    @runtime.make_interp_method_func(name="clearTimeout", length=0, fn(
       interp,
       _this,
       args,
@@ -1533,7 +1540,7 @@ pub fn setup_timers(env : Environment) -> Unit {
   // setInterval(callback, delay, ...args) -> timerId
   env.def_builtin(
     "setInterval",
-    @runtime.make_interp_method_func("setInterval", 0, fn(
+    @runtime.make_interp_method_func(name="setInterval", length=0, fn(
       interp,
       _this,
       args,
@@ -1580,7 +1587,7 @@ pub fn setup_timers(env : Environment) -> Unit {
   // clearInterval(id) - same semantics as clearTimeout
   env.def_builtin(
     "clearInterval",
-    @runtime.make_interp_method_func("clearInterval", 0, fn(
+    @runtime.make_interp_method_func(name="clearInterval", length=0, fn(
       interp,
       _this,
       args,
