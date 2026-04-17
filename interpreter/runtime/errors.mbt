@@ -42,6 +42,14 @@ fn make_error_value_with_env(
     }
     None => Null
   }
+  // Fallback: if no prototype could be resolved (e.g. InternalError has no
+  // registered constructor, or env is None), attach `name` as an own data
+  // property so diagnostic accessors like `err.name` still report a useful
+  // string instead of `undefined`.
+  if proto is Null {
+    err_props["name"] = String_(name)
+    err_descs["name"] = err_desc
+  }
   Object({
     bag: {
       properties: err_props,
@@ -97,6 +105,12 @@ fn make_aggregate_error_value(
       }
     }
     None => Null
+  }
+  // Same fallback as make_error_value_with_env: if prototype lookup fails,
+  // attach `name` as an own property so `err.name` is still defined.
+  if proto is Null {
+    err_props["name"] = String_("AggregateError")
+    err_descs["name"] = err_desc
   }
   Object({
     bag: {
