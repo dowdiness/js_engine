@@ -23,8 +23,8 @@ pub fn make_func(data : FuncData) -> Value {
     bag: {
       properties: {
         "prototype": proto,
-        "name": String_(func_name),
         "length": Number(func_length),
+        "name": String_(func_name),
       },
       symbol_properties: {},
       descriptors: {
@@ -35,8 +35,8 @@ pub fn make_func(data : FuncData) -> Value {
           getter: None,
           setter: None,
         },
-        "name": nf_desc,
         "length": nf_desc,
+        "name": nf_desc,
       },
       symbol_descriptors: {},
     },
@@ -93,8 +93,8 @@ pub fn make_func_ext(data : FuncDataExt) -> Value {
     bag: {
       properties: {
         "prototype": proto,
-        "name": String_(func_name),
         "length": Number(func_length.to_double()),
+        "name": String_(func_name),
       },
       symbol_properties: {},
       descriptors: {
@@ -105,8 +105,8 @@ pub fn make_func_ext(data : FuncDataExt) -> Value {
           getter: None,
           setter: None,
         },
-        "name": nf_desc,
         "length": nf_desc,
+        "name": nf_desc,
       },
       symbol_descriptors: {},
     },
