@@ -23,17 +23,9 @@ fn make_error_value_with_env(
   let err_props : Map[String, Value] = {}
   err_props["message"] = String_(msg)
   err_props["stack"] = String_(name + ": " + msg)
-  // Keep `name` as an own property until two consumers are updated:
-  //   (1) Error.prototype.toString in builtins_error.mbt does an own-property-only
-  //       lookup instead of spec's Get(O, "name") which walks the prototype chain.
-  //   (2) `js_error_to_value` (no env) yields objects with prototype: Null (used by
-  //       Promise.try), so a chain walk would still find no `name`.
-  // Once both are fixed, `name` can move to the prototype to match user-created errors.
-  err_props["name"] = String_(name)
   let err_descs : Map[String, PropDescriptor] = {
     "message": err_desc,
     "stack": err_desc,
-    "name": err_desc,
   }
   // Try to look up the proper prototype from the environment
   let proto : Value = match env {
@@ -81,10 +73,6 @@ fn make_aggregate_error_value(
   let err_props : Map[String, Value] = {}
   err_props["message"] = String_(msg)
   err_props["stack"] = String_("AggregateError: " + msg)
-  // See comment in make_error_value_with_env — keep `name` as own until
-  // Error.prototype.toString walks the chain and env-less conversion stops
-  // yielding prototype: Null.
-  err_props["name"] = String_("AggregateError")
   // Convert errors array to JavaScript array
   let js_errors : Array[Value] = errors.map(fn(e) {
     js_error_to_value_with_env(e, env)
@@ -94,7 +82,6 @@ fn make_aggregate_error_value(
     "message": err_desc,
     "stack": err_desc,
     "errors": err_desc,
-    "name": err_desc,
   }
   // Try to look up the proper prototype from the environment
   let proto : Value = match env {

@@ -726,7 +726,13 @@ pub fn setup_promise(env : Environment) -> Unit {
         let _ = interp.call_value(resolve, Undefined, [result], loc)
       }
       Err(err) => {
-        let error_val = @runtime.js_error_to_value(err)
+        // Use env-aware conversion so the rejection value gets a proper
+        // prototype chain — without this, the error has prototype: Null
+        // and `err instanceof TypeError` fails.
+        let error_val = @runtime.js_error_to_value_with_env(
+          err,
+          Some(interp.global),
+        )
         let _ = interp.call_value(reject, Undefined, [error_val], loc)
       }
     }
