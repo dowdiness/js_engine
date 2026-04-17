@@ -247,14 +247,19 @@ contexts) and §B.3.5 (VariableStatements in eval). Existing sloppy-mode
 hoisting handles global and function scopes; eval-scope needs the same
 treatment. NOT an architectural problem.
 
-#### B. test262 runner `_FIXTURE.js` path resolver — ~91 tests
+#### B. test262 runner `_FIXTURE.js` path resolver — sibling gap CLOSED (2026-04-18, +17 tests)
 
-**Impact**: `language/module-code` 61.9% → est. 80%+
-**File**: `test262-runner.py`
+**Status**: sibling-fixture imports resolved on `fix/test262-fixture-resolver`
+(commit 1cb83bb). `language/module-code` 61.9% → 64.7%.
 
-91 of 119 module-code failures are `SyntaxError: Cannot find module
-'./xxx_FIXTURE.js'`. The runner's module-path resolver doesn't handle
-fixture imports. One hour of work. NOT an interpreter bug.
+**Remaining 62 "Cannot find module" failures are NOT runner gaps**:
+- **Self-imports** (e.g. `instn-once.js` does `import './instn-once.js'`):
+  the test imports its own filename. Engine evaluates then registers, so
+  at import-time the test isn't in `module_registry`.
+- **Cycles** (`*-cycle-1` ↔ `*-cycle-2`): same root cause.
+
+Both need ES2020 module instantiation-phase support (pre-bind exports
+before evaluation) — engine work, not runner.
 
 ### Architectural track (multi-PR; see architecture-redesign-2026-04-17-probes.md)
 
