@@ -294,7 +294,8 @@ def resolve_fixtures(test_path: str, source: str) -> list:
     execute. Cycles are broken by visit-once tracking; circular fixtures still get included
     (in some order) so the engine sees them — the engine itself decides if cycles are valid.
     """
-    test_dir = os.path.dirname(test_path)
+    test_abs = os.path.abspath(test_path)
+    test_dir = os.path.dirname(test_abs)
     visited = {}    # specifier -> source
     order = []      # specifiers in post-order (dependencies before dependents)
     stack = set()   # specifiers currently on DFS stack (cycle detection)
@@ -302,6 +303,11 @@ def resolve_fixtures(test_path: str, source: str) -> list:
     def visit(spec: str, importer_dir: str):
         # Resolve `spec` (always starts with ./ or ../) relative to importer_dir
         abs_path = os.path.normpath(os.path.join(importer_dir, spec))
+        # Skip self-imports: the test runs as the main module, never as its own
+        # fixture (run_modules would evaluate it twice and the self-import lookup
+        # still wouldn't see the not-yet-registered exports).
+        if abs_path == test_abs:
+            return
         if abs_path in visited or abs_path in stack:
             return  # already done or back-edge (cycle)
         if not os.path.isfile(abs_path):
