@@ -226,6 +226,61 @@ All four stages shipped. See [docs/architecture-redesign-2026-04-15.md](architec
 
 ---
 
+## Recommended Next Targets (2026-04-17 probes)
+
+Four uncertainty probes sharpened the targets. Full analysis in
+[architecture-redesign-2026-04-17-probes.md](architecture-redesign-2026-04-17-probes.md).
+The 2026-04-16 analysis below is still valid; this section overrides it
+where they disagree.
+
+### Highest-ROI non-architectural items (discovered 2026-04-17)
+
+#### A. Annex B eval-scope hoisting — ~346 tests
+
+**Impact**: `language/eval-code` 62.6% → est. 90%+
+**File**: `interpreter/runtime/hoisting.mbt`
+
+Failure classification of all 389 `language/eval-code` failures: 282
+assertion mismatches + 64 binding-creation-order + 25 duplicate-declaration
+— all trace to Annex B §B.3.3 (block-level function declarations in eval
+contexts) and §B.3.5 (VariableStatements in eval). Existing sloppy-mode
+hoisting handles global and function scopes; eval-scope needs the same
+treatment. NOT an architectural problem.
+
+#### B. test262 runner `_FIXTURE.js` path resolver — ~91 tests
+
+**Impact**: `language/module-code` 61.9% → est. 80%+
+**File**: `test262-runner.py`
+
+91 of 119 module-code failures are `SyntaxError: Cannot find module
+'./xxx_FIXTURE.js'`. The runner's module-path resolver doesn't handle
+fixture imports. One hour of work. NOT an interpreter bug.
+
+### Architectural track (multi-PR; see architecture-redesign-2026-04-17-probes.md)
+
+Redesign targeting CP-1 (proxy access protocol) and CP-2 (ArrayData
+representation). Staged:
+
+- ~~**Stage A — PropertyBag extraction.**~~ ✅ DONE (2026-04-17, PR #49).
+  Pure refactor landed in 3 commits: core consolidation (b00a76d),
+  `PropertyBag::new` custom constructor (3ef1192), `MapData::new` /
+  `SetData::new` custom constructors (29f6164). 0 test262 delta, 884/884
+  unit tests, CodeRabbit surfaced 4 pre-existing bugs (tracked below, not
+  regressions).
+- **Stage B.1 — `[[Set]]` dispatcher.** ~22 Proxy tests.
+- **Stage B.2 — `[[GetOwnProperty]]` + `[[DefineOwnProperty]]`.** ~35–45
+  Proxy tests.
+- **Stage C — ArrayData.bag.** ~700+ Array tests; unlocks Issue #1
+  (descriptor visibility). Ship BEFORE Stage B.3 (shared read site).
+- **Stage B.3 — `[[HasProperty]]` dispatcher.** ~15 Proxy tests.
+- **Stage D — Realm hermeticity.** 0 tests; ship when convenient.
+
+Independent of Stage B (parallel PRs):
+- `construct` NewTarget threading (~12 Proxy).
+- `revocable` `typeof` post-revoke (~8 Proxy).
+
+---
+
 ## Recommended Next Targets (2026-04-16 analysis)
 
 Remaining failures are widely distributed — no single fix unlocks 300+ tests. Progress requires many small, targeted fixes. Ordered by estimated ROI.
@@ -296,3 +351,40 @@ Remaining deferred items from Phase 15 (3 of 6 now done):
 #### 6. Consolidate `make_*_func` factory variants
 
 **Impact**: ~150 LoC of near-duplicate function-object construction in `interpreter/runtime/factories.mbt` — `make_native_func`, `make_native_func_with_length`, `make_static_func`, `make_static_func_with_length`, `make_method_func`, `make_interp_method_func`, `make_interp_static_func_with_length` all share the same ~25 LoC body (name/length descriptor, function-proto, `class_name: "Function"`) and differ only in the `Callable` variant and whether length is explicit. Extract a private `build_func_object(name, length, callable) -> Value` helper and reduce each public wrapper to a one-liner. Do this when no other work is in flight near `factories.mbt`. Surfaced by Stage A simplify review (2026-04-17).
+
+---
+
+## Pre-existing bugs exposed by Stage A CodeRabbit review (2026-04-17, PR #49)
+
+Four findings surfaced during CodeRabbit review of PR #49. All four are
+pre-existing bugs that predate Stage A — the PropertyBag refactor only
+moved the same literal shapes into `bag: { ... }` wrappers. Ordered by
+expected test262 impact.
+
+### 7. `hasOwnProperty` misses descriptor-only own properties
+
+**Impact**: `Object.prototype.hasOwnProperty.call(Map.prototype, "size")` returns `false` (spec says `true`). Same for `Set.prototype.size` and other accessor-only own properties stored in descriptor tables without a corresponding `properties` entry. Likely affects `built-ins/Map`, `built-ins/Set`, and scattered descriptor tests.
+**File**: `interpreter/stdlib/builtins_object.mbt:113`
+
+`hasOwnProperty` checks `data.bag.properties` / `data.bag.symbol_properties` only. For objects whose own property lives in `bag.descriptors` / `bag.symbol_descriptors` with no matching entry in `bag.properties`, ownership is incorrectly reported as `false`. Fix: also check the descriptor maps.
+
+### 8. Engine-thrown errors have empty descriptor maps
+
+**Impact**: Caught `TypeError`/`RangeError`/etc. from engine internals have `message`, `name`, `stack` as plain own data properties. User-created errors (via `new TypeError(...)` in `builtins_error.mbt`) correctly give these non-enumerable descriptors and put `name` on the prototype. Observable via `Object.keys(caughtErr)`, `Object.getOwnPropertyDescriptor(caughtErr, "message").enumerable`.
+**File**: `interpreter/runtime/errors.mbt:46`
+
+`js_error_to_value` builds the error object with `descriptors: {}` instead of the descriptor shape used by user-facing errors. Route this through the same helper that `builtins_error.mbt` uses.
+
+### 9. Interpreter-callable functions have `prototype: Null`
+
+**Impact**: `make_interpreter_callable_with_length` is used for Promise resolve/reject (and other interpreter-needing callbacks). These functions' `[[Prototype]]` is `Null` instead of `Function.prototype`, so `Object.getPrototypeOf(fn) === Function.prototype` and `fn instanceof Function` fail. `fn.call`/`fn.apply`/`fn.bind` also fail to resolve.
+**File**: `interpreter/runtime/promise_core.mbt:78`
+
+Route through the same function-object builder as the other `make_*_func` helpers. Natural pairing with agent-todo #6 (`make_*_func` consolidation) — the consolidated builder should handle this case.
+
+### 10. `Proxy.revocable`: `revocable_descs` built but never wired
+
+**Impact**: `name`/`length` on `Proxy.revocable` lose their non-enumerable/non-writable attributes — `Object.getOwnPropertyDescriptor(Proxy.revocable, "name")` returns the wrong descriptor shape.
+**File**: `interpreter/stdlib/builtins_proxy.mbt:78`
+
+The function builds a `revocable_descs` map with correct non-enumerable descriptors for `name` and `length`, but the object literal uses `descriptors: {}`. Dead code + missing wiring. Fix: pass `revocable_descs` in place of `{}`. Tiny diff.

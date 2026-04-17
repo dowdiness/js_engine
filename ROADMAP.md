@@ -1068,6 +1068,26 @@ Moved `validate_non_configurable` from `stdlib/builtins_object_helpers.mbt` to
 `PropDescriptor → JS object` conversions into shared `make_data_desc_obj` /
 `make_accessor_desc_obj` helpers, eliminating ~100 lines of duplication.
 
+### Post-April-15 Redesign (in progress)
+
+Next-phase pressures identified after the April-15 restructuring. Full
+analysis in [docs/architecture-redesign-2026-04-17-probes.md](docs/architecture-redesign-2026-04-17-probes.md);
+stage ordering tracked in `docs/agent-todo.md`.
+
+**Stage A — PropertyBag extraction** ✅ (2026-04-17, PR #49)
+Introduced `PropertyBag` struct consolidating the quartet
+`properties / symbol_properties / descriptors / symbol_descriptors`
+into a single `bag : PropertyBag` field on every exotic variant
+(`ObjectData`, `ArrayData`, `MapData`, `SetData`, `PromiseData`). Any
+future descriptor-invariant fix is now applied once, not five times.
+Also introduced custom-constructor methods (`PropertyBag::new`,
+`MapData::new`, `SetData::new`) per MoonBit idiom. Pure refactor: 0
+test262 delta, 884/884 unit tests. CodeRabbit surfaced 4 pre-existing
+bugs (tracked in `agent-todo.md` as items #7-10).
+
+**Stages B.1 / B.2 / C / B.3 / D** — planned. B.1 (`[[Set]]` dispatcher)
+and C (`ArrayData.bag`) are the next test262-positive targets.
+
 ### Key Design Decisions
 
 1. **Functions are objects** — `Object` with `callable` field, enabling property assignment on functions
