@@ -373,6 +373,23 @@ DescriptorBuilder::new(configurable=true)
 
 **Why not today**: Adds a non-trivial type-level construct to a codebase whose idiom is direct struct construction. Needs a design doc before implementation, with examples of which current bugs would have been caught. Surfaced 2026-04-18 during #6 consolidation brainstorm.
 
+#### 14. User-function property insertion order: `prototype, name, length` → `prototype, length, name`
+
+**Impact**: For functions declared in JavaScript (`function f() {}`), `Reflect.ownKeys(f)` / `Object.getOwnPropertyNames(f)` currently reports `["prototype", "name", "length", ...]`. The spec order is `["prototype", "length", "name", ...]` (OrdinaryFunctionCreate runs MakeConstructor → SetFunctionLength → SetFunctionName). Likely affects a handful of test262 tests under `built-ins/Function`, `language/statements/function`, and similar that enumerate own keys.
+**File**: `interpreter/runtime/factories.mbt` — `make_func` and `make_func_ext`, in the `properties: { ... }` literal.
+
+Both `make_func` and `make_func_ext` construct the properties map as:
+```moonbit
+properties: {
+  "prototype": proto,
+  "name": String_(func_name),
+  "length": Number(...),
+}
+```
+Swap `"name"` and `"length"` entries (and the matching `descriptors` map). Surfaced 2026-04-18 during PR #51 insertion-order review — the fix for built-in functions (`build_func_object`) addressed only the `make_*_func` path. This is the user-function counterpart.
+
+**Why not bundled with #51**: PR #51 scope was the `make_*_func` consolidation. Touching `make_func`/`make_func_ext` is a separate behavior-preserving-intent change with potential test262 delta. Keep as its own small PR so any test262 movement is attributable.
+
 ---
 
 ## Pre-existing bugs exposed by Stage A CodeRabbit review (2026-04-17, PR #49)
