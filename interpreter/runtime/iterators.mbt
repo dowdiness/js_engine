@@ -14,8 +14,8 @@ pub fn get_iterator_proto() -> Value {
       let iterator_sym = get_iterator_symbol()
       let proto_sym_props : Map[Int, Value] = {}
       proto_sym_props[iterator_sym.id] = make_method_func(
-        "[Symbol.iterator]",
-        0,
+        name="[Symbol.iterator]",
+        length=0,
         fn(this_val, _args) { this_val },
       )
       let proto : Value = Object({
@@ -60,11 +60,11 @@ pub fn get_array_iterator_proto() -> Value {
         setter: None,
       }
       proto_sym_props[iterator_sym.id] = make_method_func(
-        "[Symbol.iterator]",
-        0,
+        name="[Symbol.iterator]",
+        length=0,
         fn(this_val, _args) { this_val },
       )
-      proto_props["next"] = make_method_func("next", 0, fn(
+      proto_props["next"] = make_method_func(name="next", length=0, fn(
         _this_val,
         _args,
       ) raise {
@@ -306,11 +306,11 @@ pub fn get_string_iterator_proto() -> Value {
         setter: None,
       }
       proto_sym_props[iterator_sym.id] = make_method_func(
-        "[Symbol.iterator]",
-        0,
+        name="[Symbol.iterator]",
+        length=0,
         fn(this_val, _args) { this_val },
       )
-      proto_props["next"] = make_method_func("next", 0, fn(
+      proto_props["next"] = make_method_func(name="next", length=0, fn(
         _this_val,
         _args,
       ) raise {

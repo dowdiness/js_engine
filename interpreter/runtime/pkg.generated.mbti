@@ -149,25 +149,17 @@ pub fn make_func(FuncData) -> Value
 
 pub fn make_func_ext(FuncDataExt) -> Value
 
-pub fn make_interp_method_func(String, Int, (Interpreter, Value, Array[Value]) -> Value raise) -> Value
+pub fn make_interp_method_func(name~ : String, length? : Int, (Interpreter, Value, Array[Value]) -> Value raise) -> Value
 
-pub fn make_interp_static_func_with_length(String, Int, (Interpreter, Array[Value]) -> Value raise) -> Value
+pub fn make_interp_static_func(name~ : String, length? : Int, (Interpreter, Array[Value]) -> Value raise) -> Value
 
-pub fn make_interpreter_callable_with_length(String, Int, (Interpreter, Value, Array[Value]) -> Value raise) -> Value
+pub fn make_method_func(name~ : String, length? : Int, (Value, Array[Value]) -> Value raise) -> Value
 
-pub fn make_method_func(String, Int, (Value, Array[Value]) -> Value raise) -> Value
-
-pub fn make_native_func(String, (Array[Value]) -> Value raise) -> Value
-
-pub fn make_native_func_with_length(String, Int, (Array[Value]) -> Value raise) -> Value
+pub fn make_native_func(name~ : String, length? : Int, (Array[Value]) -> Value raise) -> Value
 
 pub fn make_object(Map[String, Value], Value, Callable?, String, Map[String, PropDescriptor], Bool) -> Value
 
 pub fn make_plain_object() -> Value
-
-pub fn make_static_func(String, (Array[Value]) -> Value raise) -> Value
-
-pub fn make_static_func_with_length(String, Int, (Array[Value]) -> Value raise) -> Value
 
 pub fn make_string_iterator_value(String) -> Value
 

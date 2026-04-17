@@ -100,7 +100,7 @@ pub fn get_string_method(
   let chars = s.to_array()
   match prop {
     "charAt" =>
-      @runtime.make_native_func_with_length("charAt", 1, fn(args) raise {
+      @runtime.make_native_func(name="charAt", length=1, fn(args) raise {
         let idx = if args.length() > 0 {
           @runtime.to_number(args[0]).to_int()
         } else {
@@ -115,7 +115,7 @@ pub fn get_string_method(
         }
       })
     "charCodeAt" =>
-      @runtime.make_native_func_with_length("charCodeAt", 1, fn(args) raise {
+      @runtime.make_native_func(name="charCodeAt", length=1, fn(args) raise {
         let idx = if args.length() > 0 {
           @runtime.to_number(args[0]).to_int()
         } else {
@@ -130,7 +130,7 @@ pub fn get_string_method(
         }
       })
     "at" =>
-      @runtime.make_native_func_with_length("at", 1, fn(args) raise {
+      @runtime.make_native_func(name="at", length=1, fn(args) raise {
         // String.prototype.at() - access character at index (supports negative)
         let idx = if args.length() > 0 {
           @runtime.to_number(args[0]).to_int()
@@ -148,7 +148,7 @@ pub fn get_string_method(
         }
       })
     "codePointAt" =>
-      @runtime.make_native_func_with_length("codePointAt", 1, fn(args) raise {
+      @runtime.make_native_func(name="codePointAt", length=1, fn(args) raise {
         // String.prototype.codePointAt() - get code point at index
         let idx = if args.length() > 0 {
           @runtime.to_number(args[0]).to_int()
@@ -174,7 +174,7 @@ pub fn get_string_method(
       })
     "concat" => {
       let str = s
-      @runtime.make_native_func_with_length("concat", 1, fn(args) raise {
+      @runtime.make_native_func(name="concat", length=1, fn(args) raise {
         let buf = StringBuilder::new()
         buf.write_string(str)
         for arg in args {
@@ -185,7 +185,7 @@ pub fn get_string_method(
     }
     "indexOf" => {
       let str = s
-      @runtime.make_native_func_with_length("indexOf", 1, fn(args) raise {
+      @runtime.make_native_func(name="indexOf", length=1, fn(args) raise {
         let search = if args.length() > 0 {
           @runtime.to_js_string(args[0])
         } else {
@@ -222,7 +222,7 @@ pub fn get_string_method(
     }
     "lastIndexOf" => {
       let str = s
-      @runtime.make_native_func_with_length("lastIndexOf", 1, fn(args) raise {
+      @runtime.make_native_func(name="lastIndexOf", length=1, fn(args) raise {
         let search = if args.length() > 0 {
           @runtime.to_js_string(args[0])
         } else {
@@ -269,7 +269,7 @@ pub fn get_string_method(
     }
     "includes" => {
       let str = s
-      @runtime.make_native_func_with_length("includes", 1, fn(args) raise {
+      @runtime.make_native_func(name="includes", length=1, fn(args) raise {
         // Per spec: throw TypeError if searchString is a RegExp
         if args.length() > 0 {
           match args[0] {
@@ -317,7 +317,7 @@ pub fn get_string_method(
     }
     "slice" => {
       let str = s
-      @runtime.make_native_func_with_length("slice", 2, fn(args) raise {
+      @runtime.make_native_func(name="slice", length=2, fn(args) raise {
         let slen = str.length()
         let mut start = if args.length() > 0 {
           @runtime.to_number(args[0]).to_int()
@@ -360,7 +360,7 @@ pub fn get_string_method(
     }
     "substring" => {
       let str = s
-      @runtime.make_native_func_with_length("substring", 2, fn(args) raise {
+      @runtime.make_native_func(name="substring", length=2, fn(args) raise {
         let slen = str.length()
         let mut start = if args.length() > 0 {
           @runtime.to_number(args[0]).to_int()
@@ -403,7 +403,7 @@ pub fn get_string_method(
     "substr" => {
       // Annex B: String.prototype.substr(start, length)
       let str = s
-      @runtime.make_native_func_with_length("substr", 2, fn(args) raise {
+      @runtime.make_native_func(name="substr", length=2, fn(args) raise {
         let slen = str.length()
         let mut start = if args.length() > 0 {
           @runtime.to_number(args[0]).to_int()
@@ -451,7 +451,7 @@ pub fn get_string_method(
     }
     "toLowerCase" => {
       let str = s
-      @runtime.make_native_func("toLowerCase", fn(_args) {
+      @runtime.make_native_func(name="toLowerCase", fn(_args) {
         let s_chars = str.to_array()
         let buf = StringBuilder::new()
         for c in s_chars {
@@ -464,7 +464,7 @@ pub fn get_string_method(
     }
     "toUpperCase" => {
       let str = s
-      @runtime.make_native_func("toUpperCase", fn(_args) {
+      @runtime.make_native_func(name="toUpperCase", fn(_args) {
         let s_chars = str.to_array()
         let buf = StringBuilder::new()
         for c in s_chars {
@@ -478,7 +478,7 @@ pub fn get_string_method(
     "toLocaleLowerCase" => {
       // Locale-specific lowercase (currently uses same Unicode mapping)
       let str = s
-      @runtime.make_native_func("toLocaleLowerCase", fn(_args) {
+      @runtime.make_native_func(name="toLocaleLowerCase", fn(_args) {
         let s_chars = str.to_array()
         let buf = StringBuilder::new()
         for c in s_chars {
@@ -492,7 +492,7 @@ pub fn get_string_method(
     "toLocaleUpperCase" => {
       // Locale-specific uppercase (currently uses same Unicode mapping)
       let str = s
-      @runtime.make_native_func("toLocaleUpperCase", fn(_args) {
+      @runtime.make_native_func(name="toLocaleUpperCase", fn(_args) {
         let s_chars = str.to_array()
         let buf = StringBuilder::new()
         for c in s_chars {
@@ -505,45 +505,45 @@ pub fn get_string_method(
     }
     "trim" => {
       let str = s
-      @runtime.make_native_func("trim", fn(_args) {
+      @runtime.make_native_func(name="trim", fn(_args) {
         Value::String_(string_trim(str))
       })
     }
     "trimStart" => {
       let str = s
-      @runtime.make_native_func("trimStart", fn(_args) {
+      @runtime.make_native_func(name="trimStart", fn(_args) {
         Value::String_(string_trim_start(str))
       })
     }
     "trimEnd" => {
       let str = s
-      @runtime.make_native_func("trimEnd", fn(_args) {
+      @runtime.make_native_func(name="trimEnd", fn(_args) {
         Value::String_(string_trim_end(str))
       })
     }
     "trimLeft" => {
       let str = s
       // Per spec, trimLeft.name === "trimStart"
-      @runtime.make_native_func("trimStart", fn(_args) {
+      @runtime.make_native_func(name="trimStart", fn(_args) {
         Value::String_(string_trim_start(str))
       })
     }
     "trimRight" => {
       let str = s
       // Per spec, trimRight.name === "trimEnd"
-      @runtime.make_native_func("trimEnd", fn(_args) {
+      @runtime.make_native_func(name="trimEnd", fn(_args) {
         Value::String_(string_trim_end(str))
       })
     }
     "toLocaleString" => {
       let str = s
-      @runtime.make_native_func("toLocaleString", fn(_args) {
+      @runtime.make_native_func(name="toLocaleString", fn(_args) {
         Value::String_(str)
       })
     }
     "split" => {
       let str = s
-      @runtime.make_native_func_with_length("split", 2, fn(args) raise {
+      @runtime.make_native_func(name="split", length=2, fn(args) raise {
         // Per spec: check for [Symbol.split] method on the argument first
         if args.length() > 0 {
           match args[0] {
@@ -664,7 +664,7 @@ pub fn get_string_method(
     }
     "replace" => {
       let str = s
-      @runtime.make_native_func_with_length("replace", 2, fn(args) raise {
+      @runtime.make_native_func(name="replace", length=2, fn(args) raise {
         if args.length() == 0 {
           return Value::String_(str)
         }
@@ -773,7 +773,7 @@ pub fn get_string_method(
     }
     "match" => {
       let str = s
-      @runtime.make_native_func_with_length("match", 1, fn(args) raise {
+      @runtime.make_native_func(name="match", length=1, fn(args) raise {
         if args.length() == 0 {
           return Null
         }
@@ -817,7 +817,7 @@ pub fn get_string_method(
     }
     "matchAll" => {
       let str = s
-      @runtime.make_native_func_with_length("matchAll", 1, fn(args) raise {
+      @runtime.make_native_func(name="matchAll", length=1, fn(args) raise {
         let arg = if args.length() > 0 { args[0] } else { Undefined }
         // Step 2: If regexp is not null/undefined, check for @@matchAll
         match arg {
@@ -890,7 +890,7 @@ pub fn get_string_method(
     }
     "search" => {
       let str = s
-      @runtime.make_native_func_with_length("search", 1, fn(args) raise {
+      @runtime.make_native_func(name="search", length=1, fn(args) raise {
         if args.length() == 0 {
           return Value::Number(0.0)
         }
@@ -933,7 +933,7 @@ pub fn get_string_method(
     }
     "startsWith" => {
       let str = s
-      @runtime.make_native_func_with_length("startsWith", 1, fn(args) raise {
+      @runtime.make_native_func(name="startsWith", length=1, fn(args) raise {
         // Per spec: throw TypeError if searchString is a RegExp
         if args.length() > 0 {
           match args[0] {
@@ -979,7 +979,7 @@ pub fn get_string_method(
     }
     "endsWith" => {
       let str = s
-      @runtime.make_native_func_with_length("endsWith", 1, fn(args) raise {
+      @runtime.make_native_func(name="endsWith", length=1, fn(args) raise {
         // Per spec: throw TypeError if searchString is a RegExp
         if args.length() > 0 {
           match args[0] {
@@ -1027,7 +1027,7 @@ pub fn get_string_method(
     }
     "repeat" => {
       let str = s
-      @runtime.make_native_func_with_length("repeat", 1, fn(args) raise {
+      @runtime.make_native_func(name="repeat", length=1, fn(args) raise {
         let count_num = if args.length() > 0 {
           @runtime.to_number(args[0])
         } else {
@@ -1050,7 +1050,7 @@ pub fn get_string_method(
     }
     "padStart" => {
       let str = s
-      @runtime.make_native_func_with_length("padStart", 1, fn(args) raise {
+      @runtime.make_native_func(name="padStart", length=1, fn(args) raise {
         let target_len = if args.length() > 0 {
           @runtime.to_number(args[0]).to_int()
         } else {
@@ -1079,7 +1079,7 @@ pub fn get_string_method(
     }
     "padEnd" => {
       let str = s
-      @runtime.make_native_func_with_length("padEnd", 1, fn(args) raise {
+      @runtime.make_native_func(name="padEnd", length=1, fn(args) raise {
         let target_len = if args.length() > 0 {
           @runtime.to_number(args[0]).to_int()
         } else {
@@ -1108,11 +1108,11 @@ pub fn get_string_method(
     }
     "toString" | "valueOf" => {
       let str = s
-      @runtime.make_native_func(prop, fn(_args) { Value::String_(str) })
+      @runtime.make_native_func(name=prop, fn(_args) { Value::String_(str) })
     }
     "replaceAll" => {
       let str = s
-      @runtime.make_native_func_with_length("replaceAll", 2, fn(args) raise {
+      @runtime.make_native_func(name="replaceAll", length=2, fn(args) raise {
         if args.length() == 0 {
           return Value::String_(str)
         }
@@ -1268,7 +1268,7 @@ pub fn get_string_method(
     }
     "localeCompare" => {
       let str = s
-      @runtime.make_native_func_with_length("localeCompare", 1, fn(args) raise {
+      @runtime.make_native_func(name="localeCompare", length=1, fn(args) raise {
         // Basic lexicographic comparison (no locale support)
         let other = if args.length() > 0 {
           @runtime.to_js_string(args[0])
@@ -1286,7 +1286,7 @@ pub fn get_string_method(
     }
     "normalize" => {
       let str = s
-      @runtime.make_native_func("normalize", fn(_args) {
+      @runtime.make_native_func(name="normalize", fn(_args) {
         // STUB: Unicode normalization (NFC, NFD, NFKC, NFKD) is not implemented.
         // Returns the input string unchanged. Full implementation requires
         // Unicode normalization tables and algorithms.
@@ -1295,7 +1295,7 @@ pub fn get_string_method(
     }
     "isWellFormed" => {
       let str = s
-      @runtime.make_native_func("isWellFormed", fn(_args) {
+      @runtime.make_native_func(name="isWellFormed", fn(_args) {
         // Check if string is well-formed UTF-16 (no lone surrogates)
         let c = str.to_array()
         let mut i = 0
@@ -1324,7 +1324,7 @@ pub fn get_string_method(
     }
     "toWellFormed" => {
       let str = s
-      @runtime.make_native_func("toWellFormed", fn(_args) {
+      @runtime.make_native_func(name="toWellFormed", fn(_args) {
         // Replace lone surrogates with U+FFFD
         let c = str.to_array()
         let buf = StringBuilder::new()
@@ -1375,7 +1375,7 @@ pub fn get_string_method(
       } else {
         match prop {
           "anchor" =>
-            @runtime.make_native_func_with_length("anchor", 1, fn(args) raise {
+            @runtime.make_native_func(name="anchor", length=1, fn(args) raise {
               let name = if args.length() > 0 {
                 @runtime.to_js_string(args[0])
               } else {
@@ -1386,23 +1386,23 @@ pub fn get_string_method(
               )
             })
           "big" =>
-            @runtime.make_native_func("big", fn(_args) {
+            @runtime.make_native_func(name="big", fn(_args) {
               Value::String_("<big>" + s + "</big>")
             })
           "blink" =>
-            @runtime.make_native_func("blink", fn(_args) {
+            @runtime.make_native_func(name="blink", fn(_args) {
               Value::String_("<blink>" + s + "</blink>")
             })
           "bold" =>
-            @runtime.make_native_func("bold", fn(_args) {
+            @runtime.make_native_func(name="bold", fn(_args) {
               Value::String_("<b>" + s + "</b>")
             })
           "fixed" =>
-            @runtime.make_native_func("fixed", fn(_args) {
+            @runtime.make_native_func(name="fixed", fn(_args) {
               Value::String_("<tt>" + s + "</tt>")
             })
           "fontcolor" =>
-            @runtime.make_native_func_with_length("fontcolor", 1, fn(
+            @runtime.make_native_func(name="fontcolor", length=1, fn(
               args,
             ) raise {
               let color = if args.length() > 0 {
@@ -1419,7 +1419,7 @@ pub fn get_string_method(
               )
             })
           "fontsize" =>
-            @runtime.make_native_func_with_length("fontsize", 1, fn(
+            @runtime.make_native_func(name="fontsize", length=1, fn(
               args,
             ) raise {
               let size = if args.length() > 0 {
@@ -1432,11 +1432,11 @@ pub fn get_string_method(
               )
             })
           "italics" =>
-            @runtime.make_native_func("italics", fn(_args) {
+            @runtime.make_native_func(name="italics", fn(_args) {
               Value::String_("<i>" + s + "</i>")
             })
           "link" =>
-            @runtime.make_native_func_with_length("link", 1, fn(args) raise {
+            @runtime.make_native_func(name="link", length=1, fn(args) raise {
               let url = if args.length() > 0 {
                 @runtime.to_js_string(args[0])
               } else {
@@ -1447,19 +1447,19 @@ pub fn get_string_method(
               )
             })
           "small" =>
-            @runtime.make_native_func("small", fn(_args) {
+            @runtime.make_native_func(name="small", fn(_args) {
               Value::String_("<small>" + s + "</small>")
             })
           "strike" =>
-            @runtime.make_native_func("strike", fn(_args) {
+            @runtime.make_native_func(name="strike", fn(_args) {
               Value::String_("<strike>" + s + "</strike>")
             })
           "sub" =>
-            @runtime.make_native_func("sub", fn(_args) {
+            @runtime.make_native_func(name="sub", fn(_args) {
               Value::String_("<sub>" + s + "</sub>")
             })
           "sup" =>
-            @runtime.make_native_func("sup", fn(_args) {
+            @runtime.make_native_func(name="sup", fn(_args) {
               Value::String_("<sup>" + s + "</sup>")
             })
           _ => Undefined
@@ -1722,8 +1722,8 @@ pub fn setup_string_prototype(
           _ => 0
         }
         data.bag.properties[mname] = @runtime.make_method_func(
-          display_name,
-          meth_length,
+          name=display_name,
+          length=meth_length,
           fn(this_val, args) raise {
             let s = this_to_string(this_val)
             let meth_val = get_string_method(s, mname, annex_b~)

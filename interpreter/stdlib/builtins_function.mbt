@@ -14,174 +14,183 @@ fn setup_function_builtins(env : Environment) -> Unit {
   let func_proto_props : Map[String, Value] = {}
 
   // Function.prototype.toString - returns function source or [native code]
-  func_proto_props["toString"] = @runtime.make_method_func("toString", 0, fn(
-    this_val,
-    _args,
-  ) raise {
-    match this_val {
-      Object(data) => {
-        let prefix = func_kind_prefix(data.class_name)
-        match data.callable {
-          Some(UserFunc(func_data)) => {
-            let name = func_data.name.unwrap_or("")
-            Value::String_(prefix + name + "() { [native code] }")
-          }
-          Some(UserFuncExt(func_data)) => {
-            let name = func_data.name.unwrap_or("")
-            Value::String_(prefix + name + "() { [native code] }")
-          }
-          Some(ArrowFunc(_)) =>
-            if data.class_name == "AsyncFunction" {
-              Value::String_("async () => { [native code] }")
-            } else {
-              Value::String_("() => { [native code] }")
+  func_proto_props["toString"] = @runtime.make_method_func(
+    name="toString",
+    length=0,
+    fn(this_val, _args) raise {
+      match this_val {
+        Object(data) => {
+          let prefix = func_kind_prefix(data.class_name)
+          match data.callable {
+            Some(UserFunc(func_data)) => {
+              let name = func_data.name.unwrap_or("")
+              Value::String_(prefix + name + "() { [native code] }")
             }
-          Some(ArrowFuncExt(_)) =>
-            if data.class_name == "AsyncFunction" {
-              Value::String_("async () => { [native code] }")
-            } else {
-              Value::String_("() => { [native code] }")
+            Some(UserFuncExt(func_data)) => {
+              let name = func_data.name.unwrap_or("")
+              Value::String_(prefix + name + "() { [native code] }")
             }
-          Some(NativeCallable(name, _)) =>
-            Value::String_(prefix + name + "() { [native code] }")
-          Some(NonConstructableCallable(name, _)) =>
-            Value::String_(prefix + name + "() { [native code] }")
-          Some(BoundFunc(_, _, _)) =>
-            Value::String_(prefix + "() { [native code] }")
-          Some(MethodCallable(name, _)) =>
-            Value::String_(prefix + name + "() { [native code] }")
-          Some(InterpreterCallable(name, _)) =>
-            Value::String_(prefix + name + "() { [native code] }")
-          Some(ConstructorOnlyCallable(name, _)) =>
-            Value::String_(prefix + name + "() { [native code] }")
-          Some(FuncCallMethod(_)) =>
-            Value::String_(prefix + "call() { [native code] }")
-          Some(FuncApplyMethod(_)) =>
-            Value::String_(prefix + "apply() { [native code] }")
-          Some(ClassConstructor({ name, .. })) =>
-            Value::String_("class " + name + " { [native code] }")
-          None =>
-            raise @errors.TypeError(
-              message="Function.prototype.toString requires a function",
-            )
+            Some(ArrowFunc(_)) =>
+              if data.class_name == "AsyncFunction" {
+                Value::String_("async () => { [native code] }")
+              } else {
+                Value::String_("() => { [native code] }")
+              }
+            Some(ArrowFuncExt(_)) =>
+              if data.class_name == "AsyncFunction" {
+                Value::String_("async () => { [native code] }")
+              } else {
+                Value::String_("() => { [native code] }")
+              }
+            Some(NativeCallable(name, _)) =>
+              Value::String_(prefix + name + "() { [native code] }")
+            Some(NonConstructableCallable(name, _)) =>
+              Value::String_(prefix + name + "() { [native code] }")
+            Some(BoundFunc(_, _, _)) =>
+              Value::String_(prefix + "() { [native code] }")
+            Some(MethodCallable(name, _)) =>
+              Value::String_(prefix + name + "() { [native code] }")
+            Some(InterpreterCallable(name, _)) =>
+              Value::String_(prefix + name + "() { [native code] }")
+            Some(ConstructorOnlyCallable(name, _)) =>
+              Value::String_(prefix + name + "() { [native code] }")
+            Some(FuncCallMethod(_)) =>
+              Value::String_(prefix + "call() { [native code] }")
+            Some(FuncApplyMethod(_)) =>
+              Value::String_(prefix + "apply() { [native code] }")
+            Some(ClassConstructor({ name, .. })) =>
+              Value::String_("class " + name + " { [native code] }")
+            None =>
+              raise @errors.TypeError(
+                message="Function.prototype.toString requires a function",
+              )
+          }
         }
+        _ =>
+          raise @errors.TypeError(
+            message="Function.prototype.toString requires a function",
+          )
       }
-      _ =>
-        raise @errors.TypeError(
-          message="Function.prototype.toString requires a function",
-        )
-    }
-  })
+    },
+  )
 
   // Function.prototype.call - placeholder (actual implementation in interpreter)
-  func_proto_props["call"] = @runtime.make_interp_method_func("call", 1, fn(
-    interp,
-    this_val,
-    args,
-  ) raise {
-    let loc = @token.Loc::default()
-    let call_this : Value = if args.length() > 0 { args[0] } else { Undefined }
-    let call_args : Array[Value] = []
-    for i = 1; i < args.length(); i = i + 1 {
-      call_args.push(args[i])
-    }
-    interp.call_value(this_val, call_this, call_args, loc)
-  })
+  func_proto_props["call"] = @runtime.make_interp_method_func(
+    name="call",
+    length=1,
+    fn(interp, this_val, args) raise {
+      let loc = @token.Loc::default()
+      let call_this : Value = if args.length() > 0 {
+        args[0]
+      } else {
+        Undefined
+      }
+      let call_args : Array[Value] = []
+      for i = 1; i < args.length(); i = i + 1 {
+        call_args.push(args[i])
+      }
+      interp.call_value(this_val, call_this, call_args, loc)
+    },
+  )
 
   // Function.prototype.apply
-  func_proto_props["apply"] = @runtime.make_interp_method_func("apply", 2, fn(
-    interp,
-    this_val,
-    args,
-  ) raise {
-    let loc = @token.Loc::default()
-    let call_this : Value = if args.length() > 0 { args[0] } else { Undefined }
-    let call_args : Array[Value] = []
-    if args.length() > 1 {
-      // Convert args[1] to array-like
-      match args[1] {
-        Value::Array(data) =>
-          for el in data.elements {
-            call_args.push(el)
-          }
-        Object(data) => {
-          let len = match data.bag.properties.get("length") {
-            Some(Value::Number(n)) => n.to_int()
-            _ => 0
-          }
-          for i = 0; i < len; i = i + 1 {
-            let val = match data.bag.properties.get(i.to_string()) {
-              Some(v) => v
-              None => Undefined
-            }
-            call_args.push(val)
-          }
-        }
-        Null | Undefined => ()
-        _ => ()
+  func_proto_props["apply"] = @runtime.make_interp_method_func(
+    name="apply",
+    length=2,
+    fn(interp, this_val, args) raise {
+      let loc = @token.Loc::default()
+      let call_this : Value = if args.length() > 0 {
+        args[0]
+      } else {
+        Undefined
       }
-    }
-    interp.call_value(this_val, call_this, call_args, loc)
-  })
+      let call_args : Array[Value] = []
+      if args.length() > 1 {
+        // Convert args[1] to array-like
+        match args[1] {
+          Value::Array(data) =>
+            for el in data.elements {
+              call_args.push(el)
+            }
+          Object(data) => {
+            let len = match data.bag.properties.get("length") {
+              Some(Value::Number(n)) => n.to_int()
+              _ => 0
+            }
+            for i = 0; i < len; i = i + 1 {
+              let val = match data.bag.properties.get(i.to_string()) {
+                Some(v) => v
+                None => Undefined
+              }
+              call_args.push(val)
+            }
+          }
+          Null | Undefined => ()
+          _ => ()
+        }
+      }
+      interp.call_value(this_val, call_this, call_args, loc)
+    },
+  )
 
   // Function.prototype.bind - placeholder (actual implementation in interpreter)
-  func_proto_props["bind"] = @runtime.make_interp_method_func("bind", 1, fn(
-    _interp,
-    this_val,
-    args,
-  ) raise {
-    // Function.prototype.bind - §20.2.3.2
-    // Step 1: If IsCallable(this) is false, throw a TypeError exception
-    if !@runtime.is_function_value(this_val) {
-      raise @errors.TypeError(
-        message="Function.prototype.bind called on non-callable",
-      )
-    }
-    let bind_this = if args.length() > 0 { args[0] } else { Undefined }
-    let bound_args : Array[Value] = []
-    for i = 1; i < args.length(); i = i + 1 {
-      bound_args.push(args[i])
-    }
-    let bound_name = @runtime.get_bound_func_name(this_val)
-    let target_length = match this_val {
-      Object(data) =>
-        match data.callable {
-          Some(c) => @runtime.get_func_length(c)
-          None => 0
-        }
-      _ => 0
-    }
-    let bound_length = {
-      let diff = target_length - bound_args.length()
-      if diff < 0 {
-        0
-      } else {
-        diff
+  func_proto_props["bind"] = @runtime.make_interp_method_func(
+    name="bind",
+    length=1,
+    fn(_interp, this_val, args) raise {
+      // Function.prototype.bind - §20.2.3.2
+      // Step 1: If IsCallable(this) is false, throw a TypeError exception
+      if !@runtime.is_function_value(this_val) {
+        raise @errors.TypeError(
+          message="Function.prototype.bind called on non-callable",
+        )
       }
-    }
-    let nf_desc : PropDescriptor = {
-      writable: false,
-      enumerable: false,
-      configurable: true,
-      getter: None,
-      setter: None,
-    }
-    let bprops : Map[String, Value] = {}
-    bprops["name"] = Value::String_(bound_name)
-    bprops["length"] = Value::Number(bound_length.to_double())
-    Value::Object({
-      bag: {
-        properties: bprops,
-        symbol_properties: {},
-        descriptors: { "name": nf_desc, "length": nf_desc },
-        symbol_descriptors: {},
-      },
-      prototype: @runtime.get_func_proto(),
-      callable: Some(BoundFunc(this_val, bind_this, bound_args)),
-      class_name: "Function",
-      extensible: true,
-    })
-  })
+      let bind_this = if args.length() > 0 { args[0] } else { Undefined }
+      let bound_args : Array[Value] = []
+      for i = 1; i < args.length(); i = i + 1 {
+        bound_args.push(args[i])
+      }
+      let bound_name = @runtime.get_bound_func_name(this_val)
+      let target_length = match this_val {
+        Object(data) =>
+          match data.callable {
+            Some(c) => @runtime.get_func_length(c)
+            None => 0
+          }
+        _ => 0
+      }
+      let bound_length = {
+        let diff = target_length - bound_args.length()
+        if diff < 0 {
+          0
+        } else {
+          diff
+        }
+      }
+      let nf_desc : PropDescriptor = {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+      }
+      let bprops : Map[String, Value] = {}
+      bprops["name"] = Value::String_(bound_name)
+      bprops["length"] = Value::Number(bound_length.to_double())
+      Value::Object({
+        bag: {
+          properties: bprops,
+          symbol_properties: {},
+          descriptors: { "name": nf_desc, "length": nf_desc },
+          symbol_descriptors: {},
+        },
+        prototype: @runtime.get_func_proto(),
+        callable: Some(BoundFunc(this_val, bind_this, bound_args)),
+        class_name: "Function",
+        extensible: true,
+      })
+    },
+  )
   // %ThrowTypeError% intrinsic (ES spec §10.2.4)
   // A single frozen function that throws TypeError when called.
   let throw_type_error : Value = Value::Object({

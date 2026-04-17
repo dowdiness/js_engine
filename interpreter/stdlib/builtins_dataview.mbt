@@ -313,7 +313,7 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
       enumerable: false,
       configurable: true,
       getter: Some(
-        @runtime.make_method_func("get \{getter_name}", 0, fn(
+        @runtime.make_method_func(name="get \{getter_name}", length=0, fn(
           this_val,
           _args,
         ) raise {
@@ -341,368 +341,388 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
   }
 
   // getInt8(byteOffset)
-  dv_proto_props["getInt8"] = @runtime.make_method_func("getInt8", 1, fn(
-    this_val,
-    args,
-  ) raise {
-    match this_val {
-      Object(data) => {
-        let offset = if args.length() > 0 {
-          @runtime.to_index(args[0])
-        } else {
-          0
+  dv_proto_props["getInt8"] = @runtime.make_method_func(
+    name="getInt8",
+    length=1,
+    fn(this_val, args) raise {
+      match this_val {
+        Object(data) => {
+          let offset = if args.length() > 0 {
+            @runtime.to_index(args[0])
+          } else {
+            0
+          }
+          let (bytes, actual_offset) = validate_dataview_access(data, offset, 1)
+          dataview_get_int8(bytes, actual_offset)
         }
-        let (bytes, actual_offset) = validate_dataview_access(data, offset, 1)
-        dataview_get_int8(bytes, actual_offset)
+        _ => raise @errors.TypeError(message="getInt8 called on non-DataView")
       }
-      _ => raise @errors.TypeError(message="getInt8 called on non-DataView")
-    }
-  })
+    },
+  )
 
   // getUint8(byteOffset)
-  dv_proto_props["getUint8"] = @runtime.make_method_func("getUint8", 1, fn(
-    this_val,
-    args,
-  ) raise {
-    match this_val {
-      Object(data) => {
-        let offset = if args.length() > 0 {
-          @runtime.to_index(args[0])
-        } else {
-          0
+  dv_proto_props["getUint8"] = @runtime.make_method_func(
+    name="getUint8",
+    length=1,
+    fn(this_val, args) raise {
+      match this_val {
+        Object(data) => {
+          let offset = if args.length() > 0 {
+            @runtime.to_index(args[0])
+          } else {
+            0
+          }
+          let (bytes, actual_offset) = validate_dataview_access(data, offset, 1)
+          dataview_get_uint8(bytes, actual_offset)
         }
-        let (bytes, actual_offset) = validate_dataview_access(data, offset, 1)
-        dataview_get_uint8(bytes, actual_offset)
+        _ => raise @errors.TypeError(message="getUint8 called on non-DataView")
       }
-      _ => raise @errors.TypeError(message="getUint8 called on non-DataView")
-    }
-  })
+    },
+  )
 
   // getInt16(byteOffset [, littleEndian])
-  dv_proto_props["getInt16"] = @runtime.make_method_func("getInt16", 1, fn(
-    this_val,
-    args,
-  ) raise {
-    match this_val {
-      Object(data) => {
-        let offset = if args.length() > 0 {
-          @runtime.to_index(args[0])
-        } else {
-          0
+  dv_proto_props["getInt16"] = @runtime.make_method_func(
+    name="getInt16",
+    length=1,
+    fn(this_val, args) raise {
+      match this_val {
+        Object(data) => {
+          let offset = if args.length() > 0 {
+            @runtime.to_index(args[0])
+          } else {
+            0
+          }
+          let le = get_little_endian(args, 1)
+          let (bytes, actual_offset) = validate_dataview_access(data, offset, 2)
+          dataview_get_int16(bytes, actual_offset, le)
         }
-        let le = get_little_endian(args, 1)
-        let (bytes, actual_offset) = validate_dataview_access(data, offset, 2)
-        dataview_get_int16(bytes, actual_offset, le)
+        _ => raise @errors.TypeError(message="getInt16 called on non-DataView")
       }
-      _ => raise @errors.TypeError(message="getInt16 called on non-DataView")
-    }
-  })
+    },
+  )
 
   // getUint16(byteOffset [, littleEndian])
-  dv_proto_props["getUint16"] = @runtime.make_method_func("getUint16", 1, fn(
-    this_val,
-    args,
-  ) raise {
-    match this_val {
-      Object(data) => {
-        let offset = if args.length() > 0 {
-          @runtime.to_index(args[0])
-        } else {
-          0
+  dv_proto_props["getUint16"] = @runtime.make_method_func(
+    name="getUint16",
+    length=1,
+    fn(this_val, args) raise {
+      match this_val {
+        Object(data) => {
+          let offset = if args.length() > 0 {
+            @runtime.to_index(args[0])
+          } else {
+            0
+          }
+          let le = get_little_endian(args, 1)
+          let (bytes, actual_offset) = validate_dataview_access(data, offset, 2)
+          dataview_get_uint16(bytes, actual_offset, le)
         }
-        let le = get_little_endian(args, 1)
-        let (bytes, actual_offset) = validate_dataview_access(data, offset, 2)
-        dataview_get_uint16(bytes, actual_offset, le)
+        _ => raise @errors.TypeError(message="getUint16 called on non-DataView")
       }
-      _ => raise @errors.TypeError(message="getUint16 called on non-DataView")
-    }
-  })
+    },
+  )
 
   // getInt32(byteOffset [, littleEndian])
-  dv_proto_props["getInt32"] = @runtime.make_method_func("getInt32", 1, fn(
-    this_val,
-    args,
-  ) raise {
-    match this_val {
-      Object(data) => {
-        let offset = if args.length() > 0 {
-          @runtime.to_index(args[0])
-        } else {
-          0
+  dv_proto_props["getInt32"] = @runtime.make_method_func(
+    name="getInt32",
+    length=1,
+    fn(this_val, args) raise {
+      match this_val {
+        Object(data) => {
+          let offset = if args.length() > 0 {
+            @runtime.to_index(args[0])
+          } else {
+            0
+          }
+          let le = get_little_endian(args, 1)
+          let (bytes, actual_offset) = validate_dataview_access(data, offset, 4)
+          dataview_get_int32(bytes, actual_offset, le)
         }
-        let le = get_little_endian(args, 1)
-        let (bytes, actual_offset) = validate_dataview_access(data, offset, 4)
-        dataview_get_int32(bytes, actual_offset, le)
+        _ => raise @errors.TypeError(message="getInt32 called on non-DataView")
       }
-      _ => raise @errors.TypeError(message="getInt32 called on non-DataView")
-    }
-  })
+    },
+  )
 
   // getUint32(byteOffset [, littleEndian])
-  dv_proto_props["getUint32"] = @runtime.make_method_func("getUint32", 1, fn(
-    this_val,
-    args,
-  ) raise {
-    match this_val {
-      Object(data) => {
-        let offset = if args.length() > 0 {
-          @runtime.to_index(args[0])
-        } else {
-          0
+  dv_proto_props["getUint32"] = @runtime.make_method_func(
+    name="getUint32",
+    length=1,
+    fn(this_val, args) raise {
+      match this_val {
+        Object(data) => {
+          let offset = if args.length() > 0 {
+            @runtime.to_index(args[0])
+          } else {
+            0
+          }
+          let le = get_little_endian(args, 1)
+          let (bytes, actual_offset) = validate_dataview_access(data, offset, 4)
+          dataview_get_uint32(bytes, actual_offset, le)
         }
-        let le = get_little_endian(args, 1)
-        let (bytes, actual_offset) = validate_dataview_access(data, offset, 4)
-        dataview_get_uint32(bytes, actual_offset, le)
+        _ => raise @errors.TypeError(message="getUint32 called on non-DataView")
       }
-      _ => raise @errors.TypeError(message="getUint32 called on non-DataView")
-    }
-  })
+    },
+  )
 
   // getFloat32(byteOffset [, littleEndian])
-  dv_proto_props["getFloat32"] = @runtime.make_method_func("getFloat32", 1, fn(
-    this_val,
-    args,
-  ) raise {
-    match this_val {
-      Object(data) => {
-        let offset = if args.length() > 0 {
-          @runtime.to_index(args[0])
-        } else {
-          0
+  dv_proto_props["getFloat32"] = @runtime.make_method_func(
+    name="getFloat32",
+    length=1,
+    fn(this_val, args) raise {
+      match this_val {
+        Object(data) => {
+          let offset = if args.length() > 0 {
+            @runtime.to_index(args[0])
+          } else {
+            0
+          }
+          let le = get_little_endian(args, 1)
+          let (bytes, actual_offset) = validate_dataview_access(data, offset, 4)
+          dataview_get_float32(bytes, actual_offset, le)
         }
-        let le = get_little_endian(args, 1)
-        let (bytes, actual_offset) = validate_dataview_access(data, offset, 4)
-        dataview_get_float32(bytes, actual_offset, le)
+        _ =>
+          raise @errors.TypeError(message="getFloat32 called on non-DataView")
       }
-      _ => raise @errors.TypeError(message="getFloat32 called on non-DataView")
-    }
-  })
+    },
+  )
 
   // getFloat64(byteOffset [, littleEndian])
-  dv_proto_props["getFloat64"] = @runtime.make_method_func("getFloat64", 1, fn(
-    this_val,
-    args,
-  ) raise {
-    match this_val {
-      Object(data) => {
-        let offset = if args.length() > 0 {
-          @runtime.to_index(args[0])
-        } else {
-          0
+  dv_proto_props["getFloat64"] = @runtime.make_method_func(
+    name="getFloat64",
+    length=1,
+    fn(this_val, args) raise {
+      match this_val {
+        Object(data) => {
+          let offset = if args.length() > 0 {
+            @runtime.to_index(args[0])
+          } else {
+            0
+          }
+          let le = get_little_endian(args, 1)
+          let (bytes, actual_offset) = validate_dataview_access(data, offset, 8)
+          dataview_get_float64(bytes, actual_offset, le)
         }
-        let le = get_little_endian(args, 1)
-        let (bytes, actual_offset) = validate_dataview_access(data, offset, 8)
-        dataview_get_float64(bytes, actual_offset, le)
+        _ =>
+          raise @errors.TypeError(message="getFloat64 called on non-DataView")
       }
-      _ => raise @errors.TypeError(message="getFloat64 called on non-DataView")
-    }
-  })
+    },
+  )
 
   // setInt8(byteOffset, value)
-  dv_proto_props["setInt8"] = @runtime.make_method_func("setInt8", 2, fn(
-    this_val,
-    args,
-  ) raise {
-    match this_val {
-      Object(data) => {
-        let offset = if args.length() > 0 {
-          @runtime.to_index(args[0])
-        } else {
-          0
+  dv_proto_props["setInt8"] = @runtime.make_method_func(
+    name="setInt8",
+    length=2,
+    fn(this_val, args) raise {
+      match this_val {
+        Object(data) => {
+          let offset = if args.length() > 0 {
+            @runtime.to_index(args[0])
+          } else {
+            0
+          }
+          let value = if args.length() > 1 {
+            @runtime.to_number(args[1])
+          } else {
+            0.0
+          }
+          let (bytes, actual_offset) = validate_dataview_access(data, offset, 1)
+          dataview_set_int8(bytes, actual_offset, value)
+          Undefined
         }
-        let value = if args.length() > 1 {
-          @runtime.to_number(args[1])
-        } else {
-          0.0
-        }
-        let (bytes, actual_offset) = validate_dataview_access(data, offset, 1)
-        dataview_set_int8(bytes, actual_offset, value)
-        Undefined
+        _ => raise @errors.TypeError(message="setInt8 called on non-DataView")
       }
-      _ => raise @errors.TypeError(message="setInt8 called on non-DataView")
-    }
-  })
+    },
+  )
 
   // setUint8(byteOffset, value)
-  dv_proto_props["setUint8"] = @runtime.make_method_func("setUint8", 2, fn(
-    this_val,
-    args,
-  ) raise {
-    match this_val {
-      Object(data) => {
-        let offset = if args.length() > 0 {
-          @runtime.to_index(args[0])
-        } else {
-          0
+  dv_proto_props["setUint8"] = @runtime.make_method_func(
+    name="setUint8",
+    length=2,
+    fn(this_val, args) raise {
+      match this_val {
+        Object(data) => {
+          let offset = if args.length() > 0 {
+            @runtime.to_index(args[0])
+          } else {
+            0
+          }
+          let value = if args.length() > 1 {
+            @runtime.to_number(args[1])
+          } else {
+            0.0
+          }
+          let (bytes, actual_offset) = validate_dataview_access(data, offset, 1)
+          dataview_set_uint8(bytes, actual_offset, value)
+          Undefined
         }
-        let value = if args.length() > 1 {
-          @runtime.to_number(args[1])
-        } else {
-          0.0
-        }
-        let (bytes, actual_offset) = validate_dataview_access(data, offset, 1)
-        dataview_set_uint8(bytes, actual_offset, value)
-        Undefined
+        _ => raise @errors.TypeError(message="setUint8 called on non-DataView")
       }
-      _ => raise @errors.TypeError(message="setUint8 called on non-DataView")
-    }
-  })
+    },
+  )
 
   // setInt16(byteOffset, value [, littleEndian])
-  dv_proto_props["setInt16"] = @runtime.make_method_func("setInt16", 2, fn(
-    this_val,
-    args,
-  ) raise {
-    match this_val {
-      Object(data) => {
-        let offset = if args.length() > 0 {
-          @runtime.to_index(args[0])
-        } else {
-          0
+  dv_proto_props["setInt16"] = @runtime.make_method_func(
+    name="setInt16",
+    length=2,
+    fn(this_val, args) raise {
+      match this_val {
+        Object(data) => {
+          let offset = if args.length() > 0 {
+            @runtime.to_index(args[0])
+          } else {
+            0
+          }
+          let value = if args.length() > 1 {
+            @runtime.to_number(args[1])
+          } else {
+            0.0
+          }
+          let le = get_little_endian(args, 2)
+          let (bytes, actual_offset) = validate_dataview_access(data, offset, 2)
+          dataview_set_int16(bytes, actual_offset, value, le)
+          Undefined
         }
-        let value = if args.length() > 1 {
-          @runtime.to_number(args[1])
-        } else {
-          0.0
-        }
-        let le = get_little_endian(args, 2)
-        let (bytes, actual_offset) = validate_dataview_access(data, offset, 2)
-        dataview_set_int16(bytes, actual_offset, value, le)
-        Undefined
+        _ => raise @errors.TypeError(message="setInt16 called on non-DataView")
       }
-      _ => raise @errors.TypeError(message="setInt16 called on non-DataView")
-    }
-  })
+    },
+  )
 
   // setUint16(byteOffset, value [, littleEndian])
-  dv_proto_props["setUint16"] = @runtime.make_method_func("setUint16", 2, fn(
-    this_val,
-    args,
-  ) raise {
-    match this_val {
-      Object(data) => {
-        let offset = if args.length() > 0 {
-          @runtime.to_index(args[0])
-        } else {
-          0
+  dv_proto_props["setUint16"] = @runtime.make_method_func(
+    name="setUint16",
+    length=2,
+    fn(this_val, args) raise {
+      match this_val {
+        Object(data) => {
+          let offset = if args.length() > 0 {
+            @runtime.to_index(args[0])
+          } else {
+            0
+          }
+          let value = if args.length() > 1 {
+            @runtime.to_number(args[1])
+          } else {
+            0.0
+          }
+          let le = get_little_endian(args, 2)
+          let (bytes, actual_offset) = validate_dataview_access(data, offset, 2)
+          dataview_set_uint16(bytes, actual_offset, value, le)
+          Undefined
         }
-        let value = if args.length() > 1 {
-          @runtime.to_number(args[1])
-        } else {
-          0.0
-        }
-        let le = get_little_endian(args, 2)
-        let (bytes, actual_offset) = validate_dataview_access(data, offset, 2)
-        dataview_set_uint16(bytes, actual_offset, value, le)
-        Undefined
+        _ => raise @errors.TypeError(message="setUint16 called on non-DataView")
       }
-      _ => raise @errors.TypeError(message="setUint16 called on non-DataView")
-    }
-  })
+    },
+  )
 
   // setInt32(byteOffset, value [, littleEndian])
-  dv_proto_props["setInt32"] = @runtime.make_method_func("setInt32", 2, fn(
-    this_val,
-    args,
-  ) raise {
-    match this_val {
-      Object(data) => {
-        let offset = if args.length() > 0 {
-          @runtime.to_index(args[0])
-        } else {
-          0
+  dv_proto_props["setInt32"] = @runtime.make_method_func(
+    name="setInt32",
+    length=2,
+    fn(this_val, args) raise {
+      match this_val {
+        Object(data) => {
+          let offset = if args.length() > 0 {
+            @runtime.to_index(args[0])
+          } else {
+            0
+          }
+          let value = if args.length() > 1 {
+            @runtime.to_number(args[1])
+          } else {
+            0.0
+          }
+          let le = get_little_endian(args, 2)
+          let (bytes, actual_offset) = validate_dataview_access(data, offset, 4)
+          dataview_set_int32(bytes, actual_offset, value, le)
+          Undefined
         }
-        let value = if args.length() > 1 {
-          @runtime.to_number(args[1])
-        } else {
-          0.0
-        }
-        let le = get_little_endian(args, 2)
-        let (bytes, actual_offset) = validate_dataview_access(data, offset, 4)
-        dataview_set_int32(bytes, actual_offset, value, le)
-        Undefined
+        _ => raise @errors.TypeError(message="setInt32 called on non-DataView")
       }
-      _ => raise @errors.TypeError(message="setInt32 called on non-DataView")
-    }
-  })
+    },
+  )
 
   // setUint32(byteOffset, value [, littleEndian])
-  dv_proto_props["setUint32"] = @runtime.make_method_func("setUint32", 2, fn(
-    this_val,
-    args,
-  ) raise {
-    match this_val {
-      Object(data) => {
-        let offset = if args.length() > 0 {
-          @runtime.to_index(args[0])
-        } else {
-          0
+  dv_proto_props["setUint32"] = @runtime.make_method_func(
+    name="setUint32",
+    length=2,
+    fn(this_val, args) raise {
+      match this_val {
+        Object(data) => {
+          let offset = if args.length() > 0 {
+            @runtime.to_index(args[0])
+          } else {
+            0
+          }
+          let value = if args.length() > 1 {
+            @runtime.to_number(args[1])
+          } else {
+            0.0
+          }
+          let le = get_little_endian(args, 2)
+          let (bytes, actual_offset) = validate_dataview_access(data, offset, 4)
+          dataview_set_uint32(bytes, actual_offset, value, le)
+          Undefined
         }
-        let value = if args.length() > 1 {
-          @runtime.to_number(args[1])
-        } else {
-          0.0
-        }
-        let le = get_little_endian(args, 2)
-        let (bytes, actual_offset) = validate_dataview_access(data, offset, 4)
-        dataview_set_uint32(bytes, actual_offset, value, le)
-        Undefined
+        _ => raise @errors.TypeError(message="setUint32 called on non-DataView")
       }
-      _ => raise @errors.TypeError(message="setUint32 called on non-DataView")
-    }
-  })
+    },
+  )
 
   // setFloat32(byteOffset, value [, littleEndian])
-  dv_proto_props["setFloat32"] = @runtime.make_method_func("setFloat32", 2, fn(
-    this_val,
-    args,
-  ) raise {
-    match this_val {
-      Object(data) => {
-        let offset = if args.length() > 0 {
-          @runtime.to_index(args[0])
-        } else {
-          0
+  dv_proto_props["setFloat32"] = @runtime.make_method_func(
+    name="setFloat32",
+    length=2,
+    fn(this_val, args) raise {
+      match this_val {
+        Object(data) => {
+          let offset = if args.length() > 0 {
+            @runtime.to_index(args[0])
+          } else {
+            0
+          }
+          let value = if args.length() > 1 {
+            @runtime.to_number(args[1])
+          } else {
+            0.0
+          }
+          let le = get_little_endian(args, 2)
+          let (bytes, actual_offset) = validate_dataview_access(data, offset, 4)
+          dataview_set_float32(bytes, actual_offset, value, le)
+          Undefined
         }
-        let value = if args.length() > 1 {
-          @runtime.to_number(args[1])
-        } else {
-          0.0
-        }
-        let le = get_little_endian(args, 2)
-        let (bytes, actual_offset) = validate_dataview_access(data, offset, 4)
-        dataview_set_float32(bytes, actual_offset, value, le)
-        Undefined
+        _ =>
+          raise @errors.TypeError(message="setFloat32 called on non-DataView")
       }
-      _ => raise @errors.TypeError(message="setFloat32 called on non-DataView")
-    }
-  })
+    },
+  )
 
   // setFloat64(byteOffset, value [, littleEndian])
-  dv_proto_props["setFloat64"] = @runtime.make_method_func("setFloat64", 2, fn(
-    this_val,
-    args,
-  ) raise {
-    match this_val {
-      Object(data) => {
-        let offset = if args.length() > 0 {
-          @runtime.to_index(args[0])
-        } else {
-          0
+  dv_proto_props["setFloat64"] = @runtime.make_method_func(
+    name="setFloat64",
+    length=2,
+    fn(this_val, args) raise {
+      match this_val {
+        Object(data) => {
+          let offset = if args.length() > 0 {
+            @runtime.to_index(args[0])
+          } else {
+            0
+          }
+          let value = if args.length() > 1 {
+            @runtime.to_number(args[1])
+          } else {
+            0.0
+          }
+          let le = get_little_endian(args, 2)
+          let (bytes, actual_offset) = validate_dataview_access(data, offset, 8)
+          dataview_set_float64(bytes, actual_offset, value, le)
+          Undefined
         }
-        let value = if args.length() > 1 {
-          @runtime.to_number(args[1])
-        } else {
-          0.0
-        }
-        let le = get_little_endian(args, 2)
-        let (bytes, actual_offset) = validate_dataview_access(data, offset, 8)
-        dataview_set_float64(bytes, actual_offset, value, le)
-        Undefined
+        _ =>
+          raise @errors.TypeError(message="setFloat64 called on non-DataView")
       }
-      _ => raise @errors.TypeError(message="setFloat64 called on non-DataView")
-    }
-  })
+    },
+  )
 
   // Non-enumerable descriptors for all DataView prototype methods
   let method_desc : PropDescriptor = {

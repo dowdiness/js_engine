@@ -11,7 +11,7 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
         Some(Object(proto_data)) => {
           // values() and [Symbol.iterator] are the same function object per spec
           // (Array.prototype.values === Array.prototype[Symbol.iterator]).
-          let values_fn = @runtime.make_method_func("values", 0, fn(
+          let values_fn = @runtime.make_method_func(name="values", length=0, fn(
             this_val,
             _args,
           ) raise {
@@ -25,8 +25,8 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
 
           // Add keys() method that returns an iterator over indices
           proto_data.bag.properties["keys"] = @runtime.make_method_func(
-            "keys",
-            0,
+            name="keys",
+            length=0,
             fn(this_val, _args) raise {
               let the_val = this_val
               let index_ref : Ref[Int] = { val: 0 }
@@ -96,8 +96,8 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
               match iter_obj {
                 Object(data) =>
                   data.bag.symbol_properties[iterator_sym.id] = @runtime.make_method_func(
-                    "[Symbol.iterator]",
-                    0,
+                    name="[Symbol.iterator]",
+                    length=0,
                     fn(this_val, _args) { this_val },
                   )
                 _ => ()
@@ -108,8 +108,8 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
 
           // Add entries() method that returns an iterator over [index, value] pairs
           proto_data.bag.properties["entries"] = @runtime.make_method_func(
-            "entries",
-            0,
+            name="entries",
+            length=0,
             fn(this_val, _args) raise {
               let the_val = this_val
               let index_ref : Ref[Int] = { val: 0 }
@@ -183,8 +183,8 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
               match iter_obj {
                 Object(data) =>
                   data.bag.symbol_properties[iterator_sym.id] = @runtime.make_method_func(
-                    "[Symbol.iterator]",
-                    0,
+                    name="[Symbol.iterator]",
+                    length=0,
                     fn(this_val, _args) { this_val },
                   )
                 _ => ()
@@ -253,13 +253,14 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
   let string_proto = env.get("[[StringPrototype]]")
   match string_proto {
     Object(proto_data) => {
-      let iter_method = @runtime.make_method_func("[Symbol.iterator]", 0, fn(
-        this_val,
-        _args,
-      ) {
-        let s = this_val.to_string()
-        @runtime.make_string_iterator_value(s)
-      })
+      let iter_method = @runtime.make_method_func(
+        name="[Symbol.iterator]",
+        length=0,
+        fn(this_val, _args) {
+          let s = this_val.to_string()
+          @runtime.make_string_iterator_value(s)
+        },
+      )
       proto_data.bag.symbol_properties[iterator_sym.id] = iter_method
       let iter_method_desc : PropDescriptor = {
         writable: true,

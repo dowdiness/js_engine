@@ -48,37 +48,6 @@ pub fn is_thenable_object_candidate(value : Value) -> Bool {
 }
 
 ///|
-/// Create an InterpreterCallable function object with explicit `length`.
-pub fn make_interpreter_callable_with_length(
-  name : String,
-  length : Int,
-  body : (Interpreter, Value, Array[Value]) -> Value raise Error,
-) -> Value {
-  let nf_desc : PropDescriptor = {
-    writable: false,
-    enumerable: false,
-    configurable: true,
-    getter: None,
-    setter: None,
-  }
-  let props : Map[String, Value] = {}
-  props["length"] = Number(length.to_double())
-  props["name"] = String_(name)
-  Object({
-    bag: {
-      properties: props,
-      symbol_properties: {},
-      descriptors: { "name": nf_desc, "length": nf_desc },
-      symbol_descriptors: {},
-    },
-    prototype: get_func_proto(),
-    callable: Some(InterpreterCallable(name, body)),
-    class_name: "Function",
-    extensible: true,
-  })
-}
-
-///|
 /// Fulfill a promise with the given value.
 /// Triggers all fulfill reactions as microtasks.
 pub fn fulfill_promise(
@@ -133,44 +102,49 @@ pub fn enqueue_promise_reaction_job(
   argument : Value,
 ) -> Unit {
   // Create a job that will execute the reaction handler
-  let job_callback = make_interp_method_func("PromiseReactionJob", 0, fn(
-    i,
-    _this,
-    args,
-  ) raise {
-    let value = if args.length() > 0 { args[0] } else { Undefined }
-    let loc = @token.Loc::default()
+  let job_callback = make_interp_method_func(
+    name="PromiseReactionJob",
+    length=0,
+    fn(i, _this, args) raise {
+      let value = if args.length() > 0 { args[0] } else { Undefined }
+      let loc = @token.Loc::default()
 
-    // If handler is None, use identity (fulfill) or thrower (reject)
-    match reaction.handler {
-      Some(handler) => {
-        // Try to call the handler
-        let result = i.call_value(handler, Undefined, [value], loc) catch {
-          e => {
-            // Handler threw - reject the dependent promise
-            let error_value = js_error_to_value_with_env(e, Some(i.global))
-            let _ = i.call_value(reaction.reject, Undefined, [error_value], loc)
-            return Undefined
+      // If handler is None, use identity (fulfill) or thrower (reject)
+      match reaction.handler {
+        Some(handler) => {
+          // Try to call the handler
+          let result = i.call_value(handler, Undefined, [value], loc) catch {
+            e => {
+              // Handler threw - reject the dependent promise
+              let error_value = js_error_to_value_with_env(e, Some(i.global))
+              let _ = i.call_value(
+                reaction.reject,
+                Undefined,
+                [error_value],
+                loc,
+              )
+              return Undefined
+            }
           }
+          // Resolve the dependent promise with handler result
+          let _ = i.call_value(reaction.resolve, Undefined, [result], loc)
+          Undefined
         }
-        // Resolve the dependent promise with handler result
-        let _ = i.call_value(reaction.resolve, Undefined, [result], loc)
-        Undefined
+        None =>
+          // No handler - pass through value/reason
+          match reaction.reaction_type {
+            Fulfill => {
+              let _ = i.call_value(reaction.resolve, Undefined, [value], loc)
+              Undefined
+            }
+            Reject => {
+              let _ = i.call_value(reaction.reject, Undefined, [value], loc)
+              Undefined
+            }
+          }
       }
-      None =>
-        // No handler - pass through value/reason
-        match reaction.reaction_type {
-          Fulfill => {
-            let _ = i.call_value(reaction.resolve, Undefined, [value], loc)
-            Undefined
-          }
-          Reject => {
-            let _ = i.call_value(reaction.reject, Undefined, [value], loc)
-            Undefined
-          }
-        }
-    }
-  })
+    },
+  )
   interp.enqueue_microtask(job_callback, [argument])
 }
 
@@ -185,7 +159,7 @@ pub fn create_resolving_functions(
   let already_resolved : Ref[Bool] = { val: false }
 
   // Create resolve function
-  let resolve_func = make_interpreter_callable_with_length("resolve", 1, fn(
+  let resolve_func = make_interp_method_func(name="resolve", length=1, fn(
     i,
     _this,
     args,
@@ -235,8 +209,8 @@ pub fn create_resolving_functions(
               // Thenable: enqueue PromiseResolveThenableJob
               let (res, rej) = create_resolving_functions(i, promise_data)
               let job = make_interp_method_func(
-                "PromiseResolveThenableJob",
-                0,
+                name="PromiseResolveThenableJob",
+                length=0,
                 fn(i2, _t, _a) raise {
                   try {
                     let _ = i2.call_value(then_val, resolution, [res, rej], loc)
@@ -262,7 +236,7 @@ pub fn create_resolving_functions(
   })
 
   // Create reject function
-  let reject_func = make_interpreter_callable_with_length("reject", 1, fn(
+  let reject_func = make_interp_method_func(name="reject", length=1, fn(
     i,
     _this,
     args,

@@ -348,9 +348,47 @@ Remaining deferred items from Phase 15 (3 of 6 now done):
 
 `(?<=...)` positive lookbehind and `(?<!...)` negative lookbehind. Requires backward matching from current position — more complex than lookahead which is already implemented.
 
-#### 6. Consolidate `make_*_func` factory variants
+#### ~~6. Consolidate `make_*_func` factory variants~~ — DONE (2026-04-18)
 
-**Impact**: ~150 LoC of near-duplicate function-object construction in `interpreter/runtime/factories.mbt` — `make_native_func`, `make_native_func_with_length`, `make_static_func`, `make_static_func_with_length`, `make_method_func`, `make_interp_method_func`, `make_interp_static_func_with_length` all share the same ~25 LoC body (name/length descriptor, function-proto, `class_name: "Function"`) and differ only in the `Callable` variant and whether length is explicit. Extract a private `build_func_object(name, length, callable) -> Value` helper and reduce each public wrapper to a one-liner. Do this when no other work is in flight near `factories.mbt`. Surfaced by Stage A simplify review (2026-04-17).
+Branch: `claude/factory-consolidation`. 8 factories (+ `make_interpreter_callable_with_length`) collapsed into 4 with labeled/optional `name~`/`length?` params plus a shared private `build_func_object(name, length, callable)` helper. 474 call sites migrated across 27 files via regex script; 1 manual fix for a concatenated-name case. Net: ~130 LoC removed from factories.mbt; public API contracted from 8 → 4 symbols. 884/884 unit tests pass; no test262 delta (no runtime semantics changed). Naturally absorbs agent-todo #9 (interpreter-callable prototype bug) via `build_func_object` → `get_func_proto()`.
+
+**Deleted**: `make_native_func_with_length`, `make_static_func`, `make_static_func_with_length`, `make_interp_static_func_with_length`, `make_interpreter_callable_with_length`. **Kept** (with labeled params): `make_native_func`, `make_method_func`, `make_interp_method_func`, `make_interp_static_func`.
+
+#### 12. PropertyDescriptor typestate builder (exploratory)
+
+**Motivation**: The ES spec says a descriptor is *either* a data descriptor (has `writable`, optionally `value`) *or* an accessor descriptor (has `get`/`set`) — never both. Currently `PropDescriptor` is a struct with all five fields, so every combination compiles and invariants are enforced only by runtime checks scattered across `builtins_object_descriptors.mbt`. Stage A's CodeRabbit review surfaced two bugs rooted in this weakness: #10 (`revocable_descs` built but never wired into the object) and #7 (hasOwnProperty missing descriptor-only own props). A typestate builder would make data-vs-accessor a compile-time exclusion and could catch "built but not wired" patterns.
+
+**Sketch**:
+```moonbit
+DescriptorBuilder::new(enumerable=false, configurable=true)
+  .data(writable=true)                // → DataDescState; .getter/.setter not available
+  .build()
+// vs
+DescriptorBuilder::new(configurable=true)
+  .accessor(get=g, set=s)             // → AccessorDescState; .writable not available
+  .build()
+```
+
+**Scope of exploration**: Prototype in a small sub-package; measure call-site ergonomics at a handful of representative sites (`builtins_error.mbt`, `builtins_proxy.mbt`, `builtins.mbt`); decide if full migration is worth the type-theoretic overhead. Not chosen for the 4-factory `make_*_func` consolidation (labeled params were sufficient) because that case had no "mutually-exclusive config" invariant for typestate to enforce. This *does*.
+
+**Why not today**: Adds a non-trivial type-level construct to a codebase whose idiom is direct struct construction. Needs a design doc before implementation, with examples of which current bugs would have been caught. Surfaced 2026-04-18 during #6 consolidation brainstorm.
+
+#### 14. User-function property insertion order: `prototype, name, length` → `prototype, length, name`
+
+**Impact**: For functions declared in JavaScript (`function f() {}`), `Reflect.ownKeys(f)` / `Object.getOwnPropertyNames(f)` currently reports `["prototype", "name", "length", ...]`. The spec order is `["prototype", "length", "name", ...]` (OrdinaryFunctionCreate runs MakeConstructor → SetFunctionLength → SetFunctionName). Likely affects a handful of test262 tests under `built-ins/Function`, `language/statements/function`, and similar that enumerate own keys.
+**File**: `interpreter/runtime/factories.mbt` — `make_func` and `make_func_ext`, in the `properties: { ... }` literal.
+
+Both `make_func` and `make_func_ext` construct the properties map as:
+```moonbit
+properties: {
+  "prototype": proto,
+  "name": String_(func_name),
+  "length": Number(...),
+}
+```
+Swap `"name"` and `"length"` entries (and the matching `descriptors` map). Surfaced 2026-04-18 during PR #51 insertion-order review — the fix for built-in functions (`build_func_object`) addressed only the `make_*_func` path. This is the user-function counterpart.
+
+**Why not bundled with #51**: PR #51 scope was the `make_*_func` consolidation. Touching `make_func`/`make_func_ext` is a separate behavior-preserving-intent change with potential test262 delta. Keep as its own small PR so any test262 movement is attributable.
 
 ---
 
@@ -382,3 +420,75 @@ All four landed on branch `claude/stage-a-coderabbit-bugfixes` (PR #50). Verifie
 2. **`js_error_to_value` (env-less) must yield a prototype.** Called from `builtins_promise.mbt:729` (`Promise.try` rejection path). Simplest fix: change that call site to `js_error_to_value_with_env(err, Some(interp.global))` — the interpreter is already in scope there. After that, consider whether the env-less API is still needed.
 
 Once both are fixed, remove `err_props["name"]` / `err_descs["name"]` from `make_error_value_with_env` and `make_aggregate_error_value` in `interpreter/runtime/errors.mbt`. Verify with: engine `TypeError` stringifies as `"TypeError: msg"`, `Promise.try(() => null.x).catch(e => e.name)` returns `"TypeError"`, `Object.keys(caughtErr)` does not include `"name"`.
+
+---
+
+## Pre-existing bugs surfaced by PR #51 review (2026-04-18)
+
+Seven findings + one nitpick. All verified against `main` — identical semantics
+pre- and post-#51. None are regressions introduced by the factory consolidation
+(which touched call syntax only, not runtime behavior). Kept out of #51 per the
+behavior-preserving refactor charter; listed here for follow-up PRs.
+
+### 15. Register `InternalError` constructor
+
+**Impact**: `@errors.InternalError` routes through `make_error_value_with_env`, but no `InternalError` constructor is registered in the environment, so `e.get("InternalError")` returns `Null` and the prototype chain never links — every engine-raised InternalError ends up with `proto: Null`. Currently masked by the fallback in `errors.mbt:49` that re-attaches `name` as an own property when proto resolution fails. Remove the special case once `InternalError` is registered alongside `TypeError`/`RangeError`/etc.
+**File**: `interpreter/stdlib/builtins_error.mbt` (constructor table), `interpreter/runtime/errors.mbt:49` (fallback to retire)
+
+Surfaced in PR #52/#53 review comment.
+
+### 16. Bound-function property insertion order: `name, length` → `length, name`
+
+**Impact**: `Function.prototype.bind` constructs its result with `bprops["name"]` before `bprops["length"]`, so `Reflect.ownKeys(f.bind(x))` reports `["name", "length", ...]`. Spec order is `[..., "length", "name", ...]` (SetFunctionLength runs before SetFunctionName).
+**File**: `interpreter/stdlib/builtins_function.mbt:177-184`
+
+Swap the two `bprops[...] = ...` lines and reverse the `descriptors` map to `{ "length": nf_desc, "name": nf_desc }`. Same class of bug as #14 (user functions) and `build_func_object` (fixed in #51); the bind path was missed because it builds the object inline.
+
+### 17. `Reflect.set` stringifies Symbol keys
+
+**Impact**: `Reflect.set(obj, sym, value)` coerces `sym` via `args[1].to_string()`, dropping the Symbol and hitting a stringified key like `"Symbol(foo)"`. Symbol-keyed sets silently land on the wrong slot.
+**File**: `interpreter/stdlib/builtins_reflect.mbt:727-761`
+
+Preserve the raw `args[1]` value (bind once to `let key = args[1]`); pre-check lookups against `data.bag.symbol_descriptors` / `data.bag.symbol_properties` when `key is Symbol`, else against the string variants; pass the original key into `interp.set_property` so computed-property dispatch handles Symbol routing.
+
+### 18. `Reflect.get` skips plain data reads on non-Object targets
+
+**Impact**: `try_get_with_receiver` only matches `Object(data)`. For non-Object targets (Array, Map, Set, Promise) the helper returns `None`, and when `receiver != target` the code returns `Undefined` without ever reading the property. Receiver should only gate *accessor* fallback, not data reads.
+**File**: `interpreter/stdlib/builtins_reflect.mbt:428-502`
+
+After the prototype walk, when `try_get_with_receiver` hasn't yielded a value, fall through to `interp.get_computed_property(target, key, loc)` (Symbol) or `interp.get_property(target, key_str, loc)` (string) unconditionally for data lookups; reserve the `Undefined` short-circuit for the accessor path.
+
+### 19. `Reflect.has` rejects Map/Set/Promise and other object variants
+
+**Impact**: `Reflect.has(target, key)` currently matches only `Object(_) | Array(_) | Proxy(_)`, raising `TypeError` for `Map`, `Set`, `Promise`, and any other object-like variant. `Reflect.has(new Map(), "size")` throws where it should return `true`.
+**File**: `interpreter/stdlib/builtins_reflect.mbt:634-640`
+
+Add `Map(_) | Set(_) | Promise(_)` (and any other object variants) to the non-Proxy arm that calls `interp.has_property`, or collapse the object-like variants into a single arm.
+
+### 20. `Number.prototype.toString` (lookup-path): `length` and `undefined` radix
+
+**Impact**: The `toString` method registered via the `match prop` lookup path in `builtins_number.mbt:748-752` declares `length=0` (spec: 1) and eagerly calls `to_number(args[0])` — coercing an explicit `undefined` radix to `NaN`, then `to_int() = 0`, which triggers `RangeError`. Spec §21.1.3.6 step 2: "If radix is undefined, let radixMV be 10."
+**File**: `interpreter/stdlib/builtins_number.mbt:749`
+
+Change `length=0` → `length=1`. Gate radix coercion on `args.length() > 0 && !(args[0] is Undefined)`; otherwise default to 10. (The prototype-level `toString` at the top of the file already uses `length=1` — this is a second registration that drifted.)
+
+### 21. Timer/microtask builtins: `length` should be 1
+
+**Impact**: `queueMicrotask`, `setTimeout`, `clearTimeout`, `setInterval`, `clearInterval` all declare `length=0`. Per WHATWG these take at least one argument; `.length` should be 1. Visible via `setTimeout.length === 1` tests.
+**File**: `interpreter/stdlib/builtins_promise.mbt:1395, 1472, 1521, 1542, 1589`
+
+Change the `length=0` argument to `length=1` in each `make_interp_method_func(name=..., length=0, ...)` call.
+
+### 22. `$262` one-argument helpers: restore explicit `length=1`
+
+**Impact**: `evalScript`, `detachArrayBuffer`, `createRealm`'s `evalScript`, and other one-arg `$262` helpers are created via `make_native_func(name=..., fn(...))`, which defaults `length` to 0. `$262.evalScript.length === 1` tests fail.
+**File**: `interpreter/stdlib/builtins.mbt:2056, 2076, 2188, 2204` (and realm-variant at 2056-2094)
+
+Add `length=1` to each one-arg helper's `make_native_func` / `make_interp_method_func` call.
+
+### 23. (Nitpick) Non-constructable `InterpreterCallable` for static builtins
+
+**Impact**: `make_interp_static_func` uses `InterpreterCallable`, which is constructible — so `new Reflect.ownKeys({})` etc. don't throw `TypeError` as the spec requires for static built-ins.
+**File**: `interpreter/runtime/factories.mbt:277-289`
+
+Two options: (a) add a `NonConstructableInterpreterCallable(name, func)` variant and update the call-site match arms (construction dispatch, `to_string`, etc.); (b) extend `InterpreterCallable` with a `constructible: Bool` flag and check it at the `new` site. Either way update `make_interp_static_func` to produce a non-constructable variant and audit existing `make_method_func`-based static methods (e.g. `Object.preventExtensions`, `Object.keys`) for the same class of bug.

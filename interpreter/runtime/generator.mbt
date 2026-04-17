@@ -106,7 +106,7 @@ fn init_generator_prototype() -> Value {
   let descs : Map[String, PropDescriptor] = {}
 
   // .next(value)
-  props["next"] = make_interp_method_func("next", 1, fn(
+  props["next"] = make_interp_method_func(name="next", length=1, fn(
     ip,
     this_val,
     args,
@@ -123,7 +123,7 @@ fn init_generator_prototype() -> Value {
   }
 
   // .throw(exception)
-  props["throw"] = make_interp_method_func("throw", 1, fn(
+  props["throw"] = make_interp_method_func(name="throw", length=1, fn(
     ip,
     this_val,
     args,
@@ -140,7 +140,7 @@ fn init_generator_prototype() -> Value {
   }
 
   // .return(value)
-  props["return"] = make_interp_method_func("return", 1, fn(
+  props["return"] = make_interp_method_func(name="return", length=1, fn(
     ip,
     this_val,
     args,
@@ -157,12 +157,11 @@ fn init_generator_prototype() -> Value {
   }
 
   // [Symbol.iterator]() { return this; }
-  sym_props[iterator_sym.id] = make_method_func("[Symbol.iterator]", 0, fn(
-    this_val,
-    _args,
-  ) {
-    this_val
-  })
+  sym_props[iterator_sym.id] = make_method_func(
+    name="[Symbol.iterator]",
+    length=0,
+    fn(this_val, _args) { this_val },
+  )
   // [Symbol.toStringTag] = "Generator"
   let sym_descs : Map[Int, PropDescriptor] = {}
   let tostringtag_sym = get_tostringtag_symbol()
@@ -225,68 +224,68 @@ pub fn setup_generator_function_constructor(
     extensible: true,
   })
   // GeneratorFunction constructor: GeneratorFunction(p1, p2, ..., body)
-  let gen_func_ctor : Value = make_interp_method_func("GeneratorFunction", 1, fn(
-    interp,
-    _this,
-    args,
-  ) raise {
-    if args.length() == 0 {
-      // No arguments: return empty generator function
-      return interp.make_generator_function(
-        Some("anonymous"),
-        [],
-        None,
-        [],
-        false,
-        interp.global,
+  let gen_func_ctor : Value = make_interp_method_func(
+    name="GeneratorFunction",
+    length=1,
+    fn(interp, _this, args) raise {
+      if args.length() == 0 {
+        // No arguments: return empty generator function
+        return interp.make_generator_function(
+          Some("anonymous"),
+          [],
+          None,
+          [],
+          false,
+          interp.global,
+        )
+      }
+      // Last arg is body, previous args are parameter names
+      let body_str = match args[args.length() - 1] {
+        String_(s) => s
+        _ => args[args.length() - 1].to_string()
+      }
+      let param_parts : Array[String] = []
+      for i = 0; i < args.length() - 1; i = i + 1 {
+        match args[i] {
+          String_(s) => param_parts.push(s)
+          _ => param_parts.push(args[i].to_string())
+        }
+      }
+      let params_str = param_parts.join(",")
+      let source = "function* anonymous(" +
+        params_str +
+        ") {\n" +
+        body_str +
+        "\n}"
+      let prog = @parser.parse(source)
+      if prog.stmts.length() > 0 {
+        match prog.stmts[0] {
+          GeneratorDecl(_, params, body, _) =>
+            return interp.make_generator_function(
+              Some("anonymous"),
+              params,
+              None,
+              body,
+              has_use_strict(body),
+              interp.global,
+            )
+          GeneratorDeclExt(_, params, rest_param, body, _) =>
+            return interp.make_generator_function_ext(
+              Some("anonymous"),
+              params,
+              rest_param,
+              body,
+              has_use_strict(body),
+              interp.global,
+            )
+          _ => ()
+        }
+      }
+      raise @errors.SyntaxError(
+        message="Invalid GeneratorFunction constructor source",
       )
-    }
-    // Last arg is body, previous args are parameter names
-    let body_str = match args[args.length() - 1] {
-      String_(s) => s
-      _ => args[args.length() - 1].to_string()
-    }
-    let param_parts : Array[String] = []
-    for i = 0; i < args.length() - 1; i = i + 1 {
-      match args[i] {
-        String_(s) => param_parts.push(s)
-        _ => param_parts.push(args[i].to_string())
-      }
-    }
-    let params_str = param_parts.join(",")
-    let source = "function* anonymous(" +
-      params_str +
-      ") {\n" +
-      body_str +
-      "\n}"
-    let prog = @parser.parse(source)
-    if prog.stmts.length() > 0 {
-      match prog.stmts[0] {
-        GeneratorDecl(_, params, body, _) =>
-          return interp.make_generator_function(
-            Some("anonymous"),
-            params,
-            None,
-            body,
-            has_use_strict(body),
-            interp.global,
-          )
-        GeneratorDeclExt(_, params, rest_param, body, _) =>
-          return interp.make_generator_function_ext(
-            Some("anonymous"),
-            params,
-            rest_param,
-            body,
-            has_use_strict(body),
-            interp.global,
-          )
-        _ => ()
-      }
-    }
-    raise @errors.SyntaxError(
-      message="Invalid GeneratorFunction constructor source",
-    )
-  })
+    },
+  )
   // Set up prototype chain: GeneratorFunction.prototype.constructor = GeneratorFunction
   match gen_func_proto {
     Object(data) => {

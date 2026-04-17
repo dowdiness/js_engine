@@ -238,7 +238,7 @@ fn async_step(
     let gen = gen_val
     let res_fn = resolve_fn
     let rej_fn = reject_fn
-    let on_fulfill = make_interpreter_callable_with_length("", 1, fn(
+    let on_fulfill = make_interp_method_func(name="", length=1, fn(
       i : Interpreter,
       _this : Value,
       args : Array[Value],
@@ -247,7 +247,7 @@ fn async_step(
       async_step(i, gen, v, res_fn, rej_fn, false)
       Undefined
     })
-    let on_reject = make_interpreter_callable_with_length("", 1, fn(
+    let on_reject = make_interp_method_func(name="", length=1, fn(
       i : Interpreter,
       _this : Value,
       args : Array[Value],
@@ -275,7 +275,7 @@ fn async_step(
               Fulfilled => ip.enqueue_microtask(on_fulfill, [pd.result])
               Rejected => ip.enqueue_microtask(on_reject, [pd.result])
               Pending => {
-                let noop = make_interpreter_callable_with_length("", 0, fn(
+                let noop = make_interp_method_func(name="", length=0, fn(
                   _i : Interpreter,
                   _t : Value,
                   _a : Array[Value],
@@ -310,7 +310,7 @@ fn async_step(
           Fulfilled => ip.enqueue_microtask(on_fulfill, [pd.result])
           Rejected => ip.enqueue_microtask(on_reject, [pd.result])
           Pending => {
-            let noop = make_interpreter_callable_with_length("", 0, fn(
+            let noop = make_interp_method_func(name="", length=0, fn(
               _i : Interpreter,
               _t : Value,
               _a : Array[Value],
@@ -488,21 +488,29 @@ fn init_async_generator_prototype() -> Value {
   }
 
   // .next(value) — returns Promise<{value, done}>
-  props["next"] = make_interp_method_func("next", 1, fn(ip, this_val, args) {
+  props["next"] = make_interp_method_func(name="next", length=1, fn(
+    ip,
+    this_val,
+    args,
+  ) {
     let arg = if args.length() > 0 { args[0] } else { Undefined }
     async_generator_resume(ip, this_val, Next(arg))
   })
   descs["next"] = non_enum
 
   // .throw(exception) — returns Promise<{value, done}>
-  props["throw"] = make_interp_method_func("throw", 1, fn(ip, this_val, args) {
+  props["throw"] = make_interp_method_func(name="throw", length=1, fn(
+    ip,
+    this_val,
+    args,
+  ) {
     let arg = if args.length() > 0 { args[0] } else { Undefined }
     async_generator_resume(ip, this_val, Throw(arg))
   })
   descs["throw"] = non_enum
 
   // .return(value) — returns Promise<{value, done}>
-  props["return"] = make_interp_method_func("return", 1, fn(
+  props["return"] = make_interp_method_func(name="return", length=1, fn(
     ip,
     this_val,
     args,
@@ -513,12 +521,11 @@ fn init_async_generator_prototype() -> Value {
   descs["return"] = non_enum
 
   // [Symbol.asyncIterator]() { return this; }
-  sym_props[async_iter_sym.id] = make_method_func("[Symbol.asyncIterator]", 0, fn(
-    this_val,
-    _args,
-  ) {
-    this_val
-  })
+  sym_props[async_iter_sym.id] = make_method_func(
+    name="[Symbol.asyncIterator]",
+    length=0,
+    fn(this_val, _args) { this_val },
+  )
 
   Object({
     bag: {
@@ -615,67 +622,67 @@ pub fn setup_async_function_constructor(env : Environment) -> Unit {
     extensible: true,
   })
   // AsyncFunction constructor: AsyncFunction(p1, p2, ..., body)
-  let async_func_ctor : Value = make_interp_method_func("AsyncFunction", 1, fn(
-    interp,
-    _this,
-    args,
-  ) raise {
-    if args.length() == 0 {
-      return interp.make_async_function(
-        Some("anonymous"),
-        [],
-        None,
-        [],
-        false,
-        interp.global,
+  let async_func_ctor : Value = make_interp_method_func(
+    name="AsyncFunction",
+    length=1,
+    fn(interp, _this, args) raise {
+      if args.length() == 0 {
+        return interp.make_async_function(
+          Some("anonymous"),
+          [],
+          None,
+          [],
+          false,
+          interp.global,
+        )
+      }
+      // Last arg is body, previous args are parameter names
+      let body_str = match args[args.length() - 1] {
+        String_(s) => s
+        _ => args[args.length() - 1].to_string()
+      }
+      let param_parts : Array[String] = []
+      for i = 0; i < args.length() - 1; i = i + 1 {
+        match args[i] {
+          String_(s) => param_parts.push(s)
+          _ => param_parts.push(args[i].to_string())
+        }
+      }
+      let params_str = param_parts.join(",")
+      let source = "async function anonymous(" +
+        params_str +
+        ") {\n" +
+        body_str +
+        "\n}"
+      let prog = @parser.parse(source)
+      if prog.stmts.length() > 0 {
+        match prog.stmts[0] {
+          AsyncFuncDecl(_, params, body, _) =>
+            return interp.make_async_function(
+              Some("anonymous"),
+              params,
+              None,
+              body,
+              has_use_strict(body),
+              interp.global,
+            )
+          AsyncFuncDeclExt(_, params, rest_param, body, _) =>
+            return interp.make_async_function_ext(
+              Some("anonymous"),
+              params,
+              rest_param,
+              body,
+              has_use_strict(body),
+              interp.global,
+            )
+          _ => ()
+        }
+      }
+      raise @errors.SyntaxError(
+        message="Invalid AsyncFunction constructor source",
       )
-    }
-    // Last arg is body, previous args are parameter names
-    let body_str = match args[args.length() - 1] {
-      String_(s) => s
-      _ => args[args.length() - 1].to_string()
-    }
-    let param_parts : Array[String] = []
-    for i = 0; i < args.length() - 1; i = i + 1 {
-      match args[i] {
-        String_(s) => param_parts.push(s)
-        _ => param_parts.push(args[i].to_string())
-      }
-    }
-    let params_str = param_parts.join(",")
-    let source = "async function anonymous(" +
-      params_str +
-      ") {\n" +
-      body_str +
-      "\n}"
-    let prog = @parser.parse(source)
-    if prog.stmts.length() > 0 {
-      match prog.stmts[0] {
-        AsyncFuncDecl(_, params, body, _) =>
-          return interp.make_async_function(
-            Some("anonymous"),
-            params,
-            None,
-            body,
-            has_use_strict(body),
-            interp.global,
-          )
-        AsyncFuncDeclExt(_, params, rest_param, body, _) =>
-          return interp.make_async_function_ext(
-            Some("anonymous"),
-            params,
-            rest_param,
-            body,
-            has_use_strict(body),
-            interp.global,
-          )
-        _ => ()
-      }
-    }
-    raise @errors.SyntaxError(
-      message="Invalid AsyncFunction constructor source",
-    )
-  })
+    },
+  )
   // AsyncFunction.prototype.constructor = AsyncFunction
   match async_func_proto {
     Object(data) => {
