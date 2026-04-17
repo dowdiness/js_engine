@@ -73,7 +73,7 @@ fn setup_proxy_builtins(env : Environment) -> Unit {
     bag: {
       properties: revocable_props,
       symbol_properties: {},
-      descriptors: {},
+      descriptors: revocable_descs,
       symbol_descriptors: {},
     },
     prototype: Null,

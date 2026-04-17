@@ -54,24 +54,24 @@ pub fn make_interpreter_callable_with_length(
   length : Int,
   body : (Interpreter, Value, Array[Value]) -> Value raise Error,
 ) -> Value {
-  let props : Map[String, Value] = {}
-  props["length"] = Number(length.to_double())
-  let descriptors : Map[String, PropDescriptor] = {}
-  descriptors["length"] = {
+  let nf_desc : PropDescriptor = {
     writable: false,
     enumerable: false,
     configurable: true,
     getter: None,
     setter: None,
   }
+  let props : Map[String, Value] = {}
+  props["length"] = Number(length.to_double())
+  props["name"] = String_(name)
   Object({
     bag: {
       properties: props,
       symbol_properties: {},
-      descriptors,
+      descriptors: { "name": nf_desc, "length": nf_desc },
       symbol_descriptors: {},
     },
-    prototype: Null,
+    prototype: get_func_proto(),
     callable: Some(InterpreterCallable(name, body)),
     class_name: "Function",
     extensible: true,

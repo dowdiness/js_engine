@@ -16,17 +16,27 @@ fn run_output(source : String) -> Array[String] raise Error {
 }
 
 ///|
+fn lookup_own_or_proto(val : Value, key : String) -> String {
+  let mut cur = val
+  for _ in 0..<16 {
+    match cur {
+      Object(data) =>
+        match data.bag.properties.get(key) {
+          Some(v) => return v.to_string()
+          None => cur = data.prototype
+        }
+      _ => return ""
+    }
+  }
+  ""
+}
+
+///|
 fn error_display(val : Value) -> String {
   match val {
-    Object(data) => {
-      let name = match data.bag.properties.get("name") {
-        Some(n) => n.to_string()
-        None => ""
-      }
-      let message = match data.bag.properties.get("message") {
-        Some(m) => m.to_string()
-        None => ""
-      }
+    Object(_) => {
+      let name = lookup_own_or_proto(val, "name")
+      let message = lookup_own_or_proto(val, "message")
       if name.length() > 0 {
         if message.length() > 0 {
           name + ": " + message

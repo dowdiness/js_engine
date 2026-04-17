@@ -361,30 +361,24 @@ pre-existing bugs that predate Stage A — the PropertyBag refactor only
 moved the same literal shapes into `bag: { ... }` wrappers. Ordered by
 expected test262 impact.
 
-### 7. `hasOwnProperty` misses descriptor-only own properties
+### ~~7. `hasOwnProperty` misses descriptor-only own properties~~ — DONE (2026-04-18)
 
-**Impact**: `Object.prototype.hasOwnProperty.call(Map.prototype, "size")` returns `false` (spec says `true`). Same for `Set.prototype.size` and other accessor-only own properties stored in descriptor tables without a corresponding `properties` entry. Likely affects `built-ins/Map`, `built-ins/Set`, and scattered descriptor tests.
-**File**: `interpreter/stdlib/builtins_object.mbt:113`
+### ~~8. Engine-thrown errors have empty descriptor maps~~ — DONE (2026-04-18, partial)
 
-`hasOwnProperty` checks `data.bag.properties` / `data.bag.symbol_properties` only. For objects whose own property lives in `bag.descriptors` / `bag.symbol_descriptors` with no matching entry in `bag.properties`, ownership is incorrectly reported as `false`. Fix: also check the descriptor maps.
+### ~~9. Interpreter-callable functions have `prototype: Null`~~ — DONE (2026-04-18)
 
-### 8. Engine-thrown errors have empty descriptor maps
+### ~~10. `Proxy.revocable`: `revocable_descs` built but never wired~~ — DONE (2026-04-18)
 
-**Impact**: Caught `TypeError`/`RangeError`/etc. from engine internals have `message`, `name`, `stack` as plain own data properties. User-created errors (via `new TypeError(...)` in `builtins_error.mbt`) correctly give these non-enumerable descriptors and put `name` on the prototype. Observable via `Object.keys(caughtErr)`, `Object.getOwnPropertyDescriptor(caughtErr, "message").enumerable`.
-**File**: `interpreter/runtime/errors.mbt:46`
+All four landed on branch `claude/stage-a-coderabbit-bugfixes` (PR #50). Verified via direct interpreter probes: `Map.prototype.hasOwnProperty("size")` → `true`, `caughtErr instanceof TypeError` → `true`, `Object.getOwnPropertyDescriptor(caughtErr, "message").enumerable` → `false`, `Object.getOwnPropertyDescriptor(Proxy.revocable, "name")` now returns the correct descriptor, Promise resolve callbacks are `instanceof Function`. 884/884 unit tests pass.
 
-`js_error_to_value` builds the error object with `descriptors: {}` instead of the descriptor shape used by user-facing errors. Route this through the same helper that `builtins_error.mbt` uses.
+**#8 partial**: fixes the non-enumerable descriptors for `message`/`stack` (and `errors` on AggregateError). The companion goal of moving `name` from own-property to prototype (matching user-created errors) was *not* completed — engine errors still carry `name` as an own property. Reason: `Error.prototype.toString` reads `name` from own properties only, and `js_error_to_value` (env-less, used by `Promise.try`) yields objects with `prototype: Null`, so removing `name` regresses engine-error stringification. Deferred as #13.
 
-### 9. Interpreter-callable functions have `prototype: Null`
+#### 13. Move `name` off own-property on engine-created errors (followup to #8)
 
-**Impact**: `make_interpreter_callable_with_length` is used for Promise resolve/reject (and other interpreter-needing callbacks). These functions' `[[Prototype]]` is `Null` instead of `Function.prototype`, so `Object.getPrototypeOf(fn) === Function.prototype` and `fn instanceof Function` fail. `fn.call`/`fn.apply`/`fn.bind` also fail to resolve.
-**File**: `interpreter/runtime/promise_core.mbt:78`
+**Blocked on two consumer fixes before the move can be made:**
 
-Route through the same function-object builder as the other `make_*_func` helpers. Natural pairing with agent-todo #6 (`make_*_func` consolidation) — the consolidated builder should handle this case.
+1. **`Error.prototype.toString` must walk the prototype chain** for `name` (and `message`). Per ES §20.5.3.4, it does `Get(O, "name")`, which walks the chain and invokes getters. Current impl in `builtins_error.mbt` uses `data.bag.properties.get("name")` — own-only. Options: switch to `make_interp_method_func` and call `interp.get_property`, or inline a small chain walk.
 
-### 10. `Proxy.revocable`: `revocable_descs` built but never wired
+2. **`js_error_to_value` (env-less) must yield a prototype.** Called from `builtins_promise.mbt:729` (`Promise.try` rejection path). Simplest fix: change that call site to `js_error_to_value_with_env(err, Some(interp.global))` — the interpreter is already in scope there. After that, consider whether the env-less API is still needed.
 
-**Impact**: `name`/`length` on `Proxy.revocable` lose their non-enumerable/non-writable attributes — `Object.getOwnPropertyDescriptor(Proxy.revocable, "name")` returns the wrong descriptor shape.
-**File**: `interpreter/stdlib/builtins_proxy.mbt:78`
-
-The function builds a `revocable_descs` map with correct non-enumerable descriptors for `name` and `length`, but the object literal uses `descriptors: {}`. Dead code + missing wiring. Fix: pass `revocable_descs` in place of `{}`. Tiny diff.
+Once both are fixed, remove `err_props["name"]` / `err_descs["name"]` from `make_error_value_with_env` and `make_aggregate_error_value` in `interpreter/runtime/errors.mbt`. Verify with: engine `TypeError` stringifies as `"TypeError: msg"`, `Promise.try(() => null.x).catch(e => e.name)` returns `"TypeError"`, `Object.keys(caughtErr)` does not include `"name"`.
