@@ -751,6 +751,7 @@ pub fn setup_builtins(
                 data.class_name == "ReferenceError" ||
                 data.class_name == "URIError" ||
                 data.class_name == "EvalError" ||
+                data.class_name == "InternalError" ||
                 data.class_name == "AggregateError",
               )
             _ => Value::Bool(false)
