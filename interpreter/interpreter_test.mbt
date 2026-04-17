@@ -16,6 +16,18 @@ fn run_output(source : String) -> Array[String] raise Error {
 }
 
 ///|
+/// Run a script and then drain the microtask queue so Promise reactions
+/// (`.then` / `.catch` / `.finally`) observe their final state before the
+/// test inspects `output`.
+fn run_output_async(source : String) -> Array[String] raise Error {
+  let interp = new_interpreter()
+  let prog = @parser.parse(source)
+  let _ = interp.run(prog.stmts)
+  interp.run_microtasks()
+  interp.host.output
+}
+
+///|
 fn lookup_own_or_proto(val : Value, key : String) -> String {
   let mut cur = val
   for _ in 0..<16 {
@@ -9099,4 +9111,97 @@ test "Function.prototype.toString distinguishes async functions" {
     output,
     content="[\"function foo() { [native code] }\", \"async function bar() { [native code] }\"]",
   )
+}
+
+// Engine-thrown error shape (agent-todo #13 + rebinding regression).
+// Invariant: an engine-raised native error must always report a defined
+// `.name` matching its error type, even when user code rebinds the native
+// constructor. Spec-ideal: `name` lives on the prototype, not as an own
+// property. When the prototype chain cannot be trusted (rebinding,
+// missing binding), fall back to an own `name` property.
+
+///|
+test "engine TypeError: name on prototype, not own" {
+  let src =
+    #|try { null.x } catch(e) {
+    #|  console.log(e.name);
+    #|  console.log(Object.prototype.hasOwnProperty.call(e, "name"));
+    #|}
+  let output = run_output(src)
+  inspect(output, content="[\"TypeError\", \"false\"]")
+}
+
+///|
+test "engine TypeError survives constructor rebinding" {
+  let src =
+    #|TypeError = function() {};
+    #|try { null.x } catch(e) {
+    #|  console.log(e.name);
+    #|  console.log(Object.prototype.hasOwnProperty.call(e, "name"));
+    #|}
+  let output = run_output(src)
+  // After rebinding, native prototype is unreachable — fall back to own `name`.
+  inspect(output, content="[\"TypeError\", \"true\"]")
+}
+
+///|
+test "engine ReferenceError survives constructor rebinding" {
+  let src =
+    #|ReferenceError = function() {};
+    #|try { undeclared_identifier } catch(e) {
+    #|  console.log(e.name);
+    #|}
+  let output = run_output(src)
+  inspect(output, content="[\"ReferenceError\"]")
+}
+
+///|
+test "Promise.try rejection name survives constructor rebinding" {
+  // Regression from PR #53: engine errors surfaced through Promise.try
+  // must keep their name even when user rebinds TypeError.
+  let src =
+    #|TypeError = function() {};
+    #|Promise.try(() => null.x).catch(e => {
+    #|  console.log(e.name);
+    #|});
+  let output = run_output_async(src)
+  inspect(output, content="[\"TypeError\"]")
+}
+
+///|
+test "Promise.any AggregateError name reflects rebound constructor" {
+  // Documents a separate code path (not fixed by PR #53): Promise.any
+  // constructs its rejection via `interp.construct_value(aggregate_ctor, ...)`
+  // where `aggregate_ctor` is resolved through `env.get("AggregateError")`.
+  // Rebinding therefore leaks through — distinct from the `make_*_error_value`
+  // path that PR #53 hardened. Proper fix needs intrinsic references
+  // (agent-todo #15). Test pins current behavior.
+  let src =
+    #|AggregateError = function() {};
+    #|Promise.any([Promise.reject(1), Promise.reject(2)]).catch(e => {
+    #|  console.log(typeof e.name);
+    #|});
+  let output = run_output_async(src)
+  inspect(output, content="[\"undefined\"]")
+}
+
+///|
+test "engine error adversarial: proto rebound to name-matching object" {
+  // Documents a known limitation of the heuristic fallback. An adversary
+  // can set Foo.prototype.name = "TypeError" to bypass the own-name fallback;
+  // the spec-correct fix is intrinsic references (agent-todo #15). Until then,
+  // the test pins current behavior so an unrelated refactor can't silently
+  // change it.
+  let src =
+    #|function Fake() {}
+    #|Fake.prototype.name = "TypeError";
+    #|TypeError = Fake;
+    #|try { null.x } catch(e) {
+    #|  console.log(e.name);
+    #|  console.log(Object.prototype.hasOwnProperty.call(e, "name"));
+    #|}
+  let output = run_output(src)
+  // Fallback skipped because Fake.prototype has own name "TypeError".
+  // e.name is resolved via the (user-owned) prototype chain.
+  inspect(output, content="[\"TypeError\", \"false\"]")
 }

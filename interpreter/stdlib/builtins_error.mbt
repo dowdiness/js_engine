@@ -14,11 +14,13 @@ fn register_error_ctor(
   let proto_props : Map[String, Value] = {}
   proto_props["name"] = Value::String_(name)
   proto_props["message"] = Value::String_("")
-  proto_props["toString"] = @runtime.make_method_func(
+  proto_props["toString"] = @runtime.make_interp_method_func(
     name="toString",
     length=0,
-    fn(this_val, _args) raise {
-      // Step 1: If this is not an Object, throw TypeError
+    fn(interp, this_val, _args) raise {
+      // Per ES §20.5.3.4: Get(O, "name") / Get(O, "message") walk the prototype
+      // chain and invoke accessors. Own-property-only lookup would miss the
+      // name that lives on <ErrorType>.prototype.
       match this_val {
         Object(_) => ()
         _ =>
@@ -26,27 +28,14 @@ fn register_error_ctor(
             message="Error.prototype.toString requires that 'this' be an Object",
           )
       }
-      let name_val = match this_val {
-        Object(data) =>
-          match data.bag.properties.get("name") {
-            Some(v) => v
-            None => Undefined
-          }
-        _ => Undefined
-      }
+      let loc = @token.Loc::default()
+      let name_val = interp.get_property(this_val, "name", loc)
       let name_str = match name_val {
         Undefined => "Error"
         Value::String_(s) => s
         other => other.to_string()
       }
-      let msg_val = match this_val {
-        Object(data) =>
-          match data.bag.properties.get("message") {
-            Some(v) => v
-            None => Undefined
-          }
-        _ => Undefined
-      }
+      let msg_val = interp.get_property(this_val, "message", loc)
       let msg_str = match msg_val {
         Undefined => ""
         Value::String_(s) => s
@@ -211,10 +200,10 @@ fn register_aggregate_error_ctor(
   let proto_props : Map[String, Value] = {}
   proto_props["name"] = Value::String_(name)
   proto_props["message"] = Value::String_("")
-  proto_props["toString"] = @runtime.make_method_func(
+  proto_props["toString"] = @runtime.make_interp_method_func(
     name="toString",
     length=0,
-    fn(this_val, _args) raise {
+    fn(interp, this_val, _args) raise {
       match this_val {
         Object(_) => ()
         _ =>
@@ -222,27 +211,14 @@ fn register_aggregate_error_ctor(
             message="Error.prototype.toString requires that 'this' be an Object",
           )
       }
-      let name_val = match this_val {
-        Object(data) =>
-          match data.bag.properties.get("name") {
-            Some(v) => v
-            None => Undefined
-          }
-        _ => Undefined
-      }
+      let loc = @token.Loc::default()
+      let name_val = interp.get_property(this_val, "name", loc)
       let name_str = match name_val {
         Undefined => "Error"
         Value::String_(s) => s
         other => other.to_string()
       }
-      let msg_val = match this_val {
-        Object(data) =>
-          match data.bag.properties.get("message") {
-            Some(v) => v
-            None => Undefined
-          }
-        _ => Undefined
-      }
+      let msg_val = interp.get_property(this_val, "message", loc)
       let msg_str = match msg_val {
         Undefined => ""
         Value::String_(s) => s
