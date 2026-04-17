@@ -129,6 +129,11 @@ SKIP_PATH_SUFFIXES = {
 # Preamble injected before all test harness code to provide host-defined print()
 PRINT_PREAMBLE = 'function print() { var s = ""; for (var i = 0; i < arguments.length; i++) { if (i > 0) s += " "; s += String(arguments[i]); } console.log(s); }\n'
 
+# Captures relative module specifiers from `from "./x"` clauses and bare
+# `import "./x"` side-effect imports. The `\.\.?/` prefix filters out bare
+# specifiers (e.g. 'react'), so post-filtering isn't needed.
+IMPORT_RELATIVE_RE = re.compile(r"""(?:from|import)\s+["'](\.\.?/[^"']+)["']""")
+
 # Fallback $DONE for async tests that don't include donePrintHandle.js
 DONE_FALLBACK = """
 if (typeof $DONE === "undefined") {
@@ -280,6 +285,55 @@ def load_harness(test262_dir: str, includes: list, is_raw: bool, is_async: bool 
 
 
 # ---------------------------------------------------------------------------
+# Module fixture resolution
+# ---------------------------------------------------------------------------
+
+def resolve_fixtures(test_path: str, source: str) -> list:
+    """Walk relative imports starting from `source` and return [(specifier, source), ...]
+    in dependency-first order so the engine can register each module before its dependents
+    execute. Cycles are broken by visit-once tracking; circular fixtures still get included
+    (in some order) so the engine sees them — the engine itself decides if cycles are valid.
+    """
+    test_abs = os.path.abspath(test_path)
+    test_dir = os.path.dirname(test_abs)
+    visited = {}    # specifier -> source
+    order = []      # specifiers in post-order (dependencies before dependents)
+    stack = set()   # specifiers currently on DFS stack (cycle detection)
+
+    def visit(spec: str, importer_dir: str):
+        # Resolve `spec` (always starts with ./ or ../) relative to importer_dir
+        abs_path = os.path.normpath(os.path.join(importer_dir, spec))
+        # Skip self-imports: the test runs as the main module, never as its own
+        # fixture (run_modules would evaluate it twice and the self-import lookup
+        # still wouldn't see the not-yet-registered exports).
+        if abs_path == test_abs:
+            return
+        if abs_path in visited or abs_path in stack:
+            return  # already done or back-edge (cycle)
+        if not os.path.isfile(abs_path):
+            return  # missing fixture — let the engine raise its usual error
+        try:
+            with open(abs_path, "r", encoding="utf-8") as f:
+                fixture_src = f.read()
+        except OSError as e:
+            # Permission/encoding errors are real bugs, not module-resolution
+            # misses — surface them so they don't silently skew test attribution.
+            raise RuntimeError(f"Failed to read fixture {abs_path}: {e}") from e
+        stack.add(abs_path)
+        # Recurse into this fixture's own relative imports first
+        for nested_spec in IMPORT_RELATIVE_RE.findall(fixture_src):
+            visit(nested_spec, os.path.dirname(abs_path))
+        stack.discard(abs_path)
+        visited[abs_path] = (spec, fixture_src)
+        order.append(abs_path)
+
+    for spec in IMPORT_RELATIVE_RE.findall(source):
+        visit(spec, test_dir)
+
+    return [visited[p] for p in order]
+
+
+# ---------------------------------------------------------------------------
 # Test execution
 # ---------------------------------------------------------------------------
 
@@ -334,6 +388,11 @@ def run_single_test(
     cmd = engine_cmd
     if is_module:
         cmd = cmd + ["--module"]
+        # Module tests may import sibling _FIXTURE.js files relative to the test
+        # path. The engine has no FS access, so we resolve them here and pass each
+        # as a `--fixture <specifier> <source>` pair (registered before main runs).
+        for spec, fixture_src in resolve_fixtures(test_path, source):
+            cmd = cmd + ["--fixture", spec, fixture_src]
     if is_annex_b:
         cmd = cmd + ["--annex-b"]
     cmd = cmd + [full_source]
