@@ -734,40 +734,55 @@ pub fn Interpreter::has_property(
   name : String,
 ) -> Bool {
   match val {
-    // Map/Set/Promise: check own bag properties first, then delegate to
-    // get_property which knows how to walk their prototype chains via stdlib hooks.
-    // We avoid returning true solely based on get_property returning Undefined,
-    // so we first probe own properties in the bag, then check if the method
-    // exists by seeing if get_property yields a non-Undefined value.
-    Map(data) => {
-      if data.bag.properties.contains(name) ||
-        data.bag.descriptors.contains(name) {
-        return true
-      }
-      let loc = @token.Loc::default()
-      let v = self.get_property(val, name, loc) catch { _ => return false }
-      !(v is Undefined)
-    }
-    Set(data) => {
-      if data.bag.properties.contains(name) ||
-        data.bag.descriptors.contains(name) {
-        return true
-      }
-      let loc = @token.Loc::default()
-      let v = self.get_property(val, name, loc) catch { _ => return false }
-      !(v is Undefined)
-    }
-    Promise(data) => {
-      if data.bag.properties.contains(name) ||
-        data.bag.descriptors.contains(name) {
-        return true
-      }
-      let loc = @token.Loc::default()
-      let v = self.get_property(val, name, loc) catch { _ => return false }
-      !(v is Undefined)
-    }
+    // Map/Set/Promise share a uniform shape: an expando bag plus a builtin
+    // prototype reachable via globalThis[ctor].prototype. Implement
+    // OrdinaryHasProperty (ES §7.3.11): own bag → proto chain → bool,
+    // with no value inspection.
+    Map(data) => self.has_bag_or_builtin_proto(data.bag, "Map", name)
+    Set(data) => self.has_bag_or_builtin_proto(data.bag, "Set", name)
+    Promise(data) => self.has_bag_or_builtin_proto(data.bag, "Promise", name)
     _ => has_property(val, name, interp=Some(self))
   }
+}
+
+///|
+/// OrdinaryHasProperty for exotic values whose prototype is stored globally
+/// (Map, Set, Promise). Checks own-bag descriptors and properties first, then
+/// walks the prototype chain starting from globalThis[ctor_name].prototype.
+/// Checks both data and accessor descriptors at each prototype step
+/// (ES §7.3.11), since lookup_property_chain intentionally sees only data
+/// properties.
+fn Interpreter::has_bag_or_builtin_proto(
+  self : Interpreter,
+  bag : PropertyBag,
+  ctor_name : String,
+  name : String,
+) -> Bool {
+  if bag.properties.contains(name) || bag.descriptors.contains(name) {
+    return true
+  }
+  let ctor = self.global.get(ctor_name) catch { _ => return false }
+  let mut current = match ctor {
+    Object(ctor_data) =>
+      match ctor_data.bag.properties.get("prototype") {
+        Some(p) => p
+        None => return false
+      }
+    _ => return false
+  }
+  while true {
+    match current {
+      Object(proto_data) =>
+        if proto_data.bag.properties.contains(name) ||
+          proto_data.bag.descriptors.contains(name) {
+          return true
+        } else {
+          current = proto_data.prototype
+        }
+      _ => break
+    }
+  }
+  false
 }
 
 ///|
