@@ -371,14 +371,14 @@ expected test262 impact.
 
 All four landed on branch `claude/stage-a-coderabbit-bugfixes` (PR #50). Verified via direct interpreter probes: `Map.prototype.hasOwnProperty("size")` → `true`, `caughtErr instanceof TypeError` → `true`, `Object.getOwnPropertyDescriptor(caughtErr, "message").enumerable` → `false`, `Object.getOwnPropertyDescriptor(Proxy.revocable, "name")` now returns the correct descriptor, Promise resolve callbacks are `instanceof Function`. 884/884 unit tests pass.
 
-**#8 partial**: fixes the non-enumerable descriptors for `message`/`stack` (and `errors` on AggregateError). The companion goal of moving `name` from own-property to prototype (matching user-created errors) was *not* completed — engine errors still carry `name` as an own property. Reason: `Error.prototype.toString` reads `name` from own properties only, and `js_error_to_value` (env-less, used by `Promise.try`) yields objects with `prototype: Null`, so removing `name` regresses engine-error stringification. Deferred as #13.
+**#8 status**: fully completed by stacked PR #13. Intermediate landing preserved `name` as own to avoid toString regressing; the spec-correct shape (name on prototype) lands once consumers are fixed.
 
-#### 13. Move `name` off own-property on engine-created errors (followup to #8)
+#### ~~13. Move `name` off own-property on engine-created errors~~ — DONE (2026-04-18)
 
-**Blocked on two consumer fixes before the move can be made:**
+Branch: `claude/err-name-on-prototype` (stacked on PR #50). Two consumer fixes plus the `name` removal.
 
-1. **`Error.prototype.toString` must walk the prototype chain** for `name` (and `message`). Per ES §20.5.3.4, it does `Get(O, "name")`, which walks the chain and invokes getters. Current impl in `builtins_error.mbt` uses `data.bag.properties.get("name")` — own-only. Options: switch to `make_interp_method_func` and call `interp.get_property`, or inline a small chain walk.
+- `Error.prototype.toString` and `AggregateError.prototype.toString` switched from `make_method_func` to `make_interp_method_func` and now use `interp.get_property` for both `name` and `message` (per ES §20.5.3.4 Get semantics — walks prototype chain, invokes accessors).
+- `Promise.try` rejection path (`builtins_promise.mbt:729`) now uses `js_error_to_value_with_env(err, Some(interp.global))` so the rejection value gets a proper prototype chain.
+- `err_props["name"]` / `err_descs["name"]` removed from `make_error_value_with_env` and `make_aggregate_error_value`.
 
-2. **`js_error_to_value` (env-less) must yield a prototype.** Called from `builtins_promise.mbt:729` (`Promise.try` rejection path). Simplest fix: change that call site to `js_error_to_value_with_env(err, Some(interp.global))` — the interpreter is already in scope there. After that, consider whether the env-less API is still needed.
-
-Once both are fixed, remove `err_props["name"]` / `err_descs["name"]` from `make_error_value_with_env` and `make_aggregate_error_value` in `interpreter/runtime/errors.mbt`. Verify with: engine `TypeError` stringifies as `"TypeError: msg"`, `Promise.try(() => null.x).catch(e => e.name)` returns `"TypeError"`, `Object.keys(caughtErr)` does not include `"name"`.
+Result: engine-thrown errors match user-created shape. Probe: `(catch TypeError).toString()` → `"TypeError: …"`; `.name` → `"TypeError"`; `hasOwnProperty("name")` → `false`; `Promise.try(() => null.x).catch(e => e.name)` → `"TypeError"`. test262 gains: `built-ins/Error` +2 (95.0%), `built-ins/Promise` +14 (95.0%).
