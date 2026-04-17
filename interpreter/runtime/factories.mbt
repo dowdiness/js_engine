@@ -478,15 +478,3 @@ pub fn make_plain_object() -> Value {
 pub fn make_array(elements : Array[Value]) -> Value {
   Array({ elements, bag: PropertyBag::new() })
 }
-
-///|
-/// Construct MapData with entries and an empty property bag (no expando properties).
-pub fn make_map_data(entries : Array[(Value, Value)]) -> MapData {
-  { entries, bag: PropertyBag::new() }
-}
-
-///|
-/// Construct SetData with values and an empty property bag (no expando properties).
-pub fn make_set_data(values : Array[Value]) -> SetData {
-  { values, bag: PropertyBag::new() }
-}

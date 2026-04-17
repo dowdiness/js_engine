@@ -155,8 +155,6 @@ pub fn make_interp_static_func_with_length(String, Int, (Interpreter, Array[Valu
 
 pub fn make_interpreter_callable_with_length(String, Int, (Interpreter, Value, Array[Value]) -> Value raise) -> Value
 
-pub fn make_map_data(Array[(Value, Value)]) -> MapData
-
 pub fn make_method_func(String, Int, (Value, Array[Value]) -> Value raise) -> Value
 
 pub fn make_native_func(String, (Array[Value]) -> Value raise) -> Value
@@ -166,8 +164,6 @@ pub fn make_native_func_with_length(String, Int, (Array[Value]) -> Value raise) 
 pub fn make_object(Map[String, Value], Value, Callable?, String, Map[String, PropDescriptor], Bool) -> Value
 
 pub fn make_plain_object() -> Value
-
-pub fn make_set_data(Array[Value]) -> SetData
 
 pub fn make_static_func(String, (Array[Value]) -> Value raise) -> Value
 
@@ -467,7 +463,10 @@ pub fn Interpreter::to_primitive_default(Self, Value, ObjectData) -> Value raise
 pub(all) struct MapData {
   entries : Array[(Value, Value)]
   bag : PropertyBag
+
+  fn new(Array[(Value, Value)]) -> MapData
 }
+pub fn MapData::new(Array[(Value, Value)]) -> Self
 
 pub(all) struct Microtask {
   callback : Value
@@ -552,7 +551,10 @@ pub(all) enum ResumeKind {
 pub(all) struct SetData {
   values : Array[Value]
   bag : PropertyBag
+
+  fn new(Array[Value]) -> SetData
 }
+pub fn SetData::new(Array[Value]) -> Self
 
 pub(all) enum Signal {
   Normal(Value)

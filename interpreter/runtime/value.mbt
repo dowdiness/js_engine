@@ -127,6 +127,14 @@ pub(all) struct MapData {
   entries : Array[(Value, Value)] // Array of (key, value) pairs
   // Expando properties: stores instance fields from subclasses (class D extends Map)
   bag : PropertyBag
+
+  fn new(entries : Array[(Value, Value)]) -> MapData
+}
+
+///|
+/// Construct MapData with entries and an empty property bag (no expando properties).
+pub fn MapData::new(entries : Array[(Value, Value)]) -> MapData {
+  { entries, bag: PropertyBag::new() }
 }
 
 ///|
@@ -136,6 +144,14 @@ pub(all) struct SetData {
   values : Array[Value] // Array of unique values
   // Expando properties: stores instance fields from subclasses (class D extends Set)
   bag : PropertyBag
+
+  fn new(values : Array[Value]) -> SetData
+}
+
+///|
+/// Construct SetData with values and an empty property bag (no expando properties).
+pub fn SetData::new(values : Array[Value]) -> SetData {
+  { values, bag: PropertyBag::new() }
 }
 
 ///|

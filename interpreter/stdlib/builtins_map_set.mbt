@@ -410,7 +410,7 @@ fn setup_map_builtins(env : Environment) -> Unit {
         message="Constructor Map cannot be invoked without 'new'",
       )
     }
-    let new_map : Value = Value::Map(@runtime.make_map_data([]))
+    let new_map : Value = Value::Map(@runtime.MapData::new([]))
     let loc = @token.Loc::default()
 
     // If iterable provided, populate map
@@ -547,7 +547,7 @@ fn setup_map_builtins(env : Environment) -> Unit {
           for i = 0; i < group_keys.length(); i = i + 1 {
             entries.push((group_keys[i], @runtime.make_array(group_arrays[i])))
           }
-          Value::Map(@runtime.make_map_data(entries))
+          Value::Map(@runtime.MapData::new(entries))
         },
       )
       ctor_data.bag.descriptors["groupBy"] = {
@@ -832,7 +832,7 @@ fn setup_set_builtins(env : Environment) -> Unit {
         message="Constructor Set cannot be invoked without 'new'",
       )
     }
-    let new_set : Value = Value::Set(@runtime.make_set_data([]))
+    let new_set : Value = Value::Set(@runtime.SetData::new([]))
     let loc = @token.Loc::default()
 
     // If iterable provided, populate set
