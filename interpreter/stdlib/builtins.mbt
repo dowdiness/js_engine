@@ -728,6 +728,7 @@ pub fn setup_builtins(
   register_error_ctor(env, "RangeError", error_proto) |> ignore
   register_error_ctor(env, "URIError", error_proto) |> ignore
   register_error_ctor(env, "EvalError", error_proto) |> ignore
+  register_error_ctor(env, "InternalError", error_proto) |> ignore
   register_aggregate_error_ctor(env, error_proto) |> ignore
 
   // Add Error.isError static method
