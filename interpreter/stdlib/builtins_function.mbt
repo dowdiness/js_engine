@@ -318,7 +318,7 @@ fn setup_function_builtins(env : Environment) -> Unit {
       NativeCallable("Function", fn(args) raise {
         if args.length() == 0 {
           return Value::Object({
-            bag: @runtime.new_property_bag(),
+            bag: @runtime.PropertyBag::new(),
             prototype: func_proto,
             callable: Some(NativeCallable("anonymous", fn(_) { Undefined })),
             class_name: "Function",
@@ -401,7 +401,7 @@ fn setup_function_builtins(env : Environment) -> Unit {
         }
         // Fallback: empty function
         Value::Object({
-          bag: @runtime.new_property_bag(),
+          bag: @runtime.PropertyBag::new(),
           prototype: func_proto,
           callable: Some(NativeCallable("anonymous", fn(_) { Undefined })),
           class_name: "Function",

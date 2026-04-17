@@ -215,7 +215,7 @@ fn Interpreter::install_instance_fields(
 /// call site can apply the fields to the actual `this` after super() returns.
 fn make_instance_fields_init(fields : Array[ClassFieldInit]) -> Value {
   Object({
-    bag: new_property_bag(),
+    bag: PropertyBag::new(),
     prototype: Null,
     callable: Some(
       InterpreterCallable("[[InitInstanceFields]]", fn(
@@ -235,7 +235,7 @@ fn make_instance_fields_init(fields : Array[ClassFieldInit]) -> Value {
 ///|
 fn make_constructor_instance(proto : Value, class_name : String) -> Value {
   Object({
-    bag: new_property_bag(),
+    bag: PropertyBag::new(),
     prototype: proto,
     callable: None,
     class_name,
@@ -306,14 +306,14 @@ fn make_arguments_object(
   let args_copy = args
   let new_args_sym_props : Map[Int, Value] = {}
   new_args_sym_props[iter_sym.id] = Object({
-    bag: new_property_bag(),
+    bag: PropertyBag::new(),
     prototype: Null,
     callable: Some(
       MethodCallable("values", fn(_this_val, _args2) {
         let index_ref : Ref[Int] = { val: 0 }
         let len = args_copy.length()
         let next_fn = Object({
-          bag: new_property_bag(),
+          bag: PropertyBag::new(),
           prototype: Null,
           callable: Some(
             NativeCallable("next", fn(_a) {

@@ -1,7 +1,7 @@
 ///|
 pub fn make_func(data : FuncData) -> Value {
   let proto = Object({
-    bag: new_property_bag(),
+    bag: PropertyBag::new(),
     prototype: get_obj_proto(),
     callable: None,
     class_name: "Object",
@@ -64,7 +64,7 @@ pub fn make_func(data : FuncData) -> Value {
 ///|
 pub fn make_func_ext(data : FuncDataExt) -> Value {
   let proto = Object({
-    bag: new_property_bag(),
+    bag: PropertyBag::new(),
     prototype: get_obj_proto(),
     callable: None,
     class_name: "Object",
@@ -464,7 +464,7 @@ pub fn create_iter_result(value : Value, done : Bool) -> Value {
 /// Helper to create a plain object
 pub fn make_plain_object() -> Value {
   Object({
-    bag: new_property_bag(),
+    bag: PropertyBag::new(),
     prototype: Null,
     callable: None,
     class_name: "Object",
@@ -476,17 +476,17 @@ pub fn make_plain_object() -> Value {
 /// Wrap an Array[Value] in an Array Value with an empty property bag.
 /// Dense-only arrays (no named props, no sparse length overrides) build via this.
 pub fn make_array(elements : Array[Value]) -> Value {
-  Array({ elements, bag: new_property_bag() })
+  Array({ elements, bag: PropertyBag::new() })
 }
 
 ///|
 /// Construct MapData with entries and an empty property bag (no expando properties).
 pub fn make_map_data(entries : Array[(Value, Value)]) -> MapData {
-  { entries, bag: new_property_bag() }
+  { entries, bag: PropertyBag::new() }
 }
 
 ///|
 /// Construct SetData with values and an empty property bag (no expando properties).
 pub fn make_set_data(values : Array[Value]) -> SetData {
-  { values, bag: new_property_bag() }
+  { values, bag: PropertyBag::new() }
 }

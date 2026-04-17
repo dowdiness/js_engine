@@ -1626,7 +1626,7 @@ pub fn make_regex_match_array(m : RegexMatch, input : String) -> Value {
       None => elements.push(Undefined)
     }
   }
-  let arr_data : ArrayData = { elements, bag: @runtime.new_property_bag() }
+  let arr_data : ArrayData = { elements, bag: @runtime.PropertyBag::new() }
   // Set named properties on the result
   @runtime.set_array_named_prop(
     arr_data,

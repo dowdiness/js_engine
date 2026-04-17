@@ -177,8 +177,6 @@ pub fn make_string_iterator_value(String) -> Value
 
 pub fn new_promise_data() -> PromiseData
 
-pub fn new_property_bag() -> PropertyBag
-
 pub let number_prototype_ref : @ref.Ref[Value?]
 
 pub let object_prototype_ref : @ref.Ref[Value?]
@@ -528,7 +526,10 @@ pub(all) struct PropertyBag {
   symbol_properties : Map[Int, Value]
   descriptors : Map[String, PropDescriptor]
   symbol_descriptors : Map[Int, PropDescriptor]
+
+  fn new() -> PropertyBag
 }
+pub fn PropertyBag::new() -> Self
 
 pub(all) struct ProxyData {
   mut target : Value?

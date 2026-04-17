@@ -31,7 +31,7 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
               let the_val = this_val
               let index_ref : Ref[Int] = { val: 0 }
               let next_method = Value::Object({
-                bag: @runtime.new_property_bag(),
+                bag: @runtime.PropertyBag::new(),
                 prototype: Null,
                 callable: Some(
                   NativeCallable("next", fn(_args) {
@@ -114,7 +114,7 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
               let the_val = this_val
               let index_ref : Ref[Int] = { val: 0 }
               let next_method = Value::Object({
-                bag: @runtime.new_property_bag(),
+                bag: @runtime.PropertyBag::new(),
                 prototype: Null,
                 callable: Some(
                   NativeCallable("next", fn(_args) {

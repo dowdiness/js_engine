@@ -650,7 +650,7 @@ pub fn setup_object_builtins(
                 )
             }
             let obj = Value::Object({
-              bag: @runtime.new_property_bag(),
+              bag: @runtime.PropertyBag::new(),
               prototype: proto,
               callable: None,
               class_name: "Object",
@@ -1199,7 +1199,7 @@ pub fn setup_object_builtins(
               val
             Undefined | Null =>
               Value::Object({
-                bag: @runtime.new_property_bag(),
+                bag: @runtime.PropertyBag::new(),
                 prototype: obj_proto,
                 callable: None,
                 class_name: "Object",

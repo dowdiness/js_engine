@@ -140,7 +140,7 @@ fn run_async_body(
   // Create a generator object from the async function body
   let gen_proto = get_generator_prototype(ip)
   let func_proto = Object({
-    bag: new_property_bag(),
+    bag: PropertyBag::new(),
     prototype: gen_proto,
     callable: None,
     class_name: "Object",
@@ -431,7 +431,7 @@ fn make_async_gen_function_inner(
 ) -> Value {
   let async_gen_proto = init_async_generator_prototype()
   let func_prototype = Object({
-    bag: new_property_bag(),
+    bag: PropertyBag::new(),
     prototype: async_gen_proto,
     callable: None,
     class_name: "AsyncGenerator",

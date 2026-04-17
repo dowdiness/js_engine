@@ -1329,7 +1329,7 @@ fn setup_array_builtins(
       }
       @runtime.make_array_iterator_value({
         elements: result,
-        bag: @runtime.new_property_bag(),
+        bag: @runtime.PropertyBag::new(),
       })
     },
   )
@@ -1346,7 +1346,7 @@ fn setup_array_builtins(
     }
     @runtime.make_array_iterator_value({
       elements: result,
-      bag: @runtime.new_property_bag(),
+      bag: @runtime.PropertyBag::new(),
     })
   })
   array_proto_props["values"] = @runtime.make_interp_method_func("values", 0, fn(
@@ -1362,7 +1362,7 @@ fn setup_array_builtins(
     }
     @runtime.make_array_iterator_value({
       elements: result,
-      bag: @runtime.new_property_bag(),
+      bag: @runtime.PropertyBag::new(),
     })
   })
   array_proto_props["toReversed"] = @runtime.make_interp_method_func(
@@ -1877,7 +1877,7 @@ fn setup_array_builtins(
                 }
                 let arr_data : ArrayData = {
                   elements,
-                  bag: @runtime.new_property_bag(),
+                  bag: @runtime.PropertyBag::new(),
                 }
                 if len64 > arr_data.elements.length().to_int64() {
                   @runtime.set_array_length_override(arr_data, len64)

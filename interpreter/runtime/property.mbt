@@ -287,7 +287,7 @@ fn Interpreter::get_property_of_object(
         Some(callable) =>
           if prop == "call" {
             return Object({
-              bag: new_property_bag(),
+              bag: PropertyBag::new(),
               prototype: Null,
               callable: Some(FuncCallMethod(obj)),
               class_name: "Function",
@@ -295,7 +295,7 @@ fn Interpreter::get_property_of_object(
             })
           } else if prop == "apply" {
             return Object({
-              bag: new_property_bag(),
+              bag: PropertyBag::new(),
               prototype: Null,
               callable: Some(FuncApplyMethod(obj)),
               class_name: "Function",
@@ -423,7 +423,7 @@ fn Interpreter::get_property_of_object(
               None => {
                 // Create and memoize default prototype
                 let proto : Value = Object({
-                  bag: new_property_bag(),
+                  bag: PropertyBag::new(),
                   prototype: get_obj_proto(),
                   callable: None,
                   class_name: "Object",
@@ -944,7 +944,7 @@ pub fn Interpreter::get_computed_property(
             Some(callable) =>
               if prop == "call" {
                 return Object({
-                  bag: new_property_bag(),
+                  bag: PropertyBag::new(),
                   prototype: Null,
                   callable: Some(FuncCallMethod(obj)),
                   class_name: "Function",
@@ -952,7 +952,7 @@ pub fn Interpreter::get_computed_property(
                 })
               } else if prop == "apply" {
                 return Object({
-                  bag: new_property_bag(),
+                  bag: PropertyBag::new(),
                   prototype: Null,
                   callable: Some(FuncApplyMethod(obj)),
                   class_name: "Function",
@@ -1084,7 +1084,7 @@ pub fn Interpreter::get_computed_property(
                   None => {
                     // Create and memoize default prototype
                     let proto : Value = Object({
-                      bag: new_property_bag(),
+                      bag: PropertyBag::new(),
                       prototype: get_obj_proto(),
                       callable: None,
                       class_name: "Object",

@@ -83,11 +83,13 @@ pub(all) struct PropertyBag {
   symbol_properties : Map[Int, Value] // Symbol-keyed properties (key is symbol ID)
   descriptors : Map[String, PropDescriptor]
   symbol_descriptors : Map[Int, PropDescriptor] // Descriptors for symbol properties
+
+  fn new() -> PropertyBag
 }
 
 ///|
 /// Construct an empty PropertyBag.
-pub fn new_property_bag() -> PropertyBag {
+pub fn PropertyBag::new() -> PropertyBag {
   {
     properties: {},
     symbol_properties: {},
@@ -182,7 +184,7 @@ pub fn new_promise_data() -> PromiseData {
     fulfill_reactions: [],
     reject_reactions: [],
     is_handled: false,
-    bag: new_property_bag(),
+    bag: PropertyBag::new(),
   }
 }
 

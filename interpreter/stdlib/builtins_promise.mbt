@@ -489,7 +489,7 @@ pub fn setup_promise(env : Environment) -> Unit {
       // Per ECMAScript §27.2.5.3, we must await the result of onFinally
       // by chaining through Promise.resolve(onFinally_result).then(...)
       let value_thunk = Value::Object({
-        bag: @runtime.new_property_bag(),
+        bag: @runtime.PropertyBag::new(),
         prototype: Null,
         callable: Some(
           InterpreterCallable("finallyValueThunk", fn(
@@ -510,7 +510,7 @@ pub fn setup_promise(env : Environment) -> Unit {
             )
             // Create a thunk that returns the original value
             let return_value_thunk = Value::Object({
-              bag: @runtime.new_property_bag(),
+              bag: @runtime.PropertyBag::new(),
               prototype: Null,
               callable: Some(
                 InterpreterCallable("returnValue", fn(_i2, _t, _a) { value }),
@@ -527,7 +527,7 @@ pub fn setup_promise(env : Environment) -> Unit {
         extensible: true,
       })
       let thrower_thunk = Value::Object({
-        bag: @runtime.new_property_bag(),
+        bag: @runtime.PropertyBag::new(),
         prototype: Null,
         callable: Some(
           InterpreterCallable("finallyThrowerThunk", fn(
@@ -548,7 +548,7 @@ pub fn setup_promise(env : Environment) -> Unit {
             )
             // Create a thunk that re-throws the original reason
             let throw_reason_thunk = Value::Object({
-              bag: @runtime.new_property_bag(),
+              bag: @runtime.PropertyBag::new(),
               prototype: Null,
               callable: Some(
                 InterpreterCallable("throwReason", fn(_i2, _t, _a) raise {
