@@ -204,10 +204,15 @@ pub fn get_symbol_proto() -> Value {
 }
 
 ///|
-/// Build a Function-object shell: `name` and `length` own-data properties
-/// with non-enumerable/non-writable/configurable descriptors, `[[Prototype]]`
-/// set to `Function.prototype`, `class_name: "Function"`. Shared by all
-/// `make_*_func` factories below.
+/// Build a Function-object shell: `length` and `name` own-data properties with
+/// non-enumerable/non-writable/configurable descriptors, `[[Prototype]]` set to
+/// `Function.prototype`, `class_name: "Function"`. Shared by all `make_*_func`
+/// factories below.
+///
+/// Insertion order matters: `length` precedes `name` so that `Object.keys` /
+/// `Reflect.ownKeys` report `[..., "length", "name"]`, matching the spec order
+/// (SetFunctionLength runs before SetFunctionName) and the ordering that the
+/// pre-consolidation wrappers produced.
 fn build_func_object(name : String, length : Int, callable : Callable) -> Value {
   let nf_desc : PropDescriptor = {
     writable: false,
@@ -219,11 +224,11 @@ fn build_func_object(name : String, length : Int, callable : Callable) -> Value 
   Object({
     bag: {
       properties: {
-        "name": String_(name),
         "length": Number(length.to_double()),
+        "name": String_(name),
       },
       symbol_properties: {},
-      descriptors: { "name": nf_desc, "length": nf_desc },
+      descriptors: { "length": nf_desc, "name": nf_desc },
       symbol_descriptors: {},
     },
     prototype: get_func_proto(),
