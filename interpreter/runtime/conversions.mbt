@@ -733,7 +733,41 @@ pub fn Interpreter::has_property(
   val : Value,
   name : String,
 ) -> Bool {
-  has_property(val, name, interp=Some(self))
+  match val {
+    // Map/Set/Promise: check own bag properties first, then delegate to
+    // get_property which knows how to walk their prototype chains via stdlib hooks.
+    // We avoid returning true solely based on get_property returning Undefined,
+    // so we first probe own properties in the bag, then check if the method
+    // exists by seeing if get_property yields a non-Undefined value.
+    Map(data) => {
+      if data.bag.properties.contains(name) ||
+        data.bag.descriptors.contains(name) {
+        return true
+      }
+      let loc = @token.Loc::default()
+      let v = self.get_property(val, name, loc) catch { _ => return false }
+      !(v is Undefined)
+    }
+    Set(data) => {
+      if data.bag.properties.contains(name) ||
+        data.bag.descriptors.contains(name) {
+        return true
+      }
+      let loc = @token.Loc::default()
+      let v = self.get_property(val, name, loc) catch { _ => return false }
+      !(v is Undefined)
+    }
+    Promise(data) => {
+      if data.bag.properties.contains(name) ||
+        data.bag.descriptors.contains(name) {
+        return true
+      }
+      let loc = @token.Loc::default()
+      let v = self.get_property(val, name, loc) catch { _ => return false }
+      !(v is Undefined)
+    }
+    _ => has_property(val, name, interp=Some(self))
+  }
 }
 
 ///|
