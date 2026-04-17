@@ -2062,7 +2062,7 @@ fn make_realm_dollar262(ri : Interpreter) -> Value raise Error {
   let realm_props : Map[String, Value] = {}
   realm_props["global"] = ri.global_this
   realm_props["gc"] = @runtime.make_native_func(name="gc", fn(_a) { Undefined })
-  realm_props["evalScript"] = @runtime.make_native_func(name="evalScript", fn(
+  realm_props["evalScript"] = @runtime.make_native_func(name="evalScript", length=1, fn(
     es_args,
   ) raise {
     let code = if es_args.length() > 0 {
@@ -2084,6 +2084,7 @@ fn make_realm_dollar262(ri : Interpreter) -> Value raise Error {
   })
   realm_props["detachArrayBuffer"] = @runtime.make_native_func(
     name="detachArrayBuffer",
+    length=1,
     fn(a) raise {
       if a.length() == 0 {
         raise @errors.TypeError(
@@ -2200,7 +2201,7 @@ pub fn setup_harness_builtins(
   // in the current realm's global scope.
   dollar262_props["evalScript"] = @runtime.make_interp_method_func(
     name="evalScript",
-    length=0,
+    length=1,
     fn(interp, _this_val, args) raise {
       let code = if args.length() > 0 {
         match args[0] {
@@ -2216,6 +2217,7 @@ pub fn setup_harness_builtins(
   )
   dollar262_props["detachArrayBuffer"] = @runtime.make_native_func(
     name="detachArrayBuffer",
+    length=1,
     fn(args) raise {
       if args.length() == 0 {
         raise @errors.TypeError(
