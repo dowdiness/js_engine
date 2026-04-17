@@ -681,7 +681,7 @@ fn get_date_value(this_val : Value) -> Double raise Error {
   match this_val {
     Object(data) =>
       if data.class_name == "Date" {
-        match data.properties.get("[[DateValue]]") {
+        match data.bag.properties.get("[[DateValue]]") {
           Some(Value::Number(v)) => v
           _ => 0.0 / 0.0
         }
@@ -698,7 +698,7 @@ fn set_date_value(this_val : Value, v : Double) -> Unit raise Error {
   match this_val {
     Object(data) =>
       if data.class_name == "Date" {
-        data.properties["[[DateValue]]"] = Value::Number(v)
+        data.bag.properties["[[DateValue]]"] = Value::Number(v)
       } else {
         raise @errors.TypeError(message="this is not a Date object")
       }
@@ -720,13 +720,15 @@ fn make_date_object(t : Double, date_proto : Value) -> Value {
     setter: None,
   }
   Value::Object({
-    properties: props,
-    symbol_properties: {},
+    bag: {
+      properties: props,
+      symbol_properties: {},
+      descriptors: descs,
+      symbol_descriptors: {},
+    },
     prototype: date_proto,
     callable: None,
     class_name: "Date",
-    descriptors: descs,
-    symbol_descriptors: {},
     extensible: true,
   })
 }
@@ -1509,7 +1511,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
       Object(data) => {
         // Try valueOf first (hint number)
         let mut result : Value = o
-        match data.properties.get("valueOf") {
+        match data.bag.properties.get("valueOf") {
           Some(Object(fn_data)) =>
             match fn_data.callable {
               Some(_) => {
@@ -1532,7 +1534,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
             while true {
               match cur {
                 Object(proto_data) =>
-                  match proto_data.properties.get("valueOf") {
+                  match proto_data.bag.properties.get("valueOf") {
                     Some(Object(fn_data)) =>
                       match fn_data.callable {
                         Some(_) => {
@@ -1575,7 +1577,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
         while true {
           match cur {
             Object(cur_data) =>
-              match cur_data.properties.get("toISOString") {
+              match cur_data.bag.properties.get("toISOString") {
                 Some(v) => {
                   found = v
                   break
@@ -1592,7 +1594,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
             while true {
               match cur2 {
                 Object(cur_data) =>
-                  match cur_data.descriptors.get("toISOString") {
+                  match cur_data.bag.descriptors.get("toISOString") {
                     Some(desc) =>
                       match desc.getter {
                         Some(getter) => {
@@ -1795,13 +1797,15 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
 
   // Create the Date prototype object
   let date_proto : Value = Value::Object({
-    properties: date_proto_props,
-    symbol_properties: {},
+    bag: {
+      properties: date_proto_props,
+      symbol_properties: {},
+      descriptors: date_proto_descs,
+      symbol_descriptors: {},
+    },
     prototype: @runtime.get_obj_proto(),
     callable: None,
     class_name: "Date",
-    descriptors: date_proto_descs,
-    symbol_descriptors: {},
     extensible: true,
   })
 
@@ -1809,8 +1813,8 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
   match date_proto {
     Object(data) => {
       let to_prim_sym = @runtime.get_toprimitive_symbol()
-      data.symbol_properties[to_prim_sym.id] = to_primitive_method
-      data.symbol_descriptors[to_prim_sym.id] = {
+      data.bag.symbol_properties[to_prim_sym.id] = to_primitive_method
+      data.bag.symbol_descriptors[to_prim_sym.id] = {
         writable: false,
         enumerable: false,
         configurable: true,
@@ -1818,7 +1822,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
         setter: None,
       }
       // Also store [[DateValue]] on proto for "Invalid Date" default
-      data.properties["[[DateValue]]"] = Value::Number(0.0 / 0.0)
+      data.bag.properties["[[DateValue]]"] = Value::Number(0.0 / 0.0)
     }
     _ => ()
   }
@@ -1888,8 +1892,43 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
   env.def_builtin(
     "Date",
     Value::Object({
-      properties: date_props,
-      symbol_properties: {},
+      bag: {
+        properties: date_props,
+        symbol_properties: {},
+        descriptors: {
+          "name": nf_desc,
+          "length": nf_desc,
+          "prototype": {
+            writable: false,
+            enumerable: false,
+            configurable: false,
+            getter: None,
+            setter: None,
+          },
+          "parse": {
+            writable: true,
+            enumerable: false,
+            configurable: true,
+            getter: None,
+            setter: None,
+          },
+          "UTC": {
+            writable: true,
+            enumerable: false,
+            configurable: true,
+            getter: None,
+            setter: None,
+          },
+          "now": {
+            writable: true,
+            enumerable: false,
+            configurable: true,
+            getter: None,
+            setter: None,
+          },
+        },
+        symbol_descriptors: {},
+      },
       prototype: Null,
       callable: Some(
         NativeCallable("Date", fn(args) raise {
@@ -1962,39 +2001,6 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
         }),
       ),
       class_name: "Function",
-      descriptors: {
-        "name": nf_desc,
-        "length": nf_desc,
-        "prototype": {
-          writable: false,
-          enumerable: false,
-          configurable: false,
-          getter: None,
-          setter: None,
-        },
-        "parse": {
-          writable: true,
-          enumerable: false,
-          configurable: true,
-          getter: None,
-          setter: None,
-        },
-        "UTC": {
-          writable: true,
-          enumerable: false,
-          configurable: true,
-          getter: None,
-          setter: None,
-        },
-        "now": {
-          writable: true,
-          enumerable: false,
-          configurable: true,
-          getter: None,
-          setter: None,
-        },
-      },
-      symbol_descriptors: {},
       extensible: true,
     }),
   )
@@ -2003,8 +2009,8 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
   match date_proto {
     Object(data) => {
       let ctor = env.get("Date") catch { _ => Undefined }
-      data.properties["constructor"] = ctor
-      data.descriptors["constructor"] = {
+      data.bag.properties["constructor"] = ctor
+      data.bag.descriptors["constructor"] = {
         writable: true,
         enumerable: false,
         configurable: true,

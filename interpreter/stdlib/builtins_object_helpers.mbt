@@ -39,13 +39,15 @@ fn to_object(val : Value, interp : Interpreter) -> Value raise Error {
         }
       }
       Value::Object({
-        properties: props,
-        symbol_properties: {},
+        bag: {
+          properties: props,
+          symbol_properties: {},
+          descriptors: descs,
+          symbol_descriptors: {},
+        },
         prototype: string_proto,
         callable: None,
         class_name: "String",
-        descriptors: descs,
-        symbol_descriptors: {},
         extensible: true,
       })
     }
@@ -54,13 +56,15 @@ fn to_object(val : Value, interp : Interpreter) -> Value raise Error {
         _ => Null
       }
       Value::Object({
-        properties: { "[[NumberData]]": Value::Number(n) },
-        symbol_properties: {},
+        bag: {
+          properties: { "[[NumberData]]": Value::Number(n) },
+          symbol_properties: {},
+          descriptors: {},
+          symbol_descriptors: {},
+        },
         prototype: number_proto,
         callable: None,
         class_name: "Number",
-        descriptors: {},
-        symbol_descriptors: {},
         extensible: true,
       })
     }
@@ -69,13 +73,15 @@ fn to_object(val : Value, interp : Interpreter) -> Value raise Error {
         _ => Null
       }
       Value::Object({
-        properties: { "[[BooleanData]]": Value::Bool(b) },
-        symbol_properties: {},
+        bag: {
+          properties: { "[[BooleanData]]": Value::Bool(b) },
+          symbol_properties: {},
+          descriptors: {},
+          symbol_descriptors: {},
+        },
         prototype: boolean_proto,
         callable: None,
         class_name: "Boolean",
-        descriptors: {},
-        symbol_descriptors: {},
         extensible: true,
       })
     }
@@ -84,13 +90,15 @@ fn to_object(val : Value, interp : Interpreter) -> Value raise Error {
         _ => Null
       }
       Value::Object({
-        properties: { "[[SymbolData]]": val },
-        symbol_properties: {},
+        bag: {
+          properties: { "[[SymbolData]]": val },
+          symbol_properties: {},
+          descriptors: {},
+          symbol_descriptors: {},
+        },
         prototype: symbol_proto,
         callable: None,
         class_name: "Symbol",
-        descriptors: {},
-        symbol_descriptors: {},
         extensible: true,
       })
     }
@@ -119,10 +127,10 @@ fn validate_accessor(value : Value?, label : String) -> Unit raise Error {
 fn get_value_property(val : Value, key : String) -> (Bool, Value) {
   match val {
     Object(data) =>
-      match data.properties.get(key) {
+      match data.bag.properties.get(key) {
         Some(v) =>
           // Check for accessor descriptor
-          match data.descriptors.get(key) {
+          match data.bag.descriptors.get(key) {
             Some(desc) =>
               match desc.getter {
                 Some(_) => (true, Undefined) // accessor, but can't call getter without interp
@@ -136,9 +144,9 @@ fn get_value_property(val : Value, key : String) -> (Bool, Value) {
           while true {
             match current {
               Object(proto_data) =>
-                match proto_data.properties.get(key) {
+                match proto_data.bag.properties.get(key) {
                   Some(v) =>
-                    match proto_data.descriptors.get(key) {
+                    match proto_data.bag.descriptors.get(key) {
                       Some(desc) =>
                         match desc.getter {
                           Some(_) => return (true, Undefined)
@@ -178,8 +186,8 @@ fn apply_property_descriptor(
     )
   }
   if is_accessor {
-    if !data.properties.contains(prop_name) {
-      data.properties[prop_name] = Undefined
+    if !data.bag.properties.contains(prop_name) {
+      data.bag.properties[prop_name] = Undefined
     }
     let getter : Value? = match get_value_property(desc_val, "get") {
       (true, Undefined) => None
@@ -201,7 +209,7 @@ fn apply_property_descriptor(
       (true, v) => @runtime.is_truthy(v)
       _ => false
     }
-    data.descriptors[prop_name] = {
+    data.bag.descriptors[prop_name] = {
       writable: false,
       enumerable,
       configurable,
@@ -210,10 +218,10 @@ fn apply_property_descriptor(
     }
   } else {
     match get_value_property(desc_val, "value") {
-      (true, v) => data.properties[prop_name] = v
+      (true, v) => data.bag.properties[prop_name] = v
       _ =>
-        if !data.properties.contains(prop_name) {
-          data.properties[prop_name] = Undefined
+        if !data.bag.properties.contains(prop_name) {
+          data.bag.properties[prop_name] = Undefined
         }
     }
     let writable = match get_value_property(desc_val, "writable") {
@@ -228,7 +236,7 @@ fn apply_property_descriptor(
       (true, v) => @runtime.is_truthy(v)
       _ => false
     }
-    data.descriptors[prop_name] = {
+    data.bag.descriptors[prop_name] = {
       writable,
       enumerable,
       configurable,
@@ -247,18 +255,20 @@ pub fn make_data_desc_obj(
   configurable : Bool,
 ) -> Value {
   Value::Object({
-    properties: {
-      "value": value,
-      "writable": Value::Bool(writable),
-      "enumerable": Value::Bool(enumerable),
-      "configurable": Value::Bool(configurable),
+    bag: {
+      properties: {
+        "value": value,
+        "writable": Value::Bool(writable),
+        "enumerable": Value::Bool(enumerable),
+        "configurable": Value::Bool(configurable),
+      },
+      symbol_properties: {},
+      descriptors: {},
+      symbol_descriptors: {},
     },
-    symbol_properties: {},
     prototype: @runtime.get_obj_proto(),
     callable: None,
     class_name: "Object",
-    descriptors: {},
-    symbol_descriptors: {},
     extensible: true,
   })
 }
@@ -272,19 +282,20 @@ pub fn make_accessor_desc_obj(
   configurable : Bool,
 ) -> Value {
   Value::Object({
-    properties: {
-      "get": getter_val,
-      "set": setter_val,
-      "enumerable": Value::Bool(enumerable),
-      "configurable": Value::Bool(configurable),
+    bag: {
+      properties: {
+        "get": getter_val,
+        "set": setter_val,
+        "enumerable": Value::Bool(enumerable),
+        "configurable": Value::Bool(configurable),
+      },
+      symbol_properties: {},
+      descriptors: {},
+      symbol_descriptors: {},
     },
-    symbol_properties: {},
     prototype: @runtime.get_obj_proto(),
     callable: None,
     class_name: "Object",
-    descriptors: {},
-    symbol_descriptors: {},
     extensible: true,
   })
 }
-

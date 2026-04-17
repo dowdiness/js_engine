@@ -68,24 +68,24 @@ pub fn get_proxy_handler(proxy_data : ProxyData) -> Value raise Error {
 /// Returns string keys and symbol keys (symbol keys require SymbolState).
 pub fn collect_target_own_keys(
   target : Value,
-  sym_state : SymbolState
+  sym_state : SymbolState,
 ) -> Array[Value] {
   let keys : Array[Value] = []
   match target {
     Object(data) => {
       // Indexed (integer) string keys first, in ascending order
-      let sorted = sort_property_keys(data.properties)
+      let sorted = sort_property_keys(data.bag.properties)
       for k in sorted {
         keys.push(Value::String_(k))
       }
       // Also include keys from descriptors not in properties
-      data.descriptors.each(fn(k, _v) {
-        if !data.properties.contains(k) {
+      data.bag.descriptors.each(fn(k, _v) {
+        if !data.bag.properties.contains(k) {
           keys.push(Value::String_(k))
         }
       })
       // Symbol keys
-      data.symbol_properties.each(fn(id, _v) {
+      data.bag.symbol_properties.each(fn(id, _v) {
         match sym_state.get_symbol_by_id(id) {
           Some(sym) => keys.push(Value::Symbol(sym))
           None => ()
@@ -116,7 +116,7 @@ fn target_is_extensible(target : Value) -> Bool {
 /// Implement the Proxy [[IsExtensible]] internal method per ES §10.5.3.
 pub fn proxy_is_extensible(
   interp : Interpreter,
-  proxy_data : ProxyData
+  proxy_data : ProxyData,
 ) -> Bool raise Error {
   let target = get_proxy_target(proxy_data)
   let trap = get_proxy_trap(proxy_data, "isExtensible", interp)
@@ -149,7 +149,7 @@ pub fn proxy_is_extensible(
 fn target_has_non_configurable_key(target : Value, key : String) -> Bool {
   match target {
     Object(data) =>
-      match data.descriptors.get(key) {
+      match data.bag.descriptors.get(key) {
         Some(desc) => !desc.configurable
         None => false
       }
@@ -159,12 +159,9 @@ fn target_has_non_configurable_key(target : Value, key : String) -> Bool {
 
 ///|
 /// Get the descriptor for a string-keyed property on the target.
-fn target_get_own_descriptor(
-  target : Value,
-  key : String
-) -> PropDescriptor? {
+fn target_get_own_descriptor(target : Value, key : String) -> PropDescriptor? {
   match target {
-    Object(data) => data.descriptors.get(key)
+    Object(data) => data.bag.descriptors.get(key)
     _ => None
   }
 }
@@ -174,7 +171,7 @@ fn target_get_own_descriptor(
 fn target_has_own_property(target : Value, key : String) -> Bool {
   match target {
     Object(data) =>
-      data.properties.contains(key) || data.descriptors.contains(key)
+      data.bag.properties.contains(key) || data.bag.descriptors.contains(key)
     _ => false
   }
 }
@@ -183,7 +180,7 @@ fn target_has_own_property(target : Value, key : String) -> Bool {
 /// Implement the Proxy [[PreventExtensions]] internal method per ES §10.5.4.
 pub fn proxy_prevent_extensions(
   interp : Interpreter,
-  proxy_data : ProxyData
+  proxy_data : ProxyData,
 ) -> Bool raise Error {
   let target = get_proxy_target(proxy_data)
   let trap = get_proxy_trap(proxy_data, "preventExtensions", interp)
@@ -220,7 +217,7 @@ pub fn proxy_prevent_extensions(
 /// Implement the Proxy [[GetPrototypeOf]] internal method per ES §10.5.1.
 pub fn proxy_get_prototype_of(
   interp : Interpreter,
-  proxy_data : ProxyData
+  proxy_data : ProxyData,
 ) -> Value raise Error {
   let target = get_proxy_target(proxy_data)
   let trap = get_proxy_trap(proxy_data, "getPrototypeOf", interp)
@@ -266,7 +263,7 @@ pub fn proxy_get_prototype_of(
 pub fn proxy_set_prototype_of(
   interp : Interpreter,
   proxy_data : ProxyData,
-  proto : Value
+  proto : Value,
 ) -> Bool raise Error {
   let target = get_proxy_target(proxy_data)
   let trap = get_proxy_trap(proxy_data, "setPrototypeOf", interp)
@@ -314,7 +311,7 @@ pub fn proxy_set_prototype_of(
 pub fn proxy_has_property(
   interp : Interpreter,
   proxy_data : ProxyData,
-  key : String
+  key : String,
 ) -> Bool raise Error {
   let target = get_proxy_target(proxy_data)
   let trap = get_proxy_trap(proxy_data, "has", interp)
@@ -359,7 +356,7 @@ pub fn proxy_has_property(
 pub fn proxy_delete_property(
   interp : Interpreter,
   proxy_data : ProxyData,
-  key : String
+  key : String,
 ) -> Bool raise Error {
   let target = get_proxy_target(proxy_data)
   let trap = get_proxy_trap(proxy_data, "deleteProperty", interp)
@@ -367,12 +364,12 @@ pub fn proxy_delete_property(
     None =>
       match target {
         Object(data) => {
-          match data.descriptors.get(key) {
+          match data.bag.descriptors.get(key) {
             Some(desc) => if !desc.configurable { return false }
             None => ()
           }
-          let _ = data.properties.remove(key)
-          let _ = data.descriptors.remove(key)
+          let _ = data.bag.properties.remove(key)
+          let _ = data.bag.descriptors.remove(key)
           true
         }
         Value::Proxy(inner) => proxy_delete_property(interp, inner, key)
@@ -413,7 +410,7 @@ pub fn proxy_get(
   interp : Interpreter,
   proxy_data : ProxyData,
   key : String,
-  receiver : Value
+  receiver : Value,
 ) -> Value raise Error {
   // get_proxy_trap checks revocation and includes trap name in error message
   let trap = get_proxy_trap(proxy_data, "get", interp)
@@ -442,7 +439,7 @@ pub fn proxy_get(
             if desc.getter is None && !desc.writable {
               let target_value = match target {
                 Object(data) =>
-                  match data.properties.get(key) {
+                  match data.bag.properties.get(key) {
                     Some(v) => v
                     None => Undefined
                   }
@@ -479,12 +476,13 @@ pub fn proxy_set(
   key : String,
   value : Value,
   receiver : Value,
-  strict : Bool
+  strict : Bool,
 ) -> Value raise Error {
   let trap = get_proxy_trap(proxy_data, "set", interp)
   let target = get_proxy_target(proxy_data)
   match trap {
-    None => interp.set_property(target, key, value, @token.Loc::default(), strict~)
+    None =>
+      interp.set_property(target, key, value, @token.Loc::default(), strict~)
     Some(trap_fn) => {
       let handler = get_proxy_handler(proxy_data)
       let loc = @token.Loc::default()
@@ -511,7 +509,7 @@ pub fn proxy_set(
             if desc.getter is None && !desc.writable {
               let target_value = match target {
                 Object(data) =>
-                  match data.properties.get(key) {
+                  match data.bag.properties.get(key) {
                     Some(v) => v
                     None => Undefined
                   }
@@ -543,7 +541,7 @@ pub fn proxy_set(
 /// and returns the validated list of keys as an Array value.
 pub fn proxy_own_property_keys(
   interp : Interpreter,
-  proxy_data : ProxyData
+  proxy_data : ProxyData,
 ) -> Value raise Error {
   let target = get_proxy_target(proxy_data)
   let trap = get_proxy_trap(proxy_data, "ownKeys", interp)
@@ -554,10 +552,7 @@ pub fn proxy_own_property_keys(
       match target {
         Value::Proxy(inner_proxy) =>
           return proxy_own_property_keys(interp, inner_proxy)
-        _ =>
-          return Value::Array({
-            elements: collect_target_own_keys(target, interp.symbols),
-          })
+        _ => return make_array(collect_target_own_keys(target, interp.symbols))
       }
     _ => ()
   }
@@ -581,12 +576,12 @@ pub fn proxy_own_property_keys(
       }
     Object(data) => {
       // Array-like object: read "length" and indexed properties
-      let len = match data.properties.get("length") {
+      let len = match data.bag.properties.get("length") {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
       }
       for i = 0; i < len; i = i + 1 {
-        let elem = match data.properties.get(i.to_string()) {
+        let elem = match data.bag.properties.get(i.to_string()) {
           Some(v) => v
           None => Undefined
         }
@@ -647,7 +642,7 @@ pub fn proxy_own_property_keys(
   }
   // Step 15: If extensibleTarget is true and targetNonconfigurableKeys is empty, return
   if extensible_target && target_nonconfigurable_keys.is_empty() {
-    return Value::Array({ elements: trap_keys })
+    return make_array(trap_keys)
   }
   // Step 16: Let uncheckedResultKeys be a copy of trapResult
   let unchecked : Map[String, Int] = {} // string key -> count
@@ -691,7 +686,7 @@ pub fn proxy_own_property_keys(
   }
   // Step 18: If extensibleTarget is true, return trapResult
   if extensible_target {
-    return Value::Array({ elements: trap_keys })
+    return make_array(trap_keys)
   }
   // Step 19: For each key in targetConfigurableKeys, must be in unchecked
   for key in target_configurable_keys {
@@ -724,5 +719,5 @@ pub fn proxy_own_property_keys(
       message="'ownKeys' on proxy: trap returned extra keys for a non-extensible target",
     )
   }
-  Value::Array({ elements: trap_keys })
+  make_array(trap_keys)
 }

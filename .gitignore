@@ -17,3 +17,6 @@ test262_*.txt
 promise.json
 # Baseline is tracked (negation must be after the glob)
 !test262-baseline.json
+
+# Worktrees
+.worktrees/

@@ -562,7 +562,7 @@ fn Interpreter::exec_stmt(
         // Get the next method from the iterator (walk prototype chain)
         let nm = match it {
           Object(iter_data) =>
-            match iter_data.properties.get("next") {
+            match iter_data.bag.properties.get("next") {
               Some(next_fn) => next_fn
               None => {
                 let mut found : Value = Undefined
@@ -570,7 +570,7 @@ fn Interpreter::exec_stmt(
                 while true {
                   match current {
                     Object(proto_data) =>
-                      match proto_data.properties.get("next") {
+                      match proto_data.bag.properties.get("next") {
                         Some(next_fn) => {
                           found = next_fn
                           break
@@ -669,11 +669,11 @@ fn Interpreter::exec_stmt(
         // Get 'done' and 'value' from the result
         let (done, value) = match result {
           Object(result_data) => {
-            let done_val = match result_data.properties.get("done") {
+            let done_val = match result_data.bag.properties.get("done") {
               Some(v) => is_truthy(v)
               None => false
             }
-            let value_val = match result_data.properties.get("value") {
+            let value_val = match result_data.bag.properties.get("value") {
               Some(v) => v
               None => Undefined
             }
@@ -866,7 +866,7 @@ fn Interpreter::exec_stmt(
       // Get the next method
       let next_method = match iterator {
         Object(iter_data) =>
-          match iter_data.properties.get("next") {
+          match iter_data.bag.properties.get("next") {
             Some(next_fn) => next_fn
             None => {
               let mut found : Value = Undefined
@@ -874,7 +874,7 @@ fn Interpreter::exec_stmt(
               while true {
                 match current {
                   Object(proto_data) =>
-                    match proto_data.properties.get("next") {
+                    match proto_data.bag.properties.get("next") {
                       Some(next_fn) => {
                         found = next_fn
                         break
@@ -902,11 +902,11 @@ fn Interpreter::exec_stmt(
         let result = self.call_value(next_method, iterator, [], loc)
         let (done, value) = match result {
           Object(result_data) => {
-            let done_val = match result_data.properties.get("done") {
+            let done_val = match result_data.bag.properties.get("done") {
               Some(v) => is_truthy(v)
               None => false
             }
-            let value_val = match result_data.properties.get("value") {
+            let value_val = match result_data.bag.properties.get("value") {
               Some(v) => v
               None => Undefined
             }
@@ -1057,7 +1057,7 @@ fn Interpreter::exec_stmt(
       }
       let next_method = match iterator {
         Object(iter_data) =>
-          match iter_data.properties.get("next") {
+          match iter_data.bag.properties.get("next") {
             Some(next_fn) => next_fn
             None => {
               let mut found : Value = Undefined
@@ -1065,7 +1065,7 @@ fn Interpreter::exec_stmt(
               while true {
                 match current {
                   Object(proto_data) =>
-                    match proto_data.properties.get("next") {
+                    match proto_data.bag.properties.get("next") {
                       Some(next_fn) => {
                         found = next_fn
                         break
@@ -1091,11 +1091,11 @@ fn Interpreter::exec_stmt(
         let result = self.call_value(next_method, iterator, [], loc)
         let (done, value) = match result {
           Object(result_data) => {
-            let done_val = match result_data.properties.get("done") {
+            let done_val = match result_data.bag.properties.get("done") {
               Some(v) => is_truthy(v)
               None => false
             }
-            let value_val = match result_data.properties.get("value") {
+            let value_val = match result_data.bag.properties.get("value") {
               Some(v) => v
               None => Undefined
             }
@@ -1408,13 +1408,15 @@ fn Interpreter::exec_stmt(
             props[i.to_string()] = String_(ch_str)
           }
           Object({
-            properties: props,
-            symbol_properties: {},
+            bag: {
+              properties: props,
+              symbol_properties: {},
+              descriptors: {},
+              symbol_descriptors: {},
+            },
             prototype: str_proto,
             callable: None,
             class_name: "String",
-            descriptors: {},
-            symbol_descriptors: {},
             extensible: true,
           })
         }
@@ -1424,13 +1426,15 @@ fn Interpreter::exec_stmt(
           let props : Map[String, Value] = {}
           props["[[PrimitiveValue]]"] = Number(n)
           Object({
-            properties: props,
-            symbol_properties: {},
+            bag: {
+              properties: props,
+              symbol_properties: {},
+              descriptors: {},
+              symbol_descriptors: {},
+            },
             prototype: num_proto,
             callable: None,
             class_name: "Number",
-            descriptors: {},
-            symbol_descriptors: {},
             extensible: true,
           })
         }
@@ -1440,13 +1444,15 @@ fn Interpreter::exec_stmt(
           let props : Map[String, Value] = {}
           props["[[PrimitiveValue]]"] = Bool(b)
           Object({
-            properties: props,
-            symbol_properties: {},
+            bag: {
+              properties: props,
+              symbol_properties: {},
+              descriptors: {},
+              symbol_descriptors: {},
+            },
             prototype: bool_proto,
             callable: None,
             class_name: "Boolean",
-            descriptors: {},
-            symbol_descriptors: {},
             extensible: true,
           })
         }
@@ -1485,7 +1491,7 @@ fn collect_for_in_keys(obj : Value) -> Array[String] raise Error {
       Object(data) => {
         // TypedArray: enumerate numeric indices as keys
         if is_typedarray_class(data.class_name) {
-          let ta_len = match data.properties.get("[[ArrayLength]]") {
+          let ta_len = match data.bag.properties.get("[[ArrayLength]]") {
             Some(Number(n)) => n.to_int()
             _ => 0
           }
@@ -1497,7 +1503,7 @@ fn collect_for_in_keys(obj : Value) -> Array[String] raise Error {
             }
           }
         }
-        let sorted = sort_property_keys(data.properties)
+        let sorted = sort_property_keys(data.bag.properties)
         for k in sorted {
           if !seen.contains(k) {
             // Skip internal slots (e.g., [[BooleanData]], [[NumberData]], [[StringData]])
@@ -1505,7 +1511,7 @@ fn collect_for_in_keys(obj : Value) -> Array[String] raise Error {
               continue
             }
             seen[k] = true
-            let enumerable = match data.descriptors.get(k) {
+            let enumerable = match data.bag.descriptors.get(k) {
               Some(d) => d.enumerable
               None => true
             }
@@ -1601,7 +1607,7 @@ fn close_iterator(
   match iterator {
     Object(data) => {
       // Look for 'return' method on iterator
-      let return_fn = match data.properties.get("return") {
+      let return_fn = match data.bag.properties.get("return") {
         Some(f) => f
         None => {
           // Walk prototype chain
@@ -1610,7 +1616,7 @@ fn close_iterator(
           while true {
             match current {
               Object(proto_data) =>
-                match proto_data.properties.get("return") {
+                match proto_data.bag.properties.get("return") {
                   Some(f) => {
                     found = f
                     break

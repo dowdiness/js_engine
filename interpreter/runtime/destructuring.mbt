@@ -72,7 +72,7 @@ fn Interpreter::bind_pattern(
               // Get next method from iterator (walk prototype chain)
               let next_fn : Value = match iter {
                 Object(iter_data) =>
-                  match iter_data.properties.get("next") {
+                  match iter_data.bag.properties.get("next") {
                     Some(f) => f
                     None => {
                       let mut found : Value = Undefined
@@ -80,7 +80,7 @@ fn Interpreter::bind_pattern(
                       while true {
                         match current {
                           Object(proto_data) =>
-                            match proto_data.properties.get("next") {
+                            match proto_data.bag.properties.get("next") {
                               Some(f) => {
                                 found = f
                                 break
@@ -121,7 +121,7 @@ fn Interpreter::bind_pattern(
           let iter_result = self.call_value(next_method, iterator, [], loc_dstr)
           match iter_result {
             Object(result_data) => {
-              let done_val = match result_data.properties.get("done") {
+              let done_val = match result_data.bag.properties.get("done") {
                 Some(v) => is_truthy(v)
                 None => false
               }
@@ -129,7 +129,7 @@ fn Interpreter::bind_pattern(
                 iter_done = true
                 Undefined
               } else {
-                match result_data.properties.get("value") {
+                match result_data.bag.properties.get("value") {
                   Some(v) => v
                   None => Undefined
                 }
@@ -162,11 +162,12 @@ fn Interpreter::bind_pattern(
               )
               let (done, val) = match iter_result {
                 Object(result_data) => {
-                  let done_val = match result_data.properties.get("done") {
+                  let done_val = match result_data.bag.properties.get("done") {
                     Some(v) => is_truthy(v)
                     None => false
                   }
-                  let value_val = match result_data.properties.get("value") {
+                  let value_val = match
+                    result_data.bag.properties.get("value") {
                     Some(v) => v
                     None => Undefined
                   }
@@ -180,20 +181,14 @@ fn Interpreter::bind_pattern(
               rest_elements.push(val)
             }
           }
-          self.bind_pattern(
-            rest_pat,
-            Array({ elements: rest_elements }),
-            env,
-            bk,
-            ctx~,
-          )
+          self.bind_pattern(rest_pat, make_array(rest_elements), env, bk, ctx~)
         }
         None =>
           // Per spec: IteratorClose — call iterator.return() if not exhausted
           if iter_done == false {
             match iterator {
               Object(iter_data) =>
-                match iter_data.properties.get("return") {
+                match iter_data.bag.properties.get("return") {
                   Some(return_fn) =>
                     if is_callable(return_fn) {
                       let _ = self.call_value(return_fn, iterator, [], loc_dstr)
@@ -258,11 +253,11 @@ fn Interpreter::bind_pattern(
               // CopyDataProperties: copy own enumerable properties, invoking getters
               // First collect all own enumerable string keys (from properties and descriptors)
               let all_keys : Map[String, Bool] = {}
-              data.properties.each(fn(k, _v) { all_keys[k] = true })
-              data.descriptors.each(fn(k, _v) { all_keys[k] = true })
+              data.bag.properties.each(fn(k, _v) { all_keys[k] = true })
+              data.bag.descriptors.each(fn(k, _v) { all_keys[k] = true })
               all_keys.each(fn(k, _) raise {
                 if !used_keys.contains(k) {
-                  let is_enumerable = match data.descriptors.get(k) {
+                  let is_enumerable = match data.bag.descriptors.get(k) {
                     Some(desc) => desc.enumerable
                     None => true
                   }
@@ -273,8 +268,8 @@ fn Interpreter::bind_pattern(
                 }
               })
               // Also copy enumerable symbol properties
-              data.symbol_properties.each(fn(k, v) {
-                let is_enumerable = match data.symbol_descriptors.get(k) {
+              data.bag.symbol_properties.each(fn(k, v) {
+                let is_enumerable = match data.bag.symbol_descriptors.get(k) {
                   Some(desc) => desc.enumerable
                   None => true
                 }
@@ -288,13 +283,15 @@ fn Interpreter::bind_pattern(
           self.bind_pattern(
             rest_pat,
             Object({
-              properties: rest_props,
-              symbol_properties: rest_symbol_props,
+              bag: {
+                properties: rest_props,
+                symbol_properties: rest_symbol_props,
+                descriptors: {},
+                symbol_descriptors: {},
+              },
               prototype: get_obj_proto(),
               callable: None,
               class_name: "Object",
-              descriptors: {},
-              symbol_descriptors: {},
               extensible: true,
             }),
             env,
@@ -382,7 +379,7 @@ fn Interpreter::assign_pattern(
               // Get next method from iterator (walk prototype chain)
               let next_fn : Value = match iter {
                 Object(iter_data) =>
-                  match iter_data.properties.get("next") {
+                  match iter_data.bag.properties.get("next") {
                     Some(f) => f
                     None => {
                       let mut found : Value = Undefined
@@ -390,7 +387,7 @@ fn Interpreter::assign_pattern(
                       while true {
                         match current {
                           Object(proto_data) =>
-                            match proto_data.properties.get("next") {
+                            match proto_data.bag.properties.get("next") {
                               Some(f) => {
                                 found = f
                                 break
@@ -436,7 +433,7 @@ fn Interpreter::assign_pattern(
           )
           match iter_result {
             Object(result_data) => {
-              let done_val = match result_data.properties.get("done") {
+              let done_val = match result_data.bag.properties.get("done") {
                 Some(v) => is_truthy(v)
                 None => false
               }
@@ -444,7 +441,7 @@ fn Interpreter::assign_pattern(
                 iter_done_a = true
                 Undefined
               } else {
-                match result_data.properties.get("value") {
+                match result_data.bag.properties.get("value") {
                   Some(v) => v
                   None => Undefined
                 }
@@ -477,11 +474,12 @@ fn Interpreter::assign_pattern(
               )
               let (done, val) = match iter_result {
                 Object(result_data) => {
-                  let done_val = match result_data.properties.get("done") {
+                  let done_val = match result_data.bag.properties.get("done") {
                     Some(v) => is_truthy(v)
                     None => false
                   }
-                  let value_val = match result_data.properties.get("value") {
+                  let value_val = match
+                    result_data.bag.properties.get("value") {
                     Some(v) => v
                     None => Undefined
                   }
@@ -495,19 +493,14 @@ fn Interpreter::assign_pattern(
               rest_elements.push(val)
             }
           }
-          self.assign_pattern(
-            ctx,
-            rest_pat,
-            Array({ elements: rest_elements }),
-            env,
-          )
+          self.assign_pattern(ctx, rest_pat, make_array(rest_elements), env)
         }
         None =>
           // Per spec: IteratorClose — call iterator.return() if not exhausted
           if iter_done_a == false {
             match iterator_a {
               Object(iter_data) =>
-                match iter_data.properties.get("return") {
+                match iter_data.bag.properties.get("return") {
                   Some(return_fn) =>
                     if is_callable(return_fn) {
                       let _ = self.call_value(
@@ -576,11 +569,11 @@ fn Interpreter::assign_pattern(
             Object(data) => {
               // CopyDataProperties: copy own enumerable properties, invoking getters
               let all_keys_a : Map[String, Bool] = {}
-              data.properties.each(fn(k, _v) { all_keys_a[k] = true })
-              data.descriptors.each(fn(k, _v) { all_keys_a[k] = true })
+              data.bag.properties.each(fn(k, _v) { all_keys_a[k] = true })
+              data.bag.descriptors.each(fn(k, _v) { all_keys_a[k] = true })
               all_keys_a.each(fn(k, _) raise {
                 if !used_keys.contains(k) {
-                  let is_enumerable = match data.descriptors.get(k) {
+                  let is_enumerable = match data.bag.descriptors.get(k) {
                     Some(desc) => desc.enumerable
                     None => true
                   }
@@ -590,8 +583,8 @@ fn Interpreter::assign_pattern(
                 }
               })
               // Also copy enumerable symbol properties
-              data.symbol_properties.each(fn(k, v) {
-                let is_enumerable = match data.symbol_descriptors.get(k) {
+              data.bag.symbol_properties.each(fn(k, v) {
+                let is_enumerable = match data.bag.symbol_descriptors.get(k) {
                   Some(desc) => desc.enumerable
                   None => true
                 }
@@ -606,13 +599,15 @@ fn Interpreter::assign_pattern(
             ctx,
             rest_pat,
             Object({
-              properties: rest_props,
-              symbol_properties: rest_symbol_props,
+              bag: {
+                properties: rest_props,
+                symbol_properties: rest_symbol_props,
+                descriptors: {},
+                symbol_descriptors: {},
+              },
               prototype: get_obj_proto(),
               callable: None,
               class_name: "Object",
-              descriptors: {},
-              symbol_descriptors: {},
               extensible: true,
             }),
             env,

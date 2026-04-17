@@ -78,7 +78,7 @@ pub fn Interpreter::get_property(
       }
     Map(data) => {
       // Check expando properties first (instance fields from subclasses)
-      match data.descriptors.get(prop) {
+      match data.bag.descriptors.get(prop) {
         Some(desc) =>
           match desc.getter {
             Some(getter) => return self.call_value(getter, obj, [], loc)
@@ -86,7 +86,7 @@ pub fn Interpreter::get_property(
           }
         None => ()
       }
-      match data.properties.get(prop) {
+      match data.bag.properties.get(prop) {
         Some(v) => return v
         None => ()
       }
@@ -98,7 +98,7 @@ pub fn Interpreter::get_property(
     }
     Set(data) => {
       // Check expando properties first (instance fields from subclasses)
-      match data.descriptors.get(prop) {
+      match data.bag.descriptors.get(prop) {
         Some(desc) =>
           match desc.getter {
             Some(getter) => return self.call_value(getter, obj, [], loc)
@@ -106,7 +106,7 @@ pub fn Interpreter::get_property(
           }
         None => ()
       }
-      match data.properties.get(prop) {
+      match data.bag.properties.get(prop) {
         Some(v) => return v
         None => ()
       }
@@ -118,18 +118,18 @@ pub fn Interpreter::get_property(
     }
     Promise(data) =>
       // Check user-defined properties first, then prototype methods
-      match data.descriptors.get(prop) {
+      match data.bag.descriptors.get(prop) {
         Some(desc) =>
           match desc.getter {
             Some(getter) => self.call_value(getter, obj, [], loc)
             None =>
-              match data.properties.get(prop) {
+              match data.bag.properties.get(prop) {
                 Some(v) => v
                 None => (self.stdlib_hooks.get_promise_method)(data, prop)
               }
           }
         None =>
-          match data.properties.get(prop) {
+          match data.bag.properties.get(prop) {
             Some(v) => v
             None => (self.stdlib_hooks.get_promise_method)(data, prop)
           }
@@ -156,7 +156,7 @@ fn Interpreter::get_property_of_object(
   loc : @token.Loc,
 ) -> Value raise Error {
   // Check for accessor descriptor (getter) on own property
-  match data.descriptors.get(prop) {
+  match data.bag.descriptors.get(prop) {
     Some(desc) =>
       match desc.getter {
         Some(getter) => return self.call_value(getter, obj, [], loc)
@@ -164,7 +164,7 @@ fn Interpreter::get_property_of_object(
       }
     None => ()
   }
-  match data.properties.get(prop) {
+  match data.bag.properties.get(prop) {
     Some(v) => v
     None => {
       // Walk prototype chain
@@ -174,7 +174,7 @@ fn Interpreter::get_property_of_object(
         match current {
           Object(proto_data) => {
             // Check for accessor descriptor (getter) on prototype property
-            match proto_data.descriptors.get(prop) {
+            match proto_data.bag.descriptors.get(prop) {
               Some(desc) =>
                 match desc.getter {
                   Some(getter) => return self.call_value(getter, obj, [], loc)
@@ -182,7 +182,7 @@ fn Interpreter::get_property_of_object(
                 }
               None => ()
             }
-            match proto_data.properties.get(prop) {
+            match proto_data.bag.properties.get(prop) {
               Some(v) => return v
               None => current = proto_data.prototype
             }
@@ -209,7 +209,7 @@ fn Interpreter::get_property_of_object(
                     let ctor = self.global.get("Array") catch { _ => break }
                     match ctor {
                       Object(ctor_data) =>
-                        match ctor_data.properties.get("prototype") {
+                        match ctor_data.bag.properties.get("prototype") {
                           Some(proto) => current = proto
                           None => break
                         }
@@ -232,7 +232,7 @@ fn Interpreter::get_property_of_object(
                 let ctor = self.global.get("Map") catch { _ => break }
                 match ctor {
                   Object(ctor_data) =>
-                    match ctor_data.properties.get("prototype") {
+                    match ctor_data.bag.properties.get("prototype") {
                       Some(proto) => current = proto
                       None => break
                     }
@@ -253,7 +253,7 @@ fn Interpreter::get_property_of_object(
                 let ctor = self.global.get("Set") catch { _ => break }
                 match ctor {
                   Object(ctor_data) =>
-                    match ctor_data.properties.get("prototype") {
+                    match ctor_data.bag.properties.get("prototype") {
                       Some(proto) => current = proto
                       None => break
                     }
@@ -287,24 +287,18 @@ fn Interpreter::get_property_of_object(
         Some(callable) =>
           if prop == "call" {
             return Object({
-              properties: {},
-              symbol_properties: {},
+              bag: PropertyBag::new(),
               prototype: Null,
               callable: Some(FuncCallMethod(obj)),
               class_name: "Function",
-              descriptors: {},
-              symbol_descriptors: {},
               extensible: true,
             })
           } else if prop == "apply" {
             return Object({
-              properties: {},
-              symbol_properties: {},
+              bag: PropertyBag::new(),
               prototype: Null,
               callable: Some(FuncApplyMethod(obj)),
               class_name: "Function",
-              descriptors: {},
-              symbol_descriptors: {},
               extensible: true,
             })
           } else if prop == "bind" {
@@ -340,13 +334,15 @@ fn Interpreter::get_property_of_object(
               bprops["name"] = String_(bound_name)
               bprops["length"] = Number(bound_length.to_double())
               Object({
-                properties: bprops,
-                symbol_properties: {},
+                bag: {
+                  properties: bprops,
+                  symbol_properties: {},
+                  descriptors: { "name": nf_desc, "length": nf_desc },
+                  symbol_descriptors: {},
+                },
                 prototype: get_func_proto(),
                 callable: Some(BoundFunc(target, bind_this, bound_args)),
                 class_name: "Function",
-                descriptors: { "name": nf_desc, "length": nf_desc },
-                symbol_descriptors: {},
                 extensible: true,
               })
             })
@@ -422,21 +418,18 @@ fn Interpreter::get_property_of_object(
               return Undefined
             }
             // For constructable functions, check if prototype exists
-            match data.properties.get("prototype") {
+            match data.bag.properties.get("prototype") {
               Some(p) => return p
               None => {
                 // Create and memoize default prototype
                 let proto : Value = Object({
-                  properties: {},
-                  symbol_properties: {},
+                  bag: PropertyBag::new(),
                   prototype: get_obj_proto(),
                   callable: None,
                   class_name: "Object",
-                  descriptors: {},
-                  symbol_descriptors: {},
                   extensible: true,
                 })
-                data.properties["prototype"] = proto
+                data.bag.properties["prototype"] = proto
                 return proto
               }
             }
@@ -452,8 +445,8 @@ fn Interpreter::get_property_of_object(
             match this_val {
               Object(d) =>
                 match key_val {
-                  Symbol(sym) => Bool(d.symbol_properties.contains(sym.id))
-                  _ => Bool(d.properties.contains(key_val.to_string()))
+                  Symbol(sym) => Bool(d.bag.symbol_properties.contains(sym.id))
+                  _ => Bool(d.bag.properties.contains(key_val.to_string()))
                 }
               Array(ad) =>
                 match key_val {
@@ -501,26 +494,26 @@ fn lookup_builtin_proto(
   let ctor = interp.global.get(ctor_name) catch { _ => return Undefined }
   match ctor {
     Object(ctor_data) =>
-      match ctor_data.properties.get("prototype") {
+      match ctor_data.bag.properties.get("prototype") {
         Some(Object(proto_data)) => {
           // Walk up prototype chain and honor accessor getters with `receiver`.
           let mut current : Value = Object(proto_data)
           while true {
             match current {
               Object(pdata) => {
-                match pdata.descriptors.get(prop) {
+                match pdata.bag.descriptors.get(prop) {
                   Some(desc) =>
                     match desc.getter {
                       Some(getter) =>
                         return interp.call_value(getter, receiver, [], loc)
                       None =>
-                        match pdata.properties.get(prop) {
+                        match pdata.bag.properties.get(prop) {
                           Some(v) => return v
                           None => ()
                         }
                     }
                   None =>
-                    match pdata.properties.get(prop) {
+                    match pdata.bag.properties.get(prop) {
                       Some(v) => return v
                       None => ()
                     }
@@ -580,7 +573,7 @@ pub fn Interpreter::get_computed_property(
       match obj {
         Object(data) => {
           // Check for symbol accessor descriptor (getter)
-          match data.symbol_descriptors.get(sym.id) {
+          match data.bag.symbol_descriptors.get(sym.id) {
             Some(desc) =>
               match desc.getter {
                 Some(getter) => return self.call_value(getter, obj, [], loc)
@@ -589,7 +582,7 @@ pub fn Interpreter::get_computed_property(
             None => ()
           }
           // Look up symbol property
-          match data.symbol_properties.get(sym.id) {
+          match data.bag.symbol_properties.get(sym.id) {
             Some(v) => return v
             None => {
               // Walk prototype chain for symbol properties
@@ -598,7 +591,7 @@ pub fn Interpreter::get_computed_property(
                 match current {
                   Object(proto_data) => {
                     // Check for accessor on prototype
-                    match proto_data.symbol_descriptors.get(sym.id) {
+                    match proto_data.bag.symbol_descriptors.get(sym.id) {
                       Some(desc) =>
                         match desc.getter {
                           Some(getter) =>
@@ -607,7 +600,7 @@ pub fn Interpreter::get_computed_property(
                         }
                       None => ()
                     }
-                    match proto_data.symbol_properties.get(sym.id) {
+                    match proto_data.bag.symbol_properties.get(sym.id) {
                       Some(v) => return v
                       None => current = proto_data.prototype
                     }
@@ -619,7 +612,7 @@ pub fn Interpreter::get_computed_property(
               let iterator_sym = get_iterator_symbol()
               if sym.id == iterator_sym.id {
                 if data.class_name == "String" {
-                  match data.properties.get("[[StringData]]") {
+                  match data.bag.properties.get("[[StringData]]") {
                     Some(String_(_)) =>
                       return make_method_func("[Symbol.iterator]", 0, fn(
                         this_val,
@@ -629,7 +622,7 @@ pub fn Interpreter::get_computed_property(
                           String_(sv) => sv
                           Object(d) =>
                             if d.class_name == "String" {
-                              match d.properties.get("[[StringData]]") {
+                              match d.bag.properties.get("[[StringData]]") {
                                 Some(String_(sv)) => sv
                                 _ => this_val.to_string()
                               }
@@ -679,10 +672,10 @@ pub fn Interpreter::get_computed_property(
           let array_ctor = self.global.get("Array") catch { _ => Undefined }
           match array_ctor {
             Object(ctor_data) =>
-              match ctor_data.properties.get("prototype") {
+              match ctor_data.bag.properties.get("prototype") {
                 Some(Object(proto_data)) => {
                   // Check symbol descriptors for getters
-                  match proto_data.symbol_descriptors.get(sym.id) {
+                  match proto_data.bag.symbol_descriptors.get(sym.id) {
                     Some(desc) =>
                       match desc.getter {
                         Some(getter) =>
@@ -692,7 +685,7 @@ pub fn Interpreter::get_computed_property(
                     None => ()
                   }
                   // Check symbol properties
-                  match proto_data.symbol_properties.get(sym.id) {
+                  match proto_data.bag.symbol_properties.get(sym.id) {
                     Some(v) => return v
                     None => ()
                   }
@@ -727,7 +720,7 @@ pub fn Interpreter::get_computed_property(
         }
         Map(map_data) => {
           // Check expando symbol properties first (instance fields from subclasses)
-          match map_data.symbol_descriptors.get(sym.id) {
+          match map_data.bag.symbol_descriptors.get(sym.id) {
             Some(desc) =>
               match desc.getter {
                 Some(getter) => return self.call_value(getter, obj, [], loc)
@@ -735,7 +728,7 @@ pub fn Interpreter::get_computed_property(
               }
             None => ()
           }
-          match map_data.symbol_properties.get(sym.id) {
+          match map_data.bag.symbol_properties.get(sym.id) {
             Some(v) => return v
             None => ()
           }
@@ -752,7 +745,7 @@ pub fn Interpreter::get_computed_property(
         }
         Set(set_data) => {
           // Check expando symbol properties first (instance fields from subclasses)
-          match set_data.symbol_descriptors.get(sym.id) {
+          match set_data.bag.symbol_descriptors.get(sym.id) {
             Some(desc) =>
               match desc.getter {
                 Some(getter) => return self.call_value(getter, obj, [], loc)
@@ -760,7 +753,7 @@ pub fn Interpreter::get_computed_property(
               }
             None => ()
           }
-          match set_data.symbol_properties.get(sym.id) {
+          match set_data.bag.symbol_properties.get(sym.id) {
             Some(v) => return v
             None => ()
           }
@@ -776,7 +769,7 @@ pub fn Interpreter::get_computed_property(
           return Undefined
         }
         Promise(data) =>
-          match data.symbol_properties.get(sym.id) {
+          match data.bag.symbol_properties.get(sym.id) {
             Some(v) => return v
             None => return Undefined
           }
@@ -785,7 +778,7 @@ pub fn Interpreter::get_computed_property(
           let proto = self.global.get("[[SymbolPrototype]]") catch { _ => Null }
           match proto {
             Object(proto_data) => {
-              match proto_data.symbol_descriptors.get(sym.id) {
+              match proto_data.bag.symbol_descriptors.get(sym.id) {
                 Some(desc) =>
                   match desc.getter {
                     Some(getter) => return self.call_value(getter, obj, [], loc)
@@ -793,7 +786,7 @@ pub fn Interpreter::get_computed_property(
                   }
                 None => ()
               }
-              match proto_data.symbol_properties.get(sym.id) {
+              match proto_data.bag.symbol_properties.get(sym.id) {
                 Some(v) => return v
                 None => return Undefined
               }
@@ -840,7 +833,7 @@ pub fn Interpreter::get_computed_property(
       }
       let prop = to_js_string(key)
       // Check for accessor descriptor (getter) on own property
-      match data.descriptors.get(prop) {
+      match data.bag.descriptors.get(prop) {
         Some(desc) =>
           match desc.getter {
             Some(getter) => return self.call_value(getter, obj, [], loc)
@@ -848,7 +841,7 @@ pub fn Interpreter::get_computed_property(
           }
         None => ()
       }
-      match data.properties.get(prop) {
+      match data.bag.properties.get(prop) {
         Some(v) => v
         None => {
           // Walk prototype chain
@@ -857,7 +850,7 @@ pub fn Interpreter::get_computed_property(
             match current {
               Object(proto_data) => {
                 // Check for accessor descriptor on prototype
-                match proto_data.descriptors.get(prop) {
+                match proto_data.bag.descriptors.get(prop) {
                   Some(desc) =>
                     match desc.getter {
                       Some(getter) =>
@@ -866,7 +859,7 @@ pub fn Interpreter::get_computed_property(
                     }
                   None => ()
                 }
-                match proto_data.properties.get(prop) {
+                match proto_data.bag.properties.get(prop) {
                   Some(v) => return v
                   None => current = proto_data.prototype
                 }
@@ -891,7 +884,7 @@ pub fn Interpreter::get_computed_property(
                         let ctor = self.global.get("Array") catch { _ => break }
                         match ctor {
                           Object(ctor_data) =>
-                            match ctor_data.properties.get("prototype") {
+                            match ctor_data.bag.properties.get("prototype") {
                               Some(proto) => current = proto
                               None => break
                             }
@@ -913,7 +906,7 @@ pub fn Interpreter::get_computed_property(
                     let ctor = self.global.get("Map") catch { _ => break }
                     match ctor {
                       Object(ctor_data) =>
-                        match ctor_data.properties.get("prototype") {
+                        match ctor_data.bag.properties.get("prototype") {
                           Some(proto) => current = proto
                           None => break
                         }
@@ -933,7 +926,7 @@ pub fn Interpreter::get_computed_property(
                     let ctor = self.global.get("Set") catch { _ => break }
                     match ctor {
                       Object(ctor_data) =>
-                        match ctor_data.properties.get("prototype") {
+                        match ctor_data.bag.properties.get("prototype") {
                           Some(proto) => current = proto
                           None => break
                         }
@@ -951,24 +944,18 @@ pub fn Interpreter::get_computed_property(
             Some(callable) =>
               if prop == "call" {
                 return Object({
-                  properties: {},
-                  symbol_properties: {},
+                  bag: PropertyBag::new(),
                   prototype: Null,
                   callable: Some(FuncCallMethod(obj)),
                   class_name: "Function",
-                  descriptors: {},
-                  symbol_descriptors: {},
                   extensible: true,
                 })
               } else if prop == "apply" {
                 return Object({
-                  properties: {},
-                  symbol_properties: {},
+                  bag: PropertyBag::new(),
                   prototype: Null,
                   callable: Some(FuncApplyMethod(obj)),
                   class_name: "Function",
-                  descriptors: {},
-                  symbol_descriptors: {},
                   extensible: true,
                 })
               } else if prop == "bind" {
@@ -1004,13 +991,15 @@ pub fn Interpreter::get_computed_property(
                   bprops["name"] = String_(bound_name)
                   bprops["length"] = Number(bound_length.to_double())
                   Object({
-                    properties: bprops,
-                    symbol_properties: {},
+                    bag: {
+                      properties: bprops,
+                      symbol_properties: {},
+                      descriptors: { "name": nf_desc, "length": nf_desc },
+                      symbol_descriptors: {},
+                    },
                     prototype: get_func_proto(),
                     callable: Some(BoundFunc(target, bind_this, bound_args)),
                     class_name: "Function",
-                    descriptors: { "name": nf_desc, "length": nf_desc },
-                    symbol_descriptors: {},
                     extensible: true,
                   })
                 })
@@ -1090,21 +1079,18 @@ pub fn Interpreter::get_computed_property(
                   return Undefined
                 }
                 // For constructable functions, check if prototype exists
-                match data.properties.get("prototype") {
+                match data.bag.properties.get("prototype") {
                   Some(p) => return p
                   None => {
                     // Create and memoize default prototype
                     let proto : Value = Object({
-                      properties: {},
-                      symbol_properties: {},
+                      bag: PropertyBag::new(),
                       prototype: get_obj_proto(),
                       callable: None,
                       class_name: "Object",
-                      descriptors: {},
-                      symbol_descriptors: {},
                       extensible: true,
                     })
-                    data.properties["prototype"] = proto
+                    data.bag.properties["prototype"] = proto
                     return proto
                   }
                 }
@@ -1123,8 +1109,9 @@ pub fn Interpreter::get_computed_property(
                 match this_val {
                   Object(d) =>
                     match key_val {
-                      Symbol(sym) => Bool(d.symbol_properties.contains(sym.id))
-                      _ => Bool(d.properties.contains(key_val.to_string()))
+                      Symbol(sym) =>
+                        Bool(d.bag.symbol_properties.contains(sym.id))
+                      _ => Bool(d.bag.properties.contains(key_val.to_string()))
                     }
                   Array(ad) =>
                     match key_val {
@@ -1230,13 +1217,13 @@ pub fn Interpreter::get_computed_property(
     Promise(data) =>
       match key {
         Symbol(sym) =>
-          match data.symbol_properties.get(sym.id) {
+          match data.bag.symbol_properties.get(sym.id) {
             Some(v) => v
             None => Undefined
           }
         _ => {
           let prop = to_js_string(key)
-          match data.properties.get(prop) {
+          match data.bag.properties.get(prop) {
             Some(v) => v
             None => (self.stdlib_hooks.get_promise_method)(data, prop)
           }
@@ -1280,8 +1267,7 @@ pub fn Interpreter::set_property(
   strict? : Bool = false,
 ) -> Value raise Error {
   match obj {
-    Proxy(proxy_data) =>
-      proxy_set(self, proxy_data, prop, value, obj, strict)
+    Proxy(proxy_data) => proxy_set(self, proxy_data, prop, value, obj, strict)
     Object(data) => {
       // TypedArray indexed write via dot notation (numeric string prop)
       if is_typedarray_class(data.class_name) {
@@ -1303,7 +1289,7 @@ pub fn Interpreter::set_property(
         }
       }
       // Check for accessor descriptor (setter)
-      match data.descriptors.get(prop) {
+      match data.bag.descriptors.get(prop) {
         Some(desc) =>
           match desc.setter {
             Some(setter) => {
@@ -1333,7 +1319,7 @@ pub fn Interpreter::set_property(
           while true {
             match current {
               Object(proto_data) => {
-                match proto_data.descriptors.get(prop) {
+                match proto_data.bag.descriptors.get(prop) {
                   Some(desc) =>
                     match desc.setter {
                       Some(setter) => {
@@ -1368,7 +1354,7 @@ pub fn Interpreter::set_property(
         }
       }
       // Check extensible for new properties
-      if !data.properties.contains(prop) && !data.extensible {
+      if !data.bag.properties.contains(prop) && !data.extensible {
         if strict {
           raise @errors.TypeError(
             message="Cannot add property \{prop}, object is not extensible",
@@ -1376,7 +1362,7 @@ pub fn Interpreter::set_property(
         }
         return value
       }
-      data.properties[prop] = value
+      data.bag.properties[prop] = value
       value
     }
     Array(data) => {
@@ -1432,7 +1418,7 @@ pub fn Interpreter::set_property(
       value
     }
     Promise(data) => {
-      match data.descriptors.get(prop) {
+      match data.bag.descriptors.get(prop) {
         Some(desc) =>
           match desc.setter {
             Some(setter) => {
@@ -1458,7 +1444,7 @@ pub fn Interpreter::set_property(
           }
         None => ()
       }
-      data.properties[prop] = value
+      data.bag.properties[prop] = value
       value
     }
     Null =>
@@ -1527,7 +1513,7 @@ fn Interpreter::set_computed_property(
       match key {
         Symbol(sym) => {
           // Check symbol property accessor descriptor (setter)
-          match data.symbol_descriptors.get(sym.id) {
+          match data.bag.symbol_descriptors.get(sym.id) {
             Some(desc) =>
               match desc.setter {
                 Some(setter) => {
@@ -1557,7 +1543,7 @@ fn Interpreter::set_computed_property(
               while true {
                 match current {
                   Object(proto_data) => {
-                    match proto_data.symbol_descriptors.get(sym.id) {
+                    match proto_data.bag.symbol_descriptors.get(sym.id) {
                       Some(desc) =>
                         match desc.setter {
                           Some(setter) => {
@@ -1590,7 +1576,7 @@ fn Interpreter::set_computed_property(
               }
             }
           }
-          if !data.symbol_properties.contains(sym.id) && !data.extensible {
+          if !data.bag.symbol_properties.contains(sym.id) && !data.extensible {
             if strict {
               raise @errors.TypeError(
                 message="Cannot add property, object is not extensible",
@@ -1598,7 +1584,7 @@ fn Interpreter::set_computed_property(
             }
             return value
           }
-          data.symbol_properties[sym.id] = value
+          data.bag.symbol_properties[sym.id] = value
           value
         }
         _ => {
@@ -1635,7 +1621,7 @@ fn Interpreter::set_computed_property(
           }
           let prop = to_js_string(key)
           // Check for accessor descriptor (setter) on string key
-          match data.descriptors.get(prop) {
+          match data.bag.descriptors.get(prop) {
             Some(desc) =>
               match desc.setter {
                 Some(setter) => {
@@ -1665,7 +1651,7 @@ fn Interpreter::set_computed_property(
               while true {
                 match current {
                   Object(proto_data) => {
-                    match proto_data.descriptors.get(prop) {
+                    match proto_data.bag.descriptors.get(prop) {
                       Some(desc) =>
                         match desc.setter {
                           Some(setter) => {
@@ -1698,7 +1684,7 @@ fn Interpreter::set_computed_property(
               }
             }
           }
-          if !data.properties.contains(prop) && !data.extensible {
+          if !data.bag.properties.contains(prop) && !data.extensible {
             if strict {
               raise @errors.TypeError(
                 message="Cannot add property \{prop}, object is not extensible",
@@ -1706,7 +1692,7 @@ fn Interpreter::set_computed_property(
             }
             return value
           }
-          data.properties[prop] = value
+          data.bag.properties[prop] = value
           value
         }
       }
@@ -1714,11 +1700,11 @@ fn Interpreter::set_computed_property(
       // Write to expando properties bag (used for instance fields from subclasses)
       match key {
         Symbol(sym) => {
-          data.symbol_properties[sym.id] = value
+          data.bag.symbol_properties[sym.id] = value
           value
         }
         _ => {
-          data.properties[to_js_string(key)] = value
+          data.bag.properties[to_js_string(key)] = value
           value
         }
       }
@@ -1726,11 +1712,11 @@ fn Interpreter::set_computed_property(
       // Write to expando properties bag (used for instance fields from subclasses)
       match key {
         Symbol(sym) => {
-          data.symbol_properties[sym.id] = value
+          data.bag.symbol_properties[sym.id] = value
           value
         }
         _ => {
-          data.properties[to_js_string(key)] = value
+          data.bag.properties[to_js_string(key)] = value
           value
         }
       }
@@ -1786,11 +1772,11 @@ fn Interpreter::set_computed_property(
     Promise(data) =>
       match key {
         Symbol(sym) => {
-          data.symbol_properties[sym.id] = value
+          data.bag.symbol_properties[sym.id] = value
           value
         }
         _ => {
-          data.properties[to_js_string(key)] = value
+          data.bag.properties[to_js_string(key)] = value
           value
         }
       }
@@ -1863,7 +1849,7 @@ pub fn get_bound_func_name(target : Value) -> String {
   match target {
     Object(td) => {
       // First check properties["name"] (set by Object.defineProperty or bind)
-      let prop_name = match td.properties.get("name") {
+      let prop_name = match td.bag.properties.get("name") {
         Some(String_(s)) => s
         _ => ""
       }

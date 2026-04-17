@@ -53,7 +53,7 @@ fn Interpreter::spread_iterable(
   let next_method = match iterator {
     Object(iter_data) =>
       // First check direct properties
-      match iter_data.properties.get("next") {
+      match iter_data.bag.properties.get("next") {
         Some(next_fn) => next_fn
         None => {
           // Walk prototype chain
@@ -62,7 +62,7 @@ fn Interpreter::spread_iterable(
           while true {
             match current {
               Object(proto_data) =>
-                match proto_data.properties.get("next") {
+                match proto_data.bag.properties.get("next") {
                   Some(next_fn) => {
                     found = next_fn
                     break
@@ -87,11 +87,11 @@ fn Interpreter::spread_iterable(
     let iter_result = self.call_value(next_method, iterator, [], loc)
     let (done, value) = match iter_result {
       Object(result_data) => {
-        let done_val = match result_data.properties.get("done") {
+        let done_val = match result_data.bag.properties.get("done") {
           Some(v) => is_truthy(v)
           None => false
         }
-        let value_val = match result_data.properties.get("value") {
+        let value_val = match result_data.bag.properties.get("value") {
           Some(v) => v
           None => Undefined
         }
@@ -401,7 +401,7 @@ pub fn Interpreter::call_value(
       match trap {
         Some(trap_fn) => {
           let handler = get_proxy_handler(proxy_data)
-          let args_array : Value = Array({ elements: args.copy() })
+          let args_array : Value = make_array(args.copy())
           return self.call_value(
             trap_fn,
             handler,
@@ -606,7 +606,7 @@ pub fn Interpreter::call_value(
               for i = effective_param_count; i < args.length(); i = i + 1 {
                 rest_elements.push(args[i])
               }
-              let rest_val = Array({ elements: rest_elements })
+              let rest_val = make_array(rest_elements)
               func_env.def(rest_name, rest_val, LetBinding)
               // Apply destructuring pattern if present
               for p in data.params {
@@ -702,7 +702,7 @@ pub fn Interpreter::call_value(
               for i = effective_param_count; i < args.length(); i = i + 1 {
                 rest_elements.push(args[i])
               }
-              let rest_val = Array({ elements: rest_elements })
+              let rest_val = make_array(rest_elements)
               func_env.def(rest_name, rest_val, LetBinding)
               // Apply destructuring pattern if present
               for p in data.params {

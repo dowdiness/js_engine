@@ -15,10 +15,10 @@ fn make_freeze_func() -> Value {
         data.extensible = false
         // Freeze string properties
         let keys : Array[String] = []
-        data.properties.each(fn(k, _v) { keys.push(k) })
+        data.bag.properties.each(fn(k, _v) { keys.push(k) })
         for key in keys {
-          let existing = data.descriptors.get(key)
-          data.descriptors[key] = {
+          let existing = data.bag.descriptors.get(key)
+          data.bag.descriptors[key] = {
             writable: false,
             enumerable: match existing {
               Some(d) => d.enumerable
@@ -37,10 +37,10 @@ fn make_freeze_func() -> Value {
         }
         // Freeze symbol properties
         let sym_ids : Array[Int] = []
-        data.symbol_properties.each(fn(id, _v) { sym_ids.push(id) })
+        data.bag.symbol_properties.each(fn(id, _v) { sym_ids.push(id) })
         for id in sym_ids {
-          let existing = data.symbol_descriptors.get(id)
-          data.symbol_descriptors[id] = {
+          let existing = data.bag.symbol_descriptors.get(id)
+          data.bag.symbol_descriptors[id] = {
             writable: false,
             enumerable: match existing {
               Some(d) => d.enumerable
@@ -73,10 +73,10 @@ fn make_seal_func() -> Value {
         data.extensible = false
         // Seal string properties
         let keys : Array[String] = []
-        data.properties.each(fn(k, _v) { keys.push(k) })
+        data.bag.properties.each(fn(k, _v) { keys.push(k) })
         for key in keys {
-          let existing = data.descriptors.get(key)
-          data.descriptors[key] = {
+          let existing = data.bag.descriptors.get(key)
+          data.bag.descriptors[key] = {
             writable: match existing {
               Some(d) => d.writable
               None => true
@@ -98,10 +98,10 @@ fn make_seal_func() -> Value {
         }
         // Seal symbol properties
         let sym_ids : Array[Int] = []
-        data.symbol_properties.each(fn(id, _v) { sym_ids.push(id) })
+        data.bag.symbol_properties.each(fn(id, _v) { sym_ids.push(id) })
         for id in sym_ids {
-          let existing = data.symbol_descriptors.get(id)
-          data.symbol_descriptors[id] = {
+          let existing = data.bag.symbol_descriptors.get(id)
+          data.bag.symbol_descriptors[id] = {
             writable: match existing {
               Some(d) => d.writable
               None => true
@@ -159,8 +159,8 @@ fn make_is_frozen_func() -> Value {
           return Value::Bool(false)
         }
         let mut frozen = true
-        data.properties.each(fn(k, _v) {
-          match data.descriptors.get(k) {
+        data.bag.properties.each(fn(k, _v) {
+          match data.bag.descriptors.get(k) {
             Some(d) => if d.writable || d.configurable { frozen = false }
             None => frozen = false // No descriptor = writable+configurable
           }
@@ -182,8 +182,8 @@ fn make_is_sealed_func() -> Value {
           return Value::Bool(false)
         }
         let mut is_sealed = true
-        data.properties.each(fn(k, _v) {
-          match data.descriptors.get(k) {
+        data.bag.properties.each(fn(k, _v) {
+          match data.bag.descriptors.get(k) {
             Some(d) => if d.configurable { is_sealed = false }
             None => is_sealed = false
           }
@@ -243,14 +243,14 @@ fn make_from_entries_func() -> Value {
               }
             Object(obj) => {
               // Object with numeric indices 0 and 1
-              let key = match obj.properties.get("0") {
+              let key = match obj.bag.properties.get("0") {
                 Some(v) => v.to_string()
                 None =>
                   raise @errors.TypeError(
                     message="Iterator value is not an entry object",
                   )
               }
-              let value = match obj.properties.get("1") {
+              let value = match obj.bag.properties.get("1") {
                 Some(v) => v
                 None =>
                   raise @errors.TypeError(
@@ -271,13 +271,15 @@ fn make_from_entries_func() -> Value {
         )
     }
     Value::Object({
-      properties,
-      symbol_properties: {},
+      bag: {
+        properties,
+        symbol_properties: {},
+        descriptors: {},
+        symbol_descriptors: {},
+      },
       prototype: @runtime.get_obj_proto(),
       callable: None,
       class_name: "Object",
-      descriptors: {},
-      symbol_descriptors: {},
       extensible: true,
     })
   })
@@ -321,16 +323,18 @@ fn make_group_by_func() -> Value {
     // Build result object with null prototype
     let result_props : Map[String, Value] = {}
     group_arrays.each(fn(key, arr) {
-      result_props[key] = Value::Array({ elements: arr })
+      result_props[key] = @runtime.make_array(arr)
     })
     Value::Object({
-      properties: result_props,
-      symbol_properties: {},
+      bag: {
+        properties: result_props,
+        symbol_properties: {},
+        descriptors: {},
+        symbol_descriptors: {},
+      },
       prototype: Null,
       callable: None,
       class_name: "Object",
-      descriptors: {},
-      symbol_descriptors: {},
       extensible: true,
     })
   })
@@ -350,8 +354,9 @@ fn make_has_own_func() -> Value {
       Object(data) =>
         // Handle Symbol keys
         match key_val {
-          Value::Symbol(sym) => Bool(data.symbol_properties.contains(sym.id))
-          _ => Bool(data.properties.contains(key_val.to_string()))
+          Value::Symbol(sym) =>
+            Bool(data.bag.symbol_properties.contains(sym.id))
+          _ => Bool(data.bag.properties.contains(key_val.to_string()))
         }
       Value::Array(data) => {
         let key = key_val.to_string()

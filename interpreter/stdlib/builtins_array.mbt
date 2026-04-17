@@ -264,12 +264,13 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
         let result : Array[Value] = []
         for i = 0; i < arr.elements.length(); i = i + 1 {
           result.push(
-            Value::Array({
-              elements: [Value::Number(i.to_double()), arr.elements[i]],
-            }),
+            @runtime.make_array([Value::Number(i.to_double()), arr.elements[i]]),
           )
         }
-        @runtime.make_array_iterator_value({ elements: result })
+        @runtime.make_array_iterator_value({
+          elements: result,
+          bag: @runtime.PropertyBag::new(),
+        })
       })
     }
     "keys" => {
@@ -279,7 +280,10 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
         for i = 0; i < arr.elements.length(); i = i + 1 {
           result.push(Value::Number(i.to_double()))
         }
-        @runtime.make_array_iterator_value({ elements: result })
+        @runtime.make_array_iterator_value({
+          elements: result,
+          bag: @runtime.PropertyBag::new(),
+        })
       })
     }
     "values" => {
@@ -335,7 +339,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
         for i = arr.elements.length() - 1; i >= 0; i = i - 1 {
           result.push(arr.elements[i])
         }
-        Value::Array({ elements: result })
+        @runtime.make_array(result)
       })
     }
     "toSorted" => {
@@ -452,7 +456,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
             }
           })
         }
-        Value::Array({ elements: result })
+        @runtime.make_array(result)
       })
     }
     "toSpliced" => {
@@ -499,7 +503,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
         for i = start + del_count; i < len; i = i + 1 {
           result.push(arr.elements[i])
         }
-        Value::Array({ elements: result })
+        @runtime.make_array(result)
       })
     }
     "with" => {
@@ -525,7 +529,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
             result.push(arr.elements[i])
           }
         }
-        Value::Array({ elements: result })
+        @runtime.make_array(result)
       })
     }
     "flat" | "flatMap" => Undefined // Delegated to Array.prototype (species support)

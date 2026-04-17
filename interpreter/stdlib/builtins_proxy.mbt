@@ -9,11 +9,15 @@ fn setup_proxy_builtins(env : Environment) -> Unit {
   }
   // Proxy constructor: new Proxy(target, handler)
   let proxy_ctor : Value = Value::Object({
-    properties: {
-      "name": Value::String_("Proxy"),
-      "length": Value::Number(2.0),
+    bag: {
+      properties: {
+        "name": Value::String_("Proxy"),
+        "length": Value::Number(2.0),
+      },
+      symbol_properties: {},
+      descriptors: { "name": nf_desc, "length": nf_desc },
+      symbol_descriptors: {},
     },
-    symbol_properties: {},
     prototype: Null,
     callable: Some(
       ConstructorOnlyCallable("Proxy", fn(_interp, args) raise {
@@ -48,8 +52,6 @@ fn setup_proxy_builtins(env : Environment) -> Unit {
       }),
     ),
     class_name: "Function",
-    descriptors: { "name": nf_desc, "length": nf_desc },
-    symbol_descriptors: {},
     extensible: true,
   })
 
@@ -68,8 +70,12 @@ fn setup_proxy_builtins(env : Environment) -> Unit {
   revocable_descs["name"] = nf_desc
   revocable_descs["length"] = nf_desc
   let revocable_func : Value = Value::Object({
-    properties: revocable_props,
-    symbol_properties: {},
+    bag: {
+      properties: revocable_props,
+      symbol_properties: {},
+      descriptors: {},
+      symbol_descriptors: {},
+    },
     prototype: Null,
     callable: Some(
       NativeCallable("revocable", fn(args) raise {
@@ -104,8 +110,7 @@ fn setup_proxy_builtins(env : Environment) -> Unit {
         let proxy_val : Value = Value::Proxy(proxy_data)
         // Create revoke function that nullifies both slots
         let revoke_func : Value = Value::Object({
-          properties: {},
-          symbol_properties: {},
+          bag: @runtime.PropertyBag::new(),
           prototype: Null,
           callable: Some(
             NativeCallable("revoke", fn(_args) {
@@ -115,36 +120,34 @@ fn setup_proxy_builtins(env : Environment) -> Unit {
             }),
           ),
           class_name: "Function",
-          descriptors: {},
-          symbol_descriptors: {},
           extensible: true,
         })
         let result_props : Map[String, Value] = {}
         result_props["proxy"] = proxy_val
         result_props["revoke"] = revoke_func
         Value::Object({
-          properties: result_props,
-          symbol_properties: {},
+          bag: {
+            properties: result_props,
+            symbol_properties: {},
+            descriptors: {},
+            symbol_descriptors: {},
+          },
           prototype: Null,
           callable: None,
           class_name: "Object",
-          descriptors: {},
-          symbol_descriptors: {},
           extensible: true,
         })
       }),
     ),
     class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
     extensible: true,
   })
 
   // Add Proxy.revocable as a static method
   match proxy_ctor {
     Object(data) => {
-      data.properties["revocable"] = revocable_func
-      data.descriptors["revocable"] = {
+      data.bag.properties["revocable"] = revocable_func
+      data.bag.descriptors["revocable"] = {
         writable: true,
         enumerable: false,
         configurable: true,

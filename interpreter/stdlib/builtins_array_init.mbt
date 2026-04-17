@@ -353,7 +353,7 @@ fn setup_array_builtins(
       let spreadable = match item {
         Object(data) => {
           // Check own symbol property, then walk prototype chain
-          let sym_val = match data.symbol_properties.get(concat_sym_id) {
+          let sym_val = match data.bag.symbol_properties.get(concat_sym_id) {
             Some(v) => v
             None => {
               let mut found : Value = Undefined
@@ -361,7 +361,7 @@ fn setup_array_builtins(
               while true {
                 match cur {
                   Object(pd) =>
-                    match pd.symbol_properties.get(concat_sym_id) {
+                    match pd.bag.symbol_properties.get(concat_sym_id) {
                       Some(v) => {
                         found = v
                         break
@@ -1321,15 +1321,16 @@ fn setup_array_builtins(
       let result : Array[Value] = []
       for i = 0; i < len; i = i + 1 {
         result.push(
-          Value::Array({
-            elements: [
-              Value::Number(i.to_double()),
-              @runtime.get_array_like_element_interp(interp, o, i),
-            ],
-          }),
+          @runtime.make_array([
+            Value::Number(i.to_double()),
+            @runtime.get_array_like_element_interp(interp, o, i),
+          ]),
         )
       }
-      @runtime.make_array_iterator_value({ elements: result })
+      @runtime.make_array_iterator_value({
+        elements: result,
+        bag: @runtime.PropertyBag::new(),
+      })
     },
   )
   array_proto_props["keys"] = @runtime.make_interp_method_func("keys", 0, fn(
@@ -1343,7 +1344,10 @@ fn setup_array_builtins(
     for i = 0; i < len; i = i + 1 {
       result.push(Value::Number(i.to_double()))
     }
-    @runtime.make_array_iterator_value({ elements: result })
+    @runtime.make_array_iterator_value({
+      elements: result,
+      bag: @runtime.PropertyBag::new(),
+    })
   })
   array_proto_props["values"] = @runtime.make_interp_method_func("values", 0, fn(
     interp,
@@ -1356,7 +1360,10 @@ fn setup_array_builtins(
     for i = 0; i < len; i = i + 1 {
       result.push(@runtime.get_array_like_element_interp(interp, o, i))
     }
-    @runtime.make_array_iterator_value({ elements: result })
+    @runtime.make_array_iterator_value({
+      elements: result,
+      bag: @runtime.PropertyBag::new(),
+    })
   })
   array_proto_props["toReversed"] = @runtime.make_interp_method_func(
     "toReversed",
@@ -1368,7 +1375,7 @@ fn setup_array_builtins(
       for i = len - 1; i >= 0; i = i - 1 {
         result.push(@runtime.get_array_like_element_interp(interp, o, i))
       }
-      Value::Array({ elements: result })
+      @runtime.make_array(result)
     },
   )
   array_proto_props["toSorted"] = @runtime.make_interp_method_func(
@@ -1484,7 +1491,7 @@ fn setup_array_builtins(
           }
         })
       }
-      Value::Array({ elements: result })
+      @runtime.make_array(result)
     },
   )
   array_proto_props["toSpliced"] = @runtime.make_interp_method_func(
@@ -1529,7 +1536,7 @@ fn setup_array_builtins(
       for i = start + del_count; i < len; i = i + 1 {
         result.push(@runtime.get_array_like_element_interp(interp, o, i))
       }
-      Value::Array({ elements: result })
+      @runtime.make_array(result)
     },
   )
   array_proto_props["with"] = @runtime.make_interp_method_func("with", 2, fn(
@@ -1557,7 +1564,7 @@ fn setup_array_builtins(
         result.push(@runtime.get_array_like_element_interp(interp, o, i))
       }
     }
-    Value::Array({ elements: result })
+    @runtime.make_array(result)
   })
   array_proto_descs["push"] = method_desc
   array_proto_descs["pop"] = method_desc
@@ -1607,13 +1614,15 @@ fn setup_array_builtins(
     setter: None,
   }
   let array_proto : Value = Value::Object({
-    properties: array_proto_props,
-    symbol_properties: {},
+    bag: {
+      properties: array_proto_props,
+      symbol_properties: {},
+      descriptors: array_proto_descs,
+      symbol_descriptors: {},
+    },
     prototype: obj_proto,
     callable: None,
     class_name: "Array",
-    descriptors: array_proto_descs,
-    symbol_descriptors: {},
     extensible: true,
   })
 
@@ -1650,7 +1659,7 @@ fn setup_array_builtins(
   })
   array_props["of"] = @runtime.make_static_func("of", fn(args) {
     // Array.of() - creates array from arguments
-    Value::Array({ elements: args })
+    @runtime.make_array(args)
   })
   // Array.from with mapFn support using InterpreterCallable
   array_props["from"] = @runtime.make_interp_method_func("from", 1, fn(
@@ -1702,7 +1711,7 @@ fn setup_array_builtins(
         let next = interp.call_value(next_fn, iterator, [], loc)
         let done = match next {
           Object(d) =>
-            match d.properties.get("done") {
+            match d.bag.properties.get("done") {
               Some(v) => @runtime.is_truthy(v)
               _ => false
             }
@@ -1713,7 +1722,7 @@ fn setup_array_builtins(
         }
         let value = match next {
           Object(d) =>
-            match d.properties.get("value") {
+            match d.bag.properties.get("value") {
               Some(v) => v
               None => Undefined
             }
@@ -1800,22 +1809,47 @@ fn setup_array_builtins(
       )
       for i = 0; i < n; i = i + 1 {
         let _ = interp.set_property(
-          result, i.to_string(), elements[i], loc, strict=true,
+          result,
+          i.to_string(),
+          elements[i],
+          loc,
+          strict=true,
         )
       }
       let _ = interp.set_property(
-        result, "length", Value::Number(n.to_double()), loc, strict=true,
+        result,
+        "length",
+        Value::Number(n.to_double()),
+        loc,
+        strict=true,
       )
       result
     } else {
-      Value::Array({ elements, })
+      @runtime.make_array(elements)
     }
   })
   env.def_builtin(
     "Array",
     Value::Object({
-      properties: array_props,
-      symbol_properties: {},
+      bag: {
+        properties: array_props,
+        symbol_properties: {},
+        descriptors: {
+          "name": nf_desc,
+          "length": nf_desc,
+          "prototype": {
+            writable: false,
+            enumerable: false,
+            configurable: false,
+            getter: None,
+            setter: None,
+          },
+          "isArray": obj_method_desc,
+          "from": obj_method_desc,
+          "of": obj_method_desc,
+        },
+        symbol_descriptors: {},
+      },
       prototype: Null,
       callable: Some(
         NativeCallable("Array", fn(args) raise {
@@ -1841,35 +1875,23 @@ fn setup_array_builtins(
                 } else {
                   []
                 }
-                let arr_data : ArrayData = { elements, }
+                let arr_data : ArrayData = {
+                  elements,
+                  bag: @runtime.PropertyBag::new(),
+                }
                 if len64 > arr_data.elements.length().to_int64() {
                   @runtime.set_array_length_override(arr_data, len64)
                 }
                 Value::Array(arr_data)
               }
-              _ => Value::Array({ elements: args })
+              _ => @runtime.make_array(args)
             }
           } else {
-            Value::Array({ elements: args })
+            @runtime.make_array(args)
           }
         }),
       ),
       class_name: "Function",
-      descriptors: {
-        "name": nf_desc,
-        "length": nf_desc,
-        "prototype": {
-          writable: false,
-          enumerable: false,
-          configurable: false,
-          getter: None,
-          setter: None,
-        },
-        "isArray": obj_method_desc,
-        "from": obj_method_desc,
-        "of": obj_method_desc,
-      },
-      symbol_descriptors: {},
       extensible: true,
     }),
   )
@@ -1877,8 +1899,8 @@ fn setup_array_builtins(
   match array_proto {
     Object(data) => {
       let arr_ctor = env.get("Array") catch { _ => Undefined }
-      data.properties["constructor"] = arr_ctor
-      data.descriptors["constructor"] = {
+      data.bag.properties["constructor"] = arr_ctor
+      data.bag.descriptors["constructor"] = {
         writable: true,
         enumerable: false,
         configurable: true,

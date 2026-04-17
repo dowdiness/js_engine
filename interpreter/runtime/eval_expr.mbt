@@ -17,7 +17,7 @@ fn Interpreter::eval_expr(
           // Fallback: check global object (globalThis) for properties set via this.x = y
           match self.global_this {
             Object(data) =>
-              match data.properties.get(name) {
+              match data.bag.properties.get(name) {
                 Some(v) => v
                 None =>
                   raise @errors.ReferenceError(message="\{name} is not defined")
@@ -102,7 +102,9 @@ fn Interpreter::eval_expr(
         body,
       )
       let strict = is_function_strict(ctx.strict, body)
-      self.make_generator_function_ext(name, params, rest_param, body, strict, env)
+      self.make_generator_function_ext(
+        name, params, rest_param, body, strict, env,
+      )
     }
     AsyncFuncExpr(name, params, body, _) => {
       validate_function_signature(ctx.strict, name, params, body)
@@ -181,8 +183,8 @@ fn Interpreter::eval_expr(
               // Copy all enumerable own properties
               // Per ES spec, spread invokes [[Get]] (which triggers getters)
               // and creates data properties (not accessor descriptors)
-              for key, _value in data.properties {
-                match data.descriptors.get(key) {
+              for key, _value in data.bag.properties {
+                match data.bag.descriptors.get(key) {
                   Some(desc) =>
                     if desc.enumerable {
                       // Invoke getter if present, otherwise use raw value
@@ -197,8 +199,8 @@ fn Interpreter::eval_expr(
                 }
               }
               // Copy symbol properties too
-              for sym_id, value in data.symbol_properties {
-                match data.symbol_descriptors.get(sym_id) {
+              for sym_id, value in data.bag.symbol_properties {
+                match data.bag.symbol_descriptors.get(sym_id) {
                   Some(desc) =>
                     if desc.enumerable {
                       symbol_properties[sym_id] = value
@@ -376,7 +378,8 @@ fn Interpreter::eval_expr(
               let getter = self.eval_expr(ctx, prop.value, method_env)
               // Force set name with "get " prefix per spec
               match getter {
-                Object(d) => d.properties["name"] = String_("get " + key_str)
+                Object(d) =>
+                  d.bag.properties["name"] = String_("get " + key_str)
                 _ => ()
               }
               if !properties.contains(key_str) {
@@ -398,7 +401,8 @@ fn Interpreter::eval_expr(
               let setter = self.eval_expr(ctx, prop.value, method_env)
               // Force set name with "set " prefix per spec
               match setter {
-                Object(d) => d.properties["name"] = String_("set " + key_str)
+                Object(d) =>
+                  d.bag.properties["name"] = String_("set " + key_str)
                 _ => ()
               }
               if !properties.contains(key_str) {
@@ -425,13 +429,10 @@ fn Interpreter::eval_expr(
         None => env.get("[[ObjectPrototype]]") catch { _ => Null }
       }
       let result_obj = Object({
-        properties,
-        symbol_properties,
+        bag: { properties, symbol_properties, descriptors, symbol_descriptors },
         prototype: obj_prototype,
         callable: None,
         class_name: "Object",
-        descriptors,
-        symbol_descriptors,
         extensible: true,
       })
       result_obj
@@ -451,7 +452,7 @@ fn Interpreter::eval_expr(
           _ => vals.push(self.eval_expr(ctx, e, env))
         }
       }
-      Array({ elements: vals })
+      make_array(vals)
     }
     ComputedMember(obj_expr, key_expr, loc) => {
       let obj = self.eval_expr(ctx, obj_expr, env)
@@ -511,7 +512,7 @@ fn Interpreter::eval_expr(
       for s in strings {
         raw_vals.push(String_(s))
       }
-      let raw_arr = Array({ elements: raw_vals })
+      let raw_arr = make_array(raw_vals)
       // Create the template strings object as an array-like object with raw property
       let props : Map[String, Value] = {}
       props["length"] = Number(strings.length().to_double())
@@ -520,15 +521,17 @@ fn Interpreter::eval_expr(
         props[i.to_string()] = String_(s)
       }
       let template_obj = Object({
-        properties: props,
-        symbol_properties: {},
+        bag: {
+          properties: props,
+          symbol_properties: {},
+          descriptors: {},
+          symbol_descriptors: {},
+        },
         prototype: self.global.get("[[ObjectPrototype]]") catch {
           _ => Null
         },
         callable: None,
         class_name: "Array",
-        descriptors: {},
-        symbol_descriptors: {},
         extensible: true,
       })
       // Build args: [templateObj, ...substitutions]
@@ -561,16 +564,18 @@ fn Interpreter::eval_expr(
         setter: None,
       }
       Object({
-        properties: {
-          "name": String_(""),
-          "length": Number(params.length().to_double()),
+        bag: {
+          properties: {
+            "name": String_(""),
+            "length": Number(params.length().to_double()),
+          },
+          symbol_properties: {},
+          descriptors: { "name": nf_desc, "length": nf_desc },
+          symbol_descriptors: {},
         },
-        symbol_properties: {},
         prototype: get_func_proto(),
         callable: Some(ArrowFunc(func_data)),
         class_name: "Function",
-        descriptors: { "name": nf_desc, "length": nf_desc },
-        symbol_descriptors: {},
         extensible: true,
       })
     }
@@ -606,16 +611,18 @@ fn Interpreter::eval_expr(
         arrow_len += 1
       }
       Object({
-        properties: {
-          "name": String_(""),
-          "length": Number(arrow_len.to_double()),
+        bag: {
+          properties: {
+            "name": String_(""),
+            "length": Number(arrow_len.to_double()),
+          },
+          symbol_properties: {},
+          descriptors: { "name": nf_desc, "length": nf_desc },
+          symbol_descriptors: {},
         },
-        symbol_properties: {},
         prototype: get_func_proto(),
         callable: Some(ArrowFuncExt(func_data)),
         class_name: "Function",
-        descriptors: { "name": nf_desc, "length": nf_desc },
-        symbol_descriptors: {},
         extensible: true,
       })
     }
@@ -1056,7 +1063,7 @@ fn Interpreter::eval_binary(
                   // Step 3: Get prototype property and walk LHS prototype chain
                   // Per OrdinaryHasInstance spec: if prototype is not an object, return false
                   // This handles bound functions which don't have own prototype property
-                  match r_data.properties.get("prototype") {
+                  match r_data.bag.properties.get("prototype") {
                     Some(proto) =>
                       match proto {
                         Object(_) =>
@@ -1269,7 +1276,7 @@ fn eval_binary_op(
           match l {
             Symbol(sym) => {
               // Check own symbol property first
-              if data.symbol_properties.contains(sym.id) {
+              if data.bag.symbol_properties.contains(sym.id) {
                 return Bool(true)
               }
               // Walk prototype chain for symbol properties
@@ -1277,7 +1284,7 @@ fn eval_binary_op(
               while true {
                 match current {
                   Object(proto_data) =>
-                    if proto_data.symbol_properties.contains(sym.id) {
+                    if proto_data.bag.symbol_properties.contains(sym.id) {
                       return Bool(true)
                     } else {
                       current = proto_data.prototype
@@ -1290,7 +1297,7 @@ fn eval_binary_op(
             _ => {
               let key = to_js_string(l)
               // Check own property first
-              if data.properties.contains(key) {
+              if data.bag.properties.contains(key) {
                 return Bool(true)
               }
               // Walk prototype chain
@@ -1299,7 +1306,7 @@ fn eval_binary_op(
               while true {
                 match current {
                   Object(proto_data) =>
-                    if proto_data.properties.contains(key) {
+                    if proto_data.bag.properties.contains(key) {
                       return Bool(true)
                     } else {
                       current = proto_data.prototype
@@ -1380,7 +1387,7 @@ fn get_symbol_method(obj : Value, symbol_id : Int) -> Value? {
   while true {
     match current {
       Object(data) =>
-        match data.symbol_properties.get(symbol_id) {
+        match data.bag.symbol_properties.get(symbol_id) {
           Some(val) =>
             match val {
               Null | Undefined => return None
@@ -1446,7 +1453,7 @@ pub fn get_constructor_prototype(
   let ctor = env.get(ctor_name) catch { _ => return Null }
   match ctor {
     Object(data) =>
-      match data.properties.get("prototype") {
+      match data.bag.properties.get("prototype") {
         Some(proto) => proto
         None => Null
       }
@@ -1537,7 +1544,7 @@ fn loose_equal(a : Value, b : Value) -> Bool {
 fn Interpreter::is_immutable_global(self : Interpreter, name : String) -> Bool {
   match self.global_this {
     Object(data) =>
-      match data.descriptors.get(name) {
+      match data.bag.descriptors.get(name) {
         Some(desc) => !desc.writable
         None => false
       }
@@ -1564,7 +1571,7 @@ fn Interpreter::eval_unary(
             // Also check global object for properties
             match self.global_this {
               Object(data) =>
-                match data.properties.get(name) {
+                match data.bag.properties.get(name) {
                   Some(v) => String_(type_of(v))
                   None => String_("undefined")
                 }
@@ -1592,7 +1599,7 @@ fn Interpreter::eval_unary(
               Bool(result)
             }
             Object(data) => {
-              match data.descriptors.get(prop) {
+              match data.bag.descriptors.get(prop) {
                 Some(desc) =>
                   if !desc.configurable {
                     if ctx.strict {
@@ -1604,8 +1611,8 @@ fn Interpreter::eval_unary(
                   }
                 None => ()
               }
-              let _ = data.properties.remove(prop)
-              let _ = data.descriptors.remove(prop)
+              let _ = data.bag.properties.remove(prop)
+              let _ = data.bag.descriptors.remove(prop)
               Bool(true)
             }
             _ => Bool(true)
@@ -1619,9 +1626,7 @@ fn Interpreter::eval_unary(
               let k = to_js_string(key)
               let result = proxy_delete_property(self, proxy_data, k)
               if !result && ctx.strict {
-                raise @errors.TypeError(
-                  message="Cannot delete property '\{k}'",
-                )
+                raise @errors.TypeError(message="Cannot delete property '\{k}'")
               }
               Bool(result)
             }
@@ -1629,7 +1634,7 @@ fn Interpreter::eval_unary(
               match key {
                 Symbol(sym) => {
                   // Delete a symbol-keyed property
-                  match data.symbol_descriptors.get(sym.id) {
+                  match data.bag.symbol_descriptors.get(sym.id) {
                     Some(desc) =>
                       if !desc.configurable {
                         if ctx.strict {
@@ -1641,13 +1646,13 @@ fn Interpreter::eval_unary(
                       }
                     None => ()
                   }
-                  let _ = data.symbol_properties.remove(sym.id)
-                  let _ = data.symbol_descriptors.remove(sym.id)
+                  let _ = data.bag.symbol_properties.remove(sym.id)
+                  let _ = data.bag.symbol_descriptors.remove(sym.id)
                   Bool(true)
                 }
                 _ => {
                   let k = to_js_string(key)
-                  match data.descriptors.get(k) {
+                  match data.bag.descriptors.get(k) {
                     Some(desc) =>
                       if !desc.configurable {
                         if ctx.strict {
@@ -1659,8 +1664,8 @@ fn Interpreter::eval_unary(
                       }
                     None => ()
                   }
-                  let _ = data.properties.remove(k)
-                  let _ = data.descriptors.remove(k)
+                  let _ = data.bag.properties.remove(k)
+                  let _ = data.bag.descriptors.remove(k)
                   Bool(true)
                 }
               }
@@ -1677,12 +1682,12 @@ fn Interpreter::eval_unary(
             // Check if this identifier is in a with-object first
             match env.find_with_object(name) {
               Some(Object(with_data)) => {
-                match with_data.descriptors.get(name) {
+                match with_data.bag.descriptors.get(name) {
                   Some(desc) => if !desc.configurable { return Bool(false) }
                   None => ()
                 }
-                let _ = with_data.properties.remove(name)
-                let _ = with_data.descriptors.remove(name)
+                let _ = with_data.bag.properties.remove(name)
+                let _ = with_data.bag.descriptors.remove(name)
                 Bool(true)
               }
               _ =>
@@ -1690,13 +1695,13 @@ fn Interpreter::eval_unary(
                 // property on the global object (e.g. undefined, NaN, Infinity).
                 match self.global_this {
                   Object(data) =>
-                    match data.descriptors.get(name) {
+                    match data.bag.descriptors.get(name) {
                       Some(desc) =>
                         if !desc.configurable {
                           Bool(false)
                         } else {
-                          let _ = data.properties.remove(name)
-                          let _ = data.descriptors.remove(name)
+                          let _ = data.bag.properties.remove(name)
+                          let _ = data.bag.descriptors.remove(name)
                           Bool(true)
                         }
                       None => Bool(true)

@@ -21,7 +21,7 @@ pub fn get_promise_method(_data : PromiseData, prop : String) -> Value {
     Some(proto) =>
       match proto {
         Object(proto_data) =>
-          match proto_data.properties.get(prop) {
+          match proto_data.bag.properties.get(prop) {
             Some(m) => m
             None => Undefined
           }
@@ -277,8 +277,8 @@ fn create_promise_capability_from_constructor(
   // observe the right constructor on subsequent then/catch/finally calls.
   match promise {
     Value::Promise(promise_data) => {
-      promise_data.properties["constructor"] = ctor
-      promise_data.descriptors["constructor"] = {
+      promise_data.bag.properties["constructor"] = ctor
+      promise_data.bag.descriptors["constructor"] = {
         writable: true,
         enumerable: false,
         configurable: true,
@@ -489,8 +489,7 @@ pub fn setup_promise(env : Environment) -> Unit {
       // Per ECMAScript §27.2.5.3, we must await the result of onFinally
       // by chaining through Promise.resolve(onFinally_result).then(...)
       let value_thunk = Value::Object({
-        properties: {},
-        symbol_properties: {},
+        bag: @runtime.PropertyBag::new(),
         prototype: Null,
         callable: Some(
           InterpreterCallable("finallyValueThunk", fn(
@@ -511,15 +510,12 @@ pub fn setup_promise(env : Environment) -> Unit {
             )
             // Create a thunk that returns the original value
             let return_value_thunk = Value::Object({
-              properties: {},
-              symbol_properties: {},
+              bag: @runtime.PropertyBag::new(),
               prototype: Null,
               callable: Some(
                 InterpreterCallable("returnValue", fn(_i2, _t, _a) { value }),
               ),
               class_name: "Function",
-              descriptors: {},
-              symbol_descriptors: {},
               extensible: true,
             })
             // Chain: Promise.resolve(finally_result).then(() => value)
@@ -528,13 +524,10 @@ pub fn setup_promise(env : Environment) -> Unit {
           }),
         ),
         class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
         extensible: true,
       })
       let thrower_thunk = Value::Object({
-        properties: {},
-        symbol_properties: {},
+        bag: @runtime.PropertyBag::new(),
         prototype: Null,
         callable: Some(
           InterpreterCallable("finallyThrowerThunk", fn(
@@ -555,8 +548,7 @@ pub fn setup_promise(env : Environment) -> Unit {
             )
             // Create a thunk that re-throws the original reason
             let throw_reason_thunk = Value::Object({
-              properties: {},
-              symbol_properties: {},
+              bag: @runtime.PropertyBag::new(),
               prototype: Null,
               callable: Some(
                 InterpreterCallable("throwReason", fn(_i2, _t, _a) raise {
@@ -565,8 +557,6 @@ pub fn setup_promise(env : Environment) -> Unit {
                 }),
               ),
               class_name: "Function",
-              descriptors: {},
-              symbol_descriptors: {},
               extensible: true,
             })
             // Chain: Promise.resolve(finally_result).then(() => { throw reason })
@@ -575,8 +565,6 @@ pub fn setup_promise(env : Environment) -> Unit {
           }),
         ),
         class_name: "Function",
-        descriptors: {},
-        symbol_descriptors: {},
         extensible: true,
       })
       let then_method = interp.get_property(this_val, "then", loc)
@@ -611,13 +599,15 @@ pub fn setup_promise(env : Environment) -> Unit {
     setter: None,
   }
   let promise_proto = Value::Object({
-    properties: promise_proto_props,
-    symbol_properties: {},
+    bag: {
+      properties: promise_proto_props,
+      symbol_properties: {},
+      descriptors: promise_proto_descs,
+      symbol_descriptors: {},
+    },
     prototype: @runtime.get_obj_proto(),
     callable: None,
     class_name: "Promise",
-    descriptors: promise_proto_descs,
-    symbol_descriptors: {},
     extensible: true,
   })
 
@@ -686,13 +676,15 @@ pub fn setup_promise(env : Environment) -> Unit {
       props["resolve"] = resolve
       props["reject"] = reject
       Value::Object({
-        properties: props,
-        symbol_properties: {},
+        bag: {
+          properties: props,
+          symbol_properties: {},
+          descriptors: {},
+          symbol_descriptors: {},
+        },
         prototype: @runtime.get_obj_proto(),
         callable: None,
         class_name: "Object",
-        descriptors: {},
-        symbol_descriptors: {},
         extensible: true,
       })
     },
@@ -824,7 +816,7 @@ pub fn setup_promise(env : Environment) -> Unit {
                 i2,
                 resolve,
                 reject,
-                Value::Array({ elements: results }),
+                @runtime.make_array(results),
                 loc,
               )
             }
@@ -846,7 +838,7 @@ pub fn setup_promise(env : Environment) -> Unit {
         interp,
         resolve,
         reject,
-        Value::Array({ elements: results }),
+        @runtime.make_array(results),
         loc,
       )
     }
@@ -1008,13 +1000,15 @@ pub fn setup_promise(env : Environment) -> Unit {
               result_props["status"] = Value::String_("fulfilled")
               result_props["value"] = value
               results[index] = Value::Object({
-                properties: result_props,
-                symbol_properties: {},
+                bag: {
+                  properties: result_props,
+                  symbol_properties: {},
+                  descriptors: {},
+                  symbol_descriptors: {},
+                },
                 prototype: Null,
                 callable: None,
                 class_name: "Object",
-                descriptors: {},
-                symbol_descriptors: {},
                 extensible: true,
               })
               remaining.val = remaining.val - 1
@@ -1023,7 +1017,7 @@ pub fn setup_promise(env : Environment) -> Unit {
                   i2,
                   resolve,
                   reject,
-                  Value::Array({ elements: results }),
+                  @runtime.make_array(results),
                   loc,
                 )
               }
@@ -1043,13 +1037,15 @@ pub fn setup_promise(env : Environment) -> Unit {
               result_props["status"] = Value::String_("rejected")
               result_props["reason"] = reason
               results[index] = Value::Object({
-                properties: result_props,
-                symbol_properties: {},
+                bag: {
+                  properties: result_props,
+                  symbol_properties: {},
+                  descriptors: {},
+                  symbol_descriptors: {},
+                },
                 prototype: Null,
                 callable: None,
                 class_name: "Object",
-                descriptors: {},
-                symbol_descriptors: {},
                 extensible: true,
               })
               remaining.val = remaining.val - 1
@@ -1058,7 +1054,7 @@ pub fn setup_promise(env : Environment) -> Unit {
                   i2,
                   resolve,
                   reject,
-                  Value::Array({ elements: results }),
+                  @runtime.make_array(results),
                   loc,
                 )
               }
@@ -1082,7 +1078,7 @@ pub fn setup_promise(env : Environment) -> Unit {
           interp,
           resolve,
           reject,
-          Value::Array({ elements: results }),
+          @runtime.make_array(results),
           loc,
         )
       }
@@ -1212,8 +1208,78 @@ pub fn setup_promise(env : Environment) -> Unit {
 
   // Promise constructor itself - requires 'new' keyword
   let promise_ctor = Value::Object({
-    properties: promise_ctor_props,
-    symbol_properties: {},
+    bag: {
+      properties: promise_ctor_props,
+      symbol_properties: {},
+      descriptors: {
+        "name": nf_desc,
+        "length": nf_desc,
+        "prototype": {
+          writable: false,
+          enumerable: false,
+          configurable: false,
+          getter: None,
+          setter: None,
+        },
+        "resolve": {
+          writable: true,
+          enumerable: false,
+          configurable: true,
+          getter: None,
+          setter: None,
+        },
+        "reject": {
+          writable: true,
+          enumerable: false,
+          configurable: true,
+          getter: None,
+          setter: None,
+        },
+        "all": {
+          writable: true,
+          enumerable: false,
+          configurable: true,
+          getter: None,
+          setter: None,
+        },
+        "race": {
+          writable: true,
+          enumerable: false,
+          configurable: true,
+          getter: None,
+          setter: None,
+        },
+        "allSettled": {
+          writable: true,
+          enumerable: false,
+          configurable: true,
+          getter: None,
+          setter: None,
+        },
+        "any": {
+          writable: true,
+          enumerable: false,
+          configurable: true,
+          getter: None,
+          setter: None,
+        },
+        "withResolvers": {
+          writable: true,
+          enumerable: false,
+          configurable: true,
+          getter: None,
+          setter: None,
+        },
+        "try": {
+          writable: true,
+          enumerable: false,
+          configurable: true,
+          getter: None,
+          setter: None,
+        },
+      },
+      symbol_descriptors: {},
+    },
     prototype: Null,
     callable: Some(
       ConstructorOnlyCallable("Promise", fn(interp, args) raise {
@@ -1262,74 +1328,6 @@ pub fn setup_promise(env : Environment) -> Unit {
       }),
     ),
     class_name: "Function",
-    descriptors: {
-      "name": nf_desc,
-      "length": nf_desc,
-      "prototype": {
-        writable: false,
-        enumerable: false,
-        configurable: false,
-        getter: None,
-        setter: None,
-      },
-      "resolve": {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-      "reject": {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-      "all": {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-      "race": {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-      "allSettled": {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-      "any": {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-      "withResolvers": {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-      "try": {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-      },
-    },
-    symbol_descriptors: {},
     extensible: true,
   })
 
@@ -1343,12 +1341,12 @@ pub fn setup_promise(env : Environment) -> Unit {
   let species_symbol_val = env.get("Symbol") catch { _ => Undefined }
   match species_symbol_val {
     Object(symbol_data) =>
-      match symbol_data.properties.get("species") {
+      match symbol_data.bag.properties.get("species") {
         Some(Symbol(species_sym)) =>
           match promise_ctor {
             Object(ctor_data) => {
-              ctor_data.symbol_properties[species_sym.id] = Undefined
-              ctor_data.symbol_descriptors[species_sym.id] = {
+              ctor_data.bag.symbol_properties[species_sym.id] = Undefined
+              ctor_data.bag.symbol_descriptors[species_sym.id] = {
                 writable: false,
                 enumerable: false,
                 configurable: true,
@@ -1365,15 +1363,15 @@ pub fn setup_promise(env : Environment) -> Unit {
 
   // Set prototype property on constructor
   match promise_ctor {
-    Object(od) => od.properties["prototype"] = promise_proto
+    Object(od) => od.bag.properties["prototype"] = promise_proto
     _ => ()
   }
   env.def_builtin("Promise", promise_ctor)
   // Set Promise.prototype.constructor = Promise
   match promise_proto {
     Object(data) => {
-      data.properties["constructor"] = promise_ctor
-      data.descriptors["constructor"] = {
+      data.bag.properties["constructor"] = promise_ctor
+      data.bag.descriptors["constructor"] = {
         writable: true,
         enumerable: false,
         configurable: true,
@@ -1609,7 +1607,7 @@ fn make_aggregate_error(
   errors : Array[Value],
 ) -> Value raise Error {
   let loc = @token.Loc::default()
-  let errors_value = Value::Array({ elements: errors })
+  let errors_value = @runtime.make_array(errors)
   let aggregate_ctor = interp.global.get("AggregateError") catch {
     _ => Undefined
   }
@@ -1631,13 +1629,15 @@ fn make_aggregate_error(
   props["message"] = Value::String_(message)
   props["errors"] = errors_value
   Value::Object({
-    properties: props,
-    symbol_properties: {},
+    bag: {
+      properties: props,
+      symbol_properties: {},
+      descriptors: {},
+      symbol_descriptors: {},
+    },
     prototype: Null,
     callable: None,
     class_name: "AggregateError",
-    descriptors: {},
-    symbol_descriptors: {},
     extensible: true,
   })
 }

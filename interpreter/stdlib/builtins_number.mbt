@@ -90,7 +90,7 @@ fn setup_number_builtins(env : Environment) -> Unit {
       Value::Number(v) => v
       Object(data) =>
         if data.class_name == "Number" {
-          match data.properties.get("[[NumberData]]") {
+          match data.bag.properties.get("[[NumberData]]") {
             Some(Value::Number(v)) => v
             _ =>
               raise @errors.TypeError(
@@ -165,7 +165,7 @@ fn setup_number_builtins(env : Environment) -> Unit {
       Value::Number(v) => v
       Object(data) =>
         if data.class_name == "Number" {
-          match data.properties.get("[[NumberData]]") {
+          match data.bag.properties.get("[[NumberData]]") {
             Some(Value::Number(v)) => v
             _ =>
               raise @errors.TypeError(
@@ -234,7 +234,7 @@ fn setup_number_builtins(env : Environment) -> Unit {
       Value::Number(_) => this_val
       Object(data) =>
         if data.class_name == "Number" {
-          match data.properties.get("[[NumberData]]") {
+          match data.bag.properties.get("[[NumberData]]") {
             Some(Value::Number(v)) => Value::Number(v)
             _ =>
               raise @errors.TypeError(
@@ -462,7 +462,7 @@ fn setup_number_builtins(env : Environment) -> Unit {
         Value::Number(v) => v
         Object(data) =>
           if data.class_name == "Number" {
-            match data.properties.get("[[NumberData]]") {
+            match data.bag.properties.get("[[NumberData]]") {
               Some(Value::Number(v)) => v
               _ =>
                 raise @errors.TypeError(
@@ -502,13 +502,15 @@ fn setup_number_builtins(env : Environment) -> Unit {
   number_proto_descs["valueOf"] = num_method_desc
   number_proto_descs["constructor"] = num_method_desc
   let number_proto : Value = Value::Object({
-    properties: number_proto_props,
-    symbol_properties: {},
+    bag: {
+      properties: number_proto_props,
+      symbol_properties: {},
+      descriptors: number_proto_descs,
+      symbol_descriptors: {},
+    },
     prototype: @runtime.get_obj_proto(),
     callable: None,
     class_name: "Number",
-    descriptors: number_proto_descs,
-    symbol_descriptors: {},
     extensible: true,
   })
   // Store Number.prototype for ToObject wrapping
@@ -627,8 +629,12 @@ fn setup_number_builtins(env : Environment) -> Unit {
   env.def_builtin(
     "Number",
     Value::Object({
-      properties: number_props,
-      symbol_properties: {},
+      bag: {
+        properties: number_props,
+        symbol_properties: {},
+        descriptors: number_descs,
+        symbol_descriptors: {},
+      },
       prototype: Null,
       callable: Some(
         NativeCallable("Number", fn(args) raise {
@@ -641,13 +647,15 @@ fn setup_number_builtins(env : Environment) -> Unit {
           if @runtime.is_constructing.val {
             // new Value::Number(value) → boxed Number object
             Value::Object({
-              properties: { "[[NumberData]]": Value::Number(n) },
-              symbol_properties: {},
+              bag: {
+                properties: { "[[NumberData]]": Value::Number(n) },
+                symbol_properties: {},
+                descriptors: {},
+                symbol_descriptors: {},
+              },
               prototype: number_proto,
               callable: None,
               class_name: "Number",
-              descriptors: {},
-              symbol_descriptors: {},
               extensible: true,
             })
           } else {
@@ -656,8 +664,6 @@ fn setup_number_builtins(env : Environment) -> Unit {
         }),
       ),
       class_name: "Function",
-      descriptors: number_descs,
-      symbol_descriptors: {},
       extensible: true,
     }),
   )
@@ -665,8 +671,8 @@ fn setup_number_builtins(env : Environment) -> Unit {
   match number_proto {
     Object(data) => {
       let ctor = env.get("Number") catch { _ => Undefined }
-      data.properties["constructor"] = ctor
-      data.descriptors["constructor"] = {
+      data.bag.properties["constructor"] = ctor
+      data.bag.descriptors["constructor"] = {
         writable: true,
         enumerable: false,
         configurable: true,

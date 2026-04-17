@@ -17,7 +17,11 @@ pub fn call_callable_direct(Value, Value, Array[Value], interp? : Interpreter?) 
 
 pub fn clear_array_length_override(ArrayData) -> Unit
 
+pub fn collect_target_own_keys(Value, SymbolState) -> Array[Value]
+
 pub fn create_data_property_or_throw(Interpreter, Value, Int, Value) -> Unit raise
+
+pub fn create_iter_result(Value, Bool) -> Value
 
 pub fn create_resolving_functions(Interpreter, PromiseData) -> (Value, Value)
 
@@ -135,6 +139,8 @@ pub fn js_error_to_value_with_env(Error, Environment?) -> Value
 
 pub fn lookup_symbol_property_chain(Value, ObjectData, Int, interp? : Interpreter?) -> Value? raise
 
+pub fn make_array(Array[Value]) -> Value
+
 pub fn make_array_iterator_value(ArrayData) -> Value
 
 pub fn make_array_like_iterator_value(Value) -> Value raise
@@ -170,6 +176,24 @@ pub fn new_promise_data() -> PromiseData
 pub let number_prototype_ref : @ref.Ref[Value?]
 
 pub let object_prototype_ref : @ref.Ref[Value?]
+
+pub fn proxy_delete_property(Interpreter, ProxyData, String) -> Bool raise
+
+pub fn proxy_get(Interpreter, ProxyData, String, Value) -> Value raise
+
+pub fn proxy_get_prototype_of(Interpreter, ProxyData) -> Value raise
+
+pub fn proxy_has_property(Interpreter, ProxyData, String) -> Bool raise
+
+pub fn proxy_is_extensible(Interpreter, ProxyData) -> Bool raise
+
+pub fn proxy_own_property_keys(Interpreter, ProxyData) -> Value raise
+
+pub fn proxy_prevent_extensions(Interpreter, ProxyData) -> Bool raise
+
+pub fn proxy_set(Interpreter, ProxyData, String, Value, Value, Bool) -> Value raise
+
+pub fn proxy_set_prototype_of(Interpreter, ProxyData, Value) -> Bool raise
 
 pub fn raise_js_exception(Value) -> Unit raise
 
@@ -267,6 +291,7 @@ pub suberror YieldSignal {
 // Types and methods
 pub(all) struct ArrayData {
   elements : Array[Value]
+  bag : PropertyBag
 }
 
 pub(all) struct Binding {
@@ -437,11 +462,11 @@ pub fn Interpreter::to_primitive_default(Self, Value, ObjectData) -> Value raise
 
 pub(all) struct MapData {
   entries : Array[(Value, Value)]
-  properties : Map[String, Value]
-  descriptors : Map[String, PropDescriptor]
-  symbol_properties : Map[Int, Value]
-  symbol_descriptors : Map[Int, PropDescriptor]
+  bag : PropertyBag
+
+  fn new(Array[(Value, Value)]) -> MapData
 }
+pub fn MapData::new(Array[(Value, Value)]) -> Self
 
 pub(all) struct Microtask {
   callback : Value
@@ -453,13 +478,10 @@ pub(all) struct ModuleLoader((String) -> Map[String, Value] raise)
 pub fn ModuleLoader::inner(Self) -> (String) -> Map[String, Value] raise
 
 pub(all) struct ObjectData {
-  properties : Map[String, Value]
-  symbol_properties : Map[Int, Value]
+  bag : PropertyBag
   mut prototype : Value
   callable : Callable?
   class_name : String
-  descriptors : Map[String, PropDescriptor]
-  symbol_descriptors : Map[Int, PropDescriptor]
   mut extensible : Bool
 }
 
@@ -469,10 +491,7 @@ pub(all) struct PromiseData {
   fulfill_reactions : Array[PromiseReaction]
   reject_reactions : Array[PromiseReaction]
   mut is_handled : Bool
-  properties : Map[String, Value]
-  symbol_properties : Map[Int, Value]
-  descriptors : Map[String, PropDescriptor]
-  symbol_descriptors : Map[Int, PropDescriptor]
+  bag : PropertyBag
 }
 
 pub(all) struct PromiseReaction {
@@ -501,6 +520,16 @@ pub(all) struct PropDescriptor {
   mut setter : Value?
 }
 
+pub(all) struct PropertyBag {
+  properties : Map[String, Value]
+  symbol_properties : Map[Int, Value]
+  descriptors : Map[String, PropDescriptor]
+  symbol_descriptors : Map[Int, PropDescriptor]
+
+  fn new() -> PropertyBag
+}
+pub fn PropertyBag::new() -> Self
+
 pub(all) struct ProxyData {
   mut target : Value?
   mut handler : Value?
@@ -521,11 +550,11 @@ pub(all) enum ResumeKind {
 
 pub(all) struct SetData {
   values : Array[Value]
-  properties : Map[String, Value]
-  descriptors : Map[String, PropDescriptor]
-  symbol_properties : Map[Int, Value]
-  symbol_descriptors : Map[Int, PropDescriptor]
+  bag : PropertyBag
+
+  fn new(Array[Value]) -> SetData
 }
+pub fn SetData::new(Array[Value]) -> Self
 
 pub(all) enum Signal {
   Normal(Value)

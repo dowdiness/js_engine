@@ -5,11 +5,11 @@ fn create_list_from_array_like(val : Value) -> Array[Value] raise Error {
     Value::Array(data) => data.elements.copy()
     Object(data) => {
       let result : Array[Value] = []
-      match data.properties.get("length") {
+      match data.bag.properties.get("length") {
         Some(len_val) => {
           let len = @runtime.to_number(len_val).to_int()
           for i = 0; i < len; i = i + 1 {
-            match data.properties.get(i.to_string()) {
+            match data.bag.properties.get(i.to_string()) {
               Some(v) => result.push(v)
               None => result.push(Undefined)
             }
@@ -112,7 +112,7 @@ fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
         match new_target {
           Object(nt_data) =>
             Some(
-              match nt_data.properties.get("prototype") {
+              match nt_data.bag.properties.get("prototype") {
                 Some(p) => p
                 None => Null
               },
@@ -128,11 +128,15 @@ fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
 
   // Reflect.defineProperty(target, propertyKey, attributes)
   reflect_props["defineProperty"] = Value::Object({
-    properties: {
-      "name": Value::String_("defineProperty"),
-      "length": Value::Number(3.0),
+    bag: {
+      properties: {
+        "name": Value::String_("defineProperty"),
+        "length": Value::Number(3.0),
+      },
+      symbol_properties: {},
+      descriptors: { "name": nf_desc, "length": nf_desc },
+      symbol_descriptors: {},
     },
-    symbol_properties: {},
     prototype: @runtime.get_func_proto(),
     callable: Some(
       NativeCallable("defineProperty", fn(args) raise {
@@ -163,10 +167,10 @@ fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
         // Extract descriptor attributes
         match attrs {
           Object(attr_data) => {
-            let has_value = attr_data.properties.contains("value")
-            let has_get = attr_data.properties.contains("get")
-            let has_set = attr_data.properties.contains("set")
-            let has_writable = attr_data.properties.contains("writable")
+            let has_value = attr_data.bag.properties.contains("value")
+            let has_get = attr_data.bag.properties.contains("get")
+            let has_set = attr_data.bag.properties.contains("set")
+            let has_writable = attr_data.bag.properties.contains("writable")
             if has_value && (has_get || has_set) {
               raise @errors.TypeError(
                 message="Invalid property descriptor. Cannot both specify accessors and a value or writable attribute",
@@ -178,15 +182,15 @@ fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
               )
             }
             let is_accessor = has_get || has_set
-            let prop_exists = data.properties.contains(prop) ||
-              data.descriptors.contains(prop)
+            let prop_exists = data.bag.properties.contains(prop) ||
+              data.bag.descriptors.contains(prop)
             // Extensibility check: cannot add new property to non-extensible object
             if !prop_exists && !data.extensible {
               return Value::Bool(false)
             }
             // Non-configurable validation
             if prop_exists {
-              match data.descriptors.get(prop) {
+              match data.bag.descriptors.get(prop) {
                 Some(existing) =>
                   if !existing.configurable {
                     let existing_is_accessor = existing.getter is Some(_) ||
@@ -201,7 +205,7 @@ fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
                       return Value::Bool(false)
                     }
                     // Cannot change configurable from false to true
-                    match attr_data.properties.get("configurable") {
+                    match attr_data.bag.properties.get("configurable") {
                       Some(v) =>
                         if @runtime.is_truthy(v) {
                           return Value::Bool(false)
@@ -209,7 +213,7 @@ fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
                       None => ()
                     }
                     // Cannot change enumerable on non-configurable
-                    match attr_data.properties.get("enumerable") {
+                    match attr_data.bag.properties.get("enumerable") {
                       Some(v) =>
                         if @runtime.is_truthy(v) != existing.enumerable {
                           return Value::Bool(false)
@@ -218,7 +222,7 @@ fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
                     }
                     // Non-configurable accessor: getter/setter identity must match
                     if existing_is_accessor && is_accessor {
-                      match attr_data.properties.get("get") {
+                      match attr_data.bag.properties.get("get") {
                         Some(g) =>
                           match existing.getter {
                             Some(eg) =>
@@ -232,7 +236,7 @@ fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
                           }
                         None => ()
                       }
-                      match attr_data.properties.get("set") {
+                      match attr_data.bag.properties.get("set") {
                         Some(s) =>
                           match existing.setter {
                             Some(es) =>
@@ -250,7 +254,7 @@ fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
                     // Non-configurable data: writable false->true forbidden, value change on non-writable forbidden
                     if !existing_is_accessor && !is_accessor {
                       if !existing.writable {
-                        match attr_data.properties.get("writable") {
+                        match attr_data.bag.properties.get("writable") {
                           Some(v) =>
                             if @runtime.is_truthy(v) {
                               return Value::Bool(false)
@@ -259,11 +263,11 @@ fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
                         }
                         if has_value {
                           let new_val = match
-                            attr_data.properties.get("value") {
+                            attr_data.bag.properties.get("value") {
                             Some(v) => v
                             None => Undefined
                           }
-                          let old_val = match data.properties.get(prop) {
+                          let old_val = match data.bag.properties.get(prop) {
                             Some(v) => v
                             None => Undefined
                           }
@@ -279,26 +283,27 @@ fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
             }
             if is_accessor {
               // Accessor descriptor
-              let getter = attr_data.properties.get("get")
-              let setter = attr_data.properties.get("set")
-              let enumerable = match attr_data.properties.get("enumerable") {
+              let getter = attr_data.bag.properties.get("get")
+              let setter = attr_data.bag.properties.get("set")
+              let enumerable = match
+                attr_data.bag.properties.get("enumerable") {
                 Some(v) => @runtime.is_truthy(v)
                 None =>
-                  match data.descriptors.get(prop) {
+                  match data.bag.descriptors.get(prop) {
                     Some(d) => d.enumerable
                     None => false
                   }
               }
               let configurable = match
-                attr_data.properties.get("configurable") {
+                attr_data.bag.properties.get("configurable") {
                 Some(v) => @runtime.is_truthy(v)
                 None =>
-                  match data.descriptors.get(prop) {
+                  match data.bag.descriptors.get(prop) {
                     Some(d) => d.configurable
                     None => false
                   }
               }
-              data.descriptors[prop] = {
+              data.bag.descriptors[prop] = {
                 writable: false,
                 enumerable,
                 configurable,
@@ -306,42 +311,43 @@ fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
                 setter,
               }
               // Remove any data value
-              let _ = data.properties.remove(prop)
+              let _ = data.bag.properties.remove(prop)
             } else {
               // Data descriptor
-              let writable = match attr_data.properties.get("writable") {
+              let writable = match attr_data.bag.properties.get("writable") {
                 Some(v) => @runtime.is_truthy(v)
                 None =>
-                  match data.descriptors.get(prop) {
+                  match data.bag.descriptors.get(prop) {
                     Some(d) => d.writable
                     None => false
                   }
               }
-              let enumerable = match attr_data.properties.get("enumerable") {
+              let enumerable = match
+                attr_data.bag.properties.get("enumerable") {
                 Some(v) => @runtime.is_truthy(v)
                 None =>
-                  match data.descriptors.get(prop) {
+                  match data.bag.descriptors.get(prop) {
                     Some(d) => d.enumerable
                     None => false
                   }
               }
               let configurable = match
-                attr_data.properties.get("configurable") {
+                attr_data.bag.properties.get("configurable") {
                 Some(v) => @runtime.is_truthy(v)
                 None =>
-                  match data.descriptors.get(prop) {
+                  match data.bag.descriptors.get(prop) {
                     Some(d) => d.configurable
                     None => false
                   }
               }
               if has_value {
-                data.properties[prop] = match
-                  attr_data.properties.get("value") {
+                data.bag.properties[prop] = match
+                  attr_data.bag.properties.get("value") {
                   Some(v) => v
                   None => Undefined
                 }
               }
-              data.descriptors[prop] = {
+              data.bag.descriptors[prop] = {
                 writable,
                 enumerable,
                 configurable,
@@ -359,8 +365,6 @@ fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
       }),
     ),
     class_name: "Function",
-    descriptors: { "name": nf_desc, "length": nf_desc },
-    symbol_descriptors: {},
     extensible: true,
   })
 
@@ -380,12 +384,12 @@ fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
         Value::Proxy(proxy_data) =>
           Bool(@runtime.proxy_delete_property(interp, proxy_data, prop))
         Object(data) => {
-          match data.descriptors.get(prop) {
+          match data.bag.descriptors.get(prop) {
             Some(desc) => if !desc.configurable { return Value::Bool(false) }
             None => ()
           }
-          let _ = data.properties.remove(prop)
-          let _ = data.descriptors.remove(prop)
+          let _ = data.bag.properties.remove(prop)
+          let _ = data.bag.descriptors.remove(prop)
           Value::Bool(true)
         }
         _ =>
@@ -427,37 +431,37 @@ fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
         Object(data) =>
           match key {
             Value::Symbol(sym) =>
-              match data.symbol_descriptors.get(sym.id) {
+              match data.bag.symbol_descriptors.get(sym.id) {
                 Some(desc) =>
                   match desc.getter {
                     Some(getter) =>
                       Some(interp.call_value(getter, receiver, [], loc))
                     None =>
-                      match data.symbol_properties.get(sym.id) {
+                      match data.bag.symbol_properties.get(sym.id) {
                         Some(v) => Some(v)
                         None => None
                       }
                   }
                 None =>
-                  match data.symbol_properties.get(sym.id) {
+                  match data.bag.symbol_properties.get(sym.id) {
                     Some(v) => Some(v)
                     None => None
                   }
               }
             _ =>
-              match data.descriptors.get(key_str) {
+              match data.bag.descriptors.get(key_str) {
                 Some(desc) =>
                   match desc.getter {
                     Some(getter) =>
                       Some(interp.call_value(getter, receiver, [], loc))
                     None =>
-                      match data.properties.get(key_str) {
+                      match data.bag.properties.get(key_str) {
                         Some(v) => Some(v)
                         None => None
                       }
                   }
                 None =>
-                  match data.properties.get(key_str) {
+                  match data.bag.properties.get(key_str) {
                     Some(v) => Some(v)
                     None => None
                   }
@@ -501,11 +505,15 @@ fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
 
   // Reflect.getOwnPropertyDescriptor(target, propertyKey)
   reflect_props["getOwnPropertyDescriptor"] = Value::Object({
-    properties: {
-      "name": Value::String_("getOwnPropertyDescriptor"),
-      "length": Value::Number(2.0),
+    bag: {
+      properties: {
+        "name": Value::String_("getOwnPropertyDescriptor"),
+        "length": Value::Number(2.0),
+      },
+      symbol_properties: {},
+      descriptors: { "name": nf_desc, "length": nf_desc },
+      symbol_descriptors: {},
     },
-    symbol_properties: {},
     prototype: @runtime.get_func_proto(),
     callable: Some(
       NativeCallable("getOwnPropertyDescriptor", fn(args) raise {
@@ -531,14 +539,14 @@ fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
               message="Reflect.getOwnPropertyDescriptor called on non-object",
             )
         }
-        let has_own_data = data.properties.contains(prop)
-        let has_own_desc = data.descriptors.contains(prop)
+        let has_own_data = data.bag.properties.contains(prop)
+        let has_own_desc = data.bag.descriptors.contains(prop)
         // Property must exist in either data or descriptors
         if !has_own_data && !has_own_desc {
           return Undefined
         }
         let result_props : Map[String, Value] = {}
-        match data.descriptors.get(prop) {
+        match data.bag.descriptors.get(prop) {
           Some(desc) => {
             let is_accessor = desc.getter is Some(_) || desc.setter is Some(_)
             if is_accessor {
@@ -553,7 +561,7 @@ fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
               }
             } else {
               // Data descriptor
-              result_props["value"] = match data.properties.get(prop) {
+              result_props["value"] = match data.bag.properties.get(prop) {
                 Some(v) => v
                 None => Undefined
               }
@@ -563,7 +571,7 @@ fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
             result_props["configurable"] = Bool(desc.configurable)
           }
           None => {
-            result_props["value"] = match data.properties.get(prop) {
+            result_props["value"] = match data.bag.properties.get(prop) {
               Some(v) => v
               None => Undefined
             }
@@ -573,20 +581,20 @@ fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
           }
         }
         Value::Object({
-          properties: result_props,
-          symbol_properties: {},
+          bag: {
+            properties: result_props,
+            symbol_properties: {},
+            descriptors: {},
+            symbol_descriptors: {},
+          },
           prototype: Null,
           callable: None,
           class_name: "Object",
-          descriptors: {},
-          symbol_descriptors: {},
           extensible: true,
         })
       }),
     ),
     class_name: "Function",
-    descriptors: { "name": nf_desc, "length": nf_desc },
-    symbol_descriptors: {},
     extensible: true,
   })
 
@@ -627,8 +635,7 @@ fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
       Value::Proxy(proxy_data) =>
         Bool(@runtime.proxy_has_property(interp, proxy_data, prop))
       Object(_) | Array(_) => Bool(interp.has_property(target, prop))
-      _ =>
-        raise @errors.TypeError(message="Reflect.has called on non-object")
+      _ => raise @errors.TypeError(message="Reflect.has called on non-object")
     }
   })
 
@@ -668,13 +675,11 @@ fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
       Value::Proxy(proxy_data) =>
         @runtime.proxy_own_property_keys(interp, proxy_data)
       Object(_) | Value::Array(_) =>
-        Value::Array({
-          elements: @runtime.collect_target_own_keys(target, interp.symbols),
-        })
-      _ =>
-        raise @errors.TypeError(
-          message="Reflect.ownKeys called on non-object",
+        @runtime.make_array(
+          @runtime.collect_target_own_keys(target, interp.symbols),
         )
+      _ =>
+        raise @errors.TypeError(message="Reflect.ownKeys called on non-object")
     }
   })
 
@@ -724,7 +729,7 @@ fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
     // Check for write failures before attempting set
     match target {
       Object(data) => {
-        match data.descriptors.get(prop) {
+        match data.bag.descriptors.get(prop) {
           Some(desc) => {
             // Accessor with getter-only: write fails
             if desc.getter is Some(_) && desc.setter is None {
@@ -739,8 +744,8 @@ fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
         }
         // Non-extensible and property doesn't exist: write fails
         if !data.extensible &&
-          !data.properties.contains(prop) &&
-          !data.descriptors.contains(prop) {
+          !data.bag.properties.contains(prop) &&
+          !data.bag.descriptors.contains(prop) {
           return Value::Bool(false)
         }
       }
@@ -779,8 +784,7 @@ fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
         Value::Proxy(proxy_data) =>
           Bool(@runtime.proxy_set_prototype_of(interp, proxy_data, proto))
         Object(data) => {
-          if !data.extensible &&
-            !@runtime.strict_equal(proto, data.prototype) {
+          if !data.extensible && !@runtime.strict_equal(proto, data.prototype) {
             return Value::Bool(false)
           }
           data.prototype = proto
@@ -828,13 +832,15 @@ fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
     setter: None,
   }
   let reflect_obj : Value = Value::Object({
-    properties: reflect_props,
-    symbol_properties: reflect_sym_props,
+    bag: {
+      properties: reflect_props,
+      symbol_properties: reflect_sym_props,
+      descriptors: reflect_descs,
+      symbol_descriptors: reflect_sym_descs,
+    },
     prototype: Null,
     callable: None,
     class_name: "Object",
-    descriptors: reflect_descs,
-    symbol_descriptors: reflect_sym_descs,
     extensible: true,
   })
   env.def_builtin("Reflect", reflect_obj)

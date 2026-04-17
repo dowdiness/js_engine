@@ -68,24 +68,6 @@ pub(all) struct GeneratorObject {
 }
 
 ///|
-/// Create iterator result { value, done }
-fn make_iterator_result(value : Value, done : Bool) -> Value {
-  let props : Map[String, Value] = {}
-  props["value"] = value
-  props["done"] = Bool(done)
-  Object({
-    properties: props,
-    symbol_properties: {},
-    prototype: Null,
-    callable: None,
-    class_name: "Object",
-    descriptors: {},
-    symbol_descriptors: {},
-    extensible: true,
-  })
-}
-
-///|
 /// Get or create %GeneratorPrototype% for the given interpreter.
 /// We create a new prototype each time to avoid stale symbol IDs
 /// across interpreter instances (each test creates a new interpreter).
@@ -193,13 +175,15 @@ fn init_generator_prototype() -> Value {
     setter: None,
   }
   Object({
-    properties: props,
-    symbol_properties: sym_props,
+    bag: {
+      properties: props,
+      symbol_properties: sym_props,
+      descriptors: descs,
+      symbol_descriptors: sym_descs,
+    },
     prototype: Null,
     callable: None,
     class_name: "Generator",
-    descriptors: descs,
-    symbol_descriptors: sym_descs,
     extensible: true,
   })
 }
@@ -229,13 +213,15 @@ pub fn setup_generator_function_constructor(
     setter: None,
   }
   let gen_func_proto : Value = Object({
-    properties: {},
-    symbol_properties: gf_sym_props,
+    bag: {
+      properties: {},
+      symbol_properties: gf_sym_props,
+      descriptors: {},
+      symbol_descriptors: gf_sym_descs,
+    },
     prototype: func_proto,
     callable: None,
     class_name: "GeneratorFunction",
-    descriptors: {},
-    symbol_descriptors: gf_sym_descs,
     extensible: true,
   })
   // GeneratorFunction constructor: GeneratorFunction(p1, p2, ..., body)
@@ -304,8 +290,8 @@ pub fn setup_generator_function_constructor(
   // Set up prototype chain: GeneratorFunction.prototype.constructor = GeneratorFunction
   match gen_func_proto {
     Object(data) => {
-      data.properties["constructor"] = gen_func_ctor
-      data.descriptors["constructor"] = {
+      data.bag.properties["constructor"] = gen_func_ctor
+      data.bag.descriptors["constructor"] = {
         writable: false,
         enumerable: false,
         configurable: true,
@@ -317,14 +303,14 @@ pub fn setup_generator_function_constructor(
   }
   // Mirror onto globalThis
   match global_this {
-    Object(data) => data.properties["GeneratorFunction"] = gen_func_ctor
+    Object(data) => data.bag.properties["GeneratorFunction"] = gen_func_ctor
     _ => ()
   }
   // Add prototype property to GeneratorFunction constructor
   match gen_func_ctor {
     Object(data) => {
-      data.properties["prototype"] = gen_func_proto
-      data.descriptors["prototype"] = {
+      data.bag.properties["prototype"] = gen_func_proto
+      data.bag.descriptors["prototype"] = {
         writable: false,
         enumerable: false,
         configurable: false,
@@ -366,13 +352,10 @@ fn Interpreter::make_generator_function(
   let gen_proto = get_generator_prototype(interp)
   // Create the generator function's own .prototype (instances inherit from it)
   let func_prototype = Object({
-    properties: {},
-    symbol_properties: {},
+    bag: PropertyBag::new(),
     prototype: gen_proto,
     callable: None,
     class_name: "Generator",
-    descriptors: {},
-    symbol_descriptors: {},
     extensible: true,
   })
   // Generator functions inherit from %GeneratorFunction.prototype%
@@ -397,8 +380,22 @@ fn Interpreter::make_generator_function(
     setter: None,
   }
   Object({
-    properties: fn_props,
-    symbol_properties: {},
+    bag: {
+      properties: fn_props,
+      symbol_properties: {},
+      descriptors: {
+        "name": nf_desc,
+        "length": nf_desc,
+        "prototype": {
+          writable: true,
+          enumerable: false,
+          configurable: false,
+          getter: None,
+          setter: None,
+        },
+      },
+      symbol_descriptors: {},
+    },
     prototype: gen_func_proto,
     callable: Some(
       InterpreterCallable(func_name, fn(ip, this_val, args) raise {
@@ -418,18 +415,6 @@ fn Interpreter::make_generator_function(
       }),
     ),
     class_name: "GeneratorFunction",
-    descriptors: {
-      "name": nf_desc,
-      "length": nf_desc,
-      "prototype": {
-        writable: true,
-        enumerable: false,
-        configurable: false,
-        getter: None,
-        setter: None,
-      },
-    },
-    symbol_descriptors: {},
     extensible: true,
   })
 }
@@ -448,13 +433,10 @@ fn Interpreter::make_generator_function_ext(
   let interp = self
   let gen_proto = get_generator_prototype(interp)
   let func_prototype = Object({
-    properties: {},
-    symbol_properties: {},
+    bag: PropertyBag::new(),
     prototype: gen_proto,
     callable: None,
     class_name: "Generator",
-    descriptors: {},
-    symbol_descriptors: {},
     extensible: true,
   })
   // Generator functions inherit from %GeneratorFunction.prototype%
@@ -487,8 +469,22 @@ fn Interpreter::make_generator_function_ext(
     setter: None,
   }
   Object({
-    properties: fn_props,
-    symbol_properties: {},
+    bag: {
+      properties: fn_props,
+      symbol_properties: {},
+      descriptors: {
+        "name": nf_desc,
+        "length": nf_desc,
+        "prototype": {
+          writable: true,
+          enumerable: false,
+          configurable: false,
+          getter: None,
+          setter: None,
+        },
+      },
+      symbol_descriptors: {},
+    },
     prototype: gen_func_proto,
     callable: Some(
       InterpreterCallable(func_name, fn(ip, this_val, args) raise {
@@ -508,18 +504,6 @@ fn Interpreter::make_generator_function_ext(
       }),
     ),
     class_name: "GeneratorFunction",
-    descriptors: {
-      "name": nf_desc,
-      "length": nf_desc,
-      "prototype": {
-        writable: true,
-        enumerable: false,
-        configurable: false,
-        getter: None,
-        setter: None,
-      },
-    },
-    symbol_descriptors: {},
     extensible: true,
   })
 }
@@ -574,13 +558,7 @@ fn create_generator_instance(
         func_env.def(param.name, val, LetBinding)
         match param.pattern {
           Some(pat) =>
-            interp.bind_pattern(
-              pat,
-              val,
-              func_env,
-              LetBinding,
-              ctx=setup_ctx,
-            )
+            interp.bind_pattern(pat, val, func_env, LetBinding, ctx=setup_ctx)
           None => ()
         }
         effective_count = effective_count + 1
@@ -591,7 +569,7 @@ fn create_generator_instance(
           for i = effective_count; i < args.length(); i = i + 1 {
             rest_elems.push(args[i])
           }
-          let rest_val = Array({ elements: rest_elems })
+          let rest_val = make_array(rest_elems)
           func_env.def(rp, rest_val, LetBinding)
           for p in pext {
             if p.name == rp {
@@ -624,7 +602,7 @@ fn create_generator_instance(
           for i = params.length(); i < args.length(); i = i + 1 {
             rest_elems.push(args[i])
           }
-          func_env.def(rp, Array({ elements: rest_elems }), LetBinding)
+          func_env.def(rp, make_array(rest_elems), LetBinding)
         }
         None => ()
       }
@@ -639,13 +617,15 @@ fn create_generator_instance(
   func_env.def(
     "arguments",
     Object({
-      properties: args_props,
-      symbol_properties: {},
+      bag: {
+        properties: args_props,
+        symbol_properties: {},
+        descriptors: {},
+        symbol_descriptors: {},
+      },
       prototype: Null,
       callable: None,
       class_name: "Arguments",
-      descriptors: {},
-      symbol_descriptors: {},
       extensible: true,
     }),
     VarBinding,
@@ -691,13 +671,15 @@ fn create_generator_instance(
   let props : Map[String, Value] = {}
   props["<gen_id>"] = Number(gen_id.to_double())
   Object({
-    properties: props,
-    symbol_properties: {},
+    bag: {
+      properties: props,
+      symbol_properties: {},
+      descriptors: {},
+      symbol_descriptors: {},
+    },
     prototype: func_prototype,
     callable: None,
     class_name: "Generator",
-    descriptors: {},
-    symbol_descriptors: {},
     extensible: true,
   })
 }
@@ -710,7 +692,7 @@ fn get_generator_object(
 ) -> GeneratorObject? {
   match this_val {
     Object(data) =>
-      match data.properties.get("<gen_id>") {
+      match data.bag.properties.get("<gen_id>") {
         Some(Number(id)) => interp.generator_objects.get(id.to_int())
         _ => None
       }
@@ -736,8 +718,8 @@ fn generator_resume(
     Executing => raise @errors.TypeError(message="Generator is already running")
     Completed =>
       match resume_kind {
-        Next(_) => make_iterator_result(Undefined, true)
-        Return(v) => make_iterator_result(v, true)
+        Next(_) => create_iter_result(Undefined, true)
+        Return(v) => create_iter_result(v, true)
         Throw(e) => raise JsException(e)
       }
     SuspendedStart =>
@@ -755,7 +737,7 @@ fn generator_resume(
         Return(v) => {
           // .return(v) on SuspendedStart: complete generator and return done
           complete_generator(gen)
-          make_iterator_result(v, true)
+          create_iter_result(v, true)
         }
       }
     SuspendedYield =>
@@ -829,13 +811,13 @@ fn run_generator_body(
         YieldSignal(yielded_value) => {
           // Statement yielded. DON'T advance pc — on resume we'll replay this stmt.
           gen.state = SuspendedYield
-          return make_iterator_result(yielded_value, false)
+          return create_iter_result(yielded_value, false)
         }
         GeneratorReturnSignal(v) => {
           // .return(v) was injected at yield point and propagated up
           // (possibly through finally blocks). Complete the generator.
           complete_generator(gen)
-          return make_iterator_result(v, true)
+          return create_iter_result(v, true)
         }
         e => raise e
       }
@@ -845,14 +827,14 @@ fn run_generator_body(
         Normal(_) => ()
         ReturnSignal(v) => {
           complete_generator(gen)
-          return make_iterator_result(v, true)
+          return create_iter_result(v, true)
         }
         BreakSignal(_, _) | ContinueSignal(_, _) => ()
       }
     }
     // Body completed normally — per spec, generators return undefined if no explicit return
     complete_generator(gen)
-    make_iterator_result(Undefined, true)
+    create_iter_result(Undefined, true)
   } catch {
     e => {
       complete_generator(gen)
@@ -877,7 +859,7 @@ fn generator_continue(
     }
     None => {
       complete_generator(gen)
-      make_iterator_result(Undefined, true)
+      create_iter_result(Undefined, true)
     }
   }
 }
@@ -1000,11 +982,11 @@ fn get_iterator_next(iterator : Value) -> Value raise Error {
 fn extract_iter_result(result : Value) -> (Bool, Value) raise Error {
   match result {
     Object(data) => {
-      let done = match data.properties.get("done") {
+      let done = match data.bag.properties.get("done") {
         Some(v) => is_truthy(v)
         None => false
       }
-      let value = match data.properties.get("value") {
+      let value = match data.bag.properties.get("value") {
         Some(v) => v
         None => Undefined
       }
@@ -1041,7 +1023,7 @@ fn delegate_resume(
       } else {
         // Delegate yielded — suspend the outer generator
         gen.state = SuspendedYield
-        make_iterator_result(value, false)
+        create_iter_result(value, false)
       }
     }
     Throw(e) => {
@@ -1062,7 +1044,7 @@ fn delegate_resume(
           } else {
             // Delegate yielded after throw (e.g. from catch block)
             gen.state = SuspendedYield
-            make_iterator_result(value, false)
+            create_iter_result(value, false)
           }
         }
         None => {
@@ -1111,7 +1093,7 @@ fn delegate_resume(
           } else {
             // Delegate yielded from finally — outer stays suspended delegating
             gen.state = SuspendedYield
-            make_iterator_result(value, false)
+            create_iter_result(value, false)
           }
         }
         None => {
@@ -1136,7 +1118,7 @@ fn get_optional_method(obj : Value, name : String) -> Value? raise Error {
   match obj {
     Object(data) =>
       // Check direct properties first
-      match data.properties.get(name) {
+      match data.bag.properties.get(name) {
         Some(v) =>
           match v {
             Undefined | Null => None
@@ -1154,7 +1136,7 @@ fn get_optional_method(obj : Value, name : String) -> Value? raise Error {
           while true {
             match current {
               Object(proto_data) =>
-                match proto_data.properties.get(name) {
+                match proto_data.bag.properties.get(name) {
                   Some(v) =>
                     match v {
                       Undefined | Null => return None

@@ -255,10 +255,10 @@ fn is_blocked_by_unscopables(obj : Value, name : String) -> Bool {
       while true {
         match current {
           Object(obj_data) =>
-            match obj_data.symbol_properties.get(unscopables_sym.id) {
+            match obj_data.bag.symbol_properties.get(unscopables_sym.id) {
               Some(Object(unscopables_data)) =>
                 // Check if the property name is truthy in the unscopables object
-                match unscopables_data.properties.get(name) {
+                match unscopables_data.bag.properties.get(name) {
                   Some(v) => return is_truthy(v)
                   None => return false
                 }
@@ -281,7 +281,7 @@ fn with_object_has(obj : Value, name : String) -> Bool {
   while true {
     match current {
       Object(data) => {
-        if data.properties.contains(name) {
+        if data.bag.properties.contains(name) {
           // Check @@unscopables
           if is_blocked_by_unscopables(obj, name) {
             return false
@@ -289,7 +289,7 @@ fn with_object_has(obj : Value, name : String) -> Bool {
           return true
         }
         // Check descriptors (for accessor-only properties)
-        if data.descriptors.contains(name) {
+        if data.bag.descriptors.contains(name) {
           if is_blocked_by_unscopables(obj, name) {
             return false
           }
@@ -310,7 +310,7 @@ fn with_object_get(obj : Value, name : String) -> Value? {
   while true {
     match current {
       Object(data) => {
-        match data.properties.get(name) {
+        match data.bag.properties.get(name) {
           Some(v) => return Some(v)
           None => ()
         }
@@ -326,7 +326,7 @@ fn with_object_get(obj : Value, name : String) -> Value? {
 /// Set a property on a with-object (always sets on the own object)
 fn with_object_set(obj : Value, name : String, value : Value) -> Unit {
   match obj {
-    Object(data) => data.properties[name] = value
+    Object(data) => data.bag.properties[name] = value
     _ => ()
   }
 }

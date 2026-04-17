@@ -23,8 +23,15 @@ pub fn setup_builtins(
   // Indirect eval (0,eval)("code") is intercepted in call_value where the
   // interpreter is available for perform_eval.
   let eval_func : Value = Value::Object({
-    properties: { "length": Value::Number(1.0), "name": Value::String_("eval") },
-    symbol_properties: {},
+    bag: {
+      properties: {
+        "length": Value::Number(1.0),
+        "name": Value::String_("eval"),
+      },
+      symbol_properties: {},
+      descriptors: { "length": nf_desc, "name": nf_desc },
+      symbol_descriptors: {},
+    },
     prototype: Null,
     callable: Some(
       NonConstructableCallable("eval", fn(args) {
@@ -36,8 +43,6 @@ pub fn setup_builtins(
       }),
     ),
     class_name: "Function",
-    descriptors: { "length": nf_desc, "name": nf_desc },
-    symbol_descriptors: {},
     extensible: true,
   })
   env.def_builtin("eval", eval_func)
@@ -287,148 +292,188 @@ pub fn setup_builtins(
 
   // String constructor with static methods
   let string_proto : Value = Value::Object({
-    properties: {
-      "[[StringData]]": Value::String_(""),
-      "length": Value::Number(0.0),
+    bag: {
+      properties: {
+        "[[StringData]]": Value::String_(""),
+        "length": Value::Number(0.0),
+      },
+      symbol_properties: {},
+      descriptors: {
+        "length": {
+          writable: false,
+          enumerable: false,
+          configurable: false,
+          getter: None,
+          setter: None,
+        },
+      },
+      symbol_descriptors: {},
     },
-    symbol_properties: {},
     prototype: @runtime.get_obj_proto(),
     callable: None,
     class_name: "String",
-    descriptors: {
-      "length": {
-        writable: false,
-        enumerable: false,
-        configurable: false,
-        getter: None,
-        setter: None,
-      },
-    },
-    symbol_descriptors: {},
     extensible: true,
   })
   env.def_builtin(
     "String",
     Value::Object({
-      properties: {
-        "prototype": string_proto,
-        "name": Value::String_("String"),
-        "length": Value::Number(1.0),
-        "fromCharCode": @runtime.make_static_func_with_length(
-          "fromCharCode",
-          1,
-          fn(args) raise {
-            let buf = StringBuilder::new()
-            for arg in args {
-              let code = @runtime.to_number(arg).to_int()
-              // fromCharCode uses UTF-16 code units, modulo 2^16
-              let code_unit = code & 0xFFFF
-              buf.write_char(code_unit.unsafe_to_char())
-            }
-            Value::String_(buf.to_string())
-          },
-        ),
-        "fromCodePoint": @runtime.make_static_func_with_length(
-          "fromCodePoint",
-          1,
-          fn(args) raise {
-            // String.fromCodePoint() - accepts Unicode code points (not code units)
-            let buf = StringBuilder::new()
-            for arg in args {
-              let num = @runtime.to_number(arg)
-              // Check if it's a valid number
-              if num.is_nan() || num.is_inf() {
-                raise @errors.RangeError(message="Invalid code point")
+      bag: {
+        properties: {
+          "prototype": string_proto,
+          "name": Value::String_("String"),
+          "length": Value::Number(1.0),
+          "fromCharCode": @runtime.make_static_func_with_length(
+            "fromCharCode",
+            1,
+            fn(args) raise {
+              let buf = StringBuilder::new()
+              for arg in args {
+                let code = @runtime.to_number(arg).to_int()
+                // fromCharCode uses UTF-16 code units, modulo 2^16
+                let code_unit = code & 0xFFFF
+                buf.write_char(code_unit.unsafe_to_char())
               }
-              // Check if it's an integer (no fractional part)
-              let code = num.to_int()
-              if code.to_double() != num {
-                raise @errors.RangeError(message="Invalid code point")
-              }
-              // Valid Unicode code points: 0 to 0x10FFFF
-              if code < 0 || code > 0x10FFFF {
-                raise @errors.RangeError(
-                  message="Invalid code point \{code.to_string()}",
-                )
-              }
-              // Convert code point to UTF-16
-              if code <= 0xFFFF {
-                // BMP (Basic Multilingual Plane) - single code unit
-                buf.write_char(code.unsafe_to_char())
-              } else {
-                // Supplementary planes - surrogate pair
-                let code_adj = code - 0x10000
-                let high = 0xD800 + (code_adj >> 10)
-                let low = 0xDC00 + (code_adj & 0x3FF)
-                buf.write_char(high.unsafe_to_char())
-                buf.write_char(low.unsafe_to_char())
-              }
-            }
-            Value::String_(buf.to_string())
-          },
-        ),
-        "raw": @runtime.make_static_func_with_length("raw", 1, fn(args) raise {
-          // String.raw(template, ...substitutions)
-          // Returns raw string content without processing escape sequences
-          if args.length() == 0 {
-            return Value::String_("")
-          }
-          let template = args[0]
-          match template {
-            Object(data) =>
-              match data.properties.get("raw") {
-                Some(Array(raw_data)) => {
-                  let buf = StringBuilder::new()
-                  let raw_strings = raw_data.elements
-                  let sub_count = args.length() - 1
-                  for i = 0; i < raw_strings.length(); i = i + 1 {
-                    // Add raw string segment
-                    buf.write_string(raw_strings[i].to_string())
-                    // Add substitution if available
-                    if i < sub_count {
-                      buf.write_string(args[i + 1].to_string())
-                    }
-                  }
-                  Value::String_(buf.to_string())
+              Value::String_(buf.to_string())
+            },
+          ),
+          "fromCodePoint": @runtime.make_static_func_with_length(
+            "fromCodePoint",
+            1,
+            fn(args) raise {
+              // String.fromCodePoint() - accepts Unicode code points (not code units)
+              let buf = StringBuilder::new()
+              for arg in args {
+                let num = @runtime.to_number(arg)
+                // Check if it's a valid number
+                if num.is_nan() || num.is_inf() {
+                  raise @errors.RangeError(message="Invalid code point")
                 }
-                Some(Object(raw_obj)) => {
-                  // Handle object with numeric indices - use length property per spec
-                  let buf = StringBuilder::new()
-                  let sub_count = args.length() - 1
-
-                  // Get length property (treat missing/invalid as 0)
-                  let length = match raw_obj.properties.get("length") {
-                    Some(Value::Number(n)) => n.to_int().max(0)
-                    _ => 0
-                  }
-
-                  // Iterate from 0 to length-1, treating missing indices as Undefined
-                  for i = 0; i < length; i = i + 1 {
-                    let str_val = match raw_obj.properties.get(i.to_string()) {
-                      Some(v) => v
-                      None => Undefined
-                    }
-                    buf.write_string(str_val.to_string())
-                    // Add substitution if available
-                    if i < sub_count {
-                      buf.write_string(args[i + 1].to_string())
-                    }
-                  }
-                  Value::String_(buf.to_string())
+                // Check if it's an integer (no fractional part)
+                let code = num.to_int()
+                if code.to_double() != num {
+                  raise @errors.RangeError(message="Invalid code point")
                 }
-                _ =>
-                  raise @errors.TypeError(
-                    message="Cannot convert to string template",
+                // Valid Unicode code points: 0 to 0x10FFFF
+                if code < 0 || code > 0x10FFFF {
+                  raise @errors.RangeError(
+                    message="Invalid code point \{code.to_string()}",
                   )
+                }
+                // Convert code point to UTF-16
+                if code <= 0xFFFF {
+                  // BMP (Basic Multilingual Plane) - single code unit
+                  buf.write_char(code.unsafe_to_char())
+                } else {
+                  // Supplementary planes - surrogate pair
+                  let code_adj = code - 0x10000
+                  let high = 0xD800 + (code_adj >> 10)
+                  let low = 0xDC00 + (code_adj & 0x3FF)
+                  buf.write_char(high.unsafe_to_char())
+                  buf.write_char(low.unsafe_to_char())
+                }
               }
-            _ =>
-              raise @errors.TypeError(
-                message="Cannot convert to string template",
-              )
-          }
-        }),
+              Value::String_(buf.to_string())
+            },
+          ),
+          "raw": @runtime.make_static_func_with_length("raw", 1, fn(
+            args,
+          ) raise {
+            // String.raw(template, ...substitutions)
+            // Returns raw string content without processing escape sequences
+            if args.length() == 0 {
+              return Value::String_("")
+            }
+            let template = args[0]
+            match template {
+              Object(data) =>
+                match data.bag.properties.get("raw") {
+                  Some(Array(raw_data)) => {
+                    let buf = StringBuilder::new()
+                    let raw_strings = raw_data.elements
+                    let sub_count = args.length() - 1
+                    for i = 0; i < raw_strings.length(); i = i + 1 {
+                      // Add raw string segment
+                      buf.write_string(raw_strings[i].to_string())
+                      // Add substitution if available
+                      if i < sub_count {
+                        buf.write_string(args[i + 1].to_string())
+                      }
+                    }
+                    Value::String_(buf.to_string())
+                  }
+                  Some(Object(raw_obj)) => {
+                    // Handle object with numeric indices - use length property per spec
+                    let buf = StringBuilder::new()
+                    let sub_count = args.length() - 1
+
+                    // Get length property (treat missing/invalid as 0)
+                    let length = match raw_obj.bag.properties.get("length") {
+                      Some(Value::Number(n)) => n.to_int().max(0)
+                      _ => 0
+                    }
+
+                    // Iterate from 0 to length-1, treating missing indices as Undefined
+                    for i = 0; i < length; i = i + 1 {
+                      let str_val = match
+                        raw_obj.bag.properties.get(i.to_string()) {
+                        Some(v) => v
+                        None => Undefined
+                      }
+                      buf.write_string(str_val.to_string())
+                      // Add substitution if available
+                      if i < sub_count {
+                        buf.write_string(args[i + 1].to_string())
+                      }
+                    }
+                    Value::String_(buf.to_string())
+                  }
+                  _ =>
+                    raise @errors.TypeError(
+                      message="Cannot convert to string template",
+                    )
+                }
+              _ =>
+                raise @errors.TypeError(
+                  message="Cannot convert to string template",
+                )
+            }
+          }),
+        },
+        symbol_properties: {},
+        descriptors: {
+          "name": nf_desc,
+          "length": nf_desc,
+          "prototype": {
+            writable: false,
+            enumerable: false,
+            configurable: false,
+            getter: None,
+            setter: None,
+          },
+          "fromCharCode": {
+            writable: true,
+            enumerable: false,
+            configurable: true,
+            getter: None,
+            setter: None,
+          },
+          "fromCodePoint": {
+            writable: true,
+            enumerable: false,
+            configurable: true,
+            getter: None,
+            setter: None,
+          },
+          "raw": {
+            writable: true,
+            enumerable: false,
+            configurable: true,
+            getter: None,
+            setter: None,
+          },
+        },
+        symbol_descriptors: {},
       },
-      symbol_properties: {},
       prototype: Null,
       callable: Some(
         NativeCallable("String", fn(args) raise {
@@ -476,13 +521,15 @@ pub fn setup_builtins(
               }
             }
             Value::Object({
-              properties: props,
-              symbol_properties: {},
+              bag: {
+                properties: props,
+                symbol_properties: {},
+                descriptors: descs,
+                symbol_descriptors: {},
+              },
               prototype: string_proto,
               callable: None,
               class_name: "String",
-              descriptors: descs,
-              symbol_descriptors: {},
               extensible: true,
             })
           } else {
@@ -491,39 +538,6 @@ pub fn setup_builtins(
         }),
       ),
       class_name: "Function",
-      descriptors: {
-        "name": nf_desc,
-        "length": nf_desc,
-        "prototype": {
-          writable: false,
-          enumerable: false,
-          configurable: false,
-          getter: None,
-          setter: None,
-        },
-        "fromCharCode": {
-          writable: true,
-          enumerable: false,
-          configurable: true,
-          getter: None,
-          setter: None,
-        },
-        "fromCodePoint": {
-          writable: true,
-          enumerable: false,
-          configurable: true,
-          getter: None,
-          setter: None,
-        },
-        "raw": {
-          writable: true,
-          enumerable: false,
-          configurable: true,
-          getter: None,
-          setter: None,
-        },
-      },
-      symbol_descriptors: {},
       extensible: true,
     }),
   )
@@ -537,8 +551,8 @@ pub fn setup_builtins(
   match string_proto {
     Object(data) => {
       let ctor = env.get("String") catch { _ => Undefined }
-      data.properties["constructor"] = ctor
-      data.descriptors["constructor"] = {
+      data.bag.properties["constructor"] = ctor
+      data.bag.descriptors["constructor"] = {
         writable: true,
         enumerable: false,
         configurable: true,
@@ -562,7 +576,7 @@ pub fn setup_builtins(
       Value::Bool(b) => Value::String_(b.to_string())
       Object(data) =>
         if data.class_name == "Boolean" {
-          match data.properties.get("[[BooleanData]]") {
+          match data.bag.properties.get("[[BooleanData]]") {
             Some(Value::Bool(b)) => Value::String_(b.to_string())
             _ =>
               raise @errors.TypeError(
@@ -588,7 +602,7 @@ pub fn setup_builtins(
       Value::Bool(b) => Value::Bool(b)
       Object(data) =>
         if data.class_name == "Boolean" {
-          match data.properties.get("[[BooleanData]]") {
+          match data.bag.properties.get("[[BooleanData]]") {
             Some(Value::Bool(b)) => Value::Bool(b)
             _ =>
               raise @errors.TypeError(
@@ -619,13 +633,15 @@ pub fn setup_builtins(
   boolean_proto_descs["toString"] = method_desc
   boolean_proto_descs["valueOf"] = method_desc
   let boolean_proto : Value = Value::Object({
-    properties: boolean_proto_props,
-    symbol_properties: {},
+    bag: {
+      properties: boolean_proto_props,
+      symbol_properties: {},
+      descriptors: boolean_proto_descs,
+      symbol_descriptors: {},
+    },
     prototype: @runtime.get_obj_proto(),
     callable: None,
     class_name: "Boolean",
-    descriptors: boolean_proto_descs,
-    symbol_descriptors: {},
     extensible: true,
   })
   // Store Boolean.prototype for ToObject wrapping
@@ -634,12 +650,26 @@ pub fn setup_builtins(
   env.def_builtin(
     "Boolean",
     Value::Object({
-      properties: {
-        "prototype": boolean_proto,
-        "name": Value::String_("Boolean"),
-        "length": Value::Number(1.0),
+      bag: {
+        properties: {
+          "prototype": boolean_proto,
+          "name": Value::String_("Boolean"),
+          "length": Value::Number(1.0),
+        },
+        symbol_properties: {},
+        descriptors: {
+          "name": nf_desc,
+          "length": nf_desc,
+          "prototype": {
+            writable: false,
+            enumerable: false,
+            configurable: false,
+            getter: None,
+            setter: None,
+          },
+        },
+        symbol_descriptors: {},
       },
-      symbol_properties: {},
       prototype: Null,
       callable: Some(
         NativeCallable("Boolean", fn(args) {
@@ -648,13 +678,15 @@ pub fn setup_builtins(
           if @runtime.is_constructing.val {
             // new Boolean(value) → boxed Boolean object
             Value::Object({
-              properties: { "[[BooleanData]]": Value::Bool(b) },
-              symbol_properties: {},
+              bag: {
+                properties: { "[[BooleanData]]": Value::Bool(b) },
+                symbol_properties: {},
+                descriptors: {},
+                symbol_descriptors: {},
+              },
               prototype: boolean_proto,
               callable: None,
               class_name: "Boolean",
-              descriptors: {},
-              symbol_descriptors: {},
               extensible: true,
             })
           } else {
@@ -663,18 +695,6 @@ pub fn setup_builtins(
         }),
       ),
       class_name: "Function",
-      descriptors: {
-        "name": nf_desc,
-        "length": nf_desc,
-        "prototype": {
-          writable: false,
-          enumerable: false,
-          configurable: false,
-          getter: None,
-          setter: None,
-        },
-      },
-      symbol_descriptors: {},
       extensible: true,
     }),
   )
@@ -683,8 +703,8 @@ pub fn setup_builtins(
   match boolean_proto {
     Object(data) => {
       let ctor = env.get("Boolean") catch { _ => Undefined }
-      data.properties["constructor"] = ctor
-      data.descriptors["constructor"] = {
+      data.bag.properties["constructor"] = ctor
+      data.bag.descriptors["constructor"] = {
         writable: true,
         enumerable: false,
         configurable: true,
@@ -712,7 +732,7 @@ pub fn setup_builtins(
   let error_ctor = env.get("Error") catch { _ => Undefined }
   match error_ctor {
     Object(error_data) => {
-      error_data.properties["isError"] = @runtime.make_static_func_with_length(
+      error_data.bag.properties["isError"] = @runtime.make_static_func_with_length(
         "isError",
         1,
         fn(args) {
@@ -734,7 +754,7 @@ pub fn setup_builtins(
           }
         },
       )
-      error_data.descriptors["isError"] = {
+      error_data.bag.descriptors["isError"] = {
         writable: true,
         enumerable: false,
         configurable: true,
@@ -872,11 +892,15 @@ pub fn setup_builtins(
   env.def_builtin(
     "RegExp",
     Value::Object({
-      properties: {
-        "name": Value::String_("RegExp"),
-        "length": Value::Number(2.0),
+      bag: {
+        properties: {
+          "name": Value::String_("RegExp"),
+          "length": Value::Number(2.0),
+        },
+        symbol_properties: {},
+        descriptors: { "name": nf_desc, "length": nf_desc },
+        symbol_descriptors: {},
       },
-      symbol_properties: {},
       prototype: Null,
       callable: Some(
         NativeCallable("RegExp", fn(args) raise {
@@ -884,7 +908,7 @@ pub fn setup_builtins(
             match args[0] {
               Object(data) =>
                 if data.class_name == "RegExp" {
-                  match data.properties.get("source") {
+                  match data.bag.properties.get("source") {
                     Some(Value::String_(s)) => s
                     _ => args[0].to_string()
                   }
@@ -909,8 +933,6 @@ pub fn setup_builtins(
         }),
       ),
       class_name: "Function",
-      descriptors: { "name": nf_desc, "length": nf_desc },
-      symbol_descriptors: {},
       extensible: true,
     }),
   )
@@ -947,7 +969,7 @@ pub fn setup_builtins(
             let has_global = fl.contains("g")
             let has_sticky = fl.contains("y")
             let start = if has_sticky || has_global {
-              match data.properties.get("lastIndex") {
+              match data.bag.properties.get("lastIndex") {
                 Some(li) => @runtime.to_int32(@runtime.to_number(li))
                 _ => 0
               }
@@ -960,7 +982,7 @@ pub fn setup_builtins(
             match result {
               Some(m) => {
                 if has_sticky || has_global {
-                  data.properties["lastIndex"] = Value::Number(
+                  data.bag.properties["lastIndex"] = Value::Number(
                     m.end_.to_double(),
                   )
                 }
@@ -968,7 +990,7 @@ pub fn setup_builtins(
               }
               None => {
                 if has_sticky || has_global {
-                  data.properties["lastIndex"] = Value::Number(0.0)
+                  data.bag.properties["lastIndex"] = Value::Number(0.0)
                 }
                 Value::Bool(false)
               }
@@ -1000,7 +1022,7 @@ pub fn setup_builtins(
             let has_global = fl.contains("g")
             let has_sticky = fl.contains("y")
             let start = if has_sticky || has_global {
-              match data.properties.get("lastIndex") {
+              match data.bag.properties.get("lastIndex") {
                 Some(li) => @runtime.to_int32(@runtime.to_number(li))
                 _ => 0
               }
@@ -1013,7 +1035,7 @@ pub fn setup_builtins(
             match result {
               Some(m) => {
                 if has_sticky || has_global {
-                  data.properties["lastIndex"] = Value::Number(
+                  data.bag.properties["lastIndex"] = Value::Number(
                     m.end_.to_double(),
                   )
                 }
@@ -1021,7 +1043,7 @@ pub fn setup_builtins(
               }
               None => {
                 if has_sticky || has_global {
-                  data.properties["lastIndex"] = Value::Number(0.0)
+                  data.bag.properties["lastIndex"] = Value::Number(0.0)
                 }
                 Null
               }
@@ -1060,11 +1082,11 @@ pub fn setup_builtins(
                       message="Cannot supply flags when constructing one RegExp from another",
                     )
                   }
-                  let s = match re_data.properties.get("source") {
+                  let s = match re_data.bag.properties.get("source") {
                     Some(Value::String_(s)) => s
                     _ => ""
                   }
-                  let f = match re_data.properties.get("flags") {
+                  let f = match re_data.bag.properties.get("flags") {
                     Some(Value::String_(f)) => f
                     _ => ""
                   }
@@ -1097,16 +1119,16 @@ pub fn setup_builtins(
               }
             }
             // Update the RegExp object in place
-            data.properties["source"] = Value::String_(source)
-            data.properties["flags"] = Value::String_(flags)
-            data.properties["lastIndex"] = Value::Number(0.0)
+            data.bag.properties["source"] = Value::String_(source)
+            data.bag.properties["flags"] = Value::String_(flags)
+            data.bag.properties["lastIndex"] = Value::Number(0.0)
             // Update flag booleans
-            data.properties["global"] = Bool(flags.contains("g"))
-            data.properties["ignoreCase"] = Bool(flags.contains("i"))
-            data.properties["multiline"] = Bool(flags.contains("m"))
-            data.properties["dotAll"] = Bool(flags.contains("s"))
-            data.properties["unicode"] = Bool(flags.contains("u"))
-            data.properties["sticky"] = Bool(flags.contains("y"))
+            data.bag.properties["global"] = Bool(flags.contains("g"))
+            data.bag.properties["ignoreCase"] = Bool(flags.contains("i"))
+            data.bag.properties["multiline"] = Bool(flags.contains("m"))
+            data.bag.properties["dotAll"] = Bool(flags.contains("s"))
+            data.bag.properties["unicode"] = Bool(flags.contains("u"))
+            data.bag.properties["sticky"] = Bool(flags.contains("y"))
             this_val
           }
           _ =>
@@ -1121,11 +1143,11 @@ pub fn setup_builtins(
         fn(this_val, _args) {
           match this_val {
             Object(data) => {
-              let source = match data.properties.get("source") {
+              let source = match data.bag.properties.get("source") {
                 Some(Value::String_(s)) => s
                 _ => ""
               }
-              let flags = match data.properties.get("flags") {
+              let flags = match data.bag.properties.get("flags") {
                 Some(Value::String_(f)) => f
                 _ => ""
               }
@@ -1156,7 +1178,7 @@ pub fn setup_builtins(
                     " called on incompatible receiver",
                 )
               }
-              let flags_str = match data.properties.get("flags") {
+              let flags_str = match data.bag.properties.get("flags") {
                 Some(Value::String_(f)) => f
                 _ => ""
               }
@@ -1204,7 +1226,7 @@ pub fn setup_builtins(
         match this_val {
           Object(data) =>
             // For actual RegExp instances, read the stored flags
-            match data.properties.get("flags") {
+            match data.bag.properties.get("flags") {
               Some(Value::String_(f)) => Value::String_(f)
               _ => {
                 // Per spec, compute from individual flag getters
@@ -1217,7 +1239,7 @@ pub fn setup_builtins(
                     _ => false
                   }
                 }
-                let p = data.properties
+                let p = data.bag.properties
                 let mut result = ""
                 if is_flag_set(p, "hasIndices") {
                   result = result + "d"
@@ -1275,7 +1297,7 @@ pub fn setup_builtins(
                 message="Method get RegExp.prototype.source called on incompatible receiver",
               )
             }
-            match data.properties.get("source") {
+            match data.bag.properties.get("source") {
               Some(Value::String_(s)) => Value::String_(s)
               _ => Value::String_("(?:)")
             }
@@ -1347,7 +1369,7 @@ pub fn setup_builtins(
             // Brand check: verify this is a RegExp String Iterator
             let has_brand = match this_val {
               Object(data) =>
-                data.properties.contains("[[RegExpStringIterator]]")
+                data.bag.properties.contains("[[RegExpStringIterator]]")
               _ => false
             }
             if !has_brand {
@@ -1375,13 +1397,15 @@ pub fn setup_builtins(
           // Brand marker for internal slot check
           iter_props["[[RegExpStringIterator]]"] = Value::Bool(true)
           Value::Object({
-            properties: iter_props,
-            symbol_properties: {},
+            bag: {
+              properties: iter_props,
+              symbol_properties: {},
+              descriptors: {},
+              symbol_descriptors: {},
+            },
             prototype: get_regexp_string_iterator_proto(),
             callable: None,
             class_name: "RegExp String Iterator",
-            descriptors: {},
-            symbol_descriptors: {},
             extensible: true,
           })
         },
@@ -1440,7 +1464,7 @@ pub fn setup_builtins(
             4294967295L
           }
           if limit == 0L {
-            return Value::Array({ elements: [] })
+            return @runtime.make_array([])
           }
           let (pat, fl) = extract_regexp_source_flags(this_val)
           let input_chars = str.to_array()
@@ -1448,8 +1472,8 @@ pub fn setup_builtins(
           if slen == 0 {
             let m = regex_search(pat, fl, str) catch { _ => None }
             return match m {
-              Some(_) => Value::Array({ elements: [] })
-              None => Value::Array({ elements: [Value::String_(str)] })
+              Some(_) => @runtime.make_array([])
+              None => @runtime.make_array([Value::String_(str)])
             }
           }
           let results : Array[Value] = []
@@ -1472,7 +1496,7 @@ pub fn setup_builtins(
                 }
                 results.push(Value::String_(buf.to_string()))
                 if results.length().to_int64() >= limit {
-                  return Value::Array({ elements: results })
+                  return @runtime.make_array(results)
                 }
                 for cap in match_data.captures {
                   match cap {
@@ -1480,7 +1504,7 @@ pub fn setup_builtins(
                     None => results.push(Undefined)
                   }
                   if results.length().to_int64() >= limit {
-                    return Value::Array({ elements: results })
+                    return @runtime.make_array(results)
                   }
                 }
                 last_end = match_data.end_
@@ -1497,18 +1521,20 @@ pub fn setup_builtins(
             buf.write_char(input_chars[i])
           }
           results.push(Value::String_(buf.to_string()))
-          Value::Array({ elements: results })
+          @runtime.make_array(results)
         },
       )
       regexp_sym_descs[split_sym.id] = sym_method_desc
       let regexp_proto : Value = Value::Object({
-        properties: regexp_proto_props,
-        symbol_properties: regexp_sym_props,
+        bag: {
+          properties: regexp_proto_props,
+          symbol_properties: regexp_sym_props,
+          descriptors: regexp_proto_descs,
+          symbol_descriptors: regexp_sym_descs,
+        },
         prototype: obj_proto,
         callable: None,
         class_name: "Object",
-        descriptors: regexp_proto_descs,
-        symbol_descriptors: regexp_sym_descs,
         extensible: true,
       })
       regexp_prototype_ref.val = Some(regexp_proto)
@@ -1517,7 +1543,7 @@ pub fn setup_builtins(
         Some(b) =>
           match b.value {
             Object(ctor_data) =>
-              ctor_data.properties["prototype"] = regexp_proto
+              ctor_data.bag.properties["prototype"] = regexp_proto
             _ => ()
           }
         None => ()
@@ -1595,7 +1621,7 @@ pub fn setup_builtins(
             match cb.value {
               Object(ctor_data) =>
                 // Get prototype from constructor's "prototype" property
-                match ctor_data.properties.get("prototype") {
+                match ctor_data.bag.properties.get("prototype") {
                   Some(Object(proto_data)) =>
                     if proto_data.prototype is Null {
                       proto_data.prototype = obj_proto
@@ -1632,8 +1658,8 @@ pub fn setup_builtins(
     match ctor_val {
       Object(ctor_data) => {
         let sp_sym = @runtime.get_species_symbol()
-        ctor_data.symbol_properties[sp_sym.id] = Undefined
-        ctor_data.symbol_descriptors[sp_sym.id] = species_desc
+        ctor_data.bag.symbol_properties[sp_sym.id] = Undefined
+        ctor_data.bag.symbol_descriptors[sp_sym.id] = species_desc
       }
       _ => ()
     }
@@ -1663,8 +1689,8 @@ pub fn setup_builtins(
     Some(binding) =>
       match binding.value {
         Object(fp_data) => {
-          fp_data.symbol_properties[has_instance_sym.id] = has_instance_fn
-          fp_data.symbol_descriptors[has_instance_sym.id] = {
+          fp_data.bag.symbol_properties[has_instance_sym.id] = has_instance_fn
+          fp_data.bag.symbol_descriptors[has_instance_sym.id] = {
             writable: false,
             enumerable: false,
             configurable: false,
@@ -2068,13 +2094,15 @@ fn make_realm_dollar262(ri : Interpreter) -> Value raise Error {
     },
   )
   Value::Object({
-    properties: realm_props,
-    symbol_properties: {},
+    bag: {
+      properties: realm_props,
+      symbol_properties: {},
+      descriptors: {},
+      symbol_descriptors: {},
+    },
     prototype: Null,
     callable: None,
     class_name: "Object",
-    descriptors: {},
-    symbol_descriptors: {},
     extensible: true,
   })
 }
@@ -2122,13 +2150,15 @@ pub fn setup_harness_builtins(
     raise @errors.TypeError(message="$262.agent.monotonicNow is not supported")
   })
   let agent : Value = Value::Object({
-    properties: agent_props,
-    symbol_properties: {},
+    bag: {
+      properties: agent_props,
+      symbol_properties: {},
+      descriptors: {},
+      symbol_descriptors: {},
+    },
     prototype: Null,
     callable: None,
     class_name: "Object",
-    descriptors: {},
-    symbol_descriptors: {},
     extensible: true,
   })
 
@@ -2192,13 +2222,15 @@ pub fn setup_harness_builtins(
     },
   )
   let dollar262 : Value = Value::Object({
-    properties: dollar262_props,
-    symbol_properties: {},
+    bag: {
+      properties: dollar262_props,
+      symbol_properties: {},
+      descriptors: {},
+      symbol_descriptors: {},
+    },
     prototype: Null,
     callable: None,
     class_name: "Object",
-    descriptors: {},
-    symbol_descriptors: {},
     extensible: true,
   })
   env.def_builtin("$262", dollar262)
@@ -2207,8 +2239,8 @@ pub fn setup_harness_builtins(
   // this.$262, globalThis.print etc. also work (not just bare name resolution).
   match global_this {
     Object(data) => {
-      data.properties["$262"] = dollar262
-      data.properties["print"] = print_func
+      data.bag.properties["$262"] = dollar262
+      data.bag.properties["print"] = print_func
     }
     _ => ()
   }

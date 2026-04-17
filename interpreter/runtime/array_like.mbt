@@ -32,11 +32,11 @@ pub fn to_array_like_length(val : Value) -> Int raise {
     Array(data) => data.elements.length()
     Object(data) => {
       // Check for getter-based length first, then fall back to properties
-      let length_val : Value? = match data.properties.get("length") {
+      let length_val : Value? = match data.bag.properties.get("length") {
         Some(v) => Some(v)
         None =>
           // Check if length is defined as an accessor (getter)
-          match data.descriptors.get("length") {
+          match data.bag.descriptors.get("length") {
             Some(desc) =>
               match desc.getter {
                 Some(Object(getter_data)) =>
@@ -130,7 +130,7 @@ pub fn get_array_like_element(val : Value, index : Int) -> Value {
       }
     Object(data) => {
       // Check for accessor descriptor (getter) on own property first
-      let getter_result : Value? = match data.descriptors.get(key) {
+      let getter_result : Value? = match data.bag.descriptors.get(key) {
         Some(desc) =>
           match desc.getter {
             Some(Object(getter_data)) =>
@@ -154,7 +154,7 @@ pub fn get_array_like_element(val : Value, index : Int) -> Value {
         Some(v) => v
         None =>
           // Walk prototype chain for property lookup
-          match data.properties.get(key) {
+          match data.bag.properties.get(key) {
             Some(v) => v
             None => {
               let mut current = data.prototype
@@ -162,7 +162,7 @@ pub fn get_array_like_element(val : Value, index : Int) -> Value {
               while true {
                 match current {
                   Object(proto_data) =>
-                    match proto_data.properties.get(key) {
+                    match proto_data.bag.properties.get(key) {
                       Some(v) => {
                         result = v
                         break
@@ -216,11 +216,11 @@ pub fn has_array_like_element(val : Value, index : Int) -> Bool {
   match val {
     Array(data) => index >= 0 && index < data.elements.length()
     Object(data) => {
-      if data.properties.contains(key) {
+      if data.bag.properties.contains(key) {
         return true
       }
       // Check for accessor descriptor
-      match data.descriptors.get(key) {
+      match data.bag.descriptors.get(key) {
         Some(desc) if desc.getter is Some(_) => return true
         _ => ()
       }
@@ -229,10 +229,10 @@ pub fn has_array_like_element(val : Value, index : Int) -> Bool {
       while true {
         match current {
           Object(proto_data) => {
-            if proto_data.properties.contains(key) {
+            if proto_data.bag.properties.contains(key) {
               return true
             }
-            match proto_data.descriptors.get(key) {
+            match proto_data.bag.descriptors.get(key) {
               Some(desc) if desc.getter is Some(_) => return true
               _ => ()
             }
@@ -259,7 +259,7 @@ pub fn set_array_like_element(val : Value, index : Int, value : Value) -> Unit {
       if index >= 0 && index < data.elements.length() {
         data.elements[index] = value
       }
-    Object(data) => data.properties[key] = value
+    Object(data) => data.bag.properties[key] = value
     _ => ()
   }
 }
@@ -272,7 +272,7 @@ pub fn set_array_like_length(val : Value, len : Int) -> Unit {
       while data.elements.length() < len {
         data.elements.push(Undefined)
       }
-    Object(data) => data.properties["length"] = Number(len.to_double())
+    Object(data) => data.bag.properties["length"] = Number(len.to_double())
     _ => ()
   }
 }
@@ -282,7 +282,7 @@ pub fn set_array_like_length(val : Value, len : Int) -> Unit {
 pub fn delete_array_like_element(val : Value, index : Int) -> Unit {
   let key = index.to_string()
   match val {
-    Object(data) => data.properties.remove(key) |> ignore
+    Object(data) => data.bag.properties.remove(key) |> ignore
     _ => ()
   }
 }
@@ -339,7 +339,7 @@ pub fn array_species_create(
     _ => false
   }
   if !is_array {
-    return Array({ elements: [] })
+    return make_array([])
   }
   let loc = @token.Loc::default()
   // Step 2: Get C = Get(originalArray, "constructor")
@@ -360,7 +360,7 @@ pub fn array_species_create(
   }
   // Step 5: If C is undefined, return plain array
   if species is Undefined {
-    return Array({ elements: [] })
+    return make_array([])
   }
   // Step 6: If IsConstructor(C) is false, throw TypeError
   if !is_constructor_value(species) {

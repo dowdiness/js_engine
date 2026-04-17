@@ -23,7 +23,7 @@ fn make_error_value_with_env(
       let ctor : Value = e.get(name) catch { _ => Null }
       match ctor {
         Object(ctor_data) =>
-          match ctor_data.properties.get("prototype") {
+          match ctor_data.bag.properties.get("prototype") {
             Some(p) => p
             None => Null
           }
@@ -33,13 +33,15 @@ fn make_error_value_with_env(
     None => Null
   }
   Object({
-    properties: err_props,
-    symbol_properties: {},
+    bag: {
+      properties: err_props,
+      symbol_properties: {},
+      descriptors: {},
+      symbol_descriptors: {},
+    },
     prototype: proto,
     callable: None,
     class_name: name,
-    descriptors: {},
-    symbol_descriptors: {},
     extensible: true,
   })
 }
@@ -59,14 +61,14 @@ fn make_aggregate_error_value(
   let js_errors : Array[Value] = errors.map(fn(e) {
     js_error_to_value_with_env(e, env)
   })
-  err_props["errors"] = Array({ elements: js_errors })
+  err_props["errors"] = make_array(js_errors)
   // Try to look up the proper prototype from the environment
   let proto : Value = match env {
     Some(e) => {
       let ctor : Value = e.get("AggregateError") catch { _ => Null }
       match ctor {
         Object(ctor_data) =>
-          match ctor_data.properties.get("prototype") {
+          match ctor_data.bag.properties.get("prototype") {
             Some(p) => p
             None => Null
           }
@@ -76,13 +78,15 @@ fn make_aggregate_error_value(
     None => Null
   }
   Object({
-    properties: err_props,
-    symbol_properties: {},
+    bag: {
+      properties: err_props,
+      symbol_properties: {},
+      descriptors: {},
+      symbol_descriptors: {},
+    },
     prototype: proto,
     callable: None,
     class_name: "AggregateError",
-    descriptors: {},
-    symbol_descriptors: {},
     extensible: true,
   })
 }

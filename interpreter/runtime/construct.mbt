@@ -54,12 +54,12 @@ fn Interpreter::install_instance_fields(
         // existing properties must throw TypeError per spec).
         match field.key {
           Symbol(sym) => {
-            if !data.symbol_properties.contains(sym.id) && !data.extensible {
+            if !data.bag.symbol_properties.contains(sym.id) && !data.extensible {
               raise @errors.TypeError(
                 message="Cannot define class field on non-extensible object",
               )
             }
-            match data.symbol_descriptors.get(sym.id) {
+            match data.bag.symbol_descriptors.get(sym.id) {
               Some(d) =>
                 if !d.configurable {
                   raise @errors.TypeError(
@@ -68,16 +68,16 @@ fn Interpreter::install_instance_fields(
                 }
               None => ()
             }
-            data.symbol_properties[sym.id] = field_value
-            data.symbol_descriptors[sym.id] = field_desc
+            data.bag.symbol_properties[sym.id] = field_value
+            data.bag.symbol_descriptors[sym.id] = field_desc
           }
           String_(key_str) => {
-            if !data.properties.contains(key_str) && !data.extensible {
+            if !data.bag.properties.contains(key_str) && !data.extensible {
               raise @errors.TypeError(
                 message="Cannot define class field on non-extensible object",
               )
             }
-            match data.descriptors.get(key_str) {
+            match data.bag.descriptors.get(key_str) {
               Some(d) =>
                 if !d.configurable {
                   raise @errors.TypeError(
@@ -86,17 +86,17 @@ fn Interpreter::install_instance_fields(
                 }
               None => ()
             }
-            data.properties[key_str] = field_value
-            data.descriptors[key_str] = field_desc
+            data.bag.properties[key_str] = field_value
+            data.bag.descriptors[key_str] = field_desc
           }
           _ => {
             let key_str = to_js_string(field.key)
-            if !data.properties.contains(key_str) && !data.extensible {
+            if !data.bag.properties.contains(key_str) && !data.extensible {
               raise @errors.TypeError(
                 message="Cannot define class field on non-extensible object",
               )
             }
-            match data.descriptors.get(key_str) {
+            match data.bag.descriptors.get(key_str) {
               Some(d) =>
                 if !d.configurable {
                   raise @errors.TypeError(
@@ -105,8 +105,8 @@ fn Interpreter::install_instance_fields(
                 }
               None => ()
             }
-            data.properties[key_str] = field_value
-            data.descriptors[key_str] = field_desc
+            data.bag.properties[key_str] = field_value
+            data.bag.descriptors[key_str] = field_desc
           }
         }
       Proxy(proxy_data) => {
@@ -119,18 +119,20 @@ fn Interpreter::install_instance_fields(
         match trap {
           Some(trap_fn) => {
             let desc_obj = Object({
-              properties: {
-                "value": field_value,
-                "writable": Bool(true),
-                "enumerable": Bool(true),
-                "configurable": Bool(true),
+              bag: {
+                properties: {
+                  "value": field_value,
+                  "writable": Bool(true),
+                  "enumerable": Bool(true),
+                  "configurable": Bool(true),
+                },
+                symbol_properties: {},
+                descriptors: {},
+                symbol_descriptors: {},
               },
-              symbol_properties: {},
               prototype: Null,
               callable: None,
               class_name: "Object",
-              descriptors: {},
-              symbol_descriptors: {},
               extensible: true,
             })
             let trap_result = self.call_value(
@@ -162,34 +164,34 @@ fn Interpreter::install_instance_fields(
         // CreateDataPropertyOrThrow on Map expando properties
         match field.key {
           Symbol(sym) => {
-            data.symbol_properties[sym.id] = field_value
-            data.symbol_descriptors[sym.id] = field_desc
+            data.bag.symbol_properties[sym.id] = field_value
+            data.bag.symbol_descriptors[sym.id] = field_desc
           }
           String_(key_str) => {
-            data.properties[key_str] = field_value
-            data.descriptors[key_str] = field_desc
+            data.bag.properties[key_str] = field_value
+            data.bag.descriptors[key_str] = field_desc
           }
           _ => {
             let key_str = to_js_string(field.key)
-            data.properties[key_str] = field_value
-            data.descriptors[key_str] = field_desc
+            data.bag.properties[key_str] = field_value
+            data.bag.descriptors[key_str] = field_desc
           }
         }
       Set(data) =>
         // CreateDataPropertyOrThrow on Set expando properties
         match field.key {
           Symbol(sym) => {
-            data.symbol_properties[sym.id] = field_value
-            data.symbol_descriptors[sym.id] = field_desc
+            data.bag.symbol_properties[sym.id] = field_value
+            data.bag.symbol_descriptors[sym.id] = field_desc
           }
           String_(key_str) => {
-            data.properties[key_str] = field_value
-            data.descriptors[key_str] = field_desc
+            data.bag.properties[key_str] = field_value
+            data.bag.descriptors[key_str] = field_desc
           }
           _ => {
             let key_str = to_js_string(field.key)
-            data.properties[key_str] = field_value
-            data.descriptors[key_str] = field_desc
+            data.bag.properties[key_str] = field_value
+            data.bag.descriptors[key_str] = field_desc
           }
         }
       _ => {
@@ -213,8 +215,7 @@ fn Interpreter::install_instance_fields(
 /// call site can apply the fields to the actual `this` after super() returns.
 fn make_instance_fields_init(fields : Array[ClassFieldInit]) -> Value {
   Object({
-    properties: {},
-    symbol_properties: {},
+    bag: PropertyBag::new(),
     prototype: Null,
     callable: Some(
       InterpreterCallable("[[InitInstanceFields]]", fn(
@@ -227,8 +228,6 @@ fn make_instance_fields_init(fields : Array[ClassFieldInit]) -> Value {
       }),
     ),
     class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
     extensible: true,
   })
 }
@@ -236,13 +235,10 @@ fn make_instance_fields_init(fields : Array[ClassFieldInit]) -> Value {
 ///|
 fn make_constructor_instance(proto : Value, class_name : String) -> Value {
   Object({
-    properties: {},
-    symbol_properties: {},
+    bag: PropertyBag::new(),
     prototype: proto,
     callable: None,
     class_name,
-    descriptors: {},
-    symbol_descriptors: {},
     extensible: true,
   })
 }
@@ -310,16 +306,14 @@ fn make_arguments_object(
   let args_copy = args
   let new_args_sym_props : Map[Int, Value] = {}
   new_args_sym_props[iter_sym.id] = Object({
-    properties: {},
-    symbol_properties: {},
+    bag: PropertyBag::new(),
     prototype: Null,
     callable: Some(
       MethodCallable("values", fn(_this_val, _args2) {
         let index_ref : Ref[Int] = { val: 0 }
         let len = args_copy.length()
         let next_fn = Object({
-          properties: {},
-          symbol_properties: {},
+          bag: PropertyBag::new(),
           prototype: Null,
           callable: Some(
             NativeCallable("next", fn(_a) {
@@ -328,59 +322,63 @@ fn make_arguments_object(
                 let value = args_copy[idx]
                 index_ref.val = idx + 1
                 Object({
-                  properties: { "value": value, "done": Bool(false) },
-                  symbol_properties: {},
+                  bag: {
+                    properties: { "value": value, "done": Bool(false) },
+                    symbol_properties: {},
+                    descriptors: {},
+                    symbol_descriptors: {},
+                  },
                   prototype: Null,
                   callable: None,
                   class_name: "Object",
-                  descriptors: {},
-                  symbol_descriptors: {},
                   extensible: true,
                 })
               } else {
                 Object({
-                  properties: { "value": Undefined, "done": Bool(true) },
-                  symbol_properties: {},
+                  bag: {
+                    properties: { "value": Undefined, "done": Bool(true) },
+                    symbol_properties: {},
+                    descriptors: {},
+                    symbol_descriptors: {},
+                  },
                   prototype: Null,
                   callable: None,
                   class_name: "Object",
-                  descriptors: {},
-                  symbol_descriptors: {},
                   extensible: true,
                 })
               }
             }),
           ),
           class_name: "Function",
-          descriptors: {},
-          symbol_descriptors: {},
           extensible: true,
         })
         Object({
-          properties: { "next": next_fn },
-          symbol_properties: {},
+          bag: {
+            properties: { "next": next_fn },
+            symbol_properties: {},
+            descriptors: {},
+            symbol_descriptors: {},
+          },
           prototype: Null,
           callable: None,
           class_name: "Array Iterator",
-          descriptors: {},
-          symbol_descriptors: {},
           extensible: true,
         })
       }),
     ),
     class_name: "Function",
-    descriptors: {},
-    symbol_descriptors: {},
     extensible: true,
   })
   Object({
-    properties: new_args_props,
-    symbol_properties: new_args_sym_props,
+    bag: {
+      properties: new_args_props,
+      symbol_properties: new_args_sym_props,
+      descriptors: new_args_descs,
+      symbol_descriptors: {},
+    },
     prototype: get_obj_proto(),
     callable: None,
     class_name: "Arguments",
-    descriptors: new_args_descs,
-    symbol_descriptors: {},
     extensible: true,
   })
 }
@@ -389,8 +387,8 @@ fn make_arguments_object(
 fn maybe_set_promise_constructor(value : Value, ctor : Value) -> Value {
   match value {
     Promise(data) => {
-      data.properties["constructor"] = ctor
-      data.descriptors["constructor"] = {
+      data.bag.properties["constructor"] = ctor
+      data.bag.descriptors["constructor"] = {
         writable: true,
         enumerable: false,
         configurable: true,
@@ -433,7 +431,7 @@ pub fn Interpreter::construct_value(
       match trap {
         Some(trap_fn) => {
           let handler = get_proxy_handler(proxy_data)
-          let args_array : Value = Array({ elements: args.copy() })
+          let args_array : Value = make_array(args.copy())
           let result = self.call_value(
             trap_fn,
             handler,
@@ -470,7 +468,7 @@ pub fn Interpreter::construct_value(
           let proto = match proto_override {
             Some(p) => p
             None =>
-              match obj_data.properties.get("prototype") {
+              match obj_data.bag.properties.get("prototype") {
                 Some(v) => v
                 None => Null
               }
@@ -551,7 +549,7 @@ pub fn Interpreter::construct_value(
           let proto = match proto_override {
             Some(p) => p
             None =>
-              match obj_data.properties.get("prototype") {
+              match obj_data.bag.properties.get("prototype") {
                 Some(v) => v
                 None => Null
               }
@@ -613,7 +611,7 @@ pub fn Interpreter::construct_value(
               for i = effective_param_count; i < args.length(); i = i + 1 {
                 rest_elements.push(args[i])
               }
-              let rest_val = Array({ elements: rest_elements })
+              let rest_val = make_array(rest_elements)
               func_env.def(rest_name, rest_val, LetBinding)
               // Apply destructuring pattern if present
               for p in data.params {
@@ -690,7 +688,7 @@ pub fn Interpreter::construct_value(
           )
         Some(InterpreterCallable(_name, func)) => {
           // Check if this function has a "prototype" property (constructors do, methods don't)
-          let is_ctor = match obj_data.properties.get("prototype") {
+          let is_ctor = match obj_data.bag.properties.get("prototype") {
             Some(_) => true
             None => false
           }
@@ -828,7 +826,7 @@ pub fn Interpreter::construct_value(
                     for i = effective_param_count; i < args.length(); i = i + 1 {
                       rest_elements.push(args[i])
                     }
-                    let rest_val = Array({ elements: rest_elements })
+                    let rest_val = make_array(rest_elements)
                     ctor_env.def(rest_name, rest_val, LetBinding)
                     for p in params {
                       if p.name == rest_name {
@@ -952,9 +950,7 @@ pub fn Interpreter::construct_value(
                                   } else {
                                     match p.default_val {
                                       Some(de) =>
-                                        self.eval_expr(
-                                          class_ctx, de, super_env,
-                                        )
+                                        self.eval_expr(class_ctx, de, super_env)
                                       None =>
                                         if eff_count < args.length() {
                                           args[eff_count]
@@ -987,7 +983,7 @@ pub fn Interpreter::construct_value(
                                     }
                                     super_env.def(
                                       rn,
-                                      Array({ elements: re }),
+                                      make_array(re),
                                       LetBinding,
                                     )
                                   }
@@ -1095,7 +1091,9 @@ pub fn Interpreter::construct_value(
                         // Construct(sc, args) — construct_value throws TypeError
                         // for non-constructors like null, matching spec behaviour.
                         let _ = self.construct_value(
-                          sc, args, @token.Loc::default(),
+                          sc,
+                          args,
+                          @token.Loc::default(),
                         )
                       }
                     }

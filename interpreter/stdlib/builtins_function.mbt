@@ -105,12 +105,12 @@ fn setup_function_builtins(env : Environment) -> Unit {
             call_args.push(el)
           }
         Object(data) => {
-          let len = match data.properties.get("length") {
+          let len = match data.bag.properties.get("length") {
             Some(Value::Number(n)) => n.to_int()
             _ => 0
           }
           for i = 0; i < len; i = i + 1 {
-            let val = match data.properties.get(i.to_string()) {
+            let val = match data.bag.properties.get(i.to_string()) {
               Some(v) => v
               None => Undefined
             }
@@ -170,21 +170,42 @@ fn setup_function_builtins(env : Environment) -> Unit {
     bprops["name"] = Value::String_(bound_name)
     bprops["length"] = Value::Number(bound_length.to_double())
     Value::Object({
-      properties: bprops,
-      symbol_properties: {},
+      bag: {
+        properties: bprops,
+        symbol_properties: {},
+        descriptors: { "name": nf_desc, "length": nf_desc },
+        symbol_descriptors: {},
+      },
       prototype: @runtime.get_func_proto(),
       callable: Some(BoundFunc(this_val, bind_this, bound_args)),
       class_name: "Function",
-      descriptors: { "name": nf_desc, "length": nf_desc },
-      symbol_descriptors: {},
       extensible: true,
     })
   })
   // %ThrowTypeError% intrinsic (ES spec §10.2.4)
   // A single frozen function that throws TypeError when called.
   let throw_type_error : Value = Value::Object({
-    properties: { "length": Value::Number(0.0), "name": Value::String_("") },
-    symbol_properties: {},
+    bag: {
+      properties: { "length": Value::Number(0.0), "name": Value::String_("") },
+      symbol_properties: {},
+      descriptors: {
+        "length": {
+          writable: false,
+          enumerable: false,
+          configurable: false,
+          getter: None,
+          setter: None,
+        },
+        "name": {
+          writable: false,
+          enumerable: false,
+          configurable: false,
+          getter: None,
+          setter: None,
+        },
+      },
+      symbol_descriptors: {},
+    },
     prototype: Null,
     callable: Some(
       NonConstructableCallable("", fn(_args) raise {
@@ -194,23 +215,6 @@ fn setup_function_builtins(env : Environment) -> Unit {
       }),
     ),
     class_name: "Function",
-    descriptors: {
-      "length": {
-        writable: false,
-        enumerable: false,
-        configurable: false,
-        getter: None,
-        setter: None,
-      },
-      "name": {
-        writable: false,
-        enumerable: false,
-        configurable: false,
-        getter: None,
-        setter: None,
-      },
-    },
-    symbol_descriptors: {},
     extensible: false,
   })
 
@@ -273,13 +277,15 @@ fn setup_function_builtins(env : Environment) -> Unit {
   func_proto_descs["name"] = nf_desc
   func_proto_descs["length"] = nf_desc
   let func_proto : Value = Value::Object({
-    properties: func_proto_props,
-    symbol_properties: {},
+    bag: {
+      properties: func_proto_props,
+      symbol_properties: {},
+      descriptors: func_proto_descs,
+      symbol_descriptors: {},
+    },
     prototype: Null,
     callable: Some(NonConstructableCallable("", fn(_args) { Undefined })),
     class_name: "Function",
-    descriptors: func_proto_descs,
-    symbol_descriptors: {},
     extensible: true,
   })
 
@@ -301,20 +307,21 @@ fn setup_function_builtins(env : Environment) -> Unit {
   // Create a single Function constructor object.
   // Function(p1, p2, ..., body) parses the body string and creates a real function.
   let func_ctor : Value = Value::Object({
-    properties: func_ctor_props,
-    symbol_properties: {},
+    bag: {
+      properties: func_ctor_props,
+      symbol_properties: {},
+      descriptors: { "name": nf_desc, "length": nf_desc },
+      symbol_descriptors: {},
+    },
     prototype: Null,
     callable: Some(
       NativeCallable("Function", fn(args) raise {
         if args.length() == 0 {
           return Value::Object({
-            properties: {},
-            symbol_properties: {},
+            bag: @runtime.PropertyBag::new(),
             prototype: func_proto,
             callable: Some(NativeCallable("anonymous", fn(_) { Undefined })),
             class_name: "Function",
-            descriptors: {},
-            symbol_descriptors: {},
             extensible: true,
           })
         }
@@ -344,8 +351,12 @@ fn setup_function_builtins(env : Environment) -> Unit {
               let fn_props : Map[String, Value] = {}
               fn_props["length"] = Value::Number(params.length().to_double())
               return Value::Object({
-                properties: fn_props,
-                symbol_properties: {},
+                bag: {
+                  properties: fn_props,
+                  symbol_properties: {},
+                  descriptors: {},
+                  symbol_descriptors: {},
+                },
                 prototype: func_proto,
                 callable: Some(
                   UserFunc({
@@ -357,8 +368,6 @@ fn setup_function_builtins(env : Environment) -> Unit {
                   }),
                 ),
                 class_name: "Function",
-                descriptors: {},
-                symbol_descriptors: {},
                 extensible: true,
               })
             }
@@ -366,8 +375,12 @@ fn setup_function_builtins(env : Environment) -> Unit {
               let fn_props : Map[String, Value] = {}
               fn_props["length"] = Value::Number(params.length().to_double())
               return Value::Object({
-                properties: fn_props,
-                symbol_properties: {},
+                bag: {
+                  properties: fn_props,
+                  symbol_properties: {},
+                  descriptors: {},
+                  symbol_descriptors: {},
+                },
                 prototype: func_proto,
                 callable: Some(
                   UserFuncExt({
@@ -380,8 +393,6 @@ fn setup_function_builtins(env : Environment) -> Unit {
                   }),
                 ),
                 class_name: "Function",
-                descriptors: {},
-                symbol_descriptors: {},
                 extensible: true,
               })
             }
@@ -390,28 +401,23 @@ fn setup_function_builtins(env : Environment) -> Unit {
         }
         // Fallback: empty function
         Value::Object({
-          properties: {},
-          symbol_properties: {},
+          bag: @runtime.PropertyBag::new(),
           prototype: func_proto,
           callable: Some(NativeCallable("anonymous", fn(_) { Undefined })),
           class_name: "Function",
-          descriptors: {},
-          symbol_descriptors: {},
           extensible: true,
         })
       }),
     ),
     class_name: "Function",
-    descriptors: { "name": nf_desc, "length": nf_desc },
-    symbol_descriptors: {},
     extensible: true,
   })
 
   // Add constructor back-reference to prototype (same object as global Function)
   match func_proto {
     Object(data) => {
-      data.properties["constructor"] = func_ctor
-      data.descriptors["constructor"] = {
+      data.bag.properties["constructor"] = func_ctor
+      data.bag.descriptors["constructor"] = {
         writable: true,
         enumerable: false,
         configurable: true,

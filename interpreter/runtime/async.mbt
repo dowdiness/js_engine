@@ -26,11 +26,15 @@ fn Interpreter::make_async_function(
   }
   let async_proto = get_function_prototype(self)
   Object({
-    properties: {
-      "name": String_(func_name),
-      "length": Number(params.length().to_double()),
+    bag: {
+      properties: {
+        "name": String_(func_name),
+        "length": Number(params.length().to_double()),
+      },
+      symbol_properties: {},
+      descriptors: { "name": nf_desc, "length": nf_desc },
+      symbol_descriptors: {},
     },
-    symbol_properties: {},
     prototype: async_proto,
     callable: Some(
       InterpreterCallable(func_name, fn(
@@ -53,8 +57,6 @@ fn Interpreter::make_async_function(
       }),
     ),
     class_name: "AsyncFunction",
-    descriptors: { "name": nf_desc, "length": nf_desc },
-    symbol_descriptors: {},
     extensible: true,
   })
 }
@@ -82,11 +84,15 @@ fn Interpreter::make_async_function_ext(
   }
   let async_proto = get_function_prototype(self)
   Object({
-    properties: {
-      "name": String_(func_name),
-      "length": Number(params.length().to_double()),
+    bag: {
+      properties: {
+        "name": String_(func_name),
+        "length": Number(params.length().to_double()),
+      },
+      symbol_properties: {},
+      descriptors: { "name": nf_desc, "length": nf_desc },
+      symbol_descriptors: {},
     },
-    symbol_properties: {},
     prototype: async_proto,
     callable: Some(
       InterpreterCallable(func_name, fn(
@@ -109,8 +115,6 @@ fn Interpreter::make_async_function_ext(
       }),
     ),
     class_name: "AsyncFunction",
-    descriptors: { "name": nf_desc, "length": nf_desc },
-    symbol_descriptors: {},
     extensible: true,
   })
 }
@@ -130,34 +134,21 @@ fn run_async_body(
   strict : Bool,
   closure : Environment,
 ) -> Value {
-  // Create a Promise for the result
-  let promise_data : PromiseData = {
-    state: Pending,
-    result: Undefined,
-    fulfill_reactions: [],
-    reject_reactions: [],
-    is_handled: false,
-    properties: {},
-    symbol_properties: {},
-    descriptors: {},
-    symbol_descriptors: {},
-  }
+  let promise_data = new_promise_data()
   let promise_val = Promise(promise_data)
   let (resolve_fn, reject_fn) = create_resolving_functions(ip, promise_data)
   // Create a generator object from the async function body
   let gen_proto = get_generator_prototype(ip)
   let func_proto = Object({
-    properties: {},
-    symbol_properties: {},
+    bag: PropertyBag::new(),
     prototype: gen_proto,
     callable: None,
     class_name: "Object",
-    descriptors: {},
-    symbol_descriptors: {},
     extensible: true,
   })
   let gen_val = create_generator_instance(
-    ip, this_val, args, name, params, params_ext, rest_param, body, strict, closure, func_proto,
+    ip, this_val, args, name, params, params_ext, rest_param, body, strict, closure,
+    func_proto,
   ) catch {
     JsException(e) => {
       // Parameter binding error rejects the promise
@@ -440,13 +431,10 @@ fn make_async_gen_function_inner(
 ) -> Value {
   let async_gen_proto = init_async_generator_prototype()
   let func_prototype = Object({
-    properties: {},
-    symbol_properties: {},
+    bag: PropertyBag::new(),
     prototype: async_gen_proto,
     callable: None,
     class_name: "AsyncGenerator",
-    descriptors: {},
-    symbol_descriptors: {},
     extensible: true,
   })
   let gen_func_proto : Value = match
@@ -457,8 +445,12 @@ fn make_async_gen_function_inner(
   let fn_props : Map[String, Value] = {}
   fn_props["prototype"] = func_prototype
   Object({
-    properties: fn_props,
-    symbol_properties: {},
+    bag: {
+      properties: fn_props,
+      symbol_properties: {},
+      descriptors: {},
+      symbol_descriptors: {},
+    },
     prototype: gen_func_proto,
     callable: Some(
       InterpreterCallable(
@@ -468,15 +460,13 @@ fn make_async_gen_function_inner(
         },
         fn(ip, this_val, args) raise {
           create_generator_instance(
-            ip, this_val, args, name, params, params_ext, rest_param, body, strict, closure,
-            func_prototype,
+            ip, this_val, args, name, params, params_ext, rest_param, body, strict,
+            closure, func_prototype,
           )
         },
       ),
     ),
     class_name: "AsyncGeneratorFunction",
-    descriptors: {},
-    symbol_descriptors: {},
     extensible: true,
   })
 }
@@ -531,13 +521,15 @@ fn init_async_generator_prototype() -> Value {
   })
 
   Object({
-    properties: props,
-    symbol_properties: sym_props,
+    bag: {
+      properties: props,
+      symbol_properties: sym_props,
+      descriptors: descs,
+      symbol_descriptors: {},
+    },
     prototype: Null,
     callable: None,
     class_name: "AsyncGenerator",
-    descriptors: descs,
-    symbol_descriptors: {},
     extensible: true,
   })
 }
@@ -553,46 +545,21 @@ fn async_generator_resume(
 ) -> Value {
   let result = generator_resume(ip, this_val, resume_kind) catch {
     JsException(e) => {
-      let pd : PromiseData = {
-        state: Rejected,
-        result: e,
-        fulfill_reactions: [],
-        reject_reactions: [],
-        is_handled: false,
-        properties: {},
-        symbol_properties: {},
-        descriptors: {},
-        symbol_descriptors: {},
-      }
+      let pd = new_promise_data()
+      pd.state = Rejected
+      pd.result = e
       return Promise(pd)
     }
     e => {
-      let err_val = js_error_to_value_with_env(e, Some(ip.global))
-      let pd : PromiseData = {
-        state: Rejected,
-        result: err_val,
-        fulfill_reactions: [],
-        reject_reactions: [],
-        is_handled: false,
-        properties: {},
-        symbol_properties: {},
-        descriptors: {},
-        symbol_descriptors: {},
-      }
+      let pd = new_promise_data()
+      pd.state = Rejected
+      pd.result = js_error_to_value_with_env(e, Some(ip.global))
       return Promise(pd)
     }
   }
-  let pd : PromiseData = {
-    state: Fulfilled,
-    result,
-    fulfill_reactions: [],
-    reject_reactions: [],
-    is_handled: false,
-    properties: {},
-    symbol_properties: {},
-    descriptors: {},
-    symbol_descriptors: {},
-  }
+  let pd = new_promise_data()
+  pd.state = Fulfilled
+  pd.result = result
   Promise(pd)
 }
 
@@ -636,13 +603,15 @@ pub fn setup_async_function_constructor(env : Environment) -> Unit {
     setter: None,
   }
   let async_func_proto : Value = Object({
-    properties: {},
-    symbol_properties: af_sym_props,
+    bag: {
+      properties: {},
+      symbol_properties: af_sym_props,
+      descriptors: {},
+      symbol_descriptors: af_sym_descs,
+    },
     prototype: func_proto,
     callable: None,
     class_name: "AsyncFunction",
-    descriptors: {},
-    symbol_descriptors: af_sym_descs,
     extensible: true,
   })
   // AsyncFunction constructor: AsyncFunction(p1, p2, ..., body)
@@ -710,8 +679,8 @@ pub fn setup_async_function_constructor(env : Environment) -> Unit {
   // AsyncFunction.prototype.constructor = AsyncFunction
   match async_func_proto {
     Object(data) => {
-      data.properties["constructor"] = async_func_ctor
-      data.descriptors["constructor"] = {
+      data.bag.properties["constructor"] = async_func_ctor
+      data.bag.descriptors["constructor"] = {
         writable: false,
         enumerable: false,
         configurable: true,
@@ -724,8 +693,8 @@ pub fn setup_async_function_constructor(env : Environment) -> Unit {
   // AsyncFunction.prototype property on the constructor
   match async_func_ctor {
     Object(data) => {
-      data.properties["prototype"] = async_func_proto
-      data.descriptors["prototype"] = {
+      data.bag.properties["prototype"] = async_func_proto
+      data.bag.descriptors["prototype"] = {
         writable: false,
         enumerable: false,
         configurable: false,
