@@ -363,10 +363,22 @@ expected test262 impact.
 
 ### ~~7. `hasOwnProperty` misses descriptor-only own properties~~ — DONE (2026-04-18)
 
-### ~~8. Engine-thrown errors have empty descriptor maps~~ — DONE (2026-04-18)
+### ~~8. Engine-thrown errors have empty descriptor maps~~ — DONE (2026-04-18, partial)
 
 ### ~~9. Interpreter-callable functions have `prototype: Null`~~ — DONE (2026-04-18)
 
 ### ~~10. `Proxy.revocable`: `revocable_descs` built but never wired~~ — DONE (2026-04-18)
 
-All four landed on branch `claude/stage-a-coderabbit-bugfixes`. Verified via direct interpreter probes: `Map.prototype.hasOwnProperty("size")` → `true`, `caughtErr instanceof TypeError` → `true`, `Object.getOwnPropertyDescriptor(caughtErr, "message").enumerable` → `false`, `Object.getOwnPropertyDescriptor(Proxy.revocable, "name")` now returns the correct descriptor, Promise resolve callbacks are `instanceof Function`. 884/884 unit tests pass. Test262 categories unchanged at runner-filter granularity (fixes affect narrow descriptor shapes rarely asserted).
+All four landed on branch `claude/stage-a-coderabbit-bugfixes` (PR #50). Verified via direct interpreter probes: `Map.prototype.hasOwnProperty("size")` → `true`, `caughtErr instanceof TypeError` → `true`, `Object.getOwnPropertyDescriptor(caughtErr, "message").enumerable` → `false`, `Object.getOwnPropertyDescriptor(Proxy.revocable, "name")` now returns the correct descriptor, Promise resolve callbacks are `instanceof Function`. 884/884 unit tests pass.
+
+**#8 partial**: fixes the non-enumerable descriptors for `message`/`stack` (and `errors` on AggregateError). The companion goal of moving `name` from own-property to prototype (matching user-created errors) was *not* completed — engine errors still carry `name` as an own property. Reason: `Error.prototype.toString` reads `name` from own properties only, and `js_error_to_value` (env-less, used by `Promise.try`) yields objects with `prototype: Null`, so removing `name` regresses engine-error stringification. Deferred as #13.
+
+#### 13. Move `name` off own-property on engine-created errors (followup to #8)
+
+**Blocked on two consumer fixes before the move can be made:**
+
+1. **`Error.prototype.toString` must walk the prototype chain** for `name` (and `message`). Per ES §20.5.3.4, it does `Get(O, "name")`, which walks the chain and invokes getters. Current impl in `builtins_error.mbt` uses `data.bag.properties.get("name")` — own-only. Options: switch to `make_interp_method_func` and call `interp.get_property`, or inline a small chain walk.
+
+2. **`js_error_to_value` (env-less) must yield a prototype.** Called from `builtins_promise.mbt:729` (`Promise.try` rejection path). Simplest fix: change that call site to `js_error_to_value_with_env(err, Some(interp.global))` — the interpreter is already in scope there. After that, consider whether the env-less API is still needed.
+
+Once both are fixed, remove `err_props["name"]` / `err_descs["name"]` from `make_error_value_with_env` and `make_aggregate_error_value` in `interpreter/runtime/errors.mbt`. Verify with: engine `TypeError` stringifies as `"TypeError: msg"`, `Promise.try(() => null.x).catch(e => e.name)` returns `"TypeError"`, `Object.keys(caughtErr)` does not include `"name"`.
