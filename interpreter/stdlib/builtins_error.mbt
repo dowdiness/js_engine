@@ -166,6 +166,9 @@ fn register_error_ctor(
       extensible: true,
     }),
   )
+  // Register this name in the per-Environment error registry so that
+  // Error.isError can check membership without a hardcoded allowlist.
+  env.error_class_names[name] = ()
   // Set ErrorType.prototype.constructor = ErrorType
   match proto_obj {
     Object(data) => {
@@ -350,6 +353,9 @@ fn register_aggregate_error_ctor(
       extensible: true,
     }),
   )
+  // Register AggregateError in the per-Environment error registry so that
+  // Error.isError can check membership without a hardcoded allowlist.
+  env.error_class_names[name] = ()
   match proto_obj {
     Object(data) => {
       let ctor = env.get(name) catch { _ => Undefined }

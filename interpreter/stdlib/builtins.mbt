@@ -742,18 +742,11 @@ pub fn setup_builtins(
           let arg = if args.length() > 0 { args[0] } else { Undefined }
           match arg {
             Object(data) =>
-              // Check if the object's class_name is an error type
-              Bool(
-                data.class_name == "Error" ||
-                data.class_name == "TypeError" ||
-                data.class_name == "SyntaxError" ||
-                data.class_name == "RangeError" ||
-                data.class_name == "ReferenceError" ||
-                data.class_name == "URIError" ||
-                data.class_name == "EvalError" ||
-                data.class_name == "InternalError" ||
-                data.class_name == "AggregateError",
-              )
+              // ES §21.5.2.1: return true iff arg has [[ErrorData]] slot.
+              // The registry is populated at constructor registration time,
+              // so new error types are automatically recognised without
+              // requiring any change here.
+              Bool(env.error_class_names.contains(data.class_name))
             _ => Value::Bool(false)
           }
         },

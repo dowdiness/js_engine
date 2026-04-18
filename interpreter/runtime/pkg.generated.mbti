@@ -336,6 +336,7 @@ pub(all) struct Environment {
   parent : Environment?
   mut is_var_scope : Bool
   mut with_object : Value?
+  error_class_names : Map[String, Unit]
 }
 pub fn Environment::assign(Self, String, Value) -> Unit raise
 pub fn Environment::assign_var(Self, String, Value) -> Unit raise

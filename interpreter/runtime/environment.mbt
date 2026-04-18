@@ -23,11 +23,16 @@ pub(all) struct Environment {
   parent : Environment?
   mut is_var_scope : Bool // true for function/global scopes (where var is hoisted to)
   mut with_object : Value? // For 'with' statement: the live object to proxy lookups through
+  /// Registry of class_names that carry [[ErrorData]] semantics.
+  /// Populated by register_error_ctor / register_aggregate_error_ctor at
+  /// stdlib init time; consumed by Error.isError.  Stored per-Environment so
+  /// future Realm work isolates correctly.
+  error_class_names : Map[String, Unit]
 }
 
 ///|
 pub fn Environment::new(parent? : Environment? = None) -> Environment {
-  { bindings: {}, parent, is_var_scope: false, with_object: None }
+  { bindings: {}, parent, is_var_scope: false, with_object: None, error_class_names: {} }
 }
 
 ///|
