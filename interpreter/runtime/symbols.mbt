@@ -16,6 +16,7 @@ pub fn is_constructor_value(v : Value) -> Bool {
         Some(ConstructorOnlyCallable(_, _)) => true
         Some(BoundFunc(target, _, _)) => is_constructor_value(target)
         Some(NonConstructableCallable(_, _)) => false
+        Some(NonConstructableInterpreterCallable(_, _)) => false
         Some(MethodCallable(_, _)) => false
         Some(InterpreterCallable(_, _)) =>
           // InterpreterCallable is a constructor if it has a prototype property

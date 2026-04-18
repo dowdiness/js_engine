@@ -311,6 +311,7 @@ pub(all) enum Callable {
   FuncApplyMethod(Value)
   MethodCallable(String, (Value, Array[Value]) -> Value raise)
   InterpreterCallable(String, (Interpreter, Value, Array[Value]) -> Value raise)
+  NonConstructableInterpreterCallable(String, (Interpreter, Array[Value]) -> Value raise)
   ConstructorOnlyCallable(String, (Interpreter, Array[Value]) -> Value raise)
   ClassConstructor(ClassConstructorData)
 }

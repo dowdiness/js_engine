@@ -33,6 +33,10 @@ pub(all) enum Callable {
     String,
     (Interpreter, Value, Array[Value]) -> Value raise Error
   ) // needs interpreter for callback invocation
+  NonConstructableInterpreterCallable(
+    String,
+    (Interpreter, Array[Value]) -> Value raise Error
+  ) // like InterpreterCallable but throws TypeError on new
   ConstructorOnlyCallable(
     String,
     (Interpreter, Array[Value]) -> Value raise Error
@@ -276,6 +280,8 @@ pub impl Show for Value with output(self, logger) {
         Some(MethodCallable(name, _)) =>
           logger.write_string("function \{name}() { [native code] }")
         Some(InterpreterCallable(name, _)) =>
+          logger.write_string("function \{name}() { [native code] }")
+        Some(NonConstructableInterpreterCallable(name, _)) =>
           logger.write_string("function \{name}() { [native code] }")
         Some(ConstructorOnlyCallable(name, _)) =>
           logger.write_string("function \{name}() { [native code] }")
