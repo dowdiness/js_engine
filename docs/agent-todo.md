@@ -235,11 +235,14 @@ where they disagree.
 
 ### Highest-ROI non-architectural items (discovered 2026-04-17)
 
-#### ~~A. Annex B eval-scope hoisting~~ — PARTIAL (2026-04-18, +67 tests)
+#### ~~A. Annex B eval-scope hoisting~~ — PARTIAL (2026-04-18, +101 tests)
 
 **Branch**: `claude/annex-b-eval-hoisting`
-**Result**: `annexB/language` 53.2% → 67.4% (+67 tests). Combined
-`language/eval-code` filter 57.8% → 65.1%.
+**Result**: `annexB/language` 53.2% → **74.7%** (+101 tests). Combined
+`language/eval-code` filter 57.8% → **68.8%**. Two commits: the initial
+implementation landed +67, and a refactor pass that consolidated the lex
+collectors also fixed a subtle self-conflict bug in the switch-case lex
+frame, unlocking +34 more.
 
 **Shipped**:
 - AST-syntactic skip check for §B.3.3.3 candidates in eval bodies
