@@ -9314,6 +9314,29 @@ test "annex-b eval: if-clause FunctionDeclaration hoists via B.3.4" {
 }
 
 ///|
+/// §B.3.3.3 step ii: a block-level `function f(){}` in sloppy eval must
+/// reinit the enclosing function's parameter `f`, regardless of which
+/// runtime entry point created the function call — ordinary call, `new`
+/// construct, and generator setup all bind parameters the same way for
+/// Annex B purposes. Prior bug: only `call.mbt` migrated to
+/// `def_parameter`; constructor/generator sites still used
+/// `def(..., LetBinding)`, leaving `is_parameter=false` so
+/// `tag_annex_b_hoisted` skipped them — block-entry reinit never ran.
+test "annex-b eval: reinit param in constructor call" {
+  // Must use a sloppy-mode function constructor, not `class`, since class
+  // bodies are strict by default and Annex B is disabled in strict mode.
+  let src =
+    #|function C(f) {
+    #|  eval("globalThis.__init = f; { function f(){} } globalThis.__after = typeof f;");
+    #|}
+    #|new C(123);
+    #|console.log(globalThis.__init);
+    #|console.log(globalThis.__after);
+  let output = run_output_annex_b(src)
+  inspect(output, content="[\"123\", \"function\"]")
+}
+
+///|
 /// §B.3.3.3 skip check must see names from comma-separated declarations.
 /// `let f = 1, g = 2;` is parsed as `StmtList([VarDecl, VarDecl])`, so the
 /// lex-name collector needs to descend into StmtList — otherwise the eval

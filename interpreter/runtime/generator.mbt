@@ -554,7 +554,7 @@ fn create_generator_instance(
               }
           }
         }
-        func_env.def(param.name, val, LetBinding)
+        func_env.def_parameter(param.name, val)
         match param.pattern {
           Some(pat) =>
             interp.bind_pattern(pat, val, func_env, LetBinding, ctx=setup_ctx)
@@ -569,7 +569,7 @@ fn create_generator_instance(
             rest_elems.push(args[i])
           }
           let rest_val = make_array(rest_elems)
-          func_env.def(rp, rest_val, LetBinding)
+          func_env.def_parameter(rp, rest_val)
           for p in pext {
             if p.name == rp {
               match p.pattern {
@@ -593,7 +593,7 @@ fn create_generator_instance(
     None => {
       for i = 0; i < params.length(); i = i + 1 {
         let val = if i < args.length() { args[i] } else { Undefined }
-        func_env.def(params[i], val, LetBinding)
+        func_env.def_parameter(params[i], val)
       }
       match rest_param {
         Some(rp) => {
@@ -601,7 +601,7 @@ fn create_generator_instance(
           for i = params.length(); i < args.length(); i = i + 1 {
             rest_elems.push(args[i])
           }
-          func_env.def(rp, make_array(rest_elems), LetBinding)
+          func_env.def_parameter(rp, make_array(rest_elems))
         }
         None => ()
       }
