@@ -9314,6 +9314,25 @@ test "annex-b eval: if-clause FunctionDeclaration hoists via B.3.4" {
 }
 
 ///|
+/// §B.3.3.3 skip check must see names from comma-separated declarations.
+/// `let f = 1, g = 2;` is parsed as `StmtList([VarDecl, VarDecl])`, so the
+/// lex-name collector needs to descend into StmtList — otherwise the eval
+/// top-level `let f` stays invisible to `annex_b_candidate_conflicts` and
+/// a block-level `function f(){}` gets incorrectly hoisted into the outer
+/// var env, overwriting the caller's binding. Prior bug: `add_stmt_lex_names`
+/// had no StmtList arm, so `eval("let f=1,g=2; { function f(){} }")` leaked
+/// `f` back to the caller.
+test "annex-b eval: skip extension when comma-let declares conflicting name" {
+  let src =
+    #|var f = "outer";
+    #|eval("let f=1,g=2; { function f(){} }");
+    #|console.log(f);
+    #|console.log(typeof f);
+  let output = run_output_annex_b(src)
+  inspect(output, content="[\"outer\", \"string\"]")
+}
+
+///|
 /// §B.3.4: a pre-existing `const` binding in the enclosing var env must
 /// suppress the Annex B extension — replacing `function f(){}` with `var f`
 /// would be an early error against the const, so the hoist must skip. Prior

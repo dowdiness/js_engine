@@ -1185,6 +1185,10 @@ fn tag_annex_b_hoisted(
 /// `names`. Non-recursive — blocks, function bodies, loop bodies, etc. are
 /// NOT descended into; the caller controls scope granularity. The
 /// `ExportNamedDecl` wrapper is unwrapped so `export let x = …` participates.
+/// `StmtList` IS descended into: the parser emits it as a flat carrier for
+/// comma-separated declarations (`let f=1, g=2` → `StmtList([VarDecl,
+/// VarDecl])`), not a new scope, so its inner decls belong to the same lex
+/// frame as the surrounding statements.
 fn add_stmt_lex_names(stmt : @ast.Stmt, names : Map[String, Bool]) -> Unit {
   match stmt {
     VarDecl(LetKind, name, _, _) | VarDecl(ConstKind, name, _, _) =>
@@ -1193,6 +1197,10 @@ fn add_stmt_lex_names(stmt : @ast.Stmt, names : Map[String, Bool]) -> Unit {
     DestructureDecl(LetKind, pattern, _, _)
     | DestructureDecl(ConstKind, pattern, _, _) =>
       collect_pattern_lex_names(pattern, names)
+    StmtList(inner_stmts, _) =>
+      for inner in inner_stmts {
+        add_stmt_lex_names(inner, names)
+      }
     ExportNamedDecl(Some(decl), _, _, _) => add_stmt_lex_names(decl, names)
     _ => ()
   }
