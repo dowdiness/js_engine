@@ -20,3 +20,6 @@ promise.json
 
 # Worktrees
 .worktrees/
+
+# Claude Code session-local artifacts
+.claude/
