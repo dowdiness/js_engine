@@ -1533,139 +1533,12 @@ fn for_init_lex_names(init : @ast.Stmt?) -> Map[String, Bool] raise Error {
 }
 
 ///|
-/// Annex B.3.3: Scan nested blocks for function declarations and create
-/// var bindings in the function scope (initialized to undefined).
-/// Only used in sloppy mode with --annex-b.
-fn hoist_block_func_declarations(
-  interp : Interpreter,
-  stmt : @ast.Stmt,
-  var_env : Environment,
-) -> Unit raise Error {
-  match stmt {
-    Block(inner_stmts, _) =>
-      for inner in inner_stmts {
-        match inner {
-          FuncDecl(name, _, _, _) | FuncDeclExt(name, _, _, _, _) =>
-            tag_annex_b_hoisted(interp, var_env, name)
-          _ => ()
-        }
-        hoist_block_func_declarations(interp, inner, var_env)
-      }
-    IfStmt(_, then_branch, else_branch, _) => {
-      // Also handle bare function declarations in if/else branches
-      match then_branch {
-        FuncDecl(name, _, _, _) | FuncDeclExt(name, _, _, _, _) =>
-          tag_annex_b_hoisted(interp, var_env, name)
-        _ => ()
-      }
-      hoist_block_func_declarations(interp, then_branch, var_env)
-      match else_branch {
-        Some(eb) => {
-          match eb {
-            FuncDecl(name, _, _, _) | FuncDeclExt(name, _, _, _, _) =>
-              tag_annex_b_hoisted(interp, var_env, name)
-            _ => ()
-          }
-          hoist_block_func_declarations(interp, eb, var_env)
-        }
-        None => ()
-      }
-    }
-    WhileStmt(_, body, _) =>
-      hoist_block_func_declarations(interp, body, var_env)
-    DoWhileStmt(body, _, _) =>
-      hoist_block_func_declarations(interp, body, var_env)
-    ForStmt(_, _, _, body, _) =>
-      hoist_block_func_declarations(interp, body, var_env)
-    ForInStmt(_, _, _, body, _) =>
-      hoist_block_func_declarations(interp, body, var_env)
-    ForOfStmt(_, _, _, body, _) =>
-      hoist_block_func_declarations(interp, body, var_env)
-    ForInStmtPat(_, _, _, body, _) =>
-      hoist_block_func_declarations(interp, body, var_env)
-    ForOfStmtPat(_, _, _, body, _) =>
-      hoist_block_func_declarations(interp, body, var_env)
-    ForInExpr(_, _, body, _) =>
-      hoist_block_func_declarations(interp, body, var_env)
-    ForOfExpr(_, _, body, _) =>
-      hoist_block_func_declarations(interp, body, var_env)
-    LabeledStmt(_, inner, _) => {
-      // §B.3.3 + §14.13: `label: function f(){}` is a
-      // LabelledFunctionDeclaration in sloppy mode. Tag the direct FuncDecl
-      // child here — the recursive call alone wouldn't, because the inner
-      // match only picks up FuncDecls when recursing INTO a Block arm.
-      match inner {
-        FuncDecl(name, _, _, _) | FuncDeclExt(name, _, _, _, _) =>
-          tag_annex_b_hoisted(interp, var_env, name)
-        _ => ()
-      }
-      hoist_block_func_declarations(interp, inner, var_env)
-    }
-    WithStmt(_, body, _) => {
-      // Handle bare function declarations directly in with body (Annex B.3.3)
-      match body {
-        FuncDecl(name, _, _, _) | FuncDeclExt(name, _, _, _, _) =>
-          tag_annex_b_hoisted(interp, var_env, name)
-        _ => ()
-      }
-      hoist_block_func_declarations(interp, body, var_env)
-    }
-    SwitchStmt(_, cases, _) =>
-      for case_ in cases {
-        for inner in case_.body {
-          match inner {
-            FuncDecl(name, _, _, _) | FuncDeclExt(name, _, _, _, _) =>
-              tag_annex_b_hoisted(interp, var_env, name)
-            _ => ()
-          }
-          hoist_block_func_declarations(interp, inner, var_env)
-        }
-      }
-    TryCatchStmt(try_body, _, catch_body, finally_body, _) => {
-      for inner in try_body {
-        match inner {
-          FuncDecl(name, _, _, _) | FuncDeclExt(name, _, _, _, _) =>
-            tag_annex_b_hoisted(interp, var_env, name)
-          _ => ()
-        }
-        hoist_block_func_declarations(interp, inner, var_env)
-      }
-      match catch_body {
-        Some(cb) =>
-          for inner in cb {
-            match inner {
-              FuncDecl(name, _, _, _) | FuncDeclExt(name, _, _, _, _) =>
-                tag_annex_b_hoisted(interp, var_env, name)
-              _ => ()
-            }
-            hoist_block_func_declarations(interp, inner, var_env)
-          }
-        None => ()
-      }
-      match finally_body {
-        Some(fb) =>
-          for inner in fb {
-            match inner {
-              FuncDecl(name, _, _, _) | FuncDeclExt(name, _, _, _, _) =>
-                tag_annex_b_hoisted(interp, var_env, name)
-              _ => ()
-            }
-            hoist_block_func_declarations(interp, inner, var_env)
-          }
-        None => ()
-      }
-    }
-    _ => ()
-  }
-}
-
-///|
 fn Interpreter::hoist_declarations(
   _self : Interpreter,
   stmts : Array[@ast.Stmt],
   env : Environment,
   strict? : Bool = false,
-  suppress_annex_b_block_funcs? : Bool = false,
+  suppress_annex_b_candidates? : Bool = false,
 ) -> Unit raise Error {
   let is_global = physical_equal(env, _self.global)
   for stmt in stmts {
@@ -1909,13 +1782,17 @@ fn Interpreter::hoist_declarations(
     // Hoist var declarations recursively through nested statements
     // (e.g. var inside blocks still hoists to function/global var scope).
     hoist_var_declarations_from_stmt(stmt, env)
-    // Annex B.3.3: Hoist block-level function declarations as var bindings.
-    // Eval callers suppress this pass — they run the spec-correct eval
-    // variant (`hoist_eval_annex_b_candidates`) via `perform_eval` after
-    // this declaration pass completes.
-    if _self.annex_b && !strict && !suppress_annex_b_block_funcs {
-      hoist_block_func_declarations(_self, stmt, env)
-    }
+  }
+  // Annex B §B.3.2.1: Hoist block-level FunctionDeclarations into the
+  // containing function / script var env, with the syntactic skip check
+  // from §B.3.4 — tag only when the candidate name does not conflict with
+  // an enclosing lex-declared name. The same walker powers eval-scope
+  // hoisting (§B.3.2.3); eval callers suppress this pass and run it
+  // themselves in `perform_eval` so they can slot the call between var
+  // hoisting and TDZ setup.
+  if _self.annex_b && !strict && !suppress_annex_b_candidates {
+    let top_lex = collect_stmts_lex_names(stmts)
+    hoist_eval_annex_b_candidates(_self, stmts, env, top_lex)
   }
 }
 

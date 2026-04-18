@@ -261,14 +261,14 @@ fn Interpreter::perform_eval(
     }
     // Non-strict eval: hoist var/function to the variable environment (leak),
     // then hoist let/const TDZ markers to the eval scope (isolated).
-    // `suppress_annex_b_block_funcs` turns off the legacy in-hoist B.3.3 pass;
-    // the eval-specific `hoist_eval_annex_b_candidates` below replaces it
-    // with a spec-correct skip-check.
-    self.hoist_declarations(stmts, var_env, suppress_annex_b_block_funcs=true)
+    // `suppress_annex_b_candidates` defers the Annex B walk so we can slot
+    // it between var hoisting and TDZ setup, matching §19.2.1.3's ordering.
+    self.hoist_declarations(stmts, var_env, suppress_annex_b_candidates=true)
     hoist_block_tdz(stmts, exec_env)
-    // Annex B §B.3.3.3: promote eligible block-level FunctionDeclarations to
-    // var bindings on `var_env`, skipping names that would clash with an
-    // outer lex declaration.
+    // Annex B §B.3.2.3: promote eligible block-level FunctionDeclarations
+    // to var bindings on `var_env`, skipping names that would clash with an
+    // outer lex declaration. Same walker as §B.3.2.1 used for function
+    // bodies in `hoist_declarations`.
     if self.annex_b {
       let top_lex = collect_stmts_lex_names(stmts)
       hoist_eval_annex_b_candidates(self, stmts, var_env, top_lex)

@@ -9295,6 +9295,28 @@ test "annex-b eval: indirect eval does not false-positive on caller block let" {
 }
 
 ///|
+/// §B.3.2.1: Annex B block-level function hoisting into a function body's
+/// var scope must skip when the candidate name conflicts with a
+/// lexically-declared name in an enclosing block of the same function.
+/// Without the syntactic walk, `hoist_block_func_declarations` blindly
+/// creates a var slot for `g` at function scope — visible after the block
+/// ends. Per §B.3.2.1 the extension must be skipped and `g` stays
+/// undeclared at function scope.
+test "annex-b: function-body skip when enclosing block let conflicts" {
+  let src =
+    #|function foo() {
+    #|  {
+    #|    let g = "lex";
+    #|    { function g(){} }
+    #|  }
+    #|  return typeof g;
+    #|}
+    #|console.log(foo());
+  let output = run_output_annex_b(src)
+  inspect(output, content="[\"undefined\"]")
+}
+
+///|
 /// §B.3.4: `if (cond) FunctionDeclaration` is treated as if the body were a
 /// Block containing the FunctionDeclaration. Inside eval, the Annex B hoist
 /// must therefore promote `f` to the enclosing var env — so `f` remains
