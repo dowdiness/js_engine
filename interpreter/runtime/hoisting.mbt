@@ -1,35 +1,48 @@
 ///|
-/// Collect names from a destructuring pattern (for eval var name collection).
-fn collect_pattern_var_names(
+/// Generic destructuring-pattern walker: invoke `on_ident` once per
+/// binding identifier in `pattern`. Shared traversal structure for every
+/// pattern-name collector / hoister in this file — only the per-name
+/// action differs. `AssignTarget` is intentionally ignored because its
+/// names resolve to member expressions, not fresh bindings.
+fn walk_pattern_idents(
   pattern : @ast.Pattern,
-  names : Array[String],
-) -> Unit {
+  on_ident : (String) -> Unit raise Error,
+) -> Unit raise Error {
   match pattern {
-    IdentPat(name) => names.push(name)
-    DefaultPat(inner_pat, _) => collect_pattern_var_names(inner_pat, names)
+    IdentPat(name) => on_ident(name)
+    DefaultPat(inner_pat, _) => walk_pattern_idents(inner_pat, on_ident)
     AssignTarget(_) => ()
     ArrayPat(elements, rest) => {
       for elem in elements {
         match elem {
-          Some(p) => collect_pattern_var_names(p, names)
+          Some(p) => walk_pattern_idents(p, on_ident)
           None => ()
         }
       }
       match rest {
-        Some(p) => collect_pattern_var_names(p, names)
+        Some(p) => walk_pattern_idents(p, on_ident)
         None => ()
       }
     }
     ObjectPat(props, rest) => {
       for prop in props {
-        collect_pattern_var_names(prop.value, names)
+        walk_pattern_idents(prop.value, on_ident)
       }
       match rest {
-        Some(p) => collect_pattern_var_names(p, names)
+        Some(p) => walk_pattern_idents(p, on_ident)
         None => ()
       }
     }
   }
+}
+
+///|
+/// Collect names from a destructuring pattern (for eval var name collection).
+fn collect_pattern_var_names(
+  pattern : @ast.Pattern,
+  names : Array[String],
+) -> Unit raise Error {
+  walk_pattern_idents(pattern, name => names.push(name))
 }
 
 ///|
@@ -51,38 +64,13 @@ fn collect_pattern_decl_names(
   names : Map[String, Bool],
   lexical? : Bool = false,
 ) -> Unit raise Error {
-  match pattern {
-    IdentPat(name) =>
-      if lexical {
-        add_lexical_decl_name(names, name)
-      } else {
-        names[name] = true
-      }
-    DefaultPat(inner_pat, _) =>
-      collect_pattern_decl_names(inner_pat, names, lexical~)
-    AssignTarget(_) => ()
-    ArrayPat(elements, rest) => {
-      for elem in elements {
-        match elem {
-          Some(p) => collect_pattern_decl_names(p, names, lexical~)
-          None => ()
-        }
-      }
-      match rest {
-        Some(p) => collect_pattern_decl_names(p, names, lexical~)
-        None => ()
-      }
+  walk_pattern_idents(pattern, name => {
+    if lexical {
+      add_lexical_decl_name(names, name)
+    } else {
+      names[name] = true
     }
-    ObjectPat(props, rest) => {
-      for prop in props {
-        collect_pattern_decl_names(prop.value, names, lexical~)
-      }
-      match rest {
-        Some(p) => collect_pattern_decl_names(p, names, lexical~)
-        None => ()
-      }
-    }
-  }
+  })
 }
 
 ///|
@@ -894,7 +882,7 @@ fn collect_eval_var_names_from_stmt(
   stmt : @ast.Stmt,
   names : Array[String],
   in_block? : Bool = false,
-) -> Unit {
+) -> Unit raise Error {
   match stmt {
     VarDecl(VarKind, name, _, _) => names.push(name)
     FuncDecl(name, _, _, _) => if !in_block { names.push(name) }
@@ -1000,7 +988,9 @@ fn collect_eval_var_names_from_stmt(
 }
 
 ///|
-fn collect_eval_var_names(stmts : Array[@ast.Stmt]) -> Array[String] {
+fn collect_eval_var_names(
+  stmts : Array[@ast.Stmt],
+) -> Array[String] raise Error {
   let names : Array[String] = []
   for stmt in stmts {
     collect_eval_var_names_from_stmt(stmt, names)
@@ -1010,35 +1000,11 @@ fn collect_eval_var_names(stmts : Array[@ast.Stmt]) -> Array[String] {
 
 ///|
 fn hoist_pattern(pattern : @ast.Pattern, env : Environment) -> Unit raise Error {
-  match pattern {
-    IdentPat(name) =>
-      if !env.bindings.contains(name) {
-        env.def(name, Undefined, VarBinding)
-      }
-    DefaultPat(inner_pat, _) => hoist_pattern(inner_pat, env)
-    AssignTarget(_) => () // member expressions don't need hoisting
-    ArrayPat(elements, rest) => {
-      for elem in elements {
-        match elem {
-          Some(p) => hoist_pattern(p, env)
-          None => ()
-        }
-      }
-      match rest {
-        Some(p) => hoist_pattern(p, env)
-        None => ()
-      }
+  walk_pattern_idents(pattern, name => {
+    if !env.bindings.contains(name) {
+      env.def(name, Undefined, VarBinding)
     }
-    ObjectPat(props, rest) => {
-      for prop in props {
-        hoist_pattern(prop.value, env)
-      }
-      match rest {
-        Some(p) => hoist_pattern(p, env)
-        None => ()
-      }
-    }
-  }
+  })
 }
 
 ///|
@@ -1189,7 +1155,10 @@ fn tag_annex_b_hoisted(
 /// comma-separated declarations (`let f=1, g=2` → `StmtList([VarDecl,
 /// VarDecl])`), not a new scope, so its inner decls belong to the same lex
 /// frame as the surrounding statements.
-fn add_stmt_lex_names(stmt : @ast.Stmt, names : Map[String, Bool]) -> Unit {
+fn add_stmt_lex_names(
+  stmt : @ast.Stmt,
+  names : Map[String, Bool],
+) -> Unit raise Error {
   match stmt {
     VarDecl(LetKind, name, _, _) | VarDecl(ConstKind, name, _, _) =>
       names[name] = true
@@ -1212,33 +1181,8 @@ fn add_stmt_lex_names(stmt : @ast.Stmt, names : Map[String, Bool]) -> Unit {
 fn collect_pattern_lex_names(
   pattern : @ast.Pattern,
   names : Map[String, Bool],
-) -> Unit {
-  match pattern {
-    IdentPat(name) => names[name] = true
-    DefaultPat(inner, _) => collect_pattern_lex_names(inner, names)
-    AssignTarget(_) => ()
-    ArrayPat(elements, rest) => {
-      for elem in elements {
-        match elem {
-          Some(p) => collect_pattern_lex_names(p, names)
-          None => ()
-        }
-      }
-      match rest {
-        Some(p) => collect_pattern_lex_names(p, names)
-        None => ()
-      }
-    }
-    ObjectPat(props, rest) => {
-      for prop in props {
-        collect_pattern_lex_names(prop.value, names)
-      }
-      match rest {
-        Some(p) => collect_pattern_lex_names(p, names)
-        None => ()
-      }
-    }
-  }
+) -> Unit raise Error {
+  walk_pattern_idents(pattern, name => names[name] = true)
 }
 
 ///|
@@ -1247,7 +1191,9 @@ fn collect_pattern_lex_names(
 /// no recursion into Block, function body, switch case, loop body, catch
 /// block, or `with` body. Suitable for both eval top level (§B.3.3.3 skip
 /// check) and for per-block lex frames pushed onto the AST walk stack.
-fn collect_stmts_lex_names(stmts : Array[@ast.Stmt]) -> Map[String, Bool] {
+fn collect_stmts_lex_names(
+  stmts : Array[@ast.Stmt],
+) -> Map[String, Bool] raise Error {
   let names : Map[String, Bool] = {}
   for stmt in stmts {
     add_stmt_lex_names(stmt, names)
@@ -1573,7 +1519,7 @@ fn walk_enclosed_body(
 /// Extract lex (let/const) names introduced by a for-loop init. An init of
 /// `StmtList(inner, _)` is the comma-separated `for (let a=1, b=2; …)` shape
 /// — unwrap it one level so each inner declaration contributes.
-fn for_init_lex_names(init : @ast.Stmt?) -> Map[String, Bool] {
+fn for_init_lex_names(init : @ast.Stmt?) -> Map[String, Bool] raise Error {
   let names : Map[String, Bool] = {}
   match init {
     Some(StmtList(inner, _)) =>
@@ -2016,33 +1962,9 @@ fn hoist_pattern_tdz(
   env : Environment,
   kind : BindingKind,
 ) -> Unit raise Error {
-  match pattern {
-    IdentPat(name) =>
-      if !env.bindings.contains(name) {
-        env.def_tdz(name, kind)
-      }
-    DefaultPat(inner_pat, _) => hoist_pattern_tdz(inner_pat, env, kind)
-    AssignTarget(_) => () // member expressions don't need TDZ hoisting
-    ArrayPat(elements, rest) => {
-      for elem in elements {
-        match elem {
-          Some(p) => hoist_pattern_tdz(p, env, kind)
-          None => ()
-        }
-      }
-      match rest {
-        Some(p) => hoist_pattern_tdz(p, env, kind)
-        None => ()
-      }
+  walk_pattern_idents(pattern, name => {
+    if !env.bindings.contains(name) {
+      env.def_tdz(name, kind)
     }
-    ObjectPat(props, rest) => {
-      for prop in props {
-        hoist_pattern_tdz(prop.value, env, kind)
-      }
-      match rest {
-        Some(p) => hoist_pattern_tdz(p, env, kind)
-        None => ()
-      }
-    }
-  }
+  })
 }
