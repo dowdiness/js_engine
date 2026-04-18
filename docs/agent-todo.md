@@ -275,53 +275,46 @@ param-default `eval("var arguments")` case (~96 tests, out of scope #1 below).
 
 **Out of scope (follow-ups)**:
 
-1. ~~**`eval("var arguments")` in a parameter-default expression (~96 tests).**~~
-   — PARTIAL (2026-04-18, in progress). §10.2.11 param-env / body-env
-   split landed for all Ext call-entry sites (`call.mbt` UserFuncExt +
-   ArrowFuncExt, `construct.mbt` UserFuncExt + class-ctor body,
-   `generator.mbt` + async via the generator path). Split is gated on
-   `has_parameter_expressions(params)` — plain-rest Ext shapes like
-   `function f(...rest) { var rest; }` keep single-env semantics per
-   spec step 26 (Codex-flagged pre-merge). `hoist_declarations` gained
-   an optional `param_source` so its Annex B excluded set can scan the
-   param env when the caller is split. New
-   `Environment::initialize_in_chain` walks parents so `super()` can
-   initialize `this` on a derived class's param env from its body env.
-   **Delta (baseline = post-PR-#65):**
+1. ~~**§10.2.11 param-env / body-env split for parameter defaults.**~~
+   — DONE (2026-04-19, PR #66 `ebb256a`). Split landed for all Ext
+   call-entry sites (`call.mbt` UserFuncExt + ArrowFuncExt, `construct.mbt`
+   UserFuncExt + explicit class-ctor + implicit-super ctor,
+   `generator.mbt` + async via the generator path). Gated on
+   `has_parameter_expressions(params)` — plain-rest Ext shapes
+   (`function f(...rest) { var rest }`) keep single-env semantics per
+   step 26. `pattern_contains_expression` refines the gate so
+   destructuring without defaults doesn't over-split
+   (`function f({a}) { var a }`). `hoist_declarations` gained an optional
+   `param_source` so its Annex B excluded set scans the param env when
+   the caller is split. `Environment::initialize_in_chain` walks parents
+   for `super()` writeback across the split envs.
+
+   Post-merge Codex review drove four additional fixes on the same PR:
+   - **§15.2.5 FunctionExpressionName binding** (`has_name_binding` flag
+     on `FuncData` / `FuncDataExt`): only named FunctionExpressions get
+     the self-name wrapper env so defaults can close over the self-name
+     (`var g = function f(a = () => f) { return a(); }; g() === g`).
+     Methods, class methods, function declarations, `new Function()`,
+     and anonymous functions explicitly opt out. `is_method` added to
+     `ast.Property` so object-literal method shorthand strips the flag
+     via `strip_self_name_binding` post-eval.
+   - **`arguments` installed before defaults** in both class-ctor paths
+     (explicit `constructor(a = arguments.length)` + implicit super()).
+   - **Implicit super() split** mirrors the explicit ctor: `class D extends B {}`
+     with `class B { constructor(a = 1, q = () => x) { var x = 'b' } }`
+     now ReferenceErrors like direct `new B()`.
+   - **§10.2.11 plain-rest + plain-destructure gate correctness** — the
+     split no longer fires for `function f(...rest)` or `function f({a})`
+     without initializers.
+
+   **Final delta (baseline = post-PR-#65):**
    - `language/statements/class` +22 tests (`scope-*-paramsbody-var-open`
      shapes — tests cite §10.2.11 step 27 directly).
    - `language/eval-code/direct` +3 tests (`arrow-fn-body-cntns-arguments-*-incl-def-param-arrow-arguments`).
    - `language/statements/function` +2 tests.
-   - Zero regressions. 905/905 unit tests pass.
-
-   **Remaining ~66 cntns-arguments failures need §19.2.1.3 step 5.d
-   early-error detection.** They assert a SyntaxError when eval-declared
-   `var arguments` collides with a body-level `function arguments() {}` /
-   `var arguments =` / `let arguments =` declaration (shapes
-   `*-cntns-arguments-func-decl-*`, `*-cntns-arguments-var-bind-*`,
-   `*-cntns-arguments-lex-bind-*`). The split is a prerequisite (eval's
-   var now lands in param_env; body decls now live in body_env — the
-   two envs are what the early-error check compares). A separate
-   follow-up will implement the §19.2.1.3 step 5.d walk against
-   body-level function/lex declarations. Track under a dedicated item.
-
-   **Known non-blocking divergences from spec (pre-existing, deferred):**
-   - Spec-3-env vs our 2-env collapse (`env → varEnv → lexEnv` collapsed
-     to `param_env → body_env`). Observable only for
-     `f(a = eval("var x = 'e'"), b = () => x) { var x = 'b'; return [b(), x]; }`
-     patterns — spec says `['b', 'b']`, ours says `['e', 'b']`. Not in
-     the 96-test slice; becomes relevant when the §19.2.1.3 step 5.d
-     work ships (will likely need the third env).
-   - Param TDZ pre-declaration: our impl binds params sequentially
-     rather than pre-declaring all names first, so
-     `function f(a = b, b = 1) {}` doesn't throw the spec's TDZ error.
-     Pre-existing, unaffected by the split.
-   - `arguments` in parameterNames: `function f(arguments = 1)` should
-     suppress the arguments object per step 17; we currently collide.
-     Pre-existing, unaffected by the split.
-   - `super()` double-init check: `initialize_in_chain` overwrites
-     unconditionally; spec `BindThisValue` throws on re-init.
-     Pre-existing looseness, unaffected by the split.
+   - Zero regressions. 915/915 unit tests pass (with 6 new regression
+     tests covering named FE vs method distinction, class-ctor
+     arguments ordering, implicit-super split, and P1 gate refinements).
 2. ~~**Function-body §B.3.2.1 skip check.**~~ — DONE (2026-04-18, PR #65).
    `hoist_declarations` now runs the shared `hoist_eval_annex_b_candidates`
    post-loop with the function body's TopLevelLexicallyDeclaredNames as
@@ -347,6 +340,54 @@ param-default `eval("var arguments")` case (~96 tests, out of scope #1 below).
    collapsed to two-line wrappers. Widened `collect_eval_var_names` chain +
    `add_stmt_lex_names` / `collect_stmts_lex_names` / `for_init_lex_names`
    to `raise Error`. Net -78 lines. `.mbti` unchanged.
+6. **§19.2.1.3 step 5.d early-error for `cntns-arguments` cohort
+   (~66 tests).** Shapes: `*-cntns-arguments-func-decl-*`,
+   `*-cntns-arguments-var-bind-*`, `*-cntns-arguments-lex-bind-*`. Tests
+   assert a SyntaxError when `eval("var arguments")` in a default collides
+   with a body-level `function arguments() {}` / `var arguments =` /
+   `let arguments =` declaration. Implementation requires a walk of
+   body-level function / lex declarations that compares against the
+   param env's eval-introduced names. The §10.2.11 split shipped in #66
+   is a prerequisite (eval's `var` now lands in param_env, body decls
+   in body_env — the two envs are what the early-error check compares).
+   Will likely need to lift the 2-env collapse to a 3-env model during
+   the same PR; see item 7.
+7. **§10.2.11 remaining spec divergences (pre-existing, behavior
+   preserved across PR #66).** Not regressions — none block the shipped
+   test-count wins. Each is small surface, worth its own PR.
+   - **3-env vs 2-env collapse.** Spec has `env → varEnv → lexEnv`;
+     we collapse `varEnv ≡ lexEnv` into `param_env → body_env`.
+     Observable for
+     `f(a = eval("var x = 'e'"), b = () => x) { var x = 'b'; return [b(), x]; }`
+     — spec says `['b', 'b']`, ours `['e', 'b']`. Not in the 96-test
+     slice but likely prerequisite for item 6.
+   - **Param TDZ pre-declaration.** Spec §10.2.11 step 22 creates all
+     parameter bindings (as uninitialized) before step 27 evaluates
+     defaults, so `function f(a = b, b = 1) {}` throws TDZ on `b`.
+     We bind sequentially, so the forward reference silently resolves
+     via parent scope. Fix: first pass `def_tdz` every parameter name
+     on `param_env`, then swap `def_parameter` for `initialize` in the
+     existing loop. Interacts with rest + destructuring.
+   - **`arguments` in parameterNames.** `function f(arguments = 1)`
+     should suppress the arguments-object install per step 17.
+     Currently collides — the arguments-object install throws on
+     re-def of `arguments`. Gate the install on
+     `!parameter_names.contains("arguments")`.
+   - **`super()` double-init check.** `Environment::initialize_in_chain`
+     overwrites unconditionally; spec `BindThisValue` (§9.1.1.3.1) throws
+     on re-init. Add an initialized-guard in `initialize_in_chain` at
+     the binding-write site, or route super() through a dedicated
+     `initialize_this_once` helper.
+8. **Refactor: extract shared Ext-callable param/body helper.** Codex
+   nitpick on PR #66. `call.mbt` UserFuncExt and ArrowFuncExt branches
+   duplicate ~100 lines of parameter binding, rest handling, default
+   evaluation, destructuring, body_env split gating, hoist_declarations
+   threading, and the exec_stmts-to-completion match. Extract to
+   `bind_ext_params_and_body` with small caller-specific differences
+   (UserFuncExt installs `this` / `arguments` / self-name wrapper; arrow
+   skips them). Pure refactor, zero behavior change — kept out of #66
+   per the behavior-preserving charter. Code-quality improvement only,
+   not a test-count lever.
 
 #### B. test262 runner `_FIXTURE.js` path resolver — sibling gap CLOSED (2026-04-18, +17 tests)
 
