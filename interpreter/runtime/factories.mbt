@@ -132,6 +132,33 @@ pub fn make_func_ext(data : FuncDataExt) -> Value {
 }
 
 ///|
+/// Rebuild a function value with `has_name_binding: false` on its
+/// FuncData/FuncDataExt. Used for method-shorthand definitions (in
+/// object literals) where the parser emits FuncExpr/FuncExprExt with
+/// `name = Some(key)` for `fn.name` purposes, but §15.2.5's self-name
+/// binding does NOT apply. Non-UserFunc/UserFuncExt values pass
+/// through unchanged (nothing to strip).
+pub fn strip_self_name_binding(v : Value) -> Value {
+  match v {
+    Object(data) =>
+      match data.callable {
+        Some(UserFunc(fd)) if fd.has_name_binding =>
+          Object({
+            ..data,
+            callable: Some(UserFunc({ ..fd, has_name_binding: false })),
+          })
+        Some(UserFuncExt(fd)) if fd.has_name_binding =>
+          Object({
+            ..data,
+            callable: Some(UserFuncExt({ ..fd, has_name_binding: false })),
+          })
+        _ => v
+      }
+    _ => v
+  }
+}
+
+///|
 /// Global reference to Function.prototype, set during initialization
 pub let function_prototype_ref : Ref[Value?] = { val: None }
 

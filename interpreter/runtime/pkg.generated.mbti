@@ -219,6 +219,8 @@ pub let string_prototype_ref : @ref.Ref[Value?]
 
 pub fn string_to_utf16(String) -> Array[Int]
 
+pub fn strip_self_name_binding(Value) -> Value
+
 pub let symbol_prototype_ref : @ref.Ref[Value?]
 
 pub fn to_array_like_elements(Value) -> Array[Value] raise
@@ -369,6 +371,7 @@ pub(all) struct FuncData {
   body : Array[@ast.Stmt]
   closure : Environment
   strict : Bool
+  has_name_binding : Bool
 }
 
 pub(all) struct FuncDataExt {
@@ -378,6 +381,7 @@ pub(all) struct FuncDataExt {
   body : Array[@ast.Stmt]
   closure : Environment
   strict : Bool
+  has_name_binding : Bool
 }
 
 pub(all) enum GenState {

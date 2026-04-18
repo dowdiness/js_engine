@@ -1672,6 +1672,9 @@ fn Interpreter::hoist_declarations(
           body,
           closure: env,
           strict: is_function_strict(strict, body),
+          // FunctionDeclarations don't get a §15.2.5 self-name binding:
+          // the name is hoisted into the enclosing VarEnvironment instead.
+          has_name_binding: false,
         }
         let func_val = make_func(func_data)
         if env.bindings.contains(name) {
@@ -1699,6 +1702,7 @@ fn Interpreter::hoist_declarations(
           body,
           closure: env,
           strict: is_function_strict(strict, body),
+          has_name_binding: false,
         }
         let func_val = make_func_ext(func_data)
         if env.bindings.contains(name) {
@@ -1861,6 +1865,9 @@ fn Interpreter::hoist_declarations(
           body,
           closure: env,
           strict: is_function_strict(strict, body),
+          // `export default function f() {}` is a HoistableDeclaration;
+          // the name is bound in the module env, not on a funcEnv.
+          has_name_binding: false,
         }
         if env.bindings.contains(name) {
           env.assign(name, make_func(func_data))
@@ -1883,6 +1890,7 @@ fn Interpreter::hoist_declarations(
           body,
           closure: env,
           strict: is_function_strict(strict, body),
+          has_name_binding: false,
         }
         if env.bindings.contains(name) {
           env.assign(name, make_func_ext(func_data))

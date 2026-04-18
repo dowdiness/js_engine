@@ -546,13 +546,21 @@ pub fn Interpreter::call_value(
           // param_env, so default expressions that close over param_env
           // can still resolve the name (e.g.
           // `var g = function f(a = () => f) { return a(); }`).
-          let self_name_env : Environment = match data.name {
-            Some(name) => {
-              let ne = Environment::new(parent=Some(data.closure))
-              ne.def(name, callee, LetBinding)
-              ne
+          // Gated on has_name_binding so methods / class methods /
+          // function declarations (which also carry a `name`) do NOT get
+          // the self-binding — per spec those names live in enclosing
+          // envs, not on a per-call funcEnv.
+          let self_name_env : Environment = if data.has_name_binding {
+            match data.name {
+              Some(name) => {
+                let ne = Environment::new(parent=Some(data.closure))
+                ne.def(name, callee, LetBinding)
+                ne
+              }
+              None => data.closure
             }
-            None => data.closure
+          } else {
+            data.closure
           }
           let param_env = Environment::new(parent=Some(self_name_env))
           param_env.is_var_scope = true

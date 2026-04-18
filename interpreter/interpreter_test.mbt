@@ -9570,6 +9570,50 @@ test "§10.2.11: named function expression self-name visible to default closures
 }
 
 ///|
+/// §15.2.5 scope of the self-name binding: ONLY named FunctionExpression
+/// gets it. MethodDefinition (object method, class method, generator
+/// method, getter, setter) does NOT — methods have no `[[FunctionName]]`
+/// env entry. The parser still puts the shorthand key on the FuncData's
+/// `name` for `.name` display, but call-time must not create the
+/// funcEnv wrapper. Codex P1 regression follow-up to the §15.2.5 fix.
+test "§15.2.5: object shorthand method has no self-name binding" {
+  let src =
+    #|try {
+    #|  console.log(({ m(a = () => m) { let m = 1; return a(); } }).m());
+    #|} catch (e) {
+    #|  console.log(e.name + ': ' + e.message);
+    #|}
+  let output = run_output(src)
+  inspect(output, content="[\"ReferenceError: m is not defined\"]")
+}
+
+///|
+/// Class methods mirror object-method semantics: no self-name binding.
+test "§15.2.5: class method has no self-name binding" {
+  let src =
+    #|try {
+    #|  console.log((new class { m(a = () => m) { let m = 1; return a(); } }).m());
+    #|} catch (e) {
+    #|  console.log(e.name + ': ' + e.message);
+    #|}
+  let output = run_output(src)
+  inspect(output, content="[\"ReferenceError: m is not defined\"]")
+}
+
+///|
+/// Counterpart: `key: function name() {}` IS a FunctionExpression (not
+/// method shorthand), so the self-name binding DOES apply. Regression
+/// guard: stripping has_name_binding on all prop values would break
+/// this case.
+test "§15.2.5: `key: function name() {}` keeps named-FE self binding" {
+  let src =
+    #|var o = { f: function foo() { return foo; } };
+    #|console.log(o.f() === o.f);
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
 /// §10.2.11: class constructor default expressions must see `arguments`.
 /// Regression: previously the `arguments` binding was installed AFTER
 /// the parameter/default loop, so `constructor(a = arguments.length)`

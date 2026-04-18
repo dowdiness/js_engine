@@ -564,14 +564,19 @@ pub fn Interpreter::construct_value(
           // data.closure and param_env so default expressions can see it
           // (`function f(a = () => f) {}`). Params on param_env shadow
           // naturally; body-local decls of the same name shadow via
-          // lexical lookup.
-          let self_name_env : Environment = match data.name {
-            Some(name) => {
-              let ne = Environment::new(parent=Some(data.closure))
-              ne.def(name, ctor, LetBinding)
-              ne
+          // lexical lookup. Gated on has_name_binding — methods and
+          // function declarations don't get this binding.
+          let self_name_env : Environment = if data.has_name_binding {
+            match data.name {
+              Some(name) => {
+                let ne = Environment::new(parent=Some(data.closure))
+                ne.def(name, ctor, LetBinding)
+                ne
+              }
+              None => data.closure
             }
-            None => data.closure
+          } else {
+            data.closure
           }
           let param_env = Environment::new(parent=Some(self_name_env))
           param_env.is_var_scope = true
