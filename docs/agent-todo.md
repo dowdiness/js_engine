@@ -378,16 +378,27 @@ param-default `eval("var arguments")` case (~96 tests, out of scope #1 below).
      on re-init. Add an initialized-guard in `initialize_in_chain` at
      the binding-write site, or route super() through a dedicated
      `initialize_this_once` helper.
-8. **Refactor: extract shared Ext-callable param/body helper.** Codex
-   nitpick on PR #66. `call.mbt` UserFuncExt and ArrowFuncExt branches
-   duplicate ~100 lines of parameter binding, rest handling, default
-   evaluation, destructuring, body_env split gating, hoist_declarations
-   threading, and the exec_stmts-to-completion match. Extract to
-   `bind_ext_params_and_body` with small caller-specific differences
-   (UserFuncExt installs `this` / `arguments` / self-name wrapper; arrow
-   skips them). Pure refactor, zero behavior change — kept out of #66
-   per the behavior-preserving charter. Code-quality improvement only,
-   not a test-count lever.
+8. ~~**Refactor: extract shared Ext-callable param/body helper.**~~
+   DONE (2026-04-19, PR #67 merge `9b97f4c`). `call.mbt` UserFuncExt
+   and ArrowFuncExt now share `Interpreter::bind_ext_params_and_exec_body`
+   for parameter binding + rest + default eval + destructuring + body_env
+   split + hoist_declarations + exec→completion. Caller-specific setup
+   stays at each branch: UserFuncExt creates the §15.2.5 self-name
+   wrapper (when `has_name_binding` fires), runs strict duplicate/name
+   validation, and installs `this` / `<new.target>` / `arguments`;
+   ArrowFuncExt just parents `param_env` on `data.closure`.
+   Net -79 lines (337 → 258). 915/915 unit tests pass, `.mbti`
+   unchanged, test262 class / function-expression / arrow-function
+   counts all preserved.
+9. **Port `bind_ext_params_and_exec_body` pattern to `construct.mbt`.**
+   The UserFuncExt ctor path in `construct.mbt` is near-identical to
+   the `call.mbt` one — but returns with constructor semantics
+   (non-object return replaced by `this`). Not folded into #A.8; needs
+   either a separate helper that returns a raw `Completion` (so the
+   caller applies the return rule) or a completion-returning variant.
+   Same for the class-ctor body + implicit-super arms if their shapes
+   align after the call.mbt pattern. Pure refactor, zero behavior
+   change; split out to keep #A.8 focused.
 
 #### B. test262 runner `_FIXTURE.js` path resolver — sibling gap CLOSED (2026-04-18, +17 tests)
 
