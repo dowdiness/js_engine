@@ -464,7 +464,7 @@ pub fn Interpreter::call_value(
             if func_env.bindings.contains(data.params[i]) {
               func_env.assign(data.params[i], val)
             } else {
-              func_env.def(data.params[i], val, LetBinding)
+              func_env.def_parameter(data.params[i], val)
             }
           }
           // Create arguments object
@@ -519,7 +519,7 @@ pub fn Interpreter::call_value(
             } else {
               Undefined
             }
-            func_env.def(data.params[i], val, LetBinding)
+            func_env.def_parameter(data.params[i], val)
           }
           self.hoist_declarations(data.body, func_env, strict=data.strict)
           match self.exec_stmts(func_ctx, data.body, func_env) {
@@ -607,7 +607,7 @@ pub fn Interpreter::call_value(
                   }
               }
             }
-            func_env.def(param.name, val, LetBinding)
+            func_env.def_parameter(param.name, val)
             // Destructure if pattern param
             match param.pattern {
               Some(pat) =>
@@ -624,7 +624,7 @@ pub fn Interpreter::call_value(
                 rest_elements.push(args[i])
               }
               let rest_val = make_array(rest_elements)
-              func_env.def(rest_name, rest_val, LetBinding)
+              func_env.def_parameter(rest_name, rest_val)
               // Apply destructuring pattern if present
               for p in data.params {
                 if p.name == rest_name {
@@ -703,7 +703,7 @@ pub fn Interpreter::call_value(
                   }
               }
             }
-            func_env.def(param.name, val, LetBinding)
+            func_env.def_parameter(param.name, val)
             // Destructure if pattern param
             match param.pattern {
               Some(pat) =>
@@ -720,7 +720,7 @@ pub fn Interpreter::call_value(
                 rest_elements.push(args[i])
               }
               let rest_val = make_array(rest_elements)
-              func_env.def(rest_name, rest_val, LetBinding)
+              func_env.def_parameter(rest_name, rest_val)
               // Apply destructuring pattern if present
               for p in data.params {
                 if p.name == rest_name {

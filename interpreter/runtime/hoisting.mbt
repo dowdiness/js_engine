@@ -1148,18 +1148,34 @@ fn tag_annex_b_hoisted(
   interp : Interpreter,
   var_env : Environment,
   name : String,
-) -> Unit raise Error {
+) -> Unit {
   match var_env.bindings.get(name) {
-    Some(existing) => existing.annex_b_hoisted = true
+    // §B.3.4 skip check: the extension only applies if replacing the
+    // FunctionDeclaration with `var name` would not be an Early Error. A
+    // pre-existing let/const/class in the var env makes `var name` illegal,
+    // so we must not tag — otherwise the later block-entry reinit would
+    // overwrite an immutable lexical binding via direct `binding.value = ...`
+    // (bypassing `Environment::assign` const enforcement). Parameters share
+    // `BindingKind::LetBinding` with real `let` in the same environment
+    // (when there are no param defaults), so `is_parameter` is the only
+    // runtime-distinguishable signal.
+    Some(existing) =>
+      if existing.kind == VarBinding || existing.is_parameter {
+        existing.annex_b_hoisted = true
+      }
     None => {
-      var_env.def(name, Undefined, VarBinding)
+      var_env.bindings[name] = {
+        value: Undefined,
+        kind: VarBinding,
+        initialized: true,
+        annex_b_hoisted: true,
+        is_parameter: false,
+      }
       // Mirror to globalThis when the var env IS the global env — matches
       // the normal hoist path in `hoist_declarations`.
       if physical_equal(var_env, interp.global) {
         interp.mirror_to_global(name, Undefined)
       }
-      // Newly created via `def`, so the entry is guaranteed to exist.
-      var_env.bindings.get(name).unwrap().annex_b_hoisted = true
     }
   }
 }
@@ -1169,11 +1185,11 @@ fn tag_annex_b_hoisted(
 /// `names`. Non-recursive — blocks, function bodies, loop bodies, etc. are
 /// NOT descended into; the caller controls scope granularity. The
 /// `ExportNamedDecl` wrapper is unwrapped so `export let x = …` participates.
-fn add_stmt_lex_names(stmt : @ast.Stmt, names : Map[String, Unit]) -> Unit {
+fn add_stmt_lex_names(stmt : @ast.Stmt, names : Map[String, Bool]) -> Unit {
   match stmt {
     VarDecl(LetKind, name, _, _) | VarDecl(ConstKind, name, _, _) =>
-      names[name] = ()
-    ClassDecl(name, _, _, _) => names[name] = ()
+      names[name] = true
+    ClassDecl(name, _, _, _) => names[name] = true
     DestructureDecl(LetKind, pattern, _, _)
     | DestructureDecl(ConstKind, pattern, _, _) =>
       collect_pattern_lex_names(pattern, names)
@@ -1187,10 +1203,10 @@ fn add_stmt_lex_names(stmt : @ast.Stmt, names : Map[String, Unit]) -> Unit {
 /// `let` / `const` destructuring declarations and for-loop heads.
 fn collect_pattern_lex_names(
   pattern : @ast.Pattern,
-  names : Map[String, Unit],
+  names : Map[String, Bool],
 ) -> Unit {
   match pattern {
-    IdentPat(name) => names[name] = ()
+    IdentPat(name) => names[name] = true
     DefaultPat(inner, _) => collect_pattern_lex_names(inner, names)
     AssignTarget(_) => ()
     ArrayPat(elements, rest) => {
@@ -1223,8 +1239,8 @@ fn collect_pattern_lex_names(
 /// no recursion into Block, function body, switch case, loop body, catch
 /// block, or `with` body. Suitable for both eval top level (§B.3.3.3 skip
 /// check) and for per-block lex frames pushed onto the AST walk stack.
-fn collect_stmts_lex_names(stmts : Array[@ast.Stmt]) -> Map[String, Unit] {
-  let names : Map[String, Unit] = {}
+fn collect_stmts_lex_names(stmts : Array[@ast.Stmt]) -> Map[String, Bool] {
+  let names : Map[String, Bool] = {}
   for stmt in stmts {
     add_stmt_lex_names(stmt, names)
   }
@@ -1250,8 +1266,8 @@ fn collect_stmts_lex_names(stmts : Array[@ast.Stmt]) -> Map[String, Unit] {
 /// ignored — `with` pushes nothing.
 fn annex_b_candidate_conflicts(
   name : String,
-  top_lex : Map[String, Unit],
-  lex_stack : Array[Map[String, Unit]],
+  top_lex : Map[String, Bool],
+  lex_stack : Array[Map[String, Bool]],
 ) -> Bool {
   if top_lex.contains(name) {
     return true
@@ -1285,9 +1301,9 @@ fn hoist_eval_annex_b_candidates(
   interp : Interpreter,
   stmts : Array[@ast.Stmt],
   var_env : Environment,
-  top_lex : Map[String, Unit],
+  top_lex : Map[String, Bool],
 ) -> Unit raise Error {
-  let stack : Array[Map[String, Unit]] = []
+  let stack : Array[Map[String, Bool]] = []
   for stmt in stmts {
     walk_eval_annex_b_stmt(
       interp,
@@ -1308,8 +1324,8 @@ fn walk_eval_annex_b_stmt(
   interp : Interpreter,
   stmt : @ast.Stmt,
   var_env : Environment,
-  top_lex : Map[String, Unit],
-  stack : Array[Map[String, Unit]],
+  top_lex : Map[String, Bool],
+  stack : Array[Map[String, Bool]],
   in_block~ : Bool,
 ) -> Unit raise Error {
   match stmt {
@@ -1330,6 +1346,11 @@ fn walk_eval_annex_b_stmt(
           in_block~,
         )
       }
+    // §B.3.4: `if (expr) FunctionDeclaration` is treated as if the body
+    // were `{ FunctionDeclaration }`. Each branch is a block context for
+    // Annex B, so FuncDecls under IfStmt ARE candidates even at the eval
+    // top level. If the branch is itself a Block, the Block arm pushes its
+    // own frame — no double-pushing.
     IfStmt(_, then_branch, else_branch, _) => {
       walk_eval_annex_b_stmt(
         interp,
@@ -1337,11 +1358,18 @@ fn walk_eval_annex_b_stmt(
         var_env,
         top_lex,
         stack,
-        in_block~,
+        in_block=true,
       )
       match else_branch {
         Some(eb) =>
-          walk_eval_annex_b_stmt(interp, eb, var_env, top_lex, stack, in_block~)
+          walk_eval_annex_b_stmt(
+            interp,
+            eb,
+            var_env,
+            top_lex,
+            stack,
+            in_block=true,
+          )
         None => ()
       }
     }
@@ -1375,28 +1403,28 @@ fn walk_eval_annex_b_stmt(
         for_init_lex_names(init),
       )
     ForInStmt(kind, name, _, body, _) => {
-      let frame : Map[String, Unit] = {}
+      let frame : Map[String, Bool] = {}
       if kind is (Some(LetKind) | Some(ConstKind)) {
-        frame[name] = ()
+        frame[name] = true
       }
       walk_enclosed_body(interp, body, var_env, top_lex, stack, frame)
     }
     ForOfStmt(kind, name, _, body, _) => {
-      let frame : Map[String, Unit] = {}
+      let frame : Map[String, Bool] = {}
       if kind is (Some(LetKind) | Some(ConstKind)) {
-        frame[name] = ()
+        frame[name] = true
       }
       walk_enclosed_body(interp, body, var_env, top_lex, stack, frame)
     }
     ForInStmtPat(kind, pattern, _, body, _) => {
-      let frame : Map[String, Unit] = {}
+      let frame : Map[String, Bool] = {}
       if kind is (Some(LetKind) | Some(ConstKind)) {
         collect_pattern_lex_names(pattern, frame)
       }
       walk_enclosed_body(interp, body, var_env, top_lex, stack, frame)
     }
     ForOfStmtPat(kind, pattern, _, body, _) => {
-      let frame : Map[String, Unit] = {}
+      let frame : Map[String, Bool] = {}
       if kind is (Some(LetKind) | Some(ConstKind)) {
         collect_pattern_lex_names(pattern, frame)
       }
@@ -1427,7 +1455,7 @@ fn walk_eval_annex_b_stmt(
     // candidate `function F` in one case must not self-conflict. Duplicate
     // lex declarations across cases are caught by the early-error validator.
     SwitchStmt(_, cases, _) => {
-      let frame : Map[String, Unit] = {}
+      let frame : Map[String, Bool] = {}
       for case_ in cases {
         for inner in case_.body {
           add_stmt_lex_names(inner, frame)
@@ -1489,8 +1517,8 @@ fn walk_stmt_list_in_own_frame(
   interp : Interpreter,
   stmts : Array[@ast.Stmt],
   var_env : Environment,
-  top_lex : Map[String, Unit],
-  stack : Array[Map[String, Unit]],
+  top_lex : Map[String, Bool],
+  stack : Array[Map[String, Bool]],
 ) -> Unit raise Error {
   stack.push(collect_stmts_lex_names(stmts))
   for inner in stmts {
@@ -1514,9 +1542,9 @@ fn walk_enclosed_body(
   interp : Interpreter,
   body : @ast.Stmt,
   var_env : Environment,
-  top_lex : Map[String, Unit],
-  stack : Array[Map[String, Unit]],
-  frame : Map[String, Unit],
+  top_lex : Map[String, Bool],
+  stack : Array[Map[String, Bool]],
+  frame : Map[String, Bool],
 ) -> Unit raise Error {
   stack.push(frame)
   walk_eval_annex_b_stmt(interp, body, var_env, top_lex, stack, in_block=true)
@@ -1527,8 +1555,8 @@ fn walk_enclosed_body(
 /// Extract lex (let/const) names introduced by a for-loop init. An init of
 /// `StmtList(inner, _)` is the comma-separated `for (let a=1, b=2; …)` shape
 /// — unwrap it one level so each inner declaration contributes.
-fn for_init_lex_names(init : @ast.Stmt?) -> Map[String, Unit] {
-  let names : Map[String, Unit] = {}
+fn for_init_lex_names(init : @ast.Stmt?) -> Map[String, Bool] {
+  let names : Map[String, Bool] = {}
   match init {
     Some(StmtList(inner, _)) =>
       for s in inner {

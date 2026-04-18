@@ -9293,3 +9293,41 @@ test "annex-b eval: indirect eval does not false-positive on caller block let" {
   let output = run_output_annex_b(src)
   inspect(output, content="[\"null\", \"number\"]")
 }
+
+///|
+/// §B.3.4: `if (cond) FunctionDeclaration` is treated as if the body were a
+/// Block containing the FunctionDeclaration. Inside eval, the Annex B hoist
+/// must therefore promote `f` to the enclosing var env — so `f` remains
+/// visible in the caller after eval returns. Prior bug: IfStmt forwarded
+/// `in_block~` (false at the eval top level) through to the inner FuncDecl,
+/// so the Annex B walk skipped it and no var was created in the enclosing
+/// scope.
+test "annex-b eval: if-clause FunctionDeclaration hoists via B.3.4" {
+  let src =
+    #|(function() {
+    #|  eval("if (true) function f(){}");
+    #|  globalThis.__typ = typeof f;
+    #|})();
+    #|console.log(globalThis.__typ);
+  let output = run_output_annex_b(src)
+  inspect(output, content="[\"function\"]")
+}
+
+///|
+/// §B.3.4: a pre-existing `const` binding in the enclosing var env must
+/// suppress the Annex B extension — replacing `function f(){}` with `var f`
+/// would be an early error against the const, so the hoist must skip. Prior
+/// bug: `tag_annex_b_hoisted` marked any existing binding, letting the later
+/// block-entry reinit overwrite the const via a direct `binding.value = ...`
+/// write that bypasses `Environment::assign` const enforcement.
+test "annex-b eval: skip extension when enclosing const conflicts" {
+  let src =
+    #|(function() {
+    #|  const f = 1;
+    #|  eval("{ function f(){} }");
+    #|  console.log(f);
+    #|  console.log(typeof f);
+    #|})();
+  let output = run_output_annex_b(src)
+  inspect(output, content="[\"1\", \"number\"]")
+}

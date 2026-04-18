@@ -291,6 +291,7 @@ pub(all) struct Binding {
   kind : BindingKind
   mut initialized : Bool
   mut annex_b_hoisted : Bool
+  is_parameter : Bool
 }
 
 pub(all) enum BindingKind {
@@ -344,6 +345,7 @@ pub fn Environment::assign(Self, String, Value) -> Unit raise
 pub fn Environment::assign_var(Self, String, Value) -> Unit raise
 pub fn Environment::def(Self, String, Value, BindingKind) -> Unit raise
 pub fn Environment::def_builtin(Self, String, Value) -> Unit
+pub fn Environment::def_parameter(Self, String, Value) -> Unit raise
 pub fn Environment::def_tdz(Self, String, BindingKind) -> Unit raise
 pub fn Environment::find_var_env(Self) -> Self
 pub fn Environment::find_with_object(Self, String) -> Value?

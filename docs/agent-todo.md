@@ -280,6 +280,15 @@ frame, unlocking +34 more.
    `non-definable-function-with-function.js` expects all function decls in
    one eval body to be rejected together when any one would fail
    `CanDeclareGlobalFunction`. We emit them one-by-one. Separate issue.
+5. **Pattern-walker consolidation (pre-existing tech debt).** `hoisting.mbt`
+   has five near-identical pattern walkers: `collect_pattern_var_names`,
+   `collect_pattern_decl_names`, `collect_pattern_lex_names`, `hoist_pattern`,
+   `hoist_pattern_tdz`. Each walks `IdentPat | DefaultPat | AssignTarget |
+   ArrayPat | ObjectPat` identically and differs only in the per-identifier
+   action. A generic `walk_pattern_idents(pattern, on_ident)` could unify
+   them, but the existing walkers live on both raising and non-raising code
+   paths — threading `raise Error` through `collect_eval_var_names_from_stmt`
+   is required before the consolidation is safe. Not a correctness issue.
 
 #### B. test262 runner `_FIXTURE.js` path resolver — sibling gap CLOSED (2026-04-18, +17 tests)
 

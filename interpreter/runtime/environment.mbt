@@ -21,6 +21,13 @@ pub(all) struct Binding {
   // prevents overwriting genuine lex bindings while allowing updates to
   // params (LetBinding kind) reused by the extension.
   mut annex_b_hoisted : Bool
+  // True if this binding was created as a function parameter (including
+  // rest parameters). Parameters share BindingKind=LetBinding with real
+  // `let` declarations, but §B.3.4 treats `var name` as non-conflicting
+  // with params (so Annex B hoist may tag them), while real `let` must
+  // suppress the extension. This flag is the only runtime-distinguishable
+  // signal, since at tag-time both are `initialized=true`.
+  is_parameter : Bool
 }
 
 ///|
@@ -84,7 +91,31 @@ pub fn Environment::def(
         kind,
         initialized: true,
         annex_b_hoisted: false,
+        is_parameter: false,
       }
+  }
+}
+
+///|
+/// Define a function parameter binding. Parameters are stored as
+/// `LetBinding` with `is_parameter: true` so the Annex B block-level
+/// function extension can distinguish them from real `let` declarations.
+pub fn Environment::def_parameter(
+  self : Environment,
+  name : String,
+  value : Value,
+) -> Unit raise Error {
+  if self.bindings.contains(name) {
+    raise @errors.SyntaxError(
+      message="Identifier '\{name}' has already been declared",
+    )
+  }
+  self.bindings[name] = {
+    value,
+    kind: LetBinding,
+    initialized: true,
+    annex_b_hoisted: false,
+    is_parameter: true,
   }
 }
 
@@ -105,6 +136,7 @@ pub fn Environment::def_tdz(
     kind,
     initialized: false,
     annex_b_hoisted: false,
+    is_parameter: false,
   }
 }
 
@@ -138,6 +170,7 @@ pub fn Environment::def_builtin(
     kind: VarBinding,
     initialized: true,
     annex_b_hoisted: false,
+    is_parameter: false,
   }
 }
 
