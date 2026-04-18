@@ -319,23 +319,68 @@ fn is_function_strict(enclosing_strict : Bool, body : Array[@ast.Stmt]) -> Bool 
 ///|
 /// §10.2.11 `ContainsExpression` / `HasParameterExpressions` for Ext
 /// function parameter lists. True iff any param carries a default
-/// expression or a destructuring pattern. Plain rest without a pattern
-/// does NOT count as a parameter expression — `function f(...rest)`
-/// should not get the param-env / body-env split because the spec step
-/// 26 gate is `hasParameterExpressions`, not "is non-simple". The
-/// observable difference: with the split, body-level `var rest` hoists
-/// to a distinct binding instead of reusing the param binding, which
-/// `function f(...rest) { var rest; return rest; }` exposes.
+/// initializer or a pattern that itself contains an expression
+/// (nested default, computed key, or assignment target). A plain
+/// destructuring pattern like `{a}` or `[a, b]` with no nested
+/// initializers has NO expression per spec and must not trigger the
+/// split; otherwise `function f({a}) { var a; return a }` would hoist
+/// `var a` into body_env and shadow the destructured parameter.
+/// Plain rest without a pattern is also not a parameter expression.
 pub fn has_parameter_expressions(params : Array[@ast.Param]) -> Bool {
   for p in params {
     if p.default_val is Some(_) {
       return true
     }
-    if p.pattern is Some(_) {
-      return true
+    match p.pattern {
+      Some(pat) => if pattern_contains_expression(pat) { return true }
+      None => ()
     }
   }
   false
+}
+
+///|
+/// Returns true iff a BindingPattern contains any Initializer,
+/// computed property key, or assignment target — i.e. the AST
+/// subtrees the spec classifies as expressions inside
+/// `ContainsExpression`.
+fn pattern_contains_expression(pattern : @ast.Pattern) -> Bool {
+  match pattern {
+    IdentPat(_) => false
+    DefaultPat(_, _) => true
+    // AssignTarget shows up only for destructuring-assignment forms, not
+    // BindingPattern parameters, but treat it as an expression defensively.
+    AssignTarget(_) => true
+    ArrayPat(elements, rest) => {
+      for e in elements {
+        match e {
+          Some(p) => if pattern_contains_expression(p) { return true }
+          None => ()
+        }
+      }
+      match rest {
+        Some(p) => pattern_contains_expression(p)
+        None => false
+      }
+    }
+    ObjectPat(props, rest) => {
+      for prop in props {
+        if prop.default_val is Some(_) {
+          return true
+        }
+        if prop.computed_key is Some(_) {
+          return true
+        }
+        if pattern_contains_expression(prop.value) {
+          return true
+        }
+      }
+      match rest {
+        Some(p) => pattern_contains_expression(p)
+        None => false
+      }
+    }
+  }
 }
 
 ///|

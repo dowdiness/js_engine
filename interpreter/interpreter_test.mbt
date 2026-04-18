@@ -9512,6 +9512,48 @@ test "§10.2.11: plain-rest Ext stays single-env (body var reuses param)" {
 }
 
 ///|
+/// §10.2.11 `ContainsExpression` precision: a destructuring pattern
+/// WITHOUT any nested Initializer or computed key has no expression,
+/// so no param/body env split. Otherwise `function f({a}) { var a;
+/// return a }` wrongly hoists `var a` to body_env and shadows the
+/// destructured parameter, returning undefined instead of 1. Codex P1
+/// finding, post-merge review.
+test "§10.2.11: plain-destructure Ext stays single-env (body var reuses param)" {
+  let obj_src =
+    #|function f({a}) {
+    #|  var a;
+    #|  return a;
+    #|}
+    #|console.log(f({a: 1}));
+  let arr_src =
+    #|function g([a]) {
+    #|  var a;
+    #|  return a;
+    #|}
+    #|console.log(g([2]));
+  let out1 = run_output(obj_src)
+  let out2 = run_output(arr_src)
+  inspect(out1, content="[\"1\"]")
+  inspect(out2, content="[\"2\"]")
+}
+
+///|
+/// §10.2.11: a named function expression's self-binding must not
+/// shadow a same-named parameter. `function f(f = 1) { return f }`
+/// returns 1 (the param), not the callee. In the split path the
+/// self-binding would go on body_env while the param sits on
+/// param_env, so the check "don't re-bind if name already exists"
+/// needs to consult BOTH envs. Codex P1 finding, post-merge review.
+test "§10.2.11: function-name self-binding yields to param of same name" {
+  let src =
+    #|var g = function f(f = 1) { return f; };
+    #|console.log(g());
+    #|console.log(g(7));
+  let output = run_output(src)
+  inspect(output, content="[\"1\", \"7\"]")
+}
+
+///|
 /// §10.2.11: param-scope eval-var visible to an arrow default closure,
 /// and body's `let` of the same name creates a distinct binding. Like
 /// the canonical test but without the `arguments` special name, to

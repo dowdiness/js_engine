@@ -672,7 +672,12 @@ pub fn Interpreter::call_value(
           )
           match data.name {
             Some(name) =>
-              if !body_env.bindings.contains(name) {
+              // Named function expression self-binding must not shadow a
+              // same-named parameter (`function f(f = 1) { return f }`
+              // returns 1, not the callee). In the split-scope case
+              // body_env ≠ param_env, so check both.
+              if !body_env.bindings.contains(name) &&
+                !param_env.bindings.contains(name) {
                 body_env.def(name, callee, LetBinding)
               }
             None => ()

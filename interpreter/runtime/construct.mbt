@@ -658,7 +658,10 @@ pub fn Interpreter::construct_value(
           )
           match data.name {
             Some(name) =>
-              if !body_env.bindings.contains(name) {
+              // Named function expression self-binding must not shadow a
+              // same-named parameter; check body_env AND param_env.
+              if !body_env.bindings.contains(name) &&
+                !param_env.bindings.contains(name) {
                 body_env.def(name, ctor, LetBinding)
               }
             None => ()
