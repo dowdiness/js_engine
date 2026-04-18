@@ -84,6 +84,11 @@ pub(all) struct Property {
   value : Expr
   kind : PropKind
   computed : Bool // true for [expr]: value syntax
+  // True for method-shorthand (`{ m() {} }`, `{ *m() {} }`, `{ async m() {} }`)
+  // and for getters/setters. False for `key: value` entries even when the
+  // value happens to be a function. Drives whether the function gets a
+  // §15.2.5 FunctionExpressionName self-binding when evaluated.
+  is_method : Bool
 } derive(Debug, Eq)
 
 ///|

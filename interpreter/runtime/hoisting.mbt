@@ -1637,12 +1637,21 @@ fn for_init_lex_names(init : @ast.Stmt?) -> Map[String, Bool] raise Error {
 }
 
 ///|
+/// Hoist a body's var / function / let / const / class declarations into
+/// `env`. When the caller has split §10.2.11 function scope into a distinct
+/// `param_env` (holding formal params + `arguments`) and a `body_env`
+/// (passed as `env` here), the caller supplies `param_source=Some(param_env)`
+/// so the Annex B §B.3.2.1 skip check's exclusion set is populated from the
+/// param env's `is_parameter` bindings rather than from `env` (which has
+/// none in the split case). Scripts, modules, and non-Ext single-env call
+/// paths omit `param_source` and keep scanning `env`.
 fn Interpreter::hoist_declarations(
   _self : Interpreter,
   stmts : Array[@ast.Stmt],
   env : Environment,
   strict? : Bool = false,
   suppress_annex_b_candidates? : Bool = false,
+  param_source? : Environment? = None,
 ) -> Unit raise Error {
   let is_global = physical_equal(env, _self.global)
   for stmt in stmts {
@@ -1663,6 +1672,9 @@ fn Interpreter::hoist_declarations(
           body,
           closure: env,
           strict: is_function_strict(strict, body),
+          // FunctionDeclarations don't get a §15.2.5 self-name binding:
+          // the name is hoisted into the enclosing VarEnvironment instead.
+          has_name_binding: false,
         }
         let func_val = make_func(func_data)
         if env.bindings.contains(name) {
@@ -1690,6 +1702,7 @@ fn Interpreter::hoist_declarations(
           body,
           closure: env,
           strict: is_function_strict(strict, body),
+          has_name_binding: false,
         }
         let func_val = make_func_ext(func_data)
         if env.bindings.contains(name) {
@@ -1852,6 +1865,9 @@ fn Interpreter::hoist_declarations(
           body,
           closure: env,
           strict: is_function_strict(strict, body),
+          // `export default function f() {}` is a HoistableDeclaration;
+          // the name is bound in the module env, not on a funcEnv.
+          has_name_binding: false,
         }
         if env.bindings.contains(name) {
           env.assign(name, make_func(func_data))
@@ -1874,6 +1890,7 @@ fn Interpreter::hoist_declarations(
           body,
           closure: env,
           strict: is_function_strict(strict, body),
+          has_name_binding: false,
         }
         if env.bindings.contains(name) {
           env.assign(name, make_func_ext(func_data))
@@ -1905,12 +1922,19 @@ fn Interpreter::hoist_declarations(
     // Script / module top-level envs have no such bindings, so `excluded`
     // stays empty and no names are skipped.
     let excluded : Map[String, Bool] = {}
-    for name, binding in env.bindings {
+    // In the split (§10.2.11) case, param/"arguments" bindings live on
+    // `param_source`, not `env` (= body_env). Fall back to `env` when no
+    // split (scripts/modules/non-Ext single-env paths).
+    let scan_env = match param_source {
+      Some(p) => p
+      None => env
+    }
+    for name, binding in scan_env.bindings {
       if binding.is_parameter {
         excluded[name] = true
       }
     }
-    match env.bindings.get("arguments") {
+    match scan_env.bindings.get("arguments") {
       Some(b) => if b.kind == VarBinding { excluded["arguments"] = true }
       None => ()
     }

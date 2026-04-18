@@ -5,6 +5,12 @@ pub(all) struct FuncData {
   body : Array[@ast.Stmt]
   closure : Environment
   strict : Bool
+  // True only for named FunctionExpression per §15.2.5: such functions
+  // get a dedicated funcEnv (between outer env and call-time param env)
+  // holding an immutable self-name binding. Methods, class methods,
+  // function declarations, and anonymous functions do NOT get this
+  // binding — `name` is used only for `.name` display in those cases.
+  has_name_binding : Bool
 }
 
 ///|
@@ -15,6 +21,7 @@ pub(all) struct FuncDataExt {
   body : Array[@ast.Stmt]
   closure : Environment
   strict : Bool
+  has_name_binding : Bool
 }
 
 ///|

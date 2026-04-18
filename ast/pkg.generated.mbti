@@ -190,6 +190,7 @@ pub(all) struct Property {
   value : Expr
   kind : PropKind
   computed : Bool
+  is_method : Bool
 } derive(Eq, @debug.Debug)
 pub impl Show for Property
 

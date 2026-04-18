@@ -9453,3 +9453,230 @@ test "annex-b eval: skip extension when enclosing const conflicts" {
   let output = run_output_annex_b(src)
   inspect(output, content="[\"1\", \"number\"]")
 }
+
+///|
+/// §10.2.11 param-env / body-env split: a body-level `let arguments`
+/// shadows the `arguments` object installed at the function's param scope.
+/// Pre-split: `arguments` is a `VarBinding` on the single func_env, and the
+/// body's `let arguments` hoist either throws (binding-exists) or collides
+/// at runtime. Post-split: `arguments` lives on param_env, `let arguments`
+/// lives on body_env → no collision, body sees "local".
+test "§10.2.11: body let arguments shadows param-scope arguments object" {
+  let src =
+    #|function f(a = 1) {
+    #|  let arguments = "local";
+    #|  return arguments;
+    #|}
+    #|console.log(f());
+  let output = run_output(src)
+  inspect(output, content="[\"local\"]")
+}
+
+///|
+/// §10.2.11 canonical test262 shape
+/// (language/eval-code/direct/arrow-fn-body-cntns-arguments-*).
+/// Direct eval in a param default declares `var arguments = 'param'` in
+/// the param scope; a later arrow default `q = () => arguments` closes
+/// over the same param scope. The body then has `let arguments = "local"`,
+/// which is a distinct binding in body_env. q() must see "param", body
+/// must see "local".
+test "§10.2.11: arrow default eval-var-arguments + body let arguments" {
+  let src =
+    #|var log = [];
+    #|const f = (p = eval("var arguments = 'param'"), q = () => arguments) => {
+    #|  let arguments = "local";
+    #|  log.push(arguments);
+    #|  log.push(q());
+    #|};
+    #|f();
+    #|console.log(log[0]);
+    #|console.log(log[1]);
+  let output = run_output(src)
+  inspect(output, content="[\"local\", \"param\"]")
+}
+
+///|
+/// §10.2.11 step 26 gate: plain-rest Ext has HasParameterExpressions=false,
+/// so the param-env / body-env split must NOT fire — otherwise a body-level
+/// `var rest` hoists to a distinct binding instead of reusing the param,
+/// changing observable behavior. Codex-flagged during PR review.
+test "§10.2.11: plain-rest Ext stays single-env (body var reuses param)" {
+  let src =
+    #|function f(...rest) {
+    #|  var rest;
+    #|  return rest;
+    #|}
+    #|console.log(JSON.stringify(f(1, 2, 3)));
+  let output = run_output(src)
+  inspect(output, content="[\"[1,2,3]\"]")
+}
+
+///|
+/// §10.2.11 `ContainsExpression` precision: a destructuring pattern
+/// WITHOUT any nested Initializer or computed key has no expression,
+/// so no param/body env split. Otherwise `function f({a}) { var a;
+/// return a }` wrongly hoists `var a` to body_env and shadows the
+/// destructured parameter, returning undefined instead of 1. Codex P1
+/// finding, post-merge review.
+test "§10.2.11: plain-destructure Ext stays single-env (body var reuses param)" {
+  let obj_src =
+    #|function f({a}) {
+    #|  var a;
+    #|  return a;
+    #|}
+    #|console.log(f({a: 1}));
+  let arr_src =
+    #|function g([a]) {
+    #|  var a;
+    #|  return a;
+    #|}
+    #|console.log(g([2]));
+  let out1 = run_output(obj_src)
+  let out2 = run_output(arr_src)
+  inspect(out1, content="[\"1\"]")
+  inspect(out2, content="[\"2\"]")
+}
+
+///|
+/// §10.2.11: a named function expression's self-binding must not
+/// shadow a same-named parameter. `function f(f = 1) { return f }`
+/// returns 1 (the param), not the callee. In the split path the
+/// self-binding would go on body_env while the param sits on
+/// param_env, so the check "don't re-bind if name already exists"
+/// needs to consult BOTH envs. Codex P1 finding, post-merge review.
+test "§10.2.11: function-name self-binding yields to param of same name" {
+  let src =
+    #|var g = function f(f = 1) { return f; };
+    #|console.log(g());
+    #|console.log(g(7));
+  let output = run_output(src)
+  inspect(output, content="[\"1\", \"7\"]")
+}
+
+///|
+/// §15.2.5 + §10.2.11: a named function expression's self-name must be
+/// reachable from default-expression closures. Defaults evaluate in
+/// param_env, so arrows created inside defaults capture param_env; if
+/// the self-name only appears on body_env (child of param_env), the
+/// capture has no path to it. Per §15.2.5 the spec installs the name
+/// on a dedicated funcEnv BETWEEN the outer closure and the call's
+/// param_env, which our implementation mirrors. Codex P2 finding.
+test "§10.2.11: named function expression self-name visible to default closures" {
+  let src =
+    #|var g = function f(a = () => f) { return a(); };
+    #|console.log(g() === g);
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+/// §15.2.5 scope of the self-name binding: ONLY named FunctionExpression
+/// gets it. MethodDefinition (object method, class method, generator
+/// method, getter, setter) does NOT — methods have no `[[FunctionName]]`
+/// env entry. The parser still puts the shorthand key on the FuncData's
+/// `name` for `.name` display, but call-time must not create the
+/// funcEnv wrapper. Codex P1 regression follow-up to the §15.2.5 fix.
+test "§15.2.5: object shorthand method has no self-name binding" {
+  let src =
+    #|try {
+    #|  console.log(({ m(a = () => m) { let m = 1; return a(); } }).m());
+    #|} catch (e) {
+    #|  console.log(e.name + ': ' + e.message);
+    #|}
+  let output = run_output(src)
+  inspect(output, content="[\"ReferenceError: m is not defined\"]")
+}
+
+///|
+/// Class methods mirror object-method semantics: no self-name binding.
+test "§15.2.5: class method has no self-name binding" {
+  let src =
+    #|try {
+    #|  console.log((new class { m(a = () => m) { let m = 1; return a(); } }).m());
+    #|} catch (e) {
+    #|  console.log(e.name + ': ' + e.message);
+    #|}
+  let output = run_output(src)
+  inspect(output, content="[\"ReferenceError: m is not defined\"]")
+}
+
+///|
+/// Counterpart: `key: function name() {}` IS a FunctionExpression (not
+/// method shorthand), so the self-name binding DOES apply. Regression
+/// guard: stripping has_name_binding on all prop values would break
+/// this case.
+test "§15.2.5: `key: function name() {}` keeps named-FE self binding" {
+  let src =
+    #|var o = { f: function foo() { return foo; } };
+    #|console.log(o.f() === o.f);
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+/// §10.2.11: implicit super() must apply the same param-env / body-env
+/// split as a direct call to the parent constructor. Calling a parent
+/// ctor through `class D extends B {}` (no own constructor) used to
+/// skip the split and let `var x` hoist into the param env, where a
+/// default's arrow captured it. Both direct `new B()` and implicit
+/// `new D()` must throw ReferenceError for the same reason. Codex P1.
+test "§10.2.11: implicit super() splits body env under HasParameterExpressions" {
+  let src =
+    #|class B { constructor(a = 1, q = () => x) { var x = 'b'; this.v = q(); } }
+    #|class D extends B {}
+    #|try {
+    #|  new D();
+    #|  console.log('no throw');
+    #|} catch (e) {
+    #|  console.log(e.name + ': ' + e.message);
+    #|}
+  let output = run_output(src)
+  inspect(output, content="[\"ReferenceError: x is not defined\"]")
+}
+
+///|
+/// §10.2.11: class constructor default expressions must see `arguments`.
+/// Regression: previously the `arguments` binding was installed AFTER
+/// the parameter/default loop, so `constructor(a = arguments.length)`
+/// threw `ReferenceError: arguments is not defined`.
+test "§10.2.11: class constructor default expressions see arguments" {
+  let src =
+    #|class C { constructor(a = arguments.length) { this.a = a } }
+    #|console.log(new C(undefined, 2, 3).a);
+  let output = run_output(src)
+  inspect(output, content="[\"3\"]")
+}
+
+///|
+/// §10.2.11: same ordering requirement applies to the implicit-super
+/// path where a derived class calls `super()` and the parent's
+/// constructor defaults evaluate in super_env. `arguments` must be in
+/// scope before the super ctor's param defaults fire.
+test "§10.2.11: implicit super() ctor default expressions see arguments" {
+  let src =
+    #|class B { constructor(a = arguments.length) { this.a = a } }
+    #|class D extends B {}
+    #|console.log(new D(undefined, 2, 3).a);
+  let output = run_output(src)
+  inspect(output, content="[\"3\"]")
+}
+
+///|
+/// §10.2.11: param-scope eval-var visible to an arrow default closure,
+/// and body's `let` of the same name creates a distinct binding. Like
+/// the canonical test but without the `arguments` special name, to
+/// isolate the env-split logic from the arguments-object machinery.
+test "§10.2.11: param-scope eval-var captured by arrow default closure" {
+  let src =
+    #|var log = [];
+    #|function f(p = eval("var z = 'from-eval'"), q = () => z) {
+    #|  let z = "body";
+    #|  log.push(z);
+    #|  log.push(q());
+    #|}
+    #|f();
+    #|console.log(log[0]);
+    #|console.log(log[1]);
+  let output = run_output(src)
+  inspect(output, content="[\"body\", \"from-eval\"]")
+}

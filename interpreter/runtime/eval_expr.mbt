@@ -1,4 +1,24 @@
 ///|
+/// Evaluate an object-literal property's value. For method-shorthand
+/// props the returned function must not carry the §15.2.5 self-name
+/// binding (methods have no FunctionExpressionName), so we strip it
+/// off the resulting FuncData. For `key: value` props the value passes
+/// through — a named FunctionExpression there still gets its self-name.
+fn Interpreter::eval_prop_value(
+  self : Interpreter,
+  ctx : ExecContext,
+  prop : @ast.Property,
+  method_env : Environment,
+) -> Value raise Error {
+  let v = self.eval_expr(ctx, prop.value, method_env)
+  if prop.is_method {
+    strip_self_name_binding(v)
+  } else {
+    v
+  }
+}
+
+///|
 fn Interpreter::eval_expr(
   self : Interpreter,
   ctx : ExecContext,
@@ -85,6 +105,9 @@ fn Interpreter::eval_expr(
         body,
         closure: env,
         strict: is_function_strict(ctx.strict, body),
+        // Named FunctionExpression: §15.2.5 installs a self-name binding
+        // in a dedicated funcEnv. Anonymous FEs have no such binding.
+        has_name_binding: name is Some(_),
       }
       make_func(func_data)
     }
@@ -237,7 +260,7 @@ fn Interpreter::eval_expr(
               // Symbol key - store in symbol_properties
               match prop.kind {
                 Init => {
-                  let val = self.eval_expr(ctx, prop.value, method_env)
+                  let val = self.eval_prop_value(ctx, prop, method_env)
                   // SetFunctionName with symbol description
                   let sym_name = match sym.description {
                     Some(d) => "[\{d}]"
@@ -247,7 +270,7 @@ fn Interpreter::eval_expr(
                   symbol_properties[sym.id] = val
                 }
                 Get => {
-                  let getter = self.eval_expr(ctx, prop.value, method_env)
+                  let getter = self.eval_prop_value(ctx, prop, method_env)
                   let sym_name = match sym.description {
                     Some(d) => "get [\{d}]"
                     None => "get "
@@ -270,7 +293,7 @@ fn Interpreter::eval_expr(
                   }
                 }
                 Set => {
-                  let setter = self.eval_expr(ctx, prop.value, method_env)
+                  let setter = self.eval_prop_value(ctx, prop, method_env)
                   let sym_name = match sym.description {
                     Some(d) => "set [\{d}]"
                     None => "set "
@@ -298,12 +321,12 @@ fn Interpreter::eval_expr(
               let key_str = to_js_string(key_val)
               match prop.kind {
                 Init => {
-                  let val = self.eval_expr(ctx, prop.value, method_env)
+                  let val = self.eval_prop_value(ctx, prop, method_env)
                   set_function_name(val, key_str)
                   properties[key_str] = val
                 }
                 Get => {
-                  let getter = self.eval_expr(ctx, prop.value, method_env)
+                  let getter = self.eval_prop_value(ctx, prop, method_env)
                   set_function_name(getter, "get " + key_str)
                   if !properties.contains(key_str) {
                     properties[key_str] = Undefined
@@ -321,7 +344,7 @@ fn Interpreter::eval_expr(
                   }
                 }
                 Set => {
-                  let setter = self.eval_expr(ctx, prop.value, method_env)
+                  let setter = self.eval_prop_value(ctx, prop, method_env)
                   set_function_name(setter, "set " + key_str)
                   if !properties.contains(key_str) {
                     properties[key_str] = Undefined
@@ -361,7 +384,7 @@ fn Interpreter::eval_expr(
             Init =>
               // Handle __proto__ as special syntax per B.3.1
               if key_str == "__proto__" {
-                let val = self.eval_expr(ctx, prop.value, method_env)
+                let val = self.eval_prop_value(ctx, prop, method_env)
                 match val {
                   Object(_) | Array(_) | Map(_) | Set(_) =>
                     proto_override = Some(val)
@@ -369,13 +392,13 @@ fn Interpreter::eval_expr(
                   _ => properties[key_str] = val // primitives don't set proto
                 }
               } else {
-                let val = self.eval_expr(ctx, prop.value, method_env)
+                let val = self.eval_prop_value(ctx, prop, method_env)
                 // SetFunctionName: infer name for anonymous functions
                 set_function_name(val, key_str)
                 properties[key_str] = val
               }
             Get => {
-              let getter = self.eval_expr(ctx, prop.value, method_env)
+              let getter = self.eval_prop_value(ctx, prop, method_env)
               // Force set name with "get " prefix per spec
               match getter {
                 Object(d) =>
@@ -398,7 +421,7 @@ fn Interpreter::eval_expr(
               }
             }
             Set => {
-              let setter = self.eval_expr(ctx, prop.value, method_env)
+              let setter = self.eval_prop_value(ctx, prop, method_env)
               // Force set name with "set " prefix per spec
               match setter {
                 Object(d) =>
@@ -555,6 +578,7 @@ fn Interpreter::eval_expr(
         body,
         closure: env,
         strict: is_function_strict(ctx.strict, body),
+        has_name_binding: false,
       }
       let nf_desc : PropDescriptor = {
         writable: false,
@@ -594,6 +618,7 @@ fn Interpreter::eval_expr(
         body,
         closure: env,
         strict: is_function_strict(ctx.strict, body),
+        has_name_binding: false,
       }
       let nf_desc : PropDescriptor = {
         writable: false,
@@ -641,6 +666,7 @@ fn Interpreter::eval_expr(
         body,
         closure: env,
         strict: is_function_strict(ctx.strict, body),
+        has_name_binding: name is Some(_),
       }
       make_func_ext(func_data)
     }
@@ -860,10 +886,11 @@ fn Interpreter::eval_expr(
                         | Set(_)
                         | Promise(_)
                         | Proxy(_) => {
-                          // Initialize 'this' (may be in TDZ for derived classes)
-                          env.initialize("this", v) catch {
-                            _ => env.assign("this", v)
-                          }
+                          // Initialize 'this' (may be in TDZ for derived classes).
+                          // Walk the chain: with the §10.2.11 param/body env
+                          // split, 'this' lives on the caller's param env,
+                          // not its body env.
+                          env.initialize_in_chain("this", v)
                           // Apply calling class's instance fields to the override object
                           if env.has("[[InitInstanceFields]]") {
                             let init_fn = env.get("[[InitInstanceFields]]")
@@ -879,9 +906,7 @@ fn Interpreter::eval_expr(
                 None => ()
               }
               // Initialize 'this' in the calling env (may be TDZ for derived classes)
-              env.initialize("this", this_val) catch {
-                _ => env.assign("this", this_val) catch { _ => () }
-              }
+              env.initialize_in_chain("this", this_val)
               // Apply calling class's instance fields after super() establishes this
               if env.has("[[InitInstanceFields]]") {
                 let init_fn = env.get("[[InitInstanceFields]]")
@@ -903,9 +928,7 @@ fn Interpreter::eval_expr(
                       result_data.prototype = this_data.prototype
                     _ => ()
                   }
-                  env.initialize("this", super_result) catch {
-                    _ => env.assign("this", super_result)
-                  }
+                  env.initialize_in_chain("this", super_result)
                   if env.has("[[InitInstanceFields]]") {
                     let init_fn = env.get("[[InitInstanceFields]]")
                     let _ = self.call_value(init_fn, super_result, [], loc)
@@ -913,9 +936,7 @@ fn Interpreter::eval_expr(
                   super_result
                 }
                 Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => {
-                  env.initialize("this", super_result) catch {
-                    _ => env.assign("this", super_result)
-                  }
+                  env.initialize_in_chain("this", super_result)
                   if env.has("[[InitInstanceFields]]") {
                     let init_fn = env.get("[[InitInstanceFields]]")
                     let _ = self.call_value(init_fn, super_result, [], loc)
@@ -923,9 +944,7 @@ fn Interpreter::eval_expr(
                   super_result
                 }
                 _ => {
-                  env.initialize("this", this_val) catch {
-                    _ => env.assign("this", this_val) catch { _ => () }
-                  }
+                  env.initialize_in_chain("this", this_val)
                   if env.has("[[InitInstanceFields]]") {
                     let init_fn = env.get("[[InitInstanceFields]]")
                     let _ = self.call_value(init_fn, this_val, [], loc)

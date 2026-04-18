@@ -914,6 +914,7 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
         value: UndefinedLit(spread_loc),
         kind: @ast.Spread,
         computed: false,
+        is_method: false,
       })
       if !self.at(RBrace) {
         if self.at(Comma) {
@@ -1072,6 +1073,7 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
         value: gen_func_data,
         kind: @ast.Init,
         computed: gen_computed,
+        is_method: true,
       })
       if !self.at(RBrace) {
         if self.at(Comma) {
@@ -1341,12 +1343,24 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
           }
         e => raise e
       }
-      props.push({ key: key_expr, value: func_data, kind: prop_kind, computed })
+      props.push({
+        key: key_expr,
+        value: func_data,
+        kind: prop_kind,
+        computed,
+        is_method: true,
+      })
     } else if self.at(Colon) {
       // Normal property
       let _ = self.advance() // consume ':'
       let value = self.parse_assignment()
-      props.push({ key: key_expr, value, kind: @ast.Init, computed })
+      props.push({
+        key: key_expr,
+        value,
+        kind: @ast.Init,
+        computed,
+        is_method: false,
+      })
     } else if self.at(Assign) && is_ident_key {
       // Shorthand with default (cover assignment pattern): { x = 42 }
       // This is valid in destructuring: { x = 42 } = obj
@@ -1354,7 +1368,13 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
       let default_val = self.parse_assignment()
       // Represent as Assign expr so destructuring can pick it up
       let value : @ast.Expr = Assign(key_name, default_val, eq_tok.loc)
-      props.push({ key: key_expr, value, kind: @ast.Init, computed: false })
+      props.push({
+        key: key_expr,
+        value,
+        kind: @ast.Init,
+        computed: false,
+        is_method: false,
+      })
     } else if self.at(Comma) || self.at(RBrace) {
       // Shorthand property: { x } => { x: x }
       // Only identifier keys can use shorthand syntax
@@ -1365,7 +1385,13 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
         )
       }
       let value : @ast.Expr = Ident(key_name, loc)
-      props.push({ key: key_expr, value, kind: @ast.Init, computed: false })
+      props.push({
+        key: key_expr,
+        value,
+        kind: @ast.Init,
+        computed: false,
+        is_method: false,
+      })
     } else {
       let t = self.peek()
       raise @errors.SyntaxError(

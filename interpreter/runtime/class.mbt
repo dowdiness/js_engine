@@ -193,6 +193,8 @@ fn Interpreter::create_class(
               body: strict_body,
               closure: method_closure,
               strict: true,
+              // Class methods don't get a §15.2.5 self-name binding.
+              has_name_binding: false,
             }
             make_func(func_data)
           }
@@ -208,6 +210,7 @@ fn Interpreter::create_class(
               body: strict_body,
               closure: method_closure,
               strict: true,
+              has_name_binding: false,
             }
             make_func_ext(func_data)
           }
