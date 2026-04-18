@@ -446,6 +446,7 @@ pub(all) struct Interpreter {
   gen_id_counter : @ref.Ref[Int]
   symbols : SymbolState
   mut stdlib_hooks : StdlibHooks
+  mut in_nonarrow_param_default_eval : Bool
 }
 pub fn Interpreter::call_value(Self, Value, Value, Array[Value], @token.Loc) -> Value raise
 pub fn Interpreter::construct_value(Self, Value, Array[Value], @token.Loc, proto_override? : Value?) -> Value raise

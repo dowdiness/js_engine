@@ -340,18 +340,30 @@ param-default `eval("var arguments")` case (~96 tests, out of scope #1 below).
    collapsed to two-line wrappers. Widened `collect_eval_var_names` chain +
    `add_stmt_lex_names` / `collect_stmts_lex_names` / `for_init_lex_names`
    to `raise Error`. Net -78 lines. `.mbti` unchanged.
-6. **§19.2.1.3 step 5.d early-error for `cntns-arguments` cohort
-   (~66 tests).** Shapes: `*-cntns-arguments-func-decl-*`,
-   `*-cntns-arguments-var-bind-*`, `*-cntns-arguments-lex-bind-*`. Tests
-   assert a SyntaxError when `eval("var arguments")` in a default collides
-   with a body-level `function arguments() {}` / `var arguments =` /
-   `let arguments =` declaration. Implementation requires a walk of
-   body-level function / lex declarations that compares against the
-   param env's eval-introduced names. The §10.2.11 split shipped in #66
-   is a prerequisite (eval's `var` now lands in param_env, body decls
-   in body_env — the two envs are what the early-error check compares).
-   Will likely need to lift the 2-env collapse to a 3-env model during
-   the same PR; see item 7.
+6. ~~**§19.2.1.3 eval-declared-arguments early error.**~~ DONE 2026-04-19.
+   Empirical investigation (see
+   `docs/superpowers/plans/2026-04-19-eval-declared-arguments-early-error.md`)
+   established the real rule is broader and the mechanism simpler than
+   first hypothesised. A direct `eval(...)` in a function's parameter
+   default whose eval input declares `arguments` raises SyntaxError
+   whenever the function's parameter scope has an `arguments` binding —
+   non-arrow always (via arguments-object install), arrow only when an
+   explicit `arguments` formal parameter is present. No env-model
+   change needed; the 3-env lift framing was a red herring. Four
+   cohorts moved together: `cntns-arguments` 30→72 (+42),
+   `no-pre-existing-arguments-bindings` 10→24 (+14),
+   `preceding-parameter-is-named-arguments` 22→24 (+2),
+   `following-parameter-is-named-arguments` 24→24 (+0).
+   **Overall `eval-code/direct` 451/646 → 509/646 (+58, 69.8% → 78.8%)**;
+   unit tests 733→745 (+12 new regression guards, 0 regressions).
+   Implementation: new `Interpreter.in_nonarrow_param_default_eval`
+   flag with save/reset/set/restore discipline across
+   `bind_ext_params_and_exec_body`, `create_generator_instance`, and
+   the `UserFunc` / `ArrowFunc` simple call paths, plus a one-branch
+   check in `perform_eval` after `collect_eval_var_names`.
+   **Remaining 48 fails across the four cohorts are all async
+   `"async test did not call $DONE"`** — a microtask-drain harness gap
+   unrelated to eval semantics; tracked separately.
 7. **§10.2.11 remaining spec divergences (pre-existing, behavior
    preserved across PR #66).** Not regressions — none block the shipped
    test-count wins. Each is small surface, worth its own PR.

@@ -9680,3 +9680,250 @@ test "§10.2.11: param-scope eval-var captured by arrow default closure" {
   let output = run_output(src)
   inspect(output, content="[\"body\", \"from-eval\"]")
 }
+
+///|
+/// §19.2.1.3 step 5.d probe (#A.6). Canonical test262 shape from
+/// language/eval-code/direct/func-decl-fn-body-cntns-arguments-var-bind-
+/// declare-arguments.js: a non-arrow function whose parameter default
+/// runs `eval("var arguments")` while the body also declares
+/// `var arguments`. Spec mandates SyntaxError at call time. Purpose of
+/// this probe: determine whether this early-error is decidable under
+/// our current 2-env model (param_env + body_env) without lifting to
+/// the full 3-env (param / varEnv / lexEnv) split.
+test "§19.2.1.3 probe: eval(var arguments) in default + body var arguments throws SyntaxError" {
+  let mut err_msg = ""
+  try {
+    let _ = run_js(
+      (
+        #|function f(p = eval("var arguments")) {
+        #|  var arguments;
+        #|}
+        #|f();
+      ),
+    )
+  } catch {
+    @runtime.JsException(val) => err_msg = error_display(val)
+    _ => err_msg = "unexpected"
+  }
+  inspect(
+    err_msg,
+    content="SyntaxError: Identifier 'arguments' has already been declared",
+  )
+}
+
+///|
+/// §19.2.1.3 step 5.d probe (#A.6) — func-decl shape. Maps to test262
+/// template default/func-decl/fn-body-cntns-arguments-func-decl.template.
+/// Spec anchor and expected behavior identical to the var-bind probe;
+/// only the body-level declaration kind differs (body has a function
+/// declaration named `arguments` rather than a var). If this probe fails
+/// with the same "no error raised" signature as the var-bind probe,
+/// all three shapes share a single root cause (body decls invisible
+/// to the step 5.d walk at default-evaluation time).
+test "§19.2.1.3 probe: eval(var arguments) in default + body function arguments() throws SyntaxError" {
+  let mut err_msg = ""
+  try {
+    let _ = run_js(
+      (
+        #|function f(p = eval("var arguments")) {
+        #|  function arguments() {}
+        #|}
+        #|f();
+      ),
+    )
+  } catch {
+    @runtime.JsException(val) => err_msg = error_display(val)
+    _ => err_msg = "unexpected"
+  }
+  inspect(
+    err_msg,
+    content="SyntaxError: Identifier 'arguments' has already been declared",
+  )
+}
+
+///|
+/// §19.2.1.3 step 5.d probe (#A.6) — lex-bind shape. Maps to test262
+/// template default/func-decl/fn-body-cntns-arguments-lex-bind.template.
+/// Body declares `let arguments` (lexical binding) instead of var.
+/// In the spec 3-env model this lands on lexEnv (not varEnv), and the
+/// walk from eval's lexEnv up to varEnv exclusive must observe it.
+/// In our 2-env collapse, body let/const hoist to body_env alongside
+/// vars, so if the fix surfaces body decls before defaults evaluate,
+/// all three shapes flip green together.
+test "§19.2.1.3 probe: eval(var arguments) in default + body let arguments throws SyntaxError" {
+  let mut err_msg = ""
+  try {
+    let _ = run_js(
+      (
+        #|function f(p = eval("var arguments")) {
+        #|  let arguments;
+        #|}
+        #|f();
+      ),
+    )
+  } catch {
+    @runtime.JsException(val) => err_msg = error_display(val)
+    _ => err_msg = "unexpected"
+  }
+  inspect(
+    err_msg,
+    content="SyntaxError: Identifier 'arguments' has already been declared",
+  )
+}
+
+///|
+/// §19.2.1.3 probe (#A.6) — empty-body shape (no-pre-existing-arguments-
+/// bindings cohort, 22 non-arrow test262 fails). Proves the rule fires on
+/// eval's intent alone, not on body-decl visibility.
+test "§19.2.1.3 probe: eval(var arguments) in default + empty body throws SyntaxError" {
+  let mut err_msg = ""
+  try {
+    let _ = run_js(
+      (
+        #|function f(p = eval("var arguments")) {}
+        #|f();
+      ),
+    )
+  } catch {
+    @runtime.JsException(val) => err_msg = error_display(val)
+    _ => err_msg = "unexpected"
+  }
+  inspect(
+    err_msg,
+    content="SyntaxError: Identifier 'arguments' has already been declared",
+  )
+}
+
+///|
+/// §19.2.1.3 probe (#A.6) — preceding-parameter shape. `arguments` is an
+/// explicit PARAMETER declared before the eval-containing default. Covers
+/// preceding-parameter-is-named-arguments cohort (~10 non-arrow fails).
+test "§19.2.1.3 probe: preceding arguments param + eval(var arguments) in later default throws SyntaxError" {
+  let mut err_msg = ""
+  try {
+    let _ = run_js(
+      (
+        #|function f(arguments, p = eval("var arguments")) {}
+        #|f();
+      ),
+    )
+  } catch {
+    @runtime.JsException(val) => err_msg = error_display(val)
+    _ => err_msg = "unexpected"
+  }
+  inspect(
+    err_msg,
+    content="SyntaxError: Identifier 'arguments' has already been declared",
+  )
+}
+
+///|
+/// §19.2.1.3 probe (#A.6) — following-parameter shape. `arguments` is an
+/// explicit PARAMETER declared after the eval-containing default. Covers
+/// following-parameter-is-named-arguments cohort (~8 non-arrow fails).
+test "§19.2.1.3 probe: eval(var arguments) in default + following arguments param throws SyntaxError" {
+  let mut err_msg = ""
+  try {
+    let _ = run_js(
+      (
+        #|function f(p = eval("var arguments"), arguments) {}
+        #|f();
+      ),
+    )
+  } catch {
+    @runtime.JsException(val) => err_msg = error_display(val)
+    _ => err_msg = "unexpected"
+  }
+  inspect(
+    err_msg,
+    content="SyntaxError: Identifier 'arguments' has already been declared",
+  )
+}
+
+///|
+/// §19.2.1.3 negative regression (#A.6) — arrow variant must NOT throw.
+/// Arrows have no `arguments` binding; eval's var lands in an empty scope.
+/// Protects the 86 currently-passing arrow test262 tests.
+test "§19.2.1.3 regression: arrow with eval(var arguments) in default runs normally" {
+  let src =
+    #|const f = (p = eval("var arguments")) => {
+    #|  let arguments = "ok";
+    #|  return arguments;
+    #|};
+    #|console.log(f());
+  let output = run_output(src)
+  inspect(output, content="[\"ok\"]")
+}
+
+///|
+/// §19.2.1.3 negative regression (#A.6) — body eval of `var arguments`
+/// (not param-default) must NOT throw. Confirms the signal is strictly
+/// scoped to parameter-default evaluation.
+test "§19.2.1.3 regression: body eval(var arguments) in non-arrow runs normally" {
+  let src =
+    #|function f() {
+    #|  eval("var arguments = 42");
+    #|  return typeof arguments;
+    #|}
+    #|console.log(f());
+  let output = run_output(src)
+  inspect(output, content="[\"number\"]")
+}
+
+///|
+/// §19.2.1.3 negative regression (#A.6) — eval declaring a non-`arguments`
+/// var must NOT throw, even in non-arrow param default. Confirms the gate
+/// is `arguments`-specific, not a generic eval-in-default ban. (Only
+/// asserts non-throw; observable value of the body's `x` differs from
+/// spec under our 2-env collapse — see agent-todo item 7.)
+test "§19.2.1.3 regression: eval(var x) in default of non-arrow does not throw" {
+  let src =
+    #|function f(p = eval("var x = 1")) {}
+    #|f();
+    #|console.log("ok");
+  let output = run_output(src)
+  inspect(output, content="[\"ok\"]")
+}
+
+///|
+/// §19.2.1.3 negative regression (#A.6) — indirect eval (comma-expr form)
+/// must NOT throw. Indirect eval uses global var scope, not caller's.
+/// Our gate is `direct`-only; this protects that invariant.
+test "§19.2.1.3 regression: indirect eval(var arguments) in default runs normally" {
+  let src =
+    #|function f(p = (0, eval)("var arguments")) {
+    #|  return typeof p;
+    #|}
+    #|console.log(f());
+  let output = run_output(src)
+  inspect(output, content="[\"undefined\"]")
+}
+
+///|
+/// §19.2.1.3 negative regression (#A.6) — a nested non-arrow IIFE in a
+/// default whose body contains `eval("var arguments")` must NOT throw
+/// (the IIFE's eval runs in the IIFE's own var scope, not f's). Proves
+/// the signal resets on every function entry. Without reset-on-entry,
+/// the IIFE body would inherit f's default-eval-in-progress state and
+/// false-fire — the bug the self-review caught.
+test "§19.2.1.3 regression: nested IIFE with eval(var arguments) in f's default runs normally" {
+  let src =
+    #|function f(p = (function() { eval("var arguments"); return 1; })()) {
+    #|  return p;
+    #|}
+    #|console.log(f());
+  let output = run_output(src)
+  inspect(output, content="[\"1\"]")
+}
+
+///|
+/// §19.2.1.3 negative regression (#A.6) — baseline check that nested
+/// arrow invocations in defaults don't accidentally trigger the gate
+/// for unrelated reasons. No eval involved.
+test "§19.2.1.3 regression: nested arrow invocation in default runs normally" {
+  let src =
+    #|function f(p = (() => 1)()) { return p; }
+    #|console.log(f());
+  let output = run_output(src)
+  inspect(output, content="[\"1\"]")
+}

@@ -537,179 +537,200 @@ fn create_generator_instance(
   func_env.def("this", this_val, LetBinding)
   func_env.def("<new.target>", Undefined, LetBinding)
   // Bind parameters eagerly
-  match params_ext {
-    Some(pext) => {
-      let mut effective_count = 0
-      for i = 0; i < pext.length(); i = i + 1 {
-        let param = pext[i]
-        if rest_param is Some(rn) && param.name == rn {
-          continue
-        }
-        let val : Value = if effective_count < args.length() &&
-          !(args[effective_count] is Undefined) {
-          args[effective_count]
-        } else {
-          match param.default_val {
-            Some(d) => interp.eval_expr(setup_ctx, d, func_env)
-            None =>
-              if effective_count < args.length() {
-                args[effective_count]
-              } else {
-                Undefined
-              }
+  // §19.2.1.3 gate (#A.6): generator / async / async-gen functions are
+  // all non-arrow, so default-expression evaluation activates the same
+  // eval-declares-arguments gate as `bind_ext_params_and_exec_body`.
+  // Save on entry / reset to false / restore on exit so nested invocations
+  // in defaults don't inherit outer state.
+  let saved_in_default = interp.in_nonarrow_param_default_eval
+  interp.in_nonarrow_param_default_eval = false
+  let gen_result : Value = try {
+    match params_ext {
+      Some(pext) => {
+        let mut effective_count = 0
+        for i = 0; i < pext.length(); i = i + 1 {
+          let param = pext[i]
+          if rest_param is Some(rn) && param.name == rn {
+            continue
           }
-        }
-        func_env.def_parameter(param.name, val)
-        match param.pattern {
-          Some(pat) =>
-            interp.bind_pattern(pat, val, func_env, LetBinding, ctx=setup_ctx)
-          None => ()
-        }
-        effective_count = effective_count + 1
-      }
-      match rest_param {
-        Some(rp) => {
-          let rest_elems : Array[Value] = []
-          for i = effective_count; i < args.length(); i = i + 1 {
-            rest_elems.push(args[i])
-          }
-          let rest_val = make_array(rest_elems)
-          func_env.def_parameter(rp, rest_val)
-          for p in pext {
-            if p.name == rp {
-              match p.pattern {
-                Some(pat) =>
-                  interp.bind_pattern(
-                    pat,
-                    rest_val,
-                    func_env,
-                    LetBinding,
-                    ctx=setup_ctx,
-                  )
-                None => ()
+          let val : Value = if effective_count < args.length() &&
+            !(args[effective_count] is Undefined) {
+            args[effective_count]
+          } else {
+            match param.default_val {
+              Some(d) => {
+                interp.in_nonarrow_param_default_eval = true
+                let v = interp.eval_expr(setup_ctx, d, func_env)
+                interp.in_nonarrow_param_default_eval = false
+                v
               }
-              break
+              None =>
+                if effective_count < args.length() {
+                  args[effective_count]
+                } else {
+                  Undefined
+                }
             }
           }
-        }
-        None => ()
-      }
-    }
-    None => {
-      for i = 0; i < params.length(); i = i + 1 {
-        let val = if i < args.length() { args[i] } else { Undefined }
-        func_env.def_parameter(params[i], val)
-      }
-      match rest_param {
-        Some(rp) => {
-          let rest_elems : Array[Value] = []
-          for i = params.length(); i < args.length(); i = i + 1 {
-            rest_elems.push(args[i])
+          func_env.def_parameter(param.name, val)
+          match param.pattern {
+            Some(pat) =>
+              interp.bind_pattern(pat, val, func_env, LetBinding, ctx=setup_ctx)
+            None => ()
           }
-          func_env.def_parameter(rp, make_array(rest_elems))
+          effective_count = effective_count + 1
         }
-        None => ()
+        match rest_param {
+          Some(rp) => {
+            let rest_elems : Array[Value] = []
+            for i = effective_count; i < args.length(); i = i + 1 {
+              rest_elems.push(args[i])
+            }
+            let rest_val = make_array(rest_elems)
+            func_env.def_parameter(rp, rest_val)
+            for p in pext {
+              if p.name == rp {
+                match p.pattern {
+                  Some(pat) =>
+                    interp.bind_pattern(
+                      pat,
+                      rest_val,
+                      func_env,
+                      LetBinding,
+                      ctx=setup_ctx,
+                    )
+                  None => ()
+                }
+                break
+              }
+            }
+          }
+          None => ()
+        }
+      }
+      None => {
+        for i = 0; i < params.length(); i = i + 1 {
+          let val = if i < args.length() { args[i] } else { Undefined }
+          func_env.def_parameter(params[i], val)
+        }
+        match rest_param {
+          Some(rp) => {
+            let rest_elems : Array[Value] = []
+            for i = params.length(); i < args.length(); i = i + 1 {
+              rest_elems.push(args[i])
+            }
+            func_env.def_parameter(rp, make_array(rest_elems))
+          }
+          None => ()
+        }
       }
     }
-  }
-  // Create arguments object on func_env (param env when split, single env
-  // otherwise). Ext / simple both install arguments here.
-  let args_props : Map[String, Value] = {}
-  for i = 0; i < args.length(); i = i + 1 {
-    args_props[i.to_string()] = args[i]
-  }
-  args_props["length"] = Number(args.length().to_double())
-  func_env.def(
-    "arguments",
+    // Create arguments object on func_env (param env when split, single env
+    // otherwise). Ext / simple both install arguments here.
+    let args_props : Map[String, Value] = {}
+    for i = 0; i < args.length(); i = i + 1 {
+      args_props[i.to_string()] = args[i]
+    }
+    args_props["length"] = Number(args.length().to_double())
+    func_env.def(
+      "arguments",
+      Object({
+        bag: {
+          properties: args_props,
+          symbol_properties: {},
+          descriptors: {},
+          symbol_descriptors: {},
+        },
+        prototype: Null,
+        callable: None,
+        class_name: "Arguments",
+        extensible: true,
+      }),
+      VarBinding,
+    )
+    // Split body env iff Ext shape AND HasParameterExpressions; simple
+    // params + plain-rest Ext both stay single-env per §10.2.11 step 26.
+    let split_scope = match params_ext {
+      Some(pext) => has_parameter_expressions(pext)
+      None => false
+    }
+    let body_exec_env = if split_scope {
+      let be = Environment::new(parent=Some(func_env))
+      be.is_var_scope = true
+      be
+    } else {
+      func_env
+    }
+    let param_source : Environment? = if split_scope {
+      Some(func_env)
+    } else {
+      None
+    }
+    // Hoist declarations eagerly too
+    interp.hoist_declarations(
+      body,
+      body_exec_env,
+      strict=gen_strict,
+      param_source~,
+    )
+    let gen_id = interp.gen_id_counter.val
+    interp.gen_id_counter.val = gen_id + 1
+    let gen_obj : GeneratorObject = {
+      id: gen_id,
+      state: SuspendedStart,
+      body,
+      strict: gen_strict,
+      params,
+      params_ext,
+      rest_param,
+      closure,
+      name,
+      interpreter: interp,
+      args,
+      this_val,
+      env: Some(body_exec_env),
+      pc: 0,
+      yield_value: Undefined,
+      resuming: false,
+      resume_action: NextAction,
+      try_resume_phase: -1,
+      try_resume_error: Undefined,
+      try_resume_result: Normal(Undefined),
+      try_resume_pending_error: None,
+      loop_env_stack: [],
+      for_of_iterator: Undefined,
+      for_of_next: Undefined,
+      for_of_resume: false,
+      delegate_iterator: Undefined,
+      delegate_next: Undefined,
+      delegating: false,
+      yield_index: 0,
+      resume_at_yield: 0,
+    }
+    interp.generator_objects[gen_id] = gen_obj
+    // Create the generator instance object with gen_id stored in a property
+    let props : Map[String, Value] = {}
+    props["<gen_id>"] = Number(gen_id.to_double())
     Object({
       bag: {
-        properties: args_props,
+        properties: props,
         symbol_properties: {},
         descriptors: {},
         symbol_descriptors: {},
       },
-      prototype: Null,
+      prototype: func_prototype,
       callable: None,
-      class_name: "Arguments",
+      class_name: "Generator",
       extensible: true,
-    }),
-    VarBinding,
-  )
-  // Split body env iff Ext shape AND HasParameterExpressions; simple
-  // params + plain-rest Ext both stay single-env per §10.2.11 step 26.
-  let split_scope = match params_ext {
-    Some(pext) => has_parameter_expressions(pext)
-    None => false
+    })
+  } catch {
+    e => {
+      interp.in_nonarrow_param_default_eval = saved_in_default
+      raise e
+    }
   }
-  let body_exec_env = if split_scope {
-    let be = Environment::new(parent=Some(func_env))
-    be.is_var_scope = true
-    be
-  } else {
-    func_env
-  }
-  let param_source : Environment? = if split_scope {
-    Some(func_env)
-  } else {
-    None
-  }
-  // Hoist declarations eagerly too
-  interp.hoist_declarations(
-    body,
-    body_exec_env,
-    strict=gen_strict,
-    param_source~,
-  )
-  let gen_id = interp.gen_id_counter.val
-  interp.gen_id_counter.val = gen_id + 1
-  let gen_obj : GeneratorObject = {
-    id: gen_id,
-    state: SuspendedStart,
-    body,
-    strict: gen_strict,
-    params,
-    params_ext,
-    rest_param,
-    closure,
-    name,
-    interpreter: interp,
-    args,
-    this_val,
-    env: Some(body_exec_env),
-    pc: 0,
-    yield_value: Undefined,
-    resuming: false,
-    resume_action: NextAction,
-    try_resume_phase: -1,
-    try_resume_error: Undefined,
-    try_resume_result: Normal(Undefined),
-    try_resume_pending_error: None,
-    loop_env_stack: [],
-    for_of_iterator: Undefined,
-    for_of_next: Undefined,
-    for_of_resume: false,
-    delegate_iterator: Undefined,
-    delegate_next: Undefined,
-    delegating: false,
-    yield_index: 0,
-    resume_at_yield: 0,
-  }
-  interp.generator_objects[gen_id] = gen_obj
-  // Create the generator instance object with gen_id stored in a property
-  let props : Map[String, Value] = {}
-  props["<gen_id>"] = Number(gen_id.to_double())
-  Object({
-    bag: {
-      properties: props,
-      symbol_properties: {},
-      descriptors: {},
-      symbol_descriptors: {},
-    },
-    prototype: func_prototype,
-    callable: None,
-    class_name: "Generator",
-    extensible: true,
-  })
+  interp.in_nonarrow_param_default_eval = saved_in_default
+  gen_result
 }
 
 ///|

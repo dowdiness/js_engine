@@ -179,104 +179,143 @@ fn Interpreter::bind_ext_params_and_exec_body(
   args : Array[Value],
   param_env : Environment,
   func_ctx : ExecContext,
+  is_arrow? : Bool = false,
 ) -> Value raise Error {
-  // Bind params with defaults
-  let mut effective_param_count = 0
-  for i = 0; i < data.params.length(); i = i + 1 {
-    let param = data.params[i]
-    // Skip rest destructuring params - they're bound via rest_param
-    if data.rest_param is Some(rn) && param.name == rn {
-      continue
-    }
-    let val : Value = if effective_param_count < args.length() &&
-      !(args[effective_param_count] is Undefined) {
-      args[effective_param_count]
+  // §19.2.1.3 (#A.6): save on entry, reset to false so nested function
+  // invocations in param defaults (IIFE, arrow, recursive call) do not
+  // inherit this frame's state. Restored on both the normal and raise
+  // paths below so any abnormal completion during default evaluation
+  // or body execution leaves the flag clean for outer frames.
+  let saved_in_default = self.in_nonarrow_param_default_eval
+  self.in_nonarrow_param_default_eval = false
+  // §19.2.1.3 gate applies when the function's parameter scope will have
+  // an `arguments` binding — non-arrow (always, via install) or arrow
+  // with an explicit `arguments` formal / rest parameter. Pre-compute once.
+  let mut has_arguments_in_scope = !is_arrow
+  if is_arrow {
+    if data.rest_param is Some("arguments") {
+      has_arguments_in_scope = true
     } else {
-      match param.default_val {
-        Some(default_expr) => {
-          let v = self.eval_expr(func_ctx, default_expr, param_env)
-          // Set function name for anonymous function defaults
-          if param.pattern is None &&
-            is_anonymous_function_definition(default_expr) {
-            set_function_name(v, param.name)
-          }
-          v
-        }
-        None =>
-          if effective_param_count < args.length() {
-            args[effective_param_count]
-          } else {
-            Undefined
-          }
-      }
-    }
-    param_env.def_parameter(param.name, val)
-    // Destructure if pattern param
-    match param.pattern {
-      Some(pat) =>
-        self.bind_pattern(pat, val, param_env, LetBinding, ctx=func_ctx)
-      None => ()
-    }
-    effective_param_count = effective_param_count + 1
-  }
-  // Rest param
-  match data.rest_param {
-    Some(rest_name) => {
-      let rest_elements : Array[Value] = []
-      for i = effective_param_count; i < args.length(); i = i + 1 {
-        rest_elements.push(args[i])
-      }
-      let rest_val = make_array(rest_elements)
-      param_env.def_parameter(rest_name, rest_val)
-      // Apply destructuring pattern if present
       for p in data.params {
-        if p.name == rest_name {
-          match p.pattern {
-            Some(pat) =>
-              self.bind_pattern(
-                pat,
-                rest_val,
-                param_env,
-                LetBinding,
-                ctx=func_ctx,
-              )
-            None => ()
-          }
+        if p.name == "arguments" {
+          has_arguments_in_scope = true
           break
         }
       }
     }
-    None => ()
   }
-  // Split the body env iff HasParameterExpressions; otherwise body
-  // decls hoist directly onto param_env (same semantics as non-Ext).
-  let split_scope = has_parameter_expressions(data.params)
-  let body_env = if split_scope {
-    let be = Environment::new(parent=Some(param_env))
-    be.is_var_scope = true
-    be
-  } else {
-    param_env
+  let result : Value = try {
+    // Bind params with defaults
+    let mut effective_param_count = 0
+    for i = 0; i < data.params.length(); i = i + 1 {
+      let param = data.params[i]
+      // Skip rest destructuring params - they're bound via rest_param
+      if data.rest_param is Some(rn) && param.name == rn {
+        continue
+      }
+      let val : Value = if effective_param_count < args.length() &&
+        !(args[effective_param_count] is Undefined) {
+        args[effective_param_count]
+      } else {
+        match param.default_val {
+          Some(default_expr) => {
+            // §19.2.1.3 gate: active only around default evaluation,
+            // and only for frames whose param scope has `arguments`.
+            if has_arguments_in_scope {
+              self.in_nonarrow_param_default_eval = true
+            }
+            let v = self.eval_expr(func_ctx, default_expr, param_env)
+            self.in_nonarrow_param_default_eval = false
+            // Set function name for anonymous function defaults
+            if param.pattern is None &&
+              is_anonymous_function_definition(default_expr) {
+              set_function_name(v, param.name)
+            }
+            v
+          }
+          None =>
+            if effective_param_count < args.length() {
+              args[effective_param_count]
+            } else {
+              Undefined
+            }
+        }
+      }
+      param_env.def_parameter(param.name, val)
+      // Destructure if pattern param
+      match param.pattern {
+        Some(pat) =>
+          self.bind_pattern(pat, val, param_env, LetBinding, ctx=func_ctx)
+        None => ()
+      }
+      effective_param_count = effective_param_count + 1
+    }
+    // Rest param
+    match data.rest_param {
+      Some(rest_name) => {
+        let rest_elements : Array[Value] = []
+        for i = effective_param_count; i < args.length(); i = i + 1 {
+          rest_elements.push(args[i])
+        }
+        let rest_val = make_array(rest_elements)
+        param_env.def_parameter(rest_name, rest_val)
+        // Apply destructuring pattern if present
+        for p in data.params {
+          if p.name == rest_name {
+            match p.pattern {
+              Some(pat) =>
+                self.bind_pattern(
+                  pat,
+                  rest_val,
+                  param_env,
+                  LetBinding,
+                  ctx=func_ctx,
+                )
+              None => ()
+            }
+            break
+          }
+        }
+      }
+      None => ()
+    }
+    // Split the body env iff HasParameterExpressions; otherwise body
+    // decls hoist directly onto param_env (same semantics as non-Ext).
+    let split_scope = has_parameter_expressions(data.params)
+    let body_env = if split_scope {
+      let be = Environment::new(parent=Some(param_env))
+      be.is_var_scope = true
+      be
+    } else {
+      param_env
+    }
+    let param_source : Environment? = if split_scope {
+      Some(param_env)
+    } else {
+      None
+    }
+    self.hoist_declarations(
+      data.body,
+      body_env,
+      strict=data.strict,
+      param_source~,
+    )
+    match self.exec_stmts(func_ctx, data.body, body_env) {
+      Normal(_) => Undefined
+      ReturnSignal(v) => v
+      BreakSignal(_, _) =>
+        raise @errors.SyntaxError(message="break statement outside of loop")
+      ContinueSignal(_, _) =>
+        raise @errors.SyntaxError(message="continue statement outside of loop")
+    }
+  } catch {
+    e => {
+      self.in_nonarrow_param_default_eval = saved_in_default
+      raise e
+    }
   }
-  let param_source : Environment? = if split_scope {
-    Some(param_env)
-  } else {
-    None
-  }
-  self.hoist_declarations(
-    data.body,
-    body_env,
-    strict=data.strict,
-    param_source~,
-  )
-  match self.exec_stmts(func_ctx, data.body, body_env) {
-    Normal(_) => Undefined
-    ReturnSignal(v) => v
-    BreakSignal(_, _) =>
-      raise @errors.SyntaxError(message="break statement outside of loop")
-    ContinueSignal(_, _) =>
-      raise @errors.SyntaxError(message="continue statement outside of loop")
-  }
+  self.in_nonarrow_param_default_eval = saved_in_default
+  result
 }
 
 ///|
@@ -341,6 +380,20 @@ fn Interpreter::perform_eval(
     // EvalDeclarationInstantiation steps 5.a and 5.d:
     // Check for var/lexical conflicts before hoisting.
     let var_names = collect_eval_var_names(stmts)
+    // §19.2.1.3 gate (#A.6): a direct eval in a non-arrow parameter
+    // default whose var names include `arguments` is a SyntaxError.
+    // Covers four test262 cohorts (cntns-arguments, no-pre-existing,
+    // preceding-param, following-param). See
+    // docs/superpowers/plans/2026-04-19-eval-declared-arguments-early-error.md.
+    if direct && self.in_nonarrow_param_default_eval {
+      for name in var_names {
+        if name == "arguments" {
+          raise @errors.SyntaxError(
+            message="Identifier 'arguments' has already been declared",
+          )
+        }
+      }
+    }
     // Step 5.a: If var_env is the global Environment Record, check that
     // var names don't conflict with global lexical (let/const) declarations.
     if var_env.parent is None {
@@ -556,108 +609,134 @@ pub fn Interpreter::call_value(
     Object(obj_data) =>
       match obj_data.callable {
         Some(UserFunc(data)) => {
-          let func_env = Environment::new(parent=Some(data.closure))
-          func_env.is_var_scope = true
-          let func_strict = data.strict
-          let func_ctx : ExecContext = {
-            strict: func_strict,
-            current_generator: None,
-          }
-          if func_strict {
-            // Strict mode: check for duplicate parameters
-            check_duplicate_params(data.params)
-            // Strict mode: validate parameter names
-            for p in data.params {
-              validate_strict_binding_name(p)
+          // §19.2.1.3 gate reset (#A.6): any function call entry clears
+          // the signal so a nested invocation (e.g. an IIFE in an outer
+          // function's param default) does not inherit the outer state.
+          let saved_in_default = self.in_nonarrow_param_default_eval
+          self.in_nonarrow_param_default_eval = false
+          let result : Value = try {
+            let func_env = Environment::new(parent=Some(data.closure))
+            func_env.is_var_scope = true
+            let func_strict = data.strict
+            let func_ctx : ExecContext = {
+              strict: func_strict,
+              current_generator: None,
             }
-          }
-          let effective_this = if func_strict {
-            this_val
-          } else {
-            normalize_sloppy_this(this_val)
-          }
-          func_env.def("this", effective_this, LetBinding)
-          func_env.def("<new.target>", Undefined, LetBinding)
-          for i = 0; i < data.params.length(); i = i + 1 {
-            let val : Value = if i < args.length() {
-              args[i]
-            } else {
-              Undefined
-            }
-            // In sloppy mode, duplicate params are allowed; last value wins
-            if func_env.bindings.contains(data.params[i]) {
-              func_env.assign(data.params[i], val)
-            } else {
-              func_env.def_parameter(data.params[i], val)
-            }
-          }
-          // Create arguments object
-          let tte_val : Value? = if func_env.has("[[ThrowTypeError]]") {
-            Some(func_env.get("[[ThrowTypeError]]"))
-          } else {
-            None
-          }
-          func_env.def(
-            "arguments",
-            make_arguments_object(
-              args,
-              callee,
-              func_strict,
-              throw_type_error=tte_val,
-            ),
-            VarBinding,
-          )
-          // Hoist var declarations and function declarations within function body
-          self.hoist_declarations(data.body, func_env, strict=func_strict)
-          match data.name {
-            Some(name) =>
-              if !func_env.bindings.contains(name) {
-                func_env.def(name, callee, LetBinding)
+            if func_strict {
+              // Strict mode: check for duplicate parameters
+              check_duplicate_params(data.params)
+              // Strict mode: validate parameter names
+              for p in data.params {
+                validate_strict_binding_name(p)
               }
-            None => ()
+            }
+            let effective_this = if func_strict {
+              this_val
+            } else {
+              normalize_sloppy_this(this_val)
+            }
+            func_env.def("this", effective_this, LetBinding)
+            func_env.def("<new.target>", Undefined, LetBinding)
+            for i = 0; i < data.params.length(); i = i + 1 {
+              let val : Value = if i < args.length() {
+                args[i]
+              } else {
+                Undefined
+              }
+              // In sloppy mode, duplicate params are allowed; last value wins
+              if func_env.bindings.contains(data.params[i]) {
+                func_env.assign(data.params[i], val)
+              } else {
+                func_env.def_parameter(data.params[i], val)
+              }
+            }
+            // Create arguments object
+            let tte_val : Value? = if func_env.has("[[ThrowTypeError]]") {
+              Some(func_env.get("[[ThrowTypeError]]"))
+            } else {
+              None
+            }
+            func_env.def(
+              "arguments",
+              make_arguments_object(
+                args,
+                callee,
+                func_strict,
+                throw_type_error=tte_val,
+              ),
+              VarBinding,
+            )
+            // Hoist var declarations and function declarations within function body
+            self.hoist_declarations(data.body, func_env, strict=func_strict)
+            match data.name {
+              Some(name) =>
+                if !func_env.bindings.contains(name) {
+                  func_env.def(name, callee, LetBinding)
+                }
+              None => ()
+            }
+            match self.exec_stmts(func_ctx, data.body, func_env) {
+              Normal(_) => Undefined
+              ReturnSignal(v) => v
+              BreakSignal(_, _) =>
+                raise @errors.SyntaxError(
+                  message="break statement outside of loop",
+                )
+              ContinueSignal(_, _) =>
+                raise @errors.SyntaxError(
+                  message="continue statement outside of loop",
+                )
+            }
+          } catch {
+            e => {
+              self.in_nonarrow_param_default_eval = saved_in_default
+              raise e
+            }
           }
-          match self.exec_stmts(func_ctx, data.body, func_env) {
-            Normal(_) => Undefined
-            ReturnSignal(v) => v
-            BreakSignal(_, _) =>
-              raise @errors.SyntaxError(
-                message="break statement outside of loop",
-              )
-            ContinueSignal(_, _) =>
-              raise @errors.SyntaxError(
-                message="continue statement outside of loop",
-              )
-          }
+          self.in_nonarrow_param_default_eval = saved_in_default
+          result
         }
         Some(ArrowFunc(data)) => {
-          let func_env = Environment::new(parent=Some(data.closure))
-          func_env.is_var_scope = true
-          let func_ctx : ExecContext = {
-            strict: data.strict,
-            current_generator: None,
-          }
-          // Arrow functions do NOT rebind this — use closure's this
-          for i = 0; i < data.params.length(); i = i + 1 {
-            let val : Value = if i < args.length() {
-              args[i]
-            } else {
-              Undefined
+          // §19.2.1.3 gate reset (#A.6), same rationale as UserFunc above.
+          let saved_in_default = self.in_nonarrow_param_default_eval
+          self.in_nonarrow_param_default_eval = false
+          let result : Value = try {
+            let func_env = Environment::new(parent=Some(data.closure))
+            func_env.is_var_scope = true
+            let func_ctx : ExecContext = {
+              strict: data.strict,
+              current_generator: None,
             }
-            func_env.def_parameter(data.params[i], val)
+            // Arrow functions do NOT rebind this — use closure's this
+            for i = 0; i < data.params.length(); i = i + 1 {
+              let val : Value = if i < args.length() {
+                args[i]
+              } else {
+                Undefined
+              }
+              func_env.def_parameter(data.params[i], val)
+            }
+            self.hoist_declarations(data.body, func_env, strict=data.strict)
+            match self.exec_stmts(func_ctx, data.body, func_env) {
+              Normal(_) => Undefined
+              ReturnSignal(v) => v
+              BreakSignal(_, _) =>
+                raise @errors.SyntaxError(
+                  message="break statement outside of loop",
+                )
+              ContinueSignal(_, _) =>
+                raise @errors.SyntaxError(
+                  message="continue statement outside of loop",
+                )
+            }
+          } catch {
+            e => {
+              self.in_nonarrow_param_default_eval = saved_in_default
+              raise e
+            }
           }
-          self.hoist_declarations(data.body, func_env, strict=data.strict)
-          match self.exec_stmts(func_ctx, data.body, func_env) {
-            Normal(_) => Undefined
-            ReturnSignal(v) => v
-            BreakSignal(_, _) =>
-              raise @errors.SyntaxError(
-                message="break statement outside of loop",
-              )
-            ContinueSignal(_, _) =>
-              raise @errors.SyntaxError(
-                message="continue statement outside of loop",
-              )
-          }
+          self.in_nonarrow_param_default_eval = saved_in_default
+          result
         }
         Some(UserFuncExt(data)) => {
           // §15.2.5: for named function expressions, install the self-name
@@ -725,7 +804,13 @@ pub fn Interpreter::call_value(
           // Self-name lives on self_name_env; body-local `var/let/const`
           // of the same name naturally shadows via lexical lookup, and a
           // param of the same name sits on param_env which shadows too.
-          self.bind_ext_params_and_exec_body(data, args, param_env, func_ctx)
+          self.bind_ext_params_and_exec_body(
+            data,
+            args,
+            param_env,
+            func_ctx,
+            is_arrow=false,
+          )
         }
         Some(ArrowFuncExt(data)) => {
           // Arrows skip `arguments`/this/<new.target> install
@@ -737,7 +822,13 @@ pub fn Interpreter::call_value(
             strict: data.strict,
             current_generator: None,
           }
-          self.bind_ext_params_and_exec_body(data, args, param_env, func_ctx)
+          self.bind_ext_params_and_exec_body(
+            data,
+            args,
+            param_env,
+            func_ctx,
+            is_arrow=true,
+          )
         }
         Some(BoundFunc(target, bound_this, bound_args)) => {
           let all_args : Array[Value] = []
