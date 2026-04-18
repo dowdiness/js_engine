@@ -364,6 +364,7 @@ fn Interpreter::get_property_of_object(
               FuncApplyMethod(_) => "apply"
               MethodCallable(n, _) => n
               InterpreterCallable(n, _) => n
+              NonConstructableInterpreterCallable(n, _) => n
               ConstructorOnlyCallable(n, _) => n
               ClassConstructor({ name: n, .. }) => n
             }
@@ -390,6 +391,8 @@ fn Interpreter::get_property_of_object(
               MethodCallable(n, _) => "function " + n + "() { [native code] }"
               InterpreterCallable(n, _) =>
                 "function " + n + "() { [native code] }"
+              NonConstructableInterpreterCallable(n, _) =>
+                "function " + n + "() { [native code] }"
               ConstructorOnlyCallable(n, _) =>
                 "function " + n + "() { [native code] }"
               ClassConstructor({ name: n, .. }) =>
@@ -411,6 +414,7 @@ fn Interpreter::get_property_of_object(
               | ArrowFuncExt(_)
               | BoundFunc(_, _, _)
               | NonConstructableCallable(_, _)
+              | NonConstructableInterpreterCallable(_, _)
               | FuncCallMethod(_)
               | FuncApplyMethod(_)
               | MethodCallable(_, _)
@@ -1027,6 +1031,7 @@ pub fn Interpreter::get_computed_property(
                   FuncApplyMethod(_) => "apply"
                   MethodCallable(n, _) => n
                   InterpreterCallable(n, _) => n
+                  NonConstructableInterpreterCallable(n, _) => n
                   ConstructorOnlyCallable(n, _) => n
                   ClassConstructor({ name: n, .. }) => n
                 }
@@ -1055,6 +1060,8 @@ pub fn Interpreter::get_computed_property(
                     "function " + n + "() { [native code] }"
                   InterpreterCallable(n, _) =>
                     "function " + n + "() { [native code] }"
+                  NonConstructableInterpreterCallable(n, _) =>
+                    "function " + n + "() { [native code] }"
                   ConstructorOnlyCallable(n, _) =>
                     "function " + n + "() { [native code] }"
                   ClassConstructor({ name: n, .. }) =>
@@ -1076,6 +1083,7 @@ pub fn Interpreter::get_computed_property(
                   | ArrowFuncExt(_)
                   | BoundFunc(_, _, _)
                   | NonConstructableCallable(_, _)
+                  | NonConstructableInterpreterCallable(_, _)
                   | FuncCallMethod(_)
                   | FuncApplyMethod(_)
                   | MethodCallable(_, _)
@@ -1876,6 +1884,7 @@ pub fn get_bound_func_name(target : Value) -> String {
         Some(ClassConstructor({ name: n, .. })) => "bound " + n
         Some(MethodCallable(n, _)) => "bound " + n
         Some(InterpreterCallable(n, _)) => "bound " + n
+        Some(NonConstructableInterpreterCallable(n, _)) => "bound " + n
         Some(_) => "bound "
         None => "bound "
       }
@@ -1932,6 +1941,7 @@ pub fn get_func_length(callable : Callable) -> Int {
     FuncApplyMethod(_) => 2
     MethodCallable(_, _) => 0
     InterpreterCallable(_, _) => 0
+    NonConstructableInterpreterCallable(_, _) => 0
     ConstructorOnlyCallable(_, _) => 0
     ClassConstructor({ ctor_fn, .. }) =>
       match ctor_fn {

@@ -796,6 +796,7 @@ pub fn Interpreter::call_value(
             func(args)
           }
         Some(InterpreterCallable(_, func)) => func(self, this_val, args)
+        Some(NonConstructableInterpreterCallable(_, func)) => func(self, args)
         Some(ConstructorOnlyCallable(name, _)) =>
           raise @errors.TypeError(
             message=name + " constructor cannot be invoked without 'new'",

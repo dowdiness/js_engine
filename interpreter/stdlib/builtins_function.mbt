@@ -52,6 +52,8 @@ fn setup_function_builtins(env : Environment) -> Unit {
               Value::String_(prefix + name + "() { [native code] }")
             Some(InterpreterCallable(name, _)) =>
               Value::String_(prefix + name + "() { [native code] }")
+            Some(NonConstructableInterpreterCallable(name, _)) =>
+              Value::String_(prefix + name + "() { [native code] }")
             Some(ConstructorOnlyCallable(name, _)) =>
               Value::String_(prefix + name + "() { [native code] }")
             Some(FuncCallMethod(_)) =>

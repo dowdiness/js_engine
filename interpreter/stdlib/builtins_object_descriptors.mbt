@@ -1127,6 +1127,7 @@ fn make_get_own_property_descriptor_func() -> Value {
                   NonConstructableCallable(_, _) => 0.0
                   MethodCallable(_, _) => 0.0
                   InterpreterCallable(_, _) => 0.0
+                  NonConstructableInterpreterCallable(_, _) => 0.0
                   ConstructorOnlyCallable(_, _) => 0.0
                   BoundFunc(_, _, _) => 0.0
                   FuncCallMethod(_) => 0.0
@@ -1160,6 +1161,7 @@ fn make_get_own_property_descriptor_func() -> Value {
                   NonConstructableCallable(n, _) => n
                   MethodCallable(n, _) => n
                   InterpreterCallable(n, _) => n
+                  NonConstructableInterpreterCallable(n, _) => n
                   ConstructorOnlyCallable(n, _) => n
                   BoundFunc(_, _, _) => "bound "
                   FuncCallMethod(_) => "call"

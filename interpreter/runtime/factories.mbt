@@ -282,9 +282,7 @@ pub fn make_interp_static_func(
   build_func_object(
     name,
     length,
-    InterpreterCallable(name, fn(interp, _this, args) raise {
-      func(interp, args)
-    }),
+    NonConstructableInterpreterCallable(name, func),
   )
 }
 

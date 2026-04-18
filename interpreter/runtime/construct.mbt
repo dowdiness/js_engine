@@ -686,6 +686,10 @@ pub fn Interpreter::construct_value(
           raise @errors.TypeError(
             message=format_loc_context(name + " is not a constructor", loc),
           )
+        Some(NonConstructableInterpreterCallable(name, _)) =>
+          raise @errors.TypeError(
+            message=format_loc_context(name + " is not a constructor", loc),
+          )
         Some(InterpreterCallable(_name, func)) => {
           // Check if this function has a "prototype" property (constructors do, methods don't)
           let is_ctor = match obj_data.bag.properties.get("prototype") {
