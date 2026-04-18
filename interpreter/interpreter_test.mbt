@@ -9314,6 +9314,24 @@ test "annex-b eval: if-clause FunctionDeclaration hoists via B.3.4" {
 }
 
 ///|
+/// §B.3.3.3 + LabeledStmt: in sloppy mode, `{ label: function f(){} }`
+/// should reinit the outer `function f` var binding on block entry.
+/// `hoist_block_func_declarations` recurses through LabeledStmt but has no
+/// FuncDecl arm at the labeled level, so the outer `f` never gets
+/// `annex_b_hoisted` tagged. Prior to this fix, the exec-time reinit
+/// checked only `annex_b_hoisted`, regressing the case that previously
+/// worked via `kind == VarBinding`. The reinit gate must allow VarBindings
+/// regardless of the tag, because VarBindings are mutable anyway.
+test "annex-b: labeled block function reinits outer var (no eval)" {
+  let src =
+    #|function f() { return 1; }
+    #|{ label: function f() { return 2; } }
+    #|console.log(f());
+  let output = run_output_annex_b(src)
+  inspect(output, content="[\"2\"]")
+}
+
+///|
 /// §B.3.3.3 step ii: a block-level `function f(){}` in sloppy eval must
 /// reinit the enclosing function's parameter `f`, regardless of which
 /// runtime entry point created the function call — ordinary call, `new`

@@ -1456,8 +1456,18 @@ fn walk_eval_annex_b_stmt(
         stack,
         in_block=true,
       )
+    // §B.3.3 + §14.13: a `label:`-wrapped FuncDecl is an Annex B candidate
+    // just like a plain block FuncDecl. Mirror the IfStmt treatment — the
+    // inner is a block context, so pass `in_block=true`.
     LabeledStmt(_, inner, _) =>
-      walk_eval_annex_b_stmt(interp, inner, var_env, top_lex, stack, in_block~)
+      walk_eval_annex_b_stmt(
+        interp,
+        inner,
+        var_env,
+        top_lex,
+        stack,
+        in_block=true,
+      )
     // §14.12.3: all case clauses share one lex scope. Frame excludes
     // FuncDecls for the same reason `collect_stmts_lex_names` does — a
     // candidate `function F` in one case must not self-conflict. Duplicate
@@ -1633,8 +1643,18 @@ fn hoist_block_func_declarations(
       hoist_block_func_declarations(interp, body, var_env)
     ForOfExpr(_, _, body, _) =>
       hoist_block_func_declarations(interp, body, var_env)
-    LabeledStmt(_, inner, _) =>
+    LabeledStmt(_, inner, _) => {
+      // §B.3.3 + §14.13: `label: function f(){}` is a
+      // LabelledFunctionDeclaration in sloppy mode. Tag the direct FuncDecl
+      // child here — the recursive call alone wouldn't, because the inner
+      // match only picks up FuncDecls when recursing INTO a Block arm.
+      match inner {
+        FuncDecl(name, _, _, _) | FuncDeclExt(name, _, _, _, _) =>
+          tag_annex_b_hoisted(interp, var_env, name)
+        _ => ()
+      }
       hoist_block_func_declarations(interp, inner, var_env)
+    }
     WithStmt(_, body, _) => {
       // Handle bare function declarations directly in with body (Annex B.3.3)
       match body {
