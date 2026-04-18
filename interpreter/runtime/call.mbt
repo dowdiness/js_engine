@@ -232,11 +232,19 @@ fn Interpreter::perform_eval(
         }
       }
     }
-    // Step 5.d: Walk from caller_env up to var_env (exclusive), checking
-    // that no intermediate scope has a binding that conflicts with a var name.
-    // This prevents eval("var x") from hoisting past a block-scoped let/const x.
+    // Step 5.d (ES §19.2.1.3): walk from the fresh eval lex env (NOT the
+    // caller env) up to varEnv exclusive. For indirect eval this is trivially
+    // the new eval env rooted at global — the walk runs at most once over
+    // exec_env, which holds only the internal reconcile marker. For direct
+    // eval the walk crosses caller-side block scopes, catching `let`/`const`
+    // conflicts with the incoming var names.
+    //
+    // Per §B.3.4, catch environments are transparent for this check. Our env
+    // model does not distinguish catch envs from other block envs, so that
+    // edge case remains a known gap (see agent-todo).
+    exec_env.def(eval_function_reconcile_marker, Bool(true), LetBinding)
     {
-      let mut this_lex = caller_env
+      let mut this_lex = exec_env
       while !this_lex.is_var_scope {
         for name in var_names {
           if this_lex.bindings.contains(name) {
@@ -252,10 +260,19 @@ fn Interpreter::perform_eval(
       }
     }
     // Non-strict eval: hoist var/function to the variable environment (leak),
-    // then hoist let/const TDZ markers to the eval scope (isolated)
-    exec_env.def(eval_function_reconcile_marker, Bool(true), LetBinding)
-    self.hoist_declarations(stmts, var_env)
+    // then hoist let/const TDZ markers to the eval scope (isolated).
+    // `suppress_annex_b_block_funcs` turns off the legacy in-hoist B.3.3 pass;
+    // the eval-specific `hoist_eval_annex_b_candidates` below replaces it
+    // with a spec-correct skip-check.
+    self.hoist_declarations(stmts, var_env, suppress_annex_b_block_funcs=true)
     hoist_block_tdz(stmts, exec_env)
+    // Annex B §B.3.3.3: promote eligible block-level FunctionDeclarations to
+    // var bindings on `var_env`, skipping names that would clash with an
+    // outer lex declaration.
+    if self.annex_b {
+      let top_lex = collect_eval_top_level_lex_names(stmts)
+      hoist_eval_annex_b_candidates(self, stmts, var_env, top_lex)
+    }
   }
   // Execute statements and collect result
   let mut last : Value = Undefined

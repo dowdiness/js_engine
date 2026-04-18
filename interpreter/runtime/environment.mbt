@@ -15,6 +15,12 @@ pub(all) struct Binding {
   mut value : Value
   kind : BindingKind
   mut initialized : Bool
+  // Annex B §B.3.3.3: set when this binding was created or marked eligible
+  // by the Annex B block-level function extension. Runtime block-entry
+  // reinit only updates bindings whose `annex_b_hoisted` is true — this
+  // prevents overwriting genuine lex bindings while allowing updates to
+  // params (LetBinding kind) reused by the extension.
+  mut annex_b_hoisted : Bool
 }
 
 ///|
@@ -32,7 +38,13 @@ pub(all) struct Environment {
 
 ///|
 pub fn Environment::new(parent? : Environment? = None) -> Environment {
-  { bindings: {}, parent, is_var_scope: false, with_object: None, error_class_names: {} }
+  {
+    bindings: {},
+    parent,
+    is_var_scope: false,
+    with_object: None,
+    error_class_names: {},
+  }
 }
 
 ///|
@@ -66,7 +78,13 @@ pub fn Environment::def(
           message="Identifier '\{name}' has already been declared",
         )
       }
-    None => self.bindings[name] = { value, kind, initialized: true }
+    None =>
+      self.bindings[name] = {
+        value,
+        kind,
+        initialized: true,
+        annex_b_hoisted: false,
+      }
   }
 }
 
@@ -82,7 +100,12 @@ pub fn Environment::def_tdz(
       message="Identifier '\{name}' has already been declared",
     )
   }
-  self.bindings[name] = { value: Undefined, kind, initialized: false }
+  self.bindings[name] = {
+    value: Undefined,
+    kind,
+    initialized: false,
+    annex_b_hoisted: false,
+  }
 }
 
 ///|
@@ -110,7 +133,12 @@ pub fn Environment::def_builtin(
   name : String,
   value : Value,
 ) -> Unit {
-  self.bindings[name] = { value, kind: VarBinding, initialized: true }
+  self.bindings[name] = {
+    value,
+    kind: VarBinding,
+    initialized: true,
+    annex_b_hoisted: false,
+  }
 }
 
 ///|

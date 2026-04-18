@@ -290,6 +290,7 @@ pub(all) struct Binding {
   mut value : Value
   kind : BindingKind
   mut initialized : Bool
+  mut annex_b_hoisted : Bool
 }
 
 pub(all) enum BindingKind {

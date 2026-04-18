@@ -301,12 +301,15 @@ fn Interpreter::exec_stmt(
         } else {
           env.def(name, func_val, VarBinding)
         }
-        // Annex B.3.3: propagate block-level function to function scope's var binding
+        // Annex B §B.3.3.3: propagate block-level function to outer var scope.
+        // The binding is updated only when the hoist pass tagged it — which
+        // permits updating reused param/var bindings while leaving genuine
+        // lex bindings untouched.
         if self.annex_b && !ctx.strict && !env.is_var_scope {
           let var_env = env.find_var_env()
           match var_env.bindings.get(name) {
             Some(binding) =>
-              if binding.kind == VarBinding {
+              if binding.annex_b_hoisted {
                 binding.value = func_val
               }
             None => ()
@@ -1180,12 +1183,15 @@ fn Interpreter::exec_stmt(
         } else {
           env.def(name, func_val, VarBinding)
         }
-        // Annex B.3.3: propagate block-level function to function scope's var binding
+        // Annex B §B.3.3.3: propagate block-level function to outer var scope.
+        // The binding is updated only when the hoist pass tagged it — which
+        // permits updating reused param/var bindings while leaving genuine
+        // lex bindings untouched.
         if self.annex_b && !ctx.strict && !env.is_var_scope {
           let var_env = env.find_var_env()
           match var_env.bindings.get(name) {
             Some(binding) =>
-              if binding.kind == VarBinding {
+              if binding.annex_b_hoisted {
                 binding.value = func_val
               }
             None => ()
