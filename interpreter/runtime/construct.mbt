@@ -817,8 +817,26 @@ pub fn Interpreter::construct_value(
                   None => ()
                 }
                 // §10.2.11 split: ctor_env already holds this/super; bind
-                // params + arguments into ctor_env (= param env for the
+                // arguments + params into ctor_env (= param env for the
                 // ctor body), then create body_env as child for body decls.
+                // Install `arguments` BEFORE the param loop so default
+                // expressions can reference it
+                // (`constructor(a = arguments.length)`).
+                let ctor_tte : Value? = if ctor_env.has("[[ThrowTypeError]]") {
+                  Some(ctor_env.get("[[ThrowTypeError]]"))
+                } else {
+                  None
+                }
+                ctor_env.def(
+                  "arguments",
+                  make_arguments_object(
+                    args,
+                    ctor,
+                    true,
+                    throw_type_error=ctor_tte,
+                  ),
+                  VarBinding,
+                )
                 // Bind parameters with defaults (mirrors UserFuncExt path in call.mbt)
                 let mut effective_param_count = 0
                 for i = 0; i < params.length(); i = i + 1 {
@@ -884,21 +902,6 @@ pub fn Interpreter::construct_value(
                   }
                   None => ()
                 }
-                let ctor_tte : Value? = if ctor_env.has("[[ThrowTypeError]]") {
-                  Some(ctor_env.get("[[ThrowTypeError]]"))
-                } else {
-                  None
-                }
-                ctor_env.def(
-                  "arguments",
-                  make_arguments_object(
-                    args,
-                    ctor,
-                    true,
-                    throw_type_error=ctor_tte,
-                  ),
-                  VarBinding,
-                )
                 // §10.2.11 split gated on HasParameterExpressions.
                 let split_scope = has_parameter_expressions(params)
                 let body_env = if split_scope {
@@ -993,6 +996,25 @@ pub fn Interpreter::construct_value(
                             }
                             match ctor {
                               Some((params, rest_param, body)) => {
+                                // Install `arguments` BEFORE defaults run so
+                                // super ctor defaults can reference it.
+                                let super_tte : Value? = if super_env.has(
+                                    "[[ThrowTypeError]]",
+                                  ) {
+                                  Some(super_env.get("[[ThrowTypeError]]"))
+                                } else {
+                                  None
+                                }
+                                super_env.def(
+                                  "arguments",
+                                  make_arguments_object(
+                                    args,
+                                    sc,
+                                    true,
+                                    throw_type_error=super_tte,
+                                  ),
+                                  VarBinding,
+                                )
                                 let mut eff_count = 0
                                 for i = 0; i < params.length(); i = i + 1 {
                                   let p = params[i]
@@ -1044,23 +1066,6 @@ pub fn Interpreter::construct_value(
                                   }
                                   None => ()
                                 }
-                                let super_tte : Value? = if super_env.has(
-                                    "[[ThrowTypeError]]",
-                                  ) {
-                                  Some(super_env.get("[[ThrowTypeError]]"))
-                                } else {
-                                  None
-                                }
-                                super_env.def(
-                                  "arguments",
-                                  make_arguments_object(
-                                    args,
-                                    sc,
-                                    true,
-                                    throw_type_error=super_tte,
-                                  ),
-                                  VarBinding,
-                                )
                                 self.hoist_declarations(
                                   body,
                                   super_env,

@@ -9570,6 +9570,33 @@ test "§10.2.11: named function expression self-name visible to default closures
 }
 
 ///|
+/// §10.2.11: class constructor default expressions must see `arguments`.
+/// Regression: previously the `arguments` binding was installed AFTER
+/// the parameter/default loop, so `constructor(a = arguments.length)`
+/// threw `ReferenceError: arguments is not defined`.
+test "§10.2.11: class constructor default expressions see arguments" {
+  let src =
+    #|class C { constructor(a = arguments.length) { this.a = a } }
+    #|console.log(new C(undefined, 2, 3).a);
+  let output = run_output(src)
+  inspect(output, content="[\"3\"]")
+}
+
+///|
+/// §10.2.11: same ordering requirement applies to the implicit-super
+/// path where a derived class calls `super()` and the parent's
+/// constructor defaults evaluate in super_env. `arguments` must be in
+/// scope before the super ctor's param defaults fire.
+test "§10.2.11: implicit super() ctor default expressions see arguments" {
+  let src =
+    #|class B { constructor(a = arguments.length) { this.a = a } }
+    #|class D extends B {}
+    #|console.log(new D(undefined, 2, 3).a);
+  let output = run_output(src)
+  inspect(output, content="[\"3\"]")
+}
+
+///|
 /// §10.2.11: param-scope eval-var visible to an arrow default closure,
 /// and body's `let` of the same name creates a distinct binding. Like
 /// the canonical test but without the `arguments` special name, to
