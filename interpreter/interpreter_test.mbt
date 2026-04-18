@@ -9614,6 +9614,27 @@ test "§15.2.5: `key: function name() {}` keeps named-FE self binding" {
 }
 
 ///|
+/// §10.2.11: implicit super() must apply the same param-env / body-env
+/// split as a direct call to the parent constructor. Calling a parent
+/// ctor through `class D extends B {}` (no own constructor) used to
+/// skip the split and let `var x` hoist into the param env, where a
+/// default's arrow captured it. Both direct `new B()` and implicit
+/// `new D()` must throw ReferenceError for the same reason. Codex P1.
+test "§10.2.11: implicit super() splits body env under HasParameterExpressions" {
+  let src =
+    #|class B { constructor(a = 1, q = () => x) { var x = 'b'; this.v = q(); } }
+    #|class D extends B {}
+    #|try {
+    #|  new D();
+    #|  console.log('no throw');
+    #|} catch (e) {
+    #|  console.log(e.name + ': ' + e.message);
+    #|}
+  let output = run_output(src)
+  inspect(output, content="[\"ReferenceError: x is not defined\"]")
+}
+
+///|
 /// §10.2.11: class constructor default expressions must see `arguments`.
 /// Regression: previously the `arguments` binding was installed AFTER
 /// the parameter/default loop, so `constructor(a = arguments.length)`

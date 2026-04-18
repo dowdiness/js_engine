@@ -1071,13 +1071,41 @@ pub fn Interpreter::construct_value(
                                   }
                                   None => ()
                                 }
+                                // §10.2.11 split: mirror the explicit ctor
+                                // path. Implicit super() running a parent
+                                // ctor with HasParameterExpressions needs
+                                // a body_env child of super_env so a body
+                                // `var x` doesn't leak into param-scope
+                                // where a default's arrow might capture it
+                                // (e.g. `constructor(q = () => x) { var x }`
+                                // must ReferenceError — regardless of
+                                // whether called directly or via implicit
+                                // super).
+                                let split_scope = has_parameter_expressions(
+                                  params,
+                                )
+                                let body_env = if split_scope {
+                                  let be = Environment::new(
+                                    parent=Some(super_env),
+                                  )
+                                  be.is_var_scope = true
+                                  be
+                                } else {
+                                  super_env
+                                }
+                                let param_source : Environment? = if split_scope {
+                                  Some(super_env)
+                                } else {
+                                  None
+                                }
                                 self.hoist_declarations(
                                   body,
-                                  super_env,
+                                  body_env,
                                   strict=true,
+                                  param_source~,
                                 )
                                 let exec_result = self.exec_stmts(
-                                  class_ctx, body, super_env,
+                                  class_ctx, body, body_env,
                                 )
                                 // If super constructor returns an object, use it
                                 match exec_result {
