@@ -1222,7 +1222,17 @@ fn annex_b_candidate_conflicts(
   name : String,
   top_lex : Map[String, Bool],
   lex_stack : Array[Map[String, Bool]],
+  excluded? : Map[String, Bool] = {},
 ) -> Bool {
+  // §B.3.2.1 step ii parameter carve-out: when called from a function body,
+  // `excluded` contains formal parameter names (plus "arguments" when the
+  // arguments object exists). Per the spec, those are NOT candidates —
+  // the extension is skipped so the param / arguments binding survives.
+  // Eval (§B.3.2.3) passes `excluded` empty; SetMutableBinding in step
+  // 10.d.iii permits overwrites, matching current behavior.
+  if excluded.contains(name) {
+    return true
+  }
   if top_lex.contains(name) {
     return true
   }
@@ -1256,6 +1266,7 @@ fn hoist_eval_annex_b_candidates(
   stmts : Array[@ast.Stmt],
   var_env : Environment,
   top_lex : Map[String, Bool],
+  excluded? : Map[String, Bool] = {},
 ) -> Unit raise Error {
   let stack : Array[Map[String, Bool]] = []
   for stmt in stmts {
@@ -1266,6 +1277,7 @@ fn hoist_eval_annex_b_candidates(
       top_lex,
       stack,
       in_block=false,
+      excluded~,
     )
   }
 }
@@ -1281,14 +1293,23 @@ fn walk_eval_annex_b_stmt(
   top_lex : Map[String, Bool],
   stack : Array[Map[String, Bool]],
   in_block~ : Bool,
+  excluded~ : Map[String, Bool],
 ) -> Unit raise Error {
   match stmt {
     FuncDecl(name, _, _, _) | FuncDeclExt(name, _, _, _, _) =>
-      if in_block && !annex_b_candidate_conflicts(name, top_lex, stack) {
+      if in_block &&
+        !annex_b_candidate_conflicts(name, top_lex, stack, excluded~) {
         tag_annex_b_hoisted(interp, var_env, name)
       }
     Block(inner_stmts, _) =>
-      walk_stmt_list_in_own_frame(interp, inner_stmts, var_env, top_lex, stack)
+      walk_stmt_list_in_own_frame(
+        interp,
+        inner_stmts,
+        var_env,
+        top_lex,
+        stack,
+        excluded~,
+      )
     StmtList(inner_stmts, _) =>
       for inner in inner_stmts {
         walk_eval_annex_b_stmt(
@@ -1298,6 +1319,7 @@ fn walk_eval_annex_b_stmt(
           top_lex,
           stack,
           in_block~,
+          excluded~,
         )
       }
     // §B.3.4: `if (expr) FunctionDeclaration` is treated as if the body
@@ -1313,6 +1335,7 @@ fn walk_eval_annex_b_stmt(
         top_lex,
         stack,
         in_block=true,
+        excluded~,
       )
       match else_branch {
         Some(eb) =>
@@ -1323,6 +1346,7 @@ fn walk_eval_annex_b_stmt(
             top_lex,
             stack,
             in_block=true,
+            excluded~,
           )
         None => ()
       }
@@ -1335,6 +1359,7 @@ fn walk_eval_annex_b_stmt(
         top_lex,
         stack,
         in_block=true,
+        excluded~,
       )
     DoWhileStmt(body, _, _) =>
       walk_eval_annex_b_stmt(
@@ -1344,6 +1369,7 @@ fn walk_eval_annex_b_stmt(
         top_lex,
         stack,
         in_block=true,
+        excluded~,
       )
     // §14.7.4: `for (let/const …; ; ) body` makes the init's lex names visible
     // for the body's Annex-B candidate check.
@@ -1355,34 +1381,67 @@ fn walk_eval_annex_b_stmt(
         top_lex,
         stack,
         for_init_lex_names(init),
+        excluded~,
       )
     ForInStmt(kind, name, _, body, _) => {
       let frame : Map[String, Bool] = {}
       if kind is (Some(LetKind) | Some(ConstKind)) {
         frame[name] = true
       }
-      walk_enclosed_body(interp, body, var_env, top_lex, stack, frame)
+      walk_enclosed_body(
+        interp,
+        body,
+        var_env,
+        top_lex,
+        stack,
+        frame,
+        excluded~,
+      )
     }
     ForOfStmt(kind, name, _, body, _) => {
       let frame : Map[String, Bool] = {}
       if kind is (Some(LetKind) | Some(ConstKind)) {
         frame[name] = true
       }
-      walk_enclosed_body(interp, body, var_env, top_lex, stack, frame)
+      walk_enclosed_body(
+        interp,
+        body,
+        var_env,
+        top_lex,
+        stack,
+        frame,
+        excluded~,
+      )
     }
     ForInStmtPat(kind, pattern, _, body, _) => {
       let frame : Map[String, Bool] = {}
       if kind is (Some(LetKind) | Some(ConstKind)) {
         collect_pattern_lex_names(pattern, frame)
       }
-      walk_enclosed_body(interp, body, var_env, top_lex, stack, frame)
+      walk_enclosed_body(
+        interp,
+        body,
+        var_env,
+        top_lex,
+        stack,
+        frame,
+        excluded~,
+      )
     }
     ForOfStmtPat(kind, pattern, _, body, _) => {
       let frame : Map[String, Bool] = {}
       if kind is (Some(LetKind) | Some(ConstKind)) {
         collect_pattern_lex_names(pattern, frame)
       }
-      walk_enclosed_body(interp, body, var_env, top_lex, stack, frame)
+      walk_enclosed_body(
+        interp,
+        body,
+        var_env,
+        top_lex,
+        stack,
+        frame,
+        excluded~,
+      )
     }
     ForInExpr(_, _, body, _) =>
       walk_eval_annex_b_stmt(
@@ -1392,6 +1451,7 @@ fn walk_eval_annex_b_stmt(
         top_lex,
         stack,
         in_block=true,
+        excluded~,
       )
     ForOfExpr(_, _, body, _) =>
       walk_eval_annex_b_stmt(
@@ -1401,6 +1461,7 @@ fn walk_eval_annex_b_stmt(
         top_lex,
         stack,
         in_block=true,
+        excluded~,
       )
     // §B.3.3 + §14.13: a `label:`-wrapped FuncDecl is an Annex B candidate
     // just like a plain block FuncDecl. Mirror the IfStmt treatment — the
@@ -1413,6 +1474,7 @@ fn walk_eval_annex_b_stmt(
         top_lex,
         stack,
         in_block=true,
+        excluded~,
       )
     // §14.12.3: all case clauses share one lex scope. Frame excludes
     // FuncDecls for the same reason `collect_stmts_lex_names` does — a
@@ -1435,6 +1497,7 @@ fn walk_eval_annex_b_stmt(
             top_lex,
             stack,
             in_block=true,
+            excluded~,
           )
         }
       }
@@ -1443,15 +1506,36 @@ fn walk_eval_annex_b_stmt(
     // Per §B.3.4, the catch parameter is transparent for eval conflict
     // checks — so try / catch-body / finally are each just nested Blocks.
     TryCatchStmt(try_body, _, catch_body, finally_body, _) => {
-      walk_stmt_list_in_own_frame(interp, try_body, var_env, top_lex, stack)
+      walk_stmt_list_in_own_frame(
+        interp,
+        try_body,
+        var_env,
+        top_lex,
+        stack,
+        excluded~,
+      )
       match catch_body {
         Some(cb) =>
-          walk_stmt_list_in_own_frame(interp, cb, var_env, top_lex, stack)
+          walk_stmt_list_in_own_frame(
+            interp,
+            cb,
+            var_env,
+            top_lex,
+            stack,
+            excluded~,
+          )
         None => ()
       }
       match finally_body {
         Some(fb) =>
-          walk_stmt_list_in_own_frame(interp, fb, var_env, top_lex, stack)
+          walk_stmt_list_in_own_frame(
+            interp,
+            fb,
+            var_env,
+            top_lex,
+            stack,
+            excluded~,
+          )
         None => ()
       }
     }
@@ -1464,9 +1548,18 @@ fn walk_eval_annex_b_stmt(
         top_lex,
         stack,
         in_block=true,
+        excluded~,
       )
     ExportNamedDecl(Some(decl), _, _, _) =>
-      walk_eval_annex_b_stmt(interp, decl, var_env, top_lex, stack, in_block~)
+      walk_eval_annex_b_stmt(
+        interp,
+        decl,
+        var_env,
+        top_lex,
+        stack,
+        in_block~,
+        excluded~,
+      )
     // Function / class bodies: do NOT traverse. They have their own B.3.3
     // hoist on call (§B.3.2.1), operating in a fresh scope.
     _ => ()
@@ -1483,6 +1576,7 @@ fn walk_stmt_list_in_own_frame(
   var_env : Environment,
   top_lex : Map[String, Bool],
   stack : Array[Map[String, Bool]],
+  excluded~ : Map[String, Bool],
 ) -> Unit raise Error {
   stack.push(collect_stmts_lex_names(stmts))
   for inner in stmts {
@@ -1493,6 +1587,7 @@ fn walk_stmt_list_in_own_frame(
       top_lex,
       stack,
       in_block=true,
+      excluded~,
     )
   }
   let _ = stack.pop()
@@ -1509,9 +1604,18 @@ fn walk_enclosed_body(
   top_lex : Map[String, Bool],
   stack : Array[Map[String, Bool]],
   frame : Map[String, Bool],
+  excluded~ : Map[String, Bool],
 ) -> Unit raise Error {
   stack.push(frame)
-  walk_eval_annex_b_stmt(interp, body, var_env, top_lex, stack, in_block=true)
+  walk_eval_annex_b_stmt(
+    interp,
+    body,
+    var_env,
+    top_lex,
+    stack,
+    in_block=true,
+    excluded~,
+  )
   let _ = stack.pop()
 }
 
@@ -1533,139 +1637,12 @@ fn for_init_lex_names(init : @ast.Stmt?) -> Map[String, Bool] raise Error {
 }
 
 ///|
-/// Annex B.3.3: Scan nested blocks for function declarations and create
-/// var bindings in the function scope (initialized to undefined).
-/// Only used in sloppy mode with --annex-b.
-fn hoist_block_func_declarations(
-  interp : Interpreter,
-  stmt : @ast.Stmt,
-  var_env : Environment,
-) -> Unit raise Error {
-  match stmt {
-    Block(inner_stmts, _) =>
-      for inner in inner_stmts {
-        match inner {
-          FuncDecl(name, _, _, _) | FuncDeclExt(name, _, _, _, _) =>
-            tag_annex_b_hoisted(interp, var_env, name)
-          _ => ()
-        }
-        hoist_block_func_declarations(interp, inner, var_env)
-      }
-    IfStmt(_, then_branch, else_branch, _) => {
-      // Also handle bare function declarations in if/else branches
-      match then_branch {
-        FuncDecl(name, _, _, _) | FuncDeclExt(name, _, _, _, _) =>
-          tag_annex_b_hoisted(interp, var_env, name)
-        _ => ()
-      }
-      hoist_block_func_declarations(interp, then_branch, var_env)
-      match else_branch {
-        Some(eb) => {
-          match eb {
-            FuncDecl(name, _, _, _) | FuncDeclExt(name, _, _, _, _) =>
-              tag_annex_b_hoisted(interp, var_env, name)
-            _ => ()
-          }
-          hoist_block_func_declarations(interp, eb, var_env)
-        }
-        None => ()
-      }
-    }
-    WhileStmt(_, body, _) =>
-      hoist_block_func_declarations(interp, body, var_env)
-    DoWhileStmt(body, _, _) =>
-      hoist_block_func_declarations(interp, body, var_env)
-    ForStmt(_, _, _, body, _) =>
-      hoist_block_func_declarations(interp, body, var_env)
-    ForInStmt(_, _, _, body, _) =>
-      hoist_block_func_declarations(interp, body, var_env)
-    ForOfStmt(_, _, _, body, _) =>
-      hoist_block_func_declarations(interp, body, var_env)
-    ForInStmtPat(_, _, _, body, _) =>
-      hoist_block_func_declarations(interp, body, var_env)
-    ForOfStmtPat(_, _, _, body, _) =>
-      hoist_block_func_declarations(interp, body, var_env)
-    ForInExpr(_, _, body, _) =>
-      hoist_block_func_declarations(interp, body, var_env)
-    ForOfExpr(_, _, body, _) =>
-      hoist_block_func_declarations(interp, body, var_env)
-    LabeledStmt(_, inner, _) => {
-      // §B.3.3 + §14.13: `label: function f(){}` is a
-      // LabelledFunctionDeclaration in sloppy mode. Tag the direct FuncDecl
-      // child here — the recursive call alone wouldn't, because the inner
-      // match only picks up FuncDecls when recursing INTO a Block arm.
-      match inner {
-        FuncDecl(name, _, _, _) | FuncDeclExt(name, _, _, _, _) =>
-          tag_annex_b_hoisted(interp, var_env, name)
-        _ => ()
-      }
-      hoist_block_func_declarations(interp, inner, var_env)
-    }
-    WithStmt(_, body, _) => {
-      // Handle bare function declarations directly in with body (Annex B.3.3)
-      match body {
-        FuncDecl(name, _, _, _) | FuncDeclExt(name, _, _, _, _) =>
-          tag_annex_b_hoisted(interp, var_env, name)
-        _ => ()
-      }
-      hoist_block_func_declarations(interp, body, var_env)
-    }
-    SwitchStmt(_, cases, _) =>
-      for case_ in cases {
-        for inner in case_.body {
-          match inner {
-            FuncDecl(name, _, _, _) | FuncDeclExt(name, _, _, _, _) =>
-              tag_annex_b_hoisted(interp, var_env, name)
-            _ => ()
-          }
-          hoist_block_func_declarations(interp, inner, var_env)
-        }
-      }
-    TryCatchStmt(try_body, _, catch_body, finally_body, _) => {
-      for inner in try_body {
-        match inner {
-          FuncDecl(name, _, _, _) | FuncDeclExt(name, _, _, _, _) =>
-            tag_annex_b_hoisted(interp, var_env, name)
-          _ => ()
-        }
-        hoist_block_func_declarations(interp, inner, var_env)
-      }
-      match catch_body {
-        Some(cb) =>
-          for inner in cb {
-            match inner {
-              FuncDecl(name, _, _, _) | FuncDeclExt(name, _, _, _, _) =>
-                tag_annex_b_hoisted(interp, var_env, name)
-              _ => ()
-            }
-            hoist_block_func_declarations(interp, inner, var_env)
-          }
-        None => ()
-      }
-      match finally_body {
-        Some(fb) =>
-          for inner in fb {
-            match inner {
-              FuncDecl(name, _, _, _) | FuncDeclExt(name, _, _, _, _) =>
-                tag_annex_b_hoisted(interp, var_env, name)
-              _ => ()
-            }
-            hoist_block_func_declarations(interp, inner, var_env)
-          }
-        None => ()
-      }
-    }
-    _ => ()
-  }
-}
-
-///|
 fn Interpreter::hoist_declarations(
   _self : Interpreter,
   stmts : Array[@ast.Stmt],
   env : Environment,
   strict? : Bool = false,
-  suppress_annex_b_block_funcs? : Bool = false,
+  suppress_annex_b_candidates? : Bool = false,
 ) -> Unit raise Error {
   let is_global = physical_equal(env, _self.global)
   for stmt in stmts {
@@ -1909,13 +1886,35 @@ fn Interpreter::hoist_declarations(
     // Hoist var declarations recursively through nested statements
     // (e.g. var inside blocks still hoists to function/global var scope).
     hoist_var_declarations_from_stmt(stmt, env)
-    // Annex B.3.3: Hoist block-level function declarations as var bindings.
-    // Eval callers suppress this pass — they run the spec-correct eval
-    // variant (`hoist_eval_annex_b_candidates`) via `perform_eval` after
-    // this declaration pass completes.
-    if _self.annex_b && !strict && !suppress_annex_b_block_funcs {
-      hoist_block_func_declarations(_self, stmt, env)
+  }
+  // Annex B §B.3.2.1: Hoist block-level FunctionDeclarations into the
+  // containing function / script var env, with the syntactic skip check
+  // from §B.3.4 — tag only when the candidate name does not conflict with
+  // an enclosing lex-declared name. The same walker powers eval-scope
+  // hoisting (§B.3.2.3); eval callers suppress this pass and run it
+  // themselves in `perform_eval` so they can slot the call between var
+  // hoisting and TDZ setup.
+  if _self.annex_b && !strict && !suppress_annex_b_candidates {
+    let top_lex = collect_stmts_lex_names(stmts)
+    // §B.3.2.1 step ii parameter carve-out: skip the extension when the
+    // candidate name is a formal parameter of the enclosing function, or
+    // the distinguished name "arguments" (§10.2.11 step 22.f appends it to
+    // parameterNames). Populate `excluded` by scanning `env`: formal params
+    // are marked `is_parameter=true` by `Environment::def_parameter`, and
+    // `arguments` is installed as a VarBinding during function-call setup.
+    // Script / module top-level envs have no such bindings, so `excluded`
+    // stays empty and no names are skipped.
+    let excluded : Map[String, Bool] = {}
+    for name, binding in env.bindings {
+      if binding.is_parameter {
+        excluded[name] = true
+      }
     }
+    match env.bindings.get("arguments") {
+      Some(b) => if b.kind == VarBinding { excluded["arguments"] = true }
+      None => ()
+    }
+    hoist_eval_annex_b_candidates(_self, stmts, env, top_lex, excluded~)
   }
 }
 

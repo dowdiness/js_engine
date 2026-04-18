@@ -9295,6 +9295,68 @@ test "annex-b eval: indirect eval does not false-positive on caller block let" {
 }
 
 ///|
+/// §B.3.2.1 step ii: skip the Annex B extension when F is a formal
+/// parameter of the enclosing function. Without this check, a block-level
+/// `function f(){}` would overwrite the param `f` — matching eval's
+/// §B.3.2.3 behavior (which the shared walker implements), but violating
+/// function-body semantics. test262 fixture
+/// annexB/language/function-code/block-decl-func-skip-param.js.
+test "annex-b: function-body skip when candidate equals param name" {
+  let src =
+    #|var init, after;
+    #|(function(f) {
+    #|  init = f;
+    #|  { function f() {} }
+    #|  after = f;
+    #|})(123);
+    #|console.log(init);
+    #|console.log(after);
+  let output = run_output_annex_b(src)
+  inspect(output, content="[\"123\", \"123\"]")
+}
+
+///|
+/// §B.3.2.1 + FunctionDeclarationInstantiation step 22.f: "arguments" is
+/// appended to parameterNames when the arguments object is materialized,
+/// so a block-level `function arguments(){}` must not overwrite the
+/// enclosing function's arguments object. test262 fixture
+/// annexB/language/function-code/block-decl-func-skip-arguments.js.
+test "annex-b: function-body skip when candidate equals arguments" {
+  let src =
+    #|(function() {
+    #|  var before = arguments.toString();
+    #|  { function arguments() {} }
+    #|  var after = arguments.toString();
+    #|  console.log(before);
+    #|  console.log(after);
+    #|})();
+  let output = run_output_annex_b(src)
+  inspect(output, content="[\"[object Arguments]\", \"[object Arguments]\"]")
+}
+
+///|
+/// §B.3.2.1: Annex B block-level function hoisting into a function body's
+/// var scope must skip when the candidate name conflicts with a
+/// lexically-declared name in an enclosing block of the same function.
+/// Without the syntactic walk, `hoist_block_func_declarations` blindly
+/// creates a var slot for `g` at function scope — visible after the block
+/// ends. Per §B.3.2.1 the extension must be skipped and `g` stays
+/// undeclared at function scope.
+test "annex-b: function-body skip when enclosing block let conflicts" {
+  let src =
+    #|function foo() {
+    #|  {
+    #|    let g = "lex";
+    #|    { function g(){} }
+    #|  }
+    #|  return typeof g;
+    #|}
+    #|console.log(foo());
+  let output = run_output_annex_b(src)
+  inspect(output, content="[\"undefined\"]")
+}
+
+///|
 /// §B.3.4: `if (cond) FunctionDeclaration` is treated as if the body were a
 /// Block containing the FunctionDeclaration. Inside eval, the Annex B hoist
 /// must therefore promote `f` to the enclosing var env — so `f` remains
