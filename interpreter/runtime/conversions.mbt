@@ -44,6 +44,7 @@ pub fn call_callable_direct(
         | Some(ArrowFuncExt(_))
         | Some(BoundFunc(_, _, _))
         | Some(InterpreterCallable(_, _))
+        | Some(NonConstructableInterpreterCallable(_, _))
         | Some(ClassConstructor(_)) => {
           // Prefer explicitly passed interp, fall back to module global
           let effective = match interp {
