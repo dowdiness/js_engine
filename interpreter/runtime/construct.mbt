@@ -560,7 +560,20 @@ pub fn Interpreter::construct_value(
           // var decls). body_env holds body var/let/const/function decls.
           // Plain-rest Ext constructors stay single-env.
           let split_scope = has_parameter_expressions(data.params)
-          let param_env = Environment::new(parent=Some(data.closure))
+          // §15.2.5: install the self-name on a dedicated env between
+          // data.closure and param_env so default expressions can see it
+          // (`function f(a = () => f) {}`). Params on param_env shadow
+          // naturally; body-local decls of the same name shadow via
+          // lexical lookup.
+          let self_name_env : Environment = match data.name {
+            Some(name) => {
+              let ne = Environment::new(parent=Some(data.closure))
+              ne.def(name, ctor, LetBinding)
+              ne
+            }
+            None => data.closure
+          }
+          let param_env = Environment::new(parent=Some(self_name_env))
           param_env.is_var_scope = true
           param_env.def("this", new_obj, LetBinding)
           param_env.def("<new.target>", ctor, LetBinding)
@@ -656,16 +669,8 @@ pub fn Interpreter::construct_value(
             strict=func_strict,
             param_source~,
           )
-          match data.name {
-            Some(name) =>
-              // Named function expression self-binding must not shadow a
-              // same-named parameter; check body_env AND param_env.
-              if !body_env.bindings.contains(name) &&
-                !param_env.bindings.contains(name) {
-                body_env.def(name, ctor, LetBinding)
-              }
-            None => ()
-          }
+          // Self-name already lives on self_name_env above; lexical
+          // lookup handles param + body shadowing.
           let exec_result = self.exec_stmts(func_ctx, data.body, body_env)
           match exec_result {
             Normal(_) => new_obj

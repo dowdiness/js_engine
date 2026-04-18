@@ -9554,6 +9554,22 @@ test "§10.2.11: function-name self-binding yields to param of same name" {
 }
 
 ///|
+/// §15.2.5 + §10.2.11: a named function expression's self-name must be
+/// reachable from default-expression closures. Defaults evaluate in
+/// param_env, so arrows created inside defaults capture param_env; if
+/// the self-name only appears on body_env (child of param_env), the
+/// capture has no path to it. Per §15.2.5 the spec installs the name
+/// on a dedicated funcEnv BETWEEN the outer closure and the call's
+/// param_env, which our implementation mirrors. Codex P2 finding.
+test "§10.2.11: named function expression self-name visible to default closures" {
+  let src =
+    #|var g = function f(a = () => f) { return a(); };
+    #|console.log(g() === g);
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
 /// §10.2.11: param-scope eval-var visible to an arrow default closure,
 /// and body's `let` of the same name creates a distinct binding. Like
 /// the canonical test but without the `arguments` special name, to

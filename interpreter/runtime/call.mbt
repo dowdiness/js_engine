@@ -541,7 +541,20 @@ pub fn Interpreter::call_value(
           // Ext shapes (`function f(...rest)`) stay single-env per spec
           // step 26 — a body-level `var rest` must reuse the param binding.
           let split_scope = has_parameter_expressions(data.params)
-          let param_env = Environment::new(parent=Some(data.closure))
+          // §15.2.5: for named function expressions, install the self-name
+          // on a dedicated func_env sitting between data.closure and
+          // param_env, so default expressions that close over param_env
+          // can still resolve the name (e.g.
+          // `var g = function f(a = () => f) { return a(); }`).
+          let self_name_env : Environment = match data.name {
+            Some(name) => {
+              let ne = Environment::new(parent=Some(data.closure))
+              ne.def(name, callee, LetBinding)
+              ne
+            }
+            None => data.closure
+          }
+          let param_env = Environment::new(parent=Some(self_name_env))
           param_env.is_var_scope = true
           let func_strict = data.strict
           let func_ctx : ExecContext = {
@@ -670,18 +683,9 @@ pub fn Interpreter::call_value(
             strict=func_strict,
             param_source~,
           )
-          match data.name {
-            Some(name) =>
-              // Named function expression self-binding must not shadow a
-              // same-named parameter (`function f(f = 1) { return f }`
-              // returns 1, not the callee). In the split-scope case
-              // body_env ≠ param_env, so check both.
-              if !body_env.bindings.contains(name) &&
-                !param_env.bindings.contains(name) {
-                body_env.def(name, callee, LetBinding)
-              }
-            None => ()
-          }
+          // Self-name lives on self_name_env; body-local `var/let/const`
+          // of the same name naturally shadows via lexical lookup, and a
+          // param of the same name sits on param_env which shadows too.
           match self.exec_stmts(func_ctx, data.body, body_env) {
             Normal(_) => Undefined
             ReturnSignal(v) => v
