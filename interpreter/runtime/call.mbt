@@ -156,6 +156,130 @@ fn unwrap_grouping(expr : @ast.Expr) -> @ast.Expr {
 }
 
 ///|
+/// Shared core of UserFuncExt and ArrowFuncExt call paths: bind
+/// parameters (with defaults, destructuring, rest), optionally split
+/// the body env per §10.2.11, hoist body declarations, execute the
+/// body, and reduce the completion to a plain Value.
+///
+/// Caller is responsible for everything that differs between named
+/// FunctionExpression calls and arrow calls:
+/// - `param_env`'s parent (the named-FE self-name wrapper, or
+///   `data.closure` directly for arrows)
+/// - Strict-mode duplicate / reserved-name validation
+/// - `this` / `<new.target>` / `arguments` installs (arrows skip them
+///   entirely — ThisMode=lexical per §10.2.11 step 18).
+///
+/// Per §10.2.11 step 26 the split is gated on
+/// `has_parameter_expressions(data.params)` — plain-rest and
+/// plain-destructure shapes stay single-env so a body-level
+/// `var <name>` reuses the param binding.
+fn Interpreter::bind_ext_params_and_exec_body(
+  self : Interpreter,
+  data : FuncDataExt,
+  args : Array[Value],
+  param_env : Environment,
+  func_ctx : ExecContext,
+) -> Value raise Error {
+  // Bind params with defaults
+  let mut effective_param_count = 0
+  for i = 0; i < data.params.length(); i = i + 1 {
+    let param = data.params[i]
+    // Skip rest destructuring params - they're bound via rest_param
+    if data.rest_param is Some(rn) && param.name == rn {
+      continue
+    }
+    let val : Value = if effective_param_count < args.length() &&
+      !(args[effective_param_count] is Undefined) {
+      args[effective_param_count]
+    } else {
+      match param.default_val {
+        Some(default_expr) => {
+          let v = self.eval_expr(func_ctx, default_expr, param_env)
+          // Set function name for anonymous function defaults
+          if param.pattern is None &&
+            is_anonymous_function_definition(default_expr) {
+            set_function_name(v, param.name)
+          }
+          v
+        }
+        None =>
+          if effective_param_count < args.length() {
+            args[effective_param_count]
+          } else {
+            Undefined
+          }
+      }
+    }
+    param_env.def_parameter(param.name, val)
+    // Destructure if pattern param
+    match param.pattern {
+      Some(pat) =>
+        self.bind_pattern(pat, val, param_env, LetBinding, ctx=func_ctx)
+      None => ()
+    }
+    effective_param_count = effective_param_count + 1
+  }
+  // Rest param
+  match data.rest_param {
+    Some(rest_name) => {
+      let rest_elements : Array[Value] = []
+      for i = effective_param_count; i < args.length(); i = i + 1 {
+        rest_elements.push(args[i])
+      }
+      let rest_val = make_array(rest_elements)
+      param_env.def_parameter(rest_name, rest_val)
+      // Apply destructuring pattern if present
+      for p in data.params {
+        if p.name == rest_name {
+          match p.pattern {
+            Some(pat) =>
+              self.bind_pattern(
+                pat,
+                rest_val,
+                param_env,
+                LetBinding,
+                ctx=func_ctx,
+              )
+            None => ()
+          }
+          break
+        }
+      }
+    }
+    None => ()
+  }
+  // Split the body env iff HasParameterExpressions; otherwise body
+  // decls hoist directly onto param_env (same semantics as non-Ext).
+  let split_scope = has_parameter_expressions(data.params)
+  let body_env = if split_scope {
+    let be = Environment::new(parent=Some(param_env))
+    be.is_var_scope = true
+    be
+  } else {
+    param_env
+  }
+  let param_source : Environment? = if split_scope {
+    Some(param_env)
+  } else {
+    None
+  }
+  self.hoist_declarations(
+    data.body,
+    body_env,
+    strict=data.strict,
+    param_source~,
+  )
+  match self.exec_stmts(func_ctx, data.body, body_env) {
+    Normal(_) => Undefined
+    ReturnSignal(v) => v
+    BreakSignal(_, _) =>
+      raise @errors.SyntaxError(message="break statement outside of loop")
+    ContinueSignal(_, _) =>
+      raise @errors.SyntaxError(message="continue statement outside of loop")
+  }
+}
+
+///|
 /// Execute eval code in a given environment.
 /// If `direct` is true, executes in the caller's environment (direct eval).
 /// If `direct` is false, executes in the global environment (indirect eval).
@@ -536,11 +660,6 @@ pub fn Interpreter::call_value(
           }
         }
         Some(UserFuncExt(data)) => {
-          // §10.2.11 split gated on HasParameterExpressions: any default or
-          // pattern triggers a distinct param env vs body env. Plain-rest
-          // Ext shapes (`function f(...rest)`) stay single-env per spec
-          // step 26 — a body-level `var rest` must reuse the param binding.
-          let split_scope = has_parameter_expressions(data.params)
           // §15.2.5: for named function expressions, install the self-name
           // on a dedicated func_env sitting between data.closure and
           // param_env, so default expressions that close over param_env
@@ -603,220 +722,22 @@ pub fn Interpreter::call_value(
             ),
             VarBinding,
           )
-          // Bind params with defaults
-          let mut effective_param_count = 0
-          for i = 0; i < data.params.length(); i = i + 1 {
-            let param = data.params[i]
-            // Skip rest destructuring params - they're bound via rest_param
-            if data.rest_param is Some(rn) && param.name == rn {
-              continue
-            }
-            let val : Value = if effective_param_count < args.length() &&
-              !(args[effective_param_count] is Undefined) {
-              args[effective_param_count]
-            } else {
-              match param.default_val {
-                Some(default_expr) => {
-                  let v = self.eval_expr(func_ctx, default_expr, param_env)
-                  // Set function name for anonymous function defaults
-                  if param.pattern is None &&
-                    is_anonymous_function_definition(default_expr) {
-                    set_function_name(v, param.name)
-                  }
-                  v
-                }
-                None =>
-                  if effective_param_count < args.length() {
-                    args[effective_param_count]
-                  } else {
-                    Undefined
-                  }
-              }
-            }
-            param_env.def_parameter(param.name, val)
-            // Destructure if pattern param
-            match param.pattern {
-              Some(pat) =>
-                self.bind_pattern(pat, val, param_env, LetBinding, ctx=func_ctx)
-              None => ()
-            }
-            effective_param_count = effective_param_count + 1
-          }
-          // Rest param
-          match data.rest_param {
-            Some(rest_name) => {
-              let rest_elements : Array[Value] = []
-              for i = effective_param_count; i < args.length(); i = i + 1 {
-                rest_elements.push(args[i])
-              }
-              let rest_val = make_array(rest_elements)
-              param_env.def_parameter(rest_name, rest_val)
-              // Apply destructuring pattern if present
-              for p in data.params {
-                if p.name == rest_name {
-                  match p.pattern {
-                    Some(pat) =>
-                      self.bind_pattern(
-                        pat,
-                        rest_val,
-                        param_env,
-                        LetBinding,
-                        ctx=func_ctx,
-                      )
-                    None => ()
-                  }
-                  break
-                }
-              }
-            }
-            None => ()
-          }
-          // Split the body env iff HasParameterExpressions; otherwise body
-          // decls hoist directly onto param_env (same semantics as non-Ext).
-          let body_env = if split_scope {
-            let be = Environment::new(parent=Some(param_env))
-            be.is_var_scope = true
-            be
-          } else {
-            param_env
-          }
-          let param_source : Environment? = if split_scope {
-            Some(param_env)
-          } else {
-            None
-          }
-          self.hoist_declarations(
-            data.body,
-            body_env,
-            strict=func_strict,
-            param_source~,
-          )
           // Self-name lives on self_name_env; body-local `var/let/const`
           // of the same name naturally shadows via lexical lookup, and a
           // param of the same name sits on param_env which shadows too.
-          match self.exec_stmts(func_ctx, data.body, body_env) {
-            Normal(_) => Undefined
-            ReturnSignal(v) => v
-            BreakSignal(_, _) =>
-              raise @errors.SyntaxError(
-                message="break statement outside of loop",
-              )
-            ContinueSignal(_, _) =>
-              raise @errors.SyntaxError(
-                message="continue statement outside of loop",
-              )
-          }
+          self.bind_ext_params_and_exec_body(data, args, param_env, func_ctx)
         }
         Some(ArrowFuncExt(data)) => {
-          // §10.2.11 split for arrow Ext, gated on HasParameterExpressions.
-          // Arrows skip `arguments`/this install (ThisMode=lexical); the
-          // param-env / body-env split applies only when there are default
-          // expressions or destructured params.
-          let split_scope = has_parameter_expressions(data.params)
+          // Arrows skip `arguments`/this/<new.target> install
+          // (ThisMode=lexical per §10.2.11 step 18) and have no self-name
+          // wrapper — param_env's parent is just `data.closure`.
           let param_env = Environment::new(parent=Some(data.closure))
           param_env.is_var_scope = true
           let func_ctx : ExecContext = {
             strict: data.strict,
             current_generator: None,
           }
-          // Arrow functions do NOT rebind this
-          let mut effective_param_count = 0
-          for i = 0; i < data.params.length(); i = i + 1 {
-            let param = data.params[i]
-            // Skip rest destructuring params
-            if data.rest_param is Some(rn) && param.name == rn {
-              continue
-            }
-            let val : Value = if effective_param_count < args.length() &&
-              !(args[effective_param_count] is Undefined) {
-              args[effective_param_count]
-            } else {
-              match param.default_val {
-                Some(default_expr) => {
-                  let v = self.eval_expr(func_ctx, default_expr, param_env)
-                  // Set function name for anonymous function defaults
-                  if param.pattern is None &&
-                    is_anonymous_function_definition(default_expr) {
-                    set_function_name(v, param.name)
-                  }
-                  v
-                }
-                None =>
-                  if effective_param_count < args.length() {
-                    args[effective_param_count]
-                  } else {
-                    Undefined
-                  }
-              }
-            }
-            param_env.def_parameter(param.name, val)
-            // Destructure if pattern param
-            match param.pattern {
-              Some(pat) =>
-                self.bind_pattern(pat, val, param_env, LetBinding, ctx=func_ctx)
-              None => ()
-            }
-            effective_param_count = effective_param_count + 1
-          }
-          // Rest param
-          match data.rest_param {
-            Some(rest_name) => {
-              let rest_elements : Array[Value] = []
-              for i = effective_param_count; i < args.length(); i = i + 1 {
-                rest_elements.push(args[i])
-              }
-              let rest_val = make_array(rest_elements)
-              param_env.def_parameter(rest_name, rest_val)
-              // Apply destructuring pattern if present
-              for p in data.params {
-                if p.name == rest_name {
-                  match p.pattern {
-                    Some(pat) =>
-                      self.bind_pattern(
-                        pat,
-                        rest_val,
-                        param_env,
-                        LetBinding,
-                        ctx=func_ctx,
-                      )
-                    None => ()
-                  }
-                  break
-                }
-              }
-            }
-            None => ()
-          }
-          let body_env = if split_scope {
-            let be = Environment::new(parent=Some(param_env))
-            be.is_var_scope = true
-            be
-          } else {
-            param_env
-          }
-          let param_source : Environment? = if split_scope {
-            Some(param_env)
-          } else {
-            None
-          }
-          self.hoist_declarations(
-            data.body,
-            body_env,
-            strict=data.strict,
-            param_source~,
-          )
-          match self.exec_stmts(func_ctx, data.body, body_env) {
-            Normal(_) => Undefined
-            ReturnSignal(v) => v
-            BreakSignal(_, _) =>
-              raise @errors.SyntaxError(
-                message="break statement outside of loop",
-              )
-            ContinueSignal(_, _) =>
-              raise @errors.SyntaxError(
-                message="continue statement outside of loop",
-              )
-          }
+          self.bind_ext_params_and_exec_body(data, args, param_env, func_ctx)
         }
         Some(BoundFunc(target, bound_this, bound_args)) => {
           let all_args : Array[Value] = []
