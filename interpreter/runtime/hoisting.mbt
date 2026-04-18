@@ -1158,43 +1158,33 @@ fn tag_annex_b_hoisted(
       if physical_equal(var_env, interp.global) {
         interp.mirror_to_global(name, Undefined)
       }
-      match var_env.bindings.get(name) {
-        Some(created) => created.annex_b_hoisted = true
-        None => ()
-      }
+      // Newly created via `def`, so the entry is guaranteed to exist.
+      var_env.bindings.get(name).unwrap().annex_b_hoisted = true
     }
   }
 }
 
 ///|
-/// Collect lexically-declared names at the top of an eval body.
-/// Per §8.2.10 (TopLevelLexicallyDeclaredNames for ScriptBody), this is
-/// `let` / `const` / `class` at the eval's own statement list — NOT recursing
-/// into Block, function bodies, switch cases, loop bodies, catch blocks, or
-/// `with` bodies. Used as one input to the Annex B §B.3.3.3 skip check.
-fn collect_eval_top_level_lex_names(
-  stmts : Array[@ast.Stmt],
-) -> Map[String, Unit] {
-  let names : Map[String, Unit] = {}
-  for stmt in stmts {
-    match stmt {
-      VarDecl(LetKind, name, _, _) => names[name] = ()
-      VarDecl(ConstKind, name, _, _) => names[name] = ()
-      ClassDecl(name, _, _, _) => names[name] = ()
-      DestructureDecl(LetKind, pattern, _, _) =>
-        collect_pattern_lex_names(pattern, names)
-      DestructureDecl(ConstKind, pattern, _, _) =>
-        collect_pattern_lex_names(pattern, names)
-      ExportNamedDecl(Some(decl), _, _, _) =>
-        collect_eval_top_level_lex_names_from_stmt(decl, names)
-      _ => ()
-    }
+/// Add `let` / `const` / `class` names introduced by a single statement to
+/// `names`. Non-recursive — blocks, function bodies, loop bodies, etc. are
+/// NOT descended into; the caller controls scope granularity. The
+/// `ExportNamedDecl` wrapper is unwrapped so `export let x = …` participates.
+fn add_stmt_lex_names(stmt : @ast.Stmt, names : Map[String, Unit]) -> Unit {
+  match stmt {
+    VarDecl(LetKind, name, _, _) | VarDecl(ConstKind, name, _, _) =>
+      names[name] = ()
+    ClassDecl(name, _, _, _) => names[name] = ()
+    DestructureDecl(LetKind, pattern, _, _)
+    | DestructureDecl(ConstKind, pattern, _, _) =>
+      collect_pattern_lex_names(pattern, names)
+    ExportNamedDecl(Some(decl), _, _, _) => add_stmt_lex_names(decl, names)
+    _ => ()
   }
-  names
 }
 
 ///|
-/// Pattern counterpart for collect_eval_top_level_lex_names.
+/// Walk a pattern and record every `IdentPat` name into `names`. Used for
+/// `let` / `const` destructuring declarations and for-loop heads.
 fn collect_pattern_lex_names(
   pattern : @ast.Pattern,
   names : Map[String, Unit],
@@ -1228,21 +1218,17 @@ fn collect_pattern_lex_names(
 }
 
 ///|
-/// Single-stmt variant — used when unwrapping a single ExportNamedDecl wrapper.
-fn collect_eval_top_level_lex_names_from_stmt(
-  stmt : @ast.Stmt,
-  names : Map[String, Unit],
-) -> Unit {
-  match stmt {
-    VarDecl(LetKind, name, _, _) => names[name] = ()
-    VarDecl(ConstKind, name, _, _) => names[name] = ()
-    ClassDecl(name, _, _, _) => names[name] = ()
-    DestructureDecl(LetKind, pattern, _, _) =>
-      collect_pattern_lex_names(pattern, names)
-    DestructureDecl(ConstKind, pattern, _, _) =>
-      collect_pattern_lex_names(pattern, names)
-    _ => ()
+/// Collect lexically-declared names (§8.2.10 TopLevelLexicallyDeclaredNames)
+/// from a statement list — `let` / `const` / `class` at the given scope, with
+/// no recursion into Block, function body, switch case, loop body, catch
+/// block, or `with` body. Suitable for both eval top level (§B.3.3.3 skip
+/// check) and for per-block lex frames pushed onto the AST walk stack.
+fn collect_stmts_lex_names(stmts : Array[@ast.Stmt]) -> Map[String, Unit] {
+  let names : Map[String, Unit] = {}
+  for stmt in stmts {
+    add_stmt_lex_names(stmt, names)
   }
+  names
 }
 
 ///|
@@ -1274,40 +1260,15 @@ fn annex_b_candidate_conflicts(
     if frame.contains(name) {
       return true
     }
+  } nobreak {
+    false
   }
-  false
 }
 
 ///|
 /// Collect the lex names introduced at the top level of a single block's
 /// statement list: let, const, class only.
 ///
-/// Block-scoped function declarations are intentionally NOT collected here.
-/// They are the Annex B candidates themselves — the §B.3.3.3 skip check
-/// replaces each candidate `function F` with `var F` when evaluating its
-/// eligibility, so the candidate does not count as a lex binding against
-/// itself. Sibling function decls of OTHER names are also not lex conflicts
-/// for an Annex B candidate F (they neither match F's name nor bar F's
-/// replacement early-error test). Only let/const/class bindings at this
-/// block's top level can shadow a candidate.
-fn collect_block_top_lex_names(stmts : Array[@ast.Stmt]) -> Map[String, Unit] {
-  let names : Map[String, Unit] = {}
-  for stmt in stmts {
-    match stmt {
-      VarDecl(LetKind, name, _, _) => names[name] = ()
-      VarDecl(ConstKind, name, _, _) => names[name] = ()
-      ClassDecl(name, _, _, _) => names[name] = ()
-      DestructureDecl(LetKind, pattern, _, _) =>
-        collect_pattern_lex_names(pattern, names)
-      DestructureDecl(ConstKind, pattern, _, _) =>
-        collect_pattern_lex_names(pattern, names)
-      _ => ()
-    }
-  }
-  names
-}
-
-///|
 /// Annex B §B.3.3.3: walk an eval body AST and hoist each eligible
 /// block-level function declaration as a var binding on `var_env`.
 ///
@@ -1356,21 +1317,8 @@ fn walk_eval_annex_b_stmt(
       if in_block && !annex_b_candidate_conflicts(name, top_lex, stack) {
         tag_annex_b_hoisted(interp, var_env, name)
       }
-    Block(inner_stmts, _) => {
-      let frame = collect_block_top_lex_names(inner_stmts)
-      stack.push(frame)
-      for inner in inner_stmts {
-        walk_eval_annex_b_stmt(
-          interp,
-          inner,
-          var_env,
-          top_lex,
-          stack,
-          in_block=true,
-        )
-      }
-      let _ = stack.pop()
-    }
+    Block(inner_stmts, _) =>
+      walk_stmt_list_in_own_frame(interp, inner_stmts, var_env, top_lex, stack)
     StmtList(inner_stmts, _) =>
       for inner in inner_stmts {
         walk_eval_annex_b_stmt(
@@ -1415,91 +1363,44 @@ fn walk_eval_annex_b_stmt(
         stack,
         in_block=true,
       )
-    ForStmt(init, _, _, body, _) => {
-      // For loop introduces a per-iteration lex scope for `let` in the init
-      // (§14.7.4). Treat the for body as an enclosing lex scope where the
-      // init's lex names are in scope.
-      let frame = for_init_lex_names(init)
-      stack.push(frame)
-      walk_eval_annex_b_stmt(
+    // §14.7.4: `for (let/const …; ; ) body` makes the init's lex names visible
+    // for the body's Annex-B candidate check.
+    ForStmt(init, _, _, body, _) =>
+      walk_enclosed_body(
         interp,
         body,
         var_env,
         top_lex,
         stack,
-        in_block=true,
+        for_init_lex_names(init),
       )
-      let _ = stack.pop()
-    }
     ForInStmt(kind, name, _, body, _) => {
       let frame : Map[String, Unit] = {}
-      match kind {
-        Some(LetKind) | Some(ConstKind) => frame[name] = ()
-        _ => ()
+      if kind is (Some(LetKind) | Some(ConstKind)) {
+        frame[name] = ()
       }
-      stack.push(frame)
-      walk_eval_annex_b_stmt(
-        interp,
-        body,
-        var_env,
-        top_lex,
-        stack,
-        in_block=true,
-      )
-      let _ = stack.pop()
+      walk_enclosed_body(interp, body, var_env, top_lex, stack, frame)
     }
     ForOfStmt(kind, name, _, body, _) => {
       let frame : Map[String, Unit] = {}
-      match kind {
-        Some(LetKind) | Some(ConstKind) => frame[name] = ()
-        _ => ()
+      if kind is (Some(LetKind) | Some(ConstKind)) {
+        frame[name] = ()
       }
-      stack.push(frame)
-      walk_eval_annex_b_stmt(
-        interp,
-        body,
-        var_env,
-        top_lex,
-        stack,
-        in_block=true,
-      )
-      let _ = stack.pop()
+      walk_enclosed_body(interp, body, var_env, top_lex, stack, frame)
     }
     ForInStmtPat(kind, pattern, _, body, _) => {
       let frame : Map[String, Unit] = {}
-      match kind {
-        Some(LetKind) | Some(ConstKind) =>
-          collect_pattern_lex_names(pattern, frame)
-        _ => ()
+      if kind is (Some(LetKind) | Some(ConstKind)) {
+        collect_pattern_lex_names(pattern, frame)
       }
-      stack.push(frame)
-      walk_eval_annex_b_stmt(
-        interp,
-        body,
-        var_env,
-        top_lex,
-        stack,
-        in_block=true,
-      )
-      let _ = stack.pop()
+      walk_enclosed_body(interp, body, var_env, top_lex, stack, frame)
     }
     ForOfStmtPat(kind, pattern, _, body, _) => {
       let frame : Map[String, Unit] = {}
-      match kind {
-        Some(LetKind) | Some(ConstKind) =>
-          collect_pattern_lex_names(pattern, frame)
-        _ => ()
+      if kind is (Some(LetKind) | Some(ConstKind)) {
+        collect_pattern_lex_names(pattern, frame)
       }
-      stack.push(frame)
-      walk_eval_annex_b_stmt(
-        interp,
-        body,
-        var_env,
-        top_lex,
-        stack,
-        in_block=true,
-      )
-      let _ = stack.pop()
+      walk_enclosed_body(interp, body, var_env, top_lex, stack, frame)
     }
     ForInExpr(_, _, body, _) =>
       walk_eval_annex_b_stmt(
@@ -1521,29 +1422,15 @@ fn walk_eval_annex_b_stmt(
       )
     LabeledStmt(_, inner, _) =>
       walk_eval_annex_b_stmt(interp, inner, var_env, top_lex, stack, in_block~)
+    // §14.12.3: all case clauses share one lex scope. Frame excludes
+    // FuncDecls for the same reason `collect_stmts_lex_names` does — a
+    // candidate `function F` in one case must not self-conflict. Duplicate
+    // lex declarations across cases are caught by the early-error validator.
     SwitchStmt(_, cases, _) => {
-      // All case clauses share one lex scope (§14.12.3).
       let frame : Map[String, Unit] = {}
       for case_ in cases {
         for inner in case_.body {
-          match inner {
-            VarDecl(LetKind, name, _, _) => frame[name] = ()
-            VarDecl(ConstKind, name, _, _) => frame[name] = ()
-            ClassDecl(name, _, _, _) => frame[name] = ()
-            FuncDecl(name, _, _, _) => frame[name] = ()
-            FuncDeclExt(name, _, _, _, _) => frame[name] = ()
-            GeneratorDecl(name, _, _, _) => frame[name] = ()
-            GeneratorDeclExt(name, _, _, _, _) => frame[name] = ()
-            AsyncFuncDecl(name, _, _, _) => frame[name] = ()
-            AsyncFuncDeclExt(name, _, _, _, _) => frame[name] = ()
-            AsyncGeneratorDecl(name, _, _, _) => frame[name] = ()
-            AsyncGeneratorDeclExt(name, _, _, _, _) => frame[name] = ()
-            DestructureDecl(LetKind, pattern, _, _) =>
-              collect_pattern_lex_names(pattern, frame)
-            DestructureDecl(ConstKind, pattern, _, _) =>
-              collect_pattern_lex_names(pattern, frame)
-            _ => ()
-          }
+          add_stmt_lex_names(inner, frame)
         }
       }
       stack.push(frame)
@@ -1561,57 +1448,18 @@ fn walk_eval_annex_b_stmt(
       }
       let _ = stack.pop()
     }
+    // Per §B.3.4, the catch parameter is transparent for eval conflict
+    // checks — so try / catch-body / finally are each just nested Blocks.
     TryCatchStmt(try_body, _, catch_body, finally_body, _) => {
-      // try body is its own block.
-      let try_frame = collect_block_top_lex_names(try_body)
-      stack.push(try_frame)
-      for inner in try_body {
-        walk_eval_annex_b_stmt(
-          interp,
-          inner,
-          var_env,
-          top_lex,
-          stack,
-          in_block=true,
-        )
-      }
-      let _ = stack.pop()
-
-      // catch block: per §B.3.4, catch parameter is NOT pushed — transparent.
+      walk_stmt_list_in_own_frame(interp, try_body, var_env, top_lex, stack)
       match catch_body {
-        Some(cb) => {
-          let catch_frame = collect_block_top_lex_names(cb)
-          stack.push(catch_frame)
-          for inner in cb {
-            walk_eval_annex_b_stmt(
-              interp,
-              inner,
-              var_env,
-              top_lex,
-              stack,
-              in_block=true,
-            )
-          }
-          let _ = stack.pop()
-        }
+        Some(cb) =>
+          walk_stmt_list_in_own_frame(interp, cb, var_env, top_lex, stack)
         None => ()
       }
       match finally_body {
-        Some(fb) => {
-          let fin_frame = collect_block_top_lex_names(fb)
-          stack.push(fin_frame)
-          for inner in fb {
-            walk_eval_annex_b_stmt(
-              interp,
-              inner,
-              var_env,
-              top_lex,
-              stack,
-              in_block=true,
-            )
-          }
-          let _ = stack.pop()
-        }
+        Some(fb) =>
+          walk_stmt_list_in_own_frame(interp, fb, var_env, top_lex, stack)
         None => ()
       }
     }
@@ -1634,32 +1482,59 @@ fn walk_eval_annex_b_stmt(
 }
 
 ///|
-/// Extract lex (let/const) names introduced by a for-loop init.
+/// Treat `stmts` as a block: collect its lex names as the pushed frame, walk
+/// each statement with `in_block=true`, pop. Shared by the Block variant and
+/// the three bodies of a try-catch-finally.
+fn walk_stmt_list_in_own_frame(
+  interp : Interpreter,
+  stmts : Array[@ast.Stmt],
+  var_env : Environment,
+  top_lex : Map[String, Unit],
+  stack : Array[Map[String, Unit]],
+) -> Unit raise Error {
+  stack.push(collect_stmts_lex_names(stmts))
+  for inner in stmts {
+    walk_eval_annex_b_stmt(
+      interp,
+      inner,
+      var_env,
+      top_lex,
+      stack,
+      in_block=true,
+    )
+  }
+  let _ = stack.pop()
+}
+
+///|
+/// Push `frame` onto `stack`, walk `body` with `in_block=true`, pop. Used by
+/// every loop-body variant in `walk_eval_annex_b_stmt` to avoid repeating the
+/// push/walk/pop boilerplate five times.
+fn walk_enclosed_body(
+  interp : Interpreter,
+  body : @ast.Stmt,
+  var_env : Environment,
+  top_lex : Map[String, Unit],
+  stack : Array[Map[String, Unit]],
+  frame : Map[String, Unit],
+) -> Unit raise Error {
+  stack.push(frame)
+  walk_eval_annex_b_stmt(interp, body, var_env, top_lex, stack, in_block=true)
+  let _ = stack.pop()
+}
+
+///|
+/// Extract lex (let/const) names introduced by a for-loop init. An init of
+/// `StmtList(inner, _)` is the comma-separated `for (let a=1, b=2; …)` shape
+/// — unwrap it one level so each inner declaration contributes.
 fn for_init_lex_names(init : @ast.Stmt?) -> Map[String, Unit] {
   let names : Map[String, Unit] = {}
   match init {
-    Some(init_stmt) =>
-      match init_stmt {
-        VarDecl(LetKind, name, _, _) => names[name] = ()
-        VarDecl(ConstKind, name, _, _) => names[name] = ()
-        DestructureDecl(LetKind, pattern, _, _) =>
-          collect_pattern_lex_names(pattern, names)
-        DestructureDecl(ConstKind, pattern, _, _) =>
-          collect_pattern_lex_names(pattern, names)
-        StmtList(inner, _) =>
-          for s in inner {
-            match s {
-              VarDecl(LetKind, name, _, _) => names[name] = ()
-              VarDecl(ConstKind, name, _, _) => names[name] = ()
-              DestructureDecl(LetKind, pattern, _, _) =>
-                collect_pattern_lex_names(pattern, names)
-              DestructureDecl(ConstKind, pattern, _, _) =>
-                collect_pattern_lex_names(pattern, names)
-              _ => ()
-            }
-          }
-        _ => ()
+    Some(StmtList(inner, _)) =>
+      for s in inner {
+        add_stmt_lex_names(s, names)
       }
+    Some(init_stmt) => add_stmt_lex_names(init_stmt, names)
     None => ()
   }
   names

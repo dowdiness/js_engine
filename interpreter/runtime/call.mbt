@@ -270,7 +270,7 @@ fn Interpreter::perform_eval(
     // var bindings on `var_env`, skipping names that would clash with an
     // outer lex declaration.
     if self.annex_b {
-      let top_lex = collect_eval_top_level_lex_names(stmts)
+      let top_lex = collect_stmts_lex_names(stmts)
       hoist_eval_annex_b_candidates(self, stmts, var_env, top_lex)
     }
   }
