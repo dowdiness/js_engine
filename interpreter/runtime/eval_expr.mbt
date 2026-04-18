@@ -825,7 +825,7 @@ fn Interpreter::eval_expr(
                     } else {
                       Undefined
                     }
-                    call_env.def(ctor_params[i].name, val, LetBinding)
+                    call_env.def_parameter(ctor_params[i].name, val)
                   }
                   let tte : Value? = if call_env.has("[[ThrowTypeError]]") {
                     Some(call_env.get("[[ThrowTypeError]]"))

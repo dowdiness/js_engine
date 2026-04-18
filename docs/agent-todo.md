@@ -235,17 +235,60 @@ where they disagree.
 
 ### Highest-ROI non-architectural items (discovered 2026-04-17)
 
-#### A. Annex B eval-scope hoisting — ~346 tests
+#### ~~A. Annex B eval-scope hoisting~~ — PARTIAL (2026-04-18, +101 tests)
 
-**Impact**: `language/eval-code` 62.6% → est. 90%+
-**File**: `interpreter/runtime/hoisting.mbt`
+**Branch**: `claude/annex-b-eval-hoisting`
+**Result**: `annexB/language` 53.2% → **74.7%** (+101 tests). Combined
+`language/eval-code` filter 57.8% → **68.8%**. Two commits: the initial
+implementation landed +67, and a refactor pass that consolidated the lex
+collectors also fixed a subtle self-conflict bug in the switch-case lex
+frame, unlocking +34 more.
 
-Failure classification of all 389 `language/eval-code` failures: 282
-assertion mismatches + 64 binding-creation-order + 25 duplicate-declaration
-— all trace to Annex B §B.3.3 (block-level function declarations in eval
-contexts) and §B.3.5 (VariableStatements in eval). Existing sloppy-mode
-hoisting handles global and function scopes; eval-scope needs the same
-treatment. NOT an architectural problem.
+**Shipped**:
+- AST-syntactic skip check for §B.3.3.3 candidates in eval bodies
+  (`hoist_eval_annex_b_candidates` in `hoisting.mbt`), walking enclosing
+  block / for-head / switch-case lex frames.
+- `TopLevelVarDeclaredNames` threading via new `in_block` flag on
+  `collect_block_var_decl_names_from_stmt` — nested-block FunctionDecls no
+  longer count as top-level VarDecls for the eval early-error gate.
+- New `annex_b_hoisted` flag on `Binding`; runtime block-entry reinit in
+  `exec_stmt.mbt` now checks that flag instead of `binding.kind`, which lets
+  the extension update reused parameter bindings (stored as `LetBinding`).
+- Step 5.d walk in `perform_eval` now starts at `exec_env` (the fresh eval
+  lex env), per §19.2.1.3, eliminating false-positive SyntaxErrors for
+  indirect eval nested under a block with `let`.
+
+**Out of scope (follow-ups)**:
+
+1. **`eval("var arguments")` in a parameter-default expression (~96 tests).**
+   Failures like `language/eval-code/direct/func-expr-fn-body-cntns-arguments-*`.
+   Requires the parameter-scope / body-scope split for functions that have
+   any default-valued parameter (§10.2.11). Our function-call path binds
+   parameters directly into the function var env, so the body's
+   `let arguments` is not visible at the eval call site. Needs a dedicated
+   refactor — tracked separately.
+2. **Function-body §B.3.2.1 skip check.** `hoist_block_func_declarations`
+   (used for function bodies) still creates var bindings without a skip
+   check. Parameters and `arguments` carve-outs differ from the eval case,
+   so the eval walk cannot be reused directly. Some of the remaining 153
+   annexB/language failures live here.
+3. **Catch-env transparency in step 5.d walk (§B.3.4).** Our Environment
+   model does not tag catch envs; the walk treats them as plain block envs,
+   which can false-positive when eval is called inside a `catch` block that
+   shadows an incoming var name. Narrow edge case.
+4. **`CanDeclareGlobalFunction` atomicity for indirect eval.** Test
+   `non-definable-function-with-function.js` expects all function decls in
+   one eval body to be rejected together when any one would fail
+   `CanDeclareGlobalFunction`. We emit them one-by-one. Separate issue.
+5. **Pattern-walker consolidation (pre-existing tech debt).** `hoisting.mbt`
+   has five near-identical pattern walkers: `collect_pattern_var_names`,
+   `collect_pattern_decl_names`, `collect_pattern_lex_names`, `hoist_pattern`,
+   `hoist_pattern_tdz`. Each walks `IdentPat | DefaultPat | AssignTarget |
+   ArrayPat | ObjectPat` identically and differs only in the per-identifier
+   action. A generic `walk_pattern_idents(pattern, on_ident)` could unify
+   them, but the existing walkers live on both raising and non-raising code
+   paths — threading `raise Error` through `collect_eval_var_names_from_stmt`
+   is required before the consolidation is safe. Not a correctness issue.
 
 #### B. test262 runner `_FIXTURE.js` path resolver — sibling gap CLOSED (2026-04-18, +17 tests)
 

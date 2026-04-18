@@ -16,6 +16,14 @@ fn run_output(source : String) -> Array[String] raise Error {
 }
 
 ///|
+fn run_output_annex_b(source : String) -> Array[String] raise Error {
+  let interp = new_interpreter(annex_b=true)
+  let prog = @parser.parse(source)
+  let _ = interp.run(prog.stmts)
+  interp.host.output
+}
+
+///|
 /// Run a script and then drain the microtask queue so Promise reactions
 /// (`.then` / `.catch` / `.finally`) observe their final state before the
 /// test inspects `output`.
@@ -9204,4 +9212,182 @@ test "engine error adversarial: proto rebound to name-matching object" {
   // Fallback skipped because Fake.prototype has own name "TypeError".
   // e.name is resolved via the (user-owned) prototype chain.
   inspect(output, content="[\"TypeError\", \"false\"]")
+}
+
+///|
+/// Annex B §B.3.3.3: bare `function f` nested in a block inside eval must
+/// skip the Annex B var-binding extension when a top-level `let f` would
+/// conflict — no SyntaxError, no var binding created.
+test "annex-b eval: skip extension when top-level let conflicts" {
+  let src =
+    #|(function() {
+    #|  var threw = false;
+    #|  try {
+    #|    eval("let f = 123; { function f(){} } globalThis.__typ = typeof f;");
+    #|  } catch (e) {
+    #|    threw = true;
+    #|    globalThis.__typ = "THROWN:" + e.name;
+    #|  }
+    #|  console.log(threw ? "threw" : "ok");
+    #|  console.log(globalThis.__typ);
+    #|})();
+  let output = run_output_annex_b(src)
+  inspect(output, content="[\"ok\", \"number\"]")
+}
+
+///|
+/// Annex B §B.3.3.3 (no-skip-param): function parameter `f` exists, eval
+/// contains `{function f(){}}`. Skip check passes (param not a lex binding
+/// for eval). Before-block: `f` keeps param value. After-block: `f`
+/// reassigned to the closure.
+test "annex-b eval: reinit param binding on block-entry" {
+  let src =
+    #|(function(f) {
+    #|  eval("globalThis.__init = f; { function f(){} } globalThis.__after = typeof f;");
+    #|})(123);
+    #|console.log(globalThis.__init);
+    #|console.log(globalThis.__after);
+  let output = run_output_annex_b(src)
+  inspect(output, content="[\"123\", \"function\"]")
+}
+
+///|
+/// Annex B §B.3.3.3: basic block-level function decl in eval with no
+/// enclosing lex conflict. Var binding created at hoist time (undefined),
+/// reassigned on block entry.
+test "annex-b eval: basic block function hoists as var, reinits on block entry" {
+  let src =
+    #|(function() {
+    #|  eval(`
+    #|    try { globalThis.__init = f; } catch(e) { globalThis.__init = "threw:"+e.name; }
+    #|    { function f(){} }
+    #|    globalThis.__after = typeof f;
+    #|  `);
+    #|})();
+    #|console.log(globalThis.__init);
+    #|console.log(globalThis.__after);
+  let output = run_output_annex_b(src)
+  inspect(output, content="[\"undefined\", \"function\"]")
+}
+
+///|
+/// §19.2.1.3 step 5.d: walk from fresh eval lex env (not caller env) up to
+/// var env. For indirect eval nested inside a block with `let`, the walk
+/// starts from the eval's new env (empty) rooted at global — no
+/// false-positive SyntaxError.
+test "annex-b eval: indirect eval does not false-positive on caller block let" {
+  let src =
+    #|var outerErr = null;
+    #|try {
+    #|  {
+    #|    let x = 1;
+    #|    {
+    #|      (0, eval)("var x = 2;");
+    #|    }
+    #|  }
+    #|} catch (e) {
+    #|  outerErr = e.name;
+    #|}
+    #|console.log(outerErr);
+    #|console.log(typeof x);
+  let output = run_output_annex_b(src)
+  inspect(output, content="[\"null\", \"number\"]")
+}
+
+///|
+/// §B.3.4: `if (cond) FunctionDeclaration` is treated as if the body were a
+/// Block containing the FunctionDeclaration. Inside eval, the Annex B hoist
+/// must therefore promote `f` to the enclosing var env — so `f` remains
+/// visible in the caller after eval returns. Prior bug: IfStmt forwarded
+/// `in_block~` (false at the eval top level) through to the inner FuncDecl,
+/// so the Annex B walk skipped it and no var was created in the enclosing
+/// scope.
+test "annex-b eval: if-clause FunctionDeclaration hoists via B.3.4" {
+  let src =
+    #|(function() {
+    #|  eval("if (true) function f(){}");
+    #|  globalThis.__typ = typeof f;
+    #|})();
+    #|console.log(globalThis.__typ);
+  let output = run_output_annex_b(src)
+  inspect(output, content="[\"function\"]")
+}
+
+///|
+/// §B.3.3.3 + LabeledStmt: in sloppy mode, `{ label: function f(){} }`
+/// should reinit the outer `function f` var binding on block entry.
+/// `hoist_block_func_declarations` recurses through LabeledStmt but has no
+/// FuncDecl arm at the labeled level, so the outer `f` never gets
+/// `annex_b_hoisted` tagged. Prior to this fix, the exec-time reinit
+/// checked only `annex_b_hoisted`, regressing the case that previously
+/// worked via `kind == VarBinding`. The reinit gate must allow VarBindings
+/// regardless of the tag, because VarBindings are mutable anyway.
+test "annex-b: labeled block function reinits outer var (no eval)" {
+  let src =
+    #|function f() { return 1; }
+    #|{ label: function f() { return 2; } }
+    #|console.log(f());
+  let output = run_output_annex_b(src)
+  inspect(output, content="[\"2\"]")
+}
+
+///|
+/// §B.3.3.3 step ii: a block-level `function f(){}` in sloppy eval must
+/// reinit the enclosing function's parameter `f`, regardless of which
+/// runtime entry point created the function call — ordinary call, `new`
+/// construct, and generator setup all bind parameters the same way for
+/// Annex B purposes. Prior bug: only `call.mbt` migrated to
+/// `def_parameter`; constructor/generator sites still used
+/// `def(..., LetBinding)`, leaving `is_parameter=false` so
+/// `tag_annex_b_hoisted` skipped them — block-entry reinit never ran.
+test "annex-b eval: reinit param in constructor call" {
+  // Must use a sloppy-mode function constructor, not `class`, since class
+  // bodies are strict by default and Annex B is disabled in strict mode.
+  let src =
+    #|function C(f) {
+    #|  eval("globalThis.__init = f; { function f(){} } globalThis.__after = typeof f;");
+    #|}
+    #|new C(123);
+    #|console.log(globalThis.__init);
+    #|console.log(globalThis.__after);
+  let output = run_output_annex_b(src)
+  inspect(output, content="[\"123\", \"function\"]")
+}
+
+///|
+/// §B.3.3.3 skip check must see names from comma-separated declarations.
+/// `let f = 1, g = 2;` is parsed as `StmtList([VarDecl, VarDecl])`, so the
+/// lex-name collector needs to descend into StmtList — otherwise the eval
+/// top-level `let f` stays invisible to `annex_b_candidate_conflicts` and
+/// a block-level `function f(){}` gets incorrectly hoisted into the outer
+/// var env, overwriting the caller's binding. Prior bug: `add_stmt_lex_names`
+/// had no StmtList arm, so `eval("let f=1,g=2; { function f(){} }")` leaked
+/// `f` back to the caller.
+test "annex-b eval: skip extension when comma-let declares conflicting name" {
+  let src =
+    #|var f = "outer";
+    #|eval("let f=1,g=2; { function f(){} }");
+    #|console.log(f);
+    #|console.log(typeof f);
+  let output = run_output_annex_b(src)
+  inspect(output, content="[\"outer\", \"string\"]")
+}
+
+///|
+/// §B.3.4: a pre-existing `const` binding in the enclosing var env must
+/// suppress the Annex B extension — replacing `function f(){}` with `var f`
+/// would be an early error against the const, so the hoist must skip. Prior
+/// bug: `tag_annex_b_hoisted` marked any existing binding, letting the later
+/// block-entry reinit overwrite the const via a direct `binding.value = ...`
+/// write that bypasses `Environment::assign` const enforcement.
+test "annex-b eval: skip extension when enclosing const conflicts" {
+  let src =
+    #|(function() {
+    #|  const f = 1;
+    #|  eval("{ function f(){} }");
+    #|  console.log(f);
+    #|  console.log(typeof f);
+    #|})();
+  let output = run_output_annex_b(src)
+  inspect(output, content="[\"1\", \"number\"]")
 }

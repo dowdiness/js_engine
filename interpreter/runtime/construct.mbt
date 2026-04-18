@@ -488,7 +488,7 @@ pub fn Interpreter::construct_value(
             if func_env.bindings.contains(data.params[i]) {
               func_env.assign(data.params[i], val)
             } else {
-              func_env.def(data.params[i], val, LetBinding)
+              func_env.def_parameter(data.params[i], val)
             }
           }
           let tte : Value? = if func_env.has("[[ThrowTypeError]]") {
@@ -597,7 +597,7 @@ pub fn Interpreter::construct_value(
                   }
               }
             }
-            func_env.def(param.name, val, LetBinding)
+            func_env.def_parameter(param.name, val)
             match param.pattern {
               Some(pat) =>
                 self.bind_pattern(pat, val, func_env, LetBinding, ctx=func_ctx)
@@ -612,7 +612,7 @@ pub fn Interpreter::construct_value(
                 rest_elements.push(args[i])
               }
               let rest_val = make_array(rest_elements)
-              func_env.def(rest_name, rest_val, LetBinding)
+              func_env.def_parameter(rest_name, rest_val)
               // Apply destructuring pattern if present
               for p in data.params {
                 if p.name == rest_name {
@@ -809,7 +809,7 @@ pub fn Interpreter::construct_value(
                         }
                     }
                   }
-                  ctor_env.def(param.name, val, LetBinding)
+                  ctor_env.def_parameter(param.name, val)
                   match param.pattern {
                     Some(pat) =>
                       self.bind_pattern(
@@ -831,7 +831,7 @@ pub fn Interpreter::construct_value(
                       rest_elements.push(args[i])
                     }
                     let rest_val = make_array(rest_elements)
-                    ctor_env.def(rest_name, rest_val, LetBinding)
+                    ctor_env.def_parameter(rest_name, rest_val)
                     for p in params {
                       if p.name == rest_name {
                         match p.pattern {
@@ -963,7 +963,7 @@ pub fn Interpreter::construct_value(
                                         }
                                     }
                                   }
-                                  super_env.def(p.name, val, LetBinding)
+                                  super_env.def_parameter(p.name, val)
                                   match p.pattern {
                                     Some(pat) =>
                                       self.bind_pattern(
