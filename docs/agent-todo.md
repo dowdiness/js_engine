@@ -436,12 +436,9 @@ behavior-preserving refactor charter; listed here for follow-up PRs.
 
 ### ~~22. `$262` one-argument helpers: restore explicit `length=1`~~ — DONE (2026-04-17, PR #57)
 
-### 23. (Nitpick) Non-constructable `InterpreterCallable` for static builtins
+### ~~23. (Nitpick) Non-constructable `InterpreterCallable` for static builtins~~ — DONE (2026-04-18, PR #63)
 
-**Impact**: `make_interp_static_func` uses `InterpreterCallable`, which is constructible — so `new Reflect.ownKeys({})` etc. don't throw `TypeError` as the spec requires for static built-ins.
-**File**: `interpreter/runtime/factories.mbt:277-289`
-
-Two options: (a) add a `NonConstructableInterpreterCallable(name, func)` variant and update the call-site match arms (construction dispatch, `to_string`, etc.); (b) extend `InterpreterCallable` with a `constructible: Bool` flag and check it at the `new` site. Either way update `make_interp_static_func` to produce a non-constructable variant and audit existing `make_method_func`-based static methods (e.g. `Object.preventExtensions`, `Object.keys`) for the same class of bug.
+**Follow-up**: The `make_method_func`-based static methods (e.g. `Object.preventExtensions`, `Object.keys`) still have the same class of bug — not addressed in PR #63 per scope fence.
 
 ### ~~24. `Error.isError` uses a hardcoded class-name allowlist (structural)~~ — DONE (2026-04-18, PR #62)
 
