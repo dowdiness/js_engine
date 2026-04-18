@@ -109,6 +109,8 @@ pub fn get_unscopables_symbol() -> SymbolData
 
 pub fn has_array_like_element(Value, Int) -> Bool
 
+pub fn has_parameter_expressions(Array[@ast.Param]) -> Bool
+
 pub fn has_property(Value, String, interp? : Interpreter?) -> Bool
 
 pub fn has_use_strict(Array[@ast.Stmt]) -> Bool
@@ -353,6 +355,7 @@ pub fn Environment::get(Self, String) -> Value raise
 pub fn Environment::has(Self, String) -> Bool
 pub fn Environment::has_var(Self, String) -> Bool
 pub fn Environment::initialize(Self, String, Value) -> Unit raise
+pub fn Environment::initialize_in_chain(Self, String, Value) -> Unit raise
 pub fn Environment::new(parent? : Self?) -> Self
 
 pub(all) struct ExecContext {

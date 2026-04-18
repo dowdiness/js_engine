@@ -235,16 +235,15 @@ where they disagree.
 
 ### Highest-ROI non-architectural items (discovered 2026-04-17)
 
-#### ~~A. Annex B eval-scope hoisting~~ — PARTIAL (merged 2026-04-18, PR #64)
+#### ~~A. Annex B eval-scope + function-body hoisting~~ — PARTIAL (PRs #64 + #65, 2026-04-18)
 
-**Merged**: `5eded5e` on main. PR #64 squash-merged from
-`claude/annex-b-eval-hoisting`, CI green (unit-test, test262 strict
-31m22s, test262 non-strict 33m57s, regression-check, CodeRabbit, WIP).
-**Full-suite result post-merge**: `annexB/language` **63.1%** (532/843);
-`language/eval-code` **62.6%** (283/452). Dev-slice subset filter still
-shows `annexB/language` 80.0% within the eval-code intersection. Next
-big wedge is the param-default `eval("var arguments")` case (~96 tests,
-out of scope #1 below).
+**Merged**: `5eded5e` (PR #64, eval §B.3.2.3 + §B.3.4 walk), `38beeba`
+(PR #65, function-body §B.3.2.1 reusing the same walker). Both green on
+unit-test / test262 strict / non-strict / regression-check / CodeRabbit.
+**Full-suite post-PR-#65**: `annexB/language` **73.5%** (up from 63.1%
+post-PR-#64, net +88 tests from the function-body path); `language/eval-code`
+**62.6%** (unchanged — eval path was PR #64's lane). Next big wedge is the
+param-default `eval("var arguments")` case (~96 tests, out of scope #1 below).
 
 **Shipped in PR #64** (initial + six post-review fixes):
 - AST-syntactic skip check for §B.3.3.3 candidates in eval bodies
@@ -276,23 +275,62 @@ out of scope #1 below).
 
 **Out of scope (follow-ups)**:
 
-1. **`eval("var arguments")` in a parameter-default expression (~96 tests).**
-   Failures like `language/eval-code/direct/func-expr-fn-body-cntns-arguments-*`.
-   Requires the parameter-scope / body-scope split for functions that have
-   any default-valued parameter (§10.2.11). Our function-call path binds
-   parameters directly into the function var env, so the body's
-   `let arguments` is not visible at the eval call site. Needs a dedicated
-   refactor — tracked separately.
-2. **Function-body §B.3.2.1 skip check.** `hoist_block_func_declarations`
-   (used for non-eval function bodies) still tags candidates without a
-   syntactic lex-conflict check — it only checks the runtime binding kind
-   at tag time (via `tag_annex_b_hoisted`'s `kind == VarBinding ||
-   is_parameter` gate, added in PR #64). The eval variant
-   (`hoist_eval_annex_b_candidates`) does the full §B.3.4 walk with
-   enclosing lex frames; the non-eval path is now asymmetric. Parameters
-   and `arguments` carve-outs differ from the eval case, so the eval walk
-   cannot be reused directly. Highest-ROI next target — probably +30–80
-   tests, and closes a latent correctness gap.
+1. ~~**`eval("var arguments")` in a parameter-default expression (~96 tests).**~~
+   — PARTIAL (2026-04-18, in progress). §10.2.11 param-env / body-env
+   split landed for all Ext call-entry sites (`call.mbt` UserFuncExt +
+   ArrowFuncExt, `construct.mbt` UserFuncExt + class-ctor body,
+   `generator.mbt` + async via the generator path). Split is gated on
+   `has_parameter_expressions(params)` — plain-rest Ext shapes like
+   `function f(...rest) { var rest; }` keep single-env semantics per
+   spec step 26 (Codex-flagged pre-merge). `hoist_declarations` gained
+   an optional `param_source` so its Annex B excluded set can scan the
+   param env when the caller is split. New
+   `Environment::initialize_in_chain` walks parents so `super()` can
+   initialize `this` on a derived class's param env from its body env.
+   **Delta (baseline = post-PR-#65):**
+   - `language/statements/class` +22 tests (`scope-*-paramsbody-var-open`
+     shapes — tests cite §10.2.11 step 27 directly).
+   - `language/eval-code/direct` +3 tests (`arrow-fn-body-cntns-arguments-*-incl-def-param-arrow-arguments`).
+   - `language/statements/function` +2 tests.
+   - Zero regressions. 905/905 unit tests pass.
+
+   **Remaining ~66 cntns-arguments failures need §19.2.1.3 step 5.d
+   early-error detection.** They assert a SyntaxError when eval-declared
+   `var arguments` collides with a body-level `function arguments() {}` /
+   `var arguments =` / `let arguments =` declaration (shapes
+   `*-cntns-arguments-func-decl-*`, `*-cntns-arguments-var-bind-*`,
+   `*-cntns-arguments-lex-bind-*`). The split is a prerequisite (eval's
+   var now lands in param_env; body decls now live in body_env — the
+   two envs are what the early-error check compares). A separate
+   follow-up will implement the §19.2.1.3 step 5.d walk against
+   body-level function/lex declarations. Track under a dedicated item.
+
+   **Known non-blocking divergences from spec (pre-existing, deferred):**
+   - Spec-3-env vs our 2-env collapse (`env → varEnv → lexEnv` collapsed
+     to `param_env → body_env`). Observable only for
+     `f(a = eval("var x = 'e'"), b = () => x) { var x = 'b'; return [b(), x]; }`
+     patterns — spec says `['b', 'b']`, ours says `['e', 'b']`. Not in
+     the 96-test slice; becomes relevant when the §19.2.1.3 step 5.d
+     work ships (will likely need the third env).
+   - Param TDZ pre-declaration: our impl binds params sequentially
+     rather than pre-declaring all names first, so
+     `function f(a = b, b = 1) {}` doesn't throw the spec's TDZ error.
+     Pre-existing, unaffected by the split.
+   - `arguments` in parameterNames: `function f(arguments = 1)` should
+     suppress the arguments object per step 17; we currently collide.
+     Pre-existing, unaffected by the split.
+   - `super()` double-init check: `initialize_in_chain` overwrites
+     unconditionally; spec `BindThisValue` throws on re-init.
+     Pre-existing looseness, unaffected by the split.
+2. ~~**Function-body §B.3.2.1 skip check.**~~ — DONE (2026-04-18, PR #65).
+   `hoist_declarations` now runs the shared `hoist_eval_annex_b_candidates`
+   post-loop with the function body's TopLevelLexicallyDeclaredNames as
+   `top_lex`, deleting the 132-line legacy `hoist_block_func_declarations`.
+   Param / `arguments` carve-out threaded via an `excluded~` set built from
+   `is_parameter` bindings + `"arguments"` (Codex-flagged pre-merge —
+   §B.3.2.1 requires the skip check to exempt these, unlike §B.3.2.3 eval).
+   **Result: annexB/language 63.1% → 73.5% (+88 tests)**; regression guards
+   flat.
 3. **Catch-env transparency in step 5.d walk (§B.3.4).** Our Environment
    model does not tag catch envs; the walk treats them as plain block envs,
    which can false-positive when eval is called inside a `catch` block that

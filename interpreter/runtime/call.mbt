@@ -536,8 +536,13 @@ pub fn Interpreter::call_value(
           }
         }
         Some(UserFuncExt(data)) => {
-          let func_env = Environment::new(parent=Some(data.closure))
-          func_env.is_var_scope = true
+          // §10.2.11 split gated on HasParameterExpressions: any default or
+          // pattern triggers a distinct param env vs body env. Plain-rest
+          // Ext shapes (`function f(...rest)`) stay single-env per spec
+          // step 26 — a body-level `var rest` must reuse the param binding.
+          let split_scope = has_parameter_expressions(data.params)
+          let param_env = Environment::new(parent=Some(data.closure))
+          param_env.is_var_scope = true
           let func_strict = data.strict
           let func_ctx : ExecContext = {
             strict: func_strict,
@@ -559,15 +564,15 @@ pub fn Interpreter::call_value(
           } else {
             normalize_sloppy_this(this_val)
           }
-          func_env.def("this", effective_this, LetBinding)
-          func_env.def("<new.target>", Undefined, LetBinding)
+          param_env.def("this", effective_this, LetBinding)
+          param_env.def("<new.target>", Undefined, LetBinding)
           // Create arguments object BEFORE binding params so defaults can reference it
-          let tte_val2 : Value? = if func_env.has("[[ThrowTypeError]]") {
-            Some(func_env.get("[[ThrowTypeError]]"))
+          let tte_val2 : Value? = if param_env.has("[[ThrowTypeError]]") {
+            Some(param_env.get("[[ThrowTypeError]]"))
           } else {
             None
           }
-          func_env.def(
+          param_env.def(
             "arguments",
             make_arguments_object(
               args,
@@ -591,7 +596,7 @@ pub fn Interpreter::call_value(
             } else {
               match param.default_val {
                 Some(default_expr) => {
-                  let v = self.eval_expr(func_ctx, default_expr, func_env)
+                  let v = self.eval_expr(func_ctx, default_expr, param_env)
                   // Set function name for anonymous function defaults
                   if param.pattern is None &&
                     is_anonymous_function_definition(default_expr) {
@@ -607,11 +612,11 @@ pub fn Interpreter::call_value(
                   }
               }
             }
-            func_env.def_parameter(param.name, val)
+            param_env.def_parameter(param.name, val)
             // Destructure if pattern param
             match param.pattern {
               Some(pat) =>
-                self.bind_pattern(pat, val, func_env, LetBinding, ctx=func_ctx)
+                self.bind_pattern(pat, val, param_env, LetBinding, ctx=func_ctx)
               None => ()
             }
             effective_param_count = effective_param_count + 1
@@ -624,7 +629,7 @@ pub fn Interpreter::call_value(
                 rest_elements.push(args[i])
               }
               let rest_val = make_array(rest_elements)
-              func_env.def_parameter(rest_name, rest_val)
+              param_env.def_parameter(rest_name, rest_val)
               // Apply destructuring pattern if present
               for p in data.params {
                 if p.name == rest_name {
@@ -633,7 +638,7 @@ pub fn Interpreter::call_value(
                       self.bind_pattern(
                         pat,
                         rest_val,
-                        func_env,
+                        param_env,
                         LetBinding,
                         ctx=func_ctx,
                       )
@@ -645,15 +650,34 @@ pub fn Interpreter::call_value(
             }
             None => ()
           }
-          self.hoist_declarations(data.body, func_env, strict=func_strict)
+          // Split the body env iff HasParameterExpressions; otherwise body
+          // decls hoist directly onto param_env (same semantics as non-Ext).
+          let body_env = if split_scope {
+            let be = Environment::new(parent=Some(param_env))
+            be.is_var_scope = true
+            be
+          } else {
+            param_env
+          }
+          let param_source : Environment? = if split_scope {
+            Some(param_env)
+          } else {
+            None
+          }
+          self.hoist_declarations(
+            data.body,
+            body_env,
+            strict=func_strict,
+            param_source~,
+          )
           match data.name {
             Some(name) =>
-              if !func_env.bindings.contains(name) {
-                func_env.def(name, callee, LetBinding)
+              if !body_env.bindings.contains(name) {
+                body_env.def(name, callee, LetBinding)
               }
             None => ()
           }
-          match self.exec_stmts(func_ctx, data.body, func_env) {
+          match self.exec_stmts(func_ctx, data.body, body_env) {
             Normal(_) => Undefined
             ReturnSignal(v) => v
             BreakSignal(_, _) =>
@@ -667,8 +691,13 @@ pub fn Interpreter::call_value(
           }
         }
         Some(ArrowFuncExt(data)) => {
-          let func_env = Environment::new(parent=Some(data.closure))
-          func_env.is_var_scope = true
+          // §10.2.11 split for arrow Ext, gated on HasParameterExpressions.
+          // Arrows skip `arguments`/this install (ThisMode=lexical); the
+          // param-env / body-env split applies only when there are default
+          // expressions or destructured params.
+          let split_scope = has_parameter_expressions(data.params)
+          let param_env = Environment::new(parent=Some(data.closure))
+          param_env.is_var_scope = true
           let func_ctx : ExecContext = {
             strict: data.strict,
             current_generator: None,
@@ -687,7 +716,7 @@ pub fn Interpreter::call_value(
             } else {
               match param.default_val {
                 Some(default_expr) => {
-                  let v = self.eval_expr(func_ctx, default_expr, func_env)
+                  let v = self.eval_expr(func_ctx, default_expr, param_env)
                   // Set function name for anonymous function defaults
                   if param.pattern is None &&
                     is_anonymous_function_definition(default_expr) {
@@ -703,11 +732,11 @@ pub fn Interpreter::call_value(
                   }
               }
             }
-            func_env.def_parameter(param.name, val)
+            param_env.def_parameter(param.name, val)
             // Destructure if pattern param
             match param.pattern {
               Some(pat) =>
-                self.bind_pattern(pat, val, func_env, LetBinding, ctx=func_ctx)
+                self.bind_pattern(pat, val, param_env, LetBinding, ctx=func_ctx)
               None => ()
             }
             effective_param_count = effective_param_count + 1
@@ -720,7 +749,7 @@ pub fn Interpreter::call_value(
                 rest_elements.push(args[i])
               }
               let rest_val = make_array(rest_elements)
-              func_env.def_parameter(rest_name, rest_val)
+              param_env.def_parameter(rest_name, rest_val)
               // Apply destructuring pattern if present
               for p in data.params {
                 if p.name == rest_name {
@@ -729,7 +758,7 @@ pub fn Interpreter::call_value(
                       self.bind_pattern(
                         pat,
                         rest_val,
-                        func_env,
+                        param_env,
                         LetBinding,
                         ctx=func_ctx,
                       )
@@ -741,8 +770,25 @@ pub fn Interpreter::call_value(
             }
             None => ()
           }
-          self.hoist_declarations(data.body, func_env, strict=data.strict)
-          match self.exec_stmts(func_ctx, data.body, func_env) {
+          let body_env = if split_scope {
+            let be = Environment::new(parent=Some(param_env))
+            be.is_var_scope = true
+            be
+          } else {
+            param_env
+          }
+          let param_source : Environment? = if split_scope {
+            Some(param_env)
+          } else {
+            None
+          }
+          self.hoist_declarations(
+            data.body,
+            body_env,
+            strict=data.strict,
+            param_source~,
+          )
+          match self.exec_stmts(func_ctx, data.body, body_env) {
             Normal(_) => Undefined
             ReturnSignal(v) => v
             BreakSignal(_, _) =>

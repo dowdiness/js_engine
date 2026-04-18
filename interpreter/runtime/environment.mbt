@@ -160,6 +160,33 @@ pub fn Environment::initialize(
 }
 
 ///|
+/// Walk the scope chain to find an existing binding for `name` and
+/// initialize it with `value`. Unlike `initialize`, which only looks at
+/// the local env, this climbs parents. Needed for `super()` to write
+/// `this` back to the derived class's param env when body execution
+/// happens in a separate body env (§10.2.11 split).
+pub fn Environment::initialize_in_chain(
+  self : Environment,
+  name : String,
+  value : Value,
+) -> Unit raise Error {
+  match self.bindings.get(name) {
+    Some(binding) => {
+      binding.value = value
+      binding.initialized = true
+    }
+    None =>
+      match self.parent {
+        Some(parent) => parent.initialize_in_chain(name, value)
+        None =>
+          raise @errors.InternalError(
+            message="Cannot initialize non-existent binding '\{name}' in chain",
+          )
+      }
+  }
+}
+
+///|
 pub fn Environment::def_builtin(
   self : Environment,
   name : String,

@@ -527,6 +527,11 @@ fn create_generator_instance(
   // Use the stored strict flag instead of re-scanning the body.
   let gen_strict = strict
   let setup_ctx : ExecContext = { strict: gen_strict, current_generator: None }
+  // §10.2.11 split: Ext-shape generator params (params_ext=Some) get a
+  // separate body_env for body var/let/const. Simple params (params_ext=None)
+  // stay single-env. `func_env` below is the param env in the Ext case and
+  // the single env in the simple case; `body_exec_env` is the env the
+  // generator body executes in (body_env when split, func_env otherwise).
   let func_env = Environment::new(parent=Some(closure))
   func_env.is_var_scope = true
   func_env.def("this", this_val, LetBinding)
@@ -607,7 +612,8 @@ fn create_generator_instance(
       }
     }
   }
-  // Create arguments object
+  // Create arguments object on func_env (param env when split, single env
+  // otherwise). Ext / simple both install arguments here.
   let args_props : Map[String, Value] = {}
   for i = 0; i < args.length(); i = i + 1 {
     args_props[i.to_string()] = args[i]
@@ -629,8 +635,31 @@ fn create_generator_instance(
     }),
     VarBinding,
   )
+  // Split body env iff Ext shape AND HasParameterExpressions; simple
+  // params + plain-rest Ext both stay single-env per §10.2.11 step 26.
+  let split_scope = match params_ext {
+    Some(pext) => has_parameter_expressions(pext)
+    None => false
+  }
+  let body_exec_env = if split_scope {
+    let be = Environment::new(parent=Some(func_env))
+    be.is_var_scope = true
+    be
+  } else {
+    func_env
+  }
+  let param_source : Environment? = if split_scope {
+    Some(func_env)
+  } else {
+    None
+  }
   // Hoist declarations eagerly too
-  interp.hoist_declarations(body, func_env, strict=gen_strict)
+  interp.hoist_declarations(
+    body,
+    body_exec_env,
+    strict=gen_strict,
+    param_source~,
+  )
   let gen_id = interp.gen_id_counter.val
   interp.gen_id_counter.val = gen_id + 1
   let gen_obj : GeneratorObject = {
@@ -646,7 +675,7 @@ fn create_generator_instance(
     interpreter: interp,
     args,
     this_val,
-    env: Some(func_env),
+    env: Some(body_exec_env),
     pc: 0,
     yield_value: Undefined,
     resuming: false,

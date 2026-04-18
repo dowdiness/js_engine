@@ -860,10 +860,11 @@ fn Interpreter::eval_expr(
                         | Set(_)
                         | Promise(_)
                         | Proxy(_) => {
-                          // Initialize 'this' (may be in TDZ for derived classes)
-                          env.initialize("this", v) catch {
-                            _ => env.assign("this", v)
-                          }
+                          // Initialize 'this' (may be in TDZ for derived classes).
+                          // Walk the chain: with the §10.2.11 param/body env
+                          // split, 'this' lives on the caller's param env,
+                          // not its body env.
+                          env.initialize_in_chain("this", v)
                           // Apply calling class's instance fields to the override object
                           if env.has("[[InitInstanceFields]]") {
                             let init_fn = env.get("[[InitInstanceFields]]")
@@ -879,9 +880,7 @@ fn Interpreter::eval_expr(
                 None => ()
               }
               // Initialize 'this' in the calling env (may be TDZ for derived classes)
-              env.initialize("this", this_val) catch {
-                _ => env.assign("this", this_val) catch { _ => () }
-              }
+              env.initialize_in_chain("this", this_val)
               // Apply calling class's instance fields after super() establishes this
               if env.has("[[InitInstanceFields]]") {
                 let init_fn = env.get("[[InitInstanceFields]]")
@@ -903,9 +902,7 @@ fn Interpreter::eval_expr(
                       result_data.prototype = this_data.prototype
                     _ => ()
                   }
-                  env.initialize("this", super_result) catch {
-                    _ => env.assign("this", super_result)
-                  }
+                  env.initialize_in_chain("this", super_result)
                   if env.has("[[InitInstanceFields]]") {
                     let init_fn = env.get("[[InitInstanceFields]]")
                     let _ = self.call_value(init_fn, super_result, [], loc)
@@ -913,9 +910,7 @@ fn Interpreter::eval_expr(
                   super_result
                 }
                 Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => {
-                  env.initialize("this", super_result) catch {
-                    _ => env.assign("this", super_result)
-                  }
+                  env.initialize_in_chain("this", super_result)
                   if env.has("[[InitInstanceFields]]") {
                     let init_fn = env.get("[[InitInstanceFields]]")
                     let _ = self.call_value(init_fn, super_result, [], loc)
@@ -923,9 +918,7 @@ fn Interpreter::eval_expr(
                   super_result
                 }
                 _ => {
-                  env.initialize("this", this_val) catch {
-                    _ => env.assign("this", this_val) catch { _ => () }
-                  }
+                  env.initialize_in_chain("this", this_val)
                   if env.has("[[InitInstanceFields]]") {
                     let init_fn = env.get("[[InitInstanceFields]]")
                     let _ = self.call_value(init_fn, this_val, [], loc)

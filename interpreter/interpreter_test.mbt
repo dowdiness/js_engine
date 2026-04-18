@@ -9453,3 +9453,80 @@ test "annex-b eval: skip extension when enclosing const conflicts" {
   let output = run_output_annex_b(src)
   inspect(output, content="[\"1\", \"number\"]")
 }
+
+///|
+/// §10.2.11 param-env / body-env split: a body-level `let arguments`
+/// shadows the `arguments` object installed at the function's param scope.
+/// Pre-split: `arguments` is a `VarBinding` on the single func_env, and the
+/// body's `let arguments` hoist either throws (binding-exists) or collides
+/// at runtime. Post-split: `arguments` lives on param_env, `let arguments`
+/// lives on body_env → no collision, body sees "local".
+test "§10.2.11: body let arguments shadows param-scope arguments object" {
+  let src =
+    #|function f(a = 1) {
+    #|  let arguments = "local";
+    #|  return arguments;
+    #|}
+    #|console.log(f());
+  let output = run_output(src)
+  inspect(output, content="[\"local\"]")
+}
+
+///|
+/// §10.2.11 canonical test262 shape
+/// (language/eval-code/direct/arrow-fn-body-cntns-arguments-*).
+/// Direct eval in a param default declares `var arguments = 'param'` in
+/// the param scope; a later arrow default `q = () => arguments` closes
+/// over the same param scope. The body then has `let arguments = "local"`,
+/// which is a distinct binding in body_env. q() must see "param", body
+/// must see "local".
+test "§10.2.11: arrow default eval-var-arguments + body let arguments" {
+  let src =
+    #|var log = [];
+    #|const f = (p = eval("var arguments = 'param'"), q = () => arguments) => {
+    #|  let arguments = "local";
+    #|  log.push(arguments);
+    #|  log.push(q());
+    #|};
+    #|f();
+    #|console.log(log[0]);
+    #|console.log(log[1]);
+  let output = run_output(src)
+  inspect(output, content="[\"local\", \"param\"]")
+}
+
+///|
+/// §10.2.11 step 26 gate: plain-rest Ext has HasParameterExpressions=false,
+/// so the param-env / body-env split must NOT fire — otherwise a body-level
+/// `var rest` hoists to a distinct binding instead of reusing the param,
+/// changing observable behavior. Codex-flagged during PR review.
+test "§10.2.11: plain-rest Ext stays single-env (body var reuses param)" {
+  let src =
+    #|function f(...rest) {
+    #|  var rest;
+    #|  return rest;
+    #|}
+    #|console.log(JSON.stringify(f(1, 2, 3)));
+  let output = run_output(src)
+  inspect(output, content="[\"[1,2,3]\"]")
+}
+
+///|
+/// §10.2.11: param-scope eval-var visible to an arrow default closure,
+/// and body's `let` of the same name creates a distinct binding. Like
+/// the canonical test but without the `arguments` special name, to
+/// isolate the env-split logic from the arguments-object machinery.
+test "§10.2.11: param-scope eval-var captured by arrow default closure" {
+  let src =
+    #|var log = [];
+    #|function f(p = eval("var z = 'from-eval'"), q = () => z) {
+    #|  let z = "body";
+    #|  log.push(z);
+    #|  log.push(q());
+    #|}
+    #|f();
+    #|console.log(log[0]);
+    #|console.log(log[1]);
+  let output = run_output(src)
+  inspect(output, content="[\"body\", \"from-eval\"]")
+}

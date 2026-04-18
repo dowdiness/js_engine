@@ -317,6 +317,28 @@ fn is_function_strict(enclosing_strict : Bool, body : Array[@ast.Stmt]) -> Bool 
 }
 
 ///|
+/// §10.2.11 `ContainsExpression` / `HasParameterExpressions` for Ext
+/// function parameter lists. True iff any param carries a default
+/// expression or a destructuring pattern. Plain rest without a pattern
+/// does NOT count as a parameter expression — `function f(...rest)`
+/// should not get the param-env / body-env split because the spec step
+/// 26 gate is `hasParameterExpressions`, not "is non-simple". The
+/// observable difference: with the split, body-level `var rest` hoists
+/// to a distinct binding instead of reusing the param binding, which
+/// `function f(...rest) { var rest; return rest; }` exposes.
+pub fn has_parameter_expressions(params : Array[@ast.Param]) -> Bool {
+  for p in params {
+    if p.default_val is Some(_) {
+      return true
+    }
+    if p.pattern is Some(_) {
+      return true
+    }
+  }
+  false
+}
+
+///|
 fn validate_function_signature(
   enclosing_strict : Bool,
   name : String?,

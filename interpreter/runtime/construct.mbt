@@ -555,17 +555,22 @@ pub fn Interpreter::construct_value(
               }
           }
           let new_obj = make_constructor_instance(proto, "Object")
-          let func_env = Environment::new(parent=Some(data.closure))
-          func_env.is_var_scope = true
-          func_env.def("this", new_obj, LetBinding)
-          func_env.def("<new.target>", ctor, LetBinding)
+          // §10.2.11 split for Ext constructor, gated on HasParameterExpressions.
+          // param_env holds this / arguments / params (and eval-in-default
+          // var decls). body_env holds body var/let/const/function decls.
+          // Plain-rest Ext constructors stay single-env.
+          let split_scope = has_parameter_expressions(data.params)
+          let param_env = Environment::new(parent=Some(data.closure))
+          param_env.is_var_scope = true
+          param_env.def("this", new_obj, LetBinding)
+          param_env.def("<new.target>", ctor, LetBinding)
           // Create arguments object BEFORE binding params so defaults can reference it
-          let tte2 : Value? = if func_env.has("[[ThrowTypeError]]") {
-            Some(func_env.get("[[ThrowTypeError]]"))
+          let tte2 : Value? = if param_env.has("[[ThrowTypeError]]") {
+            Some(param_env.get("[[ThrowTypeError]]"))
           } else {
             None
           }
-          func_env.def(
+          param_env.def(
             "arguments",
             make_arguments_object(
               args,
@@ -588,7 +593,7 @@ pub fn Interpreter::construct_value(
             } else {
               match param.default_val {
                 Some(default_expr) =>
-                  self.eval_expr(func_ctx, default_expr, func_env)
+                  self.eval_expr(func_ctx, default_expr, param_env)
                 None =>
                   if effective_param_count < args.length() {
                     args[effective_param_count]
@@ -597,10 +602,10 @@ pub fn Interpreter::construct_value(
                   }
               }
             }
-            func_env.def_parameter(param.name, val)
+            param_env.def_parameter(param.name, val)
             match param.pattern {
               Some(pat) =>
-                self.bind_pattern(pat, val, func_env, LetBinding, ctx=func_ctx)
+                self.bind_pattern(pat, val, param_env, LetBinding, ctx=func_ctx)
               None => ()
             }
             effective_param_count = effective_param_count + 1
@@ -612,7 +617,7 @@ pub fn Interpreter::construct_value(
                 rest_elements.push(args[i])
               }
               let rest_val = make_array(rest_elements)
-              func_env.def_parameter(rest_name, rest_val)
+              param_env.def_parameter(rest_name, rest_val)
               // Apply destructuring pattern if present
               for p in data.params {
                 if p.name == rest_name {
@@ -621,7 +626,7 @@ pub fn Interpreter::construct_value(
                       self.bind_pattern(
                         pat,
                         rest_val,
-                        func_env,
+                        param_env,
                         LetBinding,
                         ctx=func_ctx,
                       )
@@ -633,15 +638,32 @@ pub fn Interpreter::construct_value(
             }
             None => ()
           }
-          self.hoist_declarations(data.body, func_env, strict=func_strict)
+          let body_env = if split_scope {
+            let be = Environment::new(parent=Some(param_env))
+            be.is_var_scope = true
+            be
+          } else {
+            param_env
+          }
+          let param_source : Environment? = if split_scope {
+            Some(param_env)
+          } else {
+            None
+          }
+          self.hoist_declarations(
+            data.body,
+            body_env,
+            strict=func_strict,
+            param_source~,
+          )
           match data.name {
             Some(name) =>
-              if !func_env.bindings.contains(name) {
-                func_env.def(name, ctor, LetBinding)
+              if !body_env.bindings.contains(name) {
+                body_env.def(name, ctor, LetBinding)
               }
             None => ()
           }
-          let exec_result = self.exec_stmts(func_ctx, data.body, func_env)
+          let exec_result = self.exec_stmts(func_ctx, data.body, body_env)
           match exec_result {
             Normal(_) => new_obj
             ReturnSignal(v) =>
@@ -786,6 +808,9 @@ pub fn Interpreter::construct_value(
                   Some(rn) => validate_strict_binding_name(rn)
                   None => ()
                 }
+                // §10.2.11 split: ctor_env already holds this/super; bind
+                // params + arguments into ctor_env (= param env for the
+                // ctor body), then create body_env as child for body decls.
                 // Bind parameters with defaults (mirrors UserFuncExt path in call.mbt)
                 let mut effective_param_count = 0
                 for i = 0; i < params.length(); i = i + 1 {
@@ -866,9 +891,27 @@ pub fn Interpreter::construct_value(
                   ),
                   VarBinding,
                 )
-                // Hoist declarations and execute body
-                self.hoist_declarations(body, ctor_env, strict=true)
-                let exec_result = self.exec_stmts(class_ctx, body, ctor_env)
+                // §10.2.11 split gated on HasParameterExpressions.
+                let split_scope = has_parameter_expressions(params)
+                let body_env = if split_scope {
+                  let be = Environment::new(parent=Some(ctor_env))
+                  be.is_var_scope = true
+                  be
+                } else {
+                  ctor_env
+                }
+                let param_source : Environment? = if split_scope {
+                  Some(ctor_env)
+                } else {
+                  None
+                }
+                self.hoist_declarations(
+                  body,
+                  body_env,
+                  strict=true,
+                  param_source~,
+                )
+                let exec_result = self.exec_stmts(class_ctx, body, body_env)
                 let current_this = ctor_env.get("this")
                 match exec_result {
                   Normal(_) => current_this
