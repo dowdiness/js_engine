@@ -173,14 +173,14 @@ fn unwrap_grouping(expr : @ast.Expr) -> @ast.Expr {
 /// `has_parameter_expressions(data.params)` — plain-rest and
 /// plain-destructure shapes stay single-env so a body-level
 /// `var <name>` reuses the param binding.
-fn Interpreter::bind_ext_params_and_exec_body(
+fn Interpreter::bind_ext_params_and_exec_body_signal(
   self : Interpreter,
   data : FuncDataExt,
   args : Array[Value],
   param_env : Environment,
   func_ctx : ExecContext,
   is_arrow? : Bool = false,
-) -> Value raise Error {
+) -> Signal raise Error {
   // §19.2.1.3 (#A.6): save on entry, reset to false so nested function
   // invocations in param defaults (IIFE, arrow, recursive call) do not
   // inherit this frame's state. Restored on both the normal and raise
@@ -204,7 +204,7 @@ fn Interpreter::bind_ext_params_and_exec_body(
       }
     }
   }
-  let result : Value = try {
+  let result : Signal = try {
     // Bind params with defaults
     let mut effective_param_count = 0
     for i = 0; i < data.params.length(); i = i + 1 {
@@ -300,13 +300,13 @@ fn Interpreter::bind_ext_params_and_exec_body(
       strict=data.strict,
       param_source~,
     )
-    match self.exec_stmts(func_ctx, data.body, body_env) {
-      Normal(_) => Undefined
-      ReturnSignal(v) => v
+    let sig = self.exec_stmts(func_ctx, data.body, body_env)
+    match sig {
       BreakSignal(_, _) =>
         raise @errors.SyntaxError(message="break statement outside of loop")
       ContinueSignal(_, _) =>
         raise @errors.SyntaxError(message="continue statement outside of loop")
+      _ => sig
     }
   } catch {
     e => {
@@ -316,6 +316,29 @@ fn Interpreter::bind_ext_params_and_exec_body(
   }
   self.in_nonarrow_param_default_eval = saved_in_default
   result
+}
+
+///|
+/// Call-mode wrapper applying ES §10.2.1 [[Call]] return rule.
+fn Interpreter::bind_ext_params_and_exec_body(
+  self : Interpreter,
+  data : FuncDataExt,
+  args : Array[Value],
+  param_env : Environment,
+  func_ctx : ExecContext,
+  is_arrow? : Bool = false,
+) -> Value raise Error {
+  match
+    self.bind_ext_params_and_exec_body_signal(
+      data,
+      args,
+      param_env,
+      func_ctx,
+      is_arrow~,
+    ) {
+    ReturnSignal(v) => v
+    _ => Undefined
+  }
 }
 
 ///|

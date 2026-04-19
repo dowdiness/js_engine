@@ -555,11 +555,6 @@ pub fn Interpreter::construct_value(
               }
           }
           let new_obj = make_constructor_instance(proto, "Object")
-          // §10.2.11 split for Ext constructor, gated on HasParameterExpressions.
-          // param_env holds this / arguments / params (and eval-in-default
-          // var decls). body_env holds body var/let/const/function decls.
-          // Plain-rest Ext constructors stay single-env.
-          let split_scope = has_parameter_expressions(data.params)
           // §15.2.5: install the self-name on a dedicated env between
           // data.closure and param_env so default expressions can see it
           // (`function f(a = () => f) {}`). Params on param_env shadow
@@ -598,101 +593,23 @@ pub fn Interpreter::construct_value(
             ),
             VarBinding,
           )
-          let mut effective_param_count = 0
-          for i = 0; i < data.params.length(); i = i + 1 {
-            let param = data.params[i]
-            // Skip rest destructuring params
-            if data.rest_param is Some(rn) && param.name == rn {
-              continue
-            }
-            let val : Value = if effective_param_count < args.length() &&
-              !(args[effective_param_count] is Undefined) {
-              args[effective_param_count]
-            } else {
-              match param.default_val {
-                Some(default_expr) =>
-                  self.eval_expr(func_ctx, default_expr, param_env)
-                None =>
-                  if effective_param_count < args.length() {
-                    args[effective_param_count]
-                  } else {
-                    Undefined
-                  }
-              }
-            }
-            param_env.def_parameter(param.name, val)
-            match param.pattern {
-              Some(pat) =>
-                self.bind_pattern(pat, val, param_env, LetBinding, ctx=func_ctx)
-              None => ()
-            }
-            effective_param_count = effective_param_count + 1
-          }
-          match data.rest_param {
-            Some(rest_name) => {
-              let rest_elements : Array[Value] = []
-              for i = effective_param_count; i < args.length(); i = i + 1 {
-                rest_elements.push(args[i])
-              }
-              let rest_val = make_array(rest_elements)
-              param_env.def_parameter(rest_name, rest_val)
-              // Apply destructuring pattern if present
-              for p in data.params {
-                if p.name == rest_name {
-                  match p.pattern {
-                    Some(pat) =>
-                      self.bind_pattern(
-                        pat,
-                        rest_val,
-                        param_env,
-                        LetBinding,
-                        ctx=func_ctx,
-                      )
-                    None => ()
-                  }
-                  break
-                }
-              }
-            }
-            None => ()
-          }
-          let body_env = if split_scope {
-            let be = Environment::new(parent=Some(param_env))
-            be.is_var_scope = true
-            be
-          } else {
-            param_env
-          }
-          let param_source : Environment? = if split_scope {
-            Some(param_env)
-          } else {
-            None
-          }
-          self.hoist_declarations(
-            data.body,
-            body_env,
-            strict=func_strict,
-            param_source~,
-          )
-          // Self-name already lives on self_name_env above; lexical
-          // lookup handles param + body shadowing.
-          let exec_result = self.exec_stmts(func_ctx, data.body, body_env)
-          match exec_result {
-            Normal(_) => new_obj
+          // ES §10.2.2 [[Construct]] steps 13-14: object-like return
+          // replaces the instance; anything else yields `new_obj`.
+          match
+            self.bind_ext_params_and_exec_body_signal(
+              data,
+              args,
+              param_env,
+              func_ctx,
+              is_arrow=false,
+            ) {
             ReturnSignal(v) =>
               if is_object_like_for_constructor_return(v) {
                 v
               } else {
                 new_obj
               }
-            BreakSignal(_, _) =>
-              raise @errors.SyntaxError(
-                message="break statement outside of loop",
-              )
-            ContinueSignal(_, _) =>
-              raise @errors.SyntaxError(
-                message="continue statement outside of loop",
-              )
+            _ => new_obj
           }
         }
         Some(BoundFunc(target, _, bound_args)) => {

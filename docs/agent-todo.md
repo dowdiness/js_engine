@@ -402,15 +402,32 @@ param-default `eval("var arguments")` case (~96 tests, out of scope #1 below).
    Net -79 lines (337 → 258). 915/915 unit tests pass, `.mbti`
    unchanged, test262 class / function-expression / arrow-function
    counts all preserved.
-9. **Port `bind_ext_params_and_exec_body` pattern to `construct.mbt`.**
-   The UserFuncExt ctor path in `construct.mbt` is near-identical to
-   the `call.mbt` one — but returns with constructor semantics
-   (non-object return replaced by `this`). Not folded into #A.8; needs
-   either a separate helper that returns a raw `Completion` (so the
-   caller applies the return rule) or a completion-returning variant.
-   Same for the class-ctor body + implicit-super arms if their shapes
-   align after the call.mbt pattern. Pure refactor, zero behavior
-   change; split out to keep #A.8 focused.
+9. ~~**Port `bind_ext_params_and_exec_body` pattern to `construct.mbt`.**~~
+   DONE (2026-04-20). Split
+   `Interpreter::bind_ext_params_and_exec_body` into a `Signal`-returning
+   core (`_signal` variant) and a thin Value wrapper applying the
+   call-mode ES §10.2.1 [[Call]] return rule (Normal→Undefined,
+   ReturnSignal(v)→v). Break/Continue raise SyntaxError inside the
+   core so both callers share the invariant. `construct.mbt`'s
+   `UserFuncExt(data)` branch in `construct_value` migrated to call
+   `_signal` directly, applying the ES §10.2.2 [[Construct]] steps 13-14
+   return rule inline (object-like return replaces `new_obj`; anything
+   else yields `new_obj`). Net **−53 LoC** (construct.mbt −100,
+   call.mbt +47 wrapper). `.mbti` unchanged. 927/927 unit tests pass.
+   test262 probes on `language/statements/class/scope` (24/30),
+   `language/expressions/new` (134/140), `language/expressions/function`
+   (442/468), `language/expressions/arrow-function` (620/635) all
+   steady at post-PR-#66 rates.
+
+   **Scope-excluded** (the "if their shapes align" qualifier): the
+   class-ctor body arm (`construct.mbt` ~line 845) and the derived-class
+   implicit-super arm (~line 1044) carry loose
+   `(Array[@ast.Param], String?, Array[@ast.Stmt])` / `strict: Bool`
+   fields rather than a packaged `FuncDataExt`; additionally they
+   return `current_this` on Normal completion (not `Undefined`) and
+   splice `install_instance_fields` / `maybe_set_promise_constructor`
+   mid-match. A second helper shape would be needed — tracked as a
+   follow-up rather than folded into this PR.
 
 #### B. test262 runner `_FIXTURE.js` path resolver — sibling gap CLOSED (2026-04-18, +17 tests)
 
