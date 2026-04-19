@@ -596,6 +596,27 @@ DescriptorBuilder::new(configurable=true)
 
 #### ~~14. User-function property insertion order: `prototype, name, length` → `prototype, length, name`~~ — DONE (2026-04-17, PR #55)
 
+#### 26. Consolidate Break/Continue → SyntaxError invariant across runtime
+
+**Impact**: 0 test262 delta (pure refactor, zero behavior change). Medium-ROI tech-debt cleanup surfaced by PR #68 (#A.9) reviewer.
+
+**Problem**: the invariant "Break/Continue signals escaping a function boundary raise `SyntaxError: break/continue statement outside of loop`" is inlined at ~8 sites with identical bodies but distinct callers:
+
+- `interpreter/runtime/call.mbt:306-309` — UserFuncExt/ArrowFuncExt shared core (now centralized by #A.9)
+- `interpreter/runtime/call.mbt:494-496` — `perform_eval` Normal/Return completion handling
+- `interpreter/runtime/call.mbt:707-714` — UserFunc call arm (old-style, non-Ext)
+- `interpreter/runtime/call.mbt:749-756` — ArrowFunc call arm (old-style)
+- `interpreter/runtime/construct.mbt:522-529` — UserFunc (non-Ext) ctor arm
+- `interpreter/runtime/construct.mbt:861-868` — class-ctor body arm (covered by #A.10 when it lands)
+- `interpreter/runtime/modules.mbt:319-323` — module top-level execution
+- `interpreter/runtime/interpreter.mbt:505-510` — top-level script execution
+
+**Why not a single helper**: top-level scripts (`modules.mbt`, `interpreter.mbt:505-510`) and `perform_eval` have **distinct completion rules**. `perform_eval` per §19.2.1 returns the `Normal(v)`'s value (not `Undefined`); top-level scripts per §16.1 can reach `ReturnSignal` only via Annex B (which we don't support yet, so it's currently a defect path). Unifying the Break/Continue raise requires splitting it from the Normal/Return mapping: a `enforce_no_break_continue(sig) -> Signal` helper that raises for Break/Continue and returns `sig` otherwise. Each caller then matches the remaining Normal/Return variants with its own rule.
+
+**Why now not urgent**: zero test262 impact; the 8 sites are functionally correct today. The win is readability plus a single change-site if the SyntaxError message text ever needs to be spec-updated (e.g., `"break statement outside loop"` per current output vs `"Illegal break statement"` per V8/SpiderMonkey — spec doesn't mandate exact text).
+
+**Estimated effort**: 1 session, ~−30 LoC. Recommend bundling with #A.10 (class-ctor helper port) since #A.10 already touches `construct.mbt:861-868`.
+
 ---
 
 ## Pre-existing bugs exposed by Stage A CodeRabbit review (2026-04-17, PR #49)
