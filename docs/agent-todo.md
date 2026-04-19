@@ -403,7 +403,7 @@ param-default `eval("var arguments")` case (~96 tests, out of scope #1 below).
    unchanged, test262 class / function-expression / arrow-function
    counts all preserved.
 9. ~~**Port `bind_ext_params_and_exec_body` pattern to `construct.mbt`.**~~
-   DONE (2026-04-20). Split
+   DONE (2026-04-20, PR #68 merge `95abfa4`). Split
    `Interpreter::bind_ext_params_and_exec_body` into a `Signal`-returning
    core (`_signal` variant) and a thin Value wrapper applying the
    call-mode ES §10.2.1 [[Call]] return rule (Normal→Undefined,
@@ -426,8 +426,42 @@ param-default `eval("var arguments")` case (~96 tests, out of scope #1 below).
    fields rather than a packaged `FuncDataExt`; additionally they
    return `current_this` on Normal completion (not `Undefined`) and
    splice `install_instance_fields` / `maybe_set_promise_constructor`
-   mid-match. A second helper shape would be needed — tracked as a
-   follow-up rather than folded into this PR.
+   mid-match. A second helper shape would be needed — tracked as #A.10
+   below rather than folded into this PR.
+10. **Second helper for class-ctor arms** (surfaced 2026-04-20 by
+    #A.9 scope-out). The two class-ctor shapes — base-class
+    constructor body (`construct.mbt` ~line 845) and derived-class
+    implicit-super arm (~line 1044) — share shape with each other but
+    not with `FuncDataExt`. Both take
+    `(Array[@ast.Param], String?, Array[@ast.Stmt], strict: Bool)`
+    sourced from `ClassConstructorData.ctor_fn` (see
+    `interpreter/runtime/value.mbt:73`). Divergences from the Ext
+    helper:
+
+    - Normal completion returns `current_this` (read from
+      `ctor_env.get("this")`), not `Undefined` or `new_obj`.
+    - Derived ctor splices `install_instance_fields(this_arg, fields)`
+      mid-match, after super()-resolved `this` is available but before
+      the constructor body's return value is reduced.
+    - No `has_name_binding` / self-name-env wrapper (class names are
+      on the class's own environment, not threaded through `data.name`).
+    - Strictness is always `true` (class bodies are strict-by-default
+      per §15.7.2) rather than threaded through `data.strict`.
+
+    Proposed shape: `Interpreter::bind_class_ctor_params_and_exec_body_signal`
+    that takes the tuple + param_env + ctx and returns `Signal`,
+    leaving caller-specific `current_this` readout and field-install
+    splice outside. The base-class arm collapses its ~120 lines of
+    param-binding / rest / split-scope / hoist / exec to a helper call
+    plus a 5-line return-rule match. The derived-class arm absorbs
+    similar savings but needs care around the implicit-super env
+    shape — the helper can't see inside the super() resolution.
+
+    Estimated net savings: −150 LoC once both arms are migrated.
+    Pure refactor, zero behavior change; test262 class-scope +
+    language/expressions/new expected to stay flat. Sequence
+    Stage B.1 [[Set]] dispatcher first — that lane has test262
+    unlocks (~22 Proxy) this does not.
 
 #### B. test262 runner `_FIXTURE.js` path resolver — sibling gap CLOSED (2026-04-18, +17 tests)
 
