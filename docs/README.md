@@ -5,7 +5,8 @@ Start here to navigate `js_engine`'s documentation. Code is always the source of
 ## Start here
 
 - [../README.md](../README.md) — project overview, quick start, supported language
-- [ROADMAP.md](ROADMAP.md) — live test262 status, failure breakdown, next targets
+- [ROADMAP.md](ROADMAP.md) — headline status, phase history, next targets
+- [supported-features.md](supported-features.md) — per-category pass rates, Annex B, not-yet-implemented features
 - [TEST262.md](TEST262.md) — how to run the test262 conformance suite
 
 ## Reference
