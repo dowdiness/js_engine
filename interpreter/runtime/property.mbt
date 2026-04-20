@@ -1628,6 +1628,33 @@ fn Interpreter::define_value_on_receiver(
           value
         }
       }
+    // Map / Set receivers carry an expando bag for instance fields from
+    // subclasses (e.g. `class D extends Map { constructor() { super(); this.x = 1 } }`)
+    // — the landing helper must write there rather than hitting the primitive
+    // fall-through. Symbol-keyed and string-keyed writes mirror the
+    // set_computed_property Map/Set arms.
+    Map(rdata) =>
+      match key {
+        Symbol(sym) => {
+          rdata.bag.symbol_properties[sym.id] = value
+          value
+        }
+        _ => {
+          rdata.bag.properties[to_js_string(key)] = value
+          value
+        }
+      }
+    Set(rdata) =>
+      match key {
+        Symbol(sym) => {
+          rdata.bag.symbol_properties[sym.id] = value
+          value
+        }
+        _ => {
+          rdata.bag.properties[to_js_string(key)] = value
+          value
+        }
+      }
     // B.2: Array receiver landing diverges from the spec. `CreateDataProperty`
     // (the ES §10.1.9.2 step 3 landing) goes through `[[DefineOwnProperty]]`,
     // which for Arrays is exotic (§10.4.2.4 ArraySetLength rejects changes to

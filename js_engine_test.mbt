@@ -1540,6 +1540,31 @@ test "B.1: writable data on proto short-circuits walk before deeper proxy" {
 }
 
 ///|
+test "B.1 regression: trap-less proxy around Map/Set lands expando on receiver target" {
+  // Reviewer P1: define_value_on_receiver previously fell through to the
+  // primitive `_` arm for Map and Set receivers, silently dropping writes
+  // (sloppy) or throwing (strict) when a receiver-threaded [[Set]] flow
+  // unwrapped a proxy down to a Map/Set target. Each non-Object exotic
+  // variant that carries an expando bag needs its own arm in the helper.
+  let src =
+    #|const m = new Map();
+    #|const pm = new Proxy(m, {});
+    #|pm["x"] = 1;
+    #|console.log(m.x);
+    #|
+    #|const s = new Set();
+    #|const ps = new Proxy(s, {});
+    #|ps["y"] = 2;
+    #|console.log(s.y);
+    #|
+    #|const k = Symbol("k");
+    #|pm[k] = 3;
+    #|console.log(m[k]);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"1\", \"2\", \"3\"]")
+}
+
+///|
 test "B.1 Reflect.set: setter-only accessor (own) must invoke setter via set_property" {
   // Preflight previously short-circuited to false for any descriptor with
   // `getter is None && !writable`, which wrongly rejected setter-only
