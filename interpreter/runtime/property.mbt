@@ -1561,14 +1561,28 @@ pub fn Interpreter::set_property(
 }
 
 ///|
+/// Helper predicate for §10.1.9.2 step 3.e: an existing receiver-side
+/// descriptor blocks the landing write if it is an accessor descriptor
+/// (getter or setter present) or a non-writable data descriptor. Writable
+/// data descriptors do NOT block (the write lands as { [[Value]]: V }).
+fn existing_receiver_desc_blocks(desc : PropDescriptor) -> Bool {
+  desc.getter is Some(_) ||
+  desc.setter is Some(_) ||
+  (desc.getter is None && desc.setter is None && !desc.writable)
+}
+
+///|
 /// Approximates ES `CreateDataProperty(Receiver, P, V)` / `Receiver.[[Define\
 /// OwnProperty]]` for the Stage B.1 landing rule. This is NOT `[[Set]]` — it
 /// must not invoke setters on `receiver`'s prototype chain, otherwise a
 /// trap-less proxy chain would infinite-loop (per Codex's design review).
 ///
+/// Implements §10.1.9.2 step 3.e as of the receiver-blocker fix: if receiver
+/// has an existing own descriptor at `key`, accessor or non-writable data
+/// blocks the landing (sloppy returns `value`, strict raises TypeError).
+///
 /// Stage B.2 will replace this with a full `[[DefineOwnProperty]]` dispatcher
-/// that honors Proxy `defineProperty` traps and the §10.1.9.2 step 3.e
-/// receiver-side existing-descriptor probe.
+/// that honors Proxy `defineProperty` traps.
 fn Interpreter::define_value_on_receiver(
   self : Interpreter,
   receiver : Value,
@@ -1592,6 +1606,19 @@ fn Interpreter::define_value_on_receiver(
     Object(rdata) =>
       match key {
         Symbol(sym) => {
+          // §10.1.9.2 step 3.e: existing own descriptor blocker check.
+          match rdata.bag.symbol_descriptors.get(sym.id) {
+            Some(desc) =>
+              if existing_receiver_desc_blocks(desc) {
+                if strict {
+                  raise @errors.TypeError(
+                    message="Cannot redefine non-writable or accessor property on receiver",
+                  )
+                }
+                return value
+              }
+            None => ()
+          }
           if !rdata.bag.symbol_properties.contains(sym.id) && !rdata.extensible {
             if strict {
               raise @errors.TypeError(
@@ -1605,6 +1632,18 @@ fn Interpreter::define_value_on_receiver(
         }
         _ => {
           let prop = to_js_string(key)
+          match rdata.bag.descriptors.get(prop) {
+            Some(desc) =>
+              if existing_receiver_desc_blocks(desc) {
+                if strict {
+                  raise @errors.TypeError(
+                    message="Cannot redefine non-writable or accessor property '\{prop}' on receiver",
+                  )
+                }
+                return value
+              }
+            None => ()
+          }
           if !rdata.bag.properties.contains(prop) && !rdata.extensible {
             if strict {
               raise @errors.TypeError(
@@ -1620,38 +1659,112 @@ fn Interpreter::define_value_on_receiver(
     Promise(rdata) =>
       match key {
         Symbol(sym) => {
+          match rdata.bag.symbol_descriptors.get(sym.id) {
+            Some(desc) =>
+              if existing_receiver_desc_blocks(desc) {
+                if strict {
+                  raise @errors.TypeError(
+                    message="Cannot redefine non-writable or accessor property on receiver",
+                  )
+                }
+                return value
+              }
+            None => ()
+          }
           rdata.bag.symbol_properties[sym.id] = value
           value
         }
         _ => {
-          rdata.bag.properties[to_js_string(key)] = value
+          let prop = to_js_string(key)
+          match rdata.bag.descriptors.get(prop) {
+            Some(desc) =>
+              if existing_receiver_desc_blocks(desc) {
+                if strict {
+                  raise @errors.TypeError(
+                    message="Cannot redefine non-writable or accessor property '\{prop}' on receiver",
+                  )
+                }
+                return value
+              }
+            None => ()
+          }
+          rdata.bag.properties[prop] = value
           value
         }
       }
     // Map / Set receivers carry an expando bag for instance fields from
     // subclasses (e.g. `class D extends Map { constructor() { super(); this.x = 1 } }`)
     // — the landing helper must write there rather than hitting the primitive
-    // fall-through. Symbol-keyed and string-keyed writes mirror the
-    // set_computed_property Map/Set arms.
+    // fall-through. Descriptor-blocker check mirrors the Object arm.
     Map(rdata) =>
       match key {
         Symbol(sym) => {
+          match rdata.bag.symbol_descriptors.get(sym.id) {
+            Some(desc) =>
+              if existing_receiver_desc_blocks(desc) {
+                if strict {
+                  raise @errors.TypeError(
+                    message="Cannot redefine non-writable or accessor property on receiver",
+                  )
+                }
+                return value
+              }
+            None => ()
+          }
           rdata.bag.symbol_properties[sym.id] = value
           value
         }
         _ => {
-          rdata.bag.properties[to_js_string(key)] = value
+          let prop = to_js_string(key)
+          match rdata.bag.descriptors.get(prop) {
+            Some(desc) =>
+              if existing_receiver_desc_blocks(desc) {
+                if strict {
+                  raise @errors.TypeError(
+                    message="Cannot redefine non-writable or accessor property '\{prop}' on receiver",
+                  )
+                }
+                return value
+              }
+            None => ()
+          }
+          rdata.bag.properties[prop] = value
           value
         }
       }
     Set(rdata) =>
       match key {
         Symbol(sym) => {
+          match rdata.bag.symbol_descriptors.get(sym.id) {
+            Some(desc) =>
+              if existing_receiver_desc_blocks(desc) {
+                if strict {
+                  raise @errors.TypeError(
+                    message="Cannot redefine non-writable or accessor property on receiver",
+                  )
+                }
+                return value
+              }
+            None => ()
+          }
           rdata.bag.symbol_properties[sym.id] = value
           value
         }
         _ => {
-          rdata.bag.properties[to_js_string(key)] = value
+          let prop = to_js_string(key)
+          match rdata.bag.descriptors.get(prop) {
+            Some(desc) =>
+              if existing_receiver_desc_blocks(desc) {
+                if strict {
+                  raise @errors.TypeError(
+                    message="Cannot redefine non-writable or accessor property '\{prop}' on receiver",
+                  )
+                }
+                return value
+              }
+            None => ()
+          }
+          rdata.bag.properties[prop] = value
           value
         }
       }

@@ -1568,6 +1568,40 @@ test "B.1: computed set on proxy enforces §10.5.9 invariant when trap returns t
 }
 
 ///|
+test "B.1: receiver-side blockers prevent Reflect.set from mutating frozen target" {
+  // Reviewer P1: define_value_on_receiver previously wrote directly to
+  // bag.properties without consulting the receiver's own descriptor. Per
+  // ES §10.1.9.2 step 3.e, if the receiver has an existing own descriptor
+  // at P, the write must check it: accessor or non-writable → return false.
+  // Concrete failure: Reflect.set({}, "x", 2, frozenReceiver) was mutating
+  // the frozen value and returning true.
+  let src =
+    #|const frozen = Object.freeze({ x: 1 });
+    #|const r1 = Reflect.set({}, "x", 2, frozen);
+    #|console.log(r1);        // expect false
+    #|console.log(frozen.x);  // expect 1 (unchanged)
+    #|
+    #|const withGetter = {};
+    #|Object.defineProperty(withGetter, "x", { get() { return 99; } });
+    #|const r2 = Reflect.set({}, "x", 2, withGetter);
+    #|console.log(r2);         // expect false
+    #|console.log(withGetter.x); // expect 99
+    #|
+    #|// Symbol-keyed variant
+    #|const k = Symbol("k");
+    #|const withSymReadonly = {};
+    #|Object.defineProperty(withSymReadonly, k, { value: 10, writable: false, configurable: false });
+    #|const r3 = Reflect.set({}, k, 20, withSymReadonly);
+    #|console.log(r3);                // expect false
+    #|console.log(withSymReadonly[k]); // expect 10
+  let (output, _) = @js_engine.run(src)
+  inspect(
+    output,
+    content="[\"false\", \"1\", \"false\", \"99\", \"false\", \"10\"]",
+  )
+}
+
+///|
 test "B.1 regression: trap-less proxy around Map/Set lands expando on receiver target" {
   // Reviewer P1: define_value_on_receiver previously fell through to the
   // primitive `_` arm for Map and Set receivers, silently dropping writes
