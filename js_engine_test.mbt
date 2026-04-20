@@ -1413,3 +1413,123 @@ test "apply trap rejects non-callable target" {
   let (output, _) = @js_engine.run(src)
   inspect(output, content="[\"proxy target is not a function\"]")
 }
+
+// ============================================================
+// Stage B.1 — [[Set]] dispatcher: receiver threading + landing rule
+// ============================================================
+
+///|
+test "B.1a: inherited setter on target is invoked with proxy as this" {
+  // Trap-less proxy whose target inherits a setter. The setter's `this` must
+  // be the proxy (the original receiver), not the target. Per ES §10.1.9.2
+  // step 3.b + §10.5.9 step 5 (Receiver forwarding through proxy).
+  let src =
+    #|let seen;
+    #|const proto = {
+    #|  set foo(v) { seen = this; },
+    #|};
+    #|const target = Object.create(proto);
+    #|const proxy = new Proxy(target, {});
+    #|proxy.foo = 42;
+    #|console.log(seen === proxy);
+    #|console.log(seen === target);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"true\", \"false\"]")
+}
+
+///|
+test "B.1a: inherited setter invoked via Reflect.set threads receiver" {
+  // Reflect.set(target, p, v, receiver) must invoke any inherited setter
+  // with `this === receiver`, per ES §10.1.9.2 step 3.b.
+  let src =
+    #|let seen;
+    #|const proto = {
+    #|  set foo(v) { seen = this; },
+    #|};
+    #|const target = Object.create(proto);
+    #|const receiver = {};
+    #|Reflect.set(target, "foo", 42, receiver);
+    #|console.log(seen === receiver);
+    #|console.log(seen === target);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"true\", \"false\"]")
+}
+
+///|
+test "B.1b: trap-less proxy without inherited blocker writes to receiver" {
+  // Per ES §10.1.9.2 step 3.d (CreateDataProperty on Receiver), the write
+  // must land on the receiver, not on the target. For `Reflect.set(target,
+  // ..., otherReceiver)` the write ends up on `otherReceiver`.
+  let src =
+    #|const target = {};
+    #|const receiver = {};
+    #|Reflect.set(target, "x", 1, receiver);
+    #|console.log(Object.prototype.hasOwnProperty.call(target, "x"));
+    #|console.log(Object.prototype.hasOwnProperty.call(receiver, "x"));
+    #|console.log(receiver.x);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"false\", \"true\", \"1\"]")
+}
+
+///|
+test "B.1b: nested trap-less proxies terminate without infinite loop" {
+  // Codex's failure snippet for the original recursive design. Two proxies
+  // wrapping {} with no traps — must not loop.
+  let src =
+    #|const target = {};
+    #|const inner = new Proxy(target, {});
+    #|const outer = new Proxy(inner, {});
+    #|outer.x = 1;
+    #|console.log(target.x);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"1\"]")
+}
+
+///|
+test "B.1 regression: plain obj.prop = value unchanged" {
+  // receiver === obj is the common path; must be byte-equivalent.
+  let src =
+    #|const obj = { x: 1 };
+    #|obj.x = 2;
+    #|obj.y = 3;
+    #|console.log(obj.x, obj.y);
+    #|console.log(Object.keys(obj).join(","));
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"2 3\", \"x,y\"]")
+}
+
+///|
+test "B.1 Reflect.set preflight: inherited setter + non-extensible target" {
+  // Codex's Q6 repro: a non-extensible target with an inherited setter must
+  // allow assignment. The current preflight `!extensible && !has(P)` short-
+  // circuits to false; B.1 removes that check.
+  let src =
+    #|let called = 0;
+    #|const proto = { set x(v) { called += v; } };
+    #|const target = Object.preventExtensions(Object.create(proto));
+    #|const r = Reflect.set(target, "x", 5);
+    #|console.log(r);
+    #|console.log(called);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"true\", \"5\"]")
+}
+
+///|
+test "B.1a Symbol key: inherited setter via proxy threads receiver" {
+  // Same as the first test but keyed by Symbol — exercises the
+  // set_computed_property path alongside set_property.
+  let src =
+    #|const k = Symbol("k");
+    #|let seen;
+    #|const proto = {};
+    #|Object.defineProperty(proto, k, {
+    #|  set(v) { seen = this; },
+    #|  configurable: true,
+    #|});
+    #|const target = Object.create(proto);
+    #|const proxy = new Proxy(target, {});
+    #|proxy[k] = 42;
+    #|console.log(seen === proxy);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"true\"]")
+}

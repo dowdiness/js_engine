@@ -482,7 +482,15 @@ pub fn proxy_set(
   let target = get_proxy_target(proxy_data)
   match trap {
     None =>
-      interp.set_property(target, key, value, @token.Loc::default(), strict~)
+      // ES §10.5.9 step 5: target.[[Set]](P, V, Receiver) — preserve receiver
+      interp.set_property(
+        target,
+        key,
+        value,
+        @token.Loc::default(),
+        strict~,
+        receiver~,
+      )
     Some(trap_fn) => {
       let handler = get_proxy_handler(proxy_data)
       let loc = @token.Loc::default()

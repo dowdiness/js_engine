@@ -460,8 +460,8 @@ pub fn Interpreter::run(Self, Array[@ast.Stmt]) -> Value raise
 pub fn Interpreter::run_microtasks(Self) -> Unit raise
 pub fn Interpreter::run_module(Self, Array[@ast.Stmt]) -> Map[String, Value] raise
 pub fn Interpreter::run_timers(Self) -> Unit raise
-pub fn Interpreter::set_computed_property(Self, Value, Value, Value, @token.Loc, strict? : Bool) -> Value raise
-pub fn Interpreter::set_property(Self, Value, String, Value, @token.Loc, strict? : Bool) -> Value raise
+pub fn Interpreter::set_computed_property(Self, Value, Value, Value, @token.Loc, strict? : Bool, receiver? : Value) -> Value raise
+pub fn Interpreter::set_property(Self, Value, String, Value, @token.Loc, strict? : Bool, receiver? : Value) -> Value raise
 pub fn Interpreter::to_js_string(Self, Value) -> String raise
 pub fn Interpreter::to_number(Self, Value) -> Double raise
 pub fn Interpreter::to_primitive_default(Self, Value, ObjectData) -> Value raise
