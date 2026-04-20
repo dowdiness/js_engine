@@ -1413,3 +1413,277 @@ test "apply trap rejects non-callable target" {
   let (output, _) = @js_engine.run(src)
   inspect(output, content="[\"proxy target is not a function\"]")
 }
+
+// ============================================================
+// Stage B.1 — [[Set]] dispatcher: receiver threading + landing rule
+// ============================================================
+
+///|
+test "B.1a: inherited setter on target is invoked with proxy as this" {
+  // Trap-less proxy whose target inherits a setter. The setter's `this` must
+  // be the proxy (the original receiver), not the target. Per ES §10.1.9.2
+  // step 3.b + §10.5.9 step 5 (Receiver forwarding through proxy).
+  let src =
+    #|let seen;
+    #|const proto = {
+    #|  set foo(v) { seen = this; },
+    #|};
+    #|const target = Object.create(proto);
+    #|const proxy = new Proxy(target, {});
+    #|proxy.foo = 42;
+    #|console.log(seen === proxy);
+    #|console.log(seen === target);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"true\", \"false\"]")
+}
+
+///|
+test "B.1a: inherited setter invoked via Reflect.set threads receiver" {
+  // Reflect.set(target, p, v, receiver) must invoke any inherited setter
+  // with `this === receiver`, per ES §10.1.9.2 step 3.b.
+  let src =
+    #|let seen;
+    #|const proto = {
+    #|  set foo(v) { seen = this; },
+    #|};
+    #|const target = Object.create(proto);
+    #|const receiver = {};
+    #|Reflect.set(target, "foo", 42, receiver);
+    #|console.log(seen === receiver);
+    #|console.log(seen === target);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"true\", \"false\"]")
+}
+
+///|
+test "B.1b: trap-less proxy without inherited blocker writes to receiver" {
+  // Per ES §10.1.9.2 step 3.d (CreateDataProperty on Receiver), the write
+  // must land on the receiver, not on the target. For `Reflect.set(target,
+  // ..., otherReceiver)` the write ends up on `otherReceiver`.
+  let src =
+    #|const target = {};
+    #|const receiver = {};
+    #|Reflect.set(target, "x", 1, receiver);
+    #|console.log(Object.prototype.hasOwnProperty.call(target, "x"));
+    #|console.log(Object.prototype.hasOwnProperty.call(receiver, "x"));
+    #|console.log(receiver.x);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"false\", \"true\", \"1\"]")
+}
+
+///|
+test "B.1b: nested trap-less proxies terminate without infinite loop" {
+  // Codex's failure snippet for the original recursive design. Two proxies
+  // wrapping {} with no traps — must not loop.
+  let src =
+    #|const target = {};
+    #|const inner = new Proxy(target, {});
+    #|const outer = new Proxy(inner, {});
+    #|outer.x = 1;
+    #|console.log(target.x);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"1\"]")
+}
+
+///|
+test "B.1 regression: plain obj.prop = value unchanged" {
+  // receiver === obj is the common path; must be byte-equivalent.
+  let src =
+    #|const obj = { x: 1 };
+    #|obj.x = 2;
+    #|obj.y = 3;
+    #|console.log(obj.x, obj.y);
+    #|console.log(Object.keys(obj).join(","));
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"2 3\", \"x,y\"]")
+}
+
+///|
+test "B.1 Reflect.set preflight: inherited setter + non-extensible target" {
+  // Codex's Q6 repro: a non-extensible target with an inherited setter must
+  // allow assignment. The current preflight `!extensible && !has(P)` short-
+  // circuits to false; B.1 removes that check.
+  let src =
+    #|let called = 0;
+    #|const proto = { set x(v) { called += v; } };
+    #|const target = Object.preventExtensions(Object.create(proto));
+    #|const r = Reflect.set(target, "x", 5);
+    #|console.log(r);
+    #|console.log(called);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"true\", \"5\"]")
+}
+
+///|
+test "B.1: writable data on proto short-circuits walk before deeper proxy" {
+  // Reviewer P2: the proto walk must STOP at the first writable data
+  // descriptor and land on receiver. If it continues past the writable
+  // data to a higher Proxy prototype, the proxy's set trap fires with
+  // unexpected side effects. Per ES §10.1.9.2 step 2 (IsDataDescriptor
+  // branch): writable data terminates the recursion; only accessor /
+  // non-writable / missing descriptors walk further.
+  let src =
+    #|let trapCalls = 0;
+    #|const proxy = new Proxy({}, {
+    #|  set: function() { trapCalls++; return true; }
+    #|});
+    #|const mid = Object.create(proxy, {
+    #|  foo: { value: 0, writable: true, configurable: true, enumerable: true }
+    #|});
+    #|const obj = Object.create(mid);
+    #|obj.foo = 1;
+    #|console.log(obj.foo);
+    #|console.log(mid.foo);
+    #|console.log(trapCalls);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"1\", \"0\", \"0\"]")
+}
+
+///|
+test "B.1: computed set on proxy enforces §10.5.9 invariant when trap returns true" {
+  // The string-key path through set_property / proxy_set already runs the
+  // ES §10.5.9 step 11 invariant: if the target has a non-configurable,
+  // non-writable data property at P, the trap's returned-true is a lie and
+  // [[Set]] must TypeError. The computed-key path through
+  // set_computed_property was missing this check — directly via p["x"]=v and
+  // transitively via proto-chain delegation (obj inherits from proxy).
+  let src =
+    #|const target = {};
+    #|Object.defineProperty(target, "x", {
+    #|  value: 1,
+    #|  writable: false,
+    #|  configurable: false,
+    #|});
+    #|const p = new Proxy(target, { set() { return true; } });
+    #|let directThrew = false;
+    #|try { "use strict"; p["x"] = 2; } catch (e) { directThrew = e instanceof TypeError; }
+    #|console.log(directThrew);
+    #|
+    #|const obj = Object.create(p);
+    #|let indirectThrew = false;
+    #|try { "use strict"; obj["x"] = 2; } catch (e) { indirectThrew = e instanceof TypeError; }
+    #|console.log(indirectThrew);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"true\", \"true\"]")
+}
+
+///|
+test "B.1: receiver-side blockers prevent Reflect.set from mutating frozen target" {
+  // Reviewer P1: define_value_on_receiver previously wrote directly to
+  // bag.properties without consulting the receiver's own descriptor. Per
+  // ES §10.1.9.2 step 3.e, if the receiver has an existing own descriptor
+  // at P, the write must check it: accessor or non-writable → return false.
+  // Concrete failure: Reflect.set({}, "x", 2, frozenReceiver) was mutating
+  // the frozen value and returning true.
+  let src =
+    #|const frozen = Object.freeze({ x: 1 });
+    #|const r1 = Reflect.set({}, "x", 2, frozen);
+    #|console.log(r1);        // expect false
+    #|console.log(frozen.x);  // expect 1 (unchanged)
+    #|
+    #|const withGetter = {};
+    #|Object.defineProperty(withGetter, "x", { get() { return 99; } });
+    #|const r2 = Reflect.set({}, "x", 2, withGetter);
+    #|console.log(r2);         // expect false
+    #|console.log(withGetter.x); // expect 99
+    #|
+    #|// Symbol-keyed variant
+    #|const k = Symbol("k");
+    #|const withSymReadonly = {};
+    #|Object.defineProperty(withSymReadonly, k, { value: 10, writable: false, configurable: false });
+    #|const r3 = Reflect.set({}, k, 20, withSymReadonly);
+    #|console.log(r3);                // expect false
+    #|console.log(withSymReadonly[k]); // expect 10
+  let (output, _) = @js_engine.run(src)
+  inspect(
+    output,
+    content="[\"false\", \"1\", \"false\", \"99\", \"false\", \"10\"]",
+  )
+}
+
+///|
+test "B.1 regression: trap-less proxy around Map/Set lands expando on receiver target" {
+  // Reviewer P1: define_value_on_receiver previously fell through to the
+  // primitive `_` arm for Map and Set receivers, silently dropping writes
+  // (sloppy) or throwing (strict) when a receiver-threaded [[Set]] flow
+  // unwrapped a proxy down to a Map/Set target. Each non-Object exotic
+  // variant that carries an expando bag needs its own arm in the helper.
+  let src =
+    #|const m = new Map();
+    #|const pm = new Proxy(m, {});
+    #|pm["x"] = 1;
+    #|console.log(m.x);
+    #|
+    #|const s = new Set();
+    #|const ps = new Proxy(s, {});
+    #|ps["y"] = 2;
+    #|console.log(s.y);
+    #|
+    #|const k = Symbol("k");
+    #|pm[k] = 3;
+    #|console.log(m[k]);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"1\", \"2\", \"3\"]")
+}
+
+///|
+test "B.1 Reflect.set: setter-only accessor (own) must invoke setter via set_property" {
+  // Preflight previously short-circuited to false for any descriptor with
+  // `getter is None && !writable`, which wrongly rejected setter-only
+  // accessors (accessor descriptors default `writable=false`). The fix
+  // requires `setter is None` alongside `getter is None` for the non-writable
+  // data block. Exercises Object.defineProperty + Reflect.set with property
+  // "x" on an accessor descriptor that has `set(v)` but no `get`.
+  let src =
+    #|let captured;
+    #|const obj = {};
+    #|Object.defineProperty(obj, "x", {
+    #|  set(v) { captured = v },
+    #|  configurable: true,
+    #|});
+    #|const result = Reflect.set(obj, "x", 42);
+    #|console.log(result);
+    #|console.log(captured);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"true\", \"42\"]")
+}
+
+///|
+test "B.1 Reflect.set: setter-only accessor (own, Symbol key) invokes setter via set_computed_property" {
+  // Same as the string-keyed variant but exercises the
+  // set_computed_property Symbol branch and the symbol_descriptors preflight
+  // arm in builtins_reflect.mbt.
+  let src =
+    #|let captured;
+    #|const k = Symbol("k");
+    #|const obj = {};
+    #|Object.defineProperty(obj, k, {
+    #|  set(v) { captured = v },
+    #|  configurable: true,
+    #|});
+    #|const result = Reflect.set(obj, k, 42);
+    #|console.log(result);
+    #|console.log(captured);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"true\", \"42\"]")
+}
+
+///|
+test "B.1a Symbol key: inherited setter via proxy threads receiver" {
+  // Same as the first test but keyed by Symbol — exercises the
+  // set_computed_property path alongside set_property.
+  let src =
+    #|const k = Symbol("k");
+    #|let seen;
+    #|const proto = {};
+    #|Object.defineProperty(proto, k, {
+    #|  set(v) { seen = this; },
+    #|  configurable: true,
+    #|});
+    #|const target = Object.create(proto);
+    #|const proxy = new Proxy(target, {});
+    #|proxy[k] = 42;
+    #|console.log(seen === proxy);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"true\"]")
+}

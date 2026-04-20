@@ -1275,6 +1275,18 @@ pub fn Interpreter::get_computed_property(
 }
 
 ///|
+/// Stage B.1 [[Set]] dispatcher.
+///
+/// `receiver` threads through the prototype chain and proxy fallbacks per
+/// ES §10.1.9 (OrdinarySet) and §10.5.9 (ProxyExoticObject.[[Set]]).
+///
+/// - Inherited setters are invoked with `receiver` as `this`.
+/// - Trap-less Proxy forwards to `target.[[Set]](P, V, Receiver)`.
+/// - When no own/inherited blocker exists and `receiver !== obj`, the write
+///   lands on `receiver` via `define_value_on_receiver` (approximating
+///   `CreateDataProperty(Receiver, P, V)` — a direct `[[DefineOwnProperty]]`
+///   that bypasses `[[Set]]`, preventing the recursion loop that a naive
+///   self-call would produce for nested trap-less proxies).
 pub fn Interpreter::set_property(
   self : Interpreter,
   obj : Value,
@@ -1282,9 +1294,11 @@ pub fn Interpreter::set_property(
   value : Value,
   loc : @token.Loc,
   strict? : Bool = false,
+  receiver? : Value = obj,
 ) -> Value raise Error {
   match obj {
-    Proxy(proxy_data) => proxy_set(self, proxy_data, prop, value, obj, strict)
+    Proxy(proxy_data) =>
+      proxy_set(self, proxy_data, prop, value, receiver, strict)
     Object(data) => {
       // TypedArray indexed write via dot notation (numeric string prop)
       if is_typedarray_class(data.class_name) {
@@ -1310,7 +1324,7 @@ pub fn Interpreter::set_property(
         Some(desc) =>
           match desc.setter {
             Some(setter) => {
-              let _ = self.call_value(setter, obj, [value], loc)
+              let _ = self.call_value(setter, receiver, [value], loc)
               return value
             }
             None =>
@@ -1331,16 +1345,24 @@ pub fn Interpreter::set_property(
               }
           }
         None => {
-          // Walk prototype chain for inherited setters
+          // Walk prototype chain for inherited setters. Per ES §10.1.9.2:
+          // - Accessor getter-only / non-writable data → blocked.
+          // - Inherited writable data (explicit descriptor OR implicit via
+          //   bag.properties): TERMINATES the walk (step 2 data-descriptor
+          //   branch lands on Receiver without consulting higher protos).
+          //   Missing this short-circuit lets a higher Proxy prototype's
+          //   set trap fire with unexpected side effects.
+          // - Proxy on chain: delegate to its [[Set]] (§10.1.9.2 step 1.b).
           let mut current = data.prototype
           while true {
             match current {
               Object(proto_data) => {
+                let mut stop_at_writable_data = false
                 match proto_data.bag.descriptors.get(prop) {
                   Some(desc) =>
                     match desc.setter {
                       Some(setter) => {
-                        let _ = self.call_value(setter, obj, [value], loc)
+                        let _ = self.call_value(setter, receiver, [value], loc)
                         return value
                       }
                       None =>
@@ -1352,25 +1374,57 @@ pub fn Interpreter::set_property(
                           }
                           return value
                         } else if !desc.writable {
-                          // Inherited non-writable data property blocks assignment
                           if strict {
                             raise @errors.TypeError(
                               message="Cannot assign to read only property '\{prop}'",
                             )
                           }
                           return value
+                        } else {
+                          // Writable data descriptor → stop walking.
+                          stop_at_writable_data = true
                         }
                     }
-                  None => ()
+                  None =>
+                    // No explicit descriptor — plain assignments go to
+                    // bag.properties and carry an implicit writable data
+                    // descriptor per spec.
+                    if proto_data.bag.properties.contains(prop) {
+                      stop_at_writable_data = true
+                    }
+                }
+                if stop_at_writable_data {
+                  break
                 }
                 current = proto_data.prototype
               }
+              Proxy(_) =>
+                return self.set_property(
+                  current,
+                  prop,
+                  value,
+                  loc,
+                  strict~,
+                  receiver~,
+                )
               _ => break
             }
           }
         }
       }
-      // Check extensible for new properties
+      // No own / inherited blocker — land the write on `receiver` per
+      // ES §10.1.9.2 step 3. When `receiver !== obj` this goes through
+      // `define_value_on_receiver` (approximates `CreateDataProperty`).
+      if !strict_equal(obj, receiver) {
+        return self.define_value_on_receiver(
+          receiver,
+          String_(prop),
+          value,
+          loc,
+          strict,
+        )
+      }
+      // Common path: receiver === obj, write locally (byte-identical to pre-B.1).
       if !data.bag.properties.contains(prop) && !data.extensible {
         if strict {
           raise @errors.TypeError(
@@ -1383,6 +1437,18 @@ pub fn Interpreter::set_property(
       value
     }
     Array(data) => {
+      // Arrays use ordinary [[Set]] (only [[DefineOwnProperty]] is exotic per
+      // §10.4.2). When `receiver !== obj` (Array), land on the receiver via
+      // the helper — matches `Reflect.set(arr, "0", 1, otherObj)` semantics.
+      if !strict_equal(obj, receiver) {
+        return self.define_value_on_receiver(
+          receiver,
+          String_(prop),
+          value,
+          loc,
+          strict,
+        )
+      }
       if prop == "length" {
         let num = to_number(value)
         // Validate: length must be a non-negative integer <= 2^32-1
@@ -1439,7 +1505,7 @@ pub fn Interpreter::set_property(
         Some(desc) =>
           match desc.setter {
             Some(setter) => {
-              let _ = self.call_value(setter, obj, [value], loc)
+              let _ = self.call_value(setter, receiver, [value], loc)
               return value
             }
             None =>
@@ -1460,6 +1526,15 @@ pub fn Interpreter::set_property(
               }
           }
         None => ()
+      }
+      if !strict_equal(obj, receiver) {
+        return self.define_value_on_receiver(
+          receiver,
+          String_(prop),
+          value,
+          loc,
+          strict,
+        )
       }
       data.bag.properties[prop] = value
       value
@@ -1486,6 +1561,275 @@ pub fn Interpreter::set_property(
 }
 
 ///|
+/// Helper predicate for §10.1.9.2 step 3.e: an existing receiver-side
+/// descriptor blocks the landing write if it is an accessor descriptor
+/// (getter or setter present) or a non-writable data descriptor. Writable
+/// data descriptors do NOT block (the write lands as { [[Value]]: V }).
+fn existing_receiver_desc_blocks(desc : PropDescriptor) -> Bool {
+  desc.getter is Some(_) ||
+  desc.setter is Some(_) ||
+  (desc.getter is None && desc.setter is None && !desc.writable)
+}
+
+///|
+/// Approximates ES `CreateDataProperty(Receiver, P, V)` / `Receiver.[[Define\
+/// OwnProperty]]` for the Stage B.1 landing rule. This is NOT `[[Set]]` — it
+/// must not invoke setters on `receiver`'s prototype chain, otherwise a
+/// trap-less proxy chain would infinite-loop (per Codex's design review).
+///
+/// Implements §10.1.9.2 step 3.e as of the receiver-blocker fix: if receiver
+/// has an existing own descriptor at `key`, accessor or non-writable data
+/// blocks the landing (sloppy returns `value`, strict raises TypeError).
+///
+/// Stage B.2 will replace this with a full `[[DefineOwnProperty]]` dispatcher
+/// that honors Proxy `defineProperty` traps.
+fn Interpreter::define_value_on_receiver(
+  self : Interpreter,
+  receiver : Value,
+  key : Value,
+  value : Value,
+  loc : @token.Loc,
+  strict : Bool,
+) -> Value raise Error {
+  match receiver {
+    // Proxy receiver without defineProperty dispatcher: unwrap to target.
+    // For trap-less proxies this is spec-equivalent to DefineOwnProperty
+    // forwarding. Trap-aware handling lands with Stage B.2.
+    Proxy(pdata) =>
+      self.define_value_on_receiver(
+        get_proxy_target(pdata),
+        key,
+        value,
+        loc,
+        strict,
+      )
+    Object(rdata) =>
+      match key {
+        Symbol(sym) => {
+          // §10.1.9.2 step 3.e: existing own descriptor blocker check.
+          match rdata.bag.symbol_descriptors.get(sym.id) {
+            Some(desc) =>
+              if existing_receiver_desc_blocks(desc) {
+                if strict {
+                  raise @errors.TypeError(
+                    message="Cannot redefine non-writable or accessor property on receiver",
+                  )
+                }
+                return value
+              }
+            None => ()
+          }
+          if !rdata.bag.symbol_properties.contains(sym.id) && !rdata.extensible {
+            if strict {
+              raise @errors.TypeError(
+                message="Cannot add property, object is not extensible",
+              )
+            }
+            return value
+          }
+          rdata.bag.symbol_properties[sym.id] = value
+          value
+        }
+        _ => {
+          let prop = to_js_string(key)
+          match rdata.bag.descriptors.get(prop) {
+            Some(desc) =>
+              if existing_receiver_desc_blocks(desc) {
+                if strict {
+                  raise @errors.TypeError(
+                    message="Cannot redefine non-writable or accessor property '\{prop}' on receiver",
+                  )
+                }
+                return value
+              }
+            None => ()
+          }
+          if !rdata.bag.properties.contains(prop) && !rdata.extensible {
+            if strict {
+              raise @errors.TypeError(
+                message="Cannot add property \{prop}, object is not extensible",
+              )
+            }
+            return value
+          }
+          rdata.bag.properties[prop] = value
+          value
+        }
+      }
+    Promise(rdata) =>
+      match key {
+        Symbol(sym) => {
+          match rdata.bag.symbol_descriptors.get(sym.id) {
+            Some(desc) =>
+              if existing_receiver_desc_blocks(desc) {
+                if strict {
+                  raise @errors.TypeError(
+                    message="Cannot redefine non-writable or accessor property on receiver",
+                  )
+                }
+                return value
+              }
+            None => ()
+          }
+          rdata.bag.symbol_properties[sym.id] = value
+          value
+        }
+        _ => {
+          let prop = to_js_string(key)
+          match rdata.bag.descriptors.get(prop) {
+            Some(desc) =>
+              if existing_receiver_desc_blocks(desc) {
+                if strict {
+                  raise @errors.TypeError(
+                    message="Cannot redefine non-writable or accessor property '\{prop}' on receiver",
+                  )
+                }
+                return value
+              }
+            None => ()
+          }
+          rdata.bag.properties[prop] = value
+          value
+        }
+      }
+    // Map / Set receivers carry an expando bag for instance fields from
+    // subclasses (e.g. `class D extends Map { constructor() { super(); this.x = 1 } }`)
+    // — the landing helper must write there rather than hitting the primitive
+    // fall-through. Descriptor-blocker check mirrors the Object arm.
+    Map(rdata) =>
+      match key {
+        Symbol(sym) => {
+          match rdata.bag.symbol_descriptors.get(sym.id) {
+            Some(desc) =>
+              if existing_receiver_desc_blocks(desc) {
+                if strict {
+                  raise @errors.TypeError(
+                    message="Cannot redefine non-writable or accessor property on receiver",
+                  )
+                }
+                return value
+              }
+            None => ()
+          }
+          rdata.bag.symbol_properties[sym.id] = value
+          value
+        }
+        _ => {
+          let prop = to_js_string(key)
+          match rdata.bag.descriptors.get(prop) {
+            Some(desc) =>
+              if existing_receiver_desc_blocks(desc) {
+                if strict {
+                  raise @errors.TypeError(
+                    message="Cannot redefine non-writable or accessor property '\{prop}' on receiver",
+                  )
+                }
+                return value
+              }
+            None => ()
+          }
+          rdata.bag.properties[prop] = value
+          value
+        }
+      }
+    Set(rdata) =>
+      match key {
+        Symbol(sym) => {
+          match rdata.bag.symbol_descriptors.get(sym.id) {
+            Some(desc) =>
+              if existing_receiver_desc_blocks(desc) {
+                if strict {
+                  raise @errors.TypeError(
+                    message="Cannot redefine non-writable or accessor property on receiver",
+                  )
+                }
+                return value
+              }
+            None => ()
+          }
+          rdata.bag.symbol_properties[sym.id] = value
+          value
+        }
+        _ => {
+          let prop = to_js_string(key)
+          match rdata.bag.descriptors.get(prop) {
+            Some(desc) =>
+              if existing_receiver_desc_blocks(desc) {
+                if strict {
+                  raise @errors.TypeError(
+                    message="Cannot redefine non-writable or accessor property '\{prop}' on receiver",
+                  )
+                }
+                return value
+              }
+            None => ()
+          }
+          rdata.bag.properties[prop] = value
+          value
+        }
+      }
+    // B.2: Array receiver landing diverges from the spec. `CreateDataProperty`
+    // (the ES §10.1.9.2 step 3 landing) goes through `[[DefineOwnProperty]]`,
+    // which for Arrays is exotic (§10.4.2.4 ArraySetLength rejects changes to
+    // non-configurable/non-writable `length`; indexed `[[DefineOwnProperty]]`
+    // interacts with length differently from `[[Set]]`). We don't yet have a
+    // `[[DefineOwnProperty]]` dispatcher, so this branch delegates back through
+    // set_property / set_computed_property with receiver===obj — that re-fires
+    // Array's `[[Set]]` exotic path, which is NOT the same operation. Known
+    // observable divergence: `Reflect.set({}, "length", 10, arr)` should return
+    // false (attempts a full-attributes redefine of arr.length), but this
+    // delegation truncates the array instead. The full
+    // [[DefineOwnProperty]]-on-receiver protocol lands with Stage B.2.
+    Array(_) =>
+      match key {
+        Symbol(_) =>
+          self.set_computed_property(
+            receiver,
+            key,
+            value,
+            loc,
+            strict~,
+            receiver~,
+          )
+        _ =>
+          self.set_property(
+            receiver,
+            to_js_string(key),
+            value,
+            loc,
+            strict~,
+            receiver~,
+          )
+      }
+    // Null/Undefined/primitive receiver: per spec returns false. In strict
+    // mode our dispatcher surface raises TypeError; in sloppy mode return
+    // `value` to match existing set_property primitive handling.
+    Null =>
+      if strict {
+        raise @errors.TypeError(message="Cannot set property on null receiver")
+      } else {
+        value
+      }
+    Undefined =>
+      if strict {
+        raise @errors.TypeError(
+          message="Cannot set property on undefined receiver",
+        )
+      } else {
+        value
+      }
+    _ =>
+      if strict {
+        raise @errors.TypeError(
+          message="Cannot set property on primitive receiver",
+        )
+      } else {
+        value
+      }
+  }
+}
+
+///|
 pub fn Interpreter::set_computed_property(
   self : Interpreter,
   obj : Value,
@@ -1493,6 +1837,7 @@ pub fn Interpreter::set_computed_property(
   value : Value,
   loc : @token.Loc,
   strict? : Bool = false,
+  receiver? : Value = obj,
 ) -> Value raise Error {
   match obj {
     Proxy(proxy_data) => {
@@ -1508,7 +1853,7 @@ pub fn Interpreter::set_computed_property(
           let result = self.call_value(
             trap_fn,
             handler,
-            [target, prop_key, value, obj],
+            [target, prop_key, value, receiver],
             loc,
           )
           if !is_truthy(result) {
@@ -1517,12 +1862,26 @@ pub fn Interpreter::set_computed_property(
                 message="'set' on proxy: trap returned falsish",
               )
             }
+            return value
           }
+          // ES §10.5.9 step 11-12 invariants. Same checks proxy_set runs for
+          // the string-key path; must run here so `p[k] = v` and the proto-
+          // chain delegation (Proxy(_) arm of the walk) match spec.
+          check_proxy_set_trap_invariants(target, prop_key, value)
           return value
         }
         None => {
+          // Trap-less fallback: target.[[Set]](P, V, Receiver) — thread
+          // receiver through per ES §10.5.9 step 5.
           let target = get_proxy_target(proxy_data)
-          return self.set_computed_property(target, key, value, loc, strict~)
+          return self.set_computed_property(
+            target,
+            key,
+            value,
+            loc,
+            strict~,
+            receiver~,
+          )
         }
       }
     }
@@ -1534,7 +1893,7 @@ pub fn Interpreter::set_computed_property(
             Some(desc) =>
               match desc.setter {
                 Some(setter) => {
-                  let _ = self.call_value(setter, obj, [value], loc)
+                  let _ = self.call_value(setter, receiver, [value], loc)
                   return value
                 }
                 None =>
@@ -1555,16 +1914,25 @@ pub fn Interpreter::set_computed_property(
                   }
               }
             None => {
-              // Walk prototype chain for inherited symbol setters
+              // Walk prototype chain for inherited symbol setters. Writable
+              // data on a proto (explicit or implicit via symbol_properties)
+              // terminates the walk per §10.1.9.2; see string-key branch for
+              // full rationale.
               let mut current = data.prototype
               while true {
                 match current {
                   Object(proto_data) => {
+                    let mut stop_at_writable_data = false
                     match proto_data.bag.symbol_descriptors.get(sym.id) {
                       Some(desc) =>
                         match desc.setter {
                           Some(setter) => {
-                            let _ = self.call_value(setter, obj, [value], loc)
+                            let _ = self.call_value(
+                              setter,
+                              receiver,
+                              [value],
+                              loc,
+                            )
                             return value
                           }
                           None =>
@@ -1582,16 +1950,39 @@ pub fn Interpreter::set_computed_property(
                                 )
                               }
                               return value
+                            } else {
+                              stop_at_writable_data = true
                             }
                         }
-                      None => ()
+                      None =>
+                        if proto_data.bag.symbol_properties.contains(sym.id) {
+                          stop_at_writable_data = true
+                        }
+                    }
+                    if stop_at_writable_data {
+                      break
                     }
                     current = proto_data.prototype
                   }
+                  Proxy(_) =>
+                    return self.set_computed_property(
+                      current,
+                      key,
+                      value,
+                      loc,
+                      strict~,
+                      receiver~,
+                    )
                   _ => break
                 }
               }
             }
+          }
+          // Landing rule: if receiver differs, write lands on receiver.
+          if !strict_equal(obj, receiver) {
+            return self.define_value_on_receiver(
+              receiver, key, value, loc, strict,
+            )
           }
           if !data.bag.symbol_properties.contains(sym.id) && !data.extensible {
             if strict {
@@ -1642,7 +2033,7 @@ pub fn Interpreter::set_computed_property(
             Some(desc) =>
               match desc.setter {
                 Some(setter) => {
-                  let _ = self.call_value(setter, obj, [value], loc)
+                  let _ = self.call_value(setter, receiver, [value], loc)
                   return value
                 }
                 None =>
@@ -1663,16 +2054,24 @@ pub fn Interpreter::set_computed_property(
                   }
               }
             None => {
-              // Walk prototype chain for inherited setters
+              // Walk prototype chain for inherited setters. Writable data on
+              // a proto (explicit or implicit via bag.properties) terminates
+              // the walk per §10.1.9.2; see set_property for full rationale.
               let mut current = data.prototype
               while true {
                 match current {
                   Object(proto_data) => {
+                    let mut stop_at_writable_data = false
                     match proto_data.bag.descriptors.get(prop) {
                       Some(desc) =>
                         match desc.setter {
                           Some(setter) => {
-                            let _ = self.call_value(setter, obj, [value], loc)
+                            let _ = self.call_value(
+                              setter,
+                              receiver,
+                              [value],
+                              loc,
+                            )
                             return value
                           }
                           None =>
@@ -1690,16 +2089,43 @@ pub fn Interpreter::set_computed_property(
                                 )
                               }
                               return value
+                            } else {
+                              stop_at_writable_data = true
                             }
                         }
-                      None => ()
+                      None =>
+                        if proto_data.bag.properties.contains(prop) {
+                          stop_at_writable_data = true
+                        }
+                    }
+                    if stop_at_writable_data {
+                      break
                     }
                     current = proto_data.prototype
                   }
+                  Proxy(_) =>
+                    return self.set_computed_property(
+                      current,
+                      key,
+                      value,
+                      loc,
+                      strict~,
+                      receiver~,
+                    )
                   _ => break
                 }
               }
             }
+          }
+          // Landing rule: if receiver differs, write lands on receiver.
+          if !strict_equal(obj, receiver) {
+            return self.define_value_on_receiver(
+              receiver,
+              String_(prop),
+              value,
+              loc,
+              strict,
+            )
           }
           if !data.bag.properties.contains(prop) && !data.extensible {
             if strict {
@@ -1713,7 +2139,18 @@ pub fn Interpreter::set_computed_property(
           value
         }
       }
-    Map(data) =>
+    Map(data) => {
+      // PRE-EXISTING LIMITATION (not a regression from B.1): Map/Set/Promise/
+      // Array branches do not walk their instance's prototype chain for
+      // inherited setters because MapData/SetData/PromiseData/ArrayData carry
+      // no `prototype` field (only ObjectData does). Setters defined on
+      // Map.prototype / Set.prototype / etc. are therefore invisible here and
+      // also when receiver===obj below. Fixing this requires either adding
+      // `prototype` to the four structs or threading the builtin prototypes
+      // through the dispatcher — both out of B.1 scope.
+      if !strict_equal(obj, receiver) {
+        return self.define_value_on_receiver(receiver, key, value, loc, strict)
+      }
       // Write to expando properties bag (used for instance fields from subclasses)
       match key {
         Symbol(sym) => {
@@ -1725,7 +2162,11 @@ pub fn Interpreter::set_computed_property(
           value
         }
       }
-    Set(data) =>
+    }
+    Set(data) => {
+      if !strict_equal(obj, receiver) {
+        return self.define_value_on_receiver(receiver, key, value, loc, strict)
+      }
       // Write to expando properties bag (used for instance fields from subclasses)
       match key {
         Symbol(sym) => {
@@ -1737,7 +2178,11 @@ pub fn Interpreter::set_computed_property(
           value
         }
       }
-    Array(data) =>
+    }
+    Array(data) => {
+      if !strict_equal(obj, receiver) {
+        return self.define_value_on_receiver(receiver, key, value, loc, strict)
+      }
       match key {
         Symbol(sym) => {
           set_array_symbol_prop(data, sym.id, value)
@@ -1786,7 +2231,11 @@ pub fn Interpreter::set_computed_property(
           value
         }
       }
-    Promise(data) =>
+    }
+    Promise(data) => {
+      if !strict_equal(obj, receiver) {
+        return self.define_value_on_receiver(receiver, key, value, loc, strict)
+      }
       match key {
         Symbol(sym) => {
           data.bag.symbol_properties[sym.id] = value
@@ -1797,6 +2246,7 @@ pub fn Interpreter::set_computed_property(
           value
         }
       }
+    }
     Null => {
       let key_str = match key {
         Symbol(sym) => "Symbol(\{sym.description})"

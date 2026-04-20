@@ -731,51 +731,49 @@ fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
         _ => key.to_string()
       }
       let value = args[2]
-      // Check for write failures before attempting set
+      // 4th argument is the Receiver; defaults to the target per spec.
+      let receiver = if args.length() >= 4 { args[3] } else { target }
+      // Pre-flight own-descriptor blockers (spec-safe): own accessor getter-
+      // only or own non-writable DATA → return false. The former `!extensible
+      // && !has(P)` short-circuits were wrong because an inherited setter can
+      // still run successfully on a non-extensible target (Codex Q6).
+      //
+      // The non-writable check requires `setter is None` alongside
+      // `getter is None` — accessor descriptors default `writable=false`, so a
+      // setter-only accessor (getter=None, setter=Some(_), writable=false)
+      // would otherwise be preemptively rejected instead of invoking the
+      // setter through the dispatcher.
       match target {
         Object(data) =>
           match key {
-            Symbol(sym) => {
-              // Check symbol descriptor for getter-only or non-writable
+            Symbol(sym) =>
               match data.bag.symbol_descriptors.get(sym.id) {
                 Some(desc) => {
                   if desc.getter is Some(_) && desc.setter is None {
                     return Value::Bool(false)
                   }
-                  if desc.getter is None && !desc.writable {
+                  if desc.getter is None &&
+                    desc.setter is None &&
+                    !desc.writable {
                     return Value::Bool(false)
                   }
                 }
                 None => ()
               }
-              // Non-extensible and symbol property doesn't exist: write fails
-              if !data.extensible &&
-                !data.bag.symbol_properties.contains(sym.id) &&
-                !data.bag.symbol_descriptors.contains(sym.id) {
-                return Value::Bool(false)
-              }
-            }
-            _ => {
+            _ =>
               match data.bag.descriptors.get(key_str) {
                 Some(desc) => {
-                  // Accessor with getter-only: write fails
                   if desc.getter is Some(_) && desc.setter is None {
                     return Value::Bool(false)
                   }
-                  // Non-writable data property: write fails
-                  if desc.getter is None && !desc.writable {
+                  if desc.getter is None &&
+                    desc.setter is None &&
+                    !desc.writable {
                     return Value::Bool(false)
                   }
                 }
                 None => ()
               }
-              // Non-extensible and property doesn't exist: write fails
-              if !data.extensible &&
-                !data.bag.properties.contains(key_str) &&
-                !data.bag.descriptors.contains(key_str) {
-                return Value::Bool(false)
-              }
-            }
           }
         _ => ()
       }
@@ -783,8 +781,23 @@ fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
       try {
         let _ = match key {
           Symbol(_) =>
-            interp.set_computed_property(target, key, value, loc, strict=true)
-          _ => interp.set_property(target, key_str, value, loc, strict=true)
+            interp.set_computed_property(
+              target,
+              key,
+              value,
+              loc,
+              strict=true,
+              receiver~,
+            )
+          _ =>
+            interp.set_property(
+              target,
+              key_str,
+              value,
+              loc,
+              strict=true,
+              receiver~,
+            )
         }
         Value::Bool(true)
       } catch {

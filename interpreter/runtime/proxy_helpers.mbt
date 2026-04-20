@@ -469,6 +469,68 @@ pub fn proxy_get(
 }
 
 ///|
+/// ES §10.5.9 step 11-12 invariant checks shared by the string-keyed
+/// `proxy_set` and the computed (String or Symbol) path in
+/// `set_computed_property`. Raises TypeError if the target's own descriptor
+/// for `key` is non-configurable and the trap's truish return is a lie.
+pub fn check_proxy_set_trap_invariants(
+  target : Value,
+  key : Value,
+  value : Value,
+) -> Unit raise Error {
+  let (desc_opt, target_value, key_display) = match key {
+    String_(k) =>
+      (
+        target_get_own_descriptor(target, k),
+        match target {
+          Object(data) =>
+            match data.bag.properties.get(k) {
+              Some(v) => v
+              None => Undefined
+            }
+          _ => Undefined
+        },
+        k,
+      )
+    Symbol(sym) =>
+      (
+        match target {
+          Object(data) => data.bag.symbol_descriptors.get(sym.id)
+          _ => None
+        },
+        match target {
+          Object(data) =>
+            match data.bag.symbol_properties.get(sym.id) {
+              Some(v) => v
+              None => Undefined
+            }
+          _ => Undefined
+        },
+        "Symbol(\{sym.description.or_default()})",
+      )
+    _ => (None, Undefined, "")
+  }
+  match desc_opt {
+    Some(desc) =>
+      if !desc.configurable {
+        if desc.getter is None && !desc.writable {
+          if !strict_equal(value, target_value) {
+            raise @errors.TypeError(
+              message="'set' on proxy: trap returned truish for property '\{key_display}' which exists in the proxy target as a non-configurable and non-writable data property with a different value",
+            )
+          }
+        }
+        if desc.getter is Some(_) && desc.setter is None {
+          raise @errors.TypeError(
+            message="'set' on proxy: trap returned truish for property '\{key_display}' which exists in the proxy target as a non-configurable and non-writable accessor property without a setter",
+          )
+        }
+      }
+    None => ()
+  }
+}
+
+///|
 /// Implement the Proxy [[Set]] invariant checks per ES §10.5.9.
 pub fn proxy_set(
   interp : Interpreter,
@@ -482,7 +544,15 @@ pub fn proxy_set(
   let target = get_proxy_target(proxy_data)
   match trap {
     None =>
-      interp.set_property(target, key, value, @token.Loc::default(), strict~)
+      // ES §10.5.9 step 5: target.[[Set]](P, V, Receiver) — preserve receiver
+      interp.set_property(
+        target,
+        key,
+        value,
+        @token.Loc::default(),
+        strict~,
+        receiver~,
+      )
     Some(trap_fn) => {
       let handler = get_proxy_handler(proxy_data)
       let loc = @token.Loc::default()
@@ -501,35 +571,7 @@ pub fn proxy_set(
         }
         return value
       }
-      // ES §10.5.9 step 11-12: Invariant checks when trap returns true
-      match target_get_own_descriptor(target, key) {
-        Some(desc) =>
-          if !desc.configurable {
-            // Non-configurable, non-writable data property: value must match
-            if desc.getter is None && !desc.writable {
-              let target_value = match target {
-                Object(data) =>
-                  match data.bag.properties.get(key) {
-                    Some(v) => v
-                    None => Undefined
-                  }
-                _ => Undefined
-              }
-              if !strict_equal(value, target_value) {
-                raise @errors.TypeError(
-                  message="'set' on proxy: trap returned truish for property '\{key}' which exists in the proxy target as a non-configurable and non-writable data property with a different value",
-                )
-              }
-            }
-            // Non-configurable accessor with no setter: cannot set
-            if desc.getter is Some(_) && desc.setter is None {
-              raise @errors.TypeError(
-                message="'set' on proxy: trap returned truish for property '\{key}' which exists in the proxy target as a non-configurable and non-writable accessor property without a setter",
-              )
-            }
-          }
-        None => ()
-      }
+      check_proxy_set_trap_invariants(target, String_(key), value)
       value
     }
   }
