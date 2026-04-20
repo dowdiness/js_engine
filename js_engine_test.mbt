@@ -1515,6 +1515,31 @@ test "B.1 Reflect.set preflight: inherited setter + non-extensible target" {
 }
 
 ///|
+test "B.1: writable data on proto short-circuits walk before deeper proxy" {
+  // Reviewer P2: the proto walk must STOP at the first writable data
+  // descriptor and land on receiver. If it continues past the writable
+  // data to a higher Proxy prototype, the proxy's set trap fires with
+  // unexpected side effects. Per ES §10.1.9.2 step 2 (IsDataDescriptor
+  // branch): writable data terminates the recursion; only accessor /
+  // non-writable / missing descriptors walk further.
+  let src =
+    #|let trapCalls = 0;
+    #|const proxy = new Proxy({}, {
+    #|  set: function() { trapCalls++; return true; }
+    #|});
+    #|const mid = Object.create(proxy, {
+    #|  foo: { value: 0, writable: true, configurable: true, enumerable: true }
+    #|});
+    #|const obj = Object.create(mid);
+    #|obj.foo = 1;
+    #|console.log(obj.foo);
+    #|console.log(mid.foo);
+    #|console.log(trapCalls);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"1\", \"0\", \"0\"]")
+}
+
+///|
 test "B.1a Symbol key: inherited setter via proxy threads receiver" {
   // Same as the first test but keyed by Symbol — exercises the
   // set_computed_property path alongside set_property.

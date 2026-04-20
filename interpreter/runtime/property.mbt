@@ -1345,14 +1345,19 @@ pub fn Interpreter::set_property(
               }
           }
         None => {
-          // Walk prototype chain for inherited setters. Per ES §10.1.9.2
-          // step 1.b: when the parent is a Proxy (or any exotic [[Set]]),
-          // delegate to its [[Set]] with the original receiver rather than
-          // peeking at our own fields — that preserves Proxy transparency.
+          // Walk prototype chain for inherited setters. Per ES §10.1.9.2:
+          // - Accessor getter-only / non-writable data → blocked.
+          // - Inherited writable data (explicit descriptor OR implicit via
+          //   bag.properties): TERMINATES the walk (step 2 data-descriptor
+          //   branch lands on Receiver without consulting higher protos).
+          //   Missing this short-circuit lets a higher Proxy prototype's
+          //   set trap fire with unexpected side effects.
+          // - Proxy on chain: delegate to its [[Set]] (§10.1.9.2 step 1.b).
           let mut current = data.prototype
           while true {
             match current {
               Object(proto_data) => {
+                let mut stop_at_writable_data = false
                 match proto_data.bag.descriptors.get(prop) {
                   Some(desc) =>
                     match desc.setter {
@@ -1369,16 +1374,27 @@ pub fn Interpreter::set_property(
                           }
                           return value
                         } else if !desc.writable {
-                          // Inherited non-writable data property blocks assignment
                           if strict {
                             raise @errors.TypeError(
                               message="Cannot assign to read only property '\{prop}'",
                             )
                           }
                           return value
+                        } else {
+                          // Writable data descriptor → stop walking.
+                          stop_at_writable_data = true
                         }
                     }
-                  None => ()
+                  None =>
+                    // No explicit descriptor — plain assignments go to
+                    // bag.properties and carry an implicit writable data
+                    // descriptor per spec.
+                    if proto_data.bag.properties.contains(prop) {
+                      stop_at_writable_data = true
+                    }
+                }
+                if stop_at_writable_data {
+                  break
                 }
                 current = proto_data.prototype
               }
@@ -1744,13 +1760,15 @@ pub fn Interpreter::set_computed_property(
                   }
               }
             None => {
-              // Walk prototype chain for inherited symbol setters. Proxy
-              // prototype delegates to its [[Set]] (see string-key branch
-              // for the full rationale).
+              // Walk prototype chain for inherited symbol setters. Writable
+              // data on a proto (explicit or implicit via symbol_properties)
+              // terminates the walk per §10.1.9.2; see string-key branch for
+              // full rationale.
               let mut current = data.prototype
               while true {
                 match current {
                   Object(proto_data) => {
+                    let mut stop_at_writable_data = false
                     match proto_data.bag.symbol_descriptors.get(sym.id) {
                       Some(desc) =>
                         match desc.setter {
@@ -1778,9 +1796,17 @@ pub fn Interpreter::set_computed_property(
                                 )
                               }
                               return value
+                            } else {
+                              stop_at_writable_data = true
                             }
                         }
-                      None => ()
+                      None =>
+                        if proto_data.bag.symbol_properties.contains(sym.id) {
+                          stop_at_writable_data = true
+                        }
+                    }
+                    if stop_at_writable_data {
+                      break
                     }
                     current = proto_data.prototype
                   }
@@ -1874,12 +1900,14 @@ pub fn Interpreter::set_computed_property(
                   }
               }
             None => {
-              // Walk prototype chain for inherited setters. Proxy prototype
-              // delegates to its [[Set]] (see set_property for rationale).
+              // Walk prototype chain for inherited setters. Writable data on
+              // a proto (explicit or implicit via bag.properties) terminates
+              // the walk per §10.1.9.2; see set_property for full rationale.
               let mut current = data.prototype
               while true {
                 match current {
                   Object(proto_data) => {
+                    let mut stop_at_writable_data = false
                     match proto_data.bag.descriptors.get(prop) {
                       Some(desc) =>
                         match desc.setter {
@@ -1907,9 +1935,17 @@ pub fn Interpreter::set_computed_property(
                                 )
                               }
                               return value
+                            } else {
+                              stop_at_writable_data = true
                             }
                         }
-                      None => ()
+                      None =>
+                        if proto_data.bag.properties.contains(prop) {
+                          stop_at_writable_data = true
+                        }
+                    }
+                    if stop_at_writable_data {
+                      break
                     }
                     current = proto_data.prototype
                   }
