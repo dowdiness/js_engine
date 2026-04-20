@@ -217,7 +217,7 @@ those first.
 
 ## ~~Later PR: Stage 3/4 Sub-package Extraction~~ — DONE (2026-04-15, branch `claude/restructure-architecture-VkLTl`)
 
-All four stages shipped. See [docs/architecture-redesign-2026-04-15.md](architecture-redesign-2026-04-15.md) for the full analysis.
+All four stages shipped. See [archive/architecture-redesign-2026-04-15.md](archive/architecture-redesign-2026-04-15.md) for the full analysis.
 
 ~~**Stage 1 — ExecContext**~~: `ExecContext` struct replaces `mut strict` / `mut current_generator`. ✅
 ~~**Stage 2 — Timer API**~~: `Interpreter::schedule_timer` / `cancel_timer` replace 14 direct field accesses. ✅

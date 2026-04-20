@@ -57,7 +57,7 @@
 
 † Phase 24 changed test methodology: runner now tests both strict and non-strict modes (92,291 tasks from 48,157 files), revealing strict-mode failures not previously counted. Non-strict-only pass rate remains comparable to Phase 23.
 
-For detailed implementation notes on Phases 1-6, see [docs/PHASE_HISTORY.md](docs/PHASE_HISTORY.md).
+For detailed implementation notes on Phases 1-6, see [archive/phase-history.md](archive/phase-history.md).
 
 ---
 
@@ -173,7 +173,7 @@ node ./_build/js/debug/build/cmd/main/main.js 'console.log(1 + 2)'
 # => 3
 ```
 
-All 881 unit tests pass on both WASM-GC and JS targets. See [docs/SELF_HOST_JS_RESEARCH.md](docs/SELF_HOST_JS_RESEARCH.md) for full analysis.
+All 881 unit tests pass on both WASM-GC and JS targets. See [SELF_HOST_JS_RESEARCH.md](SELF_HOST_JS_RESEARCH.md) for full analysis.
 
 ### What was needed
 - **Backend-specific argv handling**: `process.argv` on JS includes `["node", "script.js", ...]`, so user args start at index 2 (vs index 1 on WASM). Solved with `.js.mbt` / `.wasm.mbt` / `.wasm-gc.mbt` files.
@@ -270,7 +270,7 @@ Full `function*` / `yield` / `yield*` implementation:
 - **Test262**: GeneratorPrototype 26/58 (44.8%), GeneratorFunction 0/20 (0.0%)
 - **Unit tests**: 59 new generator-specific tests (580 → 639)
 
-For the original implementation plan, see [docs/GENERATOR_PLAN.md](docs/GENERATOR_PLAN.md).
+For the original implementation plan, see [archive/generator-plan.md](archive/generator-plan.md).
 
 ---
 
@@ -333,7 +333,7 @@ Massive compliance push addressing four priority areas identified in failure ana
 
 ### 10: P4 Object Descriptor Compliance — DONE
 
-Comprehensive object descriptor compliance (P4 from IMPLEMENTATION_PRIORITY.md):
+Comprehensive object descriptor compliance (P4 from [archive/implementation-priority-snapshot.md](archive/implementation-priority-snapshot.md)):
 
 - **Symbol key support**: `defineProperty` and `getOwnPropertyDescriptor` now handle Symbol-keyed properties, using `symbol_properties`/`symbol_descriptors` storage
 - **Function property descriptors**: `getOwnPropertyDescriptor` returns correct descriptors for function `length`, `name`, and `prototype`. `make_func`/`make_func_ext` now initialize `prototype` with `{writable: true, enumerable: false, configurable: false}`
@@ -1024,13 +1024,13 @@ Low. These features are not required for modern JavaScript usage. Implement only
 
 ## Architecture
 
-Full analysis: [docs/architecture-redesign-2026-04-15.md](docs/architecture-redesign-2026-04-15.md)
+Full analysis: [archive/architecture-redesign-2026-04-15.md](archive/architecture-redesign-2026-04-15.md)
 
 ### Current Structure
 
 The interpreter is a single flat MoonBit package (`interpreter/`) with 48 focused files
 produced by the structural refactoring (April 2026, archived in
-`docs/archive/2026-04-09-structural-refactoring.md`). Three conceptual groups exist but
+`archive/2026-04-09-structural-refactoring.md`). Three conceptual groups exist but
 are not yet enforced by package boundaries:
 
 | Group | Files |
@@ -1071,8 +1071,8 @@ Moved `validate_non_configurable` from `stdlib/builtins_object_helpers.mbt` to
 ### Post-April-15 Redesign (in progress)
 
 Next-phase pressures identified after the April-15 restructuring. Full
-analysis in [docs/architecture-redesign-2026-04-17-probes.md](docs/architecture-redesign-2026-04-17-probes.md);
-stage ordering tracked in `docs/agent-todo.md`.
+analysis in [architecture-redesign-2026-04-17-probes.md](architecture-redesign-2026-04-17-probes.md);
+stage ordering tracked in [agent-todo.md](agent-todo.md).
 
 **Stage A — PropertyBag extraction** ✅ (2026-04-17, PR #49)
 Introduced `PropertyBag` struct consolidating the quartet

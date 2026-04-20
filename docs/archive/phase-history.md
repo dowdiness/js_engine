@@ -1,6 +1,10 @@
-# Phase Implementation History (Archive)
+# Phase Implementation History
 
-Detailed implementation notes for completed phases (1-16). For current status and future plans, see [ROADMAP.md](../ROADMAP.md).
+> **Status:** ARCHIVED — historical record. See [../ROADMAP.md](../ROADMAP.md) for current status.
+>
+> **Note:** some prose below references pre-restructure paths (e.g. `docs/IMPLEMENTATION_PRIORITY.md`). Those files now live under `../archive/`. Historical text is left unchanged; use the [docs index](../README.md) to locate the current path.
+
+Detailed implementation notes for completed phases (1-16). For current status and future plans, see [../ROADMAP.md](../ROADMAP.md).
 
 ---
 
@@ -170,7 +174,7 @@ Full `function*` / `yield` / `yield*` support. Pass rate denominator increased s
 
 ### Architecture
 
-Used a **statement replay model** rather than the frame-stack/step-engine model originally planned in [GENERATOR_PLAN.md](GENERATOR_PLAN.md):
+Used a **statement replay model** rather than the frame-stack/step-engine model originally planned in [generator-plan.md](generator-plan.md):
 
 - Generator body is re-executed from the beginning on each `.next()` call
 - Past statements are replayed (skipped via saved program counter `pc`)
@@ -399,7 +403,7 @@ These are language-specific gotchas discovered during development:
 
 ## Phase 10: P4 Object Descriptor Compliance
 
-Comprehensive object descriptor compliance targeting the P4 milestone from [IMPLEMENTATION_PRIORITY.md](IMPLEMENTATION_PRIORITY.md). Focused on strict non-configurable invariants, Symbol key support, function property descriptors, and Array target handling.
+Comprehensive object descriptor compliance targeting the P4 milestone from [implementation-priority-snapshot.md](implementation-priority-snapshot.md). Focused on strict non-configurable invariants, Symbol key support, function property descriptors, and Array target handling.
 
 ### P4a: Symbol Key Support in defineProperty
 

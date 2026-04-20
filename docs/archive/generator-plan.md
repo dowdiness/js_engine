@@ -1,5 +1,7 @@
 # Generator Implementation Plan (Corrected Phase Sequence)
 
+> **Status:** ARCHIVED — historical plan; the work is complete. See [../ROADMAP.md](../ROADMAP.md) for current status.
+
 ## Implementation Status: COMPLETE
 
 All phases (0-8) are implemented. 763 unit tests are currently passing; see

@@ -1,8 +1,9 @@
 # Architecture Redesign — 2026-04-15
 
-> **Status: COMPLETE** — All four stages shipped 2026-04-15 on branch
-> `claude/restructure-architecture-VkLTl`. This document is now a historical
-> record of the analysis and migration plan that was executed.
+> **Status:** ARCHIVED — all four stages shipped 2026-04-15 on branch
+> `claude/restructure-architecture-VkLTl`. Historical record of the analysis
+> and migration plan that was executed. See [../ROADMAP.md](../ROADMAP.md) for
+> current status.
 
 This document is a point-in-time architectural analysis. It supersedes the
 informal Stage 3/4 notes in ROADMAP.md. Code is the source of truth; if this

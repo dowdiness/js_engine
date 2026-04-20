@@ -1,5 +1,7 @@
 # Self-Hosting js_engine via MoonBit's JavaScript Target
 
+> **Status:** research notes — reference analysis of self-hosting feasibility. Point-in-time; may lag the code.
+
 ## Executive Summary
 
 This document researches what is needed to **self-host this JavaScript engine by compiling it to JavaScript** using MoonBit's JS backend. The goal: produce a standalone `.js` file that *is itself* a JavaScript interpreter -- a JS engine running inside a JS runtime.
@@ -238,7 +240,7 @@ True self-interpretation (running the compiled JS through itself) would require 
 - Classes and prototypes
 - Closures and higher-order functions
 - Map, Set, and other built-in types
-- Test262 pass rate changes over time; see [ROADMAP.md](../ROADMAP.md) for the latest totals
+- Test262 pass rate changes over time; see [ROADMAP.md](ROADMAP.md) for the latest totals
 
 This is a long-term goal that would improve naturally as Test262 compliance increases.
 
@@ -257,7 +259,7 @@ This is a long-term goal that would improve naturally as Test262 compliance incr
 
 1. ~~Add CI workflow for JS-compiled engine~~ — `.github/workflows/test262.yml` builds with `moon build --target js` and runs via `node`
 2. ~~Run full Test262 suite against JS-compiled engine~~ — see
-   [ROADMAP.md](../ROADMAP.md) for the latest pass/skip/fail snapshot
+   [ROADMAP.md](ROADMAP.md) for the latest pass/skip/fail snapshot
 3. CI uses `node target/js/release/build/cmd/main/main.js` directly (faster than `moon run`), 4 threads, 90-minute timeout
 
 ### Phase C: Distributable Package (Medium Effort)
@@ -286,6 +288,6 @@ This is a long-term goal that would improve naturally as Test262 compliance incr
 | Code changes required | **3 new files** (backend-specific argv), **1 edit** (Error toString) |
 | Build command | `moon build --target js` |
 | Run command | `node ./target/js/release/build/cmd/main/main.js '<code>'` |
-| Test262 pass rate | See [ROADMAP.md](../ROADMAP.md) for latest totals |
+| Test262 pass rate | See [ROADMAP.md](ROADMAP.md) for latest totals |
 
 The codebase's pure-MoonBit, zero-FFI architecture made JS-target compilation straightforward. The only issues encountered were the `process.argv` offset difference (solved with backend-specific files) and Error object toString formatting (solved by checking `class_name`).

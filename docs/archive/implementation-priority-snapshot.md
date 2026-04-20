@@ -1,5 +1,7 @@
 # JS Engine: Test262 Failure Analysis & Implementation Priority
 
+> **Status:** ARCHIVED — phase-planning snapshot (post-Phase 18). Superseded by [../ROADMAP.md](../ROADMAP.md).
+
 ## Current Status
 
 - **Pass rate**: **~85.5%** (~23,500 / 27,491 executed) — post-Phase 18 2026-02-14

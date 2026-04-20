@@ -2,38 +2,10 @@
 
 A minimal JavaScript tree-walking interpreter written in [MoonBit](https://www.moonbitlang.com/).
 
-Self-hosting is already achieved: the engine compiles to JavaScript via MoonBit's JS target and runs on Node.js. See [docs/SELF_HOST_JS_RESEARCH.md](docs/SELF_HOST_JS_RESEARCH.md) and [ROADMAP.md](ROADMAP.md) for details.
+- Conformance: ~84% of test262 (strict + non-strict). See [docs/ROADMAP.md](docs/ROADMAP.md).
+- Self-hosting: compiles to JavaScript via MoonBit's JS target and runs on Node.js.
 
-## Features
-
-- Numeric literals (IEEE 754 doubles), strings, booleans, `null`, `undefined`
-- Variable declarations: `let`, `const`, `var`
-- Arithmetic: `+`, `-`, `*`, `/`, `%`
-- Comparison: `<`, `>`, `<=`, `>=`
-- Equality: `==`, `===`, `!=`, `!==`
-- Logical: `&&`, `||`, `!`
-- Control flow: `if`/`else`, `while`, `for`, `break`, `continue`, `return`
-- Functions: declarations, expressions, closures, recursion
-- Ternary operator: `? :`
-- `typeof` operator
-- `console.log()` output
-- String concatenation (including mixed types)
-- Single-line (`//`) and multi-line (`/* */`) comments
-- ES6 Proxy (13 traps) and Reflect API (13 methods)
-- TypedArray (9 types: Int8Array through Float64Array), ArrayBuffer, and DataView
-
-## Package Structure
-
-```
-token/          Token types and source locations
-lexer/          Tokenizer
-ast/            AST node definitions
-parser/         Recursive descent parser with Pratt precedence
-interpreter/    Tree-walking evaluator with closures and scope chains
-cmd/main/       CLI entry point
-```
-
-## Usage
+## Quick Start
 
 ### CLI
 
@@ -53,6 +25,8 @@ console.log(fib(10));
 # 55
 ```
 
+More sample programs live in [`example/`](example/).
+
 ### As a Library
 
 ```moonbit nocheck
@@ -60,29 +34,48 @@ let (output, result) = @js_engine.run("console.log(1 + 2)")
 // output = ["3"], result = "undefined"
 ```
 
+The public entry points are defined in [`js_engine.mbt`](js_engine.mbt):
+
+- `run` — evaluate a script; drains microtasks and timers before returning
+- `run_module` / `run_modules` — evaluate one or more ES modules and collect exports
+- `run_with_event_loop`, `run_microtask_checkpoint`, `run_timer_checkpoint`,
+  `has_pending_microtasks`, `has_pending_timers` — for hosts that want to drive the event loop themselves
+
+## Supported Language
+
+Core ES5 plus selected ES6+ features: `let` / `const` / `var`, arrow functions, closures, classes, `for` / `while` / `for-in` / `for-of`, `try` / `catch` / `finally`, template literals, destructuring, spread / rest, ES Modules, Promises + microtasks, `setTimeout` / `setInterval`, ES6 Proxy (13 traps) + Reflect API (13 methods), TypedArrays (9 types), ArrayBuffer, DataView, RegExp, JSON, Map / Set / WeakMap / WeakSet, generators, Symbols.
+
+For current conformance per category, see [docs/ROADMAP.md](docs/ROADMAP.md).
+
+## Package Structure
+
+```
+token/          Token types and source locations
+lexer/          Tokenizer
+ast/            AST node definitions
+parser/         Recursive descent parser with Pratt precedence
+interpreter/    Tree-walking evaluator with closures and scope chains
+cmd/main/       CLI entry point
+```
+
 ## Development
 
 ```sh
 moon check        # Type check
+moon test         # Run unit tests
 moon fmt          # Format code
 moon info         # Update .mbti interface files
-moon test         # Run tests
-moon test --update # Update snapshot tests
 moon build        # Build
-python3 test262-runner.py --summary               # Run Test262 with concise output
-python3 test262-analyze.py --output /tmp/a.json   # Static Test262 analysis (no engine build)
 ```
 
-Test262 tooling note: `test262-runner.py` and `test262-analyze.py` work without
-PyYAML; they fall back to a built-in frontmatter parser in `test262_utils.py`.
-Malformed `\\x..` / `\\u....` escapes in frontmatter are handled safely without
-crashing the scripts.
+Run the test262 conformance suite with `make test262`. See [docs/TEST262.md](docs/TEST262.md) for prerequisites, filtering, and options.
 
 ## Documentation
 
-- [ROADMAP.md](ROADMAP.md) — Current test262 status, failure breakdown, future targets, architecture overview
-- [docs/PHASE_HISTORY.md](docs/PHASE_HISTORY.md) — Archived implementation notes for completed phases (1-16)
-- [AGENTS.md](AGENTS.md) — MoonBit coding conventions and tooling guide for AI agents
+- [docs/README.md](docs/README.md) — start here for deeper material
+- [docs/ROADMAP.md](docs/ROADMAP.md) — current status, failure breakdown, next targets
+- [docs/GLOSSARY.md](docs/GLOSSARY.md) — terminology used in the code and docs
+- [AGENTS.md](AGENTS.md) — MoonBit coding conventions (also used by AI agents)
 
 ## License
 
