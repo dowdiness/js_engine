@@ -897,9 +897,9 @@ Previous baseline (pre-Phase 16):
 
 ---
 
-## Migrated Phase Notes (from ROADMAP, 2026-04-20)
+## Migrated Phase Notes (from ROADMAP)
 
-> These per-phase narratives were previously in [`../ROADMAP.md`](../ROADMAP.md) under "Phase 7 Targets" through "Phase 22". They were moved here as part of the Tier 2a docs trim so ROADMAP could focus on current status and near-term planning. Some content here may duplicate the existing detailed Phase 7–16 sections above; a future dedupe pass is tracked as a follow-up.
+> The following sections were migrated from [`../ROADMAP.md`](../ROADMAP.md) on 2026-04-20 as part of the Tier 2a docs trim. After a dedupe pass, this block retains content that is either richer than the original phase-history sections above (Phase 7 Targets with 7A–7F detail), unique to ROADMAP (Phase 8B), or covers phases not in the original sections (Phases 17–22). Phase 8C has a short summary here that slightly overlaps with the detailed Phase 8C section above.
 
 ## Phase 7 Targets (reaching 10,000+)
 
@@ -1034,273 +1034,7 @@ Also improved JSON.stringify to:
 
 **Test262**: built-ins/Date 511/534 passing (95.7%), 60 skipped
 
-### 9: P0–P3 Spec Compliance Sweep (+7,439 tests) — DONE
-
-Massive compliance push addressing four priority areas identified in failure analysis:
-
-- **P0: Error diagnostics** — `cmd/main/main.mbt` now catches `JsException(value)` and all `JsError` variants (TypeError, ReferenceError, SyntaxError, etc.) with proper formatting instead of printing opaque MoonBit error types. Makes CI failures actionable.
-- **P1: Generator methods in class/object bodies** — `parse_class_method()` and `parse_object_literal()` now recognize `*` for generator method definitions (`class C { *gen() { yield 1; } }`, `{ *gen() { yield } }`). Full keyword-to-name mapping for method names.
-- **P2: Destructuring defaults** — Added `DefaultPat(Pattern, Expr)` to the Pattern enum. Parser handles `= expr` after destructuring elements. Interpreter evaluates defaults when source value is `undefined`.
-- **P3: Parser cleanup** — Fixed `{a: b = 1}` binding to correct name (`b` not `a`). Added `AssignTarget(Expr)` for member expression targets in destructuring assignment. Added `Of` as contextual identifier. Arrow function parameter fallback for complex patterns via `expr_to_ext_arrow_params`. Array elision holes.
-- **PR review fixes** — Rest-element-must-be-last validation in destructuring patterns. `Yield` keyword accepted as method/property name in all keyword-to-name mappings.
-
-**Test262**: 11,678 → 19,117 passing (45.27% → 74.17%)
-
-### 10: P4 Object Descriptor Compliance — DONE
-
-Comprehensive object descriptor compliance (P4 from [archive/implementation-priority-snapshot.md](archive/implementation-priority-snapshot.md)):
-
-- **Symbol key support**: `defineProperty` and `getOwnPropertyDescriptor` now handle Symbol-keyed properties, using `symbol_properties`/`symbol_descriptors` storage
-- **Function property descriptors**: `getOwnPropertyDescriptor` returns correct descriptors for function `length`, `name`, and `prototype`. `make_func`/`make_func_ext` now initialize `prototype` with `{writable: true, enumerable: false, configurable: false}`
-- **Array/Map/Set/Promise targets**: `defineProperty` and `defineProperties` accept all JS object types as targets and descriptors. Array targets handle index and length property definition
-- **TypeError enforcement**: Non-object descriptors throw TypeError. Non-object targets throw TypeError
-- **Shared validation**: Extracted `validate_non_configurable` helper (~95 lines) used by both `defineProperty` and `defineProperties`, eliminating ~150 lines of duplicated validation logic
-- **defineProperties fixes**: Throws TypeError on non-object, validates non-configurable transitions, getter/setter identity checks, only iterates enumerable own properties
-
-**Test262**: built-ins/Object 2,547/2,868 passing (88.8%)
-
----
-
-### 11: P5 eval() Semantics (+603 tests) — DONE
-
-Full direct/indirect eval implementation per ES spec (EvalDeclarationInstantiation):
-
-- **Direct eval detection**: `eval(...)`, `(eval)(...)`, `((eval))(...)` via `unwrap_grouping` helper. Per ES spec, grouping parentheses do not change the Reference type
-- **Direct vs indirect**: Direct eval runs in caller's lexical environment; indirect eval (e.g., `(0, eval)(...)`) runs in global scope
-- **NonConstructableCallable**: eval uses `NonConstructableCallable` to prevent `new eval()` (throws TypeError)
-- **Variable environment**: `find_var_env()` walks the scope chain to find the enclosing function/global scope for var hoisting. eval inside a block correctly hoists to the function scope, not the block
-- **Non-strict var leaking**: `hoist_declarations` on `var_env` lets var/function declarations escape the eval scope into the calling function
-- **Strict mode isolation**: All declarations stay in the eval scope when eval is strict
-- **EvalDeclarationInstantiation step 5.a**: `eval("var x")` at global scope throws SyntaxError if a global `let`/`const` x exists
-- **EvalDeclarationInstantiation step 5.d**: `eval("var x")` in a block throws SyntaxError if any intermediate scope between the eval scope and the variable environment has a `let`/`const` x
-- **FuncDecl var hoisting**: FuncDecl handler uses `has_var`/`assign_var` fallback (matching VarDecl) so function declarations in eval target the correct variable environment
-- **ES spec evaluation order**: Callee/receiver resolved before arguments in all `eval_call` branches per spec section 13.3.6.1
-
-**Test262**: language/eval-code 224/330 passing (67.9%), 17 skipped
-
----
-
-### 12: P6 Strict-Mode Prerequisite Bundle (+3 tests) — DONE
-
-Narrow, high-ROI strict-mode checks that gate many test262 syntax/runtime tests:
-
-- **Duplicate parameters in strict functions**: `check_duplicate_params()` / `check_duplicate_params_ext()` raise SyntaxError when a function with `"use strict"` (or in a strict context) has duplicate parameter names
-- **Assignment to `eval`/`arguments` in strict contexts**: `validate_strict_binding_name()` raises SyntaxError for assignments (=, +=, ++, etc.), variable declarations, function declarations, and parameter names
-- **`delete` unqualified identifier**: `delete x` (where x is an identifier) raises SyntaxError in strict mode
-- **Strict-only reserved words**: `implements`, `interface`, `package`, `private`, `protected`, `public` cannot be used as binding names in strict mode
-- **Class body implicit strict mode**: `ensure_strict_body()` prepends `"use strict"` directive to class method and constructor bodies. `ClassConstructor` execution sets `self.strict = true`
-- **Class constructor parameter validation**: `check_duplicate_params()` and `validate_strict_binding_name()` applied to class constructor parameters (class bodies are always strict)
-- **Sloppy duplicate params fix**: `call_value` and `eval_new` now allow duplicate parameter names in sloppy mode (last value wins)
-
-**Test262**: 19,720 → 19,723 passing (+3), language/function-code 166/173 (96.0%)
-**Unit tests**: 30 new P6-specific tests (730 total, all passing)
-
----
-
-### 13: P7 Promise Species Constructor and Complete Compliance (+1,080 tests) — DONE
-
-Achieved 100% Promise test compliance through species constructor implementation and critical interpreter fixes:
-
-**Promise Species Constructor (Subclassing Support)**:
-- **`get_promise_species_constructor()`**: Implements ES spec's SpeciesConstructor(promise, %Promise%) algorithm. Consulted by `then`, `catch`, `finally` to determine which constructor to use for derived promises
-- **`Promise[Symbol.species]`**: Getter returns `this`, enabling subclasses to override constructor selection via custom species
-- **Constructor preservation**: Promise subclass instances store constructor in `properties["constructor"]` with proper descriptor, enabling species lookups on subsequent method calls
-- **`Promise.reject` receiver support**: Refactored to use `create_promise_capability_from_constructor` for proper subclassing
-- **Promise combinator receiver support**: All four combinators (`all`, `race`, `any`, `allSettled`) refactored to respect receiver constructor via `create_promise_capability_from_constructor(interp, _this, loc)`
-
-**Critical Interpreter Fixes (Broad Test Impact)**:
-- **Sloppy mode `this` normalization**: Functions called with `this` as `undefined`/`null` now correctly substitute `globalThis` in sloppy mode, while strict mode preserves original values. Implemented via `normalize_sloppy_this` helper applied in `call_value` and `eval_new`
-- **`Function.prototype.apply` array-like support**: Fixed to accept any array-like object (objects with `length` property), not just Array instances. Handles `arguments` object forwarding pattern via `to_array_like_length` and computed property iteration
-- **Arguments object in constructors**: Class constructors and super constructors now have access to `arguments` object via `make_arguments_object` binding in constructor environments
-- **Function `prototype.constructor` link**: Functions now establish bidirectional reference: `func.prototype.constructor === func`, enabling navigation from instances back to constructors
-
-**Test Results**:
-- **Test262**: 19,723 → 20,803 passing (+1,080), **82.41%** pass rate (was 78.22%)
-- **built-ins/Promise**: 599/599 passing (**100%**, was 580/599 or 96.8%), 41 skipped
-- **language/block-scope**: 106/106 passing (100%, was 47/106 or 44.3%), 39 skipped
-- **language/expressions**: 4,849 passing (88.4%, was 84.0%)
-- **language/statements**: 3,449 passing (82.7%, was 77.0%)
-- **Unit tests**: 3 new tests for Promise species, apply array-like, and constructor arguments (763 total)
-
-**Validation**:
-```bash
-python3 test262-runner.py --filter "built-ins/Promise" --summary
-# Result: 599/599 passing (100.0%), 41 skipped, 0 failed
-```
-
-**Note**: Proxy support was added in Phase 15, resolving the previously deferred `this-value-proxy.js` test.
-
----
-
-### 14: Small Compliance Sweep (+67 tests) — DONE
-
-Targeted quick wins across Unicode whitespace, Number, and String built-ins:
-
-**Lexer Enhancements**:
-- **Unicode whitespace recognition**: Extended `is_js_whitespace()` to include all ECMAScript Unicode Space_Separator (Zs) characters: U+1680 (OGHAM SPACE MARK), U+2000-200A (EN QUAD through HAIR SPACE), U+202F (NARROW NO-BREAK SPACE), U+205F (MEDIUM MATHEMATICAL SPACE), U+3000 (IDEOGRAPHIC SPACE)
-- **Line terminator handling**: Added U+2028 (LINE SEPARATOR) and U+2029 (PARAGRAPH SEPARATOR) recognition for proper line counting in tokenization
-- **UTF-8 validation**: Confirmed MoonBit's `String::to_array()` correctly decodes UTF-8 multi-byte sequences into Unicode code points
-
-**Number.prototype Additions**:
-- **`toLocaleString()`**: Implemented with proper primitive/object wrapper handling, delegates to `toString()` for baseline compliance (full Intl.NumberFormat support deferred)
-
-**String.prototype Additions**:
-- **Trim aliases**: Added `trimLeft`/`trimRight` as deprecated aliases for `trimStart`/`trimEnd` per Annex B
-- **`toLocaleString()`**: Simple delegation implementation for baseline compliance
-- **`matchAll()`**: Iterator-based method with global flag validation, uses `regex_search_all()` for match collection, returns proper iterator with `next()` yielding `{value, done}` objects (44.4% pass rate - basic functionality working, advanced Symbol.matchAll cases deferred)
-
-**Test262 Results**:
-- **Overall**: 20,803 → 20,870 passing (+67), **82.7%** pass rate (was 82.41%)
-- **language/white-space**: 49/67 (73.1%) → 66/67 (**98.5%**, +17 tests)
-- **Number.prototype.toLocaleString**: 3/3 passing (100%)
-- **String.prototype.trimLeft/trimRight**: 8/8 passing (100%)
-- **String.prototype.matchAll**: 4/9 passing (44.4%, basic iterator protocol working)
-- **built-ins/Number**: 265/320 passing (82.8%)
-- **built-ins/String**: 1,054/1,150 passing (91.7%)
-
-**Test Runner Fix**:
-- Added `target/js/debug/build/cmd/main/main.js` to test runner's build path detection candidates for proper engine discovery
-
-**Remaining Work**:
-- One whitespace test failure (`S7.2_A5_T5.js`) requires rejecting Unicode escape sequences representing whitespace in identifier positions (e.g., `var\u00A0x;` should throw SyntaxError)
-- `matchAll` Symbol.matchAll integration for full spec compliance (5/9 remaining tests)
-
----
-
-### 15: Proxy and Reflect (+877 tests) — DONE
-
-Full ES6 Proxy and Reflect implementation with 13 proxy traps and 13 Reflect methods:
-
-**Proxy Implementation** (builtins_proxy.mbt):
-- **`Proxy(target, handler)` constructor**: Creates proxy with `ProxyData` struct containing mutable `target`/`handler` fields
-- **`Proxy.revocable(target, handler)`**: Returns `{proxy, revoke}` object; `revoke()` sets target/handler to `None`
-- **13 traps**: `get`, `set`, `has`, `apply`, `construct`, `deleteProperty`, `defineProperty`, `ownKeys`, `preventExtensions`, `isExtensible`, `getPrototypeOf`, `setPrototypeOf`, `getOwnPropertyDescriptor`
-- **ProxyData struct**: Mutable `target` and `handler` fields (None = revoked)
-- **Helper functions**: `get_proxy_trap()` (with prototype chain walk), `get_proxy_target()`, `get_proxy_handler()` with TypeError on revoked proxy
-
-**Reflect API** (builtins_reflect.mbt, ~820 lines):
-- **13 methods**: `apply`, `construct`, `defineProperty`, `deleteProperty`, `get`, `getOwnPropertyDescriptor`, `getPrototypeOf`, `has`, `isExtensible`, `ownKeys`, `preventExtensions`, `set`, `setPrototypeOf`
-- **`Reflect.defineProperty`**: Full non-configurable validation (extensibility check, accessor/data conflict, enumerable/configurable immutability, getter/setter identity, writable/value constraints) — returns `Bool(false)` on rejection per spec
-- **`Reflect.setPrototypeOf`**: Returns `Bool(false)` for non-extensible objects
-- **`Reflect.has`**: Checks both `data.properties` and `data.descriptors` for accessor-only properties
-- **`Reflect.set`**: Pre-validates write constraints (accessor getter-only, non-writable, non-extensible+descriptor-only) and returns `Bool(false)` on failure
-- **`create_list_from_array_like()`**: Shared helper for array-like argument conversion (used by `apply` and `construct`)
-- **`unwrap_proxy_target()`**: Recursively unwraps nested Proxy chains to get underlying ObjectData
-- **`Reflect.ownKeys`**: `InterpreterCallable` (not `NativeCallable`) to support invoking ownKeys trap; handles Object, Array, and Proxy targets
-
-**Interpreter Integration**:
-- **`for-in` with Proxy**: `collect_for_in_keys` throws TypeError for revoked proxies
-- **`instanceof` with Proxy**: Checks `Symbol.hasInstance` on proxy before falling back to prototype chain
-- **`deleteProperty` strict mode**: Throws TypeError when proxy's deleteProperty trap returns `false` in strict mode
-- **`apply` trap**: Recursive callability check for nested `Proxy(Proxy(Function))` chains
-- **`construct` trap**: Verifies target is constructible before executing construct trap
-- **JSON.stringify**: Unwraps Proxy to target for serialization
-- **Object.assign**: Extended with Proxy support; throws TypeError for revoked Proxy sources
-- **Object.defineProperty/defineProperties Proxy paths**: Full `validate_non_configurable` call, accessor/data conflict validation, extensibility check, getter/setter callability validation
-- **Object.getOwnPropertyDescriptor/getPrototypeOf/create**: All extended with Proxy support
-
-**PR Review Fixes** (30 comments, 24 resolved across 4 commits):
-
-*Commit 1* (4 issues): Reflect.construct newTarget, getOwnPropertyDescriptor accessor, Reflect.set non-writable, Reflect.get Symbol keys
-
-*Commit 2* (12 issues): JSON.stringify Proxy, Object.assign Proxy, Object.defineProperty Proxy, Object.getOwnPropertyDescriptor Proxy, for-in ownKeys, instanceof Symbol.hasInstance, deleteProperty strict mode, apply callability, Object.getPrototypeOf revoked Proxy, Object.create Proxy, Object.defineProperties Proxy, deduplicated array-like conversion
-
-*Commit 3*: Enabled Proxy/Reflect test262 tests, fixed all Reflect methods to accept Proxy arguments
-
-*Commit 4* (10 issues): Reflect.defineProperty validation, Reflect.setPrototypeOf extensibility, Reflect.has descriptors, Reflect.set descriptor-aware extensibility, Object.assign revoked Proxy TypeError, Object.defineProperty Proxy validate_non_configurable, Object.defineProperties Proxy full validation, Object.create unreachable code fix, get_proxy_trap prototype chain walk, construct_value target constructability check. Also eliminated all 20 compiler warnings (deprecated_syntax `fn` → `fn raise`).
-
-**Test262 Results**:
-
-| Category | Passed | Failed | Skipped | Rate |
-|----------|--------|--------|---------|------|
-| built-ins/Proxy | 257 | 15 | 39 | 94.5% |
-| built-ins/Reflect | 152 | 1 | 0 | 99.3% |
-
-**Overall**: 20,870 → 21,747 passing (+877), **83.16%** pass rate (was 82.7%), no regressions
-
-**Remaining 16 test failures** are pre-existing engine limitations:
-- `with` statement not supported (4 Proxy tests)
-- Boxed primitives `new String()`, `new Number()` not properly represented as Object (10 tests)
-- Module import issue (1 test)
-- Array length edge case (1 test)
-
-**Known limitations** (6 unresolved PR review items, deferred — require larger refactoring):
-- `Object.getPrototypeOf` does not invoke the `getPrototypeOf` trap (reads target prototype directly; needs `NativeCallable` → `InterpreterCallable` conversion)
-- `for-in` does not invoke the `ownKeys` trap (delegates to target directly; `collect_for_in_keys` needs interpreter parameter)
-- `instanceof` revoked Proxy does not invoke `getPrototypeOf` trap for prototype chain walk
-- `create_list_from_array_like` bypasses Proxy traps (reads `.properties` directly; needs interpreter parameter)
-- `Reflect.construct` rewires `newTarget` prototype after construction instead of before (spec requires creating object with `newTarget.prototype` before constructor runs)
-- `unwrap_proxy_target` returns `None` for non-Object targets (Array, Map, Set, Promise); Reflect methods that use it may throw incorrect TypeError for Proxies wrapping non-Object types
-
-**Files Changed**:
-- `interpreter/builtins_proxy.mbt` (~240 lines) — Proxy constructor, revocable, trap helpers with prototype chain walk
-- `interpreter/builtins_reflect.mbt` (~820 lines) — All 13 Reflect methods with Proxy support and full validation
-- `interpreter/interpreter.mbt` — for-in, instanceof, deleteProperty, apply, construct trap fixes
-- `interpreter/builtins.mbt` — JSON.stringify Proxy fix, Proxy/Reflect registration
-- `interpreter/builtins_object.mbt` — Object.assign/defineProperty/getOwnPropertyDescriptor/getPrototypeOf/create/defineProperties Proxy integration with full validation
-- `test262-runner.py` — Removed Proxy/Reflect from skip lists
-- `test262-analyze.py` — Removed Proxy/Reflect from skip lists
-
-**Unit tests**: 799 total (+36), 799 passed, 0 failed
-
----
-
-### 16: TypedArray, ArrayBuffer, and DataView — DONE
-
-Full TypedArray/ArrayBuffer/DataView implementation (~3,724 lines of new builtin code):
-
-**ArrayBuffer** (builtins_arraybuffer.mbt, ~400 lines):
-- **Constructor**: `new ArrayBuffer(byteLength)` with non-negative length validation
-- **`ArrayBuffer.isView()`**: Detects TypedArray and DataView instances
-- **`ArrayBuffer.prototype.slice()`**: Creates new ArrayBuffer with byte range copy, detachment check
-- **`ArrayBuffer.prototype.byteLength`**: Getter with detachment check (throws TypeError if detached)
-- **`$262.detachArrayBuffer()`**: Full implementation (was previously a no-op stub)
-- **Detachment tracking**: Global registry of detached buffer IDs via `detach_arraybuffer()` / `is_arraybuffer_detached()`
-
-**TypedArray** (builtins_typedarray.mbt, ~2,414 lines):
-- **9 typed array types**: `Int8Array`, `Uint8Array`, `Uint8ClampedArray`, `Int16Array`, `Uint16Array`, `Int32Array`, `Uint32Array`, `Float32Array`, `Float64Array`
-- **Constructors**: From length, from array/iterable, from another TypedArray, from ArrayBuffer with optional byteOffset/length. Rejects detached ArrayBuffer and negative/unaligned byteOffset
-- **Prototype methods**: `set`, `subarray`, `slice`, `copyWithin`, `fill`, `indexOf`, `lastIndexOf`, `includes`, `join`, `toString`, `reverse`, `sort` (with custom comparator, NaN-last), `at`, `forEach`, `map`, `filter`, `reduce`, `reduceRight`, `every`, `some`, `find`, `findIndex`
-- **Static methods**: `TypedArray.from()` (with optional mapFn and thisArg), `TypedArray.of()`
-- **Iterators**: `entries()`, `keys()`, `values()`, `Symbol.iterator` with buffer detachment checks during iteration
-- **Properties**: `buffer`, `byteLength`, `byteOffset`, `length`, `BYTES_PER_ELEMENT`, `Symbol.toStringTag`
-- **Indexed access**: Canonical numeric index string handling per spec in get/set paths (3 sites in interpreter.mbt)
-- **Buffer detachment validation**: `validate_typedarray_buffer()` called by all iteration methods (forEach, map, filter, reduce, reduceRight, every, some, find, findIndex)
-
-**DataView** (builtins_dataview.mbt, ~910 lines):
-- **Constructor**: `new DataView(buffer, byteOffset?, byteLength?)` with validation
-- **Getter methods**: `getInt8`, `getUint8`, `getInt16`, `getUint16`, `getInt32`, `getUint32`, `getFloat32`, `getFloat64` with endianness support
-- **Setter methods**: `setInt8`, `setUint8`, `setInt16`, `setUint16`, `setInt32`, `setUint32`, `setFloat32`, `setFloat64` with endianness support
-- **Receiver brand check**: Validates `this` is actually a DataView (not TypedArray)
-- **Properties**: `buffer`, `byteLength`, `byteOffset`, `Symbol.toStringTag`
-
-**Interpreter Integration**:
-- `Object.prototype.toString` checks `Symbol.toStringTag` via `get_tostringtag_value()` on prototype chain
-- `for-in` enumerates numeric indices, skips internal `[[...]]` slots
-- Canonical numeric index string handling: `"-0"` correctly falls through to ordinary property access (not a canonical index per spec)
-
-**PR Review Fixes** (6 commits, 19 comments addressed):
-- Sort comparator support and NaN handling
-- TypedArray.from mapFn argument
-- Int32 overflow fix for Float32Array element read (b3 >= 128)
-- Denormalized float32 encoding off-by-one fix
-- forEach/map/filter/reduce/reduceRight/every/some/find/findIndex detachment validation
-- Missing iteration methods added to prototype
-- DataView receiver brand check
-- `-0` canonical numeric index fix (3 sites)
-
-**Test262 (full run 2026-02-14)**: 23,012 / 27,491 passing (**83.7%**, was 82.7%). +2,142 new tests passing. Key category results:
-- `built-ins/DataView`: 353/388 passing (**91.0%**, was 2.3%)
-- `built-ins/ArrayBuffer`: 73/81 passing (**90.1%**, was 16.4%)
-- `built-ins/TypedArrayConstructors`: 309/359 passing (**86.1%**, new)
-- `built-ins/TypedArray`: 428/777 passing (**55.1%**, was 0%)
-- `built-ins/Uint8Array`: 44/68 passing (**64.7%**, new)
-
-**Unit tests**: 878 total (+79 new), 878 passed, 0 failed
-
----
-
-### 17: TypedArray Prototype Chain Conformance (+323 tests) — DONE
+## Phase 17: TypedArray Prototype Chain Conformance (+323 tests)
 
 Created `%TypedArray%` intrinsic constructor and established proper prototype chain per ES spec:
 
@@ -1330,7 +1064,7 @@ Created `%TypedArray%` intrinsic constructor and established proper prototype ch
 
 ---
 
-### 18: Boxed Primitives and TypedArray Constructor Name Fix (+162 tests) — DONE
+## Phase 18: Boxed Primitives and TypedArray Constructor Name Fix (+162 tests)
 
 Implemented ES spec-compliant boxed primitive wrappers and fixed TypedArray constructor name inheritance regression:
 
@@ -1368,7 +1102,7 @@ Implemented ES spec-compliant boxed primitive wrappers and fixed TypedArray cons
 
 ---
 
-### 19: Symbol/TypedArray Prototype Fixes and Full Verification (+525 tests) — DONE
+## Phase 19: Symbol/TypedArray Prototype Fixes and Full Verification (+525 tests)
 
 Registered dedicated prototype builtins and fixed prototype chain conformance:
 
@@ -1409,7 +1143,7 @@ Registered dedicated prototype builtins and fixed prototype chain conformance:
 
 ---
 
-### 22: Tier 1+2 Conformance Improvements (+587 tests) — DONE
+## Phase 22: Tier 1+2 Conformance Improvements (+587 tests)
 
 Comprehensive conformance push implementing most of the Tier 1 and Tier 2 items from the roadmap analysis:
 

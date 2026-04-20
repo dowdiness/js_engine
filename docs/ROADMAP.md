@@ -194,42 +194,6 @@ Prioritized by estimated test impact and implementation effort. These are the hi
 
 Current: **24,519 / 27,599 executed (88.8%)**. Need **~341 more passing tests** to reach 90%. Tiers 1-2 are largely complete (Phase 22), Tier 4 polish done (Phase 23). The remaining items below are ordered by ROI.
 
-### Tier 1 — Quick Wins (~220+ tests, low effort) — ✅ Mostly DONE (P22)
-
-| # | Fix | Est. Impact | Status | Notes |
-|---|-----|-------------|--------|-------|
-| **1a** | **String escape sequences** (`\r`, `\b`, `\v`, `\f`, `\0`, `\xHH`) | ~90-120 tests | ✅ DONE (P22) | Also added line continuation support |
-| **1b** | **`%ThrowTypeError%` intrinsic** | ~13 tests | ✅ DONE (P22) | Strict arguments.callee/caller, Function.prototype.caller/arguments |
-| **1c** | **Annex B HTML string methods** | +13 tests | ✅ DONE (P21) | `get_string_method` gated behind `annex_b~` param |
-| **1d** | **`RegExpStringIteratorPrototype`** (for `String.prototype.matchAll`) | ~17 tests | ✅ Mostly DONE (2026-04-16) | Prototype, brand check, proper match arrays; 20/34 passing |
-| **1e** | **Import syntax validation** (reject escaped keywords, duplicate bound names) | ~10 tests | ✅ DONE (P22) | Escaped reserved words in binding positions |
-
-**Details:**
-
-**1a — String escape sequences.** ✅ DONE (P22). Added `\r`, `\b`, `\v`, `\f`, `\0`, `\xHH` hex escapes to both the string literal handler and template literal handler in `lexer.mbt`. Also added line continuation support (`\` followed by newline) in PR review fixes.
-
-**1b — `%ThrowTypeError%` intrinsic.** ✅ DONE (P22). Created a single frozen `%ThrowTypeError%` function installed as accessor descriptors on `arguments.callee`/`arguments.caller` (strict mode) and `Function.prototype.caller`/`Function.prototype.arguments`.
-
-**1c — Annex B HTML string methods.** ✅ DONE (P21). `get_string_method` gated behind `annex_b~` parameter.
-
-**1d — `RegExpStringIteratorPrototype`.** ✅ Mostly DONE (2026-04-16). Rewrote `[Symbol.matchAll]` to use `make_regex_match_array` for proper `index`/`input`/`groups` properties. Added brand check, non-global done-after-first-match semantics, `String.prototype.matchAll` delegation to `Symbol.matchAll`. Also added regex callback replace support in `[Symbol.replace]`. `RegExpStringIteratorPrototype`: 0/34 → **20/34** (58.8%). `String.prototype.matchAll`: 4/48 → **44/48** (91.7%). Remaining 14 failures require lazy `exec()` calls through prototype chain (RegExp subclass exec forwarding).
-
-### Tier 2 — Medium Wins (~650-800 tests, medium effort) — ✅ DONE (P22)
-
-| # | Fix | Est. Impact | Status | Notes |
-|---|-----|-------------|--------|-------|
-| **2a** | **Annex B block-level function hoisting** (sloppy mode) | ~504 tests | ✅ DONE (P22) | annexB/language 38.1% → **87.0%** (+400) |
-| **2b** | **`with` statement** | ~151 tests | ✅ DONE (P22) | Object environment record, SyntaxError in strict mode, primitive ToObject coercion |
-| **2c** | **RegExp `[Symbol.match]`/`[Symbol.replace]`/`[Symbol.split]`/`[Symbol.search]`** | ~50+ tests | ✅ DONE (P22) | RegExp 77.3% → **86.8%** (+81) |
-
-**Details:**
-
-**2a — Annex B block-level function hoisting.** ✅ DONE (P22). Implemented per Annex B.3.3: block-level function declarations in sloppy mode create `var` bindings in enclosing function scope, with value propagation at execution time. Strict mode preserves block-scoped behavior. Also handles bare FuncDecl in WithStmt body (PR review fix). `annexB/language` improved from 38.1% to **87.0%** (+400 tests).
-
-**2b — `with` statement.** ✅ DONE (P22). Added `WithStmt` AST node, parser rule, and object environment record in `environment.mbt` where property lookups check the target object first. SyntaxError in strict mode. PR review fixes added primitive-to-object coercion (ToObject) and TypeError for null/undefined, plus inherited binding writeback.
-
-**2c — RegExp well-known symbol methods.** ✅ DONE (P22). Installed `[Symbol.match]`, `[Symbol.replace]`, `[Symbol.split]`, `[Symbol.search]` on `RegExp.prototype`. Updated `String.prototype.match/replace/split/search` to delegate to symbol methods. PR review fixes added `String.prototype.replaceAll` global-flag enforcement and `Symbol.split` ToUint32 limit handling.
-
 ### Tier 3 — Feature Implementations (~3,000+ skipped tests unlocked, high effort)
 
 These are major missing language features. Each unlocks a large batch of currently-skipped tests but requires significant implementation work.
@@ -254,36 +218,6 @@ These are major missing language features. Each unlocks a large batch of current
 4. This is the most complex single feature due to the interaction between brand checks, inheritance, and static private members.
 
 **3d — RegExp named groups & lookbehind.** Named groups ✅ DONE (PR #47, 2026-04-15). Lookbehind `(?<=...)` / `(?<!...)` still skipped via `regexp-lookbehind` feature flag. Requires backward matching from the current position. Unicode property escapes `\p{Letter}` / `\P{Script=Greek}` still skipped — requires Unicode property tables (large data dependency).
-
-### Tier 4 — Polish & Edge Cases (~200-300 tests, varied effort) — ✅ Mostly DONE (P23)
-
-Targeted fixes for specific failing subcategories within otherwise high-performing areas.
-
-| # | Fix | Est. Impact | Effort | Category |
-|---|-----|-------------|--------|----------|
-| **4a** | GeneratorFunction constructor | ~19 tests | Medium | ✅ DONE (P23) — `built-ins/GeneratorFunction` 9.5% → **100.0%** |
-| **4b** | Generator prototype chain fix | ~7 tests | Medium | ✅ DONE (P23) — `built-ins/GeneratorPrototype` 73.8% → **88.5%** |
-| **4c** | `language/directive-prologue` edge cases | ~13 tests | Low | ✅ Improved (P23) — `language/directive-prologue` 79.0% (escaped "use strict" rejection) |
-| **4d** | `language/line-terminators` (beyond `\r`) | ~10 tests | Low | ✅ DONE (P23) — 48.8% → **68.3%** |
-| **4e** | `built-ins/undefined` conformance | ~3 tests | Very Low | ✅ DONE (P23) — 57.1% → **71.4%** |
-| **4f** | Eval completion values | ~30-50 tests | Medium-High | ✅ Improved (P23) — loop/switch completion values fixed |
-| **4g** | Module system improvements | ~50-100 tests | High | Remaining — `language/module-code` (36.5%) |
-
-**Details:**
-
-**4a — GeneratorFunction constructor.** ✅ DONE (P23). Implemented `GeneratorFunction("a", "yield a")` constructor by extending the `Function` constructor logic. Set up `GeneratorFunction` prototype chain with `%GeneratorFunction.prototype%` and proper `constructor` link. `built-ins/GeneratorFunction` improved from 9.5% to **100.0%** (21/21).
-
-**4b — Generator prototype chain fix.** ✅ DONE (P23). Fixed generator function prototype so `Object.getPrototypeOf(genFunc)` returns `%GeneratorFunction.prototype%` instead of `null`. `built-ins/GeneratorPrototype` improved from 73.8% to **88.5%** (54/61). Remaining 7 failures involve `return()` with `finally` block interaction in the statement-replay model.
-
-**4c — Directive prologue fix.** ✅ Improved (P23). Fixed directive prologue scanning to check full prologue (not just first statement) and reject escaped `"use strict"` (e.g., `"use\x20strict"`). Added `has_escape` field to `StringLit` AST node.
-
-**4d — `language/line-terminators`.** ✅ DONE (P23). Full ECMAScript LineTerminator support: `\u2028`/`\u2029` recognized in lexer main loop, single/multi-line comments, string/template literals, and line continuation. Fixed `\r` handling as line terminator (not whitespace). 48.8% → **68.3%**.
-
-**4e — `built-ins/undefined` conformance.** ✅ DONE (P23). Added `undefined`, `NaN`, `Infinity` as globalThis properties with correct descriptors (non-writable, non-enumerable, non-configurable). 57.1% → **71.4%**.
-
-**4f — Eval completion values.** ✅ Improved (P23). Fixed eval completion values for loops (`while`, `for`, `do-while`, `for-in`, `for-of`) and switch statements to properly propagate body values. The 97 remaining failures in `language/eval-code` involve strict-mode scoping, arrow function `this` binding, and nested `var` hoisting.
-
-**4g — Module system.** The 198 failures in `language/module-code` and 82 in `language/import` stem from: `import defer` syntax (Stage 3, ~50 tests), circular import resolution, live binding updates, `export * as ns` namespace re-exports, and multi-file module fixtures that the test runner doesn't supply.
 
 ### Summary: Projected Impact
 
@@ -315,24 +249,6 @@ Failures are now widely distributed. No single fix unlocks 300+ tests. Progress 
 | `language/eval-code` | 283 | 169 | 62.6% | Strict scoping, var hoisting edge cases |
 | `built-ins/RegExpStringIteratorPrototype` | 20 | 14 | 58.8% | Improved 2026-04-16; remaining need lazy exec() |
 
-### Previously Completed
-
-- **WeakMap / WeakSet** — ✅ DONE (Phase 20). Both at 100% pass rate.
-- **Iterator Prototypes** — ✅ DONE (Phase 20). MapIteratorPrototype, SetIteratorPrototype, StringIteratorPrototype all at 100%.
-- **RegExp Improvements** — ✅ Substantial (Phase 20+22). Lookahead, multiline, backreferences, dotAll, sticky, unicode flag, Symbol.match/replace/split/search. 86.8% pass rate.
-- **Boxed Primitives** — ✅ DONE (Phase 18). `new String/Number/Boolean` with internal slots, Object() wrapping, ToPrimitive coercion.
-- **`with` statement** — ✅ DONE (Phase 22). Object environment record, SyntaxError in strict mode, primitive coercion.
-- **Annex B block-level function hoisting** — ✅ DONE (Phase 22). annexB/language 38.1% → 87.0%.
-- **String escape sequences** — ✅ DONE (Phase 22). `\r`, `\b`, `\v`, `\f`, `\0`, `\xHH`, line continuation.
-- **`%ThrowTypeError%` intrinsic** — ✅ DONE (Phase 22). Strict arguments/Function.prototype caller/arguments.
-- **DataView** — ✅ DONE (Phase 16+22). 377/377 (100%).
-- **Class public fields** — ✅ DONE (pre-2026-04-16). Feature flags removed, ~97% pass rate.
-- **async/await** — ✅ DONE (PR #45, 2026-04-12). Feature flag removed.
-- **RegExp named groups** — ✅ DONE (PR #47, 2026-04-15). 28/70 named-groups tests pass.
-- **RegExpStringIteratorPrototype** — ✅ Mostly done (2026-04-16). 20/34 passing. matchAll 44/48.
-- **Regex callback replace** — ✅ DONE (2026-04-16). `[Symbol.replace]` supports function replacements.
-- **Proxy trap invariants** — ✅ Mostly done (2026-04-16). 9 traps with full invariant validation in centralized `proxy_helpers.mbt`. ownKeys 50/50 (100%), isExtensible 20/22, overall Proxy 366/536 (68.3%, was 42.9%). Remaining: set receiver forwarding, getOwnPropertyDescriptor descriptor comparison.
-
 ---
 
 ## Phase 12+ Targets
@@ -355,23 +271,6 @@ Failures are now widely distributed. No single fix unlocks 300+ tests. Progress 
 | Proxy/Reflect | — | ✅ Done (Phase 15-19) — Proxy 262/272 (96.3%), Reflect 153/153 (100.0%) |
 | Promise improvements | — | ✅ Done (Phase 13) — 614/618 pass (99.4%) |
 | TypedArray/ArrayBuffer/DataView | — | ✅ Done (Phase 16-19) — DataView 353/388 (91.0%), ArrayBuffer 73/78 (93.6%), TypedArrayConstructors 342/359 (95.3%) |
-
-### Promise Conformance Batch (Implemented)
-
-**Status (2026-02-12)**: Implemented and verified on targeted Promise slice.
-
-Completed work for `Promise.all`, `Promise.allSettled`, `Promise.any`, and `Promise.race`:
-1. Combinators now use constructor-aware capability creation (`NewPromiseCapability(C)` style).
-2. Shared abrupt completion handling is centralized and used across combinators.
-3. Iterator-close behavior on abrupt iteration paths is aligned and validated.
-4. Final resolve/reject calls in combinators route through abrupt-safe handling.
-5. Promise resolve/thenable behavior updated for poisoned/thenable/array-like edge paths.
-
-**Validation**:
-- `python3 test262-runner.py --filter "built-ins/Promise" --summary --output test262-promise-results.json`
-- Result: 599/599 passing (100%), 41 skipped, 0 failed.
-
-**Note**: Proxy support was added in Phase 15, un-skipping the previously deferred `this-value-proxy.js` test.
 
 ---
 
