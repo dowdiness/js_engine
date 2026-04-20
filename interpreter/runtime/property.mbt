@@ -1749,7 +1749,12 @@ pub fn Interpreter::set_computed_property(
                 message="'set' on proxy: trap returned falsish",
               )
             }
+            return value
           }
+          // ES §10.5.9 step 11-12 invariants. Same checks proxy_set runs for
+          // the string-key path; must run here so `p[k] = v` and the proto-
+          // chain delegation (Proxy(_) arm of the walk) match spec.
+          check_proxy_set_trap_invariants(target, prop_key, value)
           return value
         }
         None => {

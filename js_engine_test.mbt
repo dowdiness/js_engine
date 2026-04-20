@@ -1540,6 +1540,34 @@ test "B.1: writable data on proto short-circuits walk before deeper proxy" {
 }
 
 ///|
+test "B.1: computed set on proxy enforces §10.5.9 invariant when trap returns true" {
+  // The string-key path through set_property / proxy_set already runs the
+  // ES §10.5.9 step 11 invariant: if the target has a non-configurable,
+  // non-writable data property at P, the trap's returned-true is a lie and
+  // [[Set]] must TypeError. The computed-key path through
+  // set_computed_property was missing this check — directly via p["x"]=v and
+  // transitively via proto-chain delegation (obj inherits from proxy).
+  let src =
+    #|const target = {};
+    #|Object.defineProperty(target, "x", {
+    #|  value: 1,
+    #|  writable: false,
+    #|  configurable: false,
+    #|});
+    #|const p = new Proxy(target, { set() { return true; } });
+    #|let directThrew = false;
+    #|try { "use strict"; p["x"] = 2; } catch (e) { directThrew = e instanceof TypeError; }
+    #|console.log(directThrew);
+    #|
+    #|const obj = Object.create(p);
+    #|let indirectThrew = false;
+    #|try { "use strict"; obj["x"] = 2; } catch (e) { indirectThrew = e instanceof TypeError; }
+    #|console.log(indirectThrew);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"true\", \"true\"]")
+}
+
+///|
 test "B.1 regression: trap-less proxy around Map/Set lands expando on receiver target" {
   // Reviewer P1: define_value_on_receiver previously fell through to the
   // primitive `_` arm for Map and Set receivers, silently dropping writes

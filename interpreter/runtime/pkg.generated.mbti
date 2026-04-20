@@ -15,6 +15,8 @@ pub let boolean_prototype_ref : @ref.Ref[Value?]
 
 pub fn call_callable_direct(Value, Value, Array[Value], interp? : Interpreter?) -> Value raise
 
+pub fn check_proxy_set_trap_invariants(Value, Value, Value) -> Unit raise
+
 pub fn clear_array_length_override(ArrayData) -> Unit
 
 pub fn collect_target_own_keys(Value, SymbolState) -> Array[Value]
