@@ -337,57 +337,10 @@ Low. These features are not required for modern JavaScript usage. Implement only
 
 ---
 
-## Architecture
 
-Full analysis: [archive/architecture-redesign-2026-04-15.md](archive/architecture-redesign-2026-04-15.md)
+## Structural Refactoring (In Progress)
 
-### Current Structure
-
-The interpreter is a single flat MoonBit package (`interpreter/`) with 48 focused files
-produced by the structural refactoring (April 2026, archived in
-`archive/2026-04-09-structural-refactoring.md`). Three conceptual groups exist but
-are not yet enforced by package boundaries:
-
-| Group | Files |
-|-------|-------|
-| Core types | `value.mbt`, `environment.mbt`, `errors.mbt`, `symbols.mbt`, `conversions.mbt`, `factories.mbt`, `iterators.mbt`, `array_side_tables.mbt` |
-| Core execution | `interpreter.mbt`, `eval_expr.mbt`, `exec_stmt.mbt`, `call.mbt`, `property.mbt`, `class.mbt`, `construct.mbt`, `hoisting.mbt`, `destructuring.mbt`, `operators.mbt`, `modules.mbt`, `generator.mbt`, `async.mbt` |
-| Stdlib | `builtins.mbt` + 24 `builtins_*.mbt` files |
-
-### Restructuring — COMPLETE (2026-04-15)
-
-All four stages shipped on branch `claude/restructure-architecture-VkLTl`.
-
-**Stage 1 — Per-call execution context** ✅
-Replaced `mut strict: Bool` and `mut current_generator: GeneratorObject?` on the
-`Interpreter` struct with a value-type `ExecContext` passed through `eval_expr`,
-`exec_stmt`, and `call_value`. Fixes correctness bugs including sloppy-mode `this`
-in async functions (agent-todo #10). Compiler-guided: removing the fields makes all
-missing updates compile errors.
-
-**Stage 2 — Timer API on HostEnv** ✅
-Added `Interpreter::schedule_timer` and `Interpreter::cancel_timer` to replace the 14
-direct `interp.host.*` field accesses in `builtins_promise.mbt`. Eliminates the only
-real coupling violation in the codebase.
-
-**Stage 3 — runtime/stdlib package boundary** ✅
-Split the flat `interpreter/` package into `interpreter/runtime/` (execution engine)
-and `interpreter/stdlib/` (JS standard library). The compiler now statically enforces
-the `stdlib → runtime` dependency rule. A `StdlibHooks` struct breaks the one
-legitimate callback cycle (stdlib registering methods the runtime needs to call).
-
-**Stage 4 — Descriptor authority consolidation** ✅
-Moved `validate_non_configurable` from `stdlib/builtins_object_helpers.mbt` to
-`runtime/property.mbt` — the runtime is now the sole authority for
-`[[DefineOwnProperty]]` constraint checks. Also extracted 4 inlined
-`PropDescriptor → JS object` conversions into shared `make_data_desc_obj` /
-`make_accessor_desc_obj` helpers, eliminating ~100 lines of duplication.
-
-### Post-April-15 Redesign (in progress)
-
-Next-phase pressures identified after the April-15 restructuring. Full
-analysis in [architecture-redesign-2026-04-17-probes.md](architecture-redesign-2026-04-17-probes.md);
-stage ordering tracked in [agent-todo.md](agent-todo.md).
+Next-phase structural pressures identified after the April-15 restructure. Full analysis in [architecture-redesign-2026-04-17-probes.md](architecture-redesign-2026-04-17-probes.md); stage ordering tracked in [agent-todo.md](agent-todo.md).
 
 **Stage A — PropertyBag extraction** ✅ (2026-04-17, PR #49)
 Introduced `PropertyBag` struct consolidating the quartet
@@ -400,27 +353,15 @@ Also introduced custom-constructor methods (`PropertyBag::new`,
 test262 delta, 884/884 unit tests. CodeRabbit surfaced 4 pre-existing
 bugs (tracked in `agent-todo.md` as items #7-10).
 
-**Stages B.1 / B.2 / C / B.3 / D** — planned. B.1 (`[[Set]]` dispatcher)
-and C (`ArrayData.bag`) are the next test262-positive targets.
+**Stage B.1 — `[[Set]]` dispatcher: receiver threading + landing rule** ✅ (PR #69)
+Proxy/Reflect `[[Set]]` now threads the receiver through proto walks and
+lands writes per the ES §10.1.9.2 rules. Proxy 71.5% / Reflect 84.3% in
+targeted verification after this change.
 
-### Key Design Decisions
+**Stages B.2 / C / B.3 / D** — planned. Stage C (`ArrayData.bag`) and
+B.2 (dispatcher consolidation debt inherited from B.1) are the next
+test262-positive targets.
 
-1. **Functions are objects** — `Object` with `callable` field, enabling property assignment on functions
-2. **Exception propagation** — MoonBit's native `raise` with `JsException(Value)` suberror
-3. **Property descriptors** — `ObjectData.descriptors` map alongside `properties`
-4. **Array storage** — Dedicated `Array(ArrayData)` variant with `elements: Array[Value]`
-5. **Builtin organization** — Split into `builtins_object.mbt`, `builtins_array.mbt`, `builtins_string.mbt`, `builtins_typedarray.mbt`, `builtins_arraybuffer.mbt`, `builtins_dataview.mbt`, etc.
-6. **Signal enum for control flow** — `Normal(Value)`, `ReturnSignal(Value)`, `BreakSignal(String?)`, `ContinueSignal(String?)` propagate return/break/continue without exceptions
-7. **Generator replay model** — Generator bodies are re-executed from the start on each `.next()`, replaying past statements and resuming at the saved PC. Avoids a separate frame stack.
+## Architecture
 
-### Value Variants
-
-`Number`, `String_`, `Bool`, `Null`, `Undefined`, `Object`, `Array`, `Symbol`, `Map`, `Set`, `Promise`, `Proxy`
-
-### Signal Types
-
-`Normal(Value)`, `ReturnSignal(Value)`, `BreakSignal(String?)`, `ContinueSignal(String?)`
-
-### Generator Suberrors
-
-`YieldSignal(Value)`, `GeneratorReturnSignal(Value)` — used for control flow within generator execution, caught by the generator runtime to suspend or complete the generator.
+For design principles, value model, control flow, and host integration, see [architecture.md](architecture.md). Completed restructuring analyses are in [archive/](archive/).
