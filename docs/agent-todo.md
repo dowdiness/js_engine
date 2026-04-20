@@ -459,9 +459,10 @@ param-default `eval("var arguments")` case (~96 tests, out of scope #1 below).
 
     Estimated net savings: −150 LoC once both arms are migrated.
     Pure refactor, zero behavior change; test262 class-scope +
-    language/expressions/new expected to stay flat. Sequence
-    Stage B.1 [[Set]] dispatcher first — that lane has test262
-    unlocks (~22 Proxy) this does not.
+    language/expressions/new expected to stay flat. Previously
+    sequenced behind Stage B.1 (which shipped 2026-04-20 as PR #69);
+    now queued alongside Stage B.2 — pick whichever fits the next
+    session's appetite.
 
 #### B. test262 runner `_FIXTURE.js` path resolver — sibling gap CLOSED (2026-04-18, +17 tests)
 
@@ -488,9 +489,42 @@ representation). Staged:
   `SetData::new` custom constructors (29f6164). 0 test262 delta, 884/884
   unit tests, CodeRabbit surfaced 4 pre-existing bugs (tracked below, not
   regressions).
-- **Stage B.1 — `[[Set]]` dispatcher.** ~22 Proxy tests.
+- ~~**Stage B.1 — `[[Set]]` dispatcher.**~~ ✅ DONE (2026-04-20, PR #69,
+  merge `ab5c009`). **Net +30 test262 tests** (Proxy 370→382 +12,
+  Reflect 240→258 +18, Object 0 delta). 927→940 unit tests (+13 whitebox
+  guards). Five review rounds expanded the PR past the 22-test probe:
+  (a) writable-data short-circuit in the proto walk so a higher Proxy
+  prototype's set trap doesn't fire after a data-descriptor stop;
+  (b) `Reflect.set` setter-only accessor preflight — gate non-writable
+  block on `setter is None` (accessor descriptors default `writable=false`);
+  (c) `Map(rdata)` / `Set(rdata)` arms added to `define_value_on_receiver`
+  (they carry `PropertyBag` since Stage A but were falling through to the
+  primitive `_`); (d) shared `check_proxy_set_trap_invariants(target, key,
+  value)` helper (handles String + Symbol keys) called from both `proxy_set`
+  and `set_computed_property`'s Proxy-trap branch — previously only the
+  string-key path ran §10.5.9 step 11-12; (e) `existing_receiver_desc_blocks`
+  predicate pulled §10.1.9.2 step 3.e forward from B.2 — `Reflect.set({},
+  "x", v, frozen)` was mutating frozen objects before this fix.
+
+  **B.2 debt inherited from B.1's landing helper (flagged inline as `B.2:`
+  comments in property.mbt):**
+  - Array receiver landing delegates through `set_property`, re-firing
+    Array `[[Set]]` exotic semantics instead of `[[DefineOwnProperty]]`.
+    Observable: `Reflect.set({}, "length", 10, arr)` should return false
+    (full-attributes redefine of non-configurable `length`) but truncates.
+  - Proxy receiver arm unwraps targets rather than dispatching through
+    `defineProperty` trap. The `Proxy/set/trap-is-missing-receiver-multiple-
+    calls*` family (4 tests) remains failing; needs a real `[[DefineOwn
+    Property]]` dispatcher to hit both getOwnPropertyDescriptor and
+    defineProperty traps on the receiver chain.
+  - Map/Set/Promise/Array proto-chain inherited-setter walks skipped
+    entirely because those four structs carry no `prototype` field (only
+    `ObjectData` does). Separate architectural item — adding prototype
+    fields to the four structs or threading implicit builtin prototypes
+    through the dispatcher. Rare user-observable case (`class D extends
+    Map` with setters on Map.prototype).
 - **Stage B.2 — `[[GetOwnProperty]]` + `[[DefineOwnProperty]]`.** ~35–45
-  Proxy tests.
+  Proxy tests. Also retires the three B.1 approximations above.
 - **Stage C — ArrayData.bag.** ~700+ Array tests; unlocks Issue #1
   (descriptor visibility). Ship BEFORE Stage B.3 (shared read site).
 - **Stage B.3 — `[[HasProperty]]` dispatcher.** ~15 Proxy tests.
