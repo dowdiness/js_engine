@@ -1540,6 +1540,48 @@ test "B.1: writable data on proto short-circuits walk before deeper proxy" {
 }
 
 ///|
+test "B.1 Reflect.set: setter-only accessor (own) must invoke setter via set_property" {
+  // Preflight previously short-circuited to false for any descriptor with
+  // `getter is None && !writable`, which wrongly rejected setter-only
+  // accessors (accessor descriptors default `writable=false`). The fix
+  // requires `setter is None` alongside `getter is None` for the non-writable
+  // data block. Exercises Object.defineProperty + Reflect.set with property
+  // "x" on an accessor descriptor that has `set(v)` but no `get`.
+  let src =
+    #|let captured;
+    #|const obj = {};
+    #|Object.defineProperty(obj, "x", {
+    #|  set(v) { captured = v },
+    #|  configurable: true,
+    #|});
+    #|const result = Reflect.set(obj, "x", 42);
+    #|console.log(result);
+    #|console.log(captured);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"true\", \"42\"]")
+}
+
+///|
+test "B.1 Reflect.set: setter-only accessor (own, Symbol key) invokes setter via set_computed_property" {
+  // Same as the string-keyed variant but exercises the
+  // set_computed_property Symbol branch and the symbol_descriptors preflight
+  // arm in builtins_reflect.mbt.
+  let src =
+    #|let captured;
+    #|const k = Symbol("k");
+    #|const obj = {};
+    #|Object.defineProperty(obj, k, {
+    #|  set(v) { captured = v },
+    #|  configurable: true,
+    #|});
+    #|const result = Reflect.set(obj, k, 42);
+    #|console.log(result);
+    #|console.log(captured);
+  let (output, _) = @js_engine.run(src)
+  inspect(output, content="[\"true\", \"42\"]")
+}
+
+///|
 test "B.1a Symbol key: inherited setter via proxy threads receiver" {
   // Same as the first test but keyed by Symbol — exercises the
   // set_computed_property path alongside set_property.

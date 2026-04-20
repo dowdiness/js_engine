@@ -1628,9 +1628,18 @@ fn Interpreter::define_value_on_receiver(
           value
         }
       }
-    // Array receiver: delegate back through the Array branch of set_property
-    // with receiver = obj so the length/numeric-index/named logic fires once
-    // without re-entering the landing helper.
+    // B.2: Array receiver landing diverges from the spec. `CreateDataProperty`
+    // (the ES §10.1.9.2 step 3 landing) goes through `[[DefineOwnProperty]]`,
+    // which for Arrays is exotic (§10.4.2.4 ArraySetLength rejects changes to
+    // non-configurable/non-writable `length`; indexed `[[DefineOwnProperty]]`
+    // interacts with length differently from `[[Set]]`). We don't yet have a
+    // `[[DefineOwnProperty]]` dispatcher, so this branch delegates back through
+    // set_property / set_computed_property with receiver===obj — that re-fires
+    // Array's `[[Set]]` exotic path, which is NOT the same operation. Known
+    // observable divergence: `Reflect.set({}, "length", 10, arr)` should return
+    // false (attempts a full-attributes redefine of arr.length), but this
+    // delegation truncates the array instead. The full
+    // [[DefineOwnProperty]]-on-receiver protocol lands with Stage B.2.
     Array(_) =>
       match key {
         Symbol(_) =>
@@ -1986,6 +1995,14 @@ pub fn Interpreter::set_computed_property(
         }
       }
     Map(data) => {
+      // PRE-EXISTING LIMITATION (not a regression from B.1): Map/Set/Promise/
+      // Array branches do not walk their instance's prototype chain for
+      // inherited setters because MapData/SetData/PromiseData/ArrayData carry
+      // no `prototype` field (only ObjectData does). Setters defined on
+      // Map.prototype / Set.prototype / etc. are therefore invisible here and
+      // also when receiver===obj below. Fixing this requires either adding
+      // `prototype` to the four structs or threading the builtin prototypes
+      // through the dispatcher — both out of B.1 scope.
       if !strict_equal(obj, receiver) {
         return self.define_value_on_receiver(receiver, key, value, loc, strict)
       }

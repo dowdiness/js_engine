@@ -734,9 +734,15 @@ fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
       // 4th argument is the Receiver; defaults to the target per spec.
       let receiver = if args.length() >= 4 { args[3] } else { target }
       // Pre-flight own-descriptor blockers (spec-safe): own accessor getter-
-      // only or own non-writable data → return false. The former `!extensible
+      // only or own non-writable DATA → return false. The former `!extensible
       // && !has(P)` short-circuits were wrong because an inherited setter can
       // still run successfully on a non-extensible target (Codex Q6).
+      //
+      // The non-writable check requires `setter is None` alongside
+      // `getter is None` — accessor descriptors default `writable=false`, so a
+      // setter-only accessor (getter=None, setter=Some(_), writable=false)
+      // would otherwise be preemptively rejected instead of invoking the
+      // setter through the dispatcher.
       match target {
         Object(data) =>
           match key {
@@ -746,7 +752,9 @@ fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
                   if desc.getter is Some(_) && desc.setter is None {
                     return Value::Bool(false)
                   }
-                  if desc.getter is None && !desc.writable {
+                  if desc.getter is None &&
+                    desc.setter is None &&
+                    !desc.writable {
                     return Value::Bool(false)
                   }
                 }
@@ -758,7 +766,9 @@ fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
                   if desc.getter is Some(_) && desc.setter is None {
                     return Value::Bool(false)
                   }
-                  if desc.getter is None && !desc.writable {
+                  if desc.getter is None &&
+                    desc.setter is None &&
+                    !desc.writable {
                     return Value::Bool(false)
                   }
                 }
