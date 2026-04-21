@@ -2,7 +2,11 @@
 
 A minimal JavaScript tree-walking interpreter written in [MoonBit](https://www.moonbitlang.com/).
 
-- Conformance: 86.6% strict / 85.0% non-strict on test262 (each file is run in both modes, reported separately). See [docs/ROADMAP.md](docs/ROADMAP.md).
+- Conformance on [test262](https://github.com/tc39/test262) (each file run in both modes, reported separately — summing would double-count files):
+  - **86.7% strict / 85.1% non-strict** *passed / executed* — the number commonly quoted as "test262 pass rate", but it excludes ~40% of discovered files that are skipped for unimplemented features (Temporal, class-private, BigInt, async-iteration, …).
+  - **51.2% strict / 51.3% non-strict** *passed / discovered* — the honest spec-coverage figure, counting skipped files as un-passed.
+
+  See [docs/ROADMAP.md](docs/ROADMAP.md) for the full table and [docs/supported-features.md](docs/supported-features.md) for the skipped-feature list.
 - Self-hosting: compiles to JavaScript via MoonBit's JS target and runs on Node.js.
 
 ## Quick Start

@@ -2,20 +2,29 @@
 
 ## Current Status
 
-**Test262** — CI run [24675053260](https://github.com/dowdiness/js_engine/actions/runs/24675053260) on tip `e3a24ab`, 2026-04-20. Each test file is run twice, once in strict mode and once in non-strict. The two are reported separately (summing them would double-count files):
+**Test262** — CI run [24730849102](https://github.com/dowdiness/js_engine/actions/runs/24730849102) on tip `f89898a` (v0.2.0), 2026-04-21. Each test file is run twice, once in strict mode and once in non-strict. The two are reported separately (summing them would double-count files):
 
 | Mode | Discovered | Skipped | Executed | Passed | Failed | Timeouts | Passed / Executed | Passed / Discovered |
 |---|---|---|---|---|---|---|---|---|
-| strict | 44,986 | 18,270 | 26,598 | 23,039 | 3,559 | 117 | **86.6%** | 51.2% |
-| non-strict | 47,692 | 18,811 | 28,769 | 24,452 | 4,317 | 111 | **85.0%** | 51.3% |
+| strict | 44,986 | 18,270 | 26,601 | 23,054 | 3,547 | 114 | **86.7%** | 51.2% |
+| non-strict | 47,692 | 18,811 | 28,766 | 24,467 | 4,299 | 114 | **85.1%** | 51.3% |
 
-CI regression baseline: `test262-baseline.json` (min 23,520 non-strict / 22,450 strict passed; currently +932 / +589 above).
+CI regression baseline: `test262-baseline.json` (min 23,520 non-strict / 22,450 strict passed; currently +947 / +604 above).
 
-**Unit tests**: 978 / 978 passing (was 940 at CI run; +38 regression guards from PRs #70 + #71 merged 2026-04-21).
+**Unit tests**: 978 / 978 passing.
 
-> **Note on the two rates.** The *Passed / Executed* column (86.6% / 85.0%) is what JS engines normally report as "test262 pass rate" — but it excludes the ~40% of the suite we skip entirely. The *Passed / Discovered* column (51.2% / 51.3%) is the honest spec-coverage figure including skipped features (class private fields ~2,437, async-iteration ~3,731, Temporal ~4,482, BigInt ~1,250, regexp-unicode-property ~679, etc.). Neither number alone tells the full story.
+### How to read these rates
 
-For per-category pass rates, Annex B legacy features, and not-yet-implemented features, see [supported-features.md](supported-features.md).
+The two rate columns measure different things and neither number alone tells the full story. Quote **both** denominators whenever you cite a test262 figure, and always say which mode you mean.
+
+| Column | What it means | Pitfall |
+|---|---|---|
+| **Passed / Executed** (86.7% / 85.1%) | The "headline" rate engines usually quote. Numerator and denominator both *exclude* ~18k skipped files per mode (~40% of the suite). | Rises mechanically when **more** tests get skipped — so it's not a reliability signal on its own. A feature whose tests are 100% skipped contributes 0 to this ratio. |
+| **Passed / Discovered** (51.2% / 51.3%) | Honest spec-coverage figure. Skipped files count as un-passed, so it only moves when the engine itself improves. | Falls when the test262 suite adds new-edition tests faster than we implement them, even if our engine is unchanged. |
+
+Skips dominate the gap: class-fields-private ~2,437, async-iteration ~3,731, Temporal ~4,482, BigInt ~1,250, regexp-unicode-property ~679, and others ([full list in supported-features.md](supported-features.md#skipped-features)). Implementing any of these *narrows* the gap between the two rates — and, paradoxically, can briefly lower Passed / Executed as previously-skipped tests start executing and failing.
+
+**Do not sum strict and non-strict figures.** Each file is run in both modes, so adding them double-counts the underlying ~45–48k test files. Report per-mode or not at all. See [TEST262.md](TEST262.md#output-format) for the runner-level definition and [supported-features.md](supported-features.md) for per-category pass rates, Annex B legacy features, and not-yet-implemented features.
 
 **Targeted verification (2026-02-11)**: `language/block-scope` slice is 106/106 passing (39 skipped).
 **Targeted verification (2026-02-12)**: `built-ins/Promise` slice is 599/599 passing (100%, 41 skipped). `language/block-scope` is 106/106 passing (100%, 39 skipped).
@@ -84,7 +93,7 @@ node ./_build/js/debug/build/cmd/main/main.js 'console.log(1 + 2)'
 # => 3
 ```
 
-All 940 unit tests pass on WASM-GC (verified in CI run 24675053260). The JS target builds and runs but the unit-test count on JS has not been re-verified since Phase 24 added 59 new tests. See [SELF_HOST_JS_RESEARCH.md](SELF_HOST_JS_RESEARCH.md) for full analysis.
+All 978 unit tests pass on WASM-GC (verified in CI run 24730849102). The JS target builds and runs but the unit-test count on JS has not been re-verified since Phase 24 added 59 new tests. See [SELF_HOST_JS_RESEARCH.md](SELF_HOST_JS_RESEARCH.md) for full analysis.
 
 ### What was needed
 - **Backend-specific argv handling**: `process.argv` on JS includes `["node", "script.js", ...]`, so user args start at index 2 (vs index 1 on WASM). Solved with `.js.mbt` / `.wasm.mbt` / `.wasm-gc.mbt` files.
@@ -103,7 +112,7 @@ Prioritized by estimated test impact and implementation effort. These are the hi
 
 ### Path to 90%
 
-Current (CI run 24675053260, 2026-04-20): strict **86.6%** (23,039 / 26,598 executed), non-strict **85.0%** (24,452 / 28,769 executed). To reach 90% passed/executed: strict needs ~900 more passing tests, non-strict needs ~1,440. To reach 90% passed/discovered we'd additionally need to unskip large feature buckets (class-private ~2,437, regexp-unicode-property ~679, etc.). Tiers 1-2 are largely complete (Phase 22), Tier 4 polish done (Phase 23). Items below are ordered by ROI against the passed/executed denominator.
+Current (CI run 24730849102, 2026-04-21, v0.2.0): strict **86.7%** (23,054 / 26,601 executed), non-strict **85.1%** (24,467 / 28,766 executed). To reach 90% passed/executed: strict needs ~887 more passing tests, non-strict needs ~1,423. To reach 90% passed/discovered we'd additionally need to unskip large feature buckets (class-private ~2,437, regexp-unicode-property ~679, etc.). Tiers 1-2 are largely complete (Phase 22), Tier 4 polish done (Phase 23). Items below are ordered by ROI against the passed/executed denominator.
 
 ### Tier 3 — Feature Implementations (~3,000+ skipped tests unlocked, high effort)
 
@@ -132,7 +141,7 @@ These are major missing language features. Each unlocks a large batch of current
 
 ### Summary: Projected Impact (pre-Phase-24 methodology)
 
-> **Methodology note.** The cumulative counts and rates below are **file-level** numbers from before Phase 24 changed the runner to test both strict and non-strict modes separately. They are not directly comparable to the current per-mode CI numbers in the headline (strict 86.6%, non-strict 85.0%). Leaving them as historical progression; do not project forward from these figures.
+> **Methodology note.** The cumulative counts and rates below are **file-level** numbers from before Phase 24 changed the runner to test both strict and non-strict modes separately. They are not directly comparable to the current per-mode CI numbers in the headline (strict 86.7%, non-strict 85.1%). Leaving them as historical progression; do not project forward from these figures.
 
 | Milestone | Tests Fixed | Cumulative | Rate (file-level, pre-P24) |
 |-----------|------------|------------|------|
@@ -147,7 +156,7 @@ These are major missing language features. Each unlocks a large batch of current
 
 ### Root Cause Clustering of Remaining Failures (snapshot 2026-04-16, stale)
 
-> **Stale warning.** The per-category numbers in this table are from a 2026-04-16 run that pre-dates PRs #64, #65, #66, #67, #68, #69 and the fixture-resolver fix. They are kept here for shape (which categories dominate failures) but **do not match** the current CI run (24675053260). Re-run `python3 test262-runner.py --filter <category> --summary` before citing any specific number.
+> **Stale warning.** The per-category numbers in this table are from a 2026-04-16 run that pre-dates PRs #64, #65, #66, #67, #68, #69, #70, #71 and the fixture-resolver fix. They are kept here for shape (which categories dominate failures) but **do not match** the current CI run (24730849102). Re-run `python3 test262-runner.py --filter <category> --summary` before citing any specific number.
 
 Failures are now widely distributed. No single fix unlocks 300+ tests. Progress requires many small, targeted fixes.
 

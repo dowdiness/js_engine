@@ -1,4 +1,4 @@
-.PHONY: build test test262 test262-quick test262-analyze test262-download clean
+.PHONY: build test test262 test262-quick test262-analyze test262-download test262-report clean
 
 # Build the JS engine
 build:
@@ -52,6 +52,11 @@ test262-analyze: test262-download
 	python3 test262-analyze.py \
 		--test262 ./test262 \
 		--output test262-analysis.json
+
+# Download the latest Test262 CI results and print a paste-ready report.
+# Pass ARGS="..." to forward flags, e.g. make test262-report ARGS="--run 24730849102"
+test262-report:
+	python3 scripts/report-test262.py --with-editions $(ARGS)
 
 # Clean build artifacts
 clean:

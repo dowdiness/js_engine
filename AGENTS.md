@@ -21,6 +21,20 @@ When implementing or debugging JavaScript built-in methods:
 2. **Read the spec algorithm for the specific method** before claiming it's buggy or before implementing a fix. The test262 `info` field quotes the exact spec steps — use it.
 3. **Do not copy-paste implementations between methods.** Start from the spec algorithm for each. ES5 methods (`forEach`, `map`, `filter`) and ES6+ methods (`find`, `findIndex`, `includes`) differ on hole handling, return values, and species usage by design.
 
+## Test262 Reporting Convention
+
+When citing a test262 figure — in docs, commit messages, PR descriptions, release notes, or any conversation with the user — follow this rule:
+
+1. **Always per-mode.** The runner tests each file twice (strict and non-strict) and the two outcomes differ. Say which mode, or report both. Never sum them — each file is counted once per mode, so a sum double-counts.
+2. **Always both denominators.** Quote **Passed / Executed** *and* **Passed / Discovered** (or at minimum mention the skip count alongside the rate). A bare "85% on test262" hides that ~40% of discovered files are skipped for unimplemented features, and Passed / Executed rises mechanically as more features land in the skip list.
+3. **Pull numbers from CI, not from doc prose.** Other documents' headline numbers drift; the authoritative source is the latest successful run of `.github/workflows/test262.yml`, with raw counts in the uploaded `test262-*-results.json` artifact.
+4. **Label methodology on cross-version comparisons.** The runner switched from single-mode to per-mode in Phase 24 (2026-02-22). Pre-Phase-24 numbers (e.g. the v0.1.0 `39.4%`) are not directly comparable to current per-mode figures. When comparing, say so.
+5. **Skip-list changes move both rates in opposite directions.** Implementing a previously-skipped feature grows the Executed denominator; until all its tests pass, Passed / Executed can drop even as Passed / Discovered rises. Expect and explain this.
+
+See [docs/ROADMAP.md § How to read these rates](docs/ROADMAP.md#how-to-read-these-rates) for the reader-facing version, and [docs/RELEASING.md](docs/RELEASING.md) for the release checklist that enforces these rules at version-cut time.
+
+**Tooling.** `scripts/report-test262.py` (invokable as `make test262-report`) pulls numbers directly from a CI run's artifacts and emits a paste-ready block. Use `--format=table` for ROADMAP/README (default) or `--format=changelog` for CHANGELOG entries. Never hand-edit the generated numbers; if they look wrong, fix the upstream.
+
 ## Documentation
 
 Key entry points:

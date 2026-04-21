@@ -13,6 +13,7 @@ Start here to navigate `js_engine`'s documentation. Code is always the source of
 
 - [architecture.md](architecture.md) — design principles, package boundaries, value model, host integration
 - [GLOSSARY.md](GLOSSARY.md) — terminology used in the code and docs
+- [RELEASING.md](RELEASING.md) — release checklist (test262-number minting, tag/CHANGELOG drift rules)
 - [../AGENTS.md](../AGENTS.md) — MoonBit conventions and tooling guide (also used by AI agents)
 - [agent-todo.md](agent-todo.md) — queue of small, self-contained tasks for contributors
 

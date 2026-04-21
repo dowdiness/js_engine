@@ -18,7 +18,22 @@ below; full list via `git log v0.1.0..v0.2.0`.
 
 ### Conformance
 
-test262: **86.6% strict / 85.0% non-strict** (was 39.4% at v0.1.0).
+test262 (each file now run in both strict and non-strict modes and
+reported separately — summing would double-count files):
+
+- **Passed / executed**: 86.6% strict (23,039 / 26,598), 85.0%
+  non-strict (24,452 / 28,769). This is the conventional "test262
+  pass rate" but excludes ~40% of discovered files skipped for
+  unimplemented features (Temporal, class-private, BigInt,
+  async-iteration, …).
+- **Passed / discovered**: 51.2% strict, 51.3% non-strict. Honest
+  spec-coverage figure that counts skipped files as un-passed.
+
+Direct comparison with v0.1.0's 39.4% is misleading: that figure was
+single-mode passed / executed under the pre-Phase-24 runner, and
+per-mode numbers were not computed then. Absolute passing tests rose
+from 9,545 (single-mode) to 23,039 strict + 24,452 non-strict.
+
 Unit tests: **978 passing** (was 507).
 
 ### Major capabilities added
@@ -238,10 +253,13 @@ is gone:
 - **`[[Set]]` dispatcher: array-receiver landing divergence** is tracked
   for Stage B.2. The receiver threading and general landing rule are
   correct; only the array sub-path is known to diverge.
-- **test262 conformance is 86.6% strict / 85.0% non-strict.** See
-  `docs/ROADMAP.md` and `docs/supported-features.md` for the
-  per-category breakdown of remaining failures, and `docs/agent-todo.md`
-  for the active work queue.
+- **test262 conformance is 86.6% strict / 85.0% non-strict
+  passed / executed** (51.2% / 51.3% passed / discovered — ~40% of
+  discovered files are skipped for unimplemented features and are
+  excluded from the passed / executed figure). See `docs/ROADMAP.md`
+  and `docs/supported-features.md` for the per-category breakdown of
+  remaining failures, and `docs/agent-todo.md` for the active work
+  queue.
 
 ### Internal
 
@@ -262,8 +280,11 @@ summarises the end state rather than enumerating individual changes.
 ### Conformance at release
 
 test262: **9,545 / 24,213 passed (39.4%)** — 25,381 skipped, 14,668
-failed, 56 timeouts. Unit tests: 507 passing on both WASM-GC and JS
-targets.
+failed, 56 timeouts. These are **single-mode, passed / executed**
+figures under the pre-Phase-24 runner (one run per file, strict vs
+non-strict not split); not directly comparable with the per-mode
+rates reported from v0.2.0 onward. Unit tests: 507 passing on both
+WASM-GC and JS targets.
 
 Built up over Phases 1–6L:
 
