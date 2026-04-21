@@ -9927,3 +9927,80 @@ test "§19.2.1.3 regression: nested arrow invocation in default runs normally" {
   let output = run_output(src)
   inspect(output, content="[\"1\"]")
 }
+
+///|
+/// §15.4.5 MethodDefinitionEvaluation: object-literal shorthand methods
+/// have no [[Construct]] internal method and must throw TypeError on `new`.
+test "§15.4.5: new obj.method() throws TypeError" {
+  let output = run_output(
+    (
+      #|var obj = { m: function() {} };
+      #|try {
+      #|  new obj.m();
+      #|  console.log("no throw");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  // Regular function expression used as property value is still a constructor
+  inspect(output, content="[\"no throw\"]")
+}
+
+///|
+test "§15.4.5: new ({method() {}}).method() throws TypeError" {
+  let output = run_output(
+    (
+      #|var obj = { m() {} };
+      #|try {
+      #|  new obj.m();
+      #|  console.log("no throw");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "§15.4.5: method shorthand normal call still works" {
+  // Regression guard: calling a method shorthand normally must succeed
+  let output = run_output(
+    (
+      #|var obj = {
+      #|  m() { return 42; }
+      #|};
+      #|console.log(obj.m());
+    ),
+  )
+  inspect(output, content="[\"42\"]")
+}
+
+///|
+test "§15.4.5: new (function() {}) still works as constructor" {
+  // Regression guard: normal function expressions are still constructors
+  let output = run_output(
+    (
+      #|function Ctor() { this.x = 1; }
+      #|var o = new Ctor();
+      #|console.log(o.x);
+    ),
+  )
+  inspect(output, content="[\"1\"]")
+}
+
+///|
+test "§15.4.5: arrow functions still throw on new (regression guard)" {
+  // Arrow functions must remain non-constructable
+  let output = run_output(
+    (
+      #|try {
+      #|  new (() => {})();
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  inspect(output, content="[\"true\"]")
+}

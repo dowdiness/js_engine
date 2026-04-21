@@ -10,7 +10,8 @@ pub fn is_constructor_value(v : Value) -> Bool {
   match v {
     Object(data) =>
       match data.callable {
-        Some(UserFunc(_)) | Some(UserFuncExt(_)) => true
+        Some(UserFunc(fd)) => !fd.is_method
+        Some(UserFuncExt(fd)) => !fd.is_method
         Some(NativeCallable(_, _)) => true
         Some(ClassConstructor(_)) => true
         Some(ConstructorOnlyCallable(_, _)) => true

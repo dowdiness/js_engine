@@ -159,6 +159,30 @@ pub fn strip_self_name_binding(v : Value) -> Value {
 }
 
 ///|
+/// Mark a function value as a method-shorthand definition (`{ m() {} }`).
+/// Per ES §15.4.5 MethodDefinitionEvaluation, such functions have no
+/// [[Construct]] internal method and must throw TypeError when called via
+/// `new`. Sets `is_method: true` on the FuncData/FuncDataExt.
+/// Non-UserFunc/UserFuncExt values (generators, async functions, etc.)
+/// pass through unchanged — they have their own non-constructor semantics.
+pub fn mark_as_method(v : Value) -> Value {
+  match v {
+    Object(data) =>
+      match data.callable {
+        Some(UserFunc(fd)) =>
+          Object({ ..data, callable: Some(UserFunc({ ..fd, is_method: true })) })
+        Some(UserFuncExt(fd)) =>
+          Object({
+            ..data,
+            callable: Some(UserFuncExt({ ..fd, is_method: true })),
+          })
+        _ => v
+      }
+    _ => v
+  }
+}
+
+///|
 /// Global reference to Function.prototype, set during initialization
 pub let function_prototype_ref : Ref[Value?] = { val: None }
 

@@ -293,6 +293,7 @@ fn Interpreter::exec_stmt(
           // FunctionDeclaration execution path — name binds in enclosing
           // VarEnvironment, no dedicated funcEnv.
           has_name_binding: false,
+          is_method: false,
         }
         let func_val = make_func(func_data)
         // For non-strict eval execution, function declarations are hoisted into
@@ -1178,6 +1179,7 @@ fn Interpreter::exec_stmt(
           closure: env,
           strict: is_function_strict(ctx.strict, body),
           has_name_binding: false,
+          is_method: false,
         }
         let func_val = make_func_ext(func_data)
         if env.bindings.contains(name) {

@@ -195,6 +195,10 @@ fn Interpreter::create_class(
               strict: true,
               // Class methods don't get a §15.2.5 self-name binding.
               has_name_binding: false,
+              // Class methods are a separate path — not object-literal method
+              // shorthand. is_method: false here; class method non-constructor
+              // semantics are enforced via ClassConstructor pattern matching.
+              is_method: false,
             }
             make_func(func_data)
           }
@@ -211,6 +215,7 @@ fn Interpreter::create_class(
               closure: method_closure,
               strict: true,
               has_name_binding: false,
+              is_method: false,
             }
             make_func_ext(func_data)
           }

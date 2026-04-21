@@ -167,6 +167,8 @@ pub fn make_plain_object() -> Value
 
 pub fn make_string_iterator_value(String) -> Value
 
+pub fn mark_as_method(Value) -> Value
+
 pub fn new_promise_data() -> PromiseData
 
 pub let number_prototype_ref : @ref.Ref[Value?]
@@ -374,6 +376,7 @@ pub(all) struct FuncData {
   closure : Environment
   strict : Bool
   has_name_binding : Bool
+  is_method : Bool
 }
 
 pub(all) struct FuncDataExt {
@@ -384,6 +387,7 @@ pub(all) struct FuncDataExt {
   closure : Environment
   strict : Bool
   has_name_binding : Bool
+  is_method : Bool
 }
 
 pub(all) enum GenState {

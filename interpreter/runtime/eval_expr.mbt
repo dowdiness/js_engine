@@ -12,7 +12,10 @@ fn Interpreter::eval_prop_value(
 ) -> Value raise Error {
   let v = self.eval_expr(ctx, prop.value, method_env)
   if prop.is_method {
-    strip_self_name_binding(v)
+    // Strip §15.2.5 self-name binding (methods have no FunctionExpressionName),
+    // then mark as method-shorthand so `new obj.m()` throws TypeError per
+    // ES §15.4.5 MethodDefinitionEvaluation + §13.3.5.1 step 5.
+    mark_as_method(strip_self_name_binding(v))
   } else {
     v
   }
@@ -108,6 +111,7 @@ fn Interpreter::eval_expr(
         // Named FunctionExpression: §15.2.5 installs a self-name binding
         // in a dedicated funcEnv. Anonymous FEs have no such binding.
         has_name_binding: name is Some(_),
+        is_method: false,
       }
       make_func(func_data)
     }
@@ -579,6 +583,7 @@ fn Interpreter::eval_expr(
         closure: env,
         strict: is_function_strict(ctx.strict, body),
         has_name_binding: false,
+        is_method: false,
       }
       let nf_desc : PropDescriptor = {
         writable: false,
@@ -619,6 +624,7 @@ fn Interpreter::eval_expr(
         closure: env,
         strict: is_function_strict(ctx.strict, body),
         has_name_binding: false,
+        is_method: false,
       }
       let nf_desc : PropDescriptor = {
         writable: false,
@@ -667,6 +673,7 @@ fn Interpreter::eval_expr(
         closure: env,
         strict: is_function_strict(ctx.strict, body),
         has_name_binding: name is Some(_),
+        is_method: false,
       }
       make_func_ext(func_data)
     }

@@ -453,6 +453,12 @@ pub fn Interpreter::construct_value(
     Object(obj_data) =>
       match obj_data.callable {
         Some(UserFunc(data)) => {
+          // §13.3.5.1 step 5: method-shorthand functions have no [[Construct]]
+          if data.is_method {
+            raise @errors.TypeError(
+              message=format_loc_context("is not a constructor", loc),
+            )
+          }
           let func_strict = data.strict
           let func_ctx : ExecContext = {
             strict: func_strict,
@@ -530,6 +536,12 @@ pub fn Interpreter::construct_value(
           }
         }
         Some(UserFuncExt(data)) => {
+          // §13.3.5.1 step 5: method-shorthand functions have no [[Construct]]
+          if data.is_method {
+            raise @errors.TypeError(
+              message=format_loc_context("is not a constructor", loc),
+            )
+          }
           let func_strict = data.strict
           let func_ctx : ExecContext = {
             strict: func_strict,
