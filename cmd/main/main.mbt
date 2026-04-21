@@ -1,7 +1,4 @@
 ///|
-using @runtime {type Value, type Callable}
-
-///|
 fn main {
   let args = @env.args()
   let (is_module, annex_b, fixtures, source) = parse_args(args)

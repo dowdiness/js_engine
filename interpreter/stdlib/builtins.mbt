@@ -1433,7 +1433,7 @@ pub fn setup_builtins(
       regexp_sym_props[replace_sym.id] = @runtime.make_method_func(
         name="[Symbol.replace]",
         length=2,
-        fn(this_val, args) {
+        (this_val, args) => {
           let str = if args.length() > 0 { args[0].to_string() } else { "" }
           let replace_val = if args.length() > 1 { args[1] } else { Undefined }
           let (pat, fl) = extract_regexp_source_flags(this_val)
@@ -2066,7 +2066,7 @@ fn js_unescape(s : String) -> String {
 /// always executes in ri's global scope, not the caller's realm.
 /// Recursive createRealm calls go through ri.stdlib_hooks.create_realm()
 /// so all nested realms are also fully wired.
-fn make_realm_dollar262(ri : Interpreter) -> Value raise Error {
+fn make_realm_dollar262(ri : Interpreter) -> Value {
   let realm_props : Map[String, Value] = {}
   realm_props["global"] = ri.global_this
   realm_props["gc"] = @runtime.make_native_func(name="gc", fn(_a) { Undefined })
@@ -2086,9 +2086,7 @@ fn make_realm_dollar262(ri : Interpreter) -> Value raise Error {
       ri.run(prog.stmts)
     },
   )
-  realm_props["createRealm"] = @runtime.make_native_func(name="createRealm", fn(
-    _a,
-  ) raise {
+  realm_props["createRealm"] = @runtime.make_native_func(name="createRealm", _a => {
     let inner = (ri.stdlib_hooks.create_realm)()
     make_realm_dollar262(inner)
   })
@@ -2201,7 +2199,7 @@ pub fn setup_harness_builtins(
   dollar262_props["createRealm"] = @runtime.make_interp_method_func(
     name="createRealm",
     length=0,
-    fn(interp, _this_val, _args) raise {
+    (interp, _this_val, _args) => {
       let new_interp = (interp.stdlib_hooks.create_realm)()
       make_realm_dollar262(new_interp)
     },

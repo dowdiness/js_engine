@@ -27,14 +27,14 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
           proto_data.bag.properties["keys"] = @runtime.make_method_func(
             name="keys",
             length=0,
-            fn(this_val, _args) raise {
+            (this_val, _args) => {
               let the_val = this_val
               let index_ref : Ref[Int] = { val: 0 }
               let next_method = Value::Object({
                 bag: @runtime.PropertyBag::new(),
                 prototype: Null,
                 callable: Some(
-                  NativeCallable("next", fn(_args) {
+                  NativeCallable("next", _args => {
                     let idx = index_ref.val
                     // Read live length each call so mutations during iteration are observed
                     let len = @runtime.to_array_like_length(the_val)
@@ -110,14 +110,14 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
           proto_data.bag.properties["entries"] = @runtime.make_method_func(
             name="entries",
             length=0,
-            fn(this_val, _args) raise {
+            (this_val, _args) => {
               let the_val = this_val
               let index_ref : Ref[Int] = { val: 0 }
               let next_method = Value::Object({
                 bag: @runtime.PropertyBag::new(),
                 prototype: Null,
                 callable: Some(
-                  NativeCallable("next", fn(_args) {
+                  NativeCallable("next", _args => {
                     let idx = index_ref.val
                     // Read live length each call so mutations during iteration are observed
                     let len = @runtime.to_array_like_length(the_val)

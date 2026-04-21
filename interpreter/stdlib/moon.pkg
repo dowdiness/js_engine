@@ -6,4 +6,5 @@ import {
   "dowdiness/js_engine/parser",
   "moonbitlang/core/string",
   "moonbitlang/core/math",
+  "moonbitlang/core/env",
 }

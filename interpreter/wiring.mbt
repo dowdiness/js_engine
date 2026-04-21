@@ -43,7 +43,7 @@ fn make_stdlib_hooks() -> @runtime.StdlibHooks {
     get_promise_method: fn(data, prop) {
       @stdlib.get_promise_method(data, prop)
     },
-    make_regexp_object: fn(pattern, flags) {
+    make_regexp_object: (pattern, flags) => {
       @stdlib.make_regexp_object(pattern, flags)
     },
     typedarray_get_index: fn(data, idx) {

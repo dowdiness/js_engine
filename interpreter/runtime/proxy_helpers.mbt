@@ -506,7 +506,7 @@ pub fn check_proxy_set_trap_invariants(
             }
           _ => Undefined
         },
-        "Symbol(\{sym.description.or_default()})",
+        "Symbol(\{sym.description.unwrap_or_default()})",
       )
     _ => (None, Undefined, "")
   }

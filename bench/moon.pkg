@@ -3,6 +3,7 @@ import {
   "dowdiness/js_engine/lexer",
   "dowdiness/js_engine/parser",
   "moonbitlang/core/env",
+  "moonbitlang/core/bench",
 }
 
 options(

@@ -1,9 +1,10 @@
 import {
   "dowdiness/js_engine/interpreter/runtime" @runtime,
   "dowdiness/js_engine/interpreter/stdlib" @stdlib,
-  "dowdiness/js_engine/ast",
-  "dowdiness/js_engine/token",
-  "dowdiness/js_engine/errors",
-  "dowdiness/js_engine/parser",
   "moonbitlang/core/string",
 }
+
+import {
+  "dowdiness/js_engine/errors",
+  "dowdiness/js_engine/parser",
+} for "test"

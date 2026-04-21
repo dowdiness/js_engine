@@ -44,7 +44,7 @@ fn unwrap_proxy_target(val : Value) -> ObjectData? raise Error {
 }
 
 ///|
-fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
+fn setup_reflect_builtins(env : Environment, _sym_state : SymbolState) -> Unit {
   let reflect_props : Map[String, Value] = {}
   let nf_desc : PropDescriptor = {
     writable: false,
