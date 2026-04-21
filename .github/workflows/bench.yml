@@ -19,7 +19,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "bench/**"
+      - "benchmarks/**"
       - "interpreter/**"
       - "lexer/**"
       - "parser/**"
@@ -68,17 +68,17 @@ jobs:
       # wrong result aborts with a clear diagnostic rather than producing fast-
       # but-wrong timings.  Covers: lexer/small, lexer/large, exec/*, pipeline/*.
       - name: Run @bench.T suite
-        run: moon test bench/ --target js
+        run: moon test benchmarks/ --target js
 
       # ── CSV baseline snapshot (scheduled and manual runs only) ─────────────
-      # The CLI runner (bench/main.mbt) measures the same workloads with fixed
+      # The CLI runner (benchmarks/main.mbt) measures the same workloads with fixed
       # iteration counts and emits machine-readable CSV rows.  Upload as a
       # dated artifact so snapshots can be diffed across weeks.
       - name: Generate CSV baseline
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         run: |
           set -o pipefail
-          moon run bench --target js -- --all --csv | tee bench-results.csv
+          moon run benchmarks --target js -- --all --csv | tee bench-results.csv
 
       - name: Upload CSV artifact
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'

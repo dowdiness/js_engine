@@ -1,5 +1,5 @@
 // Generated using `moon info`, DON'T EDIT IT
-package "dowdiness/js_engine/bench"
+package "dowdiness/js_engine/benchmarks"
 
 // Values
 pub const ARRAY_MAP_FILTER_SRC : String = "var arr = [];\nfor (var i = 0; i < 1000; i++) { arr.push(i); }\nvar result = arr\n  .map(function(x) { return x * 2; })\n  .filter(function(x) { return x % 6 === 0; });\nresult.length;"
