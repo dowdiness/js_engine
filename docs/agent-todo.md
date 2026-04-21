@@ -12,7 +12,7 @@ Completed tasks should be struck through and dated.
 
 ### Task 1 — Unlock `regexp-dotall` (already implemented, zero-code change)
 
-The `s` flag is fully implemented in `interpreter/builtins_regex.mbt`:
+The `s` flag is fully implemented in `interpreter/stdlib/builtins_regex.mbt`:
 - `dot_all: Bool` in `RegexFlags` struct (line ~556)
 - `dot_all` is set from `flags.contains("s")` at line ~899
 - `.` matching logic already respects `dot_all` at line ~578
@@ -34,7 +34,7 @@ Run `python3 test262-runner.py --filter "built-ins/RegExp" --summary` to confirm
 
 **Spec**: https://tc39.es/ecma262/#sec-promise.withresolvers
 **Feature flag**: `"promise-with-resolvers"` in `SKIP_FEATURES`
-**File**: `interpreter/builtins_promise.mbt`
+**File**: `interpreter/stdlib/builtins_promise.mbt`
 
 **Algorithm** (simple):
 ```js
@@ -58,7 +58,7 @@ After implementing: remove `"promise-with-resolvers"` from `SKIP_FEATURES` and r
 
 **Spec**: https://tc39.es/ecma262/#sec-promise.try
 **Feature flag**: `"promise-try"` in `SKIP_FEATURES`
-**File**: `interpreter/builtins_promise.mbt`
+**File**: `interpreter/stdlib/builtins_promise.mbt`
 
 **Algorithm**:
 ```js
@@ -174,7 +174,7 @@ Cross-cutting issues discovered during PR #47 that affect more than just named g
 ### 1. Array named props invisible to `getOwnPropertyDescriptor`
 
 **Impact**: ~6 named-groups tests + many regex/array tests across the suite
-**File**: `interpreter/array_side_tables.mbt`, `interpreter/builtins_object_descriptors.mbt`
+**File**: `interpreter/runtime/array_side_tables.mbt`, `interpreter/stdlib/builtins_object_descriptors.mbt`
 
 `set_array_named_prop` stores properties (like `index`, `input`, `groups` on regex match arrays) in a side table (`array_named_props`). `Object.getOwnPropertyDescriptor` doesn't check this side table, so these properties are invisible to descriptor inspection. The `verifyProperty` test262 helper fails for all array named props.
 
@@ -194,7 +194,7 @@ The lexer's identifier scanning only accepts ASCII `[a-zA-Z_$]` starts. Unicode 
 ### 4. RegExp subclass exec/match forwarding
 
 **Impact**: 4 named-groups tests
-**File**: `interpreter/builtins_regex.mbt`
+**File**: `interpreter/stdlib/builtins_regex.mbt`
 
 RegExp subclass tests expect `exec()` to be called on the subclass instance (which may override `exec`), but the engine calls internal regex functions directly. Needs `Symbol.match` / `Symbol.replace` to call `this.exec()` through the prototype chain.
 
@@ -210,7 +210,7 @@ The parser (`parser/`) needs a `ForAwait` AST node and the interpreter needs to 
 async iteration protocol (`Symbol.asyncIterator`, `next()` returning Promises).
 
 This is a medium-effort feature. The generator/iterator infrastructure in
-`interpreter/generator.mbt` and `interpreter/iterators.mbt` is the foundation — read
+`interpreter/runtime/generator.mbt` and `interpreter/runtime/iterators.mbt` is the foundation — read
 those first.
 
 ---
