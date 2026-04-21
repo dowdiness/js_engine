@@ -24,46 +24,46 @@ Tests classified by the ECMAScript edition in which each feature reached Stage 4
 
 | Edition | Discovered | Skipped | Executed | Passed | Failed | Timeout/Err | Passed / Executed | Passed / Discovered |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Pre-ES2015 (baseline) | 15,060 | 197 | 14,824 | 13,288 | 1,536 | 39 | 89.6% | 88.2% |
-| ES2015 | 8,845 | 154 | 8,622 | 7,306 | 1,316 | 69 | 84.7% | 82.6% |
+| Pre-ES2015 (baseline) | 13,345 | 56 | 13,254 | 11,854 | 1,400 | 35 | 89.4% | 88.8% |
+| ES2015 | 10,327 | 160 | 10,095 | 8,644 | 1,451 | 72 | 85.6% | 83.7% |
 | ES2016 | 100 | 0 | 93 | 71 | 22 | 7 | 76.3% | 71.0% |
-| ES2017 | 639 | 344 | 295 | 223 | 72 | 0 | 75.6% | 34.9% |
+| ES2017 | 736 | 344 | 391 | 318 | 73 | 1 | 81.3% | 43.2% |
 | ES2018 | 4,724 | 4,326 | 398 | 351 | 47 | 0 | 88.2% | 7.4% |
 | ES2019 | 128 | 0 | 128 | 87 | 41 | 0 | 68.0% | 68.0% |
-| ES2020 | 1,780 | 1,533 | 247 | 209 | 38 | 0 | 84.6% | 11.7% |
+| ES2020 | 1,782 | 1,534 | 248 | 210 | 38 | 0 | 84.7% | 11.8% |
 | ES2021 | 468 | 128 | 340 | 302 | 38 | 0 | 88.8% | 64.5% |
 | ES2022 | 5,065 | 4,352 | 713 | 624 | 89 | 0 | 87.5% | 12.3% |
 | ES2023 | 254 | 33 | 218 | 164 | 54 | 3 | 75.2% | 64.6% |
 | ES2024 | 1,072 | 866 | 206 | 77 | 129 | 0 | 37.4% | 7.2% |
 | ES2025 | 1,147 | 964 | 183 | 102 | 81 | 0 | 55.7% | 8.9% |
 | Annex B | 365 | 46 | 319 | 229 | 90 | 0 | 71.8% | 62.7% |
-| Stage 3 | 5,339 | 5,327 | 12 | 6 | 6 | 0 | 50.0% | 0.1% |
+| Stage 3 | 5,473 | 5,461 | 12 | 6 | 6 | 0 | 50.0% | 0.1% |
 | **Total** | **44,986** | **18,270** | **26,598** | **23,039** | **3,559** | **118** | **86.6%** | **51.2%** |
 
 ### non-strict
 
 | Edition | Discovered | Skipped | Executed | Passed | Failed | Timeout/Err | Passed / Executed | Passed / Discovered |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Pre-ES2015 (baseline) | 15,978 | 210 | 15,735 | 13,907 | 1,828 | 33 | 88.4% | 87.0% |
-| ES2015 | 9,063 | 153 | 8,841 | 7,430 | 1,411 | 69 | 84.0% | 82.0% |
+| Pre-ES2015 (baseline) | 13,984 | 59 | 13,894 | 12,291 | 1,603 | 31 | 88.5% | 87.9% |
+| ES2015 | 10,832 | 169 | 10,593 | 8,960 | 1,633 | 70 | 84.6% | 82.7% |
 | ES2016 | 100 | 0 | 93 | 71 | 22 | 7 | 76.3% | 71.0% |
-| ES2017 | 686 | 344 | 342 | 265 | 77 | 0 | 77.5% | 38.6% |
+| ES2017 | 775 | 344 | 430 | 350 | 80 | 1 | 81.4% | 45.2% |
 | ES2018 | 4,780 | 4,384 | 396 | 345 | 51 | 0 | 87.1% | 7.2% |
 | ES2019 | 127 | 0 | 127 | 86 | 41 | 0 | 67.7% | 67.7% |
-| ES2020 | 1,980 | 1,606 | 374 | 265 | 109 | 0 | 70.9% | 13.4% |
+| ES2020 | 1,982 | 1,607 | 375 | 266 | 109 | 0 | 70.9% | 13.4% |
 | ES2021 | 444 | 128 | 316 | 278 | 38 | 0 | 88.0% | 62.6% |
 | ES2022 | 5,361 | 4,628 | 733 | 634 | 99 | 0 | 86.5% | 11.8% |
 | ES2023 | 277 | 56 | 218 | 164 | 54 | 3 | 75.2% | 59.2% |
 | ES2024 | 1,077 | 870 | 207 | 78 | 129 | 0 | 37.7% | 7.2% |
 | ES2025 | 1,174 | 993 | 181 | 100 | 81 | 0 | 55.2% | 8.5% |
 | Annex B | 1,156 | 46 | 1,110 | 819 | 291 | 0 | 73.8% | 70.8% |
-| Stage 3 | 5,489 | 5,393 | 96 | 10 | 86 | 0 | 10.4% | 0.2% |
+| Stage 3 | 5,623 | 5,527 | 96 | 10 | 86 | 0 | 10.4% | 0.2% |
 | **Total** | **47,692** | **18,811** | **28,769** | **24,452** | **4,317** | **112** | **85.0%** | **51.3%** |
 
 **Reading the picture honestly:**
 
-- **Pre-ES2015 (baseline)** is at 88–89% *Passed / Executed*. That's about 1,500 strict + 1,800 non-strict pre-ES6 tests failing — the largest absolute pool of "basic JS" failures. Biggest ROI target.
-- **ES2015** is at 84% *Passed / Executed* — 1,300+ class / iterator / generator / proxy edge cases still failing.
+- **Pre-ES2015 (baseline)** is at 88–89% *Passed / Executed*. About 1,400 strict + 1,600 non-strict pre-ES6 tests fail — the largest absolute pool of "basic JS" failures. Biggest ROI target. Dominated by `built-ins/Object` (~430) and `built-ins/Array` (~420) in both modes, and the top failure-reason cluster is **"Expected a TypeError to be thrown"** (~120 cases, mostly descriptor-validation gaps).
+- **ES2015** is at 85% *Passed / Executed* — 1,400+ class / iterator / generator / proxy / Promise edge cases still failing. The path-based fallback reclassifier (see classifier script) moved ~1,800 tests here that previously landed in baseline because their frontmatter lacks a `features:` field.
 - **ES2016, ES2019** look low (68–76%) but are small buckets (~100 tests each).
 - **ES2018 / ES2020 / ES2022 / ES2024** show a huge *Executed vs Discovered* gap — we skip 80–90% of discovered tests in those editions because we haven't implemented async-iteration, BigInt, class-private, regexp-v-flag, etc.
 - **ES2024** at 37% *Passed / Executed* is the worst partial-implementation — mostly `regexp-v-flag` and `array-grouping` tests failing.

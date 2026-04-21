@@ -291,6 +291,75 @@ def extract_features(text: str) -> list[str]:
     return []
 
 
+# Path-based fallback for tests without a `features:` frontmatter field.
+# The test262 features system started mid-ES2015; tests for runtime types
+# added in ES2015 (Promise, Map, Set, Proxy, classes, modules, etc.) and
+# later often ship without a features: flag, which would wrongly land them
+# in "Pre-ES2015 (baseline)". Keyed first-match, so longer prefixes first.
+PATH_EDITION_FALLBACK: list[tuple[str, str]] = [
+    # ES2015 — new runtime types
+    ("/built-ins/AsyncFromSyncIteratorPrototype/", "ES2018"),
+    ("/built-ins/AsyncGeneratorFunction/", "ES2018"),
+    ("/built-ins/AsyncGeneratorPrototype/", "ES2018"),
+    ("/built-ins/AsyncFunction/", "ES2017"),
+    ("/built-ins/Atomics/", "ES2017"),
+    ("/built-ins/SharedArrayBuffer/", "ES2017"),
+    ("/built-ins/AggregateError/", "ES2021"),
+    ("/built-ins/WeakRef/", "ES2021"),
+    ("/built-ins/FinalizationRegistry/", "ES2021"),
+    ("/built-ins/BigInt/", "ES2020"),
+    ("/built-ins/Temporal/", "Stage 3"),
+    ("/built-ins/ShadowRealm/", "Stage 3"),
+    # ES2015 runtime types
+    ("/built-ins/Promise/", "ES2015"),
+    ("/built-ins/Map/", "ES2015"),
+    ("/built-ins/Set/", "ES2015"),
+    ("/built-ins/WeakMap/", "ES2015"),
+    ("/built-ins/WeakSet/", "ES2015"),
+    ("/built-ins/Proxy/", "ES2015"),
+    ("/built-ins/Reflect/", "ES2015"),
+    ("/built-ins/Symbol/", "ES2015"),
+    ("/built-ins/Generator", "ES2015"),  # Generator / GeneratorFunction / GeneratorPrototype
+    ("/built-ins/TypedArray", "ES2015"),  # %TypedArray% / TypedArrayConstructors
+    ("/built-ins/DataView/", "ES2015"),
+    ("/built-ins/ArrayBuffer/", "ES2015"),
+    ("/built-ins/Int8Array/", "ES2015"),
+    ("/built-ins/Int16Array/", "ES2015"),
+    ("/built-ins/Int32Array/", "ES2015"),
+    ("/built-ins/Uint8Array/", "ES2015"),
+    ("/built-ins/Uint16Array/", "ES2015"),
+    ("/built-ins/Uint32Array/", "ES2015"),
+    ("/built-ins/Uint8ClampedArray/", "ES2015"),
+    ("/built-ins/Float32Array/", "ES2015"),
+    ("/built-ins/Float64Array/", "ES2015"),
+    ("/built-ins/ThrowTypeError/", "ES2015"),
+    ("/built-ins/MapIteratorPrototype/", "ES2015"),
+    ("/built-ins/SetIteratorPrototype/", "ES2015"),
+    ("/built-ins/ArrayIteratorPrototype/", "ES2015"),
+    ("/built-ins/StringIteratorPrototype/", "ES2015"),
+    ("/built-ins/IteratorPrototype/", "ES2015"),
+    # ES2015 syntax buckets
+    ("/language/module-code/", "ES2015"),
+    ("/language/import/", "ES2015"),
+    ("/language/export/", "ES2015"),
+    ("/language/statements/class/", "ES2015"),
+    ("/language/expressions/class/", "ES2015"),
+    ("/language/expressions/arrow-function/", "ES2015"),
+    ("/language/expressions/template-literal/", "ES2015"),
+    ("/language/expressions/tagged-template/", "ES2015"),
+    ("/language/expressions/generators/", "ES2015"),
+    ("/language/statements/generators/", "ES2015"),
+    ("/language/statements/for-of/", "ES2015"),
+    ("/language/statements/let/", "ES2015"),
+    ("/language/statements/const/", "ES2015"),
+    ("/language/expressions/yield/", "ES2015"),
+    # ES2017+ syntax
+    ("/language/statements/async-function/", "ES2017"),
+    ("/language/expressions/async-function/", "ES2017"),
+    ("/language/expressions/async-arrow-function/", "ES2017"),
+]
+
+
 def classify_path(path: str, features: list[str]) -> tuple[str, set[str]]:
     """Return (edition, unmapped_features_seen)."""
     # Path-based overrides take priority for organizational buckets.
@@ -300,6 +369,10 @@ def classify_path(path: str, features: list[str]) -> tuple[str, set[str]]:
         return "Intl (ECMA-402)", set()
 
     if not features:
+        # Path-based fallback when the test has no features: frontmatter.
+        for prefix, edition in PATH_EDITION_FALLBACK:
+            if prefix in path:
+                return edition, set()
         return "Pre-ES2015 (baseline)", set()
 
     editions = []
