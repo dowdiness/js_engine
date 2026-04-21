@@ -10272,3 +10272,59 @@ test "§10.5.13: new Proxy(function, {})() still works" {
   )
   inspect(output, content="[\"7\"]")
 }
+
+// ====== OrdinaryHasInstance: non-object prototype throws TypeError ======
+
+///|
+test "instanceof throws TypeError when prototype is a string" {
+  let mut err_msg = ""
+  try {
+    let _ = run_js("function F() {} F.prototype = \"\"; [] instanceof F")
+  } catch {
+    @runtime.JsException(val) => err_msg = error_display(val)
+    _ => err_msg = "unexpected error"
+  }
+  inspect(
+    err_msg,
+    content="TypeError: Function has non-object prototype in instanceof check",
+  )
+}
+
+///|
+test "instanceof throws TypeError when prototype is a number" {
+  let mut err_msg = ""
+  try {
+    let _ = run_js("function F() {} F.prototype = 42; [] instanceof F")
+  } catch {
+    @runtime.JsException(val) => err_msg = error_display(val)
+    _ => err_msg = "unexpected error"
+  }
+  inspect(
+    err_msg,
+    content="TypeError: Function has non-object prototype in instanceof check",
+  )
+}
+
+///|
+test "instanceof does not throw when prototype is a normal object" {
+  let (_, result) = run_js("function F() {} [] instanceof F")
+  inspect(result, content="false")
+}
+
+///|
+/// OrdinaryHasInstance step 3 (O not Object → return false) precedes step 5
+/// (prototype not Object → TypeError). A primitive LHS must return false even
+/// when C.prototype is a non-object value. See test262
+/// language/expressions/instanceof/primitive-prototype-with-primitive.js.
+test "instanceof returns false for primitive LHS with non-object prototype (number LHS)" {
+  let (_, result) = run_js("function F() {} F.prototype = true; 0 instanceof F")
+  inspect(result, content="false")
+}
+
+///|
+test "instanceof returns false for primitive LHS with non-object prototype (string LHS)" {
+  let (_, result) = run_js(
+    "function F() {} F.prototype = 42; \"s\" instanceof F",
+  )
+  inspect(result, content="false")
+}
