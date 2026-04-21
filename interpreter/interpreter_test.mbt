@@ -10004,3 +10004,55 @@ test "§15.4.5: arrow functions still throw on new (regression guard)" {
   )
   inspect(output, content="[\"true\"]")
 }
+
+///|
+/// §10.5.13 ProxyExoticObject [[Construct]]: when the proxy target is a
+/// method shorthand (non-constructor), `new Proxy(target, {})()` must throw
+/// TypeError. The IsConstructor check on the target runs before any trap
+/// dispatch — a proxy cannot resurrect constructability that the target
+/// lacks. Codex P1 regression guard for PR #71.
+test "§10.5.13: new Proxy(methodShorthand, {})() throws TypeError" {
+  let output = run_output(
+    (
+      #|var obj = { m() {} };
+      #|try {
+      #|  new (new Proxy(obj.m, {}))();
+      #|  console.log("no throw");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+/// §10.5.13 regression: arrows behind a Proxy are still non-constructable.
+test "§10.5.13: new Proxy(arrow, {})() throws TypeError" {
+  let output = run_output(
+    (
+      #|try {
+      #|  new (new Proxy(() => {}, {}))();
+      #|  console.log("no throw");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+/// §10.5.13 regression: a normal function wrapped in a Proxy stays
+/// constructable. This asserts the IsConstructor check is correctly
+/// narrow — it only rejects non-constructors, not "any callable".
+test "§10.5.13: new Proxy(function, {})() still works" {
+  let output = run_output(
+    (
+      #|function Ctor() { this.x = 7; }
+      #|var o = new (new Proxy(Ctor, {}))();
+      #|console.log(o.x);
+    ),
+  )
+  inspect(output, content="[\"7\"]")
+}
