@@ -10375,3 +10375,57 @@ test "apply with Map argArray does not throw" {
   )
   inspect(result, content="0")
 }
+
+///|
+/// CreateListFromArrayLike (§7.3.18) must route length + indexed reads
+/// through Get, so a Proxy that fakes array-like shape via its `get` trap
+/// still delivers arguments. The preceding e9a5b33 fix accepted non-plain
+/// object variants past the type gate but then silently returned [] for
+/// Map/Set/Promise/Proxy, dropping trapped args. Codex P2 regression guard.
+test "apply with Proxy length+index traps delivers argument" {
+  let (_, result) = run_js(
+    (
+      #|var h = { get: function(t, k) { if (k === "length") return 1; if (k === "0") return 42; } };
+      #|var p = new Proxy({}, h);
+      #|var got = -1;
+      #|function f() { got = arguments[0]; }
+      #|f.apply(null, p);
+      #|got
+    ),
+  )
+  inspect(result, content="42")
+}
+
+///|
+/// Same shape via Reflect.apply — independent code path that delegates to
+/// the same create_list_from_array_like helper.
+test "Reflect.apply with Proxy length+index traps delivers argument" {
+  let (_, result) = run_js(
+    (
+      #|var h = { get: function(t, k) { if (k === "length") return 2; if (k === "0") return "a"; if (k === "1") return "b"; } };
+      #|var p = new Proxy({}, h);
+      #|var out = "";
+      #|function f(x, y) { out = x + y; }
+      #|Reflect.apply(f, null, p);
+      #|out
+    ),
+  )
+  inspect(result, content="ab")
+}
+
+///|
+/// ArrayLike Objects with inherited length should work too — previous
+/// implementation read data.bag.properties directly, missing prototype chain.
+test "apply with Object inheriting length from prototype" {
+  let (_, result) = run_js(
+    (
+      #|var proto = { length: 1, 0: 99 };
+      #|var obj = Object.create(proto);
+      #|var got = -1;
+      #|function f() { got = arguments[0]; }
+      #|f.apply(null, obj);
+      #|got
+    ),
+  )
+  inspect(result, content="99")
+}

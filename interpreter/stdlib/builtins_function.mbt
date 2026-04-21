@@ -111,7 +111,7 @@ fn setup_function_builtins(env : Environment) -> Unit {
       let call_args : Array[Value] = if args.length() > 1 {
         match args[1] {
           Null | Undefined => []
-          other => create_list_from_array_like(other)
+          other => create_list_from_array_like(interp, other)
         }
       } else {
         []
