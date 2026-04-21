@@ -71,7 +71,68 @@ For changes before this file existed, see `git log`.
 - Refresh `test262` figures in README to per-mode reporting (86.6% strict /
   85.0% non-strict). [`8b878f5`]
 
-[Unreleased]: https://github.com/dowdiness/js_engine/commits/main
+## [0.1.0] — 2026-02-06
+
+First published release on mooncakes.io, at commit [`fede44e`]. Minimal
+JavaScript tree-walking interpreter written in MoonBit, self-hosting via
+the JS target. Reconstructed retrospectively — original development
+covered 192 commits between `ba59e1b` and `fede44e`; this section
+summarises the end state rather than enumerating individual changes.
+
+### Conformance at release
+
+test262: **9,545 / 24,213 passed (39.4%)** — 25,381 skipped, 14,668
+failed, 56 timeouts. Unit tests: 507 passing on both WASM-GC and JS
+targets.
+
+Built up over Phases 1–6L:
+
+- **Phase 1–5** (6,351 passes) — core language, classes, promises,
+  iterators, skip-list cleanup, object spread, `new.target`.
+- **Phase 6A–6G** (+~2,350) — parser fixes, prototype-chain compliance,
+  destructuring in more contexts, tagged templates, object method
+  parameters.
+- **Phase 6H** (+1,202) — error prototype chain for `instanceof Error`.
+- **Phase 6I–6L** (+56) — leading decimal literals, canonical array
+  indices, `Number.prototype` `this`-validation, `String.split` limit.
+
+### Capabilities
+
+- Lexer, parser, AST, and tree-walking interpreter over a tagged-union
+  `Value` type.
+- Classes with constructors, `super`, static members.
+- Promises with a full event loop and microtask queue.
+- Timer APIs: `setTimeout`, `clearTimeout`, `setInterval`,
+  `clearInterval`.
+- ES6 collections: `Map`, `Set`, `WeakMap`, `WeakSet`.
+- `Symbol` primitive and well-known symbols (`Symbol.iterator`,
+  `Symbol.hasInstance`, `Symbol.toPrimitive`, …).
+- Iteration protocol via `Symbol.iterator`; `for-of`, `for-in`, and
+  destructuring iteration.
+- Error class hierarchy: `TypeError`, `RangeError`, `ReferenceError`,
+  `SyntaxError`, `URIError`, `EvalError`.
+- Unicode coverage for `String.prototype` methods.
+- Tagged templates, rest/spread, optional chaining, nullish coalescing.
+- `instanceof` with `Symbol.hasInstance`, `Object.setPrototypeOf`,
+  `String.raw`.
+
+### Self-hosting
+
+Compiles to JavaScript via `moon build --target js` and runs on Node.js.
+Backend-specific argv handling (`.js.mbt` / `.wasm.mbt` / `.wasm-gc.mbt`
+files) and Error `toString` fixes landed to make the JS target correct.
+
+### Known limitations at 0.1.0
+
+Driving the post-0.1.0 work under [Unreleased]:
+`Object.defineProperty`/`defineProperties` (1,350 fails), RegExp (671),
+DataView / TypedArray (311), eval-code (205), generator functions (160),
+Unicode escapes in identifiers (479). See `docs/ROADMAP.md` at this
+release for the full failure breakdown.
+
+[Unreleased]: https://github.com/dowdiness/js_engine/compare/fede44e...main
+[0.1.0]: https://mooncakes.io/docs/dowdiness/js_engine@0.1.0
+[`fede44e`]: https://github.com/dowdiness/js_engine/commit/fede44e
 [`0157c03`]: https://github.com/dowdiness/js_engine/commit/0157c03
 [`27ca2f1`]: https://github.com/dowdiness/js_engine/commit/27ca2f1
 [`2c911bc`]: https://github.com/dowdiness/js_engine/commit/2c911bc
