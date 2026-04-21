@@ -24,7 +24,7 @@ Tests classified by the ECMAScript edition in which each feature reached Stage 4
 
 | Edition | Discovered | Skipped | Executed | Passed | Failed | Timeout/Err | Passed / Executed | Passed / Discovered |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Pre-ES2015 (baseline) | 13,345 | 56 | 13,254 | 11,854 | 1,400 | 35 | 89.4% | 88.8% |
+| Pre-ES2015 (baseline) | 13,291 | 2 | 13,254 | 11,854 | 1,400 | 35 | 89.4% | 89.2% |
 | ES2015 | 10,327 | 160 | 10,095 | 8,644 | 1,451 | 72 | 85.6% | 83.7% |
 | ES2016 | 100 | 0 | 93 | 71 | 22 | 7 | 76.3% | 71.0% |
 | ES2017 | 736 | 344 | 391 | 318 | 73 | 1 | 81.3% | 43.2% |
@@ -37,14 +37,14 @@ Tests classified by the ECMAScript edition in which each feature reached Stage 4
 | ES2024 | 1,072 | 866 | 206 | 77 | 129 | 0 | 37.4% | 7.2% |
 | ES2025 | 1,147 | 964 | 183 | 102 | 81 | 0 | 55.7% | 8.9% |
 | Annex B | 365 | 46 | 319 | 229 | 90 | 0 | 71.8% | 62.7% |
-| Stage 3 | 5,473 | 5,461 | 12 | 6 | 6 | 0 | 50.0% | 0.1% |
+| Stage 3 | 5,527 | 5,515 | 12 | 6 | 6 | 0 | 50.0% | 0.1% |
 | **Total** | **44,986** | **18,270** | **26,598** | **23,039** | **3,559** | **118** | **86.6%** | **51.2%** |
 
 ### non-strict
 
 | Edition | Discovered | Skipped | Executed | Passed | Failed | Timeout/Err | Passed / Executed | Passed / Discovered |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Pre-ES2015 (baseline) | 13,984 | 59 | 13,894 | 12,291 | 1,603 | 31 | 88.5% | 87.9% |
+| Pre-ES2015 (baseline) | 13,930 | 5 | 13,894 | 12,291 | 1,603 | 31 | 88.5% | 88.2% |
 | ES2015 | 10,832 | 169 | 10,593 | 8,960 | 1,633 | 70 | 84.6% | 82.7% |
 | ES2016 | 100 | 0 | 93 | 71 | 22 | 7 | 76.3% | 71.0% |
 | ES2017 | 775 | 344 | 430 | 350 | 80 | 1 | 81.4% | 45.2% |
@@ -57,7 +57,7 @@ Tests classified by the ECMAScript edition in which each feature reached Stage 4
 | ES2024 | 1,077 | 870 | 207 | 78 | 129 | 0 | 37.7% | 7.2% |
 | ES2025 | 1,174 | 993 | 181 | 100 | 81 | 0 | 55.2% | 8.5% |
 | Annex B | 1,156 | 46 | 1,110 | 819 | 291 | 0 | 73.8% | 70.8% |
-| Stage 3 | 5,623 | 5,527 | 96 | 10 | 86 | 0 | 10.4% | 0.2% |
+| Stage 3 | 5,677 | 5,581 | 96 | 10 | 86 | 0 | 10.4% | 0.2% |
 | **Total** | **47,692** | **18,811** | **28,769** | **24,452** | **4,317** | **112** | **85.0%** | **51.3%** |
 
 **Reading the picture honestly:**

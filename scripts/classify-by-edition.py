@@ -310,6 +310,10 @@ PATH_EDITION_FALLBACK: list[tuple[str, str]] = [
     ("/built-ins/BigInt/", "ES2020"),
     ("/built-ins/Temporal/", "Stage 3"),
     ("/built-ins/ShadowRealm/", "Stage 3"),
+    ("/built-ins/DisposableStack/", "Stage 3"),
+    ("/built-ins/AsyncDisposableStack/", "Stage 3"),
+    ("/built-ins/SuppressedError/", "Stage 3"),
+    ("/built-ins/Iterator/", "ES2025"),  # iterator-helpers pattern
     # ES2015 runtime types
     ("/built-ins/Promise/", "ES2015"),
     ("/built-ins/Map/", "ES2015"),
