@@ -1,6 +1,6 @@
 ///|
 /// Convert an array-like value to an Array[Value] (CreateListFromArrayLike)
-fn create_list_from_array_like(val : Value) -> Array[Value] raise Error {
+pub fn create_list_from_array_like(val : Value) -> Array[Value] raise Error {
   match val {
     Value::Array(data) => data.elements.copy()
     Object(data) => {

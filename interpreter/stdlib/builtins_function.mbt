@@ -95,7 +95,7 @@ fn setup_function_builtins(env : Environment) -> Unit {
     },
   )
 
-  // Function.prototype.apply
+  // Function.prototype.apply — §20.2.3.1
   func_proto_props["apply"] = @runtime.make_interp_method_func(
     name="apply",
     length=2,
@@ -106,33 +106,15 @@ fn setup_function_builtins(env : Environment) -> Unit {
       } else {
         Undefined
       }
-      let call_args : Array[Value] = []
-      if args.length() > 1 {
-        // Convert args[1] to array-like
+      // Step 2: argArray undefined/null → call with no args. Otherwise step 4
+      // delegates to CreateListFromArrayLike which throws for non-Object.
+      let call_args : Array[Value] = if args.length() > 1 {
         match args[1] {
-          Value::Array(data) =>
-            for el in data.elements {
-              call_args.push(el)
-            }
-          Object(data) => {
-            let len = match data.bag.properties.get("length") {
-              Some(Value::Number(n)) => n.to_int()
-              _ => 0
-            }
-            for i = 0; i < len; i = i + 1 {
-              let val = match data.bag.properties.get(i.to_string()) {
-                Some(v) => v
-                None => Undefined
-              }
-              call_args.push(val)
-            }
-          }
-          Null | Undefined => ()
-          _ =>
-            raise @errors.TypeError(
-              message="CreateListFromArrayLike called on non-object",
-            )
+          Null | Undefined => []
+          other => create_list_from_array_like(other)
         }
+      } else {
+        []
       }
       interp.call_value(this_val, call_this, call_args, loc)
     },

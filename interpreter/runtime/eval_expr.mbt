@@ -1086,34 +1086,27 @@ fn Interpreter::eval_binary(
                     message="Right-hand side of 'instanceof' is not callable",
                   )
                 Some(_) =>
-                  // Step 3 of OrdinaryHasInstance: If O is not an Object, return false.
-                  // This MUST precede steps 4-5 per spec, so primitive LHS never triggers
-                  // a TypeError even when C.prototype is a non-object.
-                  match l {
-                    Object(_)
-                    | Array(_)
-                    | Map(_)
-                    | Set(_)
-                    | Promise(_)
-                    | Proxy(_) =>
-                      // Steps 4-5 of OrdinaryHasInstance: Get(C, "prototype"); if not Object, TypeError.
-                      // Bound functions without own prototype property fall through to the None arm.
-                      match r_data.bag.properties.get("prototype") {
-                        Some(proto) =>
-                          match proto {
-                            Object(_) =>
-                              instanceof_prototype_chain(l, proto, self.global)
-                            // Non-object prototype: throw TypeError per spec (OrdinaryHasInstance step 5)
-                            _ =>
-                              raise @errors.TypeError(
-                                message="Function has non-object prototype in instanceof check",
-                              )
-                          }
-                        // No prototype property (e.g., bound functions): return false per spec
-                        None => Bool(false)
-                      }
-                    // Primitive LHS: step 3 short-circuits before step 5's TypeError.
-                    _ => Bool(false)
+                  // Step 3 of OrdinaryHasInstance: If O is not an Object, return
+                  // false. MUST precede steps 4-5 so primitive LHS never triggers
+                  // step 5's TypeError even when C.prototype is a non-object.
+                  if !is_object_value(l) {
+                    Bool(false)
+                  } else {
+                    // Steps 4-5: Get(C, "prototype"); if not Object, TypeError.
+                    // Bound functions without own prototype property fall through
+                    // to the None arm.
+                    match r_data.bag.properties.get("prototype") {
+                      Some(proto) =>
+                        match proto {
+                          Object(_) =>
+                            instanceof_prototype_chain(l, proto, self.global)
+                          _ =>
+                            raise @errors.TypeError(
+                              message="Function has non-object prototype in instanceof check",
+                            )
+                        }
+                      None => Bool(false)
+                    }
                   }
               }
           }

@@ -129,6 +129,8 @@ pub fn is_function_value(Value) -> Bool
 
 pub fn is_js_catchable_error(Error) -> Bool
 
+pub fn is_object_value(Value) -> Bool
+
 pub fn is_thenable_object_candidate(Value) -> Bool
 
 pub fn is_truthy(Value) -> Bool

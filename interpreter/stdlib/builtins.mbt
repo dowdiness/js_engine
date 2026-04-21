@@ -1681,12 +1681,11 @@ pub fn setup_builtins(
         return Value::Bool(false)
       }
       // Step 3 of OrdinaryHasInstance: If O is not an Object, return false.
-      // This MUST precede step 4's Get(C, "prototype") — both because primitives
+      // MUST precede step 4's Get(C, "prototype") — both because primitives
       // must not trigger step 5's TypeError, and because a getter on "prototype"
       // must not observe a call when the short-circuit would have fired first.
-      match o {
-        Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => ()
-        _ => return Value::Bool(false)
+      if !@runtime.is_object_value(o) {
+        return Value::Bool(false)
       }
       // Steps 4-5 of OrdinaryHasInstance: Get(C, "prototype"); if not Object, TypeError.
       // Undefined means no own prototype property (e.g. bound functions) → return false.

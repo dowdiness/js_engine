@@ -46,6 +46,18 @@ pub fn is_function_value(v : Value) -> Bool {
 }
 
 ///|
+/// Check if a Value is an object per ES Type(v) is Object (§6.1.7).
+/// Returns true for any Value variant that represents a JavaScript object
+/// reference; false for language primitives (Number, String_, Bool, Null,
+/// Undefined, Symbol, BigInt).
+pub fn is_object_value(v : Value) -> Bool {
+  match v {
+    Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => true
+    _ => false
+  }
+}
+
+///|
 /// Per-interpreter symbol state: ID counter, all-symbols table,
 /// and the Symbol.for() / Symbol.keyFor() registry.
 /// Passed through setup functions so that closures can capture it
