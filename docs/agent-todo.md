@@ -725,3 +725,25 @@ behavior-preserving refactor charter; listed here for follow-up PRs.
 2. *Value retrieval* (lines 307, 336, 613, 642) — `to_primitive` / `to_string` / `to_number` look up `toString` / `valueOf`. If either is defined as an accessor on a user-defined prototype, the lookup misses, fallback kicks in, and coercion uses the default `Object.prototype.toString` instead of the user getter's return value. Observable when `({ get toString() { return () => "x"; } }).toString()` returns `"[object Object]"` instead of `"x"`. Fix requires: on a descriptor hit with `getter`, invoke the getter with the current value as receiver and return its result; fall back to `properties` only when neither descriptor nor direct property exists.
 
 **Why not today**: touches coercion fast paths; each caller has distinct receiver and error-handling semantics. A survey pass is needed before unifying — some callers want Some/None (presence), others want the resolved value-or-callable. Likely unlocks a scattered handful of accessor-related test262 tests. Surfaced 2026-04-18 during PR #60 cleanup — the agent bypassed it cleanly within its scope, which is how it got flagged explicitly rather than silently propagating.
+
+---
+
+## Follow-ups from Pre-Stage-C TypeError bundle (2026-04-21, PRs #70 + #71)
+
+Two scope-fenced gaps carried forward from the method-shorthand / TypeError-gate work. Both landed on `main` 2026-04-21 (`e9622a6`, `0eadc5a`).
+
+### 27. Class methods should be non-constructor (`class Foo { bar() {} }` → `new obj.bar()` throws TypeError)
+
+**Impact**: low single-digit test262 in `language/statements/class/method-*-invoke-ctor` and `language/expressions/class` cohorts that parallel the merged `language/expressions/object/method-definition/name-invoke-ctor` pair.
+
+**Problem**: PR #71 added `is_method : Bool` to `FuncData` / `FuncDataExt` and set it to `true` for object-literal method shorthand in `Interpreter::eval_prop_value` via the new `mark_as_method` helper. Class methods flow through a **different path** — they bind in `class.mbt` as prototype entries with `is_method: false`, so `is_constructor_value` accepts them and `new obj.bar()` on a class method succeeds instead of throwing per §15.4.5 MethodDefinitionEvaluation.
+
+**Fix sketch**: at the class-method binding site in `class.mbt` (where a `MethodDefinition` becomes a callable value on the class's prototype), apply `mark_as_method` the same way `eval_prop_value` does. Getter, setter, generator, and async variants all share this fate — treat uniformly. Regression guards: mirror `§15.4.5: new ({method() {}}).method() throws TypeError` across `class { m() {} }`, `class { get m() {} }`, `class { set m(v) {} }`, `class { *m() {} }`, `class { async m() {} }`.
+
+### 28. Method-def functions shouldn't have an own `prototype` property
+
+**Impact**: correctness-adjacent follow-on in the same method-def cohort where test262 asserts `typeof obj.m.prototype === "undefined"`.
+
+**Problem**: per §15.4.5 step 9, method definitions explicitly do NOT go through MakeConstructor — which is the step that adds the `prototype` own property for regular functions. Current user-function materialization adds `prototype` unconditionally. With the `is_method: true` flag now available from PR #71, the fix is a one-line gate.
+
+**Fix sketch**: in `make_func` / `make_func_ext` in `factories.mbt` (or wherever the `prototype` property is assigned during user-function materialization), gate the assignment on `!func_data.is_method`. Regression guard: `typeof ({m() {}}).m.prototype === "undefined"` (currently `"object"`).
