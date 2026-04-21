@@ -2,7 +2,7 @@
 
 A minimal JavaScript tree-walking interpreter written in [MoonBit](https://www.moonbitlang.com/).
 
-- Conformance: ~84% of test262 (strict + non-strict). See [docs/ROADMAP.md](docs/ROADMAP.md).
+- Conformance: 86.6% strict / 85.0% non-strict on test262 (each file is run in both modes, reported separately). See [docs/ROADMAP.md](docs/ROADMAP.md).
 - Self-hosting: compiles to JavaScript via MoonBit's JS target and runs on Node.js.
 
 ## Quick Start
