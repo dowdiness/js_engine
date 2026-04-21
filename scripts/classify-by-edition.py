@@ -326,7 +326,10 @@ def classify_path(path: str, features: list[str]) -> tuple[str, set[str]]:
 # ---------------------------------------------------------------------------
 
 class Bucket:
-    __slots__ = ("total", "passed", "failed", "skipped", "timeout", "error")
+    __slots__ = (
+        "total", "passed", "failed", "skipped", "timeout", "error",
+        "failures",  # list[tuple[path, reason]] for status in {fail, timeout, error}
+    )
 
     def __init__(self) -> None:
         self.total = 0
@@ -335,19 +338,23 @@ class Bucket:
         self.skipped = 0
         self.timeout = 0
         self.error = 0
+        self.failures: list[tuple[str, str]] = []
 
-    def record(self, status: str) -> None:
+    def record(self, status: str, path: str = "", reason: str = "") -> None:
         self.total += 1
         if status == "pass":
             self.passed += 1
         elif status == "fail":
             self.failed += 1
+            self.failures.append((path, reason))
         elif status == "skip":
             self.skipped += 1
         elif status == "timeout":
             self.timeout += 1
+            self.failures.append((path, reason or "timeout"))
         elif status == "error":
             self.error += 1
+            self.failures.append((path, reason or "error"))
 
     @property
     def executed(self) -> int:
@@ -399,7 +406,7 @@ def classify_results(
             feature_cache[path] = features
 
         edition, unmapped = classify_path(path, features)
-        buckets[edition].record(status)
+        buckets[edition].record(status, path=path, reason=r.get("reason", ""))
         for u in unmapped:
             unmapped_counts[u] += 1
 
@@ -446,6 +453,74 @@ def render_table(mode: str, buckets: dict[str, Bucket]) -> str:
     return "\n".join(lines)
 
 
+# ---------------------------------------------------------------------------
+# Failure analysis
+# ---------------------------------------------------------------------------
+
+# Leading error class like "TypeError: foo", "SyntaxError (line 5): foo", etc.
+ERROR_CLASS_RE = re.compile(r"^([A-Z][A-Za-z]*Error|timeout|error)\b")
+
+
+def reason_key(reason: str) -> str:
+    """Normalize a failure reason for grouping. Keeps error class + short msg."""
+    if not reason:
+        return "(no reason)"
+    first_line = reason.splitlines()[0].strip()
+    # Collapse paths, line numbers, and quoted literals so similar messages group.
+    collapsed = re.sub(r"/[\w./-]+\.js", "<file>", first_line)
+    collapsed = re.sub(r"\bline \d+\b", "line N", collapsed)
+    collapsed = re.sub(r"\b\d{2,}\b", "N", collapsed)
+    collapsed = re.sub(r"'[^']{0,40}'", "'…'", collapsed)
+    collapsed = re.sub(r'"[^"]{0,40}"', '"…"', collapsed)
+    return collapsed[:120]
+
+
+def top_subdir(path: str, depth: int = 4) -> str:
+    """Return a short directory prefix like 'test262/test/built-ins/Array'."""
+    parts = path.split("/")
+    return "/".join(parts[: min(depth, len(parts))])
+
+
+def render_failure_analysis(
+    mode: str, buckets: dict[str, Bucket], edition_filter: str | None, top_n: int
+) -> str:
+    lines = [f"## Failure analysis — {mode}"]
+    ordered = sorted(
+        buckets.items(), key=lambda kv: EDITION_RANK.get(kv[0], len(EDITION_ORDER))
+    )
+    for edition, b in ordered:
+        if edition_filter and edition != edition_filter:
+            continue
+        if not b.failures:
+            continue
+        lines.append("")
+        lines.append(f"### {edition} — {len(b.failures)} failures")
+        # Top subdirs.
+        subdir_counts: dict[str, int] = defaultdict(int)
+        for path, _reason in b.failures:
+            subdir_counts[top_subdir(path)] += 1
+        lines.append("")
+        lines.append("**Top directories:**")
+        lines.append("")
+        lines.append("| Count | Directory |")
+        lines.append("|---:|---|")
+        for sd, n in sorted(subdir_counts.items(), key=lambda kv: -kv[1])[:top_n]:
+            lines.append(f"| {n} | `{sd}` |")
+        # Top reasons.
+        reason_counts: dict[str, int] = defaultdict(int)
+        for _path, reason in b.failures:
+            reason_counts[reason_key(reason)] += 1
+        lines.append("")
+        lines.append("**Top failure reasons:**")
+        lines.append("")
+        lines.append("| Count | Reason |")
+        lines.append("|---:|---|")
+        for reason, n in sorted(reason_counts.items(), key=lambda kv: -kv[1])[:top_n]:
+            safe = reason.replace("|", "\\|")
+            lines.append(f"| {n} | `{safe}` |")
+    return "\n".join(lines)
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("results", nargs="+", help="test262-*-results.json path(s)")
@@ -462,10 +537,27 @@ def main() -> int:
         action="store_true",
         help="Print unmapped features seen (to extend FEATURE_EDITION)",
     )
+    p.add_argument(
+        "--list-failures",
+        action="store_true",
+        help="Per-edition failure breakdown (top directories + reason patterns)",
+    )
+    p.add_argument(
+        "--edition",
+        default=None,
+        help="With --list-failures, narrow to a single edition (e.g. 'Pre-ES2015 (baseline)')",
+    )
+    p.add_argument(
+        "--top",
+        type=int,
+        default=15,
+        help="Number of entries shown per failure breakdown section (default 15)",
+    )
     args = p.parse_args()
 
     all_unmapped: dict[str, int] = defaultdict(int)
     sections = []
+    failure_sections = []
     for rf in args.results:
         with open(rf) as f:
             data = json.load(f)
@@ -473,10 +565,18 @@ def main() -> int:
         mode = data["results"][0]["mode"] if results else os.path.basename(rf)
         buckets, unmapped = classify_results(results, args.test262_root)
         sections.append(render_table(mode, buckets))
+        if args.list_failures:
+            failure_sections.append(
+                render_failure_analysis(mode, buckets, args.edition, args.top)
+            )
         for k, v in unmapped.items():
             all_unmapped[k] += v
 
     print("\n\n".join(sections))
+
+    if args.list_failures:
+        print("\n---\n")
+        print("\n\n".join(failure_sections))
 
     if args.show_unmapped and all_unmapped:
         print("\n### Unmapped features (add to FEATURE_EDITION)\n")
