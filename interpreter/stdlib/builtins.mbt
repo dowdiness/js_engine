@@ -1680,12 +1680,25 @@ pub fn setup_builtins(
       if !@runtime.is_callable(this_val) {
         return Value::Bool(false)
       }
-      // Get C.prototype
+      // Step 3 of OrdinaryHasInstance: If O is not an Object, return false.
+      // MUST precede step 4's Get(C, "prototype") — both because primitives
+      // must not trigger step 5's TypeError, and because a getter on "prototype"
+      // must not observe a call when the short-circuit would have fired first.
+      if !@runtime.is_object_value(o) {
+        return Value::Bool(false)
+      }
+      // Steps 4-5 of OrdinaryHasInstance: Get(C, "prototype"); if not Object, TypeError.
+      // Undefined means no own prototype property (e.g. bound functions) → return false.
       let loc = @token.Loc::default()
       let p = interp.get_property(this_val, "prototype", loc)
-      match p {
-        Object(_) => @runtime.instanceof_prototype_chain(o, p, interp.global)
-        _ => Value::Bool(false)
+      if @runtime.is_object_value(p) {
+        @runtime.instanceof_prototype_chain(o, p, interp.global)
+      } else if p is Undefined {
+        Value::Bool(false)
+      } else {
+        raise @errors.TypeError(
+          message="Function has non-object prototype in instanceof check",
+        )
       }
     },
   )

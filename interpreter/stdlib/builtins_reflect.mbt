@@ -1,29 +1,24 @@
 ///|
-/// Convert an array-like value to an Array[Value] (CreateListFromArrayLike)
-fn create_list_from_array_like(val : Value) -> Array[Value] raise Error {
-  match val {
-    Value::Array(data) => data.elements.copy()
-    Object(data) => {
-      let result : Array[Value] = []
-      match data.bag.properties.get("length") {
-        Some(len_val) => {
-          let len = @runtime.to_number(len_val).to_int()
-          for i = 0; i < len; i = i + 1 {
-            match data.bag.properties.get(i.to_string()) {
-              Some(v) => result.push(v)
-              None => result.push(Undefined)
-            }
-          }
-        }
-        None => ()
-      }
-      result
-    }
-    _ =>
-      raise @errors.TypeError(
-        message="CreateListFromArrayLike called on non-object",
-      )
+/// CreateListFromArrayLike (§7.3.18). Step 1 throws TypeError for non-object
+/// values. Steps 2-6 read `length` and successive integer-indexed properties
+/// via Get — routed through `interp.get_property` so Proxy traps fire,
+/// getters run, and prototype-chain lookups work for Map/Set/Promise/Proxy
+/// receivers that expose array-like shape through those channels.
+pub fn create_list_from_array_like(
+  interp : @runtime.Interpreter,
+  val : Value,
+) -> Array[Value] raise Error {
+  if !@runtime.is_object_value(val) {
+    raise @errors.TypeError(
+      message="CreateListFromArrayLike called on non-object",
+    )
   }
+  let len = @runtime.to_array_like_length_interp(val, interp)
+  let result : Array[Value] = []
+  for i = 0; i < len; i = i + 1 {
+    result.push(@runtime.get_array_like_element_interp(interp, val, i))
+  }
+  result
 }
 
 ///|
@@ -72,7 +67,7 @@ fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
       let target = args[0]
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
       let arg_list = if args.length() > 2 {
-        create_list_from_array_like(args[2])
+        create_list_from_array_like(interp, args[2])
       } else {
         []
       }
@@ -98,7 +93,7 @@ fn setup_reflect_builtins(env : Environment, sym_state : SymbolState) -> Unit {
           message="Reflect.construct: target is not a constructor",
         )
       }
-      let arg_list = create_list_from_array_like(args[1])
+      let arg_list = create_list_from_array_like(interp, args[1])
       let loc = @token.Loc::default()
       // Per spec, when newTarget differs from target, create instance with newTarget.prototype
       let proto_override : Value? = if args.length() > 2 {

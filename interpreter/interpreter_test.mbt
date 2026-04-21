@@ -1456,6 +1456,52 @@ test "function apply method with non-numeric length" {
 }
 
 ///|
+// §20.2.3.1 + §7.3.18: argArray must be Object (or null/undefined)
+test "function apply throws TypeError for boolean argArray" {
+  let src =
+    #|function fn() {}
+    #|try { fn.apply(null, true); } catch(e) { console.log(e instanceof TypeError); }
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "function apply throws TypeError for number argArray" {
+  let src =
+    #|function fn() {}
+    #|try { fn.apply(null, 42); } catch(e) { console.log(e instanceof TypeError); }
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "function apply throws TypeError for string argArray" {
+  let src =
+    #|function fn() {}
+    #|try { fn.apply(null, "str"); } catch(e) { console.log(e instanceof TypeError); }
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "function apply null argArray does not throw" {
+  let src =
+    #|function fn() { return arguments.length; }
+    #|fn.apply(null, null);
+  let (_, result) = run_js(src)
+  inspect(result, content="0")
+}
+
+///|
+test "function apply array argArray passes args to callee" {
+  let src =
+    #|function fn(a, b, c) { return a + b + c; }
+    #|fn.apply(null, [1, 2, 3]);
+  let (_, result) = run_js(src)
+  inspect(result, content="6")
+}
+
+///|
 test "function bind method" {
   let src =
     #|function greet() { return "Hi " + this.name; }
@@ -7201,6 +7247,127 @@ test "sloppy: delete unqualified identifier is allowed" {
 }
 
 ///|
+test "delete: Member on undefined throws TypeError (non-strict)" {
+  let src =
+    #|var base = undefined;
+    #|try {
+    #|  delete base.prop;
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"TypeError: Cannot convert undefined or null to object\"]",
+  )
+}
+
+///|
+test "delete: Member on null throws TypeError (non-strict)" {
+  let src =
+    #|var base = null;
+    #|try {
+    #|  delete base.prop;
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"TypeError: Cannot convert undefined or null to object\"]",
+  )
+}
+
+///|
+test "delete: Member on undefined throws TypeError (strict)" {
+  let src =
+    #|"use strict";
+    #|var base = undefined;
+    #|try {
+    #|  delete base.prop;
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"TypeError: Cannot convert undefined or null to object\"]",
+  )
+}
+
+///|
+test "delete: Member on null throws TypeError (strict)" {
+  let src =
+    #|"use strict";
+    #|var base = null;
+    #|try {
+    #|  delete base.prop;
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"TypeError: Cannot convert undefined or null to object\"]",
+  )
+}
+
+///|
+test "delete: ComputedMember on undefined throws TypeError" {
+  let src =
+    #|var base = undefined;
+    #|try {
+    #|  delete base[0];
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"TypeError: Cannot convert undefined or null to object\"]",
+  )
+}
+
+///|
+test "delete: ComputedMember on null throws TypeError" {
+  let src =
+    #|var base = null;
+    #|try {
+    #|  delete base["x"];
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"TypeError: Cannot convert undefined or null to object\"]",
+  )
+}
+
+///|
+test "delete: normal object property returns true (regression guard)" {
+  let src =
+    #|var o = { a: 1 };
+    #|console.log(delete o.a);
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "delete: primitive receiver still returns true (regression guard)" {
+  let src =
+    #|console.log(delete "foo".length);
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
 test "strict: assignment to eval throws SyntaxError" {
   let src =
     #|"use strict";
@@ -9900,6 +10067,55 @@ test "§19.2.1.3 regression: indirect eval(var arguments) in default runs normal
 }
 
 ///|
+/// §20.1.2.24 step 1 — RequireObjectCoercible: null throws TypeError
+test "Object.setPrototypeOf(null) throws TypeError" {
+  let src =
+    #|try {
+    #|  Object.setPrototypeOf(null);
+    #|} catch(e) {
+    #|  console.log(e instanceof TypeError);
+    #|}
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+/// §20.1.2.24 step 1 — RequireObjectCoercible: undefined throws TypeError
+test "Object.setPrototypeOf(undefined) throws TypeError" {
+  let src =
+    #|try {
+    #|  Object.setPrototypeOf(undefined);
+    #|} catch(e) {
+    #|  console.log(e instanceof TypeError);
+    #|}
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+/// §20.1.2.24 step 3 — primitive (non-null/undefined) is returned unchanged
+test "Object.setPrototypeOf(42, null) returns 42" {
+  let src =
+    #|console.log(Object.setPrototypeOf(42, null));
+  let output = run_output(src)
+  inspect(output, content="[\"42\"]")
+}
+
+///|
+/// §20.1.2.24 normal case — object with null proto does not throw
+test "Object.setPrototypeOf({}, null) does not throw" {
+  let src =
+    #|try {
+    #|  Object.setPrototypeOf({}, null);
+    #|  console.log("ok");
+    #|} catch(e) {
+    #|  console.log("threw: " + e);
+    #|}
+  let output = run_output(src)
+  inspect(output, content="[\"ok\"]")
+}
+
+///|
 /// §19.2.1.3 negative regression (#A.6) — a nested non-arrow IIFE in a
 /// default whose body contains `eval("var arguments")` must NOT throw
 /// (the IIFE's eval runs in the IIFE's own var scope, not f's). Proves
@@ -10055,4 +10271,161 @@ test "§10.5.13: new Proxy(function, {})() still works" {
     ),
   )
   inspect(output, content="[\"7\"]")
+}
+
+// ====== OrdinaryHasInstance: non-object prototype throws TypeError ======
+
+///|
+test "instanceof throws TypeError when prototype is a string" {
+  let mut err_msg = ""
+  try {
+    let _ = run_js("function F() {} F.prototype = \"\"; [] instanceof F")
+  } catch {
+    @runtime.JsException(val) => err_msg = error_display(val)
+    _ => err_msg = "unexpected error"
+  }
+  inspect(
+    err_msg,
+    content="TypeError: Function has non-object prototype in instanceof check",
+  )
+}
+
+///|
+test "instanceof throws TypeError when prototype is a number" {
+  let mut err_msg = ""
+  try {
+    let _ = run_js("function F() {} F.prototype = 42; [] instanceof F")
+  } catch {
+    @runtime.JsException(val) => err_msg = error_display(val)
+    _ => err_msg = "unexpected error"
+  }
+  inspect(
+    err_msg,
+    content="TypeError: Function has non-object prototype in instanceof check",
+  )
+}
+
+///|
+test "instanceof does not throw when prototype is a normal object" {
+  let (_, result) = run_js("function F() {} [] instanceof F")
+  inspect(result, content="false")
+}
+
+///|
+/// OrdinaryHasInstance step 3 (O not Object → return false) precedes step 5
+/// (prototype not Object → TypeError). A primitive LHS must return false even
+/// when C.prototype is a non-object value. See test262
+/// language/expressions/instanceof/primitive-prototype-with-primitive.js.
+test "instanceof returns false for primitive LHS with non-object prototype (number LHS)" {
+  let (_, result) = run_js("function F() {} F.prototype = true; 0 instanceof F")
+  inspect(result, content="false")
+}
+
+///|
+test "instanceof returns false for primitive LHS with non-object prototype (string LHS)" {
+  let (_, result) = run_js(
+    "function F() {} F.prototype = 42; \"s\" instanceof F",
+  )
+  inspect(result, content="false")
+}
+
+///|
+/// Non-plain-Object variants (Array, Map, Set, Promise, Proxy) are also
+/// objects in this engine's Value model. OrdinaryHasInstance step 5 must
+/// accept them as valid `prototype` values, not throw TypeError.
+test "instanceof with Array as prototype walks chain" {
+  let (_, result) = run_js(
+    "function F() {} F.prototype = []; ({}) instanceof F",
+  )
+  inspect(result, content="false")
+}
+
+///|
+test "instanceof with Map as prototype walks chain" {
+  let (_, result) = run_js(
+    "function F() {} F.prototype = new Map(); ({}) instanceof F",
+  )
+  inspect(result, content="false")
+}
+
+///|
+/// Fallback path when @@hasInstance is overridden to undefined: same gate must
+/// also accept non-plain-Object prototypes.
+test "instanceof fallback path with Array prototype" {
+  let (_, result) = run_js(
+    "function F() {} F[Symbol.hasInstance] = undefined; F.prototype = []; ({}) instanceof F",
+  )
+  inspect(result, content="false")
+}
+
+///|
+/// Function.prototype.apply with a non-plain-Object array-like (Proxy/Map/
+/// Promise) must not throw TypeError; per §7.3.18, only primitives throw.
+test "apply with Proxy argArray does not throw" {
+  let (_, result) = run_js(
+    "var called = false; function f(){ called = true; } f.apply(null, new Proxy({length: 0}, {})); called",
+  )
+  inspect(result, content="true")
+}
+
+///|
+test "apply with Map argArray does not throw" {
+  let (_, result) = run_js(
+    "var n = -1; function f(){ n = arguments.length; } f.apply(null, new Map()); n",
+  )
+  inspect(result, content="0")
+}
+
+///|
+/// CreateListFromArrayLike (§7.3.18) must route length + indexed reads
+/// through Get, so a Proxy that fakes array-like shape via its `get` trap
+/// still delivers arguments. The preceding e9a5b33 fix accepted non-plain
+/// object variants past the type gate but then silently returned [] for
+/// Map/Set/Promise/Proxy, dropping trapped args. Codex P2 regression guard.
+test "apply with Proxy length+index traps delivers argument" {
+  let (_, result) = run_js(
+    (
+      #|var h = { get: function(t, k) { if (k === "length") return 1; if (k === "0") return 42; } };
+      #|var p = new Proxy({}, h);
+      #|var got = -1;
+      #|function f() { got = arguments[0]; }
+      #|f.apply(null, p);
+      #|got
+    ),
+  )
+  inspect(result, content="42")
+}
+
+///|
+/// Same shape via Reflect.apply — independent code path that delegates to
+/// the same create_list_from_array_like helper.
+test "Reflect.apply with Proxy length+index traps delivers argument" {
+  let (_, result) = run_js(
+    (
+      #|var h = { get: function(t, k) { if (k === "length") return 2; if (k === "0") return "a"; if (k === "1") return "b"; } };
+      #|var p = new Proxy({}, h);
+      #|var out = "";
+      #|function f(x, y) { out = x + y; }
+      #|Reflect.apply(f, null, p);
+      #|out
+    ),
+  )
+  inspect(result, content="ab")
+}
+
+///|
+/// ArrayLike Objects with inherited length should work too — previous
+/// implementation read data.bag.properties directly, missing prototype chain.
+test "apply with Object inheriting length from prototype" {
+  let (_, result) = run_js(
+    (
+      #|var proto = { length: 1, 0: 99 };
+      #|var obj = Object.create(proto);
+      #|var got = -1;
+      #|function f() { got = arguments[0]; }
+      #|f.apply(null, obj);
+      #|got
+    ),
+  )
+  inspect(result, content="99")
 }
