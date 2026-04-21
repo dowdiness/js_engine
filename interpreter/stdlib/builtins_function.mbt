@@ -378,6 +378,7 @@ fn setup_function_builtins(env : Environment) -> Unit {
                     strict: @runtime.has_use_strict(body),
                     // `new Function(...)` result has no self-name binding.
                     has_name_binding: false,
+                    is_method: false,
                   }),
                 ),
                 class_name: "Function",
@@ -404,6 +405,7 @@ fn setup_function_builtins(env : Environment) -> Unit {
                     closure: env,
                     strict: @runtime.has_use_strict(body),
                     has_name_binding: false,
+                    is_method: false,
                   }),
                 ),
                 class_name: "Function",

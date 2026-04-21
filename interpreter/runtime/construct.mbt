@@ -411,20 +411,11 @@ pub fn Interpreter::construct_value(
 ) -> Value raise Error {
   match ctor {
     Proxy(proxy_data) => {
-      // Verify target is constructible before checking trap
+      // §10.5.13 [[Construct]]: target must be a constructor per IsConstructor,
+      // not merely callable — this rejects Proxy wrapping method-shorthand
+      // (is_method: true), arrow functions, and other non-constructable callables.
       let target = get_proxy_target(proxy_data)
-      fn is_constructible(v : Value) -> Bool {
-        match v {
-          Object(t_data) => t_data.callable is Some(_)
-          Proxy(pd) =>
-            match pd.target {
-              Some(inner) => is_constructible(inner)
-              None => false
-            }
-          _ => false
-        }
-      }
-      if !is_constructible(target) {
+      if !is_constructor_value(target) {
         raise @errors.TypeError(message="target is not a constructor")
       }
       let trap = get_proxy_trap(proxy_data, "construct", self)
@@ -453,6 +444,12 @@ pub fn Interpreter::construct_value(
     Object(obj_data) =>
       match obj_data.callable {
         Some(UserFunc(data)) => {
+          // §13.3.5.1 step 5: method-shorthand functions have no [[Construct]]
+          if data.is_method {
+            raise @errors.TypeError(
+              message=format_loc_context("is not a constructor", loc),
+            )
+          }
           let func_strict = data.strict
           let func_ctx : ExecContext = {
             strict: func_strict,
@@ -530,6 +527,12 @@ pub fn Interpreter::construct_value(
           }
         }
         Some(UserFuncExt(data)) => {
+          // §13.3.5.1 step 5: method-shorthand functions have no [[Construct]]
+          if data.is_method {
+            raise @errors.TypeError(
+              message=format_loc_context("is not a constructor", loc),
+            )
+          }
           let func_strict = data.strict
           let func_ctx : ExecContext = {
             strict: func_strict,

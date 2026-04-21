@@ -11,6 +11,11 @@ pub(all) struct FuncData {
   // function declarations, and anonymous functions do NOT get this
   // binding — `name` is used only for `.name` display in those cases.
   has_name_binding : Bool
+  // True for method-shorthand definitions in object literals
+  // (e.g. `{ m() {} }`). Per ES §15.4.5 MethodDefinitionEvaluation,
+  // such functions have no [[Construct]] internal method and must throw
+  // TypeError when called via `new`. Class methods use a separate path.
+  is_method : Bool
 }
 
 ///|
@@ -22,6 +27,11 @@ pub(all) struct FuncDataExt {
   closure : Environment
   strict : Bool
   has_name_binding : Bool
+  // True for method-shorthand definitions in object literals
+  // (e.g. `{ m() {} }`). Per ES §15.4.5 MethodDefinitionEvaluation,
+  // such functions have no [[Construct]] internal method and must throw
+  // TypeError when called via `new`. Class methods use a separate path.
+  is_method : Bool
 }
 
 ///|

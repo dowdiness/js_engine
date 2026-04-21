@@ -9927,3 +9927,132 @@ test "§19.2.1.3 regression: nested arrow invocation in default runs normally" {
   let output = run_output(src)
   inspect(output, content="[\"1\"]")
 }
+
+///|
+/// §15.4.5 MethodDefinitionEvaluation: object-literal shorthand methods
+/// have no [[Construct]] internal method and must throw TypeError on `new`.
+test "§15.4.5: new obj.method() throws TypeError" {
+  let output = run_output(
+    (
+      #|var obj = { m: function() {} };
+      #|try {
+      #|  new obj.m();
+      #|  console.log("no throw");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  // Regular function expression used as property value is still a constructor
+  inspect(output, content="[\"no throw\"]")
+}
+
+///|
+test "§15.4.5: new ({method() {}}).method() throws TypeError" {
+  let output = run_output(
+    (
+      #|var obj = { m() {} };
+      #|try {
+      #|  new obj.m();
+      #|  console.log("no throw");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "§15.4.5: method shorthand normal call still works" {
+  // Regression guard: calling a method shorthand normally must succeed
+  let output = run_output(
+    (
+      #|var obj = {
+      #|  m() { return 42; }
+      #|};
+      #|console.log(obj.m());
+    ),
+  )
+  inspect(output, content="[\"42\"]")
+}
+
+///|
+test "§15.4.5: new (function() {}) still works as constructor" {
+  // Regression guard: normal function expressions are still constructors
+  let output = run_output(
+    (
+      #|function Ctor() { this.x = 1; }
+      #|var o = new Ctor();
+      #|console.log(o.x);
+    ),
+  )
+  inspect(output, content="[\"1\"]")
+}
+
+///|
+test "§15.4.5: arrow functions still throw on new (regression guard)" {
+  // Arrow functions must remain non-constructable
+  let output = run_output(
+    (
+      #|try {
+      #|  new (() => {})();
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+/// §10.5.13 ProxyExoticObject [[Construct]]: when the proxy target is a
+/// method shorthand (non-constructor), `new Proxy(target, {})()` must throw
+/// TypeError. The IsConstructor check on the target runs before any trap
+/// dispatch — a proxy cannot resurrect constructability that the target
+/// lacks. Codex P1 regression guard for PR #71.
+test "§10.5.13: new Proxy(methodShorthand, {})() throws TypeError" {
+  let output = run_output(
+    (
+      #|var obj = { m() {} };
+      #|try {
+      #|  new (new Proxy(obj.m, {}))();
+      #|  console.log("no throw");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+/// §10.5.13 regression: arrows behind a Proxy are still non-constructable.
+test "§10.5.13: new Proxy(arrow, {})() throws TypeError" {
+  let output = run_output(
+    (
+      #|try {
+      #|  new (new Proxy(() => {}, {}))();
+      #|  console.log("no throw");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+/// §10.5.13 regression: a normal function wrapped in a Proxy stays
+/// constructable. This asserts the IsConstructor check is correctly
+/// narrow — it only rejects non-constructors, not "any callable".
+test "§10.5.13: new Proxy(function, {})() still works" {
+  let output = run_output(
+    (
+      #|function Ctor() { this.x = 7; }
+      #|var o = new (new Proxy(Ctor, {}))();
+      #|console.log(o.x);
+    ),
+  )
+  inspect(output, content="[\"7\"]")
+}
