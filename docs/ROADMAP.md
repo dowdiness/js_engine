@@ -2,9 +2,18 @@
 
 ## Current Status
 
-**Test262**: 44,933 / 53,208 tasks executed (**84.4%** pass rate, strict + non-strict) — full run 2026-02-22
+**Test262** — CI run [24675053260](https://github.com/dowdiness/js_engine/actions/runs/24675053260) on tip `e3a24ab`, 2026-04-20. Each test file is run twice, once in strict mode and once in non-strict. The two are reported separately (summing them would double-count files):
 
-**Unit tests**: 881 total, 881 passed, 0 failed
+| Mode | Discovered | Skipped | Executed | Passed | Failed | Timeouts | Passed / Executed | Passed / Discovered |
+|---|---|---|---|---|---|---|---|---|
+| strict | 44,986 | 18,270 | 26,598 | 23,039 | 3,559 | 117 | **86.6%** | 51.2% |
+| non-strict | 47,692 | 18,811 | 28,769 | 24,452 | 4,317 | 111 | **85.0%** | 51.3% |
+
+CI regression baseline: `test262-baseline.json` (min 23,520 non-strict / 22,450 strict passed; currently +932 / +589 above).
+
+**Unit tests**: 940 / 940 passing.
+
+> **Note on the two rates.** The *Passed / Executed* column (86.6% / 85.0%) is what JS engines normally report as "test262 pass rate" — but it excludes the ~40% of the suite we skip entirely. The *Passed / Discovered* column (51.2% / 51.3%) is the honest spec-coverage figure including skipped features (class private fields ~2,437, async-iteration ~3,731, Temporal ~4,482, BigInt ~1,250, regexp-unicode-property ~679, etc.). Neither number alone tells the full story.
 
 For per-category pass rates, Annex B legacy features, and not-yet-implemented features, see [supported-features.md](supported-features.md).
 
@@ -73,7 +82,7 @@ node ./_build/js/debug/build/cmd/main/main.js 'console.log(1 + 2)'
 # => 3
 ```
 
-All 881 unit tests pass on both WASM-GC and JS targets. See [SELF_HOST_JS_RESEARCH.md](SELF_HOST_JS_RESEARCH.md) for full analysis.
+All 940 unit tests pass on WASM-GC (verified in CI run 24675053260). The JS target builds and runs but the unit-test count on JS has not been re-verified since Phase 24 added 59 new tests. See [SELF_HOST_JS_RESEARCH.md](SELF_HOST_JS_RESEARCH.md) for full analysis.
 
 ### What was needed
 - **Backend-specific argv handling**: `process.argv` on JS includes `["node", "script.js", ...]`, so user args start at index 2 (vs index 1 on WASM). Solved with `.js.mbt` / `.wasm.mbt` / `.wasm-gc.mbt` files.
@@ -92,7 +101,7 @@ Prioritized by estimated test impact and implementation effort. These are the hi
 
 ### Path to 90%
 
-Current: **24,519 / 27,599 executed (88.8%)**. Need **~341 more passing tests** to reach 90%. Tiers 1-2 are largely complete (Phase 22), Tier 4 polish done (Phase 23). The remaining items below are ordered by ROI.
+Current (CI run 24675053260, 2026-04-20): strict **86.6%** (23,039 / 26,598 executed), non-strict **85.0%** (24,452 / 28,769 executed). To reach 90% passed/executed: strict needs ~900 more passing tests, non-strict needs ~1,440. To reach 90% passed/discovered we'd additionally need to unskip large feature buckets (class-private ~2,437, regexp-unicode-property ~679, etc.). Tiers 1-2 are largely complete (Phase 22), Tier 4 polish done (Phase 23). Items below are ordered by ROI against the passed/executed denominator.
 
 ### Tier 3 — Feature Implementations (~3,000+ skipped tests unlocked, high effort)
 
@@ -119,20 +128,24 @@ These are major missing language features. Each unlocks a large batch of current
 
 **3d — RegExp named groups & lookbehind.** Named groups ✅ DONE (PR #47, 2026-04-15). Lookbehind `(?<=...)` / `(?<!...)` still skipped via `regexp-lookbehind` feature flag. Requires backward matching from the current position. Unicode property escapes `\p{Letter}` / `\P{Script=Greek}` still skipped — requires Unicode property tables (large data dependency).
 
-### Summary: Projected Impact
+### Summary: Projected Impact (pre-Phase-24 methodology)
 
-| Milestone | Tests Fixed | Cumulative | Rate |
+> **Methodology note.** The cumulative counts and rates below are **file-level** numbers from before Phase 24 changed the runner to test both strict and non-strict modes separately. They are not directly comparable to the current per-mode CI numbers in the headline (strict 86.6%, non-strict 85.0%). Leaving them as historical progression; do not project forward from these figures.
+
+| Milestone | Tests Fixed | Cumulative | Rate (file-level, pre-P24) |
 |-----------|------------|------------|------|
-| Pre-P22 baseline | — | 23,875 | **86.5%** |
-| Tier 1+2 (P22) | +587 | 24,462 | **88.1%** |
-| Tier 4 (P23) | +57 | 24,519 | **88.8%** |
-| Tier 1d + regex replace (2026-04-16) | ~+60 | ~24,579 | **~89.0%** |
-| Proxy trap invariants (2026-04-16) | +136 | ~24,715 | **~89.5%** |
-| Remaining Tier 4 (4g modules) | ~50-100 | ~24,815 | **~89.9%** |
+| Pre-P22 baseline | — | 23,875 | 86.5% |
+| Tier 1+2 (P22) | +587 | 24,462 | 88.1% |
+| Tier 4 (P23) | +57 | 24,519 | 88.8% |
+| Tier 1d + regex replace (2026-04-16) | ~+60 | ~24,579 | ~89.0% |
+| Proxy trap invariants (2026-04-16) | +136 | ~24,715 | ~89.5% |
+| Remaining Tier 4 (4g modules) | ~50-100 | ~24,815 | ~89.9% |
 
 **Note**: Tier 3a (class public fields) and Tier 3b (async/await) were already implemented and unlocked prior to 2026-04-16. The `class-fields-public` and `async-functions` feature flags are no longer in the skip list. Remaining gains come from fixing many small issues across categories.
 
-### Root Cause Clustering of Remaining Failures (updated 2026-04-16)
+### Root Cause Clustering of Remaining Failures (snapshot 2026-04-16, stale)
+
+> **Stale warning.** The per-category numbers in this table are from a 2026-04-16 run that pre-dates PRs #64, #65, #66, #67, #68, #69 and the fixture-resolver fix. They are kept here for shape (which categories dominate failures) but **do not match** the current CI run (24675053260). Re-run `python3 test262-runner.py --filter <category> --summary` before citing any specific number.
 
 Failures are now widely distributed. No single fix unlocks 300+ tests. Progress requires many small, targeted fixes.
 

@@ -155,4 +155,9 @@ The GitHub Actions workflow (`.github/workflows/test262.yml`) runs the full suit
 
 ## Current Status
 
-As of 2026-02-22: **84.4% pass rate** (44,933 / 53,208 tasks executed, strict + non-strict). The runner now tests both strict and non-strict modes for each test file (~92,000 tasks from ~48,000 files). See [ROADMAP.md](ROADMAP.md) for detailed category breakdowns and phase history.
+As of CI run [24675053260](https://github.com/dowdiness/js_engine/actions/runs/24675053260) (2026-04-20, tip `e3a24ab`):
+
+- Strict: **86.6%** passed / executed (23,039 / 26,598); 51.2% passed / discovered (23,039 / 44,986). 18,270 skipped.
+- Non-strict: **85.0%** passed / executed (24,452 / 28,769); 51.3% passed / discovered (24,452 / 47,692). 18,811 skipped.
+
+Strict and non-strict are reported separately — summing them would double-count the ~45k underlying test files. The ~51% figure is the honest spec-coverage number; the ~86% / ~85% figures exclude ~40% of the suite that we skip for unimplemented features. See [ROADMAP.md](ROADMAP.md) for category breakdowns and phase history, and [supported-features.md](supported-features.md) for the skipped-feature list.
