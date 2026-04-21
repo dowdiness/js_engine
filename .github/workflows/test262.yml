@@ -4,13 +4,26 @@ on:
   push:
     branches: [main]
     paths-ignore:
+      # Docs and markdown never affect the engine or the runner.
       - 'docs/**'
       - '*.md'
+      # scripts/ today holds only post-hoc analysis / session-hook helpers
+      # (classify-by-edition.py, package-overview.sh) with no CI dependency.
+      # If you add a script that the workflow invokes, exclude it from this
+      # ignore list explicitly so changes to it still trigger CI.
+      - 'scripts/**'
+      - '.gitignore'
+      - 'LICENSE'
+      - '.github/ISSUE_TEMPLATE/**'
   pull_request:
     branches: [main]
     paths-ignore:
       - 'docs/**'
       - '*.md'
+      - 'scripts/**'
+      - '.gitignore'
+      - 'LICENSE'
+      - '.github/ISSUE_TEMPLATE/**'
   workflow_dispatch:
 
 env:
