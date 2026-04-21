@@ -128,7 +128,10 @@ fn setup_function_builtins(env : Environment) -> Unit {
             }
           }
           Null | Undefined => ()
-          _ => ()
+          _ =>
+            raise @errors.TypeError(
+              message="CreateListFromArrayLike called on non-object",
+            )
         }
       }
       interp.call_value(this_val, call_this, call_args, loc)

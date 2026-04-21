@@ -1456,6 +1456,52 @@ test "function apply method with non-numeric length" {
 }
 
 ///|
+// §20.2.3.1 + §7.3.18: argArray must be Object (or null/undefined)
+test "function apply throws TypeError for boolean argArray" {
+  let src =
+    #|function fn() {}
+    #|try { fn.apply(null, true); } catch(e) { console.log(e instanceof TypeError); }
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "function apply throws TypeError for number argArray" {
+  let src =
+    #|function fn() {}
+    #|try { fn.apply(null, 42); } catch(e) { console.log(e instanceof TypeError); }
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "function apply throws TypeError for string argArray" {
+  let src =
+    #|function fn() {}
+    #|try { fn.apply(null, "str"); } catch(e) { console.log(e instanceof TypeError); }
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "function apply null argArray does not throw" {
+  let src =
+    #|function fn() { return arguments.length; }
+    #|fn.apply(null, null);
+  let (_, result) = run_js(src)
+  inspect(result, content="0")
+}
+
+///|
+test "function apply array argArray passes args to callee" {
+  let src =
+    #|function fn(a, b, c) { return a + b + c; }
+    #|fn.apply(null, [1, 2, 3]);
+  let (_, result) = run_js(src)
+  inspect(result, content="6")
+}
+
+///|
 test "function bind method" {
   let src =
     #|function greet() { return "Hi " + this.name; }
