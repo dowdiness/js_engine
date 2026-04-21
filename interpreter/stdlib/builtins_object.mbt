@@ -1127,6 +1127,14 @@ pub fn setup_object_builtins(
               // Object.setPrototypeOf(obj, prototype)
               let obj = if args.length() > 0 { args[0] } else { Undefined }
               let proto = if args.length() > 1 { args[1] } else { Null }
+              // §20.1.2.24 step 1: RequireObjectCoercible(O) — null/undefined throw
+              match obj {
+                Null | Undefined =>
+                  raise @errors.TypeError(
+                    message="Object.setPrototypeOf called on null or undefined",
+                  )
+                _ => ()
+              }
               match proto {
                 Object(_) | Null => ()
                 _ =>

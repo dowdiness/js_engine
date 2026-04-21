@@ -10021,6 +10021,55 @@ test "§19.2.1.3 regression: indirect eval(var arguments) in default runs normal
 }
 
 ///|
+/// §20.1.2.24 step 1 — RequireObjectCoercible: null throws TypeError
+test "Object.setPrototypeOf(null) throws TypeError" {
+  let src =
+    #|try {
+    #|  Object.setPrototypeOf(null);
+    #|} catch(e) {
+    #|  console.log(e instanceof TypeError);
+    #|}
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+/// §20.1.2.24 step 1 — RequireObjectCoercible: undefined throws TypeError
+test "Object.setPrototypeOf(undefined) throws TypeError" {
+  let src =
+    #|try {
+    #|  Object.setPrototypeOf(undefined);
+    #|} catch(e) {
+    #|  console.log(e instanceof TypeError);
+    #|}
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+/// §20.1.2.24 step 3 — primitive (non-null/undefined) is returned unchanged
+test "Object.setPrototypeOf(42, null) returns 42" {
+  let src =
+    #|console.log(Object.setPrototypeOf(42, null));
+  let output = run_output(src)
+  inspect(output, content="[\"42\"]")
+}
+
+///|
+/// §20.1.2.24 normal case — object with null proto does not throw
+test "Object.setPrototypeOf({}, null) does not throw" {
+  let src =
+    #|try {
+    #|  Object.setPrototypeOf({}, null);
+    #|  console.log("ok");
+    #|} catch(e) {
+    #|  console.log("threw: " + e);
+    #|}
+  let output = run_output(src)
+  inspect(output, content="[\"ok\"]")
+}
+
+///|
 /// §19.2.1.3 negative regression (#A.6) — a nested non-arrow IIFE in a
 /// default whose body contains `eval("var arguments")` must NOT throw
 /// (the IIFE's eval runs in the IIFE's own var scope, not f's). Proves
