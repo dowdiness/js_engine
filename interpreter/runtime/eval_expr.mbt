@@ -1097,13 +1097,12 @@ fn Interpreter::eval_binary(
                     // to the None arm.
                     match r_data.bag.properties.get("prototype") {
                       Some(proto) =>
-                        match proto {
-                          Object(_) =>
-                            instanceof_prototype_chain(l, proto, self.global)
-                          _ =>
-                            raise @errors.TypeError(
-                              message="Function has non-object prototype in instanceof check",
-                            )
+                        if is_object_value(proto) {
+                          instanceof_prototype_chain(l, proto, self.global)
+                        } else {
+                          raise @errors.TypeError(
+                            message="Function has non-object prototype in instanceof check",
+                          )
                         }
                       None => Bool(false)
                     }

@@ -10328,3 +10328,50 @@ test "instanceof returns false for primitive LHS with non-object prototype (stri
   )
   inspect(result, content="false")
 }
+
+///|
+/// Non-plain-Object variants (Array, Map, Set, Promise, Proxy) are also
+/// objects in this engine's Value model. OrdinaryHasInstance step 5 must
+/// accept them as valid `prototype` values, not throw TypeError.
+test "instanceof with Array as prototype walks chain" {
+  let (_, result) = run_js(
+    "function F() {} F.prototype = []; ({}) instanceof F",
+  )
+  inspect(result, content="false")
+}
+
+///|
+test "instanceof with Map as prototype walks chain" {
+  let (_, result) = run_js(
+    "function F() {} F.prototype = new Map(); ({}) instanceof F",
+  )
+  inspect(result, content="false")
+}
+
+///|
+/// Fallback path when @@hasInstance is overridden to undefined: same gate must
+/// also accept non-plain-Object prototypes.
+test "instanceof fallback path with Array prototype" {
+  let (_, result) = run_js(
+    "function F() {} F[Symbol.hasInstance] = undefined; F.prototype = []; ({}) instanceof F",
+  )
+  inspect(result, content="false")
+}
+
+///|
+/// Function.prototype.apply with a non-plain-Object array-like (Proxy/Map/
+/// Promise) must not throw TypeError; per §7.3.18, only primitives throw.
+test "apply with Proxy argArray does not throw" {
+  let (_, result) = run_js(
+    "var called = false; function f(){ called = true; } f.apply(null, new Proxy({length: 0}, {})); called",
+  )
+  inspect(result, content="true")
+}
+
+///|
+test "apply with Map argArray does not throw" {
+  let (_, result) = run_js(
+    "var n = -1; function f(){ n = arguments.length; } f.apply(null, new Map()); n",
+  )
+  inspect(result, content="0")
+}

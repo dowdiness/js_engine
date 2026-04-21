@@ -1691,13 +1691,14 @@ pub fn setup_builtins(
       // Undefined means no own prototype property (e.g. bound functions) → return false.
       let loc = @token.Loc::default()
       let p = interp.get_property(this_val, "prototype", loc)
-      match p {
-        Object(_) => @runtime.instanceof_prototype_chain(o, p, interp.global)
-        Undefined => Value::Bool(false)
-        _ =>
-          raise @errors.TypeError(
-            message="Function has non-object prototype in instanceof check",
-          )
+      if @runtime.is_object_value(p) {
+        @runtime.instanceof_prototype_chain(o, p, interp.global)
+      } else if p is Undefined {
+        Value::Bool(false)
+      } else {
+        raise @errors.TypeError(
+          message="Function has non-object prototype in instanceof check",
+        )
       }
     },
   )

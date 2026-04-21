@@ -1,6 +1,15 @@
 ///|
-/// Convert an array-like value to an Array[Value] (CreateListFromArrayLike)
+/// Convert an array-like value to an Array[Value] (CreateListFromArrayLike, §7.3.18).
+/// Step 2: throws for primitives. Other object-typed Value variants (Map, Set,
+/// Promise, Proxy) without a direct .bag.properties path are treated as
+/// object-without-length, yielding the empty list — matches the spec outcome
+/// `ToLength(undefined) = 0` for such values.
 pub fn create_list_from_array_like(val : Value) -> Array[Value] raise Error {
+  if !@runtime.is_object_value(val) {
+    raise @errors.TypeError(
+      message="CreateListFromArrayLike called on non-object",
+    )
+  }
   match val {
     Value::Array(data) => data.elements.copy()
     Object(data) => {
@@ -19,10 +28,7 @@ pub fn create_list_from_array_like(val : Value) -> Array[Value] raise Error {
       }
       result
     }
-    _ =>
-      raise @errors.TypeError(
-        message="CreateListFromArrayLike called on non-object",
-      )
+    _ => []
   }
 }
 
