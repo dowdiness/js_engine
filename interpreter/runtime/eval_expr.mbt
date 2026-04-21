@@ -1641,6 +1641,10 @@ fn Interpreter::eval_unary(
               let _ = data.bag.descriptors.remove(prop)
               Bool(true)
             }
+            Undefined | Null =>
+              raise @errors.TypeError(
+                message="Cannot convert undefined or null to object",
+              )
             _ => Bool(true)
           }
         }
@@ -1695,6 +1699,10 @@ fn Interpreter::eval_unary(
                   Bool(true)
                 }
               }
+            Undefined | Null =>
+              raise @errors.TypeError(
+                message="Cannot convert undefined or null to object",
+              )
             _ => Bool(true)
           }
         }

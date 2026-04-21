@@ -7201,6 +7201,127 @@ test "sloppy: delete unqualified identifier is allowed" {
 }
 
 ///|
+test "delete: Member on undefined throws TypeError (non-strict)" {
+  let src =
+    #|var base = undefined;
+    #|try {
+    #|  delete base.prop;
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"TypeError: Cannot convert undefined or null to object\"]",
+  )
+}
+
+///|
+test "delete: Member on null throws TypeError (non-strict)" {
+  let src =
+    #|var base = null;
+    #|try {
+    #|  delete base.prop;
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"TypeError: Cannot convert undefined or null to object\"]",
+  )
+}
+
+///|
+test "delete: Member on undefined throws TypeError (strict)" {
+  let src =
+    #|"use strict";
+    #|var base = undefined;
+    #|try {
+    #|  delete base.prop;
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"TypeError: Cannot convert undefined or null to object\"]",
+  )
+}
+
+///|
+test "delete: Member on null throws TypeError (strict)" {
+  let src =
+    #|"use strict";
+    #|var base = null;
+    #|try {
+    #|  delete base.prop;
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"TypeError: Cannot convert undefined or null to object\"]",
+  )
+}
+
+///|
+test "delete: ComputedMember on undefined throws TypeError" {
+  let src =
+    #|var base = undefined;
+    #|try {
+    #|  delete base[0];
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"TypeError: Cannot convert undefined or null to object\"]",
+  )
+}
+
+///|
+test "delete: ComputedMember on null throws TypeError" {
+  let src =
+    #|var base = null;
+    #|try {
+    #|  delete base["x"];
+    #|  console.log("no error");
+    #|} catch(e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"TypeError: Cannot convert undefined or null to object\"]",
+  )
+}
+
+///|
+test "delete: normal object property returns true (regression guard)" {
+  let src =
+    #|var o = { a: 1 };
+    #|console.log(delete o.a);
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+test "delete: primitive receiver still returns true (regression guard)" {
+  let src =
+    #|console.log(delete "foo".length);
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
 test "strict: assignment to eval throws SyntaxError" {
   let src =
     #|"use strict";
