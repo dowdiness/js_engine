@@ -31,8 +31,13 @@ Unit tests: **978 passing** (was 507).
   generators.
 - **Date** — full constructor, prototype methods, static methods, and
   `JSON.stringify` interop.
-- **Proxy and Reflect** — all 13 traps with invariant checks, full
-  `Reflect` namespace, Map/Set/Promise conformance through proxies.
+- **Proxy and Reflect** — 12 of 13 traps dispatched with invariant checks
+  (`apply`, `construct`, `defineProperty`, `deleteProperty`, `get`,
+  `getPrototypeOf`, `has`, `isExtensible`, `ownKeys`, `preventExtensions`,
+  `set`, `setPrototypeOf`); full `Reflect` namespace; Map/Set/Promise
+  conformance through proxies. The 13th trap
+  (`getOwnPropertyDescriptor`) is not yet dispatched, and several
+  `defineProperty` paths bypass the trap — see "Known limitations" below.
 - **TypedArray, ArrayBuffer, DataView** — typed array views over buffers.
 - **Class public fields** — instance and static fields with strict-mode
   initializers, `defineProperty` trap interaction, and derived-class field
@@ -55,8 +60,9 @@ Unit tests: **978 passing** (was 507).
 - **Stage A** — `interpreter/` package split into `interpreter/runtime/`
   (types + helpers) and `interpreter/stdlib/` (built-ins setup), plus
   `HostEnv` extraction and a four-file split of `builtins_object.mbt`.
-- **Stage B.1** — `[[Set]]` dispatcher with correct receiver threading
-  and landing rule (+30 tests).
+- **Stage B.1** — `[[Set]]` dispatcher with receiver threading and
+  landing rule (+30 tests). Note: array-receiver landing has a known
+  divergence pending Stage B.2 — see "Known limitations" below.
 - **Stage C** — `PropertyBag` consolidation: `ObjectData`, `ArrayData`,
   `MapData`, `SetData`, `PromiseData` now share one property
   representation; previous side-table maps retired.
@@ -100,18 +106,36 @@ Unit tests: **978 passing** (was 507).
 
 ### Breaking changes (pre-1.0, all intentional)
 
-**External `pub` surface** (mooncakes consumers):
+This release breaks substantially more than the original v0.2.0 notes
+implied. The Stage A package split (`interpreter/` → `runtime/` +
+`stdlib/`) is the largest single source of churn — almost every public
+helper or type formerly at `@interpreter` has either moved or been
+renamed. See the "Migration from 0.1.0" section below for path-by-path
+guidance.
 
-- Lib root: removed demo `fib` and `sum` (placeholder scaffolding,
-  unrelated to engine functionality).
+**Lib root** (`pkg.generated.mbti`):
+
+- Removed demo `fib` and `sum` — placeholder scaffolding, unrelated to
+  engine functionality.
 - `run` / `run_with_event_loop` / `run_module` / `run_modules` gained
   optional `annex_b?` parameter — backward-compatible at call sites.
-- `JsException` moved from `interpreter/` to `interpreter/runtime/`.
-  Code matching on `@interpreter.JsException` must update to
-  `@runtime.JsException`.
 
-**Internal interpreter consumers** (anyone embedding `interpreter/runtime/`
-directly — exhaustive matches and pattern destructures need updates):
+**`@interpreter` package surface** (Stage A split — heavy churn):
+
+- Public **helpers** that were at `@interpreter` in v0.1.0 — `make_native_func`,
+  `setup_builtins`, `regex_*`, `same_value`, `to_number`, `type_of`,
+  `well_known_*`, and many others — have moved to `@interpreter/runtime`
+  (alias `@runtime`) or `@interpreter/stdlib` (alias `@stdlib`).
+- Public **types** that were at `@interpreter` — `ArrayData`, `Callable`,
+  `ObjectData`, `PropDescriptor`, `PromiseData`, `Signal`, `SymbolData`,
+  and others — are no longer exposed at `@interpreter`. Only
+  `Environment`, `Interpreter`, and `Value` remain there as `pub using`
+  re-exported aliases. Everything else moved to `@runtime`.
+- `JsException` moved to `@runtime.JsException`.
+- `make_native_func` signature: positional → labelled (`name~`, `length?`).
+
+**Runtime data model** (`@runtime` consumers — exhaustive matches and
+struct constructions need updates):
 
 - `Value` enum gained `Proxy(ProxyData)` variant.
 - `Callable` enum: `ClassConstructor` payload restructured into
@@ -120,17 +144,104 @@ directly — exhaustive matches and pattern destructures need updates):
 - `Signal::BreakSignal` / `ContinueSignal` payloads extended with
   `Value?` for generator-context labeled break/continue.
 - `ObjectData` / `ArrayData` / `MapData` / `SetData` / `PromiseData` now
-  embed `PropertyBag`; the previous flat `properties`/`symbol_properties`/
-  `descriptors` fields are gone.
+  embed `PropertyBag`; the previous flat `properties` /
+  `symbol_properties` / `descriptors` fields are gone.
 - `FuncData` / `FuncDataExt` gained `strict`, `has_name_binding`,
   `is_method` fields.
-- AST: `StringLit` gained a `Bool` (template-literal flag);
-  `TryCatchStmt` binding `String?` → `Pattern?`; `ClassExpr`/`ClassDecl`
-  body `Array[ClassMethod]` → `Array[ClassMember]`. Many new
-  expression/statement variants for generators, async/await, and ES
-  modules.
-- `make_native_func` signature: positional → labelled (`name~`,
-  `length?`).
+
+**AST / token / parser** (struct-shape changes — exhaustive matches and
+struct construction break):
+
+- `ast.Param` gained `pattern` field (function parameter destructuring).
+- `ast.PropPat` gained `computed_key` field.
+- `ast.Property` gained `is_method` field (method-shorthand detection).
+- `ast.PropKind::Spread` and `ast.UnaryOp::Pos` variants added.
+- `ast.StringLit` gained `Bool` payload (template-literal flag).
+- `ast.TryCatchStmt` binding type: `String?` → `Pattern?` (catch-clause
+  destructuring).
+- `ast.ClassExpr` / `ClassDecl` body type:
+  `Array[ClassMethod]` → `Array[ClassMember]`.
+- `ast.Expr` gained many new variants for generators, async / await,
+  tagged templates, `new.target`, `yield`.
+- `ast.Stmt` gained variants for generator declarations, async function
+  declarations, `with`, ES module declarations (`import` / `export`).
+- `token.TokenKind` gained `Yield`, `Import`, `Export`, `From`, `As`
+  variants.
+- `parser.Parser` struct gained `allow_import_export`, `generator_depth`,
+  `async_depth` fields.
+
+### Migration from 0.1.0
+
+If you depended on the `@interpreter` package, most public symbols moved
+to two sub-packages:
+
+- `@interpreter/runtime` (alias `@runtime`) — types (`Value`,
+  `Interpreter`, `Environment`, `ObjectData`, `ArrayData`, `Callable`, …)
+  and low-level helpers (`make_native_func`, `same_value`, `to_number`,
+  `type_of`, …).
+- `@interpreter/stdlib` (alias `@stdlib`) — built-ins setup
+  (`setup_builtins`, regex helpers, Date setup, TypedArray setup, …).
+
+Top-level `@interpreter` now re-exports only `Environment`, `Interpreter`,
+and `Value` as aliases (plus the `new_interpreter()` factory function);
+anything else must be imported from its new home.
+
+Mechanical migration in `moon.pkg.json`:
+
+```diff
+ import {
+   "dowdiness/js_engine" @lib,
+-  "dowdiness/js_engine/interpreter",
++  "dowdiness/js_engine/interpreter/runtime" @runtime,
++  "dowdiness/js_engine/interpreter/stdlib" @stdlib,
+ }
+```
+
+Then update qualified paths in source files:
+
+- `@interpreter.make_native_func` → `@runtime.make_native_func`
+  (also: signature changed — positional → labelled, `name~` and `length?`)
+- `@interpreter.JsException` → `@runtime.JsException`
+- `@interpreter.{ArrayData, ObjectData, Callable, Signal, ...}` →
+  `@runtime.{ArrayData, ObjectData, Callable, Signal, ...}`
+- `@interpreter.setup_builtins` → `@stdlib.setup_builtins`
+
+If you constructed `ObjectData` / `ArrayData` / `MapData` / `SetData` /
+`PromiseData` directly with literal field syntax, switch to the
+factories or wrap your fields in a `PropertyBag` — the flat field layout
+is gone:
+
+```diff
+-ObjectData {
+-  properties: { ... },
+-  symbol_properties: { ... },
+-  descriptors: { ... },
+-  symbol_descriptors: { ... },
+-  prototype: ...,
+-  ...
+-}
++ObjectData {
++  bag: PropertyBag::new(),  // or populate via the bag
++  prototype: ...,
++  ...
++}
+```
+
+### Known limitations at 0.2.0
+
+- **Proxy `getOwnPropertyDescriptor` trap is not dispatched** —
+  `Reflect.getOwnPropertyDescriptor` and `Object.getOwnPropertyDescriptor`
+  read target data directly rather than going through the proxy handler.
+- **`Reflect.defineProperty` and `Object.defineProperty` paths mostly
+  bypass the Proxy `defineProperty` trap.** Class-field installation
+  does invoke the trap, but the public reflection APIs do not.
+- **`[[Set]]` dispatcher: array-receiver landing divergence** is tracked
+  for Stage B.2. The receiver threading and general landing rule are
+  correct; only the array sub-path is known to diverge.
+- **test262 conformance is 86.6% strict / 85.0% non-strict.** See
+  `docs/ROADMAP.md` and `docs/supported-features.md` for the
+  per-category breakdown of remaining failures, and `docs/agent-todo.md`
+  for the active work queue.
 
 ### Internal
 
