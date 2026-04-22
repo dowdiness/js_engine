@@ -122,246 +122,28 @@ fn setup_reflect_builtins(env : Environment, _sym_state : SymbolState) -> Unit {
   )
 
   // Reflect.defineProperty(target, propertyKey, attributes)
-  reflect_props["defineProperty"] = Value::Object({
-    bag: {
-      properties: {
-        "name": Value::String_("defineProperty"),
-        "length": Value::Number(3.0),
-      },
-      symbol_properties: {},
-      descriptors: { "name": nf_desc, "length": nf_desc },
-      symbol_descriptors: {},
+  // Reflect.defineProperty(target, propertyKey, attributes) — §28.1.4
+  reflect_props["defineProperty"] = @runtime.make_interp_method_func(
+    name="defineProperty",
+    length=3,
+    fn(interp, _this_val, args) raise {
+      if args.length() < 3 {
+        raise @errors.TypeError(
+          message="Reflect.defineProperty requires 3 arguments",
+        )
+      }
+      let target = args[0]
+      if !@runtime.is_object_value(target) {
+        raise @errors.TypeError(
+          message="Reflect.defineProperty called on non-object",
+        )
+      }
+      let loc = @token.Loc::default()
+      let partial = interp.partial_descriptor_from_attrs(args[2], loc)
+      let ok = interp.define_own_property(target, args[1], partial, loc)
+      Value::Bool(ok)
     },
-    prototype: @runtime.get_func_proto(),
-    callable: Some(
-      NativeCallable("defineProperty", fn(args) raise {
-        if args.length() < 3 {
-          raise @errors.TypeError(
-            message="Reflect.defineProperty requires 3 arguments",
-          )
-        }
-        let target = args[0]
-        let prop = args[1].to_string()
-        let attrs = args[2]
-        // Unwrap Proxy to get ObjectData
-        let data : ObjectData = match target {
-          Object(data) => data
-          Proxy(_) =>
-            match unwrap_proxy_target(target) {
-              Some(data) => data
-              None =>
-                raise @errors.TypeError(
-                  message="Reflect.defineProperty called on non-object",
-                )
-            }
-          _ =>
-            raise @errors.TypeError(
-              message="Reflect.defineProperty called on non-object",
-            )
-        }
-        // Extract descriptor attributes
-        match attrs {
-          Object(attr_data) => {
-            let has_value = attr_data.bag.properties.contains("value")
-            let has_get = attr_data.bag.properties.contains("get")
-            let has_set = attr_data.bag.properties.contains("set")
-            let has_writable = attr_data.bag.properties.contains("writable")
-            if has_value && (has_get || has_set) {
-              raise @errors.TypeError(
-                message="Invalid property descriptor. Cannot both specify accessors and a value or writable attribute",
-              )
-            }
-            if has_writable && (has_get || has_set) {
-              raise @errors.TypeError(
-                message="Invalid property descriptor. Cannot both specify accessors and a value or writable attribute",
-              )
-            }
-            let is_accessor = has_get || has_set
-            let prop_exists = data.bag.properties.contains(prop) ||
-              data.bag.descriptors.contains(prop)
-            // Extensibility check: cannot add new property to non-extensible object
-            if !prop_exists && !data.extensible {
-              return Value::Bool(false)
-            }
-            // Non-configurable validation
-            if prop_exists {
-              match data.bag.descriptors.get(prop) {
-                Some(existing) =>
-                  if !existing.configurable {
-                    let existing_is_accessor = existing.getter is Some(_) ||
-                      existing.setter is Some(_)
-                    // Cannot change between accessor and data descriptor types
-                    if existing_is_accessor &&
-                      !is_accessor &&
-                      (has_value || has_writable) {
-                      return Value::Bool(false)
-                    }
-                    if !existing_is_accessor && is_accessor {
-                      return Value::Bool(false)
-                    }
-                    // Cannot change configurable from false to true
-                    match attr_data.bag.properties.get("configurable") {
-                      Some(v) =>
-                        if @runtime.is_truthy(v) {
-                          return Value::Bool(false)
-                        }
-                      None => ()
-                    }
-                    // Cannot change enumerable on non-configurable
-                    match attr_data.bag.properties.get("enumerable") {
-                      Some(v) =>
-                        if @runtime.is_truthy(v) != existing.enumerable {
-                          return Value::Bool(false)
-                        }
-                      None => ()
-                    }
-                    // Non-configurable accessor: getter/setter identity must match
-                    if existing_is_accessor && is_accessor {
-                      match attr_data.bag.properties.get("get") {
-                        Some(g) =>
-                          match existing.getter {
-                            Some(eg) =>
-                              if !strict_equal_val(g, eg) {
-                                return Value::Bool(false)
-                              }
-                            None =>
-                              if !(g is Undefined) {
-                                return Value::Bool(false)
-                              }
-                          }
-                        None => ()
-                      }
-                      match attr_data.bag.properties.get("set") {
-                        Some(s) =>
-                          match existing.setter {
-                            Some(es) =>
-                              if !strict_equal_val(s, es) {
-                                return Value::Bool(false)
-                              }
-                            None =>
-                              if !(s is Undefined) {
-                                return Value::Bool(false)
-                              }
-                          }
-                        None => ()
-                      }
-                    }
-                    // Non-configurable data: writable false->true forbidden, value change on non-writable forbidden
-                    if !existing_is_accessor && !is_accessor {
-                      if !existing.writable {
-                        match attr_data.bag.properties.get("writable") {
-                          Some(v) =>
-                            if @runtime.is_truthy(v) {
-                              return Value::Bool(false)
-                            }
-                          None => ()
-                        }
-                        if has_value {
-                          let new_val = match
-                            attr_data.bag.properties.get("value") {
-                            Some(v) => v
-                            None => Undefined
-                          }
-                          let old_val = match data.bag.properties.get(prop) {
-                            Some(v) => v
-                            None => Undefined
-                          }
-                          if !strict_equal_val(new_val, old_val) {
-                            return Value::Bool(false)
-                          }
-                        }
-                      }
-                    }
-                  }
-                None => ()
-              }
-            }
-            if is_accessor {
-              // Accessor descriptor
-              let getter = attr_data.bag.properties.get("get")
-              let setter = attr_data.bag.properties.get("set")
-              let enumerable = match
-                attr_data.bag.properties.get("enumerable") {
-                Some(v) => @runtime.is_truthy(v)
-                None =>
-                  match data.bag.descriptors.get(prop) {
-                    Some(d) => d.enumerable
-                    None => false
-                  }
-              }
-              let configurable = match
-                attr_data.bag.properties.get("configurable") {
-                Some(v) => @runtime.is_truthy(v)
-                None =>
-                  match data.bag.descriptors.get(prop) {
-                    Some(d) => d.configurable
-                    None => false
-                  }
-              }
-              data.bag.descriptors[prop] = {
-                writable: false,
-                enumerable,
-                configurable,
-                getter,
-                setter,
-              }
-              // Remove any data value
-              let _ = data.bag.properties.remove(prop)
-            } else {
-              // Data descriptor
-              let writable = match attr_data.bag.properties.get("writable") {
-                Some(v) => @runtime.is_truthy(v)
-                None =>
-                  match data.bag.descriptors.get(prop) {
-                    Some(d) => d.writable
-                    None => false
-                  }
-              }
-              let enumerable = match
-                attr_data.bag.properties.get("enumerable") {
-                Some(v) => @runtime.is_truthy(v)
-                None =>
-                  match data.bag.descriptors.get(prop) {
-                    Some(d) => d.enumerable
-                    None => false
-                  }
-              }
-              let configurable = match
-                attr_data.bag.properties.get("configurable") {
-                Some(v) => @runtime.is_truthy(v)
-                None =>
-                  match data.bag.descriptors.get(prop) {
-                    Some(d) => d.configurable
-                    None => false
-                  }
-              }
-              if has_value {
-                data.bag.properties[prop] = match
-                  attr_data.bag.properties.get("value") {
-                  Some(v) => v
-                  None => Undefined
-                }
-              }
-              data.bag.descriptors[prop] = {
-                writable,
-                enumerable,
-                configurable,
-                getter: None,
-                setter: None,
-              }
-            }
-            Value::Bool(true)
-          }
-          _ =>
-            raise @errors.TypeError(
-              message="Property description must be an object",
-            )
-        }
-      }),
-    ),
-    class_name: "Function",
-    extensible: true,
-  })
+  )
 
   // Reflect.deleteProperty(target, propertyKey)
   reflect_props["deleteProperty"] = @runtime.make_interp_method_func(
