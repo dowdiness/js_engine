@@ -405,9 +405,9 @@ fn Interpreter::get_property_of_object(
             // Only constructable functions have a prototype property
             // Non-constructable (arrow functions, bound functions, etc.) return undefined
             let is_constructable = match callable {
-              UserFunc(_)
-              | UserFuncExt(_)
-              | NativeCallable(_, _)
+              UserFunc(fd) => !fd.is_method
+              UserFuncExt(fd) => !fd.is_method
+              NativeCallable(_, _)
               | ConstructorOnlyCallable(_, _)
               | ClassConstructor(_) => true
               ArrowFunc(_)
@@ -1074,9 +1074,9 @@ pub fn Interpreter::get_computed_property(
                 // Only constructable functions have a prototype property
                 // Non-constructable (arrow functions, bound functions, etc.) return undefined
                 let is_constructable = match callable {
-                  UserFunc(_)
-                  | UserFuncExt(_)
-                  | NativeCallable(_, _)
+                  UserFunc(fd) => !fd.is_method
+                  UserFuncExt(fd) => !fd.is_method
+                  NativeCallable(_, _)
                   | ConstructorOnlyCallable(_, _)
                   | ClassConstructor(_) => true
                   ArrowFunc(_)

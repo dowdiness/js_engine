@@ -19,25 +19,27 @@ pub fn make_func(data : FuncData) -> Value {
     getter: None,
     setter: None,
   }
+  let func_props : Map[String, Value] = {}
+  let func_descs : Map[String, PropDescriptor] = {}
+  if !data.is_method {
+    func_props["prototype"] = proto
+    func_descs["prototype"] = {
+      writable: true,
+      enumerable: false,
+      configurable: false,
+      getter: None,
+      setter: None,
+    }
+  }
+  func_props["length"] = Number(func_length)
+  func_props["name"] = String_(func_name)
+  func_descs["length"] = nf_desc
+  func_descs["name"] = nf_desc
   let func_obj = Object({
     bag: {
-      properties: {
-        "prototype": proto,
-        "length": Number(func_length),
-        "name": String_(func_name),
-      },
+      properties: func_props,
       symbol_properties: {},
-      descriptors: {
-        "prototype": {
-          writable: true,
-          enumerable: false,
-          configurable: false,
-          getter: None,
-          setter: None,
-        },
-        "length": nf_desc,
-        "name": nf_desc,
-      },
+      descriptors: func_descs,
       symbol_descriptors: {},
     },
     prototype: get_func_proto(),
@@ -45,18 +47,20 @@ pub fn make_func(data : FuncData) -> Value {
     class_name: "Function",
     extensible: true,
   })
-  match proto {
-    Object(proto_data) => {
-      proto_data.bag.properties["constructor"] = func_obj
-      proto_data.bag.descriptors["constructor"] = {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
+  if !data.is_method {
+    match proto {
+      Object(proto_data) => {
+        proto_data.bag.properties["constructor"] = func_obj
+        proto_data.bag.descriptors["constructor"] = {
+          writable: true,
+          enumerable: false,
+          configurable: true,
+          getter: None,
+          setter: None,
+        }
       }
+      _ => ()
     }
-    _ => ()
   }
   func_obj
 }
@@ -89,25 +93,27 @@ pub fn make_func_ext(data : FuncDataExt) -> Value {
     getter: None,
     setter: None,
   }
+  let func_props : Map[String, Value] = {}
+  let func_descs : Map[String, PropDescriptor] = {}
+  if !data.is_method {
+    func_props["prototype"] = proto
+    func_descs["prototype"] = {
+      writable: true,
+      enumerable: false,
+      configurable: false,
+      getter: None,
+      setter: None,
+    }
+  }
+  func_props["length"] = Number(func_length.to_double())
+  func_props["name"] = String_(func_name)
+  func_descs["length"] = nf_desc
+  func_descs["name"] = nf_desc
   let func_obj = Object({
     bag: {
-      properties: {
-        "prototype": proto,
-        "length": Number(func_length.to_double()),
-        "name": String_(func_name),
-      },
+      properties: func_props,
       symbol_properties: {},
-      descriptors: {
-        "prototype": {
-          writable: true,
-          enumerable: false,
-          configurable: false,
-          getter: None,
-          setter: None,
-        },
-        "length": nf_desc,
-        "name": nf_desc,
-      },
+      descriptors: func_descs,
       symbol_descriptors: {},
     },
     prototype: get_func_proto(),
@@ -115,18 +121,20 @@ pub fn make_func_ext(data : FuncDataExt) -> Value {
     class_name: "Function",
     extensible: true,
   })
-  match proto {
-    Object(proto_data) => {
-      proto_data.bag.properties["constructor"] = func_obj
-      proto_data.bag.descriptors["constructor"] = {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
+  if !data.is_method {
+    match proto {
+      Object(proto_data) => {
+        proto_data.bag.properties["constructor"] = func_obj
+        proto_data.bag.descriptors["constructor"] = {
+          writable: true,
+          enumerable: false,
+          configurable: true,
+          getter: None,
+          setter: None,
+        }
       }
+      _ => ()
     }
-    _ => ()
   }
   func_obj
 }
@@ -169,13 +177,19 @@ pub fn mark_as_method(v : Value) -> Value {
   match v {
     Object(data) =>
       match data.callable {
-        Some(UserFunc(fd)) =>
+        Some(UserFunc(fd)) => {
+          let _ = data.bag.properties.remove("prototype")
+          let _ = data.bag.descriptors.remove("prototype")
           Object({ ..data, callable: Some(UserFunc({ ..fd, is_method: true })) })
-        Some(UserFuncExt(fd)) =>
+        }
+        Some(UserFuncExt(fd)) => {
+          let _ = data.bag.properties.remove("prototype")
+          let _ = data.bag.descriptors.remove("prototype")
           Object({
             ..data,
             callable: Some(UserFuncExt({ ..fd, is_method: true })),
           })
+        }
         _ => v
       }
     _ => v

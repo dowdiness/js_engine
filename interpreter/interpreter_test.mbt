@@ -5081,7 +5081,7 @@ test "generator: new with generator throws TypeError" {
   inspect(
     output,
     content=(
-      #|[]
+      #|["true"]
     ),
   )
 }
@@ -10428,4 +10428,92 @@ test "apply with Object inheriting length from prototype" {
     ),
   )
   inspect(result, content="99")
+}
+
+///|
+/// ES §15.4.5 MethodDefinitionEvaluation does not perform MakeConstructor.
+/// Class methods and object-literal method shorthand therefore reject `new`
+/// and expose no own `.prototype` property.
+test "method definitions are not constructors and have no prototype property" {
+  let src =
+    #|var obj = { m() {} };
+    #|class C { m() {} static s() {} }
+    #|var c = new C();
+    #|
+    #|try { new obj.m(); console.log("object-ok"); } catch (e) { console.log(e.name); }
+    #|try { new c.m(); console.log("class-ok"); } catch (e) { console.log(e.name); }
+    #|try { new C.s(); console.log("static-ok"); } catch (e) { console.log(e.name); }
+    #|
+    #|console.log(Object.prototype.hasOwnProperty.call(obj.m, "prototype"));
+    #|console.log(Object.prototype.hasOwnProperty.call(c.m, "prototype"));
+    #|console.log(typeof obj.m.prototype);
+    #|console.log(typeof c.m.prototype);
+    #|console.log(typeof C.s.prototype);
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"TypeError\", \"TypeError\", \"TypeError\", \"false\", \"false\", \"undefined\", \"undefined\", \"undefined\"]",
+  )
+}
+
+///|
+/// Generator MethodDefinitions keep their own `.prototype` property, but
+/// generator functions still do not have [[Construct]].
+test "generator method definitions are not constructors" {
+  let src =
+    #|class C { *m() {} static *s() {} }
+    #|var c = new C();
+    #|try { new c.m(); console.log("method-ok"); } catch (e) { console.log(e.name); }
+    #|try { new C.s(); console.log("static-ok"); } catch (e) { console.log(e.name); }
+    #|console.log(Object.prototype.hasOwnProperty.call(c.m, "prototype"));
+    #|console.log(Object.prototype.hasOwnProperty.call(C.s, "prototype"));
+    #|console.log(typeof c.m.prototype);
+    #|console.log(typeof C.s.prototype);
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"TypeError\", \"TypeError\", \"true\", \"true\", \"object\", \"object\"]",
+  )
+}
+
+///|
+/// Async generator MethodDefinitions follow the same constructor rule as
+/// generator methods while preserving their own `.prototype` property.
+test "async generator method definitions are not constructors" {
+  let src =
+    #|class C { async *m() {} static async *s() {} }
+    #|var c = new C();
+    #|try { new c.m(); console.log("method-ok"); } catch (e) { console.log(e.name); }
+    #|try { new C.s(); console.log("static-ok"); } catch (e) { console.log(e.name); }
+    #|console.log(Object.prototype.hasOwnProperty.call(c.m, "prototype"));
+    #|console.log(Object.prototype.hasOwnProperty.call(C.s, "prototype"));
+    #|console.log(typeof c.m.prototype);
+    #|console.log(typeof C.s.prototype);
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"TypeError\", \"TypeError\", \"true\", \"true\", \"object\", \"object\"]",
+  )
+}
+
+///|
+/// Getter and setter method functions are also MethodDefinitions: their
+/// descriptor functions are non-constructors and have no `.prototype`.
+test "class accessor method definitions are not constructors" {
+  let src =
+    #|class C {
+    #|  get m() { return 1; }
+    #|  set n(v) {}
+    #|}
+    #|var gd = Object.getOwnPropertyDescriptor(C.prototype, "m").get;
+    #|var sd = Object.getOwnPropertyDescriptor(C.prototype, "n").set;
+    #|try { new gd(); console.log("getter-ok"); } catch (e) { console.log(e.name); }
+    #|try { new sd(); console.log("setter-ok"); } catch (e) { console.log(e.name); }
+    #|console.log(typeof gd.prototype);
+    #|console.log(typeof sd.prototype);
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"TypeError\", \"TypeError\", \"undefined\", \"undefined\"]",
+  )
 }

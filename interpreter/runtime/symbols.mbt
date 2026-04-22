@@ -5,6 +5,13 @@
 pub let is_constructing : Ref[Bool] = { val: false }
 
 ///|
+fn interpreter_callable_is_constructor(data : ObjectData) -> Bool {
+  data.bag.properties.contains("prototype") &&
+  data.class_name != "GeneratorFunction" &&
+  data.class_name != "AsyncGeneratorFunction"
+}
+
+///|
 /// Check if a Value is a constructor (has [[Construct]] internal method)
 pub fn is_constructor_value(v : Value) -> Bool {
   match v {
@@ -21,8 +28,10 @@ pub fn is_constructor_value(v : Value) -> Bool {
         Some(MethodCallable(_, _)) => false
         Some(InterpreterCallable(_, _)) =>
           // InterpreterCallable is a constructor if it has a prototype property
-          // (builtin constructors like Map, Set, Promise have prototype)
-          data.bag.properties.contains("prototype")
+          // (builtin constructors like Map, Set, Promise have prototype).
+          // Generator functions are the spec-visible exception: they have a
+          // prototype property but no [[Construct]].
+          interpreter_callable_is_constructor(data)
         Some(ArrowFunc(_)) | Some(ArrowFuncExt(_)) => false
         Some(FuncCallMethod(_)) | Some(FuncApplyMethod(_)) => false
         None => false
