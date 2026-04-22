@@ -1290,7 +1290,9 @@ pub fn proxy_define_property(
                     None => Undefined
                   }
                 Array(arr) =>
-                  match arr.bag.symbol_properties.get(sym.id) {
+                  // Array Symbol values live in the side table, not arr.bag.
+                  // (Pre-Stage-C inconsistency; Stage C unifies onto bag.)
+                  match get_array_symbol_prop(arr, sym.id) {
                     Some(v) => v
                     None => Undefined
                   }

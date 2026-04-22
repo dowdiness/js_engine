@@ -285,14 +285,44 @@ fn make_get_own_property_descriptor_func() -> Value {
   ) raise {
     let obj = if args.length() > 0 { args[0] } else { Undefined }
     let prop_key = if args.length() > 1 { args[1] } else { Undefined }
-    // §19.1.2.9 step 1: ToObject. Null/Undefined throws; primitives are
-    // wrapped. For this engine we accept any object-like Value and reject
-    // primitives (string-primitive path omitted — we don't box to Object).
+    // §19.1.2.9 step 1: ToObject. Null/Undefined throws; primitives other
+    // than String_ aren't used as descriptor sources in this engine.
     match obj {
       Null | Undefined =>
         raise @errors.TypeError(
           message="Cannot convert undefined or null to object",
         )
+      _ => ()
+    }
+    // §19.1.2.9 on string primitives: inline the ToObject(String)
+    // characterization — `length` (data, writable:false, enumerable:false,
+    // configurable:false) and indexed character slots (data, writable:false,
+    // enumerable:true, configurable:false).
+    match obj {
+      Value::String_(s) => {
+        let prop_name = @runtime.to_js_string(prop_key)
+        if prop_name == "length" {
+          return make_data_desc_obj(
+            Value::Number(s.length().to_double()),
+            false,
+            false,
+            false,
+          )
+        }
+        let idx = @string.parse_int(prop_name) catch { _ => -1 }
+        if idx >= 0 && idx.to_string() == prop_name && idx < s.length() {
+          let chars = s.to_array()
+          let buf = StringBuilder::new()
+          buf.write_char(chars[idx])
+          return make_data_desc_obj(
+            Value::String_(buf.to_string()),
+            false,
+            true,
+            false,
+          )
+        }
+        return Undefined
+      }
       _ => ()
     }
     if !@runtime.is_object_value(obj) {
@@ -333,13 +363,26 @@ fn make_define_properties_func() -> Value {
     // Per spec, all ToPropertyDescriptor conversions must run before ANY
     // define is applied — if any conversion throws, the target is unmutated.
     let pairs : Array[(String, @runtime.PartialDescriptor)] = []
-    match descs {
-      Object(desc_obj) =>
-        desc_obj.bag.properties.each(fn(prop_name, _raw) raise {
+    // §19.1.2.3 step 3: OwnPropertyKeys(props). We iterate the underlying
+    // PropertyBag regardless of exotic variant (Object/Array/Map/Set/Promise
+    // all carry one). Proxy-as-Properties is not yet supported — the trap
+    // chain for ownKeys + getOwnPropertyDescriptor on the source object is
+    // a separate follow-up.
+    let maybe_bag : @runtime.PropertyBag? = match descs {
+      Object(d) => Some(d.bag)
+      Array(d) => Some(d.bag)
+      Map(d) => Some(d.bag)
+      Set(d) => Some(d.bag)
+      Promise(d) => Some(d.bag)
+      _ => None
+    }
+    match maybe_bag {
+      Some(bag) =>
+        bag.properties.each(fn(prop_name, _raw) raise {
           if prop_name.has_prefix("[[") {
             return
           }
-          let desc_enumerable = match desc_obj.bag.descriptors.get(prop_name) {
+          let desc_enumerable = match bag.descriptors.get(prop_name) {
             Some(d) => d.enumerable
             None => true
           }
@@ -352,7 +395,7 @@ fn make_define_properties_func() -> Value {
           let partial = interp.partial_descriptor_from_attrs(desc_val, loc)
           pairs.push((prop_name, partial))
         })
-      _ => ()
+      None => ()
     }
     // §19.1.2.3 step 6: apply via dispatcher (handles ordinary / Array-exotic
     // / Proxy-trap routing per §10.1.6 / §10.4.2.1 / §10.5.6).

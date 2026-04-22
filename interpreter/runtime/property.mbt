@@ -1488,31 +1488,31 @@ pub fn Interpreter::set_property(
           clear_array_length_override(data)
         }
       } else {
-        // try numeric index
-        let mut handled = false
-        try {
-          let i = @string.parse_int(prop)
-          if i >= 0 {
-            // §10.4.2.1 step 3.b: extend requires length_writable.
-            if i >= data.elements.length() && !data.length_writable {
-              if strict {
-                raise @errors.TypeError(
-                  message="Cannot add property \{i}, array's length is non-writable",
-                )
-              }
-              return value
-            }
-            while data.elements.length() <= i {
-              data.elements.push(Undefined)
-            }
-            data.elements[i] = value
-            handled = true
+        // Parse numeric index OUTSIDE any try/catch so strict-mode TypeError
+        // raises propagate (Codex blocker 1 fix — the previous `catch { _ =>
+        // () }` was swallowing §10.4.2.1 step 3.b TypeErrors and falling
+        // through to set_array_named_prop).
+        let i = @string.parse_int(prop) catch { _ => -1 }
+        if i >= 0 {
+          // Compare against logical length (override when set), not physical.
+          let logical_len = match get_array_length_override(data) {
+            Some(n64) => n64.to_int()
+            None => data.elements.length()
           }
-        } catch {
-          _ => ()
-        }
-        if !handled {
-          // Store named properties in side table
+          // §10.4.2.1 step 3.b: extend requires length_writable.
+          if i >= logical_len && !data.length_writable {
+            if strict {
+              raise @errors.TypeError(
+                message="Cannot add property \{i}, array's length is non-writable",
+              )
+            }
+            return value
+          }
+          while data.elements.length() <= i {
+            data.elements.push(Undefined)
+          }
+          data.elements[i] = value
+        } else {
           set_array_named_prop(data, prop, value)
         }
       }
@@ -2262,8 +2262,12 @@ pub fn Interpreter::set_computed_property(
         Number(n) => {
           let i = n.to_int()
           if i >= 0 {
+            let logical_len = match get_array_length_override(data) {
+              Some(n64) => n64.to_int()
+              None => data.elements.length()
+            }
             // §10.4.2.1 step 3.b: extending beyond length requires length to be writable.
-            if i >= data.elements.length() && !data.length_writable {
+            if i >= logical_len && !data.length_writable {
               if strict {
                 raise @errors.TypeError(
                   message="Cannot add property \{i}, array's length is non-writable",
@@ -2296,33 +2300,41 @@ pub fn Interpreter::set_computed_property(
             }
           } else {
             // Canonical numeric index string check: parseDouble(s).toString() === s
-            let mut handled = false
-            try {
-              let n = @string.parse_double(prop)
-              if n.to_string() == prop {
-                let idx = n.to_int()
-                if idx.to_double() == n && idx >= 0 {
-                  // §10.4.2.1 step 3.b: extending beyond length requires writable.
-                  if idx >= data.elements.length() && !data.length_writable {
-                    if strict {
-                      raise @errors.TypeError(
-                        message="Cannot add property \{idx}, array's length is non-writable",
-                      )
-                    }
-                    return value
-                  }
-                  while data.elements.length() <= idx {
-                    data.elements.push(Undefined)
-                  }
-                  data.elements[idx] = value
-                  handled = true
-                }
-              }
+            // Parse OUTSIDE try/catch so strict TypeErrors propagate.
+            let maybe_n : Double? = try {
+              Some(@string.parse_double(prop))
             } catch {
-              _ => ()
+              _ => None
+            }
+            let mut handled = false
+            match maybe_n {
+              Some(n) =>
+                if n.to_string() == prop {
+                  let idx = n.to_int()
+                  if idx.to_double() == n && idx >= 0 {
+                    let logical_len = match get_array_length_override(data) {
+                      Some(n64) => n64.to_int()
+                      None => data.elements.length()
+                    }
+                    // §10.4.2.1 step 3.b: extend requires writable length.
+                    if idx >= logical_len && !data.length_writable {
+                      if strict {
+                        raise @errors.TypeError(
+                          message="Cannot add property \{idx}, array's length is non-writable",
+                        )
+                      }
+                      return value
+                    }
+                    while data.elements.length() <= idx {
+                      data.elements.push(Undefined)
+                    }
+                    data.elements[idx] = value
+                    handled = true
+                  }
+                }
+              None => ()
             }
             if !handled {
-              // Store named properties in side table
               set_array_named_prop(data, prop, value)
             }
           }
@@ -3332,8 +3344,13 @@ pub fn Interpreter::array_define_own_property(
           partial.is_accessor() {
           return false
         }
-        // Check length writable if we're extending.
-        if idx >= arr.elements.length() && !arr.length_writable {
+        // Check length writable if we're extending. Compare against the
+        // logical length (override when sparse), not physical elements count.
+        let logical_len = match get_array_length_override(arr) {
+          Some(n64) => n64.to_int()
+          None => arr.elements.length()
+        }
+        if idx >= logical_len && !arr.length_writable {
           return false
         }
         // Grow elements to idx+1 with Undefined filler.
