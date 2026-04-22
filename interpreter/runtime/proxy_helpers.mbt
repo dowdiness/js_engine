@@ -104,11 +104,15 @@ pub fn collect_target_own_keys(
 }
 
 ///|
-/// Check if target object is extensible (handles Object, Array, etc.)
+/// Check if target object is extensible. Arrays, Maps, Sets, Promises have
+/// no `extensible` field in their data structs today (tracked as a known
+/// gap from Stage B.1 — `isExtensible` 2/22 Array failures); they behave
+/// as always-extensible.
 fn target_is_extensible(target : Value) -> Bool {
   match target {
     Object(data) => data.extensible
-    _ => true // Arrays, etc. are always extensible in our implementation
+    Array(_) | Map(_) | Set(_) | Promise(_) => true
+    _ => true
   }
 }
 
@@ -146,6 +150,9 @@ pub fn proxy_is_extensible(
 
 ///|
 /// Check if target has a non-configurable own property with the given string key.
+/// Descriptors live in `bag` for Object/Map/Set/Promise. Arrays synthesize:
+/// `length` is non-configurable; indexed elements default to configurable
+/// (no per-index descriptor storage pre-Stage-C).
 fn target_has_non_configurable_key(target : Value, key : String) -> Bool {
   match target {
     Object(data) =>
@@ -153,25 +160,136 @@ fn target_has_non_configurable_key(target : Value, key : String) -> Bool {
         Some(desc) => !desc.configurable
         None => false
       }
+    Map(data) =>
+      match data.bag.descriptors.get(key) {
+        Some(desc) => !desc.configurable
+        None => false
+      }
+    Set(data) =>
+      match data.bag.descriptors.get(key) {
+        Some(desc) => !desc.configurable
+        None => false
+      }
+    Promise(data) =>
+      match data.bag.descriptors.get(key) {
+        Some(desc) => !desc.configurable
+        None => false
+      }
+    Array(_) =>
+      // "length" is non-configurable per §10.4.2. Indexed elements and
+      // named props have no per-element configurable tracking today.
+      key == "length"
     _ => false
   }
 }
 
 ///|
-/// Get the descriptor for a string-keyed property on the target.
+/// Get the descriptor for a string-keyed own property on the target.
+/// Arrays synthesize `length` and indexed element descriptors; other own
+/// named props live on `bag` for Object/Map/Set/Promise.
 fn target_get_own_descriptor(target : Value, key : String) -> PropDescriptor? {
   match target {
     Object(data) => data.bag.descriptors.get(key)
+    Map(data) => data.bag.descriptors.get(key)
+    Set(data) => data.bag.descriptors.get(key)
+    Promise(data) => data.bag.descriptors.get(key)
+    Array(arr) => {
+      if key == "length" {
+        return Some({
+          writable: arr.length_writable,
+          enumerable: false,
+          configurable: false,
+          getter: None,
+          setter: None,
+        })
+      }
+      // Indexed element?
+      let idx = @string.parse_int(key) catch { _ => -1 }
+      if idx >= 0 && idx.to_string() == key && idx < arr.elements.length() {
+        return Some({
+          writable: true,
+          enumerable: true,
+          configurable: true,
+          getter: None,
+          setter: None,
+        })
+      }
+      // Array named props (via side-table) surface through bag descriptors
+      // when explicitly registered; otherwise None.
+      arr.bag.descriptors.get(key)
+    }
     _ => None
   }
 }
 
 ///|
-/// Check if the target has a specific own string property (in properties or descriptors).
+/// Read the own string-keyed value from the target, or Undefined if absent.
+/// Mirrors the variant coverage of `target_get_own_descriptor`. Used by
+/// proxy invariant checks that compare trap results to target values for
+/// non-configurable non-writable data descriptors.
+fn target_get_own_value(target : Value, key : String) -> Value {
+  match target {
+    Object(data) =>
+      match data.bag.properties.get(key) {
+        Some(v) => v
+        None => Undefined
+      }
+    Map(data) =>
+      match data.bag.properties.get(key) {
+        Some(v) => v
+        None => Undefined
+      }
+    Set(data) =>
+      match data.bag.properties.get(key) {
+        Some(v) => v
+        None => Undefined
+      }
+    Promise(data) =>
+      match data.bag.properties.get(key) {
+        Some(v) => v
+        None => Undefined
+      }
+    Array(arr) => {
+      if key == "length" {
+        return Value::Number(arr.elements.length().to_double())
+      }
+      let idx = @string.parse_int(key) catch { _ => -1 }
+      if idx >= 0 && idx.to_string() == key && idx < arr.elements.length() {
+        return arr.elements[idx]
+      }
+      match arr.bag.properties.get(key) {
+        Some(v) => v
+        None => Undefined
+      }
+    }
+    _ => Undefined
+  }
+}
+
+///|
+/// Check if the target has a specific own string property.
+/// Sources: `bag.properties` + `bag.descriptors` for Object/Map/Set/Promise;
+/// Array length + indexed elements + bag descriptors for Array.
 fn target_has_own_property(target : Value, key : String) -> Bool {
   match target {
     Object(data) =>
       data.bag.properties.contains(key) || data.bag.descriptors.contains(key)
+    Map(data) =>
+      data.bag.properties.contains(key) || data.bag.descriptors.contains(key)
+    Set(data) =>
+      data.bag.properties.contains(key) || data.bag.descriptors.contains(key)
+    Promise(data) =>
+      data.bag.properties.contains(key) || data.bag.descriptors.contains(key)
+    Array(arr) => {
+      if key == "length" {
+        return true
+      }
+      let idx = @string.parse_int(key) catch { _ => -1 }
+      if idx >= 0 && idx.to_string() == key && idx < arr.elements.length() {
+        return true
+      }
+      arr.bag.properties.contains(key) || arr.bag.descriptors.contains(key)
+    }
     _ => false
   }
 }
@@ -437,14 +555,7 @@ pub fn proxy_get(
           if !desc.configurable {
             // Non-configurable data property: trap result must match target value
             if desc.getter is None && !desc.writable {
-              let target_value = match target {
-                Object(data) =>
-                  match data.bag.properties.get(key) {
-                    Some(v) => v
-                    None => Undefined
-                  }
-                _ => Undefined
-              }
+              let target_value = target_get_own_value(target, key)
               if !strict_equal(result, target_value) {
                 raise @errors.TypeError(
                   message="'get' on proxy: property '\{key}' is a read-only and non-configurable data property on the proxy target but the proxy did not return its actual value",
@@ -479,28 +590,40 @@ pub fn check_proxy_set_trap_invariants(
   value : Value,
 ) -> Unit raise Error {
   let (desc_opt, target_value, key_display) = match key {
-    String_(k) =>
-      (
-        target_get_own_descriptor(target, k),
-        match target {
-          Object(data) =>
-            match data.bag.properties.get(k) {
-              Some(v) => v
-              None => Undefined
-            }
-          _ => Undefined
-        },
-        k,
-      )
+    String_(k) => (target_get_own_descriptor(target, k), target_get_own_value(target, k), k)
     Symbol(sym) =>
       (
         match target {
           Object(data) => data.bag.symbol_descriptors.get(sym.id)
+          Map(data) => data.bag.symbol_descriptors.get(sym.id)
+          Set(data) => data.bag.symbol_descriptors.get(sym.id)
+          Promise(data) => data.bag.symbol_descriptors.get(sym.id)
+          Array(arr) => arr.bag.symbol_descriptors.get(sym.id)
           _ => None
         },
         match target {
           Object(data) =>
             match data.bag.symbol_properties.get(sym.id) {
+              Some(v) => v
+              None => Undefined
+            }
+          Map(data) =>
+            match data.bag.symbol_properties.get(sym.id) {
+              Some(v) => v
+              None => Undefined
+            }
+          Set(data) =>
+            match data.bag.symbol_properties.get(sym.id) {
+              Some(v) => v
+              None => Undefined
+            }
+          Promise(data) =>
+            match data.bag.symbol_properties.get(sym.id) {
+              Some(v) => v
+              None => Undefined
+            }
+          Array(arr) =>
+            match arr.bag.symbol_properties.get(sym.id) {
               Some(v) => v
               None => Undefined
             }
