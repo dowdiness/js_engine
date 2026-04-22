@@ -231,9 +231,10 @@ From CI run 24730849102 (2026-04-21, v0.2.0): **18,270 skipped strict + 18,811 s
 | class-methods-private | 1,304 | #privateMethod |
 | BigInt | 1,250 | Arbitrary precision integers |
 | class-static-methods-private | 1,133 | static #method |
-| class-fields-public | 723 | Public field declarations |
+| class-fields-private | 723 | #private field declarations |
 | regexp-unicode-property | 679 | Unicode property escapes |
 | module | 422 | import/export implemented; 338 in module dirs + 84 module-flagged tests in other dirs |
+| class-fields-public / class-static-fields-public | — | ✅ No longer skipped (public fields implemented pre-2026-04-16) |
 | generators | — | ✅ No longer skipped (implemented in Phase 8) |
 | Proxy/Reflect | — | ✅ No longer skipped (implemented in Phase 15) |
 | TypedArray/ArrayBuffer/DataView | — | ✅ No longer skipped (implemented in Phase 16) |
