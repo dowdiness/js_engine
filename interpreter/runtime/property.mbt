@@ -2561,7 +2561,7 @@ fn same_value_for_vap(a : Value, b : Value) -> Bool {
 /// Extract the stored own value for `key` on `val`. Mirrors the key-aware
 /// reader used in proxy helpers but surfaced here for VAP's value-change
 /// check (step 4.b.iii).
-fn ordinary_get_own_value_raw(val : Value, key : Value) -> Value raise Error {
+pub fn ordinary_get_own_value_for_descriptor(val : Value, key : Value) -> Value raise Error {
   match key {
     Symbol(sym) => {
       let bag_opt = match val {
@@ -2909,6 +2909,138 @@ fn apply_descriptor_to_bag(
 }
 
 ///|
+/// ES §6.2.5.5 `ToPropertyDescriptor`. Extract a PartialDescriptor from a JS
+/// attrs object, invoking getters and reading inherited properties per spec.
+/// Throws TypeError if:
+/// - attrs is not an object
+/// - both data (value/writable) and accessor (get/set) fields appear
+/// - get or set is non-callable non-undefined
+pub fn Interpreter::partial_descriptor_from_attrs(
+  self : Interpreter,
+  attrs : Value,
+  loc : @token.Loc,
+) -> PartialDescriptor raise Error {
+  if !is_object_value(attrs) {
+    raise @errors.TypeError(
+      message="Property description must be an object: \{attrs.to_string()}",
+    )
+  }
+  let has_value = has_property(attrs, "value", interp=Some(self))
+  let has_writable = has_property(attrs, "writable", interp=Some(self))
+  let has_get = has_property(attrs, "get", interp=Some(self))
+  let has_set = has_property(attrs, "set", interp=Some(self))
+  if (has_value || has_writable) && (has_get || has_set) {
+    raise @errors.TypeError(
+      message="Invalid property descriptor. Cannot both specify accessors and a value or writable attribute",
+    )
+  }
+  let value = if has_value {
+    Some(self.get_property(attrs, "value", loc))
+  } else {
+    None
+  }
+  let writable = if has_writable {
+    Some(is_truthy(self.get_property(attrs, "writable", loc)))
+  } else {
+    None
+  }
+  let enumerable = if has_property(attrs, "enumerable", interp=Some(self)) {
+    Some(is_truthy(self.get_property(attrs, "enumerable", loc)))
+  } else {
+    None
+  }
+  let configurable = if has_property(attrs, "configurable", interp=Some(self)) {
+    Some(is_truthy(self.get_property(attrs, "configurable", loc)))
+  } else {
+    None
+  }
+  let getter = if has_get {
+    let g = self.get_property(attrs, "get", loc)
+    match g {
+      Undefined => None
+      Object(data) => {
+        if data.callable is None {
+          raise @errors.TypeError(
+            message="Getter must be a function: \{g.to_string()}",
+          )
+        }
+        Some(g)
+      }
+      _ =>
+        raise @errors.TypeError(
+          message="Getter must be a function: \{g.to_string()}",
+        )
+    }
+  } else {
+    None
+  }
+  let setter = if has_set {
+    let s = self.get_property(attrs, "set", loc)
+    match s {
+      Undefined => None
+      Object(data) => {
+        if data.callable is None {
+          raise @errors.TypeError(
+            message="Setter must be a function: \{s.to_string()}",
+          )
+        }
+        Some(s)
+      }
+      _ =>
+        raise @errors.TypeError(
+          message="Setter must be a function: \{s.to_string()}",
+        )
+    }
+  } else {
+    None
+  }
+  {
+    value,
+    writable,
+    enumerable,
+    configurable,
+    getter,
+    setter,
+    has_getter: has_get,
+    has_setter: has_set,
+  }
+}
+
+///|
+/// Convert a stored PropDescriptor into a plain JS descriptor object for
+/// Object.getOwnPropertyDescriptor / Reflect.getOwnPropertyDescriptor
+/// callers. Emits value + writable for data descriptors; get + set for
+/// accessor descriptors.
+pub fn descriptor_to_value(
+  desc : PropDescriptor,
+  value : Value,
+) -> Value {
+  let props : Map[String, Value] = {}
+  let is_accessor = desc.getter is Some(_) || desc.setter is Some(_)
+  if is_accessor {
+    props["get"] = desc.getter.unwrap_or(Undefined)
+    props["set"] = desc.setter.unwrap_or(Undefined)
+  } else {
+    props["value"] = value
+    props["writable"] = Value::Bool(desc.writable)
+  }
+  props["enumerable"] = Value::Bool(desc.enumerable)
+  props["configurable"] = Value::Bool(desc.configurable)
+  Value::Object({
+    bag: {
+      properties: props,
+      symbol_properties: {},
+      descriptors: {},
+      symbol_descriptors: {},
+    },
+    prototype: get_obj_proto(),
+    extensible: true,
+    callable: None,
+    class_name: "Object",
+  })
+}
+
+///|
 /// ES [[DefineOwnProperty]] dispatcher — routes Proxy targets through the
 /// defineProperty trap (`proxy_define_property`), others through
 /// `ordinary_define_own_property`. This is the main entry point builtins
@@ -2929,14 +3061,22 @@ pub fn Interpreter::define_own_property(
 ///|
 /// ES [[GetOwnProperty]] dispatcher — Proxy targets route through
 /// `proxy_get_own_property`, others through `ordinary_get_own_property`.
+/// Returns `(descriptor, value)` pairs so the trap-provided value in the
+/// Proxy case flows through (PropDescriptor has no `value` slot — the
+/// value is stored separately on the bag or synthesized by the trap).
 pub fn Interpreter::get_own_property(
   self : Interpreter,
   val : Value,
   key : Value,
-) -> PropDescriptor? raise Error {
+) -> (PropDescriptor, Value)? raise Error {
   match val {
     Value::Proxy(pdata) => proxy_get_own_property(self, pdata, key)
-    _ => ordinary_get_own_property(val, key)
+    _ =>
+      match ordinary_get_own_property(val, key) {
+        None => None
+        Some(desc) =>
+          Some((desc, ordinary_get_own_value_for_descriptor(val, key)))
+      }
   }
 }
 
@@ -2975,7 +3115,7 @@ pub fn Interpreter::ordinary_define_own_property(
     Some(current) => {
       // Fast-pass: all configurable changes are allowed.
       if !current.configurable {
-        let cur_val = ordinary_get_own_value_raw(val, key)
+        let cur_val = ordinary_get_own_value_for_descriptor(val, key)
         if !is_compatible_with_non_configurable(current, partial, cur_val) {
           return false
         }

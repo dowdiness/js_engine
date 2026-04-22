@@ -1017,7 +1017,7 @@ pub fn proxy_get_own_property(
   interp : Interpreter,
   proxy_data : ProxyData,
   key : Value,
-) -> PropDescriptor? raise Error {
+) -> (PropDescriptor, Value)? raise Error {
   let target = get_proxy_target(proxy_data)
   let trap = get_proxy_trap(proxy_data, "getOwnPropertyDescriptor", interp)
   match trap {
@@ -1026,7 +1026,12 @@ pub fn proxy_get_own_property(
       // this recurses; otherwise reads from the ordinary/Array path.
       match target {
         Value::Proxy(inner) => proxy_get_own_property(interp, inner, key)
-        _ => ordinary_get_own_property(target, key)
+        _ =>
+          match ordinary_get_own_property(target, key) {
+            None => None
+            Some(desc) =>
+              Some((desc, ordinary_get_own_value_for_descriptor(target, key)))
+          }
       }
     Some(trap_fn) => {
       let handler = get_proxy_handler(proxy_data)
@@ -1135,10 +1140,13 @@ pub fn proxy_get_own_property(
               )
             }
           }
-          let _ = trap_value_opt
         }
       }
-      Some(trap_desc)
+      let trap_value = match trap_value_opt {
+        Some(v) => v
+        None => Undefined
+      }
+      Some((trap_desc, trap_value))
     }
   }
 }

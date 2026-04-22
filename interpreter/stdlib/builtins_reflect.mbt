@@ -497,100 +497,30 @@ fn setup_reflect_builtins(env : Environment, _sym_state : SymbolState) -> Unit {
     },
   )
 
-  // Reflect.getOwnPropertyDescriptor(target, propertyKey)
-  reflect_props["getOwnPropertyDescriptor"] = Value::Object({
-    bag: {
-      properties: {
-        "name": Value::String_("getOwnPropertyDescriptor"),
-        "length": Value::Number(2.0),
-      },
-      symbol_properties: {},
-      descriptors: { "name": nf_desc, "length": nf_desc },
-      symbol_descriptors: {},
+  // Reflect.getOwnPropertyDescriptor(target, propertyKey) — §28.1.9
+  reflect_props["getOwnPropertyDescriptor"] = @runtime.make_interp_method_func(
+    name="getOwnPropertyDescriptor",
+    length=2,
+    fn(interp, _this_val, args) raise {
+      if args.length() < 2 {
+        raise @errors.TypeError(
+          message="Reflect.getOwnPropertyDescriptor requires 2 arguments",
+        )
+      }
+      let target = args[0]
+      if !@runtime.is_object_value(target) {
+        raise @errors.TypeError(
+          message="Reflect.getOwnPropertyDescriptor called on non-object",
+        )
+      }
+      let key = args[1]
+      // §10.5.5 / §10.1.5 via dispatcher (Proxy traps fire).
+      match interp.get_own_property(target, key) {
+        None => Undefined
+        Some((desc, val)) => @runtime.descriptor_to_value(desc, val)
+      }
     },
-    prototype: @runtime.get_func_proto(),
-    callable: Some(
-      NativeCallable("getOwnPropertyDescriptor", fn(args) raise {
-        if args.length() < 2 {
-          raise @errors.TypeError(
-            message="Reflect.getOwnPropertyDescriptor requires 2 arguments",
-          )
-        }
-        let target = args[0]
-        let prop = args[1].to_string()
-        let data : ObjectData = match target {
-          Object(data) => data
-          Proxy(_) =>
-            match unwrap_proxy_target(target) {
-              Some(data) => data
-              None =>
-                raise @errors.TypeError(
-                  message="Reflect.getOwnPropertyDescriptor called on non-object",
-                )
-            }
-          _ =>
-            raise @errors.TypeError(
-              message="Reflect.getOwnPropertyDescriptor called on non-object",
-            )
-        }
-        let has_own_data = data.bag.properties.contains(prop)
-        let has_own_desc = data.bag.descriptors.contains(prop)
-        // Property must exist in either data or descriptors
-        if !has_own_data && !has_own_desc {
-          return Undefined
-        }
-        let result_props : Map[String, Value] = {}
-        match data.bag.descriptors.get(prop) {
-          Some(desc) => {
-            let is_accessor = desc.getter is Some(_) || desc.setter is Some(_)
-            if is_accessor {
-              // Accessor descriptor
-              result_props["get"] = match desc.getter {
-                Some(g) => g
-                None => Undefined
-              }
-              result_props["set"] = match desc.setter {
-                Some(s) => s
-                None => Undefined
-              }
-            } else {
-              // Data descriptor
-              result_props["value"] = match data.bag.properties.get(prop) {
-                Some(v) => v
-                None => Undefined
-              }
-              result_props["writable"] = Bool(desc.writable)
-            }
-            result_props["enumerable"] = Bool(desc.enumerable)
-            result_props["configurable"] = Bool(desc.configurable)
-          }
-          None => {
-            result_props["value"] = match data.bag.properties.get(prop) {
-              Some(v) => v
-              None => Undefined
-            }
-            result_props["writable"] = Value::Bool(true)
-            result_props["enumerable"] = Value::Bool(true)
-            result_props["configurable"] = Value::Bool(true)
-          }
-        }
-        Value::Object({
-          bag: {
-            properties: result_props,
-            symbol_properties: {},
-            descriptors: {},
-            symbol_descriptors: {},
-          },
-          prototype: Null,
-          callable: None,
-          class_name: "Object",
-          extensible: true,
-        })
-      }),
-    ),
-    class_name: "Function",
-    extensible: true,
-  })
+  )
 
   // Reflect.getPrototypeOf(target)
   reflect_props["getPrototypeOf"] = @runtime.make_interp_method_func(
