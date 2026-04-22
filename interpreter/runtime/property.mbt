@@ -2531,3 +2531,192 @@ pub fn validate_non_configurable(
     }
   }
 }
+
+// ---------------------------------------------------------------------------
+// Stage B.2: ordinary [[GetOwnProperty]] / [[DefineOwnProperty]]
+// ---------------------------------------------------------------------------
+
+///|
+/// ES §7.2.11 SameValue. Differs from `strict_equal` on two cases:
+/// - SameValue(NaN, NaN) = true        (strict_equal: false)
+/// - SameValue(+0, -0) = false         (strict_equal: true)
+/// VAP §10.1.6.3 step 4.b.iii uses SameValue to check whether a value change
+/// on a non-writable non-configurable data property is a no-op.
+fn same_value_for_vap(a : Value, b : Value) -> Bool {
+  match (a, b) {
+    (Number(x), Number(y)) =>
+      if x.is_nan() && y.is_nan() {
+        true
+      } else if x == 0.0 && y == 0.0 {
+        // +0 and -0 compare equal under ==; distinguish by reciprocal sign
+        (1.0 / x) == (1.0 / y)
+      } else {
+        x == y
+      }
+    _ => strict_equal(a, b)
+  }
+}
+
+///|
+/// Extract the stored own value for `key` on `val`. Mirrors the key-aware
+/// reader used in proxy helpers but surfaced here for VAP's value-change
+/// check (step 4.b.iii).
+fn ordinary_get_own_value_raw(val : Value, key : Value) -> Value raise Error {
+  match key {
+    Symbol(sym) => {
+      let bag_opt = match val {
+        Object(data) => Some(data.bag)
+        Map(data) => Some(data.bag)
+        Set(data) => Some(data.bag)
+        Promise(data) => Some(data.bag)
+        Array(arr) => Some(arr.bag)
+        _ => None
+      }
+      match bag_opt {
+        Some(bag) =>
+          match bag.symbol_properties.get(sym.id) {
+            Some(v) => v
+            None => Undefined
+          }
+        None => Undefined
+      }
+    }
+    _ => {
+      let k = to_js_string(key)
+      match val {
+        Object(data) =>
+          match data.bag.properties.get(k) {
+            Some(v) => v
+            None => Undefined
+          }
+        Map(data) =>
+          match data.bag.properties.get(k) {
+            Some(v) => v
+            None => Undefined
+          }
+        Set(data) =>
+          match data.bag.properties.get(k) {
+            Some(v) => v
+            None => Undefined
+          }
+        Promise(data) =>
+          match data.bag.properties.get(k) {
+            Some(v) => v
+            None => Undefined
+          }
+        Array(arr) => {
+          if k == "length" {
+            return Value::Number(arr.elements.length().to_double())
+          }
+          let idx = @string.parse_int(k) catch { _ => -1 }
+          if idx >= 0 && idx.to_string() == k && idx < arr.elements.length() {
+            return arr.elements[idx]
+          }
+          match arr.bag.properties.get(k) {
+            Some(v) => v
+            None => Undefined
+          }
+        }
+        _ => Undefined
+      }
+    }
+  }
+}
+
+///|
+/// ES §10.1.5 `OrdinaryGetOwnProperty(O, P)`. Returns the stored descriptor
+/// for an own property on `val`. For Array, synthesizes descriptors for
+/// `length` and in-range indexed elements per §10.4.2. Returns `None` if the
+/// property is not own.
+pub fn ordinary_get_own_property(
+  val : Value,
+  key : Value,
+) -> PropDescriptor? raise Error {
+  match key {
+    Symbol(sym) => {
+      let bag_opt = match val {
+        Object(data) => Some(data.bag)
+        Map(data) => Some(data.bag)
+        Set(data) => Some(data.bag)
+        Promise(data) => Some(data.bag)
+        Array(arr) => Some(arr.bag)
+        _ => None
+      }
+      match bag_opt {
+        Some(bag) => {
+          // A symbol property might have a descriptor OR just a value entry.
+          match bag.symbol_descriptors.get(sym.id) {
+            Some(d) => Some(d)
+            None =>
+              if bag.symbol_properties.contains(sym.id) {
+                Some({
+                  writable: true,
+                  enumerable: true,
+                  configurable: true,
+                  getter: None,
+                  setter: None,
+                })
+              } else {
+                None
+              }
+          }
+        }
+        None => None
+      }
+    }
+    _ => {
+      let k = to_js_string(key)
+      match val {
+        Object(data) => ordinary_get_own_string_desc(data.bag, k)
+        Map(data) => ordinary_get_own_string_desc(data.bag, k)
+        Set(data) => ordinary_get_own_string_desc(data.bag, k)
+        Promise(data) => ordinary_get_own_string_desc(data.bag, k)
+        Array(arr) => {
+          if k == "length" {
+            return Some({
+              writable: arr.length_writable,
+              enumerable: false,
+              configurable: false,
+              getter: None,
+              setter: None,
+            })
+          }
+          let idx = @string.parse_int(k) catch { _ => -1 }
+          if idx >= 0 && idx.to_string() == k && idx < arr.elements.length() {
+            return Some({
+              writable: true,
+              enumerable: true,
+              configurable: true,
+              getter: None,
+              setter: None,
+            })
+          }
+          ordinary_get_own_string_desc(arr.bag, k)
+        }
+        _ => None
+      }
+    }
+  }
+}
+
+///|
+fn ordinary_get_own_string_desc(
+  bag : PropertyBag,
+  key : String,
+) -> PropDescriptor? {
+  match bag.descriptors.get(key) {
+    Some(d) => Some(d)
+    None =>
+      if bag.properties.contains(key) {
+        Some({
+          writable: true,
+          enumerable: true,
+          configurable: true,
+          getter: None,
+          setter: None,
+        })
+      } else {
+        None
+      }
+  }
+}
