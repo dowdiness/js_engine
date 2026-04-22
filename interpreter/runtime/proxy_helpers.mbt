@@ -1249,9 +1249,55 @@ pub fn proxy_define_property(
             message="'defineProperty' on proxy: trap returned truish for defining non-configurable property on proxy target where property is configurable",
           )
         }
-        // Step 18.c: incoming must be compatible with existing if non-configurable.
+        // §10.5.6 step 18.c: non-configurable existing + incoming data
+        // reporting writable:false over existing writable:true -> TypeError.
+        // (Spec requires target's writable to remain true if the trap succeeds
+        //  but didn't report non-writable; conversely, a lying non-writable
+        //  over a non-configurable writable target is invariant-busting.)
+        let current_is_data = current.getter is None && current.setter is None
+        if !current.configurable && current_is_data && current.writable {
+          if partial.writable is Some(false) {
+            raise @errors.TypeError(
+              message="'defineProperty' on proxy: trap returned truish for non-writable redefinition of a non-configurable writable data property on proxy target",
+            )
+          }
+        }
+        // Step 18.c full compatibility when existing is non-configurable.
         if !current.configurable {
-          let cur_val = target_get_own_value(target, key.to_string())
+          // Key-aware current-value lookup — Symbol keys must not coerce
+          // through key.to_string() (would read a different slot).
+          let cur_val = match key {
+            Symbol(sym) =>
+              match target {
+                Object(data) =>
+                  match data.bag.symbol_properties.get(sym.id) {
+                    Some(v) => v
+                    None => Undefined
+                  }
+                Map(data) =>
+                  match data.bag.symbol_properties.get(sym.id) {
+                    Some(v) => v
+                    None => Undefined
+                  }
+                Set(data) =>
+                  match data.bag.symbol_properties.get(sym.id) {
+                    Some(v) => v
+                    None => Undefined
+                  }
+                Promise(data) =>
+                  match data.bag.symbol_properties.get(sym.id) {
+                    Some(v) => v
+                    None => Undefined
+                  }
+                Array(arr) =>
+                  match arr.bag.symbol_properties.get(sym.id) {
+                    Some(v) => v
+                    None => Undefined
+                  }
+                _ => Undefined
+              }
+            _ => target_get_own_value(target, key.to_string())
+          }
           if !is_compatible_with_non_configurable(current, partial, cur_val) {
             raise @errors.TypeError(
               message="'defineProperty' on proxy: trap returned truish for incompatible redefinition of non-configurable property on proxy target",
