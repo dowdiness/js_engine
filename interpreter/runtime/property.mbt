@@ -2720,3 +2720,455 @@ fn ordinary_get_own_string_desc(
       }
   }
 }
+
+///|
+/// Is `val` extensible per ES §10.1.3? Only ObjectData tracks extensibility;
+/// Array/Map/Set/Promise are always extensible today (Stage B.1 known gap,
+/// not B.2 scope).
+fn ordinary_is_extensible(val : Value) -> Bool {
+  match val {
+    Object(data) => data.extensible
+    Array(_) | Map(_) | Set(_) | Promise(_) => true
+    _ => false
+  }
+}
+
+///|
+/// Is `val` one of the "object-like" Value variants that can own properties?
+/// Primitives and Proxy are excluded from the ordinary path.
+fn is_ordinary_object_like(val : Value) -> Bool {
+  match val {
+    Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) => true
+    _ => false
+  }
+}
+
+///|
+/// VAP step 4 compatibility check: given `current` is non-configurable and
+/// `partial` proposes a change, decide whether the change is permitted.
+/// Returns `true` if compatible (proceed to apply); `false` if the change
+/// must be rejected (VAP returns false without writing).
+fn is_compatible_with_non_configurable(
+  current : PropDescriptor,
+  partial : PartialDescriptor,
+  current_value : Value,
+) -> Bool {
+  // §10.1.6.3 step 4.a: cannot change configurable false -> true.
+  match partial.configurable {
+    Some(true) => return false
+    _ => ()
+  }
+  // Step 4.b: cannot change enumerable.
+  match partial.enumerable {
+    Some(e) => if e != current.enumerable { return false }
+    None => ()
+  }
+  let current_is_accessor = current.getter is Some(_) || current.setter is Some(_)
+  let partial_is_accessor = partial.is_accessor()
+  let partial_is_data = partial.is_data()
+  // Step 4.c: cannot toggle accessor <-> data when non-configurable.
+  if current_is_accessor && partial_is_data {
+    return false
+  }
+  if !current_is_accessor && partial_is_accessor {
+    return false
+  }
+  if current_is_accessor && partial_is_accessor {
+    // Step 4.d: non-configurable accessor — getter/setter identity must
+    // not change (SameValue).
+    if partial.has_getter {
+      let g_matches = match current.getter {
+        Some(cg) => same_value_for_vap(partial.getter.unwrap_or(Undefined), cg)
+        None => partial.getter is Some(Undefined) || partial.getter is None
+      }
+      if !g_matches { return false }
+    }
+    if partial.has_setter {
+      let s_matches = match current.setter {
+        Some(cs) => same_value_for_vap(partial.setter.unwrap_or(Undefined), cs)
+        None => partial.setter is Some(Undefined) || partial.setter is None
+      }
+      if !s_matches { return false }
+    }
+  }
+  if !current_is_accessor && !partial_is_accessor {
+    // Step 4.e: non-configurable non-writable data — value change must be
+    // SameValue; writable false -> true is forbidden.
+    if !current.writable {
+      match partial.writable {
+        Some(true) => return false
+        _ => ()
+      }
+      match partial.value {
+        Some(v) => if !same_value_for_vap(v, current_value) { return false }
+        None => ()
+      }
+    }
+  }
+  true
+}
+
+///|
+/// Merge a PartialDescriptor into an existing PropDescriptor, returning the
+/// new descriptor. Fields absent from `partial` preserve `current`'s value.
+/// When accessor fields transition between has/hasn't, the storage reflects
+/// the partial's presence.
+fn merge_partial_into(
+  current : PropDescriptor,
+  partial : PartialDescriptor,
+) -> PropDescriptor {
+  let writable = match partial.writable {
+    Some(w) => w
+    None => current.writable
+  }
+  let enumerable = match partial.enumerable {
+    Some(e) => e
+    None => current.enumerable
+  }
+  let configurable = match partial.configurable {
+    Some(c) => c
+    None => current.configurable
+  }
+  let getter = if partial.has_getter {
+    match partial.getter {
+      Some(Undefined) | None => None
+      Some(g) => Some(g)
+    }
+  } else {
+    current.getter
+  }
+  let setter = if partial.has_setter {
+    match partial.setter {
+      Some(Undefined) | None => None
+      Some(s) => Some(s)
+    }
+  } else {
+    current.setter
+  }
+  { writable, enumerable, configurable, getter, setter }
+}
+
+///|
+/// Build a fresh PropDescriptor for an absent key, filling omitted fields
+/// with defaults per ES §6.2.5.5 CompletePropertyDescriptor: absent
+/// writable/enumerable/configurable default to `false`; accessor fields
+/// default to `None`.
+fn complete_partial_for_new(partial : PartialDescriptor) -> PropDescriptor {
+  let writable = partial.writable.unwrap_or(false)
+  let enumerable = partial.enumerable.unwrap_or(false)
+  let configurable = partial.configurable.unwrap_or(false)
+  let getter = if partial.has_getter {
+    match partial.getter {
+      Some(Undefined) | None => None
+      Some(g) => Some(g)
+    }
+  } else {
+    None
+  }
+  let setter = if partial.has_setter {
+    match partial.setter {
+      Some(Undefined) | None => None
+      Some(s) => Some(s)
+    }
+  } else {
+    None
+  }
+  { writable, enumerable, configurable, getter, setter }
+}
+
+///|
+/// Write a merged/completed descriptor into `bag` at `key`. Also writes the
+/// value portion if the partial contained one (data descriptor), so subsequent
+/// `bag.properties` reads return the correct value.
+fn apply_descriptor_to_bag(
+  bag : PropertyBag,
+  key : Value,
+  desc : PropDescriptor,
+  value_opt : Value?,
+) -> Unit {
+  match key {
+    Symbol(sym) => {
+      bag.symbol_descriptors[sym.id] = desc
+      match value_opt {
+        Some(v) => bag.symbol_properties[sym.id] = v
+        None =>
+          if !bag.symbol_properties.contains(sym.id) {
+            bag.symbol_properties[sym.id] = Undefined
+          }
+      }
+    }
+    _ => {
+      let k = key.to_string()
+      bag.descriptors[k] = desc
+      match value_opt {
+        Some(v) => bag.properties[k] = v
+        None => if !bag.properties.contains(k) { bag.properties[k] = Undefined }
+      }
+    }
+  }
+}
+
+///|
+/// ES §10.1.6 `OrdinaryDefineOwnProperty(O, P, Desc)` + §10.4.2.1 Array
+/// exotic dispatch. Returns `true` on success, `false` on rejection (the
+/// caller — Object.defineProperty throws, Reflect.defineProperty returns
+/// false).
+pub fn Interpreter::ordinary_define_own_property(
+  self : Interpreter,
+  val : Value,
+  key : Value,
+  partial : PartialDescriptor,
+  loc : @token.Loc,
+) -> Bool raise Error {
+  // Array exotic dispatch
+  match val {
+    Array(arr) => return self.array_define_own_property(arr, key, partial, loc)
+    _ => ()
+  }
+  if !is_ordinary_object_like(val) {
+    return false
+  }
+  let existing = ordinary_get_own_property(val, key)
+  let extensible = ordinary_is_extensible(val)
+  match existing {
+    None => {
+      if !extensible {
+        return false
+      }
+      let full = complete_partial_for_new(partial)
+      let value_opt = partial.value
+      ordinary_write(val, key, full, value_opt)
+      true
+    }
+    Some(current) => {
+      // Fast-pass: all configurable changes are allowed.
+      if !current.configurable {
+        let cur_val = ordinary_get_own_value_raw(val, key)
+        if !is_compatible_with_non_configurable(current, partial, cur_val) {
+          return false
+        }
+      }
+      let merged = merge_partial_into(current, partial)
+      // For an existing accessor redefined as data (configurable), clear any
+      // residual getter/setter via the merged descriptor. For an existing
+      // data redefined as accessor, clear writable/value.
+      let final_desc = if partial.is_accessor() &&
+        (current.getter is Some(_) || current.setter is Some(_)) == false &&
+        current.configurable {
+        // Accessor replacing data: drop value, writable=false implicit.
+        { ..merged, writable: false }
+      } else {
+        merged
+      }
+      ordinary_write(val, key, final_desc, partial.value)
+      true
+    }
+  }
+}
+
+///|
+/// Dispatch descriptor + value write to the appropriate bag, given the
+/// receiver has already been classified as object-like (not Array).
+fn ordinary_write(
+  val : Value,
+  key : Value,
+  desc : PropDescriptor,
+  value_opt : Value?,
+) -> Unit {
+  match val {
+    Object(data) => apply_descriptor_to_bag(data.bag, key, desc, value_opt)
+    Map(data) => apply_descriptor_to_bag(data.bag, key, desc, value_opt)
+    Set(data) => apply_descriptor_to_bag(data.bag, key, desc, value_opt)
+    Promise(data) => apply_descriptor_to_bag(data.bag, key, desc, value_opt)
+    _ => ()
+  }
+}
+
+///|
+/// ES §10.4.2.1 Array exotic `[[DefineOwnProperty]]`. Dispatches on:
+/// - key == "length" -> array_set_length (§10.4.2.4 with partial truncation).
+/// - key is array index -> ordinary-style write against `bag`, plus grow
+///   elements to idx+1 (ArraySetLength auto-grow) ONLY when descriptor is the
+///   default-data shape. Non-default (configurable:false / writable:false /
+///   enumerable:false) descriptors on indexed elements return false pending
+///   Stage C's per-index descriptor storage.
+/// - Other keys -> ordinary-style write against arr.bag.
+pub fn Interpreter::array_define_own_property(
+  self : Interpreter,
+  arr : ArrayData,
+  key : Value,
+  partial : PartialDescriptor,
+  loc : @token.Loc,
+) -> Bool raise Error {
+  let _ = loc
+  match key {
+    Symbol(sym) => {
+      // Symbol keys flow through bag.symbol_*; treat as ordinary ordinary.
+      let existing = match arr.bag.symbol_descriptors.get(sym.id) {
+        Some(d) => Some(d)
+        None =>
+          if arr.bag.symbol_properties.contains(sym.id) {
+            Some({
+              writable: true,
+              enumerable: true,
+              configurable: true,
+              getter: None,
+              setter: None,
+            })
+          } else {
+            None
+          }
+      }
+      match existing {
+        None => {
+          let full = complete_partial_for_new(partial)
+          apply_descriptor_to_bag(arr.bag, key, full, partial.value)
+          true
+        }
+        Some(current) => {
+          if !current.configurable {
+            let cur_val = match arr.bag.symbol_properties.get(sym.id) {
+              Some(v) => v
+              None => Undefined
+            }
+            if !is_compatible_with_non_configurable(current, partial, cur_val) {
+              return false
+            }
+          }
+          let merged = merge_partial_into(current, partial)
+          apply_descriptor_to_bag(arr.bag, key, merged, partial.value)
+          true
+        }
+      }
+    }
+    _ => {
+      let k = key.to_string()
+      if k == "length" {
+        return self.array_set_length(arr, partial)
+      }
+      // Is this an array index?
+      let idx = @string.parse_int(k) catch { _ => -1 }
+      let is_index = idx >= 0 && idx.to_string() == k
+      if is_index {
+        // Default-shape check: any explicit false on writable/enumerable/
+        // configurable rejects (no storage pre-Stage-C).
+        if partial.writable is Some(false) ||
+          partial.enumerable is Some(false) ||
+          partial.configurable is Some(false) ||
+          partial.is_accessor() {
+          return false
+        }
+        // Check length writable if we're extending.
+        if idx >= arr.elements.length() && !arr.length_writable {
+          return false
+        }
+        // Grow elements to idx+1 with Undefined filler.
+        while arr.elements.length() <= idx {
+          arr.elements.push(Undefined)
+        }
+        match partial.value {
+          Some(v) => arr.elements[idx] = v
+          None => ()
+        }
+        return true
+      }
+      // Named non-index property — ordinary write against bag.
+      let existing = ordinary_get_own_string_desc(arr.bag, k)
+      match existing {
+        None => {
+          let full = complete_partial_for_new(partial)
+          apply_descriptor_to_bag(arr.bag, key, full, partial.value)
+          true
+        }
+        Some(current) => {
+          if !current.configurable {
+            let cur_val = match arr.bag.properties.get(k) {
+              Some(v) => v
+              None => Undefined
+            }
+            if !is_compatible_with_non_configurable(current, partial, cur_val) {
+              return false
+            }
+          }
+          let merged = merge_partial_into(current, partial)
+          apply_descriptor_to_bag(arr.bag, key, merged, partial.value)
+          true
+        }
+      }
+    }
+  }
+}
+
+///|
+/// ES §10.4.2.4 `ArraySetLength`. The partial truncation loop is the
+/// crux of this algorithm — see the Learn by Doing contribution point.
+pub fn Interpreter::array_set_length(
+  self : Interpreter,
+  arr : ArrayData,
+  partial : PartialDescriptor,
+) -> Bool raise Error {
+  let _ = self
+  // Step 1-2: if Desc.[[Value]] absent, just adjust attributes.
+  let new_len_value = match partial.value {
+    Some(v) => v
+    None => {
+      // No value change — only length_writable / other attrs. Validate:
+      // can't flip non-configurable (length is always non-configurable).
+      if partial.configurable is Some(true) {
+        return false
+      }
+      match partial.enumerable {
+        Some(true) => return false
+        _ => ()
+      }
+      // writable false->true is forbidden once frozen.
+      if !arr.length_writable && partial.writable is Some(true) {
+        return false
+      }
+      match partial.writable {
+        Some(false) => arr.length_writable = false
+        _ => ()
+      }
+      return true
+    }
+  }
+  // Step 3-5: coerce to uint32 and validate.
+  let n = to_number(new_len_value)
+  let new_len = n.to_int()
+  if new_len < 0 || new_len.to_double() != n || n.is_nan() {
+    raise @errors.RangeError(message="Invalid array length")
+  }
+  // Step 6: if extending, simply grow + apply attributes.
+  if new_len >= arr.elements.length() {
+    while arr.elements.length() < new_len {
+      arr.elements.push(Undefined)
+    }
+    match partial.writable {
+      Some(false) => arr.length_writable = false
+      _ => ()
+    }
+    return true
+  }
+  // Step 7: if length is non-writable, truncation rejected.
+  if !arr.length_writable {
+    return false
+  }
+  // Step 8-9: defer writable:false until after truncation; remember intent.
+  let lock_after = partial.writable is Some(false)
+  // Step 10: partial-truncation loop. Delete indices in descending order.
+  // We have no per-index descriptor storage pre-Stage-C, so every element
+  // is configurable by default — no delete ever fails. The loop structure
+  // is kept spec-faithful so Stage C can wire per-index configurable into
+  // the fail branch.
+  let mut i = arr.elements.length() - 1
+  while i >= new_len {
+    // Per §10.4.2.4 step 14.b: if element is non-configurable, stop.
+    //   (Stage C will consult arr.bag.descriptors[i.to_string()] here.)
+    let _removed = arr.elements.pop()
+    i = i - 1
+  }
+  if lock_after {
+    arr.length_writable = false
+  }
+  true
+}
