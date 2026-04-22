@@ -104,11 +104,15 @@ pub fn collect_target_own_keys(
 }
 
 ///|
-/// Check if target object is extensible (handles Object, Array, etc.)
+/// Check if target object is extensible. Arrays, Maps, Sets, Promises have
+/// no `extensible` field in their data structs today (tracked as a known
+/// gap from Stage B.1 — `isExtensible` 2/22 Array failures); they behave
+/// as always-extensible.
 fn target_is_extensible(target : Value) -> Bool {
   match target {
     Object(data) => data.extensible
-    _ => true // Arrays, etc. are always extensible in our implementation
+    Array(_) | Map(_) | Set(_) | Promise(_) => true
+    _ => true
   }
 }
 
@@ -146,6 +150,9 @@ pub fn proxy_is_extensible(
 
 ///|
 /// Check if target has a non-configurable own property with the given string key.
+/// Descriptors live in `bag` for Object/Map/Set/Promise. Arrays synthesize:
+/// `length` is non-configurable; indexed elements default to configurable
+/// (no per-index descriptor storage pre-Stage-C).
 fn target_has_non_configurable_key(target : Value, key : String) -> Bool {
   match target {
     Object(data) =>
@@ -153,25 +160,267 @@ fn target_has_non_configurable_key(target : Value, key : String) -> Bool {
         Some(desc) => !desc.configurable
         None => false
       }
+    Map(data) =>
+      match data.bag.descriptors.get(key) {
+        Some(desc) => !desc.configurable
+        None => false
+      }
+    Set(data) =>
+      match data.bag.descriptors.get(key) {
+        Some(desc) => !desc.configurable
+        None => false
+      }
+    Promise(data) =>
+      match data.bag.descriptors.get(key) {
+        Some(desc) => !desc.configurable
+        None => false
+      }
+    Array(_) =>
+      // "length" is non-configurable per §10.4.2. Indexed elements and
+      // named props have no per-element configurable tracking today.
+      key == "length"
     _ => false
   }
 }
 
 ///|
-/// Get the descriptor for a string-keyed property on the target.
+/// Get the descriptor for a string-keyed own property on the target.
+/// Arrays synthesize `length` and indexed element descriptors; other own
+/// named props live on `bag` for Object/Map/Set/Promise.
 fn target_get_own_descriptor(target : Value, key : String) -> PropDescriptor? {
+  // Properties created via ordinary assignment (`o.x = 1`) live in
+  // bag.properties without always receiving a bag.descriptors entry.
+  // For §10.5.5 / §10.5.6 invariants we must report such keys as
+  // existing with the default data-descriptor shape (w/e/c all true)
+  // per §10.1.5.1 OrdinaryGetOwnProperty.
+  let default_data : PropDescriptor = {
+    writable: true,
+    enumerable: true,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
   match target {
-    Object(data) => data.bag.descriptors.get(key)
+    Object(data) =>
+      match data.bag.descriptors.get(key) {
+        Some(d) => Some(d)
+        None =>
+          if data.bag.properties.contains(key) {
+            Some(default_data)
+          } else {
+            None
+          }
+      }
+    Map(data) =>
+      match data.bag.descriptors.get(key) {
+        Some(d) => Some(d)
+        None =>
+          if data.bag.properties.contains(key) {
+            Some(default_data)
+          } else {
+            None
+          }
+      }
+    Set(data) =>
+      match data.bag.descriptors.get(key) {
+        Some(d) => Some(d)
+        None =>
+          if data.bag.properties.contains(key) {
+            Some(default_data)
+          } else {
+            None
+          }
+      }
+    Promise(data) =>
+      match data.bag.descriptors.get(key) {
+        Some(d) => Some(d)
+        None =>
+          if data.bag.properties.contains(key) {
+            Some(default_data)
+          } else {
+            None
+          }
+      }
+    Array(arr) => {
+      if key == "length" {
+        return Some({
+          writable: arr.length_writable,
+          enumerable: false,
+          configurable: false,
+          getter: None,
+          setter: None,
+        })
+      }
+      // Indexed element?
+      let idx = @string.parse_int(key) catch { _ => -1 }
+      if idx >= 0 && idx.to_string() == key && idx < arr.elements.length() {
+        return Some({
+          writable: true,
+          enumerable: true,
+          configurable: true,
+          getter: None,
+          setter: None,
+        })
+      }
+      // Array named props (via side-table) surface through bag descriptors
+      // when explicitly registered; otherwise None.
+      match arr.bag.descriptors.get(key) {
+        Some(d) => Some(d)
+        None =>
+          if arr.bag.properties.contains(key) {
+            Some(default_data)
+          } else {
+            None
+          }
+      }
+    }
     _ => None
   }
 }
 
 ///|
-/// Check if the target has a specific own string property (in properties or descriptors).
+/// Unified target own-descriptor lookup covering both String and Symbol
+/// keys across all object-typed variants. Synthesizes the default data
+/// descriptor (w/e/c all true) for assignment-created props that live
+/// only in `bag.properties` / `bag.symbol_properties`, matching the
+/// OrdinaryGetOwnProperty default data shape.
+fn target_own_descriptor_for_key(
+  target : Value,
+  key : Value,
+) -> PropDescriptor? {
+  let default_data : PropDescriptor = {
+    writable: true,
+    enumerable: true,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
+  match key {
+    Symbol(sym) =>
+      match target {
+        Object(data) =>
+          match data.bag.symbol_descriptors.get(sym.id) {
+            Some(d) => Some(d)
+            None =>
+              if data.bag.symbol_properties.contains(sym.id) {
+                Some(default_data)
+              } else {
+                None
+              }
+          }
+        Map(data) =>
+          match data.bag.symbol_descriptors.get(sym.id) {
+            Some(d) => Some(d)
+            None =>
+              if data.bag.symbol_properties.contains(sym.id) {
+                Some(default_data)
+              } else {
+                None
+              }
+          }
+        Set(data) =>
+          match data.bag.symbol_descriptors.get(sym.id) {
+            Some(d) => Some(d)
+            None =>
+              if data.bag.symbol_properties.contains(sym.id) {
+                Some(default_data)
+              } else {
+                None
+              }
+          }
+        Promise(data) =>
+          match data.bag.symbol_descriptors.get(sym.id) {
+            Some(d) => Some(d)
+            None =>
+              if data.bag.symbol_properties.contains(sym.id) {
+                Some(default_data)
+              } else {
+                None
+              }
+          }
+        Array(arr) =>
+          match arr.bag.symbol_descriptors.get(sym.id) {
+            Some(d) => Some(d)
+            None =>
+              match get_array_symbol_prop(arr, sym.id) {
+                Some(_) => Some(default_data)
+                None => None
+              }
+          }
+        _ => None
+      }
+    _ => target_get_own_descriptor(target, key.to_string())
+  }
+}
+
+///|
+/// Read the own string-keyed value from the target, or Undefined if absent.
+/// Mirrors the variant coverage of `target_get_own_descriptor`. Used by
+/// proxy invariant checks that compare trap results to target values for
+/// non-configurable non-writable data descriptors.
+fn target_get_own_value(target : Value, key : String) -> Value {
+  match target {
+    Object(data) =>
+      match data.bag.properties.get(key) {
+        Some(v) => v
+        None => Undefined
+      }
+    Map(data) =>
+      match data.bag.properties.get(key) {
+        Some(v) => v
+        None => Undefined
+      }
+    Set(data) =>
+      match data.bag.properties.get(key) {
+        Some(v) => v
+        None => Undefined
+      }
+    Promise(data) =>
+      match data.bag.properties.get(key) {
+        Some(v) => v
+        None => Undefined
+      }
+    Array(arr) => {
+      if key == "length" {
+        return Value::Number(arr.elements.length().to_double())
+      }
+      let idx = @string.parse_int(key) catch { _ => -1 }
+      if idx >= 0 && idx.to_string() == key && idx < arr.elements.length() {
+        return arr.elements[idx]
+      }
+      match arr.bag.properties.get(key) {
+        Some(v) => v
+        None => Undefined
+      }
+    }
+    _ => Undefined
+  }
+}
+
+///|
+/// Check if the target has a specific own string property.
+/// Sources: `bag.properties` + `bag.descriptors` for Object/Map/Set/Promise;
+/// Array length + indexed elements + bag descriptors for Array.
 fn target_has_own_property(target : Value, key : String) -> Bool {
   match target {
     Object(data) =>
       data.bag.properties.contains(key) || data.bag.descriptors.contains(key)
+    Map(data) =>
+      data.bag.properties.contains(key) || data.bag.descriptors.contains(key)
+    Set(data) =>
+      data.bag.properties.contains(key) || data.bag.descriptors.contains(key)
+    Promise(data) =>
+      data.bag.properties.contains(key) || data.bag.descriptors.contains(key)
+    Array(arr) => {
+      if key == "length" {
+        return true
+      }
+      let idx = @string.parse_int(key) catch { _ => -1 }
+      if idx >= 0 && idx.to_string() == key && idx < arr.elements.length() {
+        return true
+      }
+      arr.bag.properties.contains(key) || arr.bag.descriptors.contains(key)
+    }
     _ => false
   }
 }
@@ -437,14 +686,7 @@ pub fn proxy_get(
           if !desc.configurable {
             // Non-configurable data property: trap result must match target value
             if desc.getter is None && !desc.writable {
-              let target_value = match target {
-                Object(data) =>
-                  match data.bag.properties.get(key) {
-                    Some(v) => v
-                    None => Undefined
-                  }
-                _ => Undefined
-              }
+              let target_value = target_get_own_value(target, key)
               if !strict_equal(result, target_value) {
                 raise @errors.TypeError(
                   message="'get' on proxy: property '\{key}' is a read-only and non-configurable data property on the proxy target but the proxy did not return its actual value",
@@ -480,27 +722,40 @@ pub fn check_proxy_set_trap_invariants(
 ) -> Unit raise Error {
   let (desc_opt, target_value, key_display) = match key {
     String_(k) =>
-      (
-        target_get_own_descriptor(target, k),
-        match target {
-          Object(data) =>
-            match data.bag.properties.get(k) {
-              Some(v) => v
-              None => Undefined
-            }
-          _ => Undefined
-        },
-        k,
-      )
+      (target_get_own_descriptor(target, k), target_get_own_value(target, k), k)
     Symbol(sym) =>
       (
         match target {
           Object(data) => data.bag.symbol_descriptors.get(sym.id)
+          Map(data) => data.bag.symbol_descriptors.get(sym.id)
+          Set(data) => data.bag.symbol_descriptors.get(sym.id)
+          Promise(data) => data.bag.symbol_descriptors.get(sym.id)
+          Array(arr) => arr.bag.symbol_descriptors.get(sym.id)
           _ => None
         },
         match target {
           Object(data) =>
             match data.bag.symbol_properties.get(sym.id) {
+              Some(v) => v
+              None => Undefined
+            }
+          Map(data) =>
+            match data.bag.symbol_properties.get(sym.id) {
+              Some(v) => v
+              None => Undefined
+            }
+          Set(data) =>
+            match data.bag.symbol_properties.get(sym.id) {
+              Some(v) => v
+              None => Undefined
+            }
+          Promise(data) =>
+            match data.bag.symbol_properties.get(sym.id) {
+              Some(v) => v
+              None => Undefined
+            }
+          Array(arr) =>
+            match arr.bag.symbol_properties.get(sym.id) {
               Some(v) => v
               None => Undefined
             }
@@ -762,4 +1017,549 @@ pub fn proxy_own_property_keys(
     )
   }
   make_array(trap_keys)
+}
+
+// ---------------------------------------------------------------------------
+// Stage B.2: [[GetOwnProperty]] + [[DefineOwnProperty]] traps
+// ---------------------------------------------------------------------------
+
+///|
+/// Convert a PartialDescriptor into a plain JS descriptor object so it can
+/// be passed to a Proxy defineProperty trap as the `Descriptor` argument.
+/// Per ES §6.2.5.4 FromPropertyDescriptor, only present fields are emitted
+/// (absent fields don't appear on the object).
+fn partial_desc_to_value(partial : PartialDescriptor) -> Value {
+  let props : Map[String, Value] = {}
+  match partial.value {
+    Some(v) => props["value"] = v
+    None => ()
+  }
+  match partial.writable {
+    Some(w) => props["writable"] = Value::Bool(w)
+    None => ()
+  }
+  match partial.enumerable {
+    Some(e) => props["enumerable"] = Value::Bool(e)
+    None => ()
+  }
+  match partial.configurable {
+    Some(c) => props["configurable"] = Value::Bool(c)
+    None => ()
+  }
+  if partial.has_getter {
+    props["get"] = partial.getter.unwrap_or(Undefined)
+  }
+  if partial.has_setter {
+    props["set"] = partial.setter.unwrap_or(Undefined)
+  }
+  Value::Object({
+    bag: {
+      properties: props,
+      symbol_properties: {},
+      descriptors: {},
+      symbol_descriptors: {},
+    },
+    prototype: Null,
+    extensible: true,
+    callable: None,
+    class_name: "Object",
+  })
+}
+
+///|
+/// Parse a Proxy getOwnPropertyDescriptor trap's result Value into a
+/// PropDescriptor. Approximates §6.2.5.5 CompletePropertyDescriptor:
+/// fill absent writable/enumerable/configurable with false. Trap is
+/// expected to return an object (caller validates non-object rejection).
+fn trap_result_to_descriptor(
+  trap_result : Value,
+  interp : Interpreter,
+) -> PropDescriptor raise Error {
+  let loc = @token.Loc::default()
+  // §6.2.5.5 ToPropertyDescriptor step 4: data and accessor fields are
+  // mutually exclusive. A trap result carrying both shapes is invalid.
+  let has_get = has_property(trap_result, "get", interp=Some(interp))
+  let has_set = has_property(trap_result, "set", interp=Some(interp))
+  let has_value_fld = has_property(trap_result, "value", interp=Some(interp))
+  let has_writable_fld = has_property(
+    trap_result,
+    "writable",
+    interp=Some(interp),
+  )
+  if (has_get || has_set) && (has_value_fld || has_writable_fld) {
+    raise @errors.TypeError(
+      message="Invalid property descriptor. Cannot both specify accessors and a value or writable attribute",
+    )
+  }
+  let writable = if has_property(trap_result, "writable", interp=Some(interp)) {
+    is_truthy(interp.get_property(trap_result, "writable", loc))
+  } else {
+    false
+  }
+  let enumerable = if has_property(
+      trap_result,
+      "enumerable",
+      interp=Some(interp),
+    ) {
+    is_truthy(interp.get_property(trap_result, "enumerable", loc))
+  } else {
+    false
+  }
+  let configurable = if has_property(
+      trap_result,
+      "configurable",
+      interp=Some(interp),
+    ) {
+    is_truthy(interp.get_property(trap_result, "configurable", loc))
+  } else {
+    false
+  }
+  // §6.2.5.5 step 7 / 9: get/set must be callable when present and non-undefined.
+  let getter = if has_property(trap_result, "get", interp=Some(interp)) {
+    let g = interp.get_property(trap_result, "get", loc)
+    match g {
+      Undefined => None
+      _ => {
+        if !is_callable(g) {
+          raise @errors.TypeError(
+            message="Getter must be a function: \{g.to_string()}",
+          )
+        }
+        Some(g)
+      }
+    }
+  } else {
+    None
+  }
+  let setter = if has_property(trap_result, "set", interp=Some(interp)) {
+    let s = interp.get_property(trap_result, "set", loc)
+    match s {
+      Undefined => None
+      _ => {
+        if !is_callable(s) {
+          raise @errors.TypeError(
+            message="Setter must be a function: \{s.to_string()}",
+          )
+        }
+        Some(s)
+      }
+    }
+  } else {
+    None
+  }
+  { writable, enumerable, configurable, getter, setter }
+}
+
+///|
+/// Extract the value field from a trap result, if present.
+fn trap_result_value(
+  trap_result : Value,
+  interp : Interpreter,
+) -> Value? raise Error {
+  if has_property(trap_result, "value", interp=Some(interp)) {
+    Some(interp.get_property(trap_result, "value", @token.Loc::default()))
+  } else {
+    None
+  }
+}
+
+///|
+/// Is this value a plain object (can hold a descriptor)? Proxy, Map, Set,
+/// Promise, Array qualify per §7.2.5 IsObject (but for GOPD trap result
+/// we want an Object-ish shape with readable properties).
+fn is_object_type(val : Value) -> Bool {
+  match val {
+    Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => true
+    _ => false
+  }
+}
+
+///|
+/// ES §10.5.5 `[[GetOwnProperty]]` (Proxy). Invokes the
+/// `getOwnPropertyDescriptor` trap with the canonical invariant set:
+/// - trap returns non-object non-undefined -> TypeError
+/// - target's own desc is non-configurable AND trap returns undefined -> TypeError
+/// - target is non-extensible + no own desc + trap returns object -> TypeError
+/// - trap reports non-configurable + non-writable; target is NOT both -> TypeError
+/// - target non-configurable accessor: getter/setter identity must match (SameValue)
+/// Returns the completed descriptor or None.
+pub fn proxy_get_own_property(
+  interp : Interpreter,
+  proxy_data : ProxyData,
+  key : Value,
+) -> (PropDescriptor, Value)? raise Error {
+  let target = get_proxy_target(proxy_data)
+  let trap = get_proxy_trap(proxy_data, "getOwnPropertyDescriptor", interp)
+  match trap {
+    None =>
+      // Delegate to the target's own [[GetOwnProperty]]. For Proxy-of-Proxy
+      // this recurses; otherwise reads from the ordinary/Array path.
+      match target {
+        Value::Proxy(inner) => proxy_get_own_property(interp, inner, key)
+        _ =>
+          match ordinary_get_own_property(target, key) {
+            None => None
+            Some(desc) =>
+              Some((desc, ordinary_get_own_value_for_descriptor(target, key)))
+          }
+      }
+    Some(trap_fn) => {
+      let handler = get_proxy_handler(proxy_data)
+      let loc = @token.Loc::default()
+      // §7.1.19 ToPropertyKey — use to_js_string so object-typed keys
+      // with Symbol.toPrimitive/toString hooks coerce per spec, matching
+      // the key the validation path will subsequently look up.
+      let key_val = match key {
+        Symbol(_) => key
+        _ => Value::String_(to_js_string(key))
+      }
+      let trap_result = interp.call_value(
+        trap_fn,
+        handler,
+        [target, key_val],
+        loc,
+      )
+      // §10.5.5 step 8: trap result must be object or undefined.
+      match trap_result {
+        Undefined => ()
+        _ =>
+          if !is_object_type(trap_result) {
+            raise @errors.TypeError(
+              message="'getOwnPropertyDescriptor' on proxy: trap returned neither object nor undefined",
+            )
+          }
+      }
+      let target_desc = target_own_descriptor_for_key(target, key)
+      // §10.5.5 step 10: trap returns undefined.
+      if trap_result is Undefined {
+        match target_desc {
+          None => return None
+          Some(desc) => {
+            // Step 10.b: target desc must be configurable.
+            if !desc.configurable {
+              raise @errors.TypeError(
+                message="'getOwnPropertyDescriptor' on proxy: trap returned undefined for property which exists as non-configurable on the proxy target",
+              )
+            }
+            // Step 10.c: target must be extensible.
+            if !target_is_extensible(target) {
+              raise @errors.TypeError(
+                message="'getOwnPropertyDescriptor' on proxy: trap returned undefined for property which exists on a non-extensible proxy target",
+              )
+            }
+            return None
+          }
+        }
+      }
+      // §10.5.5 step 11+: parse trap descriptor; run invariants.
+      let trap_desc = trap_result_to_descriptor(trap_result, interp)
+      let trap_value_opt = if !(trap_desc.getter is Some(_) ||
+        trap_desc.setter is Some(_)) {
+        trap_result_value(trap_result, interp)
+      } else {
+        None
+      }
+      let target_extensible = target_is_extensible(target)
+      match target_desc {
+        None => {
+          // §10.5.5 step 17.c: target has no own desc; target must be
+          // extensible AND the trap must not report non-configurable
+          // (can't invent a non-configurable key that doesn't exist).
+          if !target_extensible {
+            raise @errors.TypeError(
+              message="'getOwnPropertyDescriptor' on proxy: trap reported non-existent property on a non-extensible target",
+            )
+          }
+          if !trap_desc.configurable {
+            raise @errors.TypeError(
+              message="'getOwnPropertyDescriptor' on proxy: trap reported non-configurable for a key that does not exist on the proxy target",
+            )
+          }
+        }
+        Some(existing) => {
+          // Step 17.a: cannot report non-configurable when target is configurable.
+          if !trap_desc.configurable && existing.configurable {
+            raise @errors.TypeError(
+              message="'getOwnPropertyDescriptor' on proxy: trap reported non-configurable for property which is configurable on the proxy target",
+            )
+          }
+          // §10.5.5 step 17.a (bis): enumerable must match when target is
+          // non-configurable. Missing from the prior invariant set.
+          if !existing.configurable &&
+            trap_desc.enumerable != existing.enumerable {
+            raise @errors.TypeError(
+              message="'getOwnPropertyDescriptor' on proxy: trap reported different enumerable for non-configurable property on proxy target",
+            )
+          }
+          // Step 17.b: cannot report non-configurable + non-writable unless target matches.
+          let trap_is_data = trap_desc.getter is None &&
+            trap_desc.setter is None
+          let existing_is_data = existing.getter is None &&
+            existing.setter is None
+          if trap_is_data &&
+            existing_is_data &&
+            !trap_desc.configurable &&
+            !trap_desc.writable &&
+            existing.writable {
+            raise @errors.TypeError(
+              message="'getOwnPropertyDescriptor' on proxy: trap reported non-configurable and non-writable for property which is writable on the proxy target",
+            )
+          }
+          // §10.5.5 step 17.b SameValue extension: when target is frozen
+          // (nc+nw data) the trap's reported value must equal target's.
+          // Compare only when both sides are data and target is nc+nw.
+          if trap_is_data &&
+            existing_is_data &&
+            !existing.configurable &&
+            !existing.writable {
+            let cur_val = match key {
+              Symbol(sym) =>
+                match target {
+                  Object(data) =>
+                    match data.bag.symbol_properties.get(sym.id) {
+                      Some(v) => v
+                      None => Undefined
+                    }
+                  Map(data) =>
+                    match data.bag.symbol_properties.get(sym.id) {
+                      Some(v) => v
+                      None => Undefined
+                    }
+                  Set(data) =>
+                    match data.bag.symbol_properties.get(sym.id) {
+                      Some(v) => v
+                      None => Undefined
+                    }
+                  Promise(data) =>
+                    match data.bag.symbol_properties.get(sym.id) {
+                      Some(v) => v
+                      None => Undefined
+                    }
+                  Array(arr) =>
+                    match get_array_symbol_prop(arr, sym.id) {
+                      Some(v) => v
+                      None => Undefined
+                    }
+                  _ => Undefined
+                }
+              _ => target_get_own_value(target, key.to_string())
+            }
+            let trap_val = match trap_value_opt {
+              Some(v) => v
+              None => Undefined
+            }
+            if !same_value_for_vap(trap_val, cur_val) {
+              raise @errors.TypeError(
+                message="'getOwnPropertyDescriptor' on proxy: trap reported different value for non-configurable non-writable data property on proxy target",
+              )
+            }
+          }
+          // §10.5.5 step 17.a (descriptor-kind invariance for non-configurable):
+          // a non-configurable property's descriptor kind (data vs accessor)
+          // must not change. Reject data→accessor AND accessor→data
+          // reports on a non-configurable target.
+          if !existing.configurable && existing_is_data != trap_is_data {
+            raise @errors.TypeError(
+              message="'getOwnPropertyDescriptor' on proxy: trap reported descriptor kind (data/accessor) mismatch for non-configurable property on proxy target",
+            )
+          }
+          // Accessor identity for existing non-configurable accessor.
+          if !existing.configurable && !existing_is_data && !trap_is_data {
+            let g_ok = match (existing.getter, trap_desc.getter) {
+              (None, None) => true
+              (Some(a), Some(b)) => strict_equal(a, b)
+              _ => false
+            }
+            let s_ok = match (existing.setter, trap_desc.setter) {
+              (None, None) => true
+              (Some(a), Some(b)) => strict_equal(a, b)
+              _ => false
+            }
+            if !g_ok || !s_ok {
+              raise @errors.TypeError(
+                message="'getOwnPropertyDescriptor' on proxy: trap reported mismatched accessor for non-configurable accessor on proxy target",
+              )
+            }
+          }
+        }
+      }
+      let trap_value = match trap_value_opt {
+        Some(v) => v
+        None => Undefined
+      }
+      Some((trap_desc, trap_value))
+    }
+  }
+}
+
+///|
+/// ES §10.5.6 `[[DefineOwnProperty]]` (Proxy). Invokes the `defineProperty`
+/// trap and validates:
+/// - trap returns falsy -> return false
+/// - trap returns true + target has no own desc + target non-extensible -> TypeError
+/// - trap returns true + incoming descriptor is non-configurable + target
+///   descriptor doesn't exist / is configurable -> TypeError
+/// - trap returns true + existing target desc non-configurable incompatible
+///   with incoming -> TypeError
+pub fn proxy_define_property(
+  interp : Interpreter,
+  proxy_data : ProxyData,
+  key : Value,
+  partial : PartialDescriptor,
+) -> Bool raise Error {
+  let target = get_proxy_target(proxy_data)
+  let trap = get_proxy_trap(proxy_data, "defineProperty", interp)
+  match trap {
+    None =>
+      // Delegate: Proxy-of-Proxy recurses; otherwise route through dispatcher.
+      match target {
+        Value::Proxy(inner) =>
+          proxy_define_property(interp, inner, key, partial)
+        _ =>
+          interp.ordinary_define_own_property(
+            target,
+            key,
+            partial,
+            @token.Loc::default(),
+          )
+      }
+    Some(trap_fn) => {
+      let handler = get_proxy_handler(proxy_data)
+      let loc = @token.Loc::default()
+      // §7.1.19 ToPropertyKey — use to_js_string so object-typed keys
+      // with Symbol.toPrimitive/toString hooks coerce per spec, matching
+      // the key the validation path will subsequently look up.
+      let key_val = match key {
+        Symbol(_) => key
+        _ => Value::String_(to_js_string(key))
+      }
+      let desc_val = partial_desc_to_value(partial)
+      let result = interp.call_value(
+        trap_fn,
+        handler,
+        [target, key_val, desc_val],
+        loc,
+      )
+      let trap_result = is_truthy(result)
+      if !trap_result {
+        return false
+      }
+      // Invariant checks: §10.5.6 step 14+.
+      let target_desc = target_own_descriptor_for_key(target, key)
+      let target_extensible = target_is_extensible(target)
+      // is_new: key is absent as an own property. Ordinary assignment writes
+      // to bag.properties without always creating a bag.descriptors entry,
+      // so checking target_desc alone (descriptors-only) classifies bag-only
+      // props as "new" and fires the §10.5.6 step 16.b non-extensible TypeError
+      // when redefining them. Check both stores.
+      let is_new = match target_desc {
+        Some(_) => false
+        None =>
+          match key {
+            Symbol(sym) =>
+              match target {
+                Object(data) => !data.bag.symbol_properties.contains(sym.id)
+                Map(data) => !data.bag.symbol_properties.contains(sym.id)
+                Set(data) => !data.bag.symbol_properties.contains(sym.id)
+                Promise(data) => !data.bag.symbol_properties.contains(sym.id)
+                Array(arr) => get_array_symbol_prop(arr, sym.id) is None
+                _ => true
+              }
+            _ => !target_has_own_property(target, key.to_string())
+          }
+      }
+      // Step 16.b: cannot add a new non-configurable property to non-extensible target.
+      if is_new {
+        if !target_extensible {
+          raise @errors.TypeError(
+            message="'defineProperty' on proxy: trap returned truish for adding property to non-extensible target",
+          )
+        }
+        if partial.configurable is Some(false) {
+          raise @errors.TypeError(
+            message="'defineProperty' on proxy: trap returned truish for defining non-configurable property which does not exist on proxy target",
+          )
+        }
+      } else {
+        // Bag-only props (ordinary assignment, no explicit descriptor entry)
+        // default to {writable: true, enumerable: true, configurable: true}
+        // per §10.1.5.1 OrdinaryGetOwnProperty step 3.
+        let current : PropDescriptor = match target_desc {
+          Some(d) => d
+          None =>
+            {
+              writable: true,
+              enumerable: true,
+              configurable: true,
+              getter: None,
+              setter: None,
+            }
+        }
+        // Step 18.b: if incoming is non-configurable, existing must also be.
+        if partial.configurable is Some(false) && current.configurable {
+          raise @errors.TypeError(
+            message="'defineProperty' on proxy: trap returned truish for defining non-configurable property on proxy target where property is configurable",
+          )
+        }
+        // §10.5.6 step 18.c: non-configurable existing + incoming data
+        // reporting writable:false over existing writable:true -> TypeError.
+        // (Spec requires target's writable to remain true if the trap succeeds
+        //  but didn't report non-writable; conversely, a lying non-writable
+        //  over a non-configurable writable target is invariant-busting.)
+        let current_is_data = current.getter is None && current.setter is None
+        if !current.configurable && current_is_data && current.writable {
+          if partial.writable is Some(false) {
+            raise @errors.TypeError(
+              message="'defineProperty' on proxy: trap returned truish for non-writable redefinition of a non-configurable writable data property on proxy target",
+            )
+          }
+        }
+        // Step 18.c full compatibility when existing is non-configurable.
+        if !current.configurable {
+          // Key-aware current-value lookup — Symbol keys must not coerce
+          // through key.to_string() (would read a different slot).
+          let cur_val = match key {
+            Symbol(sym) =>
+              match target {
+                Object(data) =>
+                  match data.bag.symbol_properties.get(sym.id) {
+                    Some(v) => v
+                    None => Undefined
+                  }
+                Map(data) =>
+                  match data.bag.symbol_properties.get(sym.id) {
+                    Some(v) => v
+                    None => Undefined
+                  }
+                Set(data) =>
+                  match data.bag.symbol_properties.get(sym.id) {
+                    Some(v) => v
+                    None => Undefined
+                  }
+                Promise(data) =>
+                  match data.bag.symbol_properties.get(sym.id) {
+                    Some(v) => v
+                    None => Undefined
+                  }
+                Array(arr) =>
+                  // Array Symbol values live in the side table, not arr.bag.
+                  // (Pre-Stage-C inconsistency; Stage C unifies onto bag.)
+                  match get_array_symbol_prop(arr, sym.id) {
+                    Some(v) => v
+                    None => Undefined
+                  }
+                _ => Undefined
+              }
+            _ => target_get_own_value(target, key.to_string())
+          }
+          if !is_compatible_with_non_configurable(current, partial, cur_val) {
+            raise @errors.TypeError(
+              message="'defineProperty' on proxy: trap returned truish for incompatible redefinition of non-configurable property on proxy target",
+            )
+          }
+        }
+      }
+      true
+    }
+  }
 }

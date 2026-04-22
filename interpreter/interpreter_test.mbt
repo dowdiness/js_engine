@@ -10517,3 +10517,248 @@ test "class accessor method definitions are not constructors" {
     content="[\"TypeError\", \"TypeError\", \"undefined\", \"undefined\"]",
   )
 }
+
+// ---------------------------------------------------------------------------
+// Stage B.2 regression guards — [[GetOwnProperty]] + [[DefineOwnProperty]]
+// ---------------------------------------------------------------------------
+
+///|
+/// §10.1.9.2 step 3.e: Reflect.set with a separate target but the receiver's
+/// length is writable — landing uses { value: V } valueDesc, ArraySetLength
+/// applies, length becomes 10.
+test "B.2: Reflect.set writable length via {} target succeeds" {
+  let src =
+    #|var arr = [];
+    #|var ok = Reflect.set({}, "length", 10, arr);
+    #|console.log(ok);
+    #|console.log(arr.length);
+  let output = run_output(src)
+  inspect(output, content="[\"true\", \"10\"]")
+}
+
+///|
+/// §10.4.2.4 ArraySetLength with writable:false length → Reflect.set returns
+/// false and length is unchanged. Today the B.1 landing bypasses the
+/// descriptor, wrongly succeeds. B.2 fix: route through [[DefineOwnProperty]].
+test "B.2: Reflect.set on non-writable length rejects (B.1 approx #1)" {
+  let src =
+    #|var arr = [1, 2, 3];
+    #|Object.defineProperty(arr, "length", { writable: false });
+    #|var ok = Reflect.set({}, "length", 10, arr);
+    #|console.log(ok);
+    #|console.log(arr.length);
+  let output = run_output(src)
+  inspect(output, content="[\"false\", \"3\"]")
+}
+
+///|
+/// §10.5.6: Reflect.defineProperty on a Proxy must invoke the
+/// defineProperty trap. Today the B.1 landing unwraps the target and
+/// bypasses the trap.
+test "B.2: Reflect.defineProperty on Proxy invokes trap (B.1 approx #2)" {
+  let src =
+    #|var target = {};
+    #|var calls = [];
+    #|var handler = {
+    #|  defineProperty: function(t, k, d) {
+    #|    calls.push(k);
+    #|    return Reflect.defineProperty(t, k, d);
+    #|  }
+    #|};
+    #|var p = new Proxy(target, handler);
+    #|Reflect.defineProperty(p, "x", { value: 1, writable: true, enumerable: true, configurable: true });
+    #|console.log(calls.length);
+    #|console.log(calls[0]);
+    #|console.log(target.x);
+  let output = run_output(src)
+  inspect(output, content="[\"1\", \"x\", \"1\"]")
+}
+
+///|
+/// Object.defineProperty on a Proxy also invokes the trap (spec-parallel
+/// to Reflect, different throw-vs-return behavior).
+test "B.2: Object.defineProperty on Proxy invokes trap" {
+  let src =
+    #|var target = {};
+    #|var trapCalled = false;
+    #|var handler = {
+    #|  defineProperty: function(t, k, d) {
+    #|    trapCalled = true;
+    #|    return Reflect.defineProperty(t, k, d);
+    #|  }
+    #|};
+    #|var p = new Proxy(target, handler);
+    #|Object.defineProperty(p, "x", { value: 7 });
+    #|console.log(trapCalled);
+    #|console.log(target.x);
+  let output = run_output(src)
+  inspect(output, content="[\"true\", \"7\"]")
+}
+
+///|
+/// §10.5.5: Proxy.getOwnPropertyDescriptor invokes the getOwnPropertyDescriptor
+/// trap.
+test "B.2: Reflect.getOwnPropertyDescriptor on Proxy invokes trap" {
+  let src =
+    #|var target = { y: 42 };
+    #|var calls = [];
+    #|var handler = {
+    #|  getOwnPropertyDescriptor: function(t, k) {
+    #|    calls.push(k);
+    #|    return { value: 999, writable: false, enumerable: true, configurable: true };
+    #|  }
+    #|};
+    #|var p = new Proxy(target, handler);
+    #|var d = Reflect.getOwnPropertyDescriptor(p, "y");
+    #|console.log(calls.length);
+    #|console.log(calls[0]);
+    #|console.log(d.value);
+    #|console.log(d.writable);
+  let output = run_output(src)
+  inspect(output, content="[\"1\", \"y\", \"999\", \"false\"]")
+}
+
+///|
+/// §10.5.5 step 14: trap returns undefined for a non-configurable own
+/// property on the target → TypeError.
+test "B.2: Proxy GOPD trap hides non-configurable own prop throws TypeError" {
+  let src =
+    #|var target = {};
+    #|Object.defineProperty(target, "x", { value: 1, configurable: false, writable: false });
+    #|var handler = { getOwnPropertyDescriptor: function(t, k) { return undefined; } };
+    #|var p = new Proxy(target, handler);
+    #|try {
+    #|  Reflect.getOwnPropertyDescriptor(p, "x");
+    #|  console.log("ok");
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+  let output = run_output(src)
+  inspect(output, content="[\"TypeError\"]")
+}
+
+///|
+/// §10.5.5 step 8: trap returns a non-object non-undefined → TypeError.
+test "B.2: Proxy GOPD trap returning non-object throws TypeError" {
+  let src =
+    #|var target = { x: 1 };
+    #|var handler = { getOwnPropertyDescriptor: function(t, k) { return 42; } };
+    #|var p = new Proxy(target, handler);
+    #|try {
+    #|  Reflect.getOwnPropertyDescriptor(p, "x");
+    #|  console.log("ok");
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+  let output = run_output(src)
+  inspect(output, content="[\"TypeError\"]")
+}
+
+///|
+/// §10.5.5 non-extensible target: trap reports a property not on the
+/// target when target is non-extensible → TypeError.
+test "B.2: Proxy GOPD trap reports phantom prop on non-extensible target" {
+  let src =
+    #|var target = {};
+    #|Object.preventExtensions(target);
+    #|var handler = {
+    #|  getOwnPropertyDescriptor: function(t, k) {
+    #|    return { value: 1, writable: true, enumerable: true, configurable: true };
+    #|  }
+    #|};
+    #|var p = new Proxy(target, handler);
+    #|try {
+    #|  Reflect.getOwnPropertyDescriptor(p, "x");
+    #|  console.log("ok");
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+  let output = run_output(src)
+  inspect(output, content="[\"TypeError\"]")
+}
+
+///|
+/// §10.5.6 step 17: defineProperty trap returns true for a non-configurable
+/// descriptor on a key that doesn't exist on a non-extensible target →
+/// TypeError (after the trap succeeds, invariant check fails).
+test "B.2: Proxy defineProperty trap succeeds against non-extensible target" {
+  let src =
+    #|var target = {};
+    #|Object.preventExtensions(target);
+    #|var handler = { defineProperty: function(t, k, d) { return true; } };
+    #|var p = new Proxy(target, handler);
+    #|try {
+    #|  Reflect.defineProperty(p, "x", { value: 1, configurable: false });
+    #|  console.log("ok");
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+  let output = run_output(src)
+  inspect(output, content="[\"TypeError\"]")
+}
+
+///|
+/// §10.5.6 step 16: defineProperty trap reports non-configurable on a key
+/// that target has as configurable → TypeError.
+test "B.2: Proxy defineProperty trap non-config lies about target" {
+  let src =
+    #|var target = { x: 1 };
+    #|var handler = { defineProperty: function(t, k, d) { return true; } };
+    #|var p = new Proxy(target, handler);
+    #|try {
+    #|  Reflect.defineProperty(p, "x", { configurable: false });
+    #|  console.log("ok");
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+  let output = run_output(src)
+  inspect(output, content="[\"TypeError\"]")
+}
+
+///|
+/// Descriptor visibility on arrays: Object.getOwnPropertyDescriptor(arr, "0")
+/// and (arr, "length") return correctly-shaped descriptors.
+test "B.2: Object.getOwnPropertyDescriptor on array elements and length" {
+  let src =
+    #|var arr = [10, 20, 30];
+    #|var d0 = Object.getOwnPropertyDescriptor(arr, "0");
+    #|console.log(d0.value + "/" + d0.writable + "/" + d0.enumerable + "/" + d0.configurable);
+    #|var dl = Object.getOwnPropertyDescriptor(arr, "length");
+    #|console.log(dl.value + "/" + dl.writable + "/" + dl.enumerable + "/" + dl.configurable);
+  let output = run_output(src)
+  inspect(output, content="[\"10/true/true/true\", \"3/true/false/false\"]")
+}
+
+///|
+/// §10.4.2.4: Object.defineProperty(arr, "length", { value: N, writable: false })
+/// truncates AND locks length in a single step.
+test "B.2: Array length partial-truncate and lock writable in one step" {
+  let src =
+    #|var arr = [1, 2, 3, 4, 5];
+    #|Object.defineProperty(arr, "length", { value: 2, writable: false });
+    #|console.log(arr.length);
+    #|try {
+    #|  arr.length = 3;
+    #|  console.log("sloppy-silent");
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+    #|console.log(arr.length);
+  let output = run_output(src)
+  inspect(output, content="[\"2\", \"sloppy-silent\", \"2\"]")
+}
+
+///|
+/// §10.4.2.4: length value that coerces to NaN → RangeError.
+test "B.2: Array length set to NaN throws RangeError" {
+  let src =
+    #|var arr = [1, 2, 3];
+    #|try {
+    #|  Object.defineProperty(arr, "length", { value: "not a number" });
+    #|  console.log("ok");
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+  let output = run_output(src)
+  inspect(output, content="[\"RangeError\"]")
+}

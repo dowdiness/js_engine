@@ -132,6 +132,96 @@ pub(all) struct ObjectData {
 pub(all) struct ArrayData {
   elements : Array[Value]
   bag : PropertyBag
+  // §10.4.2.4: tracks whether Array `length` is writable. Starts `true`;
+  // set to `false` by Object.defineProperty(arr, "length", {writable: false}).
+  mut length_writable : Bool
+}
+
+///|
+/// Partial property descriptor for VAP (§10.1.6.3 `ValidateAndApplyPropertyDescriptor`)
+/// inputs. Each field is independently absent (`None`) or present (`Some(_)`),
+/// distinct from the stored `PropDescriptor` where every attribute has a
+/// concrete value. `has_getter` / `has_setter` disambiguate "field absent"
+/// from "getter: undefined" since a user can write `{ get: undefined }`.
+pub(all) struct PartialDescriptor {
+  value : Value? // None = absent; Some(v) = present (v may be Undefined)
+  writable : Bool?
+  enumerable : Bool?
+  configurable : Bool?
+  getter : Value? // valid only when has_getter == true
+  setter : Value?
+  has_getter : Bool
+  has_setter : Bool
+}
+
+///|
+/// Build a PartialDescriptor representing the "no attributes specified" case.
+pub fn PartialDescriptor::empty() -> PartialDescriptor {
+  {
+    value: None,
+    writable: None,
+    enumerable: None,
+    configurable: None,
+    getter: None,
+    setter: None,
+    has_getter: false,
+    has_setter: false,
+  }
+}
+
+///|
+/// Build a PartialDescriptor representing ES §7.3.5 `CreateDataPropertyOrThrow`
+/// — every data attribute explicit with defaults `writable/enumerable/configurable = true`.
+/// Used by the `[[Set]]` landing rule §10.1.9.2 step 3.f.
+pub fn PartialDescriptor::data_default(v : Value) -> PartialDescriptor {
+  {
+    value: Some(v),
+    writable: Some(true),
+    enumerable: Some(true),
+    configurable: Some(true),
+    getter: None,
+    setter: None,
+    has_getter: false,
+    has_setter: false,
+  }
+}
+
+///|
+/// Build a PartialDescriptor with only `value` set. Used by the `[[Set]]`
+/// landing rule §10.1.9.2 step 3.e (existing writable-data descriptor: call
+/// `[[DefineOwnProperty]]` with just { [[Value]]: V }).
+pub fn PartialDescriptor::value_only(v : Value) -> PartialDescriptor {
+  {
+    value: Some(v),
+    writable: None,
+    enumerable: None,
+    configurable: None,
+    getter: None,
+    setter: None,
+    has_getter: false,
+    has_setter: false,
+  }
+}
+
+///|
+/// ES §6.2.5.4 `IsAccessorDescriptor`: true iff either getter or setter is
+/// explicitly present on the partial.
+pub fn PartialDescriptor::is_accessor(self : PartialDescriptor) -> Bool {
+  self.has_getter || self.has_setter
+}
+
+///|
+/// ES §6.2.5.4 `IsDataDescriptor`: true iff either value or writable is
+/// explicitly present on the partial.
+pub fn PartialDescriptor::is_data(self : PartialDescriptor) -> Bool {
+  self.value is Some(_) || self.writable is Some(_)
+}
+
+///|
+/// ES §6.2.5.4 `IsGenericDescriptor`: neither data nor accessor — only
+/// enumerable/configurable populated, or nothing at all.
+pub fn PartialDescriptor::is_generic(self : PartialDescriptor) -> Bool {
+  !self.is_data() && !self.is_accessor()
 }
 
 ///|

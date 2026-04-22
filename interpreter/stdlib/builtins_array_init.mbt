@@ -1330,6 +1330,7 @@ fn setup_array_builtins(
       @runtime.make_array_iterator_value({
         elements: result,
         bag: @runtime.PropertyBag::new(),
+        length_writable: true,
       })
     },
   )
@@ -1346,6 +1347,7 @@ fn setup_array_builtins(
       @runtime.make_array_iterator_value({
         elements: result,
         bag: @runtime.PropertyBag::new(),
+        length_writable: true,
       })
     },
   )
@@ -1362,6 +1364,7 @@ fn setup_array_builtins(
       @runtime.make_array_iterator_value({
         elements: result,
         bag: @runtime.PropertyBag::new(),
+        length_writable: true,
       })
     },
   )
@@ -1878,6 +1881,7 @@ fn setup_array_builtins(
                 let arr_data : ArrayData = {
                   elements,
                   bag: @runtime.PropertyBag::new(),
+                  length_writable: true,
                 }
                 if len64 > arr_data.elements.length().to_int64() {
                   @runtime.set_array_length_override(arr_data, len64)

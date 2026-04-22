@@ -1166,7 +1166,7 @@ pub fn setup_object_builtins(
               obj
             },
           ),
-          "defineProperties": make_define_properties_func(),
+          "defineProperties": make_define_properties_func(sym_state),
         },
         symbol_properties: {},
         descriptors: {

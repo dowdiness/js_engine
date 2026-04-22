@@ -523,8 +523,50 @@ representation). Staged:
     fields to the four structs or threading implicit builtin prototypes
     through the dispatcher. Rare user-observable case (`class D extends
     Map` with setters on Map.prototype).
-- **Stage B.2 — `[[GetOwnProperty]]` + `[[DefineOwnProperty]]`.** ~35–45
-  Proxy tests. Also retires the three B.1 approximations above.
+- ~~**Stage B.2 — `[[GetOwnProperty]]` + `[[DefineOwnProperty]]`.**~~ ✅ DONE
+  (2026-04-22, branch `claude/stage-b2-defineownproperty`). Introduces
+  `Interpreter::get_own_property` / `Interpreter::define_own_property`
+  dispatchers routing §10.1.5 / §10.1.6 / §10.4.2.1 / §10.4.2.4 / §10.5.5
+  / §10.5.6 through one seam. `PartialDescriptor` type disambiguates
+  "attribute absent" from "attribute present with default", enabling a
+  faithful VAP (§10.1.6.3) implementation. `ArrayData.length_writable`
+  added (new field) and gated on all four computed-[[Set]] paths
+  (set_property + set_computed_property × Number/String-canonical/"length")
+  per §10.4.2.1 step 3.b / §10.4.2.4 step 3. Proxy invariant set expanded
+  to 6 for GOPD and adds §10.5.6 step 18.c writable-to-non-writable plus
+  Symbol-key current-value lookup. Object.defineProperty / defineProperties
+  / getOwnPropertyDescriptor and Reflect.defineProperty /
+  getOwnPropertyDescriptor migrated off B.1-era inline logic (net −762
+  LoC in stdlib — 928→166 across the descriptor files).
+
+  **Test262 delta (per-mode; post-B.1 → post-B.2):**
+
+  | Filter              | Mode       | P/E (before → after) | Skip |
+  |---------------------|-----------|----------------------|------|
+  | built-ins/Proxy     | strict    | ~187/262 → 210/262   | 37   |
+  | built-ins/Proxy     | non-strict| ~195/272 → 212/272   | 36   |
+  | built-ins/Reflect   | strict    | ~129/153 → 139/153   | 0    |
+  | built-ins/Reflect   | non-strict| ~129/153 → 139/153   | 0    |
+
+  Approximate pre-B.2 baselines extrapolated from the post-B.1 aggregate
+  (Proxy 71.5%, Reflect 84.3%) — pre-change CI numbers were aggregated
+  across modes. Unit tests 995/995.
+
+  **Three B.1 approximations retired** (define_value_on_receiver Array arm,
+  Proxy arm, and the receiver-landing delegation path — inline comments
+  marked `B.2:` in property.mbt are now gone).
+
+  **Scope-outs carried forward:**
+  - Array-exotic indexed-element descriptor storage (§10.4.2.1 beyond
+    length/defaults) — blocked on Stage C's PropertyBag-on-Array.
+  - Array accepts `{value: 1}` as default data descriptor without the
+    {writable: false, enumerable: false, configurable: false} defaults
+    the spec demands (minor concern; low test262 impact).
+  - Sparse-array physical/logical length delta — non-trivial refactor;
+    tracked separately.
+  - Map/Set/Promise/Array proto-chain inherited descriptors — same
+    architectural block as B.1 approximation #3 (no `prototype` slot
+    on the four structs).
 - **Stage C — ArrayData.bag.** ~700+ Array tests; unlocks Issue #1
   (descriptor visibility). Ship BEFORE Stage B.3 (shared read site).
 - **Stage B.3 — `[[HasProperty]]` dispatcher.** ~15 Proxy tests.

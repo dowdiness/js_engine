@@ -3,7 +3,14 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
   match prop {
     "push" => {
       let arr = data
-      @runtime.make_native_func(name="push", fn(args) {
+      @runtime.make_native_func(name="push", fn(args) raise {
+        // §23.1.3.20 step 6: Set(A, "length", newLen) — throws if length
+        // is non-writable. We must reject BEFORE mutating elements.
+        if args.length() > 0 && !arr.length_writable {
+          raise @errors.TypeError(
+            message="Cannot assign to read only property 'length' of array",
+          )
+        }
         for arg in args {
           arr.elements.push(arg)
         }
@@ -12,19 +19,41 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
     }
     "pop" => {
       let arr = data
-      @runtime.make_native_func(name="pop", fn(_args) {
+      @runtime.make_native_func(name="pop", fn(_args) raise {
         if arr.elements.length() == 0 {
+          // §23.1.3.19 step 3.b.ii: even for an empty array, pop attempts
+          // Set(A, "length", 0), which throws when length is non-writable.
+          if !arr.length_writable {
+            raise @errors.TypeError(
+              message="Cannot assign to read only property 'length' of array",
+            )
+          }
           Undefined
         } else {
+          if !arr.length_writable {
+            raise @errors.TypeError(
+              message="Cannot assign to read only property 'length' of array",
+            )
+          }
           arr.elements.pop() |> Option::unwrap
         }
       })
     }
     "shift" => {
       let arr = data
-      @runtime.make_native_func(name="shift", fn(_args) {
+      @runtime.make_native_func(name="shift", fn(_args) raise {
         if arr.elements.length() == 0 {
+          if !arr.length_writable {
+            raise @errors.TypeError(
+              message="Cannot assign to read only property 'length' of array",
+            )
+          }
           return Undefined
+        }
+        if !arr.length_writable {
+          raise @errors.TypeError(
+            message="Cannot assign to read only property 'length' of array",
+          )
         }
         let first = arr.elements[0]
         let new_elems : Array[Value] = []
@@ -42,7 +71,12 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
     }
     "unshift" => {
       let arr = data
-      @runtime.make_native_func(name="unshift", fn(args) {
+      @runtime.make_native_func(name="unshift", fn(args) raise {
+        if args.length() > 0 && !arr.length_writable {
+          raise @errors.TypeError(
+            message="Cannot assign to read only property 'length' of array",
+          )
+        }
         let old : Array[Value] = []
         for el in arr.elements {
           old.push(el)
@@ -270,6 +304,7 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
         @runtime.make_array_iterator_value({
           elements: result,
           bag: @runtime.PropertyBag::new(),
+          length_writable: true,
         })
       })
     }
@@ -283,6 +318,7 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
         @runtime.make_array_iterator_value({
           elements: result,
           bag: @runtime.PropertyBag::new(),
+          length_writable: true,
         })
       })
     }

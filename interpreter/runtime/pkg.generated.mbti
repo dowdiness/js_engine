@@ -31,6 +31,8 @@ pub fn default_stdlib_hooks() -> StdlibHooks
 
 pub fn delete_array_like_element(Value, Int) -> Unit
 
+pub fn descriptor_to_value(PropDescriptor, Value) -> Value
+
 pub fn enqueue_promise_reaction_job(Interpreter, PromiseReaction, Value) -> Unit
 
 pub fn flatten_array_val(Array[Value], Int, Array[Value]) -> Unit
@@ -177,9 +179,17 @@ pub let number_prototype_ref : @ref.Ref[Value?]
 
 pub let object_prototype_ref : @ref.Ref[Value?]
 
+pub fn ordinary_get_own_property(Value, Value) -> PropDescriptor? raise
+
+pub fn ordinary_get_own_value_for_descriptor(Value, Value) -> Value raise
+
+pub fn proxy_define_property(Interpreter, ProxyData, Value, PartialDescriptor) -> Bool raise
+
 pub fn proxy_delete_property(Interpreter, ProxyData, String) -> Bool raise
 
 pub fn proxy_get(Interpreter, ProxyData, String, Value) -> Value raise
+
+pub fn proxy_get_own_property(Interpreter, ProxyData, Value) -> (PropDescriptor, Value)? raise
 
 pub fn proxy_get_prototype_of(Interpreter, ProxyData) -> Value raise
 
@@ -245,6 +255,8 @@ pub fn to_number(Value, interp? : Interpreter?) -> Double raise
 
 pub fn to_primitive_default(Value, ObjectData, interp? : Interpreter?) -> Value raise
 
+pub fn to_property_key(Value, interp? : Interpreter?) -> Value raise
+
 pub fn type_of(Value) -> String
 
 pub fn utf16_length(String) -> Int
@@ -294,6 +306,7 @@ pub suberror YieldSignal {
 pub(all) struct ArrayData {
   elements : Array[Value]
   bag : PropertyBag
+  mut length_writable : Bool
 }
 
 pub(all) struct Binding {
@@ -456,13 +469,19 @@ pub(all) struct Interpreter {
   mut stdlib_hooks : StdlibHooks
   mut in_nonarrow_param_default_eval : Bool
 }
+pub fn Interpreter::array_define_own_property(Self, ArrayData, Value, PartialDescriptor, @token.Loc) -> Bool raise
+pub fn Interpreter::array_set_length(Self, ArrayData, PartialDescriptor) -> Bool raise
 pub fn Interpreter::call_value(Self, Value, Value, Array[Value], @token.Loc) -> Value raise
 pub fn Interpreter::construct_value(Self, Value, Array[Value], @token.Loc, proto_override? : Value?) -> Value raise
+pub fn Interpreter::define_own_property(Self, Value, Value, PartialDescriptor, @token.Loc) -> Bool raise
 pub fn Interpreter::enqueue_microtask(Self, Value, Array[Value]) -> Unit
 pub fn Interpreter::get_computed_property(Self, Value, Value, @token.Loc) -> Value raise
+pub fn Interpreter::get_own_property(Self, Value, Value) -> (PropDescriptor, Value)? raise
 pub fn Interpreter::get_property(Self, Value, String, @token.Loc) -> Value raise
 pub fn Interpreter::has_property(Self, Value, String) -> Bool
 pub fn Interpreter::new(annex_b? : Bool, module_loader? : ModuleLoader?, setup_builtins? : (Environment, Array[String], SymbolState, Bool) -> Unit, setup_harness? : (Environment, Array[String], Value) -> Unit, stdlib_hooks? : StdlibHooks) -> Self
+pub fn Interpreter::ordinary_define_own_property(Self, Value, Value, PartialDescriptor, @token.Loc) -> Bool raise
+pub fn Interpreter::partial_descriptor_from_attrs(Self, Value, @token.Loc) -> PartialDescriptor raise
 pub fn Interpreter::register_module(Self, String, Map[String, Value]) -> Unit
 pub fn Interpreter::run(Self, Array[@ast.Stmt]) -> Value raise
 pub fn Interpreter::run_microtasks(Self) -> Unit raise
@@ -498,6 +517,23 @@ pub(all) struct ObjectData {
   class_name : String
   mut extensible : Bool
 }
+
+pub(all) struct PartialDescriptor {
+  value : Value?
+  writable : Bool?
+  enumerable : Bool?
+  configurable : Bool?
+  getter : Value?
+  setter : Value?
+  has_getter : Bool
+  has_setter : Bool
+}
+pub fn PartialDescriptor::data_default(Value) -> Self
+pub fn PartialDescriptor::empty() -> Self
+pub fn PartialDescriptor::is_accessor(Self) -> Bool
+pub fn PartialDescriptor::is_data(Self) -> Bool
+pub fn PartialDescriptor::is_generic(Self) -> Bool
+pub fn PartialDescriptor::value_only(Value) -> Self
 
 pub(all) struct PromiseData {
   mut state : PromiseState
