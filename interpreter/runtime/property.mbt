@@ -2909,6 +2909,38 @@ fn apply_descriptor_to_bag(
 }
 
 ///|
+/// ES [[DefineOwnProperty]] dispatcher — routes Proxy targets through the
+/// defineProperty trap (`proxy_define_property`), others through
+/// `ordinary_define_own_property`. This is the main entry point builtins
+/// and internal callers should use.
+pub fn Interpreter::define_own_property(
+  self : Interpreter,
+  val : Value,
+  key : Value,
+  partial : PartialDescriptor,
+  loc : @token.Loc,
+) -> Bool raise Error {
+  match val {
+    Value::Proxy(pdata) => proxy_define_property(self, pdata, key, partial)
+    _ => self.ordinary_define_own_property(val, key, partial, loc)
+  }
+}
+
+///|
+/// ES [[GetOwnProperty]] dispatcher — Proxy targets route through
+/// `proxy_get_own_property`, others through `ordinary_get_own_property`.
+pub fn Interpreter::get_own_property(
+  self : Interpreter,
+  val : Value,
+  key : Value,
+) -> PropDescriptor? raise Error {
+  match val {
+    Value::Proxy(pdata) => proxy_get_own_property(self, pdata, key)
+    _ => ordinary_get_own_property(val, key)
+  }
+}
+
+///|
 /// ES §10.1.6 `OrdinaryDefineOwnProperty(O, P, Desc)` + §10.4.2.1 Array
 /// exotic dispatch. Returns `true` on success, `false` on rejection (the
 /// caller — Object.defineProperty throws, Reflect.defineProperty returns
