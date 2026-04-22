@@ -1493,6 +1493,15 @@ pub fn Interpreter::set_property(
         try {
           let i = @string.parse_int(prop)
           if i >= 0 {
+            // §10.4.2.1 step 3.b: extend requires length_writable.
+            if i >= data.elements.length() && !data.length_writable {
+              if strict {
+                raise @errors.TypeError(
+                  message="Cannot add property \{i}, array's length is non-writable",
+                )
+              }
+              return value
+            }
             while data.elements.length() <= i {
               data.elements.push(Undefined)
             }
@@ -2253,6 +2262,15 @@ pub fn Interpreter::set_computed_property(
         Number(n) => {
           let i = n.to_int()
           if i >= 0 {
+            // §10.4.2.1 step 3.b: extending beyond length requires length to be writable.
+            if i >= data.elements.length() && !data.length_writable {
+              if strict {
+                raise @errors.TypeError(
+                  message="Cannot add property \{i}, array's length is non-writable",
+                )
+              }
+              return value
+            }
             while data.elements.length() <= i {
               data.elements.push(Undefined)
             }
@@ -2263,6 +2281,15 @@ pub fn Interpreter::set_computed_property(
         _ => {
           let prop = to_js_string(key)
           if prop == "length" {
+            // §10.4.2.4 step 3: reject when length is non-writable.
+            if !data.length_writable {
+              if strict {
+                raise @errors.TypeError(
+                  message="Cannot assign to read only property 'length' of array",
+                )
+              }
+              return value
+            }
             let n = to_number(value).to_int()
             while data.elements.length() > n {
               let _ = data.elements.pop()
@@ -2275,6 +2302,15 @@ pub fn Interpreter::set_computed_property(
               if n.to_string() == prop {
                 let idx = n.to_int()
                 if idx.to_double() == n && idx >= 0 {
+                  // §10.4.2.1 step 3.b: extending beyond length requires writable.
+                  if idx >= data.elements.length() && !data.length_writable {
+                    if strict {
+                      raise @errors.TypeError(
+                        message="Cannot add property \{idx}, array's length is non-writable",
+                      )
+                    }
+                    return value
+                  }
                   while data.elements.length() <= idx {
                     data.elements.push(Undefined)
                   }
