@@ -1206,9 +1206,12 @@ pub fn proxy_get_own_property(
     Some(trap_fn) => {
       let handler = get_proxy_handler(proxy_data)
       let loc = @token.Loc::default()
+      // §7.1.19 ToPropertyKey — use to_js_string so object-typed keys
+      // with Symbol.toPrimitive/toString hooks coerce per spec, matching
+      // the key the validation path will subsequently look up.
       let key_val = match key {
         Symbol(_) => key
-        _ => Value::String_(key.to_string())
+        _ => Value::String_(to_js_string(key))
       }
       let trap_result = interp.call_value(
         trap_fn,
@@ -1351,6 +1354,15 @@ pub fn proxy_get_own_property(
               )
             }
           }
+          // §10.5.5 step 17.a (descriptor-kind invariance for non-configurable):
+          // a non-configurable property's descriptor kind (data vs accessor)
+          // must not change. Reject data→accessor AND accessor→data
+          // reports on a non-configurable target.
+          if !existing.configurable && existing_is_data != trap_is_data {
+            raise @errors.TypeError(
+              message="'getOwnPropertyDescriptor' on proxy: trap reported descriptor kind (data/accessor) mismatch for non-configurable property on proxy target",
+            )
+          }
           // Accessor identity for existing non-configurable accessor.
           if !existing.configurable && !existing_is_data && !trap_is_data {
             let g_ok = match (existing.getter, trap_desc.getter) {
@@ -1414,9 +1426,12 @@ pub fn proxy_define_property(
     Some(trap_fn) => {
       let handler = get_proxy_handler(proxy_data)
       let loc = @token.Loc::default()
+      // §7.1.19 ToPropertyKey — use to_js_string so object-typed keys
+      // with Symbol.toPrimitive/toString hooks coerce per spec, matching
+      // the key the validation path will subsequently look up.
       let key_val = match key {
         Symbol(_) => key
-        _ => Value::String_(key.to_string())
+        _ => Value::String_(to_js_string(key))
       }
       let desc_val = partial_desc_to_value(partial)
       let result = interp.call_value(
