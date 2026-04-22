@@ -78,7 +78,7 @@ Four new units, one file each:
 
 ### 1. `property.mbt` — ordinary helpers (private)
 
-```
+```moonbit
 fn ordinary_get_own_property(
   val : Value,
   key : Value,
@@ -87,7 +87,7 @@ fn ordinary_get_own_property(
 
 Reads the variant's `bag.descriptors` + `bag.properties` (or `bag.symbol_*` for Symbol keys). For `Array(arr)`, synthesizes the descriptor for indexed elements (`writable=true, enumerable=true, configurable=true`) and for `length` (`writable=true, enumerable=false, configurable=false`), with Array-named side-table for anything else. Returns `None` for primitive receivers.
 
-```
+```moonbit
 fn ordinary_define_own_property(
   interp : Interpreter,
   val : Value,
@@ -115,7 +115,7 @@ Implements ES §10.1.6.3 `ValidateAndApplyPropertyDescriptor`:
 
 **Prerequisite**: add `mut length_writable : Bool` (default `true`) to `ArrayData` in `value.mbt`. This persists the `writable` attribute on `length`, the only per-descriptor state B.2 needs before Stage C lands.
 
-```
+```moonbit
 fn array_set_length(
   arr_data : ArrayData,
   desc : PartialDescriptor,
@@ -137,7 +137,7 @@ ES §10.4.2.4 `ArraySetLength`, with partial truncation:
 
 *Note for Stage C*: steps 6's "would fail" check becomes live when per-element descriptors exist; this PR leaves the structure in place with a TODO pointing to Stage C.
 
-```
+```moonbit
 fn array_define_own_property(
   interp : Interpreter,
   arr_data : ArrayData,
@@ -154,7 +154,7 @@ ES §10.4.2.1. Dispatches:
 
 ### 3. `property.mbt` — public dispatchers (Interpreter methods)
 
-```
+```moonbit
 pub fn Interpreter::get_own_property(
   self : Interpreter,
   val : Value,
@@ -166,7 +166,7 @@ pub fn Interpreter::get_own_property(
 - Proxy → calls new `proxy_get_own_property` helper (below).
 - Otherwise → `ordinary_get_own_property`.
 
-```
+```moonbit
 pub fn Interpreter::define_own_property(
   self : Interpreter,
   val : Value,
@@ -181,7 +181,7 @@ pub fn Interpreter::define_own_property(
 
 ### 4. `proxy_helpers.mbt` — trap helpers (public)
 
-```
+```moonbit
 pub fn proxy_get_own_property(
   interp : Interpreter,
   proxy_data : ProxyData,
@@ -203,7 +203,7 @@ ES §10.5.5. Full invariant list (expanded from Codex review):
   - Target has non-configurable accessor own descriptor → trap's getter/setter identity must match (SameValue), else TypeError.
 - Return the completed descriptor.
 
-```
+```moonbit
 pub fn proxy_define_property(
   interp : Interpreter,
   proxy_data : ProxyData,
@@ -300,7 +300,7 @@ The fix for #3 uses `get_constructor_prototype(env, "Array" | "Map" | "Set" | "P
 
 After implementation:
 
-```
+```bash
 python3 test262-runner.py --filter "built-ins/Reflect/defineProperty" --summary
 python3 test262-runner.py --filter "built-ins/Reflect/getOwnPropertyDescriptor" --summary
 python3 test262-runner.py --filter "built-ins/Proxy/defineProperty" --summary

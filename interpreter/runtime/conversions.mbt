@@ -675,6 +675,21 @@ fn to_primitive_string(
 }
 
 ///|
+/// ECMAScript ToPropertyKey §7.1.19 — canonicalize a Value into a property
+/// key. Symbols pass through; anything else is ToPrimitive(hint:"string") +
+/// ToString via `to_js_string`, which invokes user-land Symbol.toPrimitive
+/// / toString hooks (so the caller observes side-effects in spec order).
+pub fn to_property_key(
+  val : Value,
+  interp? : Interpreter? = None,
+) -> Value raise Error {
+  match val {
+    Symbol(_) => val
+    _ => Value::String_(to_js_string(val, interp~))
+  }
+}
+
+///|
 /// ECMAScript ToString - converts a value to a string following the spec.
 /// For objects, calls ToPrimitive(hint: "string") then converts result to string.
 pub fn to_js_string(

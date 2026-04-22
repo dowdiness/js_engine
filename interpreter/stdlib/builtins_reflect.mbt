@@ -110,8 +110,11 @@ fn setup_reflect_builtins(env : Environment, _sym_state : SymbolState) -> Unit {
         )
       }
       let loc = @token.Loc::default()
+      // §28.1.3 step 2: ToPropertyKey BEFORE ToPropertyDescriptor so
+      // side-effects on the key observe the spec-defined order.
+      let key = @runtime.to_property_key(args[1], interp=Some(interp))
       let partial = interp.partial_descriptor_from_attrs(args[2], loc)
-      let ok = interp.define_own_property(target, args[1], partial, loc)
+      let ok = interp.define_own_property(target, key, partial, loc)
       Value::Bool(ok)
     },
   )

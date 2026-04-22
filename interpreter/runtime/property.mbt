@@ -1492,8 +1492,12 @@ pub fn Interpreter::set_property(
         // raises propagate (Codex blocker 1 fix — the previous `catch { _ =>
         // () }` was swallowing §10.4.2.1 step 3.b TypeErrors and falling
         // through to set_array_named_prop).
+        // Only canonical numeric index strings (e.g. "0", "1", "42") are
+        // treated as array indices. Non-canonical forms like "01", "1.0",
+        // "+1" go to the named-property side table per §10.4.2.1 / §7.1.21
+        // CanonicalNumericIndexString.
         let i = @string.parse_int(prop) catch { _ => -1 }
-        if i >= 0 {
+        if i >= 0 && i.to_string() == prop {
           // Compare against logical length (override when set), not physical.
           let logical_len = match get_array_length_override(data) {
             Some(n64) => n64.to_int()
@@ -1607,7 +1611,6 @@ fn Interpreter::landing_via_define_own_property(
   value : Value,
   loc : @token.Loc,
   strict : Bool,
-  proxy_data_opt : ProxyData?,
 ) -> Value raise Error {
   // Look up existing own descriptor on receiver.
   let existing = self.get_own_property(receiver, key)
@@ -1631,7 +1634,6 @@ fn Interpreter::landing_via_define_own_property(
     Some(_) => PartialDescriptor::value_only(value) // step 3.e
     None => PartialDescriptor::data_default(value) // step 3.f
   }
-  let _ = proxy_data_opt
   let ok = self.define_own_property(receiver, key, partial, loc)
   if !ok {
     if strict {
@@ -1673,15 +1675,8 @@ fn Interpreter::define_value_on_receiver(
     // Proxy receivers route through proxy_get_own_property +
     // proxy_define_property so the getOwnPropertyDescriptor and
     // defineProperty traps fire.
-    Proxy(pdata) =>
-      self.landing_via_define_own_property(
-        receiver,
-        key,
-        value,
-        loc,
-        strict,
-        Some(pdata),
-      )
+    Proxy(_) =>
+      self.landing_via_define_own_property(receiver, key, value, loc, strict)
     Object(rdata) =>
       match key {
         Symbol(sym) => {
@@ -1864,14 +1859,7 @@ fn Interpreter::define_value_on_receiver(
     // index -> CreateDataProperty with full defaults; length_writable:false
     // rejection now honored.
     Array(_) =>
-      self.landing_via_define_own_property(
-        receiver,
-        key,
-        value,
-        loc,
-        strict,
-        None,
-      )
+      self.landing_via_define_own_property(receiver, key, value, loc, strict)
     // Null/Undefined/primitive receiver: per spec returns false. In strict
     // mode our dispatcher surface raises TypeError; in sloppy mode return
     // `value` to match existing set_property primitive handling.
@@ -3334,7 +3322,10 @@ pub fn Interpreter::array_define_own_property(
       }
     }
     _ => {
-      let k = key.to_string()
+      // ToPropertyKey-aligned coercion (matches ordinary_define_own_property's
+      // apply_descriptor_to_bag path). Value::to_string() produces a debug
+      // string for object keys; to_js_string invokes ToPrimitive/toString.
+      let k = to_js_string(key)
       if k == "length" {
         return self.array_set_length(arr, partial)
       }
@@ -3429,17 +3420,31 @@ pub fn Interpreter::array_set_length(
       return true
     }
   }
-  // Step 3-5: coerce to uint32 and validate.
+  // Step 3-5: coerce to uint32 and validate. Use Int64 and match the
+  // set_property "length" path (§7.1.6 ToUint32 + integer-valued check):
+  // n must be a non-NaN integer in [0, 2^32-1]. Int32 narrowing would
+  // incorrectly reject valid uint32 values > 2^31-1.
   let n = to_number(new_len_value)
-  let new_len = n.to_int()
-  if new_len < 0 || new_len.to_double() != n || n.is_nan() {
+  if n.is_nan() || n < 0.0 || n > 4294967295.0 || n != @math.floor(n) {
     raise @errors.RangeError(message="Invalid array length")
   }
-  // Step 6: if extending, simply grow + apply attributes.
-  if new_len >= arr.elements.length() {
-    while arr.elements.length() < new_len {
+  let new_len64 = n.to_int64()
+  let cur_len64 = arr.elements.length().to_int64()
+  // Step 6: extension requires writable length; no-op (equal) always succeeds.
+  if new_len64 > cur_len64 {
+    if !arr.length_writable {
+      return false
+    }
+    while arr.elements.length().to_int64() < new_len64 {
       arr.elements.push(Undefined)
     }
+    match partial.writable {
+      Some(false) => arr.length_writable = false
+      _ => ()
+    }
+    return true
+  }
+  if new_len64 == cur_len64 {
     match partial.writable {
       Some(false) => arr.length_writable = false
       _ => ()
@@ -3456,7 +3461,9 @@ pub fn Interpreter::array_set_length(
   // We have no per-index descriptor storage pre-Stage-C, so every element
   // is configurable by default — no delete ever fails. The loop structure
   // is kept spec-faithful so Stage C can wire per-index configurable into
-  // the fail branch.
+  // the fail branch. `new_len64` safely fits in Int for truncation targets
+  // (must be less than current length, which is bounded by JS engine).
+  let new_len = new_len64.to_int()
   let mut i = arr.elements.length() - 1
   while i >= new_len {
     // Per §10.4.2.4 step 14.b: if element is non-configurable, stop.

@@ -255,6 +255,8 @@ pub fn to_number(Value, interp? : Interpreter?) -> Double raise
 
 pub fn to_primitive_default(Value, ObjectData, interp? : Interpreter?) -> Value raise
 
+pub fn to_property_key(Value, interp? : Interpreter?) -> Value raise
+
 pub fn type_of(Value) -> String
 
 pub fn utf16_length(String) -> Int

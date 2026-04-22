@@ -263,14 +263,22 @@ fn make_define_property_func() -> Value {
       )
     }
     let loc = @token.Loc::default()
+    // §19.1.2.8 step 2: ToPropertyKey(P) runs BEFORE ToPropertyDescriptor,
+    // so any Symbol.toPrimitive / toString hook on P observes attrs-object
+    // getter side-effects in spec-defined order.
+    let key = @runtime.to_property_key(prop_val, interp=Some(interp))
     // §6.2.5.5 ToPropertyDescriptor (includes attrs-must-be-object check).
     let partial = interp.partial_descriptor_from_attrs(descriptor, loc)
     // Dispatch through Interpreter::define_own_property (handles ordinary
     // / Array-exotic / Proxy-trap routing per §10.1.6 / §10.4.2.1 / §10.5.6).
-    let ok = interp.define_own_property(obj, prop_val, partial, loc)
+    let ok = interp.define_own_property(obj, key, partial, loc)
     if !ok {
+      let key_display = match key {
+        Value::Symbol(_) => "Symbol"
+        _ => @runtime.to_js_string(key)
+      }
       raise @errors.TypeError(
-        message="Cannot redefine property: \{@runtime.to_js_string(prop_val)}",
+        message="Cannot redefine property: \{key_display}",
       )
     }
     obj
@@ -342,7 +350,7 @@ fn make_get_own_property_descriptor_func() -> Value {
 }
 
 ///|
-fn make_define_properties_func() -> Value {
+fn make_define_properties_func(sym_state : SymbolState) -> Value {
   @runtime.make_interp_static_func(name="defineProperties", length=2, fn(
     interp,
     args,
@@ -367,12 +375,12 @@ fn make_define_properties_func() -> Value {
     // §19.1.2.3 steps 3-5: collect (key, PartialDescriptor) pairs first.
     // Per spec, all ToPropertyDescriptor conversions must run before ANY
     // define is applied — if any conversion throws, the target is unmutated.
-    let pairs : Array[(String, @runtime.PartialDescriptor)] = []
-    // §19.1.2.3 step 3: OwnPropertyKeys(props). We iterate the underlying
+    // Pairs are (keyValue, partial). keyValue is String_ for string keys
+    // and Symbol for symbol keys — the dispatcher handles both.
+    let pairs : Array[(Value, @runtime.PartialDescriptor)] = []
+    // §19.1.2.3 step 3: OwnPropertyKeys(props). Iterate the underlying
     // PropertyBag regardless of exotic variant (Object/Array/Map/Set/Promise
-    // all carry one). Proxy-as-Properties is not yet supported — the trap
-    // chain for ownKeys + getOwnPropertyDescriptor on the source object is
-    // a separate follow-up.
+    // all carry one). Proxy-as-Properties is not yet supported.
     let maybe_bag : @runtime.PropertyBag? = match descs {
       Object(d) => Some(d.bag)
       Array(d) => Some(d.bag)
@@ -381,8 +389,11 @@ fn make_define_properties_func() -> Value {
       Promise(d) => Some(d.bag)
       _ => None
     }
+    // Retrieve the engine's SymbolState via a symbol value on descs
+    // (we need it to look up Symbol data for computed Get). For the simple
+    // case, we iterate by sym_id and resolve via the lookup hook.
     match maybe_bag {
-      Some(bag) =>
+      Some(bag) => {
         bag.properties.each(fn(prop_name, _raw) raise {
           if prop_name.has_prefix("[[") {
             return
@@ -394,26 +405,48 @@ fn make_define_properties_func() -> Value {
           if !desc_enumerable {
             return
           }
-          // §19.1.2.3 step 5.b.i: Get(props, nextKey) — invokes any getters.
+          // §19.1.2.3 step 5.b.i: Get(props, nextKey).
           let desc_val = interp.get_property(descs, prop_name, loc)
           // §6.2.5.5 ToPropertyDescriptor (validates descriptor shape).
           let partial = interp.partial_descriptor_from_attrs(desc_val, loc)
-          pairs.push((prop_name, partial))
+          pairs.push((Value::String_(prop_name), partial))
         })
+        // Symbol-keyed enumerable properties also participate in step 3/5.
+        bag.symbol_properties.each(fn(sym_id, _raw) raise {
+          let desc_enumerable = match bag.symbol_descriptors.get(sym_id) {
+            Some(d) => d.enumerable
+            None => true
+          }
+          if !desc_enumerable {
+            return
+          }
+          let sym_val = sym_state.get_symbol_by_id(sym_id)
+          match sym_val {
+            Some(sym) => {
+              let key = Value::Symbol(sym)
+              let desc_val = interp.get_computed_property(descs, key, loc)
+              let partial = interp.partial_descriptor_from_attrs(desc_val, loc)
+              pairs.push((key, partial))
+            }
+            None => ()
+          }
+        })
+      }
       None => ()
     }
     // §19.1.2.3 step 6: apply via dispatcher (handles ordinary / Array-exotic
     // / Proxy-trap routing per §10.1.6 / §10.4.2.1 / §10.5.6).
     for pair in pairs {
       let (key, partial) = pair
-      let ok = interp.define_own_property(
-        obj,
-        Value::String_(key),
-        partial,
-        loc,
-      )
+      let ok = interp.define_own_property(obj, key, partial, loc)
       if !ok {
-        raise @errors.TypeError(message="Cannot redefine property: \{key}")
+        let key_display = match key {
+          Value::Symbol(_) => "Symbol"
+          _ => @runtime.to_js_string(key)
+        }
+        raise @errors.TypeError(
+          message="Cannot redefine property: \{key_display}",
+        )
       }
     }
     obj

@@ -1076,6 +1076,21 @@ fn trap_result_to_descriptor(
   interp : Interpreter,
 ) -> PropDescriptor raise Error {
   let loc = @token.Loc::default()
+  // §6.2.5.5 ToPropertyDescriptor step 4: data and accessor fields are
+  // mutually exclusive. A trap result carrying both shapes is invalid.
+  let has_get = has_property(trap_result, "get", interp=Some(interp))
+  let has_set = has_property(trap_result, "set", interp=Some(interp))
+  let has_value_fld = has_property(trap_result, "value", interp=Some(interp))
+  let has_writable_fld = has_property(
+    trap_result,
+    "writable",
+    interp=Some(interp),
+  )
+  if (has_get || has_set) && (has_value_fld || has_writable_fld) {
+    raise @errors.TypeError(
+      message="Invalid property descriptor. Cannot both specify accessors and a value or writable attribute",
+    )
+  }
   let writable = if has_property(trap_result, "writable", interp=Some(interp)) {
     is_truthy(interp.get_property(trap_result, "writable", loc))
   } else {
@@ -1263,6 +1278,14 @@ pub fn proxy_get_own_property(
           if !trap_desc.configurable && existing.configurable {
             raise @errors.TypeError(
               message="'getOwnPropertyDescriptor' on proxy: trap reported non-configurable for property which is configurable on the proxy target",
+            )
+          }
+          // §10.5.5 step 17.a (bis): enumerable must match when target is
+          // non-configurable. Missing from the prior invariant set.
+          if !existing.configurable &&
+            trap_desc.enumerable != existing.enumerable {
+            raise @errors.TypeError(
+              message="'getOwnPropertyDescriptor' on proxy: trap reported different enumerable for non-configurable property on proxy target",
             )
           }
           // Step 17.b: cannot report non-configurable + non-writable unless target matches.
