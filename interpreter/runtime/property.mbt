@@ -2301,9 +2301,7 @@ pub fn Interpreter::set_computed_property(
           } else {
             // Canonical numeric index string check: parseDouble(s).toString() === s
             // Parse OUTSIDE try/catch so strict TypeErrors propagate.
-            let maybe_n : Double? = try {
-              Some(@string.parse_double(prop))
-            } catch {
+            let maybe_n : Double? = Some(@string.parse_double(prop)) catch {
               _ => None
             }
             let mut handled = false

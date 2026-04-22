@@ -401,7 +401,12 @@ fn make_define_properties_func() -> Value {
     // / Proxy-trap routing per §10.1.6 / §10.4.2.1 / §10.5.6).
     for pair in pairs {
       let (key, partial) = pair
-      let ok = interp.define_own_property(obj, Value::String_(key), partial, loc)
+      let ok = interp.define_own_property(
+        obj,
+        Value::String_(key),
+        partial,
+        loc,
+      )
       if !ok {
         raise @errors.TypeError(message="Cannot redefine property: \{key}")
       }
