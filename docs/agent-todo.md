@@ -524,7 +524,8 @@ representation). Staged:
     through the dispatcher. Rare user-observable case (`class D extends
     Map` with setters on Map.prototype).
 - ~~**Stage B.2 — `[[GetOwnProperty]]` + `[[DefineOwnProperty]]`.**~~ ✅ DONE
-  (2026-04-22, branch `claude/stage-b2-defineownproperty`). Introduces
+  (PR [#72](https://github.com/dowdiness/js_engine/pull/72), merged
+  2026-04-22 as `a50d293`). Introduces
   `Interpreter::get_own_property` / `Interpreter::define_own_property`
   dispatchers routing §10.1.5 / §10.1.6 / §10.4.2.1 / §10.4.2.4 / §10.5.5
   / §10.5.6 through one seam. `PartialDescriptor` type disambiguates
@@ -533,30 +534,37 @@ representation). Staged:
   added (new field) and gated on all four computed-[[Set]] paths
   (set_property + set_computed_property × Number/String-canonical/"length")
   per §10.4.2.1 step 3.b / §10.4.2.4 step 3. Proxy invariant set expanded
-  to 6 for GOPD and adds §10.5.6 step 18.c writable-to-non-writable plus
-  Symbol-key current-value lookup. Object.defineProperty / defineProperties
-  / getOwnPropertyDescriptor and Reflect.defineProperty /
-  getOwnPropertyDescriptor migrated off B.1-era inline logic (net −762
-  LoC in stdlib — 928→166 across the descriptor files).
+  for GOPD/DefineProperty: §10.5.5 step 17.a descriptor-kind invariance
+  + 17.a enumerable-match + 17.b SameValue extension + 17.c non-extensible
+  non-configurable + §10.5.6 step 18.c writable-to-non-writable + Symbol
+  key-aware lookups. Object.defineProperty / defineProperties /
+  getOwnPropertyDescriptor and Reflect.defineProperty /
+  getOwnPropertyDescriptor migrated off B.1-era inline logic. Net
+  stdlib simplification ≈ −762 LoC across the descriptor files.
+  Six review rounds (Codex pre+post + 4 line-anchored, CodeRabbit 1)
+  tightened spec ordering, invariants, key coercion, and surfaced one
+  `try { stmt } catch { _ => () }` anti-pattern that was swallowing
+  strict-mode TypeErrors.
 
-  **Test262 delta (per-mode; post-B.1 → post-B.2):**
+  **Test262 delta (per-mode, authoritative from CI run 24772376529
+  vs. main pre-B.2 run 24756618839):**
 
-  | Filter              | Mode       | P/E (before → after) | Skip |
-  |---------------------|-----------|----------------------|------|
-  | built-ins/Proxy     | strict    | ~187/262 → 210/262   | 37   |
-  | built-ins/Proxy     | non-strict| ~195/272 → 212/272   | 36   |
-  | built-ins/Reflect   | strict    | ~129/153 → 139/153   | 0    |
-  | built-ins/Reflect   | non-strict| ~129/153 → 139/153   | 0    |
+  | Mode       | Passed / Executed (before → after) | Δ   |
+  |------------|------------------------------------|-----|
+  | strict     | 23,066/26,611 → 23,158/26,599 (86.7→87.1%) | +92 |
+  | non-strict | 24,479/28,765 → 24,571/28,767 (85.1→85.4%) | +92 |
 
-  Approximate pre-B.2 baselines extrapolated from the post-B.1 aggregate
-  (Proxy 71.5%, Reflect 84.3%) — pre-change CI numbers were aggregated
-  across modes. Unit tests 995/995.
+  Largest filter-level movement: `built-ins/Object/defineProperty`
+  1926→1960 (+34), driven by ToPropertyKey ordering + Symbol-key
+  defineProperties + array mutator length_writable integration.
+  `built-ins/Proxy` strict 210→213 (+3) from the §10.5.5 invariant
+  extensions. Unit tests 995/995.
 
   **Three B.1 approximations retired** (define_value_on_receiver Array arm,
   Proxy arm, and the receiver-landing delegation path — inline comments
   marked `B.2:` in property.mbt are now gone).
 
-  **Scope-outs carried forward:**
+  **Scope-outs carried forward to Stage C or beyond:**
   - Array-exotic indexed-element descriptor storage (§10.4.2.1 beyond
     length/defaults) — blocked on Stage C's PropertyBag-on-Array.
   - Array accepts `{value: 1}` as default data descriptor without the
@@ -567,6 +575,19 @@ representation). Staged:
   - Map/Set/Promise/Array proto-chain inherited descriptors — same
     architectural block as B.1 approximation #3 (no `prototype` slot
     on the four structs).
+  - Proxy-as-Properties in `Object.defineProperties` — needs the
+    ownKeys + getOwnPropertyDescriptor trap chain on the source object.
+  - `Array.prototype.push/pop/shift/unshift` (generic-this path in
+    `builtins_array_init.mbt`) still bypass `length_writable`. The
+    fast-path (Array-target only) in `builtins_array.mbt` now honors
+    it, but the prototype versions fire for Array-like non-Array `this`
+    values where `length_writable` as a concept doesn't apply — reclassify
+    if/when adding per-instance length writability to non-Array objects.
+  - Three suspicious `try { … } catch { _ => () }` sites in
+    `property.mbt` (TypedArray ops at lines 827, 1307, 2085): current
+    code swallows `to_number(value)` TypeErrors, which the
+    `typedArr[0] = Symbol()` case requires to propagate. Separate bug,
+    not a Stage B.2 regression.
 - **Stage C — ArrayData.bag.** ~700+ Array tests; unlocks Issue #1
   (descriptor visibility). Ship BEFORE Stage B.3 (shared read site).
 - **Stage B.3 — `[[HasProperty]]` dispatcher.** ~15 Proxy tests.

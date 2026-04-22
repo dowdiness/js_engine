@@ -9,7 +9,33 @@ For changes before this file existed, see `git log`.
 
 ## [Unreleased]
 
-_No unreleased changes._
+### Stage B.2 — GetOwnProperty + DefineOwnProperty dispatchers
+
+- Introduced `Interpreter::get_own_property` and
+  `Interpreter::define_own_property` so §10.1.5, §10.1.6, §10.4.2.1 /
+  §10.4.2.4, and §10.5.5 / §10.5.6 all route through one seam. The
+  three B.1 approximations in `define_value_on_receiver` are retired.
+- Added `PartialDescriptor` to model ES "attribute-absent vs. default"
+  correctly through `Object.defineProperty` and friends.
+- Added `ArrayData.length_writable` to gate extensions / truncations on
+  frozen arrays per §10.4.2; `Array.prototype.push/pop/shift/unshift`
+  fast-path mutators now honor it.
+- `to_property_key` (§7.1.19) used consistently by
+  `Object.defineProperty`, `Object.defineProperties`, and
+  `Reflect.defineProperty`.
+- Stdlib simplification: **−762 LoC** across
+  `builtins_object_descriptors.mbt` and `builtins_reflect.mbt` as the
+  dispatcher centralizes descriptor validation.
+
+test262 delta against v0.2.0 (CI run [24777653260] on tip `a50d293`,
+per-mode; compare with v0.2.0 section below for methodology):
+
+| Mode | v0.2.0 P/E | Post-B.2 P/E | Δ | v0.2.0 P/D | Post-B.2 P/D |
+|---|---|---|---:|---|---|
+| strict | 86.6% (23,039 / 26,598) | **87.1%** (23,158 / 26,599) | +119 | 51.2% | **51.5%** |
+| non-strict | 85.0% (24,452 / 28,769) | **85.4%** (24,571 / 28,763) | +119 | 51.3% | **51.5%** |
+
+[24777653260]: https://github.com/dowdiness/js_engine/actions/runs/24777653260
 
 ## [0.2.0] — 2026-04-22
 
