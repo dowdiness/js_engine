@@ -1450,6 +1450,15 @@ pub fn Interpreter::set_property(
         )
       }
       if prop == "length" {
+        // §10.4.2.4 step 3: reject writes when length is non-writable.
+        if !data.length_writable {
+          if strict {
+            raise @errors.TypeError(
+              message="Cannot assign to read only property 'length' of array",
+            )
+          }
+          return value
+        }
         let num = to_number(value)
         // Validate: length must be a non-negative integer <= 2^32-1
         if num.is_nan() ||
@@ -1572,6 +1581,64 @@ fn existing_receiver_desc_blocks(desc : PropDescriptor) -> Bool {
 }
 
 ///|
+/// ES §10.1.9.2 step 3 landing via [[DefineOwnProperty]]. Looks up the
+/// existing own descriptor on receiver (honoring Proxy `getOwnPropertyDescriptor`
+/// trap), then dispatches:
+/// - existing is accessor / non-writable data -> blocker (strict throws,
+///   sloppy returns `value` silently).
+/// - existing is writable data -> call [[DefineOwnProperty]] with value-only
+///   (§10.1.9.2 step 3.e). Preserves existing enumerable/configurable.
+/// - no existing -> call [[DefineOwnProperty]] with CreateDataProperty shape
+///   (§10.1.9.2 step 3.f).
+/// If [[DefineOwnProperty]] returns false: strict throws, sloppy returns value.
+fn Interpreter::landing_via_define_own_property(
+  self : Interpreter,
+  receiver : Value,
+  key : Value,
+  value : Value,
+  loc : @token.Loc,
+  strict : Bool,
+  proxy_data_opt : ProxyData?,
+) -> Value raise Error {
+  // Look up existing own descriptor on receiver.
+  let existing = self.get_own_property(receiver, key)
+  match existing {
+    Some((desc, _)) if existing_receiver_desc_blocks(desc) => {
+      if strict {
+        let key_display = match key {
+          Symbol(sym) => "Symbol(\{sym.description.unwrap_or_default()})"
+          _ => to_js_string(key)
+        }
+        raise @errors.TypeError(
+          message="Cannot redefine non-writable or accessor property '\{key_display}' on receiver",
+        )
+      }
+      return value
+    }
+    _ => ()
+  }
+  // Choose partial shape per step 3.e vs 3.f.
+  let partial = match existing {
+    Some(_) => PartialDescriptor::value_only(value) // step 3.e
+    None => PartialDescriptor::data_default(value) // step 3.f
+  }
+  let _ = proxy_data_opt
+  let ok = self.define_own_property(receiver, key, partial, loc)
+  if !ok {
+    if strict {
+      let key_display = match key {
+        Symbol(sym) => "Symbol(\{sym.description.unwrap_or_default()})"
+        _ => to_js_string(key)
+      }
+      raise @errors.TypeError(
+        message="Cannot assign to property '\{key_display}' on receiver",
+      )
+    }
+  }
+  value
+}
+
+///|
 /// Approximates ES `CreateDataProperty(Receiver, P, V)` / `Receiver.[[Define\
 /// OwnProperty]]` for the Stage B.1 landing rule. This is NOT `[[Set]]` — it
 /// must not invoke setters on `receiver`'s prototype chain, otherwise a
@@ -1592,16 +1659,19 @@ fn Interpreter::define_value_on_receiver(
   strict : Bool,
 ) -> Value raise Error {
   match receiver {
-    // Proxy receiver without defineProperty dispatcher: unwrap to target.
-    // For trap-less proxies this is spec-equivalent to DefineOwnProperty
-    // forwarding. Trap-aware handling lands with Stage B.2.
+    // §10.1.9.2 step 3: look up receiver's own descriptor; dispatch per
+    // 3.e (existing writable-data) or 3.f (absent → CreateDataProperty).
+    // Proxy receivers route through proxy_get_own_property +
+    // proxy_define_property so the getOwnPropertyDescriptor and
+    // defineProperty traps fire.
     Proxy(pdata) =>
-      self.define_value_on_receiver(
-        get_proxy_target(pdata),
+      self.landing_via_define_own_property(
+        receiver,
         key,
         value,
         loc,
         strict,
+        Some(pdata),
       )
     Object(rdata) =>
       match key {
@@ -1780,27 +1850,19 @@ fn Interpreter::define_value_on_receiver(
     // false (attempts a full-attributes redefine of arr.length), but this
     // delegation truncates the array instead. The full
     // [[DefineOwnProperty]]-on-receiver protocol lands with Stage B.2.
+    // §10.1.9.2 step 3 via [[DefineOwnProperty]] (§10.4.2.1 for Array):
+    // existing writable length -> ArraySetLength with just {Value}; absent
+    // index -> CreateDataProperty with full defaults; length_writable:false
+    // rejection now honored.
     Array(_) =>
-      match key {
-        Symbol(_) =>
-          self.set_computed_property(
-            receiver,
-            key,
-            value,
-            loc,
-            strict~,
-            receiver~,
-          )
-        _ =>
-          self.set_property(
-            receiver,
-            to_js_string(key),
-            value,
-            loc,
-            strict~,
-            receiver~,
-          )
-      }
+      self.landing_via_define_own_property(
+        receiver,
+        key,
+        value,
+        loc,
+        strict,
+        None,
+      )
     // Null/Undefined/primitive receiver: per spec returns false. In strict
     // mode our dispatcher surface raises TypeError; in sloppy mode return
     // `value` to match existing set_property primitive handling.
@@ -2549,7 +2611,7 @@ fn same_value_for_vap(a : Value, b : Value) -> Bool {
         true
       } else if x == 0.0 && y == 0.0 {
         // +0 and -0 compare equal under ==; distinguish by reciprocal sign
-        (1.0 / x) == (1.0 / y)
+        1.0 / x == 1.0 / y
       } else {
         x == y
       }
@@ -2561,7 +2623,10 @@ fn same_value_for_vap(a : Value, b : Value) -> Bool {
 /// Extract the stored own value for `key` on `val`. Mirrors the key-aware
 /// reader used in proxy helpers but surfaced here for VAP's value-change
 /// check (step 4.b.iii).
-pub fn ordinary_get_own_value_for_descriptor(val : Value, key : Value) -> Value raise Error {
+pub fn ordinary_get_own_value_for_descriptor(
+  val : Value,
+  key : Value,
+) -> Value raise Error {
   match key {
     Symbol(sym) => {
       let bag_opt = match val {
@@ -2643,7 +2708,7 @@ pub fn ordinary_get_own_property(
         _ => None
       }
       match bag_opt {
-        Some(bag) => {
+        Some(bag) =>
           // A symbol property might have a descriptor OR just a value entry.
           match bag.symbol_descriptors.get(sym.id) {
             Some(d) => Some(d)
@@ -2660,7 +2725,6 @@ pub fn ordinary_get_own_property(
                 None
               }
           }
-        }
         None => None
       }
     }
@@ -2763,7 +2827,8 @@ fn is_compatible_with_non_configurable(
     Some(e) => if e != current.enumerable { return false }
     None => ()
   }
-  let current_is_accessor = current.getter is Some(_) || current.setter is Some(_)
+  let current_is_accessor = current.getter is Some(_) ||
+    current.setter is Some(_)
   let partial_is_accessor = partial.is_accessor()
   let partial_is_data = partial.is_data()
   // Step 4.c: cannot toggle accessor <-> data when non-configurable.
@@ -2781,14 +2846,18 @@ fn is_compatible_with_non_configurable(
         Some(cg) => same_value_for_vap(partial.getter.unwrap_or(Undefined), cg)
         None => partial.getter is Some(Undefined) || partial.getter is None
       }
-      if !g_matches { return false }
+      if !g_matches {
+        return false
+      }
     }
     if partial.has_setter {
       let s_matches = match current.setter {
         Some(cs) => same_value_for_vap(partial.setter.unwrap_or(Undefined), cs)
         None => partial.setter is Some(Undefined) || partial.setter is None
       }
-      if !s_matches { return false }
+      if !s_matches {
+        return false
+      }
     }
   }
   if !current_is_accessor && !partial_is_accessor {
@@ -3011,10 +3080,7 @@ pub fn Interpreter::partial_descriptor_from_attrs(
 /// Object.getOwnPropertyDescriptor / Reflect.getOwnPropertyDescriptor
 /// callers. Emits value + writable for data descriptors; get + set for
 /// accessor descriptors.
-pub fn descriptor_to_value(
-  desc : PropDescriptor,
-  value : Value,
-) -> Value {
+pub fn descriptor_to_value(desc : PropDescriptor, value : Value) -> Value {
   let props : Map[String, Value] = {}
   let is_accessor = desc.getter is Some(_) || desc.setter is Some(_)
   if is_accessor {

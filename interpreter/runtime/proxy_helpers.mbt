@@ -590,7 +590,8 @@ pub fn check_proxy_set_trap_invariants(
   value : Value,
 ) -> Unit raise Error {
   let (desc_opt, target_value, key_display) = match key {
-    String_(k) => (target_get_own_descriptor(target, k), target_get_own_value(target, k), k)
+    String_(k) =>
+      (target_get_own_descriptor(target, k), target_get_own_value(target, k), k)
     Symbol(sym) =>
       (
         match target {
@@ -949,12 +950,20 @@ fn trap_result_to_descriptor(
   } else {
     false
   }
-  let enumerable = if has_property(trap_result, "enumerable", interp=Some(interp)) {
+  let enumerable = if has_property(
+      trap_result,
+      "enumerable",
+      interp=Some(interp),
+    ) {
     is_truthy(interp.get_property(trap_result, "enumerable", loc))
   } else {
     false
   }
-  let configurable = if has_property(trap_result, "configurable", interp=Some(interp)) {
+  let configurable = if has_property(
+      trap_result,
+      "configurable",
+      interp=Some(interp),
+    ) {
     is_truthy(interp.get_property(trap_result, "configurable", loc))
   } else {
     false
@@ -1040,7 +1049,12 @@ pub fn proxy_get_own_property(
         Symbol(_) => key
         _ => Value::String_(key.to_string())
       }
-      let trap_result = interp.call_value(trap_fn, handler, [target, key_val], loc)
+      let trap_result = interp.call_value(
+        trap_fn,
+        handler,
+        [target, key_val],
+        loc,
+      )
       // §10.5.5 step 8: trap result must be object or undefined.
       match trap_result {
         Undefined => ()
@@ -1086,8 +1100,8 @@ pub fn proxy_get_own_property(
       }
       // §10.5.5 step 11+: parse trap descriptor; run invariants.
       let trap_desc = trap_result_to_descriptor(trap_result, interp)
-      let trap_value_opt = if
-        !(trap_desc.getter is Some(_) || trap_desc.setter is Some(_)) {
+      let trap_value_opt = if !(trap_desc.getter is Some(_) ||
+        trap_desc.setter is Some(_)) {
         trap_result_value(trap_result, interp)
       } else {
         None
@@ -1109,8 +1123,10 @@ pub fn proxy_get_own_property(
             )
           }
           // Step 17.b: cannot report non-configurable + non-writable unless target matches.
-          let trap_is_data = trap_desc.getter is None && trap_desc.setter is None
-          let existing_is_data = existing.getter is None && existing.setter is None
+          let trap_is_data = trap_desc.getter is None &&
+            trap_desc.setter is None
+          let existing_is_data = existing.getter is None &&
+            existing.setter is None
           if trap_is_data &&
             existing_is_data &&
             !trap_desc.configurable &&
@@ -1121,9 +1137,7 @@ pub fn proxy_get_own_property(
             )
           }
           // Accessor identity for existing non-configurable accessor.
-          if !existing.configurable &&
-            !existing_is_data &&
-            !trap_is_data {
+          if !existing.configurable && !existing_is_data && !trap_is_data {
             let g_ok = match (existing.getter, trap_desc.getter) {
               (None, None) => true
               (Some(a), Some(b)) => strict_equal(a, b)
@@ -1172,8 +1186,15 @@ pub fn proxy_define_property(
     None =>
       // Delegate: Proxy-of-Proxy recurses; otherwise route through dispatcher.
       match target {
-        Value::Proxy(inner) => proxy_define_property(interp, inner, key, partial)
-        _ => interp.ordinary_define_own_property(target, key, partial, @token.Loc::default())
+        Value::Proxy(inner) =>
+          proxy_define_property(interp, inner, key, partial)
+        _ =>
+          interp.ordinary_define_own_property(
+            target,
+            key,
+            partial,
+            @token.Loc::default(),
+          )
       }
     Some(trap_fn) => {
       let handler = get_proxy_handler(proxy_data)
@@ -1183,7 +1204,12 @@ pub fn proxy_define_property(
         _ => Value::String_(key.to_string())
       }
       let desc_val = partial_desc_to_value(partial)
-      let result = interp.call_value(trap_fn, handler, [target, key_val, desc_val], loc)
+      let result = interp.call_value(
+        trap_fn,
+        handler,
+        [target, key_val, desc_val],
+        loc,
+      )
       let trap_result = is_truthy(result)
       if !trap_result {
         return false

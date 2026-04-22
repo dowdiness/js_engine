@@ -22,37 +22,8 @@ pub fn create_list_from_array_like(
 }
 
 ///|
-/// Unwrap a Proxy to get its target ObjectData, throwing TypeError if revoked.
-/// Returns None if the value is not a Proxy (caller should handle Object etc directly).
-fn unwrap_proxy_target(val : Value) -> ObjectData? raise Error {
-  match val {
-    Value::Proxy(proxy_data) =>
-      match proxy_data.target {
-        Some(target) =>
-          match target {
-            Object(data) => Some(data)
-            Proxy(_) => unwrap_proxy_target(target)
-            _ => None
-          }
-        None =>
-          raise @errors.TypeError(
-            message="Cannot perform operation on a proxy that has been revoked",
-          )
-      }
-    _ => None
-  }
-}
-
-///|
 fn setup_reflect_builtins(env : Environment, _sym_state : SymbolState) -> Unit {
   let reflect_props : Map[String, Value] = {}
-  let nf_desc : PropDescriptor = {
-    writable: false,
-    enumerable: false,
-    configurable: true,
-    getter: None,
-    setter: None,
-  }
 
   // Reflect.apply(target, thisArg, argumentsList)
   reflect_props["apply"] = @runtime.make_interp_method_func(
