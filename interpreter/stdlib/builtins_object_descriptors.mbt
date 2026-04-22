@@ -300,6 +300,11 @@ fn make_get_own_property_descriptor_func() -> Value {
     // enumerable:true, configurable:false).
     match obj {
       Value::String_(s) => {
+        // String primitive has no own symbol properties — return undefined
+        // before to_js_string (which would throw on Symbol keys).
+        if prop_key is Symbol(_) {
+          return Undefined
+        }
         let prop_name = @runtime.to_js_string(prop_key)
         if prop_name == "length" {
           return make_data_desc_obj(

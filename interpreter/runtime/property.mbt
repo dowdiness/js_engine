@@ -3000,7 +3000,7 @@ fn apply_descriptor_to_bag(
   key : Value,
   desc : PropDescriptor,
   value_opt : Value?,
-) -> Unit {
+) -> Unit raise Error {
   match key {
     Symbol(sym) => {
       bag.symbol_descriptors[sym.id] = desc
@@ -3013,7 +3013,11 @@ fn apply_descriptor_to_bag(
       }
     }
     _ => {
-      let k = key.to_string()
+      // ToPropertyKey-aligned coercion — for object-typed keys this invokes
+      // Symbol.toPrimitive / toString via to_js_string rather than MoonBit's
+      // Value::to_string (which produces a debug string for objects and
+      // would write to a different slot than the validation pipeline read).
+      let k = to_js_string(key)
       bag.descriptors[k] = desc
       match value_opt {
         Some(v) => bag.properties[k] = v
@@ -3233,14 +3237,18 @@ pub fn Interpreter::ordinary_define_own_property(
         }
       }
       let merged = merge_partial_into(current, partial)
-      // For an existing accessor redefined as data (configurable), clear any
-      // residual getter/setter via the merged descriptor. For an existing
-      // data redefined as accessor, clear writable/value.
-      let final_desc = if partial.is_accessor() &&
-        (current.getter is Some(_) || current.setter is Some(_)) == false &&
-        current.configurable {
-        // Accessor replacing data: drop value, writable=false implicit.
+      // §10.1.6.3 step 4.b: when descriptor type changes, clear the fields
+      // that don't apply to the new type.
+      let current_is_accessor = current.getter is Some(_) ||
+        current.setter is Some(_)
+      let final_desc = if partial.is_accessor() && !current_is_accessor {
+        // Data → Accessor: writable not meaningful for accessor; set to false.
         { ..merged, writable: false }
+      } else if partial.is_data() && current_is_accessor {
+        // Accessor → Data: clear residual getter/setter so the merged
+        // descriptor is a pure data descriptor. Without this, reads via
+        // ordinary_get_value would still fire the old getter.
+        { ..merged, getter: None, setter: None }
       } else {
         merged
       }
@@ -3258,7 +3266,7 @@ fn ordinary_write(
   key : Value,
   desc : PropDescriptor,
   value_opt : Value?,
-) -> Unit {
+) -> Unit raise Error {
   match val {
     Object(data) => apply_descriptor_to_bag(data.bag, key, desc, value_opt)
     Map(data) => apply_descriptor_to_bag(data.bag, key, desc, value_opt)

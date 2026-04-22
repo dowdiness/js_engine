@@ -968,11 +968,19 @@ fn trap_result_to_descriptor(
   } else {
     false
   }
+  // §6.2.5.5 step 7 / 9: get/set must be callable when present and non-undefined.
   let getter = if has_property(trap_result, "get", interp=Some(interp)) {
     let g = interp.get_property(trap_result, "get", loc)
     match g {
       Undefined => None
-      _ => Some(g)
+      _ => {
+        if !is_callable(g) {
+          raise @errors.TypeError(
+            message="Getter must be a function: \{g.to_string()}",
+          )
+        }
+        Some(g)
+      }
     }
   } else {
     None
@@ -981,7 +989,14 @@ fn trap_result_to_descriptor(
     let s = interp.get_property(trap_result, "set", loc)
     match s {
       Undefined => None
-      _ => Some(s)
+      _ => {
+        if !is_callable(s) {
+          raise @errors.TypeError(
+            message="Setter must be a function: \{s.to_string()}",
+          )
+        }
+        Some(s)
+      }
     }
   } else {
     None
@@ -1228,7 +1243,27 @@ pub fn proxy_define_property(
         _ => target_get_own_descriptor(target, key.to_string())
       }
       let target_extensible = target_is_extensible(target)
-      let is_new = target_desc is None
+      // is_new: key is absent as an own property. Ordinary assignment writes
+      // to bag.properties without always creating a bag.descriptors entry,
+      // so checking target_desc alone (descriptors-only) classifies bag-only
+      // props as "new" and fires the §10.5.6 step 16.b non-extensible TypeError
+      // when redefining them. Check both stores.
+      let is_new = match target_desc {
+        Some(_) => false
+        None =>
+          match key {
+            Symbol(sym) =>
+              match target {
+                Object(data) => !data.bag.symbol_properties.contains(sym.id)
+                Map(data) => !data.bag.symbol_properties.contains(sym.id)
+                Set(data) => !data.bag.symbol_properties.contains(sym.id)
+                Promise(data) => !data.bag.symbol_properties.contains(sym.id)
+                Array(arr) => get_array_symbol_prop(arr, sym.id) is None
+                _ => true
+              }
+            _ => !target_has_own_property(target, key.to_string())
+          }
+      }
       // Step 16.b: cannot add a new non-configurable property to non-extensible target.
       if is_new {
         if !target_extensible {
@@ -1242,7 +1277,20 @@ pub fn proxy_define_property(
           )
         }
       } else {
-        let current = target_desc.unwrap()
+        // Bag-only props (ordinary assignment, no explicit descriptor entry)
+        // default to {writable: true, enumerable: true, configurable: true}
+        // per §10.1.5.1 OrdinaryGetOwnProperty step 3.
+        let current : PropDescriptor = match target_desc {
+          Some(d) => d
+          None =>
+            {
+              writable: true,
+              enumerable: true,
+              configurable: true,
+              getter: None,
+              setter: None,
+            }
+        }
         // Step 18.b: if incoming is non-configurable, existing must also be.
         if partial.configurable is Some(false) && current.configurable {
           raise @errors.TypeError(
