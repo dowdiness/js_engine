@@ -10,6 +10,7 @@ fn Interpreter::eval_update(
 ) -> Value raise Error {
   match operand {
     Ident(name, _) => {
+      validate_strict_identifier_reference(ctx, name)
       // Strict mode: update of eval/arguments is a SyntaxError
       if ctx.strict && (name == "eval" || name == "arguments") {
         raise @errors.SyntaxError(
@@ -123,6 +124,7 @@ fn Interpreter::eval_compound_assign(
   }
   match target {
     Ident(name, _) => {
+      validate_strict_identifier_reference(ctx, name)
       // Strict mode: compound assignment to eval/arguments is a SyntaxError
       if ctx.strict && (name == "eval" || name == "arguments") {
         raise @errors.SyntaxError(
@@ -199,6 +201,7 @@ fn Interpreter::eval_logical_assign_and(
   // x &&= y: if x is truthy, assign y to x; return final value
   match target {
     Ident(name, _) => {
+      validate_strict_identifier_reference(ctx, name)
       if ctx.strict && (name == "eval" || name == "arguments") {
         raise @errors.SyntaxError(
           message="Unexpected eval or arguments in strict mode",
@@ -268,6 +271,7 @@ fn Interpreter::eval_logical_assign_or(
   // x ||= y: if x is falsy, assign y to x; return final value
   match target {
     Ident(name, _) => {
+      validate_strict_identifier_reference(ctx, name)
       if ctx.strict && (name == "eval" || name == "arguments") {
         raise @errors.SyntaxError(
           message="Unexpected eval or arguments in strict mode",
@@ -337,6 +341,7 @@ fn Interpreter::eval_nullish_assign(
   // x ??= y: if x is null or undefined, assign y to x; return final value
   match target {
     Ident(name, _) => {
+      validate_strict_identifier_reference(ctx, name)
       if ctx.strict && (name == "eval" || name == "arguments") {
         raise @errors.SyntaxError(
           message="Unexpected eval or arguments in strict mode",

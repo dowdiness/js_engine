@@ -35,7 +35,6 @@ fn is_reserved_word(name : String) -> Bool {
     | "class"
     | "extends"
     | "super"
-    | "static"
     | "import"
     | "export"
     | "yield"
@@ -195,6 +194,10 @@ fn Parser::expect_ident(self : Parser) -> String raise Error {
           message="Expected identifier, got \{tok.kind} at line \{tok.loc.line}, col \{tok.loc.col}",
         )
       }
+    Static => {
+      self.pos += 1
+      "static"
+    }
     _ => {
       let tok = self.peek()
       raise @errors.SyntaxError(

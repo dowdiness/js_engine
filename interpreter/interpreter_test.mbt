@@ -7963,6 +7963,76 @@ test "sloppy: yield as identifier outside generator is allowed" {
 }
 
 ///|
+test "reserved words: yield accessor property name is allowed" {
+  let src =
+    #|var test = "";
+    #|var obj = {
+    #|  set yield(value) { test = "yield"; },
+    #|  get yield() { return "yield"; }
+    #|};
+    #|console.log(obj.yield);
+    #|obj.yield = 0;
+    #|console.log(test);
+  let output = run_output(src)
+  inspect(output, content="[\"yield\", \"yield\"]")
+}
+
+///|
+test "future reserved: static is sloppy identifier and strict reserved" {
+  let sloppy =
+    #|var static = 1;
+    #|var st\u0061tic = 2;
+    #|{ let static = 3; console.log(static); }
+    #|console.log(static);
+  let sloppy_output = run_output(sloppy)
+  inspect(sloppy_output, content="[\"3\", \"2\"]")
+  let strict =
+    #|"use strict";
+    #|var static = 1;
+  let mut err_msg = ""
+  try {
+    let _ = run_js(strict)
+  } catch {
+    @runtime.JsException(val) => err_msg = error_display(val)
+    _ => err_msg = "unexpected error"
+  }
+  inspect(err_msg, content="SyntaxError: Unexpected strict mode reserved word")
+  let strict_reference =
+    #|"use strict";
+    #|static;
+  err_msg = ""
+  try {
+    let _ = run_js(strict_reference)
+  } catch {
+    @runtime.JsException(val) => err_msg = error_display(val)
+    _ => err_msg = "unexpected error"
+  }
+  inspect(err_msg, content="SyntaxError: Unexpected strict mode reserved word")
+  let strict_assignment =
+    #|"use strict";
+    #|static = 1;
+  err_msg = ""
+  try {
+    let _ = run_js(strict_assignment)
+  } catch {
+    @runtime.JsException(val) => err_msg = error_display(val)
+    _ => err_msg = "unexpected error"
+  }
+  inspect(err_msg, content="SyntaxError: Unexpected strict mode reserved word")
+  let strict_typeof =
+    #|"use strict";
+    #|typeof static;
+  err_msg = ""
+  try {
+    let _ = run_js(strict_typeof)
+  } catch {
+    @runtime.JsException(val) => err_msg = error_display(val)
+    _ => err_msg = "unexpected error"
+  }
+  inspect(err_msg, content="SyntaxError: Unexpected strict mode reserved word")
+}
+
+///|
 test "class constructor strict: does not leak strict mode" {
   let src =
     #|class Base {

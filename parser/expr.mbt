@@ -739,6 +739,10 @@ fn Parser::parse_primary(self : Parser) -> @ast.Expr raise Error {
       self.pos += 1
       Ident("of", tok.loc)
     }
+    Static => {
+      self.pos += 1
+      Ident("static", tok.loc)
+    }
     Yield =>
       // Outside generator context, yield is a valid identifier
       if !self.in_generator() {
@@ -1133,7 +1137,8 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
           | Class
           | Extends
           | Super
-          | Static => {
+          | Static
+          | Yield => {
             // get <name>(...) - this is a getter
             self.pos += 1
             @ast.Get
@@ -1186,7 +1191,8 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
           | Class
           | Extends
           | Super
-          | Static => {
+          | Static
+          | Yield => {
             // set <name>(...) - this is a setter
             self.pos += 1
             @ast.Set

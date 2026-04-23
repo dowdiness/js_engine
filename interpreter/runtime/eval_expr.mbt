@@ -10,6 +10,44 @@ fn Interpreter::eval_prop_value(
   prop : @ast.Property,
   method_env : Environment,
 ) -> Value raise Error {
+  if prop.is_method {
+    match prop.value {
+      FuncExpr(name, params, body, _) => {
+        validate_function_signature(ctx.strict, None, params, body)
+        let func_data : FuncData = {
+          name,
+          params,
+          body,
+          closure: method_env,
+          strict: is_function_strict(ctx.strict, body),
+          has_name_binding: false,
+          is_method: true,
+        }
+        return make_func(func_data)
+      }
+      FuncExprExt(name, params, rest_param, body, _) => {
+        validate_function_signature_ext(
+          ctx.strict,
+          None,
+          params,
+          rest_param,
+          body,
+        )
+        let func_data : FuncDataExt = {
+          name,
+          params,
+          rest_param,
+          body,
+          closure: method_env,
+          strict: is_function_strict(ctx.strict, body),
+          has_name_binding: false,
+          is_method: true,
+        }
+        return make_func_ext(func_data)
+      }
+      _ => ()
+    }
+  }
   let v = self.eval_expr(ctx, prop.value, method_env)
   if prop.is_method {
     // Strip §15.2.5 self-name binding (methods have no FunctionExpressionName),
@@ -18,6 +56,16 @@ fn Interpreter::eval_prop_value(
     mark_as_method(strip_self_name_binding(v))
   } else {
     v
+  }
+}
+
+///|
+fn validate_strict_identifier_reference(
+  ctx : ExecContext,
+  name : String,
+) -> Unit raise Error {
+  if ctx.strict && is_strict_reserved_word(name) {
+    raise @errors.SyntaxError(message="Unexpected strict mode reserved word")
   }
 }
 
@@ -34,7 +82,8 @@ fn Interpreter::eval_expr(
     BoolLit(b, _) => Bool(b)
     NullLit(_) => Null
     UndefinedLit(_) => Undefined
-    Ident(name, _) =>
+    Ident(name, _) => {
+      validate_strict_identifier_reference(ctx, name)
       env.get(name) catch {
         @errors.ReferenceError(_) =>
           // Fallback: check global object (globalThis) for properties set via this.x = y
@@ -49,11 +98,13 @@ fn Interpreter::eval_expr(
           }
         other => raise other
       }
+    }
     Grouping(e, _) => self.eval_expr(ctx, e, env)
     Binary(op, left, right, loc) =>
       self.eval_binary(ctx, op, left, right, env, loc)
     Unary(op, operand, loc) => self.eval_unary(ctx, op, operand, env, loc)
     Assign(name, value_expr, _) => {
+      validate_strict_identifier_reference(ctx, name)
       // Strict mode: assignment to eval/arguments is a SyntaxError
       if ctx.strict && (name == "eval" || name == "arguments") {
         raise @errors.SyntaxError(
@@ -1518,7 +1569,8 @@ fn Interpreter::eval_unary(
   match op {
     Typeof =>
       match operand {
-        Ident(name, _) =>
+        Ident(name, _) => {
+          validate_strict_identifier_reference(ctx, name)
           if env.has(name) {
             String_(type_of(env.get(name)))
           } else {
@@ -1532,6 +1584,7 @@ fn Interpreter::eval_unary(
               _ => String_("undefined")
             }
           }
+        }
         _ => String_(type_of(self.eval_expr(ctx, operand, env)))
       }
     Void => {
