@@ -202,10 +202,15 @@ pub fn Environment::def_builtin(
 }
 
 ///|
-pub fn Environment::has(self : Environment, name : String) -> Bool {
+pub fn Environment::has(self : Environment, name : String) -> Bool raise Error {
   // Check with_object first for 'with' statement environments
   match self.with_object {
-    Some(obj) => if with_object_has(obj, name) { return true }
+    Some(obj) => {
+      let has_with = with_object_has(obj, name)
+      if has_with {
+        return true
+      }
+    }
     None => ()
   }
   match self.bindings.get(name) {
@@ -339,8 +344,28 @@ pub fn Environment::assign(
 
 ///|
 /// Check if a property is blocked by @@unscopables on the binding object
-fn is_blocked_by_unscopables(obj : Value, name : String) -> Bool {
+fn is_blocked_by_unscopables(obj : Value, name : String) -> Bool raise Error {
   match obj {
+    Proxy(_) =>
+      match current_interpreter.val {
+        Some(interp) => {
+          let unscopables_sym = get_unscopables_symbol()
+          let unscopables = interp.get_computed_property(
+            obj,
+            Symbol(unscopables_sym),
+            @token.Loc::default(),
+          )
+          match unscopables {
+            Object(data) =>
+              match data.bag.properties.get(name) {
+                Some(v) => is_truthy(v)
+                None => false
+              }
+            _ => false
+          }
+        }
+        None => false
+      }
     Object(data) => {
       let unscopables_sym = get_unscopables_symbol()
       // Walk prototype chain to find @@unscopables
@@ -369,7 +394,19 @@ fn is_blocked_by_unscopables(obj : Value, name : String) -> Bool {
 
 ///|
 /// Check if a with-object (or its prototype chain) has a property
-fn with_object_has(obj : Value, name : String) -> Bool {
+fn with_object_has(obj : Value, name : String) -> Bool raise Error {
+  match current_interpreter.val {
+    Some(interp) =>
+      if interp.has_property_key(obj, String_(name)) {
+        return !is_blocked_by_unscopables(obj, name)
+      } else {
+        return false
+      }
+    None => ()
+  }
+  if is_blocked_by_unscopables(obj, name) {
+    return false
+  }
   let mut current = obj
   while true {
     match current {
@@ -398,7 +435,17 @@ fn with_object_has(obj : Value, name : String) -> Bool {
 
 ///|
 /// Get a property from a with-object (walking prototype chain)
-fn with_object_get(obj : Value, name : String) -> Value? {
+fn with_object_get(obj : Value, name : String) -> Value? raise Error {
+  match current_interpreter.val {
+    Some(interp) =>
+      if interp.has_property_key(obj, String_(name)) &&
+        !is_blocked_by_unscopables(obj, name) {
+        return Some(interp.get_property(obj, name, @token.Loc::default()))
+      } else {
+        return None
+      }
+    None => ()
+  }
   let mut current = obj
   while true {
     match current {
@@ -429,7 +476,7 @@ fn with_object_set(obj : Value, name : String, value : Value) -> Unit {
 pub fn Environment::find_with_object(
   self : Environment,
   name : String,
-) -> Value? {
+) -> Value? raise Error {
   match self.with_object {
     Some(obj) => if with_object_has(obj, name) { return Some(obj) }
     None => ()

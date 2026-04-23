@@ -1165,15 +1165,14 @@ fn Interpreter::eval_binary(
     In => {
       let left = self.eval_expr(ctx, left_expr, env)
       let right = self.eval_expr(ctx, right_expr, env)
-      match right {
-        Proxy(proxy_data) => {
-          let key = match left {
-            Symbol(_) => left.to_string()
-            _ => left.to_string()
-          }
-          Bool(proxy_has_property(self, proxy_data, key))
-        }
-        _ => eval_binary_op(In, left, right, loc)
+      if is_object_value(right) {
+        Bool(
+          self.has_property_key(right, to_property_key(left, interp=Some(self))),
+        )
+      } else {
+        raise @errors.TypeError(
+          message="Cannot use 'in' operator to search for '\{left.to_string()}' in \{type_of(right)}",
+        )
       }
     }
     _ => {
@@ -1301,109 +1300,23 @@ fn eval_binary_op(
         Number((shifted & mask).to_double())
       }
     }
-    // in operator - walks prototype chain
+    // in operator - ES §7.3.11 HasProperty
     (In, l, r) =>
-      match r {
-        Object(data) =>
-          // Handle Symbol keys
-          match l {
-            Symbol(sym) => {
-              // Check own symbol property first
-              if data.bag.symbol_properties.contains(sym.id) {
-                return Bool(true)
-              }
-              // Walk prototype chain for symbol properties
-              let mut current = data.prototype
-              while true {
-                match current {
-                  Object(proto_data) =>
-                    if proto_data.bag.symbol_properties.contains(sym.id) {
-                      return Bool(true)
-                    } else {
-                      current = proto_data.prototype
-                    }
-                  _ => break
-                }
-              }
-              Bool(false)
-            }
-            _ => {
-              let key = to_js_string(l)
-              // Check own property first
-              if data.bag.properties.contains(key) {
-                return Bool(true)
-              }
-              // Walk prototype chain
-              let mut current = data.prototype
-              let mut func_fallback_used = false
-              while true {
-                match current {
-                  Object(proto_data) =>
-                    if proto_data.bag.properties.contains(key) {
-                      return Bool(true)
-                    } else {
-                      current = proto_data.prototype
-                    }
-                  Null =>
-                    // For function objects, fall back to Function.prototype once
-                    if !func_fallback_used {
-                      match data.callable {
-                        Some(_) =>
-                          match current_interpreter.val {
-                            Some(interp) => {
-                              let fp = interp.global.get(
-                                "[[FunctionPrototype]]",
-                              ) catch {
-                                _ => break
-                              }
-                              func_fallback_used = true
-                              current = fp
-                            }
-                            None => break
-                          }
-                        None => break
-                      }
-                    } else {
-                      break
-                    }
-                  _ => break
-                }
-              }
-              Bool(false)
-            }
-          }
-        Array(data) =>
-          match l {
-            Symbol(sym) => Bool(get_array_symbol_prop(data, sym.id) is Some(_))
-            _ => {
-              let key = to_js_string(l)
-              if key == "length" {
-                return Bool(true)
-              }
-              // Check numeric index
-              try {
-                let n = @string.parse_double(key)
-                let idx = n.to_int()
-                if idx.to_double() == n &&
-                  idx >= 0 &&
-                  idx < data.elements.length() {
-                  return Bool(true)
-                }
-              } catch {
-                _ => ()
-              }
-              // Check bag-backed named properties.
-              if get_array_named_prop(data, key) is Some(_) {
-                return Bool(true)
-              }
-              // Check Array.prototype chain
-              Bool(has_property(Array(data), key))
-            }
-          }
-        _ =>
-          raise @errors.TypeError(
-            message="Cannot use 'in' operator to search for '\{l.to_string()}' in \{type_of(r)}",
-          )
+      if is_object_value(r) {
+        match current_interpreter.val {
+          Some(interp) =>
+            Bool(
+              interp.has_property_key(
+                r,
+                to_property_key(l, interp=Some(interp)),
+              ),
+            )
+          None => Bool(has_property(r, to_js_string(l)))
+        }
+      } else {
+        raise @errors.TypeError(
+          message="Cannot use 'in' operator to search for '\{l.to_string()}' in \{type_of(r)}",
+        )
       }
     // And/Or/??/Instanceof already handled in eval_binary
     (And, _, _) | (Or, _, _) | (NullishCoalesce, _, _) | (Instanceof, _, _) =>
@@ -1491,6 +1404,14 @@ pub fn get_constructor_prototype(
         None => Null
       }
     _ => Null
+  }
+}
+
+///|
+pub fn get_array_prototype(env : Environment, arr : ArrayData) -> Value {
+  match get_array_prototype_override(arr) {
+    Some(proto) => proto
+    None => get_constructor_prototype(env, "Array")
   }
 }
 

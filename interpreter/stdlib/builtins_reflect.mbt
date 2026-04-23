@@ -290,6 +290,7 @@ fn setup_reflect_builtins(env : Environment, _sym_state : SymbolState) -> Unit {
       }
       match args[0] {
         Object(data) => data.prototype
+        Array(data) => @runtime.get_array_prototype(interp.global, data)
         Value::Proxy(proxy_data) =>
           @runtime.proxy_get_prototype_of(interp, proxy_data)
         _ =>
@@ -309,12 +310,12 @@ fn setup_reflect_builtins(env : Environment, _sym_state : SymbolState) -> Unit {
         raise @errors.TypeError(message="Reflect.has requires 2 arguments")
       }
       let target = args[0]
-      let prop = args[1].to_string()
+      let prop = @runtime.to_property_key(args[1], interp=Some(interp))
       match target {
-        Value::Proxy(proxy_data) =>
-          Bool(@runtime.proxy_has_property(interp, proxy_data, prop))
         Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) =>
-          Bool(interp.has_property(target, prop))
+          Bool(interp.has_property_key(target, prop))
+        Value::Proxy(proxy_data) =>
+          Bool(@runtime.proxy_has_property_key(interp, proxy_data, prop))
         _ => raise @errors.TypeError(message="Reflect.has called on non-object")
       }
     },
@@ -501,7 +502,7 @@ fn setup_reflect_builtins(env : Environment, _sym_state : SymbolState) -> Unit {
       let target = args[0]
       let proto = args[1]
       match proto {
-        Object(_) | Null => ()
+        Object(_) | Proxy(_) | Null => ()
         _ =>
           raise @errors.TypeError(
             message="Object prototype may only be an Object or null",
@@ -515,6 +516,10 @@ fn setup_reflect_builtins(env : Environment, _sym_state : SymbolState) -> Unit {
             return Value::Bool(false)
           }
           data.prototype = proto
+          Value::Bool(true)
+        }
+        Array(data) => {
+          @runtime.set_array_prototype_override(data, proto)
           Value::Bool(true)
         }
         _ =>

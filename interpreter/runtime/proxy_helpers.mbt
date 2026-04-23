@@ -475,6 +475,7 @@ pub fn proxy_get_prototype_of(
     None =>
       match target {
         Object(data) => data.prototype
+        Array(data) => get_array_prototype(interp.global, data)
         Value::Proxy(inner) => proxy_get_prototype_of(interp, inner)
         _ => Null
       }
@@ -495,6 +496,7 @@ pub fn proxy_get_prototype_of(
       if !extensible {
         let target_proto = match target {
           Object(data) => data.prototype
+          Array(data) => get_array_prototype(interp.global, data)
           _ => Null
         }
         if !strict_equal(result, target_proto) {
@@ -525,6 +527,10 @@ pub fn proxy_set_prototype_of(
             return false
           }
           data.prototype = proto
+          true
+        }
+        Array(data) => {
+          set_array_prototype_override(data, proto)
           true
         }
         Value::Proxy(inner) => proxy_set_prototype_of(interp, inner, proto)
@@ -563,36 +569,49 @@ pub fn proxy_has_property(
   proxy_data : ProxyData,
   key : String,
 ) -> Bool raise Error {
+  proxy_has_property_key(interp, proxy_data, String_(key))
+}
+
+///|
+pub fn proxy_has_property_key(
+  interp : Interpreter,
+  proxy_data : ProxyData,
+  key : Value,
+) -> Bool raise Error {
   let target = get_proxy_target(proxy_data)
   let trap = get_proxy_trap(proxy_data, "has", interp)
+  let key_display = match key {
+    Symbol(sym) => "Symbol(\{sym.description.unwrap_or_default()})"
+    _ => to_js_string(key)
+  }
   match trap {
     None =>
       match target {
-        Value::Proxy(inner) => proxy_has_property(interp, inner, key)
-        _ => interp.has_property(target, key)
+        Value::Proxy(inner) => proxy_has_property_key(interp, inner, key)
+        _ => interp.has_property_key(target, key)
       }
     Some(trap_fn) => {
       let handler = get_proxy_handler(proxy_data)
       let loc = @token.Loc::default()
-      let result = interp.call_value(
-        trap_fn,
-        handler,
-        [target, String_(key)],
-        loc,
-      )
+      let result = interp.call_value(trap_fn, handler, [target, key], loc)
       let trap_result = is_truthy(result)
       // ES §10.5.7 step 9-10: If trap returns false, check invariants
       if !trap_result {
         // Cannot report a non-configurable own property as non-existent
-        if target_has_non_configurable_key(target, key) {
-          raise @errors.TypeError(
-            message="'has' on proxy: trap returned falsish for property '\{key}' which exists in the proxy target as non-configurable",
-          )
+        match target_own_descriptor_for_key(target, key) {
+          Some(desc) =>
+            if !desc.configurable {
+              raise @errors.TypeError(
+                message="'has' on proxy: trap returned falsish for property '\{key_display}' which exists in the proxy target as non-configurable",
+              )
+            }
+          None => ()
         }
         // Cannot report an own property as non-existent on non-extensible target
-        if !target_is_extensible(target) && target_has_own_property(target, key) {
+        if !target_is_extensible(target) &&
+          target_own_descriptor_for_key(target, key) is Some(_) {
           raise @errors.TypeError(
-            message="'has' on proxy: trap returned falsish for property '\{key}' but the proxy target is not extensible",
+            message="'has' on proxy: trap returned falsish for property '\{key_display}' but the proxy target is not extensible",
           )
         }
       }

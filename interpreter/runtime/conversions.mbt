@@ -748,16 +748,124 @@ pub fn Interpreter::has_property(
   self : Interpreter,
   val : Value,
   name : String,
-) -> Bool {
+) -> Bool raise Error {
+  self.has_property_key(val, String_(name))
+}
+
+///|
+/// ES §7.3.11 `HasProperty` with a pre-computed property key.
+pub fn Interpreter::has_property_key(
+  self : Interpreter,
+  val : Value,
+  key : Value,
+) -> Bool raise Error {
   match val {
+    Proxy(proxy_data) => proxy_has_property_key(self, proxy_data, key)
+    Object(data) => self.has_object_property(data, key)
+    Array(data) => self.has_array_property(data, key)
     // Map/Set/Promise share a uniform shape: an expando bag plus a builtin
     // prototype reachable via globalThis[ctor].prototype. Implement
     // OrdinaryHasProperty (ES §7.3.11): own bag → proto chain → bool,
     // with no value inspection.
-    Map(data) => self.has_bag_or_builtin_proto(data.bag, "Map", name)
-    Set(data) => self.has_bag_or_builtin_proto(data.bag, "Set", name)
-    Promise(data) => self.has_bag_or_builtin_proto(data.bag, "Promise", name)
-    _ => has_property(val, name, interp=Some(self))
+    Map(data) => self.has_bag_or_builtin_proto_key(data.bag, "Map", key)
+    Set(data) => self.has_bag_or_builtin_proto_key(data.bag, "Set", key)
+    Promise(data) => self.has_bag_or_builtin_proto_key(data.bag, "Promise", key)
+    _ => false
+  }
+}
+
+///|
+fn Interpreter::has_object_property(
+  self : Interpreter,
+  data : ObjectData,
+  key : Value,
+) -> Bool raise Error {
+  match key {
+    Symbol(sym) =>
+      if data.bag.symbol_properties.contains(sym.id) ||
+        data.bag.symbol_descriptors.contains(sym.id) {
+        return true
+      }
+    _ => {
+      let name = to_js_string(key)
+      if data.bag.properties.contains(name) ||
+        data.bag.descriptors.contains(name) {
+        return true
+      }
+    }
+  }
+  if self.has_property_on_proto(data.prototype, key) {
+    return true
+  }
+  match data.callable {
+    Some(_) => {
+      let func_proto = self.global.get("[[FunctionPrototype]]") catch {
+        _ => return false
+      }
+      self.has_property_on_proto(func_proto, key)
+    }
+    None => false
+  }
+}
+
+///|
+fn Interpreter::has_array_property(
+  self : Interpreter,
+  data : ArrayData,
+  key : Value,
+) -> Bool raise Error {
+  match key {
+    Symbol(sym) =>
+      if get_array_symbol_prop(data, sym.id) is Some(_) ||
+        data.bag.symbol_descriptors.contains(sym.id) {
+        return true
+      }
+    _ => {
+      let name = to_js_string(key)
+      if name == "length" {
+        return true
+      }
+      let idx = @string.parse_int(name) catch { _ => -1 }
+      if idx >= 0 && idx.to_string() == name && idx < data.elements.length() {
+        return true
+      }
+      if data.bag.properties.contains(name) ||
+        data.bag.descriptors.contains(name) {
+        return true
+      }
+    }
+  }
+  self.has_property_on_proto(get_array_prototype(self.global, data), key)
+}
+
+///|
+fn Interpreter::has_property_on_proto(
+  self : Interpreter,
+  proto : Value,
+  key : Value,
+) -> Bool raise Error {
+  match proto {
+    Null | Undefined => false
+    Proxy(proxy_data) => proxy_has_property_key(self, proxy_data, key)
+    Object(proto_data) => self.has_object_property(proto_data, key)
+    Array(arr_data) => self.has_array_property(arr_data, key)
+    Map(data) => self.has_bag_or_builtin_proto_key(data.bag, "Map", key)
+    Set(data) => self.has_bag_or_builtin_proto_key(data.bag, "Set", key)
+    Promise(data) => self.has_bag_or_builtin_proto_key(data.bag, "Promise", key)
+    _ => false
+  }
+}
+
+///|
+fn bag_has_key(bag : PropertyBag, key : Value) -> Bool raise Error {
+  match key {
+    Symbol(sym) =>
+      bag.symbol_properties.contains(sym.id) ||
+      bag.symbol_descriptors.contains(sym.id)
+    _ => {
+      let name = to_js_string(key)
+      bag.properties.contains(name) || bag.descriptors.contains(name)
+    }
   }
 }
 
@@ -768,17 +876,17 @@ pub fn Interpreter::has_property(
 /// Checks both data and accessor descriptors at each prototype step
 /// (ES §7.3.11), since lookup_property_chain intentionally sees only data
 /// properties.
-fn Interpreter::has_bag_or_builtin_proto(
+fn Interpreter::has_bag_or_builtin_proto_key(
   self : Interpreter,
   bag : PropertyBag,
   ctor_name : String,
-  name : String,
-) -> Bool {
-  if bag.properties.contains(name) || bag.descriptors.contains(name) {
+  key : Value,
+) -> Bool raise Error {
+  if bag_has_key(bag, key) {
     return true
   }
   let ctor = self.global.get(ctor_name) catch { _ => return false }
-  let mut current = match ctor {
+  let current = match ctor {
     Object(ctor_data) =>
       match ctor_data.bag.properties.get("prototype") {
         Some(p) => p
@@ -786,19 +894,7 @@ fn Interpreter::has_bag_or_builtin_proto(
       }
     _ => return false
   }
-  while true {
-    match current {
-      Object(proto_data) =>
-        if proto_data.bag.properties.contains(name) ||
-          proto_data.bag.descriptors.contains(name) {
-          return true
-        } else {
-          current = proto_data.prototype
-        }
-      _ => break
-    }
-  }
-  false
+  self.has_property_on_proto(current, key)
 }
 
 ///|

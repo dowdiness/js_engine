@@ -37,6 +37,31 @@ per-mode; compare with v0.2.0 section below for methodology):
 
 [24777653260]: https://github.com/dowdiness/js_engine/actions/runs/24777653260
 
+### Stage C — ArrayData PropertyBag embedding
+
+- Moved array named, symbol, length override, indexed descriptor, and
+  prototype override state into `ArrayData.bag`.
+- Removed the remaining legacy array property side tables so ordinary
+  descriptor APIs and runtime lookup observe the same array property state.
+- Preserved internal array slots with non-forgeable symbol ids rather than
+  string properties.
+
+### Stage B.3 — HasProperty dispatcher
+
+- Added a key-aware `Interpreter::has_property_key` path shared by `in`,
+  `Reflect.has`, Proxy `has`, prototype-chain traversal, arrays, and `with`
+  binding lookup.
+- Proxy `has` traps now receive the actual property key value, including
+  Symbols, and trap-missing Proxy targets recurse through the target's
+  `[[HasProperty]]`.
+- `with` lookup now propagates Proxy `has` and `@@unscopables` abrupt
+  completions instead of treating them as absent bindings.
+- Array prototype overrides are now honored by ordinary reads and observable
+  through `Object.getPrototypeOf`, `Reflect.getPrototypeOf`, and Proxy
+  `getPrototypeOf`.
+- Callable objects keep the `Function.prototype` fallback for
+  `HasProperty`, preserving inherited `call`, `apply`, and `bind`.
+
 ## [0.2.0] — 2026-04-22
 
 400 commits since v0.1.0 (~80 user-facing changes). Themes summarised

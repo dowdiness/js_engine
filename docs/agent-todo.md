@@ -588,15 +588,47 @@ representation). Staged:
     code swallows `to_number(value)` TypeErrors, which the
     `typedArr[0] = Symbol()` case requires to propagate. Separate bug,
     not a Stage B.2 regression.
-- ~~**Stage C — ArrayData.bag.**~~ DONE. Array named/symbol/length
-  override state now lives in `ArrayData.bag`, and indexed descriptors
-  persist their attributes there.
-- **Stage B.3 — `[[HasProperty]]` dispatcher.** ~15 Proxy tests.
+- ~~**Stage C — ArrayData.bag.**~~ DONE (2026-04-23). Array named,
+  symbol, length override, and array prototype override state now lives
+  in `ArrayData.bag`; indexed descriptors persist their attributes
+  there. This removed the remaining array property side tables.
+- ~~**Stage B.3 — `[[HasProperty]]` dispatcher.**~~ DONE (2026-04-23).
+  `in`, `Reflect.has`, Proxy `has` forwarding, Proxy-in-prototype chains,
+  and `with` binding lookup now share the key-aware HasProperty path.
+  Review follow-ups folded into the same patch:
+  - setter-only indexed array accessors return `undefined`;
+  - internal array override slots are symbol-keyed and not observable as
+    string properties;
+  - ordinary reads honor Proxy prototypes and array prototype overrides;
+  - `with` binding lookup propagates Proxy `has` / `@@unscopables` abrupt
+    completions;
+  - callable objects preserve `Function.prototype` fallback for
+    HasProperty;
+  - `Object.getPrototypeOf`, `Reflect.getPrototypeOf`, and Proxy
+    `getPrototypeOf` observe array prototype overrides consistently.
+  Local validation: `moon check`, `moon test` (1002/1002), and targeted
+  `make test262-filter FILTER=built-ins/Proxy/has` with zero failures
+  across executed tasks.
 - **Stage D — Realm hermeticity.** 0 tests; ship when convenient.
 
 Independent of Stage B (parallel PRs):
 - `construct` NewTarget threading (~12 Proxy).
 - `revocable` `typeof` post-revoke (~8 Proxy).
+
+B.3 follow-ups now worth isolating in later PRs:
+- **General prototype slots for non-Object variants.** Array has a bag-backed
+  prototype override as a stopgap, but Map/Set/Promise still expose only
+  builtin constructor prototypes. A full model should give every object-typed
+  variant a coherent observable `[[Prototype]]` used by
+  `Object.getPrototypeOf`, `Reflect.getPrototypeOf`, `setPrototypeOf`,
+  `isPrototypeOf`, `instanceof`, `[[Get]]`, `[[Set]]`, and `[[HasProperty]]`.
+- **Array prototype override consumers still need audit.** B.3 fixed ordinary
+  reads and `getPrototypeOf`; `Object.prototype.isPrototypeOf` and
+  `instanceof` still use constructor prototypes for arrays and should be
+  routed through the same helper.
+- **Array extensibility remains approximate.** Proxy `getPrototypeOf` /
+  `setPrototypeOf` invariants treat arrays as always extensible until
+  `ArrayData` carries extensibility state.
 
 ---
 

@@ -53,6 +53,10 @@ pub fn get_array_like_element_interp(Interpreter, Value, Int) -> Value raise
 
 pub fn get_array_named_prop(ArrayData, String) -> Value?
 
+pub fn get_array_prototype(Environment, ArrayData) -> Value
+
+pub fn get_array_prototype_override(ArrayData) -> Value?
+
 pub fn get_array_symbol_prop(ArrayData, Int) -> Value?
 
 pub fn get_async_iterator_symbol() -> SymbolData
@@ -195,6 +199,8 @@ pub fn proxy_get_prototype_of(Interpreter, ProxyData) -> Value raise
 
 pub fn proxy_has_property(Interpreter, ProxyData, String) -> Bool raise
 
+pub fn proxy_has_property_key(Interpreter, ProxyData, Value) -> Bool raise
+
 pub fn proxy_is_extensible(Interpreter, ProxyData) -> Bool raise
 
 pub fn proxy_own_property_keys(Interpreter, ProxyData) -> Value raise
@@ -218,6 +224,8 @@ pub fn set_array_like_element(Value, Int, Value) -> Unit
 pub fn set_array_like_length(Value, Int) -> Unit
 
 pub fn set_array_named_prop(ArrayData, String, Value) -> Unit
+
+pub fn set_array_prototype_override(ArrayData, Value) -> Unit
 
 pub fn set_array_symbol_prop(ArrayData, Int, Value) -> Unit
 
@@ -371,9 +379,9 @@ pub fn Environment::def_builtin(Self, String, Value) -> Unit
 pub fn Environment::def_parameter(Self, String, Value) -> Unit raise
 pub fn Environment::def_tdz(Self, String, BindingKind) -> Unit raise
 pub fn Environment::find_var_env(Self) -> Self
-pub fn Environment::find_with_object(Self, String) -> Value?
+pub fn Environment::find_with_object(Self, String) -> Value? raise
 pub fn Environment::get(Self, String) -> Value raise
-pub fn Environment::has(Self, String) -> Bool
+pub fn Environment::has(Self, String) -> Bool raise
 pub fn Environment::has_var(Self, String) -> Bool
 pub fn Environment::initialize(Self, String, Value) -> Unit raise
 pub fn Environment::initialize_in_chain(Self, String, Value) -> Unit raise
@@ -478,7 +486,8 @@ pub fn Interpreter::enqueue_microtask(Self, Value, Array[Value]) -> Unit
 pub fn Interpreter::get_computed_property(Self, Value, Value, @token.Loc) -> Value raise
 pub fn Interpreter::get_own_property(Self, Value, Value) -> (PropDescriptor, Value)? raise
 pub fn Interpreter::get_property(Self, Value, String, @token.Loc) -> Value raise
-pub fn Interpreter::has_property(Self, Value, String) -> Bool
+pub fn Interpreter::has_property(Self, Value, String) -> Bool raise
+pub fn Interpreter::has_property_key(Self, Value, Value) -> Bool raise
 pub fn Interpreter::new(annex_b? : Bool, module_loader? : ModuleLoader?, setup_builtins? : (Environment, Array[String], SymbolState, Bool) -> Unit, setup_harness? : (Environment, Array[String], Value) -> Unit, stdlib_hooks? : StdlibHooks) -> Self
 pub fn Interpreter::ordinary_define_own_property(Self, Value, Value, PartialDescriptor, @token.Loc) -> Bool raise
 pub fn Interpreter::partial_descriptor_from_attrs(Self, Value, @token.Loc) -> PartialDescriptor raise

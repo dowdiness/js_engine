@@ -343,6 +343,9 @@ pub(all) enum Value {
 const ARRAY_LENGTH_OVERRIDE_SYMBOL_ID = -1
 
 ///|
+const ARRAY_PROTOTYPE_OVERRIDE_SYMBOL_ID = -2
+
+///|
 fn default_data_descriptor() -> PropDescriptor {
   {
     writable: true,
@@ -376,6 +379,16 @@ pub fn get_array_length_override(arr : ArrayData) -> Int64? {
 pub fn clear_array_length_override(arr : ArrayData) -> Unit {
   let _ = arr.bag.symbol_properties.remove(ARRAY_LENGTH_OVERRIDE_SYMBOL_ID)
   let _ = arr.bag.symbol_descriptors.remove(ARRAY_LENGTH_OVERRIDE_SYMBOL_ID)
+}
+
+///|
+pub fn set_array_prototype_override(arr : ArrayData, proto : Value) -> Unit {
+  arr.bag.symbol_properties[ARRAY_PROTOTYPE_OVERRIDE_SYMBOL_ID] = proto
+}
+
+///|
+pub fn get_array_prototype_override(arr : ArrayData) -> Value? {
+  arr.bag.symbol_properties.get(ARRAY_PROTOTYPE_OVERRIDE_SYMBOL_ID)
 }
 
 ///|

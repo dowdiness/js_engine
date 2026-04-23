@@ -33,15 +33,21 @@ pub fn Interpreter::get_property(
           // Check named properties (e.g., index, input on exec results)
           match get_array_named_prop(data, prop) {
             Some(v) => v
-            None => {
-              let result = (self.stdlib_hooks.get_array_method_with_interp)(
-                data, prop,
-              )
-              match result {
-                Undefined => lookup_builtin_proto(self, obj, "Array", prop, loc)
-                _ => result
+            None =>
+              match get_array_prototype_override(data) {
+                Some(proto) =>
+                  self.get_property_from_prototype(obj, proto, prop, loc)
+                None => {
+                  let result = (self.stdlib_hooks.get_array_method_with_interp)(
+                    data, prop,
+                  )
+                  match result {
+                    Undefined =>
+                      lookup_builtin_proto(self, obj, "Array", prop, loc)
+                    _ => result
+                  }
+                }
               }
-            }
           }
         }
       }
@@ -151,6 +157,73 @@ pub fn Interpreter::get_property(
         message="Cannot read properties of undefined (reading '\{prop}')",
       )
   }
+}
+
+///|
+/// Look up an inherited property while preserving the original receiver for
+/// accessors and Proxy `get` traps.
+fn Interpreter::get_property_from_prototype(
+  self : Interpreter,
+  receiver : Value,
+  proto : Value,
+  prop : String,
+  loc : @token.Loc,
+) -> Value raise Error {
+  let mut current = proto
+  while true {
+    match current {
+      Object(data) => {
+        match data.bag.descriptors.get(prop) {
+          Some(desc) =>
+            match desc.getter {
+              Some(getter) => return self.call_value(getter, receiver, [], loc)
+              None => if desc.setter is Some(_) { return Undefined }
+            }
+          None => ()
+        }
+        match data.bag.properties.get(prop) {
+          Some(v) => return v
+          None => current = data.prototype
+        }
+      }
+      Array(data) => {
+        if prop == "length" {
+          return match get_array_length_override(data) {
+            Some(n64) => Number(n64.to_double())
+            None => Number(data.elements.length().to_double())
+          }
+        }
+        let num_idx = @string.parse_int(prop) catch { _ => -1 }
+        if num_idx >= 0 &&
+          num_idx < data.elements.length() &&
+          num_idx.to_string() == prop {
+          match data.bag.descriptors.get(prop) {
+            Some(desc) =>
+              match desc.getter {
+                Some(getter) =>
+                  return self.call_value(getter, receiver, [], loc)
+                None => if desc.setter is Some(_) { return Undefined }
+              }
+            None => ()
+          }
+          return data.elements[num_idx]
+        }
+        match get_array_named_prop(data, prop) {
+          Some(v) => return v
+          None =>
+            match get_array_prototype_override(data) {
+              Some(next) => current = next
+              None =>
+                return lookup_builtin_proto(self, receiver, "Array", prop, loc)
+            }
+        }
+      }
+      Proxy(proxy_data) => return proxy_get(self, proxy_data, prop, receiver)
+      Null => return Undefined
+      _ => return self.get_property(current, prop, loc)
+    }
+  }
+  Undefined
 }
 
 ///|
@@ -282,6 +355,7 @@ fn Interpreter::get_property_of_object(
               _ => return result
             }
           }
+          Proxy(proxy_data) => return proxy_get(self, proxy_data, prop, obj)
           Null =>
             // For function objects, fall back to Function.prototype (once)
             if !func_proto_checked {

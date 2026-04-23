@@ -1183,7 +1183,7 @@ pub fn setup_object_builtins(
                     message="Cannot convert undefined or null to object",
                   )
                 Object(data) => data.prototype
-                Array(_) => get_ctor_proto("Array")
+                Array(data) => @runtime.get_array_prototype(env, data)
                 Value::String_(_) => get_ctor_proto("String")
                 Value::Number(_) => get_ctor_proto("Number")
                 Bool(_) => get_ctor_proto("Boolean")
@@ -1227,7 +1227,7 @@ pub fn setup_object_builtins(
                 _ => ()
               }
               match proto {
-                Object(_) | Null => ()
+                Object(_) | Proxy(_) | Null => ()
                 _ =>
                   raise @errors.TypeError(
                     message="Object prototype may only be an Object or null",
@@ -1252,6 +1252,8 @@ pub fn setup_object_builtins(
                   }
                   data.prototype = proto
                 }
+                Array(data) =>
+                  @runtime.set_array_prototype_override(data, proto)
                 _ => ()
               }
               obj

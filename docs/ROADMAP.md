@@ -219,9 +219,27 @@ Proxy/Reflect `[[Set]]` now threads the receiver through proto walks and
 lands writes per the ES §10.1.9.2 rules. Proxy 71.5% / Reflect 84.3% in
 targeted verification after this change.
 
-**Stages B.2 / C / B.3 / D** — planned. Stage C (`ArrayData.bag`) and
-B.2 (dispatcher consolidation debt inherited from B.1) are the next
-test262-positive targets.
+**Stage B.2 — `[[GetOwnProperty]]` / `[[DefineOwnProperty]]` dispatchers** ✅ (PR #72)
+Descriptor operations now route through shared dispatchers for ordinary
+objects, arrays, Proxy targets, and Reflect/Object built-ins. `PartialDescriptor`
+models ES "attribute absent" vs default values, `ArrayData.length_writable`
+tracks the array length descriptor, and Proxy GOPD/defineProperty invariant
+checks are centralized.
+
+**Stage C — `ArrayData.bag`** ✅ (2026-04-23)
+Array named, symbol, length override, indexed-descriptor, and prototype
+override state now lives in the embedded `PropertyBag`; the legacy array
+property side tables are gone.
+
+**Stage B.3 — `[[HasProperty]]` dispatcher** ✅ (2026-04-23)
+`in`, `Reflect.has`, Proxy `has`, Proxy-in-prototype chains, array prototype
+overrides, callable `Function.prototype` fallback, and `with` binding lookup
+now share the key-aware HasProperty path. Local verification includes the full
+unit suite and a targeted `built-ins/Proxy/has` filter; no post-B.3 full CI
+test262 baseline has been recorded yet.
+
+**Stage D — Realm hermeticity** — planned. Low direct test262 impact; keep
+queued behind any remaining Proxy/prototype semantic cleanup.
 
 ## Architecture
 

@@ -711,6 +711,116 @@ test "in operator" {
 }
 
 ///|
+test "Stage B.3: Proxy has trap through in and Reflect.has" {
+  let src =
+    #|var seen = [];
+    #|var target = {};
+    #|var handler = {
+    #|  has: function(t, prop) {
+    #|    seen.push(this === handler);
+    #|    seen.push(t === target);
+    #|    seen.push(prop);
+    #|    return prop === "x";
+    #|  }
+    #|};
+    #|var p = new Proxy(target, handler);
+    #|console.log("x" in p);
+    #|console.log("y" in p);
+    #|console.log(Reflect.has(p, "x"));
+    #|console.log(seen.join(","));
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"true\", \"false\", \"true\", \"true,true,x,true,true,y,true,true,x\"]",
+  )
+}
+
+///|
+test "Stage B.3: Proxy has trap via prototype and with" {
+  let src =
+    #|var log = [];
+    #|var target = {};
+    #|var handler = {
+    #|  has: function(t, prop) {
+    #|    log.push(prop);
+    #|    return prop === "1" || prop === "attr";
+    #|  },
+    #|  get: function(t, prop) {
+    #|    if (prop === "attr") return 42;
+    #|  }
+    #|};
+    #|var proxy = new Proxy(target, handler);
+    #|var arr = [];
+    #|Object.setPrototypeOf(arr, proxy);
+    #|console.log(1 in arr);
+    #|with (proxy) { console.log(attr); }
+    #|console.log(log.join(","));
+  let output = run_output(src)
+  inspect(output, content="[\"true\", \"42\", \"1,attr\"]")
+}
+
+///|
+test "Stage B.3: Proxy prototype ordinary get and with has abrupt completion" {
+  let src =
+    #|function f() {}
+    #|console.log("call" in f);
+    #|console.log(Reflect.has(f, "bind"));
+    #|var target = { x: 1 };
+    #|var p = new Proxy(target, {});
+    #|var o = {};
+    #|Object.setPrototypeOf(o, p);
+    #|console.log(o.x);
+    #|var a = [];
+    #|var arrayProto = { x: 2 };
+    #|Object.setPrototypeOf(a, arrayProto);
+    #|console.log("x" in a);
+    #|console.log(a.x);
+    #|console.log(a.map === undefined);
+    #|console.log(Object.getPrototypeOf(a) === arrayProto);
+    #|console.log(Reflect.getPrototypeOf(a) === arrayProto);
+    #|var reflectProto = { y: 3 };
+    #|console.log(Reflect.setPrototypeOf(a, reflectProto));
+    #|console.log(Object.getPrototypeOf(a) === reflectProto);
+    #|console.log(a.y);
+    #|var proxiedArray = new Proxy(a, {});
+    #|console.log(Object.getPrototypeOf(proxiedArray) === reflectProto);
+    #|var receiverProxy = new Proxy({}, {
+    #|  get: function(t, prop, receiver) {
+    #|    if (prop === "marker") return "target";
+    #|    if (prop === "seen") return receiver.marker;
+    #|  }
+    #|});
+    #|var child = { marker: "receiver" };
+    #|Object.setPrototypeOf(child, receiverProxy);
+    #|console.log(child.seen);
+    #|var protoProxy = new Proxy({}, {
+    #|  has: function(t, prop) { return prop === "inherited"; },
+    #|  get: function(t, prop) {
+    #|    if (prop === "inherited") return 9;
+    #|  }
+    #|});
+    #|var withHost = {};
+    #|Object.setPrototypeOf(withHost, protoProxy);
+    #|with (withHost) {
+    #|  console.log(typeof inherited);
+    #|  console.log(inherited);
+    #|}
+    #|var throwing = new Proxy({}, {
+    #|  has: function() { throw "boom"; }
+    #|});
+    #|try {
+    #|  with (throwing) { console.log(typeof missing); }
+    #|} catch (e) {
+    #|  console.log(e);
+    #|}
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"true\", \"true\", \"1\", \"true\", \"2\", \"true\", \"true\", \"true\", \"true\", \"true\", \"3\", \"true\", \"receiver\", \"number\", \"9\", \"boom\"]",
+  )
+}
+
+///|
 test "comma expression" {
   let (_, result) = run_js("1, 2, 3")
   inspect(result, content="3")
