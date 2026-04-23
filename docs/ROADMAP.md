@@ -29,6 +29,7 @@ Skips dominate the gap: class-fields-private ~2,437, async-iteration ~3,731, Tem
 **Targeted verification (2026-02-11)**: `language/block-scope` slice is 106/106 passing (39 skipped).
 **Targeted verification (2026-02-12)**: `built-ins/Promise` slice is 599/599 passing (100%, 41 skipped). `language/block-scope` is 106/106 passing (100%, 39 skipped).
 **Targeted verification (2026-02-13)**: `language/white-space` slice is 66/67 passing (98.5%, was 73.1%). Small compliance sweep completed. Proxy/Reflect implemented: Proxy 94.5% (257/272), Reflect 99.3% (152/153).
+**Targeted verification (2026-04-23)**: Reserved-word follow-up passes both targeted strict+non-strict slices: `language/reserved-words` 53 passed / 53 executed / 53 discovered, and `language/future-reserved-words` 85 passed / 85 executed / 85 discovered.
 **Phase 16 (2026-02-14)**: TypedArray/ArrayBuffer/DataView implemented. 9 typed array types, DataView with all getter/setter methods, ArrayBuffer with slice/detach. 79 new unit tests, all passing. Full test262 re-run: **+2,142 tests passing** (20,870 → 23,012), pass rate 82.7% → **83.7%**.
 **Phase 17 (2026-02-14)**: TypedArray prototype chain conformance. Created `%TypedArray%` intrinsic constructor, set per-type constructor `[[Prototype]]` chains. TypedArray 55.1% → **92.8%** (+293), TypedArrayConstructors 86.1% → **94.4%** (+30). Estimated **+323 tests** passing overall.
 **Phase 18 (2026-02-14)**: Boxed primitives (`new String/Number/Boolean`). Constructor wrapping with `[[StringData]]`/`[[NumberData]]`/`[[BooleanData]]` internal slots, `Object()` ToObject wrapping, ToPrimitive coercion in `loose_equal`, prototype method support. Also fixed TypedArray constructor name inheritance regression. Key improvements: Object 92.7% → **95.9%** (+108), String 92.0% → **95.1%** (+38), Number 83.6% → **85.7%** (+7), TypedArray 92.8% → **93.4%** (+5), TypedArrayConstructors 94.4% → **95.3%** (+3), Boolean 83.7% → **85.7%** (+1). Estimated **+162 tests** passing in targeted categories.
@@ -237,6 +238,13 @@ overrides, callable `Function.prototype` fallback, and `with` binding lookup
 now share the key-aware HasProperty path. Local verification includes the full
 unit suite and a targeted `built-ins/Proxy/has` filter; no post-B.3 full CI
 test262 baseline has been recorded yet.
+
+**Post-B.3 language follow-up — strict reserved early errors** ✅ (2026-04-23)
+Strict reserved IdentifierReference, binding, and assignment-target uses are
+now rejected by the AST early-error pass, including unreachable branches.
+Local verification: unit suite 1005/1005, `language/reserved-words` 53/53
+passed/executed/discovered, and `language/future-reserved-words` 85/85
+passed/executed/discovered.
 
 **Stage D — Realm hermeticity** — planned. Low direct test262 impact; keep
 queued behind any remaining Proxy/prototype semantic cleanup.

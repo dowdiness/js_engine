@@ -615,6 +615,20 @@ Independent of Stage B (parallel PRs):
 - `construct` NewTarget threading (~12 Proxy).
 - `revocable` `typeof` post-revoke (~8 Proxy).
 
+Post-B.3 language follow-up:
+- ~~**Strict reserved words as early errors.**~~ DONE (2026-04-23,
+  `b79e2e9`). The parser still accepts sloppy-mode `static` as an
+  identifier, but strict IdentifierReference / binding / assignment-target
+  uses are now rejected by the AST early-error walk rather than only by
+  runtime evaluators. This fixes unreachable strict code such as
+  `"use strict"; if (false) { static; }` and destructuring assignment
+  targets like `({x: eval} = obj)`. Local validation:
+  `moon check`, `moon test` (1005/1005),
+  `make test262-filter FILTER=language/reserved-words`
+  (53 passed / 53 executed / 53 discovered), and
+  `make test262-filter FILTER=language/future-reserved-words`
+  (85 passed / 85 executed / 85 discovered).
+
 B.3 follow-ups now worth isolating in later PRs:
 - **General prototype slots for non-Object variants.** Array has a bag-backed
   prototype override as a stopgap, but Map/Set/Promise still expose only

@@ -76,6 +76,10 @@ To refresh the tables above: `python3 scripts/report-test262.py --with-editions`
 ## Per-Category Pass Rates
 
 > **Stale warning.** Per-category counts below are from the 2026-02-22 run and **predate** PRs #49–#69 plus the fixture-resolver fix. They show category shape correctly but individual pass/fail cells are outdated — re-run `python3 test262-runner.py --filter <category> --summary` before citing a specific cell.
+>
+> Exception: `language/reserved-words` and `language/future-reserved-words`
+> were refreshed by targeted strict+non-strict filters on 2026-04-23 after
+> the strict-reserved early-error follow-up.
 
 Top failing categories from the full test262 run (2026-02-22, strict + non-strict):
 
@@ -148,7 +152,7 @@ Top failing categories from the full test262 run (2026-02-22, strict + non-stric
 | language/source-text | 2 | 0 | 100.0% |
 | language/white-space | 134 | 0 | 100.0% |
 | language/function-code | 277 | 4 | 98.6% |
-| language/future-reserved-words | 84 | 1 | 98.8% |
+| language/future-reserved-words | 85 | 0 | 100.0% |
 | language/directive-prologue | 61 | 1 | 98.4% |
 | built-ins/parseInt | 108 | 2 | 98.2% |
 | built-ins/parseFloat | 106 | 2 | 98.1% |
@@ -158,7 +162,7 @@ Top failing categories from the full test262 run (2026-02-22, strict + non-stric
 | built-ins/Set | 370 | 14 | 96.4% |
 | built-ins/decodeURIComponent | 106 | 4 | 96.4% |
 | built-ins/ThrowTypeError | 25 | 1 | 96.2% |
-| language/reserved-words | 51 | 2 | 96.2% |
+| language/reserved-words | 53 | 0 | 100.0% |
 | built-ins/Date | 1,112 | 54 | 95.4% |
 | built-ins/Number | 640 | 30 | 95.5% |
 | language/types | 198 | 9 | 95.7% |
