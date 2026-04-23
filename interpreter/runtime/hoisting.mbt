@@ -478,11 +478,69 @@ fn validate_block_statement_list_early_errors(
 }
 
 ///|
+fn validate_pattern_early_errors(
+  pattern : @ast.Pattern,
+  strict_context : Bool,
+  binding : Bool,
+) -> Unit raise Error {
+  match pattern {
+    IdentPat(name) =>
+      if binding {
+        if strict_context {
+          validate_strict_binding_name(name)
+        }
+      } else {
+        validate_strict_assignment_target_name(strict_context, name)
+      }
+    DefaultPat(inner_pat, default_expr) => {
+      validate_pattern_early_errors(inner_pat, strict_context, binding)
+      validate_block_early_errors_expr(default_expr, strict_context)
+    }
+    AssignTarget(expr) =>
+      match expr {
+        Ident(name, _) =>
+          validate_strict_assignment_target_name(strict_context, name)
+        _ => validate_block_early_errors_expr(expr, strict_context)
+      }
+    ArrayPat(elements, rest) => {
+      for elem in elements {
+        match elem {
+          Some(p) => validate_pattern_early_errors(p, strict_context, binding)
+          None => ()
+        }
+      }
+      match rest {
+        Some(p) => validate_pattern_early_errors(p, strict_context, binding)
+        None => ()
+      }
+    }
+    ObjectPat(props, rest) => {
+      for prop in props {
+        match prop.computed_key {
+          Some(expr) => validate_block_early_errors_expr(expr, strict_context)
+          None => ()
+        }
+        validate_pattern_early_errors(prop.value, strict_context, binding)
+        match prop.default_val {
+          Some(expr) => validate_block_early_errors_expr(expr, strict_context)
+          None => ()
+        }
+      }
+      match rest {
+        Some(p) => validate_pattern_early_errors(p, strict_context, binding)
+        None => ()
+      }
+    }
+  }
+}
+
+///|
 fn validate_block_early_errors_expr(
   expr : @ast.Expr,
   strict_context : Bool,
 ) -> Unit raise Error {
   match expr {
+    Ident(name, _) => validate_strict_identifier_reference(strict_context, name)
     FuncExpr(_, _, body, _) => {
       validate_block_statement_list_early_errors(
         body,
@@ -582,7 +640,10 @@ fn validate_block_early_errors_expr(
       validate_block_early_errors_expr(r, strict_context)
     }
     Unary(_, e, _) => validate_block_early_errors_expr(e, strict_context)
-    Assign(_, e, _) => validate_block_early_errors_expr(e, strict_context)
+    Assign(name, e, _) => {
+      validate_strict_assignment_target_name(strict_context, name)
+      validate_block_early_errors_expr(e, strict_context)
+    }
     Call(callee, args, _) => {
       validate_block_early_errors_expr(callee, strict_context)
       for a in args {
@@ -626,9 +687,17 @@ fn validate_block_early_errors_expr(
       }
     }
     UpdateExpr(_, target, _, _) =>
-      validate_block_early_errors_expr(target, strict_context)
+      match target {
+        Ident(name, _) =>
+          validate_strict_assignment_target_name(strict_context, name)
+        _ => validate_block_early_errors_expr(target, strict_context)
+      }
     CompoundAssign(_, lhs, rhs, _) => {
-      validate_block_early_errors_expr(lhs, strict_context)
+      match lhs {
+        Ident(name, _) =>
+          validate_strict_assignment_target_name(strict_context, name)
+        _ => validate_block_early_errors_expr(lhs, strict_context)
+      }
       validate_block_early_errors_expr(rhs, strict_context)
     }
     Comma(l, r, _) => {
@@ -640,8 +709,10 @@ fn validate_block_early_errors_expr(
         validate_block_early_errors_expr(e, strict_context)
       }
     SpreadExpr(e, _) => validate_block_early_errors_expr(e, strict_context)
-    DestructureAssign(_, rhs, _) =>
+    DestructureAssign(pattern, rhs, _) => {
+      validate_pattern_early_errors(pattern, strict_context, false)
       validate_block_early_errors_expr(rhs, strict_context)
+    }
     OptionalMember(obj, _, _) =>
       validate_block_early_errors_expr(obj, strict_context)
     OptionalComputedMember(obj, key, _) => {
@@ -687,48 +758,123 @@ fn validate_block_early_errors_stmt(
         validate_block_early_errors_stmt(inner, strict_context)
       }
     ExprStmt(expr, _) => validate_block_early_errors_expr(expr, strict_context)
-    IfStmt(_, then_branch, else_branch, _) => {
+    VarDecl(_, name, init, _) => {
+      if strict_context {
+        validate_strict_binding_name(name)
+      }
+      match init {
+        Some(expr) => validate_block_early_errors_expr(expr, strict_context)
+        None => ()
+      }
+    }
+    DestructureDecl(_, pattern, init, _) => {
+      validate_pattern_early_errors(pattern, strict_context, true)
+      validate_block_early_errors_expr(init, strict_context)
+    }
+    IfStmt(cond, then_branch, else_branch, _) => {
+      validate_block_early_errors_expr(cond, strict_context)
       validate_block_early_errors_stmt(then_branch, strict_context)
       match else_branch {
         Some(eb) => validate_block_early_errors_stmt(eb, strict_context)
         None => ()
       }
     }
-    WhileStmt(_, body, _) =>
+    WhileStmt(cond, body, _) => {
+      validate_block_early_errors_expr(cond, strict_context)
       validate_block_early_errors_stmt(body, strict_context)
-    DoWhileStmt(body, _, _) =>
+    }
+    DoWhileStmt(body, cond, _) => {
       validate_block_early_errors_stmt(body, strict_context)
-    ForStmt(init, _, _, body, _) => {
+      validate_block_early_errors_expr(cond, strict_context)
+    }
+    ForStmt(init, cond, update, body, _) => {
       match init {
         Some(init_stmt) =>
           validate_block_early_errors_stmt(init_stmt, strict_context)
         None => ()
       }
+      match cond {
+        Some(expr) => validate_block_early_errors_expr(expr, strict_context)
+        None => ()
+      }
+      match update {
+        Some(expr) => validate_block_early_errors_expr(expr, strict_context)
+        None => ()
+      }
       validate_block_early_errors_stmt(body, strict_context)
     }
-    ForInStmt(_, _, _, body, _) =>
+    ForInStmt(kind, name, obj_expr, body, _) => {
+      match kind {
+        Some(_) => if strict_context { validate_strict_binding_name(name) }
+        None => validate_strict_assignment_target_name(strict_context, name)
+      }
+      validate_block_early_errors_expr(obj_expr, strict_context)
       validate_block_early_errors_stmt(body, strict_context)
-    ForOfStmt(_, _, _, body, _) =>
+    }
+    ForOfStmt(kind, name, iterable_expr, body, _) => {
+      match kind {
+        Some(_) => if strict_context { validate_strict_binding_name(name) }
+        None => validate_strict_assignment_target_name(strict_context, name)
+      }
+      validate_block_early_errors_expr(iterable_expr, strict_context)
       validate_block_early_errors_stmt(body, strict_context)
-    ForInStmtPat(_, _, _, body, _) =>
+    }
+    ForInStmtPat(kind, pattern, obj_expr, body, _) => {
+      validate_pattern_early_errors(pattern, strict_context, kind is Some(_))
+      validate_block_early_errors_expr(obj_expr, strict_context)
       validate_block_early_errors_stmt(body, strict_context)
-    ForOfStmtPat(_, _, _, body, _) =>
+    }
+    ForOfStmtPat(kind, pattern, iterable_expr, body, _) => {
+      validate_pattern_early_errors(pattern, strict_context, kind is Some(_))
+      validate_block_early_errors_expr(iterable_expr, strict_context)
       validate_block_early_errors_stmt(body, strict_context)
-    ForInExpr(_, _, body, _) =>
+    }
+    ForInExpr(lhs, obj_expr, body, _) => {
+      match lhs {
+        Ident(name, _) =>
+          validate_strict_assignment_target_name(strict_context, name)
+        _ => validate_block_early_errors_expr(lhs, strict_context)
+      }
+      validate_block_early_errors_expr(obj_expr, strict_context)
       validate_block_early_errors_stmt(body, strict_context)
-    ForOfExpr(_, _, body, _) =>
+    }
+    ForOfExpr(lhs, iterable_expr, body, _) => {
+      match lhs {
+        Ident(name, _) =>
+          validate_strict_assignment_target_name(strict_context, name)
+        _ => validate_block_early_errors_expr(lhs, strict_context)
+      }
+      validate_block_early_errors_expr(iterable_expr, strict_context)
       validate_block_early_errors_stmt(body, strict_context)
+    }
     LabeledStmt(_, inner, _) =>
       validate_block_early_errors_stmt(inner, strict_context)
-    SwitchStmt(_, cases, _) =>
+    ReturnStmt(expr, _) =>
+      match expr {
+        Some(e) => validate_block_early_errors_expr(e, strict_context)
+        None => ()
+      }
+    ThrowStmt(expr, _) => validate_block_early_errors_expr(expr, strict_context)
+    SwitchStmt(discriminant, cases, _) => {
+      validate_block_early_errors_expr(discriminant, strict_context)
       for case_ in cases {
+        match case_.condition {
+          Some(expr) => validate_block_early_errors_expr(expr, strict_context)
+          None => ()
+        }
         for inner in case_.body {
           validate_block_early_errors_stmt(inner, strict_context)
         }
       }
-    TryCatchStmt(try_body, _, catch_body, finally_body, _) => {
+    }
+    TryCatchStmt(try_body, catch_param, catch_body, finally_body, _) => {
       for inner in try_body {
         validate_block_early_errors_stmt(inner, strict_context)
+      }
+      match catch_param {
+        Some(pattern) =>
+          validate_pattern_early_errors(pattern, strict_context, true)
+        None => ()
       }
       match catch_body {
         Some(cb) =>
@@ -842,12 +988,13 @@ fn validate_block_early_errors_stmt(
           }
         }
       }
-    WithStmt(_, body, _) => {
+    WithStmt(obj_expr, body, _) => {
       if strict_context {
         raise @errors.SyntaxError(
           message="Strict mode code may not include a with statement",
         )
       }
+      validate_block_early_errors_expr(obj_expr, strict_context)
       validate_block_early_errors_stmt(body, strict_context)
     }
     ExportNamedDecl(Some(decl), _, _, _) =>

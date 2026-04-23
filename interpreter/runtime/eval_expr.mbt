@@ -60,16 +60,6 @@ fn Interpreter::eval_prop_value(
 }
 
 ///|
-fn validate_strict_identifier_reference(
-  ctx : ExecContext,
-  name : String,
-) -> Unit raise Error {
-  if ctx.strict && is_strict_reserved_word(name) {
-    raise @errors.SyntaxError(message="Unexpected strict mode reserved word")
-  }
-}
-
-///|
 fn Interpreter::eval_expr(
   self : Interpreter,
   ctx : ExecContext,
@@ -83,7 +73,7 @@ fn Interpreter::eval_expr(
     NullLit(_) => Null
     UndefinedLit(_) => Undefined
     Ident(name, _) => {
-      validate_strict_identifier_reference(ctx, name)
+      validate_strict_identifier_reference(ctx.strict, name)
       env.get(name) catch {
         @errors.ReferenceError(_) =>
           // Fallback: check global object (globalThis) for properties set via this.x = y
@@ -104,13 +94,7 @@ fn Interpreter::eval_expr(
       self.eval_binary(ctx, op, left, right, env, loc)
     Unary(op, operand, loc) => self.eval_unary(ctx, op, operand, env, loc)
     Assign(name, value_expr, _) => {
-      validate_strict_identifier_reference(ctx, name)
-      // Strict mode: assignment to eval/arguments is a SyntaxError
-      if ctx.strict && (name == "eval" || name == "arguments") {
-        raise @errors.SyntaxError(
-          message="Unexpected eval or arguments in strict mode",
-        )
-      }
+      validate_strict_assignment_target_name(ctx.strict, name)
       let value = self.eval_expr(ctx, value_expr, env)
       // SetFunctionName for assignments: x = function() {} gives name "x"
       if is_anonymous_function_definition(value_expr) {
@@ -1570,7 +1554,7 @@ fn Interpreter::eval_unary(
     Typeof =>
       match operand {
         Ident(name, _) => {
-          validate_strict_identifier_reference(ctx, name)
+          validate_strict_identifier_reference(ctx.strict, name)
           if env.has(name) {
             String_(type_of(env.get(name)))
           } else {

@@ -16,6 +16,17 @@ fn run_output(source : String) -> Array[String] raise Error {
 }
 
 ///|
+fn run_error_display(source : String) -> String {
+  try {
+    let _ = run_js(source)
+    "no error"
+  } catch {
+    @runtime.JsException(val) => error_display(val)
+    _ => "unexpected error"
+  }
+}
+
+///|
 fn run_output_annex_b(source : String) -> Array[String] raise Error {
   let interp = new_interpreter(annex_b=true)
   let prog = @parser.parse(source)
@@ -7481,16 +7492,10 @@ test "delete: primitive receiver still returns true (regression guard)" {
 test "strict: assignment to eval throws SyntaxError" {
   let src =
     #|"use strict";
-    #|try {
-    #|  eval = 42;
-    #|  console.log("no error");
-    #|} catch(e) {
-    #|  console.log(e);
-    #|}
-  let output = run_output(src)
+    #|eval = 42;
   inspect(
-    output,
-    content="[\"SyntaxError: Unexpected eval or arguments in strict mode\"]",
+    run_error_display(src),
+    content="SyntaxError: Unexpected eval or arguments in strict mode",
   )
 }
 
@@ -7499,18 +7504,12 @@ test "strict: assignment to arguments throws SyntaxError" {
   let src =
     #|"use strict";
     #|function f() {
-    #|  try {
-    #|    arguments = [1, 2];
-    #|    console.log("no error");
-    #|  } catch(e) {
-    #|    console.log(e);
-    #|  }
+    #|  arguments = [1, 2];
     #|}
     #|f();
-  let output = run_output(src)
   inspect(
-    output,
-    content="[\"SyntaxError: Unexpected eval or arguments in strict mode\"]",
+    run_error_display(src),
+    content="SyntaxError: Unexpected eval or arguments in strict mode",
   )
 }
 
@@ -7518,16 +7517,10 @@ test "strict: assignment to arguments throws SyntaxError" {
 test "strict: ++eval throws SyntaxError" {
   let src =
     #|"use strict";
-    #|try {
-    #|  ++eval;
-    #|  console.log("no error");
-    #|} catch(e) {
-    #|  console.log(e);
-    #|}
-  let output = run_output(src)
+    #|++eval;
   inspect(
-    output,
-    content="[\"SyntaxError: Unexpected eval or arguments in strict mode\"]",
+    run_error_display(src),
+    content="SyntaxError: Unexpected eval or arguments in strict mode",
   )
 }
 
@@ -7535,16 +7528,10 @@ test "strict: ++eval throws SyntaxError" {
 test "strict: eval += 1 throws SyntaxError" {
   let src =
     #|"use strict";
-    #|try {
-    #|  eval += 1;
-    #|  console.log("no error");
-    #|} catch(e) {
-    #|  console.log(e);
-    #|}
-  let output = run_output(src)
+    #|eval += 1;
   inspect(
-    output,
-    content="[\"SyntaxError: Unexpected eval or arguments in strict mode\"]",
+    run_error_display(src),
+    content="SyntaxError: Unexpected eval or arguments in strict mode",
   )
 }
 
@@ -7561,16 +7548,10 @@ test "sloppy: assignment to eval is allowed" {
 test "strict: var eval declaration throws SyntaxError" {
   let src =
     #|"use strict";
-    #|try {
-    #|  var eval = 1;
-    #|  console.log("no error");
-    #|} catch(e) {
-    #|  console.log(e);
-    #|}
-  let output = run_output(src)
+    #|var eval = 1;
   inspect(
-    output,
-    content="[\"SyntaxError: Unexpected eval or arguments in strict mode\"]",
+    run_error_display(src),
+    content="SyntaxError: Unexpected eval or arguments in strict mode",
   )
 }
 
@@ -7578,16 +7559,21 @@ test "strict: var eval declaration throws SyntaxError" {
 test "strict: var arguments declaration throws SyntaxError" {
   let src =
     #|"use strict";
-    #|try {
-    #|  var arguments = 1;
-    #|  console.log("no error");
-    #|} catch(e) {
-    #|  console.log(e);
-    #|}
-  let output = run_output(src)
+    #|var arguments = 1;
   inspect(
-    output,
-    content="[\"SyntaxError: Unexpected eval or arguments in strict mode\"]",
+    run_error_display(src),
+    content="SyntaxError: Unexpected eval or arguments in strict mode",
+  )
+}
+
+///|
+test "strict: destructuring assignment to eval throws SyntaxError" {
+  let src =
+    #|"use strict";
+    #|({x: eval} = {x: 1});
+  inspect(
+    run_error_display(src),
+    content="SyntaxError: Unexpected eval or arguments in strict mode",
   )
 }
 
@@ -7756,16 +7742,10 @@ test "strict: parameter named arguments throws SyntaxError" {
 test "strict: reserved word 'implements' as var name throws SyntaxError" {
   let src =
     #|"use strict";
-    #|try {
-    #|  var implements = 1;
-    #|  console.log("no error");
-    #|} catch(e) {
-    #|  console.log(e);
-    #|}
-  let output = run_output(src)
+    #|var implements = 1;
   inspect(
-    output,
-    content="[\"SyntaxError: Unexpected strict mode reserved word\"]",
+    run_error_display(src),
+    content="SyntaxError: Unexpected strict mode reserved word",
   )
 }
 
@@ -7773,16 +7753,10 @@ test "strict: reserved word 'implements' as var name throws SyntaxError" {
 test "strict: reserved word 'interface' as var name throws SyntaxError" {
   let src =
     #|"use strict";
-    #|try {
-    #|  var interface = 1;
-    #|  console.log("no error");
-    #|} catch(e) {
-    #|  console.log(e);
-    #|}
-  let output = run_output(src)
+    #|var interface = 1;
   inspect(
-    output,
-    content="[\"SyntaxError: Unexpected strict mode reserved word\"]",
+    run_error_display(src),
+    content="SyntaxError: Unexpected strict mode reserved word",
   )
 }
 
@@ -7790,16 +7764,10 @@ test "strict: reserved word 'interface' as var name throws SyntaxError" {
 test "strict: reserved word 'private' as var name throws SyntaxError" {
   let src =
     #|"use strict";
-    #|try {
-    #|  var private = 1;
-    #|  console.log("no error");
-    #|} catch(e) {
-    #|  console.log(e);
-    #|}
-  let output = run_output(src)
+    #|var private = 1;
   inspect(
-    output,
-    content="[\"SyntaxError: Unexpected strict mode reserved word\"]",
+    run_error_display(src),
+    content="SyntaxError: Unexpected strict mode reserved word",
   )
 }
 
@@ -7824,17 +7792,11 @@ test "strict: reserved word 'protected' as function name throws SyntaxError" {
 test "strict: reserved word 'public' as parameter name throws SyntaxError" {
   let src =
     #|"use strict";
-    #|try {
-    #|  function f(public) { return public; }
-    #|  f(1);
-    #|  console.log("no error");
-    #|} catch(e) {
-    #|  console.log(e);
-    #|}
-  let output = run_output(src)
+    #|function f(public) { return public; }
+    #|f(1);
   inspect(
-    output,
-    content="[\"SyntaxError: Unexpected strict mode reserved word\"]",
+    run_error_display(src),
+    content="SyntaxError: Unexpected strict mode reserved word",
   )
 }
 
@@ -7842,16 +7804,10 @@ test "strict: reserved word 'public' as parameter name throws SyntaxError" {
 test "strict: reserved word 'package' as var name throws SyntaxError" {
   let src =
     #|"use strict";
-    #|try {
-    #|  var package = 1;
-    #|  console.log("no error");
-    #|} catch(e) {
-    #|  console.log(e);
-    #|}
-  let output = run_output(src)
+    #|var package = 1;
   inspect(
-    output,
-    content="[\"SyntaxError: Unexpected strict mode reserved word\"]",
+    run_error_display(src),
+    content="SyntaxError: Unexpected strict mode reserved word",
   )
 }
 
@@ -7923,16 +7879,10 @@ test "strict: function-level strict mode with eval assignment" {
     #|  "use strict";
     #|  eval = 1;
     #|}
-    #|try {
-    #|  f();
-    #|  console.log("no error");
-    #|} catch(e) {
-    #|  console.log(e);
-    #|}
-  let output = run_output(src)
+    #|f();
   inspect(
-    output,
-    content="[\"SyntaxError: Unexpected eval or arguments in strict mode\"]",
+    run_error_display(src),
+    content="SyntaxError: Unexpected eval or arguments in strict mode",
   )
 }
 
@@ -7940,16 +7890,10 @@ test "strict: function-level strict mode with eval assignment" {
 test "strict: yield as binding name throws SyntaxError" {
   let src =
     #|"use strict";
-    #|try {
-    #|  var yield = 1;
-    #|  console.log("no error");
-    #|} catch(e) {
-    #|  console.log(e);
-    #|}
-  let output = run_output(src)
+    #|var yield = 1;
   inspect(
-    output,
-    content="[\"SyntaxError: Unexpected strict mode reserved word\"]",
+    run_error_display(src),
+    content="SyntaxError: Unexpected strict mode reserved word",
   )
 }
 
@@ -8025,6 +7969,28 @@ test "future reserved: static is sloppy identifier and strict reserved" {
   err_msg = ""
   try {
     let _ = run_js(strict_typeof)
+  } catch {
+    @runtime.JsException(val) => err_msg = error_display(val)
+    _ => err_msg = "unexpected error"
+  }
+  inspect(err_msg, content="SyntaxError: Unexpected strict mode reserved word")
+  let strict_unreachable_reference =
+    #|"use strict";
+    #|if (false) { static; }
+  err_msg = ""
+  try {
+    let _ = run_js(strict_unreachable_reference)
+  } catch {
+    @runtime.JsException(val) => err_msg = error_display(val)
+    _ => err_msg = "unexpected error"
+  }
+  inspect(err_msg, content="SyntaxError: Unexpected strict mode reserved word")
+  let strict_unreachable_binding =
+    #|"use strict";
+    #|if (false) { var static; }
+  err_msg = ""
+  try {
+    let _ = run_js(strict_unreachable_binding)
   } catch {
     @runtime.JsException(val) => err_msg = error_display(val)
     _ => err_msg = "unexpected error"

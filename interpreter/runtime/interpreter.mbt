@@ -277,6 +277,29 @@ fn validate_strict_binding_name(name : String) -> Unit raise Error {
 }
 
 ///|
+fn validate_strict_identifier_reference(
+  strict : Bool,
+  name : String,
+) -> Unit raise Error {
+  if strict && is_strict_reserved_word(name) {
+    raise @errors.SyntaxError(message="Unexpected strict mode reserved word")
+  }
+}
+
+///|
+fn validate_strict_assignment_target_name(
+  strict : Bool,
+  name : String,
+) -> Unit raise Error {
+  validate_strict_identifier_reference(strict, name)
+  if strict && (name == "eval" || name == "arguments") {
+    raise @errors.SyntaxError(
+      message="Unexpected eval or arguments in strict mode",
+    )
+  }
+}
+
+///|
 /// Check for duplicate parameter names. Raises SyntaxError in strict mode.
 fn check_duplicate_params(params : Array[String]) -> Unit raise Error {
   let seen : Map[String, Bool] = {}
