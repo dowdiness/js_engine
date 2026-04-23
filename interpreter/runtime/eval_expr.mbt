@@ -1392,7 +1392,7 @@ fn eval_binary_op(
               } catch {
                 _ => ()
               }
-              // Check named properties side-table
+              // Check bag-backed named properties.
               if get_array_named_prop(data, key) is Some(_) {
                 return Bool(true)
               }
@@ -1648,6 +1648,23 @@ fn Interpreter::eval_unary(
               let _ = data.bag.descriptors.remove(prop)
               Bool(true)
             }
+            Array(data) => {
+              match data.bag.descriptors.get(prop) {
+                Some(desc) =>
+                  if !desc.configurable {
+                    if ctx.strict {
+                      raise @errors.TypeError(
+                        message="Cannot delete property '\{prop}'",
+                      )
+                    }
+                    return Bool(false)
+                  }
+                None => ()
+              }
+              let _ = data.bag.properties.remove(prop)
+              let _ = data.bag.descriptors.remove(prop)
+              Bool(true)
+            }
             Undefined | Null =>
               raise @errors.TypeError(
                 message="Cannot convert undefined or null to object",
@@ -1671,6 +1688,44 @@ fn Interpreter::eval_unary(
               match key {
                 Symbol(sym) => {
                   // Delete a symbol-keyed property
+                  match data.bag.symbol_descriptors.get(sym.id) {
+                    Some(desc) =>
+                      if !desc.configurable {
+                        if ctx.strict {
+                          raise @errors.TypeError(
+                            message="Cannot delete property",
+                          )
+                        }
+                        return Bool(false)
+                      }
+                    None => ()
+                  }
+                  let _ = data.bag.symbol_properties.remove(sym.id)
+                  let _ = data.bag.symbol_descriptors.remove(sym.id)
+                  Bool(true)
+                }
+                _ => {
+                  let k = to_js_string(key)
+                  match data.bag.descriptors.get(k) {
+                    Some(desc) =>
+                      if !desc.configurable {
+                        if ctx.strict {
+                          raise @errors.TypeError(
+                            message="Cannot delete property '\{k}'",
+                          )
+                        }
+                        return Bool(false)
+                      }
+                    None => ()
+                  }
+                  let _ = data.bag.properties.remove(k)
+                  let _ = data.bag.descriptors.remove(k)
+                  Bool(true)
+                }
+              }
+            Array(data) =>
+              match key {
+                Symbol(sym) => {
                   match data.bag.symbol_descriptors.get(sym.id) {
                     Some(desc) =>
                       if !desc.configurable {

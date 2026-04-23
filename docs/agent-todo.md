@@ -161,7 +161,7 @@ Same file and pattern as `withResolvers`. After implementing: remove `"promise-t
 **Remaining failures (42, all pre-existing or out-of-scope)**:
 - 20: Duplicate named groups (ES2024 — distinct from ES2018 rejection, allows same name in alternation branches)
 - 4: Functional replace callback for regex (not implemented)
-- 6: `verifyProperty`/`getOwnPropertyDescriptor` on array named props (side table not visible)
+- ~~6: `verifyProperty`/`getOwnPropertyDescriptor` on array named props (side table not visible)~~ — fixed by Stage C ArrayData.bag migration.
 - 4: RegExp subclass exec/match forwarding
 - 8: Unicode identifiers (`π`, `𝑓`) in JS lexer (lexer can't parse non-ASCII identifiers)
 
@@ -171,14 +171,14 @@ Same file and pattern as `withResolvers`. After implementing: remove `"promise-t
 
 Cross-cutting issues discovered during PR #47 that affect more than just named groups.
 
-### 1. Array named props invisible to `getOwnPropertyDescriptor`
+### ~~1. Array named props invisible to `getOwnPropertyDescriptor`~~ — DONE (Stage C)
 
 **Impact**: ~6 named-groups tests + many regex/array tests across the suite
-**File**: `interpreter/runtime/array_side_tables.mbt`, `interpreter/stdlib/builtins_object_descriptors.mbt`
+**File**: `interpreter/runtime/value.mbt`, `interpreter/stdlib/builtins_object_descriptors.mbt`
 
-`set_array_named_prop` stores properties (like `index`, `input`, `groups` on regex match arrays) in a side table (`array_named_props`). `Object.getOwnPropertyDescriptor` doesn't check this side table, so these properties are invisible to descriptor inspection. The `verifyProperty` test262 helper fails for all array named props.
+`set_array_named_prop` now stores properties (like `index`, `input`, `groups` on regex match arrays) in `ArrayData.bag`. `Object.getOwnPropertyDescriptor`, `Object.getOwnPropertyNames`, `Object.getOwnPropertySymbols`, and `Object.getOwnPropertyDescriptors` observe the bag-backed array properties.
 
-**Fix**: Make `getOwnPropertyDescriptor` for `Array` values check the side table. Also consider migrating match arrays to `Object` with indexed elements instead of `Array` with named prop side table.
+**Fix**: Stage C migrated named/symbol/length override helpers off the legacy side tables and into the embedded `PropertyBag`.
 
 ### ~~2. Regex callback replace not implemented~~ — DONE (2026-04-16)
 
@@ -588,8 +588,9 @@ representation). Staged:
     code swallows `to_number(value)` TypeErrors, which the
     `typedArr[0] = Symbol()` case requires to propagate. Separate bug,
     not a Stage B.2 regression.
-- **Stage C — ArrayData.bag.** ~700+ Array tests; unlocks Issue #1
-  (descriptor visibility). Ship BEFORE Stage B.3 (shared read site).
+- ~~**Stage C — ArrayData.bag.**~~ DONE. Array named/symbol/length
+  override state now lives in `ArrayData.bag`, and indexed descriptors
+  persist their attributes there.
 - **Stage B.3 — `[[HasProperty]]` dispatcher.** ~15 Proxy tests.
 - **Stage D — Realm hermeticity.** 0 tests; ship when convenient.
 

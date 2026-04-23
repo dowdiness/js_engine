@@ -340,6 +340,112 @@ pub(all) enum Value {
 }
 
 ///|
+const ARRAY_LENGTH_OVERRIDE_SYMBOL_ID = -1
+
+///|
+fn default_data_descriptor() -> PropDescriptor {
+  {
+    writable: true,
+    enumerable: true,
+    configurable: true,
+    getter: None,
+    setter: None,
+  }
+}
+
+///|
+/// Store sparse Array length state in the ArrayData PropertyBag. This keeps
+/// Array exotic state attached to the array object instead of a module-level
+/// identity side table, using a non-forgeable internal symbol id so ordinary
+/// string-keyed property lookup cannot observe it.
+pub fn set_array_length_override(arr : ArrayData, len : Int64) -> Unit {
+  arr.bag.symbol_properties[ARRAY_LENGTH_OVERRIDE_SYMBOL_ID] = Number(
+    len.to_double(),
+  )
+}
+
+///|
+pub fn get_array_length_override(arr : ArrayData) -> Int64? {
+  match arr.bag.symbol_properties.get(ARRAY_LENGTH_OVERRIDE_SYMBOL_ID) {
+    Some(Number(n)) => Some(n.to_int64())
+    _ => None
+  }
+}
+
+///|
+pub fn clear_array_length_override(arr : ArrayData) -> Unit {
+  let _ = arr.bag.symbol_properties.remove(ARRAY_LENGTH_OVERRIDE_SYMBOL_ID)
+  let _ = arr.bag.symbol_descriptors.remove(ARRAY_LENGTH_OVERRIDE_SYMBOL_ID)
+}
+
+///|
+pub fn set_array_named_prop(
+  arr : ArrayData,
+  key : String,
+  value : Value,
+) -> Unit {
+  arr.bag.properties[key] = value
+  if !arr.bag.descriptors.contains(key) {
+    arr.bag.descriptors[key] = default_data_descriptor()
+  }
+}
+
+///|
+pub fn get_array_named_prop(arr : ArrayData, key : String) -> Value? {
+  arr.bag.properties.get(key)
+}
+
+///|
+pub fn set_array_symbol_prop(
+  arr : ArrayData,
+  sym_id : Int,
+  value : Value,
+) -> Unit {
+  arr.bag.symbol_properties[sym_id] = value
+  if !arr.bag.symbol_descriptors.contains(sym_id) {
+    arr.bag.symbol_descriptors[sym_id] = default_data_descriptor()
+  }
+}
+
+///|
+pub fn get_array_symbol_prop(arr : ArrayData, sym_id : Int) -> Value? {
+  arr.bag.symbol_properties.get(sym_id)
+}
+
+///|
+pub fn set_array_iterator_override(
+  arr : ArrayData,
+  getter : Value?,
+  value : Value?,
+) -> Unit {
+  let iterator_sym = get_iterator_symbol()
+  match value {
+    Some(v) => arr.bag.symbol_properties[iterator_sym.id] = v
+    None => {
+      let _ = arr.bag.symbol_properties.remove(iterator_sym.id)
+    }
+  }
+  arr.bag.symbol_descriptors[iterator_sym.id] = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter,
+    setter: None,
+  }
+}
+
+///|
+pub fn get_array_iterator_override(arr : ArrayData) -> (Value?, Value?) {
+  let iterator_sym = get_iterator_symbol()
+  let getter = match arr.bag.symbol_descriptors.get(iterator_sym.id) {
+    Some(desc) => desc.getter
+    None => None
+  }
+  let value = arr.bag.symbol_properties.get(iterator_sym.id)
+  (getter, value)
+}
+
+///|
 pub suberror JsException {
   JsException(Value)
 }

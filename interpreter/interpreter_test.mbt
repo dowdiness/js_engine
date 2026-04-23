@@ -10730,6 +10730,100 @@ test "B.2: Object.getOwnPropertyDescriptor on array elements and length" {
 }
 
 ///|
+/// Stage C: RegExp match arrays store named properties in ArrayData.bag, so
+/// ordinary own-property inspection observes them.
+test "Stage C: RegExp match array named properties are own descriptors" {
+  let src =
+    #|var match = /(a)(b)/.exec("zabz");
+    #|var indexDesc = Object.getOwnPropertyDescriptor(match, "index");
+    #|var inputDesc = Object.getOwnPropertyDescriptor(match, "input");
+    #|var groupsDesc = Object.getOwnPropertyDescriptor(match, "groups");
+    #|console.log(indexDesc.value + "/" + indexDesc.writable + "/" + indexDesc.enumerable + "/" + indexDesc.configurable);
+    #|console.log(inputDesc.value + "/" + inputDesc.writable + "/" + inputDesc.enumerable + "/" + inputDesc.configurable);
+    #|console.log(groupsDesc.value === undefined);
+    #|var names = Object.getOwnPropertyNames(match);
+    #|console.log(names.indexOf("index") >= 0);
+    #|console.log(Object.keys(match).indexOf("input") >= 0);
+    #|console.log(match.propertyIsEnumerable("groups"));
+    #|var seenGroups = false;
+    #|for (var k in match) { if (k === "groups") seenGroups = true; }
+    #|console.log(seenGroups);
+    #|console.log(delete match.groups);
+    #|console.log(match.hasOwnProperty("groups"));
+    #|var descs = Object.getOwnPropertyDescriptors(match);
+    #|console.log(descs.index.value);
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"1/true/true/true\", \"zabz/true/true/true\", \"true\", \"true\", \"true\", \"true\", \"true\", \"true\", \"false\", \"1\"]",
+  )
+}
+
+///|
+/// Stage C: array indexed element descriptors are stored on ArrayData.bag.
+test "Stage C: Array index descriptors persist attributes" {
+  let src =
+    #|var arr = [10, 20, 30];
+    #|Object.defineProperty(arr, "0", { value: 11, writable: false, enumerable: false, configurable: false });
+    #|var d0 = Object.getOwnPropertyDescriptor(arr, "0");
+    #|console.log(d0.value + "/" + d0.writable + "/" + d0.enumerable + "/" + d0.configurable);
+    #|console.log(Object.keys(arr).indexOf("0") < 0);
+    #|arr[0] = 99;
+    #|console.log(arr[0]);
+    #|try {
+    #|  Object.defineProperty(arr, "length", { value: 0 });
+    #|  console.log("ok");
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+    #|console.log(arr.length);
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"11/false/false/false\", \"true\", \"11\", \"TypeError\", \"1\"]",
+  )
+}
+
+///|
+/// Stage C: sparse length overrides are internal state, not observable
+/// string-keyed properties.
+test "Stage C: Array sparse length override is hidden" {
+  let src =
+    #|var arr = new Array(10000001);
+    #|console.log(arr.length);
+    #|console.log(arr["length"]);
+    #|console.log(arr["[[ArrayLengthOverride]]"]);
+    #|console.log(arr.hasOwnProperty("[[ArrayLengthOverride]]"));
+    #|console.log(Object.getOwnPropertyDescriptor(arr, "[[ArrayLengthOverride]]"));
+    #|console.log(Object.getOwnPropertyNames(arr).indexOf("[[ArrayLengthOverride]]"));
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"10000001\", \"10000001\", \"undefined\", \"false\", \"undefined\", \"-1\"]",
+  )
+}
+
+///|
+/// Stage C: setter-only indexed accessors read as undefined instead of
+/// falling through to the dense element backing store.
+test "Stage C: Array setter-only index accessor reads undefined" {
+  let src =
+    #|var arr = [10];
+    #|var seen = 0;
+    #|Object.defineProperty(arr, "0", { set: function(v) { seen = v; }, enumerable: true, configurable: true });
+    #|console.log(arr[0]);
+    #|console.log(arr["0"]);
+    #|arr[0] = 42;
+    #|console.log(seen);
+    #|console.log(Object.getOwnPropertyDescriptor(arr, "0").get);
+  let output = run_output(src)
+  inspect(
+    output,
+    content="[\"undefined\", \"undefined\", \"42\", \"undefined\"]",
+  )
+}
+
+///|
 /// §10.4.2.4: Object.defineProperty(arr, "length", { value: N, writable: false })
 /// truncates AND locks length in a single step.
 test "B.2: Array length partial-truncate and lock writable in one step" {

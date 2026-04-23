@@ -20,9 +20,17 @@ pub fn Interpreter::get_property(
         if num_idx >= 0 &&
           num_idx < data.elements.length() &&
           num_idx.to_string() == prop {
+          match data.bag.descriptors.get(prop) {
+            Some(desc) =>
+              match desc.getter {
+                Some(getter) => return self.call_value(getter, obj, [], loc)
+                None => if desc.setter is Some(_) { return Undefined }
+              }
+            None => ()
+          }
           data.elements[num_idx]
         } else {
-          // Check named properties side table (e.g., index, input on exec results)
+          // Check named properties (e.g., index, input on exec results)
           match get_array_named_prop(data, prop) {
             Some(v) => v
             None => {
@@ -190,11 +198,22 @@ fn Interpreter::get_property_of_object(
           Array(arr_data) => {
             // Handle Array values in the prototype chain
             if prop == "length" {
-              return Number(arr_data.elements.length().to_double())
+              return match get_array_length_override(arr_data) {
+                Some(n64) => Number(n64.to_double())
+                None => Number(arr_data.elements.length().to_double())
+              }
             }
             // Check numeric index access on array elements
             let num_idx = @string.parse_int(prop) catch { _ => -1 }
             if num_idx >= 0 && num_idx < arr_data.elements.length() {
+              match arr_data.bag.descriptors.get(prop) {
+                Some(desc) =>
+                  match desc.getter {
+                    Some(getter) => return self.call_value(getter, obj, [], loc)
+                    None => if desc.setter is Some(_) { return Undefined }
+                  }
+                None => ()
+              }
               return arr_data.elements[num_idx]
             }
             match get_array_named_prop(arr_data, prop) {
@@ -673,7 +692,7 @@ pub fn Interpreter::get_computed_property(
           return Undefined
         }
         Array(arr) => {
-          // Check array's own symbol property side-table first
+          // Check array's own symbol property bag first.
           match get_array_symbol_prop(arr, sym.id) {
             Some(v) => return v
             None => ()
@@ -1168,12 +1187,25 @@ pub fn Interpreter::get_computed_property(
         Number(n) => {
           let i = n.to_int()
           if i >= 0 && i < data.elements.length() {
+            let key = i.to_string()
+            match data.bag.descriptors.get(key) {
+              Some(desc) =>
+                match desc.getter {
+                  Some(getter) => return self.call_value(getter, obj, [], loc)
+                  None => if desc.setter is Some(_) { return Undefined }
+                }
+              None => ()
+            }
             data.elements[i]
           } else {
             Undefined
           }
         }
-        String_("length") => Number(data.elements.length().to_double())
+        String_("length") =>
+          match get_array_length_override(data) {
+            Some(n64) => Number(n64.to_double())
+            None => Number(data.elements.length().to_double())
+          }
         String_(s) => {
           // Canonical numeric index string check: parseDouble(s).toString() === s
           let mut numeric_result : Value? = None
@@ -1184,6 +1216,15 @@ pub fn Interpreter::get_computed_property(
               if idx.to_double() == n &&
                 idx >= 0 &&
                 idx < data.elements.length() {
+                match data.bag.descriptors.get(s) {
+                  Some(desc) =>
+                    match desc.getter {
+                      Some(getter) =>
+                        return self.call_value(getter, obj, [], loc)
+                      None => if desc.setter is Some(_) { return Undefined }
+                    }
+                  None => ()
+                }
                 numeric_result = Some(data.elements[idx])
               }
             }
@@ -1193,7 +1234,7 @@ pub fn Interpreter::get_computed_property(
           match numeric_result {
             Some(v) => v
             None =>
-              // Check side table for named properties, then methods
+              // Check bag-backed named properties, then methods.
               match get_array_named_prop(data, s) {
                 Some(v) => v
                 None =>
@@ -1494,7 +1535,7 @@ pub fn Interpreter::set_property(
         // through to set_array_named_prop).
         // Only canonical numeric index strings (e.g. "0", "1", "42") are
         // treated as array indices. Non-canonical forms like "01", "1.0",
-        // "+1" go to the named-property side table per §10.4.2.1 / §7.1.21
+        // "+1" go to named properties per §10.4.2.1 / §7.1.21
         // CanonicalNumericIndexString.
         let i = @string.parse_int(prop) catch { _ => -1 }
         if i >= 0 && i.to_string() == prop {
@@ -1502,6 +1543,25 @@ pub fn Interpreter::set_property(
           let logical_len = match get_array_length_override(data) {
             Some(n64) => n64.to_int()
             None => data.elements.length()
+          }
+          match data.bag.descriptors.get(prop) {
+            Some(desc) =>
+              match desc.setter {
+                Some(setter) => {
+                  let _ = self.call_value(setter, receiver, [value], loc)
+                  return value
+                }
+                None =>
+                  if !desc.writable {
+                    if strict {
+                      raise @errors.TypeError(
+                        message="Cannot assign to read only property '\{prop}'",
+                      )
+                    }
+                    return value
+                  }
+              }
+            None => ()
           }
           // §10.4.2.1 step 3.b: extend requires length_writable.
           if i >= logical_len && !data.length_writable {
@@ -2263,6 +2323,26 @@ pub fn Interpreter::set_computed_property(
               }
               return value
             }
+            let prop = i.to_string()
+            match data.bag.descriptors.get(prop) {
+              Some(desc) =>
+                match desc.setter {
+                  Some(setter) => {
+                    let _ = self.call_value(setter, receiver, [value], loc)
+                    return value
+                  }
+                  None =>
+                    if !desc.writable {
+                      if strict {
+                        raise @errors.TypeError(
+                          message="Cannot assign to read only property '\{prop}'",
+                        )
+                      }
+                      return value
+                    }
+                }
+              None => ()
+            }
             while data.elements.length() <= i {
               data.elements.push(Undefined)
             }
@@ -2310,6 +2390,30 @@ pub fn Interpreter::set_computed_property(
                         )
                       }
                       return value
+                    }
+                    match data.bag.descriptors.get(prop) {
+                      Some(desc) =>
+                        match desc.setter {
+                          Some(setter) => {
+                            let _ = self.call_value(
+                              setter,
+                              receiver,
+                              [value],
+                              loc,
+                            )
+                            return value
+                          }
+                          None =>
+                            if !desc.writable {
+                              if strict {
+                                raise @errors.TypeError(
+                                  message="Cannot assign to read only property '\{prop}'",
+                                )
+                              }
+                              return value
+                            }
+                        }
+                      None => ()
                     }
                     while data.elements.length() <= idx {
                       data.elements.push(Undefined)
@@ -2705,7 +2809,10 @@ pub fn ordinary_get_own_value_for_descriptor(
           }
         Array(arr) => {
           if k == "length" {
-            return Value::Number(arr.elements.length().to_double())
+            return match get_array_length_override(arr) {
+              Some(n64) => Value::Number(n64.to_double())
+              None => Value::Number(arr.elements.length().to_double())
+            }
           }
           let idx = @string.parse_int(k) catch { _ => -1 }
           if idx >= 0 && idx.to_string() == k && idx < arr.elements.length() {
@@ -2781,13 +2888,17 @@ pub fn ordinary_get_own_property(
           }
           let idx = @string.parse_int(k) catch { _ => -1 }
           if idx >= 0 && idx.to_string() == k && idx < arr.elements.length() {
-            return Some({
-              writable: true,
-              enumerable: true,
-              configurable: true,
-              getter: None,
-              setter: None,
-            })
+            return match arr.bag.descriptors.get(k) {
+              Some(desc) => Some(desc)
+              None =>
+                Some({
+                  writable: true,
+                  enumerable: true,
+                  configurable: true,
+                  getter: None,
+                  setter: None,
+                })
+            }
           }
           ordinary_get_own_string_desc(arr.bag, k)
         }
@@ -3333,14 +3444,6 @@ pub fn Interpreter::array_define_own_property(
       let idx = @string.parse_int(k) catch { _ => -1 }
       let is_index = idx >= 0 && idx.to_string() == k
       if is_index {
-        // Default-shape check: any explicit false on writable/enumerable/
-        // configurable rejects (no storage pre-Stage-C).
-        if partial.writable is Some(false) ||
-          partial.enumerable is Some(false) ||
-          partial.configurable is Some(false) ||
-          partial.is_accessor() {
-          return false
-        }
         // Check length writable if we're extending. Compare against the
         // logical length (override when sparse), not physical elements count.
         let logical_len = match get_array_length_override(arr) {
@@ -3350,9 +3453,37 @@ pub fn Interpreter::array_define_own_property(
         if idx >= logical_len && !arr.length_writable {
           return false
         }
+        let had_index = idx < arr.elements.length()
         // Grow elements to idx+1 with Undefined filler.
         while arr.elements.length() <= idx {
           arr.elements.push(Undefined)
+        }
+        match arr.bag.descriptors.get(k) {
+          Some(current) => {
+            if !current.configurable {
+              if !is_compatible_with_non_configurable(
+                  current,
+                  partial,
+                  arr.elements[idx],
+                ) {
+                return false
+              }
+            }
+            arr.bag.descriptors[k] = merge_partial_into(current, partial)
+          }
+          None =>
+            if had_index {
+              let current = {
+                writable: true,
+                enumerable: true,
+                configurable: true,
+                getter: None,
+                setter: None,
+              }
+              arr.bag.descriptors[k] = merge_partial_into(current, partial)
+            } else {
+              arr.bag.descriptors[k] = complete_partial_for_new(partial)
+            }
         }
         match partial.value {
           Some(v) => arr.elements[idx] = v
@@ -3458,17 +3589,18 @@ pub fn Interpreter::array_set_length(
   // Step 8-9: defer writable:false until after truncation; remember intent.
   let lock_after = partial.writable is Some(false)
   // Step 10: partial-truncation loop. Delete indices in descending order.
-  // We have no per-index descriptor storage pre-Stage-C, so every element
-  // is configurable by default — no delete ever fails. The loop structure
-  // is kept spec-faithful so Stage C can wire per-index configurable into
-  // the fail branch. `new_len64` safely fits in Int for truncation targets
-  // (must be less than current length, which is bounded by JS engine).
+  // `new_len64` safely fits in Int for truncation targets (must be less
+  // than current length, which is bounded by JS engine).
   let new_len = new_len64.to_int()
   let mut i = arr.elements.length() - 1
   while i >= new_len {
     // Per §10.4.2.4 step 14.b: if element is non-configurable, stop.
-    //   (Stage C will consult arr.bag.descriptors[i.to_string()] here.)
+    match arr.bag.descriptors.get(i.to_string()) {
+      Some(desc) => if !desc.configurable { return false }
+      None => ()
+    }
     let _removed = arr.elements.pop()
+    let _ = arr.bag.descriptors.remove(i.to_string())
     i = i - 1
   }
   if lock_after {

@@ -1535,8 +1535,30 @@ fn collect_for_in_keys(obj : Value) -> Array[String] raise Error {
         for i = 0; i < data.elements.length(); i = i + 1 {
           let k = i.to_string()
           if !seen.contains(k) {
+            let enumerable = match data.bag.descriptors.get(k) {
+              Some(d) => d.enumerable
+              None => true
+            }
             seen[k] = true
-            keys.push(k)
+            if enumerable {
+              keys.push(k)
+            }
+          }
+        }
+        let sorted = sort_property_keys(data.bag.properties)
+        for k in sorted {
+          if k.has_prefix("[[") {
+            continue
+          }
+          if !seen.contains(k) {
+            let enumerable = match data.bag.descriptors.get(k) {
+              Some(d) => d.enumerable
+              None => true
+            }
+            seen[k] = true
+            if enumerable {
+              keys.push(k)
+            }
           }
         }
         break

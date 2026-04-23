@@ -150,9 +150,8 @@ pub fn proxy_is_extensible(
 
 ///|
 /// Check if target has a non-configurable own property with the given string key.
-/// Descriptors live in `bag` for Object/Map/Set/Promise. Arrays synthesize:
-/// `length` is non-configurable; indexed elements default to configurable
-/// (no per-index descriptor storage pre-Stage-C).
+/// Descriptors live in `bag` for all object-typed values. Arrays synthesize
+/// `length` and consult per-index descriptors stored in ArrayData.bag.
 fn target_has_non_configurable_key(target : Value, key : String) -> Bool {
   match target {
     Object(data) =>
@@ -175,10 +174,15 @@ fn target_has_non_configurable_key(target : Value, key : String) -> Bool {
         Some(desc) => !desc.configurable
         None => false
       }
-    Array(_) =>
-      // "length" is non-configurable per §10.4.2. Indexed elements and
-      // named props have no per-element configurable tracking today.
-      key == "length"
+    Array(arr) =>
+      if key == "length" {
+        true
+      } else {
+        match arr.bag.descriptors.get(key) {
+          Some(desc) => !desc.configurable
+          None => false
+        }
+      }
     _ => false
   }
 }
@@ -186,7 +190,7 @@ fn target_has_non_configurable_key(target : Value, key : String) -> Bool {
 ///|
 /// Get the descriptor for a string-keyed own property on the target.
 /// Arrays synthesize `length` and indexed element descriptors; other own
-/// named props live on `bag` for Object/Map/Set/Promise.
+/// named props live on `bag`.
 fn target_get_own_descriptor(target : Value, key : String) -> PropDescriptor? {
   // Properties created via ordinary assignment (`o.x = 1`) live in
   // bag.properties without always receiving a bag.descriptors entry.
@@ -254,16 +258,13 @@ fn target_get_own_descriptor(target : Value, key : String) -> PropDescriptor? {
       // Indexed element?
       let idx = @string.parse_int(key) catch { _ => -1 }
       if idx >= 0 && idx.to_string() == key && idx < arr.elements.length() {
-        return Some({
-          writable: true,
-          enumerable: true,
-          configurable: true,
-          getter: None,
-          setter: None,
-        })
+        return match arr.bag.descriptors.get(key) {
+          Some(d) => Some(d)
+          None => Some(default_data)
+        }
       }
-      // Array named props (via side-table) surface through bag descriptors
-      // when explicitly registered; otherwise None.
+      // Array named props surface through bag descriptors when explicitly
+      // registered; assignment-created props synthesize the default shape.
       match arr.bag.descriptors.get(key) {
         Some(d) => Some(d)
         None =>
@@ -1542,8 +1543,6 @@ pub fn proxy_define_property(
                     None => Undefined
                   }
                 Array(arr) =>
-                  // Array Symbol values live in the side table, not arr.bag.
-                  // (Pre-Stage-C inconsistency; Stage C unifies onto bag.)
                   match get_array_symbol_prop(arr, sym.id) {
                     Some(v) => v
                     None => Undefined

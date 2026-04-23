@@ -134,7 +134,7 @@ pub fn setup_object_builtins(
                   idx < data.elements.length() {
                   Value::Bool(true)
                 } else {
-                  // Check named properties side-table
+                  // Check named properties stored in ArrayData.bag.
                   Bool(@runtime.get_array_named_prop(data, key) is Some(_))
                 }
               }
@@ -180,6 +180,16 @@ pub fn setup_object_builtins(
                     return Value::Bool(false)
                   }
               }
+            Value::Array(data) =>
+              match data.bag.symbol_descriptors.get(sym.id) {
+                Some(d) => return Bool(d.enumerable)
+                None =>
+                  if data.bag.symbol_properties.contains(sym.id) {
+                    return Value::Bool(true)
+                  } else {
+                    return Value::Bool(false)
+                  }
+              }
             _ => return Value::Bool(false)
           }
         _ => ()
@@ -200,9 +210,19 @@ pub fn setup_object_builtins(
             Value::Bool(false) // length is not enumerable
           } else {
             let idx = @string.parse_int(key) catch { _ => -1 }
-            Bool(
-              idx >= 0 && idx.to_string() == key && idx < data.elements.length(),
-            )
+            if idx >= 0 &&
+              idx.to_string() == key &&
+              idx < data.elements.length() {
+              match data.bag.descriptors.get(key) {
+                Some(d) => Bool(d.enumerable)
+                None => Bool(true)
+              }
+            } else {
+              match data.bag.descriptors.get(key) {
+                Some(d) => Bool(d.enumerable)
+                None => Bool(data.bag.properties.contains(key))
+              }
+            }
           }
         Value::String_(s) =>
           if key == "length" {
@@ -522,10 +542,31 @@ pub fn setup_object_builtins(
                 @runtime.make_array(keys)
               }
               Value::Array(data) => {
-                // Array objects have enumerable indexed properties
+                // Array objects have enumerable indexed properties followed by
+                // enumerable own named properties in their embedded bag.
                 let keys : Array[Value] = []
                 for i = 0; i < data.elements.length(); i = i + 1 {
-                  keys.push(Value::String_(i.to_string()))
+                  let key = i.to_string()
+                  let enumerable = match data.bag.descriptors.get(key) {
+                    Some(d) => d.enumerable
+                    None => true
+                  }
+                  if enumerable {
+                    keys.push(Value::String_(key))
+                  }
+                }
+                let sorted = @runtime.sort_property_keys(data.bag.properties)
+                for k in sorted {
+                  if is_internal_array_bag_key(k) {
+                    continue
+                  }
+                  let enumerable = match data.bag.descriptors.get(k) {
+                    Some(d) => d.enumerable
+                    None => true
+                  }
+                  if enumerable {
+                    keys.push(Value::String_(k))
+                  }
                 }
                 @runtime.make_array(keys)
               }
@@ -568,10 +609,34 @@ pub fn setup_object_builtins(
                 @runtime.make_array(vals)
               }
               Value::Array(data) => {
-                // Array objects - return array elements (defensive copy)
+                // Array objects - return array elements, then enumerable own
+                // named properties from the embedded bag.
                 let vals : Array[Value] = []
-                for elem in data.elements {
-                  vals.push(elem)
+                for i = 0; i < data.elements.length(); i = i + 1 {
+                  let key = i.to_string()
+                  let enumerable = match data.bag.descriptors.get(key) {
+                    Some(d) => d.enumerable
+                    None => true
+                  }
+                  if enumerable {
+                    vals.push(data.elements[i])
+                  }
+                }
+                let sorted = @runtime.sort_property_keys(data.bag.properties)
+                for k in sorted {
+                  if is_internal_array_bag_key(k) {
+                    continue
+                  }
+                  let enumerable = match data.bag.descriptors.get(k) {
+                    Some(d) => d.enumerable
+                    None => true
+                  }
+                  if enumerable {
+                    match data.bag.properties.get(k) {
+                      Some(v) => vals.push(v)
+                      None => ()
+                    }
+                  }
                 }
                 @runtime.make_array(vals)
               }
@@ -622,15 +687,41 @@ pub fn setup_object_builtins(
                 @runtime.make_array(entries)
               }
               Value::Array(data) => {
-                // Array objects - keys must be strings per spec
+                // Array objects - keys must be strings per spec.
                 let entries : Array[Value] = []
                 for i = 0; i < data.elements.length(); i = i + 1 {
-                  entries.push(
-                    @runtime.make_array([
-                      Value::String_(i.to_string()),
-                      data.elements[i],
-                    ]),
-                  )
+                  let key = i.to_string()
+                  let enumerable = match data.bag.descriptors.get(key) {
+                    Some(d) => d.enumerable
+                    None => true
+                  }
+                  if enumerable {
+                    entries.push(
+                      @runtime.make_array([
+                        Value::String_(key),
+                        data.elements[i],
+                      ]),
+                    )
+                  }
+                }
+                let sorted = @runtime.sort_property_keys(data.bag.properties)
+                for k in sorted {
+                  if is_internal_array_bag_key(k) {
+                    continue
+                  }
+                  let enumerable = match data.bag.descriptors.get(k) {
+                    Some(d) => d.enumerable
+                    None => true
+                  }
+                  if enumerable {
+                    match data.bag.properties.get(k) {
+                      Some(v) =>
+                        entries.push(
+                          @runtime.make_array([Value::String_(k), v]),
+                        )
+                      None => ()
+                    }
+                  }
                 }
                 @runtime.make_array(entries)
               }

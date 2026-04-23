@@ -1871,7 +1871,7 @@ fn setup_array_builtins(
                 let len64 = n.to_int64()
                 // Use Array::make for a fast single allocation. Cap at 10M to
                 // avoid OOM for pathological inputs; lengths above the cap are
-                // tracked in the length-override side table so arr.length still
+                // tracked in ArrayData.bag so arr.length still
                 // reports the correct value.
                 let elements : Array[Value] = if len64 <= 10000000L {
                   Array::make(len64.to_int(), Undefined)

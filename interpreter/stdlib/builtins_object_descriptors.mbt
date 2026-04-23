@@ -5,6 +5,11 @@
 /// method on the Object constructor.
 
 ///|
+fn is_internal_array_bag_key(key : String) -> Bool {
+  key.has_prefix("[[")
+}
+
+///|
 fn make_get_own_property_names_func() -> Value {
   @runtime.make_interp_static_func(name="getOwnPropertyNames", length=1, fn(
     interp,
@@ -45,6 +50,12 @@ fn make_get_own_property_names_func() -> Value {
           keys.push(Value::String_(i.to_string()))
         }
         keys.push(Value::String_("length"))
+        let sorted = @runtime.sort_property_keys(data.bag.properties)
+        for k in sorted {
+          if !is_internal_array_bag_key(k) {
+            keys.push(Value::String_(k))
+          }
+        }
         @runtime.make_array(keys)
       }
       Value::String_(s) => {
@@ -89,6 +100,16 @@ fn make_get_own_property_symbols_func(sym_state : SymbolState) -> Value {
         @runtime.make_array(result)
       }
       Object(data) => {
+        let symbols : Array[Value] = []
+        data.bag.symbol_properties.each(fn(sym_id, _val) {
+          match sym_state.get_symbol_by_id(sym_id) {
+            Some(sym_data) => symbols.push(Symbol(sym_data))
+            None => ()
+          }
+        })
+        @runtime.make_array(symbols)
+      }
+      Value::Array(data) => {
         let symbols : Array[Value] = []
         data.bag.symbol_properties.each(fn(sym_id, _val) {
           match sym_state.get_symbol_by_id(sym_id) {
@@ -169,6 +190,195 @@ fn make_get_own_property_descriptors_func() -> Value {
           }
         })
         // Also include symbol-keyed property descriptors
+        let sym_descs : Map[Int, Value] = {}
+        data.bag.symbol_properties.each(fn(sym_id, val) {
+          let desc = data.bag.symbol_descriptors.get(sym_id)
+          let is_accessor = match desc {
+            Some(d) => d.getter is Some(_) || d.setter is Some(_)
+            None => false
+          }
+          if is_accessor {
+            let getter_val = match desc {
+              Some(d) =>
+                match d.getter {
+                  Some(g) => g
+                  None => Undefined
+                }
+              None => Undefined
+            }
+            let setter_val = match desc {
+              Some(d) =>
+                match d.setter {
+                  Some(s) => s
+                  None => Undefined
+                }
+              None => Undefined
+            }
+            let enumerable = match desc {
+              Some(d) => d.enumerable
+              None => true
+            }
+            let configurable = match desc {
+              Some(d) => d.configurable
+              None => true
+            }
+            sym_descs[sym_id] = make_accessor_desc_obj(
+              getter_val, setter_val, enumerable, configurable,
+            )
+          } else {
+            let writable = match desc {
+              Some(d) => d.writable
+              None => true
+            }
+            let enumerable = match desc {
+              Some(d) => d.enumerable
+              None => true
+            }
+            let configurable = match desc {
+              Some(d) => d.configurable
+              None => true
+            }
+            sym_descs[sym_id] = make_data_desc_obj(
+              val, writable, enumerable, configurable,
+            )
+          }
+        })
+        Value::Object({
+          bag: {
+            properties: descriptors_props,
+            symbol_properties: sym_descs,
+            descriptors: {},
+            symbol_descriptors: {},
+          },
+          prototype: @runtime.get_obj_proto(),
+          callable: None,
+          class_name: "Object",
+          extensible: true,
+        })
+      }
+      Value::Array(data) => {
+        let descriptors_props : Map[String, Value] = {}
+        for i = 0; i < data.elements.length(); i = i + 1 {
+          let key = i.to_string()
+          let desc = data.bag.descriptors.get(key)
+          let is_accessor = match desc {
+            Some(d) => d.getter is Some(_) || d.setter is Some(_)
+            None => false
+          }
+          if is_accessor {
+            let getter_val = match desc {
+              Some(d) =>
+                match d.getter {
+                  Some(g) => g
+                  None => Undefined
+                }
+              None => Undefined
+            }
+            let setter_val = match desc {
+              Some(d) =>
+                match d.setter {
+                  Some(s) => s
+                  None => Undefined
+                }
+              None => Undefined
+            }
+            let enumerable = match desc {
+              Some(d) => d.enumerable
+              None => true
+            }
+            let configurable = match desc {
+              Some(d) => d.configurable
+              None => true
+            }
+            descriptors_props[key] = make_accessor_desc_obj(
+              getter_val, setter_val, enumerable, configurable,
+            )
+          } else {
+            let writable = match desc {
+              Some(d) => d.writable
+              None => true
+            }
+            let enumerable = match desc {
+              Some(d) => d.enumerable
+              None => true
+            }
+            let configurable = match desc {
+              Some(d) => d.configurable
+              None => true
+            }
+            descriptors_props[key] = make_data_desc_obj(
+              data.elements[i],
+              writable,
+              enumerable,
+              configurable,
+            )
+          }
+        }
+        let len_value = match @runtime.get_array_length_override(data) {
+          Some(n64) => Value::Number(n64.to_double())
+          None => Value::Number(data.elements.length().to_double())
+        }
+        descriptors_props["length"] = make_data_desc_obj(
+          len_value,
+          data.length_writable,
+          false,
+          false,
+        )
+        data.bag.properties.each(fn(key, val) {
+          if is_internal_array_bag_key(key) {
+            return
+          }
+          let desc = data.bag.descriptors.get(key)
+          let is_accessor = match desc {
+            Some(d) => d.getter is Some(_) || d.setter is Some(_)
+            None => false
+          }
+          if is_accessor {
+            let getter_val = match desc {
+              Some(d) =>
+                match d.getter {
+                  Some(g) => g
+                  None => Undefined
+                }
+              None => Undefined
+            }
+            let setter_val = match desc {
+              Some(d) =>
+                match d.setter {
+                  Some(s) => s
+                  None => Undefined
+                }
+              None => Undefined
+            }
+            let enumerable = match desc {
+              Some(d) => d.enumerable
+              None => true
+            }
+            let configurable = match desc {
+              Some(d) => d.configurable
+              None => true
+            }
+            descriptors_props[key] = make_accessor_desc_obj(
+              getter_val, setter_val, enumerable, configurable,
+            )
+          } else {
+            let writable = match desc {
+              Some(d) => d.writable
+              None => true
+            }
+            let enumerable = match desc {
+              Some(d) => d.enumerable
+              None => true
+            }
+            let configurable = match desc {
+              Some(d) => d.configurable
+              None => true
+            }
+            descriptors_props[key] = make_data_desc_obj(
+              val, writable, enumerable, configurable,
+            )
+          }
+        })
         let sym_descs : Map[Int, Value] = {}
         data.bag.symbol_properties.each(fn(sym_id, val) {
           let desc = data.bag.symbol_descriptors.get(sym_id)
