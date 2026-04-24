@@ -111,7 +111,21 @@ pub fn has_property(
   interp? : Interpreter? = None,
 ) -> Bool {
   match val {
-    Object(data) => lookup_property_chain_safe(val, data, name, interp~) is Some(_)
+    Object(data) => {
+      // Pure slot-presence check per ES [[HasProperty]] — must NOT invoke getters.
+      // Route through has_object_property (uses .contains(), no getter calls) when
+      // an interpreter is available; fall back to own-slot only when there is none.
+      let effective = match interp {
+        Some(_) => interp
+        None => current_interpreter.val
+      }
+      match effective {
+        Some(ip) =>
+          (try { ip.has_object_property(data, String_(name)) } catch { _ => false })
+        None =>
+          data.bag.properties.contains(name) || data.bag.descriptors.contains(name)
+      }
+    }
     Array(data) => {
       if name == "length" {
         return true
@@ -140,7 +154,9 @@ pub fn has_property(
             Object(ctor_data) =>
               match ctor_data.bag.properties.get("prototype") {
                 Some(Object(proto_data)) =>
-                  lookup_property_chain_safe(val, proto_data, name, interp~) is Some(_)
+                  (try { ip.has_object_property(proto_data, String_(name)) } catch {
+                    _ => false
+                  })
                 _ => false
               }
             _ => false

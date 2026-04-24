@@ -829,15 +829,9 @@ behavior-preserving refactor charter; listed here for follow-up PRs.
 
 **Post-fix correction (same session, Opus review)**: The initial implementation checked `bag.properties` before `bag.descriptors`. The storage invariant (`eval_expr.mbt` ObjectLit Get/Set arms and `apply_descriptor_to_bag`) always writes `Undefined` into `bag.properties` as a sentinel for every accessor slot. The wrong order returned `Some(Undefined)` immediately, silencing the getter and regressing `to_primitive_*` (the `ip.get_property` fallback was no longer triggered). Fixed by swapping to descriptor-first at both own and prototype steps, matching `get_property_of_object` (`property.mbt:240-248`). A comment documenting the sentinel invariant was added.
 
-### 29. `has_property` invokes getters during `[[HasProperty]]` (latent spec issue)
+### ~~29. `has_property` invokes getters during `[[HasProperty]]` (latent spec issue)~~ — DONE (2026-04-24, same branch)
 
-**Impact**: low — observable only when a getter has side effects and the `in` operator / `hasOwnProperty` path goes through the free `has_property` function without an interpreter.
-
-**Problem**: ES §7.3.12 `HasProperty` (and §10.1.7 `[[HasProperty]]` for ordinary objects) is a pure slot-existence check — it must NOT invoke accessor getters. The free `has_property` function now routes through `lookup_property_chain_safe`, which calls `invoke_accessor_getter`, which invokes the getter when one is found. So `"foo" in obj` may now fire `obj.foo`'s getter as a side effect.
-
-In practice the `in` operator routes through `interp.has_property_key` → `Interpreter::has_object_property` (which checks `bag.descriptors.contains(name)` — a pure slot check, correct) when an interpreter is available. The free `has_property` is the no-interpreter fallback (line 1349 of `eval_expr.mbt`), rarely reached during normal execution.
-
-**Fix sketch**: In `lookup_property_chain_safe` / `has_property`, use `bag.descriptors.contains(name) || bag.properties.contains(name)` for presence-only checks rather than routing through `invoke_accessor_getter`. Alternatively, add a `check_only : Bool` parameter to `lookup_property_chain` to skip getter invocation.
+**Fix**: Replaced both `lookup_property_chain_safe` calls in `has_property` with `Interpreter::has_object_property` (which uses pure `.contains()` checks — no getter invocation) when an interpreter is available. When no interpreter is available the `Object` arm falls back to a bare `bag.properties.contains(name) || bag.descriptors.contains(name)` own-slot check. The Array prototype-walk arm reuses the `ip` already in scope. `lookup_property_chain_safe` remains available for future value-retrieval callers that do want getter invocation. Flagged by Codex (P1) and CodeRabbit during PR #73 review.
 
 **Known remaining nit**: `is_unicode_space_cp` in `lexer/lexer.mbt` omits U+0020 (SP is technically Zs) but is functionally correct because `is_js_whitespace` adds SP separately. A rename to `is_unicode_non_ascii_space_cp` would be more precise but low priority.
 
