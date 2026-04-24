@@ -583,11 +583,15 @@ representation). Staged:
     it, but the prototype versions fire for Array-like non-Array `this`
     values where `length_writable` as a concept doesn't apply — reclassify
     if/when adding per-instance length writability to non-Array objects.
-  - Three suspicious `try { … } catch { _ => () }` sites in
+  - ~~Three suspicious `try { … } catch { _ => () }` sites in
     `property.mbt` (TypedArray ops at lines 827, 1307, 2085): current
     code swallows `to_number(value)` TypeErrors, which the
-    `typedArr[0] = Symbol()` case requires to propagate. Separate bug,
-    not a Stage B.2 regression.
+    `typedArr[0] = Symbol()` case requires to propagate.~~ DONE
+    (2026-04-24, commit `1a29705`). Wide-catch fix applied to all three
+    sites (now lines 917, 1432, 2231); also adds the `§7.1.21 "-0"`
+    canonical-invalid guard. +7 whitebox tests. Remaining `§10.4.5.16`
+    receiver-sensitive-write and classifier-extraction follow-ups are
+    tracked in memory `project_typedarray_string_key_followups.md`.
 - ~~**Stage C — ArrayData.bag.**~~ DONE (2026-04-23). Array named,
   symbol, length override, and array prototype override state now lives
   in `ArrayData.bag`; indexed descriptors persist their attributes

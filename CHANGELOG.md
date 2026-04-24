@@ -9,6 +9,33 @@ For changes before this file existed, see `git log`.
 
 ## [Unreleased]
 
+### TypedArray numeric-string-index correctness
+
+- Fixed wide-catch anti-pattern at the three TypedArray numeric-index
+  branches in `property.mbt` (`get_property`, `set_property`,
+  `set_computed_property`). The old `try { parse_double + to_number +
+  set_index } catch { _ => () }` absorbed `to_number`'s TypeError, so
+  `typedArr[0] = Symbol()` in strict mode silently fell through instead
+  of throwing. Only `parse_double`'s raise is caught now; `to_number`
+  propagates as the spec requires.
+- Added §7.1.21 step-2 `"-0"` canonical-invalid guard. Per spec, `"-0"`
+  is a canonical numeric index string but `-0𝔽` is not a valid integer
+  index, so `typedArr["-0"]` reads must return `undefined` and writes
+  must succeed as no-op (no expando). Previously `ToString(-0) = "0" ≠
+  "-0"` misclassified it as non-canonical, leaking into ordinary
+  property creation.
+- `NaN` / `Infinity` / `-Infinity` / fractional (`"1.5"`) canonical
+  strings were already handled correctly by an IEEE inequality check
+  (`NaN != NaN`, saturated `Inf.to_int() != Inf`) — empirical testing
+  confirmed only `"-0"` needed an explicit guard.
+- 7 new whitebox tests in `interpreter/interpreter_test.mbt`.
+
+Two spec gaps deferred as follow-ups (tracked in
+`memory/project_typedarray_string_key_followups.md`):
+receiver-sensitive TypedArray write per §10.4.5.16 (Reflect.set with
+distinct receiver), and `classify_typedarray_string_key` helper
+extraction to dedup the three sites.
+
 ### Stage B.2 — GetOwnProperty + DefineOwnProperty dispatchers
 
 - Introduced `Interpreter::get_own_property` and

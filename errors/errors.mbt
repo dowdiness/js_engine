@@ -85,4 +85,3 @@ pub fn JsError::get_message(self : JsError) -> String {
 pub fn JsError::format(self : JsError) -> String {
   self.name() + ": " + self.get_message()
 }
-

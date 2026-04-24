@@ -49,7 +49,11 @@ fn is_alnum(c : Char) -> Bool {
 fn is_js_whitespace(c : Char) -> Bool {
   // NOTE: \r (0x0D) is a LineTerminator, NOT whitespace — handled separately
   let cp = c.to_int()
-  cp == 0x20 || cp == 0x09 || cp == 0x0B || cp == 0x0C || is_unicode_space_cp(cp)
+  cp == 0x20 ||
+  cp == 0x09 ||
+  cp == 0x0B ||
+  cp == 0x0C ||
+  is_unicode_space_cp(cp)
 }
 
 ///|

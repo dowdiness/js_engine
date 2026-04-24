@@ -11300,3 +11300,91 @@ test "BoundFunc construct: newTarget===boundFn drops proto_override, uses target
   let output = run_output(src)
   inspect(output, content="[\"target\"]")
 }
+
+///|
+/// §7.1.21 / §10.4.5: TypedArray string keys "-0", "NaN", "Infinity", "-Infinity"
+/// are canonical numeric index strings but invalid integer indices. Writes must
+/// succeed as no-ops (no expando created); reads must return undefined.
+test "typedarray canonical-invalid string keys: -0 write is no-op" {
+  let src =
+    #|var a = new Uint8Array(1);
+    #|a["-0"] = 99;
+    #|console.log(a["-0"]);
+    #|console.log(Object.keys(a).length);
+  let output = run_output(src)
+  inspect(output, content="[\"undefined\", \"0\"]")
+}
+
+///|
+test "typedarray canonical-invalid string keys: NaN write is no-op" {
+  let src =
+    #|var a = new Uint8Array(1);
+    #|a["NaN"] = 99;
+    #|console.log(a["NaN"]);
+    #|console.log(Object.keys(a).length);
+  let output = run_output(src)
+  inspect(output, content="[\"undefined\", \"0\"]")
+}
+
+///|
+test "typedarray canonical-invalid string keys: Infinity write is no-op" {
+  let src =
+    #|var a = new Uint8Array(1);
+    #|a["Infinity"] = 99;
+    #|console.log(a["Infinity"]);
+    #|console.log(Object.keys(a).length);
+  let output = run_output(src)
+  inspect(output, content="[\"undefined\", \"0\"]")
+}
+
+///|
+/// "1.5" is canonical (ToString round-trip) but a fractional, not integer index.
+test "typedarray canonical-invalid string keys: 1.5 write is no-op" {
+  let src =
+    #|var a = new Uint8Array(2);
+    #|a["1.5"] = 99;
+    #|console.log(a["1.5"]);
+    #|console.log(Object.keys(a).length);
+  let output = run_output(src)
+  inspect(output, content="[\"undefined\", \"0\"]")
+}
+
+///|
+/// Non-canonical string keys ("foo", "1e1", "+Infinity") are ordinary expando
+/// properties — the spec fall-through is preserved.
+test "typedarray non-canonical string keys: foo stores as expando" {
+  let src =
+    #|var a = new Uint8Array(1);
+    #|a["foo"] = 99;
+    #|console.log(a["foo"]);
+  let output = run_output(src)
+  inspect(output, content="[\"99\"]")
+}
+
+///|
+test "typedarray non-canonical string keys: 1e1 stores as expando" {
+  let src =
+    #|var a = new Uint8Array(1);
+    #|a["1e1"] = 99;
+    #|console.log(a["1e1"]);
+  let output = run_output(src)
+  inspect(output, content="[\"99\"]")
+}
+
+///|
+/// Strict mode: setting a Symbol into a TypedArray element slot triggers
+/// ToNumber which must raise TypeError — this is the wide-catch regression
+/// from the 2026-04-24 refactor. Applies to canonical valid indices.
+test "typedarray strict symbol coercion raises TypeError" {
+  let src =
+    #|"use strict";
+    #|var a = new Uint8Array(1);
+    #|try {
+    #|  a["0"] = Symbol();
+    #|  console.log("no throw");
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+  let output = run_output(src)
+  inspect(output, content="[\"TypeError\"]")
+}
