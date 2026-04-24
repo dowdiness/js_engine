@@ -9,6 +9,27 @@ For changes before this file existed, see `git log`.
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-04-24
+
+Conformance-focused patch release. Adds dispatcher infrastructure
+(Stages B.2, C, B.3) that rewires several `[[…]]` essential internal
+methods through a single seam each, plus TypedArray and IteratorClose
+spec fixes. No user-facing API removals; the runtime dispatcher seams
+did grow the `interpreter/runtime` `.mbti` surface but existing call
+sites remain compatible.
+
+test262 against v0.2.0 (CI run [24885185424] on tip `b225cda`,
+per-mode; compare with v0.2.0 methodology):
+
+| Mode | v0.2.0 P/E | v0.2.1 P/E | Δ |
+|---|---|---|---:|
+| strict | 86.6% (23,039 / 26,598) | **87.8%** (23,359 / 26,598) | **+320** |
+| non-strict | 85.0% (24,452 / 28,769) | **86.2%** (24,809 / 28,767) | **+357** |
+
+Unit tests: **1031 passing** (was 978 at v0.2.0).
+
+[24885185424]: https://github.com/dowdiness/js_engine/actions/runs/24885185424
+
 ### TypedArray numeric-string-index correctness
 
 - Fixed wide-catch anti-pattern at the three TypedArray numeric-index
@@ -34,6 +55,63 @@ Two spec gaps deferred as follow-ups: receiver-sensitive TypedArray
 write per §10.4.5.16 (`Reflect.set` with a distinct receiver), and a
 `classify_typedarray_string_key` helper extraction to dedup the three
 classifier sites in `property.mbt`.
+
+### IteratorClose §7.4.10 + `new.target` threading (PR #74)
+
+- `IteratorClose` now matches the full §7.4.10 algorithm for both throw
+  and non-throw completions. For throw completions the original error
+  replaces any error from `return()`; for non-throw completions a
+  `return()` that throws or returns a non-Object now propagates / raises
+  TypeError as the spec requires.
+- Three missing close sites fixed in `ForOf` variants (`var_kind=None`,
+  pattern binding, expression target) across `env.assign`, pattern
+  bind/assign, and all abrupt signals.
+- `construct_value` threads `new.target` through Proxy `construct` traps,
+  Proxy no-trap recursion, `BoundFunc` (per §10.4.1.2), implicit `super()`
+  via non-`ClassConstructor`, and `Reflect.construct`. The `SuperCall`
+  path in `eval_expr.mbt` now binds `<new.target>` in the super-class
+  constructor body to the derived constructor.
+
+### Accessor descriptors in property lookup (PR #73)
+
+- `[[Get]]` walks now return accessor descriptors (getters) correctly
+  when the own slot stores `Undefined` as the data-property sentinel;
+  previous code returned `Some(Undefined)` immediately and masked
+  getters at descriptor-only slots.
+- `has_property` no longer invokes getters during `[[HasProperty]]`; it
+  uses pure `.contains()` checks (or a bare bag lookup when no
+  interpreter is in scope) per §7.3.11.
+- Consolidated three copies of the 15-entry ECMAScript
+  WhiteSpace+LineTerminator codepoint list into a single canonical
+  `is_es_whitespace_cp` helper in `interpreter/runtime`. Lexer's
+  Unicode-Space-Separator helper deduped similarly. Net −76/+20 lines.
+- Merged `parse_binary` + `parse_octal` into
+  `parse_radix_literal(s, base)`.
+
+### Strict reserved words as early errors
+
+- Strict-mode `IdentifierReference`, binding, and assignment-target uses
+  of reserved-word identifiers are now rejected by the AST early-error
+  pass, covering unreachable branches (e.g.
+  `"use strict"; if (false) { static; }`) and destructuring assignment
+  targets (e.g. `({x: eval} = obj)`).
+- Sloppy-mode `static` as an identifier remains accepted.
+
+### Parser: reserved-word identifiers in permitted positions
+
+- `async`, `static`, `get`, `set`, and other contextual keywords are now
+  accepted as identifiers where the grammar permits, fixing
+  `language/reserved-words` and `language/future-reserved-words`
+  regressions.
+
+### Method definitions correctly non-constructable
+
+- Object-literal and class method-shorthand functions now carry
+  `is_method : Bool` on `FuncData` / `FuncDataExt`, so
+  `new ({m() {}}).m()` and `new (class { m() {} }).prototype.m()` throw
+  TypeError per §15.4.5 MethodDefinitionEvaluation.
+- Method-def functions no longer receive an own `prototype` property
+  (§15.4.5 step 9 explicitly skips MakeConstructor).
 
 ### Stage B.2 — GetOwnProperty + DefineOwnProperty dispatchers
 
@@ -408,7 +486,8 @@ DataView / TypedArray (311), eval-code (205), generator functions (160),
 Unicode escapes in identifiers (479). See `docs/ROADMAP.md` at this
 release for the full failure breakdown.
 
-[Unreleased]: https://github.com/dowdiness/js_engine/compare/v0.2.0...main
+[Unreleased]: https://github.com/dowdiness/js_engine/compare/v0.2.1...main
+[0.2.1]: https://github.com/dowdiness/js_engine/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/dowdiness/js_engine/compare/v0.1.0...v0.2.0
 [0.1.0]: https://mooncakes.io/docs/dowdiness/js_engine@0.1.0
 [`fede44e`]: https://github.com/dowdiness/js_engine/commit/fede44e
