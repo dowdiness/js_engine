@@ -52,6 +52,9 @@ fn make_stdlib_hooks() -> @runtime.StdlibHooks {
     typedarray_set_index: fn(data, idx, val) {
       @stdlib.typedarray_set_index(data, idx, val)
     },
+    typedarray_is_valid_index: fn(data, idx) {
+      @stdlib.typedarray_is_valid_index(data, idx)
+    },
     create_realm: fn() { new_interpreter() },
   }
 }

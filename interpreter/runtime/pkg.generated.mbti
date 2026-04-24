@@ -636,6 +636,7 @@ pub(all) struct StdlibHooks {
   make_regexp_object : (String, String) -> Value raise
   typedarray_get_index : (ObjectData, Int) -> Value
   typedarray_set_index : (ObjectData, Int, Double) -> Unit
+  typedarray_is_valid_index : (ObjectData, Int) -> Bool
   create_realm : () -> Interpreter
 }
 

@@ -11389,7 +11389,8 @@ test "typedarray strict symbol coercion raises TypeError" {
   inspect(output, content="[\"TypeError\"]")
 }
 
-///| §7.4.10 IteratorClose via §7.3.10 GetMethod: accessor `return` getter
+///|
+/// §7.4.10 IteratorClose via §7.3.10 GetMethod: accessor `return` getter
 /// must be invoked. Pre-fix the close walked `bag.properties` directly and
 /// missed accessor descriptors (their data slot stores Undefined as sentinel).
 test "for-of break invokes accessor return getter on iterator" {
@@ -11411,7 +11412,50 @@ test "for-of break invokes accessor return getter on iterator" {
   inspect(output, content="[\"1\"]")
 }
 
-///| §7.4.10 IteratorClose via §7.3.10 GetMethod: non-callable `return`
+///|
+/// §10.4.5.5 step 1.b.i: SameValue(O, Receiver) → write to buffer.
+test "TypedArray Reflect.set same-receiver in-range writes to buffer" {
+  let src =
+    #|const ta = new Uint8Array(3);
+    #|const r = Reflect.set(ta, "1", 42, ta);
+    #|console.log(r);
+    #|console.log(ta[1]);
+  let output = run_output(src)
+  inspect(output, content="[\"true\", \"42\"]")
+}
+
+///|
+/// §10.4.5.5 step 2 (when 1.b.i and 1.b.ii both fall through):
+/// O !== Receiver AND valid integer index → OrdinarySet on Receiver,
+/// landing as an ordinary data property on Receiver. The TypedArray's
+/// backing buffer is NOT written to.
+test "TypedArray Reflect.set different-receiver in-range lands on receiver" {
+  let src =
+    #|const ta = new Uint8Array(3);
+    #|const obj = {};
+    #|Reflect.set(ta, "0", 99, obj);
+    #|console.log(ta[0]);
+    #|console.log(obj[0]);
+  let output = run_output(src)
+  inspect(output, content="[\"0\", \"99\"]")
+}
+
+///|
+/// §10.4.5.5 step 1.b.ii: O !== Receiver AND not a valid integer
+/// index (out-of-range) → return true (no-op, do NOT land on Receiver).
+test "TypedArray Reflect.set different-receiver out-of-range is no-op" {
+  let src =
+    #|const ta = new Uint8Array(3);
+    #|const obj = {};
+    #|const r = Reflect.set(ta, "100", 99, obj);
+    #|console.log(r);
+    #|console.log(typeof obj["100"]);
+  let output = run_output(src)
+  inspect(output, content="[\"true\", \"undefined\"]")
+}
+
+///|
+/// §7.4.10 IteratorClose via §7.3.10 GetMethod: non-callable `return`
 /// inherited from the prototype chain must throw TypeError. Pre-fix the
 /// close walked `bag.properties` directly without descriptor awareness;
 /// inherited non-callable values were sometimes silently skipped depending

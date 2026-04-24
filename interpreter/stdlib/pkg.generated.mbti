@@ -107,6 +107,8 @@ pub fn typed_array_bytes_per_element(String) -> Int
 
 pub fn typedarray_get_index(@runtime.ObjectData, Int) -> @runtime.Value
 
+pub fn typedarray_is_valid_index(@runtime.ObjectData, Int) -> Bool
+
 pub fn typedarray_set_index(@runtime.ObjectData, Int, Double) -> Unit
 
 pub fn utf16_length(String) -> Int

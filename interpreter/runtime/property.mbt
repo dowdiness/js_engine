@@ -1406,16 +1406,36 @@ pub fn Interpreter::set_property(
       proxy_set(self, proxy_data, prop, value, receiver, strict)
     Object(data) => {
       // TypedArray indexed write via dot notation (numeric string prop).
-      // Classifier raises nothing; to_number does — keep the raising call
-      // outside any try/catch so Symbol → TypeError propagates per §10.4.5.
+      // Receiver-sensitive per §10.4.5.5 step 1.b:
+      // - canonical-invalid → no-op regardless of receiver
+      // - canonical valid AND O === Receiver → write to buffer
+      // - canonical valid AND O !== Receiver → land on Receiver (OrdinarySet)
+      // The classifier raises nothing; to_number does — keep the raising
+      // call outside any try/catch so Symbol → TypeError propagates per
+      // §10.4.5.16 (PR #75 wide-catch fix).
       if is_typedarray_class(data.class_name) {
         match classify_typedarray_string_key(prop) {
           Some(-1) => return value // canonical-invalid: no-op intercept
-          Some(idx) => {
-            let num = to_number(value)
-            (self.stdlib_hooks.typedarray_set_index)(data, idx, num)
-            return value
-          }
+          Some(idx) =>
+            if strict_equal(obj, receiver) {
+              let num = to_number(value)
+              (self.stdlib_hooks.typedarray_set_index)(data, idx, num)
+              return value
+            } else if !(self.stdlib_hooks.typedarray_is_valid_index)(data, idx) {
+              // §10.4.5.5 step 1.b.ii: O !== Receiver AND not a valid
+              // index → return true (no-op, don't land on Receiver).
+              return value
+            } else {
+              // §10.4.5.5 step 2: O !== Receiver AND valid index →
+              // OrdinarySet on Receiver.
+              return self.define_value_on_receiver(
+                receiver,
+                String_(prop),
+                value,
+                loc,
+                strict,
+              )
+            }
           None => () // not a canonical numeric string — fall through
         }
       }
@@ -2168,30 +2188,66 @@ pub fn Interpreter::set_computed_property(
           value
         }
         _ => {
-          // TypedArray indexed write: intercept numeric keys
+          // TypedArray indexed write: intercept numeric keys per
+          // §10.4.5.5 [[Set]] (receiver-sensitive) + §10.4.5.16
+          // IntegerIndexedElementSet.
+          //
+          // Per §10.4.5.5 step 1.b:
+          // - If P is canonical numeric AND SameValue(O, Receiver):
+          //   IntegerIndexedElementSet — write to buffer (or no-op if
+          //   IsValidIntegerIndex is false).
+          // - If P is canonical numeric AND O !== Receiver AND not a
+          //   valid index: return true (no-op, do NOT land on receiver).
+          // - If P is canonical numeric AND O !== Receiver AND valid
+          //   index: fall through to OrdinarySet on Receiver (lands as
+          //   ordinary data property on the receiver, NOT in O's buffer).
           if is_typedarray_class(data.class_name) {
+            let same_obj_recv = strict_equal(obj, receiver)
             match key {
               Number(n) => {
                 let idx = n.to_int()
-                if idx.to_double() == n && idx >= 0 {
+                let canonical = idx.to_double() == n && idx >= 0
+                if !canonical {
+                  // Canonical numeric (Number always is) but not a valid
+                  // integer-index form → §10.4.5.5 step 1.b.ii no-op.
+                  return value
+                }
+                if same_obj_recv {
                   let num = to_number(value)
                   (self.stdlib_hooks.typedarray_set_index)(data, idx, num)
+                  return value
+                } else if !(self.stdlib_hooks.typedarray_is_valid_index)(
+                    data, idx,
+                  ) {
+                  // O !== Receiver AND out-of-range → no-op.
+                  return value
+                } else {
+                  // O !== Receiver AND in-range → OrdinarySet on Receiver.
+                  return self.define_value_on_receiver(
+                    receiver, key, value, loc, strict,
+                  )
                 }
-                // Numeric key always intercepted for TypedArrays
-                return value
               }
               String_(s) =>
-                // FIXME: receiver-sensitive write per §10.4.5.16 is a
-                // pre-existing gap; this branch ignores `receiver !== obj`
-                // and writes to `data` regardless. Tracked as a follow-up.
                 match classify_typedarray_string_key(s) {
-                  Some(-1) => return value
-                  Some(idx) => {
-                    let num = to_number(value)
-                    (self.stdlib_hooks.typedarray_set_index)(data, idx, num)
-                    return value
-                  }
-                  None => ()
+                  Some(-1) => return value // canonical-invalid: no-op
+                  Some(idx) =>
+                    if same_obj_recv {
+                      let num = to_number(value)
+                      (self.stdlib_hooks.typedarray_set_index)(data, idx, num)
+                      return value
+                    } else if !(self.stdlib_hooks.typedarray_is_valid_index)(
+                        data, idx,
+                      ) {
+                      // O !== Receiver AND out-of-range → no-op.
+                      return value
+                    } else {
+                      // O !== Receiver AND in-range → OrdinarySet on Receiver.
+                      return self.define_value_on_receiver(
+                        receiver, key, value, loc, strict,
+                      )
+                    }
+                  None => () // not canonical numeric → fall through
                 }
               _ => ()
             }

@@ -358,6 +358,27 @@ fn make_typedarray_from_buffer(
 }
 
 ///|
+/// §10.4.5.18 IsValidIntegerIndex(O, index): true iff the buffer is not
+/// detached and 0 ≤ index < O.[[ArrayLength]]. Caller is responsible for
+/// the integrality / -0 checks (§10.4.5.18 steps 2-3) before calling this;
+/// the classifier in `classify_typedarray_string_key` filters those out by
+/// returning Some(-1) for canonical-invalid forms.
+pub fn typedarray_is_valid_index(data : ObjectData, index : Int) -> Bool {
+  let length = match data.bag.properties.get("[[ArrayLength]]") {
+    Some(Value::Number(n)) => n.to_int()
+    _ => 0
+  }
+  if index < 0 || index >= length {
+    return false
+  }
+  let buf_id = match data.bag.properties.get("[[ArrayBufferID]]") {
+    Some(Value::Number(n)) => n.to_int()
+    _ => return false
+  }
+  !is_arraybuffer_detached(buf_id)
+}
+
+///|
 /// Get a typed element from a TypedArray object at the given index.
 pub fn typedarray_get_index(data : ObjectData, index : Int) -> Value {
   let length = match data.bag.properties.get("[[ArrayLength]]") {
