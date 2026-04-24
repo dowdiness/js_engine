@@ -111,7 +111,21 @@ pub fn has_property(
   interp? : Interpreter? = None,
 ) -> Bool {
   match val {
-    Object(data) => lookup_property_chain(data, name, interp~) is Some(_)
+    Object(data) => {
+      // Pure slot-presence check per ES [[HasProperty]] — must NOT invoke getters.
+      // Route through has_object_property (uses .contains(), no getter calls) when
+      // an interpreter is available; fall back to own-slot only when there is none.
+      let effective = match interp {
+        Some(_) => interp
+        None => current_interpreter.val
+      }
+      match effective {
+        Some(ip) =>
+          (try { ip.has_object_property(data, String_(name)) } catch { _ => false })
+        None =>
+          data.bag.properties.contains(name) || data.bag.descriptors.contains(name)
+      }
+    }
     Array(data) => {
       if name == "length" {
         return true
@@ -140,7 +154,9 @@ pub fn has_property(
             Object(ctor_data) =>
               match ctor_data.bag.properties.get("prototype") {
                 Some(Object(proto_data)) =>
-                  lookup_property_chain(proto_data, name, interp~) is Some(_)
+                  (try { ip.has_object_property(proto_data, String_(name)) } catch {
+                    _ => false
+                  })
                 _ => false
               }
             _ => false
@@ -154,12 +170,52 @@ pub fn has_property(
 }
 
 ///|
+/// Invoke bag.descriptors[name].getter with obj_val as receiver, if one exists.
+/// Returns Some(result) if an accessor getter was found and invoked (or if no
+/// interpreter is available, Some(Undefined) signals property existence).
+/// Returns None if no accessor descriptor with a getter exists for name.
+fn invoke_accessor_getter(
+  bag : PropertyBag,
+  name : String,
+  obj_val : Value,
+  effective : Interpreter?,
+) -> Value? raise Error {
+  match bag.descriptors.get(name) {
+    Some(desc) =>
+      match desc.getter {
+        Some(getter_fn) =>
+          match effective {
+            Some(_) => Some(call_callable_direct(getter_fn, obj_val, [], interp=effective))
+            None => Some(Undefined)
+          }
+        None => None
+      }
+    None => None
+  }
+}
+
+///|
+/// Look up a string-keyed property on an object, walking the prototype chain.
+/// Handles both data properties (bag.properties) and accessor properties
+/// (bag.descriptors with getter), invoking getters with obj_val as receiver.
 fn lookup_property_chain(
+  obj_val : Value,
   data : ObjectData,
   name : String,
   interp? : Interpreter? = None,
-) -> Value? {
-  // Check own properties first
+) -> Value? raise Error {
+  let effective = match interp {
+    Some(_) => interp
+    None => current_interpreter.val
+  }
+  // Descriptor check first: accessors write Undefined into bag.properties as a
+  // sentinel (see apply_descriptor_to_bag / eval_expr ObjectLit Get/Set arms),
+  // so checking bag.properties first would return that sentinel and skip the
+  // getter. Mirror get_property_of_object: descriptor → data.
+  match invoke_accessor_getter(data.bag, name, obj_val, effective) {
+    Some(v) => return Some(v)
+    None => ()
+  }
   match data.bag.properties.get(name) {
     Some(v) => return Some(v)
     None => ()
@@ -169,20 +225,22 @@ fn lookup_property_chain(
   let mut func_fallback_used = false
   while true {
     match current {
-      Object(proto_data) =>
+      Object(proto_data) => {
+        match invoke_accessor_getter(proto_data.bag, name, obj_val, effective) {
+          Some(v) => return Some(v)
+          None => ()
+        }
         match proto_data.bag.properties.get(name) {
           Some(v) => return Some(v)
-          None => current = proto_data.prototype
+          None => ()
         }
+        current = proto_data.prototype
+      }
       Null =>
         // For function objects, fall back to Function.prototype once
         if !func_fallback_used {
           match data.callable {
-            Some(_) => {
-              let effective = match interp {
-                Some(_) => interp
-                None => current_interpreter.val
-              }
+            Some(_) =>
               match effective {
                 Some(ip) => {
                   let fp = ip.global.get("[[FunctionPrototype]]") catch {
@@ -193,7 +251,6 @@ fn lookup_property_chain(
                 }
                 None => break
               }
-            }
             None => break
           }
         } else {
@@ -203,6 +260,16 @@ fn lookup_property_chain(
     }
   }
   None
+}
+
+///|
+fn lookup_property_chain_safe(
+  obj_val : Value,
+  data : ObjectData,
+  name : String,
+  interp? : Interpreter? = None,
+) -> Value? {
+  try { lookup_property_chain(obj_val, data, name, interp~) } catch { _ => None }
 }
 
 ///|
@@ -305,7 +372,7 @@ fn to_primitive_number(
     None => current_interpreter.val
   }
   let value_of_fn : Value? = match
-    lookup_property_chain(data, "valueOf", interp~) {
+    lookup_property_chain(obj_val, data, "valueOf", interp~) {
     Some(f) => Some(f)
     None =>
       match effective {
@@ -334,7 +401,7 @@ fn to_primitive_number(
     None => ()
   }
   let to_string_fn : Value? = match
-    lookup_property_chain(data, "toString", interp~) {
+    lookup_property_chain(obj_val, data, "toString", interp~) {
     Some(f) => Some(f)
     None =>
       match effective {
@@ -405,22 +472,23 @@ pub fn to_primitive_default(
 }
 
 ///|
+pub fn is_es_whitespace_cp(cp : Int) -> Bool {
+  cp == 0x09 || cp == 0x0A || cp == 0x0B || cp == 0x0C || cp == 0x0D ||
+  cp == 0x20 || // Space
+  cp == 0x00A0 || // No-Break Space
+  cp == 0xFEFF || // Zero Width No-Break Space (BOM)
+  cp == 0x1680 || // OGHAM SPACE MARK
+  (cp >= 0x2000 && cp <= 0x200A) || // EN QUAD through HAIR SPACE
+  cp == 0x2028 || // Line Separator
+  cp == 0x2029 || // Paragraph Separator
+  cp == 0x202F || // NARROW NO-BREAK SPACE
+  cp == 0x205F || // MEDIUM MATHEMATICAL SPACE
+  cp == 0x3000 // IDEOGRAPHIC SPACE
+}
+
+///|
 fn is_js_whitespace_code(ch : UInt16) -> Bool {
-  ch == 0x20 ||
-  ch == 0x09 ||
-  ch == 0x0A ||
-  ch == 0x0D ||
-  ch == 0x0B ||
-  ch == 0x0C ||
-  ch == 0x00A0 ||
-  ch == 0xFEFF ||
-  ch == 0x1680 ||
-  (ch >= 0x2000 && ch <= 0x200A) ||
-  ch == 0x2028 ||
-  ch == 0x2029 ||
-  ch == 0x202F ||
-  ch == 0x205F ||
-  ch == 0x3000
+  is_es_whitespace_cp(ch.to_int())
 }
 
 ///|
@@ -611,7 +679,7 @@ fn to_primitive_string(
     None => current_interpreter.val
   }
   let to_string_fn : Value? = match
-    lookup_property_chain(data, "toString", interp~) {
+    lookup_property_chain(obj_val, data, "toString", interp~) {
     Some(f) => Some(f)
     None =>
       match effective {
@@ -640,7 +708,7 @@ fn to_primitive_string(
     None => ()
   }
   let value_of_fn : Value? = match
-    lookup_property_chain(data, "valueOf", interp~) {
+    lookup_property_chain(obj_val, data, "valueOf", interp~) {
     Some(f) => Some(f)
     None =>
       match effective {
@@ -873,9 +941,6 @@ fn bag_has_key(bag : PropertyBag, key : Value) -> Bool raise Error {
 /// OrdinaryHasProperty for exotic values whose prototype is stored globally
 /// (Map, Set, Promise). Checks own-bag descriptors and properties first, then
 /// walks the prototype chain starting from globalThis[ctor_name].prototype.
-/// Checks both data and accessor descriptors at each prototype step
-/// (ES §7.3.11), since lookup_property_chain intentionally sees only data
-/// properties.
 fn Interpreter::has_bag_or_builtin_proto_key(
   self : Interpreter,
   bag : PropertyBag,

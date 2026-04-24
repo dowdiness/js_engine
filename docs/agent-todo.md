@@ -823,18 +823,17 @@ behavior-preserving refactor charter; listed here for follow-up PRs.
 
 ### ~~24. `Error.isError` uses a hardcoded class-name allowlist (structural)~~ — DONE (2026-04-18, PR #62)
 
-### 25. `lookup_property_chain` ignores `bag.descriptors` (accessor + non-data blind spot)
+### ~~25. `lookup_property_chain` ignores `bag.descriptors` (accessor + non-data blind spot)~~ — DONE (2026-04-24, branch `claude/refactor-codebase-safety-tc3IY`)
 
-**Impact**: `lookup_property_chain` walks `bag.properties` on the target and every prototype step but never consults `bag.descriptors`. Any property that lives only in the descriptor map — accessors (getter/setter), or data descriptors registered without a mirror in `bag.properties` — is invisible to the chain walk. This makes all six callers subtly spec-wrong for accessor-only properties.
-**File**: `interpreter/runtime/conversions.mbt:156-200` (definition); callers at lines 113, 142 (presence checks) and 307, 336, 613, 642 (value retrieval).
+**Fix**: Added `bag.descriptors` checks at own-property and every prototype step, mirroring `lookup_symbol_property_chain`. Signature changed to accept `obj_val : Value` as first param (receiver for getter invocation) and `raise Error`. When a getter is found and an interpreter is available the getter is invoked with `obj_val` as receiver; without an interpreter `Some(Undefined)` signals presence. All 6 callers updated; `has_property` callers use a new non-raising `lookup_property_chain_safe` wrapper. Stale comment removed from `has_bag_or_builtin_proto_key` doc.
 
-**Two failure shapes**:
+**Post-fix correction (same session, Opus review)**: The initial implementation checked `bag.properties` before `bag.descriptors`. The storage invariant (`eval_expr.mbt` ObjectLit Get/Set arms and `apply_descriptor_to_bag`) always writes `Undefined` into `bag.properties` as a sentinel for every accessor slot. The wrong order returned `Some(Undefined)` immediately, silencing the getter and regressing `to_primitive_*` (the `ip.get_property` fallback was no longer triggered). Fixed by swapping to descriptor-first at both own and prototype steps, matching `get_property_of_object` (`property.mbt:240-248`). A comment documenting the sentinel invariant was added.
 
-1. *Presence checks* (lines 113, 142) — used by the free `has_property` → `Interpreter::has_property` for Object/Array. A getter-only property on `Object.prototype` returns `false` from `"x" in obj`, violating ES §7.3.11 step 3 (`OrdinaryHasProperty` must inspect both data and accessor descriptors). PR #60 worked around this for Map/Set/Promise by duplicating the prototype-walk in `Interpreter::has_bag_or_builtin_proto` (explicitly checks both `properties` and `descriptors` at each step). That helper is the reference shape for the fix — backport it to `lookup_property_chain` and drop the duplication.
+### ~~29. `has_property` invokes getters during `[[HasProperty]]` (latent spec issue)~~ — DONE (2026-04-24, same branch)
 
-2. *Value retrieval* (lines 307, 336, 613, 642) — `to_primitive` / `to_string` / `to_number` look up `toString` / `valueOf`. If either is defined as an accessor on a user-defined prototype, the lookup misses, fallback kicks in, and coercion uses the default `Object.prototype.toString` instead of the user getter's return value. Observable when `({ get toString() { return () => "x"; } }).toString()` returns `"[object Object]"` instead of `"x"`. Fix requires: on a descriptor hit with `getter`, invoke the getter with the current value as receiver and return its result; fall back to `properties` only when neither descriptor nor direct property exists.
+**Fix**: Replaced both `lookup_property_chain_safe` calls in `has_property` with `Interpreter::has_object_property` (which uses pure `.contains()` checks — no getter invocation) when an interpreter is available. When no interpreter is available the `Object` arm falls back to a bare `bag.properties.contains(name) || bag.descriptors.contains(name)` own-slot check. The Array prototype-walk arm reuses the `ip` already in scope. `lookup_property_chain_safe` remains available for future value-retrieval callers that do want getter invocation. Flagged by Codex (P1) and CodeRabbit during PR #73 review.
 
-**Why not today**: touches coercion fast paths; each caller has distinct receiver and error-handling semantics. A survey pass is needed before unifying — some callers want Some/None (presence), others want the resolved value-or-callable. Likely unlocks a scattered handful of accessor-related test262 tests. Surfaced 2026-04-18 during PR #60 cleanup — the agent bypassed it cleanly within its scope, which is how it got flagged explicitly rather than silently propagating.
+**Known remaining nit**: `is_unicode_space_cp` in `lexer/lexer.mbt` omits U+0020 (SP is technically Zs) but is functionally correct because `is_js_whitespace` adds SP separately. A rename to `is_unicode_non_ascii_space_cp` would be more precise but low priority.
 
 ---
 
@@ -857,3 +856,33 @@ Two scope-fenced gaps carried forward from the method-shorthand / TypeError-gate
 **Problem**: per §15.4.5 step 9, method definitions explicitly do NOT go through MakeConstructor — which is the step that adds the `prototype` own property for regular functions. Current user-function materialization adds `prototype` unconditionally. With the `is_method: true` flag now available from PR #71, the fix is a one-line gate.
 
 **Fix sketch**: in `make_func` / `make_func_ext` in `factories.mbt` (or wherever the `prototype` property is assigned during user-function materialization), gate the assignment on `!func_data.is_method`. Regression guard: `typeof ({m() {}}).m.prototype === "undefined"` (currently `"object"`).
+
+---
+
+## ~~Codebase safety refactor (dead code + duplication)~~ — DONE (2026-04-24, branch `claude/refactor-codebase-safety-tc3IY`)
+
+Three incremental passes. Each was scoped to a single package or file pair, verified by exhaustive grep before touching code, and committed independently with explicit impact documentation.
+
+### ~~Pass 1 — `errors` dead public API removal~~
+
+Removed 13 dead public functions from `errors/errors.mbt`: `JsError::debug`, `is_js_error`, and 11 convenience raise-functions (`syntax_error`, `syntax_error_msg`, `type_error`, `type_error_msg`, `reference_error`, `reference_error_msg`, `range_error_msg`, `uri_error_msg`, `internal_error_msg`). Zero callers confirmed by exhaustive grep across all 941 `@errors` usages — every call site raises variants directly (`raise @errors.SyntaxError(message=…)`).
+
+Removing the three `@token.Loc`-bearing raise-functions also eliminated the `errors → token` package coupling. `errors/moon.pkg` is now empty.
+
+**Kept**: `JsError::name`, `get_message`, `format` — uncalled internally but legitimate public library utilities. `JsError` type and all 8 variants: unchanged.
+
+### ~~Pass 2 — Lexer Zs deduplication~~
+
+Extracted private `fn is_unicode_space_cp(cp: Int) -> Bool` from the identical 7-entry Unicode Space Separator (Zs) codepoint list that appeared in both `is_js_whitespace` and `is_whitespace_or_line_terminator_cp` in `lexer/lexer.mbt`. Both now delegate to the shared helper. Net: −6 lines, zero behavior change, no public API change.
+
+### ~~Pass 3 — ECMAScript whitespace canonical function~~
+
+Consolidated three separate copies of the 15-entry ECMAScript WhiteSpace+LineTerminator codepoint list (across `interpreter/runtime/conversions.mbt`, `interpreter/stdlib/builtins_string.mbt`, `interpreter/stdlib/builtins_number.mbt`) into a single canonical `pub fn is_es_whitespace_cp(cp: Int) -> Bool` in `interpreter/runtime/conversions.mbt`. `is_js_whitespace_code(UInt16)` and `is_es_whitespace(Char)` now delegate via `.to_int()`; `is_parse_whitespace(Char)` deleted and its one call site renamed to `is_es_whitespace`. Net: −76 +20 lines across 4 files.
+
+**Known remaining cross-dependency**: `is_js_whitespace(Char)` and `is_unicode_space_cp(Int)` in `lexer/lexer.mbt` cannot share code with `is_es_whitespace_cp` in `interpreter/runtime`. The lexer must not depend on the interpreter. `is_unicode_space_cp` is a deliberate subset (Zs only, no ASCII, no line terminators) and its separation is correct.
+
+---
+
+## ~~Lexer numeric parser consolidation~~ — DONE (2026-04-24, branch claude/refactor-codebase-safety-tc3IY)
+
+**Result**: Merged `parse_binary` and `parse_octal` into `parse_radix_literal(s, base)`. Three call sites updated: `parse_radix_literal(bin_str, 2.0)`, `parse_radix_literal(oct_str, 8.0)` ×2. `parse_hex` kept separate — its three-branch digit mapping for `0–9` / `a–f` / `A–F` differs structurally from the simple `c.to_int() - 48` of the other two.
