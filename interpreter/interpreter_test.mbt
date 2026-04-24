@@ -11175,6 +11175,20 @@ test "IteratorClose: return() returning Array is accepted (not TypeError)" {
 }
 
 ///|
+/// IteratorClose §7.3.9 GetMethod: non-callable non-undefined return property is TypeError
+test "IteratorClose: non-callable return property throws TypeError on break-completion" {
+  let src =
+    #|var iter = {
+    #|  [Symbol.iterator]() { return this; },
+    #|  next() { return { done: false, value: 1 }; },
+    #|  return: 42
+    #|};
+    #|try { for (var x of iter) { break; } console.log("no error"); } catch(e) { console.log(e instanceof TypeError); }
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
 /// IteratorClose §7.4.10 step 4: throw completion suppresses return() throw
 test "IteratorClose: throw-completion suppresses return() error (original throw wins)" {
   let src =

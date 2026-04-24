@@ -1685,16 +1685,22 @@ fn close_iterator(
           found
         }
       }
-      if is_callable(return_fn) {
-        // §7.4.10 step 5/7: call return(); if it returns a non-Object, raise TypeError.
-        // For throw completions callers suppress this via `catch { _ => () }` (step 4);
-        // for non-throw completions the error replaces the original completion (step 5).
-        let result = interp.call_value(return_fn, iterator, [], loc)
-        if !is_object_value(result) {
-          raise @errors.TypeError(
-            message="Iterator return() must return an object",
-          )
-        }
+      // §7.4.10 step 2: GetMethod(iterator, "return") — if absent/undefined/null skip.
+      // If present but non-callable, GetMethod throws TypeError (§7.3.9 step 3).
+      match return_fn {
+        Undefined | Null => ()
+        _ =>
+          if !is_callable(return_fn) {
+            raise @errors.TypeError(message="iterator.return is not a function")
+          } else {
+            // §7.4.10 step 3c/7: call return(); non-Object result is TypeError.
+            let result = interp.call_value(return_fn, iterator, [], loc)
+            if !is_object_value(result) {
+              raise @errors.TypeError(
+                message="Iterator return() must return an object",
+              )
+            }
+          }
       }
     }
     _ => ()
