@@ -1417,25 +1417,16 @@ pub fn Interpreter::set_property(
         match classify_typedarray_string_key(prop) {
           Some(-1) => return value // canonical-invalid: no-op intercept
           Some(idx) =>
-            if strict_equal(obj, receiver) {
-              let num = to_number(value)
-              (self.stdlib_hooks.typedarray_set_index)(data, idx, num)
-              return value
-            } else if !(self.stdlib_hooks.typedarray_is_valid_index)(data, idx) {
-              // §10.4.5.5 step 1.b.ii: O !== Receiver AND not a valid
-              // index → return true (no-op, don't land on Receiver).
-              return value
-            } else {
-              // §10.4.5.5 step 2: O !== Receiver AND valid index →
-              // OrdinarySet on Receiver.
-              return self.define_value_on_receiver(
-                receiver,
-                String_(prop),
-                value,
-                loc,
-                strict,
-              )
-            }
+            return self.typedarray_set_dispatch(
+              data,
+              obj,
+              receiver,
+              String_(prop),
+              idx,
+              value,
+              loc,
+              strict,
+            )
           None => () // not a canonical numeric string — fall through
         }
       }
@@ -1786,6 +1777,44 @@ fn Interpreter::landing_via_define_own_property(
     }
   }
   value
+}
+
+///|
+/// §10.4.5.5 step 1.b TypedArray `[[Set]]` dispatch for a canonical-numeric
+/// index whose classifier already returned `Some(idx)` with `idx >= 0`.
+/// Called from the three TypedArray intercept sites (`set_property` string
+/// path, `set_computed_property` `Number` and `String_` paths) to centralize
+/// the (same-receiver vs out-of-range vs in-range cross-receiver) triad.
+///
+/// - `O === Receiver` → `IntegerIndexedElementSet` (write to buffer or
+///   silent bounds-check no-op inside the hook).
+/// - `O !== Receiver` AND `!IsValidIntegerIndex` → no-op per step 1.b.ii.
+/// - `O !== Receiver` AND in-range → `OrdinarySet` on `Receiver` (lands as
+///   ordinary data property; the TypedArray's backing buffer is untouched).
+///
+/// The `to_number(value)` raise must remain outside the classifier's
+/// try/catch: Symbol → TypeError must propagate per §10.4.5.16 (the PR #75
+/// wide-catch fix).
+fn Interpreter::typedarray_set_dispatch(
+  self : Interpreter,
+  data : ObjectData,
+  obj : Value,
+  receiver : Value,
+  key : Value,
+  idx : Int,
+  value : Value,
+  loc : @token.Loc,
+  strict : Bool,
+) -> Value raise Error {
+  if strict_equal(obj, receiver) {
+    let num = to_number(value)
+    (self.stdlib_hooks.typedarray_set_index)(data, idx, num)
+    value
+  } else if !(self.stdlib_hooks.typedarray_is_valid_index)(data, idx) {
+    value
+  } else {
+    self.define_value_on_receiver(receiver, key, value, loc, strict)
+  }
 }
 
 ///|
@@ -2202,51 +2231,25 @@ pub fn Interpreter::set_computed_property(
           //   index: fall through to OrdinarySet on Receiver (lands as
           //   ordinary data property on the receiver, NOT in O's buffer).
           if is_typedarray_class(data.class_name) {
-            let same_obj_recv = strict_equal(obj, receiver)
             match key {
               Number(n) => {
                 let idx = n.to_int()
-                let canonical = idx.to_double() == n && idx >= 0
-                if !canonical {
+                if !(idx.to_double() == n && idx >= 0) {
                   // Canonical numeric (Number always is) but not a valid
                   // integer-index form → §10.4.5.5 step 1.b.ii no-op.
                   return value
                 }
-                if same_obj_recv {
-                  let num = to_number(value)
-                  (self.stdlib_hooks.typedarray_set_index)(data, idx, num)
-                  return value
-                } else if !(self.stdlib_hooks.typedarray_is_valid_index)(
-                    data, idx,
-                  ) {
-                  // O !== Receiver AND out-of-range → no-op.
-                  return value
-                } else {
-                  // O !== Receiver AND in-range → OrdinarySet on Receiver.
-                  return self.define_value_on_receiver(
-                    receiver, key, value, loc, strict,
-                  )
-                }
+                return self.typedarray_set_dispatch(
+                  data, obj, receiver, key, idx, value, loc, strict,
+                )
               }
               String_(s) =>
                 match classify_typedarray_string_key(s) {
                   Some(-1) => return value // canonical-invalid: no-op
                   Some(idx) =>
-                    if same_obj_recv {
-                      let num = to_number(value)
-                      (self.stdlib_hooks.typedarray_set_index)(data, idx, num)
-                      return value
-                    } else if !(self.stdlib_hooks.typedarray_is_valid_index)(
-                        data, idx,
-                      ) {
-                      // O !== Receiver AND out-of-range → no-op.
-                      return value
-                    } else {
-                      // O !== Receiver AND in-range → OrdinarySet on Receiver.
-                      return self.define_value_on_receiver(
-                        receiver, key, value, loc, strict,
-                      )
-                    }
+                    return self.typedarray_set_dispatch(
+                      data, obj, receiver, key, idx, value, loc, strict,
+                    )
                   None => () // not canonical numeric → fall through
                 }
               _ => ()

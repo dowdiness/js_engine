@@ -69,12 +69,27 @@ pub fn is_typedarray_class(name : String) -> Bool {
 /// - `None`: not a canonical numeric string — caller should fall through to
 ///   ordinary property lookup / write.
 ///
-/// Note: `"-0"` is a canonical numeric index string per §7.1.21 step 1 but
-/// `-0𝔽` is not a valid integer index, so it is explicitly classified as
-/// `Some(-1)`. Other canonical-but-invalid forms (NaN, Infinity, fractional)
-/// are filtered by the IEEE round-trip check (`n.to_string() == s` plus
-/// `idx.to_double() == n`).
-pub fn classify_typedarray_string_key(s : String) -> Int? {
+/// Package-private: the `-1` sentinel is an implementation detail. Downstream
+/// code outside `interpreter/runtime` must not depend on this shape.
+///
+/// Performance: every string-keyed TypedArray access (`ta.length`,
+/// `ta.byteLength`, `ta.set(...)`, `ta.subarray(...)`) passes through here.
+/// The ASCII digit / `-` / `N` / `I` prefix gate short-circuits non-numeric
+/// keys before invoking `@string.parse_double`, whose error path on
+/// non-numeric input is throw-and-catch and was a hot-path allocation source.
+fn classify_typedarray_string_key(s : String) -> Int? {
+  if s.length() == 0 {
+    return None
+  }
+  // Fast reject: keys not starting with an ASCII digit, `-` (for `-0`/
+  // `-Infinity`), `N` (for `NaN`), or `I` (for `Infinity`) are never
+  // canonical numeric strings per §7.1.21. This skips the throw path in
+  // `@string.parse_double` for the common method/property-name case.
+  let c = s.get_char(0).unwrap_or(' ')
+  let is_candidate = (c >= '0' && c <= '9') || c == '-' || c == 'N' || c == 'I'
+  if !is_candidate {
+    return None
+  }
   if s == "-0" {
     return Some(-1)
   }
