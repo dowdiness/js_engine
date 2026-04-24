@@ -1690,12 +1690,10 @@ fn close_iterator(
         // For throw completions callers suppress this via `catch { _ => () }` (step 4);
         // for non-throw completions the error replaces the original completion (step 5).
         let result = interp.call_value(return_fn, iterator, [], loc)
-        match result {
-          Object(_) => ()
-          _ =>
-            raise @errors.TypeError(
-              message="Iterator return() must return an object",
-            )
+        if !is_object_value(result) {
+          raise @errors.TypeError(
+            message="Iterator return() must return an object",
+          )
         }
       }
     }

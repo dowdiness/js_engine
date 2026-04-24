@@ -11161,6 +11161,20 @@ test "IteratorClose: return() non-object on break-completion throws TypeError" {
 }
 
 ///|
+/// IteratorClose §7.4.10 step 7: Array/Map/Set/Promise/Proxy are valid object results from return()
+test "IteratorClose: return() returning Array is accepted (not TypeError)" {
+  let src =
+    #|var iter = {
+    #|  [Symbol.iterator]() { return this; },
+    #|  next() { return { done: false, value: 1 }; },
+    #|  return() { return []; }
+    #|};
+    #|try { for (var x of iter) { break; } console.log("ok"); } catch(e) { console.log("error: " + e.message); }
+  let output = run_output(src)
+  inspect(output, content="[\"ok\"]")
+}
+
+///|
 /// IteratorClose §7.4.10 step 4: throw completion suppresses return() throw
 test "IteratorClose: throw-completion suppresses return() error (original throw wins)" {
   let src =
