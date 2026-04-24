@@ -111,9 +111,7 @@ pub fn has_property(
   interp? : Interpreter? = None,
 ) -> Bool {
   match val {
-    Object(data) =>
-      (try { lookup_property_chain(val, data, name, interp~) } catch { _ => None }) is
-      Some(_)
+    Object(data) => lookup_property_chain_safe(val, data, name, interp~) is Some(_)
     Array(data) => {
       if name == "length" {
         return true
@@ -142,10 +140,7 @@ pub fn has_property(
             Object(ctor_data) =>
               match ctor_data.bag.properties.get("prototype") {
                 Some(Object(proto_data)) =>
-                  (try { lookup_property_chain(val, proto_data, name, interp~) } catch {
-                    _ => None
-                  }) is
-                  Some(_)
+                  lookup_property_chain_safe(val, proto_data, name, interp~) is Some(_)
                 _ => false
               }
             _ => false
@@ -159,6 +154,31 @@ pub fn has_property(
 }
 
 ///|
+/// Invoke bag.descriptors[name].getter with obj_val as receiver, if one exists.
+/// Returns Some(result) if an accessor getter was found and invoked (or if no
+/// interpreter is available, Some(Undefined) signals property existence).
+/// Returns None if no accessor descriptor with a getter exists for name.
+fn invoke_accessor_getter(
+  bag : PropertyBag,
+  name : String,
+  obj_val : Value,
+  effective : Interpreter?,
+) -> Value? raise Error {
+  match bag.descriptors.get(name) {
+    Some(desc) =>
+      match desc.getter {
+        Some(getter_fn) =>
+          match effective {
+            Some(_) => Some(call_callable_direct(getter_fn, obj_val, [], interp=effective))
+            None => Some(Undefined)
+          }
+        None => None
+      }
+    None => None
+  }
+}
+
+///|
 /// Look up a string-keyed property on an object, walking the prototype chain.
 /// Handles both data properties (bag.properties) and accessor properties
 /// (bag.descriptors with getter), invoking getters with obj_val as receiver.
@@ -168,27 +188,16 @@ fn lookup_property_chain(
   name : String,
   interp? : Interpreter? = None,
 ) -> Value? raise Error {
-  // Check own properties first
+  let effective = match interp {
+    Some(_) => interp
+    None => current_interpreter.val
+  }
   match data.bag.properties.get(name) {
     Some(v) => return Some(v)
     None => ()
   }
-  // Check own descriptor (accessor property not mirrored in bag.properties)
-  match data.bag.descriptors.get(name) {
-    Some(desc) =>
-      match desc.getter {
-        Some(getter_fn) => {
-          let effective = match interp {
-            Some(_) => interp
-            None => current_interpreter.val
-          }
-          return match effective {
-            Some(_) => Some(call_callable_direct(getter_fn, obj_val, [], interp~))
-            None => Some(Undefined)
-          }
-        }
-        None => ()
-      }
+  match invoke_accessor_getter(data.bag, name, obj_val, effective) {
+    Some(v) => return Some(v)
     None => ()
   }
   // Walk prototype chain
@@ -201,23 +210,8 @@ fn lookup_property_chain(
           Some(v) => return Some(v)
           None => ()
         }
-        // Check descriptor (accessor property on prototype)
-        match proto_data.bag.descriptors.get(name) {
-          Some(desc) =>
-            match desc.getter {
-              Some(getter_fn) => {
-                let effective = match interp {
-                  Some(_) => interp
-                  None => current_interpreter.val
-                }
-                return match effective {
-                  Some(_) =>
-                    Some(call_callable_direct(getter_fn, obj_val, [], interp~))
-                  None => Some(Undefined)
-                }
-              }
-              None => ()
-            }
+        match invoke_accessor_getter(proto_data.bag, name, obj_val, effective) {
+          Some(v) => return Some(v)
           None => ()
         }
         current = proto_data.prototype
@@ -226,11 +220,7 @@ fn lookup_property_chain(
         // For function objects, fall back to Function.prototype once
         if !func_fallback_used {
           match data.callable {
-            Some(_) => {
-              let effective = match interp {
-                Some(_) => interp
-                None => current_interpreter.val
-              }
+            Some(_) =>
               match effective {
                 Some(ip) => {
                   let fp = ip.global.get("[[FunctionPrototype]]") catch {
@@ -241,7 +231,6 @@ fn lookup_property_chain(
                 }
                 None => break
               }
-            }
             None => break
           }
         } else {
@@ -251,6 +240,16 @@ fn lookup_property_chain(
     }
   }
   None
+}
+
+///|
+fn lookup_property_chain_safe(
+  obj_val : Value,
+  data : ObjectData,
+  name : String,
+  interp? : Interpreter? = None,
+) -> Value? {
+  try { lookup_property_chain(obj_val, data, name, interp~) } catch { _ => None }
 }
 
 ///|
