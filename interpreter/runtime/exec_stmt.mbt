@@ -937,8 +937,10 @@ fn Interpreter::exec_stmt(
             }
             self.bind_pattern(pattern, value, bind_env, bk, ctx~) catch {
               e => {
-                close_iterator(self, iterator, loc) catch {
-                  _ => ()
+                if !(e is YieldSignal(_)) {
+                  close_iterator(self, iterator, loc) catch {
+                    _ => ()
+                  }
                 }
                 raise e
               }
@@ -947,8 +949,10 @@ fn Interpreter::exec_stmt(
           None =>
             self.assign_pattern(ctx, pattern, value, env) catch {
               e => {
-                close_iterator(self, iterator, loc) catch {
-                  _ => ()
+                if !(e is YieldSignal(_)) {
+                  close_iterator(self, iterator, loc) catch {
+                    _ => ()
+                  }
                 }
                 raise e
               }
@@ -1122,8 +1126,10 @@ fn Interpreter::exec_stmt(
         let body_env = Environment::new(parent=Some(env))
         self.assign_to_expr(ctx, lhs_expr, value, env) catch {
           e => {
-            close_iterator(self, iterator, loc) catch {
-              _ => ()
+            if !(e is YieldSignal(_)) {
+              close_iterator(self, iterator, loc) catch {
+                _ => ()
+              }
             }
             raise e
           }
