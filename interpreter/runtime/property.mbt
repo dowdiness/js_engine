@@ -914,37 +914,13 @@ pub fn Interpreter::get_computed_property(
             // Non-integer or negative Number key: return undefined per spec
             return Undefined
           }
-          String_(s) => {
-            // §7.1.21 CanonicalNumericIndexString: "-0" is canonical (step 2 special case)
-            // but -0𝔽 is not a valid integer index — treat as canonical-invalid.
-            if s == "-0" {
-              return Undefined
-            }
-            // Other canonical vs non-canonical classification via ToNumber round-trip.
-            // NaN / Infinity / fractional canonical forms are filtered by the
-            // idx.to_double() == n equality check below (e.g. NaN != NaN → Some(-1)).
-            let parsed_idx : Int? = try {
-              let n = @string.parse_double(s)
-              if n.to_string() == s {
-                let idx = n.to_int()
-                if idx.to_double() == n && idx >= 0 {
-                  Some(idx)
-                } else {
-                  Some(-1)
-                }
-              } else {
-                None
-              }
-            } catch {
-              _ => None
-            }
-            match parsed_idx {
+          String_(s) =>
+            match classify_typedarray_string_key(s) {
               Some(-1) => return Undefined
               Some(idx) =>
                 return (self.stdlib_hooks.typedarray_get_index)(data, idx)
               None => ()
             }
-          }
           _ => ()
         }
       }
@@ -1429,34 +1405,14 @@ pub fn Interpreter::set_property(
     Proxy(proxy_data) =>
       proxy_set(self, proxy_data, prop, value, receiver, strict)
     Object(data) => {
-      // TypedArray indexed write via dot notation (numeric string prop)
+      // TypedArray indexed write via dot notation (numeric string prop).
+      // Classifier raises nothing; to_number does — keep the raising call
+      // outside any try/catch so Symbol → TypeError propagates per §10.4.5.
       if is_typedarray_class(data.class_name) {
-        // §7.1.21 CanonicalNumericIndexString: "-0" is canonical (step 2 special case)
-        // but -0𝔽 is not a valid integer index — treat as canonical-invalid (no-op intercept).
-        if prop == "-0" {
-          return value
-        }
-        // Other canonical vs non-canonical classification via ToNumber round-trip.
-        let parsed_idx : Int? = try {
-          let n = @string.parse_double(prop)
-          if n.to_string() == prop {
-            let idx = n.to_int()
-            if idx.to_double() == n && idx >= 0 {
-              Some(idx)
-            } else {
-              Some(-1)
-            }
-          } else {
-            None
-          }
-        } catch {
-          _ => None
-        }
-        // logic that may raise lives AFTER the try/catch
-        match parsed_idx {
-          Some(-1) => return value // canonical but out-of-range: still intercept
+        match classify_typedarray_string_key(prop) {
+          Some(-1) => return value // canonical-invalid: no-op intercept
           Some(idx) => {
-            let num = to_number(value) // may raise TypeError for Symbol — now propagates
+            let num = to_number(value)
             (self.stdlib_hooks.typedarray_set_index)(data, idx, num)
             return value
           }
@@ -2224,30 +2180,11 @@ pub fn Interpreter::set_computed_property(
                 // Numeric key always intercepted for TypedArrays
                 return value
               }
-              String_(s) => {
-                // §7.1.21 CanonicalNumericIndexString: "-0" is canonical (step 2 special case)
-                // but -0𝔽 is not a valid integer index — treat as canonical-invalid (no-op intercept).
-                if s == "-0" {
-                  return value
-                }
-                // FIXME: receiver-sensitive write per §10.4.5.16 is a pre-existing gap
-                //        tracked as Follow-up B in project_typedarray_string_key_followups.md.
-                let parsed_idx : Int? = try {
-                  let n = @string.parse_double(s)
-                  if n.to_string() == s {
-                    let idx = n.to_int()
-                    if idx.to_double() == n && idx >= 0 {
-                      Some(idx)
-                    } else {
-                      Some(-1)
-                    }
-                  } else {
-                    None
-                  }
-                } catch {
-                  _ => None
-                }
-                match parsed_idx {
+              String_(s) =>
+                // FIXME: receiver-sensitive write per §10.4.5.16 is a
+                // pre-existing gap; this branch ignores `receiver !== obj`
+                // and writes to `data` regardless. Tracked as a follow-up.
+                match classify_typedarray_string_key(s) {
                   Some(-1) => return value
                   Some(idx) => {
                     let num = to_number(value)
@@ -2256,7 +2193,6 @@ pub fn Interpreter::set_computed_property(
                   }
                   None => ()
                 }
-              }
               _ => ()
             }
           }

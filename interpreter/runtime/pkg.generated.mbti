@@ -17,6 +17,8 @@ pub fn call_callable_direct(Value, Value, Array[Value], interp? : Interpreter?) 
 
 pub fn check_proxy_set_trap_invariants(Value, Value, Value) -> Unit raise
 
+pub fn classify_typedarray_string_key(String) -> Int?
+
 pub fn clear_array_length_override(ArrayData) -> Unit
 
 pub fn collect_target_own_keys(Value, SymbolState) -> Array[Value]
@@ -518,6 +520,8 @@ pub(all) struct Microtask {
 }
 
 pub(all) struct ModuleLoader((String) -> Map[String, Value] raise)
+#deprecated
+pub fn ModuleLoader::inner(Self) -> (String) -> Map[String, Value] raise
 
 pub(all) struct ObjectData {
   bag : PropertyBag

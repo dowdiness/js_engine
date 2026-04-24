@@ -53,3 +53,44 @@ pub fn is_typedarray_class(name : String) -> Bool {
     _ => false
   }
 }
+
+///|
+/// Classify a string property key for TypedArray indexed-element interception
+/// per ES §10.4.5 IntegerIndexedExoticObject + §7.1.21 CanonicalNumericIndexString.
+///
+/// Returns:
+/// - `Some(idx)` with `idx >= 0`: a valid in-range integer index. The caller
+///   should perform the indexed read/write.
+/// - `Some(-1)`: a canonical numeric string (per §7.1.21) that is NOT a
+///   valid integer index — `"-0"`, `"NaN"`, `"Infinity"`, `"-Infinity"`,
+///   fractional like `"1.5"`, or negative. Per §10.4.5 these are still
+///   intercepted (read returns `undefined`; write is a no-op) — they must
+///   not fall through to ordinary property creation.
+/// - `None`: not a canonical numeric string — caller should fall through to
+///   ordinary property lookup / write.
+///
+/// Note: `"-0"` is a canonical numeric index string per §7.1.21 step 1 but
+/// `-0𝔽` is not a valid integer index, so it is explicitly classified as
+/// `Some(-1)`. Other canonical-but-invalid forms (NaN, Infinity, fractional)
+/// are filtered by the IEEE round-trip check (`n.to_string() == s` plus
+/// `idx.to_double() == n`).
+pub fn classify_typedarray_string_key(s : String) -> Int? {
+  if s == "-0" {
+    return Some(-1)
+  }
+  try {
+    let n = @string.parse_double(s)
+    if n.to_string() == s {
+      let idx = n.to_int()
+      if idx.to_double() == n && idx >= 0 {
+        Some(idx)
+      } else {
+        Some(-1)
+      }
+    } else {
+      None
+    }
+  } catch {
+    _ => None
+  }
+}
