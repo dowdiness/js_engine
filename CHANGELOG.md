@@ -12,23 +12,51 @@ For changes before this file existed, see `git log`.
 ## [0.2.1] — 2026-04-24
 
 Conformance-focused patch release. Adds dispatcher infrastructure
-(Stages B.2, C, B.3) that rewires several `[[…]]` essential internal
-methods through a single seam each, plus TypedArray and IteratorClose
-spec fixes. No user-facing API removals; the runtime dispatcher seams
-did grow the `interpreter/runtime` `.mbti` surface but existing call
-sites remain compatible.
+(Stages B.2, C, B.3) that rewires several essential internal methods
+through a single seam each, plus TypedArray, IteratorClose, parser, and
+method-definition spec fixes.
 
-test262 against v0.2.0 (CI run [24885185424] on tip `b225cda`,
-per-mode; compare with v0.2.0 methodology):
+Classified as `patch` under pre-1.0 conventions: most call sites are
+additive, and the few tightened / removed runtime internals (listed
+under **Internal API changes** below) had no known downstream consumers
+when this release was cut. Review that list before upgrading if you
+link against `@interpreter/runtime` directly.
 
-| Mode | v0.2.0 P/E | v0.2.1 P/E | Δ |
+test262 against v0.2.0 (both per-mode, both from CI artifacts; the
+v0.2.0 row here is the **post-tag** CI run on `f89898a`, which is the
+authoritative baseline per `docs/RELEASING.md` — slightly higher than
+the pre-release numbers in the v0.2.0 CHANGELOG due to a mid-release
+test262 suite update):
+
+| Mode | v0.2.0 P/E (tip `f89898a`) | v0.2.1 P/E (tip `b225cda`) | Δ |
 |---|---|---|---:|
-| strict | 86.6% (23,039 / 26,598) | **87.8%** (23,359 / 26,598) | **+320** |
-| non-strict | 85.0% (24,452 / 28,769) | **86.2%** (24,809 / 28,767) | **+357** |
+| strict | 86.7% (23,054 / 26,601) | **87.8%** (23,359 / 26,598) | **+305** |
+| non-strict | 85.1% (24,467 / 28,766) | **86.2%** (24,809 / 28,767) | **+342** |
+
+CI runs: v0.2.0 baseline [24730849102]; v0.2.1 tip [24885185424].
 
 Unit tests: **1031 passing** (was 978 at v0.2.0).
 
+[24730849102]: https://github.com/dowdiness/js_engine/actions/runs/24730849102
 [24885185424]: https://github.com/dowdiness/js_engine/actions/runs/24885185424
+
+### Internal API changes (pre-1.0, no known downstream callers)
+
+- `Environment::has`, `Environment::find_with_object`, and
+  `Interpreter::has_property` now raise. The B.3 `[[HasProperty]]`
+  dispatcher routes through Proxy traps, which can abrupt-complete; the
+  non-raising surface was not spec-faithful.
+- `Interpreter::construct_value` gained an optional `new_target?`
+  parameter. Existing call sites are source-compatible (default
+  `None`).
+- `@errors` package: removed 10 convenience raise functions
+  (`syntax_error(_msg)`, `type_error(_msg)`, `reference_error(_msg)`,
+  `range_error_msg`, `uri_error_msg`, `internal_error_msg`) plus
+  `JsError::debug` and `is_js_error`. All were zero-call sites
+  (confirmed by exhaustive grep across the monorepo). The
+  `@errors → @token` coupling is also gone.
+- `ModuleLoader::inner` (previously `#deprecated`) removed from the
+  public interface.
 
 ### TypedArray numeric-string-index correctness
 
@@ -39,7 +67,7 @@ Unit tests: **1031 passing** (was 978 at v0.2.0).
   `typedArr[0] = Symbol()` in strict mode silently fell through instead
   of throwing. Only `parse_double`'s raise is caught now; `to_number`
   propagates as the spec requires.
-- Added §7.1.21 step-2 `"-0"` canonical-invalid guard. Per spec, `"-0"`
+- Added §7.1.21 step-1 `"-0"` canonical-invalid guard. Per spec, `"-0"`
   is a canonical numeric index string but `-0𝔽` is not a valid integer
   index, so `typedArr["-0"]` reads must return `undefined` and writes
   must succeed as no-op (no expando). Previously `ToString(-0) = "0" ≠
@@ -56,16 +84,20 @@ write per §10.4.5.16 (`Reflect.set` with a distinct receiver), and a
 `classify_typedarray_string_key` helper extraction to dedup the three
 classifier sites in `property.mbt`.
 
-### IteratorClose §7.4.10 + `new.target` threading (PR #74)
+### IteratorClose + `new.target` threading (PR #74)
 
-- `IteratorClose` now matches the full §7.4.10 algorithm for both throw
-  and non-throw completions. For throw completions the original error
-  replaces any error from `return()`; for non-throw completions a
-  `return()` that throws or returns a non-Object now propagates / raises
-  TypeError as the spec requires.
+- `IteratorClose` completion handling now follows §7.4.10's throw-vs-
+  non-throw branching. For throw completions the original error is
+  preserved and any error from `return()` is suppressed; for non-throw
+  completions a `return()` that throws propagates, and a `return()`
+  that returns a non-Object raises TypeError as the spec requires.
 - Three missing close sites fixed in `ForOf` variants (`var_kind=None`,
   pattern binding, expression target) across `env.assign`, pattern
   bind/assign, and all abrupt signals.
+- Known scope-out: the `"return"` method lookup in `exec_stmt.mbt`
+  still walks object bags / prototypes directly rather than going
+  through spec `GetMethod`, so iterators with Proxy-wrapped or accessor
+  `return` properties are not covered by this fix.
 - `construct_value` threads `new.target` through Proxy `construct` traps,
   Proxy no-trap recursion, `BoundFunc` (per §10.4.1.2), implicit `super()`
   via non-`ClassConstructor`, and `Reflect.construct`. The `SuperCall`
@@ -109,16 +141,20 @@ classifier sites in `property.mbt`.
 - Object-literal and class method-shorthand functions now carry
   `is_method : Bool` on `FuncData` / `FuncDataExt`, so
   `new ({m() {}}).m()` and `new (class { m() {} }).prototype.m()` throw
-  TypeError per §15.4.5 MethodDefinitionEvaluation.
+  TypeError per spec MethodDefinitionEvaluation.
 - Method-def functions no longer receive an own `prototype` property
-  (§15.4.5 step 9 explicitly skips MakeConstructor).
+  (spec MethodDefinitionEvaluation explicitly skips MakeConstructor for
+  methods).
 
 ### Stage B.2 — GetOwnProperty + DefineOwnProperty dispatchers
 
 - Introduced `Interpreter::get_own_property` and
   `Interpreter::define_own_property` so §10.1.5, §10.1.6, §10.4.2.1 /
   §10.4.2.4, and §10.5.5 / §10.5.6 all route through one seam. The
-  three B.1 approximations in `define_value_on_receiver` are retired.
+  three B.1 approximations in `define_value_on_receiver` are
+  behaviorally retired; a handful of B.2-era comments in `property.mbt`
+  referencing "Stage B.2 will replace this" are stale and tracked for
+  follow-up cleanup.
 - Added `PartialDescriptor` to model ES "attribute-absent vs. default"
   correctly through `Object.defineProperty` and friends.
 - Added `ArrayData.length_writable` to gate extensions / truncations on
@@ -127,9 +163,10 @@ classifier sites in `property.mbt`.
 - `to_property_key` (§7.1.19) used consistently by
   `Object.defineProperty`, `Object.defineProperties`, and
   `Reflect.defineProperty`.
-- Stdlib simplification: **−762 LoC** across
-  `builtins_object_descriptors.mbt` and `builtins_reflect.mbt` as the
-  dispatcher centralizes descriptor validation.
+- Stdlib simplification: net **−1,501 LoC** (347 additions / 1,848
+  deletions) across `builtins_object_descriptors.mbt` and
+  `builtins_reflect.mbt` as the dispatcher centralizes descriptor
+  validation.
 
 test262 delta against v0.2.0 (CI run [24777653260] on tip `a50d293`,
 per-mode; compare with v0.2.0 section below for methodology):
