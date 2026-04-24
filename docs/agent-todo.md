@@ -825,7 +825,21 @@ behavior-preserving refactor charter; listed here for follow-up PRs.
 
 ### ~~25. `lookup_property_chain` ignores `bag.descriptors` (accessor + non-data blind spot)~~ — DONE (2026-04-24, branch `claude/refactor-codebase-safety-tc3IY`)
 
-**Fix**: Added `bag.descriptors` checks at own-property and every prototype step, mirroring `lookup_symbol_property_chain`. Signature changed to accept `obj_val : Value` as first param (receiver for getter invocation) and `raise Error`. When a getter is found and an interpreter is available the getter is invoked with `obj_val` as receiver; without an interpreter `Some(Undefined)` signals presence. All 6 callers updated; `has_property` callers wrap in `try/catch` since that function does not raise. Stale comment removed from `has_bag_or_builtin_proto_key` doc.
+**Fix**: Added `bag.descriptors` checks at own-property and every prototype step, mirroring `lookup_symbol_property_chain`. Signature changed to accept `obj_val : Value` as first param (receiver for getter invocation) and `raise Error`. When a getter is found and an interpreter is available the getter is invoked with `obj_val` as receiver; without an interpreter `Some(Undefined)` signals presence. All 6 callers updated; `has_property` callers use a new non-raising `lookup_property_chain_safe` wrapper. Stale comment removed from `has_bag_or_builtin_proto_key` doc.
+
+**Post-fix correction (same session, Opus review)**: The initial implementation checked `bag.properties` before `bag.descriptors`. The storage invariant (`eval_expr.mbt` ObjectLit Get/Set arms and `apply_descriptor_to_bag`) always writes `Undefined` into `bag.properties` as a sentinel for every accessor slot. The wrong order returned `Some(Undefined)` immediately, silencing the getter and regressing `to_primitive_*` (the `ip.get_property` fallback was no longer triggered). Fixed by swapping to descriptor-first at both own and prototype steps, matching `get_property_of_object` (`property.mbt:240-248`). A comment documenting the sentinel invariant was added.
+
+### 29. `has_property` invokes getters during `[[HasProperty]]` (latent spec issue)
+
+**Impact**: low — observable only when a getter has side effects and the `in` operator / `hasOwnProperty` path goes through the free `has_property` function without an interpreter.
+
+**Problem**: ES §7.3.12 `HasProperty` (and §10.1.7 `[[HasProperty]]` for ordinary objects) is a pure slot-existence check — it must NOT invoke accessor getters. The free `has_property` function now routes through `lookup_property_chain_safe`, which calls `invoke_accessor_getter`, which invokes the getter when one is found. So `"foo" in obj` may now fire `obj.foo`'s getter as a side effect.
+
+In practice the `in` operator routes through `interp.has_property_key` → `Interpreter::has_object_property` (which checks `bag.descriptors.contains(name)` — a pure slot check, correct) when an interpreter is available. The free `has_property` is the no-interpreter fallback (line 1349 of `eval_expr.mbt`), rarely reached during normal execution.
+
+**Fix sketch**: In `lookup_property_chain_safe` / `has_property`, use `bag.descriptors.contains(name) || bag.properties.contains(name)` for presence-only checks rather than routing through `invoke_accessor_getter`. Alternatively, add a `check_only : Bool` parameter to `lookup_property_chain` to skip getter invocation.
+
+**Known remaining nit**: `is_unicode_space_cp` in `lexer/lexer.mbt` omits U+0020 (SP is technically Zs) but is functionally correct because `is_js_whitespace` adds SP separately. A rename to `is_unicode_non_ascii_space_cp` would be more precise but low priority.
 
 ---
 
@@ -877,22 +891,4 @@ Consolidated three separate copies of the 15-entry ECMAScript WhiteSpace+LineTer
 
 ## ~~Lexer numeric parser consolidation~~ — DONE (2026-04-24, branch claude/refactor-codebase-safety-tc3IY)
 
-**Files**: `lexer/lexer.mbt` lines 12–48
-**Impact**: ~−10 LoC, pure refactor, zero behavior change, no public API change
-**Result**: Merged `parse_binary` and `parse_octal` into `parse_radix_literal(s, base)`. Three call sites updated: `parse_radix_literal(bin_str, 2.0)`, `parse_radix_literal(oct_str, 8.0)` ×2. `parse_hex` kept separate (three-branch digit extraction is fundamentally different).
-**Effort**: 1 session
-
-`parse_hex`, `parse_binary`, and `parse_octal` (lines 12–48) are structurally near-identical: each iterates a `String` as a `Char` array and accumulates a `Double` via weighted positional arithmetic. `parse_binary` and `parse_octal` are identical except for the base multiplier (`2.0` vs `8.0`).
-
-**Proposed consolidation**:
-
-1. Merge `parse_binary` and `parse_octal` into a single `fn parse_radix_literal(s: String, base: Double) -> Double`. Digit extraction (`c.to_int() - 48`) is identical for both.
-
-2. `parse_hex` may be merged as a special case of the same function, or kept separate — its three-branch digit mapping for `0–9` / `a–f` / `A–F` is structurally different from the simple `c - '0'` of the other two.
-
-**Call sites** (all pass clean digit-only strings; no separators):
-- `parse_hex`: called from `parse_unicode_escape` (line ~235), `scan_template_string` (line ~307), and the main hex-literal path in `tokenize` (~line 949) — 3 sites
-- `parse_binary`: 1 site in `tokenize` (binary literal path)
-- `parse_octal`: 1 site in `tokenize` (octal literal path)
-
-**Safety**: all three are private functions. The lexer's 60+ tests in `lexer_test.mbt` cover all three numeric literal formats and must pass after the change.
+**Result**: Merged `parse_binary` and `parse_octal` into `parse_radix_literal(s, base)`. Three call sites updated: `parse_radix_literal(bin_str, 2.0)`, `parse_radix_literal(oct_str, 8.0)` ×2. `parse_hex` kept separate — its three-branch digit mapping for `0–9` / `a–f` / `A–F` differs structurally from the simple `c.to_int() - 48` of the other two.
