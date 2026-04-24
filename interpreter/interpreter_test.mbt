@@ -11002,3 +11002,131 @@ test "B.2: Array length set to NaN throws RangeError" {
   let output = run_output(src)
   inspect(output, content="[\"RangeError\"]")
 }
+
+///|
+/// IteratorClose: iterator.return() called when for-of body throws (ForOfStmt)
+test "IteratorClose: body throw calls iterator return (ForOfStmt)" {
+  let src =
+    #|var returnCalled = false;
+    #|var iter = {
+    #|  [Symbol.iterator]() { return this; },
+    #|  next() { return { done: false, value: 1 }; },
+    #|  return() { returnCalled = true; return {}; }
+    #|};
+    #|try {
+    #|  for (var x of iter) { throw new Error("body"); }
+    #|} catch(e) {}
+    #|console.log(returnCalled);
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+/// IteratorClose: iterator.return() called when for-of body throws (ForOfStmtPat)
+test "IteratorClose: body throw calls iterator return (ForOfStmtPat)" {
+  let src =
+    #|var returnCalled = false;
+    #|var iter = {
+    #|  [Symbol.iterator]() { return this; },
+    #|  next() { return { done: false, value: {a: 1} }; },
+    #|  return() { returnCalled = true; return {}; }
+    #|};
+    #|try {
+    #|  for (let {a} of iter) { throw new Error("body"); }
+    #|} catch(e) {}
+    #|console.log(returnCalled);
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+/// IteratorClose: iterator.return() called when pattern assignment fails (ForOfStmtPat)
+test "IteratorClose: pattern assign error calls iterator return" {
+  let src =
+    #|var returnCalled = false;
+    #|var iter = {
+    #|  [Symbol.iterator]() { return this; },
+    #|  next() { return { done: false, value: null }; },
+    #|  return() { returnCalled = true; return {}; }
+    #|};
+    #|try {
+    #|  for (let {a} of iter) {}
+    #|} catch(e) {}
+    #|console.log(returnCalled);
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+/// IteratorClose: iterator.return() called when ForOfExpr lhs assignment throws
+test "IteratorClose: lhs put error calls iterator return (ForOfExpr)" {
+  let src =
+    #|var returnCalled = false;
+    #|var iter = {
+    #|  [Symbol.iterator]() { return this; },
+    #|  next() { return { done: false, value: 1 }; },
+    #|  return() { returnCalled = true; return {}; }
+    #|};
+    #|var obj = Object.freeze({x: 0});
+    #|try {
+    #|  "use strict";
+    #|  for (obj.x of iter) {}
+    #|} catch(e) {}
+    #|console.log(returnCalled);
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+/// IteratorClose: iterator.return() called when ForOfExpr body throws
+test "IteratorClose: body throw calls iterator return (ForOfExpr)" {
+  let src =
+    #|var returnCalled = false;
+    #|var iter = {
+    #|  [Symbol.iterator]() { return this; },
+    #|  next() { return { done: false, value: 1 }; },
+    #|  return() { returnCalled = true; return {}; }
+    #|};
+    #|var target = {};
+    #|try {
+    #|  for (target.x of iter) { throw new Error("body"); }
+    #|} catch(e) {}
+    #|console.log(returnCalled);
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+/// IteratorClose: iterator.return() called on ForOfStmt ReturnSignal
+test "IteratorClose: return inside for-of calls iterator return" {
+  let src =
+    #|var returnCalled = false;
+    #|var iter = {
+    #|  [Symbol.iterator]() { return this; },
+    #|  next() { return { done: false, value: 1 }; },
+    #|  return() { returnCalled = true; return {}; }
+    #|};
+    #|function f() {
+    #|  for (var x of iter) { return x; }
+    #|}
+    #|f();
+    #|console.log(returnCalled);
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+/// IteratorClose: iterator.return() called on ForOfStmt break
+test "IteratorClose: break inside for-of calls iterator return" {
+  let src =
+    #|var returnCalled = false;
+    #|var iter = {
+    #|  [Symbol.iterator]() { return this; },
+    #|  next() { return { done: false, value: 1 }; },
+    #|  return() { returnCalled = true; return {}; }
+    #|};
+    #|for (var x of iter) { break; }
+    #|console.log(returnCalled);
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}

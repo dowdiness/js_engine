@@ -712,7 +712,14 @@ fn Interpreter::exec_stmt(
             }
             body_env.def(name, value, bk)
           }
-          None => env.assign(name, value)
+          None => {
+            env.assign(name, value) catch {
+              e => {
+                close_iterator(self, iterator, loc) catch { _ => () }
+                raise e
+              }
+            }
+          }
         }
 
         // Execute the loop body
@@ -937,9 +944,21 @@ fn Interpreter::exec_stmt(
               VarKind => env
               _ => body_env
             }
-            self.bind_pattern(pattern, value, bind_env, bk, ctx~)
+            self.bind_pattern(pattern, value, bind_env, bk, ctx~) catch {
+              e => {
+                close_iterator(self, iterator, loc) catch { _ => () }
+                raise e
+              }
+            }
           }
-          None => self.assign_pattern(ctx, pattern, value, env)
+          None => {
+            self.assign_pattern(ctx, pattern, value, env) catch {
+              e => {
+                close_iterator(self, iterator, loc) catch { _ => () }
+                raise e
+              }
+            }
+          }
         }
         let body_signal = self.exec_stmt(ctx, body, body_env) catch {
           e => {
@@ -1115,19 +1134,36 @@ fn Interpreter::exec_stmt(
           break
         }
         let body_env = Environment::new(parent=Some(env))
-        self.assign_to_expr(ctx, lhs_expr, value, env)
-        match self.exec_stmt(ctx, body, body_env) {
+        self.assign_to_expr(ctx, lhs_expr, value, env) catch {
+          e => {
+            close_iterator(self, iterator, loc) catch { _ => () }
+            raise e
+          }
+        }
+        let body_signal = self.exec_stmt(ctx, body, body_env) catch {
+          e => {
+            close_iterator(self, iterator, loc) catch { _ => () }
+            raise e
+          }
+        }
+        match body_signal {
           Normal(v) => completion = v
-          ReturnSignal(v) => return ReturnSignal(v)
+          ReturnSignal(v) => {
+            close_iterator(self, iterator, loc) catch { _ => () }
+            return ReturnSignal(v)
+          }
           BreakSignal(v, None) => {
+            close_iterator(self, iterator, loc) catch { _ => () }
             completion = v.unwrap_or(completion)
             break
           }
           BreakSignal(bv, Some(l)) =>
             if label == Some(l) {
+              close_iterator(self, iterator, loc) catch { _ => () }
               completion = bv.unwrap_or(completion)
               break
             } else {
+              close_iterator(self, iterator, loc) catch { _ => () }
               return BreakSignal(bv, Some(l))
             }
           ContinueSignal(v, None) => {
@@ -1139,6 +1175,7 @@ fn Interpreter::exec_stmt(
               completion = cv.unwrap_or(completion)
               continue
             } else {
+              close_iterator(self, iterator, loc) catch { _ => () }
               return ContinueSignal(cv, Some(l))
             }
         }
