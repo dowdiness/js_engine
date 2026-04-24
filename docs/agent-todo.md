@@ -857,3 +857,50 @@ Two scope-fenced gaps carried forward from the method-shorthand / TypeError-gate
 **Problem**: per §15.4.5 step 9, method definitions explicitly do NOT go through MakeConstructor — which is the step that adds the `prototype` own property for regular functions. Current user-function materialization adds `prototype` unconditionally. With the `is_method: true` flag now available from PR #71, the fix is a one-line gate.
 
 **Fix sketch**: in `make_func` / `make_func_ext` in `factories.mbt` (or wherever the `prototype` property is assigned during user-function materialization), gate the assignment on `!func_data.is_method`. Regression guard: `typeof ({m() {}}).m.prototype === "undefined"` (currently `"object"`).
+
+---
+
+## ~~Codebase safety refactor (dead code + duplication)~~ — DONE (2026-04-24, branch `claude/refactor-codebase-safety-tc3IY`)
+
+Three incremental passes. Each was scoped to a single package or file pair, verified by exhaustive grep before touching code, and committed independently with explicit impact documentation.
+
+### ~~Pass 1 — `errors` dead public API removal~~
+
+Removed 13 dead public functions from `errors/errors.mbt`: `JsError::debug`, `is_js_error`, and 11 convenience raise-functions (`syntax_error`, `syntax_error_msg`, `type_error`, `type_error_msg`, `reference_error`, `reference_error_msg`, `range_error_msg`, `uri_error_msg`, `internal_error_msg`). Zero callers confirmed by exhaustive grep across all 941 `@errors` usages — every call site raises variants directly (`raise @errors.SyntaxError(message=…)`).
+
+Removing the three `@token.Loc`-bearing raise-functions also eliminated the `errors → token` package coupling. `errors/moon.pkg` is now empty.
+
+**Kept**: `JsError::name`, `get_message`, `format` — uncalled internally but legitimate public library utilities. `JsError` type and all 8 variants: unchanged.
+
+### ~~Pass 2 — Lexer Zs deduplication~~
+
+Extracted private `fn is_unicode_space_cp(cp: Int) -> Bool` from the identical 7-entry Unicode Space Separator (Zs) codepoint list that appeared in both `is_js_whitespace` and `is_whitespace_or_line_terminator_cp` in `lexer/lexer.mbt`. Both now delegate to the shared helper. Net: −6 lines, zero behavior change, no public API change.
+
+### ~~Pass 3 — ECMAScript whitespace canonical function~~
+
+Consolidated three separate copies of the 15-entry ECMAScript WhiteSpace+LineTerminator codepoint list (across `interpreter/runtime/conversions.mbt`, `interpreter/stdlib/builtins_string.mbt`, `interpreter/stdlib/builtins_number.mbt`) into a single canonical `pub fn is_es_whitespace_cp(cp: Int) -> Bool` in `interpreter/runtime/conversions.mbt`. `is_js_whitespace_code(UInt16)` and `is_es_whitespace(Char)` now delegate via `.to_int()`; `is_parse_whitespace(Char)` deleted and its one call site renamed to `is_es_whitespace`. Net: −76 +20 lines across 4 files.
+
+**Known remaining cross-dependency**: `is_js_whitespace(Char)` and `is_unicode_space_cp(Int)` in `lexer/lexer.mbt` cannot share code with `is_es_whitespace_cp` in `interpreter/runtime`. The lexer must not depend on the interpreter. `is_unicode_space_cp` is a deliberate subset (Zs only, no ASCII, no line terminators) and its separation is correct.
+
+---
+
+## Lexer numeric parser consolidation
+
+**Files**: `lexer/lexer.mbt` lines 12–48
+**Impact**: ~−25 LoC, pure refactor, zero behavior change, no public API change
+**Effort**: 1 session
+
+`parse_hex`, `parse_binary`, and `parse_octal` (lines 12–48) are structurally near-identical: each iterates a `String` as a `Char` array and accumulates a `Double` via weighted positional arithmetic. `parse_binary` and `parse_octal` are identical except for the base multiplier (`2.0` vs `8.0`).
+
+**Proposed consolidation**:
+
+1. Merge `parse_binary` and `parse_octal` into a single `fn parse_radix_literal(s: String, base: Double) -> Double`. Digit extraction (`c.to_int() - 48`) is identical for both.
+
+2. `parse_hex` may be merged as a special case of the same function, or kept separate — its three-branch digit mapping for `0–9` / `a–f` / `A–F` is structurally different from the simple `c - '0'` of the other two.
+
+**Call sites** (all pass clean digit-only strings; no separators):
+- `parse_hex`: called from `parse_unicode_escape` (line ~235), `scan_template_string` (line ~307), and the main hex-literal path in `tokenize` (~line 949) — 3 sites
+- `parse_binary`: 1 site in `tokenize` (binary literal path)
+- `parse_octal`: 1 site in `tokenize` (octal literal path)
+
+**Safety**: all three are private functions. The lexer's 60+ tests in `lexer_test.mbt` cover all three numeric literal formats and must pass after the change.
