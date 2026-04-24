@@ -11388,3 +11388,47 @@ test "typedarray strict symbol coercion raises TypeError" {
   let output = run_output(src)
   inspect(output, content="[\"TypeError\"]")
 }
+
+///| §7.4.10 IteratorClose via §7.3.10 GetMethod: accessor `return` getter
+/// must be invoked. Pre-fix the close walked `bag.properties` directly and
+/// missed accessor descriptors (their data slot stores Undefined as sentinel).
+test "for-of break invokes accessor return getter on iterator" {
+  let src =
+    #|var invoked = 0;
+    #|const it = {
+    #|  next() { return { value: 1, done: false }; },
+    #|  [Symbol.iterator]() { return this; }
+    #|};
+    #|Object.defineProperty(it, "return", {
+    #|  get() {
+    #|    invoked++;
+    #|    return function() { return { value: undefined, done: true }; };
+    #|  }
+    #|});
+    #|for (const x of it) break;
+    #|console.log(invoked);
+  let output = run_output(src)
+  inspect(output, content="[\"1\"]")
+}
+
+///| §7.4.10 IteratorClose via §7.3.10 GetMethod: non-callable `return`
+/// inherited from the prototype chain must throw TypeError. Pre-fix the
+/// close walked `bag.properties` directly without descriptor awareness;
+/// inherited non-callable values were sometimes silently skipped depending
+/// on prototype shape. The new dispatcher path resolves uniformly.
+test "for-of break with non-callable inherited return throws TypeError" {
+  let src =
+    #|var threw = "";
+    #|const proto = { return: 42 };
+    #|const it = Object.create(proto);
+    #|it.next = function() { return { value: 1, done: false }; };
+    #|it[Symbol.iterator] = function() { return this; };
+    #|try {
+    #|  for (const x of it) break;
+    #|} catch (e) {
+    #|  threw = e.name;
+    #|}
+    #|console.log(threw);
+  let output = run_output(src)
+  inspect(output, content="[\"TypeError\"]")
+}

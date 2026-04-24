@@ -1664,56 +1664,51 @@ fn Interpreter::exec_stmts(
 }
 
 ///|
-/// IteratorClose: call iterator.return() if it exists
+/// §7.4.10 IteratorClose: call iterator.return() if it exists.
+///
+/// Resolves "return" via the [[Get]] dispatcher (`Interpreter::get_property`)
+/// rather than walking `bag.properties` directly, so:
+/// - Proxy `get` traps fire on Proxy-wrapped iterators
+/// - Accessor `return` properties invoke their getter
+/// - Map/Set iterator prototypes (and any non-ObjectData iterator) resolve
+///   "return" through the same dispatcher path used by ordinary property access
+///
+/// Per §7.3.10 GetMethod: undefined/null → skip; non-callable → TypeError.
+/// Per §7.4.10 step 6: a non-Object result from `return()` → TypeError.
+///
+/// This helper does NOT distinguish throw vs non-throw completions — that
+/// responsibility lives at the call sites, which wrap the call in
+/// `try { … } catch { _ => () }` when the surrounding completion is a throw
+/// (so the original error wins per §7.4.10 step 4).
 fn close_iterator(
   interp : Interpreter,
   iterator : Value,
   loc : @token.Loc,
 ) -> Unit raise Error {
-  match iterator {
-    Object(data) => {
-      // Look for 'return' method on iterator
-      let return_fn = match data.bag.properties.get("return") {
-        Some(f) => f
-        None => {
-          // Walk prototype chain
-          let mut found : Value = Undefined
-          let mut current = data.prototype
-          while true {
-            match current {
-              Object(proto_data) =>
-                match proto_data.bag.properties.get("return") {
-                  Some(f) => {
-                    found = f
-                    break
-                  }
-                  None => current = proto_data.prototype
-                }
-              _ => break
-            }
-          }
-          found
+  // §7.4.10 step 1: assert Type(iterator) is Object. Skip non-object values
+  // defensively; non-object iterators shouldn't reach here, but the old
+  // implementation silently no-op'd them and we preserve that behavior.
+  if !is_object_value(iterator) {
+    return
+  }
+  // §7.4.10 step 2 + §7.3.10 GetMethod via §7.3.2 GetV: ToObject(iterator)
+  // is the iterator itself (already object), then [[Get]](P, iterator).
+  let return_fn = interp.get_property(iterator, "return", loc)
+  match return_fn {
+    Undefined | Null => () // §7.3.10 step 2: absent → skip
+    _ =>
+      if !is_callable(return_fn) {
+        // §7.3.10 step 3: present but non-callable → TypeError
+        raise @errors.TypeError(message="iterator.return is not a function")
+      } else {
+        // §7.4.10 steps 3.c + 6: call return(); non-Object result → TypeError
+        let result = interp.call_value(return_fn, iterator, [], loc)
+        if !is_object_value(result) {
+          raise @errors.TypeError(
+            message="Iterator return() must return an object",
+          )
         }
       }
-      // §7.4.10 step 2: GetMethod(iterator, "return") — if absent/undefined/null skip.
-      // If present but non-callable, GetMethod throws TypeError (§7.3.9 step 3).
-      match return_fn {
-        Undefined | Null => ()
-        _ =>
-          if !is_callable(return_fn) {
-            raise @errors.TypeError(message="iterator.return is not a function")
-          } else {
-            // §7.4.10 step 3c/7: call return(); non-Object result is TypeError.
-            let result = interp.call_value(return_fn, iterator, [], loc)
-            if !is_object_value(result) {
-              raise @errors.TypeError(
-                message="Iterator return() must return an object",
-              )
-            }
-          }
-      }
-    }
-    _ => ()
   }
 }
 
