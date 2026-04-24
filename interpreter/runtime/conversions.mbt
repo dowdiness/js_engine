@@ -121,9 +121,12 @@ pub fn has_property(
       }
       match effective {
         Some(ip) =>
-          (try { ip.has_object_property(data, String_(name)) } catch { _ => false })
+          ip.has_object_property(data, String_(name)) catch {
+            _ => false
+          }
         None =>
-          data.bag.properties.contains(name) || data.bag.descriptors.contains(name)
+          data.bag.properties.contains(name) ||
+          data.bag.descriptors.contains(name)
       }
     }
     Array(data) => {
@@ -154,9 +157,9 @@ pub fn has_property(
             Object(ctor_data) =>
               match ctor_data.bag.properties.get("prototype") {
                 Some(Object(proto_data)) =>
-                  (try { ip.has_object_property(proto_data, String_(name)) } catch {
+                  ip.has_object_property(proto_data, String_(name)) catch {
                     _ => false
-                  })
+                  }
                 _ => false
               }
             _ => false
@@ -185,7 +188,10 @@ fn invoke_accessor_getter(
       match desc.getter {
         Some(getter_fn) =>
           match effective {
-            Some(_) => Some(call_callable_direct(getter_fn, obj_val, [], interp=effective))
+            Some(_) =>
+              Some(
+                call_callable_direct(getter_fn, obj_val, [], interp=effective),
+              )
             None => Some(Undefined)
           }
         None => None
@@ -269,7 +275,9 @@ fn lookup_property_chain_safe(
   name : String,
   interp? : Interpreter? = None,
 ) -> Value? {
-  try { lookup_property_chain(obj_val, data, name, interp~) } catch { _ => None }
+  lookup_property_chain(obj_val, data, name, interp~) catch {
+    _ => None
+  }
 }
 
 ///|
@@ -473,7 +481,11 @@ pub fn to_primitive_default(
 
 ///|
 pub fn is_es_whitespace_cp(cp : Int) -> Bool {
-  cp == 0x09 || cp == 0x0A || cp == 0x0B || cp == 0x0C || cp == 0x0D ||
+  cp == 0x09 ||
+  cp == 0x0A ||
+  cp == 0x0B ||
+  cp == 0x0C ||
+  cp == 0x0D ||
   cp == 0x20 || // Space
   cp == 0x00A0 || // No-Break Space
   cp == 0xFEFF || // Zero Width No-Break Space (BOM)
