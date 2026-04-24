@@ -611,9 +611,29 @@ representation). Staged:
   across executed tasks.
 - **Stage D — Realm hermeticity.** 0 tests; ship when convenient.
 
-Independent of Stage B (parallel PRs):
-- `construct` NewTarget threading (~12 Proxy).
-- `revocable` `typeof` post-revoke (~8 Proxy).
+- ~~**`construct` NewTarget threading (~12 Proxy).**~~ — DONE (2026-04-24, branch `claude/agent-todo-task-8FZae`)
+
+  Added `new_target? : Value? = None` to `construct_value`; effective value
+  computed as `new_target.unwrap_or(ctor)`. Changes:
+  - **Proxy trap call** (`construct.mbt`): third arg is now `new_target` instead of `ctor`.
+  - **Proxy no-trap recursion**: forwards both `proto_override~` and `new_target=Some(new_target)`.
+  - **UserFunc / UserFuncExt / ClassConstructor** `<new.target>` binds: use `new_target` instead of `ctor`.
+  - **BoundFunc** (`construct.mbt`): per §10.4.1.2, if `new_target === ctor` (bound function), pass `None` so the recursive call defaults to `target`; else forward `Some(new_target)`. Uses `physical_equal`.
+  - **Implicit super() via non-ClassConstructor path** (`construct.mbt`): passes `new_target=Some(new_target)` so a Proxy superclass trap receives the derived constructor.
+  - **`SuperCall` in `eval_expr.mbt`**: the inline ClassConstructor super-body path now defines `<new.target>` in `call_env` from the calling env's `<new.target>` so `new.target` in a super-class constructor body correctly reflects the derived class.
+  - **`Reflect.construct`** (`builtins_reflect.mbt`): now passes `new_target=Some(nt)` when a third arg is present, alongside the existing `proto_override~`.
+
+  Regression guard: 5 new unit tests (Proxy trap receives BarCtor, no-trap path, direct new.target unchanged, Reflect.construct body binding, super() propagation).
+
+- **`revocable` `typeof` post-revoke (~8 Proxy).** Investigation (2026-04-24)
+  shows the implementation is already correct: `type_of` in
+  `conversions.mbt:970-975` reads `proxy_data.is_callable` which is set at
+  creation and persists after `revoke()` nullifies target/handler. Other
+  operations correctly throw via `get_proxy_trap` → `get_proxy_handler`
+  returning `None`. The ~8 tests likely cover adjacent behaviour (e.g. that
+  `typeof` does **not** throw while `obj.x`, `delete`, `in` etc. do).
+  **Action**: run `test262-runner.py --filter "built-ins/Proxy/revocable"` to
+  confirm pass rate; if failures remain, check what operation they exercise.
 
 Post-B.3 language follow-up:
 - ~~**Strict reserved words as early errors.**~~ DONE (2026-04-23,
@@ -677,12 +697,17 @@ Centralized all proxy trap invariant validation in `interpreter/runtime/proxy_he
 - **isExtensible** (2 failures): Array values lack `extensible` field tracking
 - **Misc** (4 failures): property-order, revoked function proxy
 
-#### 2. Iterator close on abrupt completion
+#### ~~2. Iterator close on abrupt completion~~ — DONE (2026-04-24, branch `claude/agent-todo-task-8FZae`)
 
 **Impact**: ~20-30 tests across `language/statements/for-of`
 **Files**: `interpreter/runtime/exec_stmt.mbt`
 
-For-of body errors (`body-dstr-assign-error`, `body-put-error`) show `IteratorClose` not being called when the body throws. The spec requires calling `iterator.return()` when for-of exits early (break, throw, return).
+Three code paths were missing `IteratorClose` calls:
+1. **`ForOfStmt` (`var_kind=None`)**: `env.assign` for `for (x of arr)` could throw (e.g. const target) without closing the iterator.
+2. **`ForOfStmtPat`**: `bind_pattern` (for `let {x}`) and `assign_pattern` (for `{x}` without declaration) could throw without closing.
+3. **`ForOfExpr`** (`for (obj.x of arr)`): `assign_to_expr` could throw, body execution not wrapped, and all abrupt signals (Return, Break, labeled-Break, non-matching-Continue) returned without calling `iterator.return()`.
+
+Fix: wrap each missing throw site with catch→IteratorClose→re-raise; add `close_iterator` before every non-Normal signal exit in `ForOfExpr`. The `catch { _ => () }` on `close_iterator` itself is intentional: spec §7.4.10 step 5 says for throw completions the original error takes priority over any close error. 8 regression tests added.
 
 #### 3. Mapped arguments object
 
@@ -703,7 +728,7 @@ Remaining deferred items from Phase 15 (3 of 6 now done):
 - `for-in` doesn't invoke `ownKeys` trap (delegates to target directly)
 - `instanceof` doesn't invoke `getPrototypeOf` trap for prototype chain walk
 - `create_list_from_array_like` bypasses Proxy traps (reads `.properties` directly)
-- `Reflect.construct` rewires newTarget prototype after construction instead of before
+- ~~`Reflect.construct` rewires newTarget prototype after construction instead of before~~ — superseded by `construct` NewTarget threading item above (same root cause, broader fix)
 - `unwrap_proxy_target` fails for non-Object types
 
 #### 5. RegExp lookbehind assertions

@@ -11130,3 +11130,73 @@ test "IteratorClose: break inside for-of calls iterator return" {
   let output = run_output(src)
   inspect(output, content="[\"true\"]")
 }
+
+///|
+/// Proxy [[Construct]] newTarget: Reflect.construct passes newTarget to trap
+test "Proxy construct: Reflect.construct newTarget forwarded to trap" {
+  let src =
+    #|var capturedNewTarget;
+    #|var handler = {
+    #|  construct(target, args, newTarget) {
+    #|    capturedNewTarget = newTarget;
+    #|    return {};
+    #|  }
+    #|};
+    #|function Foo() {}
+    #|function Bar() {}
+    #|var P = new Proxy(Foo, handler);
+    #|Reflect.construct(P, [], Bar);
+    #|console.log(capturedNewTarget === Bar);
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+/// Proxy [[Construct]] no trap: newTarget propagated to target via no-trap path
+test "Proxy construct no trap: new.target = explicit newTarget" {
+  let src =
+    #|var capturedNewTarget;
+    #|function Foo() { capturedNewTarget = new.target; }
+    #|var P = new Proxy(Foo, {});
+    #|function Bar() {}
+    #|Reflect.construct(P, [], Bar);
+    #|console.log(capturedNewTarget === Bar);
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+/// Reflect.construct: new.target in body equals the newTarget argument
+test "Reflect.construct: new.target in body is newTarget" {
+  let src =
+    #|function Foo() { return new.target; }
+    #|function Bar() {}
+    #|var result = Reflect.construct(Foo, [], Bar);
+    #|console.log(result === Bar);
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+/// direct new: new.target === constructor (unchanged regression)
+test "construct: new.target === ctor for direct new" {
+  let src =
+    #|function Foo() { return new.target; }
+    #|console.log(new Foo() === Foo);
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+/// super() propagates new.target to super constructor body
+test "class: new.target propagates through super() call" {
+  let src =
+    #|class Base {
+    #|  constructor() { this.nt = new.target; }
+    #|}
+    #|class Derived extends Base {}
+    #|var d = new Derived();
+    #|console.log(d.nt === Derived);
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
