@@ -269,18 +269,6 @@ fn lookup_property_chain(
 }
 
 ///|
-fn lookup_property_chain_safe(
-  obj_val : Value,
-  data : ObjectData,
-  name : String,
-  interp? : Interpreter? = None,
-) -> Value? {
-  lookup_property_chain(obj_val, data, name, interp~) catch {
-    _ => None
-  }
-}
-
-///|
 /// Look up a symbol-keyed property on an object, walking the prototype chain.
 /// Also handles getter descriptors - invokes them and returns the result.
 pub fn lookup_symbol_property_chain(
