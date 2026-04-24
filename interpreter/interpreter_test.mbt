@@ -11286,3 +11286,17 @@ test "class: Reflect.construct implicit ctor new.target is newTarget not derived
   let output = run_output(src)
   inspect(output, content="[\"true\"]")
 }
+
+///|
+/// Reflect.construct(boundFn, [], boundFn): newTarget rewritten to target, instance
+/// prototype comes from target.prototype, not the absent bound-fn .prototype (Null)
+test "BoundFunc construct: newTarget===boundFn drops proto_override, uses target proto" {
+  let src =
+    #|function Target() {}
+    #|Target.prototype.tag = "target";
+    #|var bound = Target.bind(null);
+    #|var obj = Reflect.construct(bound, [], bound);
+    #|console.log(obj.tag);
+  let output = run_output(src)
+  inspect(output, content="[\"target\"]")
+}

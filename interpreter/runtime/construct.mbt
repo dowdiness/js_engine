@@ -630,10 +630,19 @@ pub fn Interpreter::construct_value(
           // new BoundFunc(...args) delegates to new Target(...boundArgs, ...args)
           // §10.4.1.2 [[Construct]] step 6-7: if newTarget === bound function,
           // replace with target; otherwise forward the explicit newTarget.
+          // When newTarget is rewritten to target (nt_for_target=None), drop
+          // proto_override too — it was derived from the bound function's
+          // .prototype (absent on bound fns → Null), and the effective newTarget
+          // is now target, so the instance prototype must come from target.
           let nt_for_target = if physical_equal(new_target, ctor) {
             None // let recursive call default to target
           } else {
             Some(new_target)
+          }
+          let effective_proto_override : Value? = if nt_for_target is None {
+            None
+          } else {
+            proto_override
           }
           let all_args : Array[Value] = []
           for a in bound_args {
@@ -646,7 +655,7 @@ pub fn Interpreter::construct_value(
             target,
             all_args,
             loc,
-            proto_override~,
+            proto_override=effective_proto_override,
             new_target=nt_for_target,
           )
         }
