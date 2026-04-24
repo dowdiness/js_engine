@@ -192,11 +192,15 @@ fn lookup_property_chain(
     Some(_) => interp
     None => current_interpreter.val
   }
-  match data.bag.properties.get(name) {
+  // Descriptor check first: accessors write Undefined into bag.properties as a
+  // sentinel (see apply_descriptor_to_bag / eval_expr ObjectLit Get/Set arms),
+  // so checking bag.properties first would return that sentinel and skip the
+  // getter. Mirror get_property_of_object: descriptor → data.
+  match invoke_accessor_getter(data.bag, name, obj_val, effective) {
     Some(v) => return Some(v)
     None => ()
   }
-  match invoke_accessor_getter(data.bag, name, obj_val, effective) {
+  match data.bag.properties.get(name) {
     Some(v) => return Some(v)
     None => ()
   }
@@ -206,11 +210,11 @@ fn lookup_property_chain(
   while true {
     match current {
       Object(proto_data) => {
-        match proto_data.bag.properties.get(name) {
+        match invoke_accessor_getter(proto_data.bag, name, obj_val, effective) {
           Some(v) => return Some(v)
           None => ()
         }
-        match invoke_accessor_getter(proto_data.bag, name, obj_val, effective) {
+        match proto_data.bag.properties.get(name) {
           Some(v) => return Some(v)
           None => ()
         }
