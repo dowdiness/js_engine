@@ -160,9 +160,9 @@ The GitHub Actions workflow (`.github/workflows/test262.yml`) runs the full suit
 
 ## Current Status
 
-As of CI run [24730849102](https://github.com/dowdiness/js_engine/actions/runs/24730849102) (2026-04-21, tip `f89898a`, v0.2.0):
+As of CI run [24885185424](https://github.com/dowdiness/js_engine/actions/runs/24885185424) (2026-04-24, tip `b225cda`):
 
-- Strict: **86.7%** passed / executed (23,054 / 26,601); 51.2% passed / discovered (23,054 / 44,986). 18,270 skipped.
-- Non-strict: **85.1%** passed / executed (24,467 / 28,766); 51.3% passed / discovered (24,467 / 47,692). 18,811 skipped.
+- Strict: **87.8%** passed / executed (23,359 / 26,598); 51.9% passed / discovered (23,359 / 44,986). 18,270 skipped.
+- Non-strict: **86.2%** passed / executed (24,809 / 28,767); 52.0% passed / discovered (24,809 / 47,692). 18,811 skipped.
 
-Strict and non-strict are reported separately — summing them would double-count the ~45k underlying test files. The ~51% figure is the honest spec-coverage number; the ~86% / ~85% figures exclude ~40% of the suite that we skip for unimplemented features. See [ROADMAP.md](ROADMAP.md) for category breakdowns and phase history, and [supported-features.md](supported-features.md) for the skipped-feature list.
+Strict and non-strict are reported separately — summing them would double-count the ~45k underlying test files. The ~52% figure is the honest spec-coverage number; the ~87% / ~86% figures exclude ~40% of the suite that we skip for unimplemented features. See [ROADMAP.md](ROADMAP.md) for category breakdowns and phase history, and [supported-features.md](supported-features.md) for the skipped-feature list.

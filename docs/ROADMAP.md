@@ -2,14 +2,16 @@
 
 ## Current Status
 
-**Test262** — CI run [24730849102](https://github.com/dowdiness/js_engine/actions/runs/24730849102) on tip `f89898a` (v0.2.0), 2026-04-21. Each test file is run twice, once in strict mode and once in non-strict. The two are reported separately (summing them would double-count files):
+**Test262** — CI run [24885185424](https://github.com/dowdiness/js_engine/actions/runs/24885185424) on tip `b225cda`, 2026-04-24. Each test file is run twice, once in strict mode and once in non-strict. The two are reported separately (summing them would double-count files):
 
 | Mode | Discovered | Skipped | Executed | Passed | Failed | Timeouts | Passed / Executed | Passed / Discovered |
 |---|---|---|---|---|---|---|---|---|
-| strict | 44,986 | 18,270 | 26,601 | 23,054 | 3,547 | 114 | **86.7%** | 51.2% |
-| non-strict | 47,692 | 18,811 | 28,766 | 24,467 | 4,299 | 114 | **85.1%** | 51.3% |
+| strict | 44,986 | 18,270 | 26,598 | 23,359 | 3,239 | 117 | **87.8%** | 51.9% |
+| non-strict | 47,692 | 18,811 | 28,767 | 24,809 | 3,958 | 113 | **86.2%** | 52.0% |
 
-CI regression baseline: `test262-baseline.json` (min 23,520 non-strict / 22,450 strict passed; currently +947 / +604 above).
+Delta vs v0.2.0 tip `f89898a` (run 24730849102): **+305 strict / +342 non-strict**, reflecting PRs #70-#71 (pre-Stage-C TypeError bundle), Stage C `ArrayData.bag`, Stage B.3 `[[HasProperty]]` dispatcher, strict-reserved early errors, PR #74 (IteratorClose §7.4.10 + construct newTarget threading), and PR #75 (TypedArray wide-catch + "-0" canonical-invalid guard, which picked up +2 ES2024 tests per mode).
+
+CI regression baseline: `test262-baseline.json` (min 23,520 non-strict / 22,450 strict passed; currently +1,289 / +909 above).
 
 **Unit tests**: 978 / 978 passing.
 
@@ -94,7 +96,7 @@ node ./_build/js/debug/build/cmd/main/main.js 'console.log(1 + 2)'
 # => 3
 ```
 
-All 978 unit tests pass on WASM-GC (verified in CI run 24730849102). The JS target builds and runs but the unit-test count on JS has not been re-verified since Phase 24 added 59 new tests. See [SELF_HOST_JS_RESEARCH.md](SELF_HOST_JS_RESEARCH.md) for full analysis.
+All 978 unit tests pass on WASM-GC (verified in CI run 24885185424). The JS target builds and runs but the unit-test count on JS has not been re-verified since Phase 24 added 59 new tests. See [SELF_HOST_JS_RESEARCH.md](SELF_HOST_JS_RESEARCH.md) for full analysis.
 
 ### What was needed
 - **Backend-specific argv handling**: `process.argv` on JS includes `["node", "script.js", ...]`, so user args start at index 2 (vs index 1 on WASM). Solved with `.js.mbt` / `.wasm.mbt` / `.wasm-gc.mbt` files.
@@ -113,7 +115,7 @@ Prioritized by estimated test impact and implementation effort. These are the hi
 
 ### Path to 90%
 
-Current (CI run 24730849102, 2026-04-21, v0.2.0): strict **86.7%** (23,054 / 26,601 executed), non-strict **85.1%** (24,467 / 28,766 executed). To reach 90% passed/executed: strict needs ~887 more passing tests, non-strict needs ~1,423. To reach 90% passed/discovered we'd additionally need to unskip large feature buckets (class-private ~2,437, regexp-unicode-property ~679, etc.). Tiers 1-2 are largely complete (Phase 22), Tier 4 polish done (Phase 23). Items below are ordered by ROI against the passed/executed denominator.
+Current (CI run 24885185424, 2026-04-24, tip `b225cda`): strict **87.8%** (23,359 / 26,598 executed), non-strict **86.2%** (24,809 / 28,767 executed). To reach 90% passed/executed: strict needs ~579 more passing tests, non-strict needs ~1,081. To reach 90% passed/discovered we'd additionally need to unskip large feature buckets (class-private ~2,437, regexp-unicode-property ~679, etc.). Tiers 1-2 are largely complete (Phase 22), Tier 4 polish done (Phase 23). Items below are ordered by ROI against the passed/executed denominator.
 
 ### Tier 3 — Feature Implementations (~3,000+ skipped tests unlocked, high effort)
 
@@ -157,7 +159,7 @@ These are major missing language features. Each unlocks a large batch of current
 
 ### Root Cause Clustering of Remaining Failures (snapshot 2026-04-16, stale)
 
-> **Stale warning.** The per-category numbers in this table are from a 2026-04-16 run that pre-dates PRs #64, #65, #66, #67, #68, #69, #70, #71 and the fixture-resolver fix. They are kept here for shape (which categories dominate failures) but **do not match** the current CI run (24730849102). Re-run `python3 test262-runner.py --filter <category> --summary` before citing any specific number.
+> **Stale warning.** The per-category numbers in this table are from a 2026-04-16 run that pre-dates PRs #64-#75 and the fixture-resolver fix. They are kept here for shape (which categories dominate failures) but **do not match** the current CI run (24885185424, tip `b225cda`, 2026-04-24). Re-run `python3 test262-runner.py --filter <category> --summary` before citing any specific number.
 
 Failures are now widely distributed. No single fix unlocks 300+ tests. Progress requires many small, targeted fixes.
 
