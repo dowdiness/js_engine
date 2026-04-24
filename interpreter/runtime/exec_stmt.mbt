@@ -956,8 +956,10 @@ fn Interpreter::exec_stmt(
         }
         let body_signal = self.exec_stmt(ctx, body, body_env) catch {
           e => {
-            close_iterator(self, iterator, loc) catch {
-              _ => ()
+            if !(e is YieldSignal(_)) {
+              close_iterator(self, iterator, loc) catch {
+                _ => ()
+              }
             }
             raise e
           }
@@ -1128,8 +1130,10 @@ fn Interpreter::exec_stmt(
         }
         let body_signal = self.exec_stmt(ctx, body, body_env) catch {
           e => {
-            close_iterator(self, iterator, loc) catch {
-              _ => ()
+            if !(e is YieldSignal(_)) {
+              close_iterator(self, iterator, loc) catch {
+                _ => ()
+              }
             }
             raise e
           }

@@ -642,7 +642,13 @@ pub fn Interpreter::construct_value(
           for a in args {
             all_args.push(a)
           }
-          self.construct_value(target, all_args, loc, new_target=nt_for_target)
+          self.construct_value(
+            target,
+            all_args,
+            loc,
+            proto_override~,
+            new_target=nt_for_target,
+          )
         }
         Some(NativeCallable(_, func)) => {
           is_constructing.val = true
@@ -905,7 +911,7 @@ pub fn Interpreter::construct_value(
                             super_env.def_builtin("this", new_obj)
                             super_env.def(
                               "<new.target>",
-                              derived_ctor,
+                              new_target,
                               LetBinding,
                             )
                             match grand_super {

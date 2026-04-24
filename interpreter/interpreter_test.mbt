@@ -11061,6 +11061,7 @@ test "IteratorClose: pattern assign error calls iterator return" {
 /// IteratorClose: iterator.return() called when ForOfExpr lhs assignment throws
 test "IteratorClose: lhs put error calls iterator return (ForOfExpr)" {
   let src =
+    #|"use strict";
     #|var returnCalled = false;
     #|var iter = {
     #|  [Symbol.iterator]() { return this; },
@@ -11069,7 +11070,6 @@ test "IteratorClose: lhs put error calls iterator return (ForOfExpr)" {
     #|};
     #|var obj = Object.freeze({x: 0});
     #|try {
-    #|  "use strict";
     #|  for (obj.x of iter) {}
     #|} catch(e) {}
     #|console.log(returnCalled);
@@ -11268,6 +11268,21 @@ test "class: new.target propagates through super() call" {
     #|class Derived extends Base {}
     #|var d = new Derived();
     #|console.log(d.nt === Derived);
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+/// Reflect.construct with implicit derived ctor: new.target is newTarget arg, not D
+test "class: Reflect.construct implicit ctor new.target is newTarget not derived" {
+  let src =
+    #|class Base {
+    #|  constructor() { this.nt = new.target; }
+    #|}
+    #|class D extends Base {}
+    #|function OtherCtor() {}
+    #|var obj = Reflect.construct(D, [], OtherCtor);
+    #|console.log(obj.nt === OtherCtor);
   let output = run_output(src)
   inspect(output, content="[\"true\"]")
 }
