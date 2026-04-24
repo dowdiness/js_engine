@@ -26,23 +26,11 @@ fn parse_hex(s : String) -> Double {
 }
 
 ///|
-fn parse_binary(s : String) -> Double {
+fn parse_radix_literal(s : String, base : Double) -> Double {
   let chars = s.to_array()
   let mut result = 0.0
   for c in chars {
-    let digit = c.to_int() - 48
-    result = result * 2.0 + digit.to_double()
-  }
-  result
-}
-
-///|
-fn parse_octal(s : String) -> Double {
-  let chars = s.to_array()
-  let mut result = 0.0
-  for c in chars {
-    let digit = c.to_int() - 48
-    result = result * 8.0 + digit.to_double()
+    result = result * base + (c.to_int() - 48).to_double()
   }
   result
 }
@@ -644,7 +632,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             )
           }
           let bin_str = buf.to_string()
-          let value = parse_binary(bin_str)
+          let value = parse_radix_literal(bin_str, 2.0)
           if offset < len && char_at(offset) == 'n' {
             offset += 1
             col += 1
@@ -690,7 +678,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             )
           }
           let oct_str = buf.to_string()
-          let value = parse_octal(oct_str)
+          let value = parse_radix_literal(oct_str, 8.0)
           if offset < len && char_at(offset) == 'n' {
             offset += 1
             col += 1
@@ -731,7 +719,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
               }
             }
             let oct_str = buf.to_string()
-            let value = parse_octal(oct_str)
+            let value = parse_radix_literal(oct_str, 8.0)
             if offset < len && char_at(offset) == 'n' {
               offset += 1
               col += 1

@@ -884,10 +884,11 @@ Consolidated three separate copies of the 15-entry ECMAScript WhiteSpace+LineTer
 
 ---
 
-## Lexer numeric parser consolidation
+## ~~Lexer numeric parser consolidation~~ — DONE (2026-04-24, branch claude/refactor-codebase-safety-tc3IY)
 
 **Files**: `lexer/lexer.mbt` lines 12–48
-**Impact**: ~−25 LoC, pure refactor, zero behavior change, no public API change
+**Impact**: ~−10 LoC, pure refactor, zero behavior change, no public API change
+**Result**: Merged `parse_binary` and `parse_octal` into `parse_radix_literal(s, base)`. Three call sites updated: `parse_radix_literal(bin_str, 2.0)`, `parse_radix_literal(oct_str, 8.0)` ×2. `parse_hex` kept separate (three-branch digit extraction is fundamentally different).
 **Effort**: 1 session
 
 `parse_hex`, `parse_binary`, and `parse_octal` (lines 12–48) are structurally near-identical: each iterates a `String` as a `Char` array and accumulates a `Double` via weighted positional arithmetic. `parse_binary` and `parse_octal` are identical except for the base multiplier (`2.0` vs `8.0`).
