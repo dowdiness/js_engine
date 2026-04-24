@@ -1760,36 +1760,8 @@ pub fn setup_string_prototype(
 ///|
 
 ///|
-/// Check if a character is ECMAScript whitespace (WhiteSpace + LineTerminator)
 fn is_es_whitespace(c : Char) -> Bool {
-  let code = c.to_int()
-  // WhiteSpace: TAB, VT, FF, SP, NBSP, BOM, USP category
-  // LineTerminator: LF, CR, LS, PS
-  code == 0x0009 || // TAB
-  code == 0x000A || // LF
-  code == 0x000B || // VT
-  code == 0x000C || // FF
-  code == 0x000D || // CR
-  code == 0x0020 || // SPACE
-  code == 0x00A0 || // NBSP
-  code == 0x1680 || // OGHAM SPACE MARK
-  code == 0x2000 || // EN QUAD
-  code == 0x2001 || // EM QUAD
-  code == 0x2002 || // EN SPACE
-  code == 0x2003 || // EM SPACE
-  code == 0x2004 || // THREE-PER-EM SPACE
-  code == 0x2005 || // FOUR-PER-EM SPACE
-  code == 0x2006 || // SIX-PER-EM SPACE
-  code == 0x2007 || // FIGURE SPACE
-  code == 0x2008 || // PUNCTUATION SPACE
-  code == 0x2009 || // THIN SPACE
-  code == 0x200A || // HAIR SPACE
-  code == 0x2028 || // LINE SEPARATOR
-  code == 0x2029 || // PARAGRAPH SEPARATOR
-  code == 0x202F || // NARROW NO-BREAK SPACE
-  code == 0x205F || // MEDIUM MATHEMATICAL SPACE
-  code == 0x3000 || // IDEOGRAPHIC SPACE
-  code == 0xFEFF // BOM
+  @runtime.is_es_whitespace_cp(c.to_int())
 }
 
 ///|

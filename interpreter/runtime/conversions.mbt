@@ -405,22 +405,23 @@ pub fn to_primitive_default(
 }
 
 ///|
+pub fn is_es_whitespace_cp(cp : Int) -> Bool {
+  cp == 0x09 || cp == 0x0A || cp == 0x0B || cp == 0x0C || cp == 0x0D ||
+  cp == 0x20 || // Space
+  cp == 0x00A0 || // No-Break Space
+  cp == 0xFEFF || // Zero Width No-Break Space (BOM)
+  cp == 0x1680 || // OGHAM SPACE MARK
+  (cp >= 0x2000 && cp <= 0x200A) || // EN QUAD through HAIR SPACE
+  cp == 0x2028 || // Line Separator
+  cp == 0x2029 || // Paragraph Separator
+  cp == 0x202F || // NARROW NO-BREAK SPACE
+  cp == 0x205F || // MEDIUM MATHEMATICAL SPACE
+  cp == 0x3000 // IDEOGRAPHIC SPACE
+}
+
+///|
 fn is_js_whitespace_code(ch : UInt16) -> Bool {
-  ch == 0x20 ||
-  ch == 0x09 ||
-  ch == 0x0A ||
-  ch == 0x0D ||
-  ch == 0x0B ||
-  ch == 0x0C ||
-  ch == 0x00A0 ||
-  ch == 0xFEFF ||
-  ch == 0x1680 ||
-  (ch >= 0x2000 && ch <= 0x200A) ||
-  ch == 0x2028 ||
-  ch == 0x2029 ||
-  ch == 0x202F ||
-  ch == 0x205F ||
-  ch == 0x3000
+  is_es_whitespace_cp(ch.to_int())
 }
 
 ///|

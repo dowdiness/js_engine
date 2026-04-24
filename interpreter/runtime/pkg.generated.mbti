@@ -131,6 +131,8 @@ pub let is_constructing : @ref.Ref[Bool]
 
 pub fn is_constructor_value(Value) -> Bool
 
+pub fn is_es_whitespace_cp(Int) -> Bool
+
 pub fn is_function_value(Value) -> Bool
 
 pub fn is_js_catchable_error(Error) -> Bool
