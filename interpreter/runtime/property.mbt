@@ -914,23 +914,37 @@ pub fn Interpreter::get_computed_property(
             // Non-integer or negative Number key: return undefined per spec
             return Undefined
           }
-          String_(s) =>
-            // Canonical numeric index string check per spec
-            // Note: "-0" is NOT canonical (ToString(ToNumber("-0")) === "0"), so it falls through
-            try {
+          String_(s) => {
+            // §7.1.21 CanonicalNumericIndexString: "-0" is canonical (step 2 special case)
+            // but -0𝔽 is not a valid integer index — treat as canonical-invalid.
+            if s == "-0" {
+              return Undefined
+            }
+            // Other canonical vs non-canonical classification via ToNumber round-trip.
+            // NaN / Infinity / fractional canonical forms are filtered by the
+            // idx.to_double() == n equality check below (e.g. NaN != NaN → Some(-1)).
+            let parsed_idx : Int? = try {
               let n = @string.parse_double(s)
-              // If string converts to a number and back to same string, it's a canonical numeric index
               if n.to_string() == s {
                 let idx = n.to_int()
                 if idx.to_double() == n && idx >= 0 {
-                  return (self.stdlib_hooks.typedarray_get_index)(data, idx)
+                  Some(idx)
+                } else {
+                  Some(-1)
                 }
-                // Canonical numeric index but not a valid integer index
-                return Undefined
+              } else {
+                None
               }
             } catch {
-              _ => () // Not a numeric string, fall through to normal property lookup
+              _ => None
             }
+            match parsed_idx {
+              Some(-1) => return Undefined
+              Some(idx) =>
+                return (self.stdlib_hooks.typedarray_get_index)(data, idx)
+              None => ()
+            }
+          }
           _ => ()
         }
       }
@@ -1417,21 +1431,36 @@ pub fn Interpreter::set_property(
     Object(data) => {
       // TypedArray indexed write via dot notation (numeric string prop)
       if is_typedarray_class(data.class_name) {
-        // Canonical numeric index string check per spec
-        // Note: "-0" is NOT canonical (ToString(ToNumber("-0")) === "0"), so it falls through
-        try {
+        // §7.1.21 CanonicalNumericIndexString: "-0" is canonical (step 2 special case)
+        // but -0𝔽 is not a valid integer index — treat as canonical-invalid (no-op intercept).
+        if prop == "-0" {
+          return value
+        }
+        // Other canonical vs non-canonical classification via ToNumber round-trip.
+        let parsed_idx : Int? = try {
           let n = @string.parse_double(prop)
           if n.to_string() == prop {
             let idx = n.to_int()
             if idx.to_double() == n && idx >= 0 {
-              let num = to_number(value)
-              (self.stdlib_hooks.typedarray_set_index)(data, idx, num)
+              Some(idx)
+            } else {
+              Some(-1)
             }
-            // Canonical numeric index: don't fall through to regular property set
-            return value
+          } else {
+            None
           }
         } catch {
-          _ => () // Not a numeric string, fall through to normal property set
+          _ => None
+        }
+        // logic that may raise lives AFTER the try/catch
+        match parsed_idx {
+          Some(-1) => return value // canonical but out-of-range: still intercept
+          Some(idx) => {
+            let num = to_number(value) // may raise TypeError for Symbol — now propagates
+            (self.stdlib_hooks.typedarray_set_index)(data, idx, num)
+            return value
+          }
+          None => () // not a canonical numeric string — fall through
         }
       }
       // Check for accessor descriptor (setter)
@@ -2201,22 +2230,39 @@ pub fn Interpreter::set_computed_property(
                 // Numeric key always intercepted for TypedArrays
                 return value
               }
-              String_(s) =>
-                // Canonical numeric index string check per spec
-                // Note: "-0" is NOT canonical (ToString(ToNumber("-0")) === "0"), so it falls through
-                try {
+              String_(s) => {
+                // §7.1.21 CanonicalNumericIndexString: "-0" is canonical (step 2 special case)
+                // but -0𝔽 is not a valid integer index — treat as canonical-invalid (no-op intercept).
+                if s == "-0" {
+                  return value
+                }
+                // FIXME: receiver-sensitive write per §10.4.5.16 is a pre-existing gap
+                //        tracked as Follow-up B in project_typedarray_string_key_followups.md.
+                let parsed_idx : Int? = try {
                   let n = @string.parse_double(s)
                   if n.to_string() == s {
                     let idx = n.to_int()
                     if idx.to_double() == n && idx >= 0 {
-                      let num = to_number(value)
-                      (self.stdlib_hooks.typedarray_set_index)(data, idx, num)
+                      Some(idx)
+                    } else {
+                      Some(-1)
                     }
-                    return value
+                  } else {
+                    None
                   }
                 } catch {
-                  _ => () // Not numeric, fall through
+                  _ => None
                 }
+                match parsed_idx {
+                  Some(-1) => return value
+                  Some(idx) => {
+                    let num = to_number(value)
+                    (self.stdlib_hooks.typedarray_set_index)(data, idx, num)
+                    return value
+                  }
+                  None => ()
+                }
+              }
               _ => ()
             }
           }
