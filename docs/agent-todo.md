@@ -823,18 +823,9 @@ behavior-preserving refactor charter; listed here for follow-up PRs.
 
 ### ~~24. `Error.isError` uses a hardcoded class-name allowlist (structural)~~ — DONE (2026-04-18, PR #62)
 
-### 25. `lookup_property_chain` ignores `bag.descriptors` (accessor + non-data blind spot)
+### ~~25. `lookup_property_chain` ignores `bag.descriptors` (accessor + non-data blind spot)~~ — DONE (2026-04-24, branch `claude/refactor-codebase-safety-tc3IY`)
 
-**Impact**: `lookup_property_chain` walks `bag.properties` on the target and every prototype step but never consults `bag.descriptors`. Any property that lives only in the descriptor map — accessors (getter/setter), or data descriptors registered without a mirror in `bag.properties` — is invisible to the chain walk. This makes all six callers subtly spec-wrong for accessor-only properties.
-**File**: `interpreter/runtime/conversions.mbt:156-200` (definition); callers at lines 113, 142 (presence checks) and 307, 336, 613, 642 (value retrieval).
-
-**Two failure shapes**:
-
-1. *Presence checks* (lines 113, 142) — used by the free `has_property` → `Interpreter::has_property` for Object/Array. A getter-only property on `Object.prototype` returns `false` from `"x" in obj`, violating ES §7.3.11 step 3 (`OrdinaryHasProperty` must inspect both data and accessor descriptors). PR #60 worked around this for Map/Set/Promise by duplicating the prototype-walk in `Interpreter::has_bag_or_builtin_proto` (explicitly checks both `properties` and `descriptors` at each step). That helper is the reference shape for the fix — backport it to `lookup_property_chain` and drop the duplication.
-
-2. *Value retrieval* (lines 307, 336, 613, 642) — `to_primitive` / `to_string` / `to_number` look up `toString` / `valueOf`. If either is defined as an accessor on a user-defined prototype, the lookup misses, fallback kicks in, and coercion uses the default `Object.prototype.toString` instead of the user getter's return value. Observable when `({ get toString() { return () => "x"; } }).toString()` returns `"[object Object]"` instead of `"x"`. Fix requires: on a descriptor hit with `getter`, invoke the getter with the current value as receiver and return its result; fall back to `properties` only when neither descriptor nor direct property exists.
-
-**Why not today**: touches coercion fast paths; each caller has distinct receiver and error-handling semantics. A survey pass is needed before unifying — some callers want Some/None (presence), others want the resolved value-or-callable. Likely unlocks a scattered handful of accessor-related test262 tests. Surfaced 2026-04-18 during PR #60 cleanup — the agent bypassed it cleanly within its scope, which is how it got flagged explicitly rather than silently propagating.
+**Fix**: Added `bag.descriptors` checks at own-property and every prototype step, mirroring `lookup_symbol_property_chain`. Signature changed to accept `obj_val : Value` as first param (receiver for getter invocation) and `raise Error`. When a getter is found and an interpreter is available the getter is invoked with `obj_val` as receiver; without an interpreter `Some(Undefined)` signals presence. All 6 callers updated; `has_property` callers wrap in `try/catch` since that function does not raise. Stale comment removed from `has_bag_or_builtin_proto_key` doc.
 
 ---
 
