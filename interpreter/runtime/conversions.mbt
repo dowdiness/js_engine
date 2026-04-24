@@ -111,7 +111,9 @@ pub fn has_property(
   interp? : Interpreter? = None,
 ) -> Bool {
   match val {
-    Object(data) => lookup_property_chain(data, name, interp~) is Some(_)
+    Object(data) =>
+      (try { lookup_property_chain(val, data, name, interp~) } catch { _ => None }) is
+      Some(_)
     Array(data) => {
       if name == "length" {
         return true
@@ -140,7 +142,10 @@ pub fn has_property(
             Object(ctor_data) =>
               match ctor_data.bag.properties.get("prototype") {
                 Some(Object(proto_data)) =>
-                  lookup_property_chain(proto_data, name, interp~) is Some(_)
+                  (try { lookup_property_chain(val, proto_data, name, interp~) } catch {
+                    _ => None
+                  }) is
+                  Some(_)
                 _ => false
               }
             _ => false
@@ -154,14 +159,36 @@ pub fn has_property(
 }
 
 ///|
+/// Look up a string-keyed property on an object, walking the prototype chain.
+/// Handles both data properties (bag.properties) and accessor properties
+/// (bag.descriptors with getter), invoking getters with obj_val as receiver.
 fn lookup_property_chain(
+  obj_val : Value,
   data : ObjectData,
   name : String,
   interp? : Interpreter? = None,
-) -> Value? {
+) -> Value? raise Error {
   // Check own properties first
   match data.bag.properties.get(name) {
     Some(v) => return Some(v)
+    None => ()
+  }
+  // Check own descriptor (accessor property not mirrored in bag.properties)
+  match data.bag.descriptors.get(name) {
+    Some(desc) =>
+      match desc.getter {
+        Some(getter_fn) => {
+          let effective = match interp {
+            Some(_) => interp
+            None => current_interpreter.val
+          }
+          return match effective {
+            Some(_) => Some(call_callable_direct(getter_fn, obj_val, [], interp~))
+            None => Some(Undefined)
+          }
+        }
+        None => ()
+      }
     None => ()
   }
   // Walk prototype chain
@@ -169,11 +196,32 @@ fn lookup_property_chain(
   let mut func_fallback_used = false
   while true {
     match current {
-      Object(proto_data) =>
+      Object(proto_data) => {
         match proto_data.bag.properties.get(name) {
           Some(v) => return Some(v)
-          None => current = proto_data.prototype
+          None => ()
         }
+        // Check descriptor (accessor property on prototype)
+        match proto_data.bag.descriptors.get(name) {
+          Some(desc) =>
+            match desc.getter {
+              Some(getter_fn) => {
+                let effective = match interp {
+                  Some(_) => interp
+                  None => current_interpreter.val
+                }
+                return match effective {
+                  Some(_) =>
+                    Some(call_callable_direct(getter_fn, obj_val, [], interp~))
+                  None => Some(Undefined)
+                }
+              }
+              None => ()
+            }
+          None => ()
+        }
+        current = proto_data.prototype
+      }
       Null =>
         // For function objects, fall back to Function.prototype once
         if !func_fallback_used {
@@ -305,7 +353,7 @@ fn to_primitive_number(
     None => current_interpreter.val
   }
   let value_of_fn : Value? = match
-    lookup_property_chain(data, "valueOf", interp~) {
+    lookup_property_chain(obj_val, data, "valueOf", interp~) {
     Some(f) => Some(f)
     None =>
       match effective {
@@ -334,7 +382,7 @@ fn to_primitive_number(
     None => ()
   }
   let to_string_fn : Value? = match
-    lookup_property_chain(data, "toString", interp~) {
+    lookup_property_chain(obj_val, data, "toString", interp~) {
     Some(f) => Some(f)
     None =>
       match effective {
@@ -612,7 +660,7 @@ fn to_primitive_string(
     None => current_interpreter.val
   }
   let to_string_fn : Value? = match
-    lookup_property_chain(data, "toString", interp~) {
+    lookup_property_chain(obj_val, data, "toString", interp~) {
     Some(f) => Some(f)
     None =>
       match effective {
@@ -641,7 +689,7 @@ fn to_primitive_string(
     None => ()
   }
   let value_of_fn : Value? = match
-    lookup_property_chain(data, "valueOf", interp~) {
+    lookup_property_chain(obj_val, data, "valueOf", interp~) {
     Some(f) => Some(f)
     None =>
       match effective {
@@ -874,9 +922,6 @@ fn bag_has_key(bag : PropertyBag, key : Value) -> Bool raise Error {
 /// OrdinaryHasProperty for exotic values whose prototype is stored globally
 /// (Map, Set, Promise). Checks own-bag descriptors and properties first, then
 /// walks the prototype chain starting from globalThis[ctor_name].prototype.
-/// Checks both data and accessor descriptors at each prototype step
-/// (ES §7.3.11), since lookup_property_chain intentionally sees only data
-/// properties.
 fn Interpreter::has_bag_or_builtin_proto_key(
   self : Interpreter,
   bag : PropertyBag,
