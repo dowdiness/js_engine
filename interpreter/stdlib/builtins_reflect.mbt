@@ -66,16 +66,17 @@ fn setup_reflect_builtins(env : Environment, _sym_state : SymbolState) -> Unit {
       }
       let arg_list = create_list_from_array_like(interp, args[1])
       let loc = @token.Loc::default()
-      // Per spec, when newTarget differs from target, create instance with newTarget.prototype
-      let proto_override : Value? = if args.length() > 2 {
-        let new_target = args[2]
-        // newTarget must be a constructor
-        if !@runtime.is_constructor_value(new_target) {
+      // Per spec §28.1.2: when newTarget is provided, create instance with
+      // newTarget.prototype and pass newTarget as [[Construct]] newTarget.
+      let (proto_override, new_target_opt) : (Value?, Value?) = if args.length() >
+        2 {
+        let nt = args[2]
+        if !@runtime.is_constructor_value(nt) {
           raise @errors.TypeError(
             message="Reflect.construct: newTarget is not a constructor",
           )
         }
-        match new_target {
+        let proto = match nt {
           Object(nt_data) =>
             Some(
               match nt_data.bag.properties.get("prototype") {
@@ -85,10 +86,17 @@ fn setup_reflect_builtins(env : Environment, _sym_state : SymbolState) -> Unit {
             )
           _ => None
         }
+        (proto, Some(nt))
       } else {
-        None
+        (None, None)
       }
-      interp.construct_value(target, arg_list, loc, proto_override~)
+      interp.construct_value(
+        target,
+        arg_list,
+        loc,
+        proto_override~,
+        new_target=new_target_opt,
+      )
     },
   )
 

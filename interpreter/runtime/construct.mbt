@@ -408,7 +408,11 @@ pub fn Interpreter::construct_value(
   args : Array[Value],
   loc : @token.Loc,
   proto_override? : Value? = None,
+  new_target? : Value? = None,
 ) -> Value raise Error {
+  // Effective newTarget: explicit override (e.g. from Reflect.construct) or the
+  // constructor itself (the normal `new Foo()` case, per §10.2.2 step 4).
+  let new_target = new_target.unwrap_or(ctor)
   match ctor {
     Proxy(proxy_data) => {
       // §10.5.13 [[Construct]]: target must be a constructor per IsConstructor,
@@ -426,7 +430,7 @@ pub fn Interpreter::construct_value(
           let result = self.call_value(
             trap_fn,
             handler,
-            [target, args_array, ctor],
+            [target, args_array, new_target],
             loc,
           )
           match result {
@@ -438,7 +442,14 @@ pub fn Interpreter::construct_value(
               )
           }
         }
-        None => self.construct_value(target, args, loc)
+        None =>
+          self.construct_value(
+            target,
+            args,
+            loc,
+            proto_override~,
+            new_target=Some(new_target),
+          )
       }
     }
     Object(obj_data) =>
@@ -474,7 +485,7 @@ pub fn Interpreter::construct_value(
           let func_env = Environment::new(parent=Some(data.closure))
           func_env.is_var_scope = true
           func_env.def("this", new_obj, LetBinding)
-          func_env.def("<new.target>", ctor, LetBinding)
+          func_env.def("<new.target>", new_target, LetBinding)
           for i = 0; i < data.params.length(); i = i + 1 {
             let val : Value = if i < args.length() {
               args[i]
@@ -579,7 +590,7 @@ pub fn Interpreter::construct_value(
           let param_env = Environment::new(parent=Some(self_name_env))
           param_env.is_var_scope = true
           param_env.def("this", new_obj, LetBinding)
-          param_env.def("<new.target>", ctor, LetBinding)
+          param_env.def("<new.target>", new_target, LetBinding)
           // Create arguments object BEFORE binding params so defaults can reference it
           let tte2 : Value? = if param_env.has("[[ThrowTypeError]]") {
             Some(param_env.get("[[ThrowTypeError]]"))
@@ -617,6 +628,22 @@ pub fn Interpreter::construct_value(
         }
         Some(BoundFunc(target, _, bound_args)) => {
           // new BoundFunc(...args) delegates to new Target(...boundArgs, ...args)
+          // §10.4.1.2 [[Construct]] step 6-7: if newTarget === bound function,
+          // replace with target; otherwise forward the explicit newTarget.
+          // When newTarget is rewritten to target (nt_for_target=None), drop
+          // proto_override too — it was derived from the bound function's
+          // .prototype (absent on bound fns → Null), and the effective newTarget
+          // is now target, so the instance prototype must come from target.
+          let nt_for_target = if physical_equal(new_target, ctor) {
+            None // let recursive call default to target
+          } else {
+            Some(new_target)
+          }
+          let effective_proto_override : Value? = if nt_for_target is None {
+            None
+          } else {
+            proto_override
+          }
           let all_args : Array[Value] = []
           for a in bound_args {
             all_args.push(a)
@@ -624,7 +651,13 @@ pub fn Interpreter::construct_value(
           for a in args {
             all_args.push(a)
           }
-          self.construct_value(target, all_args, loc)
+          self.construct_value(
+            target,
+            all_args,
+            loc,
+            proto_override=effective_proto_override,
+            new_target=nt_for_target,
+          )
         }
         Some(NativeCallable(_, func)) => {
           is_constructing.val = true
@@ -723,7 +756,7 @@ pub fn Interpreter::construct_value(
                 self.install_instance_fields(new_obj, instance_fields)
               }
             }
-            ctor_env.def("<new.target>", ctor, LetBinding)
+            ctor_env.def("<new.target>", new_target, LetBinding)
             // Execute the constructor if one was defined
             match ctor_fn {
               Some((params, rest_param, body)) => {
@@ -887,7 +920,7 @@ pub fn Interpreter::construct_value(
                             super_env.def_builtin("this", new_obj)
                             super_env.def(
                               "<new.target>",
-                              derived_ctor,
+                              new_target,
                               LetBinding,
                             )
                             match grand_super {
@@ -1060,6 +1093,7 @@ pub fn Interpreter::construct_value(
                               sc,
                               args,
                               @token.Loc::default(),
+                              new_target=Some(new_target),
                             )
                             match super_result {
                               Object(result_data) => {
@@ -1102,6 +1136,7 @@ pub fn Interpreter::construct_value(
                           sc,
                           args,
                           @token.Loc::default(),
+                          new_target=Some(new_target),
                         )
                       }
                     }

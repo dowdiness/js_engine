@@ -11002,3 +11002,301 @@ test "B.2: Array length set to NaN throws RangeError" {
   let output = run_output(src)
   inspect(output, content="[\"RangeError\"]")
 }
+
+///|
+/// IteratorClose: iterator.return() called when for-of body throws (ForOfStmt)
+test "IteratorClose: body throw calls iterator return (ForOfStmt)" {
+  let src =
+    #|var returnCalled = false;
+    #|var iter = {
+    #|  [Symbol.iterator]() { return this; },
+    #|  next() { return { done: false, value: 1 }; },
+    #|  return() { returnCalled = true; return {}; }
+    #|};
+    #|try {
+    #|  for (var x of iter) { throw new Error("body"); }
+    #|} catch(e) {}
+    #|console.log(returnCalled);
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+/// IteratorClose: iterator.return() called when for-of body throws (ForOfStmtPat)
+test "IteratorClose: body throw calls iterator return (ForOfStmtPat)" {
+  let src =
+    #|var returnCalled = false;
+    #|var iter = {
+    #|  [Symbol.iterator]() { return this; },
+    #|  next() { return { done: false, value: {a: 1} }; },
+    #|  return() { returnCalled = true; return {}; }
+    #|};
+    #|try {
+    #|  for (let {a} of iter) { throw new Error("body"); }
+    #|} catch(e) {}
+    #|console.log(returnCalled);
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+/// IteratorClose: iterator.return() called when pattern assignment fails (ForOfStmtPat)
+test "IteratorClose: pattern assign error calls iterator return" {
+  let src =
+    #|var returnCalled = false;
+    #|var iter = {
+    #|  [Symbol.iterator]() { return this; },
+    #|  next() { return { done: false, value: null }; },
+    #|  return() { returnCalled = true; return {}; }
+    #|};
+    #|try {
+    #|  for (let {a} of iter) {}
+    #|} catch(e) {}
+    #|console.log(returnCalled);
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+/// IteratorClose: iterator.return() called when ForOfExpr lhs assignment throws
+test "IteratorClose: lhs put error calls iterator return (ForOfExpr)" {
+  let src =
+    #|"use strict";
+    #|var returnCalled = false;
+    #|var iter = {
+    #|  [Symbol.iterator]() { return this; },
+    #|  next() { return { done: false, value: 1 }; },
+    #|  return() { returnCalled = true; return {}; }
+    #|};
+    #|var obj = Object.freeze({x: 0});
+    #|try {
+    #|  for (obj.x of iter) {}
+    #|} catch(e) {}
+    #|console.log(returnCalled);
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+/// IteratorClose: iterator.return() called when ForOfExpr body throws
+test "IteratorClose: body throw calls iterator return (ForOfExpr)" {
+  let src =
+    #|var returnCalled = false;
+    #|var iter = {
+    #|  [Symbol.iterator]() { return this; },
+    #|  next() { return { done: false, value: 1 }; },
+    #|  return() { returnCalled = true; return {}; }
+    #|};
+    #|var target = {};
+    #|try {
+    #|  for (target.x of iter) { throw new Error("body"); }
+    #|} catch(e) {}
+    #|console.log(returnCalled);
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+/// IteratorClose: iterator.return() called on ForOfStmt ReturnSignal
+test "IteratorClose: return inside for-of calls iterator return" {
+  let src =
+    #|var returnCalled = false;
+    #|var iter = {
+    #|  [Symbol.iterator]() { return this; },
+    #|  next() { return { done: false, value: 1 }; },
+    #|  return() { returnCalled = true; return {}; }
+    #|};
+    #|function f() {
+    #|  for (var x of iter) { return x; }
+    #|}
+    #|f();
+    #|console.log(returnCalled);
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+/// IteratorClose: iterator.return() called on ForOfStmt break
+test "IteratorClose: break inside for-of calls iterator return" {
+  let src =
+    #|var returnCalled = false;
+    #|var iter = {
+    #|  [Symbol.iterator]() { return this; },
+    #|  next() { return { done: false, value: 1 }; },
+    #|  return() { returnCalled = true; return {}; }
+    #|};
+    #|for (var x of iter) { break; }
+    #|console.log(returnCalled);
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+/// IteratorClose §7.4.10 step 5: return() throw on non-throw completion replaces the signal
+test "IteratorClose: return() throw on return-completion propagates (not suppressed)" {
+  let src =
+    #|var iter = {
+    #|  [Symbol.iterator]() { return this; },
+    #|  next() { return { done: false, value: 1 }; },
+    #|  return() { throw new Error("close threw"); }
+    #|};
+    #|function f() { for (var x of iter) { return x; } }
+    #|try { f(); console.log("no error"); } catch(e) { console.log(e.message); }
+  let output = run_output(src)
+  inspect(output, content="[\"close threw\"]")
+}
+
+///|
+/// IteratorClose §7.4.10 step 7: return() returning non-Object on non-throw completion is TypeError
+test "IteratorClose: return() non-object on break-completion throws TypeError" {
+  let src =
+    #|var iter = {
+    #|  [Symbol.iterator]() { return this; },
+    #|  next() { return { done: false, value: 1 }; },
+    #|  return() { return 42; }
+    #|};
+    #|try { for (var x of iter) { break; } console.log("no error"); } catch(e) { console.log(e instanceof TypeError); }
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+/// IteratorClose §7.4.10 step 7: Array/Map/Set/Promise/Proxy are valid object results from return()
+test "IteratorClose: return() returning Array is accepted (not TypeError)" {
+  let src =
+    #|var iter = {
+    #|  [Symbol.iterator]() { return this; },
+    #|  next() { return { done: false, value: 1 }; },
+    #|  return() { return []; }
+    #|};
+    #|try { for (var x of iter) { break; } console.log("ok"); } catch(e) { console.log("error: " + e.message); }
+  let output = run_output(src)
+  inspect(output, content="[\"ok\"]")
+}
+
+///|
+/// IteratorClose §7.3.9 GetMethod: non-callable non-undefined return property is TypeError
+test "IteratorClose: non-callable return property throws TypeError on break-completion" {
+  let src =
+    #|var iter = {
+    #|  [Symbol.iterator]() { return this; },
+    #|  next() { return { done: false, value: 1 }; },
+    #|  return: 42
+    #|};
+    #|try { for (var x of iter) { break; } console.log("no error"); } catch(e) { console.log(e instanceof TypeError); }
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+/// IteratorClose §7.4.10 step 4: throw completion suppresses return() throw
+test "IteratorClose: throw-completion suppresses return() error (original throw wins)" {
+  let src =
+    #|var iter = {
+    #|  [Symbol.iterator]() { return this; },
+    #|  next() { return { done: false, value: 1 }; },
+    #|  return() { throw new Error("close threw"); }
+    #|};
+    #|try { for (var x of iter) { throw new Error("body threw"); } } catch(e) { console.log(e.message); }
+  let output = run_output(src)
+  inspect(output, content="[\"body threw\"]")
+}
+
+///|
+/// Proxy [[Construct]] newTarget: Reflect.construct passes newTarget to trap
+test "Proxy construct: Reflect.construct newTarget forwarded to trap" {
+  let src =
+    #|var capturedNewTarget;
+    #|var handler = {
+    #|  construct(target, args, newTarget) {
+    #|    capturedNewTarget = newTarget;
+    #|    return {};
+    #|  }
+    #|};
+    #|function Foo() {}
+    #|function Bar() {}
+    #|var P = new Proxy(Foo, handler);
+    #|Reflect.construct(P, [], Bar);
+    #|console.log(capturedNewTarget === Bar);
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+/// Proxy [[Construct]] no trap: newTarget propagated to target via no-trap path
+test "Proxy construct no trap: new.target = explicit newTarget" {
+  let src =
+    #|var capturedNewTarget;
+    #|function Foo() { capturedNewTarget = new.target; }
+    #|var P = new Proxy(Foo, {});
+    #|function Bar() {}
+    #|Reflect.construct(P, [], Bar);
+    #|console.log(capturedNewTarget === Bar);
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+/// Reflect.construct: new.target in body equals the newTarget argument
+test "Reflect.construct: new.target in body is newTarget" {
+  let src =
+    #|function Foo() { return new.target; }
+    #|function Bar() {}
+    #|var result = Reflect.construct(Foo, [], Bar);
+    #|console.log(result === Bar);
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+/// direct new: new.target === constructor (unchanged regression)
+test "construct: new.target === ctor for direct new" {
+  let src =
+    #|function Foo() { return new.target; }
+    #|console.log(new Foo() === Foo);
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+/// super() propagates new.target to super constructor body
+test "class: new.target propagates through super() call" {
+  let src =
+    #|class Base {
+    #|  constructor() { this.nt = new.target; }
+    #|}
+    #|class Derived extends Base {}
+    #|var d = new Derived();
+    #|console.log(d.nt === Derived);
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+/// Reflect.construct with implicit derived ctor: new.target is newTarget arg, not D
+test "class: Reflect.construct implicit ctor new.target is newTarget not derived" {
+  let src =
+    #|class Base {
+    #|  constructor() { this.nt = new.target; }
+    #|}
+    #|class D extends Base {}
+    #|function OtherCtor() {}
+    #|var obj = Reflect.construct(D, [], OtherCtor);
+    #|console.log(obj.nt === OtherCtor);
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+/// Reflect.construct(boundFn, [], boundFn): newTarget rewritten to target, instance
+/// prototype comes from target.prototype, not the absent bound-fn .prototype (Null)
+test "BoundFunc construct: newTarget===boundFn drops proto_override, uses target proto" {
+  let src =
+    #|function Target() {}
+    #|Target.prototype.tag = "target";
+    #|var bound = Target.bind(null);
+    #|var obj = Reflect.construct(bound, [], bound);
+    #|console.log(obj.tag);
+  let output = run_output(src)
+  inspect(output, content="[\"target\"]")
+}
