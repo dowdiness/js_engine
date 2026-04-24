@@ -870,7 +870,9 @@ fn Interpreter::eval_expr(
               // §10.2.2 step 4: new.target in super constructor = derived class's new.target
               call_env.def(
                 "<new.target>",
-                env.get("<new.target>") catch { _ => Undefined },
+                env.get("<new.target>") catch {
+                  _ => Undefined
+                },
                 LetBinding,
               )
               // Set up super chain and handle super's own instance fields

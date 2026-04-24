@@ -709,6 +709,8 @@ Three code paths were missing `IteratorClose` calls:
 
 Fix: wrap each missing throw site with catch→IteratorClose→re-raise; add `close_iterator` before every non-Normal signal exit in `ForOfExpr`. The `catch { _ => () }` on `close_iterator` itself is intentional: spec §7.4.10 step 5 says for throw completions the original error takes priority over any close error. 8 regression tests added.
 
+**Follow-up (2026-04-24, branch `claude/agent-todo-task-8FZae`)**: Codex review on PR #74 identified a second gap: non-throw completions (Return, Break, non-matching-Continue) were also suppressing `return()` errors via `catch { _ => () }`. Per §7.4.10 steps 5 and 7, for non-throw completions: (a) if `return()` throws, that error replaces the completion; (b) if `return()` returns a non-Object, raise TypeError. Fix: removed `catch { _ => () }` from all three ForOf non-throw paths (ForOfStmt, ForOfStmtPat, ForOfExpr) and updated `close_iterator` to validate the `return()` result. Callers handling throw completions keep `catch { _ => () }` per step 4. 3 regression tests added.
+
 #### 3. Mapped arguments object
 
 **Impact**: 3+ for-of tests + sloppy-mode function tests broadly

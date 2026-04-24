@@ -480,7 +480,7 @@ pub(all) struct Interpreter {
 pub fn Interpreter::array_define_own_property(Self, ArrayData, Value, PartialDescriptor, @token.Loc) -> Bool raise
 pub fn Interpreter::array_set_length(Self, ArrayData, PartialDescriptor) -> Bool raise
 pub fn Interpreter::call_value(Self, Value, Value, Array[Value], @token.Loc) -> Value raise
-pub fn Interpreter::construct_value(Self, Value, Array[Value], @token.Loc, proto_override? : Value?) -> Value raise
+pub fn Interpreter::construct_value(Self, Value, Array[Value], @token.Loc, proto_override? : Value?, new_target? : Value?) -> Value raise
 pub fn Interpreter::define_own_property(Self, Value, Value, PartialDescriptor, @token.Loc) -> Bool raise
 pub fn Interpreter::enqueue_microtask(Self, Value, Array[Value]) -> Unit
 pub fn Interpreter::get_computed_property(Self, Value, Value, @token.Loc) -> Value raise
@@ -516,8 +516,6 @@ pub(all) struct Microtask {
 }
 
 pub(all) struct ModuleLoader((String) -> Map[String, Value] raise)
-#deprecated
-pub fn ModuleLoader::inner(Self) -> (String) -> Map[String, Value] raise
 
 pub(all) struct ObjectData {
   bag : PropertyBag

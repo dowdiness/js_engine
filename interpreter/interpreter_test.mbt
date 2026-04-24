@@ -11132,6 +11132,49 @@ test "IteratorClose: break inside for-of calls iterator return" {
 }
 
 ///|
+/// IteratorClose §7.4.10 step 5: return() throw on non-throw completion replaces the signal
+test "IteratorClose: return() throw on return-completion propagates (not suppressed)" {
+  let src =
+    #|var iter = {
+    #|  [Symbol.iterator]() { return this; },
+    #|  next() { return { done: false, value: 1 }; },
+    #|  return() { throw new Error("close threw"); }
+    #|};
+    #|function f() { for (var x of iter) { return x; } }
+    #|try { f(); console.log("no error"); } catch(e) { console.log(e.message); }
+  let output = run_output(src)
+  inspect(output, content="[\"close threw\"]")
+}
+
+///|
+/// IteratorClose §7.4.10 step 7: return() returning non-Object on non-throw completion is TypeError
+test "IteratorClose: return() non-object on break-completion throws TypeError" {
+  let src =
+    #|var iter = {
+    #|  [Symbol.iterator]() { return this; },
+    #|  next() { return { done: false, value: 1 }; },
+    #|  return() { return 42; }
+    #|};
+    #|try { for (var x of iter) { break; } console.log("no error"); } catch(e) { console.log(e instanceof TypeError); }
+  let output = run_output(src)
+  inspect(output, content="[\"true\"]")
+}
+
+///|
+/// IteratorClose §7.4.10 step 4: throw completion suppresses return() throw
+test "IteratorClose: throw-completion suppresses return() error (original throw wins)" {
+  let src =
+    #|var iter = {
+    #|  [Symbol.iterator]() { return this; },
+    #|  next() { return { done: false, value: 1 }; },
+    #|  return() { throw new Error("close threw"); }
+    #|};
+    #|try { for (var x of iter) { throw new Error("body threw"); } } catch(e) { console.log(e.message); }
+  let output = run_output(src)
+  inspect(output, content="[\"body threw\"]")
+}
+
+///|
 /// Proxy [[Construct]] newTarget: Reflect.construct passes newTarget to trap
 test "Proxy construct: Reflect.construct newTarget forwarded to trap" {
   let src =
