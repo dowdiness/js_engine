@@ -59,16 +59,15 @@ fn is_alnum(c : Char) -> Bool {
 
 ///|
 fn is_js_whitespace(c : Char) -> Bool {
-  // ECMAScript-compliant whitespace including all Unicode Space_Separator (Zs) characters
   // NOTE: \r (0x0D) is a LineTerminator, NOT whitespace — handled separately
   let cp = c.to_int()
-  cp == 0x20 || // Space
-  cp == 0x09 || // Tab
-  cp == 0x0B || // Vertical Tab
-  cp == 0x0C || // Form Feed
+  cp == 0x20 || cp == 0x09 || cp == 0x0B || cp == 0x0C || is_unicode_space_cp(cp)
+}
+
+///|
+fn is_unicode_space_cp(cp : Int) -> Bool {
   cp == 0x00A0 || // No-Break Space
   cp == 0xFEFF || // Zero Width No-Break Space (BOM)
-  // Unicode Space Separators (Category Zs) - ES spec compliant
   cp == 0x1680 || // OGHAM SPACE MARK
   (cp >= 0x2000 && cp <= 0x200A) || // EN QUAD through HAIR SPACE
   cp == 0x202F || // NARROW NO-BREAK SPACE
@@ -107,13 +106,7 @@ fn is_id_continue_cp(cp : Int) -> Bool {
 
 ///|
 fn is_whitespace_or_line_terminator_cp(cp : Int) -> Bool {
-  cp == 0x00A0 || // No-Break Space
-  cp == 0xFEFF || // Zero Width No-Break Space (BOM)
-  cp == 0x1680 || // Ogham Space Mark
-  (cp >= 0x2000 && cp <= 0x200A) || // En Quad through Hair Space
-  cp == 0x202F || // Narrow No-Break Space
-  cp == 0x205F || // Medium Mathematical Space
-  cp == 0x3000 || // Ideographic Space
+  is_unicode_space_cp(cp) ||
   cp == 0x2028 || // Line Separator
   cp == 0x2029 // Paragraph Separator
 }
