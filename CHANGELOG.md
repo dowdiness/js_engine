@@ -30,11 +30,10 @@ For changes before this file existed, see `git log`.
   confirmed only `"-0"` needed an explicit guard.
 - 7 new whitebox tests in `interpreter/interpreter_test.mbt`.
 
-Two spec gaps deferred as follow-ups (tracked in
-`memory/project_typedarray_string_key_followups.md`):
-receiver-sensitive TypedArray write per §10.4.5.16 (Reflect.set with
-distinct receiver), and `classify_typedarray_string_key` helper
-extraction to dedup the three sites.
+Two spec gaps deferred as follow-ups: receiver-sensitive TypedArray
+write per §10.4.5.16 (`Reflect.set` with a distinct receiver), and a
+`classify_typedarray_string_key` helper extraction to dedup the three
+classifier sites in `property.mbt`.
 
 ### Stage B.2 — GetOwnProperty + DefineOwnProperty dispatchers
 

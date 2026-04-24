@@ -13,7 +13,7 @@ Delta vs v0.2.0 tip `f89898a` (run 24730849102): **+305 strict / +342 non-strict
 
 CI regression baseline: `test262-baseline.json` (min 23,520 non-strict / 22,450 strict passed; currently +1,289 / +909 above).
 
-**Unit tests**: 978 / 978 passing.
+**Unit tests**: 1031 / 1031 passing.
 
 ### How to read these rates
 
@@ -96,7 +96,7 @@ node ./_build/js/debug/build/cmd/main/main.js 'console.log(1 + 2)'
 # => 3
 ```
 
-All 978 unit tests pass on WASM-GC (verified in CI run 24885185424). The JS target builds and runs but the unit-test count on JS has not been re-verified since Phase 24 added 59 new tests. See [SELF_HOST_JS_RESEARCH.md](SELF_HOST_JS_RESEARCH.md) for full analysis.
+All 1031 unit tests pass on WASM-GC (verified in CI run 24885185424). The JS target builds and runs but the unit-test count on JS has not been re-verified since Phase 24 added 59 new tests. See [SELF_HOST_JS_RESEARCH.md](SELF_HOST_JS_RESEARCH.md) for full analysis.
 
 ### What was needed
 - **Backend-specific argv handling**: `process.argv` on JS includes `["node", "script.js", ...]`, so user args start at index 2 (vs index 1 on WASM). Solved with `.js.mbt` / `.wasm.mbt` / `.wasm-gc.mbt` files.
