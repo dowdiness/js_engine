@@ -1814,7 +1814,7 @@ fn Interpreter::landing_via_define_own_property(
 
 ///|
 /// Approximates ES `CreateDataProperty(Receiver, P, V)` / `Receiver.[[Define\
-/// OwnProperty]]` for the Stage B.1 landing rule. This is NOT `[[Set]]` — it
+/// OwnProperty]]` for the [[Set]] landing rule. This is NOT `[[Set]]` — it
 /// must not invoke setters on `receiver`'s prototype chain, otherwise a
 /// trap-less proxy chain would infinite-loop (per Codex's design review).
 ///
@@ -1822,8 +1822,11 @@ fn Interpreter::landing_via_define_own_property(
 /// has an existing own descriptor at `key`, accessor or non-writable data
 /// blocks the landing (sloppy returns `value`, strict raises TypeError).
 ///
-/// Stage B.2 will replace this with a full `[[DefineOwnProperty]]` dispatcher
-/// that honors Proxy `defineProperty` traps.
+/// The Object and Array branches now route through
+/// `landing_via_define_own_property` (the Stage B.2 [[DefineOwnProperty]]
+/// dispatcher). Other receivers (Map/Set/Promise/Null/primitives) still have
+/// inline approximations here. A full dispatcher migration for all receiver
+/// kinds is a Stage B.3+ follow-up.
 fn Interpreter::define_value_on_receiver(
   self : Interpreter,
   receiver : Value,
@@ -2005,22 +2008,13 @@ fn Interpreter::define_value_on_receiver(
           value
         }
       }
-    // B.2: Array receiver landing diverges from the spec. `CreateDataProperty`
-    // (the ES §10.1.9.2 step 3 landing) goes through `[[DefineOwnProperty]]`,
-    // which for Arrays is exotic (§10.4.2.4 ArraySetLength rejects changes to
-    // non-configurable/non-writable `length`; indexed `[[DefineOwnProperty]]`
-    // interacts with length differently from `[[Set]]`). We don't yet have a
-    // `[[DefineOwnProperty]]` dispatcher, so this branch delegates back through
-    // set_property / set_computed_property with receiver===obj — that re-fires
-    // Array's `[[Set]]` exotic path, which is NOT the same operation. Known
-    // observable divergence: `Reflect.set({}, "length", 10, arr)` should return
-    // false (attempts a full-attributes redefine of arr.length), but this
-    // delegation truncates the array instead. The full
-    // [[DefineOwnProperty]]-on-receiver protocol lands with Stage B.2.
-    // §10.1.9.2 step 3 via [[DefineOwnProperty]] (§10.4.2.1 for Array):
-    // existing writable length -> ArraySetLength with just {Value}; absent
-    // index -> CreateDataProperty with full defaults; length_writable:false
-    // rejection now honored.
+    // §10.1.9.2 step 3 via [[DefineOwnProperty]] (§10.4.2.1 / §10.4.2.4 for
+    // Array): existing writable `length` → `ArraySetLength` with just {Value};
+    // absent index → `CreateDataProperty` with full defaults;
+    // `length_writable: false` rejection honored. Routes through the Stage B.2
+    // `landing_via_define_own_property` dispatcher rather than re-firing
+    // Array's `[[Set]]` exotic path (which would be the wrong operation per
+    // §10.5.9 step 5.b — landing must be `[[DefineOwnProperty]]`, not `[[Set]]`).
     Array(_) =>
       self.landing_via_define_own_property(receiver, key, value, loc, strict)
     // Null/Undefined/primitive receiver: per spec returns false. In strict
@@ -3052,8 +3046,10 @@ fn ordinary_get_own_string_desc(
 
 ///|
 /// Is `val` extensible per ES §10.1.3? Only ObjectData tracks extensibility;
-/// Array/Map/Set/Promise are always extensible today (Stage B.1 known gap,
-/// not B.2 scope).
+/// Array/Map/Set/Promise lack a per-instance extensibility slot and are
+/// always reported extensible. Adding extensibility tracking to those four
+/// variants is a structural follow-up tracked alongside their general
+/// prototype-slot gap.
 fn ordinary_is_extensible(val : Value) -> Bool {
   match val {
     Object(data) => data.extensible
