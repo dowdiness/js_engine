@@ -9,6 +9,60 @@ For changes before this file existed, see `git log`.
 
 ## [Unreleased]
 
+## [0.2.2] — 2026-04-25
+
+Conformance-focused patch release. Closes the three TypedArray
+string-key follow-ups queued from the v0.2.1 wide-catch fix, replaces
+the IteratorClose direct-bag walk with a [[Get]]-dispatcher call, and
+extracts a shared key classifier.
+
+All five queued commits passed CI on `main` before the tag was cut.
+Unit tests: **1036 passing** (was 1031 at v0.2.1).
+
+### Fixed
+
+- **TypedArray string-key `"-0"` no longer creates expando properties.**
+  Per §7.1.21 CanonicalNumericIndexString, `"-0"` is a canonical numeric
+  string but not a valid integer index — element access must be
+  intercepted (read returns `undefined`, write is a no-op) rather than
+  falling through to ordinary property creation. `NaN`, `Infinity`,
+  fractional, and negative canonical strings were already filtered by
+  the existing IEEE round-trip check; only `"-0"` escaped.
+- **TypedArray `[[Set]]` is now receiver-sensitive (§10.4.5.5,
+  §10.4.5.16).** When the receiver differs from the TypedArray itself
+  (e.g. `Reflect.set(ta, "0", 7, otherReceiver)`), an in-range index
+  now defines on the receiver instead of writing through to the
+  underlying buffer; an out-of-range index is a no-op. Three call sites
+  in `property.mbt` were updated and consolidated through a new
+  `typedarray_set_dispatch` helper.
+- **IteratorClose (§7.4.10) routes `"return"` lookup through the
+  `[[Get]]` dispatcher** instead of walking the `PropertyBag`
+  directly. Accessor `return` getters now run; non-callable inherited
+  `return` no longer crashes. (Full GetMethod (§7.3.10) including
+  Proxy `get` trap on the iterator itself remains scoped out — Proxy
+  iterator end-to-end is a separate engine limitation.)
+
+### Changed
+
+- **Internal:** new `classify_typedarray_string_key` helper in
+  `string_utils.mbt` consolidates the three TypedArray indexed-element
+  classifier sites in `property.mbt`. Package-private; the `-1`
+  canonical-invalid sentinel is an implementation detail.
+- **Internal:** `StdlibHooks` gains a `typedarray_is_valid_index`
+  field (§10.4.5.18 IsValidIntegerIndex). Additive — existing hook
+  constructors are source-compatible.
+- Stale Stage-B.2 comments in `property.mbt` refreshed to match the
+  current dispatcher surface (cosmetic).
+
+### Tests
+
+- +5 regression tests in `interpreter_test.mbt`: accessor `return`
+  getter runs on iterator close, non-callable inherited `return` is a
+  no-op, TypedArray `Reflect.set` same-receiver writes through, and
+  different-receiver in-range / out-of-range cases.
+
+[0.2.2]: https://github.com/dowdiness/js_engine/releases/tag/v0.2.2
+
 ## [0.2.1] — 2026-04-24
 
 Conformance-focused patch release. Adds dispatcher infrastructure
