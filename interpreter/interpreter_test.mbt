@@ -797,6 +797,22 @@ test "nullish assign computed member key evaluated once" {
 }
 
 ///|
+test "logical and assign computed member Symbol key" {
+  // Verifies the Symbol branch of ToPropertyKey: a Symbol key passes through
+  // as-is without string conversion.
+  let output = run_output(
+    (
+      #|var sym = Symbol("k");
+      #|var obj = {};
+      #|obj[sym] = 10;
+      #|obj[sym] &&= 20;
+      #|console.log(obj[sym]);
+    ),
+  )
+  inspect(output, content="[\"20\"]")
+}
+
+///|
 test "bitwise AND" {
   let (_, result) = run_js("12 & 10")
   inspect(result, content="8")
