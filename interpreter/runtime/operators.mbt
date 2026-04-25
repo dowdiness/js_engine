@@ -50,11 +50,7 @@ fn Interpreter::eval_update(
     ComputedMember(obj_expr, key_expr, mloc) => {
       let obj = self.eval_expr(ctx, obj_expr, env)
       let key = self.eval_expr(ctx, key_expr, env)
-      // Convert key to property key once (ToPropertyKey)
-      let prop_key : Value = match key {
-        Symbol(_) => key
-        _ => String_(to_js_string(key))
-      }
+      let prop_key = to_property_key(key, interp=Some(self))
       let current = self.get_computed_property(obj, prop_key, mloc)
       let num = to_number(current)
       let new_val : Value = match op {
@@ -152,12 +148,7 @@ fn Interpreter::eval_compound_assign(
       if obj is Undefined {
         raise @errors.TypeError(message="Cannot read properties of undefined")
       }
-      // Convert key to property key once (ToPropertyKey), so toString/valueOf
-      // is only called once per spec
-      let prop_key : Value = match key {
-        Symbol(_) => key
-        _ => String_(to_js_string(key))
-      }
+      let prop_key = to_property_key(key, interp=Some(self))
       let current = self.get_computed_property(obj, prop_key, mloc)
       let rhs = self.eval_expr(ctx, value_expr, env)
       let result = eval_binary_op(bin_op, current, rhs, loc)
@@ -227,10 +218,11 @@ fn Interpreter::eval_logical_assign_and(
       if obj is Undefined {
         raise @errors.TypeError(message="Cannot read properties of undefined")
       }
-      let current = self.get_computed_property(obj, key, mloc)
+      let prop_key = to_property_key(key, interp=Some(self))
+      let current = self.get_computed_property(obj, prop_key, mloc)
       if is_truthy(current) {
         let rhs = self.eval_expr(ctx, value_expr, env)
-        self.set_computed_property(obj, key, rhs, loc, strict=ctx.strict)
+        self.set_computed_property(obj, prop_key, rhs, loc, strict=ctx.strict)
       } else {
         current
       }
@@ -292,10 +284,11 @@ fn Interpreter::eval_logical_assign_or(
       if obj is Undefined {
         raise @errors.TypeError(message="Cannot read properties of undefined")
       }
-      let current = self.get_computed_property(obj, key, mloc)
+      let prop_key = to_property_key(key, interp=Some(self))
+      let current = self.get_computed_property(obj, prop_key, mloc)
       if !is_truthy(current) {
         let rhs = self.eval_expr(ctx, value_expr, env)
-        self.set_computed_property(obj, key, rhs, loc, strict=ctx.strict)
+        self.set_computed_property(obj, prop_key, rhs, loc, strict=ctx.strict)
       } else {
         current
       }
@@ -359,11 +352,12 @@ fn Interpreter::eval_nullish_assign(
       if obj is Undefined {
         raise @errors.TypeError(message="Cannot read properties of undefined")
       }
-      let current = self.get_computed_property(obj, key, mloc)
+      let prop_key = to_property_key(key, interp=Some(self))
+      let current = self.get_computed_property(obj, prop_key, mloc)
       match current {
         Null | Undefined => {
           let rhs = self.eval_expr(ctx, value_expr, env)
-          self.set_computed_property(obj, key, rhs, loc, strict=ctx.strict)
+          self.set_computed_property(obj, prop_key, rhs, loc, strict=ctx.strict)
         }
         _ => current
       }
