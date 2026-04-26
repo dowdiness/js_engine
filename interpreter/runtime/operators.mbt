@@ -227,10 +227,15 @@ fn Interpreter::eval_logical_assign_and(
       if obj is Undefined {
         raise @errors.TypeError(message="Cannot read properties of undefined")
       }
-      let current = self.get_computed_property(obj, key, mloc)
+      // Convert key to property key once (ToPropertyKey)
+      let prop_key : Value = match key {
+        Symbol(_) => key
+        _ => String_(to_js_string(key))
+      }
+      let current = self.get_computed_property(obj, prop_key, mloc)
       if is_truthy(current) {
         let rhs = self.eval_expr(ctx, value_expr, env)
-        self.set_computed_property(obj, key, rhs, loc, strict=ctx.strict)
+        self.set_computed_property(obj, prop_key, rhs, loc, strict=ctx.strict)
       } else {
         current
       }
@@ -292,10 +297,15 @@ fn Interpreter::eval_logical_assign_or(
       if obj is Undefined {
         raise @errors.TypeError(message="Cannot read properties of undefined")
       }
-      let current = self.get_computed_property(obj, key, mloc)
+      // Convert key to property key once (ToPropertyKey)
+      let prop_key : Value = match key {
+        Symbol(_) => key
+        _ => String_(to_js_string(key))
+      }
+      let current = self.get_computed_property(obj, prop_key, mloc)
       if !is_truthy(current) {
         let rhs = self.eval_expr(ctx, value_expr, env)
-        self.set_computed_property(obj, key, rhs, loc, strict=ctx.strict)
+        self.set_computed_property(obj, prop_key, rhs, loc, strict=ctx.strict)
       } else {
         current
       }
@@ -359,11 +369,16 @@ fn Interpreter::eval_nullish_assign(
       if obj is Undefined {
         raise @errors.TypeError(message="Cannot read properties of undefined")
       }
-      let current = self.get_computed_property(obj, key, mloc)
+      // Convert key to property key once (ToPropertyKey)
+      let prop_key : Value = match key {
+        Symbol(_) => key
+        _ => String_(to_js_string(key))
+      }
+      let current = self.get_computed_property(obj, prop_key, mloc)
       match current {
         Null | Undefined => {
           let rhs = self.eval_expr(ctx, value_expr, env)
-          self.set_computed_property(obj, key, rhs, loc, strict=ctx.strict)
+          self.set_computed_property(obj, prop_key, rhs, loc, strict=ctx.strict)
         }
         _ => current
       }
