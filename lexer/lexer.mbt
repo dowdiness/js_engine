@@ -243,6 +243,47 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
     }
   }
 
+  // Scan a contiguous run of digits matched by `is_valid`, writing each to `buf`.
+  // Supports numeric separators (_) between digits per ES2021.
+  // Raises SyntaxError for consecutive or trailing separators, or for an empty run.
+  fn scan_digit_seq(
+    is_valid : (Char) -> Bool,
+    missing_msg : String,
+    buf : StringBuilder
+  ) -> Unit raise Error {
+    let mut has_digits = false
+    let mut prev_underscore = true // prevents a leading underscore
+    while offset < len {
+      let ch = char_at(offset)
+      if is_valid(ch) {
+        buf.write_char(ch)
+        offset += 1
+        col += 1
+        has_digits = true
+        prev_underscore = false
+      } else if ch == '_' {
+        if prev_underscore {
+          raise @errors.SyntaxError(
+            message="Numeric separator cannot appear consecutively at line \{line}, col \{col}",
+          )
+        }
+        prev_underscore = true
+        offset += 1
+        col += 1
+      } else {
+        break
+      }
+    }
+    if !has_digits {
+      raise @errors.SyntaxError(message=missing_msg)
+    }
+    if prev_underscore && buf.to_string().length() > 0 {
+      raise @errors.SyntaxError(
+        message="Numeric separator cannot appear at the end at line \{line}, col \{col - 1}",
+      )
+    }
+  }
+
   fn scan_template_string() -> (String, Bool) raise Error {
     let buf = StringBuilder::new()
     while offset < len {
@@ -553,39 +594,11 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           // Hex number
           offset += 2
           col += 2
-          let mut has_digits = false
-          let mut prev_underscore = true // Treat start as "after underscore" to prevent leading _
-          while offset < len {
-            let ch = char_at(offset)
-            if is_hex_digit(ch) {
-              buf.write_char(ch)
-              offset += 1
-              col += 1
-              has_digits = true
-              prev_underscore = false
-            } else if ch == '_' {
-              if prev_underscore {
-                raise @errors.SyntaxError(
-                  message="Numeric separator cannot appear consecutively at line \{loc.line}, col \{col}",
-                )
-              }
-              prev_underscore = true
-              offset += 1
-              col += 1
-            } else {
-              break
-            }
-          }
-          if !has_digits {
-            raise @errors.SyntaxError(
-              message="Missing hex digits after '0x' at line \{loc.line}, col \{loc.col}",
-            )
-          }
-          if prev_underscore && buf.to_string().length() > 0 {
-            raise @errors.SyntaxError(
-              message="Numeric separator cannot appear at the end at line \{loc.line}, col \{col - 1}",
-            )
-          }
+          scan_digit_seq(
+            is_hex_digit,
+            "Missing hex digits after '0x' at line \{loc.line}, col \{loc.col}",
+            buf,
+          )
           let hex_str = buf.to_string()
           let value = parse_hex(hex_str)
           // BigInt literal suffix support for compatibility paths where tests
@@ -602,39 +615,11 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           // Binary number
           offset += 2
           col += 2
-          let mut has_digits = false
-          let mut prev_underscore = true
-          while offset < len {
-            let ch = char_at(offset)
-            if ch == '0' || ch == '1' {
-              buf.write_char(ch)
-              offset += 1
-              col += 1
-              has_digits = true
-              prev_underscore = false
-            } else if ch == '_' {
-              if prev_underscore {
-                raise @errors.SyntaxError(
-                  message="Numeric separator cannot appear consecutively at line \{loc.line}, col \{col}",
-                )
-              }
-              prev_underscore = true
-              offset += 1
-              col += 1
-            } else {
-              break
-            }
-          }
-          if !has_digits {
-            raise @errors.SyntaxError(
-              message="Missing binary digits after '0b' at line \{loc.line}, col \{loc.col}",
-            )
-          }
-          if prev_underscore && buf.to_string().length() > 0 {
-            raise @errors.SyntaxError(
-              message="Numeric separator cannot appear at the end at line \{loc.line}, col \{col - 1}",
-            )
-          }
+          scan_digit_seq(
+            fn(ch) { ch == '0' || ch == '1' },
+            "Missing binary digits after '0b' at line \{loc.line}, col \{loc.col}",
+            buf,
+          )
           let bin_str = buf.to_string()
           let value = parse_radix_literal(bin_str, 2.0)
           if offset < len && char_at(offset) == 'n' {
@@ -648,39 +633,11 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           // Octal number
           offset += 2
           col += 2
-          let mut has_digits = false
-          let mut prev_underscore = true
-          while offset < len {
-            let ch = char_at(offset)
-            if ch >= '0' && ch <= '7' {
-              buf.write_char(ch)
-              offset += 1
-              col += 1
-              has_digits = true
-              prev_underscore = false
-            } else if ch == '_' {
-              if prev_underscore {
-                raise @errors.SyntaxError(
-                  message="Numeric separator cannot appear consecutively at line \{loc.line}, col \{col}",
-                )
-              }
-              prev_underscore = true
-              offset += 1
-              col += 1
-            } else {
-              break
-            }
-          }
-          if !has_digits {
-            raise @errors.SyntaxError(
-              message="Missing octal digits after '0o' at line \{loc.line}, col \{loc.col}",
-            )
-          }
-          if prev_underscore && buf.to_string().length() > 0 {
-            raise @errors.SyntaxError(
-              message="Numeric separator cannot appear at the end at line \{loc.line}, col \{col - 1}",
-            )
-          }
+          scan_digit_seq(
+            fn(ch) { ch >= '0' && ch <= '7' },
+            "Missing octal digits after '0o' at line \{loc.line}, col \{loc.col}",
+            buf,
+          )
           let oct_str = buf.to_string()
           let value = parse_radix_literal(oct_str, 8.0)
           if offset < len && char_at(offset) == 'n' {
@@ -1322,7 +1279,6 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       }
       // Handle exponent part: e.g., .5e10
       if offset < len && (char_at(offset) == 'e' || char_at(offset) == 'E') {
-        let exp_start = offset
         offset += 1
         col += 1
         if offset < len && (char_at(offset) == '+' || char_at(offset) == '-') {
@@ -1344,14 +1300,12 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         }
         // Exponent must have at least one digit
         if offset == digit_start {
-          let _ = exp_start
           raise @errors.SyntaxError(
             message="Invalid or unexpected token at line \{line}, col \{col}",
           )
         }
       }
       let raw_str = source.view()[num_start:offset].to_string()
-      // Remove numeric separators for parsing
       // Remove numeric separators for parsing
       let buf = StringBuilder::new()
       for ch in raw_str {
