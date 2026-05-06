@@ -23,6 +23,17 @@ pub fn is_truthy(val : Value) -> Bool {
 let current_interpreter : Ref[Interpreter?] = { val: None }
 
 ///|
+/// Return `interp` if it is Some; otherwise fall back to the module-level
+/// current_interpreter. Centralises the fallback logic used throughout
+/// this file so it is not repeated inline at every call site.
+fn resolve_effective_interp(interp : Interpreter?) -> Interpreter? {
+  match interp {
+    Some(_) => interp
+    None => current_interpreter.val
+  }
+}
+
+///|
 /// Call a callable value, dispatching to the interpreter for UserFunc types.
 /// Supports all callable types including user-defined functions.
 /// Pass `interp` explicitly when available; falls back to the module global.
@@ -46,11 +57,7 @@ pub fn call_callable_direct(
         | Some(InterpreterCallable(_, _))
         | Some(NonConstructableInterpreterCallable(_, _))
         | Some(ClassConstructor(_)) => {
-          // Prefer explicitly passed interp, fall back to module global
-          let effective = match interp {
-            Some(_) => interp
-            None => current_interpreter.val
-          }
+          let effective = resolve_effective_interp(interp)
           match effective {
             Some(ip) =>
               ip.call_value(callable_val, this_val, args, @token.Loc::default())
@@ -70,21 +77,12 @@ pub fn call_callable_direct(
 /// SetFunctionName: set name property on anonymous functions per ES2015+.
 /// Only sets name if the current name is empty (anonymous).
 pub fn set_function_name(val : Value, name : String) -> Unit {
-  match val {
-    Object(data) =>
-      match data.callable {
-        Some(_) =>
-          // Only set if current name is empty (anonymous)
-          match data.bag.properties.get("name") {
-            Some(String_(s)) =>
-              if s == "" {
-                data.bag.properties["name"] = String_(name)
-              }
-            None => data.bag.properties["name"] = String_(name)
-            _ => ()
-          }
-        None => ()
-      }
+  guard let Object(data) = val else { return }
+  guard data.callable is Some(_) else { return }
+  // Only set if current name is empty (anonymous)
+  match data.bag.properties.get("name") {
+    Some(String_(s)) if s != "" => ()
+    Some(String_(_)) | None => data.bag.properties["name"] = String_(name)
     _ => ()
   }
 }
@@ -93,11 +91,7 @@ pub fn set_function_name(val : Value, name : String) -> Unit {
 /// Check if a value is callable
 pub fn is_callable(val : Value) -> Bool {
   match val {
-    Object(obj_data) =>
-      match obj_data.callable {
-        Some(_) => true
-        None => false
-      }
+    Object(obj_data) => obj_data.callable is Some(_)
     _ => false
   }
 }
@@ -115,10 +109,7 @@ pub fn has_property(
       // Pure slot-presence check per ES [[HasProperty]] — must NOT invoke getters.
       // Route through has_object_property (uses .contains(), no getter calls) when
       // an interpreter is available; fall back to own-slot only when there is none.
-      let effective = match interp {
-        Some(_) => interp
-        None => current_interpreter.val
-      }
+      let effective = resolve_effective_interp(interp)
       match effective {
         Some(ip) =>
           ip.has_object_property(data, String_(name)) catch {
@@ -146,10 +137,7 @@ pub fn has_property(
         return true
       }
       // Walk Array.prototype chain for inherited properties
-      let effective = match interp {
-        Some(_) => interp
-        None => current_interpreter.val
-      }
+      let effective = resolve_effective_interp(interp)
       match effective {
         Some(ip) => {
           let ctor = ip.global.get("Array") catch { _ => return false }
@@ -210,10 +198,7 @@ fn lookup_property_chain(
   name : String,
   interp? : Interpreter? = None,
 ) -> Value? raise Error {
-  let effective = match interp {
-    Some(_) => interp
-    None => current_interpreter.val
-  }
+  let effective = resolve_effective_interp(interp)
   // Descriptor check first: accessors write Undefined into bag.properties as a
   // sentinel (see apply_descriptor_to_bag / eval_expr ObjectLit Get/Set arms),
   // so checking bag.properties first would return that sentinel and skip the
@@ -363,10 +348,7 @@ fn to_primitive_number(
   }
   // Step 2: OrdinaryToPrimitive with hint "number" - try valueOf first, then toString
   // Use interpreter for property lookup if available (handles synthetic props on functions etc.)
-  let effective = match interp {
-    Some(_) => interp
-    None => current_interpreter.val
-  }
+  let effective = resolve_effective_interp(interp)
   let value_of_fn : Value? = match
     lookup_property_chain(obj_val, data, "valueOf", interp~) {
     Some(f) => Some(f)
@@ -674,10 +656,7 @@ fn to_primitive_string(
   }
   // Step 2: OrdinaryToPrimitive with hint "string" - try toString first, then valueOf
   // Use interpreter for property lookup if available (handles synthetic props on functions etc.)
-  let effective = match interp {
-    Some(_) => interp
-    None => current_interpreter.val
-  }
+  let effective = resolve_effective_interp(interp)
   let to_string_fn : Value? = match
     lookup_property_chain(obj_val, data, "toString", interp~) {
     Some(f) => Some(f)
