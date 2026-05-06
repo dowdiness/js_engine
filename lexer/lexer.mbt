@@ -581,7 +581,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
               message="Missing hex digits after '0x' at line \{loc.line}, col \{loc.col}",
             )
           }
-          if prev_underscore && buf.to_string().length() > 0 {
+          if prev_underscore {
             raise @errors.SyntaxError(
               message="Numeric separator cannot appear at the end at line \{loc.line}, col \{col - 1}",
             )
@@ -630,7 +630,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
               message="Missing binary digits after '0b' at line \{loc.line}, col \{loc.col}",
             )
           }
-          if prev_underscore && buf.to_string().length() > 0 {
+          if prev_underscore {
             raise @errors.SyntaxError(
               message="Numeric separator cannot appear at the end at line \{loc.line}, col \{col - 1}",
             )
@@ -676,7 +676,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
               message="Missing octal digits after '0o' at line \{loc.line}, col \{loc.col}",
             )
           }
-          if prev_underscore && buf.to_string().length() > 0 {
+          if prev_underscore {
             raise @errors.SyntaxError(
               message="Numeric separator cannot appear at the end at line \{loc.line}, col \{col - 1}",
             )
@@ -1322,7 +1322,6 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       }
       // Handle exponent part: e.g., .5e10
       if offset < len && (char_at(offset) == 'e' || char_at(offset) == 'E') {
-        let exp_start = offset
         offset += 1
         col += 1
         if offset < len && (char_at(offset) == '+' || char_at(offset) == '-') {
@@ -1344,14 +1343,12 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         }
         // Exponent must have at least one digit
         if offset == digit_start {
-          let _ = exp_start
           raise @errors.SyntaxError(
             message="Invalid or unexpected token at line \{line}, col \{col}",
           )
         }
       }
       let raw_str = source.view()[num_start:offset].to_string()
-      // Remove numeric separators for parsing
       // Remove numeric separators for parsing
       let buf = StringBuilder::new()
       for ch in raw_str {
