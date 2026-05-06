@@ -525,12 +525,7 @@ pub fn Interpreter::run(
           raise @errors.SyntaxError(
             message="return statement outside of function",
           )
-        BreakSignal(_, _) =>
-          raise @errors.SyntaxError(message="break statement outside of loop")
-        ContinueSignal(_, _) =>
-          raise @errors.SyntaxError(
-            message="continue statement outside of loop",
-          )
+        sig => raise_if_break_continue(sig)
       }
     }
     current_interpreter.val = prev_interpreter

@@ -519,6 +519,7 @@ pub fn Interpreter::construct_value(
             None => ()
           }
           let exec_result = self.exec_stmts(func_ctx, data.body, func_env)
+          raise_if_break_continue(exec_result)
           match exec_result {
             Normal(_) => new_obj
             ReturnSignal(v) =>
@@ -527,14 +528,7 @@ pub fn Interpreter::construct_value(
               } else {
                 new_obj
               }
-            BreakSignal(_, _) =>
-              raise @errors.SyntaxError(
-                message="break statement outside of loop",
-              )
-            ContinueSignal(_, _) =>
-              raise @errors.SyntaxError(
-                message="continue statement outside of loop",
-              )
+            _ => new_obj
           }
         }
         Some(UserFuncExt(data)) => {
@@ -877,6 +871,7 @@ pub fn Interpreter::construct_value(
                 )
                 let exec_result = self.exec_stmts(class_ctx, body, body_env)
                 let current_this = ctor_env.get("this")
+                raise_if_break_continue(exec_result)
                 match exec_result {
                   Normal(_) => current_this
                   ReturnSignal(v) =>
@@ -885,14 +880,7 @@ pub fn Interpreter::construct_value(
                     } else {
                       current_this
                     }
-                  BreakSignal(_, _) =>
-                    raise @errors.SyntaxError(
-                      message="break statement outside of loop",
-                    )
-                  ContinueSignal(_, _) =>
-                    raise @errors.SyntaxError(
-                      message="continue statement outside of loop",
-                    )
+                  _ => current_this
                 }
               }
               None => {
