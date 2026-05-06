@@ -77,12 +77,14 @@ pub fn call_callable_direct(
 /// SetFunctionName: set name property on anonymous functions per ES2015+.
 /// Only sets name if the current name is empty (anonymous).
 pub fn set_function_name(val : Value, name : String) -> Unit {
-  guard let Object(data) = val else { return }
-  guard data.callable is Some(_) else { return }
-  // Only set if current name is empty (anonymous)
-  match data.bag.properties.get("name") {
-    Some(String_(s)) if s != "" => ()
-    Some(String_(_)) | None => data.bag.properties["name"] = String_(name)
+  match val {
+    Object(data) if data.callable is Some(_) =>
+      // Only set if current name is empty (anonymous)
+      match data.bag.properties.get("name") {
+        Some(String_(s)) if s != "" => ()
+        Some(String_(_)) | None => data.bag.properties["name"] = String_(name)
+        _ => ()
+      }
     _ => ()
   }
 }
