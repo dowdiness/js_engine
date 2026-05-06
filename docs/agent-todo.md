@@ -719,6 +719,14 @@ Fix: wrap each missing throw site with catch→IteratorClose→re-raise; add `cl
 
 `make_arguments_object` now creates a spec-compliant mapped arguments object per §10.4.4.1 / §10.4.4.7. Sloppy-mode simple-parameter functions get live accessor slots backed by closures over the parameter environment. Duplicate parameter names are handled correctly: a backwards scan ensures only the last occurrence of each name is mapped as an accessor; earlier occurrences become plain data properties. Known issue #11 from PR #45.
 
+**Follow-up (not in PR #81): Arguments exotic object `[[GetOwnProperty]]` descriptor shape.**
+Our implementation stores live-binding closures as accessor descriptors directly in `bag.descriptors`. Per §10.4.4.2, `[[GetOwnProperty]]` on an Arguments exotic object must return a **data descriptor** with the live value, not an accessor descriptor. `Object.getOwnPropertyDescriptor(arguments, "0")` currently leaks the internal getter/setter. Fixing this correctly requires:
+- A separate `[[ParameterMap]]` internal slot on the arguments object (holding the accessor functions)
+- Overrides for `[[GetOwnProperty]]`, `[[DefineOwnProperty]]`, `[[Get]]`, and `[[Set]]` that consult the map
+- Likely a new `class_name` sentinel (e.g. `"Arguments"`) to gate the exotic behaviour in `get_own_property` / `set_property` / `get_property`
+
+Estimated effort: medium (multi-surface, but contained to `construct.mbt` + `property.mbt`).
+
 ### Medium effort (multi-session)
 
 #### 4. Proxy internal operation forwarding (partially done)
