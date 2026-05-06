@@ -489,7 +489,7 @@ fn js_trim_whitespace(s : String) -> String {
   if start == 0 && end == len {
     s
   } else {
-    s[start:end].to_string()
+    s[start:end].to_owned()
   }
 }
 
@@ -508,10 +508,10 @@ pub fn to_number(
       }
       // Handle hex, binary, octal literals
       if trimmed.length() > 2 {
-        let prefix = trimmed.view()[:2].to_string()
+        let prefix = trimmed.view()[:2].to_owned()
         if prefix == "0x" || prefix == "0X" {
           // Parse hex
-          let hex_str = trimmed.view()[2:].to_string()
+          let hex_str = trimmed.view()[2:].to_owned()
           if hex_str.length() == 0 {
             return 0.0 / 0.0
           }
@@ -532,7 +532,7 @@ pub fn to_number(
         }
         if prefix == "0b" || prefix == "0B" {
           // Parse binary
-          let bin_str = trimmed.view()[2:].to_string()
+          let bin_str = trimmed.view()[2:].to_owned()
           if bin_str.length() == 0 {
             return 0.0 / 0.0
           }
@@ -550,7 +550,7 @@ pub fn to_number(
         }
         if prefix == "0o" || prefix == "0O" {
           // Parse octal
-          let oct_str = trimmed.view()[2:].to_string()
+          let oct_str = trimmed.view()[2:].to_owned()
           if oct_str.length() == 0 {
             return 0.0 / 0.0
           }

@@ -1353,7 +1353,11 @@ pub fn Interpreter::get_computed_property(
       }
     Null => {
       let key_str = match key {
-        Symbol(sym) => "Symbol(\{sym.description})"
+        Symbol(sym) =>
+          match sym.description {
+            Some(d) => "Symbol(\{d})"
+            None => "Symbol()"
+          }
         String_(s) => s
         Number(n) => n.to_string()
         Bool(b) => b.to_string()
@@ -1365,7 +1369,11 @@ pub fn Interpreter::get_computed_property(
     }
     Undefined => {
       let key_str = match key {
-        Symbol(sym) => "Symbol(\{sym.description})"
+        Symbol(sym) =>
+          match sym.description {
+            Some(d) => "Symbol(\{d})"
+            None => "Symbol()"
+          }
         String_(s) => s
         Number(n) => n.to_string()
         Bool(b) => b.to_string()
@@ -2558,7 +2566,11 @@ pub fn Interpreter::set_computed_property(
     }
     Null => {
       let key_str = match key {
-        Symbol(sym) => "Symbol(\{sym.description})"
+        Symbol(sym) =>
+          match sym.description {
+            Some(d) => "Symbol(\{d})"
+            None => "Symbol()"
+          }
         String_(s) => s
         Number(n) => n.to_string()
         Bool(b) => b.to_string()
@@ -2570,7 +2582,11 @@ pub fn Interpreter::set_computed_property(
     }
     Undefined => {
       let key_str = match key {
-        Symbol(sym) => "Symbol(\{sym.description})"
+        Symbol(sym) =>
+          match sym.description {
+            Some(d) => "Symbol(\{d})"
+            None => "Symbol()"
+          }
         String_(s) => s
         Number(n) => n.to_string()
         Bool(b) => b.to_string()

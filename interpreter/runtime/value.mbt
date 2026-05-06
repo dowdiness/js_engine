@@ -104,8 +104,6 @@ pub(all) struct PropertyBag {
   symbol_properties : Map[Int, Value] // Symbol-keyed properties (key is symbol ID)
   descriptors : Map[String, PropDescriptor]
   symbol_descriptors : Map[Int, PropDescriptor] // Descriptors for symbol properties
-
-  fn new() -> PropertyBag
 }
 
 ///|
@@ -238,8 +236,6 @@ pub(all) struct MapData {
   entries : Array[(Value, Value)] // Array of (key, value) pairs
   // Expando properties: stores instance fields from subclasses (class D extends Map)
   bag : PropertyBag
-
-  fn new(entries : Array[(Value, Value)]) -> MapData
 }
 
 ///|
@@ -255,8 +251,6 @@ pub(all) struct SetData {
   values : Array[Value] // Array of unique values
   // Expando properties: stores instance fields from subclasses (class D extends Set)
   bag : PropertyBag
-
-  fn new(values : Array[Value]) -> SetData
 }
 
 ///|

@@ -81,7 +81,7 @@ fn setup_json_builtins(env : Environment) -> Unit {
           }
           Value::String_(s) =>
             if s.length() > 10 {
-              Some(s[:10].to_string())
+              Some(s[:10].to_owned())
             } else if s.length() > 0 {
               Some(s)
             } else {

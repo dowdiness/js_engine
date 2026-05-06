@@ -1,4 +1,15 @@
 ///|
+/// Format an Option as "Some(val)" or "None" without using the deprecated
+/// Show impl for Option itself. The element type must implement Show.
+/// Used by inspect() snapshot assertions on map exports.
+fn[T : Show] fmt_opt(o : T?) -> String {
+  match o {
+    None => "None"
+    Some(v) => "Some(" + v.to_string() + ")"
+  }
+}
+
+///|
 test "run facade" {
   let (output, _result) = @js_engine.run("console.log(1 + 2)")
   inspect(output, content="[\"3\"]")
@@ -425,8 +436,8 @@ test "ES module: export named declaration" {
     ),
   )
   inspect(output, content="[\"42 hello\"]")
-  inspect(exports.get("x"), content="Some(42)")
-  inspect(exports.get("y"), content="Some(hello)")
+  inspect(fmt_opt(exports.get("x")), content="Some(42)")
+  inspect(fmt_opt(exports.get("y")), content="Some(hello)")
 }
 
 ///|
@@ -446,7 +457,7 @@ test "ES module: export default expression" {
       #|export default 42;
     ),
   )
-  inspect(exports.get("default"), content="Some(42)")
+  inspect(fmt_opt(exports.get("default")), content="Some(42)")
 }
 
 ///|
@@ -478,8 +489,8 @@ test "ES module: export named specifiers" {
       #|export { a, b };
     ),
   )
-  inspect(exports.get("a"), content="Some(1)")
-  inspect(exports.get("b"), content="Some(2)")
+  inspect(fmt_opt(exports.get("a")), content="Some(1)")
+  inspect(fmt_opt(exports.get("b")), content="Some(2)")
 }
 
 ///|
@@ -490,7 +501,7 @@ test "ES module: export named with alias" {
       #|export { x as myX };
     ),
   )
-  inspect(exports.get("myX"), content="Some(10)")
+  inspect(fmt_opt(exports.get("myX")), content="Some(10)")
   inspect(exports.contains("x"), content="false")
 }
 
@@ -730,7 +741,7 @@ test "ES module: export var declaration" {
       #|export var count = 0;
     ),
   )
-  inspect(exports.get("count"), content="Some(0)")
+  inspect(fmt_opt(exports.get("count")), content="Some(0)")
 }
 
 ///|
@@ -742,9 +753,9 @@ test "ES module: mixed exports" {
       #|export default "default_value";
     ),
   )
-  inspect(exports.get("X"), content="Some(1)")
+  inspect(fmt_opt(exports.get("X")), content="Some(1)")
   inspect(exports.contains("getX"), content="true")
-  inspect(exports.get("default"), content="Some(default_value)")
+  inspect(fmt_opt(exports.get("default")), content="Some(default_value)")
 }
 
 ///|
@@ -821,7 +832,7 @@ test "ES module: live bindings - export let mutation within module" {
   )
   // Without live bindings, x would be 1 (snapshot at declaration time)
   // With live bindings, x should be 3 (resolved at end of module execution)
-  inspect(exports.get("x"), content="Some(3)")
+  inspect(fmt_opt(exports.get("x")), content="Some(3)")
 }
 
 ///|
@@ -833,7 +844,7 @@ test "ES module: live bindings - export { x } deferred" {
       #|// x is exported after all statements run
     ),
   )
-  inspect(exports.get("x"), content="Some(1)")
+  inspect(fmt_opt(exports.get("x")), content="Some(1)")
 }
 
 ///|

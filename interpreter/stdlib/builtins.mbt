@@ -500,7 +500,7 @@ pub fn setup_builtins(
             // Add indexed character properties
             for i = 0; i < str.length(); i = i + 1 {
               props[i.to_string()] = Value::String_(
-                str.view()[i:i + 1].to_string(),
+                str.view()[i:i + 1].to_owned(),
               )
             }
             let descs : Map[String, PropDescriptor] = {}

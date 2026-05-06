@@ -595,7 +595,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             offset += 1
             col += 1
           }
-          let raw = source.view()[start:offset].to_string()
+          let raw = source.view()[start:offset].to_owned()
           tokens.push({ kind: Number(value), loc, raw })
           continue
         } else if next == 'b' || next == 'B' {
@@ -641,7 +641,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             offset += 1
             col += 1
           }
-          let raw = source.view()[start:offset].to_string()
+          let raw = source.view()[start:offset].to_owned()
           tokens.push({ kind: Number(value), loc, raw })
           continue
         } else if next == 'o' || next == 'O' {
@@ -687,7 +687,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             offset += 1
             col += 1
           }
-          let raw = source.view()[start:offset].to_string()
+          let raw = source.view()[start:offset].to_owned()
           tokens.push({ kind: Number(value), loc, raw })
           continue
         } else if next >= '0' && next <= '7' {
@@ -728,7 +728,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
               offset += 1
               col += 1
             }
-            let raw = source.view()[start:offset].to_string()
+            let raw = source.view()[start:offset].to_owned()
             tokens.push({ kind: Number(value), loc, raw })
             continue
           }
@@ -867,7 +867,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         offset += 1
         col += 1
       }
-      let raw = source.view()[start:offset].to_string()
+      let raw = source.view()[start:offset].to_owned()
       let value = @string.parse_double(num_str)
       tokens.push({ kind: Number(value), loc, raw })
       continue
@@ -1030,7 +1030,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       }
       offset += 1 // skip closing quote
       col += 1
-      let raw = source.view()[start:offset].to_string()
+      let raw = source.view()[start:offset].to_owned()
       tokens.push({ kind: String_(buf.to_string()), loc, raw })
       continue
     }
@@ -1348,7 +1348,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           )
         }
       }
-      let raw_str = source.view()[num_start:offset].to_string()
+      let raw_str = source.view()[num_start:offset].to_owned()
       // Remove numeric separators for parsing
       let buf = StringBuilder::new()
       for ch in raw_str {
