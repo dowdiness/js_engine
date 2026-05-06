@@ -1692,7 +1692,7 @@ pub fn setup_builtins(
       let loc = @token.Loc::default()
       let p = interp.get_property(this_val, "prototype", loc)
       if @runtime.is_object_value(p) {
-        @runtime.instanceof_prototype_chain(o, p, interp.global)
+        @runtime.instanceof_prototype_chain(o, p, interp)
       } else if p is Undefined {
         Value::Bool(false)
       } else {

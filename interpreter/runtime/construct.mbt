@@ -272,11 +272,29 @@ fn make_arguments_object(
       None => 0
     }
   }
+  // §10.4.4.7: walk backwards so only the last occurrence of each param name
+  // gets an accessor; earlier occurrences of duplicates stay as data properties.
+  let mapped_indices : Map[Int, Bool] = {}
+  match mapped_env {
+    Some(_) => {
+      let mapped_set : Map[String, Bool] = {}
+      let mut idx = map_count - 1
+      while idx >= 0 {
+        let pname = mapped_names[idx]
+        if !mapped_set.contains(pname) {
+          mapped_set[pname] = true
+          mapped_indices[idx] = true
+        }
+        idx = idx - 1
+      }
+    }
+    None => ()
+  }
   for i = 0; i < map_count; i = i + 1 {
     let key = i.to_string()
     let pname = mapped_names[i]
-    match mapped_env {
-      Some(env) => {
+    match (mapped_env, mapped_indices.get(i)) {
+      (Some(env), Some(true)) => {
         let getter_fn = Object({
           bag: PropertyBag(),
           prototype: Null,
@@ -307,7 +325,17 @@ fn make_arguments_object(
           setter: Some(setter_fn),
         }
       }
-      None => ()
+      // Duplicate earlier occurrence: plain data property, not live-mapped
+      _ => {
+        new_args_props[key] = args[i]
+        new_args_descs[key] = {
+          writable: true,
+          enumerable: true,
+          configurable: true,
+          getter: None,
+          setter: None,
+        }
+      }
     }
   }
   for i = map_count; i < args.length(); i = i + 1 {

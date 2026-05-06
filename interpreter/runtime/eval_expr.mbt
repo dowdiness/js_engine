@@ -1141,7 +1141,7 @@ fn Interpreter::eval_binary(
                     match r_data.bag.properties.get("prototype") {
                       Some(proto) =>
                         if is_object_value(proto) {
-                          instanceof_prototype_chain(l, proto, self.global)
+                          instanceof_prototype_chain(l, proto, self)
                         } else {
                           raise @errors.TypeError(
                             message="Function has non-object prototype in instanceof check",
@@ -1181,7 +1181,7 @@ fn Interpreter::eval_binary(
               let target = get_proxy_target(proxy_data)
               let proto = self.get_property(r, "prototype", loc)
               match proto {
-                Object(_) => instanceof_prototype_chain(l, proto, self.global)
+                Object(_) => instanceof_prototype_chain(l, proto, self)
                 _ =>
                   // Check if target is callable
                   match target {
@@ -1395,23 +1395,16 @@ fn get_symbol_method(obj : Value, symbol_id : Int) -> Value? {
 pub fn instanceof_prototype_chain(
   l : Value,
   target_proto : Value,
-  env : Environment,
-) -> Value {
+  interp : Interpreter,
+) -> Value raise Error {
   let mut current = match l {
     Object(l_data) => l_data.prototype
-    Array(_) => get_constructor_prototype(env, "Array")
-    Map(_) => get_constructor_prototype(env, "Map")
-    Set(_) => get_constructor_prototype(env, "Set")
-    Promise(_) => get_constructor_prototype(env, "Promise")
-    Proxy(proxy_data) =>
-      match proxy_data.target {
-        Some(target) =>
-          match target {
-            Object(data) => data.prototype
-            _ => Null
-          }
-        None => return Bool(false)
-      }
+    Array(_) => get_constructor_prototype(interp.global, "Array")
+    Map(_) => get_constructor_prototype(interp.global, "Map")
+    Set(_) => get_constructor_prototype(interp.global, "Set")
+    Promise(_) => get_constructor_prototype(interp.global, "Promise")
+    // Invoke the [[GetPrototypeOf]] trap so Proxy handler can intercept
+    Proxy(proxy_data) => proxy_get_prototype_of(interp, proxy_data)
     // Primitive values are never instances
     _ => return Bool(false)
   }
@@ -1426,6 +1419,9 @@ pub fn instanceof_prototype_chain(
         } else {
           match current {
             Object(data) => current = data.prototype
+            // Invoke [[GetPrototypeOf]] trap when proxy appears in the chain
+            Proxy(proxy_data) =>
+              current = proxy_get_prototype_of(interp, proxy_data)
             _ => break
           }
         }
