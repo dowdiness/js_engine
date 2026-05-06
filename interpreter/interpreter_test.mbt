@@ -648,6 +648,171 @@ test "compound assignment *=" {
 }
 
 ///|
+test "logical and assign &&= truthy lhs assigns" {
+  let output = run_output(
+    (
+      #|let a = 1;
+      #|a &&= 2;
+      #|console.log(a);
+    ),
+  )
+  inspect(output, content="[\"2\"]")
+}
+
+///|
+test "logical and assign &&= falsy lhs skips" {
+  let output = run_output(
+    (
+      #|let b = 0;
+      #|b &&= 2;
+      #|console.log(b);
+    ),
+  )
+  inspect(output, content="[\"0\"]")
+}
+
+///|
+test "logical and assign &&= member" {
+  let output = run_output(
+    (
+      #|const obj = { x: 10 };
+      #|obj.x &&= 20;
+      #|console.log(obj.x);
+      #|const obj2 = { x: 0 };
+      #|obj2.x &&= 20;
+      #|console.log(obj2.x);
+    ),
+  )
+  inspect(output, content="[\"20\", \"0\"]")
+}
+
+///|
+test "logical or assign ||= falsy lhs assigns" {
+  let output = run_output(
+    (
+      #|let a = 0;
+      #|a ||= 2;
+      #|console.log(a);
+    ),
+  )
+  inspect(output, content="[\"2\"]")
+}
+
+///|
+test "logical or assign ||= truthy lhs skips" {
+  let output = run_output(
+    (
+      #|let b = 1;
+      #|b ||= 2;
+      #|console.log(b);
+    ),
+  )
+  inspect(output, content="[\"1\"]")
+}
+
+///|
+test "nullish assign ??= null lhs assigns" {
+  let output = run_output(
+    (
+      #|let a = null;
+      #|a ??= 42;
+      #|console.log(a);
+    ),
+  )
+  inspect(output, content="[\"42\"]")
+}
+
+///|
+test "nullish assign ??= undefined lhs assigns" {
+  let output = run_output(
+    (
+      #|let a = undefined;
+      #|a ??= 42;
+      #|console.log(a);
+    ),
+  )
+  inspect(output, content="[\"42\"]")
+}
+
+///|
+test "nullish assign ??= non-null lhs skips" {
+  let output = run_output(
+    (
+      #|let a = 0;
+      #|a ??= 42;
+      #|console.log(a);
+    ),
+  )
+  inspect(output, content="[\"0\"]")
+}
+
+///|
+test "logical and assign computed member key evaluated once" {
+  // Verifies ToPropertyKey is called exactly once per spec (not once for get
+  // and again for set).
+  let output = run_output(
+    (
+      #|var count = 0;
+      #|var key = { toString: function() { count++; return 'x'; } };
+      #|var obj = {};
+      #|obj[key] = 10;
+      #|obj[key] &&= 20;
+      #|console.log(count);
+      #|console.log(obj.x);
+    ),
+  )
+  inspect(output, content="[\"2\", \"20\"]")
+}
+
+///|
+test "logical or assign computed member key evaluated once" {
+  let output = run_output(
+    (
+      #|var count = 0;
+      #|var key = { toString: function() { count++; return 'x'; } };
+      #|var obj = {};
+      #|obj[key] = 0;
+      #|obj[key] ||= 20;
+      #|console.log(count);
+      #|console.log(obj.x);
+    ),
+  )
+  inspect(output, content="[\"2\", \"20\"]")
+}
+
+///|
+test "nullish assign computed member key evaluated once" {
+  let output = run_output(
+    (
+      #|var count = 0;
+      #|var key = { toString: function() { count++; return 'x'; } };
+      #|var obj = {};
+      #|obj[key] = null;
+      #|obj[key] ??= 20;
+      #|console.log(count);
+      #|console.log(obj.x);
+    ),
+  )
+  inspect(output, content="[\"2\", \"20\"]")
+}
+
+///|
+test "logical and assign computed member Symbol key" {
+  // Verifies the Symbol branch of ToPropertyKey: a Symbol key passes through
+  // as-is without string conversion.
+  let output = run_output(
+    (
+      #|var sym = Symbol("k");
+      #|var obj = {};
+      #|obj[sym] = 10;
+      #|obj[sym] &&= 20;
+      #|console.log(obj[sym]);
+    ),
+  )
+  inspect(output, content="[\"20\"]")
+}
+
+///|
 test "bitwise AND" {
   let (_, result) = run_js("12 & 10")
   inspect(result, content="8")
