@@ -1467,7 +1467,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
             iter_props["next"] = next_method
             let iter_sym_props : Map[Int, Value] = {}
             iter_sym_props[iterator_sym.id] = Value::Object({
-              bag: @runtime.PropertyBag::new(),
+              bag: @runtime.PropertyBag(),
               prototype: Null,
               callable: Some(
                 MethodCallable("[Symbol.iterator]", fn(tv, _a) { tv }),
@@ -1561,7 +1561,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
           iter_props["next"] = next_method
           let iter_sym_props : Map[Int, Value] = {}
           iter_sym_props[iterator_sym.id] = Value::Object({
-            bag: @runtime.PropertyBag::new(),
+            bag: @runtime.PropertyBag(),
             prototype: Null,
             callable: Some(
               MethodCallable("[Symbol.iterator]", fn(tv, _a) { tv }),
@@ -1655,7 +1655,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
           iter_props["next"] = next_method
           let iter_sym_props : Map[Int, Value] = {}
           iter_sym_props[iterator_sym.id] = Value::Object({
-            bag: @runtime.PropertyBag::new(),
+            bag: @runtime.PropertyBag(),
             prototype: Null,
             callable: Some(
               MethodCallable("[Symbol.iterator]", fn(tv, _a) { tv }),

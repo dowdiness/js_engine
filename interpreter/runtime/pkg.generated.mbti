@@ -507,10 +507,8 @@ pub fn Interpreter::to_primitive_default(Self, Value, ObjectData) -> Value raise
 pub(all) struct MapData {
   entries : Array[(Value, Value)]
   bag : PropertyBag
-
-  fn new(Array[(Value, Value)]) -> MapData
 }
-pub fn MapData::new(Array[(Value, Value)]) -> Self
+pub fn MapData::MapData(Array[(Value, Value)]) -> Self
 
 pub(all) struct Microtask {
   callback : Value
@@ -518,8 +516,6 @@ pub(all) struct Microtask {
 }
 
 pub(all) struct ModuleLoader((String) -> Map[String, Value] raise)
-#deprecated
-pub fn ModuleLoader::inner(Self) -> (String) -> Map[String, Value] raise
 
 pub(all) struct ObjectData {
   bag : PropertyBag
@@ -586,10 +582,8 @@ pub(all) struct PropertyBag {
   symbol_properties : Map[Int, Value]
   descriptors : Map[String, PropDescriptor]
   symbol_descriptors : Map[Int, PropDescriptor]
-
-  fn new() -> PropertyBag
 }
-pub fn PropertyBag::new() -> Self
+pub fn PropertyBag::PropertyBag() -> Self
 
 pub(all) struct ProxyData {
   mut target : Value?
@@ -612,10 +606,8 @@ pub(all) enum ResumeKind {
 pub(all) struct SetData {
   values : Array[Value]
   bag : PropertyBag
-
-  fn new(Array[Value]) -> SetData
 }
-pub fn SetData::new(Array[Value]) -> Self
+pub fn SetData::SetData(Array[Value]) -> Self
 
 pub(all) enum Signal {
   Normal(Value)

@@ -1628,7 +1628,7 @@ pub fn make_regex_match_array(m : RegexMatch, input : String) -> Value {
   }
   let arr_data : ArrayData = {
     elements,
-    bag: @runtime.PropertyBag::new(),
+    bag: @runtime.PropertyBag(),
     length_writable: true,
   }
   // Set named properties on the result

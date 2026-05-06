@@ -104,13 +104,11 @@ pub(all) struct PropertyBag {
   symbol_properties : Map[Int, Value] // Symbol-keyed properties (key is symbol ID)
   descriptors : Map[String, PropDescriptor]
   symbol_descriptors : Map[Int, PropDescriptor] // Descriptors for symbol properties
-
-  fn new() -> PropertyBag
 }
 
 ///|
 /// Construct an empty PropertyBag.
-pub fn PropertyBag::new() -> PropertyBag {
+pub fn PropertyBag::PropertyBag() -> PropertyBag {
   {
     properties: {},
     symbol_properties: {},
@@ -238,14 +236,12 @@ pub(all) struct MapData {
   entries : Array[(Value, Value)] // Array of (key, value) pairs
   // Expando properties: stores instance fields from subclasses (class D extends Map)
   bag : PropertyBag
-
-  fn new(entries : Array[(Value, Value)]) -> MapData
 }
 
 ///|
 /// Construct MapData with entries and an empty property bag (no expando properties).
-pub fn MapData::new(entries : Array[(Value, Value)]) -> MapData {
-  { entries, bag: PropertyBag::new() }
+pub fn MapData::MapData(entries : Array[(Value, Value)]) -> MapData {
+  { entries, bag: PropertyBag() }
 }
 
 ///|
@@ -255,14 +251,12 @@ pub(all) struct SetData {
   values : Array[Value] // Array of unique values
   // Expando properties: stores instance fields from subclasses (class D extends Set)
   bag : PropertyBag
-
-  fn new(values : Array[Value]) -> SetData
 }
 
 ///|
 /// Construct SetData with values and an empty property bag (no expando properties).
-pub fn SetData::new(values : Array[Value]) -> SetData {
-  { values, bag: PropertyBag::new() }
+pub fn SetData::SetData(values : Array[Value]) -> SetData {
+  { values, bag: PropertyBag() }
 }
 
 ///|
@@ -311,7 +305,7 @@ pub fn new_promise_data() -> PromiseData {
     fulfill_reactions: [],
     reject_reactions: [],
     is_handled: false,
-    bag: PropertyBag::new(),
+    bag: PropertyBag(),
   }
 }
 

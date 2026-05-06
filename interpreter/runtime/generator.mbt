@@ -351,7 +351,7 @@ fn Interpreter::make_generator_function(
   let gen_proto = get_generator_prototype(interp)
   // Create the generator function's own .prototype (instances inherit from it)
   let func_prototype = Object({
-    bag: PropertyBag::new(),
+    bag: PropertyBag(),
     prototype: gen_proto,
     callable: None,
     class_name: "Generator",
@@ -432,7 +432,7 @@ fn Interpreter::make_generator_function_ext(
   let interp = self
   let gen_proto = get_generator_prototype(interp)
   let func_prototype = Object({
-    bag: PropertyBag::new(),
+    bag: PropertyBag(),
     prototype: gen_proto,
     callable: None,
     class_name: "Generator",

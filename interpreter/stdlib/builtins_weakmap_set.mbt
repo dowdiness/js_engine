@@ -517,7 +517,7 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
     let entries : Array[(Value, Value)] = []
     weakmap_storage[id] = entries
     let wm_data : ObjectData = {
-      bag: @runtime.PropertyBag::new(),
+      bag: @runtime.PropertyBag(),
       prototype: wm_proto,
       callable: None,
       class_name: "WeakMap",
@@ -806,7 +806,7 @@ fn setup_weakset_builtins(env : Environment) -> Unit {
     let values : Array[Value] = []
     weakset_storage[id] = values
     let ws_data : ObjectData = {
-      bag: @runtime.PropertyBag::new(),
+      bag: @runtime.PropertyBag(),
       prototype: ws_proto,
       callable: None,
       class_name: "WeakSet",

@@ -131,7 +131,7 @@ pub fn Interpreter::new(
   let output : Array[String] = []
   // Create global object for 'this' in global context
   let global_this : Value = Object({
-    bag: PropertyBag::new(),
+    bag: PropertyBag(),
     prototype: Null,
     callable: None,
     class_name: "global",

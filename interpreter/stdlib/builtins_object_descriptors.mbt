@@ -447,7 +447,7 @@ fn make_get_own_property_descriptors_func() -> Value {
       }
       _ =>
         Value::Object({
-          bag: @runtime.PropertyBag::new(),
+          bag: @runtime.PropertyBag(),
           prototype: @runtime.get_obj_proto(),
           callable: None,
           class_name: "Object",

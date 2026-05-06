@@ -303,7 +303,7 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
         }
         @runtime.make_array_iterator_value({
           elements: result,
-          bag: @runtime.PropertyBag::new(),
+          bag: @runtime.PropertyBag(),
           length_writable: true,
         })
       })
@@ -317,7 +317,7 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
         }
         @runtime.make_array_iterator_value({
           elements: result,
-          bag: @runtime.PropertyBag::new(),
+          bag: @runtime.PropertyBag(),
           length_writable: true,
         })
       })

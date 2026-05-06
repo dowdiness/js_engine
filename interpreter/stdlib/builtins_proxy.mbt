@@ -110,7 +110,7 @@ fn setup_proxy_builtins(env : Environment) -> Unit {
         let proxy_val : Value = Value::Proxy(proxy_data)
         // Create revoke function that nullifies both slots
         let revoke_func : Value = Value::Object({
-          bag: @runtime.PropertyBag::new(),
+          bag: @runtime.PropertyBag(),
           prototype: Null,
           callable: Some(
             NativeCallable("revoke", fn(_args) {
