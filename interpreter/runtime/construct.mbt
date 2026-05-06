@@ -443,6 +443,97 @@ fn make_arguments_object(
 }
 
 ///|
+/// Shared class-constructor parameter binding and body execution.
+/// Installs `arguments`, binds params with defaults/patterns, handles rest,
+/// applies §10.2.11 param-env/body-env split, hoists, and executes `body`.
+/// Caller handles: param validation, this/super/<new.target> setup on param_env,
+/// and applying the ctor-specific return rule to the returned Signal.
+fn Interpreter::bind_class_ctor_params_and_exec_body_signal(
+  self : Interpreter,
+  params : Array[@ast.Param],
+  rest_param : String?,
+  body : Array[@ast.Stmt],
+  ctor_val : Value,
+  args : Array[Value],
+  param_env : Environment,
+  ctx : ExecContext,
+) -> Signal raise Error {
+  let tte : Value? = if param_env.has("[[ThrowTypeError]]") {
+    Some(param_env.get("[[ThrowTypeError]]"))
+  } else {
+    None
+  }
+  param_env.def(
+    "arguments",
+    make_arguments_object(args, ctor_val, true, throw_type_error=tte),
+    VarBinding,
+  )
+  let mut effective_param_count = 0
+  for i = 0; i < params.length(); i = i + 1 {
+    let param = params[i]
+    if rest_param is Some(rn) && param.name == rn {
+      continue
+    }
+    let val : Value = if effective_param_count < args.length() &&
+      !(args[effective_param_count] is Undefined) {
+      args[effective_param_count]
+    } else {
+      match param.default_val {
+        Some(default_expr) => self.eval_expr(ctx, default_expr, param_env)
+        None =>
+          if effective_param_count < args.length() {
+            args[effective_param_count]
+          } else {
+            Undefined
+          }
+      }
+    }
+    param_env.def_parameter(param.name, val)
+    match param.pattern {
+      Some(pat) => self.bind_pattern(pat, val, param_env, LetBinding, ctx~)
+      None => ()
+    }
+    effective_param_count += 1
+  }
+  match rest_param {
+    Some(rest_name) => {
+      let rest_elements : Array[Value] = []
+      for i = effective_param_count; i < args.length(); i = i + 1 {
+        rest_elements.push(args[i])
+      }
+      let rest_val = make_array(rest_elements)
+      param_env.def_parameter(rest_name, rest_val)
+      for p in params {
+        if p.name == rest_name {
+          match p.pattern {
+            Some(pat) =>
+              self.bind_pattern(pat, rest_val, param_env, LetBinding, ctx~)
+            None => ()
+          }
+          break
+        }
+      }
+    }
+    None => ()
+  }
+  let split_scope = has_parameter_expressions(params)
+  let body_env = if split_scope {
+    let be = Environment::new(parent=Some(param_env))
+    be.is_var_scope = true
+    be
+  } else {
+    param_env
+  }
+  let param_source : Environment? = if split_scope {
+    Some(param_env)
+  } else {
+    None
+  }
+  self.hoist_declarations(body, body_env, strict=true, param_source~)
+  self.exec_stmts(ctx, body, body_env)
+}
+
+///|
 fn maybe_set_promise_constructor(value : Value, ctor : Value) -> Value {
   match value {
     Promise(data) => {
@@ -829,113 +920,9 @@ pub fn Interpreter::construct_value(
                   Some(rn) => validate_strict_binding_name(rn)
                   None => ()
                 }
-                // §10.2.11 split: ctor_env already holds this/super; bind
-                // arguments + params into ctor_env (= param env for the
-                // ctor body), then create body_env as child for body decls.
-                // Install `arguments` BEFORE the param loop so default
-                // expressions can reference it
-                // (`constructor(a = arguments.length)`).
-                let ctor_tte : Value? = if ctor_env.has("[[ThrowTypeError]]") {
-                  Some(ctor_env.get("[[ThrowTypeError]]"))
-                } else {
-                  None
-                }
-                ctor_env.def(
-                  "arguments",
-                  make_arguments_object(
-                    args,
-                    ctor,
-                    true,
-                    throw_type_error=ctor_tte,
-                  ),
-                  VarBinding,
+                let exec_result = self.bind_class_ctor_params_and_exec_body_signal(
+                  params, rest_param, body, ctor, args, ctor_env, class_ctx,
                 )
-                // Bind parameters with defaults (mirrors UserFuncExt path in call.mbt)
-                let mut effective_param_count = 0
-                for i = 0; i < params.length(); i = i + 1 {
-                  let param = params[i]
-                  // Skip rest destructuring params — handled separately below
-                  if rest_param is Some(rn) && param.name == rn {
-                    continue
-                  }
-                  let val : Value = if effective_param_count < args.length() &&
-                    !(args[effective_param_count] is Undefined) {
-                    args[effective_param_count]
-                  } else {
-                    match param.default_val {
-                      Some(default_expr) =>
-                        self.eval_expr(class_ctx, default_expr, ctor_env)
-                      None =>
-                        if effective_param_count < args.length() {
-                          args[effective_param_count]
-                        } else {
-                          Undefined
-                        }
-                    }
-                  }
-                  ctor_env.def_parameter(param.name, val)
-                  match param.pattern {
-                    Some(pat) =>
-                      self.bind_pattern(
-                        pat,
-                        val,
-                        ctor_env,
-                        LetBinding,
-                        ctx=class_ctx,
-                      )
-                    None => ()
-                  }
-                  effective_param_count += 1
-                }
-                // Rest parameter
-                match rest_param {
-                  Some(rest_name) => {
-                    let rest_elements : Array[Value] = []
-                    for i = effective_param_count; i < args.length(); i = i + 1 {
-                      rest_elements.push(args[i])
-                    }
-                    let rest_val = make_array(rest_elements)
-                    ctor_env.def_parameter(rest_name, rest_val)
-                    for p in params {
-                      if p.name == rest_name {
-                        match p.pattern {
-                          Some(pat) =>
-                            self.bind_pattern(
-                              pat,
-                              rest_val,
-                              ctor_env,
-                              LetBinding,
-                              ctx=class_ctx,
-                            )
-                          None => ()
-                        }
-                        break
-                      }
-                    }
-                  }
-                  None => ()
-                }
-                // §10.2.11 split gated on HasParameterExpressions.
-                let split_scope = has_parameter_expressions(params)
-                let body_env = if split_scope {
-                  let be = Environment::new(parent=Some(ctor_env))
-                  be.is_var_scope = true
-                  be
-                } else {
-                  ctor_env
-                }
-                let param_source : Environment? = if split_scope {
-                  Some(ctor_env)
-                } else {
-                  None
-                }
-                self.hoist_declarations(
-                  body,
-                  body_env,
-                  strict=true,
-                  param_source~,
-                )
-                let exec_result = self.exec_stmts(class_ctx, body, body_env)
                 let current_this = ctor_env.get("this")
                 raise_if_break_continue(exec_result)
                 match exec_result {
@@ -1003,117 +990,13 @@ pub fn Interpreter::construct_value(
                             }
                             match ctor {
                               Some((params, rest_param, body)) => {
-                                // Install `arguments` BEFORE defaults run so
-                                // super ctor defaults can reference it.
-                                let super_tte : Value? = if super_env.has(
-                                    "[[ThrowTypeError]]",
-                                  ) {
-                                  Some(super_env.get("[[ThrowTypeError]]"))
-                                } else {
-                                  None
-                                }
-                                super_env.def(
-                                  "arguments",
-                                  make_arguments_object(
-                                    args,
-                                    sc,
-                                    true,
-                                    throw_type_error=super_tte,
-                                  ),
-                                  VarBinding,
+                                let exec_result = self.bind_class_ctor_params_and_exec_body_signal(
+                                  params, rest_param, body, sc, args, super_env,
+                                  class_ctx,
                                 )
-                                let mut eff_count = 0
-                                for i = 0; i < params.length(); i = i + 1 {
-                                  let p = params[i]
-                                  if rest_param is Some(rn) && p.name == rn {
-                                    continue
-                                  }
-                                  let val : Value = if eff_count < args.length() &&
-                                    !(args[eff_count] is Undefined) {
-                                    args[eff_count]
-                                  } else {
-                                    match p.default_val {
-                                      Some(de) =>
-                                        self.eval_expr(class_ctx, de, super_env)
-                                      None =>
-                                        if eff_count < args.length() {
-                                          args[eff_count]
-                                        } else {
-                                          Undefined
-                                        }
-                                    }
-                                  }
-                                  super_env.def_parameter(p.name, val)
-                                  match p.pattern {
-                                    Some(pat) =>
-                                      self.bind_pattern(
-                                        pat,
-                                        val,
-                                        super_env,
-                                        LetBinding,
-                                        ctx=class_ctx,
-                                      )
-                                    None => ()
-                                  }
-                                  eff_count += 1
-                                }
-                                match rest_param {
-                                  Some(rn) => {
-                                    let re : Array[Value] = []
-                                    for i = eff_count
-                                        i < args.length()
-                                        i = i + 1 {
-                                      re.push(args[i])
-                                    }
-                                    super_env.def(
-                                      rn,
-                                      make_array(re),
-                                      LetBinding,
-                                    )
-                                  }
-                                  None => ()
-                                }
-                                // §10.2.11 split: mirror the explicit ctor
-                                // path. Implicit super() running a parent
-                                // ctor with HasParameterExpressions needs
-                                // a body_env child of super_env so a body
-                                // `var x` doesn't leak into param-scope
-                                // where a default's arrow might capture it
-                                // (e.g. `constructor(q = () => x) { var x }`
-                                // must ReferenceError — regardless of
-                                // whether called directly or via implicit
-                                // super).
-                                let split_scope = has_parameter_expressions(
-                                  params,
-                                )
-                                let body_env = if split_scope {
-                                  let be = Environment::new(
-                                    parent=Some(super_env),
-                                  )
-                                  be.is_var_scope = true
-                                  be
-                                } else {
-                                  super_env
-                                }
-                                let param_source : Environment? = if split_scope {
-                                  Some(super_env)
-                                } else {
-                                  None
-                                }
-                                self.hoist_declarations(
-                                  body,
-                                  body_env,
-                                  strict=true,
-                                  param_source~,
-                                )
-                                let exec_result = self.exec_stmts(
-                                  class_ctx, body, body_env,
-                                )
-                                // If super constructor returns an object, use it
                                 match exec_result {
                                   ReturnSignal(v) =>
                                     if is_object_like_for_constructor_return(v) {
-                                      // Apply C's instance fields to the override object
                                       self.install_instance_fields(
                                         v, instance_fields,
                                       )
