@@ -388,3 +388,93 @@ test "lex unicode escape code point too large" {
     ),
   )
 }
+
+///|
+test "lex hex number" {
+  let kinds = tok_kinds("0xFF")
+  inspect(kinds, content="[Number(255), EOF]")
+}
+
+///|
+test "lex hex number uppercase prefix" {
+  let kinds = tok_kinds("0XFF")
+  inspect(kinds, content="[Number(255), EOF]")
+}
+
+///|
+test "lex binary number" {
+  let kinds = tok_kinds("0b1010")
+  inspect(kinds, content="[Number(10), EOF]")
+}
+
+///|
+test "lex octal number" {
+  let kinds = tok_kinds("0o17")
+  inspect(kinds, content="[Number(15), EOF]")
+}
+
+///|
+test "lex legacy octal" {
+  let kinds = tok_kinds("077")
+  inspect(kinds, content="[Number(63), EOF]")
+}
+
+///|
+test "lex leading decimal" {
+  let kinds = tok_kinds(".5")
+  inspect(kinds, content="[Number(0.5), EOF]")
+}
+
+///|
+test "lex numeric separator in decimal" {
+  let kinds = tok_kinds("1_000_000")
+  inspect(kinds, content="[Number(1000000), EOF]")
+}
+
+///|
+test "lex numeric separator in hex" {
+  let kinds = tok_kinds("0xFF_AA")
+  inspect(kinds, content="[Number(65450), EOF]")
+}
+
+///|
+test "lex numeric separator in binary" {
+  let kinds = tok_kinds("0b1010_1010")
+  inspect(kinds, content="[Number(170), EOF]")
+}
+
+///|
+test "lex numeric separator in octal" {
+  let kinds = tok_kinds("0o7_7")
+  inspect(kinds, content="[Number(63), EOF]")
+}
+
+///|
+test "lex hex missing digits error" {
+  let result = Ok(tok_kinds("0x")) catch { _ => Err(()) }
+  inspect(result, content="Err(())")
+}
+
+///|
+test "lex binary missing digits error" {
+  let result = Ok(tok_kinds("0b")) catch { _ => Err(()) }
+  inspect(result, content="Err(())")
+}
+
+///|
+test "lex octal missing digits error" {
+  let result = Ok(tok_kinds("0o")) catch { _ => Err(()) }
+  inspect(result, content="Err(())")
+}
+
+///|
+test "lex consecutive numeric separator error" {
+  let result = Ok(tok_kinds("1__0")) catch { _ => Err(()) }
+  inspect(result, content="Err(())")
+}
+
+///|
+test "lex trailing numeric separator error" {
+  let result = Ok(tok_kinds("1_")) catch { _ => Err(()) }
+  inspect(result, content="Err(())")
+}
