@@ -1533,19 +1533,22 @@ fn collect_for_in_keys(
           match k {
             String_(s) =>
               if !seen.contains(s) {
-                // Use [[GetOwnPropertyDescriptor]] trap to check enumerability
+                // Use [[GetOwnPropertyDescriptor]] trap to check enumerability.
+                // If the trap returns None the key is not an own property —
+                // don't mark it seen so the prototype chain can still surface it.
                 let desc_opt = proxy_get_own_property(
                   interp,
                   proxy_data,
                   String_(s),
                 )
-                let enumerable = match desc_opt {
-                  Some((d, _)) => d.enumerable
-                  None => false
-                }
-                seen[s] = true
-                if enumerable {
-                  keys.push(s)
+                match desc_opt {
+                  Some((d, _)) => {
+                    seen[s] = true
+                    if d.enumerable {
+                      keys.push(s)
+                    }
+                  }
+                  None => ()
                 }
               }
             // Symbol keys are never enumerated in for-in
