@@ -691,6 +691,8 @@ pub fn Interpreter::call_value(
                 callee,
                 func_strict,
                 throw_type_error=tte_val,
+                mapped_names=data.params,
+                mapped_env=Some(func_env),
               ),
               VarBinding,
             )

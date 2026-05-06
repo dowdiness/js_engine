@@ -249,12 +249,71 @@ fn make_arguments_object(
   ctor : Value,
   strict : Bool,
   throw_type_error? : Value? = None,
+  mapped_names? : Array[String] = [],
+  mapped_env? : Environment? = None,
 ) -> Value {
   let new_args_props : Map[String, Value] = {}
   let new_args_descs : Map[String, PropDescriptor] = {}
-  for i = 0; i < args.length(); i = i + 1 {
-    new_args_props[i.to_string()] = args[i]
-    new_args_descs[i.to_string()] = {
+  // §10.4.4.1: sloppy simple-param lists get live-mapped accessor slots so
+  // mutations to arguments[i] reflect in the named param binding and vice versa.
+  let map_count = if strict {
+    0
+  } else {
+    match mapped_env {
+      Some(_) => {
+        let a = mapped_names.length()
+        let b = args.length()
+        if a < b {
+          a
+        } else {
+          b
+        }
+      }
+      None => 0
+    }
+  }
+  for i = 0; i < map_count; i = i + 1 {
+    let key = i.to_string()
+    let pname = mapped_names[i]
+    match mapped_env {
+      Some(env) => {
+        let getter_fn = Object({
+          bag: PropertyBag(),
+          prototype: Null,
+          callable: Some(
+            NativeCallable("[[MappedArgGetter]]", _a => env.get(pname)),
+          ),
+          class_name: "Function",
+          extensible: true,
+        })
+        let setter_fn = Object({
+          bag: PropertyBag(),
+          prototype: Null,
+          callable: Some(
+            NativeCallable("[[MappedArgSetter]]", a => {
+              env.assign(pname, if a.length() > 0 { a[0] } else { Undefined })
+              Undefined
+            }),
+          ),
+          class_name: "Function",
+          extensible: true,
+        })
+        new_args_props[key] = Undefined // accessor sentinel
+        new_args_descs[key] = {
+          writable: false,
+          enumerable: true,
+          configurable: true,
+          getter: Some(getter_fn),
+          setter: Some(setter_fn),
+        }
+      }
+      None => ()
+    }
+  }
+  for i = map_count; i < args.length(); i = i + 1 {
+    let key = i.to_string()
+    new_args_props[key] = args[i]
+    new_args_descs[key] = {
       writable: true,
       enumerable: true,
       configurable: true,
@@ -506,7 +565,14 @@ pub fn Interpreter::construct_value(
           }
           func_env.def(
             "arguments",
-            make_arguments_object(args, ctor, func_strict, throw_type_error=tte),
+            make_arguments_object(
+              args,
+              ctor,
+              func_strict,
+              throw_type_error=tte,
+              mapped_names=data.params,
+              mapped_env=Some(func_env),
+            ),
             VarBinding,
           )
           // Hoist var declarations and function declarations
