@@ -316,12 +316,7 @@ pub fn Interpreter::run_module(
           raise @errors.SyntaxError(
             message="return statement outside of function",
           )
-        BreakSignal(_, _) =>
-          raise @errors.SyntaxError(message="break statement outside of loop")
-        ContinueSignal(_, _) =>
-          raise @errors.SyntaxError(
-            message="continue statement outside of loop",
-          )
+        sig => raise_if_break_continue(sig)
       }
     }
     // Resolve deferred export bindings from module environment (live bindings)

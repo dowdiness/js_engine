@@ -500,7 +500,7 @@ pub fn setup_builtins(
             // Add indexed character properties
             for i = 0; i < str.length(); i = i + 1 {
               props[i.to_string()] = Value::String_(
-                str.view()[i:i + 1].to_string(),
+                str.view()[i:i + 1].to_owned(),
               )
             }
             let descs : Map[String, PropDescriptor] = {}
@@ -1692,7 +1692,7 @@ pub fn setup_builtins(
       let loc = @token.Loc::default()
       let p = interp.get_property(this_val, "prototype", loc)
       if @runtime.is_object_value(p) {
-        @runtime.instanceof_prototype_chain(o, p, interp.global)
+        @runtime.instanceof_prototype_chain(o, p, interp)
       } else if p is Undefined {
         Value::Bool(false)
       } else {

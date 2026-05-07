@@ -108,6 +108,19 @@ fn Interpreter::spread_iterable(
 }
 
 ///|
+/// Raise SyntaxError for Break/Continue signals escaping a function boundary.
+/// Used as a shared invariant at all function-body and module execution sites.
+fn raise_if_break_continue(sig : Signal) -> Unit raise Error {
+  match sig {
+    BreakSignal(_, _) =>
+      raise @errors.SyntaxError(message="break statement outside of loop")
+    ContinueSignal(_, _) =>
+      raise @errors.SyntaxError(message="continue statement outside of loop")
+    _ => ()
+  }
+}
+
+///|
 fn Interpreter::eval_args_with_spread(
   self : Interpreter,
   ctx : ExecContext,
@@ -301,13 +314,8 @@ fn Interpreter::bind_ext_params_and_exec_body_signal(
       param_source~,
     )
     let sig = self.exec_stmts(func_ctx, data.body, body_env)
-    match sig {
-      BreakSignal(_, _) =>
-        raise @errors.SyntaxError(message="break statement outside of loop")
-      ContinueSignal(_, _) =>
-        raise @errors.SyntaxError(message="continue statement outside of loop")
-      _ => sig
-    }
+    raise_if_break_continue(sig)
+    sig
   } catch {
     e => {
       self.in_nonarrow_param_default_eval = saved_in_default
@@ -487,10 +495,7 @@ fn Interpreter::perform_eval(
         raise @errors.SyntaxError(
           message="return statement outside of function",
         )
-      BreakSignal(_, _) =>
-        raise @errors.SyntaxError(message="break statement outside of loop")
-      ContinueSignal(_, _) =>
-        raise @errors.SyntaxError(message="continue statement outside of loop")
+      sig => raise_if_break_continue(sig)
     }
   }
   last
@@ -686,6 +691,8 @@ pub fn Interpreter::call_value(
                 callee,
                 func_strict,
                 throw_type_error=tte_val,
+                mapped_names=data.params,
+                mapped_env=Some(func_env),
               ),
               VarBinding,
             )
@@ -698,17 +705,12 @@ pub fn Interpreter::call_value(
                 }
               None => ()
             }
-            match self.exec_stmts(func_ctx, data.body, func_env) {
+            let exec_result = self.exec_stmts(func_ctx, data.body, func_env)
+            raise_if_break_continue(exec_result)
+            match exec_result {
               Normal(_) => Undefined
               ReturnSignal(v) => v
-              BreakSignal(_, _) =>
-                raise @errors.SyntaxError(
-                  message="break statement outside of loop",
-                )
-              ContinueSignal(_, _) =>
-                raise @errors.SyntaxError(
-                  message="continue statement outside of loop",
-                )
+              _ => Undefined
             }
           } catch {
             e => {
@@ -740,17 +742,12 @@ pub fn Interpreter::call_value(
               func_env.def_parameter(data.params[i], val)
             }
             self.hoist_declarations(data.body, func_env, strict=data.strict)
-            match self.exec_stmts(func_ctx, data.body, func_env) {
+            let exec_result = self.exec_stmts(func_ctx, data.body, func_env)
+            raise_if_break_continue(exec_result)
+            match exec_result {
               Normal(_) => Undefined
               ReturnSignal(v) => v
-              BreakSignal(_, _) =>
-                raise @errors.SyntaxError(
-                  message="break statement outside of loop",
-                )
-              ContinueSignal(_, _) =>
-                raise @errors.SyntaxError(
-                  message="continue statement outside of loop",
-                )
+              _ => Undefined
             }
           } catch {
             e => {

@@ -141,7 +141,7 @@ Same file and pattern as `withResolvers`. After implementing: remove `"promise-t
 ### Async function edge cases
 
 10. **Sloppy-mode `this` coercion** — Async functions called without a receiver get `undefined` as `this` instead of `globalThis`. This is a general interpreter issue, not async-specific.
-11. **Mapped arguments not implemented** — `make_arguments_object` in `construct.mbt` creates a plain copy, not a spec-compliant mapped arguments object. Affects both sync and async functions in sloppy mode.
+~~11. **Mapped arguments not implemented**~~ — DONE (2026-05-06, PR #81). `make_arguments_object` now creates spec-compliant live-mapped accessor slots for sloppy-mode simple-parameter functions per §10.4.4.1, with correct duplicate-param handling (last occurrence wins) per §10.4.4.7.
 
 ---
 
@@ -428,7 +428,7 @@ param-default `eval("var arguments")` case (~96 tests, out of scope #1 below).
    splice `install_instance_fields` / `maybe_set_promise_constructor`
    mid-match. A second helper shape would be needed — tracked as #A.10
    below rather than folded into this PR.
-10. **Second helper for class-ctor arms** (surfaced 2026-04-20 by
+~~10. **Second helper for class-ctor arms**~~ — DONE (2026-05-06, PR #81, commit `f34e169`). (surfaced 2026-04-20 by
     #A.9 scope-out). The two class-ctor shapes — base-class
     constructor body (`construct.mbt` ~line 845) and derived-class
     implicit-super arm (~line 1044) — share shape with each other but
@@ -715,12 +715,17 @@ Fix: wrap each missing throw site with catch→IteratorClose→re-raise; add `cl
 
 **Follow-up (2026-04-24, branch `claude/agent-todo-task-8FZae`)**: Codex review on PR #74 identified a second gap: non-throw completions (Return, Break, non-matching-Continue) were also suppressing `return()` errors via `catch { _ => () }`. Per §7.4.10 steps 5 and 7, for non-throw completions: (a) if `return()` throws, that error replaces the completion; (b) if `return()` returns a non-Object, raise TypeError. Fix: removed `catch { _ => () }` from all three ForOf non-throw paths (ForOfStmt, ForOfStmtPat, ForOfExpr) and updated `close_iterator` to validate the `return()` result. Callers handling throw completions keep `catch { _ => () }` per step 4. 3 regression tests added.
 
-#### 3. Mapped arguments object
+#### ~~3. Mapped arguments object~~ — DONE (2026-05-06, PR #81)
 
-**Impact**: 3+ for-of tests + sloppy-mode function tests broadly
-**Files**: `interpreter/runtime/construct.mbt`
+`make_arguments_object` now creates a spec-compliant mapped arguments object per §10.4.4.1 / §10.4.4.7. Sloppy-mode simple-parameter functions get live accessor slots backed by closures over the parameter environment. Duplicate parameter names are handled correctly: a backwards scan ensures only the last occurrence of each name is mapped as an accessor; earlier occurrences become plain data properties. Known issue #11 from PR #45.
 
-`make_arguments_object` creates a plain copy, not a spec-compliant mapped arguments object where mutations to `arguments[i]` reflect in named parameters and vice versa. Known issue #11 from PR #45.
+**Follow-up (not in PR #81): Arguments exotic object `[[GetOwnProperty]]` descriptor shape.**
+Our implementation stores live-binding closures as accessor descriptors directly in `bag.descriptors`. Per §10.4.4.2, `[[GetOwnProperty]]` on an Arguments exotic object must return a **data descriptor** with the live value, not an accessor descriptor. `Object.getOwnPropertyDescriptor(arguments, "0")` currently leaks the internal getter/setter. Fixing this correctly requires:
+- A separate `[[ParameterMap]]` internal slot on the arguments object (holding the accessor functions)
+- Overrides for `[[GetOwnProperty]]`, `[[DefineOwnProperty]]`, `[[Get]]`, and `[[Set]]` that consult the map
+- Likely a new `class_name` sentinel (e.g. `"Arguments"`) to gate the exotic behaviour in `get_own_property` / `set_property` / `get_property`
+
+Estimated effort: medium (multi-surface, but contained to `construct.mbt` + `property.mbt`).
 
 ### Medium effort (multi-session)
 
@@ -731,8 +736,8 @@ Fix: wrap each missing throw site with catch→IteratorClose→re-raise; add `cl
 
 Remaining deferred items from Phase 15 (3 of 6 now done):
 - ~~`Object.getPrototypeOf` doesn't invoke the trap~~ ✅ Fixed 2026-04-16
-- `for-in` doesn't invoke `ownKeys` trap (delegates to target directly)
-- `instanceof` doesn't invoke `getPrototypeOf` trap for prototype chain walk
+- ~~`for-in` doesn't invoke `ownKeys` trap~~ ✅ Fixed 2026-05-06 (PR #81): `collect_for_in_keys` now calls `proxy_own_property_keys`, filters via `proxy_get_own_property`, and walks via `proxy_get_prototype_of`
+- ~~`instanceof` doesn't invoke `getPrototypeOf` trap for prototype chain walk~~ ✅ Fixed 2026-05-06 (PR #81): `instanceof_prototype_chain` now takes `Interpreter` and calls `proxy_get_prototype_of` for Proxy values in both the initial match and the chain walk
 - `create_list_from_array_like` bypasses Proxy traps (reads `.properties` directly)
 - ~~`Reflect.construct` rewires newTarget prototype after construction instead of before~~ — superseded by `construct` NewTarget threading item above (same root cause, broader fix)
 - `unwrap_proxy_target` fails for non-Object types
@@ -771,7 +776,7 @@ DescriptorBuilder::new(configurable=true)
 
 #### ~~14. User-function property insertion order: `prototype, name, length` → `prototype, length, name`~~ — DONE (2026-04-17, PR #55)
 
-#### 26. Consolidate Break/Continue → SyntaxError invariant across runtime
+#### ~~26. Consolidate Break/Continue → SyntaxError invariant across runtime~~ — DONE (2026-05-06, PR #81, commit `d0c8243`)
 
 **Impact**: 0 test262 delta (pure refactor, zero behavior change). Medium-ROI tech-debt cleanup surfaced by PR #68 (#A.9) reviewer.
 

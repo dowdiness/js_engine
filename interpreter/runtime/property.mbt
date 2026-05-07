@@ -380,7 +380,7 @@ fn Interpreter::get_property_of_object(
         Some(callable) =>
           if prop == "call" {
             return Object({
-              bag: PropertyBag::new(),
+              bag: PropertyBag(),
               prototype: Null,
               callable: Some(FuncCallMethod(obj)),
               class_name: "Function",
@@ -388,7 +388,7 @@ fn Interpreter::get_property_of_object(
             })
           } else if prop == "apply" {
             return Object({
-              bag: PropertyBag::new(),
+              bag: PropertyBag(),
               prototype: Null,
               callable: Some(FuncApplyMethod(obj)),
               class_name: "Function",
@@ -522,7 +522,7 @@ fn Interpreter::get_property_of_object(
               None => {
                 // Create and memoize default prototype
                 let proto : Value = Object({
-                  bag: PropertyBag::new(),
+                  bag: PropertyBag(),
                   prototype: get_obj_proto(),
                   callable: None,
                   class_name: "Object",
@@ -1037,7 +1037,7 @@ pub fn Interpreter::get_computed_property(
             Some(callable) =>
               if prop == "call" {
                 return Object({
-                  bag: PropertyBag::new(),
+                  bag: PropertyBag(),
                   prototype: Null,
                   callable: Some(FuncCallMethod(obj)),
                   class_name: "Function",
@@ -1045,7 +1045,7 @@ pub fn Interpreter::get_computed_property(
                 })
               } else if prop == "apply" {
                 return Object({
-                  bag: PropertyBag::new(),
+                  bag: PropertyBag(),
                   prototype: Null,
                   callable: Some(FuncApplyMethod(obj)),
                   class_name: "Function",
@@ -1181,7 +1181,7 @@ pub fn Interpreter::get_computed_property(
                   None => {
                     // Create and memoize default prototype
                     let proto : Value = Object({
-                      bag: PropertyBag::new(),
+                      bag: PropertyBag(),
                       prototype: get_obj_proto(),
                       callable: None,
                       class_name: "Object",
@@ -1353,7 +1353,11 @@ pub fn Interpreter::get_computed_property(
       }
     Null => {
       let key_str = match key {
-        Symbol(sym) => "Symbol(\{sym.description})"
+        Symbol(sym) =>
+          match sym.description {
+            Some(d) => "Symbol(\{d})"
+            None => "Symbol()"
+          }
         String_(s) => s
         Number(n) => n.to_string()
         Bool(b) => b.to_string()
@@ -1365,7 +1369,11 @@ pub fn Interpreter::get_computed_property(
     }
     Undefined => {
       let key_str = match key {
-        Symbol(sym) => "Symbol(\{sym.description})"
+        Symbol(sym) =>
+          match sym.description {
+            Some(d) => "Symbol(\{d})"
+            None => "Symbol()"
+          }
         String_(s) => s
         Number(n) => n.to_string()
         Bool(b) => b.to_string()
@@ -2558,7 +2566,11 @@ pub fn Interpreter::set_computed_property(
     }
     Null => {
       let key_str = match key {
-        Symbol(sym) => "Symbol(\{sym.description})"
+        Symbol(sym) =>
+          match sym.description {
+            Some(d) => "Symbol(\{d})"
+            None => "Symbol()"
+          }
         String_(s) => s
         Number(n) => n.to_string()
         Bool(b) => b.to_string()
@@ -2570,7 +2582,11 @@ pub fn Interpreter::set_computed_property(
     }
     Undefined => {
       let key_str = match key {
-        Symbol(sym) => "Symbol(\{sym.description})"
+        Symbol(sym) =>
+          match sym.description {
+            Some(d) => "Symbol(\{d})"
+            None => "Symbol()"
+          }
         String_(s) => s
         Number(n) => n.to_string()
         Bool(b) => b.to_string()

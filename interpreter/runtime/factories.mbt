@@ -1,7 +1,7 @@
 ///|
 pub fn make_func(data : FuncData) -> Value {
   let proto = Object({
-    bag: PropertyBag::new(),
+    bag: PropertyBag(),
     prototype: get_obj_proto(),
     callable: None,
     class_name: "Object",
@@ -68,7 +68,7 @@ pub fn make_func(data : FuncData) -> Value {
 ///|
 pub fn make_func_ext(data : FuncDataExt) -> Value {
   let proto = Object({
-    bag: PropertyBag::new(),
+    bag: PropertyBag(),
     prototype: get_obj_proto(),
     callable: None,
     class_name: "Object",
@@ -399,7 +399,7 @@ pub fn create_iter_result(value : Value, done : Bool) -> Value {
 /// Helper to create a plain object
 pub fn make_plain_object() -> Value {
   Object({
-    bag: PropertyBag::new(),
+    bag: PropertyBag(),
     prototype: Null,
     callable: None,
     class_name: "Object",
@@ -411,5 +411,5 @@ pub fn make_plain_object() -> Value {
 /// Wrap an Array[Value] in an Array Value with an empty property bag.
 /// Dense-only arrays (no named props, no sparse length overrides) build via this.
 pub fn make_array(elements : Array[Value]) -> Value {
-  Array({ elements, bag: PropertyBag::new(), length_writable: true })
+  Array({ elements, bag: PropertyBag(), length_writable: true })
 }

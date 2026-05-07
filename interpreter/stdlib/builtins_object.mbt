@@ -748,7 +748,7 @@ pub fn setup_object_builtins(
                 )
             }
             let obj = Value::Object({
-              bag: @runtime.PropertyBag::new(),
+              bag: @runtime.PropertyBag(),
               prototype: proto,
               callable: None,
               class_name: "Object",
@@ -1307,7 +1307,7 @@ pub fn setup_object_builtins(
               val
             Undefined | Null =>
               Value::Object({
-                bag: @runtime.PropertyBag::new(),
+                bag: @runtime.PropertyBag(),
                 prototype: obj_proto,
                 callable: None,
                 class_name: "Object",
@@ -1322,7 +1322,7 @@ pub fn setup_object_builtins(
               props["[[StringData]]"] = Value::String_(s)
               props["length"] = Value::Number(s.length().to_double())
               for i = 0; i < s.length(); i = i + 1 {
-                props[i.to_string()] = Value::String_(s[i:i + 1].to_string())
+                props[i.to_string()] = Value::String_(s[i:i + 1].to_owned())
               }
               let descs : Map[String, PropDescriptor] = {}
               descs["length"] = {

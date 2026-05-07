@@ -455,7 +455,7 @@ fn Interpreter::exec_stmt(
     }
     ForInStmt(var_kind, name, obj_expr, body, _) => {
       let obj = self.eval_expr(ctx, obj_expr, env)
-      let keys = collect_for_in_keys(obj)
+      let keys = collect_for_in_keys(obj, self)
       let mut completion : Value = Undefined
       for key in keys {
         let body_env = Environment::new(parent=Some(env))
@@ -784,7 +784,7 @@ fn Interpreter::exec_stmt(
     }
     ForInStmtPat(var_kind, pattern, obj_expr, body, _) => {
       let obj = self.eval_expr(ctx, obj_expr, env)
-      let keys = collect_for_in_keys(obj)
+      let keys = collect_for_in_keys(obj, self)
       let mut completion : Value = Undefined
       for key in keys {
         let body_env = Environment::new(parent=Some(env))
@@ -1006,7 +1006,7 @@ fn Interpreter::exec_stmt(
     }
     ForInExpr(lhs_expr, obj_expr, body, _) => {
       let obj = self.eval_expr(ctx, obj_expr, env)
-      let keys = collect_for_in_keys(obj)
+      let keys = collect_for_in_keys(obj, self)
       let mut completion : Value = Undefined
       for key in keys {
         let body_env = Environment::new(parent=Some(env))
@@ -1513,23 +1513,50 @@ fn Interpreter::exec_stmt(
 }
 
 ///|
-fn collect_for_in_keys(obj : Value) -> Array[String] raise Error {
+fn collect_for_in_keys(
+  obj : Value,
+  interp : Interpreter,
+) -> Array[String] raise Error {
   let keys : Array[String] = []
   let seen : Map[String, Bool] = {}
   let mut current = obj
   while true {
     match current {
       Proxy(proxy_data) => {
-        // For Proxy, enumerate the target's enumerable properties
-        let target = match proxy_data.target {
-          Some(t) => t
-          None =>
-            raise @errors.TypeError(
-              message="Cannot perform 'ownKeys' on a proxy that has been revoked",
-            )
+        // Invoke [[OwnPropertyKeys]] trap, then filter for enumerable string keys
+        let own_keys_val = proxy_own_property_keys(interp, proxy_data)
+        let own_keys = match own_keys_val {
+          Array(data) => data.elements
+          _ => []
         }
-        // Delegate to target for key enumeration
-        current = target
+        for k in own_keys {
+          match k {
+            String_(s) =>
+              if !seen.contains(s) {
+                // Use [[GetOwnPropertyDescriptor]] trap to check enumerability.
+                // If the trap returns None the key is not an own property —
+                // don't mark it seen so the prototype chain can still surface it.
+                let desc_opt = proxy_get_own_property(
+                  interp,
+                  proxy_data,
+                  String_(s),
+                )
+                match desc_opt {
+                  Some((d, _)) => {
+                    seen[s] = true
+                    if d.enumerable {
+                      keys.push(s)
+                    }
+                  }
+                  None => ()
+                }
+              }
+            // Symbol keys are never enumerated in for-in
+            _ => ()
+          }
+        }
+        // Walk prototype chain via [[GetPrototypeOf]] trap
+        current = proxy_get_prototype_of(interp, proxy_data)
         continue
       }
       Object(data) => {
