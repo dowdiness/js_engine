@@ -357,9 +357,7 @@ fn to_primitive_number(
     None =>
       match effective {
         Some(ip) => {
-          let v = ip.get_property(obj_val, "valueOf", @token.Loc::default()) catch {
-            _ => Undefined
-          }
+          let v = ip.get_property(obj_val, "valueOf", @token.Loc::default())
           if is_callable(v) {
             Some(v)
           } else {
@@ -386,9 +384,7 @@ fn to_primitive_number(
     None =>
       match effective {
         Some(ip) => {
-          let v = ip.get_property(obj_val, "toString", @token.Loc::default()) catch {
-            _ => Undefined
-          }
+          let v = ip.get_property(obj_val, "toString", @token.Loc::default())
           if is_callable(v) {
             Some(v)
           } else {
@@ -665,9 +661,7 @@ fn to_primitive_string(
     None =>
       match effective {
         Some(ip) => {
-          let v = ip.get_property(obj_val, "toString", @token.Loc::default()) catch {
-            _ => Undefined
-          }
+          let v = ip.get_property(obj_val, "toString", @token.Loc::default())
           if is_callable(v) {
             Some(v)
           } else {
@@ -694,9 +688,7 @@ fn to_primitive_string(
     None =>
       match effective {
         Some(ip) => {
-          let v = ip.get_property(obj_val, "valueOf", @token.Loc::default()) catch {
-            _ => Undefined
-          }
+          let v = ip.get_property(obj_val, "valueOf", @token.Loc::default())
           if is_callable(v) {
             Some(v)
           } else {
