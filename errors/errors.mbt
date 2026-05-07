@@ -75,8 +75,8 @@ pub fn JsError::get_message(self : JsError) -> String {
     | RangeError(message~)
     | URIError(message~)
     | EvalError(message~)
-    | InternalError(message~) => message
-    AggregateError(message~, errors=_) => message
+    | InternalError(message~)
+    | AggregateError(message~, errors=_) => message
   }
 }
 
