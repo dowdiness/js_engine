@@ -198,8 +198,8 @@ node engine.js --annex-b 'with ({x: 1}) { print(x) }'
 ```
 
 - **CLI**: `--annex-b` flag parsed in `cmd/main/main.mbt`, passed to interpreter as `self.annex_b : Bool`
-- **Test262 runner**: `test262-runner.py` passes `--annex-b` for tests in `annexB/` directories
-- **Metadata parsing**: `test262-runner.py` and `test262-analyze.py` share `test262_utils.py` and run with or without PyYAML installed
+- **Test262 runner**: `scripts/test262-runner.py` passes `--annex-b` for tests in `annexB/` directories
+- **Metadata parsing**: `scripts/test262-runner.py` and `scripts/test262-analyze.py` share `scripts/test262_utils.py` and run with or without PyYAML installed
 - **Feature gating**: Each Annex B feature checks `self.annex_b` before enabling legacy behavior
 
 ### Features to gate behind `--annex-b`

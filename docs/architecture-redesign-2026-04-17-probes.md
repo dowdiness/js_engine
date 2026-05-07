@@ -74,7 +74,7 @@ reference `Array`, `realm`, `prototype chain`, or `side table`.
 | Category | Fails | Actual root cause |
 |---|---|---|
 | eval-code | 389 | ~346 are Annex B §B.3.3 block-level function hoisting in eval scope (`runtime/hoisting.mbt`) |
-| module-code | 119 | 91 are `Cannot find module './*_FIXTURE.js'` — `test262-runner.py` path resolver |
+| module-code | 119 | 91 are `Cannot find module './*_FIXTURE.js'` — `scripts/test262-runner.py` path resolver |
 
 **CP-4 disproved.** The side-table ownership smell is real but does not
 explain these pass rates. Stage D (realm hermeticity) demoted to
@@ -82,7 +82,7 @@ explain these pass rates. Stage D (realm hermeticity) demoted to
 
 Two high-ROI non-architectural items surface as byproducts:
 - Annex B eval-scope hoisting fix in `hoisting.mbt` — ~346 tests.
-- `_FIXTURE.js` path resolver in `test262-runner.py` — ~91 tests.
+- `_FIXTURE.js` path resolver in `scripts/test262-runner.py` — ~91 tests.
 
 ### Probe 3 — Stage B ordering
 
@@ -189,7 +189,7 @@ use case emerges or Stage C surfaces cross-contamination bugs.
 Track separately in `docs/agent-todo.md`:
 
 1. **Annex B eval-scope hoisting** — `runtime/hoisting.mbt`, ~346 tests.
-2. **test262 runner `_FIXTURE.js` path resolver** — `test262-runner.py`, ~91 tests.
+2. **test262 runner `_FIXTURE.js` path resolver** — `scripts/test262-runner.py`, ~91 tests.
 3. **`async.mbt` PromiseData literal cleanup** — fold 4 inline literals into `new_promise_data()` (bundled with Stage A).
 
 ---

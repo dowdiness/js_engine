@@ -127,8 +127,8 @@ test262-js: build-js test262-download
 
 Compare results between WASM and JS targets. Discrepancies indicate behavioral differences in the MoonBit JS backend.
 
-Tooling note: `test262-runner.py` and `test262-analyze.py` now share
-`test262_utils.py` for Test262 frontmatter parsing and work even when PyYAML is
+Tooling note: `scripts/test262-runner.py` and `scripts/test262-analyze.py` now share
+`scripts/test262_utils.py` for Test262 frontmatter parsing and work even when PyYAML is
 not installed.
 
 ### Step 4: Package as a Distributable Module

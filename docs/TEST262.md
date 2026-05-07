@@ -129,7 +129,7 @@ When `--output` is specified, results are saved as JSON with:
 
 ## Skipped Features
 
-Tests requiring these unimplemented features are automatically skipped (excluded from the Passed / Executed ratio). Rough groupings — see `SKIP_FEATURES` in `test262-runner.py` for the authoritative list:
+Tests requiring these unimplemented features are automatically skipped (excluded from the Passed / Executed ratio). Rough groupings — see `SKIP_FEATURES` in `scripts/test262-runner.py` for the authoritative list:
 
 - **Async iteration / top-level await**: `async-iteration`, `top-level-await` (note: plain `async-functions` is implemented and no longer skipped)
 - **Class private members**: `class-fields-private`, `class-methods-private`, `class-static-fields-private`, `class-static-methods-private`, `class-static-block` (public class fields are implemented)
@@ -148,7 +148,7 @@ Analyze test262 coverage without building or running the engine:
 make test262-analyze
 ```
 
-This runs `test262-analyze.py` to classify tests as applicable, skip_feature, skip_flag, or skip_fixture, and generates `test262-analysis.json`.
+This runs `scripts/test262-analyze.py` to classify tests as applicable, skip_feature, skip_flag, or skip_fixture, and generates `test262-analysis.json`.
 
 ## CI Integration
 

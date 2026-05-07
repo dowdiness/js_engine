@@ -25,7 +25,7 @@ moon run cmd/main -- 'print(/foo.bar/s.test("foo\nbar")); print(/x/s.dotAll); pr
 # Expected: true / true / s
 ```
 
-**Action**: In `test262-runner.py`, remove `"regexp-dotall"` from `SKIP_FEATURES`.
+**Action**: In `scripts/test262-runner.py`, remove `"regexp-dotall"` from `SKIP_FEATURES`.
 Run `python3 scripts/test262-runner.py --filter "built-ins/RegExp" --summary` to confirm pass rate improves.
 
 ---
@@ -636,7 +636,7 @@ representation). Staged:
   operations correctly throw via `get_proxy_trap` → `get_proxy_handler`
   returning `None`. The ~8 tests likely cover adjacent behaviour (e.g. that
   `typeof` does **not** throw while `obj.x`, `delete`, `in` etc. do).
-  **Action**: run `test262-runner.py --filter "built-ins/Proxy/revocable"` to
+  **Action**: run `scripts/test262-runner.py --filter "built-ins/Proxy/revocable"` to
   confirm pass rate; if failures remain, check what operation they exercise.
 
 Post-B.3 language follow-up:
