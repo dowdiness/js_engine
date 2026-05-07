@@ -11641,3 +11641,50 @@ test "for-of break with non-callable inherited return throws TypeError" {
   let output = run_output(src)
   inspect(output, content="[\"TypeError\"]")
 }
+
+///|
+test "ToPrimitive: @@toPrimitive returning undefined falls through to OrdinaryToPrimitive" {
+  let src =
+    #|var t = { [Symbol.toPrimitive]: undefined, valueOf: function() { return 42; } };
+    #|console.log(t + 1);
+  let output = run_output(src)
+  inspect(output, content="[\"43\"]")
+}
+
+///|
+test "ToPrimitive: @@toPrimitive returning null falls through to OrdinaryToPrimitive" {
+  let src =
+    #|var t = { [Symbol.toPrimitive]: null, valueOf: function() { return 7; } };
+    #|console.log(t * 2);
+  let output = run_output(src)
+  inspect(output, content="[\"14\"]")
+}
+
+///|
+test "ToPrimitive: @@toPrimitive accessor invoked exactly once on default-hint fallback" {
+  let src =
+    #|var calls = 0;
+    #|var t = {};
+    #|Object.defineProperty(t, Symbol.toPrimitive, {
+    #|  get: function() { calls += 1; return undefined; }
+    #|});
+    #|var r = t + 1;
+    #|console.log(calls);
+  let output = run_output(src)
+  inspect(output, content="[\"1\"]")
+}
+
+///|
+test "ToPrimitive: user error from valueOf accessor propagates with original identity" {
+  let src =
+    #|function MyError(msg) { this.message = msg; this.name = "MyError"; }
+    #|var t = {};
+    #|Object.defineProperty(t, "valueOf", {
+    #|  get: function() { throw new MyError("from-valueOf"); }
+    #|});
+    #|var caught = "no-throw";
+    #|try { t + 1; } catch (e) { caught = e.name + ":" + e.message; }
+    #|console.log(caught);
+  let output = run_output(src)
+  inspect(output, content="[\"MyError:from-valueOf\"]")
+}
