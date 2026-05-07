@@ -110,7 +110,7 @@ jobs:
 
       - name: Run Test262 (${{ matrix.mode }})
         run: |
-          python3 test262-runner.py \
+          python3 scripts/test262-runner.py \
             --test262 ./test262 \
             --mode ${{ matrix.mode }} \
             --threads 4 \

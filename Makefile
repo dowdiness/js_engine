@@ -22,14 +22,14 @@ test262-download:
 
 # Run the full Test262 conformance suite
 test262: build test262-download
-	python3 test262-runner.py \
+	python3 scripts/test262-runner.py \
 		--engine "moon run cmd/main --" \
 		--test262 ./test262 \
 		--output test262-results.json
 
 # Run a quick subset of Test262 (language/literals only)
 test262-quick: build test262-download
-	python3 test262-runner.py \
+	python3 scripts/test262-runner.py \
 		--engine "moon run cmd/main --" \
 		--test262 ./test262 \
 		--filter "language/literals" \
@@ -39,7 +39,7 @@ test262-quick: build test262-download
 
 # Run Test262 for a specific category (e.g., make test262-filter FILTER=language/expressions)
 test262-filter: build test262-download
-	python3 test262-runner.py \
+	python3 scripts/test262-runner.py \
 		--engine "moon run cmd/main --" \
 		--test262 ./test262 \
 		--filter "$(FILTER)" \
@@ -49,7 +49,7 @@ test262-filter: build test262-download
 
 # Static analysis of Test262 coverage (no engine build required)
 test262-analyze: test262-download
-	python3 test262-analyze.py \
+	python3 scripts/test262-analyze.py \
 		--test262 ./test262 \
 		--output test262-analysis.json
 

@@ -316,7 +316,7 @@ becomes a delegation layer.
 *What stays the same*: Descriptor semantics. All test262 Object and descriptor
 test results.
 
-*How correctness is verified*: `python3 test262-runner.py --filter
+*How correctness is verified*: `python3 scripts/test262-runner.py --filter
 "built-ins/Object" --summary`. Pass rate must not regress.
 
 *Risk*: **Low**. Behavioral equivalence is testable and the test suite for
@@ -333,7 +333,7 @@ Object/descriptors is comprehensive.
 | 2 | Promise tests pass | `moon test` |
 | 3 | Package boundary enforced | `moon check` (compilation failure = violation) |
 | 3 | No behavioral regression | `moon test` |
-| 4 | Object/descriptor pass rate unchanged | `python3 test262-runner.py --filter "built-ins/Object" --summary` |
+| 4 | Object/descriptor pass rate unchanged | `python3 scripts/test262-runner.py --filter "built-ins/Object" --summary` |
 | All | No new test262 regressions | Full test262 run before merge |
 
 **Invariants to preserve:**

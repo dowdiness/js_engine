@@ -47,10 +47,10 @@ Downloads the latest Test262 suite from `tc39/test262` into `./test262/`. Skips 
 
 ```bash
 # Auto-detect engine (recommended)
-python3 test262-runner.py --test262 ./test262 --output test262-results.json
+python3 scripts/test262-runner.py --test262 ./test262 --output test262-results.json
 
 # Explicit engine command
-python3 test262-runner.py \
+python3 scripts/test262-runner.py \
     --engine "node _build/js/debug/build/cmd/main/main.js" \
     --test262 ./test262 \
     --output test262-results.json
@@ -68,10 +68,10 @@ make test262-quick
 make test262-filter FILTER=language/expressions
 
 # Use the runner directly with a filter
-python3 test262-runner.py --filter "built-ins/Promise" --summary
+python3 scripts/test262-runner.py --filter "built-ins/Promise" --summary
 
 # Multiple patterns work too
-python3 test262-runner.py --filter "built-ins/TypedArray" --verbose
+python3 scripts/test262-runner.py --filter "built-ins/TypedArray" --verbose
 ```
 
 ## Runner Options
@@ -91,11 +91,11 @@ python3 test262-runner.py --filter "built-ins/TypedArray" --verbose
 
 ```bash
 # Use the WASM-GC backend (slower, ~3 tests/sec)
-python3 test262-runner.py --engine "moon run cmd/main --" --test262 ./test262
+python3 scripts/test262-runner.py --engine "moon run cmd/main --" --test262 ./test262
 
 # Use the JS backend via node (faster, ~60 tests/sec)
 moon build --target js
-python3 test262-runner.py --test262 ./test262
+python3 scripts/test262-runner.py --test262 ./test262
 ```
 
 ## Understanding Results

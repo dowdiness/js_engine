@@ -119,7 +119,7 @@ Update the Makefile to support a JS-target test runner:
 
 ```makefile
 test262-js: build-js test262-download
-	python3 test262-runner.py \
+	python3 scripts/test262-runner.py \
 		--engine "node target/js/release/build/cmd/main/main.mjs" \
 		--test262 ./test262 \
 		--output test262-results-js.json

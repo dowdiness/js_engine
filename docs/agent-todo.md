@@ -26,7 +26,7 @@ moon run cmd/main -- 'print(/foo.bar/s.test("foo\nbar")); print(/x/s.dotAll); pr
 ```
 
 **Action**: In `test262-runner.py`, remove `"regexp-dotall"` from `SKIP_FEATURES`.
-Run `python3 test262-runner.py --filter "built-ins/RegExp" --summary` to confirm pass rate improves.
+Run `python3 scripts/test262-runner.py --filter "built-ins/RegExp" --summary` to confirm pass rate improves.
 
 ---
 
@@ -50,7 +50,7 @@ Promise.withResolvers = function() {
 Look at how `Promise.resolve` and `Promise.reject` are implemented in `builtins_promise.mbt` for the pattern.
 
 After implementing: remove `"promise-with-resolvers"` from `SKIP_FEATURES` and run
-`python3 test262-runner.py --filter "built-ins/Promise" --summary`.
+`python3 scripts/test262-runner.py --filter "built-ins/Promise" --summary`.
 
 ---
 
@@ -91,9 +91,9 @@ Same file and pattern as `withResolvers`. After implementing: remove `"promise-t
 **Investigation steps**:
 1. Run the async-functions subset:
    ```bash
-   python3 test262-runner.py --filter "language/statements/async-function" --summary
-   python3 test262-runner.py --filter "language/expressions/async-arrow-function" --summary
-   python3 test262-runner.py --filter "built-ins/AsyncFunction" --summary
+   python3 scripts/test262-runner.py --filter "language/statements/async-function" --summary
+   python3 scripts/test262-runner.py --filter "language/expressions/async-arrow-function" --summary
+   python3 scripts/test262-runner.py --filter "built-ins/AsyncFunction" --summary
    ```
    Do this BEFORE removing the flag — re-enable temporarily in test code or run with `--include-skipped` if supported.
 

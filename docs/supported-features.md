@@ -75,7 +75,7 @@ To refresh the tables above: `python3 scripts/report-test262.py --with-editions`
 
 ## Per-Category Pass Rates
 
-> **Stale warning.** Per-category counts below are from the 2026-02-22 run and **predate** PRs #49–#69 plus the fixture-resolver fix. They show category shape correctly but individual pass/fail cells are outdated — re-run `python3 test262-runner.py --filter <category> --summary` before citing a specific cell.
+> **Stale warning.** Per-category counts below are from the 2026-02-22 run and **predate** PRs #49–#69 plus the fixture-resolver fix. They show category shape correctly but individual pass/fail cells are outdated — re-run `python3 scripts/test262-runner.py --filter <category> --summary` before citing a specific cell.
 >
 > Exception: `language/reserved-words` and `language/future-reserved-words`
 > were refreshed by targeted strict+non-strict filters on 2026-04-23 after
