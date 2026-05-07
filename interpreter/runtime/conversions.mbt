@@ -322,11 +322,11 @@ fn to_primitive_number(
   data : ObjectData,
   interp? : Interpreter? = None,
 ) -> Value raise Error {
-  // Step 1: Check for Symbol.toPrimitive
+  // Step 1: Check for Symbol.toPrimitive (GetMethod semantics: undefined/null fall through)
   let to_prim_sym = get_toprimitive_symbol()
   match lookup_symbol_property_chain(obj_val, data, to_prim_sym.id, interp~) {
+    Some(Undefined) | Some(Null) | None => ()
     Some(exotic_to_prim) => {
-      // If it's not callable, throw TypeError (GetMethod step 4)
       if !is_callable(exotic_to_prim) {
         raise @errors.TypeError(message="Symbol.toPrimitive is not a function")
       }
@@ -346,7 +346,6 @@ fn to_primitive_number(
         _ => return result
       }
     }
-    None => ()
   }
   // Step 2: OrdinaryToPrimitive with hint "number" - try valueOf first, then toString
   // Use interpreter for property lookup if available (handles synthetic props on functions etc.)
@@ -422,6 +421,7 @@ pub fn to_primitive_default(
   // Step 1: Check for Symbol.toPrimitive
   let to_prim_sym = get_toprimitive_symbol()
   match lookup_symbol_property_chain(obj_val, data, to_prim_sym.id, interp~) {
+    Some(Undefined) | Some(Null) | None => ()
     Some(exotic_to_prim) => {
       if !is_callable(exotic_to_prim) {
         raise @errors.TypeError(message="Symbol.toPrimitive is not a function")
@@ -441,7 +441,6 @@ pub fn to_primitive_default(
         _ => return result
       }
     }
-    None => ()
   }
   // Step 2: OrdinaryToPrimitive with hint "number" (default falls through to number behavior)
   to_primitive_number(obj_val, data, interp~)
@@ -632,6 +631,7 @@ fn to_primitive_string(
   // Step 1: Check for Symbol.toPrimitive
   let to_prim_sym = get_toprimitive_symbol()
   match lookup_symbol_property_chain(obj_val, data, to_prim_sym.id, interp~) {
+    Some(Undefined) | Some(Null) | None => ()
     Some(exotic_to_prim) => {
       if !is_callable(exotic_to_prim) {
         raise @errors.TypeError(message="Symbol.toPrimitive is not a function")
@@ -650,7 +650,6 @@ fn to_primitive_string(
         _ => return result
       }
     }
-    None => ()
   }
   // Step 2: OrdinaryToPrimitive with hint "string" - try toString first, then valueOf
   // Use interpreter for property lookup if available (handles synthetic props on functions etc.)
