@@ -249,7 +249,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
   fn scan_digit_seq(
     is_valid : (Char) -> Bool,
     missing_msg : String,
-    buf : StringBuilder
+    buf : StringBuilder,
   ) -> Unit raise Error {
     let mut has_digits = false
     let mut prev_underscore = true // prevents a leading underscore
