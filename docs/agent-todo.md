@@ -5,6 +5,68 @@ Completed tasks should be struck through and dated.
 
 ---
 
+## Pre-ES2015 baseline push (2026-05-07 classification)
+
+Source: CI run 25488893622, tip `a199669`. Strict 91.3% / non-strict 90.2% P/E on Pre-ES2015. Plan ranked by ROI; pick one cluster per PR. Memory: `project_pre_es2015_landscape_2026_05_07.md`.
+
+**Verification rule:** Before opening any of these, sample 5–10 failing tests from the cluster's directory and confirm the shared root cause holds. The 04-21 TypeError drill is the template.
+
+### Cluster 4 — Over-throwing TypeError (smallest, highest signal)
+
+23 strict + 23 non-strict failures sharing reason `Test262Error: Expected a Test262Error but got a TypeError`. Likely one shared coercion or property-access helper throws `TypeError` in a path where the spec expects normal completion or a different error.
+
+- Find the failing tests: `python3 scripts/test262-runner.py --filter ... --output /tmp/x.json` then grep results JSON for the reason.
+- Inspect 5 of them, locate the common throw site.
+- Single fix; expect ~46 tests recovered.
+
+### Cluster 2 — Object descriptor metadata round-trip (~95 each mode)
+
+Reasons: `obj['…'] descriptor should be configurable` (54/56), `should not be writable` (15), `Cannot redefine property: 0` (13 NS), `newObj.prop Expected SameValue(undefined, "…")` (11). Pattern: `Object.defineProperty` doesn't preserve attribute bits on round-trip, especially on integer-indexed properties.
+
+- Audit `interpreter/runtime/property.mbt` (PropertyDescriptor → PropertyBag conversion).
+- Check whether `defineProperty` with a partial descriptor merges correctly with existing descriptor.
+- Verify the integer-key path (Cluster 1 overlap — likely Array-element defineProperty).
+
+### Cluster 5 — Unicode IdentifierStart/Part lexing (~35 each mode)
+
+`SyntaxError: Unexpected character '…' at line N, col 5/6` × 35. Lexer rejects valid Unicode identifier code points (e.g., letters from non-Latin scripts).
+
+- Import the Unicode `ID_Start` / `ID_Continue` tables (or use the `\p{ID_Start}` regex form if available).
+- Single PR, lexer-only.
+
+### Cluster 1 — Array internals post-Stage-C audit
+
+Largest cluster (390/399) but lowest individual-test confidence. With Stage C (ArrayData.bag) merged 2026-04-23, several Array fast-paths in `interpreter/runtime/builtins_array.mbt` may now be redundant. See `feedback_fast_path_duplicates.md`.
+
+- Step 1: enumerate all fast-paths in `builtins_array.mbt`.
+- Step 2: for each, identify the test262 cohort it currently catches.
+- Step 3: remove fast-path, re-run that cohort, compare.
+- Likely splits into 2–3 PRs. Mechanical-ish — Sonnet delegation candidate per `feedback_delegation_mechanical_fixes.md`.
+
+### Cluster 3 — Strict-mode TypeError residual re-triage
+
+The 04-21 drill deferred ~27 tests pending Stage C. Stage C is now done.
+
+- Re-run the original drill filter, classify what's left.
+- Likely splits into a quick-win bundle (similar to PR #70/#71) and a smaller deferred set.
+
+### Cluster 6 — Algorithmic timeouts (38 strict / 37 non-strict)
+
+**Required:** invoke `moonbit-perf-investigation` skill — must reproduce in microbench before designing a fix. CLAUDE.md's performance optimization rule applies.
+
+- Identify which Array (or other) method causes the timeouts.
+- Hypothesis: O(n²) where O(n) is required.
+
+### Deferred (not in this push)
+
+- **Cluster 7 — RegExp** (113 each): pre-existing engine limits, separate project.
+- **Cluster 8 — Sloppy `arguments` aliasing** (31 NS-only): structural; separate non-strict-only effort.
+- **Cluster 9 — Spec-tail (JSON, encodeURI, Date, Number)** (~80 each): spread across small PRs as opportunistic cleanups.
+
+**Estimated ceiling without deferred clusters:** ~700 strict / ~750 non-strict recovered → Pre-ES2015 P/E approaches ~96% / ~95%.
+
+---
+
 ## ~~Next PR: Small Compliance Wins~~ — DONE (2026-04-12, PR #45)
 
 **Branch**: `claude/compliance-quick-wins`
