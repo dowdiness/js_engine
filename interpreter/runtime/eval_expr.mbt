@@ -1,4 +1,26 @@
 ///|
+/// Resolve the target of a `super.x` / `super[k]` access (ES2022 §13.3.7.1
+/// MakeSuperPropertyReference).
+///
+/// Per spec, super resolves via the method's [[HomeObject]] at *call* time:
+/// `Object.getPrototypeOf(homeObject)`. Object-literal methods bind
+/// [[HomeObject]] to the live object, so `Object.setPrototypeOf` after
+/// creation is honored.
+///
+/// Class methods still bind [[SuperPrototype]] (a compile-time snapshot of
+/// the super-class's prototype) for backwards compatibility — a class's
+/// super target rarely shifts after creation, and migrating class machinery
+/// to [[HomeObject]] is left for a separate change.
+fn resolve_super_target(env : Environment) -> Value {
+  let home = env.get("[[HomeObject]]") catch { _ => Undefined }
+  match home {
+    Object(data) => return data.prototype
+    _ => ()
+  }
+  env.get("[[SuperPrototype]]") catch { _ => Undefined }
+}
+
+///|
 /// Evaluate an object-literal property's value. For method-shorthand
 /// props the returned function must not carry the §15.2.5 self-name
 /// binding (methods have no FunctionExpressionName), so we strip it
@@ -229,13 +251,24 @@ fn Interpreter::eval_expr(
       let descriptors : Map[String, PropDescriptor] = {}
       let symbol_descriptors : Map[Int, PropDescriptor] = {}
       let mut proto_override : Value? = None
-      // Create a placeholder for the object being built so methods can reference it as [[HomeObject]]
-      // The actual object will be stored after creation via the mutable ref
-      // Create method environment for super.x support in object literal methods
-      // Set [[SuperPrototype]] to Object.prototype as default
-      let method_env = Environment::new(parent=Some(env))
+      // Build the object eagerly so methods captured during the prop loop can
+      // reference it as [[HomeObject]] (ES2022 §13.2.5.5). The bag's Maps are
+      // shared by reference, so later inserts populate the live object; the
+      // mutable `prototype` field is fixed up after the loop if a __proto__
+      // override is seen. This is what makes `super.x` resolve dynamically
+      // against `Object.getPrototypeOf(homeObject)` even after
+      // Object.setPrototypeOf is called on the literal.
       let default_obj_proto = env.get("[[ObjectPrototype]]") catch { _ => Null }
-      method_env.def_builtin("[[SuperPrototype]]", default_obj_proto)
+      let object_data : ObjectData = {
+        bag: { properties, symbol_properties, descriptors, symbol_descriptors },
+        prototype: default_obj_proto,
+        callable: None,
+        class_name: "Object",
+        extensible: true,
+      }
+      let home_object : Value = Object(object_data)
+      let method_env = Environment::new(parent=Some(env))
+      method_env.def_builtin("[[HomeObject]]", home_object)
       for prop in props {
         // Handle spread property: { ...expr }
         if prop.kind == @ast.Spread {
@@ -486,18 +519,13 @@ fn Interpreter::eval_expr(
           }
         }
       }
-      let obj_prototype : Value = match proto_override {
-        Some(p) => p
-        None => env.get("[[ObjectPrototype]]") catch { _ => Null }
+      // The bag was populated in place; only fix up the prototype if a
+      // __proto__: override appeared in the literal.
+      match proto_override {
+        Some(p) => object_data.prototype = p
+        None => ()
       }
-      let result_obj = Object({
-        bag: { properties, symbol_properties, descriptors, symbol_descriptors },
-        prototype: obj_prototype,
-        callable: None,
-        class_name: "Object",
-        extensible: true,
-      })
-      result_obj
+      home_object
     }
     ArrayLit(elements, _) => {
       let vals : Array[Value] = []
@@ -1026,7 +1054,7 @@ fn Interpreter::eval_expr(
     }
     SuperMember(prop, loc) => {
       // super.prop - access parent prototype property
-      let super_proto = env.get("[[SuperPrototype]]")
+      let super_proto = resolve_super_target(env)
       match super_proto {
         Null | Undefined =>
           raise @errors.ReferenceError(
@@ -1037,7 +1065,7 @@ fn Interpreter::eval_expr(
     }
     SuperComputedMember(key_expr, loc) => {
       // super[expr] - access parent prototype property with computed key
-      let super_proto = env.get("[[SuperPrototype]]")
+      let super_proto = resolve_super_target(env)
       let key = self.eval_expr(ctx, key_expr, env)
       match super_proto {
         Null | Undefined =>
