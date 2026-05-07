@@ -67,6 +67,7 @@ fn Interpreter::create_class(
   // Track constructor method
   let mut ctor_fn : (Array[@ast.Param], String?, Array[@ast.Stmt])? = None
   let mut ctor_param_count : Int = 0
+  let mut constructor_overridden : Bool = false
   // Collect instance field initializers (evaluated during construction)
   let instance_fields : Array[ClassFieldInit] = []
   // Collect static field initializers (evaluated after class object is created)
@@ -92,6 +93,16 @@ fn Interpreter::create_class(
     menv.def_builtin("[[SuperPrototype]]", static_super)
     menv
   }
+  // Pre-seed the intrinsic static slots (length, name, prototype) so they
+  // appear before user-defined static keys in OrdinaryOwnPropertyKeys order.
+  // The actual values are written after the loop; placeholders here only fix
+  // Map insertion order, which sort_property_keys preserves for non-integer
+  // string keys.
+  static_props["length"] = Undefined
+  if name != "" {
+    static_props["name"] = Undefined
+  }
+  static_props["prototype"] = Undefined
   // Process all members (methods and fields)
   // Class bodies are always strict — computed property keys and method keys
   // must be evaluated as strict code per ES2022 §15.7.
@@ -136,8 +147,19 @@ fn Interpreter::create_class(
           Symbol(_) => key_val.to_string()
           _ => to_js_string(key_val)
         }
-        // Check if this is the constructor
-        if method_key_str == "constructor" && !m.is_static {
+        // ES2022 §15.7.10 ClassElementEvaluation: a static MethodDefinition
+        // whose property key is the String "prototype" throws TypeError.
+        // Symbol keys are exempt (key_val is Symbol(_), method_key_str is the
+        // Symbol description, not the literal "prototype").
+        if m.is_static && key_val is String_("prototype") {
+          raise @errors.TypeError(
+            message="Class static method or accessor cannot be named 'prototype'",
+          )
+        }
+        // Per ES2022 §15.7.13, only a non-computed `constructor` method
+        // becomes the class's [[Construct]]. Computed `["constructor"]` is
+        // a regular prototype method.
+        if method_key_str == "constructor" && !m.is_static && !m.computed {
           // Extract constructor params and body
           // Class bodies are always strict, so ensure constructor body has "use strict"
           match m.value {
@@ -174,6 +196,13 @@ fn Interpreter::create_class(
             _ => ()
           }
           continue
+        }
+        // A method that reaches here with key "constructor" on the prototype
+        // (computed `["constructor"]`) overrides the spec back-reference write.
+        // Static "constructor" doesn't touch the prototype slot, so gate on
+        // !m.is_static.
+        if method_key_str == "constructor" && !m.is_static {
+          constructor_overridden = true
         }
         // Create the method function value
         // Class methods are always strict — ensure body has "use strict"
@@ -404,18 +433,20 @@ fn Interpreter::create_class(
     extensible: true,
   })
   // Set prototype.constructor to point to the class (non-enumerable per spec)
-  match proto {
-    Object(proto_data) => {
-      proto_data.bag.properties["constructor"] = class_obj
-      proto_data.bag.descriptors["constructor"] = {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
+  if !constructor_overridden {
+    match proto {
+      Object(proto_data) => {
+        proto_data.bag.properties["constructor"] = class_obj
+        proto_data.bag.descriptors["constructor"] = {
+          writable: true,
+          enumerable: false,
+          configurable: true,
+          getter: None,
+          setter: None,
+        }
       }
+      _ => ()
     }
-    _ => ()
   }
   // Add length, name, prototype properties to the class constructor per spec
   let non_enum_configurable : PropDescriptor = {
