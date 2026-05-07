@@ -347,7 +347,19 @@ fn to_primitive_number(
       }
     }
   }
-  // Step 2: OrdinaryToPrimitive with hint "number" - try valueOf first, then toString
+  // Step 2: OrdinaryToPrimitive with hint "number"
+  ordinary_to_primitive_number(obj_val, data, interp~)
+}
+
+///|
+/// OrdinaryToPrimitive(O, "number") - try valueOf first, then toString.
+/// Extracted so callers (to_primitive_default, to_primitive_number) can run
+/// the ordinary lookup without re-entering the @@toPrimitive check.
+fn ordinary_to_primitive_number(
+  obj_val : Value,
+  data : ObjectData,
+  interp? : Interpreter? = None,
+) -> Value raise Error {
   // Use interpreter for property lookup if available (handles synthetic props on functions etc.)
   let effective = resolve_effective_interp(interp)
   let value_of_fn : Value? = match
@@ -442,8 +454,9 @@ pub fn to_primitive_default(
       }
     }
   }
-  // Step 2: OrdinaryToPrimitive with hint "number" (default falls through to number behavior)
-  to_primitive_number(obj_val, data, interp~)
+  // Step 2: OrdinaryToPrimitive with hint "number" (default falls through to number behavior).
+  // Call the ordinary helper directly so we don't re-run the @@toPrimitive lookup.
+  ordinary_to_primitive_number(obj_val, data, interp~)
 }
 
 ///|
