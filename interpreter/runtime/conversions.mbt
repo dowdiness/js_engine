@@ -322,11 +322,11 @@ fn to_primitive_number(
   data : ObjectData,
   interp? : Interpreter? = None,
 ) -> Value raise Error {
-  // Step 1: Check for Symbol.toPrimitive
+  // Step 1: Check for Symbol.toPrimitive (GetMethod semantics: undefined/null fall through)
   let to_prim_sym = get_toprimitive_symbol()
   match lookup_symbol_property_chain(obj_val, data, to_prim_sym.id, interp~) {
+    Some(Undefined) | Some(Null) | None => ()
     Some(exotic_to_prim) => {
-      // If it's not callable, throw TypeError (GetMethod step 4)
       if !is_callable(exotic_to_prim) {
         raise @errors.TypeError(message="Symbol.toPrimitive is not a function")
       }
@@ -346,9 +346,20 @@ fn to_primitive_number(
         _ => return result
       }
     }
-    None => ()
   }
-  // Step 2: OrdinaryToPrimitive with hint "number" - try valueOf first, then toString
+  // Step 2: OrdinaryToPrimitive with hint "number"
+  ordinary_to_primitive_number(obj_val, data, interp~)
+}
+
+///|
+/// OrdinaryToPrimitive(O, "number") - try valueOf first, then toString.
+/// Extracted so callers (to_primitive_default, to_primitive_number) can run
+/// the ordinary lookup without re-entering the @@toPrimitive check.
+fn ordinary_to_primitive_number(
+  obj_val : Value,
+  data : ObjectData,
+  interp? : Interpreter? = None,
+) -> Value raise Error {
   // Use interpreter for property lookup if available (handles synthetic props on functions etc.)
   let effective = resolve_effective_interp(interp)
   let value_of_fn : Value? = match
@@ -357,9 +368,7 @@ fn to_primitive_number(
     None =>
       match effective {
         Some(ip) => {
-          let v = ip.get_property(obj_val, "valueOf", @token.Loc::default()) catch {
-            _ => Undefined
-          }
+          let v = ip.get_property(obj_val, "valueOf", @token.Loc::default())
           if is_callable(v) {
             Some(v)
           } else {
@@ -386,9 +395,7 @@ fn to_primitive_number(
     None =>
       match effective {
         Some(ip) => {
-          let v = ip.get_property(obj_val, "toString", @token.Loc::default()) catch {
-            _ => Undefined
-          }
+          let v = ip.get_property(obj_val, "toString", @token.Loc::default())
           if is_callable(v) {
             Some(v)
           } else {
@@ -426,6 +433,7 @@ pub fn to_primitive_default(
   // Step 1: Check for Symbol.toPrimitive
   let to_prim_sym = get_toprimitive_symbol()
   match lookup_symbol_property_chain(obj_val, data, to_prim_sym.id, interp~) {
+    Some(Undefined) | Some(Null) | None => ()
     Some(exotic_to_prim) => {
       if !is_callable(exotic_to_prim) {
         raise @errors.TypeError(message="Symbol.toPrimitive is not a function")
@@ -445,10 +453,10 @@ pub fn to_primitive_default(
         _ => return result
       }
     }
-    None => ()
   }
-  // Step 2: OrdinaryToPrimitive with hint "number" (default falls through to number behavior)
-  to_primitive_number(obj_val, data, interp~)
+  // Step 2: OrdinaryToPrimitive with hint "number" (default falls through to number behavior).
+  // Call the ordinary helper directly so we don't re-run the @@toPrimitive lookup.
+  ordinary_to_primitive_number(obj_val, data, interp~)
 }
 
 ///|
@@ -636,6 +644,7 @@ fn to_primitive_string(
   // Step 1: Check for Symbol.toPrimitive
   let to_prim_sym = get_toprimitive_symbol()
   match lookup_symbol_property_chain(obj_val, data, to_prim_sym.id, interp~) {
+    Some(Undefined) | Some(Null) | None => ()
     Some(exotic_to_prim) => {
       if !is_callable(exotic_to_prim) {
         raise @errors.TypeError(message="Symbol.toPrimitive is not a function")
@@ -654,7 +663,6 @@ fn to_primitive_string(
         _ => return result
       }
     }
-    None => ()
   }
   // Step 2: OrdinaryToPrimitive with hint "string" - try toString first, then valueOf
   // Use interpreter for property lookup if available (handles synthetic props on functions etc.)
@@ -665,9 +673,7 @@ fn to_primitive_string(
     None =>
       match effective {
         Some(ip) => {
-          let v = ip.get_property(obj_val, "toString", @token.Loc::default()) catch {
-            _ => Undefined
-          }
+          let v = ip.get_property(obj_val, "toString", @token.Loc::default())
           if is_callable(v) {
             Some(v)
           } else {
@@ -694,9 +700,7 @@ fn to_primitive_string(
     None =>
       match effective {
         Some(ip) => {
-          let v = ip.get_property(obj_val, "valueOf", @token.Loc::default()) catch {
-            _ => Undefined
-          }
+          let v = ip.get_property(obj_val, "valueOf", @token.Loc::default())
           if is_callable(v) {
             Some(v)
           } else {
