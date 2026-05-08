@@ -31,6 +31,14 @@ on:
       - '!.github/workflows/test262.yml'
   workflow_dispatch:
 
+# Auto-cancel superseded PR runs (you only care about the latest commit's
+# verification on a PR), but never cancel in-progress runs on main — each
+# merge must verify its own commit independently. The expression evaluates
+# per-event, so the same group key serves both push-to-main and PR-update.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   TEST262_COMMIT: "2b2ecead6e82"
 
