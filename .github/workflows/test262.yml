@@ -109,7 +109,14 @@ jobs:
         run: pip install pyyaml
 
       - name: Run Test262 (${{ matrix.mode }})
+        # `shell: bash` enables `-eo pipefail`. We disable errexit locally so
+        # a non-zero runner status doesn't skip the per-edition table — it's
+        # the more useful signal in CI logs than the runner's one-row summary.
+        # The runner's exit code is preserved at the end via `exit $rc`, and
+        # `continue-on-error: true` lets the workflow proceed to upload.
+        shell: bash
         run: |
+          set +e
           python3 scripts/test262-runner.py \
             --test262 ./test262 \
             --mode ${{ matrix.mode }} \
@@ -117,20 +124,17 @@ jobs:
             --timeout 5 \
             --output test262-${{ matrix.mode }}-results.json \
             --summary
+          rc=$?
+          if [ -f "test262-${{ matrix.mode }}-results.json" ]; then
+            echo
+            echo "──────── Per-edition breakdown (${{ matrix.mode }}) ────────"
+            python3 scripts/classify-by-edition.py --markdown \
+              --test262-root ./test262 \
+              "test262-${{ matrix.mode }}-results.json" \
+              | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+          exit $rc
         continue-on-error: true
-
-      - name: Per-edition summary (${{ matrix.mode }})
-        if: always() && hashFiles(format('test262-{0}-results.json', matrix.mode)) != ''
-        # `shell: bash` is required so the pipeline runs under `-eo pipefail`;
-        # otherwise the default `bash -e {0}` would let classifier crashes
-        # exit 0 (masked by `tee`) and silently emit no table.
-        shell: bash
-        # Classifier already emits a `### {mode}` header, so don't add our own.
-        run: |
-          python3 scripts/classify-by-edition.py --markdown \
-            --test262-root ./test262 \
-            "test262-${{ matrix.mode }}-results.json" \
-            | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Upload results
         if: always()
