@@ -1,7 +1,65 @@
 ///|
+/// Pre-extract every `--fixture <spec> <src>` triple from `args`, returning the
+/// extracted pairs and the remaining argv (to hand to argparse).
+///
+/// `--fixture` takes two adjacent values per occurrence, which doesn't fit
+/// argparse's one-value-per-OptionArg model. Pulling the triples out here
+/// preserves the original adjacency contract (each `<src>` always belongs to
+/// the immediately-preceding `<spec>`), regardless of where in argv they sit.
+fn extract_fixtures(
+  args : ArrayView[String],
+) -> (Array[(String, String)], Array[String]) {
+  let fixtures : Array[(String, String)] = []
+  let rest : Array[String] = []
+  let mut i = 0
+  while i < args.length() {
+    if args[i] == "--fixture" && i + 2 < args.length() {
+      fixtures.push((args[i + 1], args[i + 2]))
+      i = i + 3
+    } else {
+      rest.push(args[i])
+      i = i + 1
+    }
+  }
+  (fixtures, rest)
+}
+
+///|
 fn main {
-  let args = @env.args()
-  let (is_module, annex_b, fixtures, source) = parse_args(args)
+  let (fixtures, remaining) = extract_fixtures(program_args(@env.args()))
+  let cmd = @argparse.Command(
+    "js_engine",
+    flags=[
+      @argparse.FlagArg("module", about="Run input as an ES module"),
+      @argparse.FlagArg(
+        "annex-b",
+        about="Enable Annex B (web compat) semantics",
+      ),
+    ],
+    positionals=[
+      @argparse.PositionArg("source", about="JavaScript source to execute"),
+    ],
+    about="JavaScript interpreter (use --fixture <spec> <src> to register a module fixture before main runs; may be repeated)",
+  )
+  let matches = cmd.parse(argv=remaining[:], env={}) catch {
+    err => {
+      println("\{err}")
+      exit_with_error()
+      return
+    }
+  }
+  let is_module = match matches.flags.get("module") {
+    Some(true) => true
+    _ => false
+  }
+  let annex_b = match matches.flags.get("annex-b") {
+    Some(true) => true
+    _ => false
+  }
+  let source : String? = match matches.values.get("source") {
+    Some(arr) if arr.length() > 0 => Some(arr[0])
+    _ => None
+  }
   match source {
     None => {
       println(
