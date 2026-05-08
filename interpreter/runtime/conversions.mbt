@@ -256,6 +256,34 @@ fn lookup_property_chain(
 }
 
 ///|
+/// Look up a named property on `data`, trying the prototype chain first and
+/// falling back to `Interpreter::get_property` for synthetic properties
+/// (e.g. `.call`, `.apply`, `name` on function objects) when available.
+fn lookup_prop_with_fallback(
+  obj_val : Value,
+  data : ObjectData,
+  name : String,
+  interp? : Interpreter? = None,
+) -> Value? raise Error {
+  let effective = resolve_effective_interp(interp)
+  match lookup_property_chain(obj_val, data, name, interp~) {
+    Some(f) => Some(f)
+    None =>
+      match effective {
+        Some(ip) => {
+          let v = ip.get_property(obj_val, name, @token.Loc::default())
+          if is_callable(v) {
+            Some(v)
+          } else {
+            None
+          }
+        }
+        None => None
+      }
+  }
+}
+
+///|
 /// Look up a symbol-keyed property on an object, walking the prototype chain.
 /// Also handles getter descriptors - invokes them and returns the result.
 pub fn lookup_symbol_property_chain(
@@ -360,24 +388,7 @@ fn ordinary_to_primitive_number(
   data : ObjectData,
   interp? : Interpreter? = None,
 ) -> Value raise Error {
-  // Use interpreter for property lookup if available (handles synthetic props on functions etc.)
-  let effective = resolve_effective_interp(interp)
-  let value_of_fn : Value? = match
-    lookup_property_chain(obj_val, data, "valueOf", interp~) {
-    Some(f) => Some(f)
-    None =>
-      match effective {
-        Some(ip) => {
-          let v = ip.get_property(obj_val, "valueOf", @token.Loc::default())
-          if is_callable(v) {
-            Some(v)
-          } else {
-            None
-          }
-        }
-        None => None
-      }
-  }
+  let value_of_fn = lookup_prop_with_fallback(obj_val, data, "valueOf", interp~)
   match value_of_fn {
     Some(vo_fn) =>
       if is_callable(vo_fn) {
@@ -389,22 +400,7 @@ fn ordinary_to_primitive_number(
       }
     None => ()
   }
-  let to_string_fn : Value? = match
-    lookup_property_chain(obj_val, data, "toString", interp~) {
-    Some(f) => Some(f)
-    None =>
-      match effective {
-        Some(ip) => {
-          let v = ip.get_property(obj_val, "toString", @token.Loc::default())
-          if is_callable(v) {
-            Some(v)
-          } else {
-            None
-          }
-        }
-        None => None
-      }
-  }
+  let to_string_fn = lookup_prop_with_fallback(obj_val, data, "toString", interp~)
   match to_string_fn {
     Some(ts_fn) =>
       if is_callable(ts_fn) {
@@ -634,6 +630,43 @@ pub fn to_number(
 }
 
 ///|
+/// OrdinaryToPrimitive(O, "string") - try toString first, then valueOf.
+fn ordinary_to_primitive_string(
+  obj_val : Value,
+  data : ObjectData,
+  interp? : Interpreter? = None,
+) -> Value raise Error {
+  let to_string_fn = lookup_prop_with_fallback(obj_val, data, "toString", interp~)
+  match to_string_fn {
+    Some(ts_fn) =>
+      if is_callable(ts_fn) {
+        let result = call_callable_direct(ts_fn, obj_val, [], interp~)
+        match result {
+          Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => () // result is object, try valueOf next
+          _ => return result
+        }
+      }
+    None => ()
+  }
+  let value_of_fn = lookup_prop_with_fallback(obj_val, data, "valueOf", interp~)
+  match value_of_fn {
+    Some(vo_fn) =>
+      if is_callable(vo_fn) {
+        let result = call_callable_direct(vo_fn, obj_val, [], interp~)
+        match result {
+          Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) =>
+            raise @errors.TypeError(
+              message="Cannot convert object to primitive value",
+            )
+          _ => return result
+        }
+      }
+    None => ()
+  }
+  raise @errors.TypeError(message="Cannot convert object to primitive value")
+}
+
+///|
 /// ToPrimitive(input, hint "string") - converts an object to a primitive value.
 /// Follows the ECMAScript spec: check @@toPrimitive, then toString, then valueOf.
 fn to_primitive_string(
@@ -664,67 +697,8 @@ fn to_primitive_string(
       }
     }
   }
-  // Step 2: OrdinaryToPrimitive with hint "string" - try toString first, then valueOf
-  // Use interpreter for property lookup if available (handles synthetic props on functions etc.)
-  let effective = resolve_effective_interp(interp)
-  let to_string_fn : Value? = match
-    lookup_property_chain(obj_val, data, "toString", interp~) {
-    Some(f) => Some(f)
-    None =>
-      match effective {
-        Some(ip) => {
-          let v = ip.get_property(obj_val, "toString", @token.Loc::default())
-          if is_callable(v) {
-            Some(v)
-          } else {
-            None
-          }
-        }
-        None => None
-      }
-  }
-  match to_string_fn {
-    Some(ts_fn) =>
-      if is_callable(ts_fn) {
-        let result = call_callable_direct(ts_fn, obj_val, [], interp~)
-        match result {
-          Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => () // result is object, try valueOf next
-          _ => return result
-        }
-      }
-    None => ()
-  }
-  let value_of_fn : Value? = match
-    lookup_property_chain(obj_val, data, "valueOf", interp~) {
-    Some(f) => Some(f)
-    None =>
-      match effective {
-        Some(ip) => {
-          let v = ip.get_property(obj_val, "valueOf", @token.Loc::default())
-          if is_callable(v) {
-            Some(v)
-          } else {
-            None
-          }
-        }
-        None => None
-      }
-  }
-  match value_of_fn {
-    Some(vo_fn) =>
-      if is_callable(vo_fn) {
-        let result = call_callable_direct(vo_fn, obj_val, [], interp~)
-        match result {
-          Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) =>
-            raise @errors.TypeError(
-              message="Cannot convert object to primitive value",
-            )
-          _ => return result
-        }
-      }
-    None => ()
-  }
-  raise @errors.TypeError(message="Cannot convert object to primitive value")
+  // Step 2: OrdinaryToPrimitive with hint "string".
+  ordinary_to_primitive_string(obj_val, data, interp~)
 }
 
 ///|
