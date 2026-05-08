@@ -645,15 +645,12 @@ representation). Staged:
     it, but the prototype versions fire for Array-like non-Array `this`
     values where `length_writable` as a concept doesn't apply — reclassify
     if/when adding per-instance length writability to non-Array objects.
-  - ~~Three suspicious `try { … } catch { _ => () }` sites in
-    `property.mbt` (TypedArray ops at lines 827, 1307, 2085): current
-    code swallows `to_number(value)` TypeErrors, which the
-    `typedArr[0] = Symbol()` case requires to propagate.~~ DONE
-    (2026-04-24, commit `1a29705`). Wide-catch fix applied to all three
-    sites (now lines 917, 1432, 2231); also adds the `§7.1.21 "-0"`
-    canonical-invalid guard. +7 whitebox tests. Remaining `§10.4.5.16`
-    receiver-sensitive-write and classifier-extraction follow-ups are
-    tracked in memory `project_typedarray_string_key_followups.md`.
+  - ~~TypedArray string-key access bugs (wide-catch swallowing `to_number`
+    TypeErrors, missing `"-0"` canonical-invalid guard, receiver-ignoring
+    `[[Set]]`, missing classifier helper).~~ DONE — shipped across
+    `1a29705` (wide-catch + `"-0"` guard, PR #75), `a807e9f`
+    (`classify_typedarray_string_key` extraction), `c033837`
+    (§10.4.5.5 receiver-sensitive `[[Set]]`); all three queued for v0.2.2.
 - ~~**Stage C — ArrayData.bag.**~~ DONE (2026-04-23). Array named,
   symbol, length override, and array prototype override state now lives
   in `ArrayData.bag`; indexed descriptors persist their attributes
@@ -984,3 +981,39 @@ Consolidated three separate copies of the 15-entry ECMAScript WhiteSpace+LineTer
 ## ~~Lexer numeric parser consolidation~~ — DONE (2026-04-24, branch claude/refactor-codebase-safety-tc3IY)
 
 **Result**: Merged `parse_binary` and `parse_octal` into `parse_radix_literal(s, base)`. Three call sites updated: `parse_radix_literal(bin_str, 2.0)`, `parse_radix_literal(oct_str, 8.0)` ×2. `parse_hex` kept separate — its three-branch digit mapping for `0–9` / `a–f` / `A–F` differs structurally from the simple `c.to_int() - 48` of the other two.
+
+---
+
+## Doc-infrastructure follow-ups (2026-05-08, from `5248ee3` doc refresh)
+
+### `built-ins/TypedArray` 51.2% — regression vs. methodology, open question
+
+**Context**: `5248ee3` refreshed `docs/supported-features.md` per-category tables from CI run `25538356718` on tip `c6a20dd` (2026-05-08). `built-ins/TypedArray` strict reads `398/379/653 (51.2% P/E, 27.8% P/D)`. ROADMAP Phase 17–19 (2026-02-14/15, pre-Phase-24 single-mode runner) cited `726/777 (93.4%)`. Both reports land on `Executed = 777` — methodology shift alone cannot explain a 42pp gap.
+
+**Hypotheses to investigate** (in rough order of likelihood):
+
+1. **Skip-list churn** — the 777 executed in Phase 17 and the 777 executed today may not be the same 777 files. The skip list has been edited many times since 2026-02-15 (PRs #49–#84). Diff `scripts/test262-runner.py` skip directives between `~Phase 19` and tip; map files in/out.
+2. **Per-mode strict failures distinct from non-strict** — Phase 17's single-mode counted a file passing if it passed in *whatever* mode the runner ran. If many TypedArray tests pass non-strict but fail strict (or vice versa), per-mode counts both as failures while single-mode counted them as one pass.
+3. **Genuine regression** — some PR between Phase 19 and `c6a20dd` regressed TypedArray semantics. Bisect candidates: Stage A (PR #49), Stage B.1 (#69), Stage B.2 (#72), Stage C (2026-04-23), Stage B.3 (2026-04-23), the v0.2.2 TypedArray fixes themselves (`1a29705`, `a807e9f`, `c033837`).
+
+**How to investigate**:
+
+- `make test262-quick ARGS="--filter built-ins/TypedArray --strict"` against tip and against a Phase-19-era ref, compare result JSONs.
+- For hypothesis (2), filter `25538356718` artifact JSONs to TypedArray and count strict-only failures vs non-strict-only failures.
+- For hypothesis (3), `git bisect run` with TypedArray-only filter once a target failure file is identified.
+
+**Why this matters**: a public ROADMAP page citing `93.4%` next to a current `51.2%` is confusing without a resolved explanation. Either ROADMAP needs a methodology footnote, or the regression needs fixing — but we shouldn't ship v0.2.2 release notes without knowing which.
+
+### Per-Edition tables in `supported-features.md` blocked on classifier schema change
+
+**Context**: `5248ee3` left the Per-Edition tables (lines 23–61) on the older 2026-04-24 / `b225cda` run, with a "run-version mismatch (acknowledged)" note. The newer `classify-by-edition.py` output (run against 2026-05-08 / `c6a20dd` artifact JSONs) emits **9 edition rows** (Pre-ES2015, ES2015, ES2017, ES2018, ES2020, ES2021, ES2025, Annex B, Stage 3); the existing tables have **15 rows** (additionally: ES2016, ES2019, ES2022, ES2023, ES2024).
+
+**Hypotheses for the missing rows**:
+
+1. The `FEATURE_EDITION` map in `scripts/classify-by-edition.py` was simplified between the two runs and intermediate-edition features now fall through to a coarser bucket.
+2. The fallback path-based reclassifier (added to address the "tests with no `features:` frontmatter" case) is dominating, pushing tests into Pre-ES2015 / ES2015 buckets that previously sat in ES2016+.
+3. The empty-rows are present in the current run but with `Discovered = 0` and the `--markdown` formatter elides zero-rows.
+
+**How to investigate**: read the current `classify-by-edition.py`, diff against `~b225cda`, run with `--show-unmapped` to see what's missing from the map. If hypothesis (3): patch the formatter to emit zero-rows when generating doc tables.
+
+**Why this matters**: editions ES2016–ES2024 are precisely where partial-implementation drama lives (regexp-v-flag, array-grouping, BigInt, class-private). Collapsing them into an "ES2015 / Annex B / Stage 3" view loses the granularity that makes the doc useful for prioritization.
