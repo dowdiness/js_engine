@@ -27,8 +27,20 @@ jobs:
 
       - name: Install actionlint
         id: install
+        # Two layers of pinning, both required for reproducibility:
+        #   1. Installer script fetched from an immutable commit SHA, so a
+        #      future upstream change to download-actionlint.bash cannot alter
+        #      this job's behavior.
+        #   2. Binary version passed explicitly, so the installer always
+        #      fetches the same release artifact.
+        # To bump: query `gh api repos/rhysd/actionlint/releases/latest`,
+        # update both ACTIONLINT_VERSION and ACTIONLINT_INSTALLER_SHA in lockstep.
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+          ACTIONLINT_INSTALLER_SHA: 914e7df21a07ef503a81201c76d2b11c789d3fca
         run: |
-          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          curl -fsSL "https://raw.githubusercontent.com/rhysd/actionlint/${ACTIONLINT_INSTALLER_SHA}/scripts/download-actionlint.bash" -o /tmp/download-actionlint.bash
+          bash /tmp/download-actionlint.bash "$ACTIONLINT_VERSION"
           echo "exe=$(pwd)/actionlint" >> "$GITHUB_OUTPUT"
 
       - name: Run actionlint
