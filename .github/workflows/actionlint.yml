@@ -1,0 +1,35 @@
+name: actionlint
+
+# Lints `.github/workflows/*.yml` on every change. Catches the kind of YAML +
+# shell issues that PR #88 needed five review rounds for (missing pipefail
+# under default `bash -e {0}`, captured exit codes silently dropped, etc.).
+# Triggers only on workflow file edits — quick and free for everything else.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/**'
+  workflow_dispatch:
+
+jobs:
+  actionlint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install actionlint
+        id: install
+        run: |
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          echo "exe=$(pwd)/actionlint" >> "$GITHUB_OUTPUT"
+
+      - name: Run actionlint
+        run: ${{ steps.install.outputs.exe }} -color
