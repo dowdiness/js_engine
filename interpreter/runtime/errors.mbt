@@ -203,15 +203,7 @@ pub fn raise_js_exception(value : Value) -> Unit raise Error {
 /// Check if an error is a JavaScript catchable error
 pub fn is_js_catchable_error(err : Error) -> Bool {
   match err {
-    @errors.TypeError(_)
-    | @errors.ReferenceError(_)
-    | @errors.SyntaxError(_)
-    | @errors.RangeError(_)
-    | @errors.URIError(_)
-    | @errors.EvalError(_)
-    | @errors.InternalError(_)
-    | @errors.AggregateError(_)
-    | JsException(_) => true
-    _ => false
+    JsException(_) => true
+    e => @errors.name_message_if_js_error(e) != None
   }
 }
