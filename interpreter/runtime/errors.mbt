@@ -159,24 +159,14 @@ pub fn js_error_to_value(err : Error) -> Value {
 /// Convert any catchable error to a JavaScript Error object Value with proper prototype
 pub fn js_error_to_value_with_env(err : Error, env : Environment?) -> Value {
   match err {
-    @errors.TypeError(message~) =>
-      make_error_value_with_env("TypeError", message, env)
-    @errors.ReferenceError(message~) =>
-      make_error_value_with_env("ReferenceError", message, env)
-    @errors.SyntaxError(message~) =>
-      make_error_value_with_env("SyntaxError", message, env)
-    @errors.RangeError(message~) =>
-      make_error_value_with_env("RangeError", message, env)
-    @errors.URIError(message~) =>
-      make_error_value_with_env("URIError", message, env)
-    @errors.EvalError(message~) =>
-      make_error_value_with_env("EvalError", message, env)
-    @errors.InternalError(message~) =>
-      make_error_value_with_env("InternalError", message, env)
     @errors.AggregateError(message~, errors~) =>
       make_aggregate_error_value(message, errors, env)
     JsException(val) => val // JavaScript throw statement value
-    _ => make_error_value_with_env("Error", err.to_string(), env)
+    e =>
+      match @errors.name_message_if_js_error(e) {
+        Some((name, msg)) => make_error_value_with_env(name, msg, env)
+        None => make_error_value_with_env("Error", e.to_string(), env)
+      }
   }
 }
 

@@ -94,15 +94,28 @@ pub fn JsError::format(self : JsError) -> String {
 /// constructors are individually promoted to `Error` and MoonBit does not
 /// support catching a suberror parent type as a single pattern.
 pub fn format_if_js_error(err : Error) -> String? {
+  match name_message_if_js_error(err) {
+    Some((name, msg)) => Some(name + ": " + msg)
+    None => None
+  }
+}
+
+///|
+/// If `err` is a JsError variant, return its (name, message) pair; otherwise `None`.
+///
+/// Lower-level companion to `format_if_js_error` for consumers that need
+/// the name and message as separate strings (e.g. to pass to a function that
+/// takes them individually).
+pub fn name_message_if_js_error(err : Error) -> (String, String)? {
   match err {
-    TypeError(message~) => Some("TypeError: " + message)
-    ReferenceError(message~) => Some("ReferenceError: " + message)
-    SyntaxError(message~) => Some("SyntaxError: " + message)
-    RangeError(message~) => Some("RangeError: " + message)
-    URIError(message~) => Some("URIError: " + message)
-    EvalError(message~) => Some("EvalError: " + message)
-    AggregateError(message~, errors=_) => Some("AggregateError: " + message)
-    InternalError(message~) => Some("InternalError: " + message)
+    TypeError(message~) => Some(("TypeError", message))
+    ReferenceError(message~) => Some(("ReferenceError", message))
+    SyntaxError(message~) => Some(("SyntaxError", message))
+    RangeError(message~) => Some(("RangeError", message))
+    URIError(message~) => Some(("URIError", message))
+    EvalError(message~) => Some(("EvalError", message))
+    AggregateError(message~, errors=_) => Some(("AggregateError", message))
+    InternalError(message~) => Some(("InternalError", message))
     _ => None
   }
 }

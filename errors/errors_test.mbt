@@ -111,6 +111,33 @@ test "format_if_js_error - None for non-JsError" {
 }
 
 ///|
+test "name_message_if_js_error - consistent with name() and get_message() for all variants" {
+  let cases : Array[@errors.JsError] = [
+    TypeError(message="a"),
+    ReferenceError(message="b"),
+    SyntaxError(message="c"),
+    RangeError(message="d"),
+    URIError(message="e"),
+    EvalError(message="f"),
+    AggregateError(message="g", errors=[]),
+    InternalError(message="h"),
+  ]
+  for e in cases {
+    let result = @errors.name_message_if_js_error(e)
+    inspect(result == Some((e.name(), e.get_message())), content="true")
+  }
+}
+
+///|
+test "name_message_if_js_error - None for non-JsError" {
+  let err : Error = Failure::Failure("oops")
+  inspect(
+    @errors.name_message_if_js_error(err) == (None : (String, String)?),
+    content="true",
+  )
+}
+
+///|
 test "format equals name + colon-space + get_message" {
   let cases : Array[@errors.JsError] = [
     TypeError(message="a"),
