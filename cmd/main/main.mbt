@@ -25,6 +25,13 @@ fn extract_fixtures(
       }
       fixtures.push((args[i + 1], args[i + 2]))
       i = i + 3
+    } else if args[i].has_prefix("--fixture=") {
+      // argparse accepts the inline `--fixture=spec` form because we declare
+      // `fixture` as an OptionArg for --help discovery. Reject it loudly here
+      // — the two-value contract requires separate-token form.
+      println("error: --fixture requires two values: --fixture <spec> <src>")
+      exit_with_error()
+      return (fixtures, rest)
     } else {
       rest.push(args[i])
       i = i + 1
