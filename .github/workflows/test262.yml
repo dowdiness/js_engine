@@ -121,6 +121,10 @@ jobs:
 
       - name: Per-edition summary (${{ matrix.mode }})
         if: always() && hashFiles(format('test262-{0}-results.json', matrix.mode)) != ''
+        # `shell: bash` is required so the pipeline runs under `-eo pipefail`;
+        # otherwise the default `bash -e {0}` would let classifier crashes
+        # exit 0 (masked by `tee`) and silently emit no table.
+        shell: bash
         run: |
           {
             echo "## Test262 per-edition — ${{ matrix.mode }}"
