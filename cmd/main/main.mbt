@@ -106,6 +106,10 @@ fn main {
           println("InternalError: \{message}")
           exit_with_error()
         }
+        @errors.AggregateError(message~, errors=_) => {
+          println("AggregateError: \{message}")
+          exit_with_error()
+        }
         Failure::Failure(msg) => {
           println("Error: \{msg}")
           exit_with_error()
