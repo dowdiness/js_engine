@@ -17,7 +17,9 @@ fn resolve_super_target(env : Environment) -> Value {
     Object(data) => return data.prototype
     _ => ()
   }
-  env.get("[[SuperPrototype]]") catch { _ => Undefined }
+  env.get("[[SuperPrototype]]") catch {
+    _ => Undefined
+  }
 }
 
 ///|

@@ -450,7 +450,7 @@ fn Interpreter::perform_eval(
     // Per §B.3.4, catch environments are transparent for this check. Our env
     // model does not distinguish catch envs from other block envs, so that
     // edge case remains a known gap (see agent-todo).
-    exec_env.def(eval_function_reconcile_marker, Bool(true), LetBinding)
+    exec_env.def(EVAL_FUNCTION_RECONCILE_MARKER, Bool(true), LetBinding)
     {
       let mut this_lex = exec_env
       while !this_lex.is_var_scope {

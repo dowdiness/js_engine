@@ -1,6 +1,9 @@
 ///| Tests for the errors package.
+
 ///|
+
 ///| These are black-box tests. They verify the public API (name, get_message,
+
 ///| format) without depending on internal representation details.
 
 ///|

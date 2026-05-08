@@ -6,6 +6,9 @@ import {
 }
 
 // Values
+pub fn format_if_js_error(Error) -> String?
+
+pub fn name_message_if_js_error(Error) -> (String, String)?
 
 // Errors
 pub(all) suberror JsError {
