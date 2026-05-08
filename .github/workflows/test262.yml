@@ -13,6 +13,12 @@ on:
       - '.gitignore'
       - 'LICENSE'
       - '.github/ISSUE_TEMPLATE/**'
+      # Skip on changes to OTHER workflow files (actionlint.yml, bench.yml,
+      # copilot-setup-steps.yml). The negation re-includes this workflow's
+      # own file so editing test262.yml still re-runs it. Order matters:
+      # the ignore must precede the negation.
+      - '.github/workflows/**'
+      - '!.github/workflows/test262.yml'
   pull_request:
     branches: [main]
     paths-ignore:
@@ -21,6 +27,8 @@ on:
       - '.gitignore'
       - 'LICENSE'
       - '.github/ISSUE_TEMPLATE/**'
+      - '.github/workflows/**'
+      - '!.github/workflows/test262.yml'
   workflow_dispatch:
 
 env:
