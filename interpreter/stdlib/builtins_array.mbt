@@ -305,6 +305,8 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
           elements: result,
           bag: @runtime.PropertyBag(),
           length_writable: true,
+          holes: {},
+          extensible: true,
         })
       })
     }
@@ -319,6 +321,8 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
           elements: result,
           bag: @runtime.PropertyBag(),
           length_writable: true,
+          holes: {},
+          extensible: true,
         })
       })
     }

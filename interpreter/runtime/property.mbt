@@ -31,6 +31,14 @@ pub fn Interpreter::get_property(
           data.elements[num_idx]
         } else {
           // Check named properties (e.g., index, input on exec results)
+          match data.bag.descriptors.get(prop) {
+            Some(desc) =>
+              match desc.getter {
+                Some(getter) => return self.call_value(getter, obj, [], loc)
+                None => if desc.setter is Some(_) { return Undefined }
+              }
+            None => ()
+          }
           match get_array_named_prop(data, prop) {
             Some(v) => v
             None =>
@@ -207,6 +215,14 @@ fn Interpreter::get_property_from_prototype(
             None => ()
           }
           return data.elements[num_idx]
+        }
+        match data.bag.descriptors.get(prop) {
+          Some(desc) =>
+            match desc.getter {
+              Some(getter) => return self.call_value(getter, receiver, [], loc)
+              None => if desc.setter is Some(_) { return Undefined }
+            }
+          None => ()
         }
         match get_array_named_prop(data, prop) {
           Some(v) => return v
@@ -1297,13 +1313,22 @@ pub fn Interpreter::get_computed_property(
           }
           match numeric_result {
             Some(v) => v
-            None =>
+            None => {
+              match data.bag.descriptors.get(s) {
+                Some(desc) =>
+                  match desc.getter {
+                    Some(getter) => return self.call_value(getter, obj, [], loc)
+                    None => if desc.setter is Some(_) { return Undefined }
+                  }
+                None => ()
+              }
               // Check bag-backed named properties, then methods.
               match get_array_named_prop(data, s) {
                 Some(v) => v
                 None =>
                   (self.stdlib_hooks.get_array_method_with_interp)(data, s)
               }
+            }
           }
         }
         Symbol(sym) =>
@@ -1653,9 +1678,102 @@ pub fn Interpreter::set_property(
           while data.elements.length() <= i {
             data.elements.push(Undefined)
           }
+          data.holes.remove(i)
           data.elements[i] = value
         } else {
-          set_array_named_prop(data, prop, value)
+          match data.bag.descriptors.get(prop) {
+            Some(desc) =>
+              match desc.setter {
+                Some(setter) => {
+                  let _ = self.call_value(setter, receiver, [value], loc)
+                  return value
+                }
+                None =>
+                  if !desc.writable {
+                    if strict {
+                      raise @errors.TypeError(
+                        message="Cannot assign to read only property '\{prop}'",
+                      )
+                    }
+                    return value
+                  }
+              }
+            None => {
+              // Walk Array's prototype chain for an inherited setter/blocker.
+              let proto_start = match get_array_prototype_override(data) {
+                Some(p) => p
+                None => {
+                  let ctor = self.global.get("Array") catch { _ => Null }
+                  match ctor {
+                    Object(ctor_data) =>
+                      match ctor_data.bag.properties.get("prototype") {
+                        Some(p) => p
+                        None => Null
+                      }
+                    _ => Null
+                  }
+                }
+              }
+              let mut current = proto_start
+              let mut blocked = false
+              while true {
+                match current {
+                  Object(proto_data) =>
+                    match proto_data.bag.descriptors.get(prop) {
+                      Some(desc) =>
+                        match desc.setter {
+                          Some(setter) => {
+                            let _ = self.call_value(
+                              setter,
+                              receiver,
+                              [value],
+                              loc,
+                            )
+                            return value
+                          }
+                          None =>
+                            if desc.getter is Some(_) {
+                              if strict {
+                                raise @errors.TypeError(
+                                  message="Cannot set property \{prop} which has only a getter",
+                                )
+                              }
+                              blocked = true
+                              break
+                            } else if !desc.writable {
+                              if strict {
+                                raise @errors.TypeError(
+                                  message="Cannot assign to read only property '\{prop}'",
+                                )
+                              }
+                              blocked = true
+                              break
+                            } else {
+                              break // writable data: land on receiver
+                            }
+                        }
+                      None =>
+                        match proto_data.bag.properties.get(prop) {
+                          Some(_) => break // writable data: land on receiver
+                          None => current = proto_data.prototype
+                        }
+                    }
+                  _ => break
+                }
+              }
+              if !blocked {
+                if !data.extensible {
+                  if strict {
+                    raise @errors.TypeError(
+                      message="Cannot add property \{prop}, array is not extensible",
+                    )
+                  }
+                  return value
+                }
+                set_array_named_prop(data, prop, value)
+              }
+            }
+          }
         }
       }
       value
@@ -2535,6 +2653,7 @@ pub fn Interpreter::set_computed_property(
                     while data.elements.length() <= idx {
                       data.elements.push(Undefined)
                     }
+                    data.holes.remove(idx)
                     data.elements[idx] = value
                     handled = true
                   }
@@ -2542,6 +2661,25 @@ pub fn Interpreter::set_computed_property(
               None => ()
             }
             if !handled {
+              match data.bag.descriptors.get(prop) {
+                Some(desc) =>
+                  match desc.setter {
+                    Some(setter) => {
+                      let _ = self.call_value(setter, receiver, [value], loc)
+                      return value
+                    }
+                    None =>
+                      if !desc.writable {
+                        if strict {
+                          raise @errors.TypeError(
+                            message="Cannot assign to read only property '\{prop}'",
+                          )
+                        }
+                        return value
+                      }
+                  }
+                None => ()
+              }
               set_array_named_prop(data, prop, value)
             }
           }
@@ -3012,7 +3150,10 @@ pub fn ordinary_get_own_property(
             })
           }
           let idx = @string.parse_int(k) catch { _ => -1 }
-          if idx >= 0 && idx.to_string() == k && idx < arr.elements.length() {
+          if idx >= 0 &&
+            idx.to_string() == k &&
+            idx < arr.elements.length() &&
+            !arr.holes.contains(idx) {
             return match arr.bag.descriptors.get(k) {
               Some(desc) => Some(desc)
               None =>
@@ -3580,7 +3721,10 @@ pub fn Interpreter::array_define_own_property(
         if idx >= logical_len && !arr.length_writable {
           return false
         }
-        let had_index = idx < arr.elements.length()
+        let had_index = idx < arr.elements.length() && !arr.holes.contains(idx)
+        if !had_index && !arr.extensible {
+          return false
+        }
         // Grow elements to idx+1 with Undefined filler.
         while arr.elements.length() <= idx {
           arr.elements.push(Undefined)
@@ -3612,6 +3756,7 @@ pub fn Interpreter::array_define_own_property(
               arr.bag.descriptors[k] = complete_partial_for_new(partial)
             }
         }
+        arr.holes.remove(idx)
         match partial.value {
           Some(v) => arr.elements[idx] = v
           None => ()
@@ -3622,6 +3767,9 @@ pub fn Interpreter::array_define_own_property(
       let existing = ordinary_get_own_string_desc(arr.bag, k)
       match existing {
         None => {
+          if !arr.extensible {
+            return false
+          }
           let full = complete_partial_for_new(partial)
           apply_descriptor_to_bag(arr.bag, key, full, partial.value)
           true

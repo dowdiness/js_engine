@@ -855,6 +855,16 @@ fn Interpreter::has_object_property(
       let func_proto = self.global.get("[[FunctionPrototype]]") catch {
         _ => return false
       }
+      let func_proto_data = match func_proto {
+        Object(d) => d
+        _ => return false
+      }
+      // Guard 1: we ARE Function.prototype — walking it again causes infinite recursion.
+      // Guard 2: we already walked Function.prototype above (data.prototype == func_proto).
+      if physical_equal(data, func_proto_data) ||
+        physical_equal(data.prototype, func_proto) {
+        return false
+      }
       self.has_property_on_proto(func_proto, key)
     }
     None => false
@@ -879,7 +889,10 @@ fn Interpreter::has_array_property(
         return true
       }
       let idx = @string.parse_int(name) catch { _ => -1 }
-      if idx >= 0 && idx.to_string() == name && idx < data.elements.length() {
+      if idx >= 0 &&
+        idx.to_string() == name &&
+        idx < data.elements.length() &&
+        !data.holes.contains(idx) {
         return true
       }
       if data.bag.properties.contains(name) ||

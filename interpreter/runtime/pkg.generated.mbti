@@ -317,6 +317,8 @@ pub(all) struct ArrayData {
   elements : Array[Value]
   bag : PropertyBag
   mut length_writable : Bool
+  holes : Map[Int, Unit]
+  mut extensible : Bool
 }
 
 pub(all) struct Binding {

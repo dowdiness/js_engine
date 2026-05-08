@@ -1331,6 +1331,8 @@ fn setup_array_builtins(
         elements: result,
         bag: @runtime.PropertyBag(),
         length_writable: true,
+        holes: {},
+        extensible: true,
       })
     },
   )
@@ -1348,6 +1350,8 @@ fn setup_array_builtins(
         elements: result,
         bag: @runtime.PropertyBag(),
         length_writable: true,
+        holes: {},
+        extensible: true,
       })
     },
   )
@@ -1365,6 +1369,8 @@ fn setup_array_builtins(
         elements: result,
         bag: @runtime.PropertyBag(),
         length_writable: true,
+        holes: {},
+        extensible: true,
       })
     },
   )
@@ -1882,6 +1888,8 @@ fn setup_array_builtins(
                   elements,
                   bag: @runtime.PropertyBag(),
                   length_writable: true,
+                  holes: {},
+                  extensible: true,
                 }
                 if len64 > arr_data.elements.length().to_int64() {
                   @runtime.set_array_length_override(arr_data, len64)

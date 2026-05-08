@@ -411,5 +411,11 @@ pub fn make_plain_object() -> Value {
 /// Wrap an Array[Value] in an Array Value with an empty property bag.
 /// Dense-only arrays (no named props, no sparse length overrides) build via this.
 pub fn make_array(elements : Array[Value]) -> Value {
-  Array({ elements, bag: PropertyBag(), length_writable: true })
+  Array({
+    elements,
+    bag: PropertyBag(),
+    length_writable: true,
+    holes: {},
+    extensible: true,
+  })
 }
