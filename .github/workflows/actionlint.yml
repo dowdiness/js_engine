@@ -1,0 +1,47 @@
+name: actionlint
+
+# Lints `.github/workflows/*.yml` on every change. Catches the kind of YAML +
+# shell issues that PR #88 needed five review rounds for (missing pipefail
+# under default `bash -e {0}`, captured exit codes silently dropped, etc.).
+# Triggers only on workflow file edits — quick and free for everything else.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/**'
+  workflow_dispatch:
+
+jobs:
+  actionlint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install actionlint
+        id: install
+        # Two layers of pinning, both required for reproducibility:
+        #   1. Installer script fetched from an immutable commit SHA, so a
+        #      future upstream change to download-actionlint.bash cannot alter
+        #      this job's behavior.
+        #   2. Binary version passed explicitly, so the installer always
+        #      fetches the same release artifact.
+        # To bump: query `gh api repos/rhysd/actionlint/releases/latest`,
+        # update both ACTIONLINT_VERSION and ACTIONLINT_INSTALLER_SHA in lockstep.
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+          ACTIONLINT_INSTALLER_SHA: 914e7df21a07ef503a81201c76d2b11c789d3fca
+        run: |
+          curl -fsSL "https://raw.githubusercontent.com/rhysd/actionlint/${ACTIONLINT_INSTALLER_SHA}/scripts/download-actionlint.bash" -o /tmp/download-actionlint.bash
+          bash /tmp/download-actionlint.bash "$ACTIONLINT_VERSION"
+          echo "exe=$(pwd)/actionlint" >> "$GITHUB_OUTPUT"
+
+      - name: Run actionlint
+        run: ${{ steps.install.outputs.exe }} -color
