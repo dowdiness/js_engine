@@ -390,7 +390,7 @@ def run_single_test(
         cmd = cmd + ["--module"]
         # Module tests may import sibling _FIXTURE.js files relative to the test
         # path. The engine has no FS access, so we resolve them here and pass each
-        # as a `--fixture <specifier> <source>` pair (registered before main runs).
+        # as a `--fixture <specifier> <source>` triple (registered before main runs).
         for spec, fixture_src in resolve_fixtures(test_path, source):
             cmd = cmd + ["--fixture", spec, fixture_src]
     if is_annex_b:
