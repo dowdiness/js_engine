@@ -13,7 +13,16 @@ fn extract_fixtures(
   let rest : Array[String] = []
   let mut i = 0
   while i < args.length() {
-    if args[i] == "--fixture" && i + 2 < args.length() {
+    if args[i] == "--fixture" {
+      // `--fixture` always consumes the next two argv slots. Erroring here
+      // (rather than letting it fall through to argparse) is required because
+      // argparse also declares `--fixture` for help rendering, so a malformed
+      // single-value form would otherwise be silently mis-parsed.
+      guard i + 2 < args.length() else {
+        println("error: --fixture requires two values: --fixture <spec> <src>")
+        exit_with_error()
+        return (fixtures, rest)
+      }
       fixtures.push((args[i + 1], args[i + 2]))
       i = i + 3
     } else {
@@ -36,10 +45,20 @@ fn main {
         about="Enable Annex B (web compat) semantics",
       ),
     ],
+    options=[
+      // Documented for --help only; the actual `--fixture <spec> <src>` triples
+      // are pre-extracted from argv by extract_fixtures() before argparse runs,
+      // because argparse OptionArgs accept a single value per occurrence.
+      @argparse.OptionArg(
+        "fixture",
+        action=Append,
+        about="<spec> <src> — register a module fixture (may be repeated)",
+      ),
+    ],
     positionals=[
       @argparse.PositionArg("source", about="JavaScript source to execute"),
     ],
-    about="JavaScript interpreter (use --fixture <spec> <src> to register a module fixture before main runs; may be repeated)",
+    about="JavaScript interpreter",
     version="0.2.2",
   )
   let matches = cmd.parse(argv=remaining[:], env={}) catch {
