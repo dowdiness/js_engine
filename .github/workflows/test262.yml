@@ -7,11 +7,9 @@ on:
       # Docs and markdown never affect the engine or the runner.
       - 'docs/**'
       - '*.md'
-      # scripts/ today holds only post-hoc analysis / session-hook helpers
-      # (classify-by-edition.py, package-overview.sh) with no CI dependency.
-      # If you add a script that the workflow invokes, exclude it from this
-      # ignore list explicitly so changes to it still trigger CI.
-      - 'scripts/**'
+      # NOTE: scripts/** is intentionally NOT ignored. The workflow now
+      # invokes scripts/test262-runner.py and scripts/classify-by-edition.py
+      # directly, so changes there must re-trigger CI.
       - '.gitignore'
       - 'LICENSE'
       - '.github/ISSUE_TEMPLATE/**'
@@ -20,7 +18,6 @@ on:
     paths-ignore:
       - 'docs/**'
       - '*.md'
-      - 'scripts/**'
       - '.gitignore'
       - 'LICENSE'
       - '.github/ISSUE_TEMPLATE/**'
@@ -109,7 +106,14 @@ jobs:
         run: pip install pyyaml
 
       - name: Run Test262 (${{ matrix.mode }})
+        # `shell: bash` enables `-eo pipefail`. We disable errexit locally so
+        # a non-zero runner status doesn't skip the per-edition table — it's
+        # the more useful signal in CI logs than the runner's one-row summary.
+        # The runner's exit code is preserved at the end via `exit $rc`, and
+        # `continue-on-error: true` lets the workflow proceed to upload.
+        shell: bash
         run: |
+          set +e
           python3 scripts/test262-runner.py \
             --test262 ./test262 \
             --mode ${{ matrix.mode }} \
@@ -117,6 +121,30 @@ jobs:
             --timeout 5 \
             --output test262-${{ matrix.mode }}-results.json \
             --summary
+          rc=$?
+          classify_rc=0
+          # Use `-s` (non-empty) instead of `-f` so the classifier doesn't
+          # traceback on a truncated/empty JSON if the runner crashed early.
+          if [ -s "test262-${{ matrix.mode }}-results.json" ]; then
+            echo
+            echo "──────── Per-edition breakdown (${{ matrix.mode }}) ────────"
+            python3 scripts/classify-by-edition.py --markdown \
+              --test262-root ./test262 \
+              "test262-${{ matrix.mode }}-results.json" \
+              | tee -a "$GITHUB_STEP_SUMMARY"
+            # PIPESTATUS[0] = classifier (tee always succeeds with -a).
+            classify_rc=${PIPESTATUS[0]}
+            if [ "$classify_rc" -ne 0 ]; then
+              echo "::warning::classify-by-edition.py exited $classify_rc — per-edition table may be incomplete" >&2
+            fi
+          fi
+          # Runner failure dominates; otherwise propagate classifier failure
+          # so a silently-broken report path fails this step (visible under
+          # continue-on-error as a marked failure, not green-with-warning).
+          if [ "$rc" -ne 0 ]; then
+            exit "$rc"
+          fi
+          exit "$classify_rc"
         continue-on-error: true
 
       - name: Upload results

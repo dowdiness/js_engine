@@ -505,8 +505,29 @@ def render_table(mode: str, buckets: dict[str, Bucket]) -> str:
         buckets.items(), key=lambda kv: EDITION_RANK.get(kv[0], len(EDITION_ORDER))
     )
     totals = Bucket()
+    fully_skipped: list[tuple[str, int]] = []  # (edition, discovered) — all skipped
     for edition, b in ordered:
         if b.total == 0:
+            continue
+        # Always include in totals so denominators stay honest.
+        totals.total += b.total
+        totals.passed += b.passed
+        totals.failed += b.failed
+        totals.skipped += b.skipped
+        totals.timeout += b.timeout
+        totals.error += b.error
+        # Suppress rows where NOTHING ran — neither executed (passed/failed)
+        # nor timed out / errored. Those read as noise. CRITICAL: editions
+        # where every test timed out or errored must stay visible so harness
+        # regressions surface; b.executed alone excludes timeout/error.
+        if (
+            b.executed == 0
+            and b.passed == 0
+            and b.failed == 0
+            and b.timeout == 0
+            and b.error == 0
+        ):
+            fully_skipped.append((edition, b.total))
             continue
         lines.append(
             f"| {edition} | {b.total:,} | {b.skipped:,} | {b.executed:,} | "
@@ -514,12 +535,6 @@ def render_table(mode: str, buckets: dict[str, Bucket]) -> str:
             f"{b.passed_over_executed:.1f}% | "
             f"{b.passed_over_discovered:.1f}% |"
         )
-        totals.total += b.total
-        totals.passed += b.passed
-        totals.failed += b.failed
-        totals.skipped += b.skipped
-        totals.timeout += b.timeout
-        totals.error += b.error
     lines.append(
         f"| **Total** | **{totals.total:,}** | **{totals.skipped:,}** | "
         f"**{totals.executed:,}** | **{totals.passed:,}** | "
@@ -527,6 +542,13 @@ def render_table(mode: str, buckets: dict[str, Bucket]) -> str:
         f"**{totals.passed_over_executed:.1f}%** | "
         f"**{totals.passed_over_discovered:.1f}%** |"
     )
+    if fully_skipped:
+        skip_summary = ", ".join(f"{ed} ({n:,})" for ed, n in fully_skipped)
+        lines += [
+            "",
+            f"_Fully-skipped buckets (no tests executed) folded into Total: "
+            f"{skip_summary}._",
+        ]
     return "\n".join(lines)
 
 
