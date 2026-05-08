@@ -340,7 +340,7 @@ fn check_duplicate_params_ext(
 }
 
 ///|
-let eval_function_reconcile_marker = "[[EvalFunctionReconcile]]"
+const EVAL_FUNCTION_RECONCILE_MARKER = "[[EvalFunctionReconcile]]"
 
 ///|
 fn is_function_strict(enclosing_strict : Bool, body : Array[@ast.Stmt]) -> Bool {
@@ -462,7 +462,7 @@ fn should_reconcile_eval_function_decl(
   env : Environment,
   name : String,
 ) -> Bool {
-  env.bindings.contains(eval_function_reconcile_marker) && env.has_var(name)
+  env.bindings.contains(EVAL_FUNCTION_RECONCILE_MARKER) && env.has_var(name)
 }
 
 ///|

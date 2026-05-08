@@ -10,29 +10,29 @@
 
 ///|
 /// Milliseconds per time unit
-let ms_per_second : Double = 1000.0
+const MS_PER_SECOND : Double = 1000.0
 
 ///|
-let ms_per_minute : Double = 60000.0
+const MS_PER_MINUTE : Double = 60000.0
 
 ///|
-let ms_per_hour : Double = 3600000.0
+const MS_PER_HOUR : Double = 3600000.0
 
 ///|
-let ms_per_day : Double = 86400000.0
+const MS_PER_DAY : Double = 86400000.0
 
 ///|
 /// Number of days from epoch (1970-01-01) to the given time value
 fn day(t : Double) -> Double {
-  (t / ms_per_day).floor()
+  (t / MS_PER_DAY).floor()
 }
 
 ///|
 /// Milliseconds within the day
 fn time_within_day(t : Double) -> Double {
-  let r = t % ms_per_day
+  let r = t % MS_PER_DAY
   if r < 0.0 {
-    r + ms_per_day
+    r + MS_PER_DAY
   } else {
     r
   }
@@ -161,28 +161,28 @@ fn week_day(t : Double) -> Int {
 ///|
 /// Hours from time
 fn hours_from_time(t : Double) -> Int {
-  let r = (time_within_day(t) / ms_per_hour).floor()
+  let r = (time_within_day(t) / MS_PER_HOUR).floor()
   r.to_int()
 }
 
 ///|
 /// Minutes from time
 fn minutes_from_time(t : Double) -> Int {
-  let r = (time_within_day(t) / ms_per_minute).floor() % 60.0
+  let r = (time_within_day(t) / MS_PER_MINUTE).floor() % 60.0
   r.to_int()
 }
 
 ///|
 /// Seconds from time
 fn seconds_from_time(t : Double) -> Int {
-  let r = (time_within_day(t) / ms_per_second).floor() % 60.0
+  let r = (time_within_day(t) / MS_PER_SECOND).floor() % 60.0
   r.to_int()
 }
 
 ///|
 /// Milliseconds from time
 fn millis_from_time(t : Double) -> Int {
-  let r = time_within_day(t) % ms_per_second
+  let r = time_within_day(t) % MS_PER_SECOND
   r.to_int()
 }
 
@@ -196,7 +196,7 @@ fn make_time(hour : Double, min : Double, sec : Double, ms : Double) -> Double {
   let m = min.to_int().to_double()
   let s = sec.to_int().to_double()
   let milli = ms.to_int().to_double()
-  h * ms_per_hour + m * ms_per_minute + s * ms_per_second + milli
+  h * MS_PER_HOUR + m * MS_PER_MINUTE + s * MS_PER_SECOND + milli
 }
 
 ///|
@@ -246,7 +246,7 @@ fn make_date_value(day : Double, time : Double) -> Double {
   if day.is_nan() || time.is_nan() {
     return 0.0 / 0.0
   }
-  day * ms_per_day + time
+  day * MS_PER_DAY + time
 }
 
 ///|

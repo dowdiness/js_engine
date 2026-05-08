@@ -159,24 +159,14 @@ pub fn js_error_to_value(err : Error) -> Value {
 /// Convert any catchable error to a JavaScript Error object Value with proper prototype
 pub fn js_error_to_value_with_env(err : Error, env : Environment?) -> Value {
   match err {
-    @errors.TypeError(message~) =>
-      make_error_value_with_env("TypeError", message, env)
-    @errors.ReferenceError(message~) =>
-      make_error_value_with_env("ReferenceError", message, env)
-    @errors.SyntaxError(message~) =>
-      make_error_value_with_env("SyntaxError", message, env)
-    @errors.RangeError(message~) =>
-      make_error_value_with_env("RangeError", message, env)
-    @errors.URIError(message~) =>
-      make_error_value_with_env("URIError", message, env)
-    @errors.EvalError(message~) =>
-      make_error_value_with_env("EvalError", message, env)
-    @errors.InternalError(message~) =>
-      make_error_value_with_env("InternalError", message, env)
     @errors.AggregateError(message~, errors~) =>
       make_aggregate_error_value(message, errors, env)
     JsException(val) => val // JavaScript throw statement value
-    _ => make_error_value_with_env("Error", err.to_string(), env)
+    e =>
+      match @errors.name_message_if_js_error(e) {
+        Some((name, msg)) => make_error_value_with_env(name, msg, env)
+        None => make_error_value_with_env("Error", e.to_string(), env)
+      }
   }
 }
 
@@ -185,13 +175,6 @@ pub fn js_error_to_value_with_env(err : Error, env : Environment?) -> Value {
 /// Runtime engine errors are surfaced as strings like "TypeError: ...".
 pub fn js_error_to_throw_value(err : Error) -> Value {
   match err {
-    @errors.TypeError(message~) => String_("TypeError: " + message)
-    @errors.ReferenceError(message~) => String_("ReferenceError: " + message)
-    @errors.SyntaxError(message~) => String_("SyntaxError: " + message)
-    @errors.RangeError(message~) => String_("RangeError: " + message)
-    @errors.URIError(message~) => String_("URIError: " + message)
-    @errors.EvalError(message~) => String_("EvalError: " + message)
-    @errors.InternalError(message~) => String_("InternalError: " + message)
     @errors.AggregateError(message~, errors~) => {
       let error_texts = errors.map(fn(e) {
         js_error_to_throw_value(e).to_string()
@@ -200,7 +183,11 @@ pub fn js_error_to_throw_value(err : Error) -> Value {
       String_("AggregateError: " + message + " (errors: " + errors_str + ")")
     }
     JsException(val) => val
-    _ => String_("Error: " + err.to_string())
+    e =>
+      match @errors.format_if_js_error(e) {
+        Some(s) => String_(s)
+        None => String_("Error: " + e.to_string())
+      }
   }
 }
 
@@ -216,15 +203,7 @@ pub fn raise_js_exception(value : Value) -> Unit raise Error {
 /// Check if an error is a JavaScript catchable error
 pub fn is_js_catchable_error(err : Error) -> Bool {
   match err {
-    @errors.TypeError(_)
-    | @errors.ReferenceError(_)
-    | @errors.SyntaxError(_)
-    | @errors.RangeError(_)
-    | @errors.URIError(_)
-    | @errors.EvalError(_)
-    | @errors.InternalError(_)
-    | @errors.AggregateError(_)
-    | JsException(_) => true
-    _ => false
+    JsException(_) => true
+    e => @errors.name_message_if_js_error(e) != None
   }
 }
