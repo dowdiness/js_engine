@@ -40,6 +40,7 @@ fn main {
       @argparse.PositionArg("source", about="JavaScript source to execute"),
     ],
     about="JavaScript interpreter (use --fixture <spec> <src> to register a module fixture before main runs; may be repeated)",
+    version="0.2.2",
   )
   let matches = cmd.parse(argv=remaining[:], env={}) catch {
     err => {
