@@ -131,7 +131,8 @@ pub fn setup_object_builtins(
                 let idx = @string.parse_int(key) catch { _ => -1 }
                 if idx >= 0 &&
                   idx.to_string() == key &&
-                  idx < data.elements.length() {
+                  idx < data.elements.length() &&
+                  !data.holes.contains(idx) {
                   Value::Bool(true)
                 } else {
                   // Check named properties stored in ArrayData.bag.
@@ -212,7 +213,8 @@ pub fn setup_object_builtins(
             let idx = @string.parse_int(key) catch { _ => -1 }
             if idx >= 0 &&
               idx.to_string() == key &&
-              idx < data.elements.length() {
+              idx < data.elements.length() &&
+              !data.holes.contains(idx) {
               match data.bag.descriptors.get(key) {
                 Some(d) => Bool(d.enumerable)
                 None => Bool(true)
@@ -546,6 +548,9 @@ pub fn setup_object_builtins(
                 // enumerable own named properties in their embedded bag.
                 let keys : Array[Value] = []
                 for i = 0; i < data.elements.length(); i = i + 1 {
+                  if data.holes.contains(i) {
+                    continue
+                  }
                   let key = i.to_string()
                   let enumerable = match data.bag.descriptors.get(key) {
                     Some(d) => d.enumerable
@@ -613,6 +618,9 @@ pub fn setup_object_builtins(
                 // named properties from the embedded bag.
                 let vals : Array[Value] = []
                 for i = 0; i < data.elements.length(); i = i + 1 {
+                  if data.holes.contains(i) {
+                    continue
+                  }
                   let key = i.to_string()
                   let enumerable = match data.bag.descriptors.get(key) {
                     Some(d) => d.enumerable
@@ -690,6 +698,9 @@ pub fn setup_object_builtins(
                 // Array objects - keys must be strings per spec.
                 let entries : Array[Value] = []
                 for i = 0; i < data.elements.length(); i = i + 1 {
+                  if data.holes.contains(i) {
+                    continue
+                  }
                   let key = i.to_string()
                   let enumerable = match data.bag.descriptors.get(key) {
                     Some(d) => d.enumerable
@@ -955,6 +966,9 @@ pub fn setup_object_builtins(
                     Array(src) =>
                       // Copy array elements as indexed properties
                       for idx = 0; idx < src.elements.length(); idx = idx + 1 {
+                        if src.holes.contains(idx) {
+                          continue
+                        }
                         let k = idx.to_string()
                         let v = src.elements[idx]
                         let can_write = match data.bag.descriptors.get(k) {
