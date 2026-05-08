@@ -85,3 +85,24 @@ pub fn JsError::get_message(self : JsError) -> String {
 pub fn JsError::format(self : JsError) -> String {
   self.name() + ": " + self.get_message()
 }
+
+///|
+/// If `err` is a JsError variant, return its formatted string; otherwise `None`.
+///
+/// Lets consumers handle all JsError variants in one catch arm without
+/// enumerating each constructor. The `Error` type is used because suberror
+/// constructors are individually promoted to `Error` and MoonBit does not
+/// support catching a suberror parent type as a single pattern.
+pub fn format_if_js_error(err : Error) -> String? {
+  match err {
+    TypeError(message~) => Some("TypeError: " + message)
+    ReferenceError(message~) => Some("ReferenceError: " + message)
+    SyntaxError(message~) => Some("SyntaxError: " + message)
+    RangeError(message~) => Some("RangeError: " + message)
+    URIError(message~) => Some("URIError: " + message)
+    EvalError(message~) => Some("EvalError: " + message)
+    AggregateError(message~, errors=_) => Some("AggregateError: " + message)
+    InternalError(message~) => Some("InternalError: " + message)
+    _ => None
+  }
+}

@@ -88,6 +88,29 @@ test "format - AggregateError" {
 }
 
 ///|
+test "format_if_js_error - consistent with format() for all variants" {
+  let cases : Array[@errors.JsError] = [
+    TypeError(message="a"),
+    ReferenceError(message="b"),
+    SyntaxError(message="c"),
+    RangeError(message="d"),
+    URIError(message="e"),
+    EvalError(message="f"),
+    AggregateError(message="g", errors=[]),
+    InternalError(message="h"),
+  ]
+  for e in cases {
+    inspect(@errors.format_if_js_error(e) == Some(e.format()), content="true")
+  }
+}
+
+///|
+test "format_if_js_error - None for non-JsError" {
+  let err : Error = Failure::Failure("oops")
+  inspect(@errors.format_if_js_error(err) == (None : String?), content="true")
+}
+
+///|
 test "format equals name + colon-space + get_message" {
   let cases : Array[@errors.JsError] = [
     TypeError(message="a"),

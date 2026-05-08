@@ -185,13 +185,6 @@ pub fn js_error_to_value_with_env(err : Error, env : Environment?) -> Value {
 /// Runtime engine errors are surfaced as strings like "TypeError: ...".
 pub fn js_error_to_throw_value(err : Error) -> Value {
   match err {
-    @errors.TypeError(message~) => String_("TypeError: " + message)
-    @errors.ReferenceError(message~) => String_("ReferenceError: " + message)
-    @errors.SyntaxError(message~) => String_("SyntaxError: " + message)
-    @errors.RangeError(message~) => String_("RangeError: " + message)
-    @errors.URIError(message~) => String_("URIError: " + message)
-    @errors.EvalError(message~) => String_("EvalError: " + message)
-    @errors.InternalError(message~) => String_("InternalError: " + message)
     @errors.AggregateError(message~, errors~) => {
       let error_texts = errors.map(fn(e) {
         js_error_to_throw_value(e).to_string()
@@ -200,7 +193,11 @@ pub fn js_error_to_throw_value(err : Error) -> Value {
       String_("AggregateError: " + message + " (errors: " + errors_str + ")")
     }
     JsException(val) => val
-    _ => String_("Error: " + err.to_string())
+    e =>
+      match @errors.format_if_js_error(e) {
+        Some(s) => String_(s)
+        None => String_("Error: " + e.to_string())
+      }
   }
 }
 
