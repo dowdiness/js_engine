@@ -2581,6 +2581,7 @@ pub fn Interpreter::set_computed_property(
             while data.elements.length() <= i {
               data.elements.push(Undefined)
             }
+            data.holes.remove(i)
             data.elements[i] = value
           }
           value
@@ -2679,6 +2680,14 @@ pub fn Interpreter::set_computed_property(
                       }
                   }
                 None => ()
+              }
+              if !data.extensible {
+                if strict {
+                  raise @errors.TypeError(
+                    message="Cannot add property '\{prop}' on a non-extensible object",
+                  )
+                }
+                return value
               }
               set_array_named_prop(data, prop, value)
             }
