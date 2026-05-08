@@ -516,10 +516,17 @@ def render_table(mode: str, buckets: dict[str, Bucket]) -> str:
         totals.skipped += b.skipped
         totals.timeout += b.timeout
         totals.error += b.error
-        # Suppress rows that are entirely un-executed (skipped) — they read as
-        # noise (`0 | 0 | 0 | 0 | 0.0% | 0.0%`) and crowd out the actionable
-        # rows. Capture them in a footnote instead.
-        if b.executed == 0 and b.passed == 0 and b.failed == 0:
+        # Suppress rows where NOTHING ran — neither executed (passed/failed)
+        # nor timed out / errored. Those read as noise. CRITICAL: editions
+        # where every test timed out or errored must stay visible so harness
+        # regressions surface; b.executed alone excludes timeout/error.
+        if (
+            b.executed == 0
+            and b.passed == 0
+            and b.failed == 0
+            and b.timeout == 0
+            and b.error == 0
+        ):
             fully_skipped.append((edition, b.total))
             continue
         lines.append(

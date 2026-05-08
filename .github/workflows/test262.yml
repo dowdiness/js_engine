@@ -122,6 +122,7 @@ jobs:
             --output test262-${{ matrix.mode }}-results.json \
             --summary
           rc=$?
+          classify_rc=0
           # Use `-s` (non-empty) instead of `-f` so the classifier doesn't
           # traceback on a truncated/empty JSON if the runner crashed early.
           if [ -s "test262-${{ matrix.mode }}-results.json" ]; then
@@ -131,14 +132,19 @@ jobs:
               --test262-root ./test262 \
               "test262-${{ matrix.mode }}-results.json" \
               | tee -a "$GITHUB_STEP_SUMMARY"
-            # PIPESTATUS[0] = classifier; pipefail makes pipeline non-zero
-            # already, but we deliberately don't override $rc — only warn.
+            # PIPESTATUS[0] = classifier (tee always succeeds with -a).
             classify_rc=${PIPESTATUS[0]}
             if [ "$classify_rc" -ne 0 ]; then
               echo "::warning::classify-by-edition.py exited $classify_rc — per-edition table may be incomplete" >&2
             fi
           fi
-          exit $rc
+          # Runner failure dominates; otherwise propagate classifier failure
+          # so a silently-broken report path fails this step (visible under
+          # continue-on-error as a marked failure, not green-with-warning).
+          if [ "$rc" -ne 0 ]; then
+            exit "$rc"
+          fi
+          exit "$classify_rc"
         continue-on-error: true
 
       - name: Upload results
