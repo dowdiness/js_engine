@@ -11842,7 +11842,9 @@ test "destructuring pattern key with legacy octal escape" {
   let result = run_throws(src)
   inspect(
     result,
-    content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 1, col 1",
+    content=(
+      #|SyntaxError: Octal escape sequences are not allowed in strict mode at line 1, col 21
+    ),
   )
 }
 
@@ -11853,7 +11855,9 @@ test "destructuring pattern key with non-octal-decimal" {
   let result = run_throws(src)
   inspect(
     result,
-    content="SyntaxError: Decimals with leading zeros are not allowed in strict mode at line 1, col 1",
+    content=(
+      #|SyntaxError: Decimals with leading zeros are not allowed in strict mode at line 1, col 21
+    ),
   )
 }
 
