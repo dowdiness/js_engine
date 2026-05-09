@@ -523,3 +523,27 @@ test "parse in operator" {
     _ => fail("Expected in operator")
   }
 }
+
+///|
+test "parser propagates lex_form to StringLit" {
+  let prog = @parser.parse("\"\\1\"")
+  match prog.stmts[0] {
+    ExprStmt(StringLit(_, _, lex_form, _), _) =>
+      inspect(lex_form, content="StringLegacyOctalEscape")
+    _ => fail("expected ExprStmt(StringLit(...))")
+  }
+}
+
+///|
+test "parser propagates lex_form for object property key" {
+  let prog = @parser.parse("({ \"\\1\": 0 })")
+  match prog.stmts[0] {
+    ExprStmt(Grouping(ObjectLit(props, _), _), _) =>
+      match props[0].key {
+        StringLit(_, _, lex_form, _) =>
+          inspect(lex_form, content="StringLegacyOctalEscape")
+        _ => fail("expected StringLit key")
+      }
+    _ => fail("expected ExprStmt(Grouping(ObjectLit(...)))")
+  }
+}

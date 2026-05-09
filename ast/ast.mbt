@@ -100,7 +100,7 @@ pub(all) struct SwitchCase {
 ///|
 pub(all) enum Expr {
   NumberLit(Double, @token.Loc)
-  StringLit(String, Bool, @token.Loc) // value, has_escape, loc
+  StringLit(String, Bool, @token.LexForm, @token.Loc) // value, has_escape, lex_form, loc
   BoolLit(Bool, @token.Loc)
   NullLit(@token.Loc)
   UndefinedLit(@token.Loc)

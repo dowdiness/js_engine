@@ -92,7 +92,7 @@ fn Interpreter::eval_expr(
 ) -> Value raise Error {
   match expr {
     NumberLit(n, _) => Number(n)
-    StringLit(s, _, _) => String_(s)
+    StringLit(s, _, _, _) => String_(s)
     BoolLit(b, _) => Bool(b)
     NullLit(_) => Null
     UndefinedLit(_) => Undefined
@@ -442,7 +442,7 @@ fn Interpreter::eval_expr(
         } else {
           // Static key - extract from StringLit
           let key_str = match prop.key {
-            StringLit(s, _, _) => s
+            StringLit(s, _, _, _) => s
             Ident(name, _) => name
             NumberLit(n, _) => {
               let i = n.to_int()

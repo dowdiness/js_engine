@@ -691,7 +691,7 @@ fn Parser::parse_primary(self : Parser) -> @ast.Expr raise Error {
       self.pos += 1
       // has_escape = true if the raw token contains escape sequences
       let has_escape = tok.raw.length() != s.length() + 2
-      StringLit(s, has_escape, tok.loc)
+      StringLit(s, has_escape, tok.lex_form, tok.loc)
     }
     True => {
       self.pos += 1
@@ -787,7 +787,7 @@ fn Parser::parse_primary(self : Parser) -> @ast.Expr raise Error {
     NoSubTemplate(s) => {
       self.pos += 1
       // Mark has_escape=true so template literals are never treated as directives
-      StringLit(s, true, tok.loc)
+      StringLit(s, true, @token.LexForm::LexNormal, tok.loc)
     }
     TemplateHead(first_str) => {
       self.pos += 1
@@ -950,21 +950,22 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
         self.peek_kind() {
         Ident(name) => {
           let kloc = self.advance().loc
-          (StringLit(name, false, kloc), name, false)
+          (StringLit(name, false, @token.LexForm::LexNormal, kloc), name, false)
         }
         String_(s) => {
-          let kloc = self.advance().loc
-          (StringLit(s, false, kloc), s, false)
+          let tok2 = self.advance()
+          (StringLit(s, false, tok2.lex_form, tok2.loc), s, false)
         }
         Number(n) => {
-          let kloc = self.advance().loc
+          let tok2 = self.advance()
+          let kloc = tok2.loc
           let i = n.to_int()
           let name = if i.to_double() == n {
             i.to_string()
           } else {
             n.to_string()
           }
-          (StringLit(name, false, kloc), name, false)
+          (StringLit(name, false, tok2.lex_form, kloc), name, false)
         }
         LBracket => {
           let _ = self.advance()
@@ -1021,7 +1022,11 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
           match kw_name {
             Some(name) => {
               let kloc = self.advance().loc
-              (StringLit(name, false, kloc), name, false)
+              (
+                StringLit(name, false, @token.LexForm::LexNormal, kloc),
+                name,
+                false,
+              )
             }
             None => {
               let t = self.peek()
@@ -1211,21 +1216,27 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
     ) = match self.peek_kind() {
       Ident(name) => {
         let kloc = self.advance().loc
-        (StringLit(name, false, kloc), name, false, true)
+        (
+          StringLit(name, false, @token.LexForm::LexNormal, kloc),
+          name,
+          false,
+          true,
+        )
       }
       String_(s) => {
-        let kloc = self.advance().loc
-        (StringLit(s, false, kloc), s, false, false)
+        let tok2 = self.advance()
+        (StringLit(s, false, tok2.lex_form, tok2.loc), s, false, false)
       }
       Number(n) => {
-        let kloc = self.advance().loc
+        let tok2 = self.advance()
+        let kloc = tok2.loc
         let i = n.to_int()
         let name = if i.to_double() == n {
           i.to_string()
         } else {
           n.to_string()
         }
-        (StringLit(name, false, kloc), name, false, false)
+        (StringLit(name, false, tok2.lex_form, kloc), name, false, false)
       }
       LBracket => {
         // Computed property name: [expr]
@@ -1286,7 +1297,12 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
             let kloc = self.advance().loc
             // Keywords are not valid IdentifierReference, so is_ident_key = false
             // This prevents `{ for }` or `{ for = 42 }` shorthand syntax
-            (StringLit(name, false, kloc), name, false, false)
+            (
+              StringLit(name, false, @token.LexForm::LexNormal, kloc),
+              name,
+              false,
+              false,
+            )
           }
           None => {
             let t = self.peek()
@@ -1765,7 +1781,7 @@ fn expr_to_pattern(expr : @ast.Expr) -> @ast.Pattern raise Error {
           ("", Some(prop.key))
         } else {
           match prop.key {
-            StringLit(s, _, _) => (s, None)
+            StringLit(s, _, _, _) => (s, None)
             Ident(s, _) => (s, None)
             NumberLit(n, _) => {
               let i = n.to_int()
@@ -2012,17 +2028,18 @@ fn Parser::parse_class_member(self : Parser) -> @ast.ClassMember raise Error {
   let (key_expr, computed) : (@ast.Expr, Bool) = match self.peek_kind() {
     Ident(name) => {
       let kloc = self.advance().loc
-      (StringLit(name, false, kloc), false)
+      (StringLit(name, false, @token.LexForm::LexNormal, kloc), false)
     }
     String_(s) => {
-      let kloc = self.advance().loc
-      (StringLit(s, false, kloc), false)
+      let tok2 = self.advance()
+      (StringLit(s, false, tok2.lex_form, tok2.loc), false)
     }
     Number(n) => {
-      let kloc = self.advance().loc
+      let tok2 = self.advance()
+      let kloc = tok2.loc
       let i = n.to_int()
       let name = if i.to_double() == n { i.to_string() } else { n.to_string() }
-      (StringLit(name, false, kloc), false)
+      (StringLit(name, false, tok2.lex_form, kloc), false)
     }
     LBracket => {
       let _ = self.advance()
@@ -2079,7 +2096,7 @@ fn Parser::parse_class_member(self : Parser) -> @ast.ClassMember raise Error {
       match kw_name {
         Some(name) => {
           let kloc = self.advance().loc
-          (StringLit(name, false, kloc), false)
+          (StringLit(name, false, @token.LexForm::LexNormal, kloc), false)
         }
         None => {
           let t = self.peek()
@@ -2098,7 +2115,7 @@ fn Parser::parse_class_member(self : Parser) -> @ast.ClassMember raise Error {
     // Non-computed 'constructor' is not allowed as a field name (SyntaxError per spec)
     if !computed {
       match key_expr {
-        StringLit("constructor", _, _) =>
+        StringLit("constructor", _, _, _) =>
           raise @errors.SyntaxError(
             message="Classes may not have a field named 'constructor'",
           )
@@ -2107,7 +2124,7 @@ fn Parser::parse_class_member(self : Parser) -> @ast.ClassMember raise Error {
       // Non-computed static 'prototype' field is also a SyntaxError
       if is_static {
         match key_expr {
-          StringLit("prototype", _, _) =>
+          StringLit("prototype", _, _, _) =>
             raise @errors.SyntaxError(
               message="Classes may not have a static field named 'prototype'",
             )

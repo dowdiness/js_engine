@@ -90,7 +90,7 @@ pub impl Show for ExportSpecifier
 
 pub(all) enum Expr {
   NumberLit(Double, @token.Loc)
-  StringLit(String, Bool, @token.Loc)
+  StringLit(String, Bool, @token.LexForm, @token.Loc)
   BoolLit(Bool, @token.Loc)
   NullLit(@token.Loc)
   UndefinedLit(@token.Loc)

@@ -232,7 +232,7 @@ pub fn has_use_strict(stmts : Array[@ast.Stmt]) -> Bool {
   // Only the literal string "use strict" WITHOUT escape sequences activates strict mode.
   for i = 0; i < stmts.length(); i = i + 1 {
     match stmts[i] {
-      ExprStmt(StringLit(s, has_escape, _), _) =>
+      ExprStmt(StringLit(s, has_escape, _, _), _) =>
         if s == "use strict" && !has_escape {
           return true
         }
