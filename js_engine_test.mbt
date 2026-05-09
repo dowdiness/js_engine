@@ -1733,7 +1733,8 @@ test "module: import with legacy octal source string is SyntaxError" {
   inspect(
     result,
     content=(
-      #|SyntaxError(message="Octal escape sequences are not allowed in strict mode at line 1, col 1")
+      #|SyntaxError(message="Octal escape sequences are not allowed in strict mode at line 1, col 15")
+
     ),
   )
 }

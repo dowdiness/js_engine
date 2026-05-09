@@ -1123,7 +1123,7 @@ fn Parser::expect_module_export_name(self : Parser) -> String raise Error {
 ///   import defaultExport, { name1 } from 'source'
 ///   import defaultExport, * as namespace from 'source'
 fn Parser::parse_import_decl(self : Parser) -> @ast.Stmt raise Error {
-  let tok = self.expect(Import)
+  let _ = self.expect(Import)
   // import 'source' - side effect only import
   if self.peek_kind() is String_(_) {
     let src_tok = self.advance()
@@ -1132,7 +1132,7 @@ fn Parser::parse_import_decl(self : Parser) -> @ast.Stmt raise Error {
       _ => abort("unreachable")
     }
     self.eat_semicolon()
-    return ImportDecl(None, [], None, source, src_tok.lex_form, tok.loc)
+    return ImportDecl(None, [], None, source, src_tok.lex_form, src_tok.loc)
   }
   let mut default_import : String? = None
   let mut specifiers : Array[@ast.ImportSpecifier] = []
@@ -1165,10 +1165,10 @@ fn Parser::parse_import_decl(self : Parser) -> @ast.Stmt raise Error {
     }
   }
   let _ = self.expect_from()
-  let (source, source_lex_form) = match self.peek_kind() {
+  let (source, source_lex_form, source_loc) = match self.peek_kind() {
     String_(s) => {
       let src_tok = self.advance()
-      (s, src_tok.lex_form)
+      (s, src_tok.lex_form, src_tok.loc)
     }
     _ => {
       let t = self.peek()
@@ -1207,7 +1207,7 @@ fn Parser::parse_import_decl(self : Parser) -> @ast.Stmt raise Error {
     namespace_import,
     source,
     source_lex_form,
-    tok.loc,
+    source_loc,
   )
 }
 
@@ -1283,10 +1283,10 @@ fn Parser::parse_export_decl(self : Parser) -> @ast.Stmt raise Error {
       None
     }
     let _ = self.expect_from()
-    let (source, source_lex_form) = match self.peek_kind() {
+    let (source, source_lex_form, source_loc) = match self.peek_kind() {
       String_(s) => {
         let src_tok = self.advance()
-        (s, src_tok.lex_form)
+        (s, src_tok.lex_form, src_tok.loc)
       }
       _ => {
         let t = self.peek()
@@ -1296,17 +1296,21 @@ fn Parser::parse_export_decl(self : Parser) -> @ast.Stmt raise Error {
       }
     }
     self.eat_semicolon()
-    return ExportAllDecl(ns_alias, source, source_lex_form, tok.loc)
+    return ExportAllDecl(ns_alias, source, source_lex_form, source_loc)
   }
   // export { name1, name2 as alias } [from 'source']
   if self.at(LBrace) {
     let specs = self.parse_export_specifiers()
-    let (source, source_lex_form) : (String?, @token.LexForm) = if self.at(From) {
+    let (source, source_lex_form, source_loc) : (
+      String?,
+      @token.LexForm,
+      @token.Loc,
+    ) = if self.at(From) {
       let _ = self.advance() // consume 'from'
       match self.peek_kind() {
         String_(s) => {
           let src_tok = self.advance()
-          (Some(s), src_tok.lex_form)
+          (Some(s), src_tok.lex_form, src_tok.loc)
         }
         _ => {
           let t = self.peek()
@@ -1316,10 +1320,10 @@ fn Parser::parse_export_decl(self : Parser) -> @ast.Stmt raise Error {
         }
       }
     } else {
-      (None, @token.LexForm::LexNormal)
+      (None, @token.LexForm::LexNormal, tok.loc)
     }
     self.eat_semicolon()
-    return ExportNamedDecl(None, specs, source, source_lex_form, tok.loc)
+    return ExportNamedDecl(None, specs, source, source_lex_form, source_loc)
   }
   // export let/const/var ...
   if self.at(Let) || self.at(Const) || self.at(Var) {
