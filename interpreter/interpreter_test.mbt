@@ -11169,6 +11169,22 @@ test "B.2: Array length set to NaN throws RangeError" {
 }
 
 ///|
+/// §10.4.2.4: extending beyond the small-gap threshold via defineProperty
+/// must not materialise the new slots — the engine relies on the logical-
+/// length override for sparse arrays. If the bound is ever removed, this
+/// test will OOM or time out instead of returning instantly.
+test "B.2: Array length set huge via defineProperty stays sparse" {
+  let src =
+    #|var arr = [1, 2, 3];
+    #|Object.defineProperty(arr, "length", { value: 1000000 });
+    #|console.log(arr.length);
+    #|console.log(arr[0]);
+    #|console.log(arr[999999]);
+  let output = run_output(src)
+  inspect(output, content="[\"1000000\", \"1\", \"undefined\"]")
+}
+
+///|
 /// IteratorClose: iterator.return() called when for-of body throws (ForOfStmt)
 test "IteratorClose: body throw calls iterator return (ForOfStmt)" {
   let src =
