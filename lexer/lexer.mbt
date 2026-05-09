@@ -76,31 +76,26 @@ fn is_line_terminator(c : Char) -> Bool {
 
 ///|
 fn is_id_start_cp(cp : Int) -> Bool {
-  // For ASCII range, validate strictly; for non-ASCII, accept Unicode letters
-  // but reject whitespace and line terminators
+  // ES262 §11.6 IdentifierStartChar = UnicodeIDStart | $ | _.
+  // ASCII fast path covers letters + `$` + `_`; non-ASCII delegates to the
+  // generated `ID_Start` table (Unicode 17.0, see lexer/unicode_id.mbt).
   if cp < 128 {
     is_alpha(cp.unsafe_to_char())
   } else {
-    !is_whitespace_or_line_terminator_cp(cp)
+    is_id_start(cp)
   }
 }
 
 ///|
 fn is_id_continue_cp(cp : Int) -> Bool {
-  // For ASCII range, validate strictly; for non-ASCII, accept Unicode letters
-  // but reject whitespace and line terminators
+  // ES262 §11.6 IdentifierPartChar = UnicodeIDContinue | $ | <ZWNJ> | <ZWJ>.
+  // ZWNJ (U+200C) and ZWJ (U+200D) are themselves in `ID_Continue`, so the
+  // generated table covers them directly.
   if cp < 128 {
     is_alnum(cp.unsafe_to_char())
   } else {
-    !is_whitespace_or_line_terminator_cp(cp)
+    is_id_continue(cp)
   }
-}
-
-///|
-fn is_whitespace_or_line_terminator_cp(cp : Int) -> Bool {
-  is_unicode_space_cp(cp) ||
-  cp == 0x2028 || // Line Separator
-  cp == 0x2029 // Paragraph Separator
 }
 
 ///|

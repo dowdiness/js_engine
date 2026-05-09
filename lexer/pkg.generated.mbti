@@ -8,6 +8,8 @@ import {
 // Values
 pub fn tokenize(String) -> Array[@token.Token] raise
 
+pub let unicode_version : (Int, Int, Int)
+
 // Errors
 
 // Types and methods
