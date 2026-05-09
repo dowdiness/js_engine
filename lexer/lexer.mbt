@@ -583,6 +583,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
     if is_digit(c) {
       let start = offset
       let buf = StringBuilder::new()
+      let mut is_non_octal_decimal_int = false
       // Check for hex (0x), binary (0b), octal (0o)
       if c == '0' && offset + 1 < len {
         let next = char_at(offset + 1)
@@ -643,6 +644,9 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           let raw = source.view()[start:offset].to_owned()
           tokens.push({ kind: Number(value), loc, raw, lex_form: LexNormal })
           continue
+        } else if next == '8' || next == '9' {
+          // 08 / 09 — NonOctalDecimalIntegerLiteral (Annex B)
+          is_non_octal_decimal_int = true
         } else if next >= '0' && next <= '7' {
           // Legacy octal number (e.g. 070 = 56)
           // Only valid in non-strict mode, but we parse it and let the
@@ -655,8 +659,9 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             if pch >= '0' && pch <= '7' {
               peek += 1
             } else if pch == '8' || pch == '9' {
-              // Contains 8 or 9, not octal - treat as decimal
+              // Contains 8 or 9, not octal - treat as decimal (Annex B NonOctalDecimalIntegerLiteral)
               is_legacy_octal = false
+              is_non_octal_decimal_int = true
               break
             } else {
               break
@@ -682,7 +687,12 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
               col += 1
             }
             let raw = source.view()[start:offset].to_owned()
-            tokens.push({ kind: Number(value), loc, raw, lex_form: LexNormal })
+            tokens.push({
+              kind: Number(value),
+              loc,
+              raw,
+              lex_form: NumberLegacyOctalInt,
+            })
             continue
           }
         }
@@ -822,7 +832,12 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       }
       let raw = source.view()[start:offset].to_owned()
       let value = @string.parse_double(num_str)
-      tokens.push({ kind: Number(value), loc, raw, lex_form: LexNormal })
+      let lex_form : @token.LexForm = if is_non_octal_decimal_int {
+        NumberNonOctalDecimalInt
+      } else {
+        LexNormal
+      }
+      tokens.push({ kind: Number(value), loc, raw, lex_form })
       continue
     }
     // Identifiers / Keywords (including \uXXXX and \u{XXXXX} escapes)

@@ -526,3 +526,39 @@ test "string with \\n escape is LexNormal" {
   let toks = @lexer.tokenize("\"a\\nb\"")
   inspect(toks[0].lex_form, content="LexNormal")
 }
+
+///|
+test "numeric 0777 tags as NumberLegacyOctalInt" {
+  let toks = @lexer.tokenize("0777")
+  inspect(toks[0].lex_form, content="NumberLegacyOctalInt")
+}
+
+///|
+test "numeric 08 tags as NumberNonOctalDecimalInt" {
+  let toks = @lexer.tokenize("08")
+  inspect(toks[0].lex_form, content="NumberNonOctalDecimalInt")
+}
+
+///|
+test "numeric 09 tags as NumberNonOctalDecimalInt" {
+  let toks = @lexer.tokenize("09")
+  inspect(toks[0].lex_form, content="NumberNonOctalDecimalInt")
+}
+
+///|
+test "numeric 0o777 (modern octal) is LexNormal" {
+  let toks = @lexer.tokenize("0o777")
+  inspect(toks[0].lex_form, content="LexNormal")
+}
+
+///|
+test "plain numeric 100 is LexNormal" {
+  let toks = @lexer.tokenize("100")
+  inspect(toks[0].lex_form, content="LexNormal")
+}
+
+///|
+test "numeric 0 is LexNormal" {
+  let toks = @lexer.tokenize("0")
+  inspect(toks[0].lex_form, content="LexNormal")
+}
