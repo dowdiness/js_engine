@@ -11801,3 +11801,36 @@ test "strict legacy octal: never-called function still errors" {
     content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 2, col 16",
   )
 }
+
+///|
+test "class method with legacy octal escape key" {
+  let src =
+    #|class C { "\1"() {} }
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 1, col 11",
+  )
+}
+
+///|
+test "class method with legacy octal numeric key" {
+  let src =
+    #|class C { 0777() {} }
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Octal literals are not allowed in strict mode at line 1, col 11",
+  )
+}
+
+///|
+test "class field with legacy octal numeric key" {
+  let src =
+    #|class C { 08 = 1; }
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Decimals with leading zeros are not allowed in strict mode at line 1, col 11",
+  )
+}

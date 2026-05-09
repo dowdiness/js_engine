@@ -651,13 +651,15 @@ fn validate_block_early_errors_expr(
     ClassExpr(_, _, members, _) =>
       for mbr in members {
         match mbr {
-          @ast.ClassMember::Method(m) =>
+          @ast.ClassMember::Method(m) => {
             // Class bodies are always strict.
+            validate_block_early_errors_expr(m.key, true)
             validate_block_early_errors_expr(m.value, true)
+          }
           @ast.ClassMember::Field(f) => {
-            if f.computed {
-              validate_block_early_errors_expr(f.key, true)
-            }
+            // Visit the field key unconditionally (non-computed StringLit/NumberLit
+            // keys can carry legacy octal lex_form and class bodies are always strict).
+            validate_block_early_errors_expr(f.key, true)
             match f.initializer {
               Some(expr) => validate_block_early_errors_expr(expr, true)
               None => ()
@@ -1004,13 +1006,15 @@ fn validate_block_early_errors_stmt(
     ClassDecl(_, _, members, _) =>
       for mbr in members {
         match mbr {
-          @ast.ClassMember::Method(m) =>
+          @ast.ClassMember::Method(m) => {
             // Class bodies are always strict.
+            validate_block_early_errors_expr(m.key, true)
             validate_block_early_errors_expr(m.value, true)
+          }
           @ast.ClassMember::Field(f) => {
-            if f.computed {
-              validate_block_early_errors_expr(f.key, true)
-            }
+            // Visit the field key unconditionally (non-computed StringLit/NumberLit
+            // keys can carry legacy octal lex_form and class bodies are always strict).
+            validate_block_early_errors_expr(f.key, true)
             match f.initializer {
               Some(expr) => validate_block_early_errors_expr(expr, true)
               None => ()
