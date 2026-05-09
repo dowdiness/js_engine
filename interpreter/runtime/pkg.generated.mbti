@@ -271,6 +271,8 @@ pub fn type_of(Value) -> String
 
 pub fn utf16_length(String) -> Int
 
+pub fn validate_function_constructor_params(Bool, Array[String], String?, Array[@ast.Stmt]) -> Unit raise
+
 pub fn validate_non_configurable(PropDescriptor, String, Bool, Bool, Bool, Bool?, Bool?, Bool?, Value?, Value?, () -> Value, () -> Value?) -> Unit raise
 
 pub let well_known_async_iterator_sym : @ref.Ref[SymbolData?]

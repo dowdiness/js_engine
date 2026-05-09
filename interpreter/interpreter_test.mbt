@@ -11895,3 +11895,90 @@ test "new AsyncFunction with strict directive and legacy octal" {
     content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 2, col 15",
   )
 }
+
+///|
+test "new Function rejects duplicate params under strict directive" {
+  let src =
+    #|new Function('a', 'a', '"use strict";');
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Duplicate parameter name not allowed in this context",
+  )
+}
+
+///|
+test "new Function rejects 'eval' param under strict directive" {
+  let src =
+    #|new Function('eval', '"use strict"; return eval;');
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Unexpected eval or arguments in strict mode",
+  )
+}
+
+///|
+test "new Function rejects 'arguments' param under strict directive" {
+  let src =
+    #|new Function('arguments', '"use strict"; return arguments;');
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Unexpected eval or arguments in strict mode",
+  )
+}
+
+///|
+test "new Function rejects 'use strict' with non-simple params (default)" {
+  let src =
+    #|new Function('a = 1', '"use strict";');
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Illegal 'use strict' directive in function with non-simple parameter list",
+  )
+}
+
+///|
+test "new Function rejects 'use strict' with non-simple params (rest)" {
+  let src =
+    #|new Function('...a', '"use strict";');
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Illegal 'use strict' directive in function with non-simple parameter list",
+  )
+}
+
+///|
+test "new GeneratorFunction rejects duplicate params under strict" {
+  let src =
+    #|let GF = (function*(){}).constructor;
+    #|new GF('a', 'a', '"use strict";');
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Duplicate parameter name not allowed in this context",
+  )
+}
+
+///|
+test "new AsyncFunction rejects 'eval' param under strict" {
+  let src =
+    #|let AF = (async function(){}).constructor;
+    #|new AF('eval', '"use strict";');
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Unexpected eval or arguments in strict mode",
+  )
+}
+
+///|
+test "new Function allows duplicate params in sloppy mode" {
+  let src =
+    #|var f = new Function('a', 'a', 'return a;');
+  let output = run_output(src + "\nconsole.log(f(1, 2));")
+  inspect(output, content="[\"2\"]")
+}

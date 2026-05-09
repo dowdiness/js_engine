@@ -348,6 +348,12 @@ fn setup_function_builtins(env : Environment) -> Unit {
               fn_props["length"] = Value::Number(params.length().to_double())
               // Validate static early errors against the function's strict context.
               let body_strict = @runtime.has_use_strict(body)
+              @runtime.validate_function_constructor_params(
+                true,
+                params,
+                None,
+                body,
+              )
               interp.validate_block_early_errors(body, body_strict)
               return Value::Object({
                 bag: {
@@ -378,6 +384,10 @@ fn setup_function_builtins(env : Environment) -> Unit {
               fn_props["length"] = Value::Number(params.length().to_double())
               // Validate static early errors against the function's strict context.
               let body_strict = @runtime.has_use_strict(body)
+              let param_names : Array[String] = params.map(p => p.name)
+              @runtime.validate_function_constructor_params(
+                false, param_names, rest_param, body,
+              )
               interp.validate_block_early_errors(body, body_strict)
               return Value::Object({
                 bag: {

@@ -660,6 +660,7 @@ pub fn setup_async_function_constructor(env : Environment) -> Unit {
           AsyncFuncDecl(_, params, body, _) => {
             // Validate static early errors against the function's strict context.
             let body_strict = has_use_strict(body)
+            validate_function_constructor_params(true, params, None, body)
             interp.validate_block_early_errors(body, body_strict)
             return interp.make_async_function(
               Some("anonymous"),
@@ -673,6 +674,10 @@ pub fn setup_async_function_constructor(env : Environment) -> Unit {
           AsyncFuncDeclExt(_, params, rest_param, body, _) => {
             // Validate static early errors against the function's strict context.
             let body_strict = has_use_strict(body)
+            let param_names : Array[String] = params.map(p => p.name)
+            validate_function_constructor_params(
+              false, param_names, rest_param, body,
+            )
             interp.validate_block_early_errors(body, body_strict)
             return interp.make_async_function_ext(
               Some("anonymous"),
