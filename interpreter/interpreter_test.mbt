@@ -11780,6 +11780,55 @@ test "bare \\0 NUL is allowed in strict" {
 }
 
 ///|
+test "strict legacy octal: \\8 (NonOctalDecimalEscape) rejected" {
+  let src =
+    #|"use strict"; "\8";
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 1, col 15",
+  )
+}
+
+///|
+test "strict legacy octal: \\9 (NonOctalDecimalEscape) rejected" {
+  let src =
+    #|"use strict"; "\9";
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 1, col 15",
+  )
+}
+
+///|
+test "strict legacy octal: \\01 (\\0 followed by digit) rejected" {
+  let src =
+    #|"use strict"; "\01";
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 1, col 15",
+  )
+}
+
+///|
+test "non-strict: \\8 evaluates to literal '8'" {
+  let src =
+    #|"\8"
+  let result = run(src)
+  inspect(result.to_string(), content="8")
+}
+
+///|
+test "non-strict: \\9 evaluates to literal '9'" {
+  let src =
+    #|"\9"
+  let result = run(src)
+  inspect(result.to_string(), content="9")
+}
+
+///|
 test "strict legacy octal: \\1 nested in dead branch still errors" {
   let src =
     #|"use strict"; if (false) { "\1"; }

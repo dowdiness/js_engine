@@ -1737,3 +1737,48 @@ test "module: import with legacy octal source string is SyntaxError" {
     ),
   )
 }
+
+///|
+/// run_modules (multi-module loader) path: legacy-octal source string in
+/// any participating module must surface as a SyntaxError before any module
+/// body executes.
+test "run_modules: legacy octal in import source rejected by loader" {
+  let modules : Array[(String, String)] = [
+    ("./helper", (#|export const v = 1;
+    )),
+    ("./main", (#|import v from "\1";
+    )),
+  ]
+  let result = try {
+    let _ = @js_engine.run_modules(modules)
+    "no error thrown"
+  } catch {
+    e => e.to_string()
+  }
+  inspect(
+    result,
+    content=(
+      #|SyntaxError(message="Octal escape sequences are not allowed in strict mode at line 1, col 15")
+    ),
+  )
+}
+
+///|
+test "run_modules: legacy octal escape in module body rejected" {
+  let modules : Array[(String, String)] = [
+    ("./main", (#|"\1";
+    )),
+  ]
+  let result = try {
+    let _ = @js_engine.run_modules(modules)
+    "no error thrown"
+  } catch {
+    e => e.to_string()
+  }
+  inspect(
+    result,
+    content=(
+      #|SyntaxError(message="Octal escape sequences are not allowed in strict mode at line 1, col 1")
+    ),
+  )
+}

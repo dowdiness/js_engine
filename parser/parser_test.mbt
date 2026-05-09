@@ -582,3 +582,43 @@ test "object-pattern key carries lex_form" {
     _ => fail("expected DestructureDecl with ObjectPat")
   }
 }
+
+///|
+test "import side-effect propagates source_lex_form" {
+  let prog = @parser.parse("import \"\\1\";")
+  match prog.stmts[0] {
+    ImportDecl(_, _, _, _, lex_form, _) =>
+      inspect(lex_form, content="StringLegacyOctalEscape")
+    _ => fail("expected ImportDecl")
+  }
+}
+
+///|
+test "import from-clause propagates source_lex_form" {
+  let prog = @parser.parse("import x from \"\\1\";")
+  match prog.stmts[0] {
+    ImportDecl(_, _, _, _, lex_form, _) =>
+      inspect(lex_form, content="StringLegacyOctalEscape")
+    _ => fail("expected ImportDecl")
+  }
+}
+
+///|
+test "export-all propagates source_lex_form" {
+  let prog = @parser.parse("export * from \"\\1\";")
+  match prog.stmts[0] {
+    ExportAllDecl(_, _, lex_form, _) =>
+      inspect(lex_form, content="StringLegacyOctalEscape")
+    _ => fail("expected ExportAllDecl")
+  }
+}
+
+///|
+test "export-named-from propagates source_lex_form" {
+  let prog = @parser.parse("export {} from \"\\1\";")
+  match prog.stmts[0] {
+    ExportNamedDecl(_, _, _, lex_form, _) =>
+      inspect(lex_form, content="StringLegacyOctalEscape")
+    _ => fail("expected ExportNamedDecl")
+  }
+}
