@@ -16,6 +16,19 @@ pub fn Loc::default() -> Loc {
 }
 
 ///|
+pub(all) enum LexForm {
+  LexNormal
+  StringLegacyOctalEscape
+  NumberLegacyOctalInt
+  NumberNonOctalDecimalInt
+} derive(Eq, Debug)
+
+///|
+pub impl Show for LexForm with output(self, logger) {
+  Debug::to_repr(self).output(logger)
+}
+
+///|
 pub(all) enum TokenKind {
   // Literals
   Number(Double)
@@ -154,6 +167,7 @@ pub(all) struct Token {
   kind : TokenKind
   loc : Loc
   raw : String
+  lex_form : LexForm
 } derive(Eq, Debug)
 
 ///|
@@ -162,11 +176,16 @@ pub impl Show for Token with output(self, logger) {
 }
 
 ///|
-pub fn Token::new(kind : TokenKind, loc : Loc, raw : String) -> Token {
-  { kind, loc, raw }
+pub fn Token::new(
+  kind : TokenKind,
+  loc : Loc,
+  raw : String,
+  lex_form? : LexForm = LexNormal,
+) -> Token {
+  { kind, loc, raw, lex_form }
 }
 
 ///|
 pub fn Token::eof(loc : Loc) -> Token {
-  { kind: EOF, loc, raw: "" }
+  { kind: EOF, loc, raw: "", lex_form: LexNormal }
 }
