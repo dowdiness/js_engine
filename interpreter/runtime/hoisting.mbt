@@ -1040,8 +1040,17 @@ fn validate_block_early_errors_stmt(
       validate_block_early_errors_expr(obj_expr, strict_context)
       validate_block_early_errors_stmt(body, strict_context)
     }
-    ExportNamedDecl(Some(decl), _, _, _, _) =>
-      validate_block_early_errors_stmt(decl, strict_context)
+    ImportDecl(_, _, _, _, source_lex_form, loc) =>
+      validate_strict_lex_form(source_lex_form, loc, strict_context)
+    ExportAllDecl(_, _, source_lex_form, loc) =>
+      validate_strict_lex_form(source_lex_form, loc, strict_context)
+    ExportNamedDecl(decl_opt, _, _, source_lex_form, loc) => {
+      validate_strict_lex_form(source_lex_form, loc, strict_context)
+      match decl_opt {
+        Some(decl) => validate_block_early_errors_stmt(decl, strict_context)
+        None => ()
+      }
+    }
     ExportDefaultDecl(expr, _) =>
       validate_block_early_errors_expr(expr, strict_context)
     _ => ()
