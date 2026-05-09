@@ -1416,4 +1416,3 @@ pub fn Interpreter::get_computed_property(
     _ => Undefined
   }
 }
-

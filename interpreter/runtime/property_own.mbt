@@ -975,8 +975,12 @@ pub fn Interpreter::array_set_length(
     if !arr.length_writable {
       return false
     }
+    let prev_len = arr.elements.length()
     while arr.elements.length().to_int64() < new_len64 {
       arr.elements.push(Undefined)
+    }
+    for j in prev_len..<arr.elements.length() {
+      arr.holes.set(j, ())
     }
     match partial.writable {
       Some(false) => arr.length_writable = false
@@ -1010,6 +1014,7 @@ pub fn Interpreter::array_set_length(
     }
     let _removed = arr.elements.pop()
     let _ = arr.bag.descriptors.remove(i.to_string())
+    let _ = arr.holes.remove(i)
     i = i - 1
   }
   if lock_after {

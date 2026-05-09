@@ -624,17 +624,11 @@ pub fn setup_object_builtins(
                     continue
                   }
                   let key = i.to_string()
-                  let enumerable = match data.bag.descriptors.get(key) {
-                    Some(d) => d.enumerable
-                    None => true
-                  }
-                  if enumerable {
-                    let v = match data.bag.descriptors.get(key) {
-                      Some({ getter: Some(g), .. }) =>
-                        interp.call_value(g, obj, [], loc)
-                      _ => data.elements[i]
-                    }
-                    vals.push(v)
+                  match data.bag.descriptors.get(key) {
+                    Some({ enumerable: false, .. }) => ()
+                    Some({ getter: Some(g), .. }) =>
+                      vals.push(interp.call_value(g, obj, [], loc))
+                    _ => vals.push(data.elements[i])
                   }
                 }
                 let sorted = @runtime.sort_property_keys(data.bag.properties)
@@ -658,98 +652,102 @@ pub fn setup_object_builtins(
               _ => @runtime.make_array([])
             }
           }),
-          "entries": @runtime.make_interp_static_func(name="entries", length=1, fn(
-            interp,
-            args,
-          ) raise {
-            let obj = if args.length() > 0 { args[0] } else { Undefined }
-            match obj {
-              Null | Undefined =>
-                raise @errors.TypeError(
-                  message="Cannot convert undefined or null to object",
-                )
-              Object(data) => {
-                let entries : Array[Value] = []
-                let sorted = @runtime.sort_property_keys(data.bag.properties)
-                for k in sorted {
-                  let enumerable = match data.bag.descriptors.get(k) {
-                    Some(d) => d.enumerable
-                    None => true
-                  }
-                  if enumerable {
-                    match data.bag.properties.get(k) {
-                      Some(v) =>
-                        entries.push(
-                          @runtime.make_array([Value::String_(k), v]),
-                        )
-                      None => ()
-                    }
-                  }
-                }
-                @runtime.make_array(entries)
-              }
-              Value::String_(s) => {
-                // String objects have enumerable indexed properties
-                let entries : Array[Value] = []
-                let chars = s.to_array()
-                for i = 0; i < chars.length(); i = i + 1 {
-                  entries.push(
-                    @runtime.make_array([
-                      Value::String_(i.to_string()),
-                      Value::String_(chars[i].to_string()),
-                    ]),
+          "entries": @runtime.make_interp_static_func(
+            name="entries",
+            length=1,
+            fn(interp, args) raise {
+              let obj = if args.length() > 0 { args[0] } else { Undefined }
+              match obj {
+                Null | Undefined =>
+                  raise @errors.TypeError(
+                    message="Cannot convert undefined or null to object",
                   )
-                }
-                @runtime.make_array(entries)
-              }
-              Value::Array(data) => {
-                // Array objects - keys must be strings per spec.
-                let loc = @token.Loc::default()
-                let entries : Array[Value] = []
-                for i = 0; i < data.elements.length(); i = i + 1 {
-                  if data.holes.contains(i) {
-                    continue
-                  }
-                  let key = i.to_string()
-                  let enumerable = match data.bag.descriptors.get(key) {
-                    Some(d) => d.enumerable
-                    None => true
-                  }
-                  if enumerable {
-                    let v = match data.bag.descriptors.get(key) {
-                      Some({ getter: Some(g), .. }) =>
-                        interp.call_value(g, obj, [], loc)
-                      _ => data.elements[i]
+                Object(data) => {
+                  let entries : Array[Value] = []
+                  let sorted = @runtime.sort_property_keys(data.bag.properties)
+                  for k in sorted {
+                    let enumerable = match data.bag.descriptors.get(k) {
+                      Some(d) => d.enumerable
+                      None => true
                     }
+                    if enumerable {
+                      match data.bag.properties.get(k) {
+                        Some(v) =>
+                          entries.push(
+                            @runtime.make_array([Value::String_(k), v]),
+                          )
+                        None => ()
+                      }
+                    }
+                  }
+                  @runtime.make_array(entries)
+                }
+                Value::String_(s) => {
+                  // String objects have enumerable indexed properties
+                  let entries : Array[Value] = []
+                  let chars = s.to_array()
+                  for i = 0; i < chars.length(); i = i + 1 {
                     entries.push(
-                      @runtime.make_array([Value::String_(key), v]),
+                      @runtime.make_array([
+                        Value::String_(i.to_string()),
+                        Value::String_(chars[i].to_string()),
+                      ]),
                     )
                   }
+                  @runtime.make_array(entries)
                 }
-                let sorted = @runtime.sort_property_keys(data.bag.properties)
-                for k in sorted {
-                  if is_internal_array_bag_key(k) {
-                    continue
-                  }
-                  let enumerable = match data.bag.descriptors.get(k) {
-                    Some(d) => d.enumerable
-                    None => true
-                  }
-                  if enumerable {
-                    match data.bag.properties.get(k) {
-                      Some(v) =>
+                Value::Array(data) => {
+                  // Array objects - keys must be strings per spec.
+                  let loc = @token.Loc::default()
+                  let entries : Array[Value] = []
+                  for i = 0; i < data.elements.length(); i = i + 1 {
+                    if data.holes.contains(i) {
+                      continue
+                    }
+                    let key = i.to_string()
+                    match data.bag.descriptors.get(key) {
+                      Some({ enumerable: false, .. }) => ()
+                      Some({ getter: Some(g), .. }) =>
                         entries.push(
-                          @runtime.make_array([Value::String_(k), v]),
+                          @runtime.make_array([
+                            Value::String_(key),
+                            interp.call_value(g, obj, [], loc),
+                          ]),
                         )
-                      None => ()
+                      _ =>
+                        entries.push(
+                          @runtime.make_array([
+                            Value::String_(key),
+                            data.elements[i],
+                          ]),
+                        )
                     }
                   }
+                  let sorted = @runtime.sort_property_keys(data.bag.properties)
+                  for k in sorted {
+                    if is_internal_array_bag_key(k) {
+                      continue
+                    }
+                    let enumerable = match data.bag.descriptors.get(k) {
+                      Some(d) => d.enumerable
+                      None => true
+                    }
+                    if enumerable {
+                      match data.bag.properties.get(k) {
+                        Some(v) =>
+                          entries.push(
+                            @runtime.make_array([Value::String_(k), v]),
+                          )
+                        None => ()
+                      }
+                    }
+                  }
+                  @runtime.make_array(entries)
                 }
-                @runtime.make_array(entries)
+                _ => @runtime.make_array([])
               }
-              _ => @runtime.make_array([])
-            }
-          }),
+            },
+          ),
           "create": @runtime.make_native_func(name="create", length=2, fn(
             args,
           ) raise {
@@ -984,6 +982,7 @@ pub fn setup_object_builtins(
                         }
                         let k = idx.to_string()
                         let v = match src.bag.descriptors.get(k) {
+                          Some({ enumerable: false, .. }) => continue
                           Some({ getter: Some(g), .. }) =>
                             interp.call_value(g, args[i], [], loc)
                           _ => src.elements[idx]

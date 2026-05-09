@@ -205,9 +205,13 @@ pub fn Interpreter::set_property(
         let cur_elem_len = data.elements.length().to_int64()
         // Expand elements if the gap is small enough to materialise
         if n64 > cur_elem_len && n64 - cur_elem_len <= 100000L {
+          let prev_len = data.elements.length()
           let target = n64.to_int()
           while data.elements.length() < target {
             data.elements.push(Undefined)
+          }
+          for j in prev_len..<target {
+            data.holes.set(j, ())
           }
         }
         // Keep the length override in sync: set it when the logical length
@@ -261,8 +265,21 @@ pub fn Interpreter::set_property(
             }
             return value
           }
+          let is_own = i < data.elements.length() && !data.holes.contains(i)
+          if !is_own && !data.extensible {
+            if strict {
+              raise @errors.TypeError(
+                message="Cannot add property \{i}, object is not extensible",
+              )
+            }
+            return value
+          }
+          let prev_len = data.elements.length()
           while data.elements.length() <= i {
             data.elements.push(Undefined)
+          }
+          for j in prev_len..<i {
+            data.holes.set(j, ())
           }
           data.holes.remove(i)
           data.elements[i] = value
@@ -1164,8 +1181,21 @@ pub fn Interpreter::set_computed_property(
                 }
               None => ()
             }
+            let is_own = i < data.elements.length() && !data.holes.contains(i)
+            if !is_own && !data.extensible {
+              if strict {
+                raise @errors.TypeError(
+                  message="Cannot add property \{i}, object is not extensible",
+                )
+              }
+              return value
+            }
+            let prev_len = data.elements.length()
             while data.elements.length() <= i {
               data.elements.push(Undefined)
+            }
+            for j in prev_len..<i {
+              data.holes.set(j, ())
             }
             data.holes.remove(i)
             data.elements[i] = value
@@ -1237,8 +1267,22 @@ pub fn Interpreter::set_computed_property(
                         }
                       None => ()
                     }
+                    let is_own = idx < data.elements.length() &&
+                      !data.holes.contains(idx)
+                    if !is_own && !data.extensible {
+                      if strict {
+                        raise @errors.TypeError(
+                          message="Cannot add property \{idx}, object is not extensible",
+                        )
+                      }
+                      return value
+                    }
+                    let prev_len = data.elements.length()
                     while data.elements.length() <= idx {
                       data.elements.push(Undefined)
+                    }
+                    for j in prev_len..<idx {
+                      data.holes.set(j, ())
                     }
                     data.holes.remove(idx)
                     data.elements[idx] = value
@@ -1458,4 +1502,3 @@ pub fn get_func_length(callable : Callable) -> Int {
       }
   }
 }
-
