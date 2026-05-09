@@ -535,12 +535,42 @@ fn validate_pattern_early_errors(
 }
 
 ///|
+fn validate_strict_lex_form(
+  form : @token.LexForm,
+  loc : @token.Loc,
+  strict_context : Bool,
+) -> Unit raise Error {
+  if !strict_context {
+    return
+  }
+  match form {
+    LexNormal => ()
+    StringLegacyOctalEscape =>
+      raise @errors.SyntaxError(
+        message="Octal escape sequences are not allowed in strict mode at line \{loc.line}, col \{loc.col}",
+      )
+    NumberLegacyOctalInt =>
+      raise @errors.SyntaxError(
+        message="Octal literals are not allowed in strict mode at line \{loc.line}, col \{loc.col}",
+      )
+    NumberNonOctalDecimalInt =>
+      raise @errors.SyntaxError(
+        message="Decimals with leading zeros are not allowed in strict mode at line \{loc.line}, col \{loc.col}",
+      )
+  }
+}
+
+///|
 fn validate_block_early_errors_expr(
   expr : @ast.Expr,
   strict_context : Bool,
 ) -> Unit raise Error {
   match expr {
     Ident(name, _) => validate_strict_identifier_reference(strict_context, name)
+    StringLit(_, _, lex_form, loc) =>
+      validate_strict_lex_form(lex_form, loc, strict_context)
+    NumberLit(_, lex_form, loc) =>
+      validate_strict_lex_form(lex_form, loc, strict_context)
     FuncExpr(_, _, body, _) => {
       validate_block_statement_list_early_errors(
         body,

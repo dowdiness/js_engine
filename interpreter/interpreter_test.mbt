@@ -27,6 +27,23 @@ fn run_error_display(source : String) -> String {
 }
 
 ///|
+fn run(source : String) -> Value raise Error {
+  let (_, result) = run_js(source)
+  result
+}
+
+///|
+fn run_throws(source : String) -> String {
+  try {
+    let _ = run_js(source)
+    "no error thrown"
+  } catch {
+    @runtime.JsException(val) => error_display(val)
+    e => e.to_string()
+  }
+}
+
+///|
 fn run_output_annex_b(source : String) -> Array[String] raise Error {
   let interp = new_interpreter(annex_b=true)
   let prog = @parser.parse(source)
@@ -11703,4 +11720,84 @@ test "ToPrimitive: user error from valueOf accessor propagates with original ide
     #|console.log(caught);
   let output = run_output(src)
   inspect(output, content="[\"MyError:from-valueOf\"]")
+}
+
+///|
+test "strict legacy octal: \\1 in string literal" {
+  let src =
+    #|"use strict"; "\1";
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 1, col 15",
+  )
+}
+
+///|
+test "strict legacy octal: 0777 numeric literal" {
+  let src =
+    #|"use strict"; 0777;
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Octal literals are not allowed in strict mode at line 1, col 15",
+  )
+}
+
+///|
+test "strict legacy octal: 08 numeric literal" {
+  let src =
+    #|"use strict"; 08;
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Decimals with leading zeros are not allowed in strict mode at line 1, col 15",
+  )
+}
+
+///|
+test "non-strict legacy octal: \\1 is allowed" {
+  let src =
+    #|"\1"
+  let result = run(src)
+  inspect(result.to_string(), content="\u{0001}")
+}
+
+///|
+test "non-strict legacy octal: 0777 evaluates to 511" {
+  let src =
+    #|0777
+  let result = run(src)
+  inspect(result.to_string(), content="511")
+}
+
+///|
+test "bare \\0 NUL is allowed in strict" {
+  let src =
+    #|"use strict"; "\0".charCodeAt(0)
+  let result = run(src)
+  inspect(result.to_string(), content="0")
+}
+
+///|
+test "strict legacy octal: \\1 nested in dead branch still errors" {
+  let src =
+    #|"use strict"; if (false) { "\1"; }
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 1, col 28",
+  )
+}
+
+///|
+test "strict legacy octal: never-called function still errors" {
+  let src =
+    #|"use strict";
+    #|function f() { "\1"; }
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 2, col 16",
+  )
 }
