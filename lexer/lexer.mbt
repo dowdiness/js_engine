@@ -76,31 +76,57 @@ fn is_line_terminator(c : Char) -> Bool {
 
 ///|
 fn is_id_start_cp(cp : Int) -> Bool {
-  // For ASCII range, validate strictly; for non-ASCII, accept Unicode letters
-  // but reject whitespace and line terminators
+  // ES262 §11.6 uses `ID_Start`, which is `XID_Start ∪ Other_ID_Start`.
+  // Our table dependency exposes XID_Start (NFKC-stable variant); the six
+  // grandfathered Other_ID_Start codepoints below are added explicitly so
+  // identifiers like `℘` (U+2118) keep working per UAX #31 R1.
   if cp < 128 {
     is_alpha(cp.unsafe_to_char())
+  } else if cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF) {
+    false
+  } else if is_other_id_start(cp) {
+    true
   } else {
-    !is_whitespace_or_line_terminator_cp(cp)
+    @unicode_xid.is_xid_start(cp.unsafe_to_char())
   }
 }
 
 ///|
 fn is_id_continue_cp(cp : Int) -> Bool {
-  // For ASCII range, validate strictly; for non-ASCII, accept Unicode letters
-  // but reject whitespace and line terminators
+  // ES262 §11.6 uses `ID_Continue ∪ Other_ID_Continue ∪ Other_ID_Start ∪
+  // {ZWNJ, ZWJ}`. ZWNJ/ZWJ are already in XID_Continue. Other_ID_Continue
+  // and Other_ID_Start are layered on top of the XID_Continue table below.
   if cp < 128 {
     is_alnum(cp.unsafe_to_char())
+  } else if cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF) {
+    false
+  } else if is_other_id_start(cp) || is_other_id_continue(cp) {
+    true
   } else {
-    !is_whitespace_or_line_terminator_cp(cp)
+    @unicode_xid.is_xid_continue(cp.unsafe_to_char())
   }
 }
 
 ///|
-fn is_whitespace_or_line_terminator_cp(cp : Int) -> Bool {
-  is_unicode_space_cp(cp) ||
-  cp == 0x2028 || // Line Separator
-  cp == 0x2029 // Paragraph Separator
+/// Other_ID_Start (Unicode 17.0): grandfathered identifier-start codepoints
+/// that are not in `XID_Start` but are required by ES262 / UAX #31 R1.
+fn is_other_id_start(cp : Int) -> Bool {
+  cp == 0x1885 || // MONGOLIAN LETTER ALI GALI BALUDA
+  cp == 0x1886 || // MONGOLIAN LETTER ALI GALI THREE BALUDA
+  cp == 0x2118 || // SCRIPT CAPITAL P
+  cp == 0x212E || // ESTIMATED SYMBOL
+  cp == 0x309B || // KATAKANA-HIRAGANA VOICED SOUND MARK
+  cp == 0x309C // KATAKANA-HIRAGANA SEMI-VOICED SOUND MARK
+}
+
+///|
+/// Other_ID_Continue (Unicode 17.0): grandfathered identifier-continue
+/// codepoints not in `XID_Continue` but required by ES262.
+fn is_other_id_continue(cp : Int) -> Bool {
+  cp == 0x00B7 || // MIDDLE DOT
+  cp == 0x0387 || // GREEK ANO TELEIA
+  (cp >= 0x1369 && cp <= 0x1371) || // ETHIOPIC DIGIT ONE..NINE
+  cp == 0x19DA // NEW TAI LUE THAM DIGIT ONE
 }
 
 ///|

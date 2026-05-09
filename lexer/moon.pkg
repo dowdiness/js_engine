@@ -2,4 +2,5 @@ import {
   "dowdiness/js_engine/token",
   "dowdiness/js_engine/errors",
   "moonbitlang/core/string",
+  "KeqingMoe/unicode_xid",
 }
