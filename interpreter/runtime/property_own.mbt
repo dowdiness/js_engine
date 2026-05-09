@@ -975,12 +975,24 @@ pub fn Interpreter::array_set_length(
     if !arr.length_writable {
       return false
     }
-    let prev_len = arr.elements.length()
-    while arr.elements.length().to_int64() < new_len64 {
-      arr.elements.push(Undefined)
+    // Mirror the bounded grow in `set_property`'s length path
+    // (property_set.mbt §10.4.2.4 step 3.b): only materialise small gaps.
+    // Larger gaps fall back to the logical-length override so something like
+    // `Object.defineProperty(arr, "length", { value: 1e9 })` doesn't try to
+    // allocate a billion slots.
+    if new_len64 - cur_len64 <= 100000L {
+      let prev_len = arr.elements.length()
+      while arr.elements.length().to_int64() < new_len64 {
+        arr.elements.push(Undefined)
+      }
+      for j in prev_len..<arr.elements.length() {
+        arr.holes.set(j, ())
+      }
     }
-    for j in prev_len..<arr.elements.length() {
-      arr.holes.set(j, ())
+    if new_len64 > arr.elements.length().to_int64() {
+      set_array_length_override(arr, new_len64)
+    } else {
+      clear_array_length_override(arr)
     }
     match partial.writable {
       Some(false) => arr.length_writable = false
