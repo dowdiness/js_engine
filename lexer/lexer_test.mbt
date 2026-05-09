@@ -478,3 +478,51 @@ test "lex trailing numeric separator error" {
   let result = Ok(tok_kinds("1_")) catch { _ => Err(()) }
   inspect(result, content="Err(())")
 }
+
+///|
+test "legacy octal escape: bare digit tags token" {
+  let toks = @lexer.tokenize("\"\\1\"")
+  inspect(toks[0].lex_form, content="StringLegacyOctalEscape")
+}
+
+///|
+test "legacy octal escape: \\7 tags" {
+  let toks = @lexer.tokenize("\"\\7\"")
+  inspect(toks[0].lex_form, content="StringLegacyOctalEscape")
+}
+
+///|
+test "non-octal decimal escape: \\8 tags" {
+  let toks = @lexer.tokenize("\"\\8\"")
+  inspect(toks[0].lex_form, content="StringLegacyOctalEscape")
+}
+
+///|
+test "non-octal decimal escape: \\9 tags" {
+  let toks = @lexer.tokenize("\"\\9\"")
+  inspect(toks[0].lex_form, content="StringLegacyOctalEscape")
+}
+
+///|
+test "bare \\0 (no following digit) does NOT tag" {
+  let toks = @lexer.tokenize("\"\\0\"")
+  inspect(toks[0].lex_form, content="LexNormal")
+}
+
+///|
+test "bare \\0 followed by digit DOES tag" {
+  let toks = @lexer.tokenize("\"\\08\"")
+  inspect(toks[0].lex_form, content="StringLegacyOctalEscape")
+}
+
+///|
+test "plain string is LexNormal" {
+  let toks = @lexer.tokenize("\"hello\"")
+  inspect(toks[0].lex_form, content="LexNormal")
+}
+
+///|
+test "string with \\n escape is LexNormal" {
+  let toks = @lexer.tokenize("\"a\\nb\"")
+  inspect(toks[0].lex_form, content="LexNormal")
+}

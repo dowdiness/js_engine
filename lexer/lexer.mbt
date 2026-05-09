@@ -888,6 +888,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       offset += 1
       col += 1
       let buf = StringBuilder::new()
+      let mut has_legacy_octal_escape = false
       while offset < len && char_at(offset) != quote {
         if char_at(offset) == '\\' && offset + 1 < len {
           offset += 1
@@ -901,6 +902,20 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             'v' => write_code_point(buf, 11) // vertical tab
             'f' => write_code_point(buf, 12) // form feed
             '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' => {
+              // Tag this string token with legacy-octal-escape provenance.
+              // \0 followed by a non-decimal-digit is the spec-allowed exception (NUL).
+              // All other cases (\\1..\\7 always; \\0 followed by 0-9) are legacy.
+              if esc == '0' {
+                let next_is_decimal_digit = offset + 1 < len &&
+                  char_at(offset + 1) >= '0' &&
+                  char_at(offset + 1) <= '9'
+                if next_is_decimal_digit {
+                  has_legacy_octal_escape = true
+                }
+              } else {
+                // \\1..\\7 always tag
+                has_legacy_octal_escape = true
+              }
               // Legacy octal escape (Annex B, non-strict). Parse 1-3 octal digits.
               let d1 = esc.to_int() - 48
               let next_is_octal = offset + 1 < len &&
@@ -962,6 +977,13 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
               write_code_point(buf, cp)
               continue
             }
+            '8' | '9' => {
+              // NonOctalDecimalEscapeSequence (Annex B). In non-strict, the backslash
+              // is dropped and the digit is preserved. In strict, this is a SyntaxError
+              // (handled by the strict-mode validator via the lex_form tag).
+              has_legacy_octal_escape = true
+              buf.write_char(esc)
+            }
             // LineContinuation: \ followed by any LineTerminator (\n, \r, U+2028, U+2029)
             // The backslash and the line terminator are consumed but NOT added to the string value
             _ if is_line_terminator(esc) => {
@@ -1005,12 +1027,12 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       offset += 1 // skip closing quote
       col += 1
       let raw = source.view()[start:offset].to_owned()
-      tokens.push({
-        kind: String_(buf.to_string()),
-        loc,
-        raw,
-        lex_form: LexNormal,
-      })
+      let lex_form : @token.LexForm = if has_legacy_octal_escape {
+        StringLegacyOctalEscape
+      } else {
+        LexNormal
+      }
+      tokens.push({ kind: String_(buf.to_string()), loc, raw, lex_form })
       continue
     }
     // Template literals (backtick)
