@@ -558,6 +558,24 @@ test "plain numeric 100 is LexNormal" {
 }
 
 ///|
+test "numeric 08.1 (leading-zero fractional) is LexNormal" {
+  let toks = @lexer.tokenize("08.1")
+  inspect(toks[0].lex_form, content="LexNormal")
+}
+
+///|
+test "numeric 08e2 (leading-zero exponent) is LexNormal" {
+  let toks = @lexer.tokenize("08e2")
+  inspect(toks[0].lex_form, content="LexNormal")
+}
+
+///|
+test "numeric 09.5 (leading-zero fractional) is LexNormal" {
+  let toks = @lexer.tokenize("09.5")
+  inspect(toks[0].lex_form, content="LexNormal")
+}
+
+///|
 test "numeric 0 is LexNormal" {
   let toks = @lexer.tokenize("0")
   inspect(toks[0].lex_form, content="LexNormal")

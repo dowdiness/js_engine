@@ -736,6 +736,10 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             message="Numeric separator cannot appear before decimal point at line \{loc.line}, col \{col - 1}",
           )
         }
+        // A fractional part promotes the literal beyond
+        // NonOctalDecimalIntegerLiteral; defer the strict-mode early-error
+        // decision for leading-zero fractional/exponent forms (follow-up B).
+        is_non_octal_decimal_int = false
         buf.write_char('.')
         offset += 1
         col += 1
@@ -783,6 +787,10 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             message="Numeric separator cannot appear before exponent at line \{loc.line}, col \{col - 1}",
           )
         }
+        // An exponent part promotes the literal beyond
+        // NonOctalDecimalIntegerLiteral; defer the strict-mode early-error
+        // decision for leading-zero fractional/exponent forms (follow-up B).
+        is_non_octal_decimal_int = false
         buf.write_char('e')
         offset += 1
         col += 1
