@@ -572,3 +572,13 @@ test "parser propagates lex_form to numeric property key" {
     _ => fail("expected ExprStmt(Grouping(ObjectLit(...)))")
   }
 }
+
+///|
+test "object-pattern key carries lex_form" {
+  let prog = @parser.parse("let { \"\\1\": x } = o;")
+  match prog.stmts[0] {
+    DestructureDecl(_, ObjectPat(props, _), _, _) =>
+      inspect(props[0].key_lex_form, content="StringLegacyOctalEscape")
+    _ => fail("expected DestructureDecl with ObjectPat")
+  }
+}

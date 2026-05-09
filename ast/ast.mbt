@@ -177,6 +177,7 @@ pub(all) enum Pattern {
 ///|
 pub(all) struct PropPat {
   key : String
+  key_lex_form : @token.LexForm // NEW: provenance for strict-mode legacy-octal validation
   value : Pattern
   default_val : Expr?
   computed_key : Expr? // For computed property keys: { [expr]: pattern }

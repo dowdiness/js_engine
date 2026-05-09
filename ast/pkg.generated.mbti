@@ -179,6 +179,7 @@ pub impl Show for PropKind
 
 pub(all) struct PropPat {
   key : String
+  key_lex_form : @token.LexForm
   value : Pattern
   default_val : Expr?
   computed_key : Expr?

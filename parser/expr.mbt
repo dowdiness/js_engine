@@ -1776,21 +1776,25 @@ fn expr_to_pattern(expr : @ast.Expr) -> @ast.Pattern raise Error {
         }
         // key: value => { key, value: Pattern, default_val }
         // Extract string key from the key expression, or mark as computed
-        let (key_str, computed_key) : (String, @ast.Expr?) = if prop.computed {
+        let (key_str, key_lex_form, computed_key) : (
+          String,
+          @token.LexForm,
+          @ast.Expr?,
+        ) = if prop.computed {
           // Computed property key: { [expr]: pattern } = obj
-          ("", Some(prop.key))
+          ("", @token.LexForm::LexNormal, Some(prop.key))
         } else {
           match prop.key {
-            StringLit(s, _, _, _) => (s, None)
-            Ident(s, _) => (s, None)
-            NumberLit(n, _, _) => {
+            StringLit(s, _, lex_form, _) => (s, lex_form, None)
+            Ident(s, _) => (s, @token.LexForm::LexNormal, None)
+            NumberLit(n, lex_form, _) => {
               let i = n.to_int()
               let name = if i.to_double() == n {
                 i.to_string()
               } else {
                 n.to_string()
               }
-              (name, None)
+              (name, lex_form, None)
             }
             _ =>
               raise @errors.SyntaxError(
@@ -1804,6 +1808,7 @@ fn expr_to_pattern(expr : @ast.Expr) -> @ast.Pattern raise Error {
         let pat = expr_to_pattern(prop.value)
         prop_pats.push({
           key: key_str,
+          key_lex_form,
           value: pat,
           default_val: None,
           computed_key,

@@ -865,28 +865,37 @@ fn Parser::parse_object_pattern(self : Parser) -> @ast.Pattern raise Error {
       break
     }
     // Parse key: identifier, string literal, number literal, or computed [expr]
-    let (key, computed_key) : (String, @ast.Expr?) = match self.peek_kind() {
+    let (key, key_lex_form, computed_key) : (String, @token.LexForm, @ast.Expr?) = match
+      self.peek_kind() {
       LBracket => {
         let _ = self.advance()
         let key_expr = self.parse_assignment()
         let _ = self.expect(RBracket)
-        ("", Some(key_expr))
+        ("", @token.LexForm::LexNormal, Some(key_expr))
       }
-      String_(s) => {
-        let _ = self.advance()
-        (s, None)
+      String_(_) => {
+        let tok = self.advance()
+        let s = match tok.kind {
+          String_(s) => s
+          _ => ""
+        }
+        (s, tok.lex_form, None)
       }
-      Number(n) => {
-        let _ = self.advance()
+      Number(_) => {
+        let tok = self.advance()
+        let n = match tok.kind {
+          Number(n) => n
+          _ => 0.0
+        }
         let i = n.to_int()
         let name = if i.to_double() == n {
           i.to_string()
         } else {
           n.to_string()
         }
-        (name, None)
+        (name, tok.lex_form, None)
       }
-      _ => (self.expect_ident(), None)
+      _ => (self.expect_ident(), @token.LexForm::LexNormal, None)
     }
     let (value, default_val) : (@ast.Pattern, @ast.Expr?) = if self.eat(Colon) {
       // { key: pattern } or { [expr]: pattern }
@@ -906,7 +915,7 @@ fn Parser::parse_object_pattern(self : Parser) -> @ast.Pattern raise Error {
       }
       (IdentPat(key), def)
     }
-    props.push({ key, value, default_val, computed_key })
+    props.push({ key, key_lex_form, value, default_val, computed_key })
     if !self.at(RBrace) {
       let _ = self.expect(Comma)
     }
