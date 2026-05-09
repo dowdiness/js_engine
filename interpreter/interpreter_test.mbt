@@ -11856,3 +11856,38 @@ test "destructuring pattern key with non-octal-decimal" {
     content="SyntaxError: Decimals with leading zeros are not allowed in strict mode at line 1, col 1",
   )
 }
+
+///|
+test "new Function with strict directive and legacy octal" {
+  let src =
+    #|new Function('"use strict"; "\\1"');
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 2, col 15",
+  )
+}
+
+///|
+test "new GeneratorFunction with strict directive and legacy octal" {
+  let src =
+    #|let GF = (function*(){}).constructor;
+    #|new GF('"use strict"; "\\1"');
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 2, col 15",
+  )
+}
+
+///|
+test "new AsyncFunction with strict directive and legacy octal" {
+  let src =
+    #|let AF = (async function(){}).constructor;
+    #|new AF('"use strict"; "\\1"');
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 2, col 15",
+  )
+}

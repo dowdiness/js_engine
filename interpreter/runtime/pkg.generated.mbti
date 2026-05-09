@@ -505,6 +505,7 @@ pub fn Interpreter::set_property(Self, Value, String, Value, @token.Loc, strict?
 pub fn Interpreter::to_js_string(Self, Value) -> String raise
 pub fn Interpreter::to_number(Self, Value) -> Double raise
 pub fn Interpreter::to_primitive_default(Self, Value, ObjectData) -> Value raise
+pub fn Interpreter::validate_block_early_errors(Self, Array[@ast.Stmt], Bool) -> Unit raise
 
 pub(all) struct MapData {
   entries : Array[(Value, Value)]

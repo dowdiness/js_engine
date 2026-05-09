@@ -657,24 +657,32 @@ pub fn setup_async_function_constructor(env : Environment) -> Unit {
       let prog = @parser.parse(source)
       if prog.stmts.length() > 0 {
         match prog.stmts[0] {
-          AsyncFuncDecl(_, params, body, _) =>
+          AsyncFuncDecl(_, params, body, _) => {
+            // Validate static early errors against the function's strict context.
+            let body_strict = has_use_strict(body)
+            interp.validate_block_early_errors(body, body_strict)
             return interp.make_async_function(
               Some("anonymous"),
               params,
               None,
               body,
-              has_use_strict(body),
+              body_strict,
               interp.global,
             )
-          AsyncFuncDeclExt(_, params, rest_param, body, _) =>
+          }
+          AsyncFuncDeclExt(_, params, rest_param, body, _) => {
+            // Validate static early errors against the function's strict context.
+            let body_strict = has_use_strict(body)
+            interp.validate_block_early_errors(body, body_strict)
             return interp.make_async_function_ext(
               Some("anonymous"),
               params,
               rest_param,
               body,
-              has_use_strict(body),
+              body_strict,
               interp.global,
             )
+          }
           _ => ()
         }
       }

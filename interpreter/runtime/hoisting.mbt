@@ -1058,7 +1058,7 @@ fn validate_block_early_errors_stmt(
 }
 
 ///|
-fn Interpreter::validate_block_early_errors(
+pub fn Interpreter::validate_block_early_errors(
   _self : Interpreter,
   stmts : Array[@ast.Stmt],
   strict_context : Bool,
