@@ -7,7 +7,7 @@ test "parse variable declaration" {
       #|VarDecl(
       #|  LetKind,
       #|  "x",
-      #|  Some(NumberLit(42, { line: 1, col: 9, offset: 8 })),
+      #|  Some(NumberLit(42, LexNormal, { line: 1, col: 9, offset: 8 })),
       #|  { line: 1, col: 1, offset: 0 },
       #|)
     ),
@@ -23,11 +23,11 @@ test "parse binary precedence" {
       #|ExprStmt(
       #|  Binary(
       #|    Add,
-      #|    NumberLit(1, { line: 1, col: 1, offset: 0 }),
+      #|    NumberLit(1, LexNormal, { line: 1, col: 1, offset: 0 }),
       #|    Binary(
       #|      Mul,
-      #|      NumberLit(2, { line: 1, col: 5, offset: 4 }),
-      #|      NumberLit(3, { line: 1, col: 9, offset: 8 }),
+      #|      NumberLit(2, LexNormal, { line: 1, col: 5, offset: 4 }),
+      #|      NumberLit(3, LexNormal, { line: 1, col: 9, offset: 8 }),
       #|      { line: 1, col: 7, offset: 6 },
       #|    ),
       #|    { line: 1, col: 3, offset: 2 },
@@ -542,6 +542,31 @@ test "parser propagates lex_form for object property key" {
       match props[0].key {
         StringLit(_, _, lex_form, _) =>
           inspect(lex_form, content="StringLegacyOctalEscape")
+        _ => fail("expected StringLit key")
+      }
+    _ => fail("expected ExprStmt(Grouping(ObjectLit(...)))")
+  }
+}
+
+///|
+test "parser propagates lex_form to NumberLit" {
+  let prog = @parser.parse("0777")
+  match prog.stmts[0] {
+    ExprStmt(NumberLit(_, lex_form, _), _) =>
+      inspect(lex_form, content="NumberLegacyOctalInt")
+    _ => fail("expected ExprStmt(NumberLit(...))")
+  }
+}
+
+///|
+test "parser propagates lex_form to numeric property key" {
+  let prog = @parser.parse("({ 08: 1 })")
+  // Numeric prop key normalizes to StringLit but carries Number's lex_form.
+  match prog.stmts[0] {
+    ExprStmt(Grouping(ObjectLit(props, _), _), _) =>
+      match props[0].key {
+        StringLit(_, _, lex_form, _) =>
+          inspect(lex_form, content="NumberNonOctalDecimalInt")
         _ => fail("expected StringLit key")
       }
     _ => fail("expected ExprStmt(Grouping(ObjectLit(...)))")

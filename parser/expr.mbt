@@ -685,7 +685,7 @@ fn Parser::parse_primary(self : Parser) -> @ast.Expr raise Error {
   match tok.kind {
     Number(n) => {
       self.pos += 1
-      NumberLit(n, tok.loc)
+      NumberLit(n, tok.lex_form, tok.loc)
     }
     String_(s) => {
       self.pos += 1
@@ -1783,7 +1783,7 @@ fn expr_to_pattern(expr : @ast.Expr) -> @ast.Pattern raise Error {
           match prop.key {
             StringLit(s, _, _, _) => (s, None)
             Ident(s, _) => (s, None)
-            NumberLit(n, _) => {
+            NumberLit(n, _, _) => {
               let i = n.to_int()
               let name = if i.to_double() == n {
                 i.to_string()

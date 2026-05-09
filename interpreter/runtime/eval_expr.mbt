@@ -91,7 +91,7 @@ fn Interpreter::eval_expr(
   env : Environment,
 ) -> Value raise Error {
   match expr {
-    NumberLit(n, _) => Number(n)
+    NumberLit(n, _, _) => Number(n)
     StringLit(s, _, _, _) => String_(s)
     BoolLit(b, _) => Bool(b)
     NullLit(_) => Null
@@ -444,7 +444,7 @@ fn Interpreter::eval_expr(
           let key_str = match prop.key {
             StringLit(s, _, _, _) => s
             Ident(name, _) => name
-            NumberLit(n, _) => {
+            NumberLit(n, _, _) => {
               let i = n.to_int()
               if i.to_double() == n {
                 i.to_string()

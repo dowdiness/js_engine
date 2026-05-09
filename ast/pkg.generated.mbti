@@ -89,7 +89,7 @@ pub(all) struct ExportSpecifier {
 pub impl Show for ExportSpecifier
 
 pub(all) enum Expr {
-  NumberLit(Double, @token.Loc)
+  NumberLit(Double, @token.LexForm, @token.Loc)
   StringLit(String, Bool, @token.LexForm, @token.Loc)
   BoolLit(Bool, @token.Loc)
   NullLit(@token.Loc)
