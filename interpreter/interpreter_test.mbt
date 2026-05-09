@@ -11834,3 +11834,25 @@ test "class field with legacy octal numeric key" {
     content="SyntaxError: Decimals with leading zeros are not allowed in strict mode at line 1, col 11",
   )
 }
+
+///|
+test "destructuring pattern key with legacy octal escape" {
+  let src =
+    #|"use strict"; let { "\1": x } = {};
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 1, col 1",
+  )
+}
+
+///|
+test "destructuring pattern key with non-octal-decimal" {
+  let src =
+    #|"use strict"; let { 08: x } = {};
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Decimals with leading zeros are not allowed in strict mode at line 1, col 1",
+  )
+}

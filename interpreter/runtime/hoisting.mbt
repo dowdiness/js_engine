@@ -516,6 +516,15 @@ fn validate_pattern_early_errors(
     }
     ObjectPat(props, rest) => {
       for prop in props {
+        // NEW: validate the key's lex_form (only meaningful in strict_context)
+        // Note: PropPat.key is a String, so we need a synthetic loc — use the
+        // pattern's own location if available, or default. PropPat doesn't
+        // currently carry its own loc, so use Loc::default() for now.
+        validate_strict_lex_form(
+          prop.key_lex_form,
+          @token.Loc::default(),
+          strict_context,
+        )
         match prop.computed_key {
           Some(expr) => validate_block_early_errors_expr(expr, strict_context)
           None => ()
