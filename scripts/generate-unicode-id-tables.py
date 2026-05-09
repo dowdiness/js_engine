@@ -76,9 +76,6 @@ def emit(version: str, tables: dict[str, list[tuple[int, int]]]) -> str:
     out.append(f"// Source: DerivedCoreProperties.txt @ Unicode {version}")
     out.append(f"// Properties: {', '.join(PROPERTIES)} (ECMAScript §11.6 / UAX #31 R1)")
     out.append("")
-    out.append("///|")
-    out.append(f"pub let unicode_version : (Int, Int, Int) = {tuple(int(p) for p in version.split('.'))}")
-    out.append("")
     for name in PROPERTIES:
         ranges = tables[name]
         out.append("///|")
@@ -137,7 +134,8 @@ def main() -> None:
 
     text = fetch(args.unicode_version)
     tables = {name: parse_property(text, name) for name in PROPERTIES}
-    args.output.write_text(emit(args.unicode_version, tables))
+    # Pin encoding and newline so regen is hash-stable across platforms.
+    args.output.write_text(emit(args.unicode_version, tables), encoding="utf-8", newline="\n")
     print(f"Wrote {args.output} ({sum(len(v) for v in tables.values())} ranges)", file=sys.stderr)
 
 

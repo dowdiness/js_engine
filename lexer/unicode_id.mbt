@@ -3,9 +3,6 @@
 // Properties: ID_Start, ID_Continue (ECMAScript §11.6 / UAX #31 R1)
 
 ///|
-pub let unicode_version : (Int, Int, Int) = (17, 0, 0)
-
-///|
 /// 684 ranges, sorted and coalesced.
 let id_start_ranges : Array[(Int, Int)] = [
   (0x0041, 0x005A),
