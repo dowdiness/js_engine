@@ -578,7 +578,8 @@ pub fn setup_object_builtins(
               _ => @runtime.make_array([])
             }
           }),
-          "values": @runtime.make_native_func(name="values", length=1, fn(
+          "values": @runtime.make_interp_static_func(name="values", length=1, fn(
+            interp,
             args,
           ) raise {
             let obj = if args.length() > 0 { args[0] } else { Undefined }
@@ -616,6 +617,7 @@ pub fn setup_object_builtins(
               Value::Array(data) => {
                 // Array objects - return array elements, then enumerable own
                 // named properties from the embedded bag.
+                let loc = @token.Loc::default()
                 let vals : Array[Value] = []
                 for i = 0; i < data.elements.length(); i = i + 1 {
                   if data.holes.contains(i) {
@@ -627,7 +629,12 @@ pub fn setup_object_builtins(
                     None => true
                   }
                   if enumerable {
-                    vals.push(data.elements[i])
+                    let v = match data.bag.descriptors.get(key) {
+                      Some({ getter: Some(g), .. }) =>
+                        interp.call_value(g, obj, [], loc)
+                      _ => data.elements[i]
+                    }
+                    vals.push(v)
                   }
                 }
                 let sorted = @runtime.sort_property_keys(data.bag.properties)
@@ -651,7 +658,8 @@ pub fn setup_object_builtins(
               _ => @runtime.make_array([])
             }
           }),
-          "entries": @runtime.make_native_func(name="entries", length=1, fn(
+          "entries": @runtime.make_interp_static_func(name="entries", length=1, fn(
+            interp,
             args,
           ) raise {
             let obj = if args.length() > 0 { args[0] } else { Undefined }
@@ -696,6 +704,7 @@ pub fn setup_object_builtins(
               }
               Value::Array(data) => {
                 // Array objects - keys must be strings per spec.
+                let loc = @token.Loc::default()
                 let entries : Array[Value] = []
                 for i = 0; i < data.elements.length(); i = i + 1 {
                   if data.holes.contains(i) {
@@ -707,11 +716,13 @@ pub fn setup_object_builtins(
                     None => true
                   }
                   if enumerable {
+                    let v = match data.bag.descriptors.get(key) {
+                      Some({ getter: Some(g), .. }) =>
+                        interp.call_value(g, obj, [], loc)
+                      _ => data.elements[i]
+                    }
                     entries.push(
-                      @runtime.make_array([
-                        Value::String_(key),
-                        data.elements[i],
-                      ]),
+                      @runtime.make_array([Value::String_(key), v]),
                     )
                   }
                 }
@@ -839,7 +850,8 @@ pub fn setup_object_builtins(
             }
             obj
           }),
-          "assign": @runtime.make_native_func(name="assign", length=2, fn(
+          "assign": @runtime.make_interp_static_func(name="assign", length=2, fn(
+            interp,
             args,
           ) raise {
             let raw_target = if args.length() > 0 { args[0] } else { Undefined }
@@ -963,14 +975,19 @@ pub fn setup_object_builtins(
                       }
                     }
                     // ToObject conversion: Arrays enumerate elements as indexed properties
-                    Array(src) =>
+                    Array(src) => {
                       // Copy array elements as indexed properties
+                      let loc = @token.Loc::default()
                       for idx = 0; idx < src.elements.length(); idx = idx + 1 {
                         if src.holes.contains(idx) {
                           continue
                         }
                         let k = idx.to_string()
-                        let v = src.elements[idx]
+                        let v = match src.bag.descriptors.get(k) {
+                          Some({ getter: Some(g), .. }) =>
+                            interp.call_value(g, args[i], [], loc)
+                          _ => src.elements[idx]
+                        }
                         let can_write = match data.bag.descriptors.get(k) {
                           Some(d) => d.writable
                           None => true
@@ -988,6 +1005,7 @@ pub fn setup_object_builtins(
                         }
                         data.bag.properties[k] = v
                       }
+                    }
                     // Regular objects have properties and descriptors
                     Object(src) => {
                       // Copy enumerable string properties

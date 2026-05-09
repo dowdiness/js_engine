@@ -1322,11 +1322,16 @@ pub fn Interpreter::get_computed_property(
                   }
                 None => ()
               }
-              // Check bag-backed named properties, then methods.
+              // Check bag-backed named properties, then prototype chain / methods.
               match get_array_named_prop(data, s) {
                 Some(v) => v
                 None =>
-                  (self.stdlib_hooks.get_array_method_with_interp)(data, s)
+                  match get_array_prototype_override(data) {
+                    Some(proto) =>
+                      self.get_property_from_prototype(obj, proto, s, loc)
+                    None =>
+                      (self.stdlib_hooks.get_array_method_with_interp)(data, s)
+                  }
               }
             }
           }
