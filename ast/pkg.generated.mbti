@@ -228,10 +228,10 @@ pub(all) enum Stmt {
   AsyncGeneratorDeclExt(String, Array[Param], String?, Array[Stmt], @token.Loc)
   ClassDecl(String, Expr?, Array[ClassMember], @token.Loc)
   WithStmt(Expr, Stmt, @token.Loc)
-  ImportDecl(String?, Array[ImportSpecifier], String?, String, @token.Loc)
-  ExportNamedDecl(Stmt?, Array[ExportSpecifier], String?, @token.Loc)
+  ImportDecl(String?, Array[ImportSpecifier], String?, String, @token.LexForm, @token.Loc)
+  ExportNamedDecl(Stmt?, Array[ExportSpecifier], String?, @token.LexForm, @token.Loc)
   ExportDefaultDecl(Expr, @token.Loc)
-  ExportAllDecl(String?, String, @token.Loc)
+  ExportAllDecl(String?, String, @token.LexForm, @token.Loc)
 } derive(Eq, @debug.Debug)
 pub impl Show for Stmt
 

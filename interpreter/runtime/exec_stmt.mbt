@@ -1391,11 +1391,11 @@ fn Interpreter::exec_stmt(
       Normal(Undefined)
     }
     // ES Module declarations
-    ImportDecl(default_import, specifiers, namespace_import, source, loc) =>
+    ImportDecl(default_import, specifiers, namespace_import, source, _, loc) =>
       self.exec_import(
         default_import, specifiers, namespace_import, source, env, loc,
       )
-    ExportNamedDecl(decl, specifiers, source, loc) =>
+    ExportNamedDecl(decl, specifiers, source, _, loc) =>
       self.exec_export_named(ctx, decl, specifiers, source, env, loc)
     ExportDefaultDecl(expr, _) => {
       let value = self.eval_expr(ctx, expr, env)
@@ -1419,7 +1419,7 @@ fn Interpreter::exec_stmt(
       }
       Normal(Undefined)
     }
-    ExportAllDecl(ns_alias, source, loc) =>
+    ExportAllDecl(ns_alias, source, _, loc) =>
       self.exec_export_all(ns_alias, source, loc)
     WithStmt(expr, body, _) => {
       // In strict mode, 'with' is always a SyntaxError
@@ -1648,10 +1648,10 @@ fn is_declaration_stmt(stmt : @ast.Stmt) -> Bool {
     | AsyncGeneratorDecl(_, _, _, _)
     | AsyncGeneratorDeclExt(_, _, _, _, _)
     | ClassDecl(_, _, _, _)
-    | ImportDecl(_, _, _, _, _)
-    | ExportNamedDecl(_, _, _, _)
+    | ImportDecl(_, _, _, _, _, _)
+    | ExportNamedDecl(_, _, _, _, _)
     | ExportDefaultDecl(_, _)
-    | ExportAllDecl(_, _, _) => true
+    | ExportAllDecl(_, _, _, _) => true
     _ => false
   }
 }

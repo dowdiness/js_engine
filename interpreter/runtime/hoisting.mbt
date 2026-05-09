@@ -194,7 +194,7 @@ fn collect_block_lexical_decl_names_from_stmt(
           allow_duplicate_block_functions~,
         )
       }
-    ExportNamedDecl(Some(decl), _, _, _) =>
+    ExportNamedDecl(Some(decl), _, _, _, _) =>
       collect_block_lexical_decl_names_from_stmt(
         decl,
         lexical_names,
@@ -429,7 +429,7 @@ fn collect_block_var_decl_names_from_stmt(
         include_function_decls~,
         in_block~,
       )
-    ExportNamedDecl(Some(decl), _, _, _) =>
+    ExportNamedDecl(Some(decl), _, _, _, _) =>
       collect_block_var_decl_names_from_stmt(
         decl,
         var_names,
@@ -997,7 +997,7 @@ fn validate_block_early_errors_stmt(
       validate_block_early_errors_expr(obj_expr, strict_context)
       validate_block_early_errors_stmt(body, strict_context)
     }
-    ExportNamedDecl(Some(decl), _, _, _) =>
+    ExportNamedDecl(Some(decl), _, _, _, _) =>
       validate_block_early_errors_stmt(decl, strict_context)
     ExportDefaultDecl(expr, _) =>
       validate_block_early_errors_expr(expr, strict_context)
@@ -1128,7 +1128,7 @@ fn collect_eval_var_names_from_stmt(
     }
     WithStmt(_, body, _) =>
       collect_eval_var_names_from_stmt(body, names, in_block~)
-    ExportNamedDecl(Some(decl), _, _, _) =>
+    ExportNamedDecl(Some(decl), _, _, _, _) =>
       collect_eval_var_names_from_stmt(decl, names, in_block~)
     _ => ()
   }
@@ -1243,7 +1243,7 @@ fn hoist_var_declarations_from_stmt(
     }
     WithStmt(_, body, _) => hoist_var_declarations_from_stmt(body, env)
     // Export with declaration: hoist declarations from the inner declaration.
-    ExportNamedDecl(Some(decl), _, _, _) =>
+    ExportNamedDecl(Some(decl), _, _, _, _) =>
       hoist_var_declarations_from_stmt(decl, env)
     // Do not recurse into function/class declarations: their bodies create
     // separate var scopes.
@@ -1317,7 +1317,7 @@ fn add_stmt_lex_names(
       for inner in inner_stmts {
         add_stmt_lex_names(inner, names)
       }
-    ExportNamedDecl(Some(decl), _, _, _) => add_stmt_lex_names(decl, names)
+    ExportNamedDecl(Some(decl), _, _, _, _) => add_stmt_lex_names(decl, names)
     _ => ()
   }
 }
@@ -1697,7 +1697,7 @@ fn walk_eval_annex_b_stmt(
         in_block=true,
         excluded~,
       )
-    ExportNamedDecl(Some(decl), _, _, _) =>
+    ExportNamedDecl(Some(decl), _, _, _, _) =>
       walk_eval_annex_b_stmt(
         interp,
         decl,
@@ -2001,7 +2001,7 @@ fn Interpreter::hoist_declarations(
           }
         }
       // Export with declaration: hoist the inner declaration
-      ExportNamedDecl(Some(decl), _, _, _) => {
+      ExportNamedDecl(Some(decl), _, _, _, _) => {
         let inner_stmts : Array[@ast.Stmt] = [decl]
         _self.hoist_declarations(inner_stmts, env, strict~)
       }
@@ -2120,7 +2120,7 @@ fn hoist_block_tdz(
           env.def_tdz(name, LetBinding)
         }
       // Export with declaration: hoist let/const inner declarations with TDZ
-      ExportNamedDecl(Some(decl), _, _, _) => {
+      ExportNamedDecl(Some(decl), _, _, _, _) => {
         let inner_stmts : Array[@ast.Stmt] = [decl]
         hoist_block_tdz(inner_stmts, env)
       }
