@@ -1349,7 +1349,7 @@ EOF
 
 - [ ] **Step 1: Read existing module-loader code**
 
-Run: `grep -n 'fn.*module\|always strict\|run_module' /home/antisatori/ghq/github.com/dowdiness/js_engine/interpreter/runtime/modules.mbt | head -20`
+Run: `grep -n 'fn.*module\|always strict\|run_module' interpreter/runtime/modules.mbt | head -20`
 
 Identify the function that takes the parsed module AST and runs it. The point where strict-context is established for a module is where we add the validator call.
 
@@ -1358,7 +1358,7 @@ Identify the function that takes the parsed module AST and runs it. The point wh
 Module-execution tests likely use a helper. Search test file for existing module tests:
 
 ```bash
-grep -n 'test.*module' /home/antisatori/ghq/github.com/dowdiness/js_engine/interpreter/interpreter_test.mbt | head -5
+grep -n 'test.*module' interpreter/interpreter_test.mbt | head -5
 ```
 
 Add test using existing module-test helper:
@@ -1563,7 +1563,7 @@ make test262-report  # uses gh API to fetch artifacts
 
 Use this template:
 
-```
+```markdown
 ## test262 impact
 
 **Pre-merge baseline** (run <baseline-run-id>, SHA <baseline-sha>):
