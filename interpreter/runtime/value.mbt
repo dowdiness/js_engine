@@ -133,6 +133,11 @@ pub(all) struct ArrayData {
   // §10.4.2.4: tracks whether Array `length` is writable. Starts `true`;
   // set to `false` by Object.defineProperty(arr, "length", {writable: false}).
   mut length_writable : Bool
+  // Tracks deleted (hole) indices so ordinary_get_own_property and
+  // has_array_property correctly report them absent after `delete arr[i]`.
+  holes : Map[Int, Unit]
+  // §10.4.2 [[Extensible]]: false after Object.preventExtensions/seal/freeze.
+  mut extensible : Bool
 }
 
 ///|

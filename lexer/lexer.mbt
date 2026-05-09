@@ -830,7 +830,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       continue
     }
     // Identifiers / Keywords (including \uXXXX and \u{XXXXX} escapes)
-    if is_alpha(c) ||
+    if is_id_start_cp(c.to_int()) ||
       (c == '\\' && offset + 1 < len && char_at(offset + 1) == 'u') {
       let ident_buf = StringBuilder::new()
       let mut has_escape = false
@@ -853,7 +853,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       }
       while offset < len {
         let ch = char_at(offset)
-        if is_alnum(ch) {
+        if is_id_continue_cp(ch.to_int()) {
           ident_buf.write_char(ch)
           offset += 1
           col += 1
@@ -904,17 +904,37 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             'b' => write_code_point(buf, 8) // backspace
             'v' => write_code_point(buf, 11) // vertical tab
             'f' => write_code_point(buf, 12) // form feed
-            '0' => {
-              // \0 is NUL only when NOT followed by an octal digit (ES spec)
-              // \08 and \09 are valid: NUL char followed by literal digit
-              if offset + 1 < len &&
+            '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' => {
+              // Legacy octal escape (Annex B, non-strict). Parse 1-3 octal digits.
+              let d1 = esc.to_int() - 48
+              let next_is_octal = offset + 1 < len &&
                 char_at(offset + 1) >= '0' &&
-                char_at(offset + 1) <= '7' {
-                raise @errors.SyntaxError(
-                  message="Invalid escape sequence at line \{line}, col \{col}",
-                )
+                char_at(offset + 1) <= '7'
+              if !next_is_octal {
+                write_code_point(buf, d1)
+              } else if d1 <= 3 {
+                // 0-3: up to two more octal digits
+                offset += 1
+                col += 1
+                let d2 = char_at(offset).to_int() - 48
+                let next2_is_octal = offset + 1 < len &&
+                  char_at(offset + 1) >= '0' &&
+                  char_at(offset + 1) <= '7'
+                if next2_is_octal {
+                  offset += 1
+                  col += 1
+                  let d3 = char_at(offset).to_int() - 48
+                  write_code_point(buf, d1 * 64 + d2 * 8 + d3)
+                } else {
+                  write_code_point(buf, d1 * 8 + d2)
+                }
+              } else {
+                // 4-7: exactly one more octal digit
+                offset += 1
+                col += 1
+                let d2 = char_at(offset).to_int() - 48
+                write_code_point(buf, d1 * 8 + d2)
               }
-              write_code_point(buf, 0)
             }
             '\\' => buf.write_char('\\')
             '\'' => buf.write_char('\'')
@@ -961,16 +981,17 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
               col = 1
               continue
             }
-            _ => {
-              buf.write_char('\\')
+            _ =>
+              // NonEscapeCharacter: the backslash is consumed; the char itself is the value.
               buf.write_char(esc)
-            }
           }
           offset += 1
           col += 1
         } else {
-          // Unescaped LineTerminators are not allowed in string literals (ES spec §12.9.4)
-          if is_line_terminator(char_at(offset)) {
+          // Only \n (0x0A) and \r (0x0D) terminate string literals.
+          // U+2028 and U+2029 are allowed per ES2019 json-superset (§12.9.4).
+          let raw_cp = char_at(offset).to_int()
+          if raw_cp == 0x0A || raw_cp == 0x0D {
             raise @errors.SyntaxError(
               message="Unterminated string at line \{line}, col \{col}",
             )

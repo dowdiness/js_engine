@@ -1655,6 +1655,14 @@ fn Interpreter::eval_unary(
               }
               let _ = data.bag.properties.remove(prop)
               let _ = data.bag.descriptors.remove(prop)
+              // Same hole-marking logic as ComputedMember below — prop is already a string.
+              let idx = @string.parse_int(prop) catch { _ => -1 }
+              if idx >= 0 &&
+                idx.to_string() == prop &&
+                idx < data.elements.length() {
+                data.holes.set(idx, ())
+                data.elements[idx] = Undefined
+              }
               Bool(true)
             }
             Undefined | Null =>
@@ -1750,6 +1758,13 @@ fn Interpreter::eval_unary(
                   }
                   let _ = data.bag.properties.remove(k)
                   let _ = data.bag.descriptors.remove(k)
+                  let idx = @string.parse_int(k) catch { _ => -1 }
+                  if idx >= 0 &&
+                    idx.to_string() == k &&
+                    idx < data.elements.length() {
+                    data.holes.set(idx, ())
+                    data.elements[idx] = Undefined
+                  }
                   Bool(true)
                 }
               }

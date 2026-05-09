@@ -144,6 +144,10 @@ fn make_prevent_extensions_func() -> Value {
         data.extensible = false
         obj
       }
+      Array(data) => {
+        data.extensible = false
+        obj
+      }
       _ => obj
     }
   })
@@ -204,6 +208,7 @@ fn make_is_extensible_func() -> Value {
     let obj = if args.length() > 0 { args[0] } else { Undefined }
     match obj {
       Object(data) => Bool(data.extensible)
+      Array(data) => Bool(data.extensible)
       Value::Proxy(proxy_data) =>
         Bool(@runtime.proxy_is_extensible(interp, proxy_data))
       _ => Value::Bool(false)

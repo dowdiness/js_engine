@@ -1595,6 +1595,9 @@ fn collect_for_in_keys(
       }
       Array(data) => {
         for i = 0; i < data.elements.length(); i = i + 1 {
+          if data.holes.contains(i) {
+            continue
+          }
           let k = i.to_string()
           if !seen.contains(k) {
             let enumerable = match data.bag.descriptors.get(k) {
