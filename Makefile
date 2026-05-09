@@ -1,4 +1,4 @@
-.PHONY: build test test262 test262-quick test262-analyze test262-download test262-report clean
+.PHONY: build test test262 test262-quick test262-analyze test262-download test262-report unicode-tables clean
 
 # Build the JS engine
 build:
@@ -57,6 +57,11 @@ test262-analyze: test262-download
 # Pass ARGS="..." to forward flags, e.g. make test262-report ARGS="--run 24730849102"
 test262-report:
 	python3 scripts/report-test262.py --with-editions $(ARGS)
+
+# Regenerate lexer/unicode_id.mbt from DerivedCoreProperties.txt.
+# Pass UNICODE_VERSION=X.Y.Z to target a specific Unicode release (default: 17.0.0).
+unicode-tables:
+	python3 scripts/generate-unicode-id-tables.py $(if $(UNICODE_VERSION),--unicode-version $(UNICODE_VERSION))
 
 # Clean build artifacts
 clean:
