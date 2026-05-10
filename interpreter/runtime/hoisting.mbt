@@ -654,7 +654,13 @@ fn validate_block_early_errors_expr(
     }
     AwaitExpr(inner, _) =>
       validate_block_early_errors_expr(inner, strict_context)
-    ClassExpr(_, _, members, _) =>
+    ClassExpr(_, superclass, members, _) => {
+      // Class bodies are always strict; visit the superclass expression in
+      // the surrounding strict context so its lex_form leaves are validated.
+      match superclass {
+        Some(s) => validate_block_early_errors_expr(s, strict_context)
+        None => ()
+      }
       for mbr in members {
         match mbr {
           @ast.ClassMember::Method(m) => {
@@ -673,6 +679,7 @@ fn validate_block_early_errors_expr(
           }
         }
       }
+    }
     Binary(_, l, r, _) => {
       validate_block_early_errors_expr(l, strict_context)
       validate_block_early_errors_expr(r, strict_context)
@@ -771,6 +778,15 @@ fn validate_block_early_errors_expr(
         validate_block_early_errors_expr(e, strict_context)
       }
     }
+    YieldExpr(arg, _, _) =>
+      match arg {
+        Some(e) => validate_block_early_errors_expr(e, strict_context)
+        None => ()
+      }
+    SuperCall(args, _) =>
+      for a in args {
+        validate_block_early_errors_expr(a, strict_context)
+      }
     _ => ()
   }
 }
@@ -1009,7 +1025,13 @@ fn validate_block_early_errors_stmt(
         validate_block_early_errors_stmt(inner, child_strict)
       }
     }
-    ClassDecl(_, _, members, _) =>
+    ClassDecl(_, superclass, members, _) => {
+      // Class bodies are always strict; visit the superclass expression in
+      // the surrounding strict context so its lex_form leaves are validated.
+      match superclass {
+        Some(s) => validate_block_early_errors_expr(s, strict_context)
+        None => ()
+      }
       for mbr in members {
         match mbr {
           @ast.ClassMember::Method(m) => {
@@ -1028,6 +1050,7 @@ fn validate_block_early_errors_stmt(
           }
         }
       }
+    }
     WithStmt(obj_expr, body, _) => {
       if strict_context {
         raise @errors.SyntaxError(
