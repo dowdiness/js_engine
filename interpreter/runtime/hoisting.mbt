@@ -655,10 +655,10 @@ fn validate_block_early_errors_expr(
     AwaitExpr(inner, _) =>
       validate_block_early_errors_expr(inner, strict_context)
     ClassExpr(_, superclass, members, _) => {
-      // Class bodies are always strict; visit the superclass expression in
-      // the surrounding strict context so its lex_form leaves are validated.
+      // ES262 §15.7.1: all parts of a ClassDeclaration / ClassExpression are
+      // strict-mode code, including the ClassHeritage (extends) expression.
       match superclass {
-        Some(s) => validate_block_early_errors_expr(s, strict_context)
+        Some(s) => validate_block_early_errors_expr(s, true)
         None => ()
       }
       for mbr in members {
@@ -1026,10 +1026,10 @@ fn validate_block_early_errors_stmt(
       }
     }
     ClassDecl(_, superclass, members, _) => {
-      // Class bodies are always strict; visit the superclass expression in
-      // the surrounding strict context so its lex_form leaves are validated.
+      // ES262 §15.7.1: all parts of a ClassDeclaration / ClassExpression are
+      // strict-mode code, including the ClassHeritage (extends) expression.
       match superclass {
-        Some(s) => validate_block_early_errors_expr(s, strict_context)
+        Some(s) => validate_block_early_errors_expr(s, true)
         None => ()
       }
       for mbr in members {
