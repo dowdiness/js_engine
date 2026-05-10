@@ -169,20 +169,22 @@ fn Interpreter::eval_compound_assign(
 }
 
 ///|
-fn Interpreter::eval_logical_assign_and(
+/// Shared skeleton for `&&=`, `||=`, and `??=`.
+/// `should_assign(current)` returns true when the operator requires a write.
+fn Interpreter::eval_logical_assign(
   self : Interpreter,
   ctx : ExecContext,
   target : @ast.Expr,
   value_expr : @ast.Expr,
   env : Environment,
   loc : @token.Loc,
+  should_assign : (Value) -> Bool,
 ) -> Value raise Error {
-  // x &&= y: if x is truthy, assign y to x; return final value
   match target {
     Ident(name, _) => {
       validate_strict_assignment_target_name(ctx.strict, name)
       let current = env.get(name)
-      if is_truthy(current) {
+      if should_assign(current) {
         let rhs = self.eval_expr(ctx, value_expr, env)
         if self.is_immutable_global(name) {
           if ctx.strict {
@@ -201,7 +203,7 @@ fn Interpreter::eval_logical_assign_and(
     Member(obj_expr, prop, mloc) => {
       let obj = self.eval_expr(ctx, obj_expr, env)
       let current = self.get_property(obj, prop, mloc)
-      if is_truthy(current) {
+      if should_assign(current) {
         let rhs = self.eval_expr(ctx, value_expr, env)
         self.set_property(obj, prop, rhs, loc, strict=ctx.strict)
       } else {
@@ -220,7 +222,7 @@ fn Interpreter::eval_logical_assign_and(
       }
       let prop_key = to_property_key(key, interp=Some(self))
       let current = self.get_computed_property(obj, prop_key, mloc)
-      if is_truthy(current) {
+      if should_assign(current) {
         let rhs = self.eval_expr(ctx, value_expr, env)
         self.set_computed_property(obj, prop_key, rhs, loc, strict=ctx.strict)
       } else {
@@ -232,6 +234,19 @@ fn Interpreter::eval_logical_assign_and(
         message="Invalid assignment target at line \{loc.line}, col \{loc.col}",
       )
   }
+}
+
+///|
+fn Interpreter::eval_logical_assign_and(
+  self : Interpreter,
+  ctx : ExecContext,
+  target : @ast.Expr,
+  value_expr : @ast.Expr,
+  env : Environment,
+  loc : @token.Loc,
+) -> Value raise Error {
+  // x &&= y: assign y when x is truthy
+  self.eval_logical_assign(ctx, target, value_expr, env, loc, is_truthy)
 }
 
 ///|
@@ -243,61 +258,10 @@ fn Interpreter::eval_logical_assign_or(
   env : Environment,
   loc : @token.Loc,
 ) -> Value raise Error {
-  // x ||= y: if x is falsy, assign y to x; return final value
-  match target {
-    Ident(name, _) => {
-      validate_strict_assignment_target_name(ctx.strict, name)
-      let current = env.get(name)
-      if !is_truthy(current) {
-        let rhs = self.eval_expr(ctx, value_expr, env)
-        if self.is_immutable_global(name) {
-          if ctx.strict {
-            raise @errors.TypeError(
-              message="Cannot assign to read only property '\{name}' of object '[object global]'",
-            )
-          }
-          return rhs
-        }
-        env.assign(name, rhs)
-        rhs
-      } else {
-        current
-      }
-    }
-    Member(obj_expr, prop, mloc) => {
-      let obj = self.eval_expr(ctx, obj_expr, env)
-      let current = self.get_property(obj, prop, mloc)
-      if !is_truthy(current) {
-        let rhs = self.eval_expr(ctx, value_expr, env)
-        self.set_property(obj, prop, rhs, loc, strict=ctx.strict)
-      } else {
-        current
-      }
-    }
-    ComputedMember(obj_expr, key_expr, mloc) => {
-      let obj = self.eval_expr(ctx, obj_expr, env)
-      let key = self.eval_expr(ctx, key_expr, env)
-      // Per ES5 11.2.1 step 5: CheckObjectCoercible(baseValue) before ToString
-      if obj is Null {
-        raise @errors.TypeError(message="Cannot read properties of null")
-      }
-      if obj is Undefined {
-        raise @errors.TypeError(message="Cannot read properties of undefined")
-      }
-      let prop_key = to_property_key(key, interp=Some(self))
-      let current = self.get_computed_property(obj, prop_key, mloc)
-      if !is_truthy(current) {
-        let rhs = self.eval_expr(ctx, value_expr, env)
-        self.set_computed_property(obj, prop_key, rhs, loc, strict=ctx.strict)
-      } else {
-        current
-      }
-    }
-    _ =>
-      raise @errors.SyntaxError(
-        message="Invalid assignment target at line \{loc.line}, col \{loc.col}",
-      )
-  }
+  // x ||= y: assign y when x is falsy
+  self.eval_logical_assign(
+    ctx, target, value_expr, env, loc, v => !is_truthy(v),
+  )
 }
 
 ///|
@@ -309,62 +273,8 @@ fn Interpreter::eval_nullish_assign(
   env : Environment,
   loc : @token.Loc,
 ) -> Value raise Error {
-  // x ??= y: if x is null or undefined, assign y to x; return final value
-  match target {
-    Ident(name, _) => {
-      validate_strict_assignment_target_name(ctx.strict, name)
-      let current = env.get(name)
-      match current {
-        Null | Undefined => {
-          let rhs = self.eval_expr(ctx, value_expr, env)
-          if self.is_immutable_global(name) {
-            if ctx.strict {
-              raise @errors.TypeError(
-                message="Cannot assign to read only property '\{name}' of object '[object global]'",
-              )
-            }
-            return rhs
-          }
-          env.assign(name, rhs)
-          rhs
-        }
-        _ => current
-      }
-    }
-    Member(obj_expr, prop, mloc) => {
-      let obj = self.eval_expr(ctx, obj_expr, env)
-      let current = self.get_property(obj, prop, mloc)
-      match current {
-        Null | Undefined => {
-          let rhs = self.eval_expr(ctx, value_expr, env)
-          self.set_property(obj, prop, rhs, loc, strict=ctx.strict)
-        }
-        _ => current
-      }
-    }
-    ComputedMember(obj_expr, key_expr, mloc) => {
-      let obj = self.eval_expr(ctx, obj_expr, env)
-      let key = self.eval_expr(ctx, key_expr, env)
-      // Per ES5 11.2.1 step 5: CheckObjectCoercible(baseValue) before ToString
-      if obj is Null {
-        raise @errors.TypeError(message="Cannot read properties of null")
-      }
-      if obj is Undefined {
-        raise @errors.TypeError(message="Cannot read properties of undefined")
-      }
-      let prop_key = to_property_key(key, interp=Some(self))
-      let current = self.get_computed_property(obj, prop_key, mloc)
-      match current {
-        Null | Undefined => {
-          let rhs = self.eval_expr(ctx, value_expr, env)
-          self.set_computed_property(obj, prop_key, rhs, loc, strict=ctx.strict)
-        }
-        _ => current
-      }
-    }
-    _ =>
-      raise @errors.SyntaxError(
-        message="Invalid assignment target at line \{loc.line}, col \{loc.col}",
-      )
-  }
+  // x ??= y: assign y when x is null or undefined
+  self.eval_logical_assign(
+    ctx, target, value_expr, env, loc, v => v is Null || v is Undefined,
+  )
 }
