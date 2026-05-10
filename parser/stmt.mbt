@@ -279,6 +279,9 @@ fn Parser::parse_params(self : Parser) -> Array[String] raise Error {
       raise Failure::Failure("DEFAULT_PARAM_FOUND")
     }
     while self.eat(Comma) {
+      if self.at(RParen) {
+        break
+      } // trailing comma (ES2017)
       if self.at(DotDotDot) {
         raise Failure::Failure("REST_PARAM_FOUND")
       }

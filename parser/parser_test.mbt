@@ -622,3 +622,72 @@ test "export-named-from propagates source_lex_form" {
     _ => fail("expected ExportNamedDecl")
   }
 }
+
+///|
+test "trailing comma in named function params (single)" {
+  let prog = @parser.parse("function f(a,) {}")
+  match prog.stmts[0] {
+    FuncDecl(name, params, _, _) => {
+      inspect(name, content="f")
+      inspect(
+        params,
+        content=(
+          #|["a"]
+        ),
+      )
+    }
+    _ => fail("Expected FuncDecl")
+  }
+}
+
+///|
+test "trailing comma in named function params (multiple)" {
+  let prog = @parser.parse("function f(a, b,) {}")
+  match prog.stmts[0] {
+    FuncDecl(name, params, _, _) => {
+      inspect(name, content="f")
+      inspect(
+        params,
+        content=(
+          #|["a", "b"]
+        ),
+      )
+    }
+    _ => fail("Expected FuncDecl")
+  }
+}
+
+///|
+test "trailing comma in nameless function expression params" {
+  let prog = @parser.parse("(function (a,) {})")
+  inspect(prog.stmts.length(), content="1")
+}
+
+///|
+test "trailing comma in generator params" {
+  let prog = @parser.parse("function* g(a, b,) { yield a; }")
+  match prog.stmts[0] {
+    GeneratorDecl(name, params, _, _) => {
+      inspect(name, content="g")
+      inspect(
+        params,
+        content=(
+          #|["a", "b"]
+        ),
+      )
+    }
+    _ => fail("Expected GeneratorDecl")
+  }
+}
+
+///|
+test "leading comma in params is SyntaxError" {
+  let result = Ok(@parser.parse("function f(,) {}")) catch { _ => Err(()) }
+  inspect(result, content="Err(())")
+}
+
+///|
+test "double comma in params is SyntaxError" {
+  let result = Ok(@parser.parse("function f(a,,) {}")) catch { _ => Err(()) }
+  inspect(result, content="Err(())")
+}
