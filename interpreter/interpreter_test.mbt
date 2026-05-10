@@ -11852,6 +11852,78 @@ test "strict legacy octal: never-called function still errors" {
 }
 
 ///|
+test "strict legacy octal: yield expression argument" {
+  let src =
+    #|"use strict";
+    #|function* g() { yield "\1"; }
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 2, col 23",
+  )
+}
+
+///|
+test "strict legacy octal: yield* delegate argument" {
+  let src =
+    #|"use strict";
+    #|function* g() { yield* ["\1"]; }
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 2, col 25",
+  )
+}
+
+///|
+test "strict legacy octal: super(args) call argument" {
+  let src =
+    #|class B {}
+    #|class C extends B { constructor() { super("\1"); } }
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 2, col 43",
+  )
+}
+
+///|
+test "strict legacy octal: class superclass expression" {
+  let src =
+    #|"use strict";
+    #|class C extends ("\1", Object) {}
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 2, col 18",
+  )
+}
+
+///|
+test "class superclass expression is strict even without 'use strict' (ClassDecl)" {
+  // ES262 §15.7.1: all parts of a class — including the extends expression —
+  // are strict-mode code regardless of the surrounding script's strictness.
+  let src =
+    #|class C extends ("\1", Object) {}
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 1, col 18",
+  )
+}
+
+///|
+test "class expression superclass is strict even without 'use strict' (ClassExpr)" {
+  let src =
+    #|var C = (class extends ("\1", Object) {});
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 1, col 25",
+  )
+}
+
+///|
 test "class method with legacy octal escape key" {
   let src =
     #|class C { "\1"() {} }
