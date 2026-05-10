@@ -1125,33 +1125,11 @@ fn Interpreter::eval_binary(
       let r = self.eval_expr(ctx, right_expr, env)
       match r {
         Object(r_data) => {
-          // Step 1: Check for Symbol.hasInstance method via GetMethod (walks prototype chain)
+          // Step 1: GetMethod(C, @@hasInstance) — must invoke accessor getters per spec.
           let has_instance_sym = get_hasinstance_symbol()
-          let has_instance_method = get_symbol_method(r, has_instance_sym.id)
-          match has_instance_method {
-            Some(has_instance_fn) =>
-              // Call [Symbol.hasInstance](l) and convert result to boolean
-              match has_instance_fn {
-                Object(fn_data) =>
-                  match fn_data.callable {
-                    Some(_) => {
-                      let result = self.call_value(has_instance_fn, r, [l], loc)
-                      Bool(is_truthy(result))
-                    }
-                    None =>
-                      // Symbol.hasInstance exists but is not callable - TypeError per spec
-                      raise @errors.TypeError(
-                        message="Symbol.hasInstance is not a function",
-                      )
-                  }
-                _ =>
-                  // Symbol.hasInstance is not an object - TypeError per spec
-                  raise @errors.TypeError(
-                    message="Symbol.hasInstance is not a function",
-                  )
-              }
-            None =>
-              // No Symbol.hasInstance found, use OrdinaryHasInstance
+          match lookup_symbol_property_chain(r, r_data, has_instance_sym.id, interp=Some(self)) {
+            Some(Undefined) | Some(Null) | None =>
+              // No @@hasInstance — fall back to OrdinaryHasInstance.
               // Step 2: Check if RHS is callable (required for OrdinaryHasInstance)
               match r_data.callable {
                 None =>
@@ -1181,6 +1159,15 @@ fn Interpreter::eval_binary(
                     }
                   }
               }
+            Some(has_instance_fn) => {
+              if !is_callable(has_instance_fn) {
+                raise @errors.TypeError(
+                  message="Symbol.hasInstance is not a function",
+                )
+              }
+              let result = self.call_value(has_instance_fn, r, [l], loc)
+              Bool(is_truthy(result))
+            }
           }
         }
         Proxy(proxy_data) => {

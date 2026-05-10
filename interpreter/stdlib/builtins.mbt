@@ -1688,13 +1688,25 @@ pub fn setup_builtins(
         return Value::Bool(false)
       }
       // Steps 4-5 of OrdinaryHasInstance: Get(C, "prototype"); if not Object, TypeError.
-      // Undefined means no own prototype property (e.g. bound functions) → return false.
+      // Exception: return false when no own "prototype" bag entry exists (non-constructable
+      // functions like bound/arrow/method callables have no prototype property at all).
+      // Explicitly setting F.prototype = undefined must throw TypeError per step 6.
       let loc = @token.Loc::default()
       let p = interp.get_property(this_val, "prototype", loc)
       if @runtime.is_object_value(p) {
         @runtime.instanceof_prototype_chain(o, p, interp)
       } else if p is Undefined {
-        Value::Bool(false)
+        let explicitly_set = match this_val {
+          Object(d) => d.bag.properties.get("prototype") is Some(Undefined)
+          _ => false
+        }
+        if explicitly_set {
+          raise @errors.TypeError(
+            message="Function has non-object prototype in instanceof check",
+          )
+        } else {
+          Value::Bool(false)
+        }
       } else {
         raise @errors.TypeError(
           message="Function has non-object prototype in instanceof check",
