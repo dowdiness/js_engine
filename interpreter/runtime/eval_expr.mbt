@@ -96,6 +96,7 @@ fn Interpreter::eval_expr(
     BoolLit(b, _) => Bool(b)
     NullLit(_) => Null
     UndefinedLit(_) => Undefined
+    ArrayHole(_) => Undefined
     Ident(name, _) => {
       validate_strict_identifier_reference(ctx.strict, name)
       env.get(name) catch {
@@ -364,6 +365,7 @@ fn Interpreter::eval_expr(
                       Some(d) => d.setter
                       None => None
                     },
+                    is_accessor: true,
                   }
                 }
                 Set => {
@@ -386,6 +388,7 @@ fn Interpreter::eval_expr(
                       None => None
                     },
                     setter: Some(setter),
+                    is_accessor: true,
                   }
                 }
                 Spread => () // handled above
@@ -415,6 +418,7 @@ fn Interpreter::eval_expr(
                       Some(d) => d.setter
                       None => None
                     },
+                    is_accessor: true,
                   }
                 }
                 Set => {
@@ -433,6 +437,7 @@ fn Interpreter::eval_expr(
                       None => None
                     },
                     setter: Some(setter),
+                    is_accessor: true,
                   }
                 }
                 Spread => () // handled above
@@ -492,6 +497,7 @@ fn Interpreter::eval_expr(
                   Some(d) => d.setter
                   None => None
                 },
+                is_accessor: true,
               }
             }
             Set => {
@@ -515,6 +521,7 @@ fn Interpreter::eval_expr(
                   None => None
                 },
                 setter: Some(setter),
+                is_accessor: true,
               }
             }
             Spread => () // handled above
@@ -531,6 +538,8 @@ fn Interpreter::eval_expr(
     }
     ArrayLit(elements, _) => {
       let vals : Array[Value] = []
+      let mut has_holes = false
+      let hole_idxs : Array[Int] = []
       for e in elements {
         match e {
           SpreadExpr(inner, spread_loc) => {
@@ -541,10 +550,25 @@ fn Interpreter::eval_expr(
               vals.push(v)
             }
           }
+          ArrayHole(_) => {
+            hole_idxs.push(vals.length())
+            vals.push(Undefined)
+            has_holes = true
+          }
           _ => vals.push(self.eval_expr(ctx, e, env))
         }
       }
-      make_array(vals)
+      let arr = make_array(vals)
+      if has_holes {
+        match arr {
+          Array(data) =>
+            for i in hole_idxs {
+              data.holes[i] = ()
+            }
+          _ => ()
+        }
+      }
+      arr
     }
     ComputedMember(obj_expr, key_expr, loc) => {
       let obj = self.eval_expr(ctx, obj_expr, env)
@@ -656,6 +680,7 @@ fn Interpreter::eval_expr(
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
       Object({
         bag: {
@@ -697,6 +722,7 @@ fn Interpreter::eval_expr(
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
       // Length = number of params before first default
       let mut arrow_len = 0
@@ -1125,33 +1151,17 @@ fn Interpreter::eval_binary(
       let r = self.eval_expr(ctx, right_expr, env)
       match r {
         Object(r_data) => {
-          // Step 1: Check for Symbol.hasInstance method via GetMethod (walks prototype chain)
+          // Step 1: GetMethod(C, @@hasInstance) — must invoke accessor getters per spec.
           let has_instance_sym = get_hasinstance_symbol()
-          let has_instance_method = get_symbol_method(r, has_instance_sym.id)
-          match has_instance_method {
-            Some(has_instance_fn) =>
-              // Call [Symbol.hasInstance](l) and convert result to boolean
-              match has_instance_fn {
-                Object(fn_data) =>
-                  match fn_data.callable {
-                    Some(_) => {
-                      let result = self.call_value(has_instance_fn, r, [l], loc)
-                      Bool(is_truthy(result))
-                    }
-                    None =>
-                      // Symbol.hasInstance exists but is not callable - TypeError per spec
-                      raise @errors.TypeError(
-                        message="Symbol.hasInstance is not a function",
-                      )
-                  }
-                _ =>
-                  // Symbol.hasInstance is not an object - TypeError per spec
-                  raise @errors.TypeError(
-                    message="Symbol.hasInstance is not a function",
-                  )
-              }
-            None =>
-              // No Symbol.hasInstance found, use OrdinaryHasInstance
+          match
+            lookup_symbol_property_chain(
+              r,
+              r_data,
+              has_instance_sym.id,
+              interp=Some(self),
+            ) {
+            Some(Undefined) | Some(Null) | None =>
+              // No @@hasInstance — fall back to OrdinaryHasInstance.
               // Step 2: Check if RHS is callable (required for OrdinaryHasInstance)
               match r_data.callable {
                 None =>
@@ -1181,6 +1191,15 @@ fn Interpreter::eval_binary(
                     }
                   }
               }
+            Some(has_instance_fn) => {
+              if !is_callable(has_instance_fn) {
+                raise @errors.TypeError(
+                  message="Symbol.hasInstance is not a function",
+                )
+              }
+              let result = self.call_value(has_instance_fn, r, [l], loc)
+              Bool(is_truthy(result))
+            }
           }
         }
         Proxy(proxy_data) => {

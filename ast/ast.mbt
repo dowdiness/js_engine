@@ -104,6 +104,7 @@ pub(all) enum Expr {
   BoolLit(Bool, @token.Loc)
   NullLit(@token.Loc)
   UndefinedLit(@token.Loc)
+  ArrayHole(@token.Loc) // elision in array literal: [1,,3] → hole at index 1
   Ident(String, @token.Loc)
   Binary(BinOp, Expr, Expr, @token.Loc)
   Unary(UnaryOp, Expr, @token.Loc)

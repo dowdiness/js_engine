@@ -159,6 +159,7 @@ pub fn Interpreter::new(
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   match global_this {
     Object(data) =>
@@ -187,6 +188,7 @@ pub fn Interpreter::new(
         configurable: false,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
       data.bag.descriptors["undefined"] = { ..frozen_desc }
       data.bag.descriptors["NaN"] = { ..frozen_desc }
@@ -549,6 +551,7 @@ fn Interpreter::mirror_to_global(
             configurable,
             getter: None,
             setter: None,
+            is_accessor: false,
           }
       }
     }

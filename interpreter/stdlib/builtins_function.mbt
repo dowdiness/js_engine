@@ -160,6 +160,7 @@ fn setup_function_builtins(env : Environment) -> Unit {
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
       let bprops : Map[String, Value] = {}
       bprops["length"] = Value::Number(bound_length.to_double())
@@ -191,6 +192,7 @@ fn setup_function_builtins(env : Environment) -> Unit {
           configurable: false,
           getter: None,
           setter: None,
+          is_accessor: false,
         },
         "name": {
           writable: false,
@@ -198,6 +200,7 @@ fn setup_function_builtins(env : Environment) -> Unit {
           configurable: false,
           getter: None,
           setter: None,
+          is_accessor: false,
         },
       },
       symbol_descriptors: {},
@@ -222,6 +225,7 @@ fn setup_function_builtins(env : Environment) -> Unit {
     configurable: true,
     getter: Some(throw_type_error),
     setter: Some(throw_type_error),
+    is_accessor: true,
   }
   func_proto_descs["arguments"] = {
     writable: false,
@@ -229,6 +233,7 @@ fn setup_function_builtins(env : Environment) -> Unit {
     configurable: true,
     getter: Some(throw_type_error),
     setter: Some(throw_type_error),
+    is_accessor: true,
   }
   func_proto_descs["toString"] = {
     writable: true,
@@ -236,6 +241,7 @@ fn setup_function_builtins(env : Environment) -> Unit {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   func_proto_descs["call"] = {
     writable: true,
@@ -243,6 +249,7 @@ fn setup_function_builtins(env : Environment) -> Unit {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   func_proto_descs["apply"] = {
     writable: true,
@@ -250,6 +257,7 @@ fn setup_function_builtins(env : Environment) -> Unit {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   func_proto_descs["bind"] = {
     writable: true,
@@ -257,6 +265,7 @@ fn setup_function_builtins(env : Environment) -> Unit {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
 
   // Function.prototype is callable per spec (returns undefined when called)
@@ -269,6 +278,7 @@ fn setup_function_builtins(env : Environment) -> Unit {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   func_proto_descs["name"] = nf_desc
   func_proto_descs["length"] = nf_desc
@@ -440,6 +450,7 @@ fn setup_function_builtins(env : Environment) -> Unit {
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
     }
     _ => ()

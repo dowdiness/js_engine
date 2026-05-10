@@ -438,6 +438,7 @@ fn Interpreter::get_property_of_object(
                 configurable: true,
                 getter: None,
                 setter: None,
+                is_accessor: false,
               }
               let bprops : Map[String, Value] = {}
               bprops["name"] = String_(bound_name)
@@ -1095,6 +1096,7 @@ pub fn Interpreter::get_computed_property(
                     configurable: true,
                     getter: None,
                     setter: None,
+                    is_accessor: false,
                   }
                   let bprops : Map[String, Value] = {}
                   bprops["name"] = String_(bound_name)
@@ -1265,10 +1267,14 @@ pub fn Interpreter::get_computed_property(
     Array(data) =>
       match key {
         Number(n) => {
-          let i = n.to_int()
-          if i >= 0 && i < data.elements.length() {
-            let key = i.to_string()
-            match data.bag.descriptors.get(key) {
+          // Use Int64 to avoid overflow for indices >= 2^31.
+          let i64 = n.to_int64()
+          if n >= 0.0 &&
+            n == i64.to_double() &&
+            i64 < data.elements.length().to_int64() {
+            let i = i64.to_int()
+            let key_str = i.to_string()
+            match data.bag.descriptors.get(key_str) {
               Some(desc) =>
                 match desc.getter {
                   Some(getter) => return self.call_value(getter, obj, [], loc)
@@ -1278,7 +1284,21 @@ pub fn Interpreter::get_computed_property(
             }
             data.elements[i]
           } else {
-            Undefined
+            // Out-of-range or non-integer: check the bag (large indices or
+            // properties set via Object.defineProperty with a Number key).
+            let key_str = to_js_string(Number(n))
+            match data.bag.descriptors.get(key_str) {
+              Some(desc) =>
+                match desc.getter {
+                  Some(getter) => return self.call_value(getter, obj, [], loc)
+                  None => if desc.setter is Some(_) { return Undefined }
+                }
+              None => ()
+            }
+            match get_array_named_prop(data, key_str) {
+              Some(v) => v
+              None => Undefined
+            }
           }
         }
         String_("length") =>

@@ -65,6 +65,7 @@ fn Interpreter::exec_import(
           configurable: false,
           getter: None,
           setter: None,
+          is_accessor: false,
         }
       })
       let ns_obj : Value = Object({
@@ -182,6 +183,7 @@ fn Interpreter::exec_export_all(
           configurable: false,
           getter: None,
           setter: None,
+          is_accessor: false,
         }
       })
       let ns_obj : Value = Object({

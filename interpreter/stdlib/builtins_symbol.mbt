@@ -6,6 +6,7 @@ fn setup_symbol_builtins(env : Environment, symbols : SymbolState) -> Unit {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   // Descriptor for well-known symbol properties: { writable: false, enumerable: false, configurable: false }
   let wks_desc : PropDescriptor = {
@@ -14,6 +15,7 @@ fn setup_symbol_builtins(env : Environment, symbols : SymbolState) -> Unit {
     configurable: false,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   // Descriptor for methods: { writable: true, enumerable: false, configurable: true }
   let method_desc : PropDescriptor = {
@@ -22,6 +24,7 @@ fn setup_symbol_builtins(env : Environment, symbols : SymbolState) -> Unit {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   // Create well-known symbols
   let iterator_sym = symbols.new_symbol(Some("Symbol.iterator"))
@@ -153,6 +156,7 @@ fn setup_symbol_builtins(env : Environment, symbols : SymbolState) -> Unit {
     configurable: true,
     getter: Some(description_getter),
     setter: None,
+    is_accessor: true,
   }
 
   // Symbol.prototype[@@toPrimitive](hint)
@@ -212,6 +216,7 @@ fn setup_symbol_builtins(env : Environment, symbols : SymbolState) -> Unit {
     configurable: false,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
 
   // Well-known symbols as static properties (all { writable: false, enumerable: false, configurable: false })
@@ -332,6 +337,7 @@ fn setup_symbol_builtins(env : Environment, symbols : SymbolState) -> Unit {
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
     }
     _ => ()

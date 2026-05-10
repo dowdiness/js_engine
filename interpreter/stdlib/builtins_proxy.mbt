@@ -6,6 +6,7 @@ fn setup_proxy_builtins(env : Environment) -> Unit {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   // Proxy constructor: new Proxy(target, handler)
   let proxy_ctor : Value = Value::Object({
@@ -65,6 +66,7 @@ fn setup_proxy_builtins(env : Environment) -> Unit {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   let revocable_descs : Map[String, PropDescriptor] = {}
   revocable_descs["name"] = nf_desc
@@ -153,6 +155,7 @@ fn setup_proxy_builtins(env : Environment) -> Unit {
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
     }
     _ => ()

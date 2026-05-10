@@ -284,6 +284,7 @@ fn Interpreter::create_class(
                     Some(d) => d.setter
                     None => None
                   },
+                  is_accessor: true,
                 }
               }
               _ => {
@@ -305,6 +306,7 @@ fn Interpreter::create_class(
                     Some(d) => d.setter
                     None => None
                   },
+                  is_accessor: true,
                 }
               }
             }
@@ -330,6 +332,7 @@ fn Interpreter::create_class(
                     None => None
                   },
                   setter: Some(method_val),
+                  is_accessor: true,
                 }
               }
               _ => {
@@ -351,6 +354,7 @@ fn Interpreter::create_class(
                     None => None
                   },
                   setter: Some(method_val),
+                  is_accessor: true,
                 }
               }
             }
@@ -362,6 +366,7 @@ fn Interpreter::create_class(
               configurable: true,
               getter: None,
               setter: None,
+              is_accessor: false,
             }
             // Store method in appropriate map based on key type (string vs symbol)
             match key_val {
@@ -448,6 +453,7 @@ fn Interpreter::create_class(
           configurable: true,
           getter: None,
           setter: None,
+          is_accessor: false,
         }
       }
       _ => ()
@@ -460,6 +466,7 @@ fn Interpreter::create_class(
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   match class_obj {
     Object(class_data) => {
@@ -479,6 +486,7 @@ fn Interpreter::create_class(
         configurable: false,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
     }
     _ => ()
@@ -536,6 +544,7 @@ fn Interpreter::create_class(
               configurable: true,
               getter: None,
               setter: None,
+              is_accessor: false,
             }
           }
           _ => {
@@ -561,6 +570,7 @@ fn Interpreter::create_class(
               configurable: true,
               getter: None,
               setter: None,
+              is_accessor: false,
             }
           }
         }

@@ -28,6 +28,7 @@ fn to_object(val : Value, interp : Interpreter) -> Value raise Error {
         configurable: false,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
       for i = 0; i < chars.length(); i = i + 1 {
         descs[i.to_string()] = {
@@ -36,6 +37,7 @@ fn to_object(val : Value, interp : Interpreter) -> Value raise Error {
           configurable: false,
           getter: None,
           setter: None,
+          is_accessor: false,
         }
       }
       Value::Object({
@@ -215,6 +217,7 @@ fn apply_property_descriptor(
       configurable,
       getter,
       setter,
+      is_accessor: true,
     }
   } else {
     match get_value_property(desc_val, "value") {
@@ -242,6 +245,7 @@ fn apply_property_descriptor(
       configurable,
       getter: None,
       setter: None,
+      is_accessor: false,
     }
   }
 }

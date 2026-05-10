@@ -502,6 +502,55 @@ fn js_trim_whitespace(s : String) -> String {
 }
 
 ///|
+fn parse_hex_string(s : String) -> Double {
+  guard s.length() > 0 else { return 0.0 / 0.0 }
+  let mut result : Double = 0.0
+  for ch in s {
+    let digit = if ch >= '0' && ch <= '9' {
+      ch.to_int() - '0'.to_int()
+    } else if ch >= 'a' && ch <= 'f' {
+      ch.to_int() - 'a'.to_int() + 10
+    } else if ch >= 'A' && ch <= 'F' {
+      ch.to_int() - 'A'.to_int() + 10
+    } else {
+      return 0.0 / 0.0
+    }
+    result = result * 16.0 + digit.to_double()
+  }
+  result
+}
+
+///|
+fn parse_binary_string(s : String) -> Double {
+  guard s.length() > 0 else { return 0.0 / 0.0 }
+  let mut result : Double = 0.0
+  for ch in s {
+    if ch == '0' {
+      result = result * 2.0
+    } else if ch == '1' {
+      result = result * 2.0 + 1.0
+    } else {
+      return 0.0 / 0.0
+    }
+  }
+  result
+}
+
+///|
+fn parse_octal_string(s : String) -> Double {
+  guard s.length() > 0 else { return 0.0 / 0.0 }
+  let mut result : Double = 0.0
+  for ch in s {
+    if ch >= '0' && ch <= '7' {
+      result = result * 8.0 + (ch.to_int() - '0'.to_int()).to_double()
+    } else {
+      return 0.0 / 0.0
+    }
+  }
+  result
+}
+
+///|
 pub fn to_number(
   val : Value,
   interp? : Interpreter? = None,
@@ -509,71 +558,22 @@ pub fn to_number(
   match val {
     Number(n) => n
     String_(s) => {
-      // Trim whitespace per spec (including Unicode whitespace)
       let trimmed = js_trim_whitespace(s)
       if trimmed.length() == 0 {
         return 0.0
       }
-      // Handle hex, binary, octal literals
       if trimmed.length() > 2 {
         let prefix = trimmed.view()[:2].to_owned()
         if prefix == "0x" || prefix == "0X" {
-          // Parse hex
-          let hex_str = trimmed.view()[2:].to_owned()
-          if hex_str.length() == 0 {
-            return 0.0 / 0.0
-          }
-          let mut result : Double = 0.0
-          for ch in hex_str {
-            let digit = if ch >= '0' && ch <= '9' {
-              ch.to_int() - '0'.to_int()
-            } else if ch >= 'a' && ch <= 'f' {
-              ch.to_int() - 'a'.to_int() + 10
-            } else if ch >= 'A' && ch <= 'F' {
-              ch.to_int() - 'A'.to_int() + 10
-            } else {
-              return 0.0 / 0.0
-            }
-            result = result * 16.0 + digit.to_double()
-          }
-          return result
+          return parse_hex_string(trimmed.view()[2:].to_owned())
         }
         if prefix == "0b" || prefix == "0B" {
-          // Parse binary
-          let bin_str = trimmed.view()[2:].to_owned()
-          if bin_str.length() == 0 {
-            return 0.0 / 0.0
-          }
-          let mut result : Double = 0.0
-          for ch in bin_str {
-            if ch == '0' {
-              result = result * 2.0
-            } else if ch == '1' {
-              result = result * 2.0 + 1.0
-            } else {
-              return 0.0 / 0.0
-            }
-          }
-          return result
+          return parse_binary_string(trimmed.view()[2:].to_owned())
         }
         if prefix == "0o" || prefix == "0O" {
-          // Parse octal
-          let oct_str = trimmed.view()[2:].to_owned()
-          if oct_str.length() == 0 {
-            return 0.0 / 0.0
-          }
-          let mut result : Double = 0.0
-          for ch in oct_str {
-            if ch >= '0' && ch <= '7' {
-              result = result * 8.0 + (ch.to_int() - '0'.to_int()).to_double()
-            } else {
-              return 0.0 / 0.0
-            }
-          }
-          return result
+          return parse_octal_string(trimmed.view()[2:].to_owned())
         }
       }
-      // Handle Infinity
       if trimmed == "Infinity" || trimmed == "+Infinity" {
         return 1.0 / 0.0
       }
@@ -585,8 +585,7 @@ pub fn to_number(
       if trimmed.contains("_") {
         return 0.0 / 0.0
       }
-      // Validate the string only contains valid Number() characters.
-      // parse_double may accept non-spec things like "INFINITY", "inf", etc.
+      // parse_double accepts non-spec strings like "INFINITY" and "inf"; validate first
       let valid = trimmed
         .iter()
         .fold(init=true, fn(acc, ch) {
@@ -610,13 +609,18 @@ pub fn to_number(
     Bool(b) => if b { 1.0 } else { 0.0 }
     Null => 0.0
     Object(data) => {
-      // Use ToPrimitive to convert object to a primitive, then ToNumber on the result
       let prim = to_primitive_number(Object(data), data, interp~)
       to_number(prim, interp~)
     }
     Array(arr_data) => {
-      // Arrays: convert to string via join(","), then to number
-      let s = arr_data.elements.map(fn(v) { v.to_string() }).join(",")
+      let s = arr_data.elements
+        .map(fn(v) {
+          match v {
+            Undefined | Null => ""
+            _ => v.to_string()
+          }
+        })
+        .join(",")
       if s.length() == 0 {
         0.0
       } else {
@@ -771,8 +775,14 @@ pub fn to_js_string(
       to_js_string(prim, interp~)
     }
     Array(arr_data) =>
-      // Arrays: join elements with commas
-      arr_data.elements.map(fn(v) { v.to_string() }).join(",")
+      arr_data.elements
+      .map(fn(v) {
+        match v {
+          Undefined | Null => ""
+          _ => v.to_string()
+        }
+      })
+      .join(",")
     Map(_) | Set(_) | Promise(_) | Proxy(_) => "[object Object]"
   }
 }

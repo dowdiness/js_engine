@@ -94,6 +94,7 @@ pub(all) enum Expr {
   BoolLit(Bool, @token.Loc)
   NullLit(@token.Loc)
   UndefinedLit(@token.Loc)
+  ArrayHole(@token.Loc)
   Ident(String, @token.Loc)
   Binary(BinOp, Expr, Expr, @token.Loc)
   Unary(UnaryOp, Expr, @token.Loc)

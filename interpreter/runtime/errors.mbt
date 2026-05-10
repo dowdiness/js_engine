@@ -19,6 +19,7 @@ fn make_error_value_with_env(
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   let err_props : Map[String, Value] = {}
   err_props["message"] = String_(msg)
@@ -99,6 +100,7 @@ fn make_aggregate_error_value(
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   let err_props : Map[String, Value] = {}
   err_props["message"] = String_(msg)

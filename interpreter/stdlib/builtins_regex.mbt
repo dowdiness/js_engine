@@ -1661,6 +1661,7 @@ pub fn make_regex_match_array(m : RegexMatch, input : String) -> Value {
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
     }
     Object({
@@ -1880,6 +1881,7 @@ pub fn make_regexp_object(
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   re_descs["source"] = re_method_desc
   re_descs["flags"] = re_method_desc
@@ -1898,6 +1900,7 @@ pub fn make_regexp_object(
     configurable: false,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
 
   let re_sym_descs : Map[Int, PropDescriptor] = {}
@@ -2268,6 +2271,7 @@ pub fn get_regexp_string_iterator_proto() -> Value {
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
       // Add [Symbol.iterator] that returns the iterator itself
       proto_sym_props[iterator_sym.id] = @runtime.make_method_func(
@@ -2291,6 +2295,7 @@ pub fn get_regexp_string_iterator_proto() -> Value {
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
       let proto : Value = Value::Object({
         bag: {

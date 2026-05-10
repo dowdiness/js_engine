@@ -284,6 +284,7 @@ fn create_promise_capability_from_constructor(
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
     }
     _ => ()
@@ -352,6 +353,7 @@ pub fn setup_promise(env : Environment) -> Unit {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   // Promise prototype with then, catch, finally
   let promise_proto_props : Map[String, Value] = {}
@@ -583,6 +585,7 @@ pub fn setup_promise(env : Environment) -> Unit {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   promise_proto_descs["catch"] = {
     writable: true,
@@ -590,6 +593,7 @@ pub fn setup_promise(env : Environment) -> Unit {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   promise_proto_descs["finally"] = {
     writable: true,
@@ -597,6 +601,7 @@ pub fn setup_promise(env : Environment) -> Unit {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   let promise_proto = Value::Object({
     bag: {
@@ -1234,6 +1239,7 @@ pub fn setup_promise(env : Environment) -> Unit {
           configurable: false,
           getter: None,
           setter: None,
+          is_accessor: false,
         },
         "resolve": {
           writable: true,
@@ -1241,6 +1247,7 @@ pub fn setup_promise(env : Environment) -> Unit {
           configurable: true,
           getter: None,
           setter: None,
+          is_accessor: false,
         },
         "reject": {
           writable: true,
@@ -1248,6 +1255,7 @@ pub fn setup_promise(env : Environment) -> Unit {
           configurable: true,
           getter: None,
           setter: None,
+          is_accessor: false,
         },
         "all": {
           writable: true,
@@ -1255,6 +1263,7 @@ pub fn setup_promise(env : Environment) -> Unit {
           configurable: true,
           getter: None,
           setter: None,
+          is_accessor: false,
         },
         "race": {
           writable: true,
@@ -1262,6 +1271,7 @@ pub fn setup_promise(env : Environment) -> Unit {
           configurable: true,
           getter: None,
           setter: None,
+          is_accessor: false,
         },
         "allSettled": {
           writable: true,
@@ -1269,6 +1279,7 @@ pub fn setup_promise(env : Environment) -> Unit {
           configurable: true,
           getter: None,
           setter: None,
+          is_accessor: false,
         },
         "any": {
           writable: true,
@@ -1276,6 +1287,7 @@ pub fn setup_promise(env : Environment) -> Unit {
           configurable: true,
           getter: None,
           setter: None,
+          is_accessor: false,
         },
         "withResolvers": {
           writable: true,
@@ -1283,6 +1295,7 @@ pub fn setup_promise(env : Environment) -> Unit {
           configurable: true,
           getter: None,
           setter: None,
+          is_accessor: false,
         },
         "try": {
           writable: true,
@@ -1290,6 +1303,7 @@ pub fn setup_promise(env : Environment) -> Unit {
           configurable: true,
           getter: None,
           setter: None,
+          is_accessor: false,
         },
       },
       symbol_descriptors: {},
@@ -1365,6 +1379,7 @@ pub fn setup_promise(env : Environment) -> Unit {
                 configurable: true,
                 getter: Some(species_getter),
                 setter: None,
+                is_accessor: true,
               }
             }
             _ => ()
@@ -1390,6 +1405,7 @@ pub fn setup_promise(env : Environment) -> Unit {
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
     }
     _ => ()

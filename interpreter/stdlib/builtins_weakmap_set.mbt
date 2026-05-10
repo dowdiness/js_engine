@@ -467,6 +467,7 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   wm_proto_descs["get"] = method_desc
   wm_proto_descs["set"] = method_desc
@@ -485,6 +486,7 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   let wm_proto : Value = Value::Object({
     bag: {
@@ -610,6 +612,7 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
         configurable: false,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
     }
     _ => ()
@@ -626,6 +629,7 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
     }
     _ => ()
@@ -759,6 +763,7 @@ fn setup_weakset_builtins(env : Environment) -> Unit {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   ws_proto_descs["add"] = ws_method_desc
   ws_proto_descs["has"] = ws_method_desc
@@ -774,6 +779,7 @@ fn setup_weakset_builtins(env : Environment) -> Unit {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   let ws_proto : Value = Value::Object({
     bag: {
@@ -884,6 +890,7 @@ fn setup_weakset_builtins(env : Environment) -> Unit {
         configurable: false,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
     }
     _ => ()
@@ -900,6 +907,7 @@ fn setup_weakset_builtins(env : Environment) -> Unit {
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
     }
     _ => ()

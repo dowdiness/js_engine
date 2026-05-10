@@ -33,6 +33,10 @@ fn make_freeze_func() -> Value {
               Some(d) => d.setter
               None => None
             },
+            is_accessor: match existing {
+              Some(d) => d.is_accessor
+              None => false
+            },
           }
         }
         // Freeze symbol properties
@@ -54,6 +58,10 @@ fn make_freeze_func() -> Value {
             setter: match existing {
               Some(d) => d.setter
               None => None
+            },
+            is_accessor: match existing {
+              Some(d) => d.is_accessor
+              None => false
             },
           }
         }
@@ -94,6 +102,10 @@ fn make_seal_func() -> Value {
               Some(d) => d.setter
               None => None
             },
+            is_accessor: match existing {
+              Some(d) => d.is_accessor
+              None => false
+            },
           }
         }
         // Seal symbol properties
@@ -118,6 +130,10 @@ fn make_seal_func() -> Value {
             setter: match existing {
               Some(d) => d.setter
               None => None
+            },
+            is_accessor: match existing {
+              Some(d) => d.is_accessor
+              None => false
             },
           }
         }

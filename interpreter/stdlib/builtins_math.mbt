@@ -525,6 +525,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     configurable: false,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   let method_desc : PropDescriptor = {
     writable: true,
@@ -532,6 +533,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   // Constants are non-writable, non-enumerable, non-configurable
   let math_constants = [
@@ -561,6 +563,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   env.def_builtin(
     "Math",

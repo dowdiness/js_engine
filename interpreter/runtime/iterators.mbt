@@ -58,6 +58,7 @@ pub fn get_array_iterator_proto() -> Value {
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
       proto_sym_props[iterator_sym.id] = make_method_func(
         name="[Symbol.iterator]",
@@ -79,6 +80,7 @@ pub fn get_array_iterator_proto() -> Value {
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
       let proto = Object({
         bag: {
@@ -116,6 +118,7 @@ pub fn make_array_iterator_value(arr : ArrayData) -> Value {
           configurable: true,
           getter: None,
           setter: None,
+          is_accessor: false,
         },
         "name": {
           writable: false,
@@ -123,6 +126,7 @@ pub fn make_array_iterator_value(arr : ArrayData) -> Value {
           configurable: true,
           getter: None,
           setter: None,
+          is_accessor: false,
         },
       },
       symbol_descriptors: {},
@@ -209,6 +213,7 @@ pub fn make_array_like_iterator_value(val : Value) -> Value raise Error {
           configurable: true,
           getter: None,
           setter: None,
+          is_accessor: false,
         },
         "name": {
           writable: false,
@@ -216,6 +221,7 @@ pub fn make_array_like_iterator_value(val : Value) -> Value raise Error {
           configurable: true,
           getter: None,
           setter: None,
+          is_accessor: false,
         },
       },
       symbol_descriptors: {},
@@ -304,6 +310,7 @@ pub fn get_string_iterator_proto() -> Value {
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
       proto_sym_props[iterator_sym.id] = make_method_func(
         name="[Symbol.iterator]",
@@ -325,6 +332,7 @@ pub fn get_string_iterator_proto() -> Value {
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
       let proto = Object({
         bag: {
@@ -362,6 +370,7 @@ pub fn make_string_iterator_value(s : String) -> Value {
           configurable: true,
           getter: None,
           setter: None,
+          is_accessor: false,
         },
         "name": {
           writable: false,
@@ -369,6 +378,7 @@ pub fn make_string_iterator_value(s : String) -> Value {
           configurable: true,
           getter: None,
           setter: None,
+          is_accessor: false,
         },
       },
       symbol_descriptors: {},

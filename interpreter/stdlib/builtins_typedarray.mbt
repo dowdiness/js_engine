@@ -291,6 +291,7 @@ pub fn make_typedarray_object(
       configurable: false,
       getter: None,
       setter: None,
+      is_accessor: false,
     }
   }
   Value::Object({
@@ -341,6 +342,7 @@ fn make_typedarray_from_buffer(
       configurable: false,
       getter: None,
       setter: None,
+      is_accessor: false,
     }
   }
   Value::Object({
@@ -535,6 +537,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
         }),
       ),
       setter: None,
+      is_accessor: true,
     }
   }
 
@@ -569,6 +572,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
       }),
     ),
     setter: None,
+    is_accessor: true,
   }
 
   // --- Prototype methods ---
@@ -2365,6 +2369,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   ta_proto_descs["set"] = method_desc
   ta_proto_descs["subarray"] = method_desc
@@ -2409,6 +2414,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   ta_proto_sym_descs[tostringtag_sym.id] = {
     writable: false,
@@ -2431,6 +2437,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
       }),
     ),
     setter: None,
+    is_accessor: true,
   }
 
   let ta_proto : Value = Value::Object({
@@ -2464,6 +2471,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     configurable: false,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   ta_ctor_descs["name"] = {
     writable: false,
@@ -2471,6 +2479,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   ta_ctor_descs["length"] = {
     writable: false,
@@ -2478,6 +2487,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   let ta_ctor : Value = Value::Object({
     bag: {
@@ -2507,6 +2517,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
     }
     _ => ()
@@ -2532,6 +2543,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
       configurable: false,
       getter: None,
       setter: None,
+      is_accessor: false,
     }
 
     let per_proto : Value = Value::Object({
@@ -2675,6 +2687,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
       configurable: false,
       getter: None,
       setter: None,
+      is_accessor: false,
     }
     ctor_descs["BYTES_PER_ELEMENT"] = {
       writable: false,
@@ -2682,6 +2695,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
       configurable: false,
       getter: None,
       setter: None,
+      is_accessor: false,
     }
     ctor_descs["name"] = {
       writable: false,
@@ -2689,6 +2703,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
       configurable: true,
       getter: None,
       setter: None,
+      is_accessor: false,
     }
     ctor_descs["length"] = {
       writable: false,
@@ -2696,6 +2711,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
       configurable: true,
       getter: None,
       setter: None,
+      is_accessor: false,
     }
 
     let ctor : Value = Value::Object({
@@ -2877,6 +2893,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
           configurable: true,
           getter: None,
           setter: None,
+          is_accessor: false,
         }
       }
       _ => ()
