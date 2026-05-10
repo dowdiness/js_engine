@@ -447,7 +447,7 @@ pub fn set_array_iterator_override(
     configurable: true,
     getter,
     setter: None,
-    is_accessor: false,
+    is_accessor: getter is Some(_),
   }
 }
 

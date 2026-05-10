@@ -1283,8 +1283,7 @@ pub fn proxy_get_own_property(
       }
       // §10.5.5 step 11+: parse trap descriptor; run invariants.
       let trap_desc = trap_result_to_descriptor(trap_result, interp)
-      let trap_value_opt = if !(trap_desc.getter is Some(_) ||
-        trap_desc.setter is Some(_)) {
+      let trap_value_opt = if !trap_desc.is_accessor {
         trap_result_value(trap_result, interp)
       } else {
         None
@@ -1322,10 +1321,8 @@ pub fn proxy_get_own_property(
             )
           }
           // Step 17.b: cannot report non-configurable + non-writable unless target matches.
-          let trap_is_data = trap_desc.getter is None &&
-            trap_desc.setter is None
-          let existing_is_data = existing.getter is None &&
-            existing.setter is None
+          let trap_is_data = !trap_desc.is_accessor
+          let existing_is_data = !existing.is_accessor
           if trap_is_data &&
             existing_is_data &&
             !trap_desc.configurable &&

@@ -299,6 +299,9 @@ pub fn Interpreter::set_property(
                       )
                     }
                     return value
+                  } else {
+                    data.bag.properties[prop] = value
+                    return value
                   }
               }
             None => {

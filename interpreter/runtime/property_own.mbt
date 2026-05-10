@@ -841,7 +841,14 @@ pub fn Interpreter::array_define_own_property(
             }
           }
           let merged = merge_partial_into(current, partial)
-          apply_descriptor_to_bag(arr.bag, key, merged, partial.value)
+          let final_desc = if !merged.is_accessor && current.is_accessor {
+            { ..merged, getter: None, setter: None }
+          } else if merged.is_accessor && !current.is_accessor {
+            { ..merged, writable: false }
+          } else {
+            merged
+          }
+          apply_descriptor_to_bag(arr.bag, key, final_desc, partial.value)
           true
         }
       }
@@ -886,7 +893,16 @@ pub fn Interpreter::array_define_own_property(
                 return false
               }
             }
-            arr.bag.descriptors[k] = merge_partial_into(current, partial)
+            let merged = merge_partial_into(current, partial)
+            // Clear fields that become invalid after a descriptor-kind transition.
+            arr.bag.descriptors[k] = if !merged.is_accessor &&
+              current.is_accessor {
+              { ..merged, getter: None, setter: None }
+            } else if merged.is_accessor && !current.is_accessor {
+              { ..merged, writable: false }
+            } else {
+              merged
+            }
           }
           None =>
             if had_index {
@@ -959,7 +975,14 @@ pub fn Interpreter::array_define_own_property(
                 }
               }
               let merged = merge_partial_into(current, partial)
-              apply_descriptor_to_bag(arr.bag, key, merged, partial.value)
+              let final_desc = if !merged.is_accessor && current.is_accessor {
+                { ..merged, getter: None, setter: None }
+              } else if merged.is_accessor && !current.is_accessor {
+                { ..merged, writable: false }
+              } else {
+                merged
+              }
+              apply_descriptor_to_bag(arr.bag, key, final_desc, partial.value)
             }
           }
           let new_len = idx64 + 1L
@@ -992,7 +1015,14 @@ pub fn Interpreter::array_define_own_property(
             }
           }
           let merged = merge_partial_into(current, partial)
-          apply_descriptor_to_bag(arr.bag, key, merged, partial.value)
+          let final_desc = if !merged.is_accessor && current.is_accessor {
+            { ..merged, getter: None, setter: None }
+          } else if merged.is_accessor && !current.is_accessor {
+            { ..merged, writable: false }
+          } else {
+            merged
+          }
+          apply_descriptor_to_bag(arr.bag, key, final_desc, partial.value)
           true
         }
       }
@@ -1012,7 +1042,15 @@ pub fn Interpreter::array_set_length(
   // §15.4.5.1 step 3.a.i: length is always a non-configurable data property.
   // Trying to make it an accessor → TypeError.
   if partial.is_accessor() {
-    raise @errors.TypeError(message="Cannot redefine property: length")
+    return false
+  }
+  // length is always non-configurable and non-enumerable — reject any
+  // attempt to flip those attributes regardless of whether value is present.
+  if partial.configurable is Some(true) {
+    return false
+  }
+  if partial.enumerable is Some(true) {
+    return false
   }
   // Step 1-2: if Desc.[[Value]] absent, just adjust attributes.
   let new_len_value = match partial.value {
