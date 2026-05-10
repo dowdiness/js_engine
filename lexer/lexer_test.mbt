@@ -636,6 +636,33 @@ test "numeric 07.5 (LegacyOctal + fraction) is SyntaxError" {
 }
 
 ///|
+test "LegacyOctal member access: 01.toString tokenizes as Number . Ident" {
+  // Per V8: `01.toString()` evaluates to "1" — `.` is member access, not
+  // a fractional continuation. The dot-followed-by-digit guard must NOT
+  // fire here.
+  let kinds = tok_kinds("01.toString")
+  inspect(kinds, content="[Number(1), Dot, Ident(\"toString\"), EOF]")
+}
+
+///|
+test "LegacyOctal member access: 01.a tokenizes as Number . Ident" {
+  let kinds = tok_kinds("01.a")
+  inspect(kinds, content="[Number(1), Dot, Ident(\"a\"), EOF]")
+}
+
+///|
+test "LegacyOctal member access: 00.toString tokenizes as Number . Ident" {
+  let kinds = tok_kinds("00.toString")
+  inspect(kinds, content="[Number(0), Dot, Ident(\"toString\"), EOF]")
+}
+
+///|
+test "LegacyOctal whitespace dot: 01 .toString tokenizes correctly" {
+  let kinds = tok_kinds("01 .toString")
+  inspect(kinds, content="[Number(1), Dot, Ident(\"toString\"), EOF]")
+}
+
+///|
 test "numeric 0 is LexNormal" {
   let toks = @lexer.tokenize("0")
   inspect(toks[0].lex_form, content="LexNormal")

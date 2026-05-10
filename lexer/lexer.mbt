@@ -681,14 +681,25 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
               }
             }
             // Per ES262 §12.8.3 + Annex B §B.1.1, LegacyOctalIntegerLiteral
-            // cannot be followed by a fractional or exponent part — no
-            // production matches `01.2`, `01e2`, `07.5`, etc., so they are
-            // SyntaxErrors in every mode (matches V8).
+            // cannot extend into a fractional or exponent part — `01.2`,
+            // `01e2`, `07.5` etc. match no production and are SyntaxErrors
+            // in every mode (matches V8).
+            //
+            // The `.` case must distinguish fractional continuation from
+            // member access: `01.toString()` is valid sloppy code (member
+            // access on `Number(1)`), so we only reject `.<DecimalDigit>`.
+            // `e`/`E` immediately after the digit is unambiguously the
+            // exponent grammar entry, which legacy-octal cannot satisfy
+            // (V8 errors on `01e2`, `01eFoo`, `01e` alike).
             if offset < len {
               let ch = char_at(offset)
-              if ch == '.' || ch == 'e' || ch == 'E' {
+              if ch == '.' && offset + 1 < len && is_digit(char_at(offset + 1)) {
                 raise @errors.SyntaxError(
-                  message="Invalid number literal at line \{loc.line}, col \{loc.col}: leading-zero octal-style integer cannot be followed by '\{ch}'",
+                  message="Invalid number literal at line \{loc.line}, col \{loc.col}: leading-zero octal-style integer cannot be followed by a fractional part",
+                )
+              } else if ch == 'e' || ch == 'E' {
+                raise @errors.SyntaxError(
+                  message="Invalid number literal at line \{loc.line}, col \{loc.col}: leading-zero octal-style integer cannot be followed by an exponent",
                 )
               }
             }

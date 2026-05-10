@@ -11832,7 +11832,7 @@ test "LegacyOctal + fraction 01.2 is SyntaxError in non-strict" {
   let result = run_throws(src)
   inspect(
     result,
-    content="SyntaxError(message=\"Invalid number literal at line 1, col 1: leading-zero octal-style integer cannot be followed by '.'\")",
+    content="SyntaxError(message=\"Invalid number literal at line 1, col 1: leading-zero octal-style integer cannot be followed by a fractional part\")",
   )
 }
 
@@ -11843,7 +11843,7 @@ test "LegacyOctal + exponent 01e2 is SyntaxError in non-strict" {
   let result = run_throws(src)
   inspect(
     result,
-    content="SyntaxError(message=\"Invalid number literal at line 1, col 1: leading-zero octal-style integer cannot be followed by 'e'\")",
+    content="SyntaxError(message=\"Invalid number literal at line 1, col 1: leading-zero octal-style integer cannot be followed by an exponent\")",
   )
 }
 
@@ -11854,8 +11854,32 @@ test "LegacyOctal + fraction 07.5 is SyntaxError in non-strict" {
   let result = run_throws(src)
   inspect(
     result,
-    content="SyntaxError(message=\"Invalid number literal at line 1, col 1: leading-zero octal-style integer cannot be followed by '.'\")",
+    content="SyntaxError(message=\"Invalid number literal at line 1, col 1: leading-zero octal-style integer cannot be followed by a fractional part\")",
   )
+}
+
+///|
+test "LegacyOctal member access 01.toString() valid in non-strict" {
+  let src =
+    #|01.toString()
+  let result = run(src)
+  inspect(result.to_string(), content="1")
+}
+
+///|
+test "LegacyOctal member access 07.toString() returns string of value" {
+  let src =
+    #|07.toString()
+  let result = run(src)
+  inspect(result.to_string(), content="7")
+}
+
+///|
+test "LegacyOctal member access 01.constructor is Number" {
+  let src =
+    #|01.constructor === Number
+  let result = run(src)
+  inspect(result.to_string(), content="true")
 }
 
 ///|

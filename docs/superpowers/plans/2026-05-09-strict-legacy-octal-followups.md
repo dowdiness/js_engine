@@ -118,9 +118,16 @@ Two surgical lexer changes, no AST/walker changes (the validator at
 1. **Reject LegacyOctal + fraction/exponent in the lexer (all modes).**
    Inside the `if is_legacy_octal { ... }` block at
    `lexer.mbt:670-697`, after the digit-scan loop and before emitting
-   the token, peek at the current char. If it is `.`, `e`, or `E`,
-   raise `@errors.SyntaxError` directly. This matches the spec
-   ("no production matches") and matches V8's all-modes rejection.
+   the token, peek at the current char.
+   - If `.` followed by a `DecimalDigit`, raise SyntaxError (it's a
+     fractional continuation, e.g. `01.2`).
+   - If `e` or `E`, raise SyntaxError (exponent grammar entry; V8
+     rejects `01e2`, `01eFoo`, `01e` alike).
+   - If `.` followed by a non-digit (identifier, EOF, etc.), DO NOT
+     raise — it's member access (`01.toString()` is valid sloppy code,
+     evaluates to `"1"`). Originally the design called for an
+     unconditional `.` rejection, but Codex review on PR #99 caught
+     the regression: V8 lexes `01.toString` as `Number(1) . toString`.
 
 2. **Stop clearing `is_non_octal_decimal_int` at fraction/exponent
    entry.** Remove the two `is_non_octal_decimal_int = false`
