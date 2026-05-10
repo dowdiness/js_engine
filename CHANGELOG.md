@@ -50,10 +50,11 @@ early errors are now enforced in strict-mode code:
   object property keys (string and numeric), class member keys
   (method/field, string and numeric), object-pattern destructuring
   keys, and module specifier strings (`import x from "\1"`).
-- **All strict-mode entry points** trigger the validation: scripts and
-  eval bodies (existing), module bodies (modules are always strict per
-  §16.2.1.6), and `new Function` / `new GeneratorFunction` /
-  `new AsyncFunction` constructor bodies with `"use strict"` directives.
+- **Covered strict-mode entry points**: scripts and eval bodies
+  (existing), module bodies (modules are always strict per §16.2.1.6),
+  and `new Function` / `new GeneratorFunction` / `new AsyncFunction`
+  constructor bodies with `"use strict"` directives. (`AsyncGeneratorFunction`
+  remains a separate entry point, scoped out for now.)
 
 Annex B compatibility is preserved in non-strict code: `\1` still
 evaluates to `\u{0001}`, `0777` to `511`, `08` to `8`. The new
@@ -158,8 +159,10 @@ follow-up patch.
 These changes affect symbols exposed by `@interpreter/runtime`,
 `@ast`, and `@token`. They are listed for transparency, but per pre-1.0
 convention this remains a `patch` release because the symbols had no
-known downstream consumers when v0.2.3 was cut. Review this list
-before upgrading if you link against any of these packages directly.
+known downstream consumers when v0.2.3 was cut. Direct consumers of
+these packages will see source-breaking changes (renamed constructors,
+extended enum variants, signature changes) and should review the list
+below before upgrading.
 
 - **Constructor convention rename**: `MapData::new`, `PropertyBag::new`,
   `SetData::new` renamed to `MapData::MapData`, `PropertyBag::PropertyBag`,
@@ -177,10 +180,23 @@ before upgrading if you link against any of these packages directly.
 - **AST: new `Expr::ArrayHole(@token.Loc)` variant** for elision in
   array literals (`[1,,3]`). Breaks exhaustive matches on `Expr` in
   external consumers.
+- **AST: `PropPat` gained `key_lex_form: @token.LexForm` and
+  `key_loc: @token.Loc` fields** (PR #99) for destructuring
+  pattern-key strict-mode validation.
+- **`@interpreter/runtime`: `ArrayData` gained `holes: Map[Int, Unit]`
+  and `mut extensible: Bool` fields** (PR #91 + PR #101) — additive,
+  but visible on `pub(all) struct ArrayData` field listings.
+- **`@interpreter/runtime`: `ModuleLoader::inner` removed.** Marked
+  `#deprecated` since v0.2.1; removal completes the standard two-release
+  deprecation-then-removal cycle.
 - **New `LexForm` enum** in `@token`: `LexNormal`,
   `StringLegacyOctalEscape`, `NumberLegacyOctalInt`,
   `NumberNonOctalDecimalInt`. Used by AST and the early-error walker
   to track strict-mode-relevant literal provenance.
+- **`@token: Token` gained a `lex_form: LexForm` field; `Token::new`
+  signature gained an optional `lex_form?: LexForm` labeled parameter.**
+  The labeled parameter is backward-compatible — existing callers that
+  omit it continue to compile.
 - **`@interpreter/runtime` additions** (called cross-package by
   `interpreter/stdlib`, so correctly `pub`):
   `validate_function_constructor_params`,
