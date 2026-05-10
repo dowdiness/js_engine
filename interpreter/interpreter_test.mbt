@@ -11772,6 +11772,93 @@ test "non-strict legacy octal: 0777 evaluates to 511" {
 }
 
 ///|
+test "strict NonOctalDecimal + fraction: 08.1 rejected" {
+  let src =
+    #|"use strict"; 08.1;
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Decimals with leading zeros are not allowed in strict mode at line 1, col 15",
+  )
+}
+
+///|
+test "strict NonOctalDecimal + exponent: 08e2 rejected" {
+  let src =
+    #|"use strict"; 08e2;
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Decimals with leading zeros are not allowed in strict mode at line 1, col 15",
+  )
+}
+
+///|
+test "non-strict NonOctalDecimal + fraction: 08.1 evaluates to 8.1" {
+  let src =
+    #|08.1
+  let result = run(src)
+  inspect(result.to_string(), content="8.1")
+}
+
+///|
+test "non-strict NonOctalDecimal + exponent: 08e2 evaluates to 800" {
+  let src =
+    #|08e2
+  let result = run(src)
+  inspect(result.to_string(), content="800")
+}
+
+///|
+test "single-zero fractional 0.5 valid in strict" {
+  let src =
+    #|"use strict"; 0.5
+  let result = run(src)
+  inspect(result.to_string(), content="0.5")
+}
+
+///|
+test "single-zero exponent 0.1e2 valid in strict" {
+  let src =
+    #|"use strict"; 0.1e2
+  let result = run(src)
+  inspect(result.to_string(), content="10")
+}
+
+///|
+test "LegacyOctal + fraction 01.2 is SyntaxError in non-strict" {
+  let src =
+    #|01.2
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError(message=\"Invalid number literal at line 1, col 1: leading-zero octal-style integer cannot be followed by '.'\")",
+  )
+}
+
+///|
+test "LegacyOctal + exponent 01e2 is SyntaxError in non-strict" {
+  let src =
+    #|01e2
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError(message=\"Invalid number literal at line 1, col 1: leading-zero octal-style integer cannot be followed by 'e'\")",
+  )
+}
+
+///|
+test "LegacyOctal + fraction 07.5 is SyntaxError in non-strict" {
+  let src =
+    #|07.5
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError(message=\"Invalid number literal at line 1, col 1: leading-zero octal-style integer cannot be followed by '.'\")",
+  )
+}
+
+///|
 test "bare \\0 NUL is allowed in strict" {
   let src =
     #|"use strict"; "\0".charCodeAt(0)

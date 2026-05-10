@@ -558,21 +558,81 @@ test "plain numeric 100 is LexNormal" {
 }
 
 ///|
-test "numeric 08.1 (leading-zero fractional) is LexNormal" {
+test "numeric 08.1 (NonOctalDecimal + fraction) tags NumberNonOctalDecimalInt" {
   let toks = @lexer.tokenize("08.1")
-  inspect(toks[0].lex_form, content="LexNormal")
+  inspect(toks[0].lex_form, content="NumberNonOctalDecimalInt")
 }
 
 ///|
-test "numeric 08e2 (leading-zero exponent) is LexNormal" {
+test "numeric 08e2 (NonOctalDecimal + exponent) tags NumberNonOctalDecimalInt" {
   let toks = @lexer.tokenize("08e2")
+  inspect(toks[0].lex_form, content="NumberNonOctalDecimalInt")
+}
+
+///|
+test "numeric 09.5 (NonOctalDecimal + fraction) tags NumberNonOctalDecimalInt" {
+  let toks = @lexer.tokenize("09.5")
+  inspect(toks[0].lex_form, content="NumberNonOctalDecimalInt")
+}
+
+///|
+test "numeric 08.1 has decimal value 8.1" {
+  let kinds = tok_kinds("08.1")
+  inspect(kinds, content="[Number(8.1), EOF]")
+}
+
+///|
+test "numeric 08e2 has decimal value 800" {
+  let kinds = tok_kinds("08e2")
+  inspect(kinds, content="[Number(800), EOF]")
+}
+
+///|
+test "numeric 0.5 (single-zero fractional) is LexNormal" {
+  let toks = @lexer.tokenize("0.5")
   inspect(toks[0].lex_form, content="LexNormal")
 }
 
 ///|
-test "numeric 09.5 (leading-zero fractional) is LexNormal" {
-  let toks = @lexer.tokenize("09.5")
+test "numeric 0.1e2 (single-zero exponent) is LexNormal" {
+  let toks = @lexer.tokenize("0.1e2")
   inspect(toks[0].lex_form, content="LexNormal")
+}
+
+///|
+test "numeric 01.2 (LegacyOctal + fraction) is SyntaxError in all modes" {
+  let result = Ok(tok_kinds("01.2")) catch { _ => Err(()) }
+  inspect(result, content="Err(())")
+}
+
+///|
+test "numeric 01e2 (LegacyOctal + exponent) is SyntaxError in all modes" {
+  let result = Ok(tok_kinds("01e2")) catch { _ => Err(()) }
+  inspect(result, content="Err(())")
+}
+
+///|
+test "numeric 01E2 (LegacyOctal + uppercase exponent) is SyntaxError" {
+  let result = Ok(tok_kinds("01E2")) catch { _ => Err(()) }
+  inspect(result, content="Err(())")
+}
+
+///|
+test "numeric 00.5 (LegacyOctal + fraction) is SyntaxError" {
+  let result = Ok(tok_kinds("00.5")) catch { _ => Err(()) }
+  inspect(result, content="Err(())")
+}
+
+///|
+test "numeric 001.2 (LegacyOctal + fraction) is SyntaxError" {
+  let result = Ok(tok_kinds("001.2")) catch { _ => Err(()) }
+  inspect(result, content="Err(())")
+}
+
+///|
+test "numeric 07.5 (LegacyOctal + fraction) is SyntaxError" {
+  let result = Ok(tok_kinds("07.5")) catch { _ => Err(()) }
+  inspect(result, content="Err(())")
 }
 
 ///|
