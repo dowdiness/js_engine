@@ -91,8 +91,11 @@ pub(all) struct PropDescriptor {
   mut writable : Bool
   mut enumerable : Bool
   mut configurable : Bool
-  mut getter : Value? // Accessor descriptor: get function (None = not an accessor)
-  mut setter : Value? // Accessor descriptor: set function (None = not an accessor)
+  mut getter : Value? // Accessor descriptor: get function (None if absent or undefined)
+  mut setter : Value? // Accessor descriptor: set function (None if absent or undefined)
+  // True iff this was defined as an accessor (via get/set) even when both
+  // getter and setter are None (i.e., `{ get: undefined }`).
+  mut is_accessor : Bool
 }
 
 ///|
@@ -352,6 +355,7 @@ fn default_data_descriptor() -> PropDescriptor {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
 }
 
@@ -443,6 +447,7 @@ pub fn set_array_iterator_override(
     configurable: true,
     getter,
     setter: None,
+    is_accessor: false,
   }
 }
 

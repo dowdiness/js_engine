@@ -203,6 +203,7 @@ fn target_get_own_descriptor(target : Value, key : String) -> PropDescriptor? {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   match target {
     Object(data) =>
@@ -253,6 +254,7 @@ fn target_get_own_descriptor(target : Value, key : String) -> PropDescriptor? {
           configurable: false,
           getter: None,
           setter: None,
+          is_accessor: false,
         })
       }
       // Indexed element?
@@ -295,6 +297,7 @@ fn target_own_descriptor_for_key(
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   match key {
     Symbol(sym) =>
@@ -1167,7 +1170,14 @@ fn trap_result_to_descriptor(
   } else {
     None
   }
-  { writable, enumerable, configurable, getter, setter }
+  {
+    writable,
+    enumerable,
+    configurable,
+    getter,
+    setter,
+    is_accessor: has_get || has_set,
+  }
 }
 
 ///|
@@ -1513,6 +1523,7 @@ pub fn proxy_define_property(
               configurable: true,
               getter: None,
               setter: None,
+              is_accessor: false,
             }
         }
         // Step 18.b: if incoming is non-configurable, existing must also be.

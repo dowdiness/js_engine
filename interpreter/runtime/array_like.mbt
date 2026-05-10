@@ -221,7 +221,7 @@ pub fn has_array_like_element(val : Value, index : Int) -> Bool {
       }
       // Check for accessor descriptor
       match data.bag.descriptors.get(key) {
-        Some(desc) if desc.getter is Some(_) => return true
+        Some(desc) if desc.is_accessor => return true
         _ => ()
       }
       // Walk prototype chain
@@ -233,7 +233,7 @@ pub fn has_array_like_element(val : Value, index : Int) -> Bool {
               return true
             }
             match proto_data.bag.descriptors.get(key) {
-              Some(desc) if desc.getter is Some(_) => return true
+              Some(desc) if desc.is_accessor => return true
               _ => ()
             }
             current = proto_data.prototype

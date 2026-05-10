@@ -333,6 +333,7 @@ fn setup_map_builtins(env : Environment) -> Unit {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   let map_proto_descs : Map[String, PropDescriptor] = {}
   map_proto_descs["get"] = method_desc
@@ -366,6 +367,7 @@ fn setup_map_builtins(env : Environment) -> Unit {
     configurable: true,
     getter: Some(size_getter),
     setter: None,
+    is_accessor: true,
   }
 
   let map_proto : Value = Value::Object({
@@ -398,6 +400,7 @@ fn setup_map_builtins(env : Environment) -> Unit {
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
     }
     _ => ()
@@ -499,6 +502,7 @@ fn setup_map_builtins(env : Environment) -> Unit {
         configurable: false,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
     }
     _ => ()
@@ -560,6 +564,7 @@ fn setup_map_builtins(env : Environment) -> Unit {
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
     }
     _ => ()
@@ -575,6 +580,7 @@ fn setup_map_builtins(env : Environment) -> Unit {
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
     }
     _ => ()
@@ -761,6 +767,7 @@ fn setup_set_builtins(env : Environment) -> Unit {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   let set_proto_descs : Map[String, PropDescriptor] = {}
   set_proto_descs["add"] = method_desc
@@ -791,6 +798,7 @@ fn setup_set_builtins(env : Environment) -> Unit {
     configurable: true,
     getter: Some(set_size_getter),
     setter: None,
+    is_accessor: true,
   }
 
   let set_proto : Value = Value::Object({
@@ -823,6 +831,7 @@ fn setup_set_builtins(env : Environment) -> Unit {
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
     }
     _ => ()
@@ -914,6 +923,7 @@ fn setup_set_builtins(env : Environment) -> Unit {
         configurable: false,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
     }
     _ => ()
@@ -929,6 +939,7 @@ fn setup_set_builtins(env : Environment) -> Unit {
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
     }
     _ => ()
@@ -957,6 +968,7 @@ fn get_map_iterator_proto() -> Value {
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
       // Add [Symbol.iterator] that returns the iterator itself
       proto_sym_props[iterator_sym.id] = @runtime.make_method_func(
@@ -984,6 +996,7 @@ fn get_map_iterator_proto() -> Value {
               configurable: true,
               getter: None,
               setter: None,
+              is_accessor: false,
             },
           },
           symbol_descriptors: proto_sym_descs,
@@ -1018,6 +1031,7 @@ fn make_map_keys_iterator(map_data : MapData) -> Value {
           configurable: true,
           getter: None,
           setter: None,
+          is_accessor: false,
         },
         "name": {
           writable: false,
@@ -1025,6 +1039,7 @@ fn make_map_keys_iterator(map_data : MapData) -> Value {
           configurable: true,
           getter: None,
           setter: None,
+          is_accessor: false,
         },
       },
       symbol_descriptors: {},
@@ -1108,6 +1123,7 @@ fn make_map_values_iterator(map_data : MapData) -> Value {
           configurable: true,
           getter: None,
           setter: None,
+          is_accessor: false,
         },
         "name": {
           writable: false,
@@ -1115,6 +1131,7 @@ fn make_map_values_iterator(map_data : MapData) -> Value {
           configurable: true,
           getter: None,
           setter: None,
+          is_accessor: false,
         },
       },
       symbol_descriptors: {},
@@ -1198,6 +1215,7 @@ fn make_map_entries_iterator(map_data : MapData) -> Value {
           configurable: true,
           getter: None,
           setter: None,
+          is_accessor: false,
         },
         "name": {
           writable: false,
@@ -1205,6 +1223,7 @@ fn make_map_entries_iterator(map_data : MapData) -> Value {
           configurable: true,
           getter: None,
           setter: None,
+          is_accessor: false,
         },
       },
       symbol_descriptors: {},
@@ -1293,6 +1312,7 @@ fn get_set_iterator_proto() -> Value {
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
       proto_sym_props[iterator_sym.id] = @runtime.make_method_func(
         name="[Symbol.iterator]",
@@ -1318,6 +1338,7 @@ fn get_set_iterator_proto() -> Value {
               configurable: true,
               getter: None,
               setter: None,
+              is_accessor: false,
             },
           },
           symbol_descriptors: proto_sym_descs,
@@ -1352,6 +1373,7 @@ fn make_set_values_iterator(set_data : SetData) -> Value {
           configurable: true,
           getter: None,
           setter: None,
+          is_accessor: false,
         },
         "name": {
           writable: false,
@@ -1359,6 +1381,7 @@ fn make_set_values_iterator(set_data : SetData) -> Value {
           configurable: true,
           getter: None,
           setter: None,
+          is_accessor: false,
         },
       },
       symbol_descriptors: {},
@@ -1442,6 +1465,7 @@ fn make_set_entries_iterator(set_data : SetData) -> Value {
           configurable: true,
           getter: None,
           setter: None,
+          is_accessor: false,
         },
         "name": {
           writable: false,
@@ -1449,6 +1473,7 @@ fn make_set_entries_iterator(set_data : SetData) -> Value {
           configurable: true,
           getter: None,
           setter: None,
+          is_accessor: false,
         },
       },
       symbol_descriptors: {},

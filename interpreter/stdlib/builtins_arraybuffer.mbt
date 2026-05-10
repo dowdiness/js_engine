@@ -79,6 +79,7 @@ pub fn make_arraybuffer_object(byte_length : Int, proto : Value) -> Value {
     configurable: false,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   descs["[[ArrayBufferByteLength]]"] = {
     writable: false,
@@ -86,6 +87,7 @@ pub fn make_arraybuffer_object(byte_length : Int, proto : Value) -> Value {
     configurable: false,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   Value::Object({
     bag: {
@@ -150,6 +152,7 @@ pub fn setup_arraybuffer_builtins(env : Environment) -> Unit {
       }),
     ),
     setter: None,
+    is_accessor: true,
   }
 
   // ArrayBuffer.prototype.slice(begin, end)
@@ -250,6 +253,7 @@ pub fn setup_arraybuffer_builtins(env : Environment) -> Unit {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   ab_proto_descs["constructor"] = {
     writable: true,
@@ -257,6 +261,7 @@ pub fn setup_arraybuffer_builtins(env : Environment) -> Unit {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
 
   // Add Symbol.toStringTag
@@ -270,6 +275,7 @@ pub fn setup_arraybuffer_builtins(env : Environment) -> Unit {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
 
   let ab_proto : Value = Value::Object({
@@ -314,6 +320,7 @@ pub fn setup_arraybuffer_builtins(env : Environment) -> Unit {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   let ab_ctor_descs : Map[String, PropDescriptor] = {}
   ab_ctor_descs["prototype"] = {
@@ -322,6 +329,7 @@ pub fn setup_arraybuffer_builtins(env : Environment) -> Unit {
     configurable: false,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   ab_ctor_descs["name"] = nf_desc
   ab_ctor_descs["length"] = nf_desc
@@ -331,6 +339,7 @@ pub fn setup_arraybuffer_builtins(env : Environment) -> Unit {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
 
   let ab_ctor : Value = Value::Object({
@@ -374,6 +383,7 @@ pub fn setup_arraybuffer_builtins(env : Environment) -> Unit {
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
     }
     _ => ()

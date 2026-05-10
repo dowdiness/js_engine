@@ -8,6 +8,7 @@ fn setup_json_builtins(env : Environment) -> Unit {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   json_props["parse"] = @runtime.make_interp_static_func(
     name="parse",
@@ -158,6 +159,7 @@ fn setup_json_builtins(env : Environment) -> Unit {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   let obj_proto = match env.bindings.get("[[ObjectPrototype]]") {
     Some(b) => b.value

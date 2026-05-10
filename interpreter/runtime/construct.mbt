@@ -37,6 +37,7 @@ fn Interpreter::install_instance_fields(
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   for field in fields {
     let field_value : Value = match field.initializer {
@@ -323,6 +324,7 @@ fn make_arguments_object(
           configurable: true,
           getter: Some(getter_fn),
           setter: Some(setter_fn),
+          is_accessor: true,
         }
       }
       // Duplicate earlier occurrence: plain data property, not live-mapped
@@ -334,6 +336,7 @@ fn make_arguments_object(
           configurable: true,
           getter: None,
           setter: None,
+          is_accessor: false,
         }
       }
     }
@@ -347,6 +350,7 @@ fn make_arguments_object(
       configurable: true,
       getter: None,
       setter: None,
+      is_accessor: false,
     }
   }
   new_args_props["length"] = Number(args.length().to_double())
@@ -356,6 +360,7 @@ fn make_arguments_object(
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   if !strict {
     new_args_props["callee"] = ctor
@@ -365,6 +370,7 @@ fn make_arguments_object(
       configurable: true,
       getter: None,
       setter: None,
+      is_accessor: false,
     }
   } else {
     // Strict mode: install %ThrowTypeError% accessors for callee and caller
@@ -376,6 +382,7 @@ fn make_arguments_object(
           configurable: false,
           getter: Some(tte),
           setter: Some(tte),
+          is_accessor: true,
         }
         new_args_descs["caller"] = {
           writable: false,
@@ -383,6 +390,7 @@ fn make_arguments_object(
           configurable: false,
           getter: Some(tte),
           setter: Some(tte),
+          is_accessor: true,
         }
       }
       None => ()
@@ -572,6 +580,7 @@ fn maybe_set_promise_constructor(value : Value, ctor : Value) -> Value {
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
       value
     }

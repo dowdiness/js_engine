@@ -365,6 +365,7 @@ fn Interpreter::eval_expr(
                       Some(d) => d.setter
                       None => None
                     },
+                    is_accessor: true,
                   }
                 }
                 Set => {
@@ -387,6 +388,7 @@ fn Interpreter::eval_expr(
                       None => None
                     },
                     setter: Some(setter),
+                    is_accessor: true,
                   }
                 }
                 Spread => () // handled above
@@ -416,6 +418,7 @@ fn Interpreter::eval_expr(
                       Some(d) => d.setter
                       None => None
                     },
+                    is_accessor: true,
                   }
                 }
                 Set => {
@@ -434,6 +437,7 @@ fn Interpreter::eval_expr(
                       None => None
                     },
                     setter: Some(setter),
+                    is_accessor: true,
                   }
                 }
                 Spread => () // handled above
@@ -493,6 +497,7 @@ fn Interpreter::eval_expr(
                   Some(d) => d.setter
                   None => None
                 },
+                is_accessor: true,
               }
             }
             Set => {
@@ -516,6 +521,7 @@ fn Interpreter::eval_expr(
                   None => None
                 },
                 setter: Some(setter),
+                is_accessor: true,
               }
             }
             Spread => () // handled above
@@ -674,6 +680,7 @@ fn Interpreter::eval_expr(
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
       Object({
         bag: {
@@ -715,6 +722,7 @@ fn Interpreter::eval_expr(
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
       // Length = number of params before first default
       let mut arrow_len = 0

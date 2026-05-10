@@ -438,6 +438,7 @@ fn Interpreter::get_property_of_object(
                 configurable: true,
                 getter: None,
                 setter: None,
+                is_accessor: false,
               }
               let bprops : Map[String, Value] = {}
               bprops["name"] = String_(bound_name)
@@ -1095,6 +1096,7 @@ pub fn Interpreter::get_computed_property(
                     configurable: true,
                     getter: None,
                     setter: None,
+                    is_accessor: false,
                   }
                   let bprops : Map[String, Value] = {}
                   bprops["name"] = String_(bound_name)

@@ -548,6 +548,7 @@ fn setup_reflect_builtins(env : Environment, _sym_state : SymbolState) -> Unit {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   let reflect_descs : Map[String, PropDescriptor] = {}
   reflect_descs["apply"] = method_desc
@@ -570,6 +571,7 @@ fn setup_reflect_builtins(env : Environment, _sym_state : SymbolState) -> Unit {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   let reflect_obj : Value = Value::Object({
     bag: {

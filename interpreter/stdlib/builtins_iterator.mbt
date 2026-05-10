@@ -239,6 +239,7 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
                 configurable: true,
                 getter: None,
                 setter: None,
+                is_accessor: false,
               }
             }
             None => ()
@@ -268,6 +269,7 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
       proto_data.bag.symbol_descriptors[iterator_sym.id] = iter_method_desc
     }

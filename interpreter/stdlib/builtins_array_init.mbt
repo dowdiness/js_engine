@@ -14,6 +14,7 @@ fn setup_array_builtins(
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
 
   // Non-callback methods (using MethodCallable for this-aware dispatch)
@@ -1621,6 +1622,7 @@ fn setup_array_builtins(
     configurable: false,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   let array_proto : Value = Value::Object({
     bag: {
@@ -1852,6 +1854,7 @@ fn setup_array_builtins(
             configurable: false,
             getter: None,
             setter: None,
+            is_accessor: false,
           },
           "isArray": obj_method_desc,
           "from": obj_method_desc,
@@ -1918,6 +1921,7 @@ fn setup_array_builtins(
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
     }
     _ => ()

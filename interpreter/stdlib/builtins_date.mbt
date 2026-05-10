@@ -718,6 +718,7 @@ fn make_date_object(t : Double, date_proto : Value) -> Value {
     configurable: false,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   Value::Object({
     bag: {
@@ -751,6 +752,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   let date_proto_props : Map[String, Value] = {}
 
@@ -1766,6 +1768,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   let date_proto_descs : Map[String, PropDescriptor] = {}
   date_proto_descs["getTime"] = method_desc
@@ -1840,6 +1843,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
       // Also store [[DateValue]] on proto for "Invalid Date" default
       data.bag.properties["[[DateValue]]"] = Value::Number(0.0 / 0.0)
@@ -1924,6 +1928,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
             configurable: false,
             getter: None,
             setter: None,
+            is_accessor: false,
           },
           "parse": {
             writable: true,
@@ -1931,6 +1936,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
             configurable: true,
             getter: None,
             setter: None,
+            is_accessor: false,
           },
           "UTC": {
             writable: true,
@@ -1938,6 +1944,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
             configurable: true,
             getter: None,
             setter: None,
+            is_accessor: false,
           },
           "now": {
             writable: true,
@@ -1945,6 +1952,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
             configurable: true,
             getter: None,
             setter: None,
+            is_accessor: false,
           },
         },
         symbol_descriptors: {},
@@ -2036,6 +2044,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
     }
     _ => ()

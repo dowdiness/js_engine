@@ -21,6 +21,7 @@ pub fn setup_object_builtins(
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   // Object.keys, Object.values, Object.entries, Object.create, Object.assign,
   // Object.getPrototypeOf, Object.getOwnPropertyNames
@@ -337,6 +338,7 @@ pub fn setup_object_builtins(
             configurable: true,
             getter: Some(getter),
             setter: existing_setter,
+            is_accessor: true,
           }
           data.bag.properties[prop] = Undefined
         }
@@ -385,6 +387,7 @@ pub fn setup_object_builtins(
             configurable: true,
             getter: existing_getter,
             setter: Some(setter),
+            is_accessor: true,
           }
           data.bag.properties[prop] = Undefined
         }
@@ -458,6 +461,7 @@ pub fn setup_object_builtins(
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   obj_proto_descs["toString"] = obj_method_desc
   obj_proto_descs["valueOf"] = obj_method_desc
@@ -904,6 +908,7 @@ pub fn setup_object_builtins(
                   configurable: false,
                   getter: None,
                   setter: None,
+                  is_accessor: false,
                 }
                 for i = 0; i < chars.length(); i = i + 1 {
                   descs[i.to_string()] = {
@@ -912,6 +917,7 @@ pub fn setup_object_builtins(
                     configurable: false,
                     getter: None,
                     setter: None,
+                    is_accessor: false,
                   }
                 }
                 Value::Object({
@@ -1302,6 +1308,7 @@ pub fn setup_object_builtins(
             configurable: false,
             getter: None,
             setter: None,
+            is_accessor: false,
           },
           "keys": obj_method_desc,
           "values": obj_method_desc,
@@ -1362,6 +1369,7 @@ pub fn setup_object_builtins(
                 configurable: false,
                 getter: None,
                 setter: None,
+                is_accessor: false,
               }
               for i = 0; i < s.length(); i = i + 1 {
                 descs[i.to_string()] = {
@@ -1370,6 +1378,7 @@ pub fn setup_object_builtins(
                   configurable: false,
                   getter: None,
                   setter: None,
+                  is_accessor: false,
                 }
               }
               Value::Object({
@@ -1458,6 +1467,7 @@ pub fn setup_object_builtins(
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
     }
     _ => ()

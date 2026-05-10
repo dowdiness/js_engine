@@ -54,8 +54,7 @@ pub fn validate_non_configurable(
   if existing.configurable {
     return
   }
-  let existing_is_accessor = existing.getter is Some(_) ||
-    existing.setter is Some(_)
+  let existing_is_accessor = existing.is_accessor
   // Cannot change between accessor and data
   if existing_is_accessor && is_data {
     raise @errors.TypeError(
@@ -258,6 +257,7 @@ pub fn ordinary_get_own_property(
                   configurable: true,
                   getter: None,
                   setter: None,
+                  is_accessor: false,
                 })
               } else {
                 None
@@ -281,6 +281,7 @@ pub fn ordinary_get_own_property(
               configurable: false,
               getter: None,
               setter: None,
+              is_accessor: false,
             })
           }
           let idx = @string.parse_int(k) catch { _ => -1 }
@@ -297,6 +298,7 @@ pub fn ordinary_get_own_property(
                   configurable: true,
                   getter: None,
                   setter: None,
+                  is_accessor: false,
                 })
             }
           }
@@ -323,6 +325,7 @@ fn ordinary_get_own_string_desc(
           configurable: true,
           getter: None,
           setter: None,
+          is_accessor: false,
         })
       } else {
         None
@@ -374,8 +377,7 @@ fn is_compatible_with_non_configurable(
     Some(e) => if e != current.enumerable { return false }
     None => ()
   }
-  let current_is_accessor = current.getter is Some(_) ||
-    current.setter is Some(_)
+  let current_is_accessor = current.is_accessor
   let partial_is_accessor = partial.is_accessor()
   let partial_is_data = partial.is_data()
   // Step 4.c: cannot toggle accessor <-> data when non-configurable.
@@ -461,7 +463,17 @@ fn merge_partial_into(
   } else {
     current.setter
   }
-  { writable, enumerable, configurable, getter, setter }
+  // Preserve accessor type: if partial explicitly introduces accessor fields
+  // (has_getter or has_setter), result is accessor. If partial introduces data
+  // fields (value or writable), result is data. Otherwise inherit from current.
+  let is_accessor = if partial.has_getter || partial.has_setter {
+    true
+  } else if partial.value is Some(_) || partial.writable is Some(_) {
+    false
+  } else {
+    current.is_accessor
+  }
+  { writable, enumerable, configurable, getter, setter, is_accessor }
 }
 
 ///|
@@ -489,7 +501,8 @@ fn complete_partial_for_new(partial : PartialDescriptor) -> PropDescriptor {
   } else {
     None
   }
-  { writable, enumerable, configurable, getter, setter }
+  let is_accessor = partial.has_getter || partial.has_setter
+  { writable, enumerable, configurable, getter, setter, is_accessor }
 }
 
 ///|
@@ -633,8 +646,7 @@ pub fn Interpreter::partial_descriptor_from_attrs(
 /// accessor descriptors.
 pub fn descriptor_to_value(desc : PropDescriptor, value : Value) -> Value {
   let props : Map[String, Value] = {}
-  let is_accessor = desc.getter is Some(_) || desc.setter is Some(_)
-  if is_accessor {
+  if desc.is_accessor {
     props["get"] = desc.getter.unwrap_or(Undefined)
     props["set"] = desc.setter.unwrap_or(Undefined)
   } else {
@@ -740,8 +752,7 @@ pub fn Interpreter::ordinary_define_own_property(
       let merged = merge_partial_into(current, partial)
       // §10.1.6.3 step 4.b: when descriptor type changes, clear the fields
       // that don't apply to the new type.
-      let current_is_accessor = current.getter is Some(_) ||
-        current.setter is Some(_)
+      let current_is_accessor = current.is_accessor
       let final_desc = if partial.is_accessor() && !current_is_accessor {
         // Data → Accessor: writable not meaningful for accessor; set to false.
         { ..merged, writable: false }
@@ -807,6 +818,7 @@ pub fn Interpreter::array_define_own_property(
               configurable: true,
               getter: None,
               setter: None,
+              is_accessor: false,
             })
           } else {
             None
@@ -884,6 +896,7 @@ pub fn Interpreter::array_define_own_property(
                 configurable: true,
                 getter: None,
                 setter: None,
+                is_accessor: false,
               }
               arr.bag.descriptors[k] = merge_partial_into(current, partial)
             } else {

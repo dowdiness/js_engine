@@ -577,6 +577,7 @@ pub(all) struct PropDescriptor {
   mut configurable : Bool
   mut getter : Value?
   mut setter : Value?
+  mut is_accessor : Bool
 }
 
 pub(all) struct PropertyBag {

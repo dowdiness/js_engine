@@ -49,6 +49,7 @@ fn setup_number_builtins(env : Environment) -> Unit {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   let number_proto_props : Map[String, Value] = {}
   number_proto_props["toFixed"] = @runtime.make_method_func(
@@ -464,6 +465,7 @@ fn setup_number_builtins(env : Environment) -> Unit {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   let number_proto_descs : Map[String, PropDescriptor] = {}
   number_proto_descs["toString"] = num_method_desc
@@ -566,6 +568,7 @@ fn setup_number_builtins(env : Environment) -> Unit {
     configurable: false,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   let number_descs : Map[String, PropDescriptor] = {}
   number_descs["name"] = nf_desc
@@ -584,6 +587,7 @@ fn setup_number_builtins(env : Environment) -> Unit {
     configurable: false,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   let num_method_desc : PropDescriptor = {
     writable: true,
@@ -591,6 +595,7 @@ fn setup_number_builtins(env : Environment) -> Unit {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   number_descs["isNaN"] = num_method_desc
   number_descs["isFinite"] = num_method_desc
@@ -650,6 +655,7 @@ fn setup_number_builtins(env : Environment) -> Unit {
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
     }
     _ => ()

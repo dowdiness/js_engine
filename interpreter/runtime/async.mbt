@@ -23,6 +23,7 @@ fn Interpreter::make_async_function(
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   let async_proto = get_function_prototype(self)
   Object({
@@ -81,6 +82,7 @@ fn Interpreter::make_async_function_ext(
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   let async_proto = get_function_prototype(self)
   Object({
@@ -485,6 +487,7 @@ fn init_async_generator_prototype() -> Value {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
 
   // .next(value) — returns Promise<{value, done}>
@@ -608,6 +611,7 @@ pub fn setup_async_function_constructor(env : Environment) -> Unit {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   let async_func_proto : Value = Object({
     bag: {
@@ -693,6 +697,7 @@ pub fn setup_async_function_constructor(env : Environment) -> Unit {
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
     }
     _ => ()
@@ -707,6 +712,7 @@ pub fn setup_async_function_constructor(env : Environment) -> Unit {
         configurable: false,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
     }
     _ => ()

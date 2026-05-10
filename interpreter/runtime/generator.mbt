@@ -120,6 +120,7 @@ fn init_generator_prototype() -> Value {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
 
   // .throw(exception)
@@ -137,6 +138,7 @@ fn init_generator_prototype() -> Value {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
 
   // .return(value)
@@ -154,6 +156,7 @@ fn init_generator_prototype() -> Value {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
 
   // [Symbol.iterator]() { return this; }
@@ -172,6 +175,7 @@ fn init_generator_prototype() -> Value {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   Object({
     bag: {
@@ -210,6 +214,7 @@ pub fn setup_generator_function_constructor(
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   let gen_func_proto : Value = Object({
     bag: {
@@ -296,6 +301,7 @@ pub fn setup_generator_function_constructor(
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
     }
     _ => ()
@@ -315,6 +321,7 @@ pub fn setup_generator_function_constructor(
         configurable: false,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
     }
     _ => ()
@@ -377,6 +384,7 @@ fn Interpreter::make_generator_function(
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   Object({
     bag: {
@@ -391,6 +399,7 @@ fn Interpreter::make_generator_function(
           configurable: false,
           getter: None,
           setter: None,
+          is_accessor: false,
         },
       },
       symbol_descriptors: {},
@@ -466,6 +475,7 @@ fn Interpreter::make_generator_function_ext(
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   Object({
     bag: {
@@ -480,6 +490,7 @@ fn Interpreter::make_generator_function_ext(
           configurable: false,
           getter: None,
           setter: None,
+          is_accessor: false,
         },
       },
       symbol_descriptors: {},

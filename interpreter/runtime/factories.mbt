@@ -18,6 +18,7 @@ pub fn make_func(data : FuncData) -> Value {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   let func_props : Map[String, Value] = {}
   let func_descs : Map[String, PropDescriptor] = {}
@@ -29,6 +30,7 @@ pub fn make_func(data : FuncData) -> Value {
       configurable: false,
       getter: None,
       setter: None,
+      is_accessor: false,
     }
   }
   func_props["length"] = Number(func_length)
@@ -57,6 +59,7 @@ pub fn make_func(data : FuncData) -> Value {
           configurable: true,
           getter: None,
           setter: None,
+          is_accessor: false,
         }
       }
       _ => ()
@@ -92,6 +95,7 @@ pub fn make_func_ext(data : FuncDataExt) -> Value {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   let func_props : Map[String, Value] = {}
   let func_descs : Map[String, PropDescriptor] = {}
@@ -103,6 +107,7 @@ pub fn make_func_ext(data : FuncDataExt) -> Value {
       configurable: false,
       getter: None,
       setter: None,
+      is_accessor: false,
     }
   }
   func_props["length"] = Number(func_length.to_double())
@@ -131,6 +136,7 @@ pub fn make_func_ext(data : FuncDataExt) -> Value {
           configurable: true,
           getter: None,
           setter: None,
+          is_accessor: false,
         }
       }
       _ => ()
@@ -285,6 +291,7 @@ fn build_func_object(name : String, length : Int, callable : Callable) -> Value 
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   Object({
     bag: {

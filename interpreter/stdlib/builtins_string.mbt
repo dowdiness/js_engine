@@ -1745,6 +1745,7 @@ pub fn setup_string_prototype(
           configurable: true,
           getter: None,
           setter: None,
+          is_accessor: false,
         }
       }
       // Per spec, trimLeft === trimStart and trimRight === trimEnd (same object)

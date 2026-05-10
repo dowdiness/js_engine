@@ -337,6 +337,7 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
         }),
       ),
       setter: None,
+      is_accessor: true,
     }
   }
 
@@ -731,6 +732,7 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   dv_proto_descs["getInt8"] = method_desc
   dv_proto_descs["getUint8"] = method_desc
@@ -763,6 +765,7 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
 
   let dv_proto : Value = Value::Object({
@@ -786,6 +789,7 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   let dv_ctor_props : Map[String, Value] = {}
   dv_ctor_props["prototype"] = dv_proto
@@ -798,6 +802,7 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
     configurable: false,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   dv_ctor_descs["name"] = nf_desc
   dv_ctor_descs["length"] = nf_desc
@@ -887,6 +892,7 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
             configurable: false,
             getter: None,
             setter: None,
+            is_accessor: false,
           }
         }
         Value::Object({
@@ -917,6 +923,7 @@ pub fn setup_dataview_builtins(env : Environment) -> Unit {
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
     }
     _ => ()

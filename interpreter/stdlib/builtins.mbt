@@ -17,6 +17,7 @@ pub fn setup_builtins(
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   // eval(x) — NonConstructableCallable so that new eval() throws TypeError.
   // Direct eval is handled at the call-site in eval_call.
@@ -305,6 +306,7 @@ pub fn setup_builtins(
           configurable: false,
           getter: None,
           setter: None,
+          is_accessor: false,
         },
       },
       symbol_descriptors: {},
@@ -449,6 +451,7 @@ pub fn setup_builtins(
             configurable: false,
             getter: None,
             setter: None,
+            is_accessor: false,
           },
           "fromCharCode": {
             writable: true,
@@ -456,6 +459,7 @@ pub fn setup_builtins(
             configurable: true,
             getter: None,
             setter: None,
+            is_accessor: false,
           },
           "fromCodePoint": {
             writable: true,
@@ -463,6 +467,7 @@ pub fn setup_builtins(
             configurable: true,
             getter: None,
             setter: None,
+            is_accessor: false,
           },
           "raw": {
             writable: true,
@@ -470,6 +475,7 @@ pub fn setup_builtins(
             configurable: true,
             getter: None,
             setter: None,
+            is_accessor: false,
           },
         },
         symbol_descriptors: {},
@@ -510,6 +516,7 @@ pub fn setup_builtins(
               configurable: false,
               getter: None,
               setter: None,
+              is_accessor: false,
             }
             for i = 0; i < str.length(); i = i + 1 {
               descs[i.to_string()] = {
@@ -518,6 +525,7 @@ pub fn setup_builtins(
                 configurable: false,
                 getter: None,
                 setter: None,
+                is_accessor: false,
               }
             }
             Value::Object({
@@ -558,6 +566,7 @@ pub fn setup_builtins(
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
     }
     _ => ()
@@ -630,6 +639,7 @@ pub fn setup_builtins(
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   let boolean_proto_descs : Map[String, PropDescriptor] = {}
   boolean_proto_descs["toString"] = method_desc
@@ -668,6 +678,7 @@ pub fn setup_builtins(
             configurable: false,
             getter: None,
             setter: None,
+            is_accessor: false,
           },
         },
         symbol_descriptors: {},
@@ -712,6 +723,7 @@ pub fn setup_builtins(
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
     }
     _ => ()
@@ -757,6 +769,7 @@ pub fn setup_builtins(
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
     }
     _ => ()
@@ -1220,6 +1233,7 @@ pub fn setup_builtins(
           configurable: true,
           getter: Some(getter),
           setter: None,
+          is_accessor: true,
         }
       }
       // flags getter - computes flags string from individual flag getters
@@ -1285,6 +1299,7 @@ pub fn setup_builtins(
         configurable: true,
         getter: Some(flags_getter),
         setter: None,
+        is_accessor: true,
       }
       // source getter
       let source_getter = @runtime.make_method_func(
@@ -1320,6 +1335,7 @@ pub fn setup_builtins(
         configurable: true,
         getter: Some(source_getter),
         setter: None,
+        is_accessor: true,
       }
       let re_method_desc2 : PropDescriptor = {
         writable: true,
@@ -1327,6 +1343,7 @@ pub fn setup_builtins(
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
       regexp_proto_descs["constructor"] = re_method_desc2
       regexp_proto_descs["exec"] = re_method_desc2
@@ -1342,6 +1359,7 @@ pub fn setup_builtins(
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
       // [Symbol.match]
       let match_sym = @runtime.get_match_symbol()
@@ -1655,6 +1673,7 @@ pub fn setup_builtins(
     configurable: true,
     getter: Some(species_getter),
     setter: None,
+    is_accessor: true,
   }
   let ctors_to_add_species = ["Array", "RegExp", "Map", "Set"]
   for ctor_name in ctors_to_add_species {
@@ -1725,6 +1744,7 @@ pub fn setup_builtins(
             configurable: false,
             getter: None,
             setter: None,
+            is_accessor: false,
           }
         }
         _ => ()

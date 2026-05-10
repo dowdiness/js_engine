@@ -10,6 +10,7 @@ fn register_error_ctor(
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   let proto_props : Map[String, Value] = {}
   proto_props["name"] = Value::String_(name)
@@ -56,6 +57,7 @@ fn register_error_ctor(
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   // Error.prototype class_name should be "Object" per spec (not error type name)
   let proto_obj : Value = Value::Object({
@@ -91,6 +93,7 @@ fn register_error_ctor(
     configurable: false,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   env.def_builtin(
     name,
@@ -132,6 +135,7 @@ fn register_error_ctor(
             configurable: true,
             getter: None,
             setter: None,
+            is_accessor: false,
           }
           let err_descs : Map[String, PropDescriptor] = { "stack": err_desc }
           if has_message {
@@ -180,6 +184,7 @@ fn register_error_ctor(
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
     }
     _ => ()
@@ -198,6 +203,7 @@ fn register_aggregate_error_ctor(
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   let name = "AggregateError"
   let proto_props : Map[String, Value] = {}
@@ -242,6 +248,7 @@ fn register_aggregate_error_ctor(
     configurable: true,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   let proto_obj : Value = Value::Object({
     bag: {
@@ -270,6 +277,7 @@ fn register_aggregate_error_ctor(
     configurable: false,
     getter: None,
     setter: None,
+    is_accessor: false,
   }
   env.def_builtin(
     name,
@@ -326,6 +334,7 @@ fn register_aggregate_error_ctor(
             configurable: true,
             getter: None,
             setter: None,
+            is_accessor: false,
           }
           let err_descs : Map[String, PropDescriptor] = {
             "message": err_desc,
@@ -366,6 +375,7 @@ fn register_aggregate_error_ctor(
         configurable: true,
         getter: None,
         setter: None,
+        is_accessor: false,
       }
     }
     _ => ()
