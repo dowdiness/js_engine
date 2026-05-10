@@ -1127,7 +1127,13 @@ fn Interpreter::eval_binary(
         Object(r_data) => {
           // Step 1: GetMethod(C, @@hasInstance) — must invoke accessor getters per spec.
           let has_instance_sym = get_hasinstance_symbol()
-          match lookup_symbol_property_chain(r, r_data, has_instance_sym.id, interp=Some(self)) {
+          match
+            lookup_symbol_property_chain(
+              r,
+              r_data,
+              has_instance_sym.id,
+              interp=Some(self),
+            ) {
             Some(Undefined) | Some(Null) | None =>
               // No @@hasInstance — fall back to OrdinaryHasInstance.
               // Step 2: Check if RHS is callable (required for OrdinaryHasInstance)
