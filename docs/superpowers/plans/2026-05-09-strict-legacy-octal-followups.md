@@ -23,17 +23,130 @@ These items were intentionally scoped OUT of the main implementation (`feat/stri
 
 ## Follow-up B: Leading-zero fractional/exponent numeric forms
 
-**Status:** Spec-corner case; needs careful re-read of ES262 §12.8.3 + Annex B §B.1.1 before designing.
+**Status:** Spec resolved 2026-05-10. Implementation pending on branch
+`fix/strict-leading-zero-decimal`.
 
-**Symptoms:**
-- `01.2`, `01e2`, `0.1e2` — currently parsed (or not) inconsistently. The legacy-octal-int branch at `lexer/lexer.mbt:645` returns early before the decimal/exponent scanner runs.
+### Spec resolution
 
-**Open questions:**
-1. Is `01.2` a valid `DecimalLiteral`, `LegacyOctalIntegerLiteral` (no, no fraction), `NonOctalDecimalIntegerLiteral` (no, no 8/9), or `SyntaxError` in all modes?
-2. Is `01e2` covered by NonOctalDecimalIntegerLiteral (Annex B §B.1.1) which permits exponents on leading-zero forms?
-3. Should `0.5` (single-zero followed by fraction) be rejected in strict? Currently passes; spec arguably allows it as DecimalLiteral.
+ES262 §12.8.3 + Annex B §B.1.1 (sub-clause "Numeric Literals") together
+specify three relevant productions:
 
-**Action:** Re-read spec carefully, write small test cases, decide tagging + error policy. Likely small PR (~50 LOC) once the spec questions are resolved.
+```
+DecimalIntegerLiteral ::          (main spec, with Annex B addition)
+  0
+  NonZeroDigit
+  NonZeroDigit NumericLiteralSeparator? DecimalDigits
+  NonOctalDecimalIntegerLiteral   ← Annex B addition; forbidden in strict
+
+LegacyOctalIntegerLiteral ::      (Annex B; forbidden in strict)
+  0 OctalDigit
+  LegacyOctalIntegerLiteral OctalDigit
+
+NonOctalDecimalIntegerLiteral ::  (Annex B; forbidden in strict)
+  0 NonOctalDigit                 (NonOctalDigit ::= 8 | 9)
+  LegacyOctalLikeDecimalIntegerLiteral NonOctalDigit
+  NonOctalDecimalIntegerLiteral DecimalDigit
+```
+
+`DecimalLiteral` allows `DecimalIntegerLiteral . DecimalDigits?` and
+`DecimalIntegerLiteral ExponentPart`. Critically, **`LegacyOctalIntegerLiteral`
+is NOT a sub-production of `DecimalIntegerLiteral`** — so it cannot be
+followed by `.` or `e/E`.
+
+Mapping to the three open questions:
+
+1. **`01.2` is SyntaxError in all modes.** The integer part `01` matches
+   only `LegacyOctalIntegerLiteral`. That production cannot have a
+   fractional part attached. There is no other production that accepts
+   `01` as an integer (it is not `0`, not a `NonZeroDigit`, not a
+   `NonZeroDigit NumericLiteralSeparator? DecimalDigits` form, and not a
+   `NonOctalDecimalIntegerLiteral` because there is no `8` or `9`).
+
+2. **`01e2` is SyntaxError in all modes**, by the same reasoning.
+
+3. **`0.5` is valid in all modes.** It parses as
+   `DecimalIntegerLiteral=0 . DecimalDigits=5` — the main-spec path,
+   never Annex B.
+
+4. **`08.1` is valid in sloppy, SyntaxError in strict.** The integer
+   part `08` matches `NonOctalDecimalIntegerLiteral`, which Annex B
+   adds as a sub-production of `DecimalIntegerLiteral`. So
+   `DecimalIntegerLiteral=08 . DecimalDigits=1` parses; the Annex B
+   extension itself is forbidden in strict, raising the early error.
+
+5. **`08e2` is valid in sloppy, SyntaxError in strict**, identical
+   reasoning.
+
+### V8 verification (Node.js v24.14.1, 2026-05-10)
+
+| Literal | Sloppy | Strict | Spec category |
+|---------|--------|--------|---------------|
+| `01.2`  | SyntaxError | SyntaxError | LegacyOctal-prefix + `.` (no production) |
+| `01e2`  | SyntaxError | SyntaxError | LegacyOctal-prefix + `e` (no production) |
+| `0.5`   | `0.5` | `0.5` | DecimalLiteral via `0 . DecimalDigits` |
+| `08.1`  | `8.1` | SyntaxError | NonOctalDecimal + `.` (Annex B; sloppy only) |
+| `08e2`  | `800` | SyntaxError | NonOctalDecimal + `e` (Annex B; sloppy only) |
+| `0.1e2` | `10` | `10` | DecimalLiteral via `0 . DecimalDigits ExponentPart` |
+| `00.5`  | SyntaxError | SyntaxError | LegacyOctal-prefix + `.` |
+| `001.2` | SyntaxError | SyntaxError | LegacyOctal-prefix + `.` |
+| `07.5`  | SyntaxError | SyntaxError | LegacyOctal-prefix + `.` |
+
+V8 matches the spec reading exactly.
+
+### Current lexer behavior (bug surface)
+
+`lexer/lexer.mbt` currently mishandles both buckets:
+
+- **LegacyOctal-prefix forms (`01.2`, `01e2`, etc.):** the legacy-octal
+  branch at `lexer/lexer.mbt:670-697` `continue`s immediately after
+  emitting the integer token, so `01.2` tokenises as three tokens
+  (`Number(1)`, `.`, `Number(2)`) instead of raising a SyntaxError.
+- **NonOctalDecimal forms (`08.1`, `08e2`):** PR #98's L1 fix
+  defensively cleared `is_non_octal_decimal_int` at the fraction
+  (`lexer.mbt:742`) and exponent (`:793`) entry points. This causes
+  these literals to be tagged `LexNormal` instead of
+  `NumberNonOctalDecimalInt`, so the strict early-error walker never
+  rejects them. Empirical V8 says they should error in strict; the
+  defensive clearing was wrong and must be reverted.
+
+### Design
+
+Two surgical lexer changes, no AST/walker changes (the validator at
+`hoisting.mbt:558-565` already raises the right errors for both
+`NumberLegacyOctalInt` and `NumberNonOctalDecimalInt` lex_forms):
+
+1. **Reject LegacyOctal + fraction/exponent in the lexer (all modes).**
+   Inside the `if is_legacy_octal { ... }` block at
+   `lexer.mbt:670-697`, after the digit-scan loop and before emitting
+   the token, peek at the current char.
+   - If `.` followed by a `DecimalDigit`, raise SyntaxError (it's a
+     fractional continuation, e.g. `01.2`).
+   - If `e` or `E`, raise SyntaxError (exponent grammar entry; V8
+     rejects `01e2`, `01eFoo`, `01e` alike).
+   - If `.` followed by a non-digit (identifier, EOF, etc.), DO NOT
+     raise — it's member access (`01.toString()` is valid sloppy code,
+     evaluates to `"1"`). Originally the design called for an
+     unconditional `.` rejection, but Codex review on PR #99 caught
+     the regression: V8 lexes `01.toString` as `Number(1) . toString`.
+
+2. **Stop clearing `is_non_octal_decimal_int` at fraction/exponent
+   entry.** Remove the two `is_non_octal_decimal_int = false`
+   assignments at `lexer.mbt:742` and `:793` (and the deferred-decision
+   comments above them). The lex_form will then carry through to the
+   validator, which raises the existing strict-mode error.
+
+### Test coverage
+
+In `lexer_test.mbt`: positive (sloppy) cases for `08.1`, `08e2`,
+`0.5`, `0.1e2`; negative cases for `01.2`, `01e2`, `00.5`, `001.2`,
+`07.5` (expect SyntaxError from the lexer in any mode).
+
+In `interpreter_test.mbt`: strict-mode `eval` cases proving `08.1` /
+`08e2` raise SyntaxError under `"use strict"`.
+
+### Estimated scope
+
+~30 LOC of lexer change, ~50 LOC of tests. PR-sized.
 
 ---
 
@@ -75,4 +188,4 @@ These items were intentionally scoped OUT of the main implementation (`feat/stri
 
 - **Follow-up A (templates)** — filed as GitHub issue #96. Open.
 - **Follow-up C (YieldExpr/walker completeness)** — filed as GitHub issue #97, closed by PR #98 (`7e635f9`, 2026-05-10). Scope expanded during implementation: the audit also caught `SuperCall` and `ClassExpr`/`ClassDecl` superclass gaps, plus a Codex-surfaced §15.7.1 invariant on class heritage strictness.
-- **Follow-up B (leading-zero fractional/exponent)** — still open in this doc; spec re-read pending.
+- **Follow-up B (leading-zero fractional/exponent)** — spec resolved 2026-05-10 (see § "Spec resolution" above). Implementation in progress on branch `fix/strict-leading-zero-decimal`.

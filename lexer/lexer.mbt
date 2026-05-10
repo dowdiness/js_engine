@@ -680,6 +680,29 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
                 break
               }
             }
+            // Per ES262 §12.8.3 + Annex B §B.1.1, LegacyOctalIntegerLiteral
+            // cannot extend into a fractional or exponent part — `01.2`,
+            // `01e2`, `07.5` etc. match no production and are SyntaxErrors
+            // in every mode (matches V8).
+            //
+            // The `.` case must distinguish fractional continuation from
+            // member access: `01.toString()` is valid sloppy code (member
+            // access on `Number(1)`), so we only reject `.<DecimalDigit>`.
+            // `e`/`E` immediately after the digit is unambiguously the
+            // exponent grammar entry, which legacy-octal cannot satisfy
+            // (V8 errors on `01e2`, `01eFoo`, `01e` alike).
+            if offset < len {
+              let ch = char_at(offset)
+              if ch == '.' && offset + 1 < len && is_digit(char_at(offset + 1)) {
+                raise @errors.SyntaxError(
+                  message="Invalid number literal at line \{loc.line}, col \{loc.col}: leading-zero octal-style integer cannot be followed by a fractional part",
+                )
+              } else if ch == 'e' || ch == 'E' {
+                raise @errors.SyntaxError(
+                  message="Invalid number literal at line \{loc.line}, col \{loc.col}: leading-zero octal-style integer cannot be followed by an exponent",
+                )
+              }
+            }
             let oct_str = buf.to_string()
             let value = parse_radix_literal(oct_str, 8.0)
             if offset < len && char_at(offset) == 'n' {
@@ -736,10 +759,10 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             message="Numeric separator cannot appear before decimal point at line \{loc.line}, col \{col - 1}",
           )
         }
-        // A fractional part promotes the literal beyond
-        // NonOctalDecimalIntegerLiteral; defer the strict-mode early-error
-        // decision for leading-zero fractional/exponent forms (follow-up B).
-        is_non_octal_decimal_int = false
+        // Per Annex B §B.1.1, NonOctalDecimalIntegerLiteral participates in
+        // DecimalIntegerLiteral, so `08.1` parses but is forbidden in strict.
+        // Keep the lex_form so the early-error walker rejects it under
+        // "use strict" (matches V8).
         buf.write_char('.')
         offset += 1
         col += 1
@@ -787,10 +810,9 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             message="Numeric separator cannot appear before exponent at line \{loc.line}, col \{col - 1}",
           )
         }
-        // An exponent part promotes the literal beyond
-        // NonOctalDecimalIntegerLiteral; defer the strict-mode early-error
-        // decision for leading-zero fractional/exponent forms (follow-up B).
-        is_non_octal_decimal_int = false
+        // Annex B §B.1.1 again: `08e2` parses via DecimalLiteral but the
+        // NonOctalDecimalIntegerLiteral integer part is a strict-mode early
+        // error. Preserve the lex_form for the walker.
         buf.write_char('e')
         offset += 1
         col += 1
