@@ -1214,9 +1214,36 @@ pub fn Interpreter::set_computed_property(
               }
               return value
             }
-            let n = to_number(value).to_int()
-            while data.elements.length() > n {
+            let num = to_number(value)
+            // §9.4.2.4 step 2: ToUint32(newLen) must equal newLen.
+            if num.is_nan() ||
+              num < 0.0 ||
+              num > 4294967295.0 ||
+              num != @math.floor(num) {
+              raise @errors.RangeError(message="Invalid array length")
+            }
+            let n64 = num.to_int64()
+            // Truncate array if new length is shorter.
+            while data.elements.length().to_int64() > n64 {
               let _ = data.elements.pop()
+            }
+            // Expand elements if gap is small enough to materialise.
+            let cur_elem_len = data.elements.length().to_int64()
+            if n64 > cur_elem_len && n64 - cur_elem_len <= 100000L {
+              let prev_len = data.elements.length()
+              let target = n64.to_int()
+              while data.elements.length() < target {
+                data.elements.push(Undefined)
+              }
+              for j in prev_len..<target {
+                data.holes.set(j, ())
+              }
+            }
+            // Keep the length override in sync.
+            if n64 > data.elements.length().to_int64() {
+              set_array_length_override(data, n64)
+            } else {
+              clear_array_length_override(data)
             }
           } else {
             // Canonical numeric index string check: parseDouble(s).toString() === s
