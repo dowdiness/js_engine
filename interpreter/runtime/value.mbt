@@ -548,7 +548,16 @@ pub impl Show for Value with output(self, logger) {
           }
       }
     Array(data) =>
-      logger.write_string(data.elements.map(fn(v) { v.to_string() }).join(","))
+      logger.write_string(
+        data.elements
+        .map(fn(v) {
+          match v {
+            Undefined | Null => ""
+            _ => v.to_string()
+          }
+        })
+        .join(","),
+      )
     Symbol(sym) =>
       match sym.description {
         Some(desc) => logger.write_string("Symbol(\{desc})")

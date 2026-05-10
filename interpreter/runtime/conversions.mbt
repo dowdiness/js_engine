@@ -613,7 +613,14 @@ pub fn to_number(
       to_number(prim, interp~)
     }
     Array(arr_data) => {
-      let s = arr_data.elements.map(fn(v) { v.to_string() }).join(",")
+      let s = arr_data.elements
+        .map(fn(v) {
+          match v {
+            Undefined | Null => ""
+            _ => v.to_string()
+          }
+        })
+        .join(",")
       if s.length() == 0 {
         0.0
       } else {
@@ -768,7 +775,14 @@ pub fn to_js_string(
       to_js_string(prim, interp~)
     }
     Array(arr_data) =>
-      arr_data.elements.map(fn(v) { v.to_string() }).join(",")
+      arr_data.elements
+      .map(fn(v) {
+        match v {
+          Undefined | Null => ""
+          _ => v.to_string()
+        }
+      })
+      .join(",")
     Map(_) | Set(_) | Promise(_) | Proxy(_) => "[object Object]"
   }
 }
