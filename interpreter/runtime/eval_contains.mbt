@@ -169,6 +169,51 @@ fn scan_stmt(scan : EvalContainsScan, stmt : @ast.Stmt) -> Unit {
 }
 
 ///|
+/// Scan a destructuring pattern. Patterns themselves bind names (irrelevant
+/// to Contains), but they may carry default expressions and computed keys,
+/// both of which evaluate in the surrounding context and therefore count
+/// for the four predicates.
+fn scan_pattern(scan : EvalContainsScan, pat : @ast.Pattern) -> Unit {
+  match pat {
+    IdentPat(_) => ()
+    ArrayPat(elements, rest) => {
+      for el in elements {
+        match el {
+          Some(p) => scan_pattern(scan, p)
+          None => ()
+        }
+      }
+      match rest {
+        Some(p) => scan_pattern(scan, p)
+        None => ()
+      }
+    }
+    ObjectPat(props, rest) => {
+      for prop in props {
+        match prop.computed_key {
+          Some(e) => scan_expr(scan, e)
+          None => ()
+        }
+        match prop.default_val {
+          Some(e) => scan_expr(scan, e)
+          None => ()
+        }
+        scan_pattern(scan, prop.value)
+      }
+      match rest {
+        Some(p) => scan_pattern(scan, p)
+        None => ()
+      }
+    }
+    DefaultPat(inner, expr) => {
+      scan_pattern(scan, inner)
+      scan_expr(scan, expr)
+    }
+    AssignTarget(expr) => scan_expr(scan, expr)
+  }
+}
+
+///|
 fn scan_expr(scan : EvalContainsScan, expr : @ast.Expr) -> Unit {
   match expr {
     // Leaves
@@ -201,15 +246,33 @@ fn scan_expr(scan : EvalContainsScan, expr : @ast.Expr) -> Unit {
         Some(e) => scan_expr(scan, e)
         None => ()
       }
-    // Arrows: transparent for the four predicates per spec.
+    // Arrows: transparent for the four predicates per spec — and that
+    // transparency extends to the parameter list. Non-arrow function
+    // boundaries skip params (they're the function's own concern), but
+    // arrow params/defaults run in the surrounding scope (Codex review on
+    // PR #100 caught this gap, V8-confirmed). ArrowFunc has `Array[String]`
+    // params — no expressions to scan. ArrowFuncExt carries Param values
+    // with optional default_val and destructuring pattern, both of which
+    // must be visited.
     ArrowFunc(_, body, _) | AsyncArrowFunc(_, body, _) =>
       for s in body {
         scan_stmt(scan, s)
       }
-    ArrowFuncExt(_, _, body, _) | AsyncArrowFuncExt(_, _, body, _) =>
+    ArrowFuncExt(params, _, body, _) | AsyncArrowFuncExt(params, _, body, _) => {
+      for p in params {
+        match p.default_val {
+          Some(e) => scan_expr(scan, e)
+          None => ()
+        }
+        match p.pattern {
+          Some(pat) => scan_pattern(scan, pat)
+          None => ()
+        }
+      }
       for s in body {
         scan_stmt(scan, s)
       }
+    }
     // Recurse-into: every other expression descends through children.
     Binary(_, l, r, _) | Comma(l, r, _) => {
       scan_expr(scan, l)

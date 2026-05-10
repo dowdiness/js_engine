@@ -12388,3 +12388,73 @@ test "eval source: super.x inside a nested arrow IS visible (transparent)" {
   let result = run(src)
   inspect(result.to_string(), content="false")
 }
+
+// Regression coverage for Codex P2 (PR #100): arrow PARAMETER defaults
+// also live in surrounding scope, so super/new.target/arguments inside
+// `((x = forbidden) => 0)` must trigger the same Contains check.
+
+///|
+test "eval source: super.x in arrow param default rejected (Codex catch)" {
+  // `function f() { eval('((x = super.x) => 0)') }` — V8 SyntaxError
+  let src =
+    #|var executed = false;
+    #|function f() {
+    #|  try { eval("executed = true; ((x = super.x) => 0)"); } catch (e) {}
+    #|}
+    #|f();
+    #|executed
+  let result = run(src)
+  inspect(result.to_string(), content="false")
+}
+
+///|
+test "eval source: arguments in arrow param default rejected in field init" {
+  // `class C { y = eval('((x = arguments) => 0)') }` — V8 SyntaxError
+  let src =
+    #|var executed = false;
+    #|class C { y = (function () {
+    #|  try { eval("executed = true; ((x = arguments) => 0)"); } catch (e) {}
+    #|  return 1;
+    #|})(); }
+  // Class field init runs `eval` via the IIFE wrapper so we can observe
+  // executed without bubbling. (We can't put `var executed` inside the
+  // field init.) Top-level executed should remain false because the
+  // SyntaxError fires before the eval body runs.
+  let result = run(src + "\nexecuted")
+  inspect(result.to_string(), content="false")
+}
+
+///|
+test "eval source: arguments in destructuring arrow default rejected in field init" {
+  // `class C { y = eval('(({x = arguments}) => 0)') }` — V8 SyntaxError
+  let src =
+    #|var executed = false;
+    #|class C { y = (function () {
+    #|  try { eval("executed = true; (({x = arguments}) => 0)"); } catch (e) {}
+    #|  return 1;
+    #|})(); }
+  let result = run(src + "\nexecuted")
+  inspect(result.to_string(), content="false")
+}
+
+///|
+test "eval source: arguments in array destructuring arrow default rejected" {
+  let src =
+    #|var executed = false;
+    #|class C { y = (function () {
+    #|  try { eval("executed = true; (([a = arguments]) => 0)"); } catch (e) {}
+    #|  return 1;
+    #|})(); }
+  let result = run(src + "\nexecuted")
+  inspect(result.to_string(), content="false")
+}
+
+///|
+test "eval source: arrow param default with no forbidden refs is fine" {
+  // Negative regression — make sure we didn't break ordinary defaults.
+  let src =
+    #|function f() { return eval("((x = 42) => x)()") }
+    #|f()
+  let result = run(src)
+  inspect(result.to_string(), content="42")
+}
