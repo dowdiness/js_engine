@@ -43,6 +43,16 @@ fn Interpreter::install_instance_fields(
       Some(expr) => {
         let init_env = Environment::new(parent=Some(field.closure))
         init_env.def_builtin("this", this_arg)
+        // Per ES262 §15.7 ClassFieldDefinitionEvaluation: a class field
+        // initializer is its own function-like execution context. Bind
+        // `<new.target>` (always Undefined here — fields are invoked
+        // implicitly during construction, never via `new`) so that direct
+        // eval inside the field correctly classifies as "in function" and
+        // permits `eval('new.target')` (matches V8). The
+        // `[[InClassFieldInitializer]]` marker is consumed by perform_eval
+        // (§19.2.1.1) to forbid `Contains arguments` in the eval source.
+        init_env.def_builtin("<new.target>", Undefined)
+        init_env.def_builtin("[[InClassFieldInitializer]]", Bool(true))
         self.eval_expr(field_ctx, expr, init_env)
       }
       None => Undefined

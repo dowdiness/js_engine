@@ -385,6 +385,48 @@ fn Interpreter::perform_eval(
   }
   // Apply static block-scoped redeclaration checks before declaration instantiation.
   self.validate_block_early_errors(stmts, eval_strict)
+  // ES262 §19.2.1.1 PerformEval steps 8–14: reject the eval source when it
+  // references super/new.target/arguments outside the surrounding context's
+  // permitted form. Indirect eval inherits no surrounding context, so all
+  // four flags are false and any of the predicates triggers the error.
+  // Direct eval looks at the caller's env chain via existing markers.
+  let in_function = if direct { caller_env.has("<new.target>") } else { false }
+  let in_method = if direct {
+    caller_env.has("[[SuperPrototype]]")
+  } else {
+    false
+  }
+  let in_derived_constructor = if direct {
+    caller_env.has("[[SuperConstructor]]")
+  } else {
+    false
+  }
+  let in_class_field_initializer = if direct {
+    caller_env.has("[[InClassFieldInitializer]]")
+  } else {
+    false
+  }
+  let scan = scan_eval_contains(stmts)
+  if scan.super_call && !in_derived_constructor {
+    raise @errors.SyntaxError(
+      message="'super' call is not allowed here — eval source contains super() outside a derived class constructor",
+    )
+  }
+  if scan.super_property && !in_method {
+    raise @errors.SyntaxError(
+      message="'super' property access is not allowed here — eval source contains super.x outside a method",
+    )
+  }
+  if scan.new_target && !in_function {
+    raise @errors.SyntaxError(
+      message="'new.target' is not allowed outside of a function — eval source contains new.target at the top level",
+    )
+  }
+  if scan.arguments_ref && in_class_field_initializer {
+    raise @errors.SyntaxError(
+      message="'arguments' is not allowed in a class field initializer — eval source references arguments",
+    )
+  }
   // Determine the variable environment (where var/function declarations leak to).
   // For direct eval, walk up from the caller's env to find the function/global scope
   // (the nearest is_var_scope environment). This ensures that eval("var x = 1")
