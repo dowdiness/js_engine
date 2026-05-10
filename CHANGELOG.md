@@ -9,7 +9,33 @@ For changes before this file existed, see `git log`.
 
 ## [Unreleased]
 
-### Strict-mode legacy octal/non-octal-decimal early errors
+## [0.2.3] — 2026-05-11
+
+Conformance-focused patch release. Closes the strict-mode legacy octal /
+non-octal-decimal early-error work queued from PR #91, plugs three
+walker gaps that silently swallowed those violations, ships PerformEval
+§19.2.1.1 step-8-14 early-error checks, accepts ES2017 trailing commas
+in non-arrow function parameter lists, and rejects three leading-zero
+numeric literal forms that the lexer previously misclassified.
+
+| Mode | v0.2.2 P/E (tip `f8b760c`) | v0.2.3 P/E (tip `955ed21`) | Δ |
+|---|---|---|---:|
+| strict | 87.8% (23,365 / 26,599) | **89.4%** (23,798 / 26,607) | **+433** |
+| non-strict | 86.3% (24,815 / 28,767) | **87.8%** (25,244 / 28,762) | **+429** |
+
+CI runs: v0.2.2 baseline [24923229192]; v0.2.3 release-candidate tip
+[25634627598]. The post-tag CI run on the actual release commit is the
+authoritative source per `docs/RELEASING.md` step 5; if the numbers
+above differ from the post-tag run, the CHANGELOG will be amended in a
+follow-up commit (the tag annotation is allowed to remain at these
+release-candidate numbers).
+
+Unit tests: **1227 passing** (was 1036 at v0.2.2).
+
+[24923229192]: https://github.com/dowdiness/js_engine/actions/runs/24923229192
+[25634627598]: https://github.com/dowdiness/js_engine/actions/runs/25634627598
+
+### Strict-mode legacy octal/non-octal-decimal early errors (PRs #95, #98)
 
 ES262 §12.8.4.1 (NumericLiteral) and §12.9.4.1 (StringLiteral) static
 early errors are now enforced in strict-mode code:
@@ -33,11 +59,7 @@ Annex B compatibility is preserved in non-strict code: `\1` still
 evaluates to `\u{0001}`, `0777` to `511`, `08` to `8`. The new
 `Token.lex_form` field and AST `lex_form` propagation make the
 provenance available to the existing `validate_block_early_errors_*`
-walker; class member keys (currently unvisited) are now visited too.
-
-Closes follow-up #2 from PR #91. Two follow-up issues filed for
-out-of-scope items: template-literal raw/cooked rework (#96) and
-leading-zero fractional/exponent forms (`01.2`, `01e2`).
+walker; class member keys (previously unvisited) are now visited too.
 
 ### Walker completeness (PR #98)
 
@@ -53,8 +75,144 @@ correctly enforces ES262 §15.7.1 — class definitions are strict-mode
 code in their entirety, including the `extends` expression, regardless
 of the surrounding script's strictness.
 
-Unit tests: **1152 passing** (1124 from PR #95 + 4 from #98 walker
-completeness + 4 from #98 §15.7.1 verification).
+### PerformEval early-error checks (PR #100, §19.2.1.1)
+
+Direct `eval(...)` calls now run §19.2.1.1 steps 8-14 against the
+parsed eval body before evaluating it. A new `scan_eval_contains`
+walker computes the four §15.2.12 Contains predicates in one pass:
+
+- `super(...)` outside a derived constructor → `SyntaxError`
+- `super.X` outside a method → `SyntaxError`
+- `new.target` outside a function → `SyntaxError`
+- `arguments` reference inside a class field initializer → `SyntaxError`
+
+The walker descends through ordinary expressions and arrow function
+bodies (which are transparent to `super`/`this`/`arguments`/`new.target`
+per §15.2.12), but stops at non-arrow function/method/class-member
+boundaries — including their `FormalParameters`. Arrow-parameter
+defaults are visited so an `arguments`-reference in
+`(x = arguments) => ...` is correctly diagnosed.
+
+A new `[[InClassFieldInitializer]]` execution-context flag carries the
+class-field-initializer position to the eval call so the
+`arguments`-in-class-field check fires only when applicable.
+
+### Leading-zero fractional/exponent numeric literals (PR #99)
+
+Three numeric literal forms that the lexer previously mis-tokenised
+are now rejected in line with ES262 §12.8.3 + Annex B §B.1.1:
+
+- `01.2`, `01e2`, `00.5`, `001.2`, `07.5` → `SyntaxError` in **all
+  modes**.  LegacyOctalIntegerLiteral is not a sub-production of
+  DecimalLiteral, so these productions have no parse.
+- `08.1`, `08e2` → valid in **sloppy**, `SyntaxError` in **strict**.
+  NonOctalDecimalIntegerLiteral is an Annex B addition forbidden in
+  strict mode.
+
+`0.5`, `0.1e2`, and member-access on legacy-octal-prefix integers
+(`01.toString()` evaluates to `"1"` in sloppy) remain valid. Codex
+review caught a regression where the original "reject any `.` after a
+LegacyOctal-prefix" rule broke `01.toString()` member-access; the
+shipped narrowing rejects `.` only when followed by a `DecimalDigit`.
+
+### Trailing comma in non-arrow function parameter lists (PR #103)
+
+ES2017 trailing commas are now accepted in named function
+declarations, function expressions, generators, and async functions:
+
+```js
+function f(a, b,) {}
+function* g(a,) { yield a }
+const h = function (a, b,) { return a + b };
+```
+
+The simple `parse_params` was missing a trailing-comma break that the
+slow-path `parse_params_ext` (handling rest/default/destructure params)
+already had. Three-line fix mirroring the existing break.
+
+Codex review surfaced an adjacent pre-existing bug — `parse_params_ext`
+accepts `function f(...rest,)` because the trailing-comma break runs
+before the rest-rejection check. ES2017 forbids it; tracked for a
+follow-up patch.
+
+### CLI and tooling
+
+- **CLI gains a `--version` flag** and a clean Wasm exit path. CLI
+  argument parsing migrated to `@argparse` (was bespoke).
+- **CI test262 job summary now includes a per-edition pass-rate table.**
+  Generated by `scripts/classify-by-edition.py`; visible at a glance on
+  every PR run.
+- **Unicode `ID_Start` / `ID_Continue` tables generated from
+  `DerivedCoreProperties`** rather than hand-maintained, eliminating
+  drift against the active Unicode version.
+- **actionlint workflow** added to catch shell-script errors in
+  GitHub Actions YAML.
+- **`make test262-report` pulls release-grade conformance numbers
+  directly from CI artifacts** (per the test262-reporting convention
+  documented in `AGENTS.md`).
+- Repo scripts moved from root to `scripts/`; CI workflow paths updated
+  to match.
+
+### Internal API changes (pre-1.0, no known downstream callers)
+
+These changes affect symbols exposed by `@interpreter/runtime`,
+`@ast`, and `@token`. They are listed for transparency, but per pre-1.0
+convention this remains a `patch` release because the symbols had no
+known downstream consumers when v0.2.3 was cut. Review this list
+before upgrading if you link against any of these packages directly.
+
+- **Constructor convention rename**: `MapData::new`, `PropertyBag::new`,
+  `SetData::new` renamed to `MapData::MapData`, `PropertyBag::PropertyBag`,
+  `SetData::SetData` — matching the project's "custom constructor
+  inside struct body" idiom (see `AGENTS.md` Quick Reference). Callers
+  using the old names must rename.
+- **`instanceof_prototype_chain` signature change**: from
+  `(Value, Value, Environment) -> Value` to
+  `(Value, Value, Interpreter) -> Value raise`.
+- **AST enum payload extensions**: `Expr::NumberLit` and `Expr::StringLit`
+  gained a `@token.LexForm` payload; `Stmt::ImportDecl`,
+  `Stmt::ExportNamedDecl`, and `Stmt::ExportAllDecl` gained the same.
+  External pattern matches on these variants must accept the new
+  parameter.
+- **AST: new `Expr::ArrayHole(@token.Loc)` variant** for elision in
+  array literals (`[1,,3]`). Breaks exhaustive matches on `Expr` in
+  external consumers.
+- **New `LexForm` enum** in `@token`: `LexNormal`,
+  `StringLegacyOctalEscape`, `NumberLegacyOctalInt`,
+  `NumberNonOctalDecimalInt`. Used by AST and the early-error walker
+  to track strict-mode-relevant literal provenance.
+- **`@interpreter/runtime` additions** (called cross-package by
+  `interpreter/stdlib`, so correctly `pub`):
+  `validate_function_constructor_params`,
+  `Interpreter::validate_block_early_errors`,
+  `format_if_js_error` (in `@errors`),
+  `name_message_if_js_error` (in `@errors`).
+- **Property descriptor refactor (PR #101)**: `PropDescriptor` gained a
+  `mut is_accessor : Bool` field; descriptor construction goes through
+  the runtime/property authority rather than ad-hoc bag writes at call
+  sites.
+- **`EvalContainsScan` struct + `scan_eval_contains` fn +
+  `EvalContainsScan::new` ctor are private to `@interpreter/runtime`**
+  (PR #105 — were briefly `pub(all)` / `pub` in PR #100 but had zero
+  cross-package consumers; narrowed before downstream consumers
+  could form).
+
+### Tests
+
+- 1227 passing (was 1036 at v0.2.2). The +191 unit tests cover:
+  - Strict-mode legacy octal early-error positive/negative cases
+    (string escapes, numeric literals, all literal positions and
+    strict-mode entry points)
+  - Walker visit positions (`YieldExpr`, `SuperCall`, class heritage)
+  - Eval `super`/`new.target`/`arguments` early-error positive cases
+    plus arrow-parameter-default coverage
+  - Leading-zero fractional/exponent numeric literal positive cases
+    (`0.5`, `0.1e2`, `01.toString()`) and negative cases (`01.2`,
+    `01e2`, `00.5`, `08.1`/`08e2` in strict)
+  - Trailing-comma params in named function, generator, and nameless
+    function-expression positions; panic tests for `(,)` and `(a,,)`
+
+[0.2.3]: https://github.com/dowdiness/js_engine/releases/tag/v0.2.3
 
 ## [0.2.2] — 2026-04-25
 
