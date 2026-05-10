@@ -2,20 +2,20 @@
 
 ## Current Status
 
-**Test262** — CI run [25620423276](https://github.com/dowdiness/js_engine/actions/runs/25620423276) on tip `9eadb4c`, 2026-05-10. Each test file is run twice (strict + non-strict); the two are reported separately because summing would double-count files.
+**Test262** — CI run [25631308977](https://github.com/dowdiness/js_engine/actions/runs/25631308977) on PR head `cff0d37` (merged as squash `5d49cea` on main), 2026-05-11. Each test file is run twice (strict + non-strict); the two are reported separately because summing would double-count files.
 
 | Mode | Discovered | Skipped | Executed | Passed | Failed | Timeouts | Passed / Executed | Passed / Discovered |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| strict | 44,986 | 18,270 | 26,607 | 23,636 | 2,971 | 108 | **88.8%** | 52.5% |
-| non-strict | 47,692 | 18,811 | 28,764 | 25,082 | 3,682 | 116 | **87.2%** | 52.6% |
+| strict | 44,986 | 18,270 | 26,602 | 23,798 | 2,804 | 113 | **89.5%** | 52.9% |
+| non-strict | 47,692 | 18,811 | 28,765 | 25,244 | 3,521 | 115 | **87.8%** | 52.9% |
 
-This row is the post-PR #99 baseline. PR #100 (eval early-error checks, merged at `d076bc2`) closes the "Expected SyntaxError but got ReferenceError" cluster (56/56 → 0/0) for an additional **+0.26pp / +70 strict / +76 non-strict** verified on the PR run; refresh this table from `make test262-report` once the post-#100/#101 main-branch runs complete.
+This row is the post-PR #103 baseline. The recent batch of PRs adds: #99 (lexer leading-zero `01.2`/`01e2` rejection + NonOctalDecimal lex_form retention, +0.7pp), #100 (PerformEval §19.2.1.1 early-error checks for super/new.target/arguments, +0.26pp), #101 (property descriptor refactor), #102 (eval-contains ArrayHole merge-skew hotfix), and #103 (parser trailing-comma in non-arrow params, +44 strict / +39 non-strict).
 
-Delta vs v0.2.0 tip `f89898a` (run 24730849102): **+582 strict / +615 non-strict** at this baseline, reflecting PRs #70-#71 (pre-Stage-C TypeError bundle), Stage C `ArrayData.bag`, Stage B.3 `[[HasProperty]]` dispatcher, strict-reserved early errors, PR #74 (IteratorClose §7.4.10 + construct newTarget threading), PR #75 (TypedArray wide-catch + "-0" canonical-invalid guard), PR #82 (ToPrimitive cluster), and PR #99 (lexer leading-zero fractional/exponent).
+Delta vs v0.2.0 tip `f89898a` (run 24730849102): **+744 strict / +777 non-strict** at this baseline, reflecting PRs #70-#71 (pre-Stage-C TypeError bundle), Stage C `ArrayData.bag`, Stage B.3 `[[HasProperty]]` dispatcher, strict-reserved early errors, PR #74 (IteratorClose §7.4.10 + construct newTarget threading), PR #75 (TypedArray wide-catch + "-0" canonical-invalid guard), PR #82 (ToPrimitive cluster), PR #99 (lexer leading-zero fractional/exponent), PR #100 (eval early-errors), PR #101 (descriptors), and PR #103 (trailing-comma).
 
-CI regression baseline: `test262-baseline.json` (min 23,520 non-strict / 22,450 strict passed, updated 2026-04-12; currently +1,562 / +1,186 above).
+CI regression baseline: `test262-baseline.json` (min 23,520 non-strict / 22,450 strict passed, updated 2026-04-12; currently +1,724 / +1,348 above).
 
-**Unit tests**: 1221 / 1221 passing (post-PR #100/#101 plus the eval-contains merge-skew hotfix).
+**Unit tests**: 1227 / 1227 passing (post-PR #103, includes 6 new parser trailing-comma tests).
 
 ### How to read these rates
 
