@@ -96,6 +96,7 @@ fn Interpreter::eval_expr(
     BoolLit(b, _) => Bool(b)
     NullLit(_) => Null
     UndefinedLit(_) => Undefined
+    ArrayHole(_) => Undefined
     Ident(name, _) => {
       validate_strict_identifier_reference(ctx.strict, name)
       env.get(name) catch {
@@ -531,6 +532,8 @@ fn Interpreter::eval_expr(
     }
     ArrayLit(elements, _) => {
       let vals : Array[Value] = []
+      let mut has_holes = false
+      let hole_idxs : Array[Int] = []
       for e in elements {
         match e {
           SpreadExpr(inner, spread_loc) => {
@@ -541,10 +544,25 @@ fn Interpreter::eval_expr(
               vals.push(v)
             }
           }
+          ArrayHole(_) => {
+            hole_idxs.push(vals.length())
+            vals.push(Undefined)
+            has_holes = true
+          }
           _ => vals.push(self.eval_expr(ctx, e, env))
         }
       }
-      make_array(vals)
+      let arr = make_array(vals)
+      if has_holes {
+        match arr {
+          Array(data) =>
+            for i in hole_idxs {
+              data.holes[i] = ()
+            }
+          _ => ()
+        }
+      }
+      arr
     }
     ComputedMember(obj_expr, key_expr, loc) => {
       let obj = self.eval_expr(ctx, obj_expr, env)

@@ -897,6 +897,66 @@ pub fn Interpreter::array_define_own_property(
         }
         return true
       }
+      // Check for large valid array index: integers in [2^31, 2^32-2] that
+      // parse_int can't handle. Use Double to detect them, then store in the
+      // bag (can't materialise elements for a 4-billion-slot array) while
+      // still updating the logical length override.
+      let large_idx64 : Int64? = try {
+        let n = @string.parse_double(k)
+        let i64 = n.to_int64()
+        if n >= 2147483648.0 &&
+          n == i64.to_double() &&
+          i64 <= 4294967294L &&
+          i64.to_string() == k {
+          Some(i64)
+        } else {
+          None
+        }
+      } catch {
+        _ => None
+      }
+      match large_idx64 {
+        Some(idx64) => {
+          let logical_len = match get_array_length_override(arr) {
+            Some(n64) => n64
+            None => arr.elements.length().to_int64()
+          }
+          if idx64 >= logical_len && !arr.length_writable {
+            return false
+          }
+          let existing = ordinary_get_own_string_desc(arr.bag, k)
+          match existing {
+            None => {
+              if !arr.extensible {
+                return false
+              }
+              let full = complete_partial_for_new(partial)
+              apply_descriptor_to_bag(arr.bag, key, full, partial.value)
+            }
+            Some(current) => {
+              if !current.configurable {
+                let cur_val = match arr.bag.properties.get(k) {
+                  Some(v) => v
+                  None => Undefined
+                }
+                if !is_compatible_with_non_configurable(
+                    current, partial, cur_val,
+                  ) {
+                  return false
+                }
+              }
+              let merged = merge_partial_into(current, partial)
+              apply_descriptor_to_bag(arr.bag, key, merged, partial.value)
+            }
+          }
+          let new_len = idx64 + 1L
+          if new_len > logical_len {
+            set_array_length_override(arr, new_len)
+          }
+          return true
+        }
+        None => ()
+      }
       // Named non-index property — ordinary write against bag.
       let existing = ordinary_get_own_string_desc(arr.bag, k)
       match existing {
@@ -936,6 +996,11 @@ pub fn Interpreter::array_set_length(
   partial : PartialDescriptor,
 ) -> Bool raise Error {
   let _ = self
+  // §15.4.5.1 step 3.a.i: length is always a non-configurable data property.
+  // Trying to make it an accessor → TypeError.
+  if partial.is_accessor() {
+    raise @errors.TypeError(message="Cannot redefine property: length")
+  }
   // Step 1-2: if Desc.[[Value]] absent, just adjust attributes.
   let new_len_value = match partial.value {
     Some(v) => v

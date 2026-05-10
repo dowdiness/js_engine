@@ -881,9 +881,9 @@ fn Parser::parse_array_literal(self : Parser) -> @ast.Expr raise Error {
   let loc = self.advance().loc // consume '['
   let elements : Array[@ast.Expr] = []
   while !self.at(RBracket) && !self.at(EOF) {
-    // Handle elisions: [1,,3] or [,,] - consecutive commas create undefined holes
+    // Handle elisions: [1,,3] or [,,] - consecutive commas create holes
     if self.at(Comma) {
-      elements.push(UndefinedLit(self.peek().loc))
+      elements.push(ArrayHole(self.peek().loc))
       let _ = self.advance() // consume comma
       continue
     }
@@ -1735,7 +1735,7 @@ fn expr_to_pattern(expr : @ast.Expr) -> @ast.Pattern raise Error {
           DestructureAssign(pat, default_expr, _) =>
             // [{x} = {x: 1}] → DefaultPat(ObjectPat(...), ObjectLit(...))
             pats.push(Some(DefaultPat(pat, default_expr)))
-          UndefinedLit(_) =>
+          UndefinedLit(_) | ArrayHole(_) =>
             // [,a] → hole (elision) in array pattern
             pats.push(None)
           _ => pats.push(Some(expr_to_pattern(elem)))
