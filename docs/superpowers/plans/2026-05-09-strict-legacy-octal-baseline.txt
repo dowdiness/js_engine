@@ -1,0 +1,62 @@
+# test262 baseline — pre PR (strict-mode legacy octal early errors)
+
+CI run: 25593413665 (https://github.com/dowdiness/js_engine/actions/runs/25593413665)
+Tip: 1e9a9d9 ("fix(runtime): bound the array_set_length grow loop (#94)")
+Date: 2026-05-09
+
+## Headline rates
+
+| Mode | Discovered | Skipped | Executed | Passed | Failed | Timeouts | Passed / Executed | Passed / Discovered |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| strict | 44,986 | 18,270 | 26,605 | 23,634 | 2,971 | 110 | **88.8%** | 52.5% |
+| non-strict | 47,692 | 18,811 | 28,765 | 25,075 | 3,690 | 115 | **87.2%** | 52.6% |
+
+## Per-edition (strict)
+
+| Edition | Executed | Passed | Failed | Passed / Executed |
+|---|---:|---:|---:|---:|
+| Pre-ES2015 (baseline) | 13,258 | 12,321 | 937 | 92.9% |
+| ES2015 | 10,098 | 8,745 | 1,353 | 86.6% |
+| ES2016 | 93 | 72 | 21 | 77.4% |
+| ES2017 | 391 | 318 | 73 | 81.3% |
+| ES2018 | 398 | 355 | 43 | 89.2% |
+| ES2019 | 128 | 101 | 27 | 78.9% |
+| ES2020 | 248 | 211 | 37 | 85.1% |
+| ES2021 | 340 | 302 | 38 | 88.8% |
+| ES2022 | 713 | 628 | 85 | 88.1% |
+| ES2023 | 218 | 165 | 53 | 75.7% |
+| ES2024 | 206 | 79 | 127 | 38.3% |
+| ES2025 | 183 | 102 | 81 | 55.7% |
+| Annex B | 319 | 229 | 90 | 71.8% |
+
+## Per-edition (non-strict)
+
+| Edition | Executed | Passed | Failed | Passed / Executed |
+|---|---:|---:|---:|---:|
+| Pre-ES2015 (baseline) | 13,890 | 12,757 | 1,133 | 91.8% |
+| ES2015 | 10,595 | 9,073 | 1,522 | 85.6% |
+| ES2016 | 93 | 72 | 21 | 77.4% |
+| ES2017 | 430 | 350 | 80 | 81.4% |
+| ES2018 | 396 | 349 | 47 | 88.1% |
+| ES2019 | 127 | 100 | 27 | 78.7% |
+| ES2020 | 375 | 285 | 90 | 76.0% |
+| ES2021 | 316 | 278 | 38 | 88.0% |
+| ES2022 | 733 | 638 | 95 | 87.0% |
+| ES2023 | 218 | 165 | 53 | 75.7% |
+| ES2024 | 207 | 80 | 127 | 38.6% |
+| ES2025 | 181 | 100 | 81 | 55.2% |
+| Annex B | 1,108 | 818 | 290 | 73.8% |
+
+## Cohorts of interest (will be measured post-change)
+
+The following cohorts contain tests that this PR's strict-mode legacy octal early errors will affect:
+
+- `language/literals/string/legacy-non-octal-escape-sequence-*`
+- `language/literals/string/legacy-octal-escape-sequence-*`
+- `language/literals/numeric/non-octal-decimal-integer*`
+- `language/literals/numeric/legacy-octal*`
+- `language/expressions/object/method-definition/early-errors-*`
+- `language/statements/class/early-errors-*`
+- `language/module-code/early-errors-*`
+
+Per-cohort numbers will be extracted post-merge for the PR description.

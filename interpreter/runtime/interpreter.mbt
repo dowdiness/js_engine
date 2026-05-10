@@ -232,7 +232,7 @@ pub fn has_use_strict(stmts : Array[@ast.Stmt]) -> Bool {
   // Only the literal string "use strict" WITHOUT escape sequences activates strict mode.
   for i = 0; i < stmts.length(); i = i + 1 {
     match stmts[i] {
-      ExprStmt(StringLit(s, has_escape, _), _) =>
+      ExprStmt(StringLit(s, has_escape, _, _), _) =>
         if s == "use strict" && !has_escape {
           return true
         }
@@ -336,6 +336,62 @@ fn check_duplicate_params_ext(
         )
       }
     None => ()
+  }
+}
+
+///|
+/// Apply parameter-list early errors for functions built via the
+/// Function / GeneratorFunction / AsyncFunction / AsyncGeneratorFunction
+/// constructors. Per spec these fire at construction time, not at call.
+///
+/// Three checks:
+///   1. Non-simple parameter list with `"use strict"` directive in body
+///      is a SyntaxError (§15.1.1 / §14.1.2).
+///   2. Strict-mode (or non-simple) parameter list must not contain
+///      duplicate names.
+///   3. Strict-mode parameter names must not be `eval`, `arguments`,
+///      or a strict-reserved word (§15.1.5).
+pub fn validate_function_constructor_params(
+  is_simple : Bool,
+  param_names : Array[String],
+  rest_name : String?,
+  body : Array[@ast.Stmt],
+) -> Unit raise Error {
+  let body_has_use_strict = has_use_strict(body)
+  if !is_simple && body_has_use_strict {
+    raise @errors.SyntaxError(
+      message="Illegal 'use strict' directive in function with non-simple parameter list",
+    )
+  }
+  let body_strict = body_has_use_strict
+  if !is_simple || body_strict {
+    let seen : Map[String, Bool] = {}
+    for p in param_names {
+      if seen.contains(p) {
+        raise @errors.SyntaxError(
+          message="Duplicate parameter name not allowed in this context",
+        )
+      }
+      seen[p] = true
+    }
+    match rest_name {
+      Some(n) =>
+        if seen.contains(n) {
+          raise @errors.SyntaxError(
+            message="Duplicate parameter name not allowed in this context",
+          )
+        }
+      None => ()
+    }
+  }
+  if body_strict {
+    for p in param_names {
+      validate_strict_binding_name(p)
+    }
+    match rest_name {
+      Some(n) => validate_strict_binding_name(n)
+      None => ()
+    }
   }
 }
 

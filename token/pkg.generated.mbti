@@ -10,6 +10,14 @@ import {
 // Errors
 
 // Types and methods
+pub(all) enum LexForm {
+  LexNormal
+  StringLegacyOctalEscape
+  NumberLegacyOctalInt
+  NumberNonOctalDecimalInt
+} derive(Eq, @debug.Debug)
+pub impl Show for LexForm
+
 pub(all) struct Loc {
   line : Int
   col : Int
@@ -22,9 +30,10 @@ pub(all) struct Token {
   kind : TokenKind
   loc : Loc
   raw : String
+  lex_form : LexForm
 } derive(Eq, @debug.Debug)
 pub fn Token::eof(Loc) -> Self
-pub fn Token::new(TokenKind, Loc, String) -> Self
+pub fn Token::new(TokenKind, Loc, String, lex_form? : LexForm) -> Self
 pub impl Show for Token
 
 pub(all) enum TokenKind {

@@ -311,7 +311,7 @@ fn setup_function_builtins(env : Environment) -> Unit {
     },
     prototype: Null,
     callable: Some(
-      NativeCallable("Function", fn(args) raise {
+      InterpreterCallable("Function", fn(interp, _this, args) raise {
         if args.length() == 0 {
           return Value::Object({
             bag: @runtime.PropertyBag(),
@@ -346,6 +346,15 @@ fn setup_function_builtins(env : Environment) -> Unit {
             FuncDecl(_, params, body, _) => {
               let fn_props : Map[String, Value] = {}
               fn_props["length"] = Value::Number(params.length().to_double())
+              // Validate static early errors against the function's strict context.
+              let body_strict = @runtime.has_use_strict(body)
+              @runtime.validate_function_constructor_params(
+                true,
+                params,
+                None,
+                body,
+              )
+              interp.validate_block_early_errors(body, body_strict)
               return Value::Object({
                 bag: {
                   properties: fn_props,
@@ -360,7 +369,7 @@ fn setup_function_builtins(env : Environment) -> Unit {
                     params,
                     body,
                     closure: env,
-                    strict: @runtime.has_use_strict(body),
+                    strict: body_strict,
                     // `new Function(...)` result has no self-name binding.
                     has_name_binding: false,
                     is_method: false,
@@ -373,6 +382,13 @@ fn setup_function_builtins(env : Environment) -> Unit {
             FuncDeclExt(_, params, rest_param, body, _) => {
               let fn_props : Map[String, Value] = {}
               fn_props["length"] = Value::Number(params.length().to_double())
+              // Validate static early errors against the function's strict context.
+              let body_strict = @runtime.has_use_strict(body)
+              let param_names : Array[String] = params.map(p => p.name)
+              @runtime.validate_function_constructor_params(
+                false, param_names, rest_param, body,
+              )
+              interp.validate_block_early_errors(body, body_strict)
               return Value::Object({
                 bag: {
                   properties: fn_props,
@@ -388,7 +404,7 @@ fn setup_function_builtins(env : Environment) -> Unit {
                     rest_param,
                     body,
                     closure: env,
-                    strict: @runtime.has_use_strict(body),
+                    strict: body_strict,
                     has_name_binding: false,
                     is_method: false,
                   }),

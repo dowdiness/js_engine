@@ -865,28 +865,42 @@ fn Parser::parse_object_pattern(self : Parser) -> @ast.Pattern raise Error {
       break
     }
     // Parse key: identifier, string literal, number literal, or computed [expr]
-    let (key, computed_key) : (String, @ast.Expr?) = match self.peek_kind() {
+    let key_start_loc = self.peek().loc
+    let (key, key_lex_form, key_loc, computed_key) : (
+      String,
+      @token.LexForm,
+      @token.Loc,
+      @ast.Expr?,
+    ) = match self.peek_kind() {
       LBracket => {
         let _ = self.advance()
         let key_expr = self.parse_assignment()
         let _ = self.expect(RBracket)
-        ("", Some(key_expr))
+        ("", @token.LexForm::LexNormal, key_start_loc, Some(key_expr))
       }
-      String_(s) => {
-        let _ = self.advance()
-        (s, None)
+      String_(_) => {
+        let tok = self.advance()
+        let s = match tok.kind {
+          String_(s) => s
+          _ => ""
+        }
+        (s, tok.lex_form, tok.loc, None)
       }
-      Number(n) => {
-        let _ = self.advance()
+      Number(_) => {
+        let tok = self.advance()
+        let n = match tok.kind {
+          Number(n) => n
+          _ => 0.0
+        }
         let i = n.to_int()
         let name = if i.to_double() == n {
           i.to_string()
         } else {
           n.to_string()
         }
-        (name, None)
+        (name, tok.lex_form, tok.loc, None)
       }
-      _ => (self.expect_ident(), None)
+      _ => (self.expect_ident(), @token.LexForm::LexNormal, key_start_loc, None)
     }
     let (value, default_val) : (@ast.Pattern, @ast.Expr?) = if self.eat(Colon) {
       // { key: pattern } or { [expr]: pattern }
@@ -906,7 +920,7 @@ fn Parser::parse_object_pattern(self : Parser) -> @ast.Pattern raise Error {
       }
       (IdentPat(key), def)
     }
-    props.push({ key, value, default_val, computed_key })
+    props.push({ key, key_lex_form, key_loc, value, default_val, computed_key })
     if !self.at(RBrace) {
       let _ = self.expect(Comma)
     }
@@ -1114,15 +1128,16 @@ fn Parser::expect_module_export_name(self : Parser) -> String raise Error {
 ///   import defaultExport, { name1 } from 'source'
 ///   import defaultExport, * as namespace from 'source'
 fn Parser::parse_import_decl(self : Parser) -> @ast.Stmt raise Error {
-  let tok = self.expect(Import)
+  let _ = self.expect(Import)
   // import 'source' - side effect only import
   if self.peek_kind() is String_(_) {
-    let source = match self.advance().kind {
+    let src_tok = self.advance()
+    let source = match src_tok.kind {
       String_(s) => s
       _ => abort("unreachable")
     }
     self.eat_semicolon()
-    return ImportDecl(None, [], None, source, tok.loc)
+    return ImportDecl(None, [], None, source, src_tok.lex_form, src_tok.loc)
   }
   let mut default_import : String? = None
   let mut specifiers : Array[@ast.ImportSpecifier] = []
@@ -1155,10 +1170,10 @@ fn Parser::parse_import_decl(self : Parser) -> @ast.Stmt raise Error {
     }
   }
   let _ = self.expect_from()
-  let source = match self.peek_kind() {
+  let (source, source_lex_form, source_loc) = match self.peek_kind() {
     String_(s) => {
-      self.pos += 1
-      s
+      let src_tok = self.advance()
+      (s, src_tok.lex_form, src_tok.loc)
     }
     _ => {
       let t = self.peek()
@@ -1191,7 +1206,9 @@ fn Parser::parse_import_decl(self : Parser) -> @ast.Stmt raise Error {
     }
     bound_names[spec.local_name] = true
   }
-  ImportDecl(default_import, specifiers, namespace_import, source, tok.loc)
+  ImportDecl(
+    default_import, specifiers, namespace_import, source, source_lex_form, source_loc,
+  )
 }
 
 ///|
@@ -1266,10 +1283,10 @@ fn Parser::parse_export_decl(self : Parser) -> @ast.Stmt raise Error {
       None
     }
     let _ = self.expect_from()
-    let source = match self.peek_kind() {
+    let (source, source_lex_form, source_loc) = match self.peek_kind() {
       String_(s) => {
-        self.pos += 1
-        s
+        let src_tok = self.advance()
+        (s, src_tok.lex_form, src_tok.loc)
       }
       _ => {
         let t = self.peek()
@@ -1279,17 +1296,21 @@ fn Parser::parse_export_decl(self : Parser) -> @ast.Stmt raise Error {
       }
     }
     self.eat_semicolon()
-    return ExportAllDecl(ns_alias, source, tok.loc)
+    return ExportAllDecl(ns_alias, source, source_lex_form, source_loc)
   }
   // export { name1, name2 as alias } [from 'source']
   if self.at(LBrace) {
     let specs = self.parse_export_specifiers()
-    let source : String? = if self.at(From) {
+    let (source, source_lex_form, source_loc) : (
+      String?,
+      @token.LexForm,
+      @token.Loc,
+    ) = if self.at(From) {
       let _ = self.advance() // consume 'from'
       match self.peek_kind() {
         String_(s) => {
-          self.pos += 1
-          Some(s)
+          let src_tok = self.advance()
+          (Some(s), src_tok.lex_form, src_tok.loc)
         }
         _ => {
           let t = self.peek()
@@ -1299,20 +1320,32 @@ fn Parser::parse_export_decl(self : Parser) -> @ast.Stmt raise Error {
         }
       }
     } else {
-      None
+      (None, @token.LexForm::LexNormal, tok.loc)
     }
     self.eat_semicolon()
-    return ExportNamedDecl(None, specs, source, tok.loc)
+    return ExportNamedDecl(None, specs, source, source_lex_form, source_loc)
   }
   // export let/const/var ...
   if self.at(Let) || self.at(Const) || self.at(Var) {
     let decl = self.parse_var_decl()
-    return ExportNamedDecl(Some(decl), [], None, tok.loc)
+    return ExportNamedDecl(
+      Some(decl),
+      [],
+      None,
+      @token.LexForm::LexNormal,
+      tok.loc,
+    )
   }
   // export function name() {}
   if self.at(Function) {
     let decl = self.parse_func_decl()
-    return ExportNamedDecl(Some(decl), [], None, tok.loc)
+    return ExportNamedDecl(
+      Some(decl),
+      [],
+      None,
+      @token.LexForm::LexNormal,
+      tok.loc,
+    )
   }
   // export async function name() {}
   if self.is_async_function() {
@@ -1321,12 +1354,24 @@ fn Parser::parse_export_decl(self : Parser) -> @ast.Stmt raise Error {
     } else {
       self.parse_async_func_decl()
     }
-    return ExportNamedDecl(Some(decl), [], None, tok.loc)
+    return ExportNamedDecl(
+      Some(decl),
+      [],
+      None,
+      @token.LexForm::LexNormal,
+      tok.loc,
+    )
   }
   // export class Name {}
   if self.at(Class) {
     let decl = self.parse_class_decl()
-    return ExportNamedDecl(Some(decl), [], None, tok.loc)
+    return ExportNamedDecl(
+      Some(decl),
+      [],
+      None,
+      @token.LexForm::LexNormal,
+      tok.loc,
+    )
   }
   let t = self.peek()
   raise @errors.SyntaxError(

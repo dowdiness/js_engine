@@ -9,6 +9,39 @@ For changes before this file existed, see `git log`.
 
 ## [Unreleased]
 
+### Strict-mode legacy octal/non-octal-decimal early errors
+
+ES262 §12.8.4.1 (NumericLiteral) and §12.9.4.1 (StringLiteral) static
+early errors are now enforced in strict-mode code:
+
+- **String escapes**: `\1`-`\7` (LegacyOctalEscapeSequence) and `\8`/`\9`
+  /`\0`+digit (NonOctalDecimalEscapeSequence) now raise `SyntaxError` in
+  strict mode. Bare `\0` (NUL) remains valid.
+- **Numeric literals**: `0777` (LegacyOctalIntegerLiteral) and `08`/`09`
+  (NonOctalDecimalIntegerLiteral) now raise `SyntaxError` in strict
+  mode.
+- **Coverage across all literal positions**: primary expressions,
+  object property keys (string and numeric), class member keys
+  (method/field, string and numeric), object-pattern destructuring
+  keys, and module specifier strings (`import x from "\1"`).
+- **All strict-mode entry points** trigger the validation: scripts and
+  eval bodies (existing), module bodies (modules are always strict per
+  §16.2.1.6), and `new Function` / `new GeneratorFunction` /
+  `new AsyncFunction` constructor bodies with `"use strict"` directives.
+
+Annex B compatibility is preserved in non-strict code: `\1` still
+evaluates to `\u{0001}`, `0777` to `511`, `08` to `8`. The new
+`Token.lex_form` field and AST `lex_form` propagation make the
+provenance available to the existing `validate_block_early_errors_*`
+walker; class member keys (currently unvisited) are now visited too.
+
+Closes follow-up #2 from PR #91. Two follow-up issues filed for
+out-of-scope items: template-literal raw/cooked rework and
+leading-zero fractional/exponent forms (`01.2`, `01e2`).
+
+Unit tests: **1124 passing** (was 1087 at v0.2.2; 37 new tests
+across lexer, parser, and interpreter).
+
 ## [0.2.2] — 2026-04-25
 
 Conformance-focused patch release. Closes the three TypedArray

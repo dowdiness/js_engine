@@ -89,8 +89,8 @@ pub(all) struct ExportSpecifier {
 pub impl Show for ExportSpecifier
 
 pub(all) enum Expr {
-  NumberLit(Double, @token.Loc)
-  StringLit(String, Bool, @token.Loc)
+  NumberLit(Double, @token.LexForm, @token.Loc)
+  StringLit(String, Bool, @token.LexForm, @token.Loc)
   BoolLit(Bool, @token.Loc)
   NullLit(@token.Loc)
   UndefinedLit(@token.Loc)
@@ -179,6 +179,8 @@ pub impl Show for PropKind
 
 pub(all) struct PropPat {
   key : String
+  key_lex_form : @token.LexForm
+  key_loc : @token.Loc
   value : Pattern
   default_val : Expr?
   computed_key : Expr?
@@ -227,10 +229,10 @@ pub(all) enum Stmt {
   AsyncGeneratorDeclExt(String, Array[Param], String?, Array[Stmt], @token.Loc)
   ClassDecl(String, Expr?, Array[ClassMember], @token.Loc)
   WithStmt(Expr, Stmt, @token.Loc)
-  ImportDecl(String?, Array[ImportSpecifier], String?, String, @token.Loc)
-  ExportNamedDecl(Stmt?, Array[ExportSpecifier], String?, @token.Loc)
+  ImportDecl(String?, Array[ImportSpecifier], String?, String, @token.LexForm, @token.Loc)
+  ExportNamedDecl(Stmt?, Array[ExportSpecifier], String?, @token.LexForm, @token.Loc)
   ExportDefaultDecl(Expr, @token.Loc)
-  ExportAllDecl(String?, String, @token.Loc)
+  ExportAllDecl(String?, String, @token.LexForm, @token.Loc)
 } derive(Eq, @debug.Debug)
 pub impl Show for Stmt
 

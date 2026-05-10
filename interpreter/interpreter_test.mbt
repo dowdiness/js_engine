@@ -27,6 +27,23 @@ fn run_error_display(source : String) -> String {
 }
 
 ///|
+fn run(source : String) -> Value raise Error {
+  let (_, result) = run_js(source)
+  result
+}
+
+///|
+fn run_throws(source : String) -> String {
+  try {
+    let _ = run_js(source)
+    "no error thrown"
+  } catch {
+    @runtime.JsException(val) => error_display(val)
+    e => e.to_string()
+  }
+}
+
+///|
 fn run_output_annex_b(source : String) -> Array[String] raise Error {
   let interp = new_interpreter(annex_b=true)
   let prog = @parser.parse(source)
@@ -11703,4 +11720,314 @@ test "ToPrimitive: user error from valueOf accessor propagates with original ide
     #|console.log(caught);
   let output = run_output(src)
   inspect(output, content="[\"MyError:from-valueOf\"]")
+}
+
+///|
+test "strict legacy octal: \\1 in string literal" {
+  let src =
+    #|"use strict"; "\1";
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 1, col 15",
+  )
+}
+
+///|
+test "strict legacy octal: 0777 numeric literal" {
+  let src =
+    #|"use strict"; 0777;
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Octal literals are not allowed in strict mode at line 1, col 15",
+  )
+}
+
+///|
+test "strict legacy octal: 08 numeric literal" {
+  let src =
+    #|"use strict"; 08;
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Decimals with leading zeros are not allowed in strict mode at line 1, col 15",
+  )
+}
+
+///|
+test "non-strict legacy octal: \\1 is allowed" {
+  let src =
+    #|"\1"
+  let result = run(src)
+  inspect(result.to_string(), content="\u{0001}")
+}
+
+///|
+test "non-strict legacy octal: 0777 evaluates to 511" {
+  let src =
+    #|0777
+  let result = run(src)
+  inspect(result.to_string(), content="511")
+}
+
+///|
+test "bare \\0 NUL is allowed in strict" {
+  let src =
+    #|"use strict"; "\0".charCodeAt(0)
+  let result = run(src)
+  inspect(result.to_string(), content="0")
+}
+
+///|
+test "strict legacy octal: \\8 (NonOctalDecimalEscape) rejected" {
+  let src =
+    #|"use strict"; "\8";
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 1, col 15",
+  )
+}
+
+///|
+test "strict legacy octal: \\9 (NonOctalDecimalEscape) rejected" {
+  let src =
+    #|"use strict"; "\9";
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 1, col 15",
+  )
+}
+
+///|
+test "strict legacy octal: \\01 (\\0 followed by digit) rejected" {
+  let src =
+    #|"use strict"; "\01";
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 1, col 15",
+  )
+}
+
+///|
+test "non-strict: \\8 evaluates to literal '8'" {
+  let src =
+    #|"\8"
+  let result = run(src)
+  inspect(result.to_string(), content="8")
+}
+
+///|
+test "non-strict: \\9 evaluates to literal '9'" {
+  let src =
+    #|"\9"
+  let result = run(src)
+  inspect(result.to_string(), content="9")
+}
+
+///|
+test "strict legacy octal: \\1 nested in dead branch still errors" {
+  let src =
+    #|"use strict"; if (false) { "\1"; }
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 1, col 28",
+  )
+}
+
+///|
+test "strict legacy octal: never-called function still errors" {
+  let src =
+    #|"use strict";
+    #|function f() { "\1"; }
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 2, col 16",
+  )
+}
+
+///|
+test "class method with legacy octal escape key" {
+  let src =
+    #|class C { "\1"() {} }
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 1, col 11",
+  )
+}
+
+///|
+test "class method with legacy octal numeric key" {
+  let src =
+    #|class C { 0777() {} }
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Octal literals are not allowed in strict mode at line 1, col 11",
+  )
+}
+
+///|
+test "class field with legacy octal numeric key" {
+  let src =
+    #|class C { 08 = 1; }
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Decimals with leading zeros are not allowed in strict mode at line 1, col 11",
+  )
+}
+
+///|
+test "destructuring pattern key with legacy octal escape" {
+  let src =
+    #|"use strict"; let { "\1": x } = {};
+  let result = run_throws(src)
+  inspect(
+    result,
+    content=(
+      #|SyntaxError: Octal escape sequences are not allowed in strict mode at line 1, col 21
+    ),
+  )
+}
+
+///|
+test "destructuring pattern key with non-octal-decimal" {
+  let src =
+    #|"use strict"; let { 08: x } = {};
+  let result = run_throws(src)
+  inspect(
+    result,
+    content=(
+      #|SyntaxError: Decimals with leading zeros are not allowed in strict mode at line 1, col 21
+    ),
+  )
+}
+
+///|
+test "new Function with strict directive and legacy octal" {
+  let src =
+    #|new Function('"use strict"; "\\1"');
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 2, col 15",
+  )
+}
+
+///|
+test "new GeneratorFunction with strict directive and legacy octal" {
+  let src =
+    #|let GF = (function*(){}).constructor;
+    #|new GF('"use strict"; "\\1"');
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 2, col 15",
+  )
+}
+
+///|
+test "new AsyncFunction with strict directive and legacy octal" {
+  let src =
+    #|let AF = (async function(){}).constructor;
+    #|new AF('"use strict"; "\\1"');
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 2, col 15",
+  )
+}
+
+///|
+test "new Function rejects duplicate params under strict directive" {
+  let src =
+    #|new Function('a', 'a', '"use strict";');
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Duplicate parameter name not allowed in this context",
+  )
+}
+
+///|
+test "new Function rejects 'eval' param under strict directive" {
+  let src =
+    #|new Function('eval', '"use strict"; return eval;');
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Unexpected eval or arguments in strict mode",
+  )
+}
+
+///|
+test "new Function rejects 'arguments' param under strict directive" {
+  let src =
+    #|new Function('arguments', '"use strict"; return arguments;');
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Unexpected eval or arguments in strict mode",
+  )
+}
+
+///|
+test "new Function rejects 'use strict' with non-simple params (default)" {
+  let src =
+    #|new Function('a = 1', '"use strict";');
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Illegal 'use strict' directive in function with non-simple parameter list",
+  )
+}
+
+///|
+test "new Function rejects 'use strict' with non-simple params (rest)" {
+  let src =
+    #|new Function('...a', '"use strict";');
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Illegal 'use strict' directive in function with non-simple parameter list",
+  )
+}
+
+///|
+test "new GeneratorFunction rejects duplicate params under strict" {
+  let src =
+    #|let GF = (function*(){}).constructor;
+    #|new GF('a', 'a', '"use strict";');
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Duplicate parameter name not allowed in this context",
+  )
+}
+
+///|
+test "new AsyncFunction rejects 'eval' param under strict" {
+  let src =
+    #|let AF = (async function(){}).constructor;
+    #|new AF('eval', '"use strict";');
+  let result = run_throws(src)
+  inspect(
+    result,
+    content="SyntaxError: Unexpected eval or arguments in strict mode",
+  )
+}
+
+///|
+test "new Function allows duplicate params in sloppy mode" {
+  let src =
+    #|var f = new Function('a', 'a', 'return a;');
+  let output = run_output(src + "\nconsole.log(f(1, 2));")
+  inspect(output, content="[\"2\"]")
 }

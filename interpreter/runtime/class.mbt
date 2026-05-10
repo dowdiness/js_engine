@@ -7,7 +7,12 @@ fn ensure_strict_body(body : Array[@ast.Stmt]) -> Array[@ast.Stmt] {
   } else {
     let strict_body : Array[@ast.Stmt] = [
       ExprStmt(
-        StringLit("use strict", false, @token.Loc::default()),
+        StringLit(
+          "use strict",
+          false,
+          @token.LexForm::LexNormal,
+          @token.Loc::default(),
+        ),
         @token.Loc::default(),
       ),
     ]
@@ -113,7 +118,7 @@ fn Interpreter::create_class(
         // ToPropertyKey: keep Symbol as-is; coerce everything else to String once,
         // so side-effectful toString/valueOf don't re-run per-construction.
         let key_val : Value = match f.key {
-          StringLit(s, _, _) => String_(s)
+          StringLit(s, _, _, _) => String_(s)
           _ => {
             let v = self.eval_expr(class_ctx, f.key, env)
             match v {
@@ -140,7 +145,7 @@ fn Interpreter::create_class(
       @ast.ClassMember::Method(m) => { // method branch
         // Get the method key - could be string or symbol
         let key_val : Value = match m.key {
-          StringLit(s, _, _) => String_(s)
+          StringLit(s, _, _, _) => String_(s)
           _ => self.eval_expr(class_ctx, m.key, env)
         }
         let method_key_str : String = match key_val {

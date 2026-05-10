@@ -7,7 +7,7 @@ test "parse variable declaration" {
       #|VarDecl(
       #|  LetKind,
       #|  "x",
-      #|  Some(NumberLit(42, { line: 1, col: 9, offset: 8 })),
+      #|  Some(NumberLit(42, LexNormal, { line: 1, col: 9, offset: 8 })),
       #|  { line: 1, col: 1, offset: 0 },
       #|)
     ),
@@ -23,11 +23,11 @@ test "parse binary precedence" {
       #|ExprStmt(
       #|  Binary(
       #|    Add,
-      #|    NumberLit(1, { line: 1, col: 1, offset: 0 }),
+      #|    NumberLit(1, LexNormal, { line: 1, col: 1, offset: 0 }),
       #|    Binary(
       #|      Mul,
-      #|      NumberLit(2, { line: 1, col: 5, offset: 4 }),
-      #|      NumberLit(3, { line: 1, col: 9, offset: 8 }),
+      #|      NumberLit(2, LexNormal, { line: 1, col: 5, offset: 4 }),
+      #|      NumberLit(3, LexNormal, { line: 1, col: 9, offset: 8 }),
       #|      { line: 1, col: 7, offset: 6 },
       #|    ),
       #|    { line: 1, col: 3, offset: 2 },
@@ -521,5 +521,104 @@ test "parse in operator" {
   match prog.stmts[0] {
     ExprStmt(Binary(In, _, _, _), _) => ()
     _ => fail("Expected in operator")
+  }
+}
+
+///|
+test "parser propagates lex_form to StringLit" {
+  let prog = @parser.parse("\"\\1\"")
+  match prog.stmts[0] {
+    ExprStmt(StringLit(_, _, lex_form, _), _) =>
+      inspect(lex_form, content="StringLegacyOctalEscape")
+    _ => fail("expected ExprStmt(StringLit(...))")
+  }
+}
+
+///|
+test "parser propagates lex_form for object property key" {
+  let prog = @parser.parse("({ \"\\1\": 0 })")
+  match prog.stmts[0] {
+    ExprStmt(Grouping(ObjectLit(props, _), _), _) =>
+      match props[0].key {
+        StringLit(_, _, lex_form, _) =>
+          inspect(lex_form, content="StringLegacyOctalEscape")
+        _ => fail("expected StringLit key")
+      }
+    _ => fail("expected ExprStmt(Grouping(ObjectLit(...)))")
+  }
+}
+
+///|
+test "parser propagates lex_form to NumberLit" {
+  let prog = @parser.parse("0777")
+  match prog.stmts[0] {
+    ExprStmt(NumberLit(_, lex_form, _), _) =>
+      inspect(lex_form, content="NumberLegacyOctalInt")
+    _ => fail("expected ExprStmt(NumberLit(...))")
+  }
+}
+
+///|
+test "parser propagates lex_form to numeric property key" {
+  let prog = @parser.parse("({ 08: 1 })")
+  // Numeric prop key normalizes to StringLit but carries Number's lex_form.
+  match prog.stmts[0] {
+    ExprStmt(Grouping(ObjectLit(props, _), _), _) =>
+      match props[0].key {
+        StringLit(_, _, lex_form, _) =>
+          inspect(lex_form, content="NumberNonOctalDecimalInt")
+        _ => fail("expected StringLit key")
+      }
+    _ => fail("expected ExprStmt(Grouping(ObjectLit(...)))")
+  }
+}
+
+///|
+test "object-pattern key carries lex_form" {
+  let prog = @parser.parse("let { \"\\1\": x } = o;")
+  match prog.stmts[0] {
+    DestructureDecl(_, ObjectPat(props, _), _, _) =>
+      inspect(props[0].key_lex_form, content="StringLegacyOctalEscape")
+    _ => fail("expected DestructureDecl with ObjectPat")
+  }
+}
+
+///|
+test "import side-effect propagates source_lex_form" {
+  let prog = @parser.parse("import \"\\1\";")
+  match prog.stmts[0] {
+    ImportDecl(_, _, _, _, lex_form, _) =>
+      inspect(lex_form, content="StringLegacyOctalEscape")
+    _ => fail("expected ImportDecl")
+  }
+}
+
+///|
+test "import from-clause propagates source_lex_form" {
+  let prog = @parser.parse("import x from \"\\1\";")
+  match prog.stmts[0] {
+    ImportDecl(_, _, _, _, lex_form, _) =>
+      inspect(lex_form, content="StringLegacyOctalEscape")
+    _ => fail("expected ImportDecl")
+  }
+}
+
+///|
+test "export-all propagates source_lex_form" {
+  let prog = @parser.parse("export * from \"\\1\";")
+  match prog.stmts[0] {
+    ExportAllDecl(_, _, lex_form, _) =>
+      inspect(lex_form, content="StringLegacyOctalEscape")
+    _ => fail("expected ExportAllDecl")
+  }
+}
+
+///|
+test "export-named-from propagates source_lex_form" {
+  let prog = @parser.parse("export {} from \"\\1\";")
+  match prog.stmts[0] {
+    ExportNamedDecl(_, _, _, lex_form, _) =>
+      inspect(lex_form, content="StringLegacyOctalEscape")
+    _ => fail("expected ExportNamedDecl")
   }
 }

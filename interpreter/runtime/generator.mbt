@@ -260,24 +260,37 @@ pub fn setup_generator_function_constructor(
       let prog = @parser.parse(source)
       if prog.stmts.length() > 0 {
         match prog.stmts[0] {
-          GeneratorDecl(_, params, body, _) =>
+          GeneratorDecl(_, params, body, _) => {
+            // Validate static early errors against the function's strict context.
+            let body_strict = has_use_strict(body)
+            validate_function_constructor_params(true, params, None, body)
+            interp.validate_block_early_errors(body, body_strict)
             return interp.make_generator_function(
               Some("anonymous"),
               params,
               None,
               body,
-              has_use_strict(body),
+              body_strict,
               interp.global,
             )
-          GeneratorDeclExt(_, params, rest_param, body, _) =>
+          }
+          GeneratorDeclExt(_, params, rest_param, body, _) => {
+            // Validate static early errors against the function's strict context.
+            let body_strict = has_use_strict(body)
+            let param_names : Array[String] = params.map(p => p.name)
+            validate_function_constructor_params(
+              false, param_names, rest_param, body,
+            )
+            interp.validate_block_early_errors(body, body_strict)
             return interp.make_generator_function_ext(
               Some("anonymous"),
               params,
               rest_param,
               body,
-              has_use_strict(body),
+              body_strict,
               interp.global,
             )
+          }
           _ => ()
         }
       }

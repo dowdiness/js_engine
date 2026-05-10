@@ -572,6 +572,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             kind: Regex(pattern_buf.to_string(), flags_buf.to_string()),
             loc: rloc,
             raw: "",
+            lex_form: LexNormal,
           })
           continue
         }
@@ -582,6 +583,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
     if is_digit(c) {
       let start = offset
       let buf = StringBuilder::new()
+      let mut is_non_octal_decimal_int = false
       // Check for hex (0x), binary (0b), octal (0o)
       if c == '0' && offset + 1 < len {
         let next = char_at(offset + 1)
@@ -604,7 +606,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             col += 1
           }
           let raw = source.view()[start:offset].to_owned()
-          tokens.push({ kind: Number(value), loc, raw })
+          tokens.push({ kind: Number(value), loc, raw, lex_form: LexNormal })
           continue
         } else if next == 'b' || next == 'B' {
           // Binary number
@@ -622,7 +624,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             col += 1
           }
           let raw = source.view()[start:offset].to_owned()
-          tokens.push({ kind: Number(value), loc, raw })
+          tokens.push({ kind: Number(value), loc, raw, lex_form: LexNormal })
           continue
         } else if next == 'o' || next == 'O' {
           // Octal number
@@ -640,8 +642,11 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             col += 1
           }
           let raw = source.view()[start:offset].to_owned()
-          tokens.push({ kind: Number(value), loc, raw })
+          tokens.push({ kind: Number(value), loc, raw, lex_form: LexNormal })
           continue
+        } else if next == '8' || next == '9' {
+          // 08 / 09 — NonOctalDecimalIntegerLiteral (Annex B)
+          is_non_octal_decimal_int = true
         } else if next >= '0' && next <= '7' {
           // Legacy octal number (e.g. 070 = 56)
           // Only valid in non-strict mode, but we parse it and let the
@@ -654,8 +659,9 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             if pch >= '0' && pch <= '7' {
               peek += 1
             } else if pch == '8' || pch == '9' {
-              // Contains 8 or 9, not octal - treat as decimal
+              // Contains 8 or 9, not octal - treat as decimal (Annex B NonOctalDecimalIntegerLiteral)
               is_legacy_octal = false
+              is_non_octal_decimal_int = true
               break
             } else {
               break
@@ -681,7 +687,12 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
               col += 1
             }
             let raw = source.view()[start:offset].to_owned()
-            tokens.push({ kind: Number(value), loc, raw })
+            tokens.push({
+              kind: Number(value),
+              loc,
+              raw,
+              lex_form: NumberLegacyOctalInt,
+            })
             continue
           }
         }
@@ -725,6 +736,10 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             message="Numeric separator cannot appear before decimal point at line \{loc.line}, col \{col - 1}",
           )
         }
+        // A fractional part promotes the literal beyond
+        // NonOctalDecimalIntegerLiteral; defer the strict-mode early-error
+        // decision for leading-zero fractional/exponent forms (follow-up B).
+        is_non_octal_decimal_int = false
         buf.write_char('.')
         offset += 1
         col += 1
@@ -772,6 +787,10 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             message="Numeric separator cannot appear before exponent at line \{loc.line}, col \{col - 1}",
           )
         }
+        // An exponent part promotes the literal beyond
+        // NonOctalDecimalIntegerLiteral; defer the strict-mode early-error
+        // decision for leading-zero fractional/exponent forms (follow-up B).
+        is_non_octal_decimal_int = false
         buf.write_char('e')
         offset += 1
         col += 1
@@ -821,7 +840,12 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       }
       let raw = source.view()[start:offset].to_owned()
       let value = @string.parse_double(num_str)
-      tokens.push({ kind: Number(value), loc, raw })
+      let lex_form : @token.LexForm = if is_non_octal_decimal_int {
+        NumberNonOctalDecimalInt
+      } else {
+        LexNormal
+      }
+      tokens.push({ kind: Number(value), loc, raw, lex_form })
       continue
     }
     // Identifiers / Keywords (including \uXXXX and \u{XXXXX} escapes)
@@ -877,7 +901,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       } else {
         resolve_keyword(decoded)
       }
-      tokens.push({ kind, loc, raw: decoded })
+      tokens.push({ kind, loc, raw: decoded, lex_form: LexNormal })
       continue
     }
     // Strings
@@ -887,6 +911,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       offset += 1
       col += 1
       let buf = StringBuilder::new()
+      let mut has_legacy_octal_escape = false
       while offset < len && char_at(offset) != quote {
         if char_at(offset) == '\\' && offset + 1 < len {
           offset += 1
@@ -900,6 +925,20 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             'v' => write_code_point(buf, 11) // vertical tab
             'f' => write_code_point(buf, 12) // form feed
             '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' => {
+              // Tag this string token with legacy-octal-escape provenance.
+              // \0 followed by a non-decimal-digit is the spec-allowed exception (NUL).
+              // All other cases (\\1..\\7 always; \\0 followed by 0-9) are legacy.
+              if esc == '0' {
+                let next_is_decimal_digit = offset + 1 < len &&
+                  char_at(offset + 1) >= '0' &&
+                  char_at(offset + 1) <= '9'
+                if next_is_decimal_digit {
+                  has_legacy_octal_escape = true
+                }
+              } else {
+                // \\1..\\7 always tag
+                has_legacy_octal_escape = true
+              }
               // Legacy octal escape (Annex B, non-strict). Parse 1-3 octal digits.
               let d1 = esc.to_int() - 48
               let next_is_octal = offset + 1 < len &&
@@ -961,6 +1000,13 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
               write_code_point(buf, cp)
               continue
             }
+            '8' | '9' => {
+              // NonOctalDecimalEscapeSequence (Annex B). In non-strict, the backslash
+              // is dropped and the digit is preserved. In strict, this is a SyntaxError
+              // (handled by the strict-mode validator via the lex_form tag).
+              has_legacy_octal_escape = true
+              buf.write_char(esc)
+            }
             // LineContinuation: \ followed by any LineTerminator (\n, \r, U+2028, U+2029)
             // The backslash and the line terminator are consumed but NOT added to the string value
             _ if is_line_terminator(esc) => {
@@ -1004,7 +1050,12 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       offset += 1 // skip closing quote
       col += 1
       let raw = source.view()[start:offset].to_owned()
-      tokens.push({ kind: String_(buf.to_string()), loc, raw })
+      let lex_form : @token.LexForm = if has_legacy_octal_escape {
+        StringLegacyOctalEscape
+      } else {
+        LexNormal
+      }
+      tokens.push({ kind: String_(buf.to_string()), loc, raw, lex_form })
       continue
     }
     // Template literals (backtick)
@@ -1015,9 +1066,19 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       let (text, has_expr) = scan_template_string()
       if has_expr {
         template_depth_stack.push(1)
-        tokens.push({ kind: TemplateHead(text), loc: tloc, raw: "" })
+        tokens.push({
+          kind: TemplateHead(text),
+          loc: tloc,
+          raw: "",
+          lex_form: LexNormal,
+        })
       } else {
-        tokens.push({ kind: NoSubTemplate(text), loc: tloc, raw: "" })
+        tokens.push({
+          kind: NoSubTemplate(text),
+          loc: tloc,
+          raw: "",
+          lex_form: LexNormal,
+        })
       }
       continue
     }
@@ -1028,7 +1089,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       char_at(offset + 1) == '>' &&
       char_at(offset + 2) == '>' &&
       char_at(offset + 3) == '=' {
-      tokens.push({ kind: URShiftAssign, loc, raw: ">>>=" })
+      tokens.push({ kind: URShiftAssign, loc, raw: ">>>=", lex_form: LexNormal })
       offset += 4
       col += 4
       continue
@@ -1038,7 +1099,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       offset + 2 < len &&
       char_at(offset + 1) == '=' &&
       char_at(offset + 2) == '=' {
-      tokens.push({ kind: EqEqEq, loc, raw: "===" })
+      tokens.push({ kind: EqEqEq, loc, raw: "===", lex_form: LexNormal })
       offset += 3
       col += 3
       continue
@@ -1047,7 +1108,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       offset + 2 < len &&
       char_at(offset + 1) == '=' &&
       char_at(offset + 2) == '=' {
-      tokens.push({ kind: BangEqEq, loc, raw: "!==" })
+      tokens.push({ kind: BangEqEq, loc, raw: "!==", lex_form: LexNormal })
       offset += 3
       col += 3
       continue
@@ -1056,7 +1117,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       offset + 2 < len &&
       char_at(offset + 1) == '>' &&
       char_at(offset + 2) == '>' {
-      tokens.push({ kind: URShift, loc, raw: ">>>" })
+      tokens.push({ kind: URShift, loc, raw: ">>>", lex_form: LexNormal })
       offset += 3
       col += 3
       continue
@@ -1065,7 +1126,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       offset + 2 < len &&
       char_at(offset + 1) == '>' &&
       char_at(offset + 2) == '=' {
-      tokens.push({ kind: RShiftAssign, loc, raw: ">>=" })
+      tokens.push({ kind: RShiftAssign, loc, raw: ">>=", lex_form: LexNormal })
       offset += 3
       col += 3
       continue
@@ -1074,104 +1135,109 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       offset + 2 < len &&
       char_at(offset + 1) == '<' &&
       char_at(offset + 2) == '=' {
-      tokens.push({ kind: LShiftAssign, loc, raw: "<<=" })
+      tokens.push({ kind: LShiftAssign, loc, raw: "<<=", lex_form: LexNormal })
       offset += 3
       col += 3
       continue
     }
     // 2-char
     if c == '=' && offset + 1 < len && char_at(offset + 1) == '>' {
-      tokens.push({ kind: Arrow, loc, raw: "=>" })
+      tokens.push({ kind: Arrow, loc, raw: "=>", lex_form: LexNormal })
       offset += 2
       col += 2
       continue
     }
     if c == '=' && offset + 1 < len && char_at(offset + 1) == '=' {
-      tokens.push({ kind: EqEq, loc, raw: "==" })
+      tokens.push({ kind: EqEq, loc, raw: "==", lex_form: LexNormal })
       offset += 2
       col += 2
       continue
     }
     if c == '!' && offset + 1 < len && char_at(offset + 1) == '=' {
-      tokens.push({ kind: BangEq, loc, raw: "!=" })
+      tokens.push({ kind: BangEq, loc, raw: "!=", lex_form: LexNormal })
       offset += 2
       col += 2
       continue
     }
     if c == '>' && offset + 1 < len && char_at(offset + 1) == '>' {
-      tokens.push({ kind: RShift, loc, raw: ">>" })
+      tokens.push({ kind: RShift, loc, raw: ">>", lex_form: LexNormal })
       offset += 2
       col += 2
       continue
     }
     if c == '>' && offset + 1 < len && char_at(offset + 1) == '=' {
-      tokens.push({ kind: GtEq, loc, raw: ">=" })
+      tokens.push({ kind: GtEq, loc, raw: ">=", lex_form: LexNormal })
       offset += 2
       col += 2
       continue
     }
     if c == '<' && offset + 1 < len && char_at(offset + 1) == '<' {
-      tokens.push({ kind: LShift, loc, raw: "<<" })
+      tokens.push({ kind: LShift, loc, raw: "<<", lex_form: LexNormal })
       offset += 2
       col += 2
       continue
     }
     if c == '<' && offset + 1 < len && char_at(offset + 1) == '=' {
-      tokens.push({ kind: LtEq, loc, raw: "<=" })
+      tokens.push({ kind: LtEq, loc, raw: "<=", lex_form: LexNormal })
       offset += 2
       col += 2
       continue
     }
     if c == '+' && offset + 1 < len && char_at(offset + 1) == '+' {
-      tokens.push({ kind: PlusPlus, loc, raw: "++" })
+      tokens.push({ kind: PlusPlus, loc, raw: "++", lex_form: LexNormal })
       offset += 2
       col += 2
       continue
     }
     if c == '+' && offset + 1 < len && char_at(offset + 1) == '=' {
-      tokens.push({ kind: PlusAssign, loc, raw: "+=" })
+      tokens.push({ kind: PlusAssign, loc, raw: "+=", lex_form: LexNormal })
       offset += 2
       col += 2
       continue
     }
     if c == '-' && offset + 1 < len && char_at(offset + 1) == '-' {
-      tokens.push({ kind: MinusMinus, loc, raw: "--" })
+      tokens.push({ kind: MinusMinus, loc, raw: "--", lex_form: LexNormal })
       offset += 2
       col += 2
       continue
     }
     if c == '-' && offset + 1 < len && char_at(offset + 1) == '=' {
-      tokens.push({ kind: MinusAssign, loc, raw: "-=" })
+      tokens.push({ kind: MinusAssign, loc, raw: "-=", lex_form: LexNormal })
       offset += 2
       col += 2
       continue
     }
     if c == '*' && offset + 1 < len && char_at(offset + 1) == '*' {
       if offset + 2 < len && char_at(offset + 2) == '=' {
-        tokens.push({ kind: StarStarAssign, loc, raw: "**=" })
+        tokens.push({
+          kind: StarStarAssign,
+          loc,
+          raw: "**=",
+          lex_form: LexNormal,
+        })
         offset += 3
         col += 3
         continue
       }
-      tokens.push({ kind: StarStar, loc, raw: "**" })
+      tokens.push({ kind: StarStar, loc, raw: "**", lex_form: LexNormal })
       offset += 2
       col += 2
       continue
     }
     if c == '*' && offset + 1 < len && char_at(offset + 1) == '=' {
-      tokens.push({ kind: StarAssign, loc, raw: "*=" })
+      tokens.push({ kind: StarAssign, loc, raw: "*=", lex_form: LexNormal })
       offset += 2
       col += 2
       continue
     }
     if c == '/' && offset + 1 < len && char_at(offset + 1) == '=' {
-      tokens.push({ kind: SlashAssign, loc, raw: "/=" })
+      tokens.push({ kind: SlashAssign, loc, raw: "/=", lex_form: LexNormal })
       offset += 2
       col += 2
       continue
     }
     if c == '%' && offset + 1 < len && char_at(offset + 1) == '=' {
-      tokens.push({ kind: PercentAssign, loc, raw: "%=" })
+      tokens.push({ kind: PercentAssign, loc, raw: "%=", lex_form: LexNormal })
       offset += 2
       col += 2
       continue
@@ -1181,19 +1247,19 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       offset + 2 < len &&
       char_at(offset + 1) == '&' &&
       char_at(offset + 2) == '=' {
-      tokens.push({ kind: AndAssign, loc, raw: "&&=" })
+      tokens.push({ kind: AndAssign, loc, raw: "&&=", lex_form: LexNormal })
       offset += 3
       col += 3
       continue
     }
     if c == '&' && offset + 1 < len && char_at(offset + 1) == '&' {
-      tokens.push({ kind: And, loc, raw: "&&" })
+      tokens.push({ kind: And, loc, raw: "&&", lex_form: LexNormal })
       offset += 2
       col += 2
       continue
     }
     if c == '&' && offset + 1 < len && char_at(offset + 1) == '=' {
-      tokens.push({ kind: BitAndAssign, loc, raw: "&=" })
+      tokens.push({ kind: BitAndAssign, loc, raw: "&=", lex_form: LexNormal })
       offset += 2
       col += 2
       continue
@@ -1202,25 +1268,25 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       offset + 2 < len &&
       char_at(offset + 1) == '|' &&
       char_at(offset + 2) == '=' {
-      tokens.push({ kind: OrAssign, loc, raw: "||=" })
+      tokens.push({ kind: OrAssign, loc, raw: "||=", lex_form: LexNormal })
       offset += 3
       col += 3
       continue
     }
     if c == '|' && offset + 1 < len && char_at(offset + 1) == '|' {
-      tokens.push({ kind: Or, loc, raw: "||" })
+      tokens.push({ kind: Or, loc, raw: "||", lex_form: LexNormal })
       offset += 2
       col += 2
       continue
     }
     if c == '|' && offset + 1 < len && char_at(offset + 1) == '=' {
-      tokens.push({ kind: BitOrAssign, loc, raw: "|=" })
+      tokens.push({ kind: BitOrAssign, loc, raw: "|=", lex_form: LexNormal })
       offset += 2
       col += 2
       continue
     }
     if c == '^' && offset + 1 < len && char_at(offset + 1) == '=' {
-      tokens.push({ kind: BitXorAssign, loc, raw: "^=" })
+      tokens.push({ kind: BitXorAssign, loc, raw: "^=", lex_form: LexNormal })
       offset += 2
       col += 2
       continue
@@ -1230,13 +1296,18 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       offset + 2 < len &&
       char_at(offset + 1) == '?' &&
       char_at(offset + 2) == '=' {
-      tokens.push({ kind: NullishAssign, loc, raw: "??=" })
+      tokens.push({ kind: NullishAssign, loc, raw: "??=", lex_form: LexNormal })
       offset += 3
       col += 3
       continue
     }
     if c == '?' && offset + 1 < len && char_at(offset + 1) == '?' {
-      tokens.push({ kind: QuestionQuestion, loc, raw: "??" })
+      tokens.push({
+        kind: QuestionQuestion,
+        loc,
+        raw: "??",
+        lex_form: LexNormal,
+      })
       offset += 2
       col += 2
       continue
@@ -1245,7 +1316,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       // Distinguish from ternary with number: x ? .5 : y
       // ?. is optional chaining only if NOT followed by a digit
       if offset + 2 >= len || !is_digit(char_at(offset + 2)) {
-        tokens.push({ kind: QuestionDot, loc, raw: "?." })
+        tokens.push({ kind: QuestionDot, loc, raw: "?.", lex_form: LexNormal })
         offset += 2
         col += 2
         continue
@@ -1263,9 +1334,19 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         let (text, has_expr) = scan_template_string()
         if has_expr {
           template_depth_stack.push(1)
-          tokens.push({ kind: TemplateMiddle(text), loc: tloc, raw: "" })
+          tokens.push({
+            kind: TemplateMiddle(text),
+            loc: tloc,
+            raw: "",
+            lex_form: LexNormal,
+          })
         } else {
-          tokens.push({ kind: TemplateTail(text), loc: tloc, raw: "" })
+          tokens.push({
+            kind: TemplateTail(text),
+            loc: tloc,
+            raw: "",
+            lex_form: LexNormal,
+          })
         }
         continue
       }
@@ -1336,7 +1417,12 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             message="Invalid or unexpected token at line \{line}, col \{col}",
           )
       }
-      tokens.push({ kind: Number(value), loc, raw: num_str })
+      tokens.push({
+        kind: Number(value),
+        loc,
+        raw: num_str,
+        lex_form: LexNormal,
+      })
       continue
     }
     // ... (spread/rest)
@@ -1344,7 +1430,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       offset + 2 < len &&
       char_at(offset + 1) == '.' &&
       char_at(offset + 2) == '.' {
-      tokens.push({ kind: DotDotDot, loc, raw: "..." })
+      tokens.push({ kind: DotDotDot, loc, raw: "...", lex_form: LexNormal })
       offset += 3
       col += 3
       continue
@@ -1380,7 +1466,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           message="Unexpected character '\{c}' at line \{loc.line}, col \{loc.col}",
         )
     }
-    tokens.push({ kind, loc, raw })
+    tokens.push({ kind, loc, raw, lex_form: LexNormal })
     // Track control-flow parens for regex disambiguation
     match kind {
       LParen => {

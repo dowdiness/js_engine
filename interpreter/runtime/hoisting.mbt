@@ -194,7 +194,7 @@ fn collect_block_lexical_decl_names_from_stmt(
           allow_duplicate_block_functions~,
         )
       }
-    ExportNamedDecl(Some(decl), _, _, _) =>
+    ExportNamedDecl(Some(decl), _, _, _, _) =>
       collect_block_lexical_decl_names_from_stmt(
         decl,
         lexical_names,
@@ -429,7 +429,7 @@ fn collect_block_var_decl_names_from_stmt(
         include_function_decls~,
         in_block~,
       )
-    ExportNamedDecl(Some(decl), _, _, _) =>
+    ExportNamedDecl(Some(decl), _, _, _, _) =>
       collect_block_var_decl_names_from_stmt(
         decl,
         var_names,
@@ -516,6 +516,12 @@ fn validate_pattern_early_errors(
     }
     ObjectPat(props, rest) => {
       for prop in props {
+        // Validate the key's lex_form (only meaningful in strict_context)
+        validate_strict_lex_form(
+          prop.key_lex_form,
+          prop.key_loc,
+          strict_context,
+        )
         match prop.computed_key {
           Some(expr) => validate_block_early_errors_expr(expr, strict_context)
           None => ()
@@ -535,12 +541,42 @@ fn validate_pattern_early_errors(
 }
 
 ///|
+fn validate_strict_lex_form(
+  form : @token.LexForm,
+  loc : @token.Loc,
+  strict_context : Bool,
+) -> Unit raise Error {
+  if !strict_context {
+    return
+  }
+  match form {
+    LexNormal => ()
+    StringLegacyOctalEscape =>
+      raise @errors.SyntaxError(
+        message="Octal escape sequences are not allowed in strict mode at line \{loc.line}, col \{loc.col}",
+      )
+    NumberLegacyOctalInt =>
+      raise @errors.SyntaxError(
+        message="Octal literals are not allowed in strict mode at line \{loc.line}, col \{loc.col}",
+      )
+    NumberNonOctalDecimalInt =>
+      raise @errors.SyntaxError(
+        message="Decimals with leading zeros are not allowed in strict mode at line \{loc.line}, col \{loc.col}",
+      )
+  }
+}
+
+///|
 fn validate_block_early_errors_expr(
   expr : @ast.Expr,
   strict_context : Bool,
 ) -> Unit raise Error {
   match expr {
     Ident(name, _) => validate_strict_identifier_reference(strict_context, name)
+    StringLit(_, _, lex_form, loc) =>
+      validate_strict_lex_form(lex_form, loc, strict_context)
+    NumberLit(_, lex_form, loc) =>
+      validate_strict_lex_form(lex_form, loc, strict_context)
     FuncExpr(_, _, body, _) => {
       validate_block_statement_list_early_errors(
         body,
@@ -621,13 +657,15 @@ fn validate_block_early_errors_expr(
     ClassExpr(_, _, members, _) =>
       for mbr in members {
         match mbr {
-          @ast.ClassMember::Method(m) =>
+          @ast.ClassMember::Method(m) => {
             // Class bodies are always strict.
+            validate_block_early_errors_expr(m.key, true)
             validate_block_early_errors_expr(m.value, true)
+          }
           @ast.ClassMember::Field(f) => {
-            if f.computed {
-              validate_block_early_errors_expr(f.key, true)
-            }
+            // Visit the field key unconditionally (non-computed StringLit/NumberLit
+            // keys can carry legacy octal lex_form and class bodies are always strict).
+            validate_block_early_errors_expr(f.key, true)
             match f.initializer {
               Some(expr) => validate_block_early_errors_expr(expr, true)
               None => ()
@@ -974,13 +1012,15 @@ fn validate_block_early_errors_stmt(
     ClassDecl(_, _, members, _) =>
       for mbr in members {
         match mbr {
-          @ast.ClassMember::Method(m) =>
+          @ast.ClassMember::Method(m) => {
             // Class bodies are always strict.
+            validate_block_early_errors_expr(m.key, true)
             validate_block_early_errors_expr(m.value, true)
+          }
           @ast.ClassMember::Field(f) => {
-            if f.computed {
-              validate_block_early_errors_expr(f.key, true)
-            }
+            // Visit the field key unconditionally (non-computed StringLit/NumberLit
+            // keys can carry legacy octal lex_form and class bodies are always strict).
+            validate_block_early_errors_expr(f.key, true)
             match f.initializer {
               Some(expr) => validate_block_early_errors_expr(expr, true)
               None => ()
@@ -997,8 +1037,17 @@ fn validate_block_early_errors_stmt(
       validate_block_early_errors_expr(obj_expr, strict_context)
       validate_block_early_errors_stmt(body, strict_context)
     }
-    ExportNamedDecl(Some(decl), _, _, _) =>
-      validate_block_early_errors_stmt(decl, strict_context)
+    ImportDecl(_, _, _, _, source_lex_form, loc) =>
+      validate_strict_lex_form(source_lex_form, loc, strict_context)
+    ExportAllDecl(_, _, source_lex_form, loc) =>
+      validate_strict_lex_form(source_lex_form, loc, strict_context)
+    ExportNamedDecl(decl_opt, _, _, source_lex_form, loc) => {
+      validate_strict_lex_form(source_lex_form, loc, strict_context)
+      match decl_opt {
+        Some(decl) => validate_block_early_errors_stmt(decl, strict_context)
+        None => ()
+      }
+    }
     ExportDefaultDecl(expr, _) =>
       validate_block_early_errors_expr(expr, strict_context)
     _ => ()
@@ -1006,7 +1055,7 @@ fn validate_block_early_errors_stmt(
 }
 
 ///|
-fn Interpreter::validate_block_early_errors(
+pub fn Interpreter::validate_block_early_errors(
   _self : Interpreter,
   stmts : Array[@ast.Stmt],
   strict_context : Bool,
@@ -1128,7 +1177,7 @@ fn collect_eval_var_names_from_stmt(
     }
     WithStmt(_, body, _) =>
       collect_eval_var_names_from_stmt(body, names, in_block~)
-    ExportNamedDecl(Some(decl), _, _, _) =>
+    ExportNamedDecl(Some(decl), _, _, _, _) =>
       collect_eval_var_names_from_stmt(decl, names, in_block~)
     _ => ()
   }
@@ -1243,7 +1292,7 @@ fn hoist_var_declarations_from_stmt(
     }
     WithStmt(_, body, _) => hoist_var_declarations_from_stmt(body, env)
     // Export with declaration: hoist declarations from the inner declaration.
-    ExportNamedDecl(Some(decl), _, _, _) =>
+    ExportNamedDecl(Some(decl), _, _, _, _) =>
       hoist_var_declarations_from_stmt(decl, env)
     // Do not recurse into function/class declarations: their bodies create
     // separate var scopes.
@@ -1317,7 +1366,7 @@ fn add_stmt_lex_names(
       for inner in inner_stmts {
         add_stmt_lex_names(inner, names)
       }
-    ExportNamedDecl(Some(decl), _, _, _) => add_stmt_lex_names(decl, names)
+    ExportNamedDecl(Some(decl), _, _, _, _) => add_stmt_lex_names(decl, names)
     _ => ()
   }
 }
@@ -1697,7 +1746,7 @@ fn walk_eval_annex_b_stmt(
         in_block=true,
         excluded~,
       )
-    ExportNamedDecl(Some(decl), _, _, _) =>
+    ExportNamedDecl(Some(decl), _, _, _, _) =>
       walk_eval_annex_b_stmt(
         interp,
         decl,
@@ -2001,7 +2050,7 @@ fn Interpreter::hoist_declarations(
           }
         }
       // Export with declaration: hoist the inner declaration
-      ExportNamedDecl(Some(decl), _, _, _) => {
+      ExportNamedDecl(Some(decl), _, _, _, _) => {
         let inner_stmts : Array[@ast.Stmt] = [decl]
         _self.hoist_declarations(inner_stmts, env, strict~)
       }
@@ -2120,7 +2169,7 @@ fn hoist_block_tdz(
           env.def_tdz(name, LetBinding)
         }
       // Export with declaration: hoist let/const inner declarations with TDZ
-      ExportNamedDecl(Some(decl), _, _, _) => {
+      ExportNamedDecl(Some(decl), _, _, _, _) => {
         let inner_stmts : Array[@ast.Stmt] = [decl]
         hoist_block_tdz(inner_stmts, env)
       }

@@ -99,8 +99,8 @@ pub(all) struct SwitchCase {
 
 ///|
 pub(all) enum Expr {
-  NumberLit(Double, @token.Loc)
-  StringLit(String, Bool, @token.Loc) // value, has_escape, loc
+  NumberLit(Double, @token.LexForm, @token.Loc)
+  StringLit(String, Bool, @token.LexForm, @token.Loc) // value, has_escape, lex_form, loc
   BoolLit(Bool, @token.Loc)
   NullLit(@token.Loc)
   UndefinedLit(@token.Loc)
@@ -177,6 +177,8 @@ pub(all) enum Pattern {
 ///|
 pub(all) struct PropPat {
   key : String
+  key_lex_form : @token.LexForm // provenance for strict-mode legacy-octal validation
+  key_loc : @token.Loc // location of the key token, for error pinpointing
   value : Pattern
   default_val : Expr?
   computed_key : Expr? // For computed property keys: { [expr]: pattern }
@@ -266,6 +268,7 @@ pub(all) enum Stmt {
     Array[ImportSpecifier], // named imports: { a, b as c }
     String?, // namespace import: * as name
     String, // module source string
+    @token.LexForm, // source_lex_form: provenance for strict validator
     @token.Loc
   )
   // export { spec1, spec2 }
@@ -274,6 +277,7 @@ pub(all) enum Stmt {
     Stmt?, // declaration (var/let/const/func/class)
     Array[ExportSpecifier], // named specifiers
     String?, // source for re-export
+    @token.LexForm, // source_lex_form: LexNormal if no source
     @token.Loc
   )
   // export default expression
@@ -283,6 +287,7 @@ pub(all) enum Stmt {
   ExportAllDecl(
     String?, // optional alias: export * as name
     String, // source module
+    @token.LexForm, // source_lex_form: provenance for strict validator
     @token.Loc
   )
 } derive(Debug, Eq)
