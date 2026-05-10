@@ -5,6 +5,22 @@ Completed tasks should be struck through and dated.
 
 ---
 
+## Small follow-ups (2026-05-10)
+
+### Reject trailing comma after rest parameter
+
+**Source:** Codex review of PR #103 (trailing-comma in non-arrow params).
+
+**Bug:** `parser/stmt.mbt:Parser::parse_params_ext` accepts `function f(...rest,) {}` and `function f(a, ...rest,) {}` — but the ES2017 grammar explicitly forbids it (`FunctionRestParameter` is the last production with no trailing comma). V8 rejects: "SyntaxError: Rest parameter must be last formal parameter."
+
+**Cause:** Inside the `while self.eat(Comma)` loop in `parse_params_ext`, the `if self.at(RParen) { break }` trailing-comma check runs **before** the `if rest_param is Some(_) { raise SyntaxError(...) }` rejection. Swap the order — the rest-rejection must come first.
+
+**Fix size:** ~1 line move + 2 panic tests in `parser/parser_test.mbt`. ~10 minutes.
+
+**Pre-existing, not introduced by PR #103.** Codex tagged P2 (adjacent).
+
+---
+
 ## Pre-ES2015 baseline push (2026-05-07 classification)
 
 Source: CI run 25488893622, tip `a199669`. Strict 91.3% / non-strict 90.2% P/E on Pre-ES2015. Plan ranked by ROI; pick one cluster per PR. Memory: `project_pre_es2015_landscape_2026_05_07.md`.
