@@ -36,11 +36,25 @@ provenance available to the existing `validate_block_early_errors_*`
 walker; class member keys (currently unvisited) are now visited too.
 
 Closes follow-up #2 from PR #91. Two follow-up issues filed for
-out-of-scope items: template-literal raw/cooked rework and
+out-of-scope items: template-literal raw/cooked rework (#96) and
 leading-zero fractional/exponent forms (`01.2`, `01e2`).
 
-Unit tests: **1124 passing** (was 1087 at v0.2.2; 37 new tests
-across lexer, parser, and interpreter).
+### Walker completeness (PR #98)
+
+Three positions in the early-error walker fell through the wildcard
+arm and silently swallowed legacy-octal violations:
+
+- `YieldExpr` argument (`yield "\1"` in strict generators)
+- `SuperCall` arguments (`super("\1")` in derived constructors)
+- `ClassExpr` / `ClassDecl` superclass expression (`extends ("\1", X)`)
+
+All three now have explicit walker arms. The class-heritage arm
+correctly enforces ES262 §15.7.1 — class definitions are strict-mode
+code in their entirety, including the `extends` expression, regardless
+of the surrounding script's strictness.
+
+Unit tests: **1152 passing** (1124 from PR #95 + 4 from #98 walker
+completeness + 4 from #98 §15.7.1 verification).
 
 ## [0.2.2] — 2026-04-25
 

@@ -39,6 +39,12 @@ These items were intentionally scoped OUT of the main implementation (`feat/stri
 
 ## Follow-up C: YieldExpr is not visited by the early-error walker
 
+**Status:** ✅ **CLOSED** by PR #98 (`7e635f9`, merged 2026-05-10). Audit found three walker gaps in one pass: `YieldExpr` argument, `SuperCall` arguments, and `ClassExpr`/`ClassDecl` superclass expression. Codex review surfaced an additional §15.7.1 invariant — class heritage is strict-mode code regardless of surrounding context — which was fixed in the same PR.
+
+---
+
+### Original analysis (preserved for context)
+
 **Status:** Pre-existing limitation, **discovered during Task 13** of this PR.
 
 **Symptoms:**
@@ -62,3 +68,11 @@ These items were intentionally scoped OUT of the main implementation (`feat/stri
 1. **GH issues or docs?** Filing as GH issues makes them discoverable in the issue tracker but creates noise. Keeping as docs (this file) is lighter but easier to forget. Recommendation: file Follow-up A and Follow-up C as GH issues (they have clear acceptance criteria), keep Follow-up B in docs until spec questions resolve.
 
 2. **Bundle Follow-up C into the current PR?** It's a small fix and was discovered during this work. Arguments for bundling: cohesion, completeness. Arguments against: scope creep, risk of widening the diff that's already large. Recommendation: keep separate (post-merge follow-up) — the current PR is already broad and the YieldExpr gap is genuinely orthogonal (it would be a problem regardless of legacy-octal handling).
+
+---
+
+## Resolution log
+
+- **Follow-up A (templates)** — filed as GitHub issue #96. Open.
+- **Follow-up C (YieldExpr/walker completeness)** — filed as GitHub issue #97, closed by PR #98 (`7e635f9`, 2026-05-10). Scope expanded during implementation: the audit also caught `SuperCall` and `ClassExpr`/`ClassDecl` superclass gaps, plus a Codex-surfaced §15.7.1 invariant on class heritage strictness.
+- **Follow-up B (leading-zero fractional/exponent)** — still open in this doc; spec re-read pending.
