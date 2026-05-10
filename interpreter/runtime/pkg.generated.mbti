@@ -217,6 +217,8 @@ pub fn raise_js_exception(Value) -> Unit raise
 
 pub fn reject_promise(Interpreter, PromiseData, Value) -> Unit
 
+pub fn scan_eval_contains(Array[@ast.Stmt]) -> EvalContainsScan
+
 pub fn set_array_iterator_override(ArrayData, Value?, Value?) -> Unit
 
 pub fn set_array_length_override(ArrayData, Int64) -> Unit
@@ -392,6 +394,14 @@ pub fn Environment::has_var(Self, String) -> Bool
 pub fn Environment::initialize(Self, String, Value) -> Unit raise
 pub fn Environment::initialize_in_chain(Self, String, Value) -> Unit raise
 pub fn Environment::new(parent? : Self?) -> Self
+
+pub(all) struct EvalContainsScan {
+  mut super_call : Bool
+  mut super_property : Bool
+  mut new_target : Bool
+  mut arguments_ref : Bool
+}
+pub fn EvalContainsScan::new() -> Self
 
 pub(all) struct ExecContext {
   strict : Bool

@@ -12214,3 +12214,177 @@ test "new Function allows duplicate params in sloppy mode" {
   let output = run_output(src + "\nconsole.log(f(1, 2));")
   inspect(output, content="[\"2\"]")
 }
+
+// ----- ES262 §19.2.1.1 PerformEval early-error checks -----
+//
+// These cover the "Expected SyntaxError but got ReferenceError" cluster:
+// the eval source contains a forbidden construct (super(), super.x,
+// new.target, arguments) for the surrounding context. Per spec, the
+// SyntaxError must fire BEFORE any side effects of the eval body.
+// Behavior cross-checked against V8 (Node v24.14.1, 2026-05-10).
+
+///|
+test "direct eval in non-derived function: super() rejected" {
+  let src =
+    #|var executed = false;
+    #|function f() { eval("executed = true; super();"); }
+    #|try { f(); } catch (e) { /* expected */ }
+    #|executed
+  let result = run(src)
+  inspect(result.to_string(), content="false")
+}
+
+///|
+test "direct eval in plain function: super.x rejected" {
+  let src =
+    #|var executed = false;
+    #|function f() { eval("executed = true; super.x;"); }
+    #|try { f(); } catch (e) {}
+    #|executed
+  let result = run(src)
+  inspect(result.to_string(), content="false")
+}
+
+///|
+test "direct eval in derived constructor: super() allowed" {
+  let src =
+    #|class B { constructor() { this.tag = 'B'; } }
+    #|class D extends B {
+    #|  constructor() { eval("super();"); }
+    #|}
+    #|new D().tag
+  let result = run(src)
+  inspect(result.to_string(), content="B")
+}
+
+///|
+test "direct eval in method: super.x allowed" {
+  let src =
+    #|class B { foo() { return 'B.foo'; } }
+    #|class D extends B {
+    #|  bar() { return eval("super.foo()"); }
+    #|}
+    #|new D().bar()
+  let result = run(src)
+  inspect(result.to_string(), content="B.foo")
+}
+
+///|
+test "direct eval in class field initializer: arguments rejected" {
+  let src =
+    #|var executed = false;
+    #|class C { x = eval("executed = true; arguments;"); }
+    #|try { new C(); } catch (e) {}
+    #|executed
+  let result = run(src)
+  inspect(result.to_string(), content="false")
+}
+
+///|
+test "direct eval in class field initializer: super.x allowed" {
+  let src =
+    #|class B { foo() { return 'B.foo'; } }
+    #|class D extends B { x = eval("super.foo()"); }
+    #|new D().x
+  let result = run(src)
+  inspect(result.to_string(), content="B.foo")
+}
+
+///|
+test "direct eval in class field initializer: super() rejected" {
+  let src =
+    #|var executed = false;
+    #|class B { constructor() {} }
+    #|class D extends B { x = eval("executed = true; super();"); }
+    #|try { new D(); } catch (e) {}
+    #|executed
+  let result = run(src)
+  inspect(result.to_string(), content="false")
+}
+
+///|
+test "direct eval in class field initializer: new.target allowed (returns undefined)" {
+  let src =
+    #|class C { x = eval("new.target === undefined"); }
+    #|new C().x
+  let result = run(src)
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "direct eval at top-level: new.target rejected" {
+  let src =
+    #|var executed = false;
+    #|try { eval("executed = true; new.target;"); } catch (e) {}
+    #|executed
+  let result = run(src)
+  inspect(result.to_string(), content="false")
+}
+
+///|
+test "indirect eval: super() rejected" {
+  let src =
+    #|var executed = false;
+    #|class B { constructor() {} }
+    #|class D extends B {
+    #|  constructor() { super(); var ie = (0, eval); try { ie("executed = true; super();"); } catch (e) {} }
+    #|}
+    #|new D();
+    #|executed
+  let result = run(src)
+  inspect(result.to_string(), content="false")
+}
+
+///|
+test "indirect eval: arguments OK (no class-field context)" {
+  // (0,eval)('arguments') should not throw SyntaxError — it should fail at
+  // runtime as a ReferenceError because indirect eval has no surrounding
+  // function context. This proves we're not over-throwing.
+  let src =
+    #|var caught;
+    #|try { (0, eval)("arguments"); } catch (e) { caught = e.constructor.name; }
+    #|caught
+  let result = run(src)
+  inspect(result.to_string(), content="ReferenceError")
+}
+
+///|
+test "direct eval: arguments inside regular function is fine" {
+  // Regular function context binds `arguments` itself; eval('arguments') just
+  // reads it. Should not be rejected by our class-field-init guard.
+  let src =
+    #|function f() { return eval("arguments[0]"); }
+    #|f(42)
+  let result = run(src)
+  inspect(result.to_string(), content="42")
+}
+
+///|
+test "eval source containing super() inside a nested function does NOT trigger" {
+  // Contains stops at non-arrow function boundaries. The nested function
+  // body's super() is THAT function's concern, not eval's outer context.
+  let src =
+    #|var executed = false;
+    #|function f() {
+    #|  eval("executed = true; function inner() { super(); }");
+    #|}
+    #|f();
+    #|executed
+  let result = run(src)
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "eval source: super.x inside a nested arrow IS visible (transparent)" {
+  // Arrows are transparent for super, so super.x inside an arrow inside the
+  // eval body still demands inMethod for the eval's outer context.
+  let src =
+    #|var executed = false;
+    #|function f() {
+    #|  try { eval("executed = true; (() => super.x)();"); } catch (e) {}
+    #|}
+    #|f();
+    #|executed
+  let result = run(src)
+  inspect(result.to_string(), content="false")
+}
