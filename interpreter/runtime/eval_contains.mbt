@@ -347,6 +347,7 @@ fn scan_expr(scan : EvalContainsScan, expr : @ast.Expr) -> Unit {
     | BoolLit(_, _)
     | NullLit(_)
     | UndefinedLit(_)
+    | ArrayHole(_)
     | Ident(_, _)
     | ThisExpr(_)
     | RegexLit(_, _, _) => ()
