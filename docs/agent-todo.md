@@ -52,7 +52,7 @@ Reasons: `obj['…'] descriptor should be configurable` (54/56), `should not be 
 
 ### Cluster 1 — Array internals post-Stage-C audit
 
-Largest cluster (390/399) but lowest individual-test confidence. With Stage C (ArrayData.bag) merged 2026-04-23, several Array fast-paths in `interpreter/runtime/builtins_array.mbt` may now be redundant. See `feedback_fast_path_duplicates.md`.
+Largest cluster (390/399) but lowest individual-test confidence. With Stage C (ArrayData.bag) merged 2026-04-23, several Array fast-paths in `interpreter/stdlib/builtins_array.mbt` may now be redundant. See `feedback_fast_path_duplicates.md`.
 
 - Step 1: enumerate all fast-paths in `builtins_array.mbt`.
 - Step 2: for each, identify the test262 cohort it currently catches.
@@ -855,7 +855,7 @@ DescriptorBuilder::new(configurable=true)
 
 **Impact**: 0 test262 delta (pure refactor, zero behavior change). Medium-ROI tech-debt cleanup surfaced by PR #68 (#A.9) reviewer.
 
-**Problem**: the invariant "Break/Continue signals escaping a function boundary raise `SyntaxError: break/continue statement outside of loop`" is inlined at ~8 sites with identical bodies but distinct callers:
+**Problem** (line numbers below are pre-PR-#81; the duplication was consolidated by PR #81 commit `d0c8243`): the invariant "Break/Continue signals escaping a function boundary raise `SyntaxError: break/continue statement outside of loop`" was inlined at ~8 sites with identical bodies but distinct callers:
 
 - `interpreter/runtime/call.mbt:306-309` — UserFuncExt/ArrowFuncExt shared core (now centralized by #A.9)
 - `interpreter/runtime/call.mbt:494-496` — `perform_eval` Normal/Return completion handling

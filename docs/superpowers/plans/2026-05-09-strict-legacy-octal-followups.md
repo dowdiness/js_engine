@@ -23,8 +23,7 @@ These items were intentionally scoped OUT of the main implementation (`feat/stri
 
 ## Follow-up B: Leading-zero fractional/exponent numeric forms
 
-**Status:** Spec resolved 2026-05-10. Implementation pending on branch
-`fix/strict-leading-zero-decimal`.
+**Status:** ✅ **CLOSED** by PR #99 (`9eadb4c`, merged 2026-05-10). Both lexer changes shipped: LegacyOctal-prefix + `.`/`e` is rejected (with the Codex-caught carve-out for `01.toString()` member-access), and the defensive `is_non_octal_decimal_int = false` clears at fraction/exponent entry were removed so the validator now raises for `08.1` / `08e2` in strict mode. +0.7pp strict / +0.7pp non-strict P/E.
 
 ### Spec resolution
 
@@ -188,4 +187,4 @@ In `interpreter_test.mbt`: strict-mode `eval` cases proving `08.1` /
 
 - **Follow-up A (templates)** — filed as GitHub issue #96. Open.
 - **Follow-up C (YieldExpr/walker completeness)** — filed as GitHub issue #97, closed by PR #98 (`7e635f9`, 2026-05-10). Scope expanded during implementation: the audit also caught `SuperCall` and `ClassExpr`/`ClassDecl` superclass gaps, plus a Codex-surfaced §15.7.1 invariant on class heritage strictness.
-- **Follow-up B (leading-zero fractional/exponent)** — spec resolved 2026-05-10 (see § "Spec resolution" above). Implementation in progress on branch `fix/strict-leading-zero-decimal`.
+- **Follow-up B (leading-zero fractional/exponent)** — spec resolved 2026-05-10 (see § "Spec resolution" above), closed by PR #99 (`9eadb4c`, 2026-05-10). Codex review caught a regression where the original "reject any `.` after a LegacyOctal-prefix" rule broke `01.toString()` member-access; the shipped fix narrows to "reject `.` only when followed by a `DecimalDigit`."

@@ -17,7 +17,7 @@
 // We compute all four bits in one pass.
 
 ///|
-pub(all) struct EvalContainsScan {
+priv struct EvalContainsScan {
   mut super_call : Bool
   mut super_property : Bool
   mut new_target : Bool
@@ -25,7 +25,7 @@ pub(all) struct EvalContainsScan {
 }
 
 ///|
-pub fn EvalContainsScan::new() -> EvalContainsScan {
+fn EvalContainsScan::new() -> EvalContainsScan {
   {
     super_call: false,
     super_property: false,
@@ -37,7 +37,7 @@ pub fn EvalContainsScan::new() -> EvalContainsScan {
 ///|
 /// Run the scan over a list of top-level statements (the parsed eval body).
 /// Returns a struct with one bit per Contains predicate.
-pub fn scan_eval_contains(stmts : Array[@ast.Stmt]) -> EvalContainsScan {
+fn scan_eval_contains(stmts : Array[@ast.Stmt]) -> EvalContainsScan {
   let scan = EvalContainsScan::new()
   for s in stmts {
     scan_stmt(scan, s)
