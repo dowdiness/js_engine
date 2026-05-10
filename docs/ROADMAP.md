@@ -2,18 +2,20 @@
 
 ## Current Status
 
-**Test262** — CI run [24885185424](https://github.com/dowdiness/js_engine/actions/runs/24885185424) on tip `b225cda`, 2026-04-24. Each test file is run twice, once in strict mode and once in non-strict. The two are reported separately (summing them would double-count files):
+**Test262** — CI run [25620423276](https://github.com/dowdiness/js_engine/actions/runs/25620423276) on tip `9eadb4c`, 2026-05-10. Each test file is run twice (strict + non-strict); the two are reported separately because summing would double-count files.
 
 | Mode | Discovered | Skipped | Executed | Passed | Failed | Timeouts | Passed / Executed | Passed / Discovered |
-|---|---|---|---|---|---|---|---|---|
-| strict | 44,986 | 18,270 | 26,598 | 23,359 | 3,239 | 117 | **87.8%** | 51.9% |
-| non-strict | 47,692 | 18,811 | 28,767 | 24,809 | 3,958 | 113 | **86.2%** | 52.0% |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| strict | 44,986 | 18,270 | 26,607 | 23,636 | 2,971 | 108 | **88.8%** | 52.5% |
+| non-strict | 47,692 | 18,811 | 28,764 | 25,082 | 3,682 | 116 | **87.2%** | 52.6% |
 
-Delta vs v0.2.0 tip `f89898a` (run 24730849102): **+305 strict / +342 non-strict**, reflecting PRs #70-#71 (pre-Stage-C TypeError bundle), Stage C `ArrayData.bag`, Stage B.3 `[[HasProperty]]` dispatcher, strict-reserved early errors, PR #74 (IteratorClose §7.4.10 + construct newTarget threading), and PR #75 (TypedArray wide-catch + "-0" canonical-invalid guard, which picked up +2 ES2024 tests per mode).
+This row is the post-PR #99 baseline. PR #100 (eval early-error checks, merged at `d076bc2`) closes the "Expected SyntaxError but got ReferenceError" cluster (56/56 → 0/0) for an additional **+0.26pp / +70 strict / +76 non-strict** verified on the PR run; refresh this table from `make test262-report` once the post-#100/#101 main-branch runs complete.
 
-CI regression baseline: `test262-baseline.json` (min 23,520 non-strict / 22,450 strict passed; currently +1,289 / +909 above).
+Delta vs v0.2.0 tip `f89898a` (run 24730849102): **+582 strict / +615 non-strict** at this baseline, reflecting PRs #70-#71 (pre-Stage-C TypeError bundle), Stage C `ArrayData.bag`, Stage B.3 `[[HasProperty]]` dispatcher, strict-reserved early errors, PR #74 (IteratorClose §7.4.10 + construct newTarget threading), PR #75 (TypedArray wide-catch + "-0" canonical-invalid guard), PR #82 (ToPrimitive cluster), and PR #99 (lexer leading-zero fractional/exponent).
 
-**Unit tests**: 1031 / 1031 passing.
+CI regression baseline: `test262-baseline.json` (min 23,520 non-strict / 22,450 strict passed, updated 2026-04-12; currently +1,562 / +1,186 above).
+
+**Unit tests**: 1221 / 1221 passing (post-PR #100/#101 plus the eval-contains merge-skew hotfix).
 
 ### How to read these rates
 
