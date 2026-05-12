@@ -140,8 +140,8 @@ Tests requiring these unimplemented features are automatically skipped (excluded
 - **Class private members**: `class-fields-private`, `class-methods-private`, `class-static-fields-private`, `class-static-methods-private`, `class-static-block` (public class fields are implemented)
 - **BigInt**, **Temporal**, **ShadowRealm**, **SharedArrayBuffer**, **Atomics**, **Float16Array**, **FinalizationRegistry**, **WeakRef**
 - **Advanced RegExp**: `regexp-lookbehind`, `regexp-unicode-property-escapes`, `regexp-match-indices`, `regexp-v-flag`, `regexp-modifiers`, `RegExp.escape` (named groups are implemented — see PR #47)
-- **Dynamic / special imports**: `import.meta`, `dynamic-import`, `import-assertions`, `import-attributes`, `json-modules`, `source-phase-imports`
-- **Intl / locale**, **decorators**, **iterator-helpers**, **set-methods**, **resizable-arraybuffer**, **arraybuffer-transfer**, **explicit-resource-management**, **tail-call-optimization**, **hashbang**
+- **Dynamic / special imports**: `import.meta`, `dynamic-import`, `import-attributes`, `json-modules`, `source-phase-imports`
+- **Intl normative optional**, **decorators**, **iterator-helpers**, **set-methods**, **resizable-arraybuffer**, **arraybuffer-transfer**, **explicit-resource-management**, **tail-call-optimization**, **hashbang**
 
 Skipped files explain the gap between Passed / Executed and Passed / Discovered. Implementing skipped features generally shrinks that gap, but it can temporarily lower Passed / Executed while newly unskipped tests still fail.
 
@@ -163,6 +163,17 @@ source of truth. Shared metadata prevents drift between tools, but the analyzer
 does not execute the engine, expand strict/non-strict tasks, load harnesses,
 resolve module fixtures, or observe runtime failures/timeouts. Use
 `scripts/test262-runner.py` and CI artifacts for authoritative results.
+
+To check that shared skip metadata still names features, flags, and path
+suffixes present in the checked-out Test262 suite:
+
+```bash
+make test262-validate-skips
+```
+
+This runs `scripts/validate-test262-skip-metadata.py`. It only reports dead or
+unknown skip metadata entries; it does not run tests or produce conformance
+numbers.
 
 ## CI Integration
 

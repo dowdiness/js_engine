@@ -1,4 +1,4 @@
-.PHONY: build test test262 test262-quick test262-analyze test262-download test262-report unicode-tables clean
+.PHONY: build test test262 test262-quick test262-analyze test262-validate-skips test262-download test262-report unicode-tables clean
 
 # Build the JS engine
 build:
@@ -54,6 +54,12 @@ test262-analyze: test262-download
 	python3 scripts/test262-analyze.py \
 		--test262 ./test262 \
 		--output test262-analysis.json
+
+# Check that shared skip metadata still matches the checked-out Test262 suite.
+# This does not run tests or produce conformance numbers.
+test262-validate-skips: test262-download
+	python3 scripts/validate-test262-skip-metadata.py \
+		--test262 ./test262
 
 # Download the latest Test262 CI results and print a paste-ready report.
 # Pass ARGS="..." to forward flags, e.g. make test262-report ARGS="--run 24730849102"

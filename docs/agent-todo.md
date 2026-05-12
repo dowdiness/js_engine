@@ -115,7 +115,7 @@ moon run cmd/main -- 'print(/foo.bar/s.test("foo\nbar")); print(/x/s.dotAll); pr
 # Expected: true / true / s
 ```
 
-**Action**: In `scripts/test262-runner.py`, remove `"regexp-dotall"` from `SKIP_FEATURES`.
+**Action**: In `scripts/test262_skip_metadata.py`, remove `"regexp-dotall"` from shared skip metadata if it is still present.
 Run `python3 scripts/test262-runner.py --filter "built-ins/RegExp" --summary` to confirm pass rate improves.
 
 ---
@@ -123,7 +123,7 @@ Run `python3 scripts/test262-runner.py --filter "built-ins/RegExp" --summary` to
 ### Task 2 — Add `Promise.withResolvers()`
 
 **Spec**: https://tc39.es/ecma262/#sec-promise.withresolvers
-**Feature flag**: `"promise-with-resolvers"` in `SKIP_FEATURES`
+**Feature flag**: `"promise-with-resolvers"` in shared skip metadata
 **File**: `interpreter/stdlib/builtins_promise.mbt`
 
 **Algorithm** (simple):
@@ -139,7 +139,7 @@ Promise.withResolvers = function() {
 
 Look at how `Promise.resolve` and `Promise.reject` are implemented in `builtins_promise.mbt` for the pattern.
 
-After implementing: remove `"promise-with-resolvers"` from `SKIP_FEATURES` and run
+After implementing: remove `"promise-with-resolvers"` from shared skip metadata and run
 `python3 scripts/test262-runner.py --filter "built-ins/Promise" --summary`.
 
 ---
@@ -147,7 +147,7 @@ After implementing: remove `"promise-with-resolvers"` from `SKIP_FEATURES` and r
 ### Task 3 — Add `Promise.try()`
 
 **Spec**: https://tc39.es/ecma262/#sec-promise.try
-**Feature flag**: `"promise-try"` in `SKIP_FEATURES`
+**Feature flag**: `"promise-try"` in shared skip metadata
 **File**: `interpreter/stdlib/builtins_promise.mbt`
 
 **Algorithm**:
@@ -165,13 +165,13 @@ Promise.try = function(callbackFn, ...args) {
 }
 ```
 
-Same file and pattern as `withResolvers`. After implementing: remove `"promise-try"` from `SKIP_FEATURES`.
+Same file and pattern as `withResolvers`. After implementing: remove `"promise-try"` from shared skip metadata.
 
 ---
 
 ### Task 4 — Audit and unlock `async-functions`
 
-**Feature flag**: `"async-functions"` in `SKIP_FEATURES`
+**Feature flag**: `"async-functions"` in shared skip metadata
 
 **Current state** (verified 2026-04-12):
 - `async function`, `async () =>`, `await expr` all parse and execute correctly
@@ -187,7 +187,7 @@ Same file and pattern as `withResolvers`. After implementing: remove `"promise-t
    ```
    Do this BEFORE removing the flag — re-enable temporarily in test code or run with `--include-skipped` if supported.
 
-   Alternatively: temporarily comment out `"async-functions"` from `SKIP_FEATURES`, run the filter, restore.
+   Alternatively: temporarily comment out `"async-functions"` from shared skip metadata, run the filter, restore.
 
 2. Review failures. Common gaps:
    - `AsyncFunction` constructor (`new AsyncFunction(...)`)
@@ -195,9 +195,9 @@ Same file and pattern as `withResolvers`. After implementing: remove `"promise-t
    - Top-level return value from async functions (should always be a Promise)
    - Rejected promise on thrown error propagation timing
 
-3. Fix whatever is failing, then remove `"async-functions"` from `SKIP_FEATURES`.
+3. Fix whatever is failing, then remove `"async-functions"` from shared skip metadata.
 
-**Note**: Keep `"async-iteration"` in `SKIP_FEATURES` — `for await` is not yet parsed
+**Note**: Keep `"async-iteration"` in shared skip metadata — `for await` is not yet parsed
 (SyntaxError: `Expected LParen, got Ident("await")` at the `for await` statement).
 
 ---
@@ -292,7 +292,7 @@ RegExp subclass tests expect `exec()` to be called on the subclass instance (whi
 
 ## Later PR: `for-await` / `async-iteration`
 
-**Feature flag**: `"async-iteration"` in `SKIP_FEATURES`
+**Feature flag**: `"async-iteration"` in shared skip metadata
 **Estimated tests**: ~200+
 
 **Current state**: `for await (const v of iterable)` fails to parse.

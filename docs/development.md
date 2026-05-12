@@ -79,6 +79,15 @@ and analyzer classifications from drifting. The static analyzer is still only a
 rough metadata census; it does not execute tests and must not be treated as
 conformance data or the skip-list source of truth.
 
+After editing shared skip metadata, run:
+
+```bash
+make test262-validate-skips
+```
+
+This target checks that skip features, flags, and path suffixes still match the
+checked-out Test262 suite. It does not run tests or produce conformance numbers.
+
 ## Benchmarks
 
 CI runs benchmark tests on the JS target:

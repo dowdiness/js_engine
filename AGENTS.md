@@ -44,6 +44,7 @@ See [docs/ROADMAP.md § How to read these rates](docs/ROADMAP.md#how-to-read-the
 - `scripts/test262-runner.py` is authoritative for Test262 execution and applying skip decisions.
 - `scripts/test262_skip_metadata.py` is the single edit point for shared skip metadata used by runner/analyzer tooling.
 - `scripts/test262-analyze.py` is a non-authoritative metadata helper. It uses shared skip metadata but does not execute the engine, expand per-mode tasks, resolve fixtures, or observe runtime failures. Do not use its output as conformance data or as the skip-list source of truth.
+- After editing shared skip metadata, run `make test262-validate-skips`. It detects dead or unknown metadata entries only; it does not run Test262 or produce conformance numbers.
 - `scripts/report-test262.py` plus CI artifacts are authoritative for current conformance numbers.
 
 ## Snapshot Assertions

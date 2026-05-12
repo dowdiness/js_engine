@@ -219,10 +219,11 @@ Low. These features are not required for modern JavaScript usage. Implement only
 
 ## Skipped Features
 
-Authoritative skip decisions live in `SKIP_FEATURES` and related skip logic in
-`scripts/test262-runner.py`. The table below is a dated snapshot from CI run
-24885185424 (2026-04-24, tip `b225cda`), kept as orientation rather than a
-current source of truth.
+Shared skip metadata lives in `scripts/test262_skip_metadata.py` and is applied
+by `scripts/test262-runner.py`; runner results remain authoritative for actual
+execution. The table below is a dated snapshot from CI run 24885185424
+(2026-04-24, tip `b225cda`), kept as orientation rather than a current source
+of truth.
 
 | Feature | Skipped | Notes |
 |---------|---------|-------|
