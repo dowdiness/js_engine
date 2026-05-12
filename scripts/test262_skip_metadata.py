@@ -42,7 +42,7 @@ SKIP_FEATURES = {
 
     # Modules / dynamic import
     "import.meta", "dynamic-import",
-    "json-modules", "import-assertions", "import-attributes",
+    "json-modules", "import-attributes",
     "source-phase-imports", "source-phase-imports-module-source",
 
     # RegExp advanced features
@@ -54,8 +54,8 @@ SKIP_FEATURES = {
     # Missing operators and syntax
     "hashbang",
 
-    # Intl / locale
-    "Intl", "intl-normative-optional",
+    # Intl normative optional behavior
+    "intl-normative-optional",
 
     # Other missing features
     "FinalizationRegistry",
