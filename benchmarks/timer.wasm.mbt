@@ -5,7 +5,7 @@
 /// is available. On this target all timing returns 0.0, making results
 /// meaningless. Run benchmarks with:
 ///
-///   moon run bench/main --target js
+///   moon run benchmarks --target js
 pub fn now_ms() -> Double {
   0.0
 }

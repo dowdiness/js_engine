@@ -18,22 +18,25 @@ make test262
 This single command will:
 1. Build the engine (`moon build`)
 2. Download the Test262 suite if not already present
-3. Run every test file in **both strict and non-strict modes** (roughly ~45–48k discovered files per mode; ~18k skipped for unimplemented features, so ~27–29k actually executed per mode)
+3. Run every applicable test file in **both strict and non-strict modes**
 4. Save results to `test262-results.json`
 
 **Estimated time**: ~12-16 minutes depending on CPU.
 
 ## Step-by-Step
 
-### 1. Build the JS target
+### 1. Build an engine
 
-The test runner uses the JS-compiled engine via Node.js for best performance:
+Local `make test262` runs the MoonBit CLI through `moon run cmd/main --`.
+For direct runner use, you may also build the JS target and let the runner
+auto-detect the compiled Node.js bundle:
 
 ```bash
 moon build --target js
 ```
 
-This produces `_build/js/debug/build/cmd/main/main.js`.
+This produces `_build/js/debug/build/cmd/main/main.js`. CI uses the JS-compiled
+engine through Node.js; the local Makefile does not.
 
 ### 2. Download Test262
 
@@ -86,6 +89,7 @@ python3 scripts/test262-runner.py --filter "built-ins/TypedArray" --verbose
 | `--output FILE` | (none) | Write JSON results to this file |
 | `--summary` | off | Print summary only, no individual failures |
 | `--verbose` | off | Print each test result as it runs |
+| `--mode MODE` | `both` | `strict`, `non-strict`, or `both` |
 
 ## Alternative Engine Commands
 
@@ -111,7 +115,7 @@ The runner prints a **per-mode** conformance report (strict and non-strict run s
 - **Passed / Executed** — the conventional "test262 pass rate". Rises as failures are fixed; also rises mechanically when skipping more tests. **Does not reflect whether a feature is implemented at all** — a feature whose tests are 100% skipped contributes 0 to this ratio.
 - **Passed / Discovered** — honest spec-coverage figure. Counts skipped files as un-passed. Falls when the suite adds new-edition tests we don't yet run, rises only when we actually implement more of the spec.
 
-Always quote **both** denominators when reporting a pass rate so the skip context isn't hidden. A headline figure like "85% on test262" without a denominator is ambiguous; the two numbers today are ~85–86% (passed / executed) vs ~51% (passed / discovered).
+Always quote **both** denominators when reporting a pass rate so the skip context isn't hidden. A headline figure like "85% on test262" without a denominator is ambiguous.
 
 ### JSON Results
 
@@ -125,7 +129,8 @@ When `--output` is specified, results are saved as JSON with:
 | File | Description |
 |------|-------------|
 | `test262-results.json` | Structured JSON with full results |
-| `test262-latest-results.txt` | Human-readable log from the most recent run |
+| `test262-strict-results.json` | CI artifact produced by the strict-mode job |
+| `test262-non-strict-results.json` | CI artifact produced by the non-strict-mode job |
 
 ## Skipped Features
 
@@ -138,7 +143,7 @@ Tests requiring these unimplemented features are automatically skipped (excluded
 - **Dynamic / special imports**: `import.meta`, `dynamic-import`, `import-assertions`, `import-attributes`, `json-modules`, `source-phase-imports`
 - **Intl / locale**, **decorators**, **iterator-helpers**, **set-methods**, **resizable-arraybuffer**, **arraybuffer-transfer**, **explicit-resource-management**, **tail-call-optimization**, **hashbang**
 
-Summed together these account for the ~18k skipped files per mode (~40% of discovered). That skip fraction is the wedge between the Passed / Executed and Passed / Discovered rates — implementing any of the above will shrink the gap.
+Skipped files explain the gap between Passed / Executed and Passed / Discovered. Implementing skipped features generally shrinks that gap, but it can temporarily lower Passed / Executed while newly unskipped tests still fail.
 
 ## Static Analysis (No Engine Required)
 
@@ -155,14 +160,19 @@ This runs `scripts/test262-analyze.py` to classify tests as applicable, skip_fea
 The GitHub Actions workflow (`.github/workflows/test262.yml`) runs the full suite automatically:
 - Builds with `moon build --target js --release`
 - Downloads test262 from tc39/test262
-- Runs with 4 threads and 90-minute timeout
-- Uploads `test262-results.json` as an artifact
+- Runs the JS-compiled engine through Node.js
+- Runs strict and non-strict jobs with 4 threads, a 5-second per-test runner timeout, and the job timeout configured in the workflow file
+- Uploads per-mode JSON result artifacts
 
 ## Current Status
 
-As of CI run [24885185424](https://github.com/dowdiness/js_engine/actions/runs/24885185424) (2026-04-24, tip `b225cda`):
+Do not copy current conformance numbers from this file. Generate them from the
+latest successful CI artifacts:
 
-- Strict: **87.8%** passed / executed (23,359 / 26,598); 51.9% passed / discovered (23,359 / 44,986). 18,270 skipped.
-- Non-strict: **86.2%** passed / executed (24,809 / 28,767); 52.0% passed / discovered (24,809 / 47,692). 18,811 skipped.
+```bash
+make test262-report
+make test262-report ARGS="--with-editions"
+```
 
-Strict and non-strict are reported separately — summing them would double-count the ~45k underlying test files. The ~52% figure is the honest spec-coverage number; the ~87% / ~86% figures exclude ~40% of the suite that we skip for unimplemented features. See [ROADMAP.md](ROADMAP.md) for category breakdowns and phase history, and [supported-features.md](supported-features.md) for the skipped-feature list.
+Use [ROADMAP.md](ROADMAP.md) for the latest checked-in status snapshot and
+[supported-features.md](supported-features.md) for dated per-category snapshots.

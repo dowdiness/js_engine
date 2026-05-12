@@ -2,6 +2,10 @@
 
 Conventions and tooling guide for humans and AI agents working on this repo. `CLAUDE.md` is a symlink to this file.
 
+## Repository Overview
+
+This module is a MoonBit JavaScript interpreter. The root package `@js_engine` is the user-facing facade. Internal layers include `token`, `errors`, `ast`, `lexer`, `parser`, `interpreter`, `interpreter/runtime`, and `interpreter/stdlib`. Executable entry points live in `cmd/main`, Test262 tooling lives under `scripts/`, and benchmark code lives in `benchmarks`.
+
 ## Commands
 
 ```bash
@@ -40,6 +44,7 @@ See [docs/ROADMAP.md § How to read these rates](docs/ROADMAP.md#how-to-read-the
 Key entry points:
 
 - [docs/README.md](docs/README.md) — docs index, audience-separated
+- [docs/development.md](docs/development.md) — maintainer workflow
 - [docs/ROADMAP.md](docs/ROADMAP.md) — test262 pass rate, failure breakdown, next phase targets
 - [docs/agent-todo.md](docs/agent-todo.md) — small AI-friendly tasks
 - [docs/GLOSSARY.md](docs/GLOSSARY.md) — terminology
@@ -48,6 +53,11 @@ Docs rules:
 
 - Architecture docs = principles only, never reference specific types/fields/lines
 - Code is the source of truth — if a doc and the code disagree, the doc is wrong
+- Verify changed claims against source code, tests, package config, scripts, or CI config before editing docs
+- Mark unverifiable claims as "unverified" or remove them; do not invent support status, APIs, or design goals
+- Keep `README.mbt.md` user-facing; put maintainer workflow in `docs/development.md` and agent-only workflow in `AGENTS.md`
+- Do not hand-edit generated or frequently changing Test262 numbers; use `scripts/report-test262.py` or `make test262-report`
+- Do not edit `pkg.generated.mbti` files manually; regenerate them with `moon info`
 - Completed/superseded material belongs under `docs/archive/`
 
 ---

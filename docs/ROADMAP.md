@@ -4,6 +4,10 @@
 
 **Test262** — CI run [25631308977](https://github.com/dowdiness/js_engine/actions/runs/25631308977) on PR head `cff0d37` (merged as squash `5d49cea` on main), 2026-05-11. Each test file is run twice (strict + non-strict); the two are reported separately because summing would double-count files.
 
+To refresh this block, run `make test262-report`; do not copy numbers from
+other documentation. For release notes, use `make test262-report
+ARGS="--format=changelog"`.
+
 | Mode | Discovered | Skipped | Executed | Passed | Failed | Timeouts | Passed / Executed | Passed / Discovered |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
 | strict | 44,986 | 18,270 | 26,602 | 23,798 | 2,804 | 113 | **89.5%** | 52.9% |
@@ -23,8 +27,8 @@ The two rate columns measure different things and neither number alone tells the
 
 | Column | What it means | Pitfall |
 |---|---|---|
-| **Passed / Executed** (86.7% / 85.1%) | The "headline" rate engines usually quote. Numerator and denominator both *exclude* ~18k skipped files per mode (~40% of the suite). | Rises mechanically when **more** tests get skipped — so it's not a reliability signal on its own. A feature whose tests are 100% skipped contributes 0 to this ratio. |
-| **Passed / Discovered** (51.2% / 51.3%) | Honest spec-coverage figure. Skipped files count as un-passed, so it only moves when the engine itself improves. | Falls when the test262 suite adds new-edition tests faster than we implement them, even if our engine is unchanged. |
+| **Passed / Executed** | The "headline" rate engines usually quote. Numerator and denominator both exclude skipped files. | Rises mechanically when **more** tests get skipped, so it is not a reliability signal on its own. A feature whose tests are 100% skipped contributes 0 to this ratio. |
+| **Passed / Discovered** | Broader spec-coverage figure. Skipped files count as un-passed, so it only moves when the engine itself improves. | Falls when the test262 suite adds new-edition tests faster than we implement them, even if our engine is unchanged. |
 
 Skips dominate the gap: class-fields-private ~2,437, async-iteration ~3,731, Temporal ~4,482, BigInt ~1,250, regexp-unicode-property ~679, and others ([full list in supported-features.md](supported-features.md#skipped-features)). Implementing any of these *narrows* the gap between the two rates — and, paradoxically, can briefly lower Passed / Executed as previously-skipped tests start executing and failing.
 
@@ -115,9 +119,18 @@ All 1031 unit tests pass on WASM-GC (verified in CI run 24885185424). The JS tar
 
 Prioritized by estimated test impact and implementation effort. These are the highest-ROI items for pushing past 90% test262 pass rate.
 
-### Path to 90%
+### Historical Path to 90 Snapshot
 
-Current (CI run 24885185424, 2026-04-24, tip `b225cda`): strict **87.8%** (23,359 / 26,598 executed), non-strict **86.2%** (24,809 / 28,767 executed). To reach 90% passed/executed: strict needs ~579 more passing tests, non-strict needs ~1,081. To reach 90% passed/discovered we'd additionally need to unskip large feature buckets (class-private ~2,437, regexp-unicode-property ~679, etc.). Tiers 1-2 are largely complete (Phase 22), Tier 4 polish done (Phase 23). Items below are ordered by ROI against the passed/executed denominator.
+The numbers below were calculated from CI run 24885185424 (2026-04-24, tip
+`b225cda`). They are retained as planning context only and are not the current
+headline status. Refresh with `make test262-report` before using them in new
+planning or release material.
+
+At that snapshot, reaching 90% passed/executed required roughly 579 more strict
+passes and 1,081 more non-strict passes. Reaching 90% passed/discovered would
+also require unskipping large feature buckets such as class-private and RegExp
+Unicode property escapes. Items below are ordered by ROI against that dated
+passed/executed denominator.
 
 ### Tier 3 — Feature Implementations (~3,000+ skipped tests unlocked, high effort)
 
@@ -146,7 +159,7 @@ These are major missing language features. Each unlocks a large batch of current
 
 ### Summary: Projected Impact (pre-Phase-24 methodology)
 
-> **Methodology note.** The cumulative counts and rates below are **file-level** numbers from before Phase 24 changed the runner to test both strict and non-strict modes separately. They are not directly comparable to the current per-mode CI numbers in the headline (strict 86.7%, non-strict 85.1%). Leaving them as historical progression; do not project forward from these figures.
+> **Methodology note.** The cumulative counts and rates below are **file-level** numbers from before Phase 24 changed the runner to test both strict and non-strict modes separately. They are not directly comparable to current per-mode CI numbers. Leaving them as historical progression; do not project forward from these figures.
 
 | Milestone | Tests Fixed | Cumulative | Rate (file-level, pre-P24) |
 |-----------|------------|------------|------|

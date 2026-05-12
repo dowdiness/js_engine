@@ -66,7 +66,7 @@ fn main {
       @argparse.PositionArg("source", about="JavaScript source to execute"),
     ],
     about="JavaScript interpreter",
-    version="0.2.2",
+    version="0.2.3",
   )
   let matches = cmd.parse(argv=remaining[:], env={}) catch {
     err => {
