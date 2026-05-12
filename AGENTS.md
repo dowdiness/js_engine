@@ -39,7 +39,18 @@ See [docs/ROADMAP.md § How to read these rates](docs/ROADMAP.md#how-to-read-the
 
 **Tooling.** `scripts/report-test262.py` (invokable as `make test262-report`) pulls numbers directly from a CI run's artifacts and emits a paste-ready block. Use `--format=table` for ROADMAP/README (default) or `--format=changelog` for CHANGELOG entries. Never hand-edit the generated numbers; if they look wrong, fix the upstream.
 
-`scripts/test262-analyze.py` is a non-authoritative metadata helper. It uses shared skip metadata from `scripts/test262_skip_metadata.py` but does not execute the engine, expand per-mode tasks, resolve fixtures, or observe runtime failures. Do not use its output as conformance data or as the skip-list source of truth.
+## Test262 Tool Boundaries
+
+- `scripts/test262-runner.py` is authoritative for Test262 execution and applying skip decisions.
+- `scripts/test262_skip_metadata.py` is the single edit point for shared skip metadata used by runner/analyzer tooling.
+- `scripts/test262-analyze.py` is a non-authoritative metadata helper. It uses shared skip metadata but does not execute the engine, expand per-mode tasks, resolve fixtures, or observe runtime failures. Do not use its output as conformance data or as the skip-list source of truth.
+- `scripts/report-test262.py` plus CI artifacts are authoritative for current conformance numbers.
+
+## Snapshot Assertions
+
+- Use `json_inspect` for arrays or structured data when JSON/data semantics are what the test should assert.
+- Use `inspect` only when MoonBit `Show` output itself is the behavior being asserted.
+- Remaining deprecated `inspect` snapshot migration work is tracked in [docs/agent-todo.md](docs/agent-todo.md); check that task list before starting new cleanup work.
 
 ## Documentation
 
