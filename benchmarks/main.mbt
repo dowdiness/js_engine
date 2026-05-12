@@ -6,15 +6,15 @@
 /// @bench.T test blocks in benchmarks.mbt.
 ///
 /// Usage:
-///   moon run bench/main --target js                   # regression only
-///   moon run bench/main --target js -- --all          # all categories
-///   moon run bench/main --target js -- --csv          # CSV output
-///   moon run bench/main --target js -- --list         # list benchmarks
-///   moon run bench/main --target js -- --all --csv    # full CSV snapshot
+///   moon run benchmarks --target js                   # regression only
+///   moon run benchmarks --target js -- --all          # all categories
+///   moon run benchmarks --target js -- --csv          # CSV output
+///   moon run benchmarks --target js -- --list         # list benchmarks
+///   moon run benchmarks --target js -- --all --csv    # full CSV snapshot
 ///
 /// CSV output can be redirected to a file and committed as a performance
 /// baseline:
-///   moon run bench/main --target js -- --all --csv > bench/baseline.csv
+///   moon run benchmarks --target js -- --all --csv > bench/baseline.csv
 ///
 /// To compare two baselines:
 ///   diff bench/baseline.csv bench/current.csv
@@ -23,7 +23,7 @@
 ///       Other targets return 0.0 from now_ms() — see timer.*.mbt.
 fn main {
   if timer_supported() == false {
-    abort("bench/main only produces meaningful results with --target js")
+    abort("benchmarks only produces meaningful results with --target js")
   }
   let args = parse_bench_args()
   if args.list_only {
@@ -39,7 +39,7 @@ fn main {
     print_csv_header()
   } else {
     println("=== js_engine Benchmark Suite (CLI runner) ===")
-    println("Primary interface: moon test bench/ --target js")
+    println("Primary interface: moon test benchmarks/ --target js")
     println("")
     if args.run_all {
       println("Running all benchmarks (regression + component + workflow)...")

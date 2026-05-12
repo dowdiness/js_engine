@@ -55,12 +55,7 @@ test "parse function declaration" {
           #|add
         ),
       )
-      inspect(
-        params,
-        content=(
-          #|["a", "b"]
-        ),
-      )
+      json_inspect(params, content=["a", "b"])
     }
     _ => fail("Expected FuncDecl")
   }
@@ -160,12 +155,7 @@ test "parse function expression" {
   let prog = @parser.parse("let f = function(x) { return x; }")
   match prog.stmts[0] {
     VarDecl(_, _, Some(FuncExpr(_, params, _, _)), _) =>
-      inspect(
-        params,
-        content=(
-          #|["x"]
-        ),
-      )
+      json_inspect(params, content=["x"])
     _ => fail("Expected FuncExpr in VarDecl")
   }
 }
@@ -629,12 +619,7 @@ test "trailing comma in named function params (single)" {
   match prog.stmts[0] {
     FuncDecl(name, params, _, _) => {
       inspect(name, content="f")
-      inspect(
-        params,
-        content=(
-          #|["a"]
-        ),
-      )
+      json_inspect(params, content=["a"])
     }
     _ => fail("Expected FuncDecl")
   }
@@ -646,12 +631,7 @@ test "trailing comma in named function params (multiple)" {
   match prog.stmts[0] {
     FuncDecl(name, params, _, _) => {
       inspect(name, content="f")
-      inspect(
-        params,
-        content=(
-          #|["a", "b"]
-        ),
-      )
+      json_inspect(params, content=["a", "b"])
     }
     _ => fail("Expected FuncDecl")
   }
@@ -669,12 +649,7 @@ test "trailing comma in generator params" {
   match prog.stmts[0] {
     GeneratorDecl(name, params, _, _) => {
       inspect(name, content="g")
-      inspect(
-        params,
-        content=(
-          #|["a", "b"]
-        ),
-      )
+      json_inspect(params, content=["a", "b"])
     }
     _ => fail("Expected GeneratorDecl")
   }

@@ -2,6 +2,10 @@
 
 Conventions and tooling guide for humans and AI agents working on this repo. `CLAUDE.md` is a symlink to this file.
 
+## Repository Overview
+
+This module is a MoonBit JavaScript interpreter. The root package `@js_engine` is the user-facing facade. Internal layers include `token`, `errors`, `ast`, `lexer`, `parser`, `interpreter`, `interpreter/runtime`, and `interpreter/stdlib`. Executable entry points live in `cmd/main`, Test262 tooling lives under `scripts/`, and benchmark code lives in `benchmarks`.
+
 ## Commands
 
 ```bash
@@ -35,11 +39,25 @@ See [docs/ROADMAP.md § How to read these rates](docs/ROADMAP.md#how-to-read-the
 
 **Tooling.** `scripts/report-test262.py` (invokable as `make test262-report`) pulls numbers directly from a CI run's artifacts and emits a paste-ready block. Use `--format=table` for ROADMAP/README (default) or `--format=changelog` for CHANGELOG entries. Never hand-edit the generated numbers; if they look wrong, fix the upstream.
 
+## Test262 Tool Boundaries
+
+- `scripts/test262-runner.py` is authoritative for Test262 execution and applying skip decisions.
+- `scripts/test262_skip_metadata.py` is the single edit point for shared skip metadata used by runner/analyzer tooling.
+- `scripts/test262-analyze.py` is a non-authoritative metadata helper. It uses shared skip metadata but does not execute the engine, expand per-mode tasks, resolve fixtures, or observe runtime failures. Do not use its output as conformance data or as the skip-list source of truth.
+- `scripts/report-test262.py` plus CI artifacts are authoritative for current conformance numbers.
+
+## Snapshot Assertions
+
+- Use `json_inspect` for arrays or structured data when JSON/data semantics are what the test should assert.
+- Use `inspect` only when MoonBit `Show` output itself is the behavior being asserted.
+- Remaining deprecated `inspect` snapshot migration work is tracked in [docs/agent-todo.md](docs/agent-todo.md); check that task list before starting new cleanup work.
+
 ## Documentation
 
 Key entry points:
 
 - [docs/README.md](docs/README.md) — docs index, audience-separated
+- [docs/development.md](docs/development.md) — maintainer workflow
 - [docs/ROADMAP.md](docs/ROADMAP.md) — test262 pass rate, failure breakdown, next phase targets
 - [docs/agent-todo.md](docs/agent-todo.md) — small AI-friendly tasks
 - [docs/GLOSSARY.md](docs/GLOSSARY.md) — terminology
@@ -48,6 +66,11 @@ Docs rules:
 
 - Architecture docs = principles only, never reference specific types/fields/lines
 - Code is the source of truth — if a doc and the code disagree, the doc is wrong
+- Verify changed claims against source code, tests, package config, scripts, or CI config before editing docs
+- Mark unverifiable claims as "unverified" or remove them; do not invent support status, APIs, or design goals
+- Keep `README.mbt.md` user-facing; put maintainer workflow in `docs/development.md` and agent-only workflow in `AGENTS.md`
+- Do not hand-edit generated or frequently changing Test262 numbers; use `scripts/report-test262.py` or `make test262-report`
+- Do not edit `pkg.generated.mbti` files manually; regenerate them with `moon info`
 - Completed/superseded material belongs under `docs/archive/`
 
 ---

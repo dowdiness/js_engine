@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 """
-Test262 Static Conformance Analysis for the MoonBit JS Engine.
+Non-authoritative Test262 static metadata analysis for the MoonBit JS Engine.
 
-Analyzes Test262 test files against the known capabilities of the engine
-to produce conformance metrics without requiring the engine to be compiled.
+This helper scans Test262 metadata without compiling or running the engine.
+It is useful for rough test-suite orientation, but it does not produce
+conformance numbers and must not be used as the skip-list source of truth.
 
-This is useful for:
-- Understanding how many tests are applicable to the engine's feature set
-- Identifying which test categories the engine should target next
-- Getting a baseline measurement before running actual tests
+Authoritative workflow:
+- scripts/test262-runner.py runs tests and applies authoritative skip decisions.
+- .github/workflows/test262.yml is the authoritative full-suite CI workflow.
+- scripts/report-test262.py reports current numbers from CI artifacts.
+
+Shared skip metadata lives in scripts/test262_skip_metadata.py to prevent drift.
 
 Usage:
     python3 test262-analyze.py [--test262 DIR] [--output FILE]
@@ -25,6 +28,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from test262_skip_metadata import SKIP_FEATURES, SKIP_FLAGS, skip_reason
 from test262_utils import parse_yaml_frontmatter, as_list
 
 # ===========================================================================
@@ -84,84 +88,12 @@ FEATURE_SUPPORT_MAP = {
     # Empty = no special features needed, just basic JS
 }
 
-# Test262 features the engine definitely cannot handle
-UNSUPPORTED_TEST262_FEATURES = {
-    # Async / Promises (async-functions and async-iteration still unsupported)
-    "async-functions", "async-iteration",
-    "promise-with-resolvers", "promise-try",
-    "top-level-await",
-
-    # Generators
-    "generators", "generator",
-
-    # Classes (advanced features not yet supported)
-    "class-fields-private", "class-fields-public",
-    "class-methods-private", "class-static-fields-private",
-    "class-static-fields-public", "class-static-methods-private",
-    "class-static-block",
-
-    # Iteration / ordering
-    "for-in-order",
-    "iterator-helpers", "iterator-sequencing", "joint-iteration",
-    "set-methods",
-
-    # Collections
-    "WeakRef",
-
-    # Typed arrays and buffers (partially supported)
-    "SharedArrayBuffer", "Float16Array", "Atomics",
-    "resizable-arraybuffer", "arraybuffer-transfer",
-
-    # Tail calls
-    "tail-call-optimization",
-
-    # Modules / dynamic import
-    "import.meta", "dynamic-import",
-    "import-assertions", "import-attributes",
-    "json-modules",
-    "source-phase-imports", "source-phase-imports-module-source",
-
-    # RegExp advanced features
-    "regexp-lookbehind",
-    "regexp-unicode-property-escapes",
-    "regexp-match-indices", "regexp-v-flag", "regexp-dotall",
-    "regexp-modifiers",
-    "RegExp.escape",
-    "String.prototype.matchAll",
-
-    # Missing operators and syntax
-    "hashbang",
-
-    # Intl / locale
-    "Intl", "intl-normative-optional",
-
-    # Other missing features
-    "FinalizationRegistry",
-    "BigInt",
-    "IsHTMLDDA",
-    "cross-realm",
-    "caller",
-    "Temporal", "ShadowRealm",
-    "decorators",
-    "explicit-resource-management",
-    "json-parse-with-source",
-
-    # Removed in Phase 2+3 (now supported): arrow-function, template,
-    # destructuring-binding, destructuring-assignment, default-parameters,
-    # rest-parameters, for-of, Object.entries, Array.prototype.flat,
-    # Array.prototype.flatMap, Array.prototype.includes
-    # Removed in Phase 3.6+4 (now supported): class, numeric-separator-literal,
-    # logical-assignment-operators
-    # Removed in Phase 5 (now supported): Promise, Promise.allSettled,
-    # Promise.any, Promise.prototype.finally, Object.fromEntries, Object.is,
-    # Object.hasOwn, Array.from, Array.prototype.at,
-    # String.prototype.replaceAll, String.prototype.isWellFormed,
-    # String.prototype.toWellFormed, change-array-by-copy,
-    # array-find-from-last, string-trimming, new.target,
-    # object-spread, object-rest
-}
-
-UNSUPPORTED_FLAGS = {"CanBlockIsFalse", "CanBlockIsTrue"}
+# Reuse shared skip metadata to avoid a second stale unsupported-feature list.
+# The analyzer is still not authoritative because it does not execute tests,
+# expand per-mode tasks, load harnesses, resolve fixtures, or observe runtime
+# failures/timeouts. Treat results as a metadata census only.
+UNSUPPORTED_TEST262_FEATURES = SKIP_FEATURES
+UNSUPPORTED_FLAGS = SKIP_FLAGS
 
 # Test262 categories that map well to engine capabilities
 CATEGORY_ANALYSIS = {
@@ -339,18 +271,15 @@ def classify_test(filepath, metadata):
     - 'skip_flag': Test requires unsupported flags
     - 'skip_fixture': Test is a fixture file
     """
-    if "_FIXTURE" in filepath:
-        return "skip_fixture", "fixture file"
-
     flags = metadata.get("flags", []) or []
-    for flag in flags:
-        if flag in UNSUPPORTED_FLAGS:
-            return "skip_flag", f"unsupported flag: {flag}"
-
     features = metadata.get("features", []) or []
-    for feature in features:
-        if feature in UNSUPPORTED_TEST262_FEATURES:
-            return "skip_feature", f"unsupported feature: {feature}"
+    reason = skip_reason(filepath, features, flags, mode=None)
+    if reason == "fixture file":
+        return "skip_fixture", reason
+    if reason and reason.startswith("unsupported flag:"):
+        return "skip_flag", reason
+    if reason and reason.startswith("unsupported feature:"):
+        return "skip_feature", reason
 
     return "applicable", ""
 
@@ -484,10 +413,12 @@ def generate_report(analyses, output_file):
     total_safe = total if total > 0 else 1
 
     print("\n" + "=" * 76)
-    print("  Test262 ECMAScript Conformance Analysis")
+    print("  Test262 Static Metadata Analysis (non-authoritative)")
     print("  Engine: MoonBit JS Engine (tree-walking interpreter)")
     print(f"  Date: {time.strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 76)
+    print("  Uses shared skip constants from scripts/test262_skip_metadata.py.")
+    print("  Does not run the engine or produce conformance numbers.")
 
     print(f"\n  Total test files analyzed:  {total:>6}")
     print(f"  Applicable (could run):    {applicable:>6} ({applicable/total_safe*100:.1f}%)")
@@ -523,7 +454,7 @@ def generate_report(analyses, output_file):
             print(f"  {cat:<45} {app:>10} {tot:>8} {pct:>6.1f}%{marker}")
 
     print(f"{'─' * 76}")
-    print("  * = high relevance to engine's current features")
+    print("  * = category note from static heuristics, not support status")
 
     print(f"\n  Top 15 unsupported features (by test count):")
     print(f"{'─' * 76}")
@@ -532,7 +463,7 @@ def generate_report(analyses, output_file):
         print(f"    {feat:<40} {count:>6} tests")
 
     # Categories with high relevance
-    print(f"\n  Engine feature coverage assessment:")
+    print(f"\n  Static category notes:")
     print(f"{'─' * 76}")
     for cat, info in sorted(CATEGORY_ANALYSIS.items()):
         app = applicable_by_category.get(cat, 0)
@@ -546,8 +477,8 @@ def generate_report(analyses, output_file):
     print(f"\n{'=' * 76}")
     print(f"  SUMMARY")
     print(f"{'=' * 76}")
-    print(f"  The MoonBit JS engine could potentially execute {applicable} out of")
-    print(f"  {total} Test262 tests ({applicable/total_safe*100:.1f}% of the suite).")
+    print(f"  Static metadata marked {applicable} out of {total} Test262 files")
+    print(f"  applicable ({applicable/total_safe*100:.1f}% of the suite).")
     print(f"")
     simple = by_complexity["simple"]
     print(f"  Of the applicable tests:")
@@ -555,12 +486,9 @@ def generate_report(analyses, output_file):
     print(f"    - {by_complexity['moderate']} use moderate features (try/catch, objects, etc.)")
     print(f"    - {by_complexity['complex']} use complex features (eval, prototypes, etc.)")
     print(f"")
-    print(f"  Note: 'Applicable' means the test doesn't require features the engine")
-    print(f"  explicitly lacks. Actual pass rate will be lower due to:")
-    print(f"    - Missing built-in objects (Array, Object, RegExp, Error, etc.)")
-    print(f"    - Missing standard library methods")
-    print(f"    - Incomplete spec compliance in supported features")
-    print(f"    - Missing error types and exception handling")
+    print(f"  Note: 'Applicable' means the metadata did not match the runner's")
+    print(f"  skip constants. Actual pass/fail/timeout status is only known by")
+    print(f"  running scripts/test262-runner.py or reading CI artifacts.")
     print(f"")
     print(f"  To run actual conformance tests:")
     print(f"    make test262          # Full suite")
@@ -602,7 +530,11 @@ def generate_report(analyses, output_file):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Static conformance analysis of Test262 for MoonBit JS Engine"
+        description=(
+            "Non-authoritative static metadata analysis of Test262 for "
+            "MoonBit JS Engine. Uses shared skip metadata; "
+            "does not run tests or produce conformance numbers."
+        )
     )
     parser.add_argument("--test262", default="./test262", help="Path to test262 directory")
     parser.add_argument("--output", default="test262-analysis.json", help="Output JSON file")

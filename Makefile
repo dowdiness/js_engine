@@ -47,7 +47,9 @@ test262-filter: build test262-download
 		--output test262-results.json \
 		--verbose
 
-# Static analysis of Test262 coverage (no engine build required)
+# Non-authoritative static metadata analysis (no engine build required).
+# Use scripts/test262-runner.py / CI artifacts for conformance and skip truth.
+# Shared skip metadata only prevents runner/analyzer drift.
 test262-analyze: test262-download
 	python3 scripts/test262-analyze.py \
 		--test262 ./test262 \

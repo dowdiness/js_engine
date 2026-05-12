@@ -1,12 +1,20 @@
 # Self-Hosting js_engine via MoonBit's JavaScript Target
 
-> **Status:** research notes — reference analysis of self-hosting feasibility. Point-in-time; may lag the code.
+> **Status:** historical research notes. This file is not current architecture
+> documentation. It predates later CLI and benchmark changes; in particular,
+> the repository now contains JS externs for CLI exit handling and benchmark
+> timing, and `cmd/main` uses backend-specific `program_args()` helpers rather
+> than the older `get_source_arg()` shape. Verify current target
+> behavior from source files, package configuration, and CI before citing any
+> claim here.
 
 ## Executive Summary
 
 This document researches what is needed to **self-host this JavaScript engine by compiling it to JavaScript** using MoonBit's JS backend. The goal: produce a standalone `.js` file that *is itself* a JavaScript interpreter -- a JS engine running inside a JS runtime.
 
-**Bottom line: The codebase is remarkably well-positioned for this.** There are no `extern "wasm"` FFI calls, no platform-specific code, and only one trivial external dependency (`@env.args()` for CLI argument parsing). The entire 27,378-line engine is pure MoonBit.
+**Historical bottom line:** this research concluded that the codebase was close
+to self-hosting. That specific FFI assessment is outdated: current code includes
+JS externs for CLI exit handling and benchmark timing.
 
 ---
 
@@ -25,7 +33,8 @@ The engine is a tree-walking interpreter with 3 stages:
 - **Parser** (`parser/`) → AST
 - **Interpreter** (`interpreter/`) → execution result
 
-All stages are pure MoonBit with no FFI calls.
+The lexer/parser/interpreter stages are MoonBit code. Host-facing CLI and
+benchmark files currently use JS externs.
 
 ---
 
@@ -66,17 +75,24 @@ $ grep -r 'extern\s+"(wasm\|js)"' --include="*.mbt" .
 (no results)
 ```
 
-**Zero FFI calls.** The entire codebase is pure MoonBit with no `extern "wasm"` or `extern "js"` declarations. This is the ideal case for cross-target compilation.
+**Historical finding, now outdated.** Current code contains JS externs in
+`cmd/main/args.js.mbt` for process exit and in `benchmarks/timer.js.mbt` for
+benchmark timing.
 
 ### 3.3 Platform-Specific Code (Resolved)
 
-The only platform interaction was `@env.args()` for CLI argument parsing. On the JS target, this returns raw `process.argv` (`["node", "script.js", source, ...]`), while on WASM the runtime strips the prefix so user args start at index 1.
+Historically, this section focused on `@env.args()` differences. Current code
+also includes JS target externs for CLI exit handling and benchmark timing. On
+the JS target, `@env.args()` returns raw `process.argv` (`["node", "script.js",
+source, ...]`), while on WASM the runtime strips the prefix so user args start
+at index 1.
 
 **Solution implemented:** Backend-specific files using MoonBit's target file convention:
-- `cmd/main/args.js.mbt` — reads source from `args[2]` (skipping `node` and script path)
-- `cmd/main/args.wasm.mbt` / `args.wasm-gc.mbt` — reads source from `args[1]`
+- `cmd/main/args.js.mbt` — normalizes JS target argv by skipping `node` and script path; also provides JS process exit handling
+- `cmd/main/args.wasm.mbt` / `args.wasm-gc.mbt` — normalize argv for non-JS targets
 
-The shared `cmd/main/main.mbt` calls `get_source_arg() -> String?` defined in these files.
+The current shared `cmd/main/main.mbt` calls `program_args(@env.args())` from
+backend-specific files and parses the remaining source with argparse.
 
 ### 3.4 Data Structures
 
@@ -208,7 +224,9 @@ The engine implements its own event loop with microtask and timer queues. This i
 
 On the JS target, `@env.args()` returns raw `process.argv` (`["node", "script.js", source, ...]`), while on WASM the runtime provides `["program", source, ...]`. This caused the engine to try parsing the script path as JavaScript source.
 
-**Solution:** Backend-specific `args.js.mbt` / `args.wasm.mbt` / `args.wasm-gc.mbt` files each define `get_source_arg() -> String?` with the correct index. See section 3.3.
+**Current shape:** backend-specific `args.js.mbt` / `args.wasm.mbt` /
+`args.wasm-gc.mbt` files define `program_args(...)` so `cmd/main/main.mbt`
+receives normalized user arguments. See section 3.3.
 
 ---
 
@@ -260,7 +278,10 @@ This is a long-term goal that would improve naturally as Test262 compliance incr
 1. ~~Add CI workflow for JS-compiled engine~~ — `.github/workflows/test262.yml` builds with `moon build --target js` and runs via `node`
 2. ~~Run full Test262 suite against JS-compiled engine~~ — see
    [ROADMAP.md](ROADMAP.md) for the latest pass/skip/fail snapshot
-3. CI uses `node target/js/release/build/cmd/main/main.js` directly (faster than `moon run`), 4 threads, 90-minute timeout
+3. CI used `node target/js/release/build/cmd/main/main.js` directly
+   (faster than `moon run`). Verify the current thread count, per-test
+   timeout, and job timeout in `.github/workflows/test262.yml` and
+   `scripts/test262-runner.py`.
 
 ### Phase C: Distributable Package (Medium Effort)
 

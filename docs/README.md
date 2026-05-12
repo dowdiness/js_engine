@@ -11,6 +11,7 @@ Start here to navigate `js_engine`'s documentation. Code is always the source of
 
 ## Reference
 
+- [development.md](development.md) — maintainer workflow, generated files, Test262, benchmarks, releases
 - [architecture.md](architecture.md) — design principles, package boundaries, value model, host integration
 - [GLOSSARY.md](GLOSSARY.md) — terminology used in the code and docs
 - [RELEASING.md](RELEASING.md) — release checklist (test262-number minting, tag/CHANGELOG drift rules)

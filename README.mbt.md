@@ -2,12 +2,8 @@
 
 A minimal JavaScript tree-walking interpreter written in [MoonBit](https://www.moonbitlang.com/).
 
-- Conformance on [test262](https://github.com/tc39/test262) (each file run in both modes, reported separately — summing would double-count files):
-  - **86.7% strict / 85.1% non-strict** *passed / executed* — the number commonly quoted as "test262 pass rate", but it excludes ~40% of discovered files that are skipped for unimplemented features (Temporal, class-private, BigInt, async-iteration, …).
-  - **51.2% strict / 51.3% non-strict** *passed / discovered* — the honest spec-coverage figure, counting skipped files as un-passed.
-
-  See [docs/ROADMAP.md](docs/ROADMAP.md) for the full table and [docs/supported-features.md](docs/supported-features.md) for the skipped-feature list.
-- Self-hosting: compiles to JavaScript via MoonBit's JS target and runs on Node.js.
+- Conformance on [test262](https://github.com/tc39/test262): each file is run in strict and non-strict modes and reported per mode. Do not sum the modes. Generate current numbers from CI artifacts with `make test262-report`; see [docs/TEST262.md](docs/TEST262.md).
+- JavaScript target: the engine builds with MoonBit's JS target and runs on Node.js.
 
 ## Quick Start
 
@@ -33,9 +29,13 @@ More sample programs live in [`example/`](example/).
 
 ### As a Library
 
-```moonbit nocheck
-let (output, result) = @js_engine.run("console.log(1 + 2)")
-// output = ["3"], result = "undefined"
+```mbt check
+///|
+test "README run facade" {
+  let (output, result) = @js_engine.run("console.log(1 + 2)")
+  json_inspect(output, content=["3"])
+  inspect(result, content="undefined")
+}
 ```
 
 The public entry points are defined in [`js_engine.mbt`](js_engine.mbt):
@@ -55,11 +55,15 @@ For current conformance per category, see [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ```
 token/          Token types and source locations
+errors/         JavaScript error variants and formatting helpers
 lexer/          Tokenizer
 ast/            AST node definitions
 parser/         Recursive descent parser with Pratt precedence
-interpreter/    Tree-walking evaluator with closures and scope chains
+interpreter/    Wiring layer for runtime + standard library
+interpreter/runtime/  Tree-walking evaluator, value model, host state
+interpreter/stdlib/   JavaScript built-ins
 cmd/main/       CLI entry point
+benchmarks/     Benchmark workloads and runner
 ```
 
 ## Development
@@ -77,6 +81,7 @@ Run the test262 conformance suite with `make test262`. See [docs/TEST262.md](doc
 ## Documentation
 
 - [docs/README.md](docs/README.md) — start here for deeper material
+- [docs/development.md](docs/development.md) — maintainer workflow and generated files
 - [docs/ROADMAP.md](docs/ROADMAP.md) — current status, failure breakdown, next targets
 - [docs/GLOSSARY.md](docs/GLOSSARY.md) — terminology used in the code and docs
 - [AGENTS.md](AGENTS.md) — MoonBit coding conventions (also used by AI agents)

@@ -122,7 +122,7 @@ test "string concatenation" {
 ///|
 test "console.log" {
   let output = run_output("console.log(\"hello\"); console.log(1 + 2)")
-  inspect(output, content="[\"hello\", \"3\"]")
+  json_inspect(output, content=["hello", "3"])
 }
 
 ///|
@@ -142,7 +142,7 @@ test "while loop" {
   let output = run_output(
     "let i = 0; while (i < 3) { console.log(i); i = i + 1 }",
   )
-  inspect(output, content="[\"0\", \"1\", \"2\"]")
+  json_inspect(output, content=["0", "1", "2"])
 }
 
 ///|
@@ -150,7 +150,7 @@ test "for loop" {
   let output = run_output(
     "for (let i = 0; i < 3; i = i + 1) { console.log(i) }",
   )
-  inspect(output, content="[\"0\", \"1\", \"2\"]")
+  json_inspect(output, content=["0", "1", "2"])
 }
 
 ///|
@@ -171,7 +171,7 @@ test "closure" {
     #|console.log(counter());
     #|console.log(counter());
   let output = run_output(src)
-  inspect(output, content="[\"1\", \"2\", \"3\"]")
+  json_inspect(output, content=["1", "2", "3"])
 }
 
 ///|
@@ -183,7 +183,7 @@ test "recursive fibonacci" {
     #|}
     #|console.log(fib(10));
   let output = run_output(src)
-  inspect(output, content="[\"55\"]")
+  json_inspect(output, content=["55"])
 }
 
 ///|
@@ -197,10 +197,9 @@ test "typeof" {
   let output = run_output(
     "console.log(typeof 42); console.log(typeof \"hi\"); console.log(typeof true); console.log(typeof null); console.log(typeof undefined)",
   )
-  inspect(
-    output,
-    content="[\"number\", \"string\", \"boolean\", \"object\", \"undefined\"]",
-  )
+  json_inspect(output, content=[
+    "number", "string", "boolean", "object", "undefined",
+  ])
 }
 
 ///|
@@ -213,7 +212,7 @@ test "break in while" {
     #|  i = i + 1;
     #|}
   let output = run_output(src)
-  inspect(output, content="[\"0\", \"1\", \"2\"]")
+  json_inspect(output, content=["0", "1", "2"])
 }
 
 ///|
@@ -224,7 +223,7 @@ test "continue in for" {
     #|  console.log(i);
     #|}
   let output = run_output(src)
-  inspect(output, content="[\"0\", \"1\", \"3\"]")
+  json_inspect(output, content=["0", "1", "3"])
 }
 
 ///|
@@ -244,7 +243,7 @@ test "strict equality" {
   let output = run_output(
     "console.log(1 === 1); console.log(1 === 2); console.log(null === undefined)",
   )
-  inspect(output, content="[\"true\", \"false\", \"false\"]")
+  json_inspect(output, content=["true", "false", "false"])
 }
 
 ///|
@@ -252,7 +251,7 @@ test "loose equality null/undefined" {
   let output = run_output(
     "console.log(null == undefined); console.log(undefined == null)",
   )
-  inspect(output, content="[\"true\", \"true\"]")
+  json_inspect(output, content=["true", "true"])
 }
 
 ///|
@@ -260,7 +259,7 @@ test "logical operators short-circuit" {
   let output = run_output(
     "console.log(false && 42); console.log(true || 42); console.log(0 || \"default\")",
   )
-  inspect(output, content="[\"false\", \"true\", \"default\"]")
+  json_inspect(output, content=["false", "true", "default"])
 }
 
 ///|
@@ -288,7 +287,7 @@ test "nested function scope" {
     #|}
     #|console.log(outer());
   let output = run_output(src)
-  inspect(output, content="[\"outer\"]")
+  json_inspect(output, content=["outer"])
 }
 
 ///|
@@ -308,7 +307,7 @@ test "comparison operators" {
   let output = run_output(
     "console.log(1 < 2); console.log(2 > 1); console.log(1 <= 1); console.log(1 >= 2)",
   )
-  inspect(output, content="[\"true\", \"true\", \"true\", \"false\"]")
+  json_inspect(output, content=["true", "true", "true", "false"])
 }
 
 ///|
@@ -316,7 +315,7 @@ test "string comparison" {
   let output = run_output(
     "console.log(\"a\" < \"b\"); console.log(\"z\" > \"a\"); console.log(\"abc\" <= \"abd\"); console.log(\"x\" >= \"y\")",
   )
-  inspect(output, content="[\"true\", \"true\", \"true\", \"false\"]")
+  json_inspect(output, content=["true", "true", "true", "false"])
 }
 
 ///|
@@ -324,7 +323,7 @@ test "typeof function" {
   let output = run_output(
     "console.log(typeof function() {}); function foo() {} console.log(typeof foo)",
   )
-  inspect(output, content="[\"function\", \"function\"]")
+  json_inspect(output, content=["function", "function"])
 }
 
 ///|
@@ -337,10 +336,10 @@ test "fizzbuzz" {
     #|  else { console.log(i); }
     #|}
   let output = run_output(src)
-  inspect(
-    output,
-    content="[\"1\", \"2\", \"Fizz\", \"4\", \"Buzz\", \"Fizz\", \"7\", \"8\", \"Fizz\", \"Buzz\", \"11\", \"Fizz\", \"13\", \"14\", \"FizzBuzz\"]",
-  )
+  json_inspect(output, content=[
+    "1", "2", "Fizz", "4", "Buzz", "Fizz", "7", "8", "Fizz", "Buzz", "11", "Fizz",
+    "13", "14", "FizzBuzz",
+  ])
 }
 
 ///|
@@ -352,7 +351,7 @@ test "throw/catch basic" {
     #|  console.log(e);
     #|}
   let output = run_output(src)
-  inspect(output, content="[\"oops\"]")
+  json_inspect(output, content=["oops"])
 }
 
 ///|
@@ -364,7 +363,7 @@ test "throw/catch with number" {
     #|  console.log(e);
     #|}
   let output = run_output(src)
-  inspect(output, content="[\"42\"]")
+  json_inspect(output, content=["42"])
 }
 
 ///|
@@ -378,7 +377,7 @@ test "throw stops execution" {
     #|  console.log("caught: " + e);
     #|}
   let output = run_output(src)
-  inspect(output, content="[\"before\", \"caught: error\"]")
+  json_inspect(output, content=["before", "caught: error"])
 }
 
 ///|
@@ -392,7 +391,7 @@ test "try/catch/finally" {
     #|  console.log("finally");
     #|}
   let output = run_output(src)
-  inspect(output, content="[\"caught\", \"finally\"]")
+  json_inspect(output, content=["caught", "finally"])
 }
 
 ///|
@@ -406,7 +405,7 @@ test "finally runs without exception" {
     #|  console.log("finally");
     #|}
   let output = run_output(src)
-  inspect(output, content="[\"try\", \"finally\"]")
+  json_inspect(output, content=["try", "finally"])
 }
 
 ///|
@@ -419,7 +418,7 @@ test "try/finally without catch" {
     #|  console.log("finally: " + x);
     #|}
   let output = run_output(src)
-  inspect(output, content="[\"finally: inside\"]")
+  json_inspect(output, content=["finally: inside"])
 }
 
 ///|
@@ -432,7 +431,7 @@ test "throw propagates through functions" {
     #|  console.log(e);
     #|}
   let output = run_output(src)
-  inspect(output, content="[\"bang\"]")
+  json_inspect(output, content=["bang"])
 }
 
 ///|
@@ -449,7 +448,7 @@ test "nested try/catch" {
     #|  console.log("outer: " + e);
     #|}
   let output = run_output(src)
-  inspect(output, content="[\"inner: inner\", \"outer: outer\"]")
+  json_inspect(output, content=["inner: inner", "outer: outer"])
 }
 
 ///|
@@ -470,7 +469,7 @@ test "object literal" {
     #|let o = { x: 1, y: 2 };
     #|console.log(o.x + o.y);
   let output = run_output(src)
-  inspect(output, content="[\"3\"]")
+  json_inspect(output, content=["3"])
 }
 
 ///|
@@ -480,7 +479,7 @@ test "object property assignment" {
     #|o.x = 42;
     #|console.log(o.x);
   let output = run_output(src)
-  inspect(output, content="[\"42\"]")
+  json_inspect(output, content=["42"])
 }
 
 ///|
@@ -492,7 +491,7 @@ test "array literal" {
     #|console.log(a[2]);
     #|console.log(a.length);
   let output = run_output(src)
-  inspect(output, content="[\"10\", \"20\", \"30\", \"3\"]")
+  json_inspect(output, content=["10", "20", "30", "3"])
 }
 
 ///|
@@ -502,7 +501,7 @@ test "array assignment" {
     #|a[1] = 99;
     #|console.log(a[1]);
   let output = run_output(src)
-  inspect(output, content="[\"99\"]")
+  json_inspect(output, content=["99"])
 }
 
 ///|
@@ -512,7 +511,7 @@ test "computed member access" {
     #|let key = "b";
     #|console.log(o[key]);
   let output = run_output(src)
-  inspect(output, content="[\"2\"]")
+  json_inspect(output, content=["2"])
 }
 
 ///|
@@ -531,7 +530,7 @@ test "switch statement" {
     #|    break;
     #|}
   let output = run_output(src)
-  inspect(output, content="[\"two\"]")
+  json_inspect(output, content=["two"])
 }
 
 ///|
@@ -547,7 +546,7 @@ test "switch default" {
     #|    break;
     #|}
   let output = run_output(src)
-  inspect(output, content="[\"other\"]")
+  json_inspect(output, content=["other"])
 }
 
 ///|
@@ -565,7 +564,7 @@ test "switch fall-through" {
     #|    break;
     #|}
   let output = run_output(src)
-  inspect(output, content="[\"one\", \"two\"]")
+  json_inspect(output, content=["one", "two"])
 }
 
 ///|
@@ -577,7 +576,7 @@ test "do-while loop" {
     #|  i = i + 1;
     #|} while (i < 3);
   let output = run_output(src)
-  inspect(output, content="[\"0\", \"1\", \"2\"]")
+  json_inspect(output, content=["0", "1", "2"])
 }
 
 ///|
@@ -588,7 +587,7 @@ test "do-while executes at least once" {
     #|  console.log(i);
     #|} while (i < 3);
   let output = run_output(src)
-  inspect(output, content="[\"10\"]")
+  json_inspect(output, content=["10"])
 }
 
 ///|
@@ -601,7 +600,7 @@ test "for-in object" {
     #|}
     #|console.log(keys);
   let output = run_output(src)
-  inspect(output, content="[\"abc\"]")
+  json_inspect(output, content=["abc"])
 }
 
 ///|
@@ -611,7 +610,7 @@ test "prefix increment" {
     #|console.log(++x);
     #|console.log(x);
   let output = run_output(src)
-  inspect(output, content="[\"6\", \"6\"]")
+  json_inspect(output, content=["6", "6"])
 }
 
 ///|
@@ -621,7 +620,7 @@ test "postfix increment" {
     #|console.log(x++);
     #|console.log(x);
   let output = run_output(src)
-  inspect(output, content="[\"5\", \"6\"]")
+  json_inspect(output, content=["5", "6"])
 }
 
 ///|
@@ -631,7 +630,7 @@ test "prefix decrement" {
     #|console.log(--x);
     #|console.log(x);
   let output = run_output(src)
-  inspect(output, content="[\"4\", \"4\"]")
+  json_inspect(output, content=["4", "4"])
 }
 
 ///|
@@ -641,7 +640,7 @@ test "compound assignment +=" {
     #|x += 5;
     #|console.log(x);
   let output = run_output(src)
-  inspect(output, content="[\"15\"]")
+  json_inspect(output, content=["15"])
 }
 
 ///|
@@ -651,7 +650,7 @@ test "compound assignment -=" {
     #|x -= 3;
     #|console.log(x);
   let output = run_output(src)
-  inspect(output, content="[\"7\"]")
+  json_inspect(output, content=["7"])
 }
 
 ///|
@@ -661,7 +660,7 @@ test "compound assignment *=" {
     #|x *= 3;
     #|console.log(x);
   let output = run_output(src)
-  inspect(output, content="[\"12\"]")
+  json_inspect(output, content=["12"])
 }
 
 ///|
@@ -673,7 +672,7 @@ test "logical and assign &&= truthy lhs assigns" {
       #|console.log(a);
     ),
   )
-  inspect(output, content="[\"2\"]")
+  json_inspect(output, content=["2"])
 }
 
 ///|
@@ -685,7 +684,7 @@ test "logical and assign &&= falsy lhs skips" {
       #|console.log(b);
     ),
   )
-  inspect(output, content="[\"0\"]")
+  json_inspect(output, content=["0"])
 }
 
 ///|
@@ -700,7 +699,7 @@ test "logical and assign &&= member" {
       #|console.log(obj2.x);
     ),
   )
-  inspect(output, content="[\"20\", \"0\"]")
+  json_inspect(output, content=["20", "0"])
 }
 
 ///|
@@ -712,7 +711,7 @@ test "logical or assign ||= falsy lhs assigns" {
       #|console.log(a);
     ),
   )
-  inspect(output, content="[\"2\"]")
+  json_inspect(output, content=["2"])
 }
 
 ///|
@@ -724,7 +723,7 @@ test "logical or assign ||= truthy lhs skips" {
       #|console.log(b);
     ),
   )
-  inspect(output, content="[\"1\"]")
+  json_inspect(output, content=["1"])
 }
 
 ///|
@@ -736,7 +735,7 @@ test "nullish assign ??= null lhs assigns" {
       #|console.log(a);
     ),
   )
-  inspect(output, content="[\"42\"]")
+  json_inspect(output, content=["42"])
 }
 
 ///|
@@ -748,7 +747,7 @@ test "nullish assign ??= undefined lhs assigns" {
       #|console.log(a);
     ),
   )
-  inspect(output, content="[\"42\"]")
+  json_inspect(output, content=["42"])
 }
 
 ///|
@@ -760,7 +759,7 @@ test "nullish assign ??= non-null lhs skips" {
       #|console.log(a);
     ),
   )
-  inspect(output, content="[\"0\"]")
+  json_inspect(output, content=["0"])
 }
 
 ///|
@@ -778,7 +777,7 @@ test "logical and assign computed member key evaluated once" {
       #|console.log(obj.x);
     ),
   )
-  inspect(output, content="[\"2\", \"20\"]")
+  json_inspect(output, content=["2", "20"])
 }
 
 ///|
@@ -794,7 +793,7 @@ test "logical or assign computed member key evaluated once" {
       #|console.log(obj.x);
     ),
   )
-  inspect(output, content="[\"2\", \"20\"]")
+  json_inspect(output, content=["2", "20"])
 }
 
 ///|
@@ -810,7 +809,7 @@ test "nullish assign computed member key evaluated once" {
       #|console.log(obj.x);
     ),
   )
-  inspect(output, content="[\"2\", \"20\"]")
+  json_inspect(output, content=["2", "20"])
 }
 
 ///|
@@ -826,7 +825,7 @@ test "logical and assign computed member Symbol key" {
       #|console.log(obj[sym]);
     ),
   )
-  inspect(output, content="[\"20\"]")
+  json_inspect(output, content=["20"])
 }
 
 ///|
@@ -880,7 +879,7 @@ test "void operator" {
 ///|
 test "void expression" {
   let output = run_output("console.log(void 0 === undefined)")
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -890,7 +889,7 @@ test "delete property" {
     #|delete o.x;
     #|console.log(o.x);
   let output = run_output(src)
-  inspect(output, content="[\"undefined\"]")
+  json_inspect(output, content=["undefined"])
 }
 
 ///|
@@ -900,7 +899,7 @@ test "in operator" {
     #|console.log("x" in o);
     #|console.log("z" in o);
   let output = run_output(src)
-  inspect(output, content="[\"true\", \"false\"]")
+  json_inspect(output, content=["true", "false"])
 }
 
 ///|
@@ -922,10 +921,9 @@ test "Stage B.3: Proxy has trap through in and Reflect.has" {
     #|console.log(Reflect.has(p, "x"));
     #|console.log(seen.join(","));
   let output = run_output(src)
-  inspect(
-    output,
-    content="[\"true\", \"false\", \"true\", \"true,true,x,true,true,y,true,true,x\"]",
-  )
+  json_inspect(output, content=[
+    "true", "false", "true", "true,true,x,true,true,y,true,true,x",
+  ])
 }
 
 ///|
@@ -949,7 +947,7 @@ test "Stage B.3: Proxy has trap via prototype and with" {
     #|with (proxy) { console.log(attr); }
     #|console.log(log.join(","));
   let output = run_output(src)
-  inspect(output, content="[\"true\", \"42\", \"1,attr\"]")
+  json_inspect(output, content=["true", "42", "1,attr"])
 }
 
 ///|
@@ -1007,10 +1005,10 @@ test "Stage B.3: Proxy prototype ordinary get and with has abrupt completion" {
     #|  console.log(e);
     #|}
   let output = run_output(src)
-  inspect(
-    output,
-    content="[\"true\", \"true\", \"1\", \"true\", \"2\", \"true\", \"true\", \"true\", \"true\", \"true\", \"3\", \"true\", \"receiver\", \"number\", \"9\", \"boom\"]",
-  )
+  json_inspect(output, content=[
+    "true", "true", "1", "true", "2", "true", "true", "true", "true", "true", "3",
+    "true", "receiver", "number", "9", "boom",
+  ])
 }
 
 ///|
@@ -1034,7 +1032,7 @@ test "new expression" {
     #|let p = new Person("Alice");
     #|console.log(p.name);
   let output = run_output(src)
-  inspect(output, content="[\"Alice\"]")
+  json_inspect(output, content=["Alice"])
 }
 
 ///|
@@ -1051,7 +1049,7 @@ test "new expression with method" {
     #|console.log(c.inc());
     #|console.log(c.inc());
   let output = run_output(src)
-  inspect(output, content="[\"1\", \"2\"]")
+  json_inspect(output, content=["1", "2"])
 }
 
 ///|
@@ -1060,7 +1058,7 @@ test "method call this binding" {
     #|let obj = { x: 42, getX: function() { return this.x; } };
     #|console.log(obj.getX());
   let output = run_output(src)
-  inspect(output, content="[\"42\"]")
+  json_inspect(output, content=["42"])
 }
 
 ///|
@@ -1076,7 +1074,7 @@ test "for loop with ++" {
     #|  console.log(i);
     #|}
   let output = run_output(src)
-  inspect(output, content="[\"0\", \"1\", \"2\"]")
+  json_inspect(output, content=["0", "1", "2"])
 }
 
 ///|
@@ -1084,7 +1082,7 @@ test "type coercion arithmetic" {
   let output = run_output(
     "console.log(true + 1); console.log(null + 1); console.log(false + false)",
   )
-  inspect(output, content="[\"2\", \"1\", \"0\"]")
+  json_inspect(output, content=["2", "1", "0"])
 }
 
 ///|
@@ -1484,7 +1482,7 @@ test "for-in prototype chain" {
     #|for (var k in obj) { keys = keys + k; }
     #|console.log(keys);
   let output = run_output(src)
-  inspect(output, content="[\"ab\"]")
+  json_inspect(output, content=["ab"])
 }
 
 // Issue 6: double evaluation in update/compound-assign
@@ -1499,7 +1497,7 @@ test "update member single evaluation" {
     #|console.log(counter);
     #|console.log(obj.x);
   let output = run_output(src)
-  inspect(output, content="[\"1\", \"11\"]")
+  json_inspect(output, content=["1", "11"])
 }
 
 ///|
@@ -1509,7 +1507,7 @@ test "compound assign member single evaluation" {
     #|obj.x += 5;
     #|console.log(obj.x);
   let output = run_output(src)
-  inspect(output, content="[\"15\"]")
+  json_inspect(output, content=["15"])
 }
 
 // Issue 4: labeled break/continue
@@ -1526,7 +1524,7 @@ test "labeled break" {
     #|}
     #|console.log(result);
   let output = run_output(src)
-  inspect(output, content="[\"00,\"]")
+  json_inspect(output, content=["00,"])
 }
 
 ///|
@@ -1541,7 +1539,7 @@ test "labeled continue" {
     #|}
     #|console.log(result);
   let output = run_output(src)
-  inspect(output, content="[\"00,10,20,\"]")
+  json_inspect(output, content=["00,10,20,"])
 }
 
 // ====== Phase 2: Template Literals ======
@@ -1597,7 +1595,7 @@ test "template literal used in console.log" {
     #|var name = "World";
     #|console.log(`Hello, ${name}!`);
   let output = run_output(src)
-  inspect(output, content="[\"Hello, World!\"]")
+  json_inspect(output, content=["Hello, World!"])
 }
 
 // ====== Phase 2: Arrow Functions ======
@@ -1648,7 +1646,7 @@ test "arrow function as callback" {
     #|}
     #|console.log(mapped.join(","));
   let output = run_output(src)
-  inspect(output, content="[\"6,2,4\"]")
+  json_inspect(output, content=["6,2,4"])
 }
 
 ///|
@@ -1672,7 +1670,7 @@ test "prototype chain property lookup" {
     #|console.log(child.x);
     #|console.log(child.y);
   let output = run_output(src)
-  inspect(output, content="[\"10\", \"20\"]")
+  json_inspect(output, content=["10", "20"])
 }
 
 ///|
@@ -1683,7 +1681,7 @@ test "prototype chain own property shadows" {
     #|child.x = 99;
     #|console.log(child.x);
   let output = run_output(src)
-  inspect(output, content="[\"99\"]")
+  json_inspect(output, content=["99"])
 }
 
 ///|
@@ -1693,7 +1691,7 @@ test "hasOwnProperty" {
     #|console.log(obj.hasOwnProperty("a"));
     #|console.log(obj.hasOwnProperty("b"));
   let output = run_output(src)
-  inspect(output, content="[\"true\", \"false\"]")
+  json_inspect(output, content=["true", "false"])
 }
 
 // ====== Phase 2: Function.call / apply / bind ======
@@ -1765,7 +1763,7 @@ test "function apply throws TypeError for boolean argArray" {
     #|function fn() {}
     #|try { fn.apply(null, true); } catch(e) { console.log(e instanceof TypeError); }
   let output = run_output(src)
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -1774,7 +1772,7 @@ test "function apply throws TypeError for number argArray" {
     #|function fn() {}
     #|try { fn.apply(null, 42); } catch(e) { console.log(e instanceof TypeError); }
   let output = run_output(src)
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -1783,7 +1781,7 @@ test "function apply throws TypeError for string argArray" {
     #|function fn() {}
     #|try { fn.apply(null, "str"); } catch(e) { console.log(e instanceof TypeError); }
   let output = run_output(src)
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -1839,7 +1837,7 @@ test "Promise then/finally/reject honor species and receiver constructor" {
       #|console.log(p4.constructor === SubPromise);
     ),
   )
-  inspect(output, content="[\"true\", \"true\", \"true\", \"true\"]")
+  json_inspect(output, content=["true", "true", "true", "true"])
 }
 
 ///|
@@ -1866,10 +1864,9 @@ test "Promise species invalid constructor throws TypeError" {
       #|}
     ),
   )
-  inspect(
-    output,
-    content="[\"true\", \"Promise species is not a constructor\", \"true\", \"Promise species is not a constructor\"]",
-  )
+  json_inspect(output, content=[
+    "true", "Promise species is not a constructor", "true", "Promise species is not a constructor",
+  ])
 }
 
 ///|
@@ -1887,10 +1884,7 @@ test "Promise then throws when constructor is not object" {
       #|}
     ),
   )
-  inspect(
-    output,
-    content="[\"true\", \"Promise constructor is not an object\"]",
-  )
+  json_inspect(output, content=["true", "Promise constructor is not an object"])
 }
 
 // ====== Phase 2: Array Methods ======
@@ -1905,7 +1899,7 @@ test "array push pop" {
     #|console.log(last);
     #|console.log(arr.length);
   let output = run_output(src)
-  inspect(output, content="[\"4\", \"4\", \"3\"]")
+  json_inspect(output, content=["4", "4", "3"])
 }
 
 ///|
@@ -1917,7 +1911,7 @@ test "array shift unshift" {
     #|arr.unshift(0);
     #|console.log(arr.join(","));
   let output = run_output(src)
-  inspect(output, content="[\"1\", \"0,2,3\"]")
+  json_inspect(output, content=["1", "0,2,3"])
 }
 
 ///|
@@ -1927,7 +1921,7 @@ test "array join" {
     #|console.log(arr.join("-"));
     #|console.log(arr.join(""));
   let output = run_output(src)
-  inspect(output, content="[\"1-2-3\", \"123\"]")
+  json_inspect(output, content=["1-2-3", "123"])
 }
 
 ///|
@@ -1939,7 +1933,7 @@ test "array indexOf includes" {
     #|console.log(arr.includes(30));
     #|console.log(arr.includes(99));
   let output = run_output(src)
-  inspect(output, content="[\"1\", \"-1\", \"true\", \"false\"]")
+  json_inspect(output, content=["1", "-1", "true", "false"])
 }
 
 ///|
@@ -1949,7 +1943,7 @@ test "array slice" {
     #|console.log(arr.slice(1, 3).join(","));
     #|console.log(arr.slice(-2).join(","));
   let output = run_output(src)
-  inspect(output, content="[\"2,3\", \"4,5\"]")
+  json_inspect(output, content=["2,3", "4,5"])
 }
 
 ///|
@@ -1972,7 +1966,7 @@ test "array splice" {
     #|console.log(removed.join(","));
     #|console.log(arr.join(","));
   let output = run_output(src)
-  inspect(output, content="[\"2,3\", \"1,4,5\"]")
+  json_inspect(output, content=["2,3", "1,4,5"])
 }
 
 ///|
@@ -1990,7 +1984,7 @@ test "array isArray" {
     #|console.log(Array.isArray("hello"));
     #|console.log(Array.isArray(42));
   let output = run_output(src)
-  inspect(output, content="[\"true\", \"false\", \"false\"]")
+  json_inspect(output, content=["true", "false", "false"])
 }
 
 ///|
@@ -2008,7 +2002,7 @@ test "string charAt charCodeAt" {
     #|console.log(s.charAt(1));
     #|console.log(s.charCodeAt(0));
   let output = run_output(src)
-  inspect(output, content="[\"e\", \"104\"]")
+  json_inspect(output, content=["e", "104"])
 }
 
 ///|
@@ -2019,7 +2013,7 @@ test "string indexOf lastIndexOf" {
     #|console.log(s.lastIndexOf("hello"));
     #|console.log(s.indexOf("xyz"));
   let output = run_output(src)
-  inspect(output, content="[\"0\", \"12\", \"-1\"]")
+  json_inspect(output, content=["0", "12", "-1"])
 }
 
 ///|
@@ -2029,7 +2023,7 @@ test "string indexOf lastIndexOf empty needle clamping" {
     #|console.log("abc".lastIndexOf("", -1));
     #|console.log("abc".lastIndexOf("", 99));
   let output = run_output(src)
-  inspect(output, content="[\"3\", \"0\", \"3\"]")
+  json_inspect(output, content=["3", "0", "3"])
 }
 
 ///|
@@ -2038,7 +2032,7 @@ test "string includes" {
     #|console.log("foobar".includes("bar"));
     #|console.log("foobar".includes("baz"));
   let output = run_output(src)
-  inspect(output, content="[\"true\", \"false\"]")
+  json_inspect(output, content=["true", "false"])
 }
 
 ///|
@@ -2048,7 +2042,7 @@ test "string slice" {
     #|console.log("hello world".slice(0, 5));
     #|console.log("hello world".slice(-5));
   let output = run_output(src)
-  inspect(output, content="[\"world\", \"hello\", \"world\"]")
+  json_inspect(output, content=["world", "hello", "world"])
 }
 
 ///|
@@ -2057,7 +2051,7 @@ test "string toUpperCase toLowerCase" {
     #|console.log("Hello".toUpperCase());
     #|console.log("Hello".toLowerCase());
   let output = run_output(src)
-  inspect(output, content="[\"HELLO\", \"hello\"]")
+  json_inspect(output, content=["HELLO", "hello"])
 }
 
 ///|
@@ -2073,7 +2067,7 @@ test "string split" {
     #|console.log(parts.length);
     #|console.log(parts.join("|"));
   let output = run_output(src)
-  inspect(output, content="[\"3\", \"a|b|c\"]")
+  json_inspect(output, content=["3", "a|b|c"])
 }
 
 ///|
@@ -2089,7 +2083,7 @@ test "string startsWith endsWith" {
     #|console.log("hello".endsWith("llo"));
     #|console.log("hello".startsWith("llo"));
   let output = run_output(src)
-  inspect(output, content="[\"true\", \"true\", \"false\"]")
+  json_inspect(output, content=["true", "true", "false"])
 }
 
 ///|
@@ -2104,7 +2098,7 @@ test "string padStart padEnd" {
     #|console.log("5".padStart(3, "0"));
     #|console.log("hi".padEnd(5, "!"));
   let output = run_output(src)
-  inspect(output, content="[\"005\", \"hi!!!\"]")
+  json_inspect(output, content=["005", "hi!!!"])
 }
 
 ///|
@@ -2122,7 +2116,7 @@ test "object keys values entries" {
     #|console.log(Object.keys(obj).join(","));
     #|console.log(Object.values(obj).join(","));
   let output = run_output(src)
-  inspect(output, content="[\"a,b\", \"1,2\"]")
+  json_inspect(output, content=["a,b", "1,2"])
 }
 
 ///|
@@ -2132,7 +2126,7 @@ test "object assign" {
     #|Object.assign(target, {b: 2, c: 3});
     #|console.log(Object.keys(target).join(","));
   let output = run_output(src)
-  inspect(output, content="[\"a,b,c\"]")
+  json_inspect(output, content=["a,b,c"])
 }
 
 ///|
@@ -2142,7 +2136,7 @@ test "object create" {
     #|var obj = Object.create(proto);
     #|console.log(obj.greet());
   let output = run_output(src)
-  inspect(output, content="[\"hello\"]")
+  json_inspect(output, content=["hello"])
 }
 
 ///|
@@ -2153,7 +2147,7 @@ test "object getPrototypeOf" {
     #|var p = Object.getPrototypeOf(obj);
     #|console.log(p.x);
   let output = run_output(src)
-  inspect(output, content="[\"1\"]")
+  json_inspect(output, content=["1"])
 }
 
 ///|
@@ -2162,7 +2156,7 @@ test "object getOwnPropertyNames" {
     #|var obj = {a: 1, b: 2};
     #|console.log(Object.getOwnPropertyNames(obj).join(","));
   let output = run_output(src)
-  inspect(output, content="[\"a,b\"]")
+  json_inspect(output, content=["a,b"])
 }
 
 // ====== Phase 2: Math Object ======
@@ -2173,7 +2167,7 @@ test "math constants" {
     #|console.log(Math.PI > 3.14);
     #|console.log(Math.E > 2.71);
   let output = run_output(src)
-  inspect(output, content="[\"true\", \"true\"]")
+  json_inspect(output, content=["true", "true"])
 }
 
 ///|
@@ -2184,7 +2178,7 @@ test "math abs floor ceil round" {
     #|console.log(Math.ceil(3.2));
     #|console.log(Math.round(3.5));
   let output = run_output(src)
-  inspect(output, content="[\"5\", \"3\", \"4\", \"4\"]")
+  json_inspect(output, content=["5", "3", "4", "4"])
 }
 
 ///|
@@ -2194,7 +2188,7 @@ test "math round preserves negative zero" {
     #|console.log(1 / Math.round(-0.5));
     #|console.log(1 / Math.round(0.1));
   let output = run_output(src)
-  inspect(output, content="[\"-Infinity\", \"-Infinity\", \"Infinity\"]")
+  json_inspect(output, content=["-Infinity", "-Infinity", "Infinity"])
 }
 
 ///|
@@ -2203,7 +2197,7 @@ test "math sqrt pow" {
     #|console.log(Math.sqrt(16));
     #|console.log(Math.pow(2, 10));
   let output = run_output(src)
-  inspect(output, content="[\"4\", \"1024\"]")
+  json_inspect(output, content=["4", "1024"])
 }
 
 ///|
@@ -2212,7 +2206,7 @@ test "math min max" {
     #|console.log(Math.min(3, 1, 2));
     #|console.log(Math.max(3, 1, 2));
   let output = run_output(src)
-  inspect(output, content="[\"1\", \"3\"]")
+  json_inspect(output, content=["1", "3"])
 }
 
 ///|
@@ -2224,7 +2218,7 @@ test "math trunc sign" {
     #|console.log(Math.sign(0));
     #|console.log(Math.sign(3));
   let output = run_output(src)
-  inspect(output, content="[\"3\", \"-3\", \"-1\", \"0\", \"1\"]")
+  json_inspect(output, content=["3", "-3", "-1", "0", "1"])
 }
 
 ///|
@@ -2234,7 +2228,7 @@ test "math log" {
     #|console.log(Math.log2(8));
     #|console.log(Math.log10(1000));
   let output = run_output(src)
-  inspect(output, content="[\"0\", \"3\", \"3\"]")
+  json_inspect(output, content=["0", "3", "3"])
 }
 
 // ====== Regression: .call/.apply/.bind dispatch only for callables ======
@@ -2245,7 +2239,7 @@ test "object with own call method" {
     #|var obj = { call: function() { return 1; } };
     #|console.log(obj.call());
   let output = run_output(src)
-  inspect(output, content="[\"1\"]")
+  json_inspect(output, content=["1"])
 }
 
 ///|
@@ -2254,7 +2248,7 @@ test "object with own apply method" {
     #|var obj = { apply: function(a) { return a + 1; } };
     #|console.log(obj.apply(10));
   let output = run_output(src)
-  inspect(output, content="[\"11\"]")
+  json_inspect(output, content=["11"])
 }
 
 ///|
@@ -2263,7 +2257,7 @@ test "object with own bind method" {
     #|var obj = { bind: function() { return "custom"; } };
     #|console.log(obj.bind());
   let output = run_output(src)
-  inspect(output, content="[\"custom\"]")
+  json_inspect(output, content=["custom"])
 }
 
 // ====== Regression: bound function propagates errors ======
@@ -2279,7 +2273,7 @@ test "bound function propagates throw" {
     #|  console.log(e);
     #|}
   let output = run_output(src)
-  inspect(output, content="[\"boom\"]")
+  json_inspect(output, content=["boom"])
 }
 
 ///|
@@ -2312,7 +2306,7 @@ test "hasOwnProperty via Object.create" {
     #|console.log(child.hasOwnProperty("own"));
     #|console.log(child.hasOwnProperty("inherited"));
   let output = run_output(src)
-  inspect(output, content="[\"true\", \"false\"]")
+  json_inspect(output, content=["true", "false"])
 }
 
 ///|
@@ -2321,7 +2315,7 @@ test "startsWith negative position" {
     #|console.log("abc".startsWith("a", -1));
     #|console.log("abc".startsWith("abc", -100));
   let output = run_output(src)
-  inspect(output, content="[\"true\", \"true\"]")
+  json_inspect(output, content=["true", "true"])
 }
 
 ///|
@@ -2330,7 +2324,7 @@ test "startsWith empty string with large position" {
     #|console.log("abc".startsWith("", 100));
     #|console.log("abc".startsWith("", -1));
   let output = run_output(src)
-  inspect(output, content="[\"true\", \"true\"]")
+  json_inspect(output, content=["true", "true"])
 }
 
 ///|
@@ -2339,7 +2333,7 @@ test "startsWith position edge cases" {
     #|console.log("abc".startsWith("a", -999));
     #|console.log("abc".startsWith("a", 999));
   let output = run_output(src)
-  inspect(output, content="[\"true\", \"false\"]")
+  json_inspect(output, content=["true", "false"])
 }
 
 ///|
@@ -2348,7 +2342,7 @@ test "indexOf lastIndexOf more edge cases" {
     #|console.log("abc".indexOf("", -5));
     #|console.log("abc".lastIndexOf("", 2));
   let output = run_output(src)
-  inspect(output, content="[\"0\", \"2\"]")
+  json_inspect(output, content=["0", "2"])
 }
 
 ///|
@@ -2359,7 +2353,7 @@ test "hasOwnProperty missing argument" {
     #|var obj2 = { a: 1 };
     #|console.log(obj2.hasOwnProperty());
   let output = run_output(src)
-  inspect(output, content="[\"true\", \"false\"]")
+  json_inspect(output, content=["true", "false"])
 }
 
 ///|
@@ -2369,7 +2363,7 @@ test "callable with own call property" {
     #|f.call = function(t) { return "overridden"; };
     #|console.log(f.call(null));
   let output = run_output(src)
-  inspect(output, content="[\"overridden\"]")
+  json_inspect(output, content=["overridden"])
 }
 
 ///|
@@ -2379,7 +2373,7 @@ test "array includes NaN" {
     #|console.log(arr.includes(NaN));
     #|console.log(arr.includes(2));
   let output = run_output(src)
-  inspect(output, content="[\"true\", \"false\"]")
+  json_inspect(output, content=["true", "false"])
 }
 
 ///|
@@ -2390,7 +2384,7 @@ test "endsWith large end position" {
     #|console.log("abc".endsWith("a", 1));
     #|console.log("abc".endsWith("c", 0));
   let output = run_output(src)
-  inspect(output, content="[\"true\", \"true\", \"true\", \"false\"]")
+  json_inspect(output, content=["true", "true", "true", "false"])
 }
 
 ///|
@@ -2400,7 +2394,7 @@ test "computed hasOwnProperty" {
     #|console.log(obj["hasOwnProperty"]("a"));
     #|console.log(obj["hasOwnProperty"]("b"));
   let output = run_output(src)
-  inspect(output, content="[\"true\", \"false\"]")
+  json_inspect(output, content=["true", "false"])
 }
 
 ///|
@@ -2413,7 +2407,7 @@ test "computed call apply bind" {
     #|var bound = greet["bind"](obj);
     #|console.log(bound("."));
   let output = run_output(src)
-  inspect(output, content="[\"hi!\", \"hi?\", \"hi.\"]")
+  json_inspect(output, content=["hi!", "hi?", "hi."])
 }
 
 ///|
@@ -2425,7 +2419,7 @@ test "math random non-deterministic" {
     #|console.log(b >= 0 && b < 1);
     #|console.log(a !== b);
   let output = run_output(src)
-  inspect(output, content="[\"true\", \"true\", \"true\"]")
+  json_inspect(output, content=["true", "true", "true"])
 }
 
 ///|
@@ -2436,7 +2430,7 @@ test "f.call is a function" {
     #|console.log(typeof f.apply);
     #|console.log(typeof f.bind);
   let output = run_output(src)
-  inspect(output, content="[\"function\", \"function\", \"function\"]")
+  json_inspect(output, content=["function", "function", "function"])
 }
 
 ///|
@@ -2449,7 +2443,7 @@ test "stored call method throws TypeError" {
     #|var obj = { val: 10 };
     #|try { c(obj, 5); } catch(e) { console.log(e instanceof TypeError); }
   let output = run_output(src)
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -2461,7 +2455,7 @@ test "stored bind method throws TypeError" {
     #|var b = greet.bind;
     #|try { b({ msg: "hello" }); } catch(e) { console.log(e instanceof TypeError); }
   let output = run_output(src)
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -2474,7 +2468,7 @@ test "hasOwnProperty method borrowing" {
     #|console.log(hop.call(b, "x"));
     #|console.log(hop.call(a, "x"));
   let output = run_output(src)
-  inspect(output, content="[\"true\", \"false\", \"true\"]")
+  json_inspect(output, content=["true", "false", "true"])
 }
 
 // ====== Phase 3A: Arguments Object ======
@@ -2487,7 +2481,7 @@ test "arguments object basic" {
     #|}
     #|console.log(f(1, 2, 3));
   let output = run_output(src)
-  inspect(output, content="[\"3\"]")
+  json_inspect(output, content=["3"])
 }
 
 ///|
@@ -2498,7 +2492,7 @@ test "arguments object index access" {
     #|}
     #|console.log(f(10, 20));
   let output = run_output(src)
-  inspect(output, content="[\"30\"]")
+  json_inspect(output, content=["30"])
 }
 
 ///|
@@ -2510,7 +2504,7 @@ test "arguments object callee" {
     #|}
     #|console.log(factorial(5));
   let output = run_output(src)
-  inspect(output, content="[\"120\"]")
+  json_inspect(output, content=["120"])
 }
 
 ///|
@@ -2522,7 +2516,7 @@ test "arguments not in arrow functions" {
     #|}
     #|console.log(outer(1, 2, 3));
   let output = run_output(src)
-  inspect(output, content="[\"3\"]")
+  json_inspect(output, content=["3"])
 }
 
 // ====== Phase 3A: Hoisting ======
@@ -2534,7 +2528,7 @@ test "var hoisting" {
     #|var x = 5;
     #|console.log(x);
   let output = run_output(src)
-  inspect(output, content="[\"undefined\", \"5\"]")
+  json_inspect(output, content=["undefined", "5"])
 }
 
 ///|
@@ -2543,7 +2537,7 @@ test "function hoisting" {
     #|console.log(f());
     #|function f() { return 42; }
   let output = run_output(src)
-  inspect(output, content="[\"42\"]")
+  json_inspect(output, content=["42"])
 }
 
 ///|
@@ -2556,7 +2550,7 @@ test "var hoisting in function" {
     #|}
     #|test();
   let output = run_output(src)
-  inspect(output, content="[\"undefined\", \"10\"]")
+  json_inspect(output, content=["undefined", "10"])
 }
 
 ///|
@@ -2566,7 +2560,7 @@ test "var hoisting does not overwrite" {
     #|var x = 2;
     #|console.log(x);
   let output = run_output(src)
-  inspect(output, content="[\"2\"]")
+  json_inspect(output, content=["2"])
 }
 
 // ====== Phase 3A: String.fromCharCode ======
@@ -2592,7 +2586,7 @@ test "Number.isNaN" {
     #|console.log(Number.isNaN(42));
     #|console.log(Number.isNaN("hello"));
   let output = run_output(src)
-  inspect(output, content="[\"true\", \"false\", \"false\"]")
+  json_inspect(output, content=["true", "false", "false"])
 }
 
 ///|
@@ -2602,7 +2596,7 @@ test "Number.isFinite" {
     #|console.log(Number.isFinite(Infinity));
     #|console.log(Number.isFinite("42"));
   let output = run_output(src)
-  inspect(output, content="[\"true\", \"false\", \"false\"]")
+  json_inspect(output, content=["true", "false", "false"])
 }
 
 ///|
@@ -2612,7 +2606,7 @@ test "Number.isInteger" {
     #|console.log(Number.isInteger(42.5));
     #|console.log(Number.isInteger("42"));
   let output = run_output(src)
-  inspect(output, content="[\"true\", \"false\", \"false\"]")
+  json_inspect(output, content=["true", "false", "false"])
 }
 
 ///|
@@ -2624,7 +2618,7 @@ test "Number.MAX_SAFE_INTEGER" {
 ///|
 test "Number.EPSILON" {
   let output = run_output("console.log(Number.EPSILON < 1)")
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -2634,7 +2628,7 @@ test "number toFixed" {
     #|console.log(n.toFixed(2));
     #|console.log(n.toFixed(0));
   let output = run_output(src)
-  inspect(output, content="[\"3.14\", \"3\"]")
+  json_inspect(output, content=["3.14", "3"])
 }
 
 ///|
@@ -2644,7 +2638,7 @@ test "number toString radix" {
     #|console.log(n.toString(16));
     #|console.log(n.toString(2));
   let output = run_output(src)
-  inspect(output, content="[\"ff\", \"11111111\"]")
+  json_inspect(output, content=["ff", "11111111"])
 }
 
 ///|
@@ -2653,7 +2647,7 @@ test "Number.parseInt parseFloat" {
     #|console.log(Number.parseInt("42"));
     #|console.log(Number.parseFloat("3.14"));
   let output = run_output(src)
-  inspect(output, content="[\"42\", \"3.14\"]")
+  json_inspect(output, content=["42", "3.14"])
 }
 
 // ====== Phase 3A: Error hierarchy polish ======
@@ -2664,7 +2658,7 @@ test "Error has stack property" {
     #|var e = new Error("test");
     #|console.log(typeof e.stack);
   let output = run_output(src)
-  inspect(output, content="[\"string\"]")
+  json_inspect(output, content=["string"])
 }
 
 ///|
@@ -2674,7 +2668,7 @@ test "Error.prototype.toString" {
     #|console.log(e.name);
     #|console.log(e.message);
   let output = run_output(src)
-  inspect(output, content="[\"Error\", \"test\"]")
+  json_inspect(output, content=["Error", "test"])
 }
 
 // ====== Phase 3A: JSON ======
@@ -2686,7 +2680,7 @@ test "JSON.parse basic" {
     #|console.log(obj.a);
     #|console.log(obj.b);
   let output = run_output(src)
-  inspect(output, content="[\"1\", \"hello\"]")
+  json_inspect(output, content=["1", "hello"])
 }
 
 ///|
@@ -2696,7 +2690,7 @@ test "JSON.parse array" {
     #|console.log(arr.length);
     #|console.log(arr[0]);
   let output = run_output(src)
-  inspect(output, content="[\"3\", \"1\"]")
+  json_inspect(output, content=["3", "1"])
 }
 
 ///|
@@ -2705,7 +2699,7 @@ test "JSON.parse nested" {
     #|var obj = JSON.parse('{"a":{"b":42}}');
     #|console.log(obj.a.b);
   let output = run_output(src)
-  inspect(output, content="[\"42\"]")
+  json_inspect(output, content=["42"])
 }
 
 ///|
@@ -2716,7 +2710,7 @@ test "JSON.parse booleans null" {
     #|console.log(obj.f);
     #|console.log(obj.n);
   let output = run_output(src)
-  inspect(output, content="[\"true\", \"false\", \"null\"]")
+  json_inspect(output, content=["true", "false", "null"])
 }
 
 ///|
@@ -2733,7 +2727,7 @@ test "JSON.stringify array" {
   let src =
     #|console.log(JSON.stringify([1, 2, 3]));
   let output = run_output(src)
-  inspect(output, content="[\"[1,2,3]\"]")
+  json_inspect(output, content=["[1,2,3]"])
 }
 
 ///|
@@ -2744,7 +2738,7 @@ test "JSON.stringify null undefined" {
     #|console.log(JSON.stringify("hello"));
     #|console.log(JSON.stringify(true));
   let output = run_output(src)
-  inspect(output, content="[\"null\", \"42\", \"\\\"hello\\\"\", \"true\"]")
+  json_inspect(output, content=["null", "42", "\"hello\"", "true"])
 }
 
 ///|
@@ -2765,7 +2759,7 @@ test "array map" {
     #|var result = arr.map(function(x) { return x * 2; });
     #|console.log(result.join(","));
   let output = run_output(src)
-  inspect(output, content="[\"2,4,6\"]")
+  json_inspect(output, content=["2,4,6"])
 }
 
 ///|
@@ -2775,7 +2769,7 @@ test "array map with arrow" {
     #|var result = arr.map(x => x * x);
     #|console.log(result.join(","));
   let output = run_output(src)
-  inspect(output, content="[\"1,4,9\"]")
+  json_inspect(output, content=["1,4,9"])
 }
 
 ///|
@@ -2785,7 +2779,7 @@ test "array filter" {
     #|var result = arr.filter(x => x % 2 === 0);
     #|console.log(result.join(","));
   let output = run_output(src)
-  inspect(output, content="[\"2,4\"]")
+  json_inspect(output, content=["2,4"])
 }
 
 ///|
@@ -2795,7 +2789,7 @@ test "array reduce" {
     #|var sum = arr.reduce(function(acc, x) { return acc + x; }, 0);
     #|console.log(sum);
   let output = run_output(src)
-  inspect(output, content="[\"10\"]")
+  json_inspect(output, content=["10"])
 }
 
 ///|
@@ -2805,7 +2799,7 @@ test "array reduce no initial" {
     #|var sum = arr.reduce(function(acc, x) { return acc + x; });
     #|console.log(sum);
   let output = run_output(src)
-  inspect(output, content="[\"10\"]")
+  json_inspect(output, content=["10"])
 }
 
 ///|
@@ -2815,7 +2809,7 @@ test "array forEach" {
     #|[1, 2, 3].forEach(function(x) { result.push(x * 10); });
     #|console.log(result.join(","));
   let output = run_output(src)
-  inspect(output, content="[\"10,20,30\"]")
+  json_inspect(output, content=["10,20,30"])
 }
 
 ///|
@@ -2825,7 +2819,7 @@ test "array find" {
     #|console.log(arr.find(x => x > 2));
     #|console.log(arr.find(x => x > 10));
   let output = run_output(src)
-  inspect(output, content="[\"3\", \"undefined\"]")
+  json_inspect(output, content=["3", "undefined"])
 }
 
 ///|
@@ -2835,7 +2829,7 @@ test "array findIndex" {
     #|console.log(arr.findIndex(x => x > 2));
     #|console.log(arr.findIndex(x => x > 10));
   let output = run_output(src)
-  inspect(output, content="[\"2\", \"-1\"]")
+  json_inspect(output, content=["2", "-1"])
 }
 
 ///|
@@ -2844,7 +2838,7 @@ test "array every" {
     #|console.log([2, 4, 6].every(x => x % 2 === 0));
     #|console.log([2, 3, 6].every(x => x % 2 === 0));
   let output = run_output(src)
-  inspect(output, content="[\"true\", \"false\"]")
+  json_inspect(output, content=["true", "false"])
 }
 
 ///|
@@ -2853,7 +2847,7 @@ test "array some" {
     #|console.log([1, 3, 5].some(x => x % 2 === 0));
     #|console.log([1, 2, 5].some(x => x % 2 === 0));
   let output = run_output(src)
-  inspect(output, content="[\"false\", \"true\"]")
+  json_inspect(output, content=["false", "true"])
 }
 
 ///|
@@ -2862,7 +2856,7 @@ test "array flat" {
     #|var arr = [1, [2, 3], [4, [5]]];
     #|console.log(arr.flat().join(","));
   let output = run_output(src)
-  inspect(output, content="[\"1,2,3,4,5\"]")
+  json_inspect(output, content=["1,2,3,4,5"])
 }
 
 ///|
@@ -2872,7 +2866,7 @@ test "array flatMap" {
     #|var result = arr.flatMap(x => [x, x * 2]);
     #|console.log(result.join(","));
   let output = run_output(src)
-  inspect(output, content="[\"1,2,2,4,3,6\"]")
+  json_inspect(output, content=["1,2,2,4,3,6"])
 }
 
 ///|
@@ -2882,7 +2876,7 @@ test "array sort with compareFn" {
     #|arr.sort(function(a, b) { return a - b; });
     #|console.log(arr.join(","));
   let output = run_output(src)
-  inspect(output, content="[\"1,1,3,4,5\"]")
+  json_inspect(output, content=["1,1,3,4,5"])
 }
 
 ///|
@@ -2892,7 +2886,7 @@ test "array reduceRight" {
     #|var result = arr.reduceRight(function(acc, x) { return acc + x; });
     #|console.log(result);
   let output = run_output(src)
-  inspect(output, content="[\"cba\"]")
+  json_inspect(output, content=["cba"])
 }
 
 ///|
@@ -2902,7 +2896,7 @@ test "array map with index" {
     #|var result = arr.map(function(val, idx) { return idx + ":" + val; });
     #|console.log(result.join(","));
   let output = run_output(src)
-  inspect(output, content="[\"0:a,1:b,2:c\"]")
+  json_inspect(output, content=["0:a,1:b,2:c"])
 }
 
 ///|
@@ -2927,7 +2921,7 @@ test "for-of array" {
     #|for (var x of arr) { sum += x; }
     #|console.log(sum);
   let output = run_output(src)
-  inspect(output, content="[\"60\"]")
+  json_inspect(output, content=["60"])
 }
 
 ///|
@@ -2938,7 +2932,7 @@ test "for-of with let" {
     #|for (let x of arr) { result += x; }
     #|console.log(result);
   let output = run_output(src)
-  inspect(output, content="[\"abc\"]")
+  json_inspect(output, content=["abc"])
 }
 
 ///|
@@ -2948,7 +2942,7 @@ test "for-of string" {
     #|for (var ch of "hello") { result.push(ch); }
     #|console.log(result.join(","));
   let output = run_output(src)
-  inspect(output, content="[\"h,e,l,l,o\"]")
+  json_inspect(output, content=["h,e,l,l,o"])
 }
 
 ///|
@@ -2962,7 +2956,7 @@ test "for-of with break" {
     #|}
     #|console.log(sum);
   let output = run_output(src)
-  inspect(output, content="[\"6\"]")
+  json_inspect(output, content=["6"])
 }
 
 ///|
@@ -2976,7 +2970,7 @@ test "for-of with continue" {
     #|}
     #|console.log(sum);
   let output = run_output(src)
-  inspect(output, content="[\"9\"]")
+  json_inspect(output, content=["9"])
 }
 
 ///|
@@ -2986,7 +2980,7 @@ test "spread in array literal" {
     #|var b = [0, ...a, 4];
     #|console.log(b.join(","));
   let output = run_output(src)
-  inspect(output, content="[\"0,1,2,3,4\"]")
+  json_inspect(output, content=["0,1,2,3,4"])
 }
 
 ///|
@@ -2996,7 +2990,7 @@ test "spread in function call" {
     #|var args = [1, 2, 3];
     #|console.log(add(...args));
   let output = run_output(src)
-  inspect(output, content="[\"6\"]")
+  json_inspect(output, content=["6"])
 }
 
 ///|
@@ -3007,7 +3001,7 @@ test "spread with concat" {
     #|var c = [...a, ...b];
     #|console.log(c.join(","));
   let output = run_output(src)
-  inspect(output, content="[\"1,2,3,4\"]")
+  json_inspect(output, content=["1,2,3,4"])
 }
 
 ///|
@@ -3016,7 +3010,7 @@ test "spread string in array" {
     #|var arr = [..."abc"];
     #|console.log(arr.join(","));
   let output = run_output(src)
-  inspect(output, content="[\"a,b,c\"]")
+  json_inspect(output, content=["a,b,c"])
 }
 
 ///|
@@ -3028,7 +3022,7 @@ test "default parameter" {
     #|console.log(greet());
     #|console.log(greet("Alice"));
   let output = run_output(src)
-  inspect(output, content="[\"Hello, world!\", \"Hello, Alice!\"]")
+  json_inspect(output, content=["Hello, world!", "Hello, Alice!"])
 }
 
 ///|
@@ -3040,7 +3034,7 @@ test "default parameter with expression" {
     #|console.log(add(3));
     #|console.log(add(3, 5));
   let output = run_output(src)
-  inspect(output, content="[\"9\", \"8\"]")
+  json_inspect(output, content=["9", "8"])
 }
 
 ///|
@@ -3051,7 +3045,7 @@ test "default parameter undefined triggers default" {
     #|console.log(f(null));
     #|console.log(f(0));
   let output = run_output(src)
-  inspect(output, content="[\"10\", \"null\", \"0\"]")
+  json_inspect(output, content=["10", "null", "0"])
 }
 
 ///|
@@ -3066,7 +3060,7 @@ test "rest parameter" {
     #|}
     #|console.log(sum(1, 2, 3, 4));
   let output = run_output(src)
-  inspect(output, content="[\"10\"]")
+  json_inspect(output, content=["10"])
 }
 
 ///|
@@ -3077,7 +3071,7 @@ test "rest parameter with leading params" {
     #|}
     #|console.log(first_and_rest("a", "b", "c", "d"));
   let output = run_output(src)
-  inspect(output, content="[\"a:b,c,d\"]")
+  json_inspect(output, content=["a:b,c,d"])
 }
 
 ///|
@@ -3088,7 +3082,7 @@ test "rest parameter empty" {
     #|}
     #|console.log(f(1));
   let output = run_output(src)
-  inspect(output, content="[\"0\"]")
+  json_inspect(output, content=["0"])
 }
 
 ///|
@@ -3101,7 +3095,7 @@ test "default and rest combined" {
     #|console.log(f(10));
     #|console.log(f(10, 20, 30, 40));
   let output = run_output(src)
-  inspect(output, content="[\"1,2,\", \"10,2,\", \"10,20,30;40\"]")
+  json_inspect(output, content=["1,2,", "10,2,", "10,20,30;40"])
 }
 
 ///|
@@ -3111,7 +3105,7 @@ test "arrow function with default param" {
     #|console.log(greet());
     #|console.log(greet("Bob"));
   let output = run_output(src)
-  inspect(output, content="[\"Hello, world\", \"Hello, Bob\"]")
+  json_inspect(output, content=["Hello, world", "Hello, Bob"])
 }
 
 ///|
@@ -3124,7 +3118,7 @@ test "arrow function with rest param" {
     #|};
     #|console.log(sum(1, 2, 3));
   let output = run_output(src)
-  inspect(output, content="[\"6\"]")
+  json_inspect(output, content=["6"])
 }
 
 ///|
@@ -3134,7 +3128,7 @@ test "function expression with default" {
     #|console.log(f());
     #|console.log(f(3));
   let output = run_output(src)
-  inspect(output, content="[\"10\", \"6\"]")
+  json_inspect(output, content=["10", "6"])
 }
 
 ///|
@@ -3144,7 +3138,7 @@ test "function expression with rest" {
     #|var result = f(1, 2, 3);
     #|console.log(result.join(","));
   let output = run_output(src)
-  inspect(output, content="[\"2,3\"]")
+  json_inspect(output, content=["2,3"])
 }
 
 ///|
@@ -3155,7 +3149,7 @@ test "function without return yields undefined" {
     #|}
     #|console.log(f());
   let output = run_output(src)
-  inspect(output, content="[\"undefined\"]")
+  json_inspect(output, content=["undefined"])
 }
 
 ///|
@@ -3164,7 +3158,7 @@ test "array map callback without return yields undefined" {
     #|var result = [1].map(function(x) { x + 1; });
     #|console.log(result[0]);
   let output = run_output(src)
-  inspect(output, content="[\"undefined\"]")
+  json_inspect(output, content=["undefined"])
 }
 
 ///|
@@ -3178,7 +3172,7 @@ test "spread in new expression" {
     #|var p = new Point(...coords);
     #|console.log(p.x + "," + p.y);
   let output = run_output(src)
-  inspect(output, content="[\"10,20\"]")
+  json_inspect(output, content=["10,20"])
 }
 
 ///|
@@ -3190,7 +3184,7 @@ test "for-of bare identifier" {
     #|for (x of arr) { sum += x; }
     #|console.log(sum);
   let output = run_output(src)
-  inspect(output, content="[\"6\"]")
+  json_inspect(output, content=["6"])
 }
 
 ///|
@@ -3202,7 +3196,7 @@ test "for-of with const" {
     #|}
     #|console.log(result.join(","));
   let output = run_output(src)
-  inspect(output, content="[\"10,20,30\"]")
+  json_inspect(output, content=["10,20,30"])
 }
 
 ///|
@@ -3214,7 +3208,7 @@ test "spread copies array" {
     #|console.log(a[0]);
     #|console.log(b[0]);
   let output = run_output(src)
-  inspect(output, content="[\"1\", \"99\"]")
+  json_inspect(output, content=["1", "99"])
 }
 
 ///|
@@ -3225,7 +3219,7 @@ test "default param with function call" {
     #|console.log(f());
     #|console.log(f(10));
   let output = run_output(src)
-  inspect(output, content="[\"42\", \"10\"]")
+  json_inspect(output, content=["42", "10"])
 }
 
 ///|
@@ -3239,7 +3233,7 @@ test "multiple default params" {
     #|console.log(f(10, 20));
     #|console.log(f(10, 20, 30));
   let output = run_output(src)
-  inspect(output, content="[\"6\", \"15\", \"33\", \"60\"]")
+  json_inspect(output, content=["6", "15", "33", "60"])
 }
 
 ///|
@@ -3253,7 +3247,7 @@ test "for-of return from function" {
     #|}
     #|console.log(findFirst([1, 2, 5, 3]));
   let output = run_output(src)
-  inspect(output, content="[\"5\"]")
+  json_inspect(output, content=["5"])
 }
 
 ///|
@@ -3264,7 +3258,7 @@ test "spread in middle of array" {
     #|console.log(arr.length);
     #|console.log(arr.join(","));
   let output = run_output(src)
-  inspect(output, content="[\"6\", \"1,2,3,4,5,6\"]")
+  json_inspect(output, content=["6", "1,2,3,4,5,6"])
 }
 
 ///|
@@ -3276,7 +3270,7 @@ test "rest with array methods" {
     #|var result = tail(1, 2, 3, 4);
     #|console.log(result.join(","));
   let output = run_output(src)
-  inspect(output, content="[\"2,3,4\"]")
+  json_inspect(output, content=["2,3,4"])
 }
 
 ///|
@@ -3286,7 +3280,7 @@ test "spread function call with extra args" {
     #|var arr = [1, 2];
     #|console.log(f(...arr, 3, 4));
   let output = run_output(src)
-  inspect(output, content="[\"10\"]")
+  json_inspect(output, content=["10"])
 }
 
 // ============================================================
@@ -3299,7 +3293,7 @@ test "array destructuring basic" {
     #|var [a, b, c] = [1, 2, 3];
     #|console.log(a + "," + b + "," + c);
   let output = run_output(src)
-  inspect(output, content="[\"1,2,3\"]")
+  json_inspect(output, content=["1,2,3"])
 }
 
 ///|
@@ -3309,7 +3303,7 @@ test "array destructuring with rest" {
     #|console.log(first);
     #|console.log(rest.join(","));
   let output = run_output(src)
-  inspect(output, content="[\"1\", \"2,3,4,5\"]")
+  json_inspect(output, content=["1", "2,3,4,5"])
 }
 
 ///|
@@ -3318,7 +3312,7 @@ test "array destructuring with holes" {
     #|var [a, , b] = [1, 2, 3];
     #|console.log(a + "," + b);
   let output = run_output(src)
-  inspect(output, content="[\"1,3\"]")
+  json_inspect(output, content=["1,3"])
 }
 
 ///|
@@ -3329,7 +3323,7 @@ test "array destructuring fewer elements" {
     #|console.log(b);
     #|console.log(c);
   let output = run_output(src)
-  inspect(output, content="[\"1\", \"2\", \"undefined\"]")
+  json_inspect(output, content=["1", "2", "undefined"])
 }
 
 ///|
@@ -3338,7 +3332,7 @@ test "object destructuring basic" {
     #|var {x, y} = {x: 10, y: 20};
     #|console.log(x + "," + y);
   let output = run_output(src)
-  inspect(output, content="[\"10,20\"]")
+  json_inspect(output, content=["10,20"])
 }
 
 ///|
@@ -3347,7 +3341,7 @@ test "object destructuring with alias" {
     #|var {name: n, age: a} = {name: "Alice", age: 30};
     #|console.log(n + " is " + a);
   let output = run_output(src)
-  inspect(output, content="[\"Alice is 30\"]")
+  json_inspect(output, content=["Alice is 30"])
 }
 
 ///|
@@ -3356,7 +3350,7 @@ test "object destructuring with default" {
     #|var {x, y = 5} = {x: 10};
     #|console.log(x + "," + y);
   let output = run_output(src)
-  inspect(output, content="[\"10,5\"]")
+  json_inspect(output, content=["10,5"])
 }
 
 ///|
@@ -3367,7 +3361,7 @@ test "object destructuring with rest" {
     #|console.log(rest.b);
     #|console.log(rest.c);
   let output = run_output(src)
-  inspect(output, content="[\"1\", \"2\", \"3\"]")
+  json_inspect(output, content=["1", "2", "3"])
 }
 
 ///|
@@ -3376,7 +3370,7 @@ test "nested array destructuring" {
     #|var [a, [b, c]] = [1, [2, 3]];
     #|console.log(a + "," + b + "," + c);
   let output = run_output(src)
-  inspect(output, content="[\"1,2,3\"]")
+  json_inspect(output, content=["1,2,3"])
 }
 
 ///|
@@ -3385,7 +3379,7 @@ test "nested object destructuring" {
     #|var {a, b: {c, d}} = {a: 1, b: {c: 2, d: 3}};
     #|console.log(a + "," + c + "," + d);
   let output = run_output(src)
-  inspect(output, content="[\"1,2,3\"]")
+  json_inspect(output, content=["1,2,3"])
 }
 
 ///|
@@ -3394,7 +3388,7 @@ test "destructuring in let" {
     #|let [x, y] = [100, 200];
     #|console.log(x + y);
   let output = run_output(src)
-  inspect(output, content="[\"300\"]")
+  json_inspect(output, content=["300"])
 }
 
 ///|
@@ -3404,7 +3398,7 @@ test "destructuring in const" {
     #|console.log(PI);
     #|console.log(E);
   let output = run_output(src)
-  inspect(output, content="[\"3.14\", \"2.72\"]")
+  json_inspect(output, content=["3.14", "2.72"])
 }
 
 ///|
@@ -3415,7 +3409,7 @@ test "array destructuring with rest empty" {
     #|console.log(b);
     #|console.log(rest.length);
   let output = run_output(src)
-  inspect(output, content="[\"1\", \"2\", \"0\"]")
+  json_inspect(output, content=["1", "2", "0"])
 }
 
 ///|
@@ -3425,7 +3419,7 @@ test "object destructuring alias with default" {
     #|console.log(n);
     #|console.log(a);
   let output = run_output(src)
-  inspect(output, content="[\"Bob\", \"0\"]")
+  json_inspect(output, content=["Bob", "0"])
 }
 
 ///|
@@ -3435,7 +3429,7 @@ test "destructuring from function return" {
     #|var {x, y} = getPoint();
     #|console.log(x + "," + y);
   let output = run_output(src)
-  inspect(output, content="[\"10,20\"]")
+  json_inspect(output, content=["10,20"])
 }
 
 ///|
@@ -3445,7 +3439,7 @@ test "array destructuring from function return" {
     #|var [x, y] = getCoords();
     #|console.log(x + "," + y);
   let output = run_output(src)
-  inspect(output, content="[\"3,4\"]")
+  json_inspect(output, content=["3,4"])
 }
 
 ///|
@@ -3456,7 +3450,7 @@ test "swap with array destructuring" {
     #|var [c, d] = [b, a];
     #|console.log(c + "," + d);
   let output = run_output(src)
-  inspect(output, content="[\"2,1\"]")
+  json_inspect(output, content=["2,1"])
 }
 
 ///|
@@ -3466,7 +3460,7 @@ test "destructuring with computed property from array" {
     #|var [, second, , fourth] = arr;
     #|console.log(second + "," + fourth);
   let output = run_output(src)
-  inspect(output, content="[\"20,40\"]")
+  json_inspect(output, content=["20,40"])
 }
 
 ///|
@@ -3477,7 +3471,7 @@ test "object destructuring missing key" {
     #|console.log(b);
     #|console.log(c);
   let output = run_output(src)
-  inspect(output, content="[\"1\", \"undefined\", \"undefined\"]")
+  json_inspect(output, content=["1", "undefined", "undefined"])
 }
 
 ///|
@@ -3486,7 +3480,7 @@ test "mixed nested destructuring" {
     #|var {data: [first, second], count} = {data: [10, 20], count: 2};
     #|console.log(first + "," + second + "," + count);
   let output = run_output(src)
-  inspect(output, content="[\"10,20,2\"]")
+  json_inspect(output, content=["10,20,2"])
 }
 
 // ============================================================
@@ -3500,7 +3494,7 @@ test "Object.defineProperty basic" {
     #|Object.defineProperty(obj, "x", { value: 42 });
     #|console.log(obj.x);
   let output = run_output(src)
-  inspect(output, content="[\"42\"]")
+  json_inspect(output, content=["42"])
 }
 
 ///|
@@ -3511,7 +3505,7 @@ test "Object.defineProperty non-writable" {
     #|obj.x = 100;
     #|console.log(obj.x);
   let output = run_output(src)
-  inspect(output, content="[\"42\"]")
+  json_inspect(output, content=["42"])
 }
 
 ///|
@@ -3522,7 +3516,7 @@ test "Object.defineProperty non-enumerable" {
     #|console.log(Object.keys(obj).join(","));
     #|console.log(obj.c);
   let output = run_output(src)
-  inspect(output, content="[\"a,b\", \"3\"]")
+  json_inspect(output, content=["a,b", "3"])
 }
 
 ///|
@@ -3534,7 +3528,7 @@ test "Object.defineProperty non-configurable cannot delete" {
     #|console.log(result);
     #|console.log(obj.x);
   let output = run_output(src)
-  inspect(output, content="[\"false\", \"1\"]")
+  json_inspect(output, content=["false", "1"])
 }
 
 ///|
@@ -3548,7 +3542,7 @@ test "Object.getOwnPropertyDescriptor" {
     #|console.log(desc.enumerable);
     #|console.log(desc.configurable);
   let output = run_output(src)
-  inspect(output, content="[\"5\", \"false\", \"true\", \"false\"]")
+  json_inspect(output, content=["5", "false", "true", "false"])
 }
 
 ///|
@@ -3562,7 +3556,7 @@ test "Object.freeze" {
     #|console.log(obj.z);
     #|console.log(Object.isFrozen(obj));
   let output = run_output(src)
-  inspect(output, content="[\"1\", \"undefined\", \"true\"]")
+  json_inspect(output, content=["1", "undefined", "true"])
 }
 
 ///|
@@ -3578,7 +3572,7 @@ test "Object.seal" {
     #|console.log(result);
     #|console.log(Object.isSealed(obj));
   let output = run_output(src)
-  inspect(output, content="[\"100\", \"undefined\", \"false\", \"true\"]")
+  json_inspect(output, content=["100", "undefined", "false", "true"])
 }
 
 ///|
@@ -3591,7 +3585,7 @@ test "Object.preventExtensions" {
     #|console.log(obj.y);
     #|console.log(Object.isExtensible(obj));
   let output = run_output(src)
-  inspect(output, content="[\"1\", \"undefined\", \"false\"]")
+  json_inspect(output, content=["1", "undefined", "false"])
 }
 
 ///|
@@ -3600,7 +3594,7 @@ test "Object.isFrozen on non-frozen object" {
     #|var obj = {x: 1};
     #|console.log(Object.isFrozen(obj));
   let output = run_output(src)
-  inspect(output, content="[\"false\"]")
+  json_inspect(output, content=["false"])
 }
 
 ///|
@@ -3609,7 +3603,7 @@ test "Object.isSealed on non-sealed object" {
     #|var obj = {x: 1};
     #|console.log(Object.isSealed(obj));
   let output = run_output(src)
-  inspect(output, content="[\"false\"]")
+  json_inspect(output, content=["false"])
 }
 
 ///|
@@ -3618,7 +3612,7 @@ test "Object.isExtensible on regular object" {
     #|var obj = {};
     #|console.log(Object.isExtensible(obj));
   let output = run_output(src)
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -3630,7 +3624,7 @@ test "Object.defineProperty with value update" {
     #|Object.defineProperty(obj, "x", { value: 2 });
     #|console.log(obj.x);
   let output = run_output(src)
-  inspect(output, content="[\"1\", \"2\"]")
+  json_inspect(output, content=["1", "2"])
 }
 
 ///|
@@ -3642,7 +3636,7 @@ test "Object.freeze prevents delete" {
     #|console.log(result);
     #|console.log(obj.x);
   let output = run_output(src)
-  inspect(output, content="[\"false\", \"1\"]")
+  json_inspect(output, content=["false", "1"])
 }
 
 ///|
@@ -3654,7 +3648,7 @@ test "non-enumerable not in for-in" {
     #|for (var k in obj) { keys.push(k); }
     #|console.log(keys.join(","));
   let output = run_output(src)
-  inspect(output, content="[\"a,b\"]")
+  json_inspect(output, content=["a,b"])
 }
 
 ///|
@@ -3670,7 +3664,7 @@ test "Object.defineProperties" {
     #|console.log(obj.x);
     #|console.log(obj.y);
   let output = run_output(src)
-  inspect(output, content="[\"10\", \"99\"]")
+  json_inspect(output, content=["10", "99"])
 }
 
 ///|
@@ -3680,7 +3674,7 @@ test "getOwnPropertyDescriptor missing prop" {
     #|var desc = Object.getOwnPropertyDescriptor(obj, "y");
     #|console.log(desc);
   let output = run_output(src)
-  inspect(output, content="[\"undefined\"]")
+  json_inspect(output, content=["undefined"])
 }
 
 ///|
@@ -3690,7 +3684,7 @@ test "freeze with Object.keys" {
     #|Object.freeze(obj);
     #|console.log(Object.keys(obj).join(","));
   let output = run_output(src)
-  inspect(output, content="[\"a,b,c\"]")
+  json_inspect(output, content=["a,b,c"])
 }
 
 // ============================================================
@@ -3705,7 +3699,7 @@ test "use strict: this is undefined in function call" {
     #|var result = getThis();
     #|console.log(result);
   let output = run_output(src)
-  inspect(output, content="[\"undefined\"]")
+  json_inspect(output, content=["undefined"])
 }
 
 ///|
@@ -3721,10 +3715,9 @@ test "use strict: assignment to read-only throws" {
     #|  console.log(e);
     #|}
   let output = run_output(src)
-  inspect(
-    output,
-    content="[\"TypeError: Cannot assign to read only property 'x'\"]",
-  )
+  json_inspect(output, content=[
+    "TypeError: Cannot assign to read only property 'x'",
+  ])
 }
 
 ///|
@@ -3744,10 +3737,9 @@ test "use strict: assignment to frozen object throws" {
     #|  console.log(e);
     #|}
   let output = run_output(src)
-  inspect(
-    output,
-    content="[\"TypeError: Cannot assign to read only property 'x'\", \"TypeError: Cannot add property y, object is not extensible\"]",
-  )
+  json_inspect(output, content=[
+    "TypeError: Cannot assign to read only property 'x'", "TypeError: Cannot add property y, object is not extensible",
+  ])
 }
 
 ///|
@@ -3762,7 +3754,7 @@ test "use strict: delete non-configurable throws" {
     #|  console.log(e);
     #|}
   let output = run_output(src)
-  inspect(output, content="[\"TypeError: Cannot delete property 'x'\"]")
+  json_inspect(output, content=["TypeError: Cannot delete property 'x'"])
 }
 
 ///|
@@ -3775,7 +3767,7 @@ test "use strict: no arguments.callee" {
     #|}
     #|console.log(f());
   let output = run_output(src)
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -3788,7 +3780,7 @@ test "function-level use strict" {
     #|var result = f();
     #|console.log(result);
   let output = run_output(src)
-  inspect(output, content="[\"undefined\"]")
+  json_inspect(output, content=["undefined"])
 }
 
 ///|
@@ -3797,7 +3789,7 @@ test "non-strict mode: this is not undefined" {
     #|function getThis() { return typeof this; }
     #|console.log(getThis());
   let output = run_output(src)
-  inspect(output, content="[\"object\"]")
+  json_inspect(output, content=["object"])
 }
 
 ///|
@@ -3808,7 +3800,7 @@ test "strict mode: sloppy function has arguments.callee" {
     #|}
     #|console.log(f());
   let output = run_output(src)
-  inspect(output, content="[\"function\"]")
+  json_inspect(output, content=["function"])
 }
 
 ///|
@@ -3818,7 +3810,7 @@ test "use strict in global scope" {
     #|var x = 10;
     #|console.log(x);
   let output = run_output(src)
-  inspect(output, content="[\"10\"]")
+  json_inspect(output, content=["10"])
 }
 
 ///|
@@ -3829,7 +3821,7 @@ test "strict mode: non-writable silent in sloppy" {
     #|obj.x = 100;
     #|console.log(obj.x);
   let output = run_output(src)
-  inspect(output, content="[\"42\"]")
+  json_inspect(output, content=["42"])
 }
 
 // ---- Phase 3G: RegExp tests ----
@@ -3841,7 +3833,7 @@ test "regex literal test method" {
     #|console.log(re.test("hello world"));
     #|console.log(re.test("goodbye"));
   let output = run_output(src)
-  inspect(output, content="[\"true\", \"false\"]")
+  json_inspect(output, content=["true", "false"])
 }
 
 ///|
@@ -3852,7 +3844,7 @@ test "regex literal with flags" {
     #|console.log(re.flags);
     #|console.log(re.ignoreCase);
   let output = run_output(src)
-  inspect(output, content="[\"true\", \"i\", \"true\"]")
+  json_inspect(output, content=["true", "i", "true"])
 }
 
 ///|
@@ -3863,7 +3855,7 @@ test "regex exec method" {
     #|console.log(result[0]);
     #|console.log(result[1]);
   let output = run_output(src)
-  inspect(output, content="[\"123\", \"123\"]")
+  json_inspect(output, content=["123", "123"])
 }
 
 ///|
@@ -3873,7 +3865,7 @@ test "regex exec returns null on no match" {
     #|var result = re.exec("hello world");
     #|console.log(result);
   let output = run_output(src)
-  inspect(output, content="[\"null\"]")
+  json_inspect(output, content=["null"])
 }
 
 ///|
@@ -3885,7 +3877,7 @@ test "regex source and flags properties" {
     #|console.log(re.global);
     #|console.log(re.ignoreCase);
   let output = run_output(src)
-  inspect(output, content="[\"abc\", \"gi\", \"true\", \"true\"]")
+  json_inspect(output, content=["abc", "gi", "true", "true"])
 }
 
 ///|
@@ -3895,7 +3887,7 @@ test "regex character class" {
     #|console.log(re.test("hello"));
     #|console.log(re.test("12345"));
   let output = run_output(src)
-  inspect(output, content="[\"true\", \"false\"]")
+  json_inspect(output, content=["true", "false"])
 }
 
 ///|
@@ -3905,7 +3897,7 @@ test "regex dot and quantifiers" {
     #|console.log(re.test("aXYZb"));
     #|console.log(re.test("ab"));
   let output = run_output(src)
-  inspect(output, content="[\"true\", \"false\"]")
+  json_inspect(output, content=["true", "false"])
 }
 
 ///|
@@ -3918,7 +3910,7 @@ test "regex anchors" {
     #|console.log(re2.test("hello world"));
     #|console.log(re2.test("world hello"));
   let output = run_output(src)
-  inspect(output, content="[\"true\", \"false\", \"true\", \"false\"]")
+  json_inspect(output, content=["true", "false", "true", "false"])
 }
 
 ///|
@@ -3929,7 +3921,7 @@ test "regex alternation" {
     #|console.log(re.test("I have a dog"));
     #|console.log(re.test("I have a bird"));
   let output = run_output(src)
-  inspect(output, content="[\"true\", \"true\", \"false\"]")
+  json_inspect(output, content=["true", "true", "false"])
 }
 
 ///|
@@ -3942,7 +3934,7 @@ test "regex digit and word shortcuts" {
     #|console.log(re2.test("hello"));
     #|console.log(re2.test("   "));
   let output = run_output(src)
-  inspect(output, content="[\"true\", \"false\", \"true\", \"false\"]")
+  json_inspect(output, content=["true", "false", "true", "false"])
 }
 
 ///|
@@ -3953,7 +3945,7 @@ test "string match with regex" {
     #|console.log(result[0]);
     #|console.log(result[1]);
   let output = run_output(src)
-  inspect(output, content="[\"2\", \"123\", \"456\"]")
+  json_inspect(output, content=["2", "123", "456"])
 }
 
 ///|
@@ -3963,7 +3955,7 @@ test "string match non-global" {
     #|console.log(result[0]);
     #|console.log(result[1]);
   let output = run_output(src)
-  inspect(output, content="[\"123\", \"123\"]")
+  json_inspect(output, content=["123", "123"])
 }
 
 ///|
@@ -3972,7 +3964,7 @@ test "string match returns null" {
     #|var result = "hello".match(/\d+/);
     #|console.log(result);
   let output = run_output(src)
-  inspect(output, content="[\"null\"]")
+  json_inspect(output, content=["null"])
 }
 
 ///|
@@ -3981,7 +3973,7 @@ test "string search with regex" {
     #|console.log("hello 123 world".search(/\d+/));
     #|console.log("hello world".search(/\d+/));
   let output = run_output(src)
-  inspect(output, content="[\"6\", \"-1\"]")
+  json_inspect(output, content=["6", "-1"])
 }
 
 ///|
@@ -3990,7 +3982,7 @@ test "string replace with regex" {
     #|var result = "hello world".replace(/world/, "there");
     #|console.log(result);
   let output = run_output(src)
-  inspect(output, content="[\"hello there\"]")
+  json_inspect(output, content=["hello there"])
 }
 
 ///|
@@ -3999,7 +3991,7 @@ test "string replace with regex global" {
     #|var result = "aaa bbb aaa".replace(/aaa/g, "ccc");
     #|console.log(result);
   let output = run_output(src)
-  inspect(output, content="[\"ccc bbb ccc\"]")
+  json_inspect(output, content=["ccc bbb ccc"])
 }
 
 ///|
@@ -4008,7 +4000,7 @@ test "string replace with capture group" {
     #|var result = "John Smith".replace(/(\w+) (\w+)/, "$2 $1");
     #|console.log(result);
   let output = run_output(src)
-  inspect(output, content="[\"Smith John\"]")
+  json_inspect(output, content=["Smith John"])
 }
 
 ///|
@@ -4019,7 +4011,7 @@ test "new RegExp constructor" {
     #|console.log(re.source);
     #|console.log(re.flags);
   let output = run_output(src)
-  inspect(output, content="[\"true\", \"hello\", \"i\"]")
+  json_inspect(output, content=["true", "hello", "i"])
 }
 
 ///|
@@ -4029,7 +4021,7 @@ test "regex quantifier exact" {
     #|console.log(re.test("aaa"));
     #|console.log(re.test("aa"));
   let output = run_output(src)
-  inspect(output, content="[\"true\", \"false\"]")
+  json_inspect(output, content=["true", "false"])
 }
 
 ///|
@@ -4039,7 +4031,7 @@ test "regex optional quantifier" {
     #|console.log(re.test("color"));
     #|console.log(re.test("colour"));
   let output = run_output(src)
-  inspect(output, content="[\"true\", \"true\"]")
+  json_inspect(output, content=["true", "true"])
 }
 
 ///|
@@ -4049,7 +4041,7 @@ test "regex with escaped special chars" {
     #|console.log(re.test("hello.world"));
     #|console.log(re.test("helloworld"));
   let output = run_output(src)
-  inspect(output, content="[\"true\", \"false\"]")
+  json_inspect(output, content=["true", "false"])
 }
 
 // ---- Critical bug fix regression tests ----
@@ -4064,7 +4056,7 @@ test "bugfix: defineProperty defaults to false" {
     #|console.log(desc.enumerable);
     #|console.log(desc.configurable);
   let output = run_output(src)
-  inspect(output, content="[\"false\", \"false\", \"false\"]")
+  json_inspect(output, content=["false", "false", "false"])
 }
 
 ///|
@@ -4078,7 +4070,7 @@ test "bugfix: defineProperty preserves existing descriptor" {
     #|console.log(desc.writable);
     #|console.log(desc.enumerable);
   let output = run_output(src)
-  inspect(output, content="[\"2\", \"true\", \"true\"]")
+  json_inspect(output, content=["2", "true", "true"])
 }
 
 ///|
@@ -4088,7 +4080,7 @@ test "bugfix: case-insensitive regex preserves captures" {
     #|console.log(result[0]);
     #|console.log(result[1]);
   let output = run_output(src)
-  inspect(output, content="[\"H\", \"H\"]")
+  json_inspect(output, content=["H", "H"])
 }
 
 ///|
@@ -4098,7 +4090,7 @@ test "bugfix: case-insensitive regex \\D not broken" {
     #|console.log(re.test("abc"));
     #|console.log(re.test("123"));
   let output = run_output(src)
-  inspect(output, content="[\"true\", \"false\"]")
+  json_inspect(output, content=["true", "false"])
 }
 
 ///|
@@ -4108,7 +4100,7 @@ test "bugfix: case-insensitive regex \\W not broken" {
     #|console.log(re.test(" "));
     #|console.log(re.test("a"));
   let output = run_output(src)
-  inspect(output, content="[\"true\", \"false\"]")
+  json_inspect(output, content=["true", "false"])
 }
 
 ///|
@@ -4121,7 +4113,7 @@ test "bugfix: UserFuncExt strict mode" {
     #|}
     #|f();
   let output = run_output(src)
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -4132,7 +4124,7 @@ test "bugfix: UserFuncExt sloppy has callee" {
     #|}
     #|f();
   let output = run_output(src)
-  inspect(output, content="[\"function\"]")
+  json_inspect(output, content=["function"])
 }
 
 ///|
@@ -4145,7 +4137,7 @@ test "bugfix: arrow function hoisting" {
     #|};
     #|console.log(f());
   let output = run_output(src)
-  inspect(output, content="[\"10\"]")
+  json_inspect(output, content=["10"])
 }
 
 ///|
@@ -4157,7 +4149,7 @@ test "bugfix: destructure assign without let" {
     #|console.log(a);
     #|console.log(b);
   let output = run_output(src)
-  inspect(output, content="[\"2\", \"1\"]")
+  json_inspect(output, content=["2", "1"])
 }
 
 ///|
@@ -4170,7 +4162,7 @@ test "bugfix: array destructure assign from function" {
     #|console.log(a);
     #|console.log(b);
   let output = run_output(src)
-  inspect(output, content="[\"3\", \"4\"]")
+  json_inspect(output, content=["3", "4"])
 }
 
 ///|
@@ -4183,7 +4175,7 @@ test "bugfix: regex after if condition rparen" {
     #|}
     #|console.log(result);
   let output = run_output(src)
-  inspect(output, content="[\"matched\"]")
+  json_inspect(output, content=["matched"])
 }
 
 ///|
@@ -4198,7 +4190,7 @@ test "bugfix: regex after while condition rparen" {
     #|}
     #|console.log(found);
   let output = run_output(src)
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -4208,7 +4200,7 @@ test "bugfix: division after function call rparen" {
     #|var result = getNum() / 2;
     #|console.log(result);
   let output = run_output(src)
-  inspect(output, content="[\"5\"]")
+  json_inspect(output, content=["5"])
 }
 
 ///|
@@ -4221,7 +4213,7 @@ test "bugfix: regex after for condition rparen" {
     #|}
     #|console.log(count);
   let output = run_output(src)
-  inspect(output, content="[\"2\"]")
+  json_inspect(output, content=["2"])
 }
 
 ///|
@@ -4237,7 +4229,7 @@ test "bugfix: strict mode restored after throwing strict function" {
     #|} catch (e) {}
     #|console.log(sloppy());
   let output = run_output(src)
-  inspect(output, content="[\"function\"]")
+  json_inspect(output, content=["function"])
 }
 
 ///|
@@ -4255,7 +4247,7 @@ test "bugfix: constructor honors function strict mode" {
     #|}
     #|new C();
   let output = run_output(src)
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -4265,7 +4257,7 @@ test "bugfix: var destructure declaration is hoisted" {
     #|var [a] = [1];
     #|console.log(a);
   let output = run_output(src)
-  inspect(output, content="[\"undefined\", \"1\"]")
+  json_inspect(output, content=["undefined", "1"])
 }
 
 ///|
@@ -4274,7 +4266,7 @@ test "bugfix: for-of var binds in outer scope" {
     #|for (var x of [1, 2]) {}
     #|console.log(x);
   let output = run_output(src)
-  inspect(output, content="[\"2\"]")
+  json_inspect(output, content=["2"])
 }
 
 ///|
@@ -4287,7 +4279,7 @@ test "bugfix: for-of var closures share one binding" {
     #|console.log(fns[0]());
     #|console.log(fns[2]());
   let output = run_output(src)
-  inspect(output, content="[\"3\", \"3\"]")
+  json_inspect(output, content=["3", "3"])
 }
 
 ///|
@@ -4297,7 +4289,7 @@ test "bugfix: regex literal after control-flow rparen" {
     #|if (true) /ab/.test("zabz") ? out = 1 : out = 2;
     #|console.log(out);
   let output = run_output(src)
-  inspect(output, content="[\"1\"]")
+  json_inspect(output, content=["1"])
 }
 
 ///|
@@ -4306,7 +4298,7 @@ test "bugfix: negative toFixed keeps sign and digits" {
     #|console.log((-1.23).toFixed(2));
     #|console.log((-0.004).toFixed(2));
   let output = run_output(src)
-  inspect(output, content="[\"-1.23\", \"-0.00\"]")
+  json_inspect(output, content=["-1.23", "-0.00"])
 }
 
 ///|
@@ -4323,10 +4315,9 @@ test "bugfix: JSON.stringify propagates nested circular errors" {
     #|  console.log(e);
     #|}
   let output = run_output(src)
-  inspect(
-    output,
-    content="[\"TypeError: Converting circular structure to JSON\"]",
-  )
+  json_inspect(output, content=[
+    "TypeError: Converting circular structure to JSON",
+  ])
 }
 
 ///|
@@ -4340,10 +4331,9 @@ test "bugfix: JSON.parse rejects raw control chars in strings" {
     #|  console.log(e);
     #|}
   let output = run_output(src)
-  inspect(
-    output,
-    content="[\"SyntaxError: Unexpected control character in JSON\"]",
-  )
+  json_inspect(output, content=[
+    "SyntaxError: Unexpected control character in JSON",
+  ])
 }
 
 ///|
@@ -4359,7 +4349,7 @@ test "test262 harness pattern - constructor with prototype method" {
     #|console.log(e.message);
     #|console.log(e.toString());
   let output = run_output(src)
-  inspect(output, content="[\"test message\", \"Test262Error: test message\"]")
+  json_inspect(output, content=["test message", "Test262Error: test message"])
 }
 
 ///|
@@ -4376,7 +4366,7 @@ test "test262 harness pattern - assert._isSameValue" {
     #|console.log(assert._isSameValue(0, -0));
     #|console.log(assert._isSameValue(NaN, NaN));
   let output = run_output(src)
-  inspect(output, content="[\"true\", \"false\", \"true\"]")
+  json_inspect(output, content=["true", "false", "true"])
 }
 
 ///|
@@ -4385,7 +4375,7 @@ test "test262 harness pattern - typeof Array.isArray" {
     #|var f = Array.isArray;
     #|console.log(typeof f);
   let output = run_output(src)
-  inspect(output, content="[\"function\"]")
+  json_inspect(output, content=["function"])
 }
 
 ///|
@@ -4425,7 +4415,7 @@ test "test262 harness pattern - full assert.sameValue flow" {
     #|assert.sameValue(typeof f, "function", "Array.isArray must be a function");
     #|console.log("TEST PASSED");
   let output = run_output(src)
-  inspect(output, content="[\"TEST PASSED\"]")
+  json_inspect(output, content=["TEST PASSED"])
 }
 
 ///|
@@ -4437,7 +4427,7 @@ test "comma-separated var declarations" {
     #|c = 3;
     #|console.log(a + b + c);
   let output = run_output(src)
-  inspect(output, content="[\"6\"]")
+  json_inspect(output, content=["6"])
 }
 
 ///|
@@ -4446,7 +4436,7 @@ test "comma-separated var declarations with initializers" {
     #|var x = 10, y = 20, z = 30;
     #|console.log(x + y + z);
   let output = run_output(src)
-  inspect(output, content="[\"60\"]")
+  json_inspect(output, content=["60"])
 }
 
 ///|
@@ -4455,7 +4445,7 @@ test "comma-separated let declarations" {
     #|let a = 1, b = 2;
     #|console.log(a * b);
   let output = run_output(src)
-  inspect(output, content="[\"2\"]")
+  json_inspect(output, content=["2"])
 }
 
 ///|
@@ -4464,7 +4454,7 @@ test "comma-separated const declarations" {
     #|const PI = 3.14, E = 2.71;
     #|console.log(PI + E);
   let output = run_output(src)
-  inspect(output, content="[\"5.85\"]")
+  json_inspect(output, content=["5.85"])
 }
 
 // Symbol.hasInstance tests
@@ -4642,7 +4632,7 @@ test "object spread basic" {
       #|console.log(b.z);
     ),
   )
-  inspect(output, content="[\"1\", \"2\", \"3\"]")
+  json_inspect(output, content=["1", "2", "3"])
 }
 
 ///|
@@ -4654,7 +4644,7 @@ test "object spread overrides earlier properties" {
       #|console.log(b.x);
     ),
   )
-  inspect(output, content="[\"1\"]")
+  json_inspect(output, content=["1"])
 }
 
 ///|
@@ -4666,7 +4656,7 @@ test "object spread later properties override spread" {
       #|console.log(b.x);
     ),
   )
-  inspect(output, content="[\"10\"]")
+  json_inspect(output, content=["10"])
 }
 
 ///|
@@ -4677,7 +4667,7 @@ test "object spread null and undefined are skipped" {
       #|console.log(a.x);
     ),
   )
-  inspect(output, content="[\"1\"]")
+  json_inspect(output, content=["1"])
 }
 
 ///|
@@ -4690,7 +4680,7 @@ test "object spread from array" {
       #|console.log(a["2"]);
     ),
   )
-  inspect(output, content="[\"10\", \"20\", \"30\"]")
+  json_inspect(output, content=["10", "20", "30"])
 }
 
 ///|
@@ -4705,7 +4695,7 @@ test "object spread multiple sources" {
       #|console.log(c.z);
     ),
   )
-  inspect(output, content="[\"1\", \"2\", \"3\"]")
+  json_inspect(output, content=["1", "2", "3"])
 }
 
 ///|
@@ -4717,7 +4707,7 @@ test "object spread string" {
       #|console.log(a["1"]);
     ),
   )
-  inspect(output, content="[\"h\", \"i\"]")
+  json_inspect(output, content=["h", "i"])
 }
 
 ///|
@@ -4730,7 +4720,7 @@ test "object rest in destructuring" {
       #|console.log(rest.z);
     ),
   )
-  inspect(output, content="[\"1\", \"2\", \"3\"]")
+  json_inspect(output, content=["1", "2", "3"])
 }
 
 // =============================================================================
@@ -4747,7 +4737,7 @@ test "new.target in constructor" {
       #|new Foo();
     ),
   )
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -4760,7 +4750,7 @@ test "new.target undefined in regular call" {
       #|Foo();
     ),
   )
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -4774,7 +4764,7 @@ test "new.target in arrow function inherits from enclosing" {
       #|new Foo();
     ),
   )
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -4789,7 +4779,7 @@ test "new.target in class constructor" {
       #|new MyClass();
     ),
   )
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 // ==================== Property Descriptor Tests (Phase 7A) ====================
@@ -4802,7 +4792,7 @@ test "object literal getter" {
       #|console.log(obj.x);
     ),
   )
-  inspect(output, content="[\"42\"]")
+  json_inspect(output, content=["42"])
 }
 
 ///|
@@ -4818,7 +4808,7 @@ test "object literal setter" {
       #|console.log(obj.val);
     ),
   )
-  inspect(output, content="[\"10\"]")
+  json_inspect(output, content=["10"])
 }
 
 ///|
@@ -4837,7 +4827,7 @@ test "defineProperty accessor descriptor" {
       #|console.log(obj.x);
     ),
   )
-  inspect(output, content="[\"11\"]")
+  json_inspect(output, content=["11"])
 }
 
 ///|
@@ -4855,7 +4845,7 @@ test "defineProperty accessor vs data validation" {
       #|}
     ),
   )
-  inspect(output, content="[\"TypeError caught\"]")
+  json_inspect(output, content=["TypeError caught"])
 }
 
 ///|
@@ -4871,10 +4861,9 @@ test "getOwnPropertyDescriptor accessor" {
       #|console.log(desc.writable);
     ),
   )
-  inspect(
-    output,
-    content="[\"function\", \"true\", \"true\", \"undefined\", \"undefined\"]",
-  )
+  json_inspect(output, content=[
+    "function", "true", "true", "undefined", "undefined",
+  ])
 }
 
 ///|
@@ -4892,7 +4881,7 @@ test "class getter and setter" {
       #|console.log(t._c);
     ),
   )
-  inspect(output, content="[\"212\", \"0\"]")
+  json_inspect(output, content=["212", "0"])
 }
 
 ///|
@@ -4913,7 +4902,7 @@ test "class constructor has arguments object through super call" {
       #|new Derived();
     ),
   )
-  inspect(output, content="[\"2\", \"7\"]")
+  json_inspect(output, content=["2", "7"])
 }
 
 ///|
@@ -4929,7 +4918,7 @@ test "defineProperty getter only (no setter)" {
       #|console.log(obj.x);
     ),
   )
-  inspect(output, content="[\"42\", \"42\"]")
+  json_inspect(output, content=["42", "42"])
 }
 
 ///|
@@ -4943,7 +4932,7 @@ test "accessor property enumerable in Object.keys" {
       #|console.log(Object.keys(obj).join(','));
     ),
   )
-  inspect(output, content="[\"a,c\"]")
+  json_inspect(output, content=["a,c"])
 }
 
 ///|
@@ -4963,7 +4952,7 @@ test "Object.create with accessor descriptor" {
       #|console.log(obj.x);
     ),
   )
-  inspect(output, content="[\"42\"]")
+  json_inspect(output, content=["42"])
 }
 
 ///|
@@ -4979,7 +4968,7 @@ test "defineProperties with accessor" {
       #|console.log(obj.y);
     ),
   )
-  inspect(output, content="[\"10\", \"20\"]")
+  json_inspect(output, content=["10", "20"])
 }
 
 ///|
@@ -4993,7 +4982,7 @@ test "getter this binding" {
       #|console.log(obj.upper);
     ),
   )
-  inspect(output, content="[\"HELLO\"]")
+  json_inspect(output, content=["HELLO"])
 }
 
 ///|
@@ -5008,7 +4997,7 @@ test "getOwnPropertyDescriptors with accessor" {
       #|console.log(descs.y.writable);
     ),
   )
-  inspect(output, content="[\"function\", \"undefined\", \"2\", \"true\"]")
+  json_inspect(output, content=["function", "undefined", "2", "true"])
 }
 
 ///|
@@ -5024,7 +5013,7 @@ test "inherited getter on prototype chain" {
       #|console.log(obj.x);
     ),
   )
-  inspect(output, content="[\"10\"]")
+  json_inspect(output, content=["10"])
 }
 
 ///|
@@ -5039,7 +5028,7 @@ test "defineProperty rejects non-callable getter" {
       #|}
     ),
   )
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -5054,7 +5043,7 @@ test "defineProperty rejects non-callable setter" {
       #|}
     ),
   )
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -5076,7 +5065,7 @@ test "non-configurable accessor cannot be redefined" {
       #|}
     ),
   )
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -5095,7 +5084,7 @@ test "spread invokes getters and creates data properties" {
       #|console.log(typeof desc.get);
     ),
   )
-  inspect(output, content="[\"42\", \"42\", \"undefined\"]")
+  json_inspect(output, content=["42", "42", "undefined"])
 }
 
 ///|
@@ -5115,7 +5104,7 @@ test "computed assignment walks prototype chain for setters" {
       #|console.log(obj[key]);
     ),
   )
-  inspect(output, content="[\"99\", \"99\"]")
+  json_inspect(output, content=["99", "99"])
 }
 
 ///|
@@ -5133,7 +5122,7 @@ test "update expression invokes setter" {
       #|console.log(obj.x);
     ),
   )
-  inspect(output, content="[\"6\", \"6\"]")
+  json_inspect(output, content=["6", "6"])
 }
 
 ///|
@@ -5151,7 +5140,7 @@ test "compound assignment invokes setter" {
       #|console.log(obj.x);
     ),
   )
-  inspect(output, content="[\"15\", \"15\"]")
+  json_inspect(output, content=["15", "15"])
 }
 
 ///|
@@ -5168,7 +5157,7 @@ test "defineProperties validates accessor vs data mixing" {
       #|}
     ),
   )
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -5185,7 +5174,7 @@ test "defineProperties validates getter is callable" {
       #|}
     ),
   )
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -5200,7 +5189,7 @@ test "Object.create rejects non-callable getter" {
       #|}
     ),
   )
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -5215,7 +5204,7 @@ test "Object.create rejects non-callable setter" {
       #|}
     ),
   )
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -5230,7 +5219,7 @@ test "Object.create rejects accessor-data mixing" {
       #|}
     ),
   )
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -5247,7 +5236,7 @@ test "getOwnPropertyDescriptors includes symbol-keyed properties" {
       #|console.log(symDesc.enumerable);
     ),
   )
-  inspect(output, content="[\"42\", \"true\", \"true\"]")
+  json_inspect(output, content=["42", "true", "true"])
 }
 
 ///|
@@ -5261,7 +5250,7 @@ test "inherited non-writable data property blocks assignment" {
       #|console.log(obj.x);
     ),
   )
-  inspect(output, content="[\"1\"]")
+  json_inspect(output, content=["1"])
 }
 
 // ================================================================
@@ -5278,7 +5267,7 @@ test "generator: function* returns object with next method" {
       #|console.log(typeof it.next);
     ),
   )
-  inspect(output, content="[\"object\", \"function\"]")
+  json_inspect(output, content=["object", "function"])
 }
 
 ///|
@@ -5301,10 +5290,9 @@ test "generator: basic yield and done" {
       #|console.log(d.value, d.done);
     ),
   )
-  inspect(
-    output,
-    content="[\"1 false\", \"2 false\", \"3 false\", \"undefined true\"]",
-  )
+  json_inspect(output, content=[
+    "1 false", "2 false", "3 false", "undefined true",
+  ])
 }
 
 ///|
@@ -5324,7 +5312,7 @@ test "generator: return in generator body" {
       #|console.log(r.value, r.done);
     ),
   )
-  inspect(output, content="[\"1 false\", \"42 true\", \"undefined true\"]")
+  json_inspect(output, content=["1 false", "42 true", "undefined true"])
 }
 
 ///|
@@ -5339,7 +5327,7 @@ test "generator: first next() arg is ignored" {
       #|console.log(r.value, r.done);
     ),
   )
-  inspect(output, content="[\"1 false\"]")
+  json_inspect(output, content=["1 false"])
 }
 
 ///|
@@ -5354,7 +5342,7 @@ test "generator: completed generator returns done" {
       #|console.log(r.value, r.done);
     ),
   )
-  inspect(output, content="[\"undefined true\"]")
+  json_inspect(output, content=["undefined true"])
 }
 
 ///|
@@ -5366,7 +5354,7 @@ test "generator: Symbol.iterator returns self" {
       #|console.log(it[Symbol.iterator]() === it);
     ),
   )
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -5381,12 +5369,7 @@ test "generator: new with generator throws TypeError" {
       #|}
     ),
   )
-  inspect(
-    output,
-    content=(
-      #|["true"]
-    ),
-  )
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -5400,7 +5383,7 @@ test "generator: two next() results are different objects" {
       #|console.log(a !== b);
     ),
   )
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -5418,7 +5401,7 @@ test "generator: .throw(e) on SuspendedStart completes and throws" {
       #|console.log(r.value, r.done);
     ),
   )
-  inspect(output, content="[\"boom\", \"undefined true\"]")
+  json_inspect(output, content=["boom", "undefined true"])
 }
 
 ///|
@@ -5433,7 +5416,7 @@ test "generator: .return(v) on SuspendedStart returns done" {
       #|console.log(r2.value, r2.done);
     ),
   )
-  inspect(output, content="[\"42 true\", \"undefined true\"]")
+  json_inspect(output, content=["42 true", "undefined true"])
 }
 
 ///|
@@ -5451,7 +5434,7 @@ test "generator: .throw(e) on Completed throws" {
       #|}
     ),
   )
-  inspect(output, content="[\"done-throw\"]")
+  json_inspect(output, content=["done-throw"])
 }
 
 ///|
@@ -5466,7 +5449,7 @@ test "generator: .return(v) on Completed returns done" {
       #|console.log(r.value, r.done);
     ),
   )
-  inspect(output, content="[\"99 true\"]")
+  json_inspect(output, content=["99 true"])
 }
 
 ///|
@@ -5479,7 +5462,7 @@ test "generator: generator expression" {
       #|console.log(it.next().value);
     ),
   )
-  inspect(output, content="[\"10\", \"20\"]")
+  json_inspect(output, content=["10", "20"])
 }
 
 ///|
@@ -5498,7 +5481,7 @@ test "generator: generator with parameters" {
       #|console.log(it.next().done);
     ),
   )
-  inspect(output, content="[\"3\", \"7\", \"10\", \"true\"]")
+  json_inspect(output, content=["3", "7", "10", "true"])
 }
 
 ///|
@@ -5517,12 +5500,7 @@ test "generator: yield inside for loop (range)" {
       #|console.log(it.next().done);
     ),
   )
-  inspect(
-    output,
-    content=(
-      #|["1", "2", "2", "false"]
-    ),
-  )
+  json_inspect(output, content=["1", "2", "2", "false"])
 }
 
 ///|
@@ -5537,7 +5515,7 @@ test "generator: for-of consumes generator" {
       #|console.log(results.join(','));
     ),
   )
-  inspect(output, content="[\"1,2,3\"]")
+  json_inspect(output, content=["1,2,3"])
 }
 
 ///|
@@ -5549,7 +5527,7 @@ test "generator: spread operator with generator" {
       #|console.log(arr.join(','));
     ),
   )
-  inspect(output, content="[\"1,2,3\"]")
+  json_inspect(output, content=["1,2,3"])
 }
 
 ///|
@@ -5561,7 +5539,7 @@ test "generator: destructuring assignment from generator" {
       #|console.log(a, b);
     ),
   )
-  inspect(output, content="[\"10 20\"]")
+  json_inspect(output, content=["10 20"])
 }
 
 ///|
@@ -5576,7 +5554,7 @@ test "generator: .return() on yielded generator" {
       #|console.log(it.next().value, it.next().done);
     ),
   )
-  inspect(output, content="[\"1\", \"42 true\", \"undefined true\"]")
+  json_inspect(output, content=["1", "42 true", "undefined true"])
 }
 
 ///|
@@ -5592,7 +5570,7 @@ test "generator: yield as expression receives next value" {
       #|console.log(it.next(5).value);
     ),
   )
-  inspect(output, content="[\"1\", \"15\"]")
+  json_inspect(output, content=["1", "15"])
 }
 
 ///|
@@ -5613,7 +5591,7 @@ test "generator: yield in conditional" {
       #|console.log(it.next().done);
     ),
   )
-  inspect(output, content="[\"1\", \"3\", \"true\"]")
+  json_inspect(output, content=["1", "3", "true"])
 }
 
 ///|
@@ -5629,7 +5607,7 @@ test "generator: multiple independent generators" {
       #|console.log(b.next().value);
     ),
   )
-  inspect(output, content="[\"1\", \"1\", \"2\", \"2\"]")
+  json_inspect(output, content=["1", "1", "2", "2"])
 }
 
 ///|
@@ -5647,7 +5625,7 @@ test "generator: generator with default params" {
       #|console.log(it2.next().value);
     ),
   )
-  inspect(output, content="[\"10\", \"11\", \"5\"]")
+  json_inspect(output, content=["10", "11", "5"])
 }
 
 ///|
@@ -5660,7 +5638,7 @@ test "generator: generator instance supports property assignment" {
       #|console.log(it.x);
     ),
   )
-  inspect(output, content="[\"42\"]")
+  json_inspect(output, content=["42"])
 }
 
 ///|
@@ -5678,7 +5656,7 @@ test "generator: yield without argument yields undefined" {
       #|console.log(b.value, b.done);
     ),
   )
-  inspect(output, content="[\"undefined false\", \"undefined false\"]")
+  json_inspect(output, content=["undefined false", "undefined false"])
 }
 
 // ================================================================
@@ -5705,12 +5683,7 @@ test "generator: .throw() caught by try/catch in generator" {
       #|console.log(it.next().done);
     ),
   )
-  inspect(
-    output,
-    content=(
-      #|["1", "caught: boom", "caught: boom", "false"]
-    ),
-  )
+  json_inspect(output, content=["1", "caught: boom", "caught: boom", "false"])
 }
 
 ///|
@@ -5732,7 +5705,7 @@ test "generator: uncaught .throw() completes generator and rethrows" {
       #|console.log(r.value, r.done);
     ),
   )
-  inspect(output, content="[\"1\", \"fail\", \"undefined true\"]")
+  json_inspect(output, content=["1", "fail", "undefined true"])
 }
 
 ///|
@@ -5754,7 +5727,7 @@ test "generator: .throw() caught continues and yields more" {
       #|console.log(it.next().done);
     ),
   )
-  inspect(output, content="[\"1\", \"error: oops\", \"true\"]")
+  json_inspect(output, content=["1", "error: oops", "true"])
 }
 
 ///|
@@ -5774,7 +5747,7 @@ test "generator: .return() on suspended generator completes it" {
       #|console.log(r2.value, r2.done);
     ),
   )
-  inspect(output, content="[\"1\", \"42 true\", \"undefined true\"]")
+  json_inspect(output, content=["1", "42 true", "undefined true"])
 }
 
 ///|
@@ -5795,7 +5768,7 @@ test "generator: .return() inside try executes finally" {
       #|console.log(r.value, r.done);
     ),
   )
-  inspect(output, content="[\"1\", \"finally ran\", \"42 true\"]")
+  json_inspect(output, content=["1", "finally ran", "42 true"])
 }
 
 ///|
@@ -5817,12 +5790,7 @@ test "generator: .return() when finally yields" {
       #|console.log(r2.value, r2.done);
     ),
   )
-  inspect(
-    output,
-    content=(
-      #|["1", "from-finally false", "from-finally false"]
-    ),
-  )
+  json_inspect(output, content=["1", "from-finally false", "from-finally false"])
 }
 
 ///|
@@ -5844,12 +5812,7 @@ test "generator: .throw() in try/catch/finally runs finally" {
       #|it.next();
     ),
   )
-  inspect(
-    output,
-    content=(
-      #|["1", "caught: err"]
-    ),
-  )
+  json_inspect(output, content=["1", "caught: err"])
 }
 
 ///|
@@ -5871,12 +5834,7 @@ test "generator: multiple .throw() with try/catch" {
       #|it.throw(new Error("b"));
     ),
   )
-  inspect(
-    output,
-    content=(
-      #|["got: a"]
-    ),
-  )
+  json_inspect(output, content=["got: a"])
 }
 
 // ================================================================
@@ -5901,12 +5859,7 @@ test "generator: yield inside while loop" {
       #|console.log(it.next().done);
     ),
   )
-  inspect(
-    output,
-    content=(
-      #|["0", "1", "1", "false"]
-    ),
-  )
+  json_inspect(output, content=["0", "1", "1", "false"])
 }
 
 ///|
@@ -5927,12 +5880,7 @@ test "generator: yield inside for loop with return" {
       #|console.log(r.value, r.done);
     ),
   )
-  inspect(
-    output,
-    content=(
-      #|["0", "1", "1", "2 false"]
-    ),
-  )
+  json_inspect(output, content=["0", "1", "1", "2 false"])
 }
 
 ///|
@@ -5958,12 +5906,7 @@ test "generator: yield in for loop preserves loop variable" {
       #|console.log(results.join(","));
     ),
   )
-  inspect(
-    output,
-    content=(
-      #|["0,1,1,1,1,2,2,3,3,5,5"]
-    ),
-  )
+  json_inspect(output, content=["0,1,1,1,1,2,2,3,3,5,5"])
 }
 
 ///|
@@ -5985,12 +5928,7 @@ test "generator: yield in nested loops" {
       #|console.log(it.next().done);
     ),
   )
-  inspect(
-    output,
-    content=(
-      #|["0", "1", "1", "10", "false"]
-    ),
-  )
+  json_inspect(output, content=["0", "1", "1", "10", "false"])
 }
 
 ///|
@@ -6012,12 +5950,7 @@ test "generator: break inside generator loop" {
       #|console.log(it.next().done);
     ),
   )
-  inspect(
-    output,
-    content=(
-      #|["0", "1", "1", "2", "false"]
-    ),
-  )
+  json_inspect(output, content=["0", "1", "1", "2", "false"])
 }
 
 ///|
@@ -6036,12 +5969,7 @@ test "generator: yield inside for-of in generator" {
       #|console.log(it.next().done);
     ),
   )
-  inspect(
-    output,
-    content=(
-      #|["10", "20", "20", "false"]
-    ),
-  )
+  json_inspect(output, content=["10", "20", "20", "false"])
 }
 
 ///|
@@ -6061,12 +5989,7 @@ test "generator: for-of consuming generator inside generator" {
       #|console.log(it.next().done);
     ),
   )
-  inspect(
-    output,
-    content=(
-      #|["2", "4", "4", "false"]
-    ),
-  )
+  json_inspect(output, content=["2", "4", "4", "false"])
 }
 
 // ================================================================
@@ -6094,7 +6017,7 @@ test "generator: yield* basic delegation" {
       #|console.log(it.next().done);
     ),
   )
-  inspect(output, content="[\"0\", \"1\", \"2\", \"3\", \"true\"]")
+  json_inspect(output, content=["0", "1", "2", "3", "true"])
 }
 
 ///|
@@ -6115,7 +6038,7 @@ test "generator: yield* with return value" {
       #|console.log(it.next().done);
     ),
   )
-  inspect(output, content="[\"1\", \"done\", \"true\"]")
+  json_inspect(output, content=["1", "done", "true"])
 }
 
 ///|
@@ -6132,7 +6055,7 @@ test "generator: yield* over array" {
       #|console.log(it.next().done);
     ),
   )
-  inspect(output, content="[\"10\", \"20\", \"30\", \"true\"]")
+  json_inspect(output, content=["10", "20", "30", "true"])
 }
 
 ///|
@@ -6149,7 +6072,7 @@ test "generator: yield* over string" {
       #|console.log(it.next().done);
     ),
   )
-  inspect(output, content="[\"a\", \"b\", \"c\", \"true\"]")
+  json_inspect(output, content=["a", "b", "c", "true"])
 }
 
 ///|
@@ -6167,7 +6090,7 @@ test "generator: yield* nested delegation" {
       #|console.log(it.next().done);
     ),
   )
-  inspect(output, content="[\"1\", \"2\", \"3\", \"4\", \"true\"]")
+  json_inspect(output, content=["1", "2", "3", "4", "true"])
 }
 
 ///|
@@ -6192,7 +6115,7 @@ test "generator: yield* forwards .return() to delegate" {
       #|console.log(r.value, r.done);
     ),
   )
-  inspect(output, content="[\"1\", \"inner finally\", \"42 true\"]")
+  json_inspect(output, content=["1", "inner finally", "42 true"])
 }
 
 ///|
@@ -6217,12 +6140,7 @@ test "generator: yield* forwards .throw() to delegate" {
       #|console.log(it.next().done);
     ),
   )
-  inspect(
-    output,
-    content=(
-      #|["1", "caught: err", "caught: err", "false"]
-    ),
-  )
+  json_inspect(output, content=["1", "caught: err", "caught: err", "false"])
 }
 
 // ================================================================
@@ -6243,12 +6161,7 @@ test "generator: for-of consuming generator (integration)" {
       #|console.log(results.join(","));
     ),
   )
-  inspect(
-    output,
-    content=(
-      #|["0,1,1,2,2,3,3,4,4"]
-    ),
-  )
+  json_inspect(output, content=["0,1,1,2,2,3,3,4,4"])
 }
 
 ///|
@@ -6261,7 +6174,7 @@ test "generator: spread with generator (integration)" {
       #|console.log(arr.join(","));
     ),
   )
-  inspect(output, content="[\"3\", \"1,2,3\"]")
+  json_inspect(output, content=["3", "1,2,3"])
 }
 
 ///|
@@ -6273,7 +6186,7 @@ test "generator: destructuring with generator (integration)" {
       #|console.log(first, second);
     ),
   )
-  inspect(output, content="[\"a b\"]")
+  json_inspect(output, content=["a b"])
 }
 
 ///|
@@ -6294,7 +6207,7 @@ test "generator: generator as method" {
       #|console.log(results.join(","));
     ),
   )
-  inspect(output, content="[\"1,2,3\"]")
+  json_inspect(output, content=["1,2,3"])
 }
 
 ///|
@@ -6310,7 +6223,7 @@ test "generator: yield* over spread result" {
       #|console.log([...combined()].join(","));
     ),
   )
-  inspect(output, content="[\"1,2,3,4\"]")
+  json_inspect(output, content=["1,2,3,4"])
 }
 
 ///|
@@ -6336,12 +6249,7 @@ test "generator: generator with closures" {
       #|console.log(c.next().value);
     ),
   )
-  inspect(
-    output,
-    content=(
-      #|["1", "2", "2", "1", "1"]
-    ),
-  )
+  json_inspect(output, content=["1", "2", "2", "1", "1"])
 }
 
 ///|
@@ -6365,12 +6273,7 @@ test "generator: infinite fibonacci generator" {
       #|console.log(results.join(","));
     ),
   )
-  inspect(
-    output,
-    content=(
-      #|["0,1,1,1,1,2,2,3"]
-    ),
-  )
+  json_inspect(output, content=["0,1,1,1,1,2,2,3"])
 }
 
 ///|
@@ -6398,12 +6301,7 @@ test "generator: generator pipeline" {
       #|console.log([...squares].join(","));
     ),
   )
-  inspect(
-    output,
-    content=(
-      #|["1,4,4,4,4,9,9,9,9,16,16,16,16,25,25,25,25"]
-    ),
-  )
+  json_inspect(output, content=["1,4,4,4,4,9,9,9,9,16,16,16,16,25,25,25,25"])
 }
 
 // ================================================================
@@ -6424,12 +6322,7 @@ test "generator: deep iteration stress test" {
       #|console.log(sum);
     ),
   )
-  inspect(
-    output,
-    content=(
-      #|["9900"]
-    ),
-  )
+  json_inspect(output, content=["9900"])
 }
 
 ///|
@@ -6447,12 +6340,7 @@ test "generator: yield* chain stress" {
       #|console.log(sum);
     ),
   )
-  inspect(
-    output,
-    content=(
-      #|["2450"]
-    ),
-  )
+  json_inspect(output, content=["2450"])
 }
 
 ///|
@@ -6470,7 +6358,7 @@ test "generator: alternating yield and yield*" {
       #|console.log([...outer()].join(","));
     ),
   )
-  inspect(output, content="[\"1,a,b,2,a,b,3\"]")
+  json_inspect(output, content=["1,a,b,2,a,b,3"])
 }
 
 ///|
@@ -6488,7 +6376,7 @@ test "generator: generator state isolation" {
       #|console.log(b.next().value);
     ),
   )
-  inspect(output, content="[\"3\", \"0\"]")
+  json_inspect(output, content=["3", "0"])
 }
 
 ///|
@@ -6501,10 +6389,7 @@ test "harness: print function" {
       #|print(true, null, undefined);
     ),
   )
-  inspect(
-    output,
-    content="[\"hello\", \"a b c\", \"42\", \"true null undefined\"]",
-  )
+  json_inspect(output, content=["hello", "a b c", "42", "true null undefined"])
 }
 
 ///|
@@ -6514,7 +6399,7 @@ test "harness: $262.global is globalThis" {
       #|console.log($262.global === globalThis);
     ),
   )
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -6525,7 +6410,7 @@ test "harness: $262.gc is a no-op" {
       #|console.log(result === undefined);
     ),
   )
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -6536,7 +6421,7 @@ test "harness: $262.evalScript evaluates code in global scope" {
       #|console.log(x);
     ),
   )
-  inspect(output, content="[\"42\"]")
+  json_inspect(output, content=["42"])
 }
 
 ///|
@@ -6547,7 +6432,7 @@ test "harness: $262.evalScript returns result" {
       #|console.log(result);
     ),
   )
-  inspect(output, content="[\"3\"]")
+  json_inspect(output, content=["3"])
 }
 
 ///|
@@ -6562,7 +6447,7 @@ test "harness: $262.evalScript propagates errors" {
       #|}
     ),
   )
-  inspect(output, content="[\"true\", \"test error\"]")
+  json_inspect(output, content=["true", "test error"])
 }
 
 ///|
@@ -6576,10 +6461,7 @@ test "harness: $262.createRealm returns a new $262 object" {
       #|console.log(typeof newRealm.gc);
     ),
   )
-  inspect(
-    output,
-    content="[\"object\", \"object\", \"function\", \"function\"]",
-  )
+  json_inspect(output, content=["object", "object", "function", "function"])
 }
 
 ///|
@@ -6590,7 +6472,7 @@ test "harness: $262.createRealm has isolated global" {
       #|console.log(newRealm.global !== $262.global);
     ),
   )
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -6604,7 +6486,7 @@ test "harness: $262.createRealm evalScript runs in new realm" {
       #|console.log(x);
     ),
   )
-  inspect(output, content="[\"outer\"]")
+  json_inspect(output, content=["outer"])
 }
 
 ///|
@@ -6616,7 +6498,7 @@ test "harness: globalThis.$262 is accessible" {
       #|console.log(typeof globalThis.print);
     ),
   )
-  inspect(output, content="[\"object\", \"true\", \"function\"]")
+  json_inspect(output, content=["object", "true", "function"])
 }
 
 ///|
@@ -6631,10 +6513,9 @@ test "harness: $262.detachArrayBuffer throws TypeError" {
       #|}
     ),
   )
-  inspect(
-    output,
-    content="[\"true\", \"$262.detachArrayBuffer requires an ArrayBuffer argument\"]",
-  )
+  json_inspect(output, content=[
+    "true", "$262.detachArrayBuffer requires an ArrayBuffer argument",
+  ])
 }
 
 ///|
@@ -6649,7 +6530,7 @@ test "harness: $262.agent.start throws TypeError" {
       #|}
     ),
   )
-  inspect(output, content="[\"true\", \"$262.agent.start is not supported\"]")
+  json_inspect(output, content=["true", "$262.agent.start is not supported"])
 }
 
 ///|
@@ -6665,10 +6546,9 @@ test "harness: $262 object exists and has expected properties" {
       #|console.log(typeof $262.agent);
     ),
   )
-  inspect(
-    output,
-    content="[\"object\", \"object\", \"function\", \"function\", \"function\", \"function\", \"object\"]",
-  )
+  json_inspect(output, content=[
+    "object", "object", "function", "function", "function", "function", "object",
+  ])
 }
 
 ///|
@@ -6680,7 +6560,7 @@ test "harness: Function constructor with body string" {
       #|console.log(typeof add);
     ),
   )
-  inspect(output, content="[\"5\", \"function\"]")
+  json_inspect(output, content=["5", "function"])
 }
 
 ///|
@@ -6692,7 +6572,7 @@ test "harness: Function constructor with no args" {
       #|console.log(f());
     ),
   )
-  inspect(output, content="[\"function\", \"undefined\"]")
+  json_inspect(output, content=["function", "undefined"])
 }
 
 ///|
@@ -6703,7 +6583,7 @@ test "harness: Function constructor body only" {
       #|console.log(f());
     ),
   )
-  inspect(output, content="[\"42\"]")
+  json_inspect(output, content=["42"])
 }
 
 ///|
@@ -6718,7 +6598,7 @@ test "harness: Function constructor runs in global scope" {
       #|console.log(makeFunc()());
     ),
   )
-  inspect(output, content="[\"global\"]")
+  json_inspect(output, content=["global"])
 }
 
 ///|
@@ -6729,7 +6609,7 @@ test "harness: Function constructor called without new" {
       #|console.log(f(5));
     ),
   )
-  inspect(output, content="[\"10\"]")
+  json_inspect(output, content=["10"])
 }
 
 ///|
@@ -6742,12 +6622,7 @@ test "harness: fnGlobalObject pattern" {
       #|console.log(__globalObject === globalThis);
     ),
   )
-  inspect(
-    output,
-    content=(
-      #|["object", "true"]
-    ),
-  )
+  json_inspect(output, content=["object", "true"])
 }
 
 ///|
@@ -6757,7 +6632,7 @@ test "eval: basic expression evaluation" {
       #|console.log(eval("1 + 2"));
     ),
   )
-  inspect(output, content="[\"3\"]")
+  json_inspect(output, content=["3"])
 }
 
 ///|
@@ -6767,7 +6642,7 @@ test "eval: no arguments returns undefined" {
       #|console.log(eval());
     ),
   )
-  inspect(output, content="[\"undefined\"]")
+  json_inspect(output, content=["undefined"])
 }
 
 ///|
@@ -6779,7 +6654,7 @@ test "eval: non-string argument returns as-is" {
       #|console.log(eval(null));
     ),
   )
-  inspect(output, content="[\"42\", \"true\", \"null\"]")
+  json_inspect(output, content=["42", "true", "null"])
 }
 
 ///|
@@ -6789,7 +6664,7 @@ test "eval: typeof eval is function" {
       #|console.log(typeof eval);
     ),
   )
-  inspect(output, content="[\"function\"]")
+  json_inspect(output, content=["function"])
 }
 
 ///|
@@ -6803,7 +6678,7 @@ test "eval: direct eval accesses caller scope" {
       #|console.log(f());
     ),
   )
-  inspect(output, content="[\"42\"]")
+  json_inspect(output, content=["42"])
 }
 
 ///|
@@ -6817,7 +6692,7 @@ test "eval: direct eval var leaks to caller scope" {
       #|console.log(f());
     ),
   )
-  inspect(output, content="[\"42\"]")
+  json_inspect(output, content=["42"])
 }
 
 ///|
@@ -6828,7 +6703,7 @@ test "eval: direct eval var leaks to global scope" {
       #|console.log(x);
     ),
   )
-  inspect(output, content="[\"99\"]")
+  json_inspect(output, content=["99"])
 }
 
 ///|
@@ -6843,7 +6718,7 @@ test "eval: indirect eval via comma operator" {
       #|console.log(f());
     ),
   )
-  inspect(output, content="[\"global\"]")
+  json_inspect(output, content=["global"])
 }
 
 ///|
@@ -6859,7 +6734,7 @@ test "eval: indirect eval via variable" {
       #|console.log(f());
     ),
   )
-  inspect(output, content="[\"global\"]")
+  json_inspect(output, content=["global"])
 }
 
 ///|
@@ -6871,12 +6746,7 @@ test "eval: strict mode isolates var declarations" {
       #|try { console.log(x); } catch(e) { console.log("not defined"); }
     ),
   )
-  inspect(
-    output,
-    content=(
-      #|["42"]
-    ),
-  )
+  json_inspect(output, content=["42"])
 }
 
 ///|
@@ -6890,7 +6760,7 @@ test "eval: function declaration in direct eval" {
       #|console.log(f());
     ),
   )
-  inspect(output, content="[\"42\"]")
+  json_inspect(output, content=["42"])
 }
 
 ///|
@@ -6904,7 +6774,7 @@ test "eval: syntax error throws SyntaxError" {
       #|}
     ),
   )
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -6919,7 +6789,7 @@ test "eval: runtime error propagates" {
       #|}
     ),
   )
-  inspect(output, content="[\"true\", \"boom\"]")
+  json_inspect(output, content=["true", "boom"])
 }
 
 ///|
@@ -6929,7 +6799,7 @@ test "eval: globalThis.eval is same as eval" {
       #|console.log(globalThis.eval === eval);
     ),
   )
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -6941,7 +6811,7 @@ test "eval: eval modifies caller scope variables" {
       #|console.log(x);
     ),
   )
-  inspect(output, content="[\"2\"]")
+  json_inspect(output, content=["2"])
 }
 
 ///|
@@ -6951,7 +6821,7 @@ test "eval: eval returns last expression value" {
       #|console.log(eval("1; 2; 3"));
     ),
   )
-  inspect(output, content="[\"3\"]")
+  json_inspect(output, content=["3"])
 }
 
 ///|
@@ -6961,7 +6831,7 @@ test "eval: eval with empty string returns undefined" {
       #|console.log(eval(""));
     ),
   )
-  inspect(output, content="[\"undefined\"]")
+  json_inspect(output, content=["undefined"])
 }
 
 ///|
@@ -6975,7 +6845,7 @@ test "eval: direct eval this refers to caller this" {
       #|console.log(obj.getX());
     ),
   )
-  inspect(output, content="[\"42\"]")
+  json_inspect(output, content=["42"])
 }
 
 ///|
@@ -6986,7 +6856,7 @@ test "eval: indirect eval var leaks to global" {
       #|console.log(indirectVar);
     ),
   )
-  inspect(output, content="[\"123\"]")
+  json_inspect(output, content=["123"])
 }
 
 ///|
@@ -6997,12 +6867,7 @@ test "eval: strict eval code with use strict in eval" {
       #|try { console.log(x); } catch(e) { console.log("not defined"); }
     ),
   )
-  inspect(
-    output,
-    content=(
-      #|["42"]
-    ),
-  )
+  json_inspect(output, content=["42"])
 }
 
 ///|
@@ -7020,7 +6885,7 @@ test "eval: eval in nested function scope" {
       #|console.log(outer());
     ),
   )
-  inspect(output, content="[\"3\"]")
+  json_inspect(output, content=["3"])
 }
 
 ///|
@@ -7031,7 +6896,7 @@ test "eval: let in non-strict eval is isolated" {
       #|try { console.log(y); } catch(e) { console.log("not visible"); }
     ),
   )
-  inspect(output, content="[\"not visible\"]")
+  json_inspect(output, content=["not visible"])
 }
 
 ///|
@@ -7042,7 +6907,7 @@ test "eval: const in non-strict eval is isolated" {
       #|try { console.log(c); } catch(e) { console.log("not visible"); }
     ),
   )
-  inspect(output, content="[\"not visible\"]")
+  json_inspect(output, content=["not visible"])
 }
 
 ///|
@@ -7053,7 +6918,7 @@ test "eval: function declaration leaks from non-strict eval" {
       #|console.log(g());
     ),
   )
-  inspect(output, content="[\"99\"]")
+  json_inspect(output, content=["99"])
 }
 
 ///|
@@ -7068,7 +6933,7 @@ test "eval: strict function eval isolates var" {
       #|console.log(f());
     ),
   )
-  inspect(output, content="[\"isolated\"]")
+  json_inspect(output, content=["isolated"])
 }
 
 ///|
@@ -7082,7 +6947,7 @@ test "eval: indirect eval does not inherit caller strict mode" {
       #|console.log(x);
     ),
   )
-  inspect(output, content="[\"1\"]")
+  json_inspect(output, content=["1"])
 }
 
 ///|
@@ -7098,7 +6963,7 @@ test "eval: eval in block hoists var to function scope" {
       #|console.log(f());
     ),
   )
-  inspect(output, content="[\"1\"]")
+  json_inspect(output, content=["1"])
 }
 
 ///|
@@ -7114,7 +6979,7 @@ test "eval: parenthesized eval is direct eval" {
       #|console.log(f());
     ),
   )
-  inspect(output, content="[\"local\"]")
+  json_inspect(output, content=["local"])
 }
 
 ///|
@@ -7131,7 +6996,7 @@ test "eval: nested grouping ((eval)) is direct eval" {
       #|console.log(f());
     ),
   )
-  inspect(output, content="[\"local\"]")
+  json_inspect(output, content=["local"])
 }
 
 ///|
@@ -7147,10 +7012,9 @@ test "eval: new eval() throws TypeError" {
       #|}
     ),
   )
-  inspect(
-    output,
-    content="[\"true\", \"eval is not a constructor at line 2, col 3\"]",
-  )
+  json_inspect(output, content=[
+    "true", "eval is not a constructor at line 2, col 3",
+  ])
 }
 
 ///|
@@ -7165,7 +7029,7 @@ test "eval: direct eval sees block-scoped let" {
       #|console.log(f());
     ),
   )
-  inspect(output, content="[\"42\"]")
+  json_inspect(output, content=["42"])
 }
 
 ///|
@@ -7181,7 +7045,7 @@ test "eval: direct eval sees block-scoped let in nested block" {
       #|console.log(result);
     ),
   )
-  inspect(output, content="[\"block_let\"]")
+  json_inspect(output, content=["block_let"])
 }
 
 ///|
@@ -7196,7 +7060,7 @@ test "eval: strict eval let/const with TDZ" {
       #|console.log(f());
     ),
   )
-  inspect(output, content="[\"15\"]")
+  json_inspect(output, content=["15"])
 }
 
 ///|
@@ -7223,7 +7087,7 @@ test "eval: var in eval conflicts with block let throws SyntaxError" {
       #|f();
     ),
   )
-  inspect(output, content="[\"SyntaxError\", \"let_x\", \"var_x\"]")
+  json_inspect(output, content=["SyntaxError", "let_x", "var_x"])
 }
 
 ///|
@@ -7245,7 +7109,7 @@ test "eval: nested block var conflict throws SyntaxError" {
       #|f();
     ),
   )
-  inspect(output, content="[\"SyntaxError\", \"let_x\"]")
+  json_inspect(output, content=["SyntaxError", "let_x"])
 }
 
 ///|
@@ -7267,7 +7131,7 @@ test "eval: block function does not trigger var conflict with outer let" {
       #|f();
     ),
   )
-  inspect(output, content="[\"ok\", \"let_x\"]")
+  json_inspect(output, content=["ok", "let_x"])
 }
 
 ///|
@@ -7289,7 +7153,7 @@ test "eval: if-branch function does not trigger var conflict with outer let" {
       #|f();
     ),
   )
-  inspect(output, content="[\"ok\", \"let_x\"]")
+  json_inspect(output, content=["ok", "let_x"])
 }
 
 ///|
@@ -7308,7 +7172,7 @@ test "eval: global var conflicts with global let throws SyntaxError" {
       #|console.log(x);
     ),
   )
-  inspect(output, content="[\"SyntaxError\", \"let\"]")
+  json_inspect(output, content=["SyntaxError", "let"])
 }
 
 ///|
@@ -7324,7 +7188,7 @@ test "eval: var hoists to function scope past non-conflicting block" {
       #|test();
     ),
   )
-  inspect(output, content="[\"42\"]")
+  json_inspect(output, content=["42"])
 }
 
 ///|
@@ -7339,7 +7203,7 @@ test "eval: function decl reassignment propagates to var_env" {
       #|console.log(test());
     ),
   )
-  inspect(output, content="[\"42\"]")
+  json_inspect(output, content=["42"])
 }
 
 ///|
@@ -7354,7 +7218,7 @@ test "strict: block function does not overwrite outer var" {
       #|console.log(f);
     ),
   )
-  inspect(output, content="[\"1\"]")
+  json_inspect(output, content=["1"])
 }
 
 ///|
@@ -7369,7 +7233,7 @@ test "sloppy: duplicate block function declarations are allowed" {
       #|}
     ),
   )
-  inspect(output, content="[\"ok\"]")
+  json_inspect(output, content=["ok"])
 }
 
 ///|
@@ -7440,7 +7304,7 @@ test "block: var declarations hoist out of nested block in function scope" {
       #|fn();
     ),
   )
-  inspect(output, content="[\"1\", \"undefined\"]")
+  json_inspect(output, content=["1", "undefined"])
 }
 
 ///|
@@ -7507,10 +7371,9 @@ test "strict: delete unqualified identifier throws SyntaxError" {
     #|  console.log(e);
     #|}
   let output = run_output(src)
-  inspect(
-    output,
-    content="[\"SyntaxError: Delete of an unqualified identifier in strict mode.\"]",
-  )
+  json_inspect(output, content=[
+    "SyntaxError: Delete of an unqualified identifier in strict mode.",
+  ])
 }
 
 ///|
@@ -7528,10 +7391,9 @@ test "strict: delete unqualified identifier in strict function" {
     #|  console.log(e);
     #|}
   let output = run_output(src)
-  inspect(
-    output,
-    content="[\"SyntaxError: Delete of an unqualified identifier in strict mode.\"]",
-  )
+  json_inspect(output, content=[
+    "SyntaxError: Delete of an unqualified identifier in strict mode.",
+  ])
 }
 
 ///|
@@ -7541,12 +7403,7 @@ test "sloppy: delete unqualified identifier is allowed" {
     #|var result = delete x;
     #|console.log(result);
   let output = run_output(src)
-  inspect(
-    output,
-    content=(
-      #|["false"]
-    ),
-  )
+  json_inspect(output, content=["false"])
 }
 
 ///|
@@ -7560,10 +7417,9 @@ test "delete: Member on undefined throws TypeError (non-strict)" {
     #|  console.log(e);
     #|}
   let output = run_output(src)
-  inspect(
-    output,
-    content="[\"TypeError: Cannot convert undefined or null to object\"]",
-  )
+  json_inspect(output, content=[
+    "TypeError: Cannot convert undefined or null to object",
+  ])
 }
 
 ///|
@@ -7577,10 +7433,9 @@ test "delete: Member on null throws TypeError (non-strict)" {
     #|  console.log(e);
     #|}
   let output = run_output(src)
-  inspect(
-    output,
-    content="[\"TypeError: Cannot convert undefined or null to object\"]",
-  )
+  json_inspect(output, content=[
+    "TypeError: Cannot convert undefined or null to object",
+  ])
 }
 
 ///|
@@ -7595,10 +7450,9 @@ test "delete: Member on undefined throws TypeError (strict)" {
     #|  console.log(e);
     #|}
   let output = run_output(src)
-  inspect(
-    output,
-    content="[\"TypeError: Cannot convert undefined or null to object\"]",
-  )
+  json_inspect(output, content=[
+    "TypeError: Cannot convert undefined or null to object",
+  ])
 }
 
 ///|
@@ -7613,10 +7467,9 @@ test "delete: Member on null throws TypeError (strict)" {
     #|  console.log(e);
     #|}
   let output = run_output(src)
-  inspect(
-    output,
-    content="[\"TypeError: Cannot convert undefined or null to object\"]",
-  )
+  json_inspect(output, content=[
+    "TypeError: Cannot convert undefined or null to object",
+  ])
 }
 
 ///|
@@ -7630,10 +7483,9 @@ test "delete: ComputedMember on undefined throws TypeError" {
     #|  console.log(e);
     #|}
   let output = run_output(src)
-  inspect(
-    output,
-    content="[\"TypeError: Cannot convert undefined or null to object\"]",
-  )
+  json_inspect(output, content=[
+    "TypeError: Cannot convert undefined or null to object",
+  ])
 }
 
 ///|
@@ -7647,10 +7499,9 @@ test "delete: ComputedMember on null throws TypeError" {
     #|  console.log(e);
     #|}
   let output = run_output(src)
-  inspect(
-    output,
-    content="[\"TypeError: Cannot convert undefined or null to object\"]",
-  )
+  json_inspect(output, content=[
+    "TypeError: Cannot convert undefined or null to object",
+  ])
 }
 
 ///|
@@ -7659,7 +7510,7 @@ test "delete: normal object property returns true (regression guard)" {
     #|var o = { a: 1 };
     #|console.log(delete o.a);
   let output = run_output(src)
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -7667,7 +7518,7 @@ test "delete: primitive receiver still returns true (regression guard)" {
   let src =
     #|console.log(delete "foo".length);
   let output = run_output(src)
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -7723,7 +7574,7 @@ test "sloppy: assignment to eval is allowed" {
     #|eval = 42;
     #|console.log(typeof eval);
   let output = run_output(src)
-  inspect(output, content="[\"number\"]")
+  json_inspect(output, content=["number"])
 }
 
 ///|
@@ -7770,10 +7621,9 @@ test "strict: function named eval throws SyntaxError" {
     #|  console.log(e);
     #|}
   let output = run_output(src)
-  inspect(
-    output,
-    content="[\"SyntaxError: Unexpected eval or arguments in strict mode\"]",
-  )
+  json_inspect(output, content=[
+    "SyntaxError: Unexpected eval or arguments in strict mode",
+  ])
 }
 
 ///|
@@ -7788,10 +7638,9 @@ test "strict: duplicate parameters throw SyntaxError" {
     #|  console.log(e);
     #|}
   let output = run_output(src)
-  inspect(
-    output,
-    content="[\"SyntaxError: Duplicate parameter name not allowed in this context\"]",
-  )
+  json_inspect(output, content=[
+    "SyntaxError: Duplicate parameter name not allowed in this context",
+  ])
 }
 
 ///|
@@ -7804,7 +7653,7 @@ test "strict caller does not make sloppy callee strict" {
     #|}
     #|console.log(g());
   let output = run_output(src)
-  inspect(output, content="[\"2\"]")
+  json_inspect(output, content=["2"])
 }
 
 ///|
@@ -7818,7 +7667,7 @@ test "strict: duplicate parameters fail at declaration time" {
     #|  console.log(e.constructor.name);
     #|}
   let output = run_output(src)
-  inspect(output, content="[\"SyntaxError\"]")
+  json_inspect(output, content=["SyntaxError"])
 }
 
 ///|
@@ -7852,7 +7701,7 @@ test "class constructor duplicate params fail at declaration time" {
     #|}
     #|console.log(done);
   let output = run_output(src)
-  inspect(output, content="[\"SyntaxError\", \"no\"]")
+  json_inspect(output, content=["SyntaxError", "no"])
 }
 
 ///|
@@ -7869,10 +7718,9 @@ test "strict: duplicate parameters with use strict in function body" {
     #|  console.log(e);
     #|}
   let output = run_output(src)
-  inspect(
-    output,
-    content="[\"SyntaxError: Duplicate parameter name not allowed in this context\"]",
-  )
+  json_inspect(output, content=[
+    "SyntaxError: Duplicate parameter name not allowed in this context",
+  ])
 }
 
 ///|
@@ -7881,7 +7729,7 @@ test "sloppy: duplicate parameters are allowed" {
     #|function f(a, a) { return a; }
     #|console.log(f(1, 2));
   let output = run_output(src)
-  inspect(output, content="[\"2\"]")
+  json_inspect(output, content=["2"])
 }
 
 ///|
@@ -7896,10 +7744,9 @@ test "strict: parameter named eval throws SyntaxError" {
     #|  console.log(e);
     #|}
   let output = run_output(src)
-  inspect(
-    output,
-    content="[\"SyntaxError: Unexpected eval or arguments in strict mode\"]",
-  )
+  json_inspect(output, content=[
+    "SyntaxError: Unexpected eval or arguments in strict mode",
+  ])
 }
 
 ///|
@@ -7914,10 +7761,9 @@ test "strict: parameter named arguments throws SyntaxError" {
     #|  console.log(e);
     #|}
   let output = run_output(src)
-  inspect(
-    output,
-    content="[\"SyntaxError: Unexpected eval or arguments in strict mode\"]",
-  )
+  json_inspect(output, content=[
+    "SyntaxError: Unexpected eval or arguments in strict mode",
+  ])
 }
 
 ///|
@@ -7964,10 +7810,9 @@ test "strict: reserved word 'protected' as function name throws SyntaxError" {
     #|  console.log(e);
     #|}
   let output = run_output(src)
-  inspect(
-    output,
-    content="[\"SyntaxError: Unexpected strict mode reserved word\"]",
-  )
+  json_inspect(output, content=[
+    "SyntaxError: Unexpected strict mode reserved word",
+  ])
 }
 
 ///|
@@ -8001,7 +7846,7 @@ test "sloppy: reserved words are valid identifiers" {
     #|var private = 3;
     #|console.log(implements + interface + private);
   let output = run_output(src)
-  inspect(output, content="[\"6\"]")
+  json_inspect(output, content=["6"])
 }
 
 ///|
@@ -8020,10 +7865,9 @@ test "class body is implicitly strict: delete unqualified identifier" {
     #|  console.log(e);
     #|}
   let output = run_output(src)
-  inspect(
-    output,
-    content="[\"SyntaxError: Delete of an unqualified identifier in strict mode.\"]",
-  )
+  json_inspect(output, content=[
+    "SyntaxError: Delete of an unqualified identifier in strict mode.",
+  ])
 }
 
 ///|
@@ -8037,7 +7881,7 @@ test "class body is implicitly strict: no arguments.callee" {
     #|}
     #|console.log(new C().method());
   let output = run_output(src)
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -8051,7 +7895,7 @@ test "class constructor is implicitly strict" {
     #|var obj = new C();
     #|console.log(obj.strict);
   let output = run_output(src)
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -8085,7 +7929,7 @@ test "sloppy: yield as identifier outside generator is allowed" {
     #|var yield = 42;
     #|console.log(yield);
   let output = run_output(src)
-  inspect(output, content="[\"42\"]")
+  json_inspect(output, content=["42"])
 }
 
 ///|
@@ -8100,7 +7944,7 @@ test "reserved words: yield accessor property name is allowed" {
     #|obj.yield = 0;
     #|console.log(test);
   let output = run_output(src)
-  inspect(output, content="[\"yield\", \"yield\"]")
+  json_inspect(output, content=["yield", "yield"])
 }
 
 ///|
@@ -8111,7 +7955,7 @@ test "future reserved: static is sloppy identifier and strict reserved" {
     #|{ let static = 3; console.log(static); }
     #|console.log(static);
   let sloppy_output = run_output(sloppy)
-  inspect(sloppy_output, content="[\"3\", \"2\"]")
+  json_inspect(sloppy_output, content=["3", "2"])
   let strict =
     #|"use strict";
     #|var static = 1;
@@ -8195,7 +8039,7 @@ test "class constructor strict: does not leak strict mode" {
     #|console.log(d.x);
     #|console.log(sloppy());
   let output = run_output(src)
-  inspect(output, content="[\"1\", \"object\"]")
+  json_inspect(output, content=["1", "object"])
 }
 
 ///|
@@ -8209,10 +8053,9 @@ test "strict: generator declaration named eval throws SyntaxError" {
     #|  console.log(e);
     #|}
   let output = run_output(src)
-  inspect(
-    output,
-    content="[\"SyntaxError: Unexpected eval or arguments in strict mode\"]",
-  )
+  json_inspect(output, content=[
+    "SyntaxError: Unexpected eval or arguments in strict mode",
+  ])
 }
 
 ///|
@@ -8226,10 +8069,9 @@ test "strict: generator declaration named arguments throws SyntaxError" {
     #|  console.log(e);
     #|}
   let output = run_output(src)
-  inspect(
-    output,
-    content="[\"SyntaxError: Unexpected eval or arguments in strict mode\"]",
-  )
+  json_inspect(output, content=[
+    "SyntaxError: Unexpected eval or arguments in strict mode",
+  ])
 }
 
 ///|
@@ -8243,10 +8085,9 @@ test "strict: class constructor with eval param throws SyntaxError" {
     #|  console.log(e);
     #|}
   let output = run_output(src)
-  inspect(
-    output,
-    content="[\"SyntaxError: Unexpected eval or arguments in strict mode\"]",
-  )
+  json_inspect(output, content=[
+    "SyntaxError: Unexpected eval or arguments in strict mode",
+  ])
 }
 
 ///|
@@ -8260,10 +8101,9 @@ test "strict: class constructor with arguments param throws SyntaxError" {
     #|  console.log(e);
     #|}
   let output = run_output(src)
-  inspect(
-    output,
-    content="[\"SyntaxError: Unexpected eval or arguments in strict mode\"]",
-  )
+  json_inspect(output, content=[
+    "SyntaxError: Unexpected eval or arguments in strict mode",
+  ])
 }
 
 ///|
@@ -8277,10 +8117,9 @@ test "strict: class constructor with duplicate params throws SyntaxError" {
     #|  console.log(e);
     #|}
   let output = run_output(src)
-  inspect(
-    output,
-    content="[\"SyntaxError: Duplicate parameter name not allowed in this context\"]",
-  )
+  json_inspect(output, content=[
+    "SyntaxError: Duplicate parameter name not allowed in this context",
+  ])
 }
 
 // ===== TypedArray / ArrayBuffer / DataView test262-style tests =====
@@ -8295,7 +8134,7 @@ test "test262: ArrayBuffer constructor basic" {
       #|console.log(typeof buf);
     ),
   )
-  inspect(output, content="[\"8\", \"true\", \"object\"]")
+  json_inspect(output, content=["8", "true", "object"])
 }
 
 ///|
@@ -8309,7 +8148,7 @@ test "test262: ArrayBuffer constructor requires new" {
       #|}
     ),
   )
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -8327,7 +8166,7 @@ test "test262: ArrayBuffer.prototype.slice" {
       #|console.log(view2[2]);
     ),
   )
-  inspect(output, content="[\"3\", \"20\", \"30\", \"40\"]")
+  json_inspect(output, content=["3", "20", "30", "40"])
 }
 
 ///|
@@ -8341,10 +8180,7 @@ test "test262: ArrayBuffer.isView" {
       #|console.log(ArrayBuffer.isView(42));
     ),
   )
-  inspect(
-    output,
-    content="[\"true\", \"true\", \"false\", \"false\", \"false\"]",
-  )
+  json_inspect(output, content=["true", "true", "false", "false", "false"])
 }
 
 ///|
@@ -8362,7 +8198,7 @@ test "test262: TypedArray constructors from length" {
       #|console.log(b.BYTES_PER_ELEMENT);
     ),
   )
-  inspect(output, content="[\"3\", \"3\", \"1\", \"0\", \"2\", \"16\", \"8\"]")
+  json_inspect(output, content=["3", "3", "1", "0", "2", "16", "8"])
 }
 
 ///|
@@ -8376,7 +8212,7 @@ test "test262: TypedArray constructor requires new" {
       #|}
     ),
   )
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -8390,7 +8226,7 @@ test "test262: TypedArray constructor from array" {
       #|console.log(a[2]);
     ),
   )
-  inspect(output, content="[\"3\", \"10\", \"20\", \"30\"]")
+  json_inspect(output, content=["3", "10", "20", "30"])
 }
 
 ///|
@@ -8406,7 +8242,7 @@ test "test262: TypedArray constructor from another TypedArray" {
     ),
   )
   // 1000 & 0xFF = 232, 2000 & 0xFF = 208, 3000 & 0xFF = 184
-  inspect(output, content="[\"3\", \"232\", \"208\", \"184\"]")
+  json_inspect(output, content=["3", "232", "208", "184"])
 }
 
 ///|
@@ -8425,7 +8261,7 @@ test "test262: TypedArray constructor from ArrayBuffer" {
       #|console.log(u16[3]);
     ),
   )
-  inspect(output, content="[\"4\", \"1\", \"2\", \"3\", \"4\"]")
+  json_inspect(output, content=["4", "1", "2", "3", "4"])
 }
 
 ///|
@@ -8441,7 +8277,7 @@ test "test262: TypedArray constructor from ArrayBuffer with byteOffset" {
       #|console.log(view.byteLength);
     ),
   )
-  inspect(output, content="[\"2\", \"4\", \"8\"]")
+  json_inspect(output, content=["2", "4", "8"])
 }
 
 ///|
@@ -8455,7 +8291,7 @@ test "test262: TypedArray constructor from ArrayBuffer with offset and length" {
       #|console.log(view.byteLength);
     ),
   )
-  inspect(output, content="[\"1\", \"4\", \"4\"]")
+  json_inspect(output, content=["1", "4", "4"])
 }
 
 ///|
@@ -8472,7 +8308,7 @@ test "test262: TypedArray constructor rejects detached ArrayBuffer" {
       #|}
     ),
   )
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -8488,7 +8324,7 @@ test "test262: TypedArray constructor rejects negative byteOffset" {
       #|}
     ),
   )
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -8504,7 +8340,7 @@ test "test262: TypedArray constructor rejects unaligned byteOffset" {
       #|}
     ),
   )
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -8520,7 +8356,7 @@ test "test262: TypedArray.prototype.set from array" {
       #|console.log(a[4]);
     ),
   )
-  inspect(output, content="[\"0\", \"10\", \"20\", \"30\", \"0\"]")
+  json_inspect(output, content=["0", "10", "20", "30", "0"])
 }
 
 ///|
@@ -8537,7 +8373,7 @@ test "test262: TypedArray.prototype.set from TypedArray" {
       #|console.log(dst[4]);
     ),
   )
-  inspect(output, content="[\"0\", \"10\", \"20\", \"30\", \"0\"]")
+  json_inspect(output, content=["0", "10", "20", "30", "0"])
 }
 
 ///|
@@ -8556,7 +8392,7 @@ test "test262: TypedArray.prototype.set overlapping buffers" {
     ),
   )
   // After set: b should get the original a values [1,2,3,4]
-  inspect(output, content="[\"1\", \"2\", \"3\", \"4\"]")
+  json_inspect(output, content=["1", "2", "3", "4"])
 }
 
 ///|
@@ -8574,7 +8410,7 @@ test "test262: TypedArray.prototype.subarray" {
     ),
   )
   // subarray shares the buffer, so modifying sub affects a
-  inspect(output, content="[\"3\", \"20\", \"30\", \"40\", \"99\"]")
+  json_inspect(output, content=["3", "20", "30", "40", "99"])
 }
 
 ///|
@@ -8592,7 +8428,7 @@ test "test262: TypedArray.prototype.slice" {
     ),
   )
   // slice creates a new buffer, so modifying s does not affect a
-  inspect(output, content="[\"3\", \"20\", \"30\", \"40\", \"20\"]")
+  json_inspect(output, content=["3", "20", "30", "40", "20"])
 }
 
 ///|
@@ -8610,7 +8446,7 @@ test "test262: TypedArray.prototype.fill" {
       #|console.log(a[3]);
     ),
   )
-  inspect(output, content="[\"42\", \"42\", \"42\", \"99\", \"99\", \"42\"]")
+  json_inspect(output, content=["42", "42", "42", "99", "99", "42"])
 }
 
 ///|
@@ -8626,7 +8462,7 @@ test "test262: TypedArray.prototype.copyWithin" {
       #|console.log(a[4]);
     ),
   )
-  inspect(output, content="[\"4\", \"5\", \"3\", \"4\", \"5\"]")
+  json_inspect(output, content=["4", "5", "3", "4", "5"])
 }
 
 ///|
@@ -8639,7 +8475,7 @@ test "test262: TypedArray.prototype.indexOf" {
       #|console.log(a.indexOf(99));
     ),
   )
-  inspect(output, content="[\"1\", \"3\", \"-1\"]")
+  json_inspect(output, content=["1", "3", "-1"])
 }
 
 ///|
@@ -8652,7 +8488,7 @@ test "test262: TypedArray.prototype.lastIndexOf" {
       #|console.log(a.lastIndexOf(99));
     ),
   )
-  inspect(output, content="[\"3\", \"1\", \"-1\"]")
+  json_inspect(output, content=["3", "1", "-1"])
 }
 
 ///|
@@ -8664,7 +8500,7 @@ test "test262: TypedArray.prototype.includes" {
       #|console.log(a.includes(99));
     ),
   )
-  inspect(output, content="[\"true\", \"false\"]")
+  json_inspect(output, content=["true", "false"])
 }
 
 ///|
@@ -8680,7 +8516,7 @@ test "test262: TypedArray.prototype.reverse" {
       #|console.log(a[4]);
     ),
   )
-  inspect(output, content="[\"5\", \"4\", \"3\", \"2\", \"1\"]")
+  json_inspect(output, content=["5", "4", "3", "2", "1"])
 }
 
 ///|
@@ -8696,7 +8532,7 @@ test "test262: TypedArray.prototype.sort default numeric" {
       #|console.log(a[4]);
     ),
   )
-  inspect(output, content="[\"10\", \"20\", \"30\", \"40\", \"50\"]")
+  json_inspect(output, content=["10", "20", "30", "40", "50"])
 }
 
 ///|
@@ -8712,7 +8548,7 @@ test "test262: TypedArray.prototype.sort with comparator" {
       #|console.log(a[4]);
     ),
   )
-  inspect(output, content="[\"50\", \"40\", \"30\", \"20\", \"10\"]")
+  json_inspect(output, content=["50", "40", "30", "20", "10"])
 }
 
 ///|
@@ -8728,7 +8564,7 @@ test "test262: TypedArray.prototype.sort NaN sorts last" {
       #|console.log(isNaN(a[4]));
     ),
   )
-  inspect(output, content="[\"1\", \"2\", \"3\", \"true\", \"true\"]")
+  json_inspect(output, content=["1", "2", "3", "true", "true"])
 }
 
 ///|
@@ -8740,7 +8576,7 @@ test "test262: TypedArray.prototype.join" {
       #|console.log(a.join("-"));
     ),
   )
-  inspect(output, content="[\"1,2,3\", \"1-2-3\"]")
+  json_inspect(output, content=["1,2,3", "1-2-3"])
 }
 
 ///|
@@ -8751,7 +8587,7 @@ test "test262: TypedArray.prototype.toString" {
       #|console.log(a.toString());
     ),
   )
-  inspect(output, content="[\"1,2,3\"]")
+  json_inspect(output, content=["1,2,3"])
 }
 
 ///|
@@ -8764,7 +8600,7 @@ test "test262: TypedArray.prototype.at" {
       #|console.log(a.at(3));
     ),
   )
-  inspect(output, content="[\"10\", \"30\", \"undefined\"]")
+  json_inspect(output, content=["10", "30", "undefined"])
 }
 
 ///|
@@ -8778,7 +8614,7 @@ test "test262: TypedArray.from basic" {
       #|console.log(a[2]);
     ),
   )
-  inspect(output, content="[\"3\", \"10\", \"20\", \"30\"]")
+  json_inspect(output, content=["3", "10", "20", "30"])
 }
 
 ///|
@@ -8791,7 +8627,7 @@ test "test262: TypedArray.from with mapFn" {
       #|console.log(a[2]);
     ),
   )
-  inspect(output, content="[\"10\", \"20\", \"30\"]")
+  json_inspect(output, content=["10", "20", "30"])
 }
 
 ///|
@@ -8804,7 +8640,7 @@ test "test262: TypedArray.from with mapFn receives index" {
       #|console.log(a[2]);
     ),
   )
-  inspect(output, content="[\"10\", \"21\", \"32\"]")
+  json_inspect(output, content=["10", "21", "32"])
 }
 
 ///|
@@ -8818,7 +8654,7 @@ test "test262: TypedArray.of" {
       #|console.log(a[2]);
     ),
   )
-  inspect(output, content="[\"3\", \"10\", \"20\", \"30\"]")
+  json_inspect(output, content=["3", "10", "20", "30"])
 }
 
 ///|
@@ -8831,7 +8667,7 @@ test "test262: TypedArray buffer property" {
       #|console.log(a.buffer instanceof ArrayBuffer);
     ),
   )
-  inspect(output, content="[\"true\", \"true\"]")
+  json_inspect(output, content=["true", "true"])
 }
 
 ///|
@@ -8847,7 +8683,7 @@ test "test262: TypedArray Uint8ClampedArray clamping" {
       #|console.log(a[2]);
     ),
   )
-  inspect(output, content="[\"0\", \"255\", \"128\"]")
+  json_inspect(output, content=["0", "255", "128"])
 }
 
 ///|
@@ -8866,7 +8702,7 @@ test "test262: TypedArray Uint8ClampedArray banker's rounding" {
       #|console.log(result.join(","));
     ),
   )
-  inspect(output, content="[\"0,2,2,4,4,6\"]")
+  json_inspect(output, content=["0,2,2,4,4,6"])
 }
 
 ///|
@@ -8880,7 +8716,7 @@ test "test262: TypedArray Int8Array signed wrap" {
       #|console.log(a[1]);
     ),
   )
-  inspect(output, content="[\"-128\", \"-1\"]")
+  json_inspect(output, content=["-128", "-1"])
 }
 
 ///|
@@ -8892,7 +8728,7 @@ test "test262: TypedArray Int16Array signed" {
       #|console.log(a[0]);
     ),
   )
-  inspect(output, content="[\"-1\"]")
+  json_inspect(output, content=["-1"])
 }
 
 ///|
@@ -8904,7 +8740,7 @@ test "test262: TypedArray Int32Array range" {
       #|console.log(a[0]);
     ),
   )
-  inspect(output, content="[\"2147483647\"]")
+  json_inspect(output, content=["2147483647"])
 }
 
 ///|
@@ -8916,7 +8752,7 @@ test "test262: TypedArray Float32Array precision" {
       #|console.log(a[0]);
     ),
   )
-  inspect(output, content="[\"1.5\"]")
+  json_inspect(output, content=["1.5"])
 }
 
 ///|
@@ -8935,12 +8771,7 @@ test "test262: TypedArray Float32Array mantissa carry" {
       #|console.log(a[3]);
     ),
   )
-  inspect(
-    output,
-    content=(
-      #|["16777215", "16777216", "16777218", "16777218"]
-    ),
-  )
+  json_inspect(output, content=["16777215", "16777216", "16777218", "16777218"])
 }
 
 ///|
@@ -8952,7 +8783,7 @@ test "test262: TypedArray Float64Array" {
       #|console.log(a[0]);
     ),
   )
-  inspect(output, content="[\"1.7976931348623157e+308\"]")
+  json_inspect(output, content=["1.7976931348623157e+308"])
 }
 
 ///|
@@ -8970,7 +8801,7 @@ test "test262: TypedArray shared buffer view" {
       #|console.log(u8[3]);
     ),
   )
-  inspect(output, content="[\"1\", \"0\", \"1\"]")
+  json_inspect(output, content=["1", "0", "1"])
 }
 
 ///|
@@ -8981,7 +8812,7 @@ test "test262: TypedArray Symbol.toStringTag" {
       #|console.log(Object.prototype.toString.call(a));
     ),
   )
-  inspect(output, content="[\"[object Uint8Array]\"]")
+  json_inspect(output, content=["[object Uint8Array]"])
 }
 
 ///|
@@ -8996,7 +8827,7 @@ test "test262: TypedArray Symbol.iterator" {
       #|console.log(result.join(","));
     ),
   )
-  inspect(output, content="[\"10,20,30\"]")
+  json_inspect(output, content=["10,20,30"])
 }
 
 ///|
@@ -9016,7 +8847,7 @@ test "test262: TypedArray entries iterator" {
       #|console.log(n3.done);
     ),
   )
-  inspect(output, content="[\"false\", \"0\", \"10\", \"1\", \"20\", \"true\"]")
+  json_inspect(output, content=["false", "0", "10", "1", "20", "true"])
 }
 
 ///|
@@ -9031,7 +8862,7 @@ test "test262: TypedArray keys iterator" {
       #|console.log(keys.join(","));
     ),
   )
-  inspect(output, content="[\"0,1,2\"]")
+  json_inspect(output, content=["0,1,2"])
 }
 
 ///|
@@ -9046,7 +8877,7 @@ test "test262: TypedArray values iterator" {
       #|console.log(vals.join(","));
     ),
   )
-  inspect(output, content="[\"5,10,15\"]")
+  json_inspect(output, content=["5,10,15"])
 }
 
 ///|
@@ -9059,7 +8890,7 @@ test "test262: TypedArray out-of-bounds index returns undefined" {
       #|console.log(a[100]);
     ),
   )
-  inspect(output, content="[\"undefined\", \"undefined\", \"undefined\"]")
+  json_inspect(output, content=["undefined", "undefined", "undefined"])
 }
 
 ///|
@@ -9073,7 +8904,7 @@ test "test262: TypedArray canonical numeric index string" {
       #|console.log(a["1.5"]);
     ),
   )
-  inspect(output, content="[\"10\", \"20\", \"undefined\", \"undefined\"]")
+  json_inspect(output, content=["10", "20", "undefined", "undefined"])
 }
 
 ///|
@@ -9090,10 +8921,7 @@ test "test262: TypedArray BYTES_PER_ELEMENT" {
       #|console.log(Float64Array.BYTES_PER_ELEMENT);
     ),
   )
-  inspect(
-    output,
-    content="[\"1\", \"1\", \"2\", \"2\", \"4\", \"4\", \"4\", \"8\"]",
-  )
+  json_inspect(output, content=["1", "1", "2", "2", "4", "4", "4", "8"])
 }
 
 ///|
@@ -9109,7 +8937,7 @@ test "test262: TypedArray.prototype.set range error" {
       #|}
     ),
   )
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -9124,7 +8952,7 @@ test "test262: TypedArray.prototype.set array-like object" {
       #|console.log(a[3]);
     ),
   )
-  inspect(output, content="[\"10\", \"20\", \"30\", \"0\"]")
+  json_inspect(output, content=["10", "20", "30", "0"])
 }
 
 ///|
@@ -9138,7 +8966,7 @@ test "test262: TypedArray.prototype.subarray negative indices" {
       #|console.log(sub[1]);
     ),
   )
-  inspect(output, content="[\"2\", \"3\", \"4\"]")
+  json_inspect(output, content=["2", "3", "4"])
 }
 
 ///|
@@ -9153,7 +8981,7 @@ test "test262: TypedArray.prototype.slice negative indices" {
       #|console.log(s[2]);
     ),
   )
-  inspect(output, content="[\"3\", \"30\", \"40\", \"50\"]")
+  json_inspect(output, content=["3", "30", "40", "50"])
 }
 
 ///|
@@ -9169,7 +8997,7 @@ test "test262: TypedArray.prototype.fill negative indices" {
       #|console.log(a[4]);
     ),
   )
-  inspect(output, content="[\"1\", \"2\", \"0\", \"0\", \"5\"]")
+  json_inspect(output, content=["1", "2", "0", "0", "5"])
 }
 
 ///|
@@ -9184,7 +9012,7 @@ test "test262: TypedArray for-in enumeration" {
       #|console.log(keys.join(","));
     ),
   )
-  inspect(output, content="[\"0,1,2\"]")
+  json_inspect(output, content=["0,1,2"])
 }
 
 ///|
@@ -9198,7 +9026,7 @@ test "test262: DataView constructor basic" {
       #|console.log(dv.buffer === buf);
     ),
   )
-  inspect(output, content="[\"8\", \"0\", \"true\"]")
+  json_inspect(output, content=["8", "0", "true"])
 }
 
 ///|
@@ -9211,7 +9039,7 @@ test "test262: DataView constructor with offset and length" {
       #|console.log(dv.byteOffset);
     ),
   )
-  inspect(output, content="[\"8\", \"4\"]")
+  json_inspect(output, content=["8", "4"])
 }
 
 ///|
@@ -9225,7 +9053,7 @@ test "test262: DataView constructor requires new" {
       #|}
     ),
   )
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -9239,7 +9067,7 @@ test "test262: DataView constructor rejects non-ArrayBuffer" {
       #|}
     ),
   )
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -9255,7 +9083,7 @@ test "test262: DataView constructor rejects negative byteOffset" {
       #|}
     ),
   )
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -9272,7 +9100,7 @@ test "test262: DataView getInt8/setInt8" {
       #|console.log(dv.getInt8(2));
     ),
   )
-  inspect(output, content="[\"-128\", \"127\", \"0\"]")
+  json_inspect(output, content=["-128", "127", "0"])
 }
 
 ///|
@@ -9287,7 +9115,7 @@ test "test262: DataView getUint8/setUint8" {
       #|console.log(dv.getUint8(1));
     ),
   )
-  inspect(output, content="[\"255\", \"0\"]")
+  json_inspect(output, content=["255", "0"])
 }
 
 ///|
@@ -9306,7 +9134,7 @@ test "test262: DataView getInt16/setInt16 endianness" {
   )
   // Big-endian: 256 = 0x0100 => byte[0]=1, byte[1]=0
   // Little-endian: 256 = 0x0100 => byte[2]=0, byte[3]=1
-  inspect(output, content="[\"1\", \"0\", \"0\", \"1\"]")
+  json_inspect(output, content=["1", "0", "0", "1"])
 }
 
 ///|
@@ -9323,7 +9151,7 @@ test "test262: DataView getInt32/setInt32" {
   // 305419896 = 0x12345678
   // Big-endian read back: same = 305419896
   // Little-endian read of big-endian stored: 0x78563412 = 2018915346
-  inspect(output, content="[\"305419896\", \"2018915346\"]")
+  json_inspect(output, content=["305419896", "2018915346"])
 }
 
 ///|
@@ -9336,7 +9164,7 @@ test "test262: DataView getFloat64/setFloat64" {
       #|console.log(dv.getFloat64(0));
     ),
   )
-  inspect(output, content="[\"3.14\"]")
+  json_inspect(output, content=["3.14"])
 }
 
 ///|
@@ -9353,7 +9181,7 @@ test "test262: DataView out-of-bounds access" {
       #|}
     ),
   )
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -9370,7 +9198,7 @@ test "test262: DataView receiver brand check" {
       #|}
     ),
   )
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -9381,7 +9209,7 @@ test "test262: DataView Symbol.toStringTag" {
       #|console.log(Object.prototype.toString.call(dv));
     ),
   )
-  inspect(output, content="[\"[object DataView]\"]")
+  json_inspect(output, content=["[object DataView]"])
 }
 
 ///|
@@ -9396,7 +9224,7 @@ test "test262: detachArrayBuffer makes TypedArray return undefined" {
       #|console.log(a[0]);
     ),
   )
-  inspect(output, content="[\"42\", \"undefined\"]")
+  json_inspect(output, content=["42", "undefined"])
 }
 
 ///|
@@ -9412,7 +9240,7 @@ test "test262: TypedArray.prototype.sort comparator error propagation" {
       #|}
     ),
   )
-  inspect(output, content="[\"oops\"]")
+  json_inspect(output, content=["oops"])
 }
 
 ///|
@@ -9428,7 +9256,7 @@ test "test262: TypedArray.from with thisArg" {
       #|console.log(a[2]);
     ),
   )
-  inspect(output, content="[\"10\", \"20\", \"30\"]")
+  json_inspect(output, content=["10", "20", "30"])
 }
 
 ///|
@@ -9446,10 +9274,10 @@ test "test262: TypedArray all constructor types exist" {
       #|console.log(typeof Float64Array);
     ),
   )
-  inspect(
-    output,
-    content="[\"function\", \"function\", \"function\", \"function\", \"function\", \"function\", \"function\", \"function\", \"function\"]",
-  )
+  json_inspect(output, content=[
+    "function", "function", "function", "function", "function", "function", "function",
+    "function", "function",
+  ])
 }
 
 ///|
@@ -9465,7 +9293,7 @@ test "test262: TypedArray.prototype.copyWithin overlapping" {
       #|console.log(a[4]);
     ),
   )
-  inspect(output, content="[\"1\", \"1\", \"2\", \"3\", \"5\"]")
+  json_inspect(output, content=["1", "1", "2", "3", "5"])
 }
 
 ///|
@@ -9476,7 +9304,7 @@ test "test262: TypedArray.prototype.includes NaN" {
       #|console.log(a.includes(NaN));
     ),
   )
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -9493,7 +9321,7 @@ test "test262: ArrayBuffer.prototype.slice detached throws" {
       #|}
     ),
   )
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -9510,7 +9338,7 @@ test "test262: ArrayBuffer.prototype.byteLength detached throws" {
       #|}
     ),
   )
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -9528,7 +9356,7 @@ test "test262: DataView on detached buffer throws" {
       #|}
     ),
   )
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -9545,7 +9373,7 @@ test "test262: DataView constructor rejects detached ArrayBuffer" {
       #|}
     ),
   )
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -9561,7 +9389,7 @@ test "class fields on Map subclass" {
       #|console.log(d instanceof Map);
     ),
   )
-  inspect(output, content="[\"1\", \"true\"]")
+  json_inspect(output, content=["1", "true"])
 }
 
 ///|
@@ -9576,7 +9404,7 @@ test "class fields on Set subclass" {
       #|console.log(s instanceof Set);
     ),
   )
-  inspect(output, content="[\"my-set\", \"true\"]")
+  json_inspect(output, content=["my-set", "true"])
 }
 
 ///|
@@ -9589,7 +9417,7 @@ test "regex flag ordering is normalized to alphabetical" {
       #|console.log(/abc/gi.flags);
     ),
   )
-  inspect(output, content="[\"gims\", \"gy\", \"gims\", \"gi\"]")
+  json_inspect(output, content=["gims", "gy", "gims", "gi"])
 }
 
 ///|
@@ -9601,7 +9429,7 @@ test "GeneratorFunction constructor throws SyntaxError on bad source" {
       #|try { GF("a", "???"); } catch(e) { console.log(e instanceof SyntaxError); }
     ),
   )
-  inspect(output, content="[\"true\", \"true\"]")
+  json_inspect(output, content=["true", "true"])
 }
 
 ///|
@@ -9610,10 +9438,9 @@ test "Function.prototype.toString distinguishes async functions" {
     #|console.log((function foo(){}).toString());
     #|console.log((async function bar(){}).toString());
   let output = run_output(src)
-  inspect(
-    output,
-    content="[\"function foo() { [native code] }\", \"async function bar() { [native code] }\"]",
-  )
+  json_inspect(output, content=[
+    "function foo() { [native code] }", "async function bar() { [native code] }",
+  ])
 }
 
 // Engine-thrown error shape (agent-todo #13 + rebinding regression).
@@ -9631,7 +9458,7 @@ test "engine TypeError: name on prototype, not own" {
     #|  console.log(Object.prototype.hasOwnProperty.call(e, "name"));
     #|}
   let output = run_output(src)
-  inspect(output, content="[\"TypeError\", \"false\"]")
+  json_inspect(output, content=["TypeError", "false"])
 }
 
 ///|
@@ -9644,7 +9471,7 @@ test "engine TypeError survives constructor rebinding" {
     #|}
   let output = run_output(src)
   // After rebinding, native prototype is unreachable — fall back to own `name`.
-  inspect(output, content="[\"TypeError\", \"true\"]")
+  json_inspect(output, content=["TypeError", "true"])
 }
 
 ///|
@@ -9655,7 +9482,7 @@ test "engine ReferenceError survives constructor rebinding" {
     #|  console.log(e.name);
     #|}
   let output = run_output(src)
-  inspect(output, content="[\"ReferenceError\"]")
+  json_inspect(output, content=["ReferenceError"])
 }
 
 ///|
@@ -9668,7 +9495,7 @@ test "Promise.try rejection name survives constructor rebinding" {
     #|  console.log(e.name);
     #|});
   let output = run_output_async(src)
-  inspect(output, content="[\"TypeError\"]")
+  json_inspect(output, content=["TypeError"])
 }
 
 ///|
@@ -9685,7 +9512,7 @@ test "Promise.any AggregateError name reflects rebound constructor" {
     #|  console.log(typeof e.name);
     #|});
   let output = run_output_async(src)
-  inspect(output, content="[\"undefined\"]")
+  json_inspect(output, content=["undefined"])
 }
 
 ///|
@@ -9706,7 +9533,7 @@ test "engine error adversarial: proto rebound to name-matching object" {
   let output = run_output(src)
   // Fallback skipped because Fake.prototype has own name "TypeError".
   // e.name is resolved via the (user-owned) prototype chain.
-  inspect(output, content="[\"TypeError\", \"false\"]")
+  json_inspect(output, content=["TypeError", "false"])
 }
 
 ///|
@@ -9727,7 +9554,7 @@ test "annex-b eval: skip extension when top-level let conflicts" {
     #|  console.log(globalThis.__typ);
     #|})();
   let output = run_output_annex_b(src)
-  inspect(output, content="[\"ok\", \"number\"]")
+  json_inspect(output, content=["ok", "number"])
 }
 
 ///|
@@ -9743,7 +9570,7 @@ test "annex-b eval: reinit param binding on block-entry" {
     #|console.log(globalThis.__init);
     #|console.log(globalThis.__after);
   let output = run_output_annex_b(src)
-  inspect(output, content="[\"123\", \"function\"]")
+  json_inspect(output, content=["123", "function"])
 }
 
 ///|
@@ -9762,7 +9589,7 @@ test "annex-b eval: basic block function hoists as var, reinits on block entry" 
     #|console.log(globalThis.__init);
     #|console.log(globalThis.__after);
   let output = run_output_annex_b(src)
-  inspect(output, content="[\"undefined\", \"function\"]")
+  json_inspect(output, content=["undefined", "function"])
 }
 
 ///|
@@ -9786,7 +9613,7 @@ test "annex-b eval: indirect eval does not false-positive on caller block let" {
     #|console.log(outerErr);
     #|console.log(typeof x);
   let output = run_output_annex_b(src)
-  inspect(output, content="[\"null\", \"number\"]")
+  json_inspect(output, content=["null", "number"])
 }
 
 ///|
@@ -9807,7 +9634,7 @@ test "annex-b: function-body skip when candidate equals param name" {
     #|console.log(init);
     #|console.log(after);
   let output = run_output_annex_b(src)
-  inspect(output, content="[\"123\", \"123\"]")
+  json_inspect(output, content=["123", "123"])
 }
 
 ///|
@@ -9826,7 +9653,7 @@ test "annex-b: function-body skip when candidate equals arguments" {
     #|  console.log(after);
     #|})();
   let output = run_output_annex_b(src)
-  inspect(output, content="[\"[object Arguments]\", \"[object Arguments]\"]")
+  json_inspect(output, content=["[object Arguments]", "[object Arguments]"])
 }
 
 ///|
@@ -9848,7 +9675,7 @@ test "annex-b: function-body skip when enclosing block let conflicts" {
     #|}
     #|console.log(foo());
   let output = run_output_annex_b(src)
-  inspect(output, content="[\"undefined\"]")
+  json_inspect(output, content=["undefined"])
 }
 
 ///|
@@ -9867,7 +9694,7 @@ test "annex-b eval: if-clause FunctionDeclaration hoists via B.3.4" {
     #|})();
     #|console.log(globalThis.__typ);
   let output = run_output_annex_b(src)
-  inspect(output, content="[\"function\"]")
+  json_inspect(output, content=["function"])
 }
 
 ///|
@@ -9885,7 +9712,7 @@ test "annex-b: labeled block function reinits outer var (no eval)" {
     #|{ label: function f() { return 2; } }
     #|console.log(f());
   let output = run_output_annex_b(src)
-  inspect(output, content="[\"2\"]")
+  json_inspect(output, content=["2"])
 }
 
 ///|
@@ -9908,7 +9735,7 @@ test "annex-b eval: reinit param in constructor call" {
     #|console.log(globalThis.__init);
     #|console.log(globalThis.__after);
   let output = run_output_annex_b(src)
-  inspect(output, content="[\"123\", \"function\"]")
+  json_inspect(output, content=["123", "function"])
 }
 
 ///|
@@ -9927,7 +9754,7 @@ test "annex-b eval: skip extension when comma-let declares conflicting name" {
     #|console.log(f);
     #|console.log(typeof f);
   let output = run_output_annex_b(src)
-  inspect(output, content="[\"outer\", \"string\"]")
+  json_inspect(output, content=["outer", "string"])
 }
 
 ///|
@@ -9946,7 +9773,7 @@ test "annex-b eval: skip extension when enclosing const conflicts" {
     #|  console.log(typeof f);
     #|})();
   let output = run_output_annex_b(src)
-  inspect(output, content="[\"1\", \"number\"]")
+  json_inspect(output, content=["1", "number"])
 }
 
 ///|
@@ -9964,7 +9791,7 @@ test "§10.2.11: body let arguments shadows param-scope arguments object" {
     #|}
     #|console.log(f());
   let output = run_output(src)
-  inspect(output, content="[\"local\"]")
+  json_inspect(output, content=["local"])
 }
 
 ///|
@@ -9987,7 +9814,7 @@ test "§10.2.11: arrow default eval-var-arguments + body let arguments" {
     #|console.log(log[0]);
     #|console.log(log[1]);
   let output = run_output(src)
-  inspect(output, content="[\"local\", \"param\"]")
+  json_inspect(output, content=["local", "param"])
 }
 
 ///|
@@ -10003,7 +9830,7 @@ test "§10.2.11: plain-rest Ext stays single-env (body var reuses param)" {
     #|}
     #|console.log(JSON.stringify(f(1, 2, 3)));
   let output = run_output(src)
-  inspect(output, content="[\"[1,2,3]\"]")
+  json_inspect(output, content=["[1,2,3]"])
 }
 
 ///|
@@ -10028,8 +9855,8 @@ test "§10.2.11: plain-destructure Ext stays single-env (body var reuses param)"
     #|console.log(g([2]));
   let out1 = run_output(obj_src)
   let out2 = run_output(arr_src)
-  inspect(out1, content="[\"1\"]")
-  inspect(out2, content="[\"2\"]")
+  json_inspect(out1, content=["1"])
+  json_inspect(out2, content=["2"])
 }
 
 ///|
@@ -10045,7 +9872,7 @@ test "§10.2.11: function-name self-binding yields to param of same name" {
     #|console.log(g());
     #|console.log(g(7));
   let output = run_output(src)
-  inspect(output, content="[\"1\", \"7\"]")
+  json_inspect(output, content=["1", "7"])
 }
 
 ///|
@@ -10061,7 +9888,7 @@ test "§10.2.11: named function expression self-name visible to default closures
     #|var g = function f(a = () => f) { return a(); };
     #|console.log(g() === g);
   let output = run_output(src)
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -10079,7 +9906,7 @@ test "§15.2.5: object shorthand method has no self-name binding" {
     #|  console.log(e.name + ': ' + e.message);
     #|}
   let output = run_output(src)
-  inspect(output, content="[\"ReferenceError: m is not defined\"]")
+  json_inspect(output, content=["ReferenceError: m is not defined"])
 }
 
 ///|
@@ -10092,7 +9919,7 @@ test "§15.2.5: class method has no self-name binding" {
     #|  console.log(e.name + ': ' + e.message);
     #|}
   let output = run_output(src)
-  inspect(output, content="[\"ReferenceError: m is not defined\"]")
+  json_inspect(output, content=["ReferenceError: m is not defined"])
 }
 
 ///|
@@ -10105,7 +9932,7 @@ test "§15.2.5: `key: function name() {}` keeps named-FE self binding" {
     #|var o = { f: function foo() { return foo; } };
     #|console.log(o.f() === o.f);
   let output = run_output(src)
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -10126,7 +9953,7 @@ test "§10.2.11: implicit super() splits body env under HasParameterExpressions"
     #|  console.log(e.name + ': ' + e.message);
     #|}
   let output = run_output(src)
-  inspect(output, content="[\"ReferenceError: x is not defined\"]")
+  json_inspect(output, content=["ReferenceError: x is not defined"])
 }
 
 ///|
@@ -10139,7 +9966,7 @@ test "§10.2.11: class constructor default expressions see arguments" {
     #|class C { constructor(a = arguments.length) { this.a = a } }
     #|console.log(new C(undefined, 2, 3).a);
   let output = run_output(src)
-  inspect(output, content="[\"3\"]")
+  json_inspect(output, content=["3"])
 }
 
 ///|
@@ -10153,7 +9980,7 @@ test "§10.2.11: implicit super() ctor default expressions see arguments" {
     #|class D extends B {}
     #|console.log(new D(undefined, 2, 3).a);
   let output = run_output(src)
-  inspect(output, content="[\"3\"]")
+  json_inspect(output, content=["3"])
 }
 
 ///|
@@ -10173,7 +10000,7 @@ test "§10.2.11: param-scope eval-var captured by arrow default closure" {
     #|console.log(log[0]);
     #|console.log(log[1]);
   let output = run_output(src)
-  inspect(output, content="[\"body\", \"from-eval\"]")
+  json_inspect(output, content=["body", "from-eval"])
 }
 
 ///|
@@ -10347,7 +10174,7 @@ test "§19.2.1.3 regression: arrow with eval(var arguments) in default runs norm
     #|};
     #|console.log(f());
   let output = run_output(src)
-  inspect(output, content="[\"ok\"]")
+  json_inspect(output, content=["ok"])
 }
 
 ///|
@@ -10362,7 +10189,7 @@ test "§19.2.1.3 regression: body eval(var arguments) in non-arrow runs normally
     #|}
     #|console.log(f());
   let output = run_output(src)
-  inspect(output, content="[\"number\"]")
+  json_inspect(output, content=["number"])
 }
 
 ///|
@@ -10377,7 +10204,7 @@ test "§19.2.1.3 regression: eval(var x) in default of non-arrow does not throw"
     #|f();
     #|console.log("ok");
   let output = run_output(src)
-  inspect(output, content="[\"ok\"]")
+  json_inspect(output, content=["ok"])
 }
 
 ///|
@@ -10391,7 +10218,7 @@ test "§19.2.1.3 regression: indirect eval(var arguments) in default runs normal
     #|}
     #|console.log(f());
   let output = run_output(src)
-  inspect(output, content="[\"undefined\"]")
+  json_inspect(output, content=["undefined"])
 }
 
 ///|
@@ -10404,7 +10231,7 @@ test "Object.setPrototypeOf(null) throws TypeError" {
     #|  console.log(e instanceof TypeError);
     #|}
   let output = run_output(src)
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -10417,7 +10244,7 @@ test "Object.setPrototypeOf(undefined) throws TypeError" {
     #|  console.log(e instanceof TypeError);
     #|}
   let output = run_output(src)
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -10426,7 +10253,7 @@ test "Object.setPrototypeOf(42, null) returns 42" {
   let src =
     #|console.log(Object.setPrototypeOf(42, null));
   let output = run_output(src)
-  inspect(output, content="[\"42\"]")
+  json_inspect(output, content=["42"])
 }
 
 ///|
@@ -10440,7 +10267,7 @@ test "Object.setPrototypeOf({}, null) does not throw" {
     #|  console.log("threw: " + e);
     #|}
   let output = run_output(src)
-  inspect(output, content="[\"ok\"]")
+  json_inspect(output, content=["ok"])
 }
 
 ///|
@@ -10457,7 +10284,7 @@ test "§19.2.1.3 regression: nested IIFE with eval(var arguments) in f's default
     #|}
     #|console.log(f());
   let output = run_output(src)
-  inspect(output, content="[\"1\"]")
+  json_inspect(output, content=["1"])
 }
 
 ///|
@@ -10469,7 +10296,7 @@ test "§19.2.1.3 regression: nested arrow invocation in default runs normally" {
     #|function f(p = (() => 1)()) { return p; }
     #|console.log(f());
   let output = run_output(src)
-  inspect(output, content="[\"1\"]")
+  json_inspect(output, content=["1"])
 }
 
 ///|
@@ -10488,7 +10315,7 @@ test "§15.4.5: new obj.method() throws TypeError" {
     ),
   )
   // Regular function expression used as property value is still a constructor
-  inspect(output, content="[\"no throw\"]")
+  json_inspect(output, content=["no throw"])
 }
 
 ///|
@@ -10504,7 +10331,7 @@ test "§15.4.5: new ({method() {}}).method() throws TypeError" {
       #|}
     ),
   )
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -10518,7 +10345,7 @@ test "§15.4.5: method shorthand normal call still works" {
       #|console.log(obj.m());
     ),
   )
-  inspect(output, content="[\"42\"]")
+  json_inspect(output, content=["42"])
 }
 
 ///|
@@ -10531,7 +10358,7 @@ test "§15.4.5: new (function() {}) still works as constructor" {
       #|console.log(o.x);
     ),
   )
-  inspect(output, content="[\"1\"]")
+  json_inspect(output, content=["1"])
 }
 
 ///|
@@ -10546,7 +10373,7 @@ test "§15.4.5: arrow functions still throw on new (regression guard)" {
       #|}
     ),
   )
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -10567,7 +10394,7 @@ test "§10.5.13: new Proxy(methodShorthand, {})() throws TypeError" {
       #|}
     ),
   )
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -10583,7 +10410,7 @@ test "§10.5.13: new Proxy(arrow, {})() throws TypeError" {
       #|}
     ),
   )
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -10598,7 +10425,7 @@ test "§10.5.13: new Proxy(function, {})() still works" {
       #|console.log(o.x);
     ),
   )
-  inspect(output, content="[\"7\"]")
+  json_inspect(output, content=["7"])
 }
 
 // ====== OrdinaryHasInstance: non-object prototype throws TypeError ======
@@ -10778,10 +10605,10 @@ test "method definitions are not constructors and have no prototype property" {
     #|console.log(typeof c.m.prototype);
     #|console.log(typeof C.s.prototype);
   let output = run_output(src)
-  inspect(
-    output,
-    content="[\"TypeError\", \"TypeError\", \"TypeError\", \"false\", \"false\", \"undefined\", \"undefined\", \"undefined\"]",
-  )
+  json_inspect(output, content=[
+    "TypeError", "TypeError", "TypeError", "false", "false", "undefined", "undefined",
+    "undefined",
+  ])
 }
 
 ///|
@@ -10798,10 +10625,9 @@ test "generator method definitions are not constructors" {
     #|console.log(typeof c.m.prototype);
     #|console.log(typeof C.s.prototype);
   let output = run_output(src)
-  inspect(
-    output,
-    content="[\"TypeError\", \"TypeError\", \"true\", \"true\", \"object\", \"object\"]",
-  )
+  json_inspect(output, content=[
+    "TypeError", "TypeError", "true", "true", "object", "object",
+  ])
 }
 
 ///|
@@ -10818,10 +10644,9 @@ test "async generator method definitions are not constructors" {
     #|console.log(typeof c.m.prototype);
     #|console.log(typeof C.s.prototype);
   let output = run_output(src)
-  inspect(
-    output,
-    content="[\"TypeError\", \"TypeError\", \"true\", \"true\", \"object\", \"object\"]",
-  )
+  json_inspect(output, content=[
+    "TypeError", "TypeError", "true", "true", "object", "object",
+  ])
 }
 
 ///|
@@ -10840,10 +10665,9 @@ test "class accessor method definitions are not constructors" {
     #|console.log(typeof gd.prototype);
     #|console.log(typeof sd.prototype);
   let output = run_output(src)
-  inspect(
-    output,
-    content="[\"TypeError\", \"TypeError\", \"undefined\", \"undefined\"]",
-  )
+  json_inspect(output, content=[
+    "TypeError", "TypeError", "undefined", "undefined",
+  ])
 }
 
 // ---------------------------------------------------------------------------
@@ -10861,7 +10685,7 @@ test "B.2: Reflect.set writable length via {} target succeeds" {
     #|console.log(ok);
     #|console.log(arr.length);
   let output = run_output(src)
-  inspect(output, content="[\"true\", \"10\"]")
+  json_inspect(output, content=["true", "10"])
 }
 
 ///|
@@ -10876,7 +10700,7 @@ test "B.2: Reflect.set on non-writable length rejects (B.1 approx #1)" {
     #|console.log(ok);
     #|console.log(arr.length);
   let output = run_output(src)
-  inspect(output, content="[\"false\", \"3\"]")
+  json_inspect(output, content=["false", "3"])
 }
 
 ///|
@@ -10899,7 +10723,7 @@ test "B.2: Reflect.defineProperty on Proxy invokes trap (B.1 approx #2)" {
     #|console.log(calls[0]);
     #|console.log(target.x);
   let output = run_output(src)
-  inspect(output, content="[\"1\", \"x\", \"1\"]")
+  json_inspect(output, content=["1", "x", "1"])
 }
 
 ///|
@@ -10920,7 +10744,7 @@ test "B.2: Object.defineProperty on Proxy invokes trap" {
     #|console.log(trapCalled);
     #|console.log(target.x);
   let output = run_output(src)
-  inspect(output, content="[\"true\", \"7\"]")
+  json_inspect(output, content=["true", "7"])
 }
 
 ///|
@@ -10943,7 +10767,7 @@ test "B.2: Reflect.getOwnPropertyDescriptor on Proxy invokes trap" {
     #|console.log(d.value);
     #|console.log(d.writable);
   let output = run_output(src)
-  inspect(output, content="[\"1\", \"y\", \"999\", \"false\"]")
+  json_inspect(output, content=["1", "y", "999", "false"])
 }
 
 ///|
@@ -10962,7 +10786,7 @@ test "B.2: Proxy GOPD trap hides non-configurable own prop throws TypeError" {
     #|  console.log(e.name);
     #|}
   let output = run_output(src)
-  inspect(output, content="[\"TypeError\"]")
+  json_inspect(output, content=["TypeError"])
 }
 
 ///|
@@ -10979,7 +10803,7 @@ test "B.2: Proxy GOPD trap returning non-object throws TypeError" {
     #|  console.log(e.name);
     #|}
   let output = run_output(src)
-  inspect(output, content="[\"TypeError\"]")
+  json_inspect(output, content=["TypeError"])
 }
 
 ///|
@@ -11002,7 +10826,7 @@ test "B.2: Proxy GOPD trap reports phantom prop on non-extensible target" {
     #|  console.log(e.name);
     #|}
   let output = run_output(src)
-  inspect(output, content="[\"TypeError\"]")
+  json_inspect(output, content=["TypeError"])
 }
 
 ///|
@@ -11022,7 +10846,7 @@ test "B.2: Proxy defineProperty trap succeeds against non-extensible target" {
     #|  console.log(e.name);
     #|}
   let output = run_output(src)
-  inspect(output, content="[\"TypeError\"]")
+  json_inspect(output, content=["TypeError"])
 }
 
 ///|
@@ -11040,7 +10864,7 @@ test "B.2: Proxy defineProperty trap non-config lies about target" {
     #|  console.log(e.name);
     #|}
   let output = run_output(src)
-  inspect(output, content="[\"TypeError\"]")
+  json_inspect(output, content=["TypeError"])
 }
 
 ///|
@@ -11054,7 +10878,7 @@ test "B.2: Object.getOwnPropertyDescriptor on array elements and length" {
     #|var dl = Object.getOwnPropertyDescriptor(arr, "length");
     #|console.log(dl.value + "/" + dl.writable + "/" + dl.enumerable + "/" + dl.configurable);
   let output = run_output(src)
-  inspect(output, content="[\"10/true/true/true\", \"3/true/false/false\"]")
+  json_inspect(output, content=["10/true/true/true", "3/true/false/false"])
 }
 
 ///|
@@ -11081,10 +10905,10 @@ test "Stage C: RegExp match array named properties are own descriptors" {
     #|var descs = Object.getOwnPropertyDescriptors(match);
     #|console.log(descs.index.value);
   let output = run_output(src)
-  inspect(
-    output,
-    content="[\"1/true/true/true\", \"zabz/true/true/true\", \"true\", \"true\", \"true\", \"true\", \"true\", \"true\", \"false\", \"1\"]",
-  )
+  json_inspect(output, content=[
+    "1/true/true/true", "zabz/true/true/true", "true", "true", "true", "true", "true",
+    "true", "false", "1",
+  ])
 }
 
 ///|
@@ -11106,10 +10930,9 @@ test "Stage C: Array index descriptors persist attributes" {
     #|}
     #|console.log(arr.length);
   let output = run_output(src)
-  inspect(
-    output,
-    content="[\"11/false/false/false\", \"true\", \"11\", \"TypeError\", \"1\"]",
-  )
+  json_inspect(output, content=[
+    "11/false/false/false", "true", "11", "TypeError", "1",
+  ])
 }
 
 ///|
@@ -11125,10 +10948,9 @@ test "Stage C: Array sparse length override is hidden" {
     #|console.log(Object.getOwnPropertyDescriptor(arr, "[[ArrayLengthOverride]]"));
     #|console.log(Object.getOwnPropertyNames(arr).indexOf("[[ArrayLengthOverride]]"));
   let output = run_output(src)
-  inspect(
-    output,
-    content="[\"10000001\", \"10000001\", \"undefined\", \"false\", \"undefined\", \"-1\"]",
-  )
+  json_inspect(output, content=[
+    "10000001", "10000001", "undefined", "false", "undefined", "-1",
+  ])
 }
 
 ///|
@@ -11145,10 +10967,7 @@ test "Stage C: Array setter-only index accessor reads undefined" {
     #|console.log(seen);
     #|console.log(Object.getOwnPropertyDescriptor(arr, "0").get);
   let output = run_output(src)
-  inspect(
-    output,
-    content="[\"undefined\", \"undefined\", \"42\", \"undefined\"]",
-  )
+  json_inspect(output, content=["undefined", "undefined", "42", "undefined"])
 }
 
 ///|
@@ -11167,7 +10986,7 @@ test "B.2: Array length partial-truncate and lock writable in one step" {
     #|}
     #|console.log(arr.length);
   let output = run_output(src)
-  inspect(output, content="[\"2\", \"sloppy-silent\", \"2\"]")
+  json_inspect(output, content=["2", "sloppy-silent", "2"])
 }
 
 ///|
@@ -11182,7 +11001,7 @@ test "B.2: Array length set to NaN throws RangeError" {
     #|  console.log(e.name);
     #|}
   let output = run_output(src)
-  inspect(output, content="[\"RangeError\"]")
+  json_inspect(output, content=["RangeError"])
 }
 
 ///|
@@ -11198,7 +11017,7 @@ test "B.2: Array length set huge via defineProperty stays sparse" {
     #|console.log(arr[0]);
     #|console.log(arr[999999]);
   let output = run_output(src)
-  inspect(output, content="[\"1000000\", \"1\", \"undefined\"]")
+  json_inspect(output, content=["1000000", "1", "undefined"])
 }
 
 ///|
@@ -11216,7 +11035,7 @@ test "IteratorClose: body throw calls iterator return (ForOfStmt)" {
     #|} catch(e) {}
     #|console.log(returnCalled);
   let output = run_output(src)
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -11234,7 +11053,7 @@ test "IteratorClose: body throw calls iterator return (ForOfStmtPat)" {
     #|} catch(e) {}
     #|console.log(returnCalled);
   let output = run_output(src)
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -11252,7 +11071,7 @@ test "IteratorClose: pattern assign error calls iterator return" {
     #|} catch(e) {}
     #|console.log(returnCalled);
   let output = run_output(src)
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -11272,7 +11091,7 @@ test "IteratorClose: lhs put error calls iterator return (ForOfExpr)" {
     #|} catch(e) {}
     #|console.log(returnCalled);
   let output = run_output(src)
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -11291,7 +11110,7 @@ test "IteratorClose: body throw calls iterator return (ForOfExpr)" {
     #|} catch(e) {}
     #|console.log(returnCalled);
   let output = run_output(src)
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -11310,7 +11129,7 @@ test "IteratorClose: return inside for-of calls iterator return" {
     #|f();
     #|console.log(returnCalled);
   let output = run_output(src)
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -11326,7 +11145,7 @@ test "IteratorClose: break inside for-of calls iterator return" {
     #|for (var x of iter) { break; }
     #|console.log(returnCalled);
   let output = run_output(src)
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -11341,7 +11160,7 @@ test "IteratorClose: return() throw on return-completion propagates (not suppres
     #|function f() { for (var x of iter) { return x; } }
     #|try { f(); console.log("no error"); } catch(e) { console.log(e.message); }
   let output = run_output(src)
-  inspect(output, content="[\"close threw\"]")
+  json_inspect(output, content=["close threw"])
 }
 
 ///|
@@ -11355,7 +11174,7 @@ test "IteratorClose: return() non-object on break-completion throws TypeError" {
     #|};
     #|try { for (var x of iter) { break; } console.log("no error"); } catch(e) { console.log(e instanceof TypeError); }
   let output = run_output(src)
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -11369,7 +11188,7 @@ test "IteratorClose: return() returning Array is accepted (not TypeError)" {
     #|};
     #|try { for (var x of iter) { break; } console.log("ok"); } catch(e) { console.log("error: " + e.message); }
   let output = run_output(src)
-  inspect(output, content="[\"ok\"]")
+  json_inspect(output, content=["ok"])
 }
 
 ///|
@@ -11383,7 +11202,7 @@ test "IteratorClose: non-callable return property throws TypeError on break-comp
     #|};
     #|try { for (var x of iter) { break; } console.log("no error"); } catch(e) { console.log(e instanceof TypeError); }
   let output = run_output(src)
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -11397,7 +11216,7 @@ test "IteratorClose: throw-completion suppresses return() error (original throw 
     #|};
     #|try { for (var x of iter) { throw new Error("body threw"); } } catch(e) { console.log(e.message); }
   let output = run_output(src)
-  inspect(output, content="[\"body threw\"]")
+  json_inspect(output, content=["body threw"])
 }
 
 ///|
@@ -11417,7 +11236,7 @@ test "Proxy construct: Reflect.construct newTarget forwarded to trap" {
     #|Reflect.construct(P, [], Bar);
     #|console.log(capturedNewTarget === Bar);
   let output = run_output(src)
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -11431,7 +11250,7 @@ test "Proxy construct no trap: new.target = explicit newTarget" {
     #|Reflect.construct(P, [], Bar);
     #|console.log(capturedNewTarget === Bar);
   let output = run_output(src)
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -11443,7 +11262,7 @@ test "Reflect.construct: new.target in body is newTarget" {
     #|var result = Reflect.construct(Foo, [], Bar);
     #|console.log(result === Bar);
   let output = run_output(src)
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -11453,7 +11272,7 @@ test "construct: new.target === ctor for direct new" {
     #|function Foo() { return new.target; }
     #|console.log(new Foo() === Foo);
   let output = run_output(src)
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -11467,7 +11286,7 @@ test "class: new.target propagates through super() call" {
     #|var d = new Derived();
     #|console.log(d.nt === Derived);
   let output = run_output(src)
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -11482,7 +11301,7 @@ test "class: Reflect.construct implicit ctor new.target is newTarget not derived
     #|var obj = Reflect.construct(D, [], OtherCtor);
     #|console.log(obj.nt === OtherCtor);
   let output = run_output(src)
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -11496,7 +11315,7 @@ test "BoundFunc construct: newTarget===boundFn drops proto_override, uses target
     #|var obj = Reflect.construct(bound, [], bound);
     #|console.log(obj.tag);
   let output = run_output(src)
-  inspect(output, content="[\"target\"]")
+  json_inspect(output, content=["target"])
 }
 
 ///|
@@ -11510,7 +11329,7 @@ test "typedarray canonical-invalid string keys: -0 write is no-op" {
     #|console.log(a["-0"]);
     #|console.log(Object.keys(a).length);
   let output = run_output(src)
-  inspect(output, content="[\"undefined\", \"0\"]")
+  json_inspect(output, content=["undefined", "0"])
 }
 
 ///|
@@ -11521,7 +11340,7 @@ test "typedarray canonical-invalid string keys: NaN write is no-op" {
     #|console.log(a["NaN"]);
     #|console.log(Object.keys(a).length);
   let output = run_output(src)
-  inspect(output, content="[\"undefined\", \"0\"]")
+  json_inspect(output, content=["undefined", "0"])
 }
 
 ///|
@@ -11532,7 +11351,7 @@ test "typedarray canonical-invalid string keys: Infinity write is no-op" {
     #|console.log(a["Infinity"]);
     #|console.log(Object.keys(a).length);
   let output = run_output(src)
-  inspect(output, content="[\"undefined\", \"0\"]")
+  json_inspect(output, content=["undefined", "0"])
 }
 
 ///|
@@ -11544,7 +11363,7 @@ test "typedarray canonical-invalid string keys: 1.5 write is no-op" {
     #|console.log(a["1.5"]);
     #|console.log(Object.keys(a).length);
   let output = run_output(src)
-  inspect(output, content="[\"undefined\", \"0\"]")
+  json_inspect(output, content=["undefined", "0"])
 }
 
 ///|
@@ -11556,7 +11375,7 @@ test "typedarray non-canonical string keys: foo stores as expando" {
     #|a["foo"] = 99;
     #|console.log(a["foo"]);
   let output = run_output(src)
-  inspect(output, content="[\"99\"]")
+  json_inspect(output, content=["99"])
 }
 
 ///|
@@ -11566,7 +11385,7 @@ test "typedarray non-canonical string keys: 1e1 stores as expando" {
     #|a["1e1"] = 99;
     #|console.log(a["1e1"]);
   let output = run_output(src)
-  inspect(output, content="[\"99\"]")
+  json_inspect(output, content=["99"])
 }
 
 ///|
@@ -11584,7 +11403,7 @@ test "typedarray strict symbol coercion raises TypeError" {
     #|  console.log(e.name);
     #|}
   let output = run_output(src)
-  inspect(output, content="[\"TypeError\"]")
+  json_inspect(output, content=["TypeError"])
 }
 
 ///|
@@ -11607,7 +11426,7 @@ test "for-of break invokes accessor return getter on iterator" {
     #|for (const x of it) break;
     #|console.log(invoked);
   let output = run_output(src)
-  inspect(output, content="[\"1\"]")
+  json_inspect(output, content=["1"])
 }
 
 ///|
@@ -11619,7 +11438,7 @@ test "TypedArray Reflect.set same-receiver in-range writes to buffer" {
     #|console.log(r);
     #|console.log(ta[1]);
   let output = run_output(src)
-  inspect(output, content="[\"true\", \"42\"]")
+  json_inspect(output, content=["true", "42"])
 }
 
 ///|
@@ -11635,7 +11454,7 @@ test "TypedArray Reflect.set different-receiver in-range lands on receiver" {
     #|console.log(ta[0]);
     #|console.log(obj[0]);
   let output = run_output(src)
-  inspect(output, content="[\"0\", \"99\"]")
+  json_inspect(output, content=["0", "99"])
 }
 
 ///|
@@ -11649,7 +11468,7 @@ test "TypedArray Reflect.set different-receiver out-of-range is no-op" {
     #|console.log(r);
     #|console.log(typeof obj["100"]);
   let output = run_output(src)
-  inspect(output, content="[\"true\", \"undefined\"]")
+  json_inspect(output, content=["true", "undefined"])
 }
 
 ///|
@@ -11672,7 +11491,7 @@ test "for-of break with non-callable inherited return throws TypeError" {
     #|}
     #|console.log(threw);
   let output = run_output(src)
-  inspect(output, content="[\"TypeError\"]")
+  json_inspect(output, content=["TypeError"])
 }
 
 ///|
@@ -11681,7 +11500,7 @@ test "ToPrimitive: @@toPrimitive returning undefined falls through to OrdinaryTo
     #|var t = { [Symbol.toPrimitive]: undefined, valueOf: function() { return 42; } };
     #|console.log(t + 1);
   let output = run_output(src)
-  inspect(output, content="[\"43\"]")
+  json_inspect(output, content=["43"])
 }
 
 ///|
@@ -11690,7 +11509,7 @@ test "ToPrimitive: @@toPrimitive returning null falls through to OrdinaryToPrimi
     #|var t = { [Symbol.toPrimitive]: null, valueOf: function() { return 7; } };
     #|console.log(t * 2);
   let output = run_output(src)
-  inspect(output, content="[\"14\"]")
+  json_inspect(output, content=["14"])
 }
 
 ///|
@@ -11704,7 +11523,7 @@ test "ToPrimitive: @@toPrimitive accessor invoked exactly once on default-hint f
     #|var r = t + 1;
     #|console.log(calls);
   let output = run_output(src)
-  inspect(output, content="[\"1\"]")
+  json_inspect(output, content=["1"])
 }
 
 ///|
@@ -11719,7 +11538,7 @@ test "ToPrimitive: user error from valueOf accessor propagates with original ide
     #|try { t + 1; } catch (e) { caught = e.name + ":" + e.message; }
     #|console.log(caught);
   let output = run_output(src)
-  inspect(output, content="[\"MyError:from-valueOf\"]")
+  json_inspect(output, content=["MyError:from-valueOf"])
 }
 
 ///|
@@ -12212,7 +12031,7 @@ test "new Function allows duplicate params in sloppy mode" {
   let src =
     #|var f = new Function('a', 'a', 'return a;');
   let output = run_output(src + "\nconsole.log(f(1, 2));")
-  inspect(output, content="[\"2\"]")
+  json_inspect(output, content=["2"])
 }
 
 // ----- ES262 §19.2.1.1 PerformEval early-error checks -----
