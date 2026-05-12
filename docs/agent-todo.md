@@ -7,6 +7,18 @@ Completed tasks should be struck through and dated.
 
 ## Small follow-ups (2026-05-10)
 
+### Migrate remaining deprecated `inspect` snapshots
+
+**Source:** PR #109 CI follow-up after MoonBit `0.1.20260512` changed `Show` rendering for `Array[String]`.
+
+**Risk:** `inspect` snapshots depend on MoonBit `Show` formatting, not project behavior. PR #109 converted console-output string arrays and parser parameter arrays to `json_inspect`, but many unrelated tests still emit deprecation warnings and could drift again with future toolchains.
+
+**Fix:** Audit remaining `inspect` calls. Use `json_inspect` for structured data and arrays where JSON semantics are intended; use `inspect` only where the MoonBit `Show` rendering itself is the intended assertion.
+
+**Verification:** Run `moon check`, `moon test`, and, if available, repeat `moon test` with the current CI-installed MoonBit toolchain.
+
+---
+
 ### Reject trailing comma after rest parameter
 
 **Source:** Codex review of PR #103 (trailing-comma in non-arrow params).
