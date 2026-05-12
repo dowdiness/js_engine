@@ -41,6 +41,7 @@ concurrency:
 
 env:
   TEST262_COMMIT: "2b2ecead6e82"
+  MOONBIT_VERSION: "0.1.20260427+48d7def"
 
 jobs:
   unit-test:
@@ -55,7 +56,7 @@ jobs:
 
       - name: Set up MoonBit
         run: |
-          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s "${MOONBIT_VERSION}"
           echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
 
       - name: Install and test
@@ -82,7 +83,7 @@ jobs:
 
       - name: Set up MoonBit
         run: |
-          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s "${MOONBIT_VERSION}"
           echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
 
       - name: Get MoonBit version
