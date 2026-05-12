@@ -134,7 +134,7 @@ When `--output` is specified, results are saved as JSON with:
 
 ## Skipped Features
 
-Tests requiring these unimplemented features are automatically skipped (excluded from the Passed / Executed ratio). Rough groupings — see `SKIP_FEATURES` in `scripts/test262-runner.py` for the authoritative list:
+Tests requiring these unimplemented features are automatically skipped (excluded from the Passed / Executed ratio). Rough groupings — see `SKIP_FEATURES` in `scripts/test262_skip_metadata.py` for the shared skip metadata applied by the runner:
 
 - **Async iteration / top-level await**: `async-iteration`, `top-level-await` (note: plain `async-functions` is implemented and no longer skipped)
 - **Class private members**: `class-fields-private`, `class-methods-private`, `class-static-fields-private`, `class-static-methods-private`, `class-static-block` (public class fields are implemented)
@@ -145,15 +145,24 @@ Tests requiring these unimplemented features are automatically skipped (excluded
 
 Skipped files explain the gap between Passed / Executed and Passed / Discovered. Implementing skipped features generally shrinks that gap, but it can temporarily lower Passed / Executed while newly unskipped tests still fail.
 
-## Static Analysis (No Engine Required)
+## Static Metadata Analysis (Non-Authoritative)
 
-Analyze test262 coverage without building or running the engine:
+For a rough metadata census without building or running the engine:
 
 ```bash
 make test262-analyze
 ```
 
-This runs `scripts/test262-analyze.py` to classify tests as applicable, skip_feature, skip_flag, or skip_fixture, and generates `test262-analysis.json`.
+This runs `scripts/test262-analyze.py`, which uses shared skip metadata from
+`scripts/test262_skip_metadata.py` and classifies files as `applicable`,
+`skip_feature`, `skip_flag`, or `skip_fixture`. It generates
+`test262-analysis.json`.
+
+Do not use this output as a conformance rate, pass/fail status, or skip-list
+source of truth. Shared metadata prevents drift between tools, but the analyzer
+does not execute the engine, expand strict/non-strict tasks, load harnesses,
+resolve module fixtures, or observe runtime failures/timeouts. Use
+`scripts/test262-runner.py` and CI artifacts for authoritative results.
 
 ## CI Integration
 

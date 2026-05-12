@@ -73,8 +73,11 @@ make test262-filter FILTER=language/expressions
 python3 scripts/test262-runner.py --test262 ./test262 --filter built-ins/Promise --summary
 ```
 
-`scripts/test262-runner.py` is authoritative for skip decisions. The static
-analyzer is a helper and must not be treated as the skip-list source of truth.
+`scripts/test262-runner.py` is authoritative for execution and skip decisions.
+Shared skip metadata lives in `scripts/test262_skip_metadata.py` to keep runner
+and analyzer classifications from drifting. The static analyzer is still only a
+rough metadata census; it does not execute tests and must not be treated as
+conformance data or the skip-list source of truth.
 
 ## Benchmarks
 

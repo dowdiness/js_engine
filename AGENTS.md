@@ -39,6 +39,8 @@ See [docs/ROADMAP.md § How to read these rates](docs/ROADMAP.md#how-to-read-the
 
 **Tooling.** `scripts/report-test262.py` (invokable as `make test262-report`) pulls numbers directly from a CI run's artifacts and emits a paste-ready block. Use `--format=table` for ROADMAP/README (default) or `--format=changelog` for CHANGELOG entries. Never hand-edit the generated numbers; if they look wrong, fix the upstream.
 
+`scripts/test262-analyze.py` is a non-authoritative metadata helper. It uses shared skip metadata from `scripts/test262_skip_metadata.py` but does not execute the engine, expand per-mode tasks, resolve fixtures, or observe runtime failures. Do not use its output as conformance data or as the skip-list source of truth.
+
 ## Documentation
 
 Key entry points:

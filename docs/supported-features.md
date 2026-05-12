@@ -193,7 +193,7 @@ moon run cmd/main -- --annex-b 'console.log("x".bold())'
 
 - **CLI**: `--annex-b` flag parsed in `cmd/main/main.mbt`, passed to interpreter as `self.annex_b : Bool`
 - **Test262 runner**: `scripts/test262-runner.py` passes `--annex-b` for tests in `annexB/` directories
-- **Metadata parsing**: `scripts/test262-runner.py` and `scripts/test262-analyze.py` share `scripts/test262_utils.py` and run with or without PyYAML installed
+- **Metadata parsing**: `scripts/test262-runner.py` and `scripts/test262-analyze.py` share `scripts/test262_utils.py` and run with or without PyYAML installed. Shared skip metadata lives in `scripts/test262_skip_metadata.py` to prevent drift. The analyzer is a non-authoritative metadata helper; runner results are authoritative.
 
 ### Legacy feature status
 

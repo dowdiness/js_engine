@@ -44,87 +44,13 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Optional, Any
 
+from test262_skip_metadata import (
+    SKIP_FEATURES,
+    SKIP_FLAGS,
+    SKIP_PATH_SUFFIXES,
+    skip_reason,
+)
 from test262_utils import parse_yaml_frontmatter, as_list
-
-SKIP_FEATURES = {
-    # Features this engine definitely doesn't support yet
-
-    # Async / Promises (async-iteration still unsupported)
-    "async-iteration",
-    "top-level-await",
-
-    # Classes (advanced features not yet supported)
-    "class-fields-private",
-    "class-methods-private", "class-static-fields-private",
-    "class-static-methods-private",
-    "class-static-block",
-
-    # Iteration / ordering
-    "for-in-order",
-    "iterator-helpers", "iterator-sequencing", "joint-iteration",
-    "set-methods",
-
-    # Collections
-    "WeakRef",
-
-    # Typed arrays and buffers (partially supported)
-    "SharedArrayBuffer", "Float16Array", "Atomics",
-    "resizable-arraybuffer", "arraybuffer-transfer", "immutable-arraybuffer",
-
-    # Tail calls
-    "tail-call-optimization",
-
-    # Modules / dynamic import
-    "import.meta", "dynamic-import",
-    "json-modules", "import-assertions", "import-attributes",
-    "source-phase-imports", "source-phase-imports-module-source",
-
-    # RegExp advanced features
-    "regexp-lookbehind", "regexp-unicode-property-escapes",
-    "regexp-match-indices", "regexp-v-flag",
-    "regexp-modifiers",
-    "RegExp.escape",
-
-    # Missing operators and syntax
-    "hashbang",
-
-    # Intl / locale
-    "Intl", "intl-normative-optional",
-
-    # Other missing features
-    "FinalizationRegistry",
-    "BigInt",
-    "IsHTMLDDA",
-    "cross-realm",
-    "caller",
-    "Temporal", "ShadowRealm",
-    "decorators",
-    "explicit-resource-management",
-    "json-parse-with-source",
-
-    # Removed in Phase 2+3 (now supported): arrow-function, template, let,
-    # const, destructuring-binding, destructuring-assignment,
-    # default-parameters, for-of, Object.entries, Array.prototype.flat,
-    # Array.prototype.flatMap, Array.prototype.includes
-    # Removed in Phase 3.6+4 (now supported): class, numeric-separator-literal,
-    # logical-assignment-operators
-    # Removed in Phase 6 (now supported): regexp-dotall, async-functions,
-    # promise-with-resolvers, promise-try
-    # Removed in Phase 5 (now supported): Promise, Promise.allSettled,
-    # Promise.any, Promise.prototype.finally, Object.fromEntries, Object.is,
-    # Object.hasOwn, Array.from, Array.prototype.at,
-    # String.prototype.replaceAll, String.prototype.isWellFormed,
-    # String.prototype.toWellFormed, change-array-by-copy,
-    # array-find-from-last, string-trimming, new.target,
-    # object-spread, object-rest
-}
-
-SKIP_FLAGS = {"CanBlockIsFalse", "CanBlockIsTrue"}
-
-# Tests that depend on unsupported runtime features but don't declare
-# corresponding Test262 `features` metadata.
-SKIP_PATH_SUFFIXES = {
-}
 
 # Preamble injected before all test harness code to provide host-defined print()
 PRINT_PREAMBLE = 'function print() { var s = ""; for (var i = 0; i < arguments.length; i++) { if (i > 0) s += " "; s += String(arguments[i]); } console.log(s); }\n'
@@ -198,32 +124,7 @@ def parse_metadata(source: str) -> TestMetadata:
 
 def should_skip(meta: TestMetadata, filepath: str, mode: str = "non-strict") -> Optional[str]:
     """Return a reason to skip the test, or None if it should run."""
-    # Skip fixture files
-    if "_FIXTURE" in filepath:
-        return "fixture file"
-
-    normalized_path = filepath.replace("\\", "/")
-    for suffix, reason in SKIP_PATH_SUFFIXES.items():
-        if normalized_path.endswith(suffix):
-            return reason
-
-    # Skip tests with unsupported flags
-    for flag in meta.flags:
-        if flag in SKIP_FLAGS:
-            return f"unsupported flag: {flag}"
-
-    # Respect onlyStrict/noStrict flags
-    if mode == "non-strict" and "onlyStrict" in meta.flags:
-        return "requires strict mode"
-    if mode == "strict" and "noStrict" in meta.flags:
-        return "cannot run in strict mode"
-
-    # Skip tests that require features we don't support
-    for feature in meta.features:
-        if feature in SKIP_FEATURES:
-            return f"unsupported feature: {feature}"
-
-    return None
+    return skip_reason(filepath, meta.features, meta.flags, mode=mode)
 
 
 # ---------------------------------------------------------------------------
