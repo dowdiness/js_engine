@@ -12,7 +12,7 @@ fn[T : Show] fmt_opt(o : T?) -> String {
 ///|
 test "run facade" {
   let (output, _result) = @js_engine.run("console.log(1 + 2)")
-  inspect(output, content="[\"3\"]")
+  json_inspect(output, content=["3"])
 }
 
 ///|
@@ -24,7 +24,7 @@ test "run fibonacci" {
     #|}
     #|console.log(fib(10));
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"55\"]")
+  json_inspect(output, content=["55"])
 }
 
 ///|
@@ -33,7 +33,7 @@ test "Promise.resolve" {
     #|const p = Promise.resolve(42);
     #|p.then(x => console.log(x));
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"42\"]")
+  json_inspect(output, content=["42"])
 }
 
 ///|
@@ -43,7 +43,7 @@ test "Promise.resolve assimilates thenables" {
     #|  then: function(resolve) { resolve(1); }
     #|}).then(x => console.log(x));
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"1\"]")
+  json_inspect(output, content=["1"])
 }
 
 ///|
@@ -57,7 +57,7 @@ test "Promise.resolve honors receiver constructor" {
     #|var out = P.resolve(1);
     #|console.log(out.marker);
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"custom\"]")
+  json_inspect(output, content=["custom"])
 }
 
 ///|
@@ -78,7 +78,7 @@ test "Promise.all gets resolve before iterator" {
     #|  function(reason) { console.log(reason.name); }
     #|);
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"ResolveError\"]")
+  json_inspect(output, content=["ResolveError"])
 }
 
 ///|
@@ -102,7 +102,7 @@ test "Promise.all resolves with single resolve getter lookup" {
     #|  console.log(callCount);
     #|});
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"1\", \"3\"]")
+  json_inspect(output, content=["1", "3"])
 }
 
 ///|
@@ -127,7 +127,7 @@ test "Promise.all uses receiver resolve on Promise subclasses" {
     #|  console.log(cresolveCallCount);
     #|});
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"0\", \"3\"]")
+  json_inspect(output, content=["0", "3"])
 }
 
 ///|
@@ -138,7 +138,7 @@ test "Promise constructor with resolve" {
     #|});
     #|p.then(x => console.log(x));
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"hello\"]")
+  json_inspect(output, content=["hello"])
 }
 
 ///|
@@ -149,7 +149,7 @@ test "Promise constructor with reject" {
     #|});
     #|p.catch(x => console.log("caught: " + x));
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"caught: error\"]")
+  json_inspect(output, content=["caught: error"])
 }
 
 ///|
@@ -160,7 +160,7 @@ test "Promise chaining" {
     #|  .then(x => x * 2)
     #|  .then(x => console.log(x));
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"4\"]")
+  json_inspect(output, content=["4"])
 }
 
 ///|
@@ -172,7 +172,7 @@ test "Promise.all" {
     #|  Promise.resolve(3)
     #|]).then(results => console.log(results.join(",")));
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"1,2,3\"]")
+  json_inspect(output, content=["1,2,3"])
 }
 
 ///|
@@ -183,7 +183,7 @@ test "Promise.race" {
     #|  Promise.resolve("second")
     #|]).then(result => console.log(result));
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"first\"]")
+  json_inspect(output, content=["first"])
 }
 
 ///|
@@ -194,7 +194,7 @@ test "queueMicrotask" {
     #|console.log("end");
   let (output, _) = @js_engine.run(src)
   // Microtask runs after synchronous code
-  inspect(output, content="[\"start\", \"end\", \"microtask\"]")
+  json_inspect(output, content=["start", "end", "microtask"])
 }
 
 ///|
@@ -204,7 +204,7 @@ test "queueMicrotask callback gets no args" {
     #|  console.log(arguments.length);
     #|});
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"0\"]")
+  json_inspect(output, content=["0"])
 }
 
 ///|
@@ -215,7 +215,7 @@ test "Promise microtask ordering" {
     #|console.log("3");
   let (output, _) = @js_engine.run(src)
   // Promise callbacks run after synchronous code as microtasks
-  inspect(output, content="[\"1\", \"3\", \"2\"]")
+  json_inspect(output, content=["1", "3", "2"])
 }
 
 ///|
@@ -225,7 +225,7 @@ test "Promise.finally" {
     #|  .finally(() => console.log("finally"))
     #|  .then(x => console.log(x));
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"finally\", \"42\"]")
+  json_inspect(output, content=["finally", "42"])
 }
 
 ///|
@@ -239,7 +239,7 @@ test "Promise.allSettled" {
     #|  console.log(results[1].status);
     #|});
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"fulfilled\", \"rejected\"]")
+  json_inspect(output, content=["fulfilled", "rejected"])
 }
 
 ///|
@@ -251,7 +251,7 @@ test "Promise.any resolves on first fulfillment" {
     #|  Promise.reject("fail-2")
     #|]).then(value => console.log(value), err => console.log(err.name));
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"ok\"]")
+  json_inspect(output, content=["ok"])
 }
 
 ///|
@@ -265,7 +265,7 @@ test "Promise.any rejects when all reject" {
     #|  err => console.log(err.name)
     #|);
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"AggregateError\"]")
+  json_inspect(output, content=["AggregateError"])
 }
 
 ///|
@@ -288,10 +288,10 @@ test "Promise.any rejection is AggregateError instance with errors list" {
     #|  }
     #|);
   let (output, _) = @js_engine.run(src)
-  inspect(
-    output,
-    content="[\"function\", \"true\", \"true\", \"2\", \"fail-1\", \"fail-2\", \"All promises were rejected\", \"true\"]",
-  )
+  json_inspect(output, content=[
+    "function", "true", "true", "2", "fail-1", "fail-2", "All promises were rejected",
+    "true",
+  ])
 }
 
 ///|
@@ -302,7 +302,7 @@ test "setTimeout basic" {
     #|console.log("after");
   let (output, _) = @js_engine.run(src)
   // Timer fires after synchronous code
-  inspect(output, content="[\"before\", \"after\", \"timer\"]")
+  json_inspect(output, content=["before", "after", "timer"])
 }
 
 ///|
@@ -313,7 +313,7 @@ test "setTimeout ordering by delay" {
     #|setTimeout(() => console.log("medium"), 50);
   let (output, _) = @js_engine.run(src)
   // Timers fire in order of increasing delay
-  inspect(output, content="[\"fast\", \"medium\", \"slow\"]")
+  json_inspect(output, content=["fast", "medium", "slow"])
 }
 
 ///|
@@ -321,7 +321,7 @@ test "setTimeout with extra arguments" {
   let src =
     #|setTimeout((a, b) => console.log(a + b), 0, "hello", " world");
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"hello world\"]")
+  json_inspect(output, content=["hello world"])
 }
 
 ///|
@@ -331,7 +331,7 @@ test "clearTimeout cancels timer" {
     #|clearTimeout(id);
     #|setTimeout(() => console.log("ran"), 0);
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"ran\"]")
+  json_inspect(output, content=["ran"])
 }
 
 ///|
@@ -342,7 +342,7 @@ test "setTimeout returns numeric ID" {
     #|console.log(typeof id1);
     #|console.log(id2 > id1);
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"number\", \"true\"]")
+  json_inspect(output, content=["number", "true"])
 }
 
 ///|
@@ -353,7 +353,7 @@ test "microtasks run before timers" {
     #|console.log("sync");
   let (output, _) = @js_engine.run(src)
   // Order: sync code, then microtasks, then timers
-  inspect(output, content="[\"sync\", \"microtask\", \"timer\"]")
+  json_inspect(output, content=["sync", "microtask", "timer"])
 }
 
 ///|
@@ -366,7 +366,7 @@ test "setTimeout with Promise inside" {
     #|console.log("sync");
   let (output, _) = @js_engine.run(src)
   // Microtasks from timer callback drain before next timer
-  inspect(output, content="[\"sync\", \"timer\", \"microtask in timer\"]")
+  json_inspect(output, content=["sync", "timer", "microtask in timer"])
 }
 
 ///|
@@ -379,7 +379,7 @@ test "setInterval basic" {
     #|  if (count >= 3) { clearInterval(id); }
     #|}, 100);
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"tick 1\", \"tick 2\", \"tick 3\"]")
+  json_inspect(output, content=["tick 1", "tick 2", "tick 3"])
 }
 
 ///|
@@ -389,7 +389,7 @@ test "setTimeout equal delays preserve insertion order" {
     #|setTimeout(() => console.log("second"), 0);
     #|setTimeout(() => console.log("third"), 0);
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"first\", \"second\", \"third\"]")
+  json_inspect(output, content=["first", "second", "third"])
 }
 
 ///|
@@ -398,7 +398,7 @@ test "unicode escape in identifier" {
     #|var \u0061 = 42;
     #|console.log(a);
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"42\"]")
+  json_inspect(output, content=["42"])
 }
 
 ///|
@@ -406,7 +406,7 @@ test "unicode escape in string literal" {
   let src =
     #|console.log("\u0048\u0065\u006C\u006C\u006F");
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"Hello\"]")
+  json_inspect(output, content=["Hello"])
 }
 
 ///|
@@ -414,7 +414,7 @@ test "unicode escape extended in string" {
   let src =
     #|console.log("\u{48}\u{65}\u{6C}\u{6C}\u{6F}");
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"Hello\"]")
+  json_inspect(output, content=["Hello"])
 }
 
 ///|
@@ -423,7 +423,7 @@ test "unicode escape identifier mid-word" {
     #|var ab\u0063 = 10;
     #|console.log(abc);
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"10\"]")
+  json_inspect(output, content=["10"])
 }
 
 ///|
@@ -435,7 +435,7 @@ test "ES module: export named declaration" {
       #|console.log(x, y);
     ),
   )
-  inspect(output, content="[\"42 hello\"]")
+  json_inspect(output, content=["42 hello"])
   inspect(fmt_opt(exports.get("x")), content="Some(42)")
   inspect(fmt_opt(exports.get("y")), content="Some(hello)")
 }
@@ -537,7 +537,7 @@ test "ES module: import named from module" {
     ),
   ]
   let (output, _) = @js_engine.run_modules(modules)
-  inspect(output, content="[\"3.14\", \"10\"]")
+  json_inspect(output, content=["3.14", "10"])
 }
 
 ///|
@@ -558,7 +558,7 @@ test "ES module: import default" {
     ),
   ]
   let (output, _) = @js_engine.run_modules(modules)
-  inspect(output, content="[\"hello\"]")
+  json_inspect(output, content=["hello"])
 }
 
 ///|
@@ -579,7 +579,7 @@ test "ES module: import with alias" {
     ),
   ]
   let (output, _) = @js_engine.run_modules(modules)
-  inspect(output, content="[\"100\"]")
+  json_inspect(output, content=["100"])
 }
 
 ///|
@@ -604,7 +604,7 @@ test "ES module: import namespace" {
     ),
   ]
   let (output, _) = @js_engine.run_modules(modules)
-  inspect(output, content="[\"1\", \"2\", \"3\"]")
+  json_inspect(output, content=["1", "2", "3"])
 }
 
 ///|
@@ -627,7 +627,7 @@ test "ES module: import default and named" {
     ),
   ]
   let (output, _) = @js_engine.run_modules(modules)
-  inspect(output, content="[\"42\", \"test\"]")
+  json_inspect(output, content=["42", "test"])
 }
 
 ///|
@@ -655,7 +655,7 @@ test "ES module: re-export named" {
     ),
   ]
   let (output, _) = @js_engine.run_modules(modules)
-  inspect(output, content="[\"30\"]")
+  json_inspect(output, content=["30"])
 }
 
 ///|
@@ -683,7 +683,7 @@ test "ES module: re-export all" {
     ),
   ]
   let (output, _) = @js_engine.run_modules(modules)
-  inspect(output, content="[\"3\"]")
+  json_inspect(output, content=["3"])
 }
 
 ///|
@@ -710,7 +710,7 @@ test "ES module: re-export all as namespace" {
     ),
   ]
   let (output, _) = @js_engine.run_modules(modules)
-  inspect(output, content="[\"99\"]")
+  json_inspect(output, content=["99"])
 }
 
 ///|
@@ -731,7 +731,7 @@ test "ES module: side-effect import" {
     ),
   ]
   let (output, _) = @js_engine.run_modules(modules)
-  inspect(output, content="[\"side effect executed\", \"main\"]")
+  json_inspect(output, content=["side effect executed", "main"])
 }
 
 ///|
@@ -765,7 +765,7 @@ test "ES module: from and as as identifiers" {
     #|var as = 20;
     #|console.log(from + as);
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"30\"]")
+  json_inspect(output, content=["30"])
 }
 
 ///|
@@ -790,7 +790,7 @@ test "ES module: import default and namespace" {
     ),
   ]
   let (output, _) = @js_engine.run_modules(modules)
-  inspect(output, content="[\"default\", \"1\", \"2\"]")
+  json_inspect(output, content=["default", "1", "2"])
 }
 
 ///|
@@ -817,7 +817,7 @@ test "ES module: re-export with alias" {
     ),
   ]
   let (output, _) = @js_engine.run_modules(modules)
-  inspect(output, content="[\"42\"]")
+  json_inspect(output, content=["42"])
 }
 
 ///|
@@ -870,7 +870,7 @@ test "ES module: export default function hoisting" {
     ),
   ]
   let (output, _) = @js_engine.run_modules(modules)
-  inspect(output, content="[\"hello world\", \"hello moon\"]")
+  json_inspect(output, content=["hello world", "hello moon"])
 }
 
 ///|
@@ -896,7 +896,7 @@ test "ES module: export default class with methods" {
     ),
   ]
   let (output, _) = @js_engine.run_modules(modules)
-  inspect(output, content="[\"1\", \"2\"]")
+  json_inspect(output, content=["1", "2"])
 }
 
 ///|
@@ -917,7 +917,7 @@ test "ES module: anonymous export default function" {
     ),
   ]
   let (output, _) = @js_engine.run_modules(modules)
-  inspect(output, content="[\"5\"]")
+  json_inspect(output, content=["5"])
 }
 
 ///|
@@ -941,7 +941,7 @@ test "ES module: anonymous export default class" {
     ),
   ]
   let (output, _) = @js_engine.run_modules(modules)
-  inspect(output, content="[\"hi world\"]")
+  json_inspect(output, content=["hi world"])
 }
 
 // ============================================================
@@ -960,7 +960,7 @@ test "Proxy basic get trap" {
     #|const proxy = new Proxy(target, handler);
     #|console.log(proxy.name);
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"hello world\"]")
+  json_inspect(output, content=["hello world"])
 }
 
 ///|
@@ -977,7 +977,7 @@ test "Proxy basic set trap" {
     #|proxy.x = 5;
     #|console.log(target.x);
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"10\"]")
+  json_inspect(output, content=["10"])
 }
 
 ///|
@@ -994,7 +994,7 @@ test "Proxy has trap" {
     #|console.log("b" in proxy);
     #|console.log("c" in proxy);
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"true\", \"true\", \"false\"]")
+  json_inspect(output, content=["true", "true", "false"])
 }
 
 ///|
@@ -1014,7 +1014,7 @@ test "Proxy deleteProperty trap" {
     #|console.log(deleted.join(","));
     #|console.log(target.a);
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"a\", \"undefined\"]")
+  json_inspect(output, content=["a", "undefined"])
 }
 
 ///|
@@ -1029,7 +1029,7 @@ test "Proxy apply trap" {
     #|const proxy = new Proxy(sum, handler);
     #|console.log(proxy(1, 2));
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"30\"]")
+  json_inspect(output, content=["30"])
 }
 
 ///|
@@ -1047,7 +1047,7 @@ test "Proxy construct trap" {
     #|const p = new ProxyPoint(1, 2);
     #|console.log(p.x + "," + p.y + "," + p.created);
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"1,2,true\"]")
+  json_inspect(output, content=["1,2,true"])
 }
 
 ///|
@@ -1059,7 +1059,7 @@ test "Proxy no trap - delegates to target" {
     #|proxy.y = 99;
     #|console.log(target.y);
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"42\", \"99\"]")
+  json_inspect(output, content=["42", "99"])
 }
 
 ///|
@@ -1079,10 +1079,9 @@ test "Proxy.revocable" {
     #|  console.log(e.message);
     #|}
   let (output, _) = @js_engine.run(src)
-  inspect(
-    output,
-    content="[\"100\", \"Cannot perform 'get' on a proxy that has been revoked\"]",
-  )
+  json_inspect(output, content=[
+    "100", "Cannot perform 'get' on a proxy that has been revoked",
+  ])
 }
 
 ///|
@@ -1091,7 +1090,7 @@ test "Proxy typeof is object" {
     #|const proxy = new Proxy({}, {});
     #|console.log(typeof proxy);
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"object\"]")
+  json_inspect(output, content=["object"])
 }
 
 ///|
@@ -1103,7 +1102,7 @@ test "Proxy constructor requires new" {
     #|  console.log(e instanceof TypeError);
     #|}
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -1119,7 +1118,7 @@ test "Proxy get with computed property" {
     #|const key = "b";
     #|console.log(proxy[key]);
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"102\"]")
+  json_inspect(output, content=["102"])
 }
 
 ///|
@@ -1137,7 +1136,7 @@ test "Proxy set with computed property" {
     #|proxy[key] = "bar";
     #|console.log(target.foo);
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"bar_modified\"]")
+  json_inspect(output, content=["bar_modified"])
 }
 
 // ============================================================
@@ -1150,7 +1149,7 @@ test "Reflect.get" {
     #|const obj = { x: 42 };
     #|console.log(Reflect.get(obj, "x"));
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"42\"]")
+  json_inspect(output, content=["42"])
 }
 
 ///|
@@ -1160,7 +1159,7 @@ test "Reflect.set" {
     #|Reflect.set(obj, "x", 42);
     #|console.log(obj.x);
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"42\"]")
+  json_inspect(output, content=["42"])
 }
 
 ///|
@@ -1170,7 +1169,7 @@ test "Reflect.has" {
     #|console.log(Reflect.has(obj, "a"));
     #|console.log(Reflect.has(obj, "b"));
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"true\", \"false\"]")
+  json_inspect(output, content=["true", "false"])
 }
 
 ///|
@@ -1181,7 +1180,7 @@ test "Reflect.deleteProperty" {
     #|console.log(obj.a);
     #|console.log(obj.b);
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"true\", \"undefined\", \"2\"]")
+  json_inspect(output, content=["true", "undefined", "2"])
 }
 
 ///|
@@ -1191,7 +1190,7 @@ test "Reflect.ownKeys" {
     #|const keys = Reflect.ownKeys(obj);
     #|console.log(keys.join(","));
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"a,b,c\"]")
+  json_inspect(output, content=["a,b,c"])
 }
 
 ///|
@@ -1200,7 +1199,7 @@ test "Reflect.apply" {
     #|function greet(name) { return "Hello, " + name; }
     #|console.log(Reflect.apply(greet, undefined, ["World"]));
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"Hello, World\"]")
+  json_inspect(output, content=["Hello, World"])
 }
 
 ///|
@@ -1210,7 +1209,7 @@ test "Reflect.construct" {
     #|const p = Reflect.construct(Point, [3, 4]);
     #|console.log(p.x + "," + p.y);
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"3,4\"]")
+  json_inspect(output, content=["3,4"])
 }
 
 ///|
@@ -1219,7 +1218,7 @@ test "Reflect.getPrototypeOf" {
     #|const obj = {};
     #|console.log(Reflect.getPrototypeOf(obj) === Object.prototype);
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -1230,7 +1229,7 @@ test "Reflect.isExtensible" {
     #|Object.preventExtensions(obj);
     #|console.log(Reflect.isExtensible(obj));
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"true\", \"false\"]")
+  json_inspect(output, content=["true", "false"])
 }
 
 ///|
@@ -1240,7 +1239,7 @@ test "Reflect.preventExtensions" {
     #|Reflect.preventExtensions(obj);
     #|console.log(Object.isExtensible(obj));
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"false\"]")
+  json_inspect(output, content=["false"])
 }
 
 ///|
@@ -1250,7 +1249,7 @@ test "Reflect.defineProperty" {
     #|Reflect.defineProperty(obj, "x", { value: 42, writable: true, enumerable: true, configurable: true });
     #|console.log(obj.x);
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"42\"]")
+  json_inspect(output, content=["42"])
 }
 
 ///|
@@ -1261,7 +1260,7 @@ test "Reflect.setPrototypeOf" {
     #|Reflect.setPrototypeOf(obj, proto);
     #|console.log(obj.greet());
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"hello\"]")
+  json_inspect(output, content=["hello"])
 }
 
 ///|
@@ -1285,7 +1284,7 @@ test "Proxy and Reflect together - logging proxy" {
     #|console.log(log.join(", "));
     #|console.log(target.y);
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"get:x, set:y=20\", \"20\"]")
+  json_inspect(output, content=["get:x, set:y=20", "20"])
 }
 
 ///|
@@ -1298,7 +1297,7 @@ test "Proxy identity - strict equality" {
     #|console.log(p1 === p2);
     #|console.log(p1 === target);
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"true\", \"false\", \"false\"]")
+  json_inspect(output, content=["true", "false", "false"])
 }
 
 ///|
@@ -1312,7 +1311,7 @@ test "Reflect.getOwnPropertyDescriptor" {
     #|console.log(desc.enumerable);
     #|console.log(desc.configurable);
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"42\", \"false\", \"true\", \"false\"]")
+  json_inspect(output, content=["42", "false", "true", "false"])
 }
 
 ///|
@@ -1325,7 +1324,7 @@ test "Reflect.construct with newTarget" {
     #|console.log(obj.x);
     #|console.log(obj.tag);
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"42\", \"other\"]")
+  json_inspect(output, content=["42", "other"])
 }
 
 ///|
@@ -1342,7 +1341,7 @@ test "Reflect.getOwnPropertyDescriptor accessor" {
     #|console.log(desc.enumerable);
     #|console.log(desc.configurable);
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"function\", \"true\", \"true\"]")
+  json_inspect(output, content=["function", "true", "true"])
 }
 
 ///|
@@ -1353,7 +1352,7 @@ test "Reflect.set returns false for non-writable" {
     #|console.log(Reflect.set(obj, "x", 2));
     #|console.log(obj.x);
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"false\", \"1\"]")
+  json_inspect(output, content=["false", "1"])
 }
 
 ///|
@@ -1364,7 +1363,7 @@ test "Reflect.get with Symbol key" {
     #|obj[sym] = "hello";
     #|console.log(Reflect.get(obj, sym));
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"hello\"]")
+  json_inspect(output, content=["hello"])
 }
 
 ///|
@@ -1374,7 +1373,7 @@ test "JSON.stringify with Proxy" {
     #|const proxy = new Proxy(target, {});
     #|console.log(JSON.stringify(proxy));
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"{\\\"a\\\":1,\\\"b\\\":2}\"]")
+  json_inspect(output, content=["{\"a\":1,\"b\":2}"])
 }
 
 ///|
@@ -1386,7 +1385,7 @@ test "Object.assign with Proxy source" {
     #|console.log(target.x);
     #|console.log(target.y);
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"10\", \"20\"]")
+  json_inspect(output, content=["10", "20"])
 }
 
 ///|
@@ -1397,7 +1396,7 @@ test "Object.defineProperty on Proxy target" {
     #|Object.defineProperty(proxy, "x", { value: 42, writable: false, enumerable: true, configurable: false });
     #|console.log(target.x);
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"42\"]")
+  json_inspect(output, content=["42"])
 }
 
 ///|
@@ -1409,7 +1408,7 @@ test "Object.getOwnPropertyDescriptor on Proxy" {
     #|console.log(desc.value);
     #|console.log(desc.writable);
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"42\", \"true\"]")
+  json_inspect(output, content=["42", "true"])
 }
 
 ///|
@@ -1422,7 +1421,7 @@ test "apply trap rejects non-callable target" {
     #|  console.log(e.message);
     #|}
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"proxy target is not a function\"]")
+  json_inspect(output, content=["proxy target is not a function"])
 }
 
 // ============================================================
@@ -1445,7 +1444,7 @@ test "B.1a: inherited setter on target is invoked with proxy as this" {
     #|console.log(seen === proxy);
     #|console.log(seen === target);
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"true\", \"false\"]")
+  json_inspect(output, content=["true", "false"])
 }
 
 ///|
@@ -1463,7 +1462,7 @@ test "B.1a: inherited setter invoked via Reflect.set threads receiver" {
     #|console.log(seen === receiver);
     #|console.log(seen === target);
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"true\", \"false\"]")
+  json_inspect(output, content=["true", "false"])
 }
 
 ///|
@@ -1479,7 +1478,7 @@ test "B.1b: trap-less proxy without inherited blocker writes to receiver" {
     #|console.log(Object.prototype.hasOwnProperty.call(receiver, "x"));
     #|console.log(receiver.x);
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"false\", \"true\", \"1\"]")
+  json_inspect(output, content=["false", "true", "1"])
 }
 
 ///|
@@ -1493,7 +1492,7 @@ test "B.1b: nested trap-less proxies terminate without infinite loop" {
     #|outer.x = 1;
     #|console.log(target.x);
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"1\"]")
+  json_inspect(output, content=["1"])
 }
 
 ///|
@@ -1506,7 +1505,7 @@ test "B.1 regression: plain obj.prop = value unchanged" {
     #|console.log(obj.x, obj.y);
     #|console.log(Object.keys(obj).join(","));
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"2 3\", \"x,y\"]")
+  json_inspect(output, content=["2 3", "x,y"])
 }
 
 ///|
@@ -1522,7 +1521,7 @@ test "B.1 Reflect.set preflight: inherited setter + non-extensible target" {
     #|console.log(r);
     #|console.log(called);
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"true\", \"5\"]")
+  json_inspect(output, content=["true", "5"])
 }
 
 ///|
@@ -1547,7 +1546,7 @@ test "B.1: writable data on proto short-circuits walk before deeper proxy" {
     #|console.log(mid.foo);
     #|console.log(trapCalls);
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"1\", \"0\", \"0\"]")
+  json_inspect(output, content=["1", "0", "0"])
 }
 
 ///|
@@ -1575,7 +1574,7 @@ test "B.1: computed set on proxy enforces §10.5.9 invariant when trap returns t
     #|try { "use strict"; obj["x"] = 2; } catch (e) { indirectThrew = e instanceof TypeError; }
     #|console.log(indirectThrew);
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"true\", \"true\"]")
+  json_inspect(output, content=["true", "true"])
 }
 
 ///|
@@ -1606,10 +1605,7 @@ test "B.1: receiver-side blockers prevent Reflect.set from mutating frozen targe
     #|console.log(r3);                // expect false
     #|console.log(withSymReadonly[k]); // expect 10
   let (output, _) = @js_engine.run(src)
-  inspect(
-    output,
-    content="[\"false\", \"1\", \"false\", \"99\", \"false\", \"10\"]",
-  )
+  json_inspect(output, content=["false", "1", "false", "99", "false", "10"])
 }
 
 ///|
@@ -1634,7 +1630,7 @@ test "B.1 regression: trap-less proxy around Map/Set lands expando on receiver t
     #|pm[k] = 3;
     #|console.log(m[k]);
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"1\", \"2\", \"3\"]")
+  json_inspect(output, content=["1", "2", "3"])
 }
 
 ///|
@@ -1656,7 +1652,7 @@ test "B.1 Reflect.set: setter-only accessor (own) must invoke setter via set_pro
     #|console.log(result);
     #|console.log(captured);
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"true\", \"42\"]")
+  json_inspect(output, content=["true", "42"])
 }
 
 ///|
@@ -1676,7 +1672,7 @@ test "B.1 Reflect.set: setter-only accessor (own, Symbol key) invokes setter via
     #|console.log(result);
     #|console.log(captured);
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"true\", \"42\"]")
+  json_inspect(output, content=["true", "42"])
 }
 
 ///|
@@ -1696,7 +1692,7 @@ test "B.1a Symbol key: inherited setter via proxy threads receiver" {
     #|proxy[k] = 42;
     #|console.log(seen === proxy);
   let (output, _) = @js_engine.run(src)
-  inspect(output, content="[\"true\"]")
+  json_inspect(output, content=["true"])
 }
 
 ///|

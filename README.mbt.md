@@ -33,7 +33,7 @@ More sample programs live in [`example/`](example/).
 ///|
 test "README run facade" {
   let (output, result) = @js_engine.run("console.log(1 + 2)")
-  inspect(output, content="[\"3\"]")
+  json_inspect(output, content=["3"])
   inspect(result, content="undefined")
 }
 ```
