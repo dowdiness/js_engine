@@ -41,7 +41,7 @@ concurrency:
 
 env:
   TEST262_COMMIT: "2b2ecead6e82"
-  MOONBIT_VERSION: "0.1.20260427+48d7def"
+  MOONBIT_VERSION: "0.1.20260427"
 
 jobs:
   unit-test:
