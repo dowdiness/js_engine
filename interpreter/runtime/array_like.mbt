@@ -78,13 +78,13 @@ pub fn to_array_like_length_interp(
     _ => {
       // Use interpreter's get_property to properly handle getters and prototype chains
       let length_val = interp.get_property(val, "length", @token.Loc::default())
-      to_length_from_value(Some(length_val))
+      to_length_from_value(Some(length_val), interp=Some(interp))
     }
   }
 }
 
 ///|
-fn to_length_from_value(v : Value?) -> Int raise {
+fn to_length_from_value(v : Value?, interp? : Interpreter? = None) -> Int raise {
   match v {
     Some(Number(n)) => {
       let len = n.to_int()
@@ -95,7 +95,7 @@ fn to_length_from_value(v : Value?) -> Int raise {
       }
     }
     Some(v) => {
-      let n = to_number(v)
+      let n = to_number(v, interp~)
       if n.is_nan() {
         0
       } else if n.is_inf() {

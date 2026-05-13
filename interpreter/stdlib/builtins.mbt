@@ -377,7 +377,8 @@ pub fn setup_builtins(
               Value::String_(buf.to_string())
             },
           ),
-          "raw": @runtime.make_native_func(name="raw", length=1, fn(
+          "raw": @runtime.make_interp_static_func(name="raw", length=1, fn(
+            interp,
             args,
           ) raise {
             // String.raw(template, ...substitutions)
@@ -387,9 +388,14 @@ pub fn setup_builtins(
             }
             let template = args[0]
             match template {
-              Object(data) =>
-                match data.bag.properties.get("raw") {
-                  Some(Array(raw_data)) => {
+              Object(_) | Array(_) => {
+                let raw = interp.get_property(
+                  template,
+                  "raw",
+                  @token.Loc::default(),
+                )
+                match raw {
+                  Array(raw_data) => {
                     let buf = StringBuilder::new()
                     let raw_strings = raw_data.elements
                     let sub_count = args.length() - 1
@@ -403,7 +409,7 @@ pub fn setup_builtins(
                     }
                     Value::String_(buf.to_string())
                   }
-                  Some(Object(raw_obj)) => {
+                  Object(raw_obj) => {
                     // Handle object with numeric indices - use length property per spec
                     let buf = StringBuilder::new()
                     let sub_count = args.length() - 1
@@ -434,6 +440,7 @@ pub fn setup_builtins(
                       message="Cannot convert to string template",
                     )
                 }
+              }
               _ =>
                 raise @errors.TypeError(
                   message="Cannot convert to string template",

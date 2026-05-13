@@ -2310,6 +2310,28 @@ test "hasOwnProperty via Object.create" {
 }
 
 ///|
+test "hasOwnProperty coerces key before null receiver check" {
+  let src =
+    #|function MyError() { this.name = "MyError"; }
+    #|MyError.prototype = Object.create(Error.prototype);
+    #|var touched = "";
+    #|var key = {
+    #|  get toString() {
+    #|    touched = "toString";
+    #|    throw new MyError();
+    #|  }
+    #|};
+    #|try {
+    #|  Object.prototype.hasOwnProperty.call(null, key);
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|  console.log(touched);
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=["MyError", "toString"])
+}
+
+///|
 test "startsWith negative position" {
   let src =
     #|console.log("abc".startsWith("a", -1));
@@ -12276,4 +12298,248 @@ test "eval source: arrow param default with no forbidden refs is fine" {
     #|f()
   let result = run(src)
   inspect(result.to_string(), content="42")
+}
+
+///|
+test "Date.prototype.toJSON propagates ToPrimitive abrupt completion" {
+  let src =
+    #|function MyError() { this.name = "MyError"; }
+    #|MyError.prototype = Object.create(Error.prototype);
+    #|var obj = {
+    #|  get valueOf() {
+    #|    throw new MyError();
+    #|  }
+    #|};
+    #|try {
+    #|  Date.prototype.toJSON.call(obj);
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=["MyError"])
+}
+
+///|
+test "String.raw propagates raw getter abrupt completion" {
+  let src =
+    #|function MyError() { this.name = "MyError"; }
+    #|MyError.prototype = Object.create(Error.prototype);
+    #|var template = {
+    #|  get raw() {
+    #|    throw new MyError();
+    #|  }
+    #|};
+    #|try {
+    #|  String.raw(template);
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=["MyError"])
+}
+
+///|
+test "Object.assign propagates target setter abrupt completion" {
+  let src =
+    #|function MyError() { this.name = "MyError"; }
+    #|MyError.prototype = Object.create(Error.prototype);
+    #|var target = {};
+    #|Object.defineProperty(target, "attr", {
+    #|  set: function(_) {
+    #|    throw new MyError();
+    #|  }
+    #|});
+    #|try {
+    #|  Object.assign(target, { attr: 1 });
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=["MyError"])
+}
+
+///|
+test "Array.from constructs custom iterable result before reading iterator result" {
+  let src =
+    #|function MyError() { this.name = "MyError"; }
+    #|MyError.prototype = Object.create(Error.prototype);
+    #|function C() {
+    #|  throw new MyError();
+    #|}
+    #|var items = {};
+    #|items[Symbol.iterator] = function() {};
+    #|try {
+    #|  Array.from.call(C, items);
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=["MyError"])
+}
+
+///|
+test "Weak collections close iterators when constructor adders throw" {
+  let src =
+    #|function MyError() { this.name = "MyError"; }
+    #|MyError.prototype = Object.create(Error.prototype);
+    #|var weakMapCloseCount = 0;
+    #|var weakMapIterable = {};
+    #|weakMapIterable[Symbol.iterator] = function() {
+    #|  return {
+    #|    next: function() {
+    #|      return { value: [], done: false };
+    #|    },
+    #|    return: function() {
+    #|      weakMapCloseCount += 1;
+    #|    }
+    #|  };
+    #|};
+    #|WeakMap.prototype.set = function() {
+    #|  throw new MyError();
+    #|};
+    #|try {
+    #|  new WeakMap(weakMapIterable);
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|  console.log(weakMapCloseCount);
+    #|}
+    #|var weakSetCloseCount = 0;
+    #|var weakSetIterable = {};
+    #|weakSetIterable[Symbol.iterator] = function() {
+    #|  return {
+    #|    next: function() {
+    #|      return { value: null, done: false };
+    #|    },
+    #|    return: function() {
+    #|      weakSetCloseCount += 1;
+    #|    }
+    #|  };
+    #|};
+    #|WeakSet.prototype.add = function() {
+    #|  throw new MyError();
+    #|};
+    #|try {
+    #|  new WeakSet(weakSetIterable);
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|  console.log(weakSetCloseCount);
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=["MyError", "1", "MyError", "1"])
+}
+
+///|
+test "TypedArray.from propagates source abrupt completions" {
+  let src =
+    #|function MyError() { this.name = "MyError"; }
+    #|MyError.prototype = Object.create(Error.prototype);
+    #|var TypedArray = Object.getPrototypeOf(Int8Array);
+    #|var lengthGetter = {};
+    #|Object.defineProperty(lengthGetter, "length", {
+    #|  get: function() { throw new MyError(); }
+    #|});
+    #|try {
+    #|  TypedArray.from(lengthGetter);
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+    #|var lengthValueOf = { length: {
+    #|  valueOf: function() { throw new MyError(); }
+    #|} };
+    #|try {
+    #|  TypedArray.from(lengthValueOf);
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+    #|var iteratorGetter = {};
+    #|Object.defineProperty(iteratorGetter, Symbol.iterator, {
+    #|  get: function() { throw new MyError(); }
+    #|});
+    #|try {
+    #|  TypedArray.from(iteratorGetter);
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+    #|var iteratorCall = {};
+    #|iteratorCall[Symbol.iterator] = function() { throw new MyError(); };
+    #|try {
+    #|  TypedArray.from(iteratorCall);
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+    #|var iteratorNext = {};
+    #|iteratorNext[Symbol.iterator] = function() {
+    #|  return { next: function() { throw new MyError(); } };
+    #|};
+    #|try {
+    #|  TypedArray.from(iteratorNext);
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+    #|var iteratorValue = {};
+    #|iteratorValue[Symbol.iterator] = function() {
+    #|  return { next: function() {
+    #|    var result = {};
+    #|    Object.defineProperty(result, "value", {
+    #|      get: function() { throw new MyError(); }
+    #|    });
+    #|    return result;
+    #|  } };
+    #|};
+    #|try {
+    #|  TypedArray.from(iteratorValue);
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "MyError", "MyError", "MyError", "MyError", "MyError", "MyError",
+  ])
+}
+
+///|
+test "TypedArray constructor consumes iterable sources before reduce callbacks" {
+  let src =
+    #|function MyError() { this.name = "MyError"; }
+    #|MyError.prototype = Object.create(Error.prototype);
+    #|var iterable = {};
+    #|iterable[Symbol.iterator] = function() {
+    #|  return [1, 2][Symbol.iterator]();
+    #|};
+    #|var sample = new Float64Array(iterable);
+    #|try {
+    #|  sample.reduce(function() { throw new MyError(); });
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+    #|try {
+    #|  sample.reduce(function() { throw new MyError(); }, 0);
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+    #|try {
+    #|  sample.reduceRight(function() { throw new MyError(); });
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+    #|try {
+    #|  sample.reduceRight(function() { throw new MyError(); }, 0);
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=["MyError", "MyError", "MyError", "MyError"])
+}
+
+///|
+test "tagged template strings object inherits Array methods" {
+  let src =
+    #|function tag(strings) {
+    #|  console.log(strings.map(function(s) { return s; }).join("|"));
+    #|  console.log(String.raw({ raw: strings.raw }));
+    #|}
+    #|tag`a${1}b`;
+    #|console.log(String.raw`x${1}y`);
+  let output = run_output(src)
+  json_inspect(output, content=["a|b", "ab", "x1y"])
 }

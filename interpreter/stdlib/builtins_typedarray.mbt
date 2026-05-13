@@ -2464,6 +2464,88 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
   ta_ctor_props["prototype"] = ta_proto
   ta_ctor_props["name"] = Value::String_("TypedArray")
   ta_ctor_props["length"] = Value::Number(0.0)
+  ta_ctor_props["from"] = @runtime.make_interp_method_func(
+    name="from",
+    length=1,
+    fn(interp, this_val, args) raise {
+      if args.length() == 0 {
+        raise @errors.TypeError(
+          message="TypedArray.from requires at least 1 argument",
+        )
+      }
+      let source = args[0]
+      let has_map_fn = args.length() > 1 && !(args[1] is Undefined)
+      let map_fn = if has_map_fn { args[1] } else { Undefined }
+      if has_map_fn && !@runtime.is_callable(map_fn) {
+        raise @errors.TypeError(
+          message=@runtime.to_js_string(map_fn) + " is not a function",
+        )
+      }
+      let this_arg = if args.length() > 2 { args[2] } else { Undefined }
+      let loc = @token.Loc::default()
+      let source_values : Array[Value] = []
+      let iterator_sym = @runtime.get_iterator_symbol()
+      let iterator_method = interp.get_computed_property(
+        source,
+        Symbol(iterator_sym),
+        loc,
+      )
+      match iterator_method {
+        Undefined | Null => {
+          let array_like = to_object(source, interp)
+          let len = @runtime.to_array_like_length_interp(array_like, interp)
+          for i = 0; i < len; i = i + 1 {
+            source_values.push(
+              interp.get_property(array_like, i.to_string(), loc),
+            )
+          }
+        }
+        _ => {
+          if !@runtime.is_callable(iterator_method) {
+            raise @errors.TypeError(
+              message="TypedArray.from source is not iterable",
+            )
+          }
+          let iterator = interp.call_value(iterator_method, source, [], loc)
+          while true {
+            let next_method = interp.get_property(iterator, "next", loc)
+            let next = interp.call_value(next_method, iterator, [], loc)
+            if @runtime.is_truthy(interp.get_property(next, "done", loc)) {
+              break
+            }
+            source_values.push(interp.get_property(next, "value", loc))
+          }
+        }
+      }
+      let len = source_values.length()
+      let result = interp.construct_value(
+        this_val,
+        [Value::Number(len.to_double())],
+        loc,
+      )
+      for i = 0; i < len; i = i + 1 {
+        let value = source_values[i]
+        let mapped = if has_map_fn {
+          interp.call_value(
+            map_fn,
+            this_arg,
+            [value, Value::Number(i.to_double())],
+            loc,
+          )
+        } else {
+          value
+        }
+        let _ = interp.set_property(
+          result,
+          i.to_string(),
+          mapped,
+          loc,
+          strict=true,
+        )
+      }
+      result
+    },
+  )
   let ta_ctor_descs : Map[String, PropDescriptor] = {}
   ta_ctor_descs["prototype"] = {
     writable: false,
@@ -2489,6 +2571,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     setter: None,
     is_accessor: false,
   }
+  ta_ctor_descs["from"] = method_desc
   let ta_ctor : Value = Value::Object({
     bag: {
       properties: ta_ctor_props,
@@ -2723,7 +2806,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
       },
       prototype: ta_ctor,
       callable: Some(
-        NativeCallable(type_name, fn(args) raise {
+        InterpreterCallable(type_name, fn(interp, _this_val, args) raise {
           if !@runtime.is_constructing.val {
             raise @errors.TypeError(
               message="Constructor \{type_name} requires 'new'",
@@ -2851,30 +2934,73 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
               result
             }
             // From generic object with length
-            Object(src_data) =>
-              match src_data.bag.properties.get("length") {
-                Some(Value::Number(len_n)) => {
-                  let len = len_n.to_int()
+            Object(_) => {
+              let loc = @token.Loc::default()
+              let iterator_sym = @runtime.get_iterator_symbol()
+              let iterator_method = interp.get_computed_property(
+                first,
+                Symbol(iterator_sym),
+                loc,
+              )
+              match iterator_method {
+                Undefined | Null => {
+                  let len = @runtime.to_array_like_length_interp(first, interp)
                   let result = make_typedarray_object(
                     type_name, len, per_proto, env,
                   )
                   match result {
                     Object(result_data) =>
                       for i = 0; i < len; i = i + 1 {
-                        match src_data.bag.properties.get(i.to_string()) {
-                          Some(v) => {
-                            let num = @runtime.to_number(v)
-                            typedarray_set_index(result_data, i, num)
-                          }
-                          None => ()
-                        }
+                        let v = interp.get_property(first, i.to_string(), loc)
+                        let num = @runtime.to_number(v, interp=Some(interp))
+                        typedarray_set_index(result_data, i, num)
                       }
                     _ => ()
                   }
                   result
                 }
-                _ => make_typedarray_object(type_name, 0, per_proto, env)
+                _ => {
+                  if !@runtime.is_callable(iterator_method) {
+                    raise @errors.TypeError(
+                      message="\{@runtime.type_of(first)} is not iterable",
+                    )
+                  }
+                  let values : Array[Value] = []
+                  let iterator = interp.call_value(
+                    iterator_method,
+                    first,
+                    [],
+                    loc,
+                  )
+                  while true {
+                    let next_method = interp.get_property(iterator, "next", loc)
+                    let next = interp.call_value(next_method, iterator, [], loc)
+                    if @runtime.is_truthy(
+                        interp.get_property(next, "done", loc),
+                      ) {
+                      break
+                    }
+                    values.push(interp.get_property(next, "value", loc))
+                  }
+                  let len = values.length()
+                  let result = make_typedarray_object(
+                    type_name, len, per_proto, env,
+                  )
+                  match result {
+                    Object(result_data) =>
+                      for i = 0; i < len; i = i + 1 {
+                        let num = @runtime.to_number(
+                          values[i],
+                          interp=Some(interp),
+                        )
+                        typedarray_set_index(result_data, i, num)
+                      }
+                    _ => ()
+                  }
+                  result
+                }
               }
+            }
             _ => make_typedarray_object(type_name, 0, per_proto, env)
           }
         }),

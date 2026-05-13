@@ -106,22 +106,19 @@ fn setup_reflect_builtins(env : Environment, _sym_state : SymbolState) -> Unit {
     name="defineProperty",
     length=3,
     fn(interp, _this_val, args) raise {
-      if args.length() < 3 {
-        raise @errors.TypeError(
-          message="Reflect.defineProperty requires 3 arguments",
-        )
-      }
-      let target = args[0]
+      let target = if args.length() > 0 { args[0] } else { Undefined }
       if !@runtime.is_object_value(target) {
         raise @errors.TypeError(
           message="Reflect.defineProperty called on non-object",
         )
       }
       let loc = @token.Loc::default()
+      let prop_val = if args.length() > 1 { args[1] } else { Undefined }
+      let attrs = if args.length() > 2 { args[2] } else { Undefined }
       // §28.1.3 step 2: ToPropertyKey BEFORE ToPropertyDescriptor so
       // side-effects on the key observe the spec-defined order.
-      let key = @runtime.to_property_key(args[1], interp=Some(interp))
-      let partial = interp.partial_descriptor_from_attrs(args[2], loc)
+      let key = @runtime.to_property_key(prop_val, interp=Some(interp))
+      let partial = interp.partial_descriptor_from_attrs(attrs, loc)
       let ok = interp.define_own_property(target, key, partial, loc)
       Value::Bool(ok)
     },
@@ -405,22 +402,19 @@ fn setup_reflect_builtins(env : Environment, _sym_state : SymbolState) -> Unit {
     name="set",
     length=3,
     fn(interp, _this_val, args) raise {
-      if args.length() < 3 {
-        raise @errors.TypeError(
-          message="Reflect.set requires at least 3 arguments",
-        )
-      }
-      let target = args[0]
+      let target = if args.length() > 0 { args[0] } else { Undefined }
       match target {
         Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => ()
         _ => raise @errors.TypeError(message="Reflect.set called on non-object")
       }
-      let key = args[1]
-      let key_str = match key {
+      let prop_val = if args.length() > 1 { args[1] } else { Undefined }
+      let prop_key = @runtime.to_property_key(prop_val, interp=Some(interp))
+      let key_str = match prop_key {
         Symbol(_) => ""
-        _ => key.to_string()
+        Value::String_(s) => s
+        _ => ""
       }
-      let value = args[2]
+      let value = if args.length() > 2 { args[2] } else { Undefined }
       // 4th argument is the Receiver; defaults to the target per spec.
       let receiver = if args.length() >= 4 { args[3] } else { target }
       // Pre-flight own-descriptor blockers (spec-safe): own accessor getter-
@@ -435,7 +429,7 @@ fn setup_reflect_builtins(env : Environment, _sym_state : SymbolState) -> Unit {
       // setter through the dispatcher.
       match target {
         Object(data) =>
-          match key {
+          match prop_key {
             Symbol(sym) =>
               match data.bag.symbol_descriptors.get(sym.id) {
                 Some(desc) => {
@@ -469,11 +463,11 @@ fn setup_reflect_builtins(env : Environment, _sym_state : SymbolState) -> Unit {
       }
       let loc = @token.Loc::default()
       try {
-        let _ = match key {
+        let _ = match prop_key {
           Symbol(_) =>
             interp.set_computed_property(
               target,
-              key,
+              prop_key,
               value,
               loc,
               strict=true,

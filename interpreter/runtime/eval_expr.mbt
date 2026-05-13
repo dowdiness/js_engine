@@ -629,27 +629,12 @@ fn Interpreter::eval_expr(
         raw_vals.push(String_(s))
       }
       let raw_arr = make_array(raw_vals)
-      // Create the template strings object as an array-like object with raw property
-      let props : Map[String, Value] = {}
-      props["length"] = Number(strings.length().to_double())
-      props["raw"] = raw_arr
-      for i, s in strings {
-        props[i.to_string()] = String_(s)
+      // Template strings objects are array-like and inherit Array methods.
+      let template_obj = make_array(raw_vals.copy())
+      match template_obj {
+        Array(data) => set_array_named_prop(data, "raw", raw_arr)
+        _ => ()
       }
-      let template_obj = Object({
-        bag: {
-          properties: props,
-          symbol_properties: {},
-          descriptors: {},
-          symbol_descriptors: {},
-        },
-        prototype: self.global.get("[[ObjectPrototype]]") catch {
-          _ => Null
-        },
-        callable: None,
-        class_name: "Array",
-        extensible: true,
-      })
       // Build args: [templateObj, ...substitutions]
       let args : Array[Value] = [template_obj]
       for e in exprs {

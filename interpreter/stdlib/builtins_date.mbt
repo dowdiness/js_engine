@@ -1528,59 +1528,8 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
       }
       // Step 2: Let tv = ToPrimitive(O, number)
       let tv = match o {
-        Object(data) => {
-          // Try valueOf first (hint number)
-          let mut result : Value = o
-          match data.bag.properties.get("valueOf") {
-            Some(Object(fn_data)) =>
-              match fn_data.callable {
-                Some(_) => {
-                  let v = interp.call_value(
-                    Object(fn_data),
-                    o,
-                    [],
-                    @token.Loc::default(),
-                  )
-                  match v {
-                    Object(_) | Array(_) => () // Not primitive, try toString
-                    _ => result = v
-                  }
-                }
-                _ => ()
-              }
-            _ => {
-              // Walk prototype chain for valueOf
-              let mut cur = data.prototype
-              while true {
-                match cur {
-                  Object(proto_data) =>
-                    match proto_data.bag.properties.get("valueOf") {
-                      Some(Object(fn_data)) =>
-                        match fn_data.callable {
-                          Some(_) => {
-                            let v = interp.call_value(
-                              Object(fn_data),
-                              o,
-                              [],
-                              @token.Loc::default(),
-                            )
-                            match v {
-                              Object(_) | Array(_) => ()
-                              _ => result = v
-                            }
-                            break
-                          }
-                          _ => cur = proto_data.prototype
-                        }
-                      _ => cur = proto_data.prototype
-                    }
-                  _ => break
-                }
-              }
-            }
-          }
-          result
-        }
+        Object(data) =>
+          @runtime.to_primitive_number(o, data, interp=Some(interp))
         _ => o
       }
       // Step 3: If tv is a Number and is not finite, return null

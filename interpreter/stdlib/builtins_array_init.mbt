@@ -1707,6 +1707,7 @@ fn setup_array_builtins(
       // Per spec: first try Symbol.iterator (iterable protocol)
       let iterator_sym = @runtime.get_iterator_symbol()
       let mut used_iterator = false
+      let mut constructed_result : Value? = None
       let iterator_method = interp.get_computed_property(
         source,
         Symbol(iterator_sym),
@@ -1714,6 +1715,9 @@ fn setup_array_builtins(
       )
       if @runtime.is_callable(iterator_method) {
         used_iterator = true
+        if @runtime.is_constructor_value(this_val) {
+          constructed_result = Some(interp.construct_value(this_val, [], loc))
+        }
         let iterator = interp.call_value(iterator_method, source, [], loc)
         let mut k = 0
         while true {
@@ -1812,11 +1816,15 @@ fn setup_array_builtins(
       // Otherwise fall back to a plain array.
       let n = elements.length()
       if @runtime.is_constructor_value(this_val) {
-        let result = interp.construct_value(
-          this_val,
-          [Value::Number(n.to_double())],
-          loc,
-        )
+        let result = match constructed_result {
+          Some(value) => value
+          None =>
+            interp.construct_value(
+              this_val,
+              [Value::Number(n.to_double())],
+              loc,
+            )
+        }
         for i = 0; i < n; i = i + 1 {
           let _ = interp.set_property(
             result,
