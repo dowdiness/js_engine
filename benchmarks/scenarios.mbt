@@ -107,13 +107,9 @@ pub fn bench_closure_factory() -> BenchResult raise {
 pub fn bench_closure_conversion_closure_factory() -> BenchResult raise {
   verify(CLOSURE_FACTORY_SRC, "500500")
   let prog = @parser.parse(CLOSURE_FACTORY_SRC)
-  let compiled = @compiler.compile_program_to_closure(prog.stmts)
+  let compiled = @compiler.compile_script_to_closure(prog.stmts)
   let precheck_interp = @interpreter.new_interpreter()
-  let got = compiled(
-    precheck_interp,
-    default_exec_ctx(),
-    precheck_interp.global,
-  ).to_string()
+  let got = compiled(precheck_interp).to_string()
   if got != "500500" {
     abort(
       "bench correctness check failed\n  source:   CLOSURE_FACTORY_SRC compiled\n  expected: 500500\n  got:      \{got}",
@@ -125,7 +121,7 @@ pub fn bench_closure_conversion_closure_factory() -> BenchResult raise {
     { warmup: 2, iterations: 10, group_size: 1 },
     fn() raise {
       let interp = @interpreter.new_interpreter()
-      let _ = compiled(interp, default_exec_ctx(), interp.global)
+      let _ = compiled(interp)
     },
   )
 }
@@ -200,13 +196,9 @@ pub fn bench_pipeline_exec_evaluate() -> BenchResult raise {
 pub fn bench_pipeline_closure_conversion_evaluate() -> BenchResult raise {
   verify(PIPELINE_EXEC_SRC, PIPELINE_EXEC_EXPECTED)
   let prog = @parser.parse(PIPELINE_EXEC_SRC)
-  let compiled = @compiler.compile_program_to_closure(prog.stmts)
+  let compiled = @compiler.compile_script_to_closure(prog.stmts)
   let precheck_interp = @interpreter.new_interpreter()
-  let got = compiled(
-    precheck_interp,
-    default_exec_ctx(),
-    precheck_interp.global,
-  ).to_string()
+  let got = compiled(precheck_interp).to_string()
   if got != PIPELINE_EXEC_EXPECTED {
     abort(
       "bench correctness check failed\n  source:   PIPELINE_EXEC_SRC compiled\n  expected: \{PIPELINE_EXEC_EXPECTED}\n  got:      \{got}",
@@ -217,7 +209,7 @@ pub fn bench_pipeline_closure_conversion_evaluate() -> BenchResult raise {
     "pipeline/closure_conversion/evaluate",
     Workflow,
     { warmup: 2, iterations: 10, group_size: 1 },
-    fn() raise { let _ = compiled(interp, default_exec_ctx(), interp.global) },
+    fn() raise { let _ = compiled(interp) },
   )
 }
 

@@ -92,6 +92,34 @@ fn run_program(src : String) -> Value raise Error {
 }
 
 ///|
+fn run_script(src : String) -> Value raise Error {
+  let prog = @parser.parse(src)
+  let interp = @interpreter.new_interpreter()
+  let compiled = compile_script_to_closure(prog.stmts)
+  compiled(interp)
+}
+
+///|
+fn run_interpreter_outcome(src : String) -> String {
+  try {
+    let prog = @parser.parse(src)
+    let interp = @interpreter.new_interpreter()
+    "value:" + interp.run(prog.stmts).to_string()
+  } catch {
+    @runtime.JsException(value) => "throw:" + value.to_string()
+    err => "error:" + err.to_string()
+  }
+}
+
+///|
+fn run_script_outcome(src : String) -> String {
+  try "value:" + run_script(src).to_string() catch {
+    @runtime.JsException(value) => "throw:" + value.to_string()
+    err => "error:" + err.to_string()
+  }
+}
+
+///|
 test "closure conversion evaluates identifiers and binary expressions" {
   let interp = @interpreter.new_interpreter()
   interp.global.def("x", Value::Number(41.0), BindingKind::VarBinding)
@@ -303,6 +331,67 @@ test "closure conversion compiles pipeline evaluate program" {
     run_program(PIPELINE_EXEC_PROGRAM),
     content=(
       #|500500
+    ),
+  )
+}
+
+///|
+test "closure conversion script wrapper hoists function declarations" {
+  let src = "var answer = f(); function f() { return 42; } answer;"
+  inspect(
+    [run_interpreter_outcome(src), run_script_outcome(src)],
+    content=(
+      #|["value:42", "value:42"]
+    ),
+  )
+}
+
+///|
+test "closure conversion script wrapper preserves strict var hoisting" {
+  let src = "\"use strict\"; answer = 41; var answer; answer + 1;"
+  inspect(
+    [run_interpreter_outcome(src), run_script_outcome(src)],
+    content=(
+      #|["value:42", "value:42"]
+    ),
+  )
+}
+
+///|
+test "closure conversion script wrapper validates strict declarations" {
+  let src = "\"use strict\"; function f(a, a) { return a; } f(1, 2);"
+  inspect(
+    run_script_outcome(src) == run_interpreter_outcome(src),
+    content="true",
+  )
+}
+
+///|
+test "closure conversion script wrapper installs current interpreter" {
+  let interp = @interpreter.new_interpreter()
+  let value_of = run_expr("(function() { return 41; })", interp, interp.global)
+  let obj = @runtime.make_plain_object()
+  match obj {
+    Value::Object(data) => data.bag.properties["valueOf"] = value_of
+    _ => abort("plain object constructor returned non-object")
+  }
+  interp.global.def("obj", obj, BindingKind::VarBinding)
+  let prog = @parser.parse("obj + 1;")
+  let compiled = compile_script_to_closure(prog.stmts)
+  inspect(
+    compiled(interp),
+    content=(
+      #|42
+    ),
+  )
+}
+
+///|
+test "closure conversion script wrapper wraps top-level engine errors" {
+  inspect(
+    run_script_outcome("missing;"),
+    content=(
+      #|throw:ReferenceError: missing is not defined
     ),
   )
 }

@@ -111,6 +111,25 @@ pub fn compile_program_to_closure(
 }
 
 ///|
+/// Compile a script into a closure that runs with the same outer execution
+/// envelope as `Interpreter::run`.
+///
+/// This wrapper keeps declaration hoisting, directive-prologue strictness,
+/// static early-error checks, current-interpreter setup, and JS error wrapping
+/// in the runtime package. The compiled body still avoids repeated AST matches
+/// for the supported statement/expression subset during execution.
+pub fn compile_script_to_closure(
+  stmts : Array[@ast.Stmt],
+) -> (Interpreter) -> Value raise Error {
+  let program = compile_program_to_closure(stmts)
+  fn(interp) raise {
+    interp.run_compiled_script(stmts, fn(ctx, env) raise {
+      program(interp, ctx, env)
+    })
+  }
+}
+
+///|
 fn compile_ident(
   name : String,
 ) -> (Interpreter, ExecContext, Environment) -> Value raise Error {

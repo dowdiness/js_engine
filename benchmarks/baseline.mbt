@@ -153,10 +153,11 @@ test "baseline/closure_conversion/compiled_counter_factory" (b : @bench.T) {
 }
 
 ///|
-/// Opt-in closure-conversion whole-program closure factory.
+/// Opt-in closure-conversion script-level closure factory.
 ///
-/// What it measures: evaluating a pre-parsed, pre-compiled program closure for
-/// the same JavaScript source as baseline/exec/closure_factory.
+/// What it measures: evaluating a pre-parsed, pre-compiled script closure for
+/// the same JavaScript source as baseline/exec/closure_factory, including the
+/// same script setup envelope as Interpreter::run.
 /// What it answers: whether whole-program closure conversion can move the
 /// primary closure_factory target, excluding frontend parse/compile cost.
 /// What it excludes: lexer/parser cost and closure-conversion compilation cost.
@@ -164,19 +165,15 @@ test "baseline/closure_conversion/closure_factory" (b : @bench.T) {
   let prog = @parser.parse(CLOSURE_FACTORY_SRC) catch {
     _ => abort("parse raised")
   }
-  let compiled = @compiler.compile_program_to_closure(prog.stmts)
+  let compiled = @compiler.compile_script_to_closure(prog.stmts)
   let precheck_interp = @interpreter.new_interpreter()
-  let got = compiled(
-    precheck_interp,
-    default_exec_ctx(),
-    precheck_interp.global,
-  ) catch {
+  let got = compiled(precheck_interp) catch {
     _ => abort("compiled program raised")
   }
   inspect(got.to_string(), content="500500")
   b.bench(fn() {
     let interp = @interpreter.new_interpreter()
-    let result = compiled(interp, default_exec_ctx(), interp.global) catch {
+    let result = compiled(interp) catch {
       _ => abort("compiled closure_factory raised")
     }
     b.keep(result)
