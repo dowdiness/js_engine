@@ -77,6 +77,8 @@ pub fn compile_expr_to_closure(
       compile_member_assign(obj, prop, value, loc)
     ComputedAssign(obj, key, value, loc) =>
       compile_computed_assign(obj, key, value, loc)
+    CompoundAssign(op, target, value, loc) =>
+      compile_compound_assign(op, target, value, loc)
     Grouping(inner, _) => compile_expr_to_closure(inner)
     Binary(op, left, right, loc) => {
       let left_fn = compile_expr_to_closure(left)
@@ -382,6 +384,177 @@ fn compile_computed_assign(
     let key = key_fn(interp, ctx, env)
     let value = value_fn(interp, ctx, env)
     interp.set_computed_property(obj, key, value, loc, strict=ctx.strict)
+  }
+}
+
+///|
+fn compile_compound_assign(
+  op : @ast.CompoundOp,
+  target : @ast.Expr,
+  value_expr : @ast.Expr,
+  loc : @token.Loc,
+) -> (Interpreter, ExecContext, Environment) -> Value raise Error {
+  match op {
+    LogicalAndAssign | LogicalOrAssign | NullishAssign =>
+      return compile_logical_assign(op, target, value_expr, loc)
+    _ => ()
+  }
+  let bin_op = compound_op_to_bin_op(op)
+  let value_fn = compile_expr_to_closure(value_expr)
+  match target {
+    Ident(name, _) =>
+      fn(interp, ctx, env) raise {
+        let current = env.get(name)
+        let rhs = value_fn(interp, ctx, env)
+        let result = @runtime.eval_binary_op(bin_op, current, rhs, loc)
+        env.assign(name, result)
+        result
+      }
+    Member(obj_expr, prop, member_loc) => {
+      let obj_fn = compile_expr_to_closure(obj_expr)
+      fn(interp, ctx, env) raise {
+        let obj = obj_fn(interp, ctx, env)
+        let current = interp.get_property(obj, prop, member_loc)
+        let rhs = value_fn(interp, ctx, env)
+        let result = @runtime.eval_binary_op(bin_op, current, rhs, loc)
+        let _ = interp.set_property(obj, prop, result, loc, strict=ctx.strict)
+        result
+      }
+    }
+    ComputedMember(obj_expr, key_expr, member_loc) => {
+      let obj_fn = compile_expr_to_closure(obj_expr)
+      let key_fn = compile_expr_to_closure(key_expr)
+      fn(interp, ctx, env) raise {
+        let obj = obj_fn(interp, ctx, env)
+        let key = key_fn(interp, ctx, env)
+        ensure_property_base(obj)
+        let prop_key = @runtime.to_property_key(key, interp=Some(interp))
+        let current = interp.get_computed_property(obj, prop_key, member_loc)
+        let rhs = value_fn(interp, ctx, env)
+        let result = @runtime.eval_binary_op(bin_op, current, rhs, loc)
+        let _ = interp.set_computed_property(
+          obj,
+          prop_key,
+          result,
+          loc,
+          strict=ctx.strict,
+        )
+        result
+      }
+    }
+    _ => invalid_assignment_target(loc)
+  }
+}
+
+///|
+fn compile_logical_assign(
+  op : @ast.CompoundOp,
+  target : @ast.Expr,
+  value_expr : @ast.Expr,
+  loc : @token.Loc,
+) -> (Interpreter, ExecContext, Environment) -> Value raise Error {
+  let value_fn = compile_expr_to_closure(value_expr)
+  let should_assign = logical_assign_predicate(op)
+  match target {
+    Ident(name, _) =>
+      fn(interp, ctx, env) raise {
+        let current = env.get(name)
+        if should_assign(current) {
+          let rhs = value_fn(interp, ctx, env)
+          env.assign(name, rhs)
+          rhs
+        } else {
+          current
+        }
+      }
+    Member(obj_expr, prop, member_loc) => {
+      let obj_fn = compile_expr_to_closure(obj_expr)
+      fn(interp, ctx, env) raise {
+        let obj = obj_fn(interp, ctx, env)
+        let current = interp.get_property(obj, prop, member_loc)
+        if should_assign(current) {
+          let rhs = value_fn(interp, ctx, env)
+          interp.set_property(obj, prop, rhs, loc, strict=ctx.strict)
+        } else {
+          current
+        }
+      }
+    }
+    ComputedMember(obj_expr, key_expr, member_loc) => {
+      let obj_fn = compile_expr_to_closure(obj_expr)
+      let key_fn = compile_expr_to_closure(key_expr)
+      fn(interp, ctx, env) raise {
+        let obj = obj_fn(interp, ctx, env)
+        let key = key_fn(interp, ctx, env)
+        ensure_property_base(obj)
+        let prop_key = @runtime.to_property_key(key, interp=Some(interp))
+        let current = interp.get_computed_property(obj, prop_key, member_loc)
+        if should_assign(current) {
+          let rhs = value_fn(interp, ctx, env)
+          interp.set_computed_property(
+            obj,
+            prop_key,
+            rhs,
+            loc,
+            strict=ctx.strict,
+          )
+        } else {
+          current
+        }
+      }
+    }
+    _ => invalid_assignment_target(loc)
+  }
+}
+
+///|
+fn compound_op_to_bin_op(op : @ast.CompoundOp) -> @ast.BinOp {
+  match op {
+    AddAssign => Add
+    SubAssign => Sub
+    MulAssign => Mul
+    ExpAssign => Exp
+    DivAssign => Div
+    ModAssign => Mod
+    BitAndAssign => BitAnd
+    BitOrAssign => BitOr
+    BitXorAssign => BitXor
+    LShiftAssign => LShift
+    RShiftAssign => RShift
+    URShiftAssign => URShift
+    LogicalAndAssign | LogicalOrAssign | NullishAssign => Add
+  }
+}
+
+///|
+fn logical_assign_predicate(op : @ast.CompoundOp) -> (Value) -> Bool {
+  match op {
+    LogicalAndAssign => value => @runtime.is_truthy(value)
+    LogicalOrAssign => value => !@runtime.is_truthy(value)
+    NullishAssign => value => value is Value::Null || value is Value::Undefined
+    _ => _ => false
+  }
+}
+
+///|
+fn ensure_property_base(obj : Value) -> Unit raise Error {
+  match obj {
+    Value::Null =>
+      raise @errors.TypeError(message="Cannot read properties of null")
+    Value::Undefined =>
+      raise @errors.TypeError(message="Cannot read properties of undefined")
+    _ => ()
+  }
+}
+
+///|
+fn invalid_assignment_target(
+  loc : @token.Loc,
+) -> (Interpreter, ExecContext, Environment) -> Value raise Error {
+  fn(_, _, _) raise {
+    raise @errors.SyntaxError(
+      message="Invalid assignment target at line \{loc.line}, col \{loc.col}",
+    )
   }
 }
 

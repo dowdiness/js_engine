@@ -450,6 +450,88 @@ test "closure conversion routes strict member assignment through setters" {
 }
 
 ///|
+test "closure conversion evaluates identifier compound assignment" {
+  inspect(
+    run_script("var x = 40; x += 2; x;"),
+    content=(
+      #|42
+    ),
+  )
+}
+
+///|
+test "closure conversion evaluates member compound assignment" {
+  inspect(
+    run_script("var o = { x: 40 }; o.x += 2; o.x;"),
+    content=(
+      #|42
+    ),
+  )
+}
+
+///|
+test "closure conversion evaluates computed compound assignment" {
+  inspect(
+    run_script("var o = { x: 40 }; o[\"x\"] += 2; o.x;"),
+    content=(
+      #|42
+    ),
+  )
+}
+
+///|
+test "closure conversion evaluates logical assignment" {
+  inspect(
+    run_script("var x = 0; x ||= 42; x;"),
+    content=(
+      #|42
+    ),
+  )
+}
+
+///|
+test "closure conversion preserves logical assignment short circuit" {
+  inspect(
+    run_script("function fail() { throw \"no\"; } var x = 1; x ||= fail(); x;"),
+    content=(
+      #|1
+    ),
+  )
+}
+
+///|
+test "closure conversion evaluates member nullish assignment" {
+  inspect(
+    run_script("var o = { x: null }; o.x ??= 42; o.x;"),
+    content=(
+      #|42
+    ),
+  )
+}
+
+///|
+test "closure conversion preserves computed logical assignment short circuit" {
+  inspect(
+    run_script(
+      "function fail() { throw \"no\"; } var o = { x: 0 }; o[\"x\"] &&= fail(); o.x;",
+    ),
+    content=(
+      #|0
+    ),
+  )
+}
+
+///|
+test "closure conversion routes strict compound assignment through setters" {
+  inspect(
+    run_script_outcome(
+      "\"use strict\"; var o = {}; Object.defineProperty(o, \"x\", { value: 1, writable: false }); o.x += 1;",
+    ).contains("TypeError"),
+    content="true",
+  )
+}
+
+///|
 test "closure conversion compiles closure factory program" {
   inspect(
     run_program(CLOSURE_FACTORY_PROGRAM),
