@@ -1,4 +1,19 @@
 ///|
+fn expect_lex_form(
+  actual : @token.LexForm,
+  expected : @token.LexForm,
+) -> Unit raise Error {
+  guard actual == expected else {
+    fail(
+      "expected lex_form " +
+      expected.to_string() +
+      ", got " +
+      actual.to_string(),
+    )
+  }
+}
+
+///|
 test "parse variable declaration" {
   let prog = @parser.parse("let x = 42;")
   inspect(
@@ -519,7 +534,7 @@ test "parser propagates lex_form to StringLit" {
   let prog = @parser.parse("\"\\1\"")
   match prog.stmts[0] {
     ExprStmt(StringLit(_, _, lex_form, _), _) =>
-      inspect(lex_form, content="StringLegacyOctalEscape")
+      expect_lex_form(lex_form, @token.LexForm::StringLegacyOctalEscape)
     _ => fail("expected ExprStmt(StringLit(...))")
   }
 }
@@ -531,7 +546,7 @@ test "parser propagates lex_form for object property key" {
     ExprStmt(Grouping(ObjectLit(props, _), _), _) =>
       match props[0].key {
         StringLit(_, _, lex_form, _) =>
-          inspect(lex_form, content="StringLegacyOctalEscape")
+          expect_lex_form(lex_form, @token.LexForm::StringLegacyOctalEscape)
         _ => fail("expected StringLit key")
       }
     _ => fail("expected ExprStmt(Grouping(ObjectLit(...)))")
@@ -543,7 +558,7 @@ test "parser propagates lex_form to NumberLit" {
   let prog = @parser.parse("0777")
   match prog.stmts[0] {
     ExprStmt(NumberLit(_, lex_form, _), _) =>
-      inspect(lex_form, content="NumberLegacyOctalInt")
+      expect_lex_form(lex_form, @token.LexForm::NumberLegacyOctalInt)
     _ => fail("expected ExprStmt(NumberLit(...))")
   }
 }
@@ -556,7 +571,7 @@ test "parser propagates lex_form to numeric property key" {
     ExprStmt(Grouping(ObjectLit(props, _), _), _) =>
       match props[0].key {
         StringLit(_, _, lex_form, _) =>
-          inspect(lex_form, content="NumberNonOctalDecimalInt")
+          expect_lex_form(lex_form, @token.LexForm::NumberNonOctalDecimalInt)
         _ => fail("expected StringLit key")
       }
     _ => fail("expected ExprStmt(Grouping(ObjectLit(...)))")
@@ -568,7 +583,10 @@ test "object-pattern key carries lex_form" {
   let prog = @parser.parse("let { \"\\1\": x } = o;")
   match prog.stmts[0] {
     DestructureDecl(_, ObjectPat(props, _), _, _) =>
-      inspect(props[0].key_lex_form, content="StringLegacyOctalEscape")
+      expect_lex_form(
+        props[0].key_lex_form,
+        @token.LexForm::StringLegacyOctalEscape,
+      )
     _ => fail("expected DestructureDecl with ObjectPat")
   }
 }
@@ -578,7 +596,7 @@ test "import side-effect propagates source_lex_form" {
   let prog = @parser.parse("import \"\\1\";")
   match prog.stmts[0] {
     ImportDecl(_, _, _, _, lex_form, _) =>
-      inspect(lex_form, content="StringLegacyOctalEscape")
+      expect_lex_form(lex_form, @token.LexForm::StringLegacyOctalEscape)
     _ => fail("expected ImportDecl")
   }
 }
@@ -588,7 +606,7 @@ test "import from-clause propagates source_lex_form" {
   let prog = @parser.parse("import x from \"\\1\";")
   match prog.stmts[0] {
     ImportDecl(_, _, _, _, lex_form, _) =>
-      inspect(lex_form, content="StringLegacyOctalEscape")
+      expect_lex_form(lex_form, @token.LexForm::StringLegacyOctalEscape)
     _ => fail("expected ImportDecl")
   }
 }
@@ -598,7 +616,7 @@ test "export-all propagates source_lex_form" {
   let prog = @parser.parse("export * from \"\\1\";")
   match prog.stmts[0] {
     ExportAllDecl(_, _, lex_form, _) =>
-      inspect(lex_form, content="StringLegacyOctalEscape")
+      expect_lex_form(lex_form, @token.LexForm::StringLegacyOctalEscape)
     _ => fail("expected ExportAllDecl")
   }
 }
@@ -608,7 +626,7 @@ test "export-named-from propagates source_lex_form" {
   let prog = @parser.parse("export {} from \"\\1\";")
   match prog.stmts[0] {
     ExportNamedDecl(_, _, _, lex_form, _) =>
-      inspect(lex_form, content="StringLegacyOctalEscape")
+      expect_lex_form(lex_form, @token.LexForm::StringLegacyOctalEscape)
     _ => fail("expected ExportNamedDecl")
   }
 }
