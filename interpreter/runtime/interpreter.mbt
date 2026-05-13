@@ -473,7 +473,7 @@ fn pattern_contains_expression(pattern : @ast.Pattern) -> Bool {
 }
 
 ///|
-fn validate_function_signature(
+pub fn validate_function_signature(
   enclosing_strict : Bool,
   name : String?,
   params : Array[String],
@@ -492,7 +492,7 @@ fn validate_function_signature(
 }
 
 ///|
-fn validate_function_signature_ext(
+pub fn validate_function_signature_ext(
   enclosing_strict : Bool,
   name : String?,
   params : Array[@ast.Param],

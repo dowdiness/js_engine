@@ -1,6 +1,6 @@
 ///|
 /// Spread an iterable value into an array of values using the iterator protocol
-fn Interpreter::spread_iterable(
+pub fn Interpreter::spread_iterable(
   self : Interpreter,
   val : Value,
   loc : @token.Loc,
@@ -361,7 +361,7 @@ fn Interpreter::bind_ext_params_and_exec_body(
 ///   but let/const are isolated in a new eval lexical scope
 /// - Non-strict indirect eval: var/function declarations leak to global scope,
 ///   but let/const are isolated in a new eval lexical scope
-fn Interpreter::perform_eval(
+pub fn Interpreter::perform_eval(
   self : Interpreter,
   code : String,
   caller_env : Environment,
